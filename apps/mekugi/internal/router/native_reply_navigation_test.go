@@ -61,23 +61,23 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		if target != seq {
 			continue
 		}
-		x := u.shell.Layout.Main.X + u.view.FeedLeft + 1
-		y := u.shell.Layout.Main.Y + u.view.FeedTop + row
-		if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
+		x := terminalTest(u).Layout.Main.X + u.view.FeedLeft + 1
+		y := terminalTest(u).Layout.Main.Y + u.view.FeedTop + row
+		if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 			t.Fatal(err)
 		}
-		if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dm", x, y)); err != nil {
+		if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dm", x, y)); err != nil {
 			t.Fatal(err)
 		}
 		clicked = true
 		break
 	}
-	if !clicked || u.shell.output == nil || u.shell.DiffOpen {
-		t.Fatalf("reply link did not open modal: clicked=%v seq=%d links=%v diff=%v", clicked, seq, u.view.FeedQuestions, u.shell.DiffOpen)
+	if !clicked || terminalTest(u).Dialog == nil || terminalTest(u).DiffOpen {
+		t.Fatalf("reply link did not open modal: clicked=%v seq=%d links=%v diff=%v", clicked, seq, u.view.FeedQuestions, terminalTest(u).DiffOpen)
 	}
 	screen := vt.NewEmulator(120, 28)
 	defer screen.Close()
-	u.shell.Frame.Rows = nil
+	terminalTest(u).Frame.Rows = nil
 	master, slave, err := pty.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -114,11 +114,11 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("PTY reply frame did not complete")
 	}
-	if !strings.Contains(screen.String(), "The requested reply.") || !strings.Contains(u.shell.output.Document.Text, "End of requested reply.") || strings.Contains(u.shell.output.Document.Text, "An earlier unrelated reply") {
+	if !strings.Contains(screen.String(), "The requested reply.") || !strings.Contains(terminalTest(u).Dialog.Document.Text, "End of requested reply.") || strings.Contains(terminalTest(u).Dialog.Document.Text, "An earlier unrelated reply") {
 		t.Fatalf("dialog did not reach exact full reply:\n%s", screen.String())
 	}
-	u.shell.outputKey("\x1b")
-	if u.shell.output != nil {
+	terminalTest(u).outputKey("\x1b")
+	if terminalTest(u).Dialog != nil {
 		t.Fatal("closing reply changed panes")
 	}
 }

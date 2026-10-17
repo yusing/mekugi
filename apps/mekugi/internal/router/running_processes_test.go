@@ -32,8 +32,8 @@ func processNotify(t *testing.T, u *appServerUI, thread, id, command, status str
 // processDialog paints the open /ps dialog over a blank screen.
 func processDialog(u *appServerUI, width, height int) []string {
 	rows := make([]string, height)
-	u.shell.main.prepareOutput(u.shell)
-	u.shell.output.Paint(rows, width, height)
+	terminalTest(u).main.prepareOutput(terminalTest(u).Attachment)
+	terminalTest(u).Dialog.Paint(rows, width, height)
 	return rows
 }
 
@@ -41,7 +41,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	appServerTestKeys(t, u, "/ps\r")
-	if got := drawOutputDialog(u.shell); !strings.Contains(got, "No running processes") {
+	if got := drawOutputDialog(terminalTest(u)); !strings.Contains(got, "No running processes") {
 		t.Fatalf("missing empty state: %s", got)
 	}
 	// Commands that start while the dialog is open join it in start order,
@@ -57,7 +57,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	if u.runningProcessCount() != 2 {
 		t.Fatal("Main and child commands were not counted once each")
 	}
-	if got := drawOutputDialog(u.shell); !strings.Contains(got, "1 main git fetch && go test") || !strings.Contains(got, "2 worker make test") ||
+	if got := drawOutputDialog(terminalTest(u)); !strings.Contains(got, "1 main git fetch && go test") || !strings.Contains(got, "2 worker make test") ||
 		strings.Contains(got, "No running processes") || strings.Contains(got, "exec-track") || strings.Contains(got, displayGuardHelper) {
 		t.Fatalf("missing command tabs or owners, or leaked instrumentation: %s", got)
 	}
@@ -70,23 +70,23 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	if u.session.Transcript("main", "t").Turn != nil || !u.session.Commands()[[3]string{"main", "t", "cmd"}].Entry.Native.Invocation.Snapshot().Running {
 		t.Fatal("command lifetime followed its closed turn scope")
 	}
-	if err := u.shell.send("\x1b[C"); err != nil {
+	if err := terminalTest(u).send("\x1b[C"); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 30 {
 		appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "cmd", "delta": fmt.Sprintf("output %02d\n", i)})
 		if i == 0 {
-			if got := drawOutputDialog(u.shell); !strings.Contains(got, "● live") || !strings.Contains(got, "output 00") {
+			if got := drawOutputDialog(terminalTest(u)); !strings.Contains(got, "● live") || !strings.Contains(got, "output 00") {
 				t.Fatalf("dialog did not stream live output: %s", got)
 			}
 		}
 	}
-	if got := drawOutputDialog(u.shell); !strings.Contains(got, "output 29") || strings.Contains(got, "output 00") {
+	if got := drawOutputDialog(terminalTest(u)); !strings.Contains(got, "output 29") || strings.Contains(got, "output 00") {
 		t.Fatalf("dialog did not follow streamed output: %s", got)
 	}
 	// The open page keeps its final output; the next /ps omits it.
 	processNotify(t, u, "child", "cmd", "make test", "completed")
-	if got := drawOutputDialog(u.shell); u.runningProcessCount() != 1 || strings.Contains(got, "● live") || !strings.Contains(got, "output 29") || !strings.Contains(got, "exit 0") {
+	if got := drawOutputDialog(terminalTest(u)); u.runningProcessCount() != 1 || strings.Contains(got, "● live") || !strings.Contains(got, "output 29") || !strings.Contains(got, "exit 0") {
 		t.Fatalf("completed command lost its open page: %s", got)
 	}
 	entries := make([]sessionpresentation.ActivityEntry, liveActivityFeedLimit)
@@ -96,18 +96,18 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
 	u.session.Activity().AdvanceSequence(u.source.LastSeq)
 	reopen := func() {
-		if err := u.shell.send("\x1b"); err != nil {
+		if err := terminalTest(u).send("\x1b"); err != nil {
 			t.Fatal(err)
 		}
 		appServerTestKeys(t, u, "/ps\r")
 	}
 	reopen()
-	if got := drawOutputDialog(u.shell); u.runningProcessCount() != 1 || !strings.Contains(got, "git fetch && go test") || strings.Contains(got, "make test") {
+	if got := drawOutputDialog(terminalTest(u)); u.runningProcessCount() != 1 || !strings.Contains(got, "git fetch && go test") || strings.Contains(got, "make test") {
 		t.Fatalf("reopened list kept a completed command or lost a running one: %s", got)
 	}
 	processNotify(t, u, "main", "cmd", command, "failed")
 	reopen()
-	if got := drawOutputDialog(u.shell); u.runningProcessCount() != 0 || !strings.Contains(got, "No running processes") || strings.Contains(u.stateLabel(u.now()), "running processes") {
+	if got := drawOutputDialog(terminalTest(u)); u.runningProcessCount() != 0 || !strings.Contains(got, "No running processes") || strings.Contains(u.stateLabel(u.now()), "running processes") {
 		t.Fatalf("last completion did not clear the count and dialog: %s", got)
 	}
 }
@@ -146,7 +146,7 @@ func TestRunningProcessesRestoredAndSwitched(t *testing.T) {
 	appServerTestKeys(t, u, "/ps\r")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/workspace"}}}`, r.ID))
 	processNotify(t, u, "main", "late", "sleep 200", "inProgress")
-	if u.Thread != "fresh" || u.runningProcessCount() != 0 || u.shell.output != nil {
+	if u.Thread != "fresh" || u.runningProcessCount() != 0 || terminalTest(u).Dialog != nil {
 		t.Fatal("switch retained old commands, their dialog, or admitted late old events")
 	}
 }
@@ -161,23 +161,23 @@ func TestRunningProcessesInteraction(t *testing.T) {
 	wire.Reset()
 	for _, closeKey := range []string{"\x1b", "q", "\x03"} {
 		appServerTestKeys(t, u, "/ps\r")
-		drawOutputDialog(u.shell)
-		d := u.shell.output
-		if err := u.shell.send("\x1b[C"); err != nil {
+		drawOutputDialog(terminalTest(u))
+		d := terminalTest(u).Dialog
+		if err := terminalTest(u).send("\x1b[C"); err != nil {
 			t.Fatal(err)
 		}
-		if got := drawOutputDialog(u.shell); d.Page != 1 || !strings.Contains(got, "sleep 2") || !strings.Contains(got, "2 / 20") {
+		if got := drawOutputDialog(terminalTest(u)); d.Page != 1 || !strings.Contains(got, "sleep 2") || !strings.Contains(got, "2 / 20") {
 			t.Fatalf("Right did not select the next process: %s", got)
 		}
-		x, y := dialogFramePoint(t, outputDialogScreen(u.shell), "1 main")
-		u.shell.outputMouse(0, x, y, false)
+		x, y := dialogFramePoint(t, outputDialogScreen(terminalTest(u)), "1 main")
+		terminalTest(u).outputMouse(0, x, y, false)
 		if d.Page != 0 {
 			t.Fatal("tab click did not select its process")
 		}
-		if err := u.shell.send(closeKey); err != nil {
+		if err := terminalTest(u).send(closeKey); err != nil {
 			t.Fatal(err)
 		}
-		if u.shell.output != nil || u.Turn != "active" || u.runningProcessCount() != 20 || wire.Len() != 0 || u.Text != "" {
+		if terminalTest(u).Dialog != nil || u.Turn != "active" || u.runningProcessCount() != 20 || wire.Len() != 0 || u.Text != "" {
 			t.Fatalf("dialog changed work or sent a model request: %s", wire.String())
 		}
 	}
@@ -215,7 +215,7 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		processNotify(t, u, thread, "cmd", "go test ./...", "completed")
 	}
-	if err := u.shell.send("\x1b"); err != nil {
+	if err := terminalTest(u).send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
 	appServerTestKeys(t, u, "/ps\r")

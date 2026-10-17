@@ -37,11 +37,11 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	c.SetWorkspace(workspace)
 	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: workspace, Call: "move"}, Correlation: "move\x000"}, Operation: activitydetail.Operation{Thread: "main", Item: "move"}, Chunks: []presentation.Chunk{{Workspace: workspace, Review: file}}})
 	publishFixtureReview(t, u)
-	u.shell.Auxiliary = c
-	if !u.shell.openActivityEdit(u.view, 1, pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)) {
+	terminalTest(u).Auxiliary = c
+	if !terminalTest(u).openActivityEdit(u.view, 1, pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)) {
 		t.Fatal("compressed move endpoint did not open exact captured dialog")
 	}
-	uisnapshot.Assert(t, "testdata/snapshots/move-paths-dialog.txt", drawOutputDialog(u.shell)+"\n")
+	uisnapshot.Assert(t, "testdata/snapshots/move-paths-dialog.txt", drawOutputDialog(terminalTest(u))+"\n")
 }
 
 func TestHostMovePaths(t *testing.T) {
@@ -99,10 +99,10 @@ func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move", EditPages: pages}}}}
-	if !u.shell.openActivityEdit(u.view, 1, "internal/{old.go=>new.go}") {
+	if !terminalTest(u).openActivityEdit(u.view, 1, "internal/{old.go=>new.go}") {
 		t.Fatal("compressed host move did not open its exact page")
 	}
-	frame := drawOutputDialog(u.shell)
+	frame := drawOutputDialog(terminalTest(u))
 	var renderer diffrender.Renderer
 	want, err := renderer.ColorDiffPath(t.Context(), diffrender.DarkTheme, "internal/new.go", change.Diff)
 	if err != nil {
@@ -113,7 +113,7 @@ func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
 			continue
 		}
 		found := false
-		for _, line := range u.shell.output.Document.Lines {
+		for _, line := range terminalTest(u).Dialog.Document.Lines {
 			if line.Text == row {
 				found = true
 				break
@@ -123,7 +123,7 @@ func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
 			t.Fatalf("compressed move label lost source token colors: missing %q", row)
 		}
 	}
-	if pages[0].Verb != "Move" || u.shell.output.Document.Text != change.Diff {
+	if pages[0].Verb != "Move" || terminalTest(u).Dialog.Document.Text != change.Diff {
 		t.Fatal("move action or copied source changed")
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/host-move-dialog-syntax.txt", frame+"\n")

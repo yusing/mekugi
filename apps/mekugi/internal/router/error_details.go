@@ -1,22 +1,19 @@
 package router
 
-import activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
-// openErrors exposes the focused transcript's errors through the shared content
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+)
+
+// openErrorDetails exposes the selected transcript's errors through the shared content
 // dialog, newest first on opening. Left/Right reaches earlier retained errors.
-func (u *terminalUI) openErrors() {
-	var view *activityui.View
-	switch u.Focus {
-	case 0:
-		if u.main != nil {
-			view = u.main.transcriptView()
-		}
-	}
+func (main *appServerUI) openErrorDetails(u *terminalsession.Attachment, view *activityui.View) {
 	if view == nil {
 		return
 	}
 	var pages []activityui.Block
-	for _, entry := range u.main.activitySource(view).Entries {
+	for _, entry := range main.activitySource(view).Entries {
 		if entry.Source.Kind != "error" || !view.Visible(entry.Publish()) {
 			continue
 		}
@@ -26,7 +23,7 @@ func (u *terminalUI) openErrors() {
 		}
 	}
 	if len(pages) > 0 {
-		u.openBlocks(view, pages)
-		u.output.ShowPage(len(u.output.Pages) - 1)
+		main.openBlocks(u, view, pages)
+		u.Dialog.ShowPage(len(u.Dialog.Pages) - 1)
 	}
 }

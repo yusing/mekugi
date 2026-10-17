@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 )
@@ -168,7 +170,7 @@ func TestAppServerComposerImageEchoReconcilesPending(t *testing.T) {
 
 func TestAppServerComposerMovedCaretVisible(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.shell = &terminalUI{}
+	u.shell = &terminalsession.Attachment{}
 	appServerTestKeys(t, u, "abc\x1b[D\x1b[D")
 	screen := vt.NewEmulator(16, 8)
 	t.Cleanup(func() { screen.Close() })
@@ -292,7 +294,7 @@ func TestAppServerComposerOptionWordNavigation(t *testing.T) {
 			keys := func(input string) {
 				t.Helper()
 				for _, key := range []byte(input) {
-					if err := u.shell.key(key); err != nil {
+					if err := terminalTest(u).key(key); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -360,7 +362,7 @@ func TestAppServerComposerKillShortcutsThroughTerminal(t *testing.T) {
 			keys := func(s string) {
 				t.Helper()
 				for _, b := range []byte(s) {
-					if err := u.shell.key(b); err != nil {
+					if err := terminalTest(u).key(b); err != nil {
 						t.Fatal(err)
 					}
 				}

@@ -59,7 +59,7 @@ func newUIReplayPlayback(terminalViews terminalsession.Views, reviewSource *chan
 }
 
 func (p *uiReplayPlayback) reset() {
-	var previous *terminalUI
+	var previous *terminalsession.Attachment
 	if p.ui != nil {
 		previous = p.ui.shell
 		p.close()
@@ -74,7 +74,7 @@ func (p *uiReplayPlayback) reset() {
 	u.startSession(p.Source.Thread, p.Source.Cwd)
 	u.ensureShell()
 	if previous != nil {
-		u.fileReadSlot = previous.main.fileReadSlot
+		u.fileReadSlot = p.ui.fileReadSlot
 		u.shell.Focus = previous.Focus
 		u.shell.DiffOpen = previous.DiffOpen
 	}
@@ -86,7 +86,7 @@ func (p *uiReplayPlayback) reset() {
 func (p *uiReplayPlayback) close() {
 	p.ui.review.Close()
 	p.ui.commits.Close()
-	p.ui.shell.diffScreen.Close()
+	p.ui.shell.Diff.Close()
 	p.ui.session.Retire()
 }
 
@@ -252,7 +252,7 @@ func replayTime(d time.Duration) string {
 // never execute recorded commands, answer questions, or launch external tools.
 func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	shell := p.ui.shell
-	if key != 3 && shell.output != nil && (shell.output.Typing || !strings.ContainsRune("p+-=[]r", rune(key))) {
+	if key != 3 && shell.Dialog != nil && (shell.Dialog.Typing || !strings.ContainsRune("p+-=[]r", rune(key))) {
 		navigation := terminalsession.ReplayNavigation(key)
 		if navigation == "" {
 			navigation = string(key)
@@ -262,7 +262,7 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 		} else if key == terminalui.PaneWheelDown {
 			navigation = "j"
 		}
-		shell.outputIntent(shell.output.Key(navigation))
+		p.ui.outputIntent(shell, shell.Dialog.Key(navigation))
 		return false, nil
 	}
 	if key == 'q' || key == 3 || key == 27 {
@@ -271,15 +271,15 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	if p.prefix {
 		p.prefix = false
 		if key == '1' || key == '2' {
-			return false, shell.applyInput(shell.frameInput().SelectPane(&shell.Interaction, int(key-'1')))
+			return false, p.ui.applyInput(shell, p.ui.frameInput(shell).SelectPane(&shell.Interaction, int(key-'1')))
 		}
 		if key == '3' {
-			return false, shell.applyInput(shell.frameInput().SelectPane(&shell.Interaction, 3))
+			return false, p.ui.applyInput(shell, p.ui.frameInput(shell).SelectPane(&shell.Interaction, 3))
 		}
 		return false, nil
 	}
 	if key == 5 {
-		return false, shell.applyInput(shell.frameInput().Send(&shell.Interaction, "\x05"))
+		return false, p.ui.applyInput(shell, p.ui.frameInput(shell).Send(&shell.Interaction, "\x05"))
 	}
 	switch key {
 	case 2:
@@ -346,8 +346,8 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 			case key, open = <-keys:
 			default:
 				input.ExpireEscape()
-				if p.ui.shell.output != nil {
-					p.ui.shell.outputIntent(p.ui.shell.output.Key("\x1b"))
+				if p.ui.shell.Dialog != nil {
+					p.ui.outputIntent(p.ui.shell, p.ui.shell.Dialog.Key("\x1b"))
 					if err := paint(); err != nil {
 						return err
 					}

@@ -57,6 +57,7 @@ import (
 
 type appServerUI struct {
 	terminalViews terminalsession.Views
+	preparePane   func(*scope.Store)
 	reviewSource  *changecapture.Service
 	mainView      terminalsession.Main
 	*composer.Editor
@@ -117,7 +118,7 @@ type appServerUI struct {
 	shellEdits             appServerShellEdits
 	pendingEditReceipts    []*changepresentation.Receipt // Observed edits can precede their host Activity item.
 	issues                 *requestexecution.Failures
-	shell                  *terminalUI
+	shell                  *terminalsession.Attachment
 	fileReadSlot           chan struct{} // Physical capacity survives dialog and attachment retirement.
 	fileReads              <-chan markdownFileResult
 	streams                terminalsession.Streams
@@ -227,7 +228,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		return nil, err
 	}
 	u.ensureShell()
-	u.shell.faint = faint
+	u.shell.Faint = faint
 	u.settlePresentation()
 	return func() error {
 		u.review.Loader = sessionreview.NewLoader(ctx, u.review.Projection)
@@ -236,7 +237,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 			u.retainedSession.Close()
 		}()
 		defer u.cancelPickerScan()
-		defer u.shell.diffScreen.Close()
+		defer u.shell.Diff.Close()
 		defer func() { u.commits.Close() }()
 		if u.audience != nil {
 			defer u.audience.Detach()
@@ -332,7 +333,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							return io.EOF
 						}
 						if event := u.shell.Decoder.Feed(key, time.Now()); event.Kind != terminalsession.NoInput {
-							if err := u.shell.applyInput(u.shell.frameInput().Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
+							if err := u.applyInput(u.shell, u.frameInput(u.shell).Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
 								return err
 							}
 						}
@@ -382,7 +383,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						notices := u.applyCriticalNotices()
 						u.settlePresentation()
-						if u.shell.liveDock.Tick(u.now()) || u.agents.RosterEasing {
+						if u.shell.Live.Tick(u.now()) || u.agents.RosterEasing {
 							u.dirty = true
 						}
 						w, h, err := term.GetSize(int(stdout.Fd()))
@@ -942,25 +943,25 @@ func (u *appServerUI) ensureShell() {
 	u.agents.Painter.FileLink = markdownFileLinks(u.sessionPresentation().View().Info.Workspace)
 	u.agents.ChildrenOnly = true
 	u.agents.Bare = true
-	shell := &terminalUI{main: u, agents: u.agents, diffScreen: new(terminalsession.DiffScreen)}
+	shell := &terminalsession.Attachment{Main: &u.mainView, Prompts: &u.prompts, Transcript: u.view, Agents: u.agents, Diff: new(terminalsession.DiffScreen)}
 	shell.RosterLabel = u.terminalViews.RosterLabel()
 	shell.Theme = diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))
 	label, attachment := u.terminalViews.Attach(shell.Theme)
-	shell.AuxiliaryLabel, shell.Auxiliary, shell.preparePane = label, attachment.Pane, attachment.Prepare
+	shell.AuxiliaryLabel, shell.Auxiliary, u.preparePane = label, attachment.Pane, attachment.Prepare
 
 	u.shell = shell
 }
 
 func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
-	u.shell.width, u.shell.height = max(1, width), max(1, height)
+	u.shell.Width, u.shell.Height = max(1, width), max(1, height)
 	u.mainView.ContentPainted = false
 	u.prepareOutput(u.shell)
 	ctx := u.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return u.shell.paintNative(ctx, out)
+	return u.paintNative(u.shell, ctx, out)
 }
 
 // Router-owned annotations and authenticated directed inputs supplement the

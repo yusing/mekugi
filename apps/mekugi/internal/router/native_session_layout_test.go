@@ -24,24 +24,24 @@ func TestNativeUISessionLiveToggle(t *testing.T) {
 	u.modelsLoading = true
 	u.Settings.Admit(sessioncontrol.SettingsPlan{Action: sessioncontrol.SettingsTurn})
 	appServerTestKeys(t, u, "/live\r")
-	defer u.shell.diffScreen.Close()
-	if !u.shell.liveHidden || u.picker.Open || u.Text != "" || wire.Len() != 0 {
+	defer terminalTest(u).Diff.Close()
+	if !terminalTest(u).LiveHidden || u.picker.Open || u.Text != "" || wire.Len() != 0 {
 		t.Fatal("toggle did not hide Live locally")
 	}
 	appServerTestKeys(t, u, "/live\r")
-	if u.shell.liveHidden || u.picker.Open || u.Text != "" || wire.Len() != 0 {
+	if terminalTest(u).LiveHidden || u.picker.Open || u.Text != "" || wire.Len() != 0 {
 		t.Fatal("second toggle did not show Live locally")
 	}
 	for _, command := range []string{"/live off", "/live off", "/live on", "/live on"} {
 		appServerTestKeys(t, u, command+"\r")
-		if u.shell.liveHidden != strings.HasSuffix(command, "off") || u.picker.Open || u.Text != "" || wire.Len() != 0 {
+		if terminalTest(u).LiveHidden != strings.HasSuffix(command, "off") || u.picker.Open || u.Text != "" || wire.Len() != 0 {
 			t.Fatalf("direct setting failed: %s", command)
 		}
 	}
 	for _, command := range []string{"/live invalid", "/live on extra"} {
 		u.loadDraft(conversationmodel.Input{})
 		appServerTestKeys(t, u, command+"\r")
-		if u.shell.liveHidden || u.Text != command || !u.feedback.Alert {
+		if terminalTest(u).LiveHidden || u.Text != command || !u.feedback.Alert {
 			t.Fatal("invalid value changed preference or lost draft")
 		}
 	}
@@ -50,8 +50,8 @@ func TestNativeUISessionLiveToggle(t *testing.T) {
 	}
 	other, _ := newAppServerTestUI()
 	other.ensureShell()
-	defer other.shell.diffScreen.Close()
-	if other.shell.liveHidden {
+	defer terminalTest(other).Diff.Close()
+	if terminalTest(other).LiveHidden {
 		t.Fatal("new session inherited preference")
 	}
 }
@@ -62,13 +62,13 @@ func TestNativeUILiveToggleDuringModelList(t *testing.T) {
 		u.modelsLoading = true
 		appServerTestRequest(t, u, "1", "model/list")
 		appServerTestKeys(t, u, "/live\r")
-		defer u.shell.diffScreen.Close()
+		defer terminalTest(u).Diff.Close()
 		appServerTestMessage(t, u, reply)
-		if !u.shell.liveHidden || u.picker.Open || wire.Len() != 0 {
+		if !terminalTest(u).LiveHidden || u.picker.Open || wire.Len() != 0 {
 			t.Fatal("model response disturbed Live toggle")
 		}
 		appServerTestKeys(t, u, "/live\r")
-		if u.shell.liveHidden || u.picker.Open || wire.Len() != 0 {
+		if terminalTest(u).LiveHidden || u.picker.Open || wire.Len() != 0 {
 			t.Fatal("interleaved reply prevented toggling back")
 		}
 	}
@@ -81,13 +81,13 @@ func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.view.Clock = u.clock
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	screen := vt.NewEmulator(100, 28)
 	defer screen.Close()
 	preview := previewmodel.Preview{ID: "edit", Workspace: t.TempDir(), Caller: "/root", Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+Live edit still in progress\n*** End Patch"}
 	u.cwd = preview.Workspace
 	u.preview(projectStockPatchPreview(t.Context(), preview.Workspace, preview), false)
-	revealNativeDock(u.shell)
+	revealNativeDock(terminalTest(u))
 	for _, value := range []string{"off", "on"} {
 		appServerTestKeys(t, u, "/live\r")
 		if err := u.testPaint(screen, 100, 28); err != nil {
@@ -102,7 +102,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 		for _, width := range []int{80, 120} {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
-			defer u.shell.diffScreen.Close()
+			defer terminalTest(u).Diff.Close()
 			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root", Responding: true}, {Name: "/root/worker", Responding: true}}
 			screen := vt.NewEmulator(width, 40)
 			defer screen.Close()
@@ -116,7 +116,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			workspace := t.TempDir()
 			preview := previewmodel.Preview{ID: "edit", Workspace: workspace, Caller: caller, Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: a.txt\n+VISIBLE_EDIT\n*** End Patch"}
 			u.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
-			revealNativeDock(u.shell)
+			revealNativeDock(terminalTest(u))
 			if caller != "/root" {
 				u.testActivity(u.agents).setDisplayFilter(true, caller)
 			}
@@ -127,11 +127,11 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			appServerTestKeys(t, u, "/live\r")
 			u.testActivity(u.agents).setDisplayFilter(caller != "/root", u.agents.Selected)
 			frame := paint()
-			if strings.Contains(frame, "VISIBLE_EDIT") || u.shell.Layout.Live.H != 0 || len(u.shell.liveDock.Order) != 1 {
+			if strings.Contains(frame, "VISIBLE_EDIT") || terminalTest(u).Layout.Live.H != 0 || len(terminalTest(u).Live.Order) != 1 {
 				t.Fatal("hidden dock lost state or reserved space")
 			}
 			lines := strings.Split(frame, "\n")
-			r := u.shell.Layout.Roster
+			r := terminalTest(u).Layout.Roster
 			if r.H == 0 || !strings.Contains(lines[r.Y-1], "┘") || strings.TrimSpace(lines[r.Y+r.H]) != "" {
 				t.Fatalf("roster must immediately follow the pane border with padding only below:\n%s", frame)
 			}
@@ -144,8 +144,8 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			appServerTestKeys(t, u, "/live\r")
 			preview.Complete = true
 			u.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
-			revealNativeDock(u.shell)
-			u.shell.liveDock.Tick(time.Now().Add(time.Hour))
+			revealNativeDock(terminalTest(u))
+			terminalTest(u).Live.Tick(time.Now().Add(time.Hour))
 			appServerTestKeys(t, u, "/live\r")
 			if strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("expired edit revived")

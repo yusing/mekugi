@@ -45,7 +45,7 @@ func TestReviewReceiptsWithoutTerminal(t *testing.T) {
 					t.Fatalf("receipt depended on a renderer: %+v", record)
 				}
 			}
-			if u.shell != nil || u.view != nil || u.agents != nil || len(u.pendingEditReceipts) != 0 {
+			if terminalTest(u) != nil || u.view != nil || u.agents != nil || len(u.pendingEditReceipts) != 0 {
 				t.Fatal("receipt reconciliation constructed a terminal or retained a matched preview")
 			}
 		})

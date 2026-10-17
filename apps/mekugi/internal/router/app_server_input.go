@@ -22,13 +22,13 @@ func (u *appServerUI) drainKeys(keys <-chan byte) error {
 			}
 			u.dirty = true
 			if event := u.shell.Decoder.Feed(key, time.Now()); event.Kind != terminalsession.NoInput {
-				if err := u.shell.applyInput(u.shell.frameInput().Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
+				if err := u.applyInput(u.shell, u.frameInput(u.shell).Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
 					return err
 				}
 			}
 		default:
 			if u.shell.Decoder.Escape(time.Now()) {
-				return u.shell.applyInput(u.shell.frameInput().Send(&u.shell.Interaction, "\x1b"))
+				return u.applyInput(u.shell, u.frameInput(u.shell).Send(&u.shell.Interaction, "\x1b"))
 			}
 			return nil
 		}

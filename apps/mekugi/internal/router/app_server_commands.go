@@ -182,9 +182,9 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.source, u.childSource = nil, nil
 	u.attachPresentation()
 	if u.shell != nil {
-		u.shell.agents = u.agents
+		u.shell.Agents = u.agents
 		u.shell.Selection = nil
-		u.shell.closeOutput()
+		u.closeOutput(u.shell)
 		u.shell.Focus = 0
 		u.shell.StopDrag()
 	}
@@ -230,7 +230,7 @@ func (u *appServerUI) resetDiffScope() {
 		if u.shell.Auxiliary != nil {
 			u.shell.Auxiliary.Reset()
 		}
-		u.shell.liveDock, u.shell.diffUnseen = previewview.PreviewPane{}, false
+		u.shell.Live, u.shell.DiffUnseen = previewview.PreviewPane{}, false
 	}
 	u.publishReview()
 }

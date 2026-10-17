@@ -13,40 +13,40 @@ import (
 func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
-	c := savedPane(u.shell)
+	defer terminalTest(u).Diff.Close()
+	c := savedPane(terminalTest(u))
 	c.SetWorkspace("/w")
 	c.Update((presentation.Publication{}).With(presentation.GroupCaptures([]presentation.Chunk{
 		liveDiffCapture("selected", "src/selected.go", 1, "old\n", "new\n", presentation.Origin{}),
 		liveDiffCapture("other", "other.go", 2, "old\n", "new\n", presentation.Origin{}),
 	})), "")
-	u.shell.Focus = 1
+	terminalTest(u).Focus = 1
 	for _, key := range []byte("sg") {
-		if err := u.shell.key(key); err != nil {
+		if err := terminalTest(u).key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// The folder cursor must not open the previously selected diff file.
-	if err := u.shell.key('e'); err != nil {
+	if err := terminalTest(u).key('e'); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.shell.key('j'); err != nil {
+	if err := terminalTest(u).key('j'); err != nil {
 		t.Fatal(err)
 	}
 	var request *openFileEditor
-	if err := u.shell.key('e'); !errors.As(err, &request) || request.path != "/w/src/selected.go" {
+	if err := terminalTest(u).key('e'); !errors.As(err, &request) || request.path != "/w/src/selected.go" {
 		t.Fatalf("selected file request: %v", err)
 	}
 	for _, key := range []byte("/e") {
-		if err := u.shell.key(key); err != nil {
+		if err := terminalTest(u).key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if frame := strings.Join(paintSavedDiff(t, c, 120, 20), "\n"); !strings.Contains(frame, "/ e") {
 		t.Fatalf("filter input missing:\n%s", frame)
 	}
-	u.shell.Focus = 0
-	if err := u.shell.key('e'); err != nil || u.Text != "e" {
+	terminalTest(u).Focus = 0
+	if err := terminalTest(u).key('e'); err != nil || u.Text != "e" {
 		t.Fatalf("composer input: %q %v", u.Text, err)
 	}
 }
@@ -54,7 +54,7 @@ func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
 func TestNativeFileEditorPathsAndFailure(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "selected.txt")
 	if err := os.WriteFile(path, []byte("original"), 0600); err != nil {

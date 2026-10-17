@@ -10,26 +10,26 @@ import (
 
 // applyInput binds terminal effects. Each effect settles before the terminal
 // resumes interpretation; no application key or pointer switch remains here.
-func (u *terminalUI) applyInput(effects iter.Seq[terminalsession.InputEffect]) error {
-	if u.main != nil {
-		u.main.publishPresentation(u.main.now())
-		u.main.publishActivity()
-		defer u.main.settlePresentation()
+func (main *appServerUI) applyInput(u *terminalsession.Attachment, effects iter.Seq[terminalsession.InputEffect]) error {
+	if main != nil {
+		main.publishPresentation(main.now())
+		main.publishActivity()
+		defer main.settlePresentation()
 	}
 	for effect := range effects {
-		more, err := u.applyEffect(effect)
+		more, err := main.applyEffect(u, effect)
 		if err != nil || !more {
 			return err
 		}
-		if u.main != nil {
-			u.main.publishPresentation(u.main.now())
+		if main != nil {
+			main.publishPresentation(main.now())
 		}
 	}
 	return nil
 }
 
-func (u *terminalUI) applyEffect(effect terminalsession.InputEffect) (bool, error) {
-	m := u.main
+func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect terminalsession.InputEffect) (bool, error) {
+	m := main
 	switch {
 	case effect.Focused != nil:
 		if m != nil && m.notifications != nil {
@@ -63,7 +63,7 @@ func (u *terminalUI) applyEffect(effect terminalsession.InputEffect) (bool, erro
 	case effect.Side != nil:
 		return false, m.applyCloseSide(*effect.Side)
 	case effect.Dialog != nil:
-		u.outputIntent(*effect.Dialog)
+		main.outputIntent(u, *effect.Dialog)
 	case effect.Reference != nil:
 		return m.referenceInput(*effect.Reference), nil
 	case effect.Selection != nil:
@@ -76,7 +76,7 @@ func (u *terminalUI) applyEffect(effect terminalsession.InputEffect) (bool, erro
 			}
 			result.Selection.View.Hydrate(source.ResolveOutputDemands(result.Demands))
 		} else {
-			u.openSelectionTarget(result.Target)
+			main.openSelectionTarget(u, result.Target)
 		}
 	case effect.History != nil:
 		if effect.CancelHistory {
@@ -89,7 +89,7 @@ func (u *terminalUI) applyEffect(effect terminalsession.InputEffect) (bool, erro
 		intent := effect.Roster
 		target := m.sessionPresentation().ActivityTarget(intent.Caller, m.childSource)
 		if m.displaySession(sessionpresentation.DisplayIntent{Version: sessionpresentation.Version{Attachment: intent.Attachment, Revision: intent.Revision}, Thread: target}) && target.Caller != "/root" {
-			u.agents.Selected = target.Caller
+			u.Agents.Selected = target.Caller
 		}
 	case effect.Details != nil:
 		intent := effect.Details
@@ -99,9 +99,9 @@ func (u *terminalUI) applyEffect(effect terminalsession.InputEffect) (bool, erro
 		}
 		switch intent.Kind {
 		case terminalsession.ErrorDetails:
-			u.openErrors()
+			main.openErrorDetails(u, intent.View)
 		case terminalsession.SkillDetails:
-			u.openSkills(intent.View, intent.Caller)
+			main.openSkills(u, intent.View, intent.Caller)
 		}
 	case effect.Notice != nil:
 		intent := effect.Notice
@@ -116,7 +116,7 @@ func (u *terminalUI) applyEffect(effect terminalsession.InputEffect) (bool, erro
 				m.sessionPresentation().Status.Set("", false)
 			}
 		} else {
-			u.openBlocks(m.view, []activityui.Block{{Kind: "error", Body: intent.Text}})
+			main.openBlocks(u, m.view, []activityui.Block{{Kind: "error", Body: intent.Text}})
 		}
 		m.dirty = true
 	case effect.Clipboard != nil:

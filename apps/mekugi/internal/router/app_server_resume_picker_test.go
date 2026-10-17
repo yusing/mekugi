@@ -3,14 +3,15 @@ package router
 import (
 	"encoding/json/jsontext"
 	"fmt"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
@@ -99,7 +100,7 @@ func newResumeSessionTestUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", "/work")
 	return u, w
 }
@@ -437,9 +438,9 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	defer auto.Close()
 	auto.Enable()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.review = testReview(auto)
-	setSavedReviewStore(u.shell, store)
+	setSavedReviewStore(terminalTest(u), store)
 	u.startSession("main", workspace)
 	testReview(auto).IncludeThread(workspace, "main", true)
 	sub := testReview(auto).Subscribe()

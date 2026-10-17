@@ -134,17 +134,17 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	for y, row := range strings.Split(frame, "\n") {
 		if x := strings.Index(row, "b.go"); x >= 0 {
 			for _, end := range []string{"M", "m"} {
-				if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", ansi.StringWidth(row[:x])+1, y+1, end)); err != nil {
+				if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", ansi.StringWidth(row[:x])+1, y+1, end)); err != nil {
 					t.Fatal(err)
 				}
 			}
 			break
 		}
 	}
-	if u.shell.output == nil || !strings.Contains(u.shell.output.Pages[u.shell.output.Page].Code, "+second") {
+	if terminalTest(u).Dialog == nil || !strings.Contains(terminalTest(u).Dialog.Pages[terminalTest(u).Dialog.Page].Code, "+second") {
 		t.Fatal("observed Edited row did not open its exact source while the test was running")
 	}
-	u.shell.outputKey("\x1b")
+	terminalTest(u).outputKey("\x1b")
 	// A failed command with only unavailable evidence must still show its
 	// exit status after the Capture notice replaces its original Run row.
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{

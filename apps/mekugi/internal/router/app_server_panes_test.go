@@ -20,14 +20,14 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
 	p := testPanePreferences()
-	if err := p.open(&u.shell.Shell, &u.mainView, "/workspace", "thread", false); err != nil {
+	if err := p.open(&terminalTest(u).Shell, &u.mainView, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
-	u.shell.Focus, u.shell.Split, u.shell.DiffOpen = 1, 67, true
-	savedPane(u.shell).SetNavigatorColumns(22)
+	terminalTest(u).Focus, terminalTest(u).Split, terminalTest(u).DiffOpen = 1, 67, true
+	savedPane(terminalTest(u)).SetNavigatorColumns(22)
 	u.Text = "unsent private text"
 	u.view.Offset = 99
-	if err := p.save(u.shell.Shell.Preferences(&u.mainView), time.Now(), true); err != nil {
+	if err := p.save(terminalTest(u).Shell.Preferences(&u.mainView), time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(testPanePath(t, p))
@@ -53,12 +53,12 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	} {
 		restored := newAppServerSessionTestUI(t, tc.workspace)
 		q := testPanePreferences()
-		if err := q.open(&restored.shell.Shell, &restored.mainView, tc.workspace, tc.thread, tc.resume); err != nil {
+		if err := q.open(&terminalTest(restored).Shell, &restored.mainView, tc.workspace, tc.thread, tc.resume); err != nil {
 			t.Fatal(err)
 		}
 		if tc.restored {
-			if restored.shell.Shell.Preferences(&restored.mainView) != u.shell.Shell.Preferences(&u.mainView) {
-				t.Fatalf("lost pane state: %+v", restored.shell.Shell.Preferences(&restored.mainView))
+			if terminalTest(restored).Shell.Preferences(&restored.mainView) != terminalTest(u).Shell.Preferences(&u.mainView) {
+				t.Fatalf("lost pane state: %+v", terminalTest(restored).Shell.Preferences(&restored.mainView))
 			}
 			if restored.Text != "" || restored.view.Offset != 0 {
 				t.Fatal("restored out-of-scope view state")
@@ -67,25 +67,25 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 			if err := restored.testPaint(&frame, 120, 35); err != nil {
 				t.Fatal(err)
 			}
-			if restored.shell.Layout.Vertical != 67 || restored.shell.Layout.Diff.W == 0 {
-				t.Fatalf("restored layout not rendered: %+v", restored.shell.Layout)
+			if terminalTest(restored).Layout.Vertical != 67 || terminalTest(restored).Layout.Diff.W == 0 {
+				t.Fatalf("restored layout not rendered: %+v", terminalTest(restored).Layout)
 			}
-			if !strings.Contains(ansi.Strip(restored.shell.nativeStatus()), "s files") {
+			if !strings.Contains(ansi.Strip(terminalTest(restored).nativeStatus()), "s files") {
 				t.Fatal("restored focus does not route Diff keys")
 			}
 			if err := restored.testPaint(&frame, 45, 14); err != nil {
 				t.Fatal(err)
 			}
-			if restored.shell.Layout.Diff.W == 0 || restored.shell.Layout.Main.W != 0 {
+			if terminalTest(restored).Layout.Diff.W == 0 || terminalTest(restored).Layout.Main.W != 0 {
 				t.Fatal("narrow screen did not retain focused pane")
 			}
 			if err := restored.testPaint(&frame, 100, 35); err != nil {
 				t.Fatal(err)
 			}
-			if restored.shell.Layout.Vertical != 60 {
+			if terminalTest(restored).Layout.Vertical != 60 {
 				t.Fatal("restored split not clamped to current terminal")
 			}
-		} else if restored.shell.Focus != 0 || restored.shell.DiffOpen || restored.shell.Split != 0 {
+		} else if terminalTest(restored).Focus != 0 || terminalTest(restored).DiffOpen || terminalTest(restored).Split != 0 {
 			t.Fatalf("pane state leaked: %+v", tc)
 		}
 	}
@@ -95,50 +95,50 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
 	p := testPanePreferences()
-	if err := p.open(&u.shell.Shell, &u.mainView, "/workspace", "thread", false); err != nil {
+	if err := p.open(&terminalTest(u).Shell, &u.mainView, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now()
-	u.shell.Split = 60
-	if err := p.save(u.shell.Shell.Preferences(&u.mainView), now, false); err != nil {
+	terminalTest(u).Split = 60
+	if err := p.save(terminalTest(u).Shell.Preferences(&u.mainView), now, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(testPanePath(t, p)); !os.IsNotExist(err) {
 		t.Fatalf("saved before debounce: %v", err)
 	}
-	u.shell.Split = 63
-	if err := p.save(u.shell.Shell.Preferences(&u.mainView), now.Add(200*time.Millisecond), false); err != nil {
+	terminalTest(u).Split = 63
+	if err := p.save(terminalTest(u).Shell.Preferences(&u.mainView), now.Add(200*time.Millisecond), false); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.save(u.shell.Shell.Preferences(&u.mainView), now.Add(300*time.Millisecond), false); err != nil {
+	if err := p.save(terminalTest(u).Shell.Preferences(&u.mainView), now.Add(300*time.Millisecond), false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(testPanePath(t, p)); !os.IsNotExist(err) {
 		t.Fatalf("did not coalesce drag: %v", err)
 	}
-	if err := p.save(u.shell.Shell.Preferences(&u.mainView), now.Add(451*time.Millisecond), false); err != nil {
+	if err := p.save(terminalTest(u).Shell.Preferences(&u.mainView), now.Add(451*time.Millisecond), false); err != nil {
 		t.Fatal(err)
 	}
 	before, err := os.Stat(testPanePath(t, p))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.save(u.shell.Shell.Preferences(&u.mainView), now.Add(time.Second), false); err != nil {
+	if err := p.save(terminalTest(u).Shell.Preferences(&u.mainView), now.Add(time.Second), false); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.Stat(testPanePath(t, p))
 	if err != nil || !os.SameFile(before, after) {
 		t.Fatal("unchanged state rewritten")
 	}
-	u.shell.Focus = 3
-	if err := p.save(u.shell.Shell.Preferences(&u.mainView), now.Add(time.Second), true); err != nil {
+	terminalTest(u).Focus = 3
+	if err := p.save(terminalTest(u).Shell.Preferences(&u.mainView), now.Add(time.Second), true); err != nil {
 		t.Fatal(err)
 	}
 	restored := newAppServerSessionTestUI(t, "/workspace")
-	if err := testPanePreferences().open(&restored.shell.Shell, &restored.mainView, "/workspace", "thread", true); err != nil {
+	if err := testPanePreferences().open(&terminalTest(restored).Shell, &restored.mainView, "/workspace", "thread", true); err != nil {
 		t.Fatal(err)
 	}
-	if restored.shell.Focus != 3 || restored.shell.Split != 63 {
+	if terminalTest(restored).Focus != 3 || terminalTest(restored).Split != 63 {
 		t.Fatal("exit did not flush final state")
 	}
 }
@@ -147,7 +147,7 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
 	p := testPanePreferences()
-	if err := p.open(&u.shell.Shell, &u.mainView, "/workspace", "thread", false); err != nil {
+	if err := p.open(&terminalTest(u).Shell, &u.mainView, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Dir(testPanePath(t, p)), 0700); err != nil {
@@ -157,8 +157,8 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 		if err := os.WriteFile(testPanePath(t, p), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
-		err := p.open(&u.shell.Shell, &u.mainView, "/workspace", "thread", true)
-		if err == nil || u.shell.Focus != 0 || u.shell.Split != 0 {
+		err := p.open(&terminalTest(u).Shell, &u.mainView, "/workspace", "thread", true)
+		if err == nil || terminalTest(u).Focus != 0 || terminalTest(u).Split != 0 {
 			t.Fatalf("invalid state applied: %s %v", body, err)
 		}
 		if state, readErr := p.read("/workspace", "thread"); readErr == nil || state.Settings.Model != "" {
@@ -174,14 +174,14 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_STATE_HOME", blocked)
-	if err := p.open(&u.shell.Shell, &u.mainView, "/workspace", "thread", false); err != nil {
+	if err := p.open(&terminalTest(u).Shell, &u.mainView, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
-	u.shell.Split = 60
-	if err := p.save(u.shell.Shell.Preferences(&u.mainView), time.Now(), true); err == nil {
+	terminalTest(u).Split = 60
+	if err := p.save(terminalTest(u).Shell.Preferences(&u.mainView), time.Now(), true); err == nil {
 		t.Fatal("lost persistence failure")
 	}
-	if err := p.save(u.shell.Shell.Preferences(&u.mainView), time.Now().Add(time.Second), false); err != nil {
+	if err := p.save(terminalTest(u).Shell.Preferences(&u.mainView), time.Now().Add(time.Second), false); err != nil {
 		t.Fatal("failed save retried every frame")
 	}
 }

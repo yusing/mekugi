@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -218,7 +220,7 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	if len(pages) != 1 || pages[0].Code != source || entry.Source.Native.Command != command || u.source.RetainedOutput(pages[0].Source, pages[0].Output) != entry.Source.Native.Output {
 		t.Fatalf("combined output pages = %+v; want original command display and unchanged host output", pages)
 	}
-	terminal := &terminalUI{main: u}
+	terminal := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
 	terminal.openBlocks(u.view, pages)
 	assertNativeUISnapshot(t, "guard-command-output-dialog", strings.Split(drawOutputDialog(terminal), "\n"))
 }

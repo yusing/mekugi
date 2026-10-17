@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/charmbracelet/x/ansi"
@@ -64,10 +66,10 @@ func TestConversationThreadsReplyUnderAssignment(t *testing.T) {
 		t.Fatalf("collapsed assignment is not expandable: %+v", feed.Snippets[:3])
 	}
 
-	shell := &terminalUI{}
+	shell := &terminalUI{Attachment: &terminalsession.Attachment{}}
 	v.Opening = snippet
 	shell.openRequested(v.bind(shell))
-	if shell.output == nil || !strings.Contains(shell.output.Pages[0].Body, "Review the follow-scroll") {
+	if shell.Dialog == nil || !strings.Contains(shell.Dialog.Pages[0].Body, "Review the follow-scroll") {
 		t.Fatal("collapsed assignment did not open full dialog")
 	}
 	if again := threadPlain(v.RenderFeed(width, 40)); len(again) != len(plain) {
@@ -214,7 +216,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 		if strings.Count(got, "First for 12s") != 1 || strings.Count(got, "Second for 12s") != 1 || strings.Count(got, "Latest body for 12s") != 1 || strings.Contains(got, "Old body") || strings.Contains(got, "Second body") {
 			t.Fatalf("independent folded items: %s", got)
 		}
-		shell := &terminalUI{}
+		shell := &terminalUI{Attachment: &terminalsession.Attachment{}}
 		opened := 0
 		for _, snippet := range feed.Snippets {
 			if snippet == (activityui.Snippet{}) {
@@ -223,7 +225,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 			if !shell.openOutput(v.bind(shell), snippet) {
 				t.Fatal("reasoning did not request dialog")
 			}
-			page := v.Painter.DetailDocument(shell.output.Pages[0].DetailPage, nil, nil, 80)
+			page := v.Painter.DetailDocument(shell.Dialog.Pages[0].DetailPage, nil, nil, 80)
 			if page.Text != v.Entries[opened].Source.Text {
 				t.Fatalf("wrong item opened: %q", page.Text)
 			}

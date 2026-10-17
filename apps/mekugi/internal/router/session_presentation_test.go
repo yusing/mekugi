@@ -91,7 +91,7 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 	if !u.testActivity(u.agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/first", Kind: "text"}) || u.testActivity(u.agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/second", Kind: "text"}) {
 		t.Fatal("transcript followed the focused roster row")
 	}
-	u.shell.selectNativePane(0)
+	terminalTest(u).selectNativePane(0)
 	if u.composerReadOnly() || u.transcriptView() != u.view || u.agents.Selected != "/root/second" {
 		t.Fatal("Main selection changed roster focus or retained child admission")
 	}
@@ -109,7 +109,7 @@ func TestNativeDisplaySwitchKeepsHistoryObservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := u.historyLoading().state.RequestID()
-	u.shell.selectNativePane(0)
+	terminalTest(u).selectNativePane(0)
 	if u.historyLoading() == nil || u.historyLoading().state.RequestID() != id || len(restoreContentRequests(t, wire)) != 6 {
 		t.Fatal("display switching retired the observation or dispatched host work")
 	}
@@ -169,7 +169,7 @@ func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 	if err := u.paint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
-	outer := strings.Join(u.shell.Frame.Rows, "\n")
+	outer := strings.Join(terminalTest(u).Frame.Rows, "\n")
 	if !strings.Contains(outer, "Published title") || !strings.Contains(outer, "codex v1.2.3") || strings.Contains(outer, "Unpublished") {
 		t.Fatalf("outer frame consulted unpublished owners: %s", outer)
 	}

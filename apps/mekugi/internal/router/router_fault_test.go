@@ -151,11 +151,11 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 		t.Fatal("host-confirmed failure lost native notice delivery")
 	}
 	ui.ensureShell()
-	defer ui.shell.diffScreen.Close()
+	defer terminalTest(ui).Diff.Close()
 	if err := ui.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
-	delivery.finish(ui.shell.Frame.Notices)
+	delivery.finish(terminalTest(ui).Frame.Notices)
 	if pending := issues.Notices.Pending(); len(pending) != 0 {
 		t.Fatalf("visible terminal paint did not acknowledge notice: %v", pending)
 	}

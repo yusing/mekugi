@@ -39,7 +39,7 @@ func newAppServerSessionTestUI(t *testing.T, workspace string) *appServerUI {
 	u.segments = testReports()
 	t.Cleanup(func() { awaitCommandSegments(t, u) })
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", workspace)
 	return u
 }
@@ -167,42 +167,42 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 	change := map[string]any{"path": path, "kind": map[string]any{"type": "update"}, "diff": "@@ -1 +1 @@\n-package a\n+package b\n"}
 	appServerTestNotify(t, u, "item/fileChange/patchUpdated", map[string]any{"threadId": "main", "turnId": "t", "itemId": "patch", "changes": []any{change}})
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "patch", "type": "fileChange", "changes": []any{change}}})
-	if len(u.shell.liveDock.Order) != 0 {
+	if len(terminalTest(u).Live.Order) != 0 {
 		t.Fatal("app-server reconstructed a duplicate projection")
 	}
 	u.applyReview(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
-	revealNativeDock(u.shell)
-	card := u.shell.liveDock.Views["patch"].Current
+	revealNativeDock(terminalTest(u))
+	card := terminalTest(u).Live.Views["patch"].Current
 	if len(card.Files) != 1 || !strings.Contains(card.Files[0].Diff, "+package b") || strings.Contains(card.Status, "cannot be projected") {
 		t.Fatalf("shared preview lost: %+v", card)
 	}
 	preview.Complete = true
 	u.applyReview(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
-	revealNativeDock(u.shell)
-	if !u.shell.liveDock.Views["patch"].Complete {
+	revealNativeDock(terminalTest(u))
+	if !terminalTest(u).Live.Views["patch"].Complete {
 		t.Fatal("shared completion lost")
 	}
 	for _, status := range []string{"failed", "declined"} {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "patch", "type": "fileChange", "status": status, "changes": []any{change}}})
-		title := ansi.Strip(u.shell.liveDock.Views["patch"].Title(workspace, u.shell.Theme, 120))
+		title := ansi.Strip(terminalTest(u).Live.Views["patch"].Title(workspace, terminalTest(u).Theme, 120))
 		if strings.Contains(title, "✓") || !strings.Contains(title, "· preview") {
 			t.Fatalf("%s patch presented as applied: %s", status, title)
 		}
 	}
 	preview.ID, preview.Thread, preview.Caller, preview.Tool = "exec", "child", "/root/worker", nativeExecCommandToolName
 	u.applyReview(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
-	revealNativeDock(u.shell)
-	if u.shell.liveDock.Views["exec"] != nil {
+	revealNativeDock(terminalTest(u))
+	if terminalTest(u).Live.Views["exec"] != nil {
 		t.Fatal("completion-only shell preview flashed a dock")
 	}
 	preview.Complete = false
 	u.applyReview(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
-	revealNativeDock(u.shell)
-	if u.shell.liveDock.Views["exec"] == nil {
+	revealNativeDock(terminalTest(u))
+	if terminalTest(u).Live.Views["exec"] == nil {
 		t.Fatal("child preview missing from shared dock")
 	}
 	u.applyReview(t.Context(), sessionreview.Event{Kind: "turn", TurnRevision: 1, Status: "completed"})
-	if u.shell.DiffOpen {
+	if terminalTest(u).DiffOpen {
 		t.Fatal("completed turn opened saved diff")
 	}
 }

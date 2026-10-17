@@ -32,7 +32,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if err != nil || quit {
 				t.Fatalf("locked Ctrl-C quit=%v err=%v", quit, err)
 			}
-			if err := u.shell.send("\x1b"); err != nil {
+			if err := terminalTest(u).send("\x1b"); err != nil {
 				t.Fatal(err)
 			}
 			if wire.Len() != 0 || u.Interruption.BeforeStart || u.Interruption.Target != "" || !strings.Contains(u.feedback.Text, "/unlock") {
@@ -41,7 +41,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if state == "queued" && len(u.conversation().Queued) != 1 {
 				t.Fatal("lock discarded queued input")
 			}
-			if !strings.Contains(ansi.Strip(u.shell.nativeStatus()), "Locked") {
+			if !strings.Contains(ansi.Strip(terminalTest(u).nativeStatus()), "Locked") {
 				t.Fatal("lock lacks persistent indicator")
 			}
 			appServerTestKeys(t, u, "/unlock\r")
@@ -71,7 +71,7 @@ func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 	u.Text = "/"
 	u.refreshPicker()
 	u.settlePresentation()
-	if err := u.shell.send("\x1b"); err != nil {
+	if err := terminalTest(u).send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
 	if u.picker.Open || wire.Len() != 0 {
@@ -83,21 +83,21 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.mainView.InterruptLocked = true
-	u.shell.DiffOpen = true
-	u.shell.Focus = 1
+	terminalTest(u).DiffOpen = true
+	terminalTest(u).Focus = 1
 	p := testPanePreferences()
-	if err := p.open(&u.shell.Shell, &u.mainView, "/workspace", "main", false); err != nil {
+	if err := p.open(&terminalTest(u).Shell, &u.mainView, "/workspace", "main", false); err != nil {
 		t.Fatal(err)
 	}
-	u.shell.Split = 60
-	if err := p.save(u.shell.Shell.Preferences(&u.mainView), time.Now(), true); err != nil {
+	terminalTest(u).Split = 60
+	if err := p.save(terminalTest(u).Shell.Preferences(&u.mainView), time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
 	resumed := newAppServerSessionTestUI(t, "/workspace")
-	if err := p.open(&resumed.shell.Shell, &resumed.mainView, "/workspace", "main", true); err != nil {
+	if err := p.open(&terminalTest(resumed).Shell, &resumed.mainView, "/workspace", "main", true); err != nil {
 		t.Fatal(err)
 	}
-	if !resumed.mainView.InterruptLocked || !resumed.shell.DiffOpen || resumed.shell.Focus != 1 {
+	if !resumed.mainView.InterruptLocked || !terminalTest(resumed).DiffOpen || terminalTest(resumed).Focus != 1 {
 		t.Fatal("resume lost preferences or revived live child state")
 	}
 	var frame bytes.Buffer

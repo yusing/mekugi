@@ -60,7 +60,7 @@ func TestAppServerArchiveCancelAndUnavailable(t *testing.T) {
 		u, wire := newAppServerTestUI()
 		u.ensureShell()
 		for _, key := range []byte("/archive\r\x1b[200~clipboard text\x1b[201~") {
-			if err := u.shell.key(key); err != nil {
+			if err := terminalTest(u).key(key); err != nil {
 				t.Fatal(err)
 			}
 		}

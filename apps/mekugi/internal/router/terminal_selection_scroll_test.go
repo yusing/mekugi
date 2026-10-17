@@ -26,8 +26,8 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 		t.Run(surface, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
-			t.Cleanup(func() { u.shell.diffScreen.Close() })
-			u.shell.DiffOpen = false
+			t.Cleanup(func() { terminalTest(u).Diff.Close() })
+			terminalTest(u).DiffOpen = false
 			var lines []string
 			for i := range 60 {
 				lines = append(lines, fmt.Sprintf("row %02d", i))
@@ -62,7 +62,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			}
 			paint()
 			x, y := -1, -1
-			for row, spans := range u.shell.Frame.Copy {
+			for row, spans := range terminalTest(u).Frame.Copy {
 				for _, span := range spans {
 					if span.Text == "row 59" {
 						x, y = span.Column+5, row
@@ -78,12 +78,12 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 				if release {
 					end = "m"
 				}
-				if err := u.shell.mouse(fmt.Sprintf("\x1b[<%d;%d;%d%s", button, x+1, y+1, end)); err != nil {
+				if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<%d;%d;%d%s", button, x+1, y+1, end)); err != nil {
 					t.Fatal(err)
 				}
 			}
 			mouse(0, x, y, false)
-			s := u.shell.Selection
+			s := terminalTest(u).Selection
 			if s == nil || s.ScreenRows() == 0 {
 				t.Fatal("selection did not retain off-screen source")
 			}
@@ -124,14 +124,14 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 				t.Fatalf("copied off-screen source = %q, want %q", got, want)
 			}
 			// Completed selection can scroll without changing its source range.
-			if err := u.shell.send("\x1b[6~"); err != nil {
+			if err := terminalTest(u).send("\x1b[6~"); err != nil {
 				t.Fatal(err)
 			}
-			if u.shell.Selection != s || s.Top() == 0 || s.Text() != want {
+			if terminalTest(u).Selection != s || s.Top() == 0 || s.Text() != want {
 				t.Fatal("page scrolling lost completed selection")
 			}
-			u.shell.selectionAction('c')
-			if want := base64.StdEncoding.EncodeToString([]byte(want)); !strings.Contains(u.shell.Frame.Clipboard, want) {
+			terminalTest(u).selectionAction('c')
+			if want := base64.StdEncoding.EncodeToString([]byte(want)); !strings.Contains(terminalTest(u).Frame.Clipboard, want) {
 				t.Fatal("clipboard did not include the whole selection")
 			}
 		})
@@ -146,7 +146,7 @@ func TestOutputSelectionScrollBeyondViewport(t *testing.T) {
 	u, output := outputSelectionFixture(strings.Join(lines, "\n")+"\n", true)
 	x, y := outputSelectionPoint(t, u, "row 39")
 	u.outputMouse(0, x+5, y, false)
-	s := u.output.Selection
+	s := u.Dialog.Selection
 	output.Write("new arrival\n")
 	for attempts := 0; s.Top() > 0 && attempts < 30; attempts++ {
 		u.outputMouse(64, x, y, false)
@@ -159,7 +159,7 @@ func TestOutputSelectionScrollBeyondViewport(t *testing.T) {
 		t.Fatalf("dialog copied = %q, want %q", got, want)
 	}
 	u.outputKey("\x1b[6~")
-	if u.output.Selection != s || s.Top() == 0 {
+	if u.Dialog.Selection != s || s.Top() == 0 {
 		t.Fatal("dialog page scroll lost frozen selection")
 	}
 	u.outputKey("\x1b")
@@ -186,7 +186,7 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	}
 	source := c.Selection(width-2, height-1)
 	u := selectionTestUI(strings.Split(screen.Render(), "\n")...)
-	u.width, u.Frame.Width = width, width
+	u.Width, u.Frame.Width = width, width
 	u.Layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, height}}
 	u.Auxiliary = c
 	u.selectionMouse(0, width-2, source.Y+1, false)
@@ -229,7 +229,7 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
 	for i := range 40 {
 		text := fmt.Sprintf("prompt %02d", i)
@@ -242,17 +242,17 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 		}})
 	}
 	for _, key := range []byte("\x023j") {
-		if err := u.shell.key(key); err != nil {
+		if err := terminalTest(u).key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := u.testPaint(&strings.Builder{}, 120, 30); err != nil {
 		t.Fatal(err)
 	}
-	r := u.shell.Layout.Main
+	r := terminalTest(u).Layout.Main
 	x, y := r.X+u.agents.FeedLeft, r.Y+u.agents.FeedTop
-	selectionTestDrag(t, u.shell, x, y, x+1, y)
-	s := u.shell.Selection
+	selectionTestDrag(t, terminalTest(u), x, y, x+1, y)
+	s := terminalTest(u).Selection
 	if !s.ScrollKey("\x1b[H") {
 		t.Fatal("Home did not scroll frozen selection")
 	}
@@ -267,9 +267,9 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 	if y < 0 {
 		t.Fatal("first prompt not available with its click target")
 	}
-	u.shell.selectionMouse(0, x, y, false)
-	u.shell.selectionMouse(0, x, y, true)
-	if u.shell.output == nil || !strings.Contains(fmt.Sprint(u.shell.output.Pages), "prompt 00") {
+	terminalTest(u).selectionMouse(0, x, y, false)
+	terminalTest(u).selectionMouse(0, x, y, true)
+	if terminalTest(u).Dialog == nil || !strings.Contains(fmt.Sprint(terminalTest(u).Dialog.Pages), "prompt 00") {
 		t.Fatal("scrolled prompt click used the old viewport target")
 	}
 }
@@ -284,7 +284,7 @@ func TestOutputSelectionEdgeDragScrolls(t *testing.T) {
 	drawOutputDialog(u)
 	x, y := outputSelectionPoint(t, u, "row 00")
 	u.outputMouse(0, x, y, false)
-	s := u.output.Selection
+	s := u.Dialog.Selection
 	rect := dialogFrameRect(t, outputDialogScreen(u))
 	bottom := rect.Y + rect.H - 1
 	for range 50 {

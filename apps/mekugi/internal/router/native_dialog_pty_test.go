@@ -64,7 +64,7 @@ func TestNativeDialogPTYCloseAndResize(t *testing.T) {
 	}
 	paint(120, 32)
 	pages := []activityui.Block{{Kind: "op", Verb: "Run", Code: "mchanges amber1", Tail: strings.Split("amber1\n--- a.go\n+++ a.go\n@@ -1 +1 @@\n-var answer = 41\n+var answer = 42", "\n")}}
-	u.shell.openBlocks(u.view, pages)
+	terminalTest(u).openBlocks(u.view, pages)
 	for _, size := range [][2]int{{120, 32}, {48, 20}, {160, 40}} {
 		frame := paint(size[0], size[1])
 		if !strings.Contains(frame, "[×]") || !strings.Contains(frame, "+var answer = 42") {
@@ -96,12 +96,12 @@ func TestNativeDialogPTYCloseAndResize(t *testing.T) {
 	}
 	x, y := dialogFramePoint(t, strings.Split(paint(160, 40), "\n"), "[×]")
 	for _, end := range []string{"M", "m"} {
-		if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x+1, y+1, end)); err != nil {
+		if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x+1, y+1, end)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	frame := paint(160, 40)
-	if u.shell.output != nil || strings.Contains(frame, "[×]") || !strings.Contains(frame, "Underlying conversation") {
+	if terminalTest(u).Dialog != nil || strings.Contains(frame, "[×]") || !strings.Contains(frame, "Underlying conversation") {
 		t.Fatalf("close lost original pane:\n%s", frame)
 	}
 }

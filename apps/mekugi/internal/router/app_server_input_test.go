@@ -87,11 +87,11 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ensureShell()
 			u.Turn = "active"
-			if err := u.shell.key(27); err != nil {
+			if err := terminalTest(u).key(27); err != nil {
 				t.Fatal(err)
 			}
 			// The UI stalled after consuming ESC; the suffix is already queued.
-			ageTerminalEscape(u.shell)
+			ageTerminalEscape(terminalTest(u))
 			keys := make(chan byte, len(tc.suffix))
 			for _, key := range []byte(tc.suffix) {
 				keys <- key
@@ -99,8 +99,8 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 			if err := u.drainKeys(keys); err != nil {
 				t.Fatal(err)
 			}
-			if u.Text != tc.want || wire.Len() != 0 || u.shell.Decoder.Pasting() {
-				t.Fatalf("draft=%q want=%q wire=%q paste=%v", u.Text, tc.want, wire.String(), u.shell.Decoder.Pasting())
+			if u.Text != tc.want || wire.Len() != 0 || terminalTest(u).Decoder.Pasting() {
+				t.Fatalf("draft=%q want=%q wire=%q paste=%v", u.Text, tc.want, wire.String(), terminalTest(u).Decoder.Pasting())
 			}
 		})
 	}
@@ -111,10 +111,10 @@ func TestNativeUIInputDrainPreservesStandaloneEscape(t *testing.T) {
 	u.ensureShell()
 	u.Turn = "active"
 	u.Text = "keep me"
-	if err := u.shell.key(27); err != nil {
+	if err := terminalTest(u).key(27); err != nil {
 		t.Fatal(err)
 	}
-	ageTerminalEscape(u.shell)
+	ageTerminalEscape(terminalTest(u))
 	if err := u.drainKeys(make(chan byte, 64)); err != nil {
 		t.Fatal(err)
 	}
@@ -129,9 +129,9 @@ func TestNativeUIDiffStandaloneEscapeBeforeNextKey(t *testing.T) {
 		u, wire := newAppServerTestUI()
 		u.ensureShell()
 
-		u.shell.Focus = 1
+		terminalTest(u).Focus = 1
 		for _, key := range []byte("?\x1b") {
-			if err := u.shell.key(key); err != nil {
+			if err := terminalTest(u).key(key); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -139,14 +139,14 @@ func TestNativeUIDiffStandaloneEscapeBeforeNextKey(t *testing.T) {
 		if err := u.drainKeys(make(chan byte)); err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(strings.Join(paintSavedDiff(t, savedPane(u.shell), 80, 24), "\n"), "Diff navigation") {
+		if strings.Contains(strings.Join(paintSavedDiff(t, savedPane(terminalTest(u)), 80, 24), "\n"), "Diff navigation") {
 			t.Fatal("settled Escape did not close Diff help")
 		}
-		if err := u.shell.key('?'); err != nil {
+		if err := terminalTest(u).key('?'); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(strings.Join(paintSavedDiff(t, savedPane(u.shell), 80, 24), "\n"), "Diff navigation") || wire.Len() != 0 {
-			t.Fatalf("following key did not reopen Diff help: help=%v host=%q", strings.Contains(strings.Join(paintSavedDiff(t, savedPane(u.shell), 80, 24), "\n"), "Diff navigation"), wire.String())
+		if !strings.Contains(strings.Join(paintSavedDiff(t, savedPane(terminalTest(u)), 80, 24), "\n"), "Diff navigation") || wire.Len() != 0 {
+			t.Fatalf("following key did not reopen Diff help: help=%v host=%q", strings.Contains(strings.Join(paintSavedDiff(t, savedPane(terminalTest(u)), 80, 24), "\n"), "Diff navigation"), wire.String())
 		}
 	})
 }
@@ -164,10 +164,10 @@ func TestNativeUIInputDrainBoundedAndClosed(t *testing.T) {
 	if err := u.drainKeys(keys); err != nil {
 		t.Fatal(err)
 	}
-	if len(keys) != 2 || !u.shell.Decoder.Pending() {
+	if len(keys) != 2 || !terminalTest(u).Decoder.Pending() {
 		t.Fatal("input budget did not preserve pending sequence")
 	}
-	ageTerminalEscape(u.shell)
+	ageTerminalEscape(terminalTest(u))
 	if err := u.drainKeys(keys); err != nil {
 		t.Fatal(err)
 	}

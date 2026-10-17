@@ -83,7 +83,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	u.ctx = t.Context()
 	u.agents = activityui.NewView()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", workspace)
 	u.startup.Thread = "main"
 	root := binding.ThreadInfo{ID: "main", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "root-turn", Status: "completed", Items: []binding.ThreadItem{
@@ -138,7 +138,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 			t.Fatalf("observational history triggered execution: %+v", request)
 		}
 	}
-	if len(u.shell.liveDock.Order) != 0 {
+	if len(terminalTest(u).Live.Order) != 0 {
 		t.Fatal("historical edit reopened a live preview")
 	}
 }
@@ -148,7 +148,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 	u.ctx = t.Context()
 	u.agents = activityui.NewView()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.startup.Thread = "main"
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.cwd}); err != nil {
@@ -171,7 +171,7 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 	u.ctx = t.Context()
 	u.agents = activityui.NewView()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.startup.Thread = "main"
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.cwd}); err != nil {
@@ -279,7 +279,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			defer auto.Close()
 			auto.Enable()
 			u.review = testReview(auto)
-			setSavedReviewStore(u.shell, store)
+			setSavedReviewStore(terminalTest(u), store)
 			sub := testReview(auto).Subscribe()
 			if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
 				t.Fatal(err)

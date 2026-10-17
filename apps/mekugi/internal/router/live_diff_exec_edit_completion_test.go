@@ -47,8 +47,8 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 			u.preview(*event.Preview, false)
 		}
 	}
-	revealNativeDock(u.shell)
-	if len(u.shell.liveDock.Order) != 0 {
+	revealNativeDock(terminalTest(u))
+	if len(terminalTest(u).Live.Order) != 0 {
 		t.Fatal("move replaced the transcript or closed the host-owned cell")
 	}
 	screen := vt.NewEmulator(100, 28)
@@ -63,16 +63,16 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	t.Parallel()
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	u.sessionPresentation().Status.Text = "Working"
 	workspace := t.TempDir()
 	preview := previewmodel.Preview{ID: "running:edit-then-test", Workspace: workspace, Thread: "thread", Caller: "/root", Tool: nativeExecCommandToolName, Status: previewmodel.PreviewRunning, Input: "observed edit"}
 	u.preview(preview, false)
-	revealNativeDock(u.shell)
+	revealNativeDock(terminalTest(u))
 	preview.Complete = true
 	u.preview(preview, false)
-	revealNativeDock(u.shell)
-	if u.shell.liveDock.Live() != 0 || u.sessionPresentation().Status.Text != "Working" {
+	revealNativeDock(terminalTest(u))
+	if terminalTest(u).Live.Live() != 0 || u.sessionPresentation().Status.Text != "Working" {
 		t.Fatal("edit completion changed process status or retained an active dock")
 	}
 	screen := vt.NewEmulator(120, 40)
@@ -83,14 +83,14 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	if !strings.Contains(screen.String(), "LIVE ·") {
 		t.Fatal("completed edit was not rendered during its minimum display time")
 	}
-	u.shell.liveDock.Tick(time.Now().Add(previewview.CompletionHold + time.Millisecond))
-	if len(u.shell.liveDock.Order) != 0 || u.sessionPresentation().Status.Text != "Working" {
+	terminalTest(u).Live.Tick(time.Now().Add(previewview.CompletionHold + time.Millisecond))
+	if len(terminalTest(u).Live.Order) != 0 || u.sessionPresentation().Status.Text != "Working" {
 		t.Fatal("completed dock did not clear independently of process Working status")
 	}
 	// A final host observation must not create a second, late completion card.
 	u.preview(previewmodel.Preview{ID: "late:edit-then-test", Workspace: workspace, Tool: nativeExecCommandToolName, Complete: true, Status: previewmodel.PreviewRunning}, false)
-	revealNativeDock(u.shell)
-	if len(u.shell.liveDock.Order) != 0 {
+	revealNativeDock(terminalTest(u))
+	if len(terminalTest(u).Live.Order) != 0 {
 		t.Fatal("late shell completion resurrected the dock")
 	}
 }

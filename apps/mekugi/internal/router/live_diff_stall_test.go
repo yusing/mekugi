@@ -32,7 +32,7 @@ func TestLiveDiffCodeModeNativeSourceFollowLifecycle(t *testing.T) {
 	})
 	u := nativeBatchFixture(t)
 	u.preview(partial, false)
-	revealNativeDock(u.shell)
+	revealNativeDock(terminalTest(u))
 	screen := vt.NewEmulator(140, 48)
 	defer screen.Close()
 	paint := func() string {

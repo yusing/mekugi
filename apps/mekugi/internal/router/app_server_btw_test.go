@@ -10,6 +10,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -232,8 +234,8 @@ func TestAppServerBTWCloseInFlightDoesNotAffectReplacement(t *testing.T) {
 	for _, stage := range []string{"fork", "start", "active"} {
 		t.Run(stage, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			shell := &terminalUI{main: u}
-			u.shell = shell
+			shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
+			u.shell = shell.Attachment
 			u.Turn = "main-turn"
 			appServerTestKeys(t, u, "/btw old\r")
 			pending := btwTestRequest(t, w, "thread/fork", "main")
@@ -346,8 +348,8 @@ func TestAppServerBTWRenderAndScroll(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	setSideTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "SIDE_QUESTION", Status: "Answering", Answer: []conversationmodel.Answer{{ID: "a", Text: "**FIRST_ANSWER**\n\n" + strings.Repeat("middle line\n\n", 30) + "LAST_ANSWER"}}}})
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	shell := u.shell
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
+	shell := terminalTest(u)
 	rows := u.btwRows(60, 10)
 	if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "LAST_ANSWER") || strings.Contains(text, "FIRST_ANSWER") {
 		t.Fatalf("dock does not follow tail: %s", text)

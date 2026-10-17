@@ -36,10 +36,10 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 			got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: view.View, source: view.ActivitySource}), 140)
 			if mode == "resume" {
 				feed := view.RenderFeed(140, 10)
-				if !strings.Contains(got, "1 failed command") || !u.shell.openOutput(view.bind(u.shell), feed.Snippets[0]) || len(u.shell.output.Pages) != 1 {
+				if !strings.Contains(got, "1 failed command") || !terminalTest(u).openOutput(view.bind(terminalTest(u)), feed.Snippets[0]) || len(terminalTest(u).Dialog.Pages) != 1 {
 					t.Fatalf("resumed batch lost its summary or aggregate output: %s", got)
 				}
-				if output := u.shell.output.Output; output == nil || !output.View.Exited || output.View.Exit != 1 || !strings.Contains(strings.Join(output.View.Lines, "\n"), "conflict") {
+				if output := terminalTest(u).Dialog.Output; output == nil || !output.View.Exited || output.View.Exit != 1 || !strings.Contains(strings.Join(output.View.Lines, "\n"), "conflict") {
 					t.Fatal("resumed batch lost its failed command output")
 				}
 			} else if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "Ran   shell batch · exit 1") || !strings.Contains(got, "┆ conflict") {

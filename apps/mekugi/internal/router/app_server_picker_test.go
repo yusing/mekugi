@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
@@ -165,18 +166,18 @@ func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 	u.cwd = "/work"
 	u.ensureShell()
 	for _, key := range []byte("@file") {
-		if err := u.shell.key(key); err != nil {
+		if err := terminalTest(u).key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if !u.picker.Open {
 		t.Fatal("picker did not open")
 	}
-	if err := u.shell.key(27); err != nil {
+	if err := terminalTest(u).key(27); err != nil {
 		t.Fatal(err)
 	}
-	ageTerminalEscape(u.shell)
-	if err := u.shell.flushEscape(); err != nil {
+	ageTerminalEscape(terminalTest(u))
+	if err := terminalTest(u).flushEscape(); err != nil {
 		t.Fatal(err)
 	}
 	if u.picker.Open || u.Text != "@file" {

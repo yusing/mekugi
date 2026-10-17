@@ -48,7 +48,7 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		}
 		chunk := presentation.Chunk{Key: "edit", CaptureOrder: 1, Review: diffmodel.RenderReviewFile(beforePath, afterPath, tc.before, tc.after)}
 		c := liveDiffChangesPane(t, 120, 24, []presentation.Chunk{chunk})
-		u.shell.Auxiliary = c
+		terminalTest(u).Auxiliary = c
 		u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "patch"}, Correlation: "patch\x000"}, Operation: activitydetail.Operation{Thread: "main", Item: "patch"}, Chunks: []presentation.Chunk{chunk}})
 		publishFixtureReview(t, u)
 		want = chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.AfterPath))
@@ -59,10 +59,10 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		item := binding.ThreadItem{Type: "fileChange", Status: "completed", Changes: []binding.FileChange{change}}
 		u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.cwd, "item/completed")}}}}
 	}
-	if !u.shell.openActivityEdit(u.view, 1, path) {
+	if !terminalTest(u).openActivityEdit(u.view, 1, path) {
 		t.Fatal("edit dialog did not open")
 	}
-	return u.shell, want
+	return terminalTest(u), want
 }
 
 func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
@@ -71,12 +71,12 @@ func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
 			t.Run(fmt.Sprintf("captured=%t/%s", captured, tc.kind), func(t *testing.T) {
 				u, wantText := openRegressionEditDialog(t, tc, captured)
 				drawOutputDialog(u)
-				block := u.output.Pages[0]
+				block := u.Dialog.Pages[0]
 				if block.Verb != tc.verb {
 					t.Fatalf("verb = %q, want %q", block.Verb, tc.verb)
 				}
-				if block.Code != wantText || u.output.Document.Text != wantText {
-					t.Fatalf("plain bytes changed: code %q, copy %q, want %q", block.Code, u.output.Document.Text, wantText)
+				if block.Code != wantText || u.Dialog.Document.Text != wantText {
+					t.Fatalf("plain bytes changed: code %q, copy %q, want %q", block.Code, u.Dialog.Document.Text, wantText)
 				}
 				u.outputKey("y")
 				if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(wantText)) + "\x07"; u.Frame.Clipboard != want {
@@ -111,13 +111,13 @@ func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
 						wantLine = diffrender.SourceLine(diffrender.DarkTheme, ansi.StringWidth(wantLine)+4, "", wantLine, side.kind)
 					}
 					found := false
-					for _, line := range u.output.Document.Lines {
+					for _, line := range u.Dialog.Document.Lines {
 						if line.Text == wantLine {
 							found = true
 						}
 					}
 					if !found {
-						t.Fatalf("dialog missing exact pane token colors for %q: want %q, lines %+v", side.source, wantLine, u.output.Document.Lines)
+						t.Fatalf("dialog missing exact pane token colors for %q: want %q, lines %+v", side.source, wantLine, u.Dialog.Document.Lines)
 					}
 				}
 			})
@@ -150,8 +150,8 @@ func TestUISnapshotNativeEditDialogSurroundingContext(t *testing.T) {
 			after := strings.Replace(before, fmt.Sprintf("historical_line_%02d", tc.line), "changed_line", 1)
 			u, _ := openRegressionEditDialog(t, editDialogRegressionCase{kind: "update", before: before, after: after}, true)
 			rows := make([]string, 36)
-			u.main.prepareOutput(u)
-			u.output.Paint(rows, 100, len(rows))
+			u.main.prepareOutput(u.Attachment)
+			u.Dialog.Paint(rows, 100, len(rows))
 			uisnapshot.Assert(t, "testdata/snapshots/native-edit-dialog-context-"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
 		})
 	}

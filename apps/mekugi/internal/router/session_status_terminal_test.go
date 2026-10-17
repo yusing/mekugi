@@ -65,7 +65,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 
 func (u *appServerUI) renderMainFrame(width, height, dock int) terminalsession.MainFrame {
 	transcript := u.transcriptView()
-	options := terminalsession.MainOptions{Now: u.now(), Focused: u.shell == nil || u.shell.Focus == 0, Version: mekugiVersion()}
+	options := terminalsession.MainOptions{Now: u.now(), Focused: terminalTest(u) == nil || terminalTest(u).Focus == 0, Version: mekugiVersion()}
 	for {
 		frame := u.mainView.Render(transcript, &u.view.Painter, &u.prompts, options, width, height, dock)
 		if len(frame.Demands) == 0 {

@@ -79,16 +79,16 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 				feed := u.testActivity(u.view).RenderFeed(100, 40)
 				var opened bool
 				for _, snippet := range feed.Snippets {
-					if u.shell.openOutput(u.view, snippet) {
+					if terminalTest(u).openOutput(u.view, snippet) {
 						opened = true
 						break
 					}
 				}
-				if !opened || len(u.shell.output.Pages) != 1 || u.shell.output.Pages[0].EditSource != "" {
+				if !opened || len(terminalTest(u).Dialog.Pages) != 1 || terminalTest(u).Dialog.Pages[0].EditSource != "" {
 					t.Fatal("unresolved edit has no ordinary command dialog")
 				}
 				// The interpreter projection is the original source, not a made-up edit.
-				page := u.view.Painter.DetailDocument(u.shell.output.Pages[0].DetailPage, nil, nil, 100)
+				page := u.view.Painter.DetailDocument(terminalTest(u).Dialog.Pages[0].DetailPage, nil, nil, 100)
 				var source string
 				for _, line := range page.Lines {
 					source += ansi.Strip(line.Text) + "\n"

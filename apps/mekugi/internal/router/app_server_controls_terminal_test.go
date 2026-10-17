@@ -81,7 +81,7 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 	if frame := paint(); !strings.Contains(frame, "Compaction queued after this turn") {
 		t.Fatalf("queued compaction is not visible:\n%s", frame)
 	}
-	if err := u.shell.key(3); err != nil {
+	if err := terminalTest(u).key(3); err != nil {
 		t.Fatal(err)
 	}
 	if frame := paint(); !strings.Contains(frame, "Queued compaction cancelled") || !strings.Contains(frame, "❯ /compact") || wire.Len() != 0 || u.Turn != "work" {

@@ -120,7 +120,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.publishPresentation(p.ui.now()).Status.Animating || p.ui.agents.HasLiveStatus() || flashExpired || settled || noticeExpired || p.ui.shell.liveDock.Tick(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.publishPresentation(p.ui.now()).Status.Animating || p.ui.agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -136,7 +136,7 @@ func TestNativeUIPreview(t *testing.T) {
 				}
 				// Keys take the real UI path; the preview answers the resulting
 				// requests the way app-server would.
-				if err := p.ui.shell.key(key); err != nil {
+				if err := terminalTest(p.ui).key(key); err != nil {
 					return err
 				}
 				p.serve()
@@ -164,7 +164,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Helper()
 		screen := vt.NewEmulator(160, 48)
 		defer screen.Close()
-		p.ui.shell.Frame.Rows = nil // A new screen needs every row.
+		terminalTest(p.ui).Frame.Rows = nil // A new screen needs every row.
 		rollCommandOutput(p.ui)
 		finishPacing(p.ui.testActivity(p.ui.view), p.ui.testActivity(p.ui.agents))
 		if err := p.ui.testPaint(screen, 160, 48); err != nil {
@@ -181,7 +181,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	render("main replacement", "LIVE ·", "M internal/broker/broker.go", "1 Main", "3 Agents")
-	p.ui.shell.liveHidden = true // Subsequent assertions inspect transcripts, not their temporary replacements.
+	terminalTest(p.ui).LiveHidden = true // Subsequent assertions inspect transcripts, not their temporary replacements.
 	// Grok reasoning streams through the router's translation into Activity.
 	p.until("children start")
 	for range 12 {
@@ -205,7 +205,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	p.until("three agents edit at once")
 	p.ui.testActivity(p.ui.agents).setDisplayFilter(false, p.ui.agents.Selected)
-	p.ui.shell.liveHidden = false
+	terminalTest(p.ui).LiveHidden = false
 	frame := render("caller-local live previews", "LIVE ·", "3 Agents", "2 Diff ●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
 		t.Fatal("the saved diff replaced Activity without being opened")
@@ -215,7 +215,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		finishPacing(p.ui.testActivity(p.ui.agents))
 		return ansi.Strip(strings.Join(p.ui.testActivity(p.ui.agents).RenderFeed(120, 80).Lines, "\n"))
 	}
-	p.ui.shell.liveHidden = true
+	terminalTest(p.ui).LiveHidden = true
 	p.ui.agents.LivePreviews = nil
 	p.until("tester applies")
 	// Hold the real rerun process at its first output boundary until the live
@@ -260,55 +260,55 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	render("finished session", "● main", "↩ re: your message", "↩ re: assignment", "finished", "$")
 	for _, key := range []byte{2, '2'} {
-		if err := p.ui.shell.key(key); err != nil {
+		if err := terminalTest(p.ui).key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	render("saved diff", "2 Diff · saved · 5 files", "broker.go", "launch.go", "broker_race_test.go", "Unsubscribe")
-	if !p.ui.shell.DiffOpen || p.ui.shell.diffUnseen {
+	if !terminalTest(p.ui).DiffOpen || terminalTest(p.ui).DiffUnseen {
 		t.Fatal("opening the saved diff did not clear its badge")
 	}
 	// The narrow pane's stacked list switches to changes and takes focus
 	// without covering the diff.
-	if err := p.ui.shell.key('\t'); err != nil {
+	if err := terminalTest(p.ui).key('\t'); err != nil {
 		t.Fatal(err)
 	}
 	render("saved diff changes", "Unsubscribe", "Changes", "files focus", "─────")
-	if source := savedPane(p.ui.shell).Selection(p.ui.shell.Layout.Diff.W-1, p.ui.shell.Layout.Diff.H-1); source.Y == 0 || len(source.Painted) == 0 {
+	if source := savedPane(terminalTest(p.ui)).Selection(terminalTest(p.ui).Layout.Diff.W-1, terminalTest(p.ui).Layout.Diff.H-1); source.Y == 0 || len(source.Painted) == 0 {
 		t.Fatal("Tab replaced the stacked list with a full-pane picker")
 	}
 	for _, key := range []byte{'\t', 's'} {
-		if err := p.ui.shell.key(key); err != nil {
+		if err := terminalTest(p.ui).key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	render("saved diff hidden list", "Unsubscribe")
-	if source := savedPane(p.ui.shell).Selection(p.ui.shell.Layout.Diff.W-1, p.ui.shell.Layout.Diff.H-1); source.Y != 0 || len(source.Painted) == 0 {
+	if source := savedPane(terminalTest(p.ui)).Selection(terminalTest(p.ui).Layout.Diff.W-1, terminalTest(p.ui).Layout.Diff.H-1); source.Y != 0 || len(source.Painted) == 0 {
 		t.Fatal("s did not hide the focused stacked list")
 	}
 	// Picking an agent in the roster shows its Activity instead of the diff.
 	for _, key := range []byte{2, '3'} {
-		if err := p.ui.shell.key(key); err != nil {
+		if err := terminalTest(p.ui).key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	render("focused roster", "3 Agents")
-	if !p.ui.shell.DiffOpen {
+	if !terminalTest(p.ui).DiffOpen {
 		t.Fatal("focusing the roster closed the saved diff")
 	}
-	shell := p.ui.shell
-	index := slices.IndexFunc(shell.agents.Hits, func(hit activityui.Hit) bool { return hit.Agent == "/root/tester" })
+	shell := terminalTest(p.ui)
+	index := slices.IndexFunc(shell.Agents.Hits, func(hit activityui.Hit) bool { return hit.Agent == "/root/tester" })
 	if index < 0 {
 		t.Fatal("the focused roster has no tester row")
 	}
-	hit, roster := shell.agents.Hits[index], shell.Layout.Roster
+	hit, roster := shell.Agents.Hits[index], shell.Layout.Roster
 	for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM", roster.X+hit.First, roster.Y+hit.Row)) {
 		if err := shell.key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	render("roster pick", "1 Thread", "tester")
-	if !shell.DiffOpen || !shell.main.sessionPresentation().DisplayingChild() || shell.agents.Selected != "/root/tester" {
+	if !shell.DiffOpen || !shell.main.sessionPresentation().DisplayingChild() || shell.Agents.Selected != "/root/tester" {
 		t.Fatal("clicking a roster agent did not show its Activity")
 	}
 }
@@ -321,7 +321,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	keys := func(s string) {
 		t.Helper()
 		for _, key := range []byte(s) {
-			if err := p.ui.shell.key(key); err != nil {
+			if err := terminalTest(p.ui).key(key); err != nil {
 				t.Fatal(err)
 			}
 			p.serve()
@@ -373,7 +373,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 	keys := func(s string) {
 		t.Helper()
 		for _, key := range []byte(s) {
-			if err := p.ui.shell.key(key); err != nil {
+			if err := terminalTest(p.ui).key(key); err != nil {
 				t.Fatal(err)
 			}
 			p.serve()
@@ -383,7 +383,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 		t.Helper()
 		screen := vt.NewEmulator(100, 28)
 		defer screen.Close()
-		p.ui.shell.Frame.Rows = nil
+		terminalTest(p.ui).Frame.Rows = nil
 		finishPacing(p.ui.testActivity(p.ui.view), p.ui.testActivity(p.ui.agents))
 		if err := p.ui.testPaint(screen, 100, 28); err != nil {
 			t.Fatal(err)
@@ -400,7 +400,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 	}
 	p.until("done")
 	p.serve()
-	p.ui.shell.liveDock.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
+	terminalTest(p.ui).Live.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
 	if p.ui.Turn != "" || p.ui.Compaction.AcknowledgementPending() || !strings.Contains(render(), "Context compacted") {
 		t.Fatal("queued compaction did not complete visibly")
 	}
@@ -508,8 +508,8 @@ func newNativePreview(t *testing.T) *nativePreview {
 
 	u.reviewSource = store.captured
 	u.terminalViews = testTerminalViews(u.reviewSource)
-	label, attachment := u.terminalViews.Attach(u.shell.Theme)
-	u.shell.AuxiliaryLabel, u.shell.Auxiliary, u.shell.preparePane = label, attachment.Pane, attachment.Prepare
+	label, attachment := u.terminalViews.Attach(terminalTest(u).Theme)
+	terminalTest(u).AuxiliaryLabel, terminalTest(u).Auxiliary, u.preparePane = label, attachment.Pane, attachment.Prepare
 	u.review.Projection = sessionreview.Projection{Workspace: workspace, Changes: store.changes, Retained: store.changeScope(), Data: new(presentation.Snapshot), Coverage: "CONNECTING"}
 	u.startSession("main", workspace)
 	p := &nativePreview{t: t, ui: u, proxy: proxy, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}}
@@ -533,7 +533,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 
 func (p *nativePreview) close() {
 	p.ui.cancelPickerScan()
-	p.ui.shell.diffScreen.Close()
+	terminalTest(p.ui).Diff.Close()
 }
 
 // pace slows playback while patches stream, so each dock frame is readable.
@@ -619,7 +619,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 			p.add("stream "+name, func() {
 				preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.Caller(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: input})
 				p.ui.applyReview(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
-				revealNativeDock(p.ui.shell)
+				revealNativeDock(terminalTest(p.ui))
 			})
 		}
 		if !more {
@@ -633,7 +633,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 func (p *nativePreview) apply(edit nativePreviewEdit) {
 	preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.Caller(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: edit.patch, Complete: true})
 	p.ui.applyReview(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
-	revealNativeDock(p.ui.shell)
+	revealNativeDock(terminalTest(p.ui))
 	change := edit.change(-1)
 	item := map[string]any{"id": edit.item, "type": "fileChange", "status": "inProgress", "changes": []any{change}}
 	p.notify("item/started", map[string]any{"threadId": edit.thread, "turnId": p.active[edit.thread], "item": item})
@@ -1227,7 +1227,7 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 	defer p.close()
 	for p.advance() {
 	}
-	shell, d := p.ui.shell, savedPane(p.ui.shell)
+	shell, d := terminalTest(p.ui), savedPane(terminalTest(p.ui))
 	keys := func(s string) {
 		t.Helper()
 		for _, key := range []byte(s) {
@@ -1401,8 +1401,8 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			u := p.ui
 			publishFixtureReview(t, u)
 			// Captured-edit links return with the transcript after the live batch settles.
-			u.shell.liveDock.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
-			if len(u.shell.liveDock.Order) != 0 {
+			terminalTest(u).Live.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
+			if len(terminalTest(u).Live.Order) != 0 {
 				t.Fatal("completed live batch did not restore the transcript")
 			}
 			view, item := u.testActivity(u.view), "patch-main"
@@ -1410,7 +1410,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 				view, item = u.testActivity(u.agents), "patch-tester"
 				view.setDisplayFilter(true, "/root/tester")
 			}
-			u.shell.DiffOpen = activity
+			terminalTest(u).DiffOpen = activity
 			paint := func() {
 				t.Helper()
 				if err := u.testPaint(io.Discard, 160, 160); err != nil {
@@ -1431,24 +1431,24 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			if row < 0 {
 				t.Fatalf("preview edit has no click target: %v", view.FeedSnippets)
 			}
-			rect := u.shell.Layout.Main
+			rect := terminalTest(u).Layout.Main
 			if activity {
-				rect = u.shell.Layout.Main
+				rect = terminalTest(u).Layout.Main
 			}
 			x, y := rect.X+view.FeedLeft+1, rect.Y+view.FeedTop+row
-			if err := u.shell.mouse(fmt.Sprintf("\x1b[<35;%d;%dM", x, y)); err != nil {
+			if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<35;%d;%dM", x, y)); err != nil {
 				t.Fatal(err)
 			}
 			paint()
-			if !strings.Contains(u.shell.Frame.Rows[y-1], "\x1b[4m") {
+			if !strings.Contains(terminalTest(u).Frame.Rows[y-1], "\x1b[4m") {
 				t.Fatal("edit has no hover underline")
 			}
 			for _, ending := range []string{"M", "m"} {
-				if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x, y, ending)); err != nil {
+				if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x, y, ending)); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if u.shell.output == nil || u.shell.DiffOpen != activity {
+			if terminalTest(u).Dialog == nil || terminalTest(u).DiffOpen != activity {
 				t.Fatal("preview edit did not open dialog over prior panes")
 			}
 			paint()
@@ -1458,7 +1458,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 					continue
 				}
 				for _, chunk := range attempt.Chunks {
-					if u.shell.output.Pages[u.shell.output.Page].Code == chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(savedPane(u.shell).Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(savedPane(u.shell).Workspace(), chunk.Review.AfterPath)) {
+					if terminalTest(u).Dialog.Pages[terminalTest(u).Dialog.Page].Code == chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(savedPane(terminalTest(u)).Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(savedPane(terminalTest(u)).Workspace(), chunk.Review.AfterPath)) {
 						found = true
 					}
 				}
@@ -1466,14 +1466,14 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			if !found {
 				t.Fatal("preview dialog did not show exact captured edit")
 			}
-			if err := u.shell.key(27); err != nil {
+			if err := terminalTest(u).key(27); err != nil {
 				t.Fatal(err)
 			}
-			ageTerminalEscape(u.shell)
-			if err := u.shell.flushEscape(); err != nil {
+			ageTerminalEscape(terminalTest(u))
+			if err := terminalTest(u).flushEscape(); err != nil {
 				t.Fatal(err)
 			}
-			if u.shell.output != nil || u.shell.DiffOpen != activity {
+			if terminalTest(u).Dialog != nil || terminalTest(u).DiffOpen != activity {
 				t.Fatal("Escape did not dismiss dialog while preserving panes")
 			}
 

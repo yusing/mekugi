@@ -9,6 +9,6 @@ func (u *appServerUI) endTurnPreviews(thread, turn string) {
 		live.FinishTurn(u.cwd, thread, turn)
 	}
 	if u.shell != nil {
-		u.shell.liveDock.EndTurn(thread, turn, u.now())
+		u.shell.Live.EndTurn(thread, turn, u.now())
 	}
 }

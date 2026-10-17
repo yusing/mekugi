@@ -11,6 +11,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -72,15 +74,15 @@ type markdownFileResult struct {
 
 // openMarkdownFile publishes loading before starting one bounded physical read.
 // Retiring a dialog cannot release the slot of a still-blocked filesystem call.
-func (u *appServerUI) openMarkdownFile(terminal *terminalUI, view *activityui.View, target string) bool {
+func (u *appServerUI) openMarkdownFile(terminal *terminalsession.Attachment, view *activityui.View, target string) bool {
 	workspace := u.cwd
 	path, ok := markdownFileTarget(workspace, target)
 	if !ok {
 		return false
 	}
 	display := pathdisplay.ForWorkspace(workspace, path)
-	terminal.openDetails(view, activitypresentation.DetailPages([]activitypresentation.Value{{Kind: "reads", Verb: "Read", Path: display, Body: "Loading…"}}))
-	d := terminal.output
+	u.openDetails(terminal, view, activitypresentation.DetailPages([]activitypresentation.Value{{Kind: "reads", Verb: "Read", Path: display, Body: "Loading…"}}))
+	d := terminal.Dialog
 	d.File = &activitypresentation.DetailFile{Path: display}
 	result := markdownFileResult{id: d.ID, workspace: workspace, path: path, thread: u.sessionPresentation().View().Displayed.ID}
 	if u.fileReadSlot == nil {
@@ -111,14 +113,14 @@ func (u *appServerUI) openMarkdownFile(terminal *terminalUI, view *activityui.Vi
 	return true
 }
 
-func (u *appServerUI) loadedMarkdownFile(terminal *terminalUI, result markdownFileResult) bool {
-	d := terminal.output
+func (u *appServerUI) loadedMarkdownFile(terminal *terminalsession.Attachment, result markdownFileResult) bool {
+	d := terminal.Dialog
 	if d == nil || d.ID != result.id {
 		return false
 	}
 	_, current := u.session.DetailView(result.id)
 	if !current || u.sessionPresentation().View().Displayed.ID != result.thread || u.cwd != result.workspace {
-		terminal.closeOutput()
+		u.closeOutput(terminal)
 		return true
 	}
 	display := pathdisplay.ForWorkspace(result.workspace, result.path)

@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -31,7 +32,7 @@ func (v *activityAdapter) Apply(event sessionpresentation.ActivityEvent) bool {
 	return ended
 }
 
-func (v *activityAdapter) displayingChild() bool   { return v.display.DisplayingChild() }
+func (v *activityAdapter) displayingChild() bool { return v.display.DisplayingChild() }
 func (v *activityAdapter) displayTarget(caller string) sessionpresentation.Thread {
 	return v.display.ActivityTarget(caller, v.ActivitySource)
 }
@@ -55,7 +56,7 @@ func (v *activityAdapter) bind(terminal *terminalUI) *activityui.View {
 }
 
 func (v *activityAdapter) insertHistory(before uint64, belongs func(sessionpresentation.ActivityEntry) bool) {
-	terminal := new(terminalUI)
+	terminal := &terminalUI{Attachment: &terminalsession.Attachment{}}
 	v.bind(terminal)
 	terminal.main.insertActivityHistory(v.ActivitySource, v.View, before, belongs)
 }

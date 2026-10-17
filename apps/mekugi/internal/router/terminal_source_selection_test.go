@@ -54,12 +54,12 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 					u := selectionTestUI(rows...)
 					u.Frame.Copy = append(meta, nil)
 					if activity {
-						u.agents = activityui.NewView()
-						u.agents.FeedLeft, u.agents.FeedTop = 1, 1
-						u.agents.FeedRight, u.agents.FeedRows = 40, len(rows)
-						u.main.agents = u.agents
+						u.Agents = activityui.NewView()
+						u.Agents.FeedLeft, u.Agents.FeedTop = 1, 1
+						u.Agents.FeedRight, u.Agents.FeedRows = 40, len(rows)
+						u.main.agents = u.Agents
 						u.main.sessionPresentation()
-						u.main.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
+						u.main.testActivity(u.Agents).setDisplayFilter(true, "/root/worker")
 					}
 					u.main.publishPresentation(u.main.now())
 					if x < 0 {
@@ -111,7 +111,7 @@ func TestTerminalSourceSelectionCodeLiteralDecoration(t *testing.T) {
 func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	setSideTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: "**side answer**"}}}})
 	var wire bytes.Buffer
 	if err := u.testPaint(&wire, 80, 30); err != nil {
@@ -121,12 +121,12 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 		t.Fatal("private source transport escaped")
 	}
 	rect := u.mainView.Side.Rect
-	rect.X += u.shell.Layout.Main.X
-	rect.Y += u.shell.Layout.Main.Y
+	rect.X += terminalTest(u).Layout.Main.X
+	rect.Y += terminalTest(u).Layout.Main.Y
 	y := -1
 	x := -1
 	for row := rect.Y; row < rect.Y+rect.H; row++ {
-		for _, span := range u.shell.Frame.Copy[row] {
+		for _, span := range terminalTest(u).Frame.Copy[row] {
 			if span.Text == "side answer" {
 				x, y = span.Column, row
 				break
@@ -137,32 +137,32 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if y < 0 {
 		t.Fatalf("no dock: %+v", rect)
 	}
-	selectionTestDrag(t, u.shell, x, y, x+10, y)
-	if got := u.shell.Selection.Text(); got != "**side answer**" {
+	selectionTestDrag(t, terminalTest(u), x, y, x+10, y)
+	if got := terminalTest(u).Selection.Text(); got != "**side answer**" {
 		t.Fatalf("btw copied=%q", got)
 	}
-	if err := u.shell.send("\x1b"); err != nil {
+	if err := terminalTest(u).send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
-	if u.side == nil || u.shell.Selection != nil {
+	if u.side == nil || terminalTest(u).Selection != nil {
 		t.Fatal("Escape closed dock before selection")
 	}
-	selectionTestDrag(t, u.shell, x, y, x+10, y)
-	if err := u.shell.key(3); err != nil {
+	selectionTestDrag(t, terminalTest(u), x, y, x+10, y)
+	if err := terminalTest(u).key(3); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(u.shell.Frame.Clipboard, base64.StdEncoding.EncodeToString([]byte("**side answer**"))) {
+	if !strings.Contains(terminalTest(u).Frame.Clipboard, base64.StdEncoding.EncodeToString([]byte("**side answer**"))) {
 		t.Fatal("btw clipboard missing")
 	}
-	if u.side == nil || u.shell.Selection != nil {
+	if u.side == nil || terminalTest(u).Selection != nil {
 		t.Fatal("copy closed the dock or retained selection")
 	}
 	u.Text, u.CursorBack = "before after", len("after")
-	selectionTestDrag(t, u.shell, x, y, x+10, y)
-	if err := u.shell.key('r'); err != nil {
+	selectionTestDrag(t, terminalTest(u), x, y, x+10, y)
+	if err := terminalTest(u).key('r'); err != nil {
 		t.Fatal(err)
 	}
-	if u.side == nil || u.shell.Selection != nil || u.shell.Focus != 0 || u.Text != "before [Selected side answer] after" || len(u.Selections) != 1 || u.Selections[0].Text != "**side answer**" {
+	if u.side == nil || terminalTest(u).Selection != nil || terminalTest(u).Focus != 0 || u.Text != "before [Selected side answer] after" || len(u.Selections) != 1 || u.Selections[0].Text != "**side answer**" {
 		t.Fatalf("btw reference: draft=%q selections=%+v dock=%v", u.Text, u.Selections, u.side != nil)
 	}
 }
@@ -198,7 +198,7 @@ func TestUISnapshotBTWCopyDock(t *testing.T) {
 func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	// Scroll back to the original reply above a long trailing tool run.
 	u.Turn = "running"
 	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
@@ -209,7 +209,7 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 		t.Fatal(err)
 	}
 	x, y := -1, -1
-	for row, spans := range u.shell.Frame.Copy {
+	for row, spans := range terminalTest(u).Frame.Copy {
 		for _, s := range spans {
 			if s.Text == "original reply" {
 				x, y = s.Column, row
@@ -223,8 +223,8 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	if y < 0 {
 		t.Fatalf("no original reply source: %s", screen.String())
 	}
-	selectionTestDrag(t, u.shell, u.shell.Layout.Main.X, y-1, x+13, y)
-	if got := u.shell.Selection.Text(); got != "**original reply**" {
+	selectionTestDrag(t, terminalTest(u), terminalTest(u).Layout.Main.X, y-1, x+13, y)
+	if got := terminalTest(u).Selection.Text(); got != "**original reply**" {
 		t.Fatalf("original reply copy=%q", got)
 	}
 }
@@ -240,12 +240,12 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 			for _, reverse := range []bool{false, true} {
 				u, _ := newAppServerTestUI()
 				u.ensureShell()
-				t.Cleanup(func() { u.shell.diffScreen.Close() })
+				t.Cleanup(func() { terminalTest(u).Diff.Close() })
 				view := u.testActivity(u.view)
 				if activity {
 					view = u.testActivity(u.agents)
 					u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
-					u.shell.DiffOpen = false
+					terminalTest(u).DiffOpen = false
 				}
 				applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: source})
 				var wire bytes.Buffer
@@ -256,7 +256,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 					t.Fatal(err)
 				}
 				first, last, left, right := -1, -1, 0, 0
-				for y, spans := range u.shell.Frame.Copy {
+				for y, spans := range terminalTest(u).Frame.Copy {
 					for _, span := range spans {
 						if span.Table != 0 {
 							if first < 0 {
@@ -274,9 +274,9 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				if reverse {
 					ax, ay, bx, by = bx, by, ax, ay
 				}
-				selectionTestDrag(t, u.shell, ax, ay, bx, by)
+				selectionTestDrag(t, terminalTest(u), ax, ay, bx, by)
 				expected := want
-				if got := u.shell.Selection.Text(); got != expected {
+				if got := terminalTest(u).Selection.Text(); got != expected {
 					t.Fatalf("activity=%v width=%d reverse=%v: %q want %q", activity, width, reverse, got, expected)
 				}
 			}
@@ -287,20 +287,20 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
-	u.shell.DiffOpen = false
+	terminalTest(u).DiffOpen = false
 	applyTranscriptFixture(u.testActivity(u.agents), true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer
 	u.testActivity(u.agents).setDisplayFilter(true, "Main")
 	if err := u.testPaint(&wire, 120, 40); err != nil {
 		t.Fatal(err)
 	}
-	for y, spans := range u.shell.Frame.Copy {
+	for y, spans := range terminalTest(u).Frame.Copy {
 		for _, span := range spans {
 			if span.Code {
-				selectionTestDrag(t, u.shell, span.Column, y, span.Column+span.Width-1, y)
-				if got := u.shell.Selection.Text(); got != "\tx := 1  " {
+				selectionTestDrag(t, terminalTest(u), span.Column, y, span.Column+span.Width-1, y)
+				if got := terminalTest(u).Selection.Text(); got != "\tx := 1  " {
 					t.Fatalf("activity source code=%q", got)
 				}
 				return

@@ -59,7 +59,7 @@ func TestAppServerRestoredStoppedWait(t *testing.T) {
 func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	auto := newLivePreview(t.Context())
 	defer auto.Close()
 	setTestAppServerIntegration(u, &observationFixture{review: testReview(auto), execWindows: &executionobservation.Windows{}})
@@ -74,13 +74,13 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	for _, preview := range []previewmodel.Preview{main, child} {
 		auto.Update(preview, false)
 		u.preview(preview, false)
-		revealNativeDock(u.shell)
+		revealNativeDock(terminalTest(u))
 	}
 	queued := main
 	queued.ID, queued.Complete, queued.Evaluated, queued.Tool = "queued-final", true, true, applyPatchToolName
 	auto.Update(queued, false)
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "interrupted"}})
-	if u.shell.liveDock.Views[main.ID] != nil || u.shell.liveDock.Views[child.ID] == nil {
+	if terminalTest(u).Live.Views[main.ID] != nil || terminalTest(u).Live.Views[child.ID] == nil {
 		t.Fatal("interrupt did not retire only its own live preview")
 	}
 	// An asynchronous worker can race with interruption and the next turn.
@@ -94,7 +94,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 				u.applyReview(t.Context(), event)
 			}
 		}
-		if u.shell.liveDock.Views[main.ID] != nil || u.shell.liveDock.Views[queued.ID] != nil {
+		if terminalTest(u).Live.Views[main.ID] != nil || terminalTest(u).Live.Views[queued.ID] != nil {
 			t.Fatal("late producer or queued completion reopened interrupted preview")
 		}
 	}
@@ -104,7 +104,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 			t.Fatal("resubscription revived stale preview")
 		}
 	}
-	if u.shell.liveDock.Views[child.ID] == nil {
+	if terminalTest(u).Live.Views[child.ID] == nil {
 		t.Fatal("child preview was retired with main")
 	}
 }

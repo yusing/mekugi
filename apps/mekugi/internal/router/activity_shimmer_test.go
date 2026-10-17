@@ -18,7 +18,7 @@ func TestNativeUITerminalColorReports(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	for _, key := range []byte("\x1b]10;rgb:dcdc/d6d6/c8c8\x1b\\\x1b]11;rgb:18/16/1e\a") {
-		if err := u.shell.key(key); err != nil {
+		if err := terminalTest(u).key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -28,7 +28,7 @@ func TestNativeUITerminalColorReports(t *testing.T) {
 			t.Fatalf("pane palette = %+v theme %v", view.Painter.Colors, view.Painter.Theme)
 		}
 	}
-	if !u.agents.Painter.Colors.HasBackground || u.agents.Painter.Colors.Background != want.Background || u.shell.Theme != diffrender.DarkTheme {
+	if !u.agents.Painter.Colors.HasBackground || u.agents.Painter.Colors.Background != want.Background || terminalTest(u).Theme != diffrender.DarkTheme {
 		t.Fatal("diff pane did not take the reported background")
 	}
 	if u.Text != "" {

@@ -1,9 +1,10 @@
 package router
 
 import (
+	"time"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"time"
 )
 
 func (u *terminalUI) key(key byte) error {
@@ -32,9 +33,9 @@ func (u *terminalUI) selectNativePane(pane int) {
 func (u *appServerUI) key(key string) (bool, error) {
 	return u.applyMainKey(terminalsession.KeyEvent(key))
 }
-func (u *terminalUI) outputKey(key string) { u.outputIntent(u.output.Key(key)) }
+func (u *terminalUI) outputKey(key string) { u.outputIntent(u.Dialog.Key(key)) }
 func (u *terminalUI) outputMouse(button, x, y int, release bool) {
-	u.outputIntent(u.output.Mouse(button, x, y, release))
+	u.outputIntent(u.Dialog.Mouse(button, x, y, release))
 }
 
 func (u *terminalUI) selectionAction(action terminalsession.SelectionIntent) {

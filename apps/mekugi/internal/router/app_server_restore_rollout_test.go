@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -71,7 +72,7 @@ func rolloutFailedCell(at int, call, message string) []map[string]any {
 func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	workspace := t.TempDir()
 	u := newAppServerSessionTestUI(t, workspace)
-	u.agents = u.shell.agents
+	u.agents = terminalTest(u).Agents
 	activity := sessioncontrol.NewAudience(nil)
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	u.startup.Thread = "main"

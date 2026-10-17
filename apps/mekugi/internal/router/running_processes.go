@@ -13,5 +13,5 @@ func (u *appServerUI) showRunningProcesses() {
 	u.deleteDraftRange(0, len(u.Text))
 	u.ensureShell()
 	u.shell.Selection = nil
-	u.shell.openDetailSelection(u.agents, nil, true)
+	u.openDetailSelection(u.shell, u.agents, nil, true)
 }

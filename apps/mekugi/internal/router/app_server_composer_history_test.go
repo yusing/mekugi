@@ -141,7 +141,7 @@ func TestAppServerComposerTokenIsOneNavigationUnit(t *testing.T) {
 
 func TestAppServerComposerImageTokenStyledAndCaretVisible(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.shell = &terminalUI{}
+	u.shell = &terminalsession.Attachment{}
 	appServerTestKeys(t, u, "a")
 	u.attachImage(filepath.Join(t.TempDir(), "image.png"))
 	appServerTestKeys(t, u, "b\x1b[D")

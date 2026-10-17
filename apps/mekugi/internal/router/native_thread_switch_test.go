@@ -47,22 +47,22 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	keys := func(input string) {
 		t.Helper()
 		for _, key := range []byte(input) {
-			if err := u.shell.key(key); err != nil {
+			if err := terminalTest(u).key(key); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
 	paint("native-thread-main-full")
-	if u.shell.Layout.Main.W != 138 || u.shell.Layout.Vertical != -1 {
-		t.Fatalf("initial geometry: %+v", u.shell.Layout)
+	if terminalTest(u).Layout.Main.W != 138 || terminalTest(u).Layout.Vertical != -1 {
+		t.Fatalf("initial geometry: %+v", terminalTest(u).Layout)
 	}
 	click := func(agent string) {
 		t.Helper()
 		for _, hit := range u.agents.Hits {
 			if hit.Agent == agent && !hit.Skills {
-				r := u.shell.Layout.Roster
+				r := terminalTest(u).Layout.Roster
 				for _, suffix := range []string{"M", "m"} {
-					if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.X+hit.First, r.Y+hit.Row, suffix)); err != nil {
+					if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.X+hit.First, r.Y+hit.Row, suffix)); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -81,12 +81,12 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	keys("\x022")
 	paint("native-thread-child-split")
-	if u.shell.Layout.Diff.W == 0 || !u.testActivity(u.agents).displayingChild() {
+	if terminalTest(u).Layout.Diff.W == 0 || !u.testActivity(u.agents).displayingChild() {
 		t.Fatal("opening Diff lost the displayed child")
 	}
 	keys("\x022")
 	paint("native-thread-child-unsplit")
-	if u.shell.Layout.Main.W != 138 || u.shell.Layout.Diff.W != 0 || u.shell.Focus != 0 {
+	if terminalTest(u).Layout.Main.W != 138 || terminalTest(u).Layout.Diff.W != 0 || terminalTest(u).Focus != 0 {
 		t.Fatal("closing Diff did not reclaim its width")
 	}
 	// Metadata discovery is independent of the composer destination.
@@ -94,10 +94,10 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	appServerOneRequest(t, w, "thread/read", "")
 	u.Turn = "active"
 	keys("/skills\r\t\x03\x07\x16\x7f\x1b[1;2A\x1b[200~pasted\x03\r\x1b[201~")
-	if err := u.shell.send("\x1b"); err != nil {
+	if err := terminalTest(u).send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
-	if u.Text != "retained draft" || u.picker.Open || u.shell.Decoder.Pasting() || u.quitRequested || u.Turn != "active" || w.Len() != 0 {
+	if u.Text != "retained draft" || u.picker.Open || terminalTest(u).Decoder.Pasting() || u.quitRequested || u.Turn != "active" || w.Len() != 0 {
 		t.Fatal("read-only composer accepted editing, paste, submission or interruption")
 	}
 	u.Turn = ""
@@ -118,8 +118,8 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 
 func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u := selectionTestUI("child answer")
-	u.agents = activityui.NewView()
-	u.main.agents = u.agents
+	u.Agents = activityui.NewView()
+	u.main.agents = u.Agents
 	u.main.sessionPresentation()
 	u.main.Text = "draft "
 	u.main.testActivity(u.main.agents).setDisplayFilter(true, "/root/reader")
@@ -184,7 +184,7 @@ func TestUISnapshotNativeTinyDiffToggle(t *testing.T) {
 	screen := vt.NewEmulator(80, 6)
 	defer screen.Close()
 	for _, key := range []byte("\x022") {
-		if err := u.shell.key(key); err != nil {
+		if err := terminalTest(u).key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -192,18 +192,18 @@ func TestUISnapshotNativeTinyDiffToggle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertNativeUISnapshot(t, "native-thread-tiny-diff", strings.Split(screen.String(), "\n"))
-	if u.shell.Layout.Diff.H == 0 || !strings.Contains(screen.String(), "CONNECTING") {
+	if terminalTest(u).Layout.Diff.H == 0 || !strings.Contains(screen.String(), "CONNECTING") {
 		t.Fatal("opening Diff left a short terminal blank")
 	}
 	for _, key := range []byte("\x022") {
-		if err := u.shell.key(key); err != nil {
+		if err := terminalTest(u).key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := u.testPaint(screen, 80, 6); err != nil {
 		t.Fatal(err)
 	}
-	if u.shell.Layout.Main.W != 80 || u.shell.Layout.Diff.H != 0 {
+	if terminalTest(u).Layout.Main.W != 80 || terminalTest(u).Layout.Diff.H != 0 {
 		t.Fatal("closing Diff did not restore the short transcript")
 	}
 }

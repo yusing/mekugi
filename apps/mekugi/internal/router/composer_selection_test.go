@@ -181,7 +181,7 @@ func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 			t.Fatalf("width %d: source column %d row %d", width, sourceView.X, sourceView.Y)
 		}
 		u := selectionTestUI(rows...)
-		u.width, u.Frame.Width = width, width
+		u.Width, u.Frame.Width = width, width
 		u.Layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, 16}}
 		u.Auxiliary = c
 		if sourceView.Y > 0 && u.Frame.DiffSelection(u.frameInput(), sourceView.X, 0) != nil {

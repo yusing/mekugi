@@ -226,7 +226,7 @@ func TestAppServerUIInput(t *testing.T) {
 
 func TestAppServerUIShellUnicodeInput(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	shell := &terminalUI{main: u}
+	shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
 	for _, key := range []byte("你好🙂\x7f") {
 		if err := shell.key(key); err != nil {
 			t.Fatal(err)
@@ -386,12 +386,12 @@ func TestAppServerNoticeExpiry(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	u.sessionPresentation().Status.Text = "Working"
-	u.shell.copyText("copied")
+	terminalTest(u).copyText("copied")
 	deadline := u.feedback.Until
 	if deadline.IsZero() || u.expireNotice(deadline.Add(-time.Millisecond)) {
 		t.Fatal("notice expired early")
 	}
-	u.shell.copyText("copied again")
+	terminalTest(u).copyText("copied again")
 	if u.feedback.Until.Before(deadline) {
 		t.Fatal("repeat notice did not refresh deadline")
 	}
@@ -416,11 +416,11 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 		if active {
 			u.Turn = "turn"
 		}
-		if err := u.shell.key(27); err != nil {
+		if err := terminalTest(u).key(27); err != nil {
 			t.Fatal(err)
 		}
-		ageTerminalEscape(u.shell)
-		if err := u.shell.flushEscape(); err != nil {
+		ageTerminalEscape(terminalTest(u))
+		if err := terminalTest(u).flushEscape(); err != nil {
 			t.Fatal(err)
 		}
 		if u.Text != "unfinished draft" || u.quitRequested {
@@ -434,7 +434,7 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 		} else if w.Len() != 0 {
 			t.Fatalf("idle Escape sent %q", w.String())
 		}
-		if err := u.shell.key('x'); err != nil {
+		if err := terminalTest(u).key('x'); err != nil {
 			t.Fatal(err)
 		}
 		if !strings.Contains(u.Text, "x") {

@@ -4,11 +4,12 @@ import (
 	"encoding/base64"
 	"encoding/json/jsontext"
 	"fmt"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -197,7 +198,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
 			u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
-			shell := &terminalUI{main: u, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 60, 12}}}}
+			shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 60, 12}}}}}
 			appServerTestKeys(t, u, "/status\r")
 			u.statusPanel.body = nil
 			for range 40 {
@@ -255,7 +256,7 @@ func TestAppServerStatusRefreshFailureStaysInPanel(t *testing.T) {
 
 func TestAppServerStatusTerminalPasteCanClose(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	shell := &terminalUI{main: u}
+	shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
 	for _, key := range []byte("/status\r\x1b[200~q\r\x03\x1b[B\x1b[201~") {
 		if err := shell.key(key); err != nil {
 			t.Fatal(err)
@@ -348,21 +349,21 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	rendered := screen.String()
 	for _, want := range []string{"Session status", "gpt-6-sol", "78% left", "17% left", "━━", "Esc close"} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("compositor lost %q:\n%s", want, rendered)
 		}
 	}
-	r := u.shell.Layout.Main
+	r := terminalTest(u).Layout.Main
 	var panel []string
 	for _, row := range strings.Split(rendered, "\n")[r.Y : r.Y+r.H] {
 		panel = append(panel, ansi.Cut(row, r.X, r.X+r.W))
 	}
 	t.Log("Rendered Main pane:\n" + strings.Join(panel, "\n"))
 	saved := u.statusPanel
-	if err := u.shell.send("\x1b"); err != nil {
+	if err := terminalTest(u).send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
 	if err := u.testPaint(screen, 160, 48); err != nil {
@@ -398,7 +399,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			defer u.shell.diffScreen.Close()
+			defer terminalTest(u).Diff.Close()
 			x, y := -1, -1
 			for i, row := range strings.Split(screen.String(), "\n") {
 				if before, _, ok := strings.Cut(row, "gpt-6-sol"); ok {
@@ -413,13 +414,13 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 				t.Helper()
 				for _, event := range []string{fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1), fmt.Sprintf("\x1b[<32;%d;%dM", x+9, y+1), fmt.Sprintf("\x1b[<0;%d;%dm", x+9, y+1)} {
 					for _, key := range []byte(event) {
-						if err := u.shell.key(key); err != nil {
+						if err := terminalTest(u).key(key); err != nil {
 							t.Fatal(err)
 						}
 					}
 				}
-				if u.shell.Selection == nil || u.shell.Selection.Text() != "gpt-6-sol" {
-					t.Fatalf("wrong status selection: %+v", u.shell.Selection)
+				if terminalTest(u).Selection == nil || terminalTest(u).Selection.Text() != "gpt-6-sol" {
+					t.Fatalf("wrong status selection: %+v", terminalTest(u).Selection)
 				}
 			}
 			drag()
@@ -429,28 +430,28 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			if !strings.Contains(screen.String(), "copy") {
 				t.Fatal("copy control missing")
 			}
-			if err := u.shell.key(action); err != nil {
+			if err := terminalTest(u).key(action); err != nil {
 				t.Fatal(err)
 			}
 			want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("gpt-6-sol")) + "\x07"
-			if u.shell.Frame.Clipboard != want || u.statusPanel == nil || u.Turn != "active" || u.shell.Selection != nil {
+			if terminalTest(u).Frame.Clipboard != want || u.statusPanel == nil || u.Turn != "active" || terminalTest(u).Selection != nil {
 				t.Fatal("copy failed or dismissed/interrupted status")
 			}
 			if err := u.testPaint(screen, 160, 48); err != nil {
 				t.Fatal(err)
 			}
 			drag()
-			if err := u.shell.send("\x1b"); err != nil {
+			if err := terminalTest(u).send("\x1b"); err != nil {
 				t.Fatal(err)
 			}
-			if u.shell.Selection != nil || u.statusPanel == nil {
+			if terminalTest(u).Selection != nil || u.statusPanel == nil {
 				t.Fatal("first Escape must clear selection only")
 			}
 			drag()
-			if err := u.shell.send("q"); err != nil {
+			if err := terminalTest(u).send("q"); err != nil {
 				t.Fatal(err)
 			}
-			if u.statusPanel != nil || u.shell.Selection != nil {
+			if u.statusPanel != nil || terminalTest(u).Selection != nil {
 				t.Fatal("closing retained panel selection")
 			}
 			if err := u.testPaint(screen, 160, 48); err != nil {
@@ -474,8 +475,8 @@ func (u *appServerUI) statusPanelKey(key string) bool {
 		return false
 	}
 	action, clear := u.mainView.Panel.Key(key)
-	if clear && u.shell != nil {
-		u.shell.Selection = nil
+	if clear && terminalTest(u) != nil {
+		terminalTest(u).Selection = nil
 	}
 	u.applyPanelAction(action)
 	u.dirty = true

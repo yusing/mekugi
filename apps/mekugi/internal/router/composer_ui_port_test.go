@@ -98,21 +98,21 @@ func TestComposerPasteBoundariesAndImages(t *testing.T) {
 	for _, payload := range []string{"plain\x1b", "plain\x1b[", "plain\x1b]8;;link", "plain\x1b[20", "plain\x02\x03\x16"} {
 		u, _ := newAppServerTestUI()
 		u.ensureShell()
-		t.Cleanup(func() { u.shell.diffScreen.Close() })
+		t.Cleanup(func() { terminalTest(u).Diff.Close() })
 		feed := func(text string) {
 			t.Helper()
 			for _, b := range []byte(text) {
-				if err := u.shell.key(b); err != nil {
+				if err := terminalTest(u).key(b); err != nil {
 					t.Fatal(err)
 				}
 			}
 		}
 		feed("\x1b[200~" + payload + "\x1b[201~")
-		if u.shell.Decoder.Pasting() || u.shell.Decoder.Pending() || u.Text != "plain" {
-			t.Fatalf("opaque paste=%q state=%v pending=%v", u.Text, u.shell.Decoder.Pasting(), u.shell.Decoder.Pending())
+		if terminalTest(u).Decoder.Pasting() || terminalTest(u).Decoder.Pending() || u.Text != "plain" {
+			t.Fatalf("opaque paste=%q state=%v pending=%v", u.Text, terminalTest(u).Decoder.Pasting(), terminalTest(u).Decoder.Pending())
 		}
 		feed("\x1b[200~'" + image + "'\x1b[201~typed")
-		if u.Text != "plain"+"[Image 1] typed" || len(u.Images) != 1 || u.shell.Decoder.Pasting() {
+		if u.Text != "plain"+"[Image 1] typed" || len(u.Images) != 1 || terminalTest(u).Decoder.Pasting() {
 			t.Fatalf("next paste stuck: %q %+v", u.Text, u.Images)
 		}
 		feed("\x1b[200~'" + image + "'\x1b[201~")
@@ -137,7 +137,7 @@ func TestComposerImagePastePTYLifecycle(t *testing.T) {
 	defer cancel()
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	ready := make(chan struct{})
 	done := make(chan error, 1)
 	// Scrollback must not consume the ESC byte of either paste terminator.
@@ -151,12 +151,12 @@ func TestComposerImagePastePTYLifecycle(t *testing.T) {
 					if !ok {
 						return fmt.Errorf("input closed")
 					}
-					if err := u.shell.key(b); err != nil {
+					if err := terminalTest(u).key(b); err != nil {
 						return err
 					}
-					if b == '!' && !u.shell.Decoder.Pasting() {
-						if u.shell.Decoder.Pasting() || len(u.Images) != 2 || u.Text != "[Image 1] [Image 2] editable!" {
-							return fmt.Errorf("paste lifecycle: %q images=%d state=%v", u.Text, len(u.Images), u.shell.Decoder.Pasting())
+					if b == '!' && !terminalTest(u).Decoder.Pasting() {
+						if terminalTest(u).Decoder.Pasting() || len(u.Images) != 2 || u.Text != "[Image 1] [Image 2] editable!" {
+							return fmt.Errorf("paste lifecycle: %q images=%d state=%v", u.Text, len(u.Images), terminalTest(u).Decoder.Pasting())
 						}
 						var frame bytes.Buffer
 						if err := u.testPaint(&frame, 80, 20); err != nil {

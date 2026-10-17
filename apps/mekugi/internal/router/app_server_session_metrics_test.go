@@ -33,7 +33,7 @@ func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
 		if err := u.testPaint(screen, width, 24); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { u.shell.diffScreen.Close() })
+		t.Cleanup(func() { terminalTest(u).Diff.Close() })
 		x1, y1, x2, y2 := -1, -1, -1, -1
 		for y, row := range strings.Split(screen.String(), "\n") {
 			if before, _, ok := strings.Cut(row, "/tmp/"); ok {
@@ -49,10 +49,10 @@ func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
 		if width == 35 {
 			x1, y1, x2, y2 = x2, y2, x1, y1
 		}
-		selectionTestDrag(t, u.shell, x1, y1, x2, y2)
-		u.shell.selectionAction('c')
-		if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(path)) + "\x07"; u.shell.Frame.Clipboard != want {
-			t.Fatalf("wrapped directory copy = %q, want %q", u.shell.Frame.Clipboard, want)
+		selectionTestDrag(t, terminalTest(u), x1, y1, x2, y2)
+		terminalTest(u).selectionAction('c')
+		if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(path)) + "\x07"; terminalTest(u).Frame.Clipboard != want {
+			t.Fatalf("wrapped directory copy = %q, want %q", terminalTest(u).Frame.Clipboard, want)
 		}
 	}
 }

@@ -72,10 +72,10 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 					if !ok || block.Source != view.Entries[0].Source.Seq || len(block.Members) != 2 {
 						continue
 					}
-					if !u.shell.openOutput(view.bind(u.shell), snippet) {
+					if !terminalTest(u).openOutput(view.bind(terminalTest(u)), snippet) {
 						t.Fatal("section has no dialog target")
 					}
-					page := view.Painter.DetailDocument(u.shell.output.Pages[i].DetailPage, nil, nil, 80)
+					page := view.Painter.DetailDocument(terminalTest(u).Dialog.Pages[i].DetailPage, nil, nil, 80)
 					if page.Text != block.Members[i].Body || strings.Contains(page.Text, []string{"Third checkpoint.", "First checkpoint."}[i]) {
 						t.Fatalf("section dialog mixed bodies: %+v", page)
 					}

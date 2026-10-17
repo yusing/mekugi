@@ -26,7 +26,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	}
 	u := newAppServerSessionTestUI(t, workspace)
 	// Reopen retained evidence instead of relying on the publishing process cache.
-	setSavedReviewStore(u.shell, testReplayStore(mekugiReplayStore{directory: writer.directory}))
+	setSavedReviewStore(terminalTest(u), testReplayStore(mekugiReplayStore{directory: writer.directory}))
 	review := u.review
 	writer.liveDiff = review.Publish
 	sub := review.Subscribe()
@@ -53,8 +53,8 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	if got := paths(); !slices.Equal(got, []string{"child.go", "root.go"}) {
 		t.Fatalf("restored saved Diff: %v", got)
 	}
-	u.shell.selectNativePane(1)
-	if !u.shell.DiffOpen {
+	terminalTest(u).selectNativePane(1)
+	if !terminalTest(u).DiffOpen {
 		t.Fatal("saved Diff is not accessible")
 	}
 

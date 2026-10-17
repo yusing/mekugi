@@ -71,22 +71,22 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			}
 			feed := view.RenderFeed(80, 40)
 			row := slices.IndexFunc(feed.Snippets, func(s activityui.Snippet) bool { return s != activityui.Snippet{} })
-			if row < 0 || !u.shell.openOutput(view.View, feed.Snippets[row]) {
+			if row < 0 || !terminalTest(u).openOutput(view.View, feed.Snippets[row]) {
 				t.Fatal("error click target cannot open shared dialog")
 			}
-			assertErrorDialog(t, u.shell, textsanitize.Safe(full, false))
-			u.shell.outputKey("q")
-			u.shell.Focus = focus
+			assertErrorDialog(t, terminalTest(u), textsanitize.Safe(full, false))
+			terminalTest(u).outputKey("q")
+			terminalTest(u).Focus = focus
 			u.Text = "keep the user's draft"
 			for _, key := range []byte{2, '!'} {
-				if err := u.shell.key(key); err != nil {
+				if err := terminalTest(u).key(key); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if u.Text != "keep the user's draft" || u.shell.Focus != focus || u.shell.output == nil {
+			if u.Text != "keep the user's draft" || terminalTest(u).Focus != focus || terminalTest(u).Dialog == nil {
 				t.Fatal("keyboard detail navigation modified composer or failed to open")
 			}
-			assertErrorDialog(t, u.shell, textsanitize.Safe(full, false))
+			assertErrorDialog(t, terminalTest(u), textsanitize.Safe(full, false))
 		})
 	}
 }
@@ -94,7 +94,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 func assertErrorDialog(t *testing.T, u *terminalUI, full string) {
 	t.Helper()
 	drawOutputDialog(u)
-	if u.output.Document.Text != full {
+	if u.Dialog.Document.Text != full {
 		t.Fatal("dialog copy target is not the complete sanitized error")
 	}
 	u.outputKey("/")
@@ -115,7 +115,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.startup.Thread = "main"
-			u.agents = u.shell.agents
+			u.agents = terminalTest(u).Agents
 			detail := "CreateProcess: " + strings.Repeat("command ", 9000) + "\nrejected: forced cleanup is not permitted\n    at cell:17"
 			records := append([]map[string]any{rolloutRecord(1, "event_msg", map[string]any{"type": "task_started", "turn_id": "t"})}, rolloutFailedCell(2, "rejected", detail)...)
 			info := binding.ThreadInfo{ID: "main", Cwd: u.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "failed"}}}
@@ -144,10 +144,10 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 			if index < 0 || view.Entries[index].Source.ErrorDetail != full || view.Entries[index].Source.Text != activityui.ErrorPreview(full) {
 				t.Fatal("restoration clipped the full host error")
 			}
-			if !u.shell.openEntry(view.bind(u.shell), view.Entries[index].Source.Seq) {
+			if !terminalTest(u).openEntry(view.bind(terminalTest(u)), view.Entries[index].Source.Seq) {
 				t.Fatal("restored error has no dialog")
 			}
-			assertErrorDialog(t, u.shell, full)
+			assertErrorDialog(t, terminalTest(u), full)
 		})
 	}
 }
@@ -161,17 +161,17 @@ func TestErrorDetailsKeyboardPaginationAndFiltering(t *testing.T) {
 		{Seq: 3, Agent: "/root/a", Kind: "error", Text: "new error"},
 	}})
 	u.testActivity(u.agents).setDisplayFilter(true, "/root/a")
-	u.shell.openErrors()
-	if u.shell.output == nil || len(u.shell.output.Pages) != 2 || u.shell.output.Page != 1 {
+	terminalTest(u).openErrors()
+	if terminalTest(u).Dialog == nil || len(terminalTest(u).Dialog.Pages) != 2 || terminalTest(u).Dialog.Page != 1 {
 		t.Fatal("keyboard error details lost selection or filter")
 	}
-	drawOutputDialog(u.shell)
-	if u.shell.output.Document.Text != "new error" {
+	drawOutputDialog(terminalTest(u))
+	if terminalTest(u).Dialog.Document.Text != "new error" {
 		t.Fatal("keyboard did not open newest error")
 	}
-	u.shell.outputKey("\x1b[D")
-	drawOutputDialog(u.shell)
-	if u.shell.output.Document.Text != "old error" {
+	terminalTest(u).outputKey("\x1b[D")
+	drawOutputDialog(terminalTest(u))
+	if terminalTest(u).Dialog.Document.Text != "old error" {
 		t.Fatal("could not navigate to earlier error")
 	}
 }
@@ -181,26 +181,26 @@ func TestErrorDetailsSearchAcrossVisualWraps(t *testing.T) {
 	query := strings.Repeat("q", 80) + " forced cleanup"
 	full := strings.Repeat("prefix ", 160) + query + strings.Repeat(" tail", 80) + "\n" + query
 	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "error", Text: full}}})
-	if !u.shell.openEntry(u.view, 1) {
+	if !terminalTest(u).openEntry(u.view, 1) {
 		t.Fatal("could not open error")
 	}
-	drawOutputDialog(u.shell)
-	u.shell.outputKey("/")
-	u.shell.outputKey(query)
-	u.shell.outputKey("\r")
-	first := drawOutputDialog(u.shell)
+	drawOutputDialog(terminalTest(u))
+	terminalTest(u).outputKey("/")
+	terminalTest(u).outputKey(query)
+	terminalTest(u).outputKey("\r")
+	first := drawOutputDialog(terminalTest(u))
 	if !strings.Contains(first, "qqqq") {
 		t.Fatal("matched text was not scrolled into view")
 	}
-	u.shell.outputKey("n")
-	if next := drawOutputDialog(u.shell); next == first || !strings.Contains(next, "qqqq") {
+	terminalTest(u).outputKey("n")
+	if next := drawOutputDialog(terminalTest(u)); next == first || !strings.Contains(next, "qqqq") {
 		t.Fatal("next did not reach the next logical match")
 	}
-	u.shell.outputKey("N")
-	if drawOutputDialog(u.shell) != first {
+	terminalTest(u).outputKey("N")
+	if drawOutputDialog(terminalTest(u)) != first {
 		t.Fatal("previous did not return to the wrapped match")
 	}
-	assertErrorDialog(t, u.shell, full)
+	assertErrorDialog(t, terminalTest(u), full)
 }
 
 func TestErrorDetailsTerminalClick(t *testing.T) {
@@ -227,21 +227,21 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 			if row < 0 {
 				t.Fatal("painted error lacks pointer target")
 			}
-			pane := u.shell.Layout.Main
+			pane := terminalTest(u).Layout.Main
 			if child {
-				pane = u.shell.Layout.Main
+				pane = terminalTest(u).Layout.Main
 			}
 			x, y := pane.X+view.FeedLeft, pane.Y+view.FeedTop+row
 			offset, following := view.Offset, view.Following
 			for _, suffix := range []string{"M", "m"} {
-				if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x, y, suffix)); err != nil {
+				if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x, y, suffix)); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if u.shell.output == nil || u.Text != "preserve draft" || view.Offset != offset || view.Following != following {
+			if terminalTest(u).Dialog == nil || u.Text != "preserve draft" || view.Offset != offset || view.Following != following {
 				t.Fatal("terminal click did not open details without disturbing the pane")
 			}
-			assertErrorDialog(t, u.shell, full)
+			assertErrorDialog(t, terminalTest(u), full)
 		})
 	}
 }

@@ -84,8 +84,8 @@ func TestComposerCommandSmallFrame(t *testing.T) {
 
 func TestComposerCommandMouseSelection(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	shell := &terminalUI{main: u}
-	u.shell = shell
+	shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
+	u.shell = shell.Attachment
 	appServerTestKeys(t, u, "/sk")
 	u.renderPicker(80, 4)
 	u.settlePresentation()

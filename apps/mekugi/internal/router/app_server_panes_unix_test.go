@@ -26,7 +26,7 @@ func TestNativePaneStateRejectsFIFOWithoutWaiting(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- preferences.open(&ui.shell.Shell, &ui.mainView, "/workspace", "thread", true) }()
+	go func() { done <- preferences.open(&terminalTest(ui).Shell, &ui.mainView, "/workspace", "thread", true) }()
 	select {
 	case err := <-done:
 		if err == nil || !strings.Contains(err.Error(), "regular file") {
@@ -48,7 +48,7 @@ func TestNativePaneStateRejectsFIFOWithoutWaiting(t *testing.T) {
 		}
 		t.Fatal("preference restoration waited for a FIFO writer")
 	}
-	if ui.shell.Focus != 0 || ui.shell.Split != 0 {
+	if terminalTest(ui).Focus != 0 || terminalTest(ui).Split != 0 {
 		t.Fatal("invalid preference changed layout")
 	}
 }

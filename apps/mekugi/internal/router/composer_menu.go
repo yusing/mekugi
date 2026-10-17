@@ -1,11 +1,12 @@
 package router
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/completion"
-	"slices"
-	"strings"
 )
 
 func (u *appServerUI) openMenu(kind string) {
@@ -87,7 +88,7 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 			if u.shell == nil {
 				u.setNotice("Terminal clipboard unavailable", true)
 			} else {
-				u.shell.copyText(p.copyTexts[index])
+				u.copyText(u.shell, p.copyTexts[index])
 			}
 			p.modal, p.Open, p.Choices, p.copyTexts = "", false, nil, nil
 		default:

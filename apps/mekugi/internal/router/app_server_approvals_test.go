@@ -482,9 +482,9 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	questionTestSync(t, u, "question", false)
 	questionTestPaint(t, u, 80)
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
-	u.shell.Layout.Main = terminalsession.Rect{0, 0, 80, 28}
-	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.prompts.Rect.X+1, u.prompts.Rect.Y+1)); err != nil {
+	defer terminalTest(u).Diff.Close()
+	terminalTest(u).Layout.Main = terminalsession.Rect{0, 0, 80, 28}
+	if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.prompts.Rect.X+1, u.prompts.Rect.Y+1)); err != nil {
 		t.Fatal(err)
 	}
 	if u.approvals.Open || u.currentQuestion() == nil || u.Text != "" {
@@ -681,9 +681,9 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			}
 			if !tc.early {
 				notify("item/started")
-				u.shell.openEntry(view.View, view.Entries[len(view.Entries)-1].Source.Seq)
-				u.shell.main.prepareOutput(u.shell)
-				u.shell.output.Paint(make([]string, 18), 80, 18)
+				terminalTest(u).openEntry(view.View, view.Entries[len(view.Entries)-1].Source.Seq)
+				terminalTest(u).main.prepareOutput(terminalTest(u).Attachment)
+				terminalTest(u).Dialog.Paint(make([]string, 18), 80, 18)
 			}
 			if tc.guard {
 				u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Thread: thread, Item: "cmd", Argv: []string{"git", "push", "origin", "main"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
@@ -708,7 +708,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !tc.guard && !tc.early {
-				if frame := drawOutputDialog(u.shell); !strings.Contains(frame, "Approval: Approved") {
+				if frame := drawOutputDialog(terminalTest(u)); !strings.Contains(frame, "Approval: Approved") {
 					t.Fatalf("painted dialog did not refresh before host output: %s", frame)
 				}
 			}
@@ -746,13 +746,13 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				block, ok := view.SnippetBlock(s)
 				return ok && block.Source == entry.Source.Seq
 			})
-			if row < 0 || !u.shell.openOutput(view.View, feed.Snippets[row]) {
+			if row < 0 || !terminalTest(u).openOutput(view.View, feed.Snippets[row]) {
 				t.Fatal("approval command has no clickable output dialog")
 			}
 			rows = make([]string, 18)
-			u.shell.main.prepareOutput(u.shell)
-			u.shell.output.Paint(rows, 80, len(rows))
-			if !strings.Contains(u.shell.output.Document.Title, color+label+terminalui.Reset) {
+			terminalTest(u).main.prepareOutput(terminalTest(u).Attachment)
+			terminalTest(u).Dialog.Paint(rows, 80, len(rows))
+			if !strings.Contains(terminalTest(u).Dialog.Document.Title, color+label+terminalui.Reset) {
 				t.Fatalf("dialog lost the decision: %q", rows)
 			}
 			assertNativeUISnapshot(t, "approval-dialog-"+tc.name, rows)

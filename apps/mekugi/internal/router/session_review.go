@@ -75,7 +75,7 @@ func (u *appServerUI) preview(preview previewmodel.Preview, restored bool) {
 		}
 	}
 	if u.shell != nil {
-		u.shell.liveDock.Observe(preview, restored, u.now())
+		u.shell.Live.Observe(preview, restored, u.now())
 	}
 }
 
@@ -103,14 +103,14 @@ func (u *appServerUI) applyReview(ctx context.Context, event sessionreview.Event
 		switch event.Kind {
 		case "scope":
 			if event.Resync && event.Scope != nil {
-				u.shell.liveDock.Resync(*event.Scope, event.PreviewIDs)
+				u.shell.Live.Resync(*event.Scope, event.PreviewIDs)
 			}
 		case "coverage":
 			if strings.HasPrefix(event.Status, "RECONNECTING:") {
-				u.shell.liveDock = previewview.PreviewPane{}
+				u.shell.Live = previewview.PreviewPane{}
 			}
 		case "change":
-			u.shell.diffUnseen = u.shell.diffUnseen || !u.shell.DiffOpen
+			u.shell.DiffUnseen = u.shell.DiffUnseen || !u.shell.DiffOpen
 		}
 	}
 	if published {
@@ -134,8 +134,8 @@ func (u *appServerUI) publishReview() {
 	projection := &u.review.Projection
 	snapshot := projection.Data
 	u.reviewSource.PublishReview(u.session.Scope(), snapshot, projection.Workspace, projection.Coverage, u.review.Failure)
-	if u.shell != nil && u.shell.preparePane != nil {
-		u.shell.preparePane(u.session.Scope())
+	if u.shell != nil && u.preparePane != nil {
+		u.preparePane(u.session.Scope())
 	}
 	if u.childSource != nil {
 		u.childSource.Model.LineCounts, u.childSource.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net

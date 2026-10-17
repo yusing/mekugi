@@ -7,6 +7,9 @@ renderer preferences, frozen source selection, clipboard requests and incrementa
 frame delivery for live sessions and offline replay. Feature painters supply
 content, source annotations and hit targets; application integration routes
 selected targets and intents to their owners.
+The attachment contains only terminal objects and detached publications. The
+application supplies acquisition and scope preparation separately; the terminal
+retains no application-session pointer or scope callback.
 
 [Session presentation](../sessionpresentation/SPEC.md) owns displayed identity and
 Main admission; [session control](../sessioncontrol/SPEC.md) issues host operations.

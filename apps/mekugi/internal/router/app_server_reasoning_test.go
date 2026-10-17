@@ -384,10 +384,10 @@ func TestAppServerThinkingFolds(t *testing.T) {
 			if row < 0 || !strings.Contains(ansi.Strip(feed.Lines[row]), "Reviewing") {
 				t.Fatal("folded thinking cannot expand")
 			}
-			if !u.shell.openOutput(view.bind(u.shell), feed.Snippets[row]) {
+			if !terminalTest(u).openOutput(view.bind(terminalTest(u)), feed.Snippets[row]) {
 				t.Fatal("folded thinking did not request dialog")
 			}
-			page := view.Painter.DetailDocument(u.shell.output.Pages[0].DetailPage, nil, nil, 80)
+			page := view.Painter.DetailDocument(terminalTest(u).Dialog.Pages[0].DetailPage, nil, nil, 80)
 			if page.Text != body || len(page.Lines) < 4 {
 				t.Fatalf("dialog lost full reasoning: %+v", page)
 			}

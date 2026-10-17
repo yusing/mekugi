@@ -11,17 +11,17 @@ func scrollTestUI(t *testing.T, offset int) *terminalUI {
 	t.Helper()
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.shell.Auxiliary = liveDiffChangesPane(t, 80, 10, []presentation.Chunk{liveDiffCapture("scroll", "scroll.txt", 1, "", liveDiffLinesFile("scroll", 100), presentation.Origin{})})
-	u.shell.Focus, u.shell.width, u.shell.height = 1, 80, 10
-	u.shell.Layout.Diff = terminalsession.Rect{W: 80, H: 10}
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
+	terminalTest(u).Auxiliary = liveDiffChangesPane(t, 80, 10, []presentation.Chunk{liveDiffCapture("scroll", "scroll.txt", 1, "", liveDiffLinesFile("scroll", 100), presentation.Origin{})})
+	terminalTest(u).Focus, terminalTest(u).Width, terminalTest(u).Height = 1, 80, 10
+	terminalTest(u).Layout.Diff = terminalsession.Rect{W: 80, H: 10}
 	for range offset {
-		if err := u.shell.key('j'); err != nil {
+		if err := terminalTest(u).key('j'); err != nil {
 			t.Fatal(err)
 		}
 	}
-	paintSavedDiff(t, savedPane(u.shell), 80, 10)
-	return u.shell
+	paintSavedDiff(t, savedPane(terminalTest(u)), 80, 10)
+	return terminalTest(u)
 }
 
 func TestScrollablePaneWheelAgreesAtConsumers(t *testing.T) {

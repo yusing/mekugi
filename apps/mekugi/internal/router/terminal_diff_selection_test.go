@@ -2,10 +2,11 @@ package router
 
 import (
 	"fmt"
-	"github.com/yusing/mekugi/libraries/legacycall"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
@@ -24,9 +25,9 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 				t.Fatal(err)
 			}
 			u := newAppServerSessionTestUI(t, workspace)
-			setSavedReviewStore(u.shell, store)
+			setSavedReviewStore(terminalTest(u), store)
 			u.review.Projection.Workspace = workspace
-			u.shell.DiffOpen, u.shell.Focus = true, 1
+			terminalTest(u).DiffOpen, terminalTest(u).Focus = true, 1
 			scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}}
 			refresh := func() {
 				t.Helper()
@@ -50,7 +51,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			keys := func(input string) {
 				t.Helper()
 				for _, key := range []byte(input) {
-					if err := u.shell.key(key); err != nil {
+					if err := terminalTest(u).key(key); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -72,9 +73,9 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			if beforePaint == "retained update" {
 				publish("a")
 				refresh()
-				r := u.shell.Layout.Diff
+				r := terminalTest(u).Layout.Diff
 				keys(fmt.Sprintf("\x1b[<0;%d;%dM", r.X+r.W-2, r.Y+2))
-				if s := u.shell.Selection; s == nil {
+				if s := terminalTest(u).Selection; s == nil {
 					t.Fatal("visible empty Diff did not accept the pointer press")
 				} else {
 					for _, source := range s.Diff {
@@ -90,10 +91,10 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			}
 			keys("g" + strings.Repeat("j", 8))
 			paint()
-			r := u.shell.Layout.Diff
+			r := terminalTest(u).Layout.Diff
 			x, y, text := -1, -1, ""
 			for row := r.Y; row < r.Y+r.H; row++ {
-				line := ansi.Strip(u.shell.Frame.Rows[row])
+				line := ansi.Strip(terminalTest(u).Frame.Rows[row])
 				if at := strings.Index(line, "a_line_"); at >= r.X {
 					x, y, text = ansi.StringWidth(line[:at]), row, line[at:at+len("a_line_00")]
 					break
@@ -109,7 +110,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			}
 			// Press and drag through the shared decoder before another paint tick.
 			keys(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<32;%d;%dM\x1b[<0;%d;%dm", x+1, y+1, x+len(text), y+1, x+len(text), y+1))
-			if s := u.shell.Selection; s == nil || !strings.Contains(s.Text(), text) {
+			if s := terminalTest(u).Selection; s == nil || !strings.Contains(s.Text(), text) {
 				t.Fatalf("selection no longer copies the displayed %q: %+v", text, s)
 			} else {
 				var line int

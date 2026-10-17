@@ -33,7 +33,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 		t.Run(fmt.Sprintf("%s/%d", tc.kind, tc.width), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ensureShell()
-			defer u.shell.diffScreen.Close()
+			defer terminalTest(u).Diff.Close()
 			u.Turn, u.sessionPresentation().Status.Text, u.Text = "active", "Working", "keep draft"
 			switch tc.kind {
 			case "command":
@@ -61,20 +61,20 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 				if rect.W == 0 {
 					t.Fatal("missing error control")
 				}
-				x, y := rect.X+u.shell.Layout.Main.X+1, rect.Y+u.shell.Layout.Main.Y+1
-				if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
+				x, y := rect.X+terminalTest(u).Layout.Main.X+1, rect.Y+terminalTest(u).Layout.Main.Y+1
+				if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 					t.Fatal(err)
 				}
 			}
 			click(u.mainView.NoticeDetails)
-			if u.shell.output == nil {
+			if terminalTest(u).Dialog == nil {
 				t.Fatal("truncated error did not open")
 			}
-			drawOutputDialog(u.shell)
-			if u.shell.output.Document.Text != textsanitize.Safe(full, false) {
+			drawOutputDialog(terminalTest(u))
+			if terminalTest(u).Dialog.Document.Text != textsanitize.Safe(full, false) {
 				t.Fatal("details lost full error")
 			}
-			u.shell.outputKey("q")
+			terminalTest(u).outputKey("q")
 			click(u.mainView.NoticeDismiss)
 			if u.composerErrorText() != "" || u.Text != draft || u.Turn != turn || wire.String() != sent || len(u.source.Entries) != 0 {
 				t.Fatal("dismissal changed draft, host state, wire, or transcript")

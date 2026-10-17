@@ -26,9 +26,9 @@ func TestSessionUIReplayQueuedContinuationSurvivesExpiredEscape(t *testing.T) {
 					ctx, cancel := context.WithCancel(t.Context())
 					p.ctx = ctx
 					if dialog {
-						p.ui.shell.openBlocks(p.ui.view, []activityui.Block{{Kind: "text", Body: "first\nsecond\n"}})
+						terminalTest(p.ui).openBlocks(p.ui.view, []activityui.Block{{Kind: "text", Body: "first\nsecond\n"}})
 					}
-					original := p.ui.shell.output
+					original := terminalTest(p.ui).Dialog
 					keys := make(chan byte, 64)
 					painting, resume := make(chan struct{}), make(chan struct{})
 					frames := 0
@@ -71,8 +71,8 @@ func TestSessionUIReplayQueuedContinuationSurvivesExpiredEscape(t *testing.T) {
 					if err := <-done; !errors.Is(err, context.Canceled) {
 						t.Fatalf("cancellation: %v", err)
 					}
-					if p.Speed != 2 || p.ui.shell.output != original {
-						t.Fatalf("continuation lost its target or following control: speed=%v dialog=%v", p.Speed, p.ui.shell.output != nil)
+					if p.Speed != 2 || terminalTest(p.ui).Dialog != original {
+						t.Fatalf("continuation lost its target or following control: speed=%v dialog=%v", p.Speed, terminalTest(p.ui).Dialog != nil)
 					}
 				}
 			})
@@ -86,7 +86,7 @@ func TestSessionUIReplayStandaloneEscapeClosesDialogThenQuits(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		p.ctx = ctx
-		p.ui.shell.openBlocks(p.ui.view, []activityui.Block{{Kind: "text", Body: "first\nsecond\n"}})
+		terminalTest(p.ui).openBlocks(p.ui.view, []activityui.Block{{Kind: "text", Body: "first\nsecond\n"}})
 		keys := make(chan byte, 1)
 		done := make(chan error, 1)
 		go func() {
@@ -101,7 +101,7 @@ func TestSessionUIReplayStandaloneEscapeClosesDialogThenQuits(t *testing.T) {
 			t.Fatalf("dialog Escape quit replay: %v", err)
 		default:
 		}
-		if p.ui.shell.output != nil {
+		if terminalTest(p.ui).Dialog != nil {
 			t.Fatal("standalone Escape did not dismiss the dialog")
 		}
 		keys <- 27

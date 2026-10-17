@@ -116,16 +116,16 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 			start := hookTestRun(u.cwd, "running")
 			start["completedAt"], start["durationMs"], start["entries"] = nil, nil, nil
 			appServerTestNotify(t, u, "hook/started", map[string]any{"threadId": "main", "run": start})
-			if !u.shell.openEntry(u.view, u.source.Entries[0].Source.Seq) {
+			if !terminalTest(u).openEntry(u.view, u.source.Entries[0].Source.Seq) {
 				t.Fatal("hook dialog did not open")
 			}
-			d := u.shell.output
-			u.shell.layoutOutput(80)
+			d := terminalTest(u).Dialog
+			terminalTest(u).layoutOutput(80)
 			for _, key := range []string{"g", "/", "policy"} {
-				u.shell.outputKey(key)
+				terminalTest(u).outputKey(key)
 			}
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.cwd, status)})
-			u.shell.layoutOutput(80)
+			terminalTest(u).layoutOutput(80)
 			want := "Hook Ran"
 			if status == "failed" {
 				want = "Hook Failed"
@@ -133,7 +133,7 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 			if !strings.Contains(d.Document.Text, "feedback: policy checked") || !strings.Contains(ansi.Strip(d.Document.Title), want) || d.Document.Live {
 				t.Fatalf("open dialog retained the start snapshot: %+v", d.Document)
 			}
-			if !strings.Contains(drawOutputDialog(u.shell), "/policy▏") {
+			if !strings.Contains(drawOutputDialog(terminalTest(u)), "/policy▏") {
 				t.Fatal("hook completion reset dialog navigation")
 			}
 		})
@@ -261,10 +261,10 @@ func TestUISnapshotNativeHookVisibility(t *testing.T) {
 		"startedAt": 1000, "completedAt": 1001, "durationMs": 5,
 		"entries": []map[string]any{{"kind": "feedback", "text": "mekugi: VCS guard instrumentation failed: VCS guard: cannot parse command: 1:10: reached EOF without closing quote `'`"}}}})
 	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection.txt", strings.Join(u.testActivity(u.view).testRenderConversation(80).Lines, "\n")+"\n")
-	if !u.shell.openEntry(u.view, u.source.Entries[len(u.source.Entries)-1].Source.Seq) {
+	if !terminalTest(u).openEntry(u.view, u.source.Entries[len(u.source.Entries)-1].Source.Seq) {
 		t.Fatal("guard rejection dialog did not open")
 	}
-	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection-dialog.txt", drawOutputDialog(u.shell)+"\n")
+	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection-dialog.txt", drawOutputDialog(terminalTest(u))+"\n")
 }
 
 func TestHookObservationMovesReleasedStatusLine(t *testing.T) {

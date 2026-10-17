@@ -34,9 +34,9 @@ func TestNativeUIKeybindings(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
-			u.Text, u.shell.Focus = tc.draft, tc.focus
+			u.Text, terminalTest(u).Focus = tc.draft, tc.focus
 			for _, key := range []byte(tc.input) {
-				if err := u.shell.key(key); err != nil {
+				if err := terminalTest(u).key(key); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -52,7 +52,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	u.ensureShell()
 	screen := vt.NewEmulator(100, 30)
 	defer screen.Close()
-	if err := u.shell.key('?'); err != nil {
+	if err := terminalTest(u).key('?'); err != nil {
 		t.Fatal(err)
 	}
 	if err := u.testPaint(screen, 100, 30); err != nil {
@@ -75,11 +75,11 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 			}
 		}
 	}
-	if err := u.shell.key(27); err != nil {
+	if err := terminalTest(u).key(27); err != nil {
 		t.Fatal(err)
 	}
-	ageTerminalEscape(u.shell)
-	if err := u.shell.flushEscape(); err != nil {
+	ageTerminalEscape(terminalTest(u))
+	if err := terminalTest(u).flushEscape(); err != nil {
 		t.Fatal(err)
 	}
 	if err := u.testPaint(screen, 100, 30); err != nil {
@@ -91,7 +91,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	if !u.mainView.ContentPainted {
 		t.Fatal("visible transcript must be marked painted")
 	}
-	if err := u.shell.key('?'); err != nil {
+	if err := terminalTest(u).key('?'); err != nil {
 		t.Fatal(err)
 	}
 	if !u.mainView.Keybindings || u.Text != "" {

@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
@@ -88,10 +90,10 @@ func TestLiveDiffCompletionOnlyShellDoesNotOpenNativeDock(t *testing.T) {
 				input = "text(await tools.exec_command(" + input + "));"
 			}
 			worker.Finish(input)
-			u := &terminalUI{}
+			u := &terminalUI{Attachment: &terminalsession.Attachment{}}
 			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
-				u.liveDock.Observe(preview, false, time.Now())
-				if len(u.liveDock.Order) != 0 {
+				u.Live.Observe(preview, false, time.Now())
+				if len(u.Live.Order) != 0 {
 					t.Fatal("completion-only worker manufactured a live dock")
 				}
 				return preview.Complete

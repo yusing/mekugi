@@ -70,7 +70,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			if contentGap {
 				wantPages++
 			}
-			if opened := u.shell.openActivityEdit(u.view, seq, "removed/"); !opened || len(u.shell.output.Pages) != wantPages {
+			if opened := terminalTest(u).openActivityEdit(u.view, seq, "removed/"); !opened || len(terminalTest(u).Dialog.Pages) != wantPages {
 				t.Fatalf("directory pages: opened=%v seq=%d want=%d", opened, seq, wantPages)
 			}
 			uisnapshot.Assert(t, "testdata/snapshots/"+name+".txt", strings.Join(u.testActivity(u.view).RenderFeed(100, 30).Lines, "\n")+"\n")

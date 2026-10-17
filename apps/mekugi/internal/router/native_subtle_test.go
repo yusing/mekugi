@@ -88,8 +88,8 @@ func TestNativeUIFaintOutputPolicy(t *testing.T) {
 			waitTargetTestAgent(t, u, "a", "/root/agent1", true)
 			waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
 			u.ensureShell()
-			u.shell.Focus = 3 // Inspect the roster, the sole wait-status surface.
-			u.shell.faint = faint
+			terminalTest(u).Focus = 3 // Inspect the roster, the sole wait-status surface.
+			terminalTest(u).Faint = faint
 			var wire bytes.Buffer
 			if err := u.testPaint(&wire, 120, 30); err != nil {
 				t.Fatal(err)

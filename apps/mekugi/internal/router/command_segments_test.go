@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -413,7 +414,7 @@ func TestCombinedOutputDialogUnwrapsOnlyLiteralShell(t *testing.T) {
 		if len(pages) != 1 || pages[0].Code != sessionpresentation.DisplayCommand(command) || view.Entries[0].Source.Native.Command != command {
 			t.Fatalf("combined display changed execution or leaked wrapper: %+v", pages)
 		}
-		ui := &terminalUI{}
+		ui := &terminalUI{Attachment: &terminalsession.Attachment{}}
 		ui.openBlocks(view.bind(ui), pages)
 		frame := drawOutputDialog(ui)
 		if strings.Contains(frame, "/usr/bin/bash") != strings.Contains(command, "> output") || !strings.Contains(frame, "combined output") {

@@ -4,6 +4,7 @@ package router
 
 import (
 	"context"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -57,7 +58,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), client: client, view: activityui.NewView(), agents: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
 	u.ensureShell()
 
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	if err := u.request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}

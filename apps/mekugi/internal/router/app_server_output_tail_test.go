@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/legacycall"
 
@@ -170,16 +172,16 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	if snippet == (activityui.Snippet{}) || feed.Snippets[index-1] != snippet {
 		t.Fatalf("collapsed output has no opening target: %v", feed.Snippets)
 	}
-	terminal := &terminalUI{main: u}
+	terminal := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
 	if !terminal.openOutput(u.view, snippet) {
 		t.Fatal("command did not open output dialog")
 	}
 	terminal.layoutOutput(76)
-	if got := terminal.output.Document.Text; got != "ok 1\nok 2\nPASS" {
+	if got := terminal.Dialog.Document.Text; got != "ok 1\nok 2\nPASS" {
 		t.Fatalf("dialog output = %q", got)
 	}
 	terminal.outputKey("\x1b")
-	if terminal.output != nil || !strings.Contains(main(), "┆ … +3 lines") {
+	if terminal.Dialog != nil || !strings.Contains(main(), "┆ … +3 lines") {
 		t.Fatal("closing output dialog changed the command row")
 	}
 	if _, tracked := u.session.Commands()[[3]string{"main", "t", "cmd"}]; tracked || len(u.session.Commands()) != 1 {
@@ -203,13 +205,13 @@ func TestAppServerSingleLineOutputStaysVisible(t *testing.T) {
 			t.Fatalf("single output line hidden: %s", got)
 		}
 		index := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(ansi.Strip(line), "┆ done") })
-		terminal := &terminalUI{main: u}
+		terminal := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
 		if index < 0 || !terminal.openOutput(u.view, feed.Snippets[index]) {
 			t.Fatal("single output line has no dialog target")
 		}
 		terminal.layoutOutput(76)
-		if terminal.output.Document.Text != "done" {
-			t.Fatalf("dialog output = %q", terminal.output.Document.Text)
+		if terminal.Dialog.Document.Text != "done" {
+			t.Fatalf("dialog output = %q", terminal.Dialog.Document.Text)
 		}
 	}
 }
@@ -260,12 +262,12 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 			if snippet == (activityui.Snippet{}) {
 				t.Fatal("final Read output has no toggle")
 			}
-			terminal := &terminalUI{main: u}
+			terminal := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
 			if !terminal.openOutput(u.view, snippet) {
 				t.Fatal("final Read did not open output dialog")
 			}
 			terminal.layoutOutput(80)
-			if got := terminal.output.Document.Text; got != "first\nsecond" {
+			if got := terminal.Dialog.Document.Text; got != "first\nsecond" {
 				t.Fatalf("read dialog output = %q", got)
 			}
 		})
@@ -493,12 +495,12 @@ func TestAppServerMainClipsLongCommandSourceUntilOpened(t *testing.T) {
 	if snippet == (activityui.Snippet{}) {
 		t.Fatalf("clipped source has no toggle: %v", feed.Snippets)
 	}
-	terminal := &terminalUI{main: u}
+	terminal := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
 	if !terminal.openOutput(u.view, snippet) {
 		t.Fatal("clipped source did not open output dialog")
 	}
 	terminal.layoutOutput(76)
-	if got := terminal.output.Document; strings.Count(ansi.Strip(fmt.Sprint(got.Lines)), "print('row')") != 30 || got.Text != "boom" {
+	if got := terminal.Dialog.Document; strings.Count(ansi.Strip(fmt.Sprint(got.Lines)), "print('row')") != 30 || got.Text != "boom" {
 		t.Fatalf("dialog lost source or output: %+v", got)
 	}
 	terminal.outputKey("q")
@@ -611,13 +613,13 @@ func TestAppServerCollapsedReadsMerge(t *testing.T) {
 			if snippet == (activityui.Snippet{}) {
 				t.Fatal("merged read row has no toggle")
 			}
-			terminal := &terminalUI{main: u}
-			if !terminal.openOutput(u.view, snippet) || len(terminal.output.Pages) != 3 {
+			terminal := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
+			if !terminal.openOutput(u.view, snippet) || len(terminal.Dialog.Pages) != 3 {
 				t.Fatal("merged reads did not open three dialog pages")
 			}
 			for i := range 3 {
 				terminal.layoutOutput(80)
-				if page := terminal.output.Document.Text; !strings.Contains(page, fmt.Sprintf("read-%d\nmore-%d", i, i)) {
+				if page := terminal.Dialog.Document.Text; !strings.Contains(page, fmt.Sprintf("read-%d\nmore-%d", i, i)) {
 					t.Fatalf("read page %d = %q", i, page)
 				}
 				if i < 2 {

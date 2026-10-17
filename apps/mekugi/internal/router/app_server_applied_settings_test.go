@@ -22,7 +22,7 @@ func appliedSettingsTestUI(t *testing.T, workspace, thread string) (*appServerUI
 	u.Thread = thread
 	u.startSession(thread, workspace)
 	u.panes = testPanePreferences()
-	if err := u.panes.open(&u.shell.Shell, &u.mainView, workspace, thread, false); err != nil {
+	if err := u.panes.open(&terminalTest(u).Shell, &u.mainView, workspace, thread, false); err != nil {
 		t.Fatal(err)
 	}
 	return u, u.client.Input.(*appServerTestInput)
@@ -176,13 +176,13 @@ func TestAppServerAppliedSettingsStartResultPersists(t *testing.T) {
 func TestAppServerAppliedSettingsFlushesCurrentLayoutBeforeTick(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u, _ := appliedSettingsTestUI(t, "/workspace", "saved")
-	u.shell.Split = 63
+	terminalTest(u).Split = 63
 	appliedSettingsTestNotify(t, u, "model", "high", "flex")
 	state, err := testPanePreferences().read("/workspace", "saved")
 	if err != nil || state.layout.Split != 63 || state.Settings.Model != "model" {
 		t.Fatal("immediate settings flush lost layout changed since the last tick", err)
 	}
-	u.shell.Split = 67
+	terminalTest(u).Split = 67
 	if err := u.clearSessionPresentation(); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 			u, w := appliedSettingsTestUI(t, "/workspace", "saved")
 			observed := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 			u.clock = func() time.Time { return observed }
-			u.shell.Focus = 2 // Resume normalizes hidden-Diff focus before checkpointing.
+			terminalTest(u).Focus = 2 // Resume normalizes hidden-Diff focus before checkpointing.
 			appliedSettingsTestNotify(t, u, "saved-model", "", "")
 			before, err := u.panes.read("/workspace", "saved")
 			if err != nil {
@@ -370,7 +370,7 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 					t.Fatal("corrupt retention failed invisibly")
 				}
 			} else {
-				if err := fresh.panes.open(&fresh.shell.Shell, &fresh.mainView, "/workspace", "saved", true); err != nil || fresh.shell.Split != 63 || savedPane(fresh.shell).NavigatorColumns() != 20 {
+				if err := fresh.panes.open(&terminalTest(fresh).Shell, &fresh.mainView, "/workspace", "saved", true); err != nil || terminalTest(fresh).Split != 63 || savedPane(terminalTest(fresh)).NavigatorColumns() != 20 {
 					t.Fatalf("layout-only record not backward compatible: %v", err)
 				}
 			}

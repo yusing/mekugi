@@ -21,7 +21,7 @@ func newPagedHistoryUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 	u.ctx = t.Context()
 	u.agents = activityui.NewView()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.startup.Thread = "main"
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.cwd}); err != nil {
@@ -133,10 +133,10 @@ func TestAppServerAnchoredHistoryErrorsAndCancellation(t *testing.T) {
 			case "cursor":
 				restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "leak", 101000)}, "nextCursor": "older"})
 			case "cancel":
-				u.shell.Focus = 0
+				terminalTest(u).Focus = 0
 				u.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
 				u.agents.Following = false
-				if err := u.shell.send("\x1b"); err != nil {
+				if err := terminalTest(u).send("\x1b"); err != nil {
 					t.Fatal(err)
 				}
 				restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "late response", 101000)}})
@@ -195,12 +195,12 @@ func TestAppServerAnchoredHistoryTurnPagesAndIsolation(t *testing.T) {
 	if u.session.Agent("/root/worker").Turns != 2 || u.session.Agent("/root/worker").Final {
 		t.Fatal("duplicate turns or interrupted status lost")
 	}
-	u.shell.Focus = 0
+	terminalTest(u).Focus = 0
 	u.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
-	if err := u.shell.key(2); err != nil {
+	if err := terminalTest(u).key(2); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.shell.key('o'); err != nil {
+	if err := terminalTest(u).key('o'); err != nil {
 		t.Fatal(err)
 	}
 	if len(restoreContentRequests(t, wire)) != 7 {
@@ -224,7 +224,7 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			historyTurnsReply(t, u)
 			restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "Latest retained answer", 109000)}, "nextCursor": "older"})
 
-			u.shell.Focus = 0
+			terminalTest(u).Focus = 0
 			u.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
 			if state != "partial" {
 				if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
@@ -249,12 +249,12 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			}
 			u.agents.Clock = u.clock
 			u.view.Clock = u.clock
-			u.shell.width, u.shell.height = 100, 24
+			terminalTest(u).Width, terminalTest(u).Height = 100, 24
 			u.settlePresentation()
-			if err := u.shell.paintNative(t.Context(), io.Discard); err != nil {
+			if err := terminalTest(u).paintNative(t.Context(), io.Discard); err != nil {
 				t.Fatal(err)
 			}
-			uisnapshot.Assert(t, "testdata/snapshots/native-anchored-history-"+state+".txt", strings.Join(u.shell.Frame.Rows, "\n")+"\n")
+			uisnapshot.Assert(t, "testdata/snapshots/native-anchored-history-"+state+".txt", strings.Join(terminalTest(u).Frame.Rows, "\n")+"\n")
 		})
 	}
 }
@@ -371,7 +371,7 @@ func TestAppServerAnchoredHistoryArchivedChild(t *testing.T) {
 	u.ctx = t.Context()
 	u.agents = activityui.NewView()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.startup.Thread = "main"
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.cwd}); err != nil {

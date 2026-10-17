@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -183,11 +185,11 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 						continue
 					}
 					v.PointSnippet('\r', v.FeedTop+row, v.FeedLeft)
-					u := &terminalUI{}
+					u := &terminalUI{Attachment: &terminalsession.Attachment{}}
 					if !u.openOutput(v.bind(u), v.Opening) {
 						t.Fatal("attachment click did not open shared dialog")
 					}
-					page := v.Painter.DetailDocument(u.output.Pages[0].DetailPage, nil, nil, 80)
+					page := v.Painter.DetailDocument(u.Dialog.Pages[0].DetailPage, nil, nil, 80)
 					if page.Text != textsanitize.Safe(body, false) {
 						t.Fatalf("dialog changed submitted content: got %d bytes, want %d", len(page.Text), len(body))
 					}

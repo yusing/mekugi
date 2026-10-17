@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -116,8 +118,8 @@ exit 127
 					i := len(seen)
 					seen[snippet] = true
 					block, _ := view.SnippetBlock(snippet)
-					u := &terminalUI{}
-					if block.BatchExit || !view.ClickTarget(&block, snippet, 100) || !u.openOutput(view.bind(u), snippet) || len(u.output.Pages) != 2 || u.output.Page != i {
+					u := &terminalUI{Attachment: &terminalsession.Attachment{}}
+					if block.BatchExit || !view.ClickTarget(&block, snippet, 100) || !u.openOutput(view.bind(u), snippet) || len(u.Dialog.Pages) != 2 || u.Dialog.Page != i {
 						t.Fatal("command click did not select its separate output")
 					}
 				}

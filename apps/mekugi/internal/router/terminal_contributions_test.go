@@ -21,13 +21,13 @@ func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.terminalViews = terminalsession.Views{}
 	u.ensureShell()
-	u.shell.Shell.RestorePreferences(terminalsession.Preferences{Focus: 1, DiffOpen: true}, &u.mainView)
+	terminalTest(u).Shell.RestorePreferences(terminalsession.Preferences{Focus: 1, DiffOpen: true}, &u.mainView)
 	u.review.Projection.Workspace, u.review.Projection.Coverage = "/workspace", "READY"
 	u.publishReview()
 	if err := u.testPaint(io.Discard, 160, 32); err != nil {
 		t.Fatal(err)
 	}
-	shell := u.shell
+	shell := terminalTest(u)
 	if shell.Auxiliary != nil || shell.Focus != 0 || shell.DiffOpen || shell.Layout.Diff.W != 0 || shell.Tabs[1].W != 0 {
 		t.Fatalf("absent contribution retained interaction: %+v", shell.Shell)
 	}
@@ -55,9 +55,9 @@ func TestReplayAuxiliaryAbsenceSurvivesReset(t *testing.T) {
 	start := time.Unix(1, 0)
 	p := newUIReplayPlayback(terminalsession.Views{}, owner.reviewSource, owner.presentationState, owner.conversationState, owner.observations, owner.activity, t.Context(), &playback.Source{Thread: "main", Start: start, End: start.Add(time.Second)}, 1)
 	defer p.close()
-	p.ui.shell.Focus, p.ui.shell.DiffOpen = 3, true
+	terminalTest(p.ui).Focus, terminalTest(p.ui).DiffOpen = 3, true
 	p.reset()
-	if p.ui.shell.Auxiliary != nil || p.ui.shell.RosterLabel != "" || p.ui.shell.Focus != 0 || p.ui.shell.DiffOpen {
+	if terminalTest(p.ui).Auxiliary != nil || terminalTest(p.ui).RosterLabel != "" || terminalTest(p.ui).Focus != 0 || terminalTest(p.ui).DiffOpen {
 		t.Fatal("replay recreated an absent contribution")
 	}
 	if err := p.ui.testPaint(io.Discard, 120, 24); err != nil {
@@ -71,7 +71,7 @@ func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 	u.activity = nil
 	u.clock = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local) }
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	u.startSession("main", "/workspace")
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
@@ -79,7 +79,7 @@ func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "phase": "final_answer", "text": thread + " Conversation result"}})
 	}
 	wire.Reset()
-	u.shell.Focus = 3
+	terminalTest(u).Focus = 3
 	screen := vt.NewEmulator(100, 24)
 	defer screen.Close()
 	paint := func(name, text string) {
@@ -91,17 +91,17 @@ func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 		if !strings.Contains(frame, text) {
 			t.Fatalf("Conversation missing: %s", frame)
 		}
-		if u.shell.Layout.Roster.H != 0 || u.shell.Tabs[3].W != 0 || len(u.agents.Hits) != 0 || strings.Contains(u.shell.nativeStatus(), "Agents") {
+		if terminalTest(u).Layout.Roster.H != 0 || terminalTest(u).Tabs[3].W != 0 || len(u.agents.Hits) != 0 || strings.Contains(terminalTest(u).nativeStatus(), "Agents") {
 			t.Fatal("absent roster retained rows or input targets")
 		}
 		assertNativeUISnapshot(t, name, strings.Split(frame, "\n"))
 	}
 	paint("native-no-roster-main", "main Conversation result")
-	if u.shell.Focus != 0 {
+	if terminalTest(u).Focus != 0 {
 		t.Fatal("unavailable persisted focus was not clamped")
 	}
 	for _, key := range []byte("\x023retained draft") {
-		if err := u.shell.key(key); err != nil {
+		if err := terminalTest(u).key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -113,7 +113,7 @@ func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 	if !u.composerReadOnly() || u.Thread != "main" || u.Text != "retained draft" {
 		t.Fatal("child display changed Main input ownership")
 	}
-	u.shell.selectNativePane(0)
+	terminalTest(u).selectNativePane(0)
 	appServerTestKeys(t, u, "\r")
 	appServerOneRequest(t, wire, "turn/start", "retained draft")
 	if u.activity != nil {
@@ -143,20 +143,20 @@ func TestNativeRosterConstructorReplacementAndReplay(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.terminalViews = runtime.Terminal
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	if len(created) != 1 || u.agents != created[0] {
 		t.Fatal("native attachment bypassed descriptor")
 	}
 	appServerTestKeys(t, u, "/clear\r")
 	req := appServerOneRequest(t, wire, "thread/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/workspace"}}}`, req.ID))
-	if len(created) != 2 || u.agents != created[1] || u.shell.agents != created[1] {
+	if len(created) != 2 || u.agents != created[1] || terminalTest(u).Agents != created[1] {
 		t.Fatal("replacement bypassed descriptor")
 	}
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
-	if u.shell.Layout.Roster.H == 0 || u.shell.Tabs[3].W == 0 {
+	if terminalTest(u).Layout.Roster.H == 0 || terminalTest(u).Tabs[3].W == 0 {
 		t.Fatal("declared roster did not reach painting")
 	}
 	p := newUIReplayPlayback(runtime.Terminal, u.reviewSource, u.presentationState, u.conversationState, u.observations, u.activity, t.Context(), replayPlaybackTestSource(), 1)

@@ -31,7 +31,7 @@ func TestDiffOutputSectionSourceSelection(t *testing.T) {
 	_, last := outputSelectionPoint(t, u, "+var answer")
 	rect := dialogFrameRect(t, outputDialogScreen(u))
 	outputSelectionDrag(u, rect.X+2, heading-1, rect.X+rect.W-3, last)
-	if got := u.output.Selection.Text(); got != source {
+	if got := u.Dialog.Selection.Text(); got != source {
 		t.Fatalf("dialog copied=%q", got)
 	}
 }

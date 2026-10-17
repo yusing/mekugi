@@ -39,12 +39,12 @@ func selectionTestUI(rows ...string) *terminalUI {
 	main.view.FeedRight, main.view.FeedRows = 40, len(rows)
 	painted := append([]string(nil), rows...)
 	painted = append(painted, "")
-	return &terminalUI{main: main, width: 40, height: len(painted), Interaction: terminalsession.Interaction{Frame: terminalsession.Frame{Width: 40, Rows: painted, Source: selectionTestSource(main)}}, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(rows)}}}}
+	return &terminalUI{main: main, Attachment: &terminalsession.Attachment{Width: 40, Height: len(painted), Interaction: terminalsession.Interaction{Frame: terminalsession.Frame{Width: 40, Rows: painted, Source: selectionTestSource(main)}}, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(rows)}}}}}
 }
 
 func selectionTestSnapshot(u *terminalUI) *terminalsession.Selection {
-	if u.output != nil {
-		return u.output.Selection
+	if u.Dialog != nil {
+		return u.Dialog.Selection
 	}
 	if u.Selection != nil {
 		return u.Selection.Selection
@@ -72,7 +72,7 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 				u.main.view.Painter.Theme = theme
 				x, y := 0, 0
 				if dialog {
-					u.width, u.height = 80, 18
+					u.Width, u.Height = 80, 18
 					u.openBlocks(u.main.view, []activityui.Block{{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.go"}}, Tail: []string{source + " // outside"}}})
 					drawOutputDialog(u)
 					x, y = outputSelectionPoint(t, u, source)
@@ -80,13 +80,13 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 				paint := func() *vt.Emulator {
 					rows := slices.Clone(u.Frame.Rows)
 					if dialog {
-						rows = make([]string, u.height)
-						u.main.prepareOutput(u)
-						u.output.Paint(rows, u.width, u.height)
+						rows = make([]string, u.Height)
+						u.main.prepareOutput(u.Attachment)
+						u.Dialog.Paint(rows, u.Width, u.Height)
 					} else {
 						u.paintSelection(rows)
 					}
-					screen := vt.NewEmulator(u.width, u.height)
+					screen := vt.NewEmulator(u.Width, u.Height)
 					t.Cleanup(func() { screen.Close() })
 					for y, row := range rows {
 						fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row)
@@ -110,7 +110,7 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 					t.Fatal("selection changed adjacent styles or copied text")
 				}
 				if dialog {
-					u.output.Selection = nil
+					u.Dialog.Selection = nil
 					for _, key := range []string{"/", "green", "\r"} {
 						u.outputKey(key)
 					}
@@ -130,7 +130,7 @@ func TestTerminalSelectionComposerCaretStyles(t *testing.T) {
 		main, _ := newAppServerTestUI()
 		main.Text, main.CursorBack = "abcdef", back
 		frame, _ := main.testMainFrame(40, 12, 0)
-		u := &terminalUI{main: main, width: 40, height: len(frame), Interaction: terminalsession.Interaction{Frame: terminalsession.Frame{Width: 40, Rows: frame}}, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(frame)}}}}
+		u := &terminalUI{main: main, Attachment: &terminalsession.Attachment{Width: 40, Height: len(frame), Interaction: terminalsession.Interaction{Frame: terminalsession.Frame{Width: 40, Rows: frame}}, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(frame)}}}}}
 		x, y := main.mainView.ComposerRect.X, main.mainView.ComposerRect.Y
 		selectionTestDrag(t, u, x, y, x+5, y)
 		u.paintSelection(frame)
@@ -232,7 +232,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				selected := selectionTestSnapshot(u)
 				action := key
 				if strings.Contains(key, "click") || key == "separator" {
-					x, y := map[string]int{"reference click": 1, "copy click": 15, "clear click": 28, "separator": 12}[key], u.height-1
+					x, y := map[string]int{"reference click": 1, "copy click": 15, "clear click": 28, "separator": 12}[key], u.Height-1
 					if dialog {
 						rect := dialogFrameRect(t, outputDialogScreen(u))
 						x += rect.X + 3
@@ -263,7 +263,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 					return
 				}
 				reference := action == "r" || action == "R"
-				if selectionTestSnapshot(u) != nil || dialog && (u.output == nil) != reference {
+				if selectionTestSnapshot(u) != nil || dialog && (u.Dialog == nil) != reference {
 					t.Fatal("wrong selection or dialog lifetime")
 				}
 				if reference {
@@ -316,7 +316,7 @@ func TestTerminalUISelectionResizeClears(t *testing.T) {
 		selectionTestDrag(t, u, 0, 0, 4, 0)
 		rows := append([]string(nil), u.Frame.Rows...)
 		if width {
-			u.width++
+			u.Width++
 		} else {
 			rows = append(rows, "")
 		}
@@ -350,7 +350,7 @@ func TestTerminalUISelectionReplacementKeepsCleanLinks(t *testing.T) {
 func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 	for _, question := range []bool{false, true} {
 		u := selectionTestUI("click target")
-		u.agents = activityui.NewView()
+		u.Agents = activityui.NewView()
 		u.Auxiliary = changeview.NewPane("", diffrender.TerminalTheme)
 		for _, entry := range []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "First target"}, {Seq: 2, Agent: "Main", Kind: "text", Text: "Advanced target"}} {
 			u.main.testActivity(u.main.view).appendEntry(entry, parseLiveActivity(entry))
@@ -369,14 +369,14 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 		u.paintSelection(u.Frame.Rows)
 		u.selectionMouse(0, 0, 0, true)
 		if question {
-			if u.output == nil || !strings.Contains(fmt.Sprint(u.output.Pages), "First target") || strings.Contains(fmt.Sprint(u.output.Pages), "Advanced target") {
+			if u.Dialog == nil || !strings.Contains(fmt.Sprint(u.Dialog.Pages), "First target") || strings.Contains(fmt.Sprint(u.Dialog.Pages), "Advanced target") {
 				t.Fatal("clicked an advancing question target")
 			}
 			u.outputKey("\x1b")
-			if u.output != nil || u.main.view.Offset != 0 {
+			if u.Dialog != nil || u.main.view.Offset != 0 {
 				t.Fatal("dismissing question changed transcript")
 			}
-		} else if u.output == nil || !strings.Contains(fmt.Sprint(u.output.Pages), "First target") || strings.Contains(fmt.Sprint(u.output.Pages), "Advanced target") {
+		} else if u.Dialog == nil || !strings.Contains(fmt.Sprint(u.Dialog.Pages), "First target") || strings.Contains(fmt.Sprint(u.Dialog.Pages), "Advanced target") {
 			t.Fatal("clicked an advancing snippet target")
 		}
 	}
@@ -390,7 +390,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		if activity {
 			view = u.testActivity(u.agents)
 			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
-			u.shell.DiffOpen = false
+			terminalTest(u).DiffOpen = false
 
 		}
 		applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "hello [report](https://example.com/report)"})
@@ -423,7 +423,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 			t.Fatalf("no rendered link (activity=%v): %s", activity, screen.String())
 		}
 		for _, end := range []string{"M", "m"} {
-			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x+1, y+1, end)); err != nil {
+			if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x+1, y+1, end)); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -439,7 +439,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 			t.Fatal("clipboard replayed on repaint")
 		}
 		for _, event := range []string{fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1), fmt.Sprintf("\x1b[<32;%d;%dM", x+6, y+1), fmt.Sprintf("\x1b[<0;%d;%dm", x+6, y+1)} {
-			if err := u.shell.mouse(event); err != nil {
+			if err := terminalTest(u).mouse(event); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -447,7 +447,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		if !strings.Contains(screen.String(), "r reference · ctrl+c copy · esc clear") {
 			t.Fatalf("missing menu: %s", screen.String())
 		}
-		if err := u.shell.mouse("\x1b[<0;2;30M"); err != nil {
+		if err := terminalTest(u).mouse("\x1b[<0;2;30M"); err != nil {
 			t.Fatal(err)
 		}
 		mention := "[Selected message] "
@@ -471,21 +471,21 @@ func TestTerminalUISelectionComposer(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := u.mainView.ComposerRect
-		r.X += u.shell.Layout.Main.X
-		r.Y += u.shell.Layout.Main.Y
-		selectionTestDrag(t, u.shell, r.X, r.Y, r.X+3, r.Y)
-		if got := u.shell.Selection.Text(); got != "你好" {
+		r.X += terminalTest(u).Layout.Main.X
+		r.Y += terminalTest(u).Layout.Main.Y
+		selectionTestDrag(t, terminalTest(u), r.X, r.Y, r.X+3, r.Y)
+		if got := terminalTest(u).Selection.Text(); got != "你好" {
 			t.Fatalf("size %v: selected %q", size, got)
 		}
-		if err := u.shell.key(3); err != nil {
+		if err := terminalTest(u).key(3); err != nil {
 			t.Fatal(err)
 		}
 		if u.Text != "你好abc\nsecond" || u.quitRequested {
 			t.Fatal("copy changed draft or quit")
 		}
 		want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("你好")) + "\x07"
-		if u.shell.Frame.Clipboard != want {
-			t.Fatalf("clipboard %q", u.shell.Frame.Clipboard)
+		if terminalTest(u).Frame.Clipboard != want {
+			t.Fatalf("clipboard %q", terminalTest(u).Frame.Clipboard)
 		}
 	}
 }
@@ -507,14 +507,14 @@ func TestTerminalUISelectionComposerReplacesTranscript(t *testing.T) {
 	u.insertDraft("first\nsecond\nthird\nfourth\nfifth")
 	paint()
 	r := u.mainView.ComposerRect
-	r.X += u.shell.Layout.Main.X
-	r.Y += u.shell.Layout.Main.Y
-	selectionTestDrag(t, u.shell, r.X, r.Y, r.X+5, r.Y+1)
-	if got := u.shell.Selection.Text(); got != "first\nsecond" {
+	r.X += terminalTest(u).Layout.Main.X
+	r.Y += terminalTest(u).Layout.Main.Y
+	selectionTestDrag(t, terminalTest(u), r.X, r.Y, r.X+5, r.Y+1)
+	if got := terminalTest(u).Selection.Text(); got != "first\nsecond" {
 		t.Fatalf("selected %q", got)
 	}
-	u.shell.selectionMouse(0, r.X, r.Y, false)
-	u.shell.selectionMouse(0, r.X, r.Y, true)
+	terminalTest(u).selectionMouse(0, r.X, r.Y, false)
+	terminalTest(u).selectionMouse(0, r.X, r.Y, true)
 	if u.view.FlashQuestion != 0 {
 		t.Fatal("composer click activated stale transcript question")
 	}

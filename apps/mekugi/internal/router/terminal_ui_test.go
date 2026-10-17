@@ -21,19 +21,19 @@ import (
 func TestTerminalUIBatchKeepsSettlingTime(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	p := previewmodel.Preview{ID: "edit", Caller: "/root", Workspace: t.TempDir(), Status: previewmodel.PreviewEdit, Input: "source"}
 	u.preview(p, false)
-	revealNativeDock(u.shell)
+	revealNativeDock(terminalTest(u))
 	p.Complete = true
 	u.preview(p, false)
-	revealNativeDock(u.shell)
+	revealNativeDock(terminalTest(u))
 	now := time.Now()
-	if !u.shell.liveDock.Tick(now) || len(u.shell.liveDock.Order) != 1 {
+	if !terminalTest(u).Live.Tick(now) || len(terminalTest(u).Live.Order) != 1 {
 		t.Fatal("completed batch did not wait for another edit")
 	}
-	u.shell.liveDock.Tick(now.Add(previewview.CompletionHold + time.Millisecond))
-	if len(u.shell.liveDock.Order) != 0 {
+	terminalTest(u).Live.Tick(now.Add(previewview.CompletionHold + time.Millisecond))
+	if len(terminalTest(u).Live.Order) != 0 {
 		t.Fatal("settled batch did not close")
 	}
 }
@@ -117,8 +117,8 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 				t.Run(fmt.Sprintf("child=%t/diff=%t/caller=%s", child, saved, caller), func(t *testing.T) {
 					u, _ := newAppServerTestUI()
 					u.ensureShell()
-					defer u.shell.diffScreen.Close()
-					u.shell.DiffOpen = saved
+					defer terminalTest(u).Diff.Close()
+					terminalTest(u).DiffOpen = saved
 
 					if child {
 						u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
@@ -134,12 +134,12 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					assertCollapsed := func() {
 						t.Helper()
 						paint()
-						content := u.shell.Layout.Main
+						content := terminalTest(u).Layout.Main
 						if saved {
-							content = u.shell.Layout.Diff
+							content = terminalTest(u).Layout.Diff
 						}
-						if u.shell.Layout.Live.H != 0 || content.Y != 1 || content.H != u.shell.Layout.Main.H || strings.Contains(screen.String(), "LIVE") || strings.Contains(screen.String(), "3 Live") {
-							t.Fatalf("empty Live area did not collapse: %+v\n%s", u.shell.Layout, screen.String())
+						if terminalTest(u).Layout.Live.H != 0 || content.Y != 1 || content.H != terminalTest(u).Layout.Main.H || strings.Contains(screen.String(), "LIVE") || strings.Contains(screen.String(), "3 Live") {
+							t.Fatalf("empty Live area did not collapse: %+v\n%s", terminalTest(u).Layout, screen.String())
 						}
 					}
 					assertCollapsed()
@@ -147,22 +147,22 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					preview.Workspace = t.TempDir()
 					preview = projectStockPatchPreview(t.Context(), preview.Workspace, preview)
 					u.preview(preview, false)
-					revealNativeDock(u.shell)
+					revealNativeDock(terminalTest(u))
 					preview.Complete = true
 					u.preview(preview, false)
 					now := time.Now()
-					u.shell.liveDock.Tick(now.Add(previewview.CompletionHold - time.Millisecond))
+					terminalTest(u).Live.Tick(now.Add(previewview.CompletionHold - time.Millisecond))
 					paint()
-					if len(u.shell.liveDock.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root") {
+					if len(terminalTest(u).Live.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root") {
 						t.Fatal("retained Live batch did not respect the owning pane")
 					}
-					u.shell.liveDock.Tick(now.Add(previewview.CompletionHold))
+					terminalTest(u).Live.Tick(now.Add(previewview.CompletionHold))
 					assertCollapsed()
 					preview.Complete = false
 					u.preview(preview, false)
-					revealNativeDock(u.shell)
+					revealNativeDock(terminalTest(u))
 					paint()
-					if len(u.shell.liveDock.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root") {
+					if len(terminalTest(u).Live.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root") {
 						t.Fatal("new batch did not respect the owning pane")
 					}
 				})
@@ -176,13 +176,13 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 		t.Run(map[bool]string{false: "main", true: "activity"}[activity], func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
-			defer u.shell.diffScreen.Close()
+			defer terminalTest(u).Diff.Close()
 			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}
 			view, caller := u.testActivity(u.view), "/root"
 			if activity {
 				view, caller = u.testActivity(u.agents), "/root/worker"
 				view.setDisplayFilter(true, caller)
-				u.shell.Focus = 0
+				terminalTest(u).Focus = 0
 			}
 			for i := range 80 {
 				text := "transcript row"
@@ -210,10 +210,10 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			assertFollow(paint(120, 40))
 			workspace := t.TempDir()
 			u.preview(projectStockPatchPreview(t.Context(), workspace, previewmodel.Preview{ID: "edit", Workspace: workspace, Caller: caller, Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: follow.txt\n+live content\n*** End Patch"}), false)
-			revealNativeDock(u.shell)
+			revealNativeDock(terminalTest(u))
 			assertLiveFollow := func(frame string) {
 				t.Helper()
-				body := strings.Join(strings.Split(frame, "\n")[:u.shell.Layout.Roster.Y], "\n")
+				body := strings.Join(strings.Split(frame, "\n")[:terminalTest(u).Layout.Roster.Y], "\n")
 				if !view.Following || strings.Contains(body, "LATEST_TRANSCRIPT") {
 					t.Fatalf("live replacement lost follow or retained transcript:\n%s", frame)
 				}
@@ -221,15 +221,15 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			assertLiveFollow(paint(120, 40))
 			u.childSource.Agents[0].Responding = false
 			assertLiveFollow(paint(120, 40))
-			u.shell.DiffOpen = true
+			terminalTest(u).DiffOpen = true
 			paint(120, 40)
 			if !view.Following {
 				t.Fatal("opening Diff paused transcript")
 			}
-			u.shell.DiffOpen = false
+			terminalTest(u).DiffOpen = false
 			assertLiveFollow(paint(140, 32))
 			u.preview(previewmodel.Preview{ID: "edit", Workspace: workspace}, false)
-			revealNativeDock(u.shell)
+			revealNativeDock(terminalTest(u))
 			assertFollow(paint(140, 32))
 			view.ScrollKey(terminalui.PaneWheelDown)
 			assertFollow(paint(140, 32))
@@ -240,7 +240,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			}
 			offset := view.Offset
 			if activity {
-				if err := u.shell.key('r'); err != nil {
+				if err := terminalTest(u).key('r'); err != nil {
 					t.Fatal(err)
 				}
 				if view.Following || view.Offset != offset {
@@ -255,11 +255,11 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			if view.Following || view.Offset != offset {
 				t.Fatal("new output moved manual scrollback")
 			}
-			if err := u.shell.key(27); err != nil {
+			if err := terminalTest(u).key(27); err != nil {
 				t.Fatal(err)
 			}
-			ageTerminalEscape(u.shell)
-			if err := u.shell.flushEscape(); err != nil {
+			ageTerminalEscape(terminalTest(u))
+			if err := terminalTest(u).flushEscape(); err != nil {
 				t.Fatal(err)
 			}
 			assertFollow(paint(140, 32))
@@ -272,7 +272,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 				view.ScrollKey(terminalui.PaneWheelDown)
 			}
 			assertFollow(paint(140, 32))
-			u.shell.openEntry(view.View, 1)
+			terminalTest(u).openEntry(view.View, 1)
 			if !view.Following {
 				t.Fatal("opening a snippet paused follow")
 			}
@@ -281,5 +281,5 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 }
 
 func (u *terminalUI) nativeStatus() string {
-	return u.Shell.Status(u.frameInput().Status(), u.width, u.height)
+	return u.Shell.Status(u.frameInput().Status(), u.Width, u.Height)
 }

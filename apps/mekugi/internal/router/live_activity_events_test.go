@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -102,11 +104,11 @@ func TestLiveActivityDetailsOnlyForHiddenContent(t *testing.T) {
 					t.Fatal("fully shown content underlined")
 				}
 				if tc.details {
-					u := &terminalUI{}
+					u := &terminalUI{Attachment: &terminalsession.Attachment{}}
 					if !u.openOutput(v.bind(u), target) {
 						t.Fatal("hidden content not reachable")
 					}
-					page := v.Painter.DetailDocument(u.output.Pages[0].DetailPage, nil, nil, 36)
+					page := v.Painter.DetailDocument(u.Dialog.Pages[0].DetailPage, nil, nil, 36)
 					if strings.TrimSpace(page.Text) != strings.TrimSpace(tc.text) {
 						t.Fatalf("dialog lost original content: %q", page.Text)
 					}
@@ -128,11 +130,11 @@ func TestLiveActivityClippedNarrativeRetainsDialog(t *testing.T) {
 	if len(feed.Lines) != 6 || feed.Snippets[5].Run != 1 {
 		t.Fatalf("unbounded or inaccessible Activity excerpt: %+v", feed)
 	}
-	u := &terminalUI{}
+	u := &terminalUI{Attachment: &terminalsession.Attachment{}}
 	if !u.openOutput(v.bind(u), feed.Snippets[5]) {
 		t.Fatal("excerpt did not open")
 	}
-	if got := v.Painter.DetailDocument(u.output.Pages[0].DetailPage, nil, nil, 40).Text; strings.TrimSpace(got) != strings.TrimSpace(body) {
+	if got := v.Painter.DetailDocument(u.Dialog.Pages[0].DetailPage, nil, nil, 40).Text; strings.TrimSpace(got) != strings.TrimSpace(body) {
 		t.Fatalf("lost body: %q", got)
 	}
 }
@@ -159,14 +161,14 @@ func TestLiveActivitySharedNarrativeDialogRefresh(t *testing.T) {
 		Native: &sessionpresentation.NativeItem{Thread: "child", Item: "text", Live: true, Phase: "item/agentMessage/delta"}}
 	v.appendEntry(entry, parseLiveActivity(entry))
 	feed := v.RenderFeed(40, 20)
-	u := &terminalUI{}
+	u := &terminalUI{Attachment: &terminalsession.Attachment{}}
 	if !u.openOutput(v.bind(u), feed.Snippets[5]) {
 		t.Fatal("clipped message cannot open")
 	}
 	entry.Text += "Newly streamed detail."
 	v.replaceEntry(0, entry, parseLiveActivity(entry))
-	u.main.prepareOutput(u)
-	if got := u.output.Pages[0]; got.Source != 1 || !got.Live || !strings.HasSuffix(got.Body, "Newly streamed detail.") {
+	u.main.prepareOutput(u.Attachment)
+	if got := u.Dialog.Pages[0]; got.Source != 1 || !got.Live || !strings.HasSuffix(got.Body, "Newly streamed detail.") {
 		t.Fatalf("dialog did not refresh its exact source: %+v", got)
 	}
 	if !v.Following {
@@ -202,8 +204,8 @@ func TestLiveActivityTruncatedReasoningHeading(t *testing.T) {
 						t.Fatalf("heading elision=%t, detail target=%+v", hidden, target)
 					}
 					if target.Run != 0 {
-						u := &terminalUI{}
-						if !u.openOutput(v.bind(u), target) || v.Painter.DetailDocument(u.output.Pages[0].DetailPage, nil, nil, width).Text != body {
+						u := &terminalUI{Attachment: &terminalsession.Attachment{}}
+						if !u.openOutput(v.bind(u), target) || v.Painter.DetailDocument(u.Dialog.Pages[0].DetailPage, nil, nil, width).Text != body {
 							t.Fatal("elided heading cannot open full original content")
 						}
 						v.Snippet = target

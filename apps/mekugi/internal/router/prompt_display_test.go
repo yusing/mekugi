@@ -17,11 +17,11 @@ func TestNativePromptCoveredFrameDoesNotAdmitAnswer(t *testing.T) {
 			u.startSession("main", "")
 			u.ensureShell()
 			content := []activityui.Block{{Kind: "op", Verb: "Read", Code: "retained output", Body: strings.Repeat("Content dialog\n", 30)}}
-			u.shell.openBlocks(u.view, content)
+			terminalTest(u).openBlocks(u.view, content)
 			send := func(keys string) {
 				t.Helper()
 				for _, key := range []byte(keys) {
-					if err := u.shell.key(key); err != nil {
+					if err := terminalTest(u).key(key); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -43,7 +43,7 @@ func TestNativePromptCoveredFrameDoesNotAdmitAnswer(t *testing.T) {
 			}
 			// A close and answer can be drained before the next frame tick.
 			send("q\r")
-			if u.shell.output != nil {
+			if terminalTest(u).Dialog != nil {
 				t.Fatal("close key did not dismiss the dialog")
 			}
 			if input.Len() != 0 {
@@ -58,7 +58,7 @@ func TestNativePromptCoveredFrameDoesNotAdmitAnswer(t *testing.T) {
 				t.Fatalf("reopened prompt is not visible:\n%s", frame)
 			}
 			// A later overlay does not revoke readiness from an already seen prompt.
-			u.shell.openBlocks(u.view, content)
+			terminalTest(u).openBlocks(u.view, content)
 			if err := u.testPaint(screen, 80, 20); err != nil {
 				t.Fatal(err)
 			}
@@ -92,13 +92,13 @@ func TestNativePromptSelectionVisibility(t *testing.T) {
 				if covering {
 					x, y = u.view.FeedLeft+1, u.view.FeedTop
 				}
-				x, y = x+u.shell.Layout.Main.X+1, y+u.shell.Layout.Main.Y+1
+				x, y = x+terminalTest(u).Layout.Main.X+1, y+terminalTest(u).Layout.Main.Y+1
 				for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<32;%d;%dM\x1b[<0;%d;%dm", x, y, x+3, y, x+3, y)) {
-					if err := u.shell.key(key); err != nil {
+					if err := terminalTest(u).key(key); err != nil {
 						t.Fatal(err)
 					}
 				}
-				if u.shell.Selection == nil || !u.shell.Selection.Moved() {
+				if terminalTest(u).Selection == nil || !terminalTest(u).Selection.Moved() {
 					t.Fatal("pointer drag did not freeze the preceding frame")
 				}
 				if err := u.testPaint(screen, 80, 20); err != nil {
@@ -111,7 +111,7 @@ func TestNativePromptSelectionVisibility(t *testing.T) {
 				if visible := strings.Contains(screen.String(), title); visible == covering {
 					t.Fatalf("prompt visibility=%t with covering=%t:\n%s", visible, covering, screen.String())
 				}
-				if err := u.shell.key('\r'); err != nil {
+				if err := terminalTest(u).key('\r'); err != nil {
 					t.Fatal(err)
 				}
 				if answered := strings.Contains(input.String(), `"id":"selected-prompt"`); answered == covering {
@@ -135,9 +135,9 @@ func TestUISnapshotNativePromptsTinyFrame(t *testing.T) {
 			if err := u.testPaint(screen, 80, height); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { u.shell.diffScreen.Close() })
-			if u.mainView.ComposerRect.H < 1 || u.mainView.ComposerRect.Y+u.mainView.ComposerRect.H > u.shell.Layout.Main.H {
-				t.Fatalf("prompts displaced the composer: composer=%+v Main=%+v", u.mainView.ComposerRect, u.shell.Layout.Main)
+			t.Cleanup(func() { terminalTest(u).Diff.Close() })
+			if u.mainView.ComposerRect.H < 1 || u.mainView.ComposerRect.Y+u.mainView.ComposerRect.H > terminalTest(u).Layout.Main.H {
+				t.Fatalf("prompts displaced the composer: composer=%+v Main=%+v", u.mainView.ComposerRect, terminalTest(u).Layout.Main)
 			}
 			if len(u.pendingApprovals()) != 1 || u.questionCount() != 1 {
 				t.Fatal("a short terminal discarded pending prompts")

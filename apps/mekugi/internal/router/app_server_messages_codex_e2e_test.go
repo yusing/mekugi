@@ -4,6 +4,7 @@ package router
 
 import (
 	"context"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -69,7 +70,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 	setTestAppServerIntegration(u, proxy)
 	u.ensureShell()
 
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	if err := u.request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}

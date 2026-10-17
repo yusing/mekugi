@@ -176,11 +176,11 @@ func TestTerminalUINotificationFocusReports(t *testing.T) {
 		t.Run(fmt.Sprint(pane), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			notificationTestOutput(t, u)
-			u.shell.Focus = pane
+			terminalTest(u).Focus = pane
 			send := func(s string) {
 				t.Helper()
 				for i := range len(s) {
-					if err := u.shell.key(s[i]); err != nil {
+					if err := terminalTest(u).key(s[i]); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -190,11 +190,11 @@ func TestTerminalUINotificationFocusReports(t *testing.T) {
 				t.Fatal("focus-in not consumed")
 			}
 			send("\x1b[O")
-			if u.notifications.focused || u.Text != "" || u.shell.Focus != pane || u.shell.Decoder.Pending() {
+			if u.notifications.focused || u.Text != "" || terminalTest(u).Focus != pane || terminalTest(u).Decoder.Pending() {
 				t.Fatal("focus report leaked into pane input")
 			}
 			send("\x1b[200~\x1b[I\x1b[201~")
-			if u.notifications.focused || u.shell.Decoder.Pasting() {
+			if u.notifications.focused || terminalTest(u).Decoder.Pasting() {
 				t.Fatal("paste was interpreted as focus report or left open")
 			}
 			send("\x1b[I")

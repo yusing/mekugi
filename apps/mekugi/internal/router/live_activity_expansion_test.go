@@ -55,26 +55,26 @@ func TestNativeUIExpansionFocus(t *testing.T) {
 	u.ensureShell()
 	u.Text = "Keep this draft"
 	for _, focus := range []int{0, 2} {
-		u.shell.Focus = 0
+		terminalTest(u).Focus = 0
 		u.testActivity(u.agents).setDisplayFilter(focus == 2, "/root/worker")
 		view := u.testActivity(u.view)
 		if focus != 0 {
 			view = u.testActivity(u.agents)
 		}
 		before := view.Expansion
-		if err := u.shell.key(5); err != nil {
+		if err := terminalTest(u).key(5); err != nil {
 			t.Fatal(err)
 		}
-		if u.Text != "Keep this draft" || u.shell.Focus != 0 || view.Expansion != (before+1)%3 {
+		if u.Text != "Keep this draft" || terminalTest(u).Focus != 0 || view.Expansion != (before+1)%3 {
 			t.Fatal("Ctrl+E changed the draft, focus or wrong pane")
 		}
-		if !strings.Contains(ansi.Strip(u.shell.nativeStatus()), "^B 1-3 views") {
+		if !strings.Contains(ansi.Strip(terminalTest(u).nativeStatus()), "^B 1-3 views") {
 			t.Fatal("pane hint is incorrect")
 		}
 	}
 	playback := uiReplayPlayback{ui: u}
 	for _, focus := range []int{0, 2} {
-		u.shell.Focus = 0
+		terminalTest(u).Focus = 0
 		u.testActivity(u.agents).setDisplayFilter(focus == 2, "/root/worker")
 		view := u.testActivity(u.view)
 		if focus != 0 {

@@ -103,27 +103,27 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	clicked := false
 	for row, target := range v.FeedQuestions {
 		if target == 1 {
-			x := u.shell.Layout.Main.X + v.FeedLeft + 2
-			y := u.shell.Layout.Main.Y + v.FeedTop + row
-			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
+			x := terminalTest(u).Layout.Main.X + v.FeedLeft + 2
+			y := terminalTest(u).Layout.Main.Y + v.FeedTop + row
+			if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 				t.Fatal(err)
 			}
-			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dm", x, y)); err != nil {
+			if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dm", x, y)); err != nil {
 				t.Fatal(err)
 			}
 			clicked = true
 			break
 		}
 	}
-	if !clicked || u.shell.output == nil || !v.Following {
+	if !clicked || terminalTest(u).Dialog == nil || !v.Following {
 		t.Fatal("reply branch did not open a dialog while preserving follow")
 	}
 	var frame bytes.Buffer
 	if err := u.testPaint(&frame, 120, 24); err != nil || !strings.Contains(frame.String(), question) {
 		t.Fatalf("original question not visible in dialog: %v", err)
 	}
-	u.shell.outputKey("\x1b")
-	if u.shell.output != nil || !v.Following {
+	terminalTest(u).outputKey("\x1b")
+	if terminalTest(u).Dialog != nil || !v.Following {
 		t.Fatal("dialog close changed Main follow")
 	}
 	// Editing an answer after the same prompt is submitted again must retain
@@ -154,7 +154,7 @@ func TestAppServerMainRosterSummary(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	u.sessionPresentation().Status.Text = "Working"
-	u.shell.Focus = 3 // Narrow layout displays only the roster, not Main.
+	terminalTest(u).Focus = 3 // Narrow layout displays only the roster, not Main.
 	if err := u.testPaint(&bytes.Buffer{}, 80, 40); err != nil {
 		t.Fatal(err)
 	}

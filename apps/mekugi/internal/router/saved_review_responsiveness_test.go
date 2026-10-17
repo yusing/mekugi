@@ -92,8 +92,8 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 			}
 			preview := previewmodel.Preview{ID: "stream", Workspace: workspace, Thread: "blocked-child", Caller: "/root/worker", Input: "live edit", Status: "active"}
 			u.applyReview(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
-			revealNativeDock(u.shell)
-			if u.shell.liveDock.Views[preview.ID] == nil || u.review.Projection.Scope.Workspaces[workspace][preview.Thread] {
+			revealNativeDock(terminalTest(u))
+			if terminalTest(u).Live.Views[preview.ID] == nil || u.review.Projection.Scope.Workspaces[workspace][preview.Thread] {
 				t.Fatal("preview waited for retained scope hydration")
 			}
 			if err := u.finishRestoredContent(); err != nil {
@@ -132,8 +132,8 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 				if !u.admitReviewEvents(t.Context(), sub, sessionreview.Event{Kind: "preview", Preview: &preview}) {
 					t.Fatal("failed Diff forced resubscription during preview delivery")
 				}
-				revealNativeDock(u.shell)
-				if u.shell.liveDock.Views[preview.ID] == nil {
+				revealNativeDock(terminalTest(u))
+				if terminalTest(u).Live.Views[preview.ID] == nil {
 					t.Fatal("failed Diff disabled previews after editor reattachment")
 				}
 			}

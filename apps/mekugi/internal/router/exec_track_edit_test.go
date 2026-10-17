@@ -105,7 +105,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			u.execTrack = shell.hub.Observer
 			shell.hub.ui = u
 			u.ensureShell()
-			defer u.shell.diffScreen.Close()
+			defer terminalTest(u).Diff.Close()
 			u.sessionPresentation().Status.Text = "Working"
 			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -232,8 +232,8 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				}
 				assertNativeUISnapshot(t, name, rows)
 			}
-			u.shell.liveDock.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
-			if len(u.shell.liveDock.Order) != 0 || u.sessionPresentation().Status.Text != "Working" {
+			terminalTest(u).Live.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
+			if len(terminalTest(u).Live.Order) != 0 || u.sessionPresentation().Status.Text != "Working" {
 				t.Fatal("edit completion retained the dock or completed the host lifecycle")
 			}
 			master, slave, err := pty.Open()
@@ -466,8 +466,8 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			if shell == "sh" {
 				preview := waitExecScopePreview(t, auto, func(p previewmodel.Preview) bool { return len(p.Files) > 0 && !p.Complete })
 				u.preview(preview, false)
-				revealNativeDock(u.shell)
-				if u.shell.liveDock.Live() == 0 {
+				revealNativeDock(terminalTest(u))
+				if terminalTest(u).Live.Live() == 0 {
 					t.Fatal("source preview did not open before native completion")
 				}
 			}
@@ -495,22 +495,22 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							if !streamDone || !receiptDone {
 								continue
 							}
-							u.shell.liveDock.Tick(time.Now().Add(previewview.CompletionHold + time.Millisecond))
+							terminalTest(u).Live.Tick(time.Now().Add(previewview.CompletionHold + time.Millisecond))
 							screen := vt.NewEmulator(100, 30)
 							defer screen.Close()
 							if err := u.testPaint(screen, 100, 30); err != nil {
 								t.Fatal(err)
 							}
-							if len(u.shell.liveDock.Order) != 0 || strings.Contains(screen.String(), "LIVE ·") {
+							if len(terminalTest(u).Live.Order) != 0 || strings.Contains(screen.String(), "LIVE ·") {
 								t.Fatal("completed native command retained the live dock")
 							}
 							for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
 								for _, entry := range view.Entries {
 									if entry.Source.Native != nil && entry.Source.Native.Item == "edit" {
-										if !u.shell.openActivityEdit(view.bind(u.shell), entry.Source.Seq, "source.go") || !strings.Contains(u.shell.output.Pages[0].Code, "+package p; var B=2") {
+										if !terminalTest(u).openActivityEdit(view.bind(terminalTest(u)), entry.Source.Seq, "source.go") || !strings.Contains(terminalTest(u).Dialog.Pages[0].Code, "+package p; var B=2") {
 											t.Fatal("completed shell edit waited for the next cell or sibling exit to become clickable")
 										}
-										u.shell.outputKey("\x1b")
+										terminalTest(u).outputKey("\x1b")
 									}
 								}
 							}

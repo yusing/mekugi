@@ -48,7 +48,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 			for range liveActivityFeedLimit {
 				view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Agent: owner, Kind: "text", Text: "note"}}})
 			}
-			u.shell.Focus = 3
+			terminalTest(u).Focus = 3
 			screen := vt.NewEmulator(120, 28)
 			defer screen.Close()
 			if err := u.testPaint(screen, 120, 28); err != nil {
@@ -80,7 +80,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 				{"\x1b[O", false},
 			} {
 				for _, key := range []byte(hover.event) {
-					if err := u.shell.key(key); err != nil {
+					if err := terminalTest(u).key(key); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -97,11 +97,11 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 				}
 			}
 			for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", x+1, y+1, x+1, y+1)) {
-				if err := u.shell.key(key); err != nil {
+				if err := terminalTest(u).key(key); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if u.shell.output == nil || len(u.shell.output.Pages) != 1 || u.shell.output.Pages[0].Body != body {
+			if terminalTest(u).Dialog == nil || len(terminalTest(u).Dialog.Pages) != 1 || terminalTest(u).Dialog.Pages[0].Body != body {
 				t.Fatal("rendered count did not open the unique skill names")
 			}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "live", "item": map[string]any{"id": "reset", "type": "contextCompaction"}})

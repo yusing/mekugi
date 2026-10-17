@@ -3,12 +3,13 @@ package router
 import (
 	"errors"
 	"fmt"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -43,7 +44,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 		t.Fatal("router errors entered the transcript or missed the composer")
 	}
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
@@ -56,24 +57,24 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	if rect.W == 0 {
 		t.Fatal("router batch has no details target")
 	}
-	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", rect.X+u.shell.Layout.Main.X+1, rect.Y+u.shell.Layout.Main.Y+1)); err != nil {
+	if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", rect.X+terminalTest(u).Layout.Main.X+1, rect.Y+terminalTest(u).Layout.Main.Y+1)); err != nil {
 		t.Fatal(err)
 	}
-	if u.shell.output == nil {
+	if terminalTest(u).Dialog == nil {
 		t.Fatal("router errors did not open on click")
 	}
-	drawOutputDialog(u.shell)
-	if u.shell.output.Document.Text != before {
+	drawOutputDialog(terminalTest(u))
+	if terminalTest(u).Dialog.Document.Text != before {
 		t.Fatal("router details lost a scoped error")
 	}
 	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
-	first.finish(u.shell.Frame.Notices)
+	first.finish(terminalTest(u).Frame.Notices)
 	if len(issues.Notices.Pending()) != 4 {
 		t.Fatal("dialog acknowledged a hidden composer batch")
 	}
-	u.shell.outputKey("q")
+	terminalTest(u).outputKey("q")
 	first.finish(terminalsession.NoticeReceipt{}) // Simulate an unpainted terminal frame.
 	retry := u.applyCriticalNotices()
 	if retry == nil || len(retry.errors.Messages) != 3 || len(u.source.Entries) != 0 || u.feedback.Text != before {
@@ -82,7 +83,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
-	retry.finish(u.shell.Frame.Notices)
+	retry.finish(terminalTest(u).Frame.Notices)
 	if len(issues.Notices.Pending()) != 1 || u.applyCriticalNotices() != nil {
 		t.Fatalf("paint acknowledged unrelated root or queued duplicate: %v", issues.Notices.Pending())
 	}
@@ -199,7 +200,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			delivery := u.applyCriticalNotices()
 			claimedText := u.feedback.Text
 			u.ensureShell()
-			defer u.shell.diffScreen.Close()
+			defer terminalTest(u).Diff.Close()
 			switch state {
 			case "status":
 				u.statusPanel = u.newStatusReport()
@@ -245,7 +246,7 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 			u.issues.CleanupNotice("", "", "planning", "pending cleanup plan")
 			first := u.applyCriticalNotices()
 			u.ensureShell()
-			defer u.shell.diffScreen.Close()
+			defer terminalTest(u).Diff.Close()
 			height := 3
 			if delivered {
 				height = 12
@@ -288,13 +289,13 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	u.issues.CleanupNotice("", "", "planning", "cleanup progress")
 	delivery := u.applyCriticalNotices()
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	_, receipt := u.testDeliveredMainFrame(t, 80, 3, 0)
 	delivery.finish(receipt)
 	if pending := u.issues.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "cleanup progress") {
 		t.Fatalf("mixed batch acknowledged the wrong surface: %v", pending)
 	}
-	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.mainView.NoticeDismiss.X+u.shell.Layout.Main.X+1, u.mainView.NoticeDismiss.Y+u.shell.Layout.Main.Y+1)); err != nil {
+	if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.mainView.NoticeDismiss.X+terminalTest(u).Layout.Main.X+1, u.mainView.NoticeDismiss.Y+terminalTest(u).Layout.Main.Y+1)); err != nil {
 		t.Fatal(err)
 	}
 	retry := u.applyCriticalNotices()
@@ -335,7 +336,7 @@ func TestNativeNoticeChildFrameCannotAcknowledgeMainProgress(t *testing.T) {
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
-	delivery.finish(u.shell.Frame.Notices)
+	delivery.finish(terminalTest(u).Frame.Notices)
 	if len(u.issues.Notices.Pending()) != 1 {
 		t.Fatal("child transcript acknowledged hidden Main progress")
 	}
@@ -347,7 +348,7 @@ func TestNativeNoticeChildFrameCannotAcknowledgeMainProgress(t *testing.T) {
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
-	retry.finish(u.shell.Frame.Notices)
+	retry.finish(terminalTest(u).Frame.Notices)
 	if len(u.issues.Notices.Pending()) != 0 || len(u.source.Entries) != 1 {
 		t.Fatal("visible Main retry was lost or duplicated")
 	}

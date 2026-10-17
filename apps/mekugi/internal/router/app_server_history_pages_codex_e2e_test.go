@@ -5,6 +5,7 @@ package router
 import (
 	"context"
 	"encoding/json/jsontext"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -138,7 +139,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	baseline.agents = activityui.NewView()
 	baseline.ctx = t.Context()
 	baseline.ensureShell()
-	t.Cleanup(func() { baseline.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(baseline).Diff.Close() })
 	baseline.startSession("main", workspace)
 	baseline.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
 	projectionStarted := time.Now()
@@ -151,7 +152,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	u.ctx = t.Context()
 	u.agents = activityui.NewView()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", workspace)
 	u.startup.Thread = "main"
 	u.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})

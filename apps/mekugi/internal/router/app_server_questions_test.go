@@ -4,13 +4,14 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"io"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -66,14 +67,14 @@ func questionTestPaint(t *testing.T, u *appServerUI, width int) string {
 	if u.session.KnownCaller(u.Thread) == "" {
 		u.startSession(u.Thread, u.cwd)
 	}
-	if u.shell == nil {
+	if terminalTest(u) == nil {
 		u.ensureShell()
-		t.Cleanup(func() { u.shell.diffScreen.Close() })
+		t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	}
 	if err := u.testPaint(io.Discard, width+2, 31); err != nil {
 		t.Fatal(err)
 	}
-	return strings.Join(u.shell.Frame.Rows, "\n")
+	return strings.Join(terminalTest(u).Frame.Rows, "\n")
 }
 
 func TestNativeQuestionSyncAnswerEncoding(t *testing.T) {
@@ -535,7 +536,7 @@ func TestNativeQuestionAnswerWordNavigation(t *testing.T) {
 					questionTestSync(t, u, "words", false)
 				}
 				questionTestPaint(t, u, 80)
-				shell := &terminalUI{main: u}
+				shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
 				send := func(keys string) {
 					t.Helper()
 					for _, key := range []byte(keys) {
@@ -586,7 +587,7 @@ func TestNativeQuestionAnswerBareArrowNavigation(t *testing.T) {
 			send := func(keys string) {
 				t.Helper()
 				for _, key := range []byte(keys) {
-					if err := u.shell.key(key); err != nil {
+					if err := terminalTest(u).key(key); err != nil {
 						t.Fatal(err)
 					}
 				}

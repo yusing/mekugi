@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/charmbracelet/x/ansi"
@@ -58,20 +60,20 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 			seq, activity = entry.Source.Seq, entry.Source.ActivitySeq
 		}
 	}
-	if seq == 0 || activity == 0 || !u.shell.openActivityReply(seq) {
+	if seq == 0 || activity == 0 || !terminalTest(u).openActivityReply(seq) {
 		t.Fatalf("follow-up has no Activity target: seq=%d activity=%d", seq, activity)
 	}
-	if u.shell.output == nil {
+	if terminalTest(u).Dialog == nil {
 		t.Fatal("link did not open the follow-up in a dialog")
 	}
 	if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
-	if full := u.shell.output.Document.Text; !strings.Contains(full, "Follow last line.") {
+	if full := terminalTest(u).Dialog.Document.Text; !strings.Contains(full, "Follow last line.") {
 		t.Fatalf("dialog lost the full follow-up:\n%s", full)
 	}
-	u.shell.outputKey("\x1b")
-	if u.shell.output != nil {
+	terminalTest(u).outputKey("\x1b")
+	if terminalTest(u).Dialog != nil {
 		t.Fatal("dismissing dialog changed Activity navigation")
 	}
 }
@@ -140,9 +142,9 @@ func TestMainBatchCollapsesOutOfView(t *testing.T) {
 		t.Fatalf("a lone operation collapsed:\n%s", got)
 	}
 	row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "Searched") })
-	u := &terminalUI{}
-	if !u.openOutput(v.bind(u), feed.Snippets[row]) || len(u.output.Pages) != 3 {
-		t.Fatalf("collapsed batch did not open its operations in the dialog: %+v", u.output)
+	u := &terminalUI{Attachment: &terminalsession.Attachment{}}
+	if !u.openOutput(v.bind(u), feed.Snippets[row]) || len(u.Dialog.Pages) != 3 {
+		t.Fatalf("collapsed batch did not open its operations in the dialog: %+v", u.Dialog)
 	}
 }
 
@@ -215,19 +217,19 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 				if x := strings.Index(row, "Searched 2 patterns"); x >= 0 {
 					x = ansi.StringWidth(row[:x])
 					for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", x+1, y+1, x+1, y+1)) {
-						if err := u.shell.key(key); err != nil {
+						if err := terminalTest(u).key(key); err != nil {
 							t.Fatal(err)
 						}
 					}
 					break
 				}
 			}
-			if u.shell.output == nil || len(u.shell.output.Pages) != 6 ||
-				!slices.ContainsFunc(u.shell.output.Pages, func(b sessionpresentation.DetailItem) bool { return b.ExitCode == 2 }) ||
-				!slices.ContainsFunc(u.shell.output.Pages, func(b sessionpresentation.DetailItem) bool {
+			if terminalTest(u).Dialog == nil || len(terminalTest(u).Dialog.Pages) != 6 ||
+				!slices.ContainsFunc(terminalTest(u).Dialog.Pages, func(b sessionpresentation.DetailItem) bool { return b.ExitCode == 2 }) ||
+				!slices.ContainsFunc(terminalTest(u).Dialog.Pages, func(b sessionpresentation.DetailItem) bool {
 					return b.Lang == "diff" && strings.Contains(b.Code, "+new")
 				}) ||
-				!slices.ContainsFunc(u.shell.output.Pages, func(b sessionpresentation.DetailItem) bool {
+				!slices.ContainsFunc(terminalTest(u).Dialog.Pages, func(b sessionpresentation.DetailItem) bool {
 					return b.Lang == "diff" && strings.Contains(b.Code, "+other")
 				}) {
 				t.Fatal("rendered batch click did not open failed-command and edit details")

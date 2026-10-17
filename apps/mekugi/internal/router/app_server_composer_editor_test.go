@@ -112,19 +112,19 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 	u.ctx = ctx
 	u.Text = "original"
 	u.ensureShell()
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	path := filepath.Join(dir, "selected ' $(touch injected).txt")
 	if selectedFile {
 		if err := os.WriteFile(path, []byte("original file"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		c := savedPane(u.shell)
+		c := savedPane(terminalTest(u))
 		c.SetWorkspace(dir)
 		c.Update((presentation.Publication{}).With([]presentation.File{{Path: path, Chunks: []presentation.Chunk{
 			liveDiffCapture("selected", path, 1, "before\n", "original file\n", presentation.Origin{}),
 		}}}), "")
 		c.Key("s")
-		u.shell.Focus, u.shell.DiffOpen = 1, true
+		terminalTest(u).Focus, terminalTest(u).DiffOpen = 1, true
 	}
 	done := make(chan error, 1)
 	go func() {
@@ -134,7 +134,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 			}
 			select {
 			case key := <-keys:
-				return u.shell.key(key)
+				return terminalTest(u).key(key)
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -172,7 +172,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 			}
 			select {
 			case key := <-keys:
-				return u.shell.key(key)
+				return terminalTest(u).key(key)
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -232,8 +232,8 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 	}
 	if selectedFile {
 		data, err := os.ReadFile(path)
-		if err != nil || string(data) != "edited from terminal" || u.Text != "original" || u.shell.Focus != 1 || savedPane(u.shell).EditorPath() != path {
-			t.Fatalf("file=%q draft=%q focus=%d error=%v", data, u.Text, u.shell.Focus, err)
+		if err != nil || string(data) != "edited from terminal" || u.Text != "original" || terminalTest(u).Focus != 1 || savedPane(terminalTest(u)).EditorPath() != path {
+			t.Fatalf("file=%q draft=%q focus=%d error=%v", data, u.Text, terminalTest(u).Focus, err)
 		}
 	} else if u.Text != "edited from terminalx" {
 		t.Fatalf("draft=%q", u.Text)
@@ -260,7 +260,7 @@ func TestAppServerComposerEditorFailurePreservesRecovery(t *testing.T) {
 	if err := u.testPaint(io.Discard, 120, 30); err != nil {
 		t.Fatal(err)
 	}
-	defer u.shell.diffScreen.Close()
+	defer terminalTest(u).Diff.Close()
 	u.openComposerEditor(editorTestIntent(u), output, output)
 	if u.Text != "original" || !u.feedback.Alert {
 		t.Fatalf("editor failure: draft=%q notice=%q", u.Text, u.feedback.Text)
