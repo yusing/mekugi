@@ -23,16 +23,18 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
 	var pane previewview.PreviewPane
-	baseline := liveDiffPreviewWorker{ctx: t.Context(), kind: applyPatchToolName}
-	previous, _ := baseline.project("*** Begin Patch\n*** Add File: previous.txt\n+PREVIOUS DIFF\n*** End Patch\n", workspace, true)
+	baselineContext := t.Context()
+	baselineProject := previewProjector(baselineContext, applyPatchToolName)
+	previous, _ := baselineProject("*** Begin Patch\n*** Add File: previous.txt\n+PREVIOUS DIFF\n*** End Patch\n", workspace, true)
 	previous.ID, previous.Workspace, previous.Thread, previous.Complete = "baseline", workspace, "root", true
 	pane.Update(previous)
 	for index, fixture := range previewBoundaryCases() {
-		worker := liveDiffPreviewWorker{ctx: t.Context(), kind: fixture.Kind}
+		previewContext := t.Context()
+		previewProject := previewProjector(previewContext, fixture.Kind)
 		var input string
 		for phase, checkpoint := range fixture.Steps {
 			input += checkpoint.Delta
-			preview, recognized := worker.project(input, workspace, false)
+			preview, recognized := previewProject(input, workspace, false)
 			if !recognized && phase != 0 {
 				t.Fatalf("%s step %d: input was not an edit", fixture.Name, phase+1)
 			}
@@ -68,7 +70,7 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 		if !strings.HasPrefix(fixture.Final, input) {
 			t.Fatalf("%s deltas are not a prefix of final input", fixture.Name)
 		}
-		previous, _ = worker.project(fixture.Final, workspace, true)
+		previous, _ = previewProject(fixture.Final, workspace, true)
 		previous.ID, previous.Workspace, previous.Thread, previous.Complete = fmt.Sprint(index), workspace, "root", true
 		pane.Update(previous)
 	}

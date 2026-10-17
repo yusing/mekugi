@@ -2,7 +2,6 @@ package router
 
 import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-	"github.com/yusing/mekugi/modules/livepreview/projection"
 )
 
 // Prime the final preview with the bounded baseline captured before the host
@@ -16,15 +15,15 @@ func (t *mekugiResponseTransform) primePreviewSources(itemID string, patches []c
 	for _, patch := range patches {
 		for _, file := range patch.Files {
 			if file.Error == "" {
-				projection.Prime(worker.ctx, changecapture.ReadPatchFile, file.BeforePath, file.Before, file.Exists)
+				worker.Prime(file.BeforePath, file.Before, file.Exists)
 			}
 			if file.AfterPath != file.BeforePath {
 				if file.BeforePath == "" {
 					if file.Error == "" {
-						projection.Prime(worker.ctx, changecapture.ReadPatchFile, file.AfterPath, file.Before, file.Exists)
+						worker.Prime(file.AfterPath, file.Before, file.Exists)
 					}
 				} else if file.TargetError == "" {
-					projection.Prime(worker.ctx, changecapture.ReadPatchFile, file.AfterPath, file.TargetBefore, file.TargetExists)
+					worker.Prime(file.AfterPath, file.TargetBefore, file.TargetExists)
 				}
 			}
 		}

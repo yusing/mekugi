@@ -166,6 +166,11 @@ Literal bindings and supported Promise batches can supply preview candidates;
 continuation correlation additionally requires the original result metadata.
 Output-only projections are therefore insufficient for that correlation.
 
+Completed literal patch arguments also supply pre-execution capture candidates,
+including immutable top-level bindings and ordinary JavaScript sequencing. Capture
+and preview share this recognition; unfinished string fragments are display-only
+and remain with the preview module.
+
 These candidates establish neither execution nor success. Host observations and
 retained filesystem evidence remain authoritative; UI labels and corpus findings
 belong to their consumers. Recognition never rewrites the submitted program or

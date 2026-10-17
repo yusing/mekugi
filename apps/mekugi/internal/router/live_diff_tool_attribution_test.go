@@ -34,8 +34,9 @@ func TestLiveDiffEditingToolAttribution(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			workspace := t.TempDir()
-			worker := liveDiffPreviewWorker{ctx: projection.WithSources(t.Context(), false), kind: tc.kind}
-			preview, recognized := worker.project(tc.input, workspace, true)
+			previewContext := projection.WithSources(t.Context(), false)
+			previewProject := previewProjector(previewContext, tc.kind)
+			preview, recognized := previewProject(tc.input, workspace, true)
 			if preview.Tool != tc.tool || tc.tool != "" && (!recognized || len(preview.Files) != 1) {
 				t.Fatalf("attribution = %+v, recognized=%v; want %q", preview, recognized, tc.tool)
 			}
@@ -54,21 +55,21 @@ func TestLiveDiffNestedToolAttributionSurvivesStreamingCompletion(t *testing.T) 
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", "exec")
-	t.Cleanup(worker.stop)
+	t.Cleanup(worker.Stop)
 	command := "cat >target.txt <<'END'\nfirst\nsecond\nEND\n"
 	input := "text(await tools.exec_command(" + string(responses.MustMarshalJSON(map[string]string{"cmd": command})) + "));"
 	point := strings.Index(input, "second")
-	worker.appendDelta(input[:point])
+	worker.Append(input[:point])
 	live := waitLiveDiffWorkerPreview(t, broker, sub, func(p previewmodel.Preview) bool { return len(p.Files) == 1 })
 	if live.Tool != "cat" || live.Complete {
 		t.Fatalf("stream attributed to executor: %+v", live)
 	}
-	worker.finish(input)
+	worker.Finish(input)
 	final := waitLiveDiffWorkerPreview(t, broker, sub, func(p previewmodel.Preview) bool { return p.Complete })
 	if final.Tool != "cat" || len(final.Files) != 1 || !strings.Contains(final.Files[0].Diff, "+second") {
 		t.Fatalf("completed frame lost editor/content: %+v", final)
 	}
-	<-worker.done
+	<-worker.Done()
 	if _, err := os.Stat(filepath.Join(workspace, "target.txt")); !os.IsNotExist(err) {
 		t.Fatalf("preview executed edit: %v", err)
 	}

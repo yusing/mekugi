@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -94,14 +96,14 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeEdit(t *testing.T)
 		t.Fatalf("final edit preview = %+v", complete)
 	}
 	select {
-	case <-worker.done:
+	case <-worker.Done():
 	case <-time.After(5 * time.Second):
 		t.Fatal("final preview worker did not finish")
 	}
 
 	// A late delta or an already-running progress pass must not replace the
 	// completed snapshot with a live, truncated version.
-	worker.appendDelta(" late update")
+	worker.Append(" late update")
 	_, active := currentLivePreview(broker, complete.ID)
 	if active {
 		t.Fatal("completed preview was resurrected as a live preview")
@@ -197,9 +199,9 @@ func TestLiveDiffInputOverflowAfterPartialPreviewDiscardsActiveState(t *testing.
 	if worker == nil {
 		t.Fatal("exec stream has no preview worker")
 	}
-	worker.appendDelta(strings.Repeat("x", (256<<10)+1))
+	worker.Append(strings.Repeat("x", (256<<10)+1))
 	waitLiveDiffWorkerDone(t, worker)
-	worker.stop()
+	worker.Stop()
 	transform.Close()
 	if liveDiffBrokerHasActivePreview(broker, partial.ID) {
 		t.Fatal("overflowed preview remained in the broker's active set after worker exit")
@@ -253,10 +255,10 @@ func liveDiffBrokerHasActivePreview(broker *previewmodel.Session, id string) boo
 	return active
 }
 
-func waitLiveDiffWorkerDone(t *testing.T, worker *liveDiffPreviewWorker) {
+func waitLiveDiffWorkerDone(t *testing.T, worker *previewbinding.Stream) {
 	t.Helper()
 	select {
-	case <-worker.done:
+	case <-worker.Done():
 	case <-time.After(5 * time.Second):
 		t.Fatal("live diff preview worker did not stop")
 	}

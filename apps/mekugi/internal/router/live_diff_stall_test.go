@@ -26,7 +26,7 @@ func TestLiveDiffCodeModeNativeSourceFollowLifecycle(t *testing.T) {
 	input := "text(await tools.exec_command({cmd:" + strconv.Quote(command) + "}));"
 	broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
 	prefix := input[:strings.Index(input, "const Source49")]
-	worker.appendDelta(prefix)
+	worker.Append(prefix)
 	partial := waitLiveDiffWorkerPreview(t, broker, sub, func(p previewmodel.Preview) bool {
 		return !p.Complete && strings.Contains(fmt.Sprint(p.Files), "+const Source48")
 	})
@@ -45,7 +45,7 @@ func TestLiveDiffCodeModeNativeSourceFollowLifecycle(t *testing.T) {
 	if !strings.Contains(paint(), "Source48") {
 		t.Fatal("partial source did not reach native renderer")
 	}
-	worker.finish(input)
+	worker.Finish(input)
 	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(p previewmodel.Preview) bool { return p.Complete })
 	u.shell.preview(complete, false)
 	if !strings.Contains(paint(), "Source79") {

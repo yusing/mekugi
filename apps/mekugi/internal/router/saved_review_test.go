@@ -238,7 +238,7 @@ func TestSavedReviewSwitchRetiresOnlyPreviewAttachment(t *testing.T) {
 	review.ResetScope()
 	review.IncludeThread("/workspace", "next", true)
 	select {
-	case <-worker.done:
+	case <-worker.Done():
 	case <-time.After(time.Second):
 		t.Fatal("retired attachment kept its input projection worker")
 	}

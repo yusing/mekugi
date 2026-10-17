@@ -137,6 +137,14 @@ retained identities, never transient edit bursts or polling. Previewing preserve
 stock inputs/results, continuations, cancellation and failed or partial outcomes
 without replaying or rewriting a tool call.
 
+The module owns each arriving source stream, its baseline cache, projection and
+paced publication. The application supplies admitted identity, the bounded patch
+reader and display timing, then forwards deltas and authoritative final input.
+Unfinished request cleanup withdraws its streams. Accepted final input can finish
+its bounded projection after transport cancellation, with publication confined to
+the original attachment. Completed literal-call recognition is shared with capture
+through the Codex binding, while unfinished recognition remains display-only.
+
 Unsupported source and failed reads cannot fabricate a diff or suppress captured
 evidence. Exhausted scope remains visible without affecting edits or retained
 inspection. Slow viewers resynchronize; source evaluation is independently bounded

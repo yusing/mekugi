@@ -580,7 +580,8 @@ func TestLiveDiffTeeHeredocPreview(t *testing.T) {
 func TestLiveDiffFileOperationsPreserveSiblingStreams(t *testing.T) {
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "a.txt"), "a\n")
-	worker := liveDiffPreviewWorker{ctx: t.Context(), kind: nativeExecCommandToolName}
+	previewContext := t.Context()
+	previewProject := previewProjector(previewContext, nativeExecCommandToolName)
 	for _, test := range []struct {
 		command string
 		want    []string
@@ -593,12 +594,12 @@ func TestLiveDiffFileOperationsPreserveSiblingStreams(t *testing.T) {
 		{"mv a.txt b.txt\ncat > sibling.txt <<'EOF'\nnew content\nEOF\n", []string{"Create sibling.txt"}},
 		{"cat > sibling.txt <<'EOF'\nnew content\nEOF\nmv a.txt b.txt\n", []string{"Create sibling.txt"}},
 	} {
-		preview, _ := worker.project(string(responses.MustMarshalJSON(map[string]string{"cmd": test.command})), workspace, false)
+		preview, _ := previewProject(string(responses.MustMarshalJSON(map[string]string{"cmd": test.command})), workspace, false)
 		if got := reviewSummary(workspace, preview.Files); !slices.Equal(got, test.want) {
 			t.Fatalf("%q stream = %q, want %q", test.command, got, test.want)
 		}
 	}
-	files, _, _, err := projection.Shell(worker.ctx, "mv a.txt b.txt\ncat > b.txt <<'EOF'\nnew content\nEOF\n", workspace, false)
+	files, _, _, err := projection.Shell(previewContext, "mv a.txt b.txt\ncat > b.txt <<'EOF'\nnew content\nEOF\n", workspace, false)
 	if len(files) != 0 || err == nil {
 		t.Fatal("a dependent write borrowed the pre-move baseline")
 	}

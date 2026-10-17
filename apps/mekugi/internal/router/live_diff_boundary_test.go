@@ -25,10 +25,11 @@ func TestLiveDiffPreviewDeltaBoundaries(t *testing.T) {
 			} else if kind == "exec" {
 				input = "await tools.apply_patch(" + strconv.Quote(patch) + ");"
 			}
-			worker := &liveDiffPreviewWorker{ctx: t.Context(), kind: kind}
+			previewContext := t.Context()
+			previewProject := previewProjector(previewContext, kind)
 			for split := 1; split <= len(input); split++ {
 				// Include trailing envelope fields as the worker does once caught up.
-				preview, _ := worker.project(input[:split], workspace, false)
+				preview, _ := previewProject(input[:split], workspace, false)
 				for _, file := range preview.Files {
 					for row := range strings.SplitSeq(file.Diff, "\n") {
 						if strings.HasPrefix(row, "+") && !strings.HasPrefix(row, "+++") && row != "+complete line" {
@@ -37,7 +38,7 @@ func TestLiveDiffPreviewDeltaBoundaries(t *testing.T) {
 					}
 				}
 			}
-			preview, _ := worker.project(input, workspace, true)
+			preview, _ := previewProject(input, workspace, true)
 			if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+unfinished tail") {
 				t.Fatalf("final unterminated content lost: %+v", preview)
 			}
@@ -88,8 +89,8 @@ func TestLiveDiffBurstRevealsStatementsSeparately(t *testing.T) {
 						input = `{"cmd":` + strconv.Quote(command)
 					}
 					worker := startLiveDiffPreview(t.Context(), broker, workspace, "root", kind)
-					t.Cleanup(worker.stop)
-					worker.appendDelta(input)
+					t.Cleanup(worker.Stop)
+					worker.Append(input)
 					first := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 						return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, source.first)
 					})
@@ -103,8 +104,8 @@ func TestLiveDiffBurstRevealsStatementsSeparately(t *testing.T) {
 					if elapsed := time.Since(firstSeen); elapsed < previewview.PreviewUnitDelay-2*previewview.PreviewFrameDelay {
 						t.Fatalf("next statement overlapped the preceding fade: %v", elapsed)
 					}
-					worker.stop()
-					<-worker.done
+					worker.Stop()
+					<-worker.Done()
 				}
 			})
 		})
@@ -141,10 +142,11 @@ func TestLiveDiffInterpreterRevealsCompleteTargetLines(t *testing.T) {
 		"python3 - <<'PY'\nfrom pathlib import Path\nPath('out.txt').write_text(\n'''first\nsecond\n''')\n",
 		"node - <<'JS'\nconst fs = require('node:fs');\nfs.writeFileSync(\n'out.txt', `first\nsecond\n`);\n",
 	} {
-		worker := &liveDiffPreviewWorker{ctx: t.Context()}
+		previewContext := t.Context()
+		previewProject := previewProjector(previewContext, "")
 		workspace := t.TempDir()
 		for split := strings.Index(command, "first"); split < len(command)-1; split++ {
-			preview, _ := worker.project(command[:split], workspace, false)
+			preview, _ := previewProject(command[:split], workspace, false)
 			for _, file := range preview.Files {
 				for row := range strings.SplitSeq(file.Diff, "\n") {
 					if strings.HasPrefix(row, "+") && !strings.HasPrefix(row, "+++") && row != "+first" && row != "+second" {
@@ -153,11 +155,11 @@ func TestLiveDiffInterpreterRevealsCompleteTargetLines(t *testing.T) {
 				}
 			}
 		}
-		first, _ := worker.project(command[:strings.Index(command, "second")], workspace, false)
+		first, _ := previewProject(command[:strings.Index(command, "second")], workspace, false)
 		if len(first.Files) != 1 || !strings.Contains(first.Files[0].Diff, "+first") {
 			t.Fatalf("target line waited for the interpreter statement to close: %+v", first)
 		}
-		preview, _ := worker.project(command, workspace, false)
+		preview, _ := previewProject(command, workspace, false)
 		if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+second") {
 			t.Fatalf("complete statement was not revealed before call completion: %+v", preview)
 		}
@@ -177,7 +179,8 @@ func TestLiveDiffSourceStatementsAcrossTransports(t *testing.T) {
 		for _, kind := range []string{applyPatchToolName, nativeExecCommandToolName, "exec"} {
 			t.Run(source.path+"/"+kind, func(t *testing.T) {
 				workspace := t.TempDir()
-				worker := liveDiffPreviewWorker{ctx: t.Context(), kind: kind}
+				previewContext := t.Context()
+				previewProject := previewProjector(previewContext, kind)
 				encode := func(body string) string {
 					if kind == applyPatchToolName {
 						return "*** Begin Patch\n*** Add File: " + source.path + "\n+" + strings.ReplaceAll(strings.TrimSuffix(body, "\n"), "\n", "\n+") + "\n"
@@ -198,16 +201,16 @@ func TestLiveDiffSourceStatementsAcrossTransports(t *testing.T) {
 						continue
 					}
 					input := encode(source.body[:end])
-					preview, _ := worker.project(input, workspace, false)
+					preview, _ := previewProject(input, workspace, false)
 					if len(preview.Files) != 0 {
 						t.Fatalf("incomplete source statement displayed: %+v", preview.Files)
 					}
-					preview, _ = worker.project(input, workspace, true)
+					preview, _ = previewProject(input, workspace, true)
 					if len(preview.Files) != 1 {
 						t.Fatalf("final partial source lost: %+v", preview)
 					}
 				}
-				preview, _ := worker.project(encode(source.body), workspace, false)
+				preview, _ := previewProject(encode(source.body), workspace, false)
 				if len(preview.Files) != 1 {
 					t.Fatalf("complete source statement held: %+v", preview)
 				}
@@ -218,19 +221,21 @@ func TestLiveDiffSourceStatementsAcrossTransports(t *testing.T) {
 
 func TestLiveDiffEmptyHeredocRetainsCompletedCard(t *testing.T) {
 	workspace := t.TempDir()
-	worker := liveDiffPreviewWorker{ctx: t.Context()}
+	previewContext := t.Context()
+	previewProject := previewProjector(previewContext, "")
+	previewPatch := previewProjector(previewContext, applyPatchToolName)
 	for _, command := range []string{"cat >next.txt", "tee next.txt"} {
 		var pane previewview.PreviewPane
-		first, _ := worker.projectStockPreview("*** Begin Patch\n*** Add File: first.txt\n+visible\n*** End Patch\n", workspace, true)
+		first, _ := previewPatch("*** Begin Patch\n*** Add File: first.txt\n+visible\n*** End Patch\n", workspace, true)
 		first.ID, first.Workspace = "first", workspace
 		pane.Update(first)
-		pending, _ := worker.project(command+" <<'EOF'\n", workspace, false)
+		pending, _ := previewProject(command+" <<'EOF'\n", workspace, false)
 		pending.ID, pending.Workspace = "next", workspace
 		pane.Update(pending)
 		if len(pane.Order) != 1 || pane.Order[0] != first.ID {
 			t.Fatalf("empty %s header replaced prior diff: %v", command, pane.Order)
 		}
-		complete, _ := worker.project(command+" <<'EOF'\nEOF\n", workspace, true)
+		complete, _ := previewProject(command+" <<'EOF'\nEOF\n", workspace, true)
 		if len(complete.Files) != 1 {
 			t.Fatalf("explicit empty %s creation lost: %+v", command, complete)
 		}
@@ -245,7 +250,8 @@ func TestLiveDiffBufferedStatementKeepsMultiFileSnapshot(t *testing.T) {
 			setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 			sub := testReview(broker).Subscribe()
 			<-sub.Events()
-			worker := liveDiffPreviewWorker{ctx: t.Context(), kind: kind}
+			previewContext := t.Context()
+			previewProject := previewProjector(previewContext, kind)
 			encode := func(tail string) string {
 				if kind == applyPatchToolName {
 					return "*** Begin Patch\n*** Add File: a.txt\n+first\n*** Add File: b.js\n+const x = 1;\n" + tail
@@ -254,7 +260,7 @@ func TestLiveDiffBufferedStatementKeepsMultiFileSnapshot(t *testing.T) {
 			}
 			var pane previewview.PreviewPane
 			for _, tail := range []string{"", "+const y = fn(\n"} {
-				preview, _ := worker.project(encode(tail), workspace, false)
+				preview, _ := previewProject(encode(tail), workspace, false)
 				preview.ID, preview.Workspace, preview.Thread = "call", workspace, "thread"
 				broker.Update(preview, false)
 				batch := testReview(broker).TakePreviews(sub)
@@ -271,38 +277,6 @@ func TestLiveDiffBufferedStatementKeepsMultiFileSnapshot(t *testing.T) {
 	}
 }
 
-func TestLiveDiffBurstRevealsOneLinePerFrame(t *testing.T) {
-	for _, encoded := range []bool{false, true} {
-		input := strings.Repeat("line\n", 20)
-		if encoded {
-			input = strconv.Quote(input)
-		}
-		var pacer liveDiffPreviewPacer
-		previous := 0
-		for range 200 {
-			next := pacer.advance(input, 1, false, encoded)
-			if next > previous {
-				unit := input[previous:next]
-				separator := "\n"
-				if encoded {
-					separator = `\n`
-				}
-				if strings.Count(unit, separator) != 1 {
-					t.Fatalf("burst emitted more than one line: %q", unit)
-				}
-			}
-			previous = next
-		}
-		want := len(input)
-		if encoded {
-			want-- // Closing quote is envelope, not another source line.
-		}
-		if previous != want {
-			t.Fatalf("burst stopped at %d, want %d", previous, want)
-		}
-	}
-}
-
 func TestLiveDiffStatementsInsideOpenBlocks(t *testing.T) {
 	for _, tc := range []struct{ path, first, partial, complete string }{
 		{"out.js", "function update() {\n  const one = 1;\n", "  const two = fn(\n", "  const two = fn(\n    2\n  );\n"},
@@ -315,10 +289,11 @@ func TestLiveDiffStatementsInsideOpenBlocks(t *testing.T) {
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			workspace := t.TempDir()
-			worker := liveDiffPreviewWorker{ctx: t.Context(), kind: applyPatchToolName}
+			previewContext := t.Context()
+			previewProject := previewProjector(previewContext, applyPatchToolName)
 			project := func(source string) previewmodel.Preview {
 				input := "*** Begin Patch\n*** Add File: " + tc.path + "\n+" + strings.ReplaceAll(strings.TrimSuffix(source, "\n"), "\n", "\n+") + "\n"
-				preview, _ := worker.project(input, workspace, false)
+				preview, _ := previewProject(input, workspace, false)
 				return preview
 			}
 			if preview := project(tc.first); len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "one") {
@@ -359,8 +334,9 @@ func TestLiveDiffInterpreterReplacementPreview(t *testing.T) {
 	}
 	project := func(t *testing.T, workspace, command string, final bool) []string {
 		t.Helper()
-		worker := liveDiffPreviewWorker{ctx: t.Context(), kind: nativeExecCommandToolName}
-		preview, _ := worker.project(string(mustTestJSON(t, map[string]string{"cmd": command, "workdir": workspace})), workspace, final)
+		previewContext := t.Context()
+		previewProject := previewProjector(previewContext, nativeExecCommandToolName)
+		preview, _ := previewProject(string(mustTestJSON(t, map[string]string{"cmd": command, "workdir": workspace})), workspace, final)
 		var diffs []string
 		for _, file := range preview.Files {
 			diffs = append(diffs, file.Diff)
@@ -426,10 +402,10 @@ func TestLiveDiffFinishedCallDrainIsBounded(t *testing.T) {
 		}
 		input.WriteString("*** End Patch\n")
 		worker := startLiveDiffPreview(t.Context(), broker, workspace, "root", applyPatchToolName)
-		defer worker.stop()
-		worker.appendDelta(input.String())
+		defer worker.Stop()
+		worker.Append(input.String())
 		finished := time.Now()
-		worker.finish(input.String())
+		worker.Finish(input.String())
 		complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool { return preview.Complete })
 		if elapsed := time.Since(finished); elapsed > previewview.PreviewFinishDrain+previewview.PreviewUnitDelay+4*previewview.PreviewFrameDelay {
 			t.Fatalf("finished call drained queued units for %v", elapsed)

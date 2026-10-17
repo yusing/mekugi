@@ -19,9 +19,9 @@ import (
 func TestUISnapshotPythonReadOnlyScriptSource(t *testing.T) {
 	directory := t.TempDir()
 	writeTestFile(t, filepath.Join(directory, "target.txt"), "old\n")
-	worker := liveDiffPreviewWorker{ctx: t.Context()}
+	previewContext := t.Context()
 	command := "cat >report.py <<'PY'\ns = open('target.txt').read()\ns = s.replace('old', 'new')\nprint(s)\nPY\n"
-	files, _, recognized, err := projection.Shell(worker.ctx, command, directory, true)
+	files, _, recognized, err := projection.Shell(previewContext, command, directory, true)
 	if err != nil || !recognized || len(files) != 1 {
 		t.Fatalf("script source preview: %+v %t %v", files, recognized, err)
 	}

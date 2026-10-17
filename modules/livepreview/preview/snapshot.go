@@ -4,7 +4,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
-// Preview state is router-lifetime only and never enters the replay store.
+// Preview state is attachment-local and never enters the replay store.
 type Preview struct {
 	ID          string
 	Workspace   string

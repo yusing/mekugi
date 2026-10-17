@@ -14,7 +14,7 @@ func TestLiveDiffPreviewWorkerCatFragmentsRetainLastDiff(t *testing.T) {
 	workspace := t.TempDir()
 	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
 	for _, delta := range []string{"cat >file.txt <<'END'\nfirst\n", "second\n", "END\n"} {
-		worker.appendDelta(delta)
+		worker.Append(delta)
 		// Paced frames may show a prefix of the delta first.
 		line := strings.TrimPrefix(delta, "cat >file.txt <<'END'")
 		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
@@ -25,7 +25,7 @@ func TestLiveDiffPreviewWorkerCatFragmentsRetainLastDiff(t *testing.T) {
 			t.Fatalf("cat source shown instead of diff: %+v", preview)
 		}
 	}
-	worker.appendDelta("echo after\n")
+	worker.Append("echo after\n")
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 		return preview.Status == previewmodel.PreviewEdit && len(preview.Files) == 1
 	})

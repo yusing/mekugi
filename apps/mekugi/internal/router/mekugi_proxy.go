@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 
+	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
+
 	segments "github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -118,7 +120,7 @@ func (p *mekugiProxy) Close() error {
 }
 
 type mekugiTranslationState struct {
-	previews        map[string]*liveDiffPreviewWorker
+	previews        map[string]*previewbinding.Stream
 	nativeExecCalls map[string]map[string]jsonv1.RawMessage
 	local           map[string]mekugiHistory
 

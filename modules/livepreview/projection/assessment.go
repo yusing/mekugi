@@ -1,26 +1,23 @@
-package router
+package projection
 
 import (
 	"context"
 
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-	"github.com/yusing/mekugi/modules/livepreview/projection"
 )
 
-// projectStockPatchPreview follows the former hpatch preview model: read the
-// bounded source, calculate a disposable in-memory result, and hand the real
-// before/after pair to the shared review renderer. It never writes a file or
+// AssessPatch reads bounded source, calculates a disposable in-memory result,
+// and supplies before/after values for preview publication. It never writes a file or
 // treats a speculative projection as evidence of host execution.
-func projectStockPatchPreview(ctx context.Context, workspace string, preview previewmodel.Preview) previewmodel.Preview {
+// Source: apps/mekugi/internal/router/live_diff_stock_patch.go:12:37@72549ff1.
+func AssessPatch(ctx context.Context, workspace string, preview previewmodel.Preview, read func(string) (string, bool, error)) previewmodel.Preview {
 	const limit = 256 << 10
 	if len(preview.Input) > limit {
 		preview.Input = ""
 		preview.Status = previewmodel.PreviewUnavailable + "patch exceeds projection capacity"
 		return preview
 	}
-	files, err := projection.Patch(ctx, workspace, preview.Input, preview.Complete, changecapture.ReadPatchFile)
+	files, err := Patch(ctx, workspace, preview.Input, preview.Complete, read)
 	preview.Input = ""
 	if err != nil {
 		preview.Status = previewmodel.PreviewUnavailable + "patch cannot be projected"

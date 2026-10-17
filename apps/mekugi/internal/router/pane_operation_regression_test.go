@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -108,7 +110,7 @@ func TestPaneOperationRegressionApplyPatchDisplay(t *testing.T) {
 		"const patch = `*** Begin Patch\n*** Add File: pane.txt\n+Use \\`mcat\\` and \\${literal}\n*** End Patch\n`; text(await tools.apply_patch(patch));",
 	}
 	for _, source := range codeModes {
-		if patches := stockLiteralPatchInputs(source); len(patches) != 1 {
+		if patches := binding.LiteralPatchInputs(source); len(patches) != 1 {
 			t.Fatalf("static patch was not captured: %q", patches)
 		}
 	}
@@ -116,7 +118,7 @@ func TestPaneOperationRegressionApplyPatchDisplay(t *testing.T) {
 		"const patch = `*** Begin Patch\n${dynamic}`; text(await tools.apply_patch(patch));",
 		"text(await tools.apply_patch(`*** Begin Patch\n${dynamic}`));",
 	} {
-		if patches := stockLiteralPatchInputs(source); len(patches) != 0 {
+		if patches := binding.LiteralPatchInputs(source); len(patches) != 0 {
 			t.Fatalf("dynamic template entered patch capture: %q", patches)
 		}
 	}

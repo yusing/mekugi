@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -24,7 +26,7 @@ func TestLiveDiffCodeModeStreamsCatEditBeforeCompletion(t *testing.T) {
 	command := "cat > out.txt <<'EOF'\nfirst\nsecond\nEOF\n"
 	input := "const r = await tools.exec_command({cmd:" + strconv.Quote(command) + "}); text(r.output);"
 	split := strings.Index(input, "second")
-	worker.appendDelta(input[:split])
+	worker.Append(input[:split])
 	first := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 		return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+first")
 	})
@@ -34,8 +36,8 @@ func TestLiveDiffCodeModeStreamsCatEditBeforeCompletion(t *testing.T) {
 	if !strings.Contains(first.Files[0].Diff, "-old") {
 		t.Fatalf("partial cat did not predict truncation: %q", first.Files[0].Diff)
 	}
-	worker.appendDelta(input[split:])
-	worker.finish(input)
+	worker.Append(input[split:])
+	worker.Finish(input)
 	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool { return preview.Complete })
 	if len(complete.Files) != 1 || !strings.Contains(complete.Files[0].Diff, "+second") {
 		t.Fatalf("completed exec cat lost its diff: %+v", complete)
@@ -53,7 +55,7 @@ func TestLiveDiffCodeModeStreamsInterpreterWrite(t *testing.T) {
 			workspace := t.TempDir()
 			broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
 			input := "text(await tools.exec_command({cmd:" + strconv.Quote(tc.command) + "}));"
-			worker.appendDelta(input[:strings.Index(input, tc.split)])
+			worker.Append(input[:strings.Index(input, tc.split)])
 			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 				return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+first")
 			})
@@ -76,13 +78,13 @@ func TestLiveDiffCompletionOnlyShellDoesNotOpenNativeDock(t *testing.T) {
 			sub := testReview(broker).Subscribe()
 			<-sub.Events()
 			worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", kind)
-			t.Cleanup(worker.stop)
+			t.Cleanup(worker.Stop)
 			command := "python3 - <<'PY'\nfrom pathlib import Path\nPath('late.txt').write_text('first\\nsecond\\nthird\\n')\nPY\n"
 			input := string(mustTestJSON(t, map[string]string{"cmd": command}))
 			if kind == "exec" {
 				input = "text(await tools.exec_command(" + input + "));"
 			}
-			worker.finish(input)
+			worker.Finish(input)
 			u := &terminalUI{}
 			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 				u.preview(preview, false)
@@ -152,8 +154,8 @@ func TestLiveDiffCodeModeNonEditHasNoPreview(t *testing.T) {
 		t.Run(input, func(t *testing.T) {
 			t.Parallel()
 			broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, t.TempDir())
-			worker.appendDelta(input)
-			worker.finish(input)
+			worker.Append(input)
+			worker.Finish(input)
 			waitLiveDiffWorkerDone(t, worker)
 			for _, event := range testReview(broker).TakePreviews(sub) {
 				if event.Preview != nil && (event.Preview.Input != "" || len(event.Preview.Files) != 0 || event.Preview.Status != "") {
@@ -168,12 +170,12 @@ func TestLiveDiffCodeModeKeepsEarlierEditWhileLaterCommandStreams(t *testing.T) 
 	t.Parallel()
 	workspace := t.TempDir()
 	broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
-	worker.appendDelta(`const r=await Promise.allSettled([tools.exec_command({cmd:"cat > kept.txt <<'EOF'\nkept\nEOF\n"}),`)
+	worker.Append(`const r=await Promise.allSettled([tools.exec_command({cmd:"cat > kept.txt <<'EOF'\nkept\nEOF\n"}),`)
 	waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 		return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+kept")
 	})
-	worker.appendDelta(`tools.exec_command({cmd:"go test ./..."})]);text(r)`)
-	worker.finish(`const r=await Promise.allSettled([tools.exec_command({cmd:"cat > kept.txt <<'EOF'\nkept\nEOF\n"}),tools.exec_command({cmd:"go test ./..."})]);text(r)`)
+	worker.Append(`tools.exec_command({cmd:"go test ./..."})]);text(r)`)
+	worker.Finish(`const r=await Promise.allSettled([tools.exec_command({cmd:"cat > kept.txt <<'EOF'\nkept\nEOF\n"}),tools.exec_command({cmd:"go test ./..."})]);text(r)`)
 	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool { return preview.Complete })
 	if len(complete.Files) != 1 || !strings.Contains(complete.Files[0].Diff, "+kept") {
 		t.Fatalf("later non-edit command replaced the displayed edit: %+v", complete)
@@ -187,7 +189,7 @@ func TestLiveDiffPartialShellUsesStreamedWorkdir(t *testing.T) {
 		t.Fatal(err)
 	}
 	broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
-	worker.appendDelta(`tools.exec_command({cmd:"cat > result.txt <<'EOF'\ncontent\nEOF",workdir:` + strconv.Quote(other))
+	worker.Append(`tools.exec_command({cmd:"cat > result.txt <<'EOF'\ncontent\nEOF",workdir:` + strconv.Quote(other))
 	// Earlier paced frames may predate the workdir; the streamed workdir wins.
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 		return len(preview.Files) == 1 && preview.Files[0].AfterPath == filepath.Join(other, "result.txt")
@@ -198,21 +200,21 @@ func TestLiveDiffPartialShellUsesStreamedWorkdir(t *testing.T) {
 
 	broker, sub, worker = newLiveDiffCodeModeWorkerTest(t, workspace)
 	input := `tools.exec_command({cmd:"cat > result.txt <<'EOF'\ncontent\nEOF",workdir:dir})`
-	worker.appendDelta(input)
-	worker.finish(input)
+	worker.Append(input)
+	worker.Finish(input)
 	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool { return preview.Complete })
 	if len(complete.Files) != 0 || complete.Status != "" || complete.Input != "" {
 		t.Fatalf("computed workdir projected an edit: %+v", complete)
 	}
 }
 
-func newLiveDiffCodeModeWorkerTest(t *testing.T, workspace string) (*previewmodel.Session, *reviewSubscription, *liveDiffPreviewWorker) {
+func newLiveDiffCodeModeWorkerTest(t *testing.T, workspace string) (*previewmodel.Session, *reviewSubscription, *previewbinding.Stream) {
 	t.Helper()
 	broker := newLivePreview(t.Context())
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", "exec")
-	t.Cleanup(worker.stop)
+	t.Cleanup(worker.Stop)
 	return broker, sub, worker
 }

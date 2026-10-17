@@ -1,4 +1,4 @@
-package router
+package codexbinding
 
 import (
 	"slices"
@@ -16,6 +16,7 @@ import (
 // codeModeShellCall is a literal exec_command argument object read from an
 // unfinished exec stream. DynamicWorkdir marks a workdir that is present
 // but not yet a complete literal, so relative targets are not resolvable.
+// Source: apps/mekugi/internal/router/code_mode_shell_preview.go:15:411@72549ff1.
 type codeModeShellCall struct {
 	cmd, workdir   string
 	dynamicWorkdir bool

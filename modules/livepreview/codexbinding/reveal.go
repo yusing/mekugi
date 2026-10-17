@@ -1,4 +1,4 @@
-package router
+package codexbinding
 
 import (
 	"math"
@@ -13,6 +13,7 @@ import (
 // average arrival rate. The shown prefix trails the cursor by one complete
 // source unit per frame, so a burst's statements stay distinct. A large backlog
 // skips to its last window because the preview follows the tip.
+// Source: apps/mekugi/internal/router/live_diff_reveal.go:8:131@72549ff1.
 type liveDiffPreviewPacer struct {
 	shown, cursor, received int
 	rate                    float64 // Bytes per frame, averaged over about eight frames.

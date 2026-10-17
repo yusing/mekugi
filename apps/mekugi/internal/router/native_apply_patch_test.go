@@ -127,7 +127,7 @@ func TestCodeModeLiteralPatchObservationInOrdinaryJavaScript(t *testing.T) {
 	if len(observed) != 1 || observed[0].Input != patch || len(observed[0].Files) != 1 {
 		t.Fatalf("ordinary exec patch observation = %+v", observed)
 	}
-	if got := stockLiteralPatchInputs("const patch = " + string(responses.MustMarshalJSON(patch)) + "; await tools.apply_patch(patch);"); len(got) != 1 || got[0] != patch {
+	if got := binding.LiteralPatchInputs("const patch = " + string(responses.MustMarshalJSON(patch)) + "; await tools.apply_patch(patch);"); len(got) != 1 || got[0] != patch {
 		t.Fatalf("immutable literal binding was not recognized: %+v", got)
 	}
 	for _, static := range []string{
@@ -135,7 +135,7 @@ func TestCodeModeLiteralPatchObservationInOrdinaryJavaScript(t *testing.T) {
 		"const patch = " + string(responses.MustMarshalJSON(patch)) + ", other = 1; await tools.apply_patch(patch);",
 		"const patch = " + string(responses.MustMarshalJSON(patch)) + "; const result = await tools.apply_patch(patch); text(result);",
 	} {
-		if got := stockLiteralPatchInputs(static); len(got) != 1 || got[0] != patch {
+		if got := binding.LiteralPatchInputs(static); len(got) != 1 || got[0] != patch {
 			t.Fatalf("immutable literal binding variant was not recognized: %+v", got)
 		}
 	}
@@ -145,7 +145,7 @@ func TestCodeModeLiteralPatchObservationInOrdinaryJavaScript(t *testing.T) {
 		"const patch = " + string(responses.MustMarshalJSON(patch)) + "; function run(patch) { return tools.apply_patch(patch); }",
 		"const patch = " + string(responses.MustMarshalJSON(patch)) + "; (() => tools.apply_patch(patch))();",
 	} {
-		if got := stockLiteralPatchInputs(dynamic); len(got) != 0 {
+		if got := binding.LiteralPatchInputs(dynamic); len(got) != 0 {
 			t.Fatalf("dynamic argument was treated as literal: %+v", got)
 		}
 	}

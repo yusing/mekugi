@@ -107,8 +107,8 @@ func TestLiveDiffStreamableAdmissionPreservesCapture(t *testing.T) {
 				if !ok || observation == nil || len(observation.Files) == 0 {
 					t.Fatal("ordinary capture was lost")
 				}
-				worker := liveDiffPreviewWorker{ctx: t.Context()}
-				files, _, _, err := projection.Shell(worker.ctx, command, workspace, true)
+				previewContext := t.Context()
+				files, _, _, err := projection.Shell(previewContext, command, workspace, true)
 				if err != nil || len(files) != 0 {
 					t.Fatalf("non-content input projected live files: %+v, %v", files, err)
 				}

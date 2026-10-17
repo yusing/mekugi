@@ -196,12 +196,13 @@ func TestUISnapshotLiveDiffRequiresHunk(t *testing.T) {
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 	sub := testReview(broker).Subscribe()
 	var pane previewview.PreviewPane
-	worker := liveDiffPreviewWorker{ctx: t.Context(), kind: applyPatchToolName}
+	previewContext := t.Context()
+	previewProject := previewProjector(previewContext, applyPatchToolName)
 	for _, input := range []string{
 		"*** Begin Patch\n*** Add File: empty.txt\n",
 		"*** Begin Patch\n*** Add File: empty.txt\n*** End Patch\n",
 	} {
-		preview, ok := worker.project(input, workspace, strings.Contains(input, "*** End Patch"))
+		preview, ok := previewProject(input, workspace, strings.Contains(input, "*** End Patch"))
 		if !ok {
 			t.Fatal("patch not recognized")
 		}

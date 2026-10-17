@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
+
 	"github.com/yusing/mekugi/modules/livepreview/projection"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -121,13 +123,13 @@ func TestUnprojectableFinalPatchClearsPreviewWithoutClaimingFailure(t *testing.T
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", applyPatchToolName)
-	t.Cleanup(worker.stop)
+	t.Cleanup(worker.Stop)
 	partial := "*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n"
-	worker.appendDelta(partial)
+	worker.Append(partial)
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 		return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+new()")
 	})
-	worker.finish(partial + "*** Update File: missing.go\n@@\n-old\n+new\n*** End Patch\n")
+	worker.Finish(partial + "*** Update File: missing.go\n@@\n-old\n+new\n*** End Patch\n")
 	clear := waitLiveDiffWorkerPreview(t, broker, sub, func(next previewmodel.Preview) bool {
 		return next.ID == preview.ID && next.Complete
 	})
@@ -217,8 +219,9 @@ func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
 		"*** Begin Patch\n*** Add File: next.go\n",
 		"*** Begin Patch\n*** Add File: next.go\n+",
 	} {
-		worker := liveDiffPreviewWorker{ctx: t.Context()}
-		adding, _ := worker.projectStockPreview(input, workspace, false)
+		previewContext := t.Context()
+		previewPatch := previewProjector(previewContext, applyPatchToolName)
+		adding, _ := previewPatch(input, workspace, false)
 		adding.ID, adding.Workspace, adding.Caller = pending.ID, workspace, "/root"
 		pane.Update(adding)
 		if len(pane.Order) != 1 || pane.Order[0] != first.ID {
@@ -253,20 +256,21 @@ func TestStockPatchStreamingPartialLinesStayProjectable(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("old()\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	worker := &liveDiffPreviewWorker{ctx: t.Context()}
+	previewContext := t.Context()
+	previewPatch := previewProjector(previewContext, applyPatchToolName)
 	for _, fragment := range []string{
 		"*** Begin Patch",
 		"*** Begin Patch\n*** Update File: sample.go\n@@\n-old",
 		"*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new",
 		"*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n*** End Pat",
 	} {
-		preview, ok := worker.projectStockPreview(fragment, workspace, false)
+		preview, ok := previewPatch(fragment, workspace, false)
 		if !ok || strings.HasPrefix(preview.Status, previewmodel.PreviewUnavailable) {
 			t.Fatalf("partial patch became unavailable: %+v, recognized=%t", preview, ok)
 		}
 	}
 	complete := "*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n*** End Patch\n"
-	preview, ok := worker.projectStockPreview(complete, workspace, true)
+	preview, ok := previewPatch(complete, workspace, true)
 	if !ok || len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+new()") {
 		t.Fatalf("final patch was not projected: %+v, recognized=%t", preview, ok)
 	}
@@ -278,17 +282,18 @@ func TestStockPatchStreamingFramesEndAtTheirTip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("a()\nb()\nc()\nd()\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	worker := &liveDiffPreviewWorker{ctx: t.Context()}
+	previewContext := t.Context()
+	previewPatch := previewProjector(previewContext, applyPatchToolName)
 	// Source past the streamed tip is not context yet: the next line may
 	// remove it, and trailing context would renumber under each added row.
-	preview, ok := worker.projectStockPreview("*** Begin Patch\n*** Update File: sample.go\n@@\n a()\n+new()\n", workspace, false)
+	preview, ok := previewPatch("*** Begin Patch\n*** Update File: sample.go\n@@\n a()\n+new()\n", workspace, false)
 	if !ok || len(preview.Files) != 1 {
 		t.Fatalf("partial patch was not projected: %+v", preview)
 	}
 	if diff := preview.Files[0].Diff; !strings.Contains(diff, "+new()") || strings.Contains(diff, "b()") {
 		t.Fatalf("partial frame showed source past its tip: %q", diff)
 	}
-	preview, ok = worker.projectStockPreview("*** Begin Patch\n*** Update File: sample.go\n@@\n a()\n+new()\n-b()\n*** End Patch\n", workspace, true)
+	preview, ok = previewPatch("*** Begin Patch\n*** Update File: sample.go\n@@\n a()\n+new()\n-b()\n*** End Patch\n", workspace, true)
 	if diff := preview.Files[0].Diff; !ok || !strings.Contains(diff, "-b()") || !strings.Contains(diff, " c()") {
 		t.Fatalf("complete patch lost its trailing context: %q", diff)
 	}
@@ -301,15 +306,16 @@ func TestStockPatchPreviewKeepsSourceFromBeforeTheCall(t *testing.T) {
 	if err := os.WriteFile(path, []byte("old()\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	worker := &liveDiffPreviewWorker{ctx: projection.WithSources(t.Context(), false)}
-	if _, ok := worker.projectStockPreview("*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n", workspace, false); !ok {
+	previewContext := projection.WithSources(t.Context(), false)
+	previewPatch := previewProjector(previewContext, applyPatchToolName)
+	if _, ok := previewPatch("*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n", workspace, false); !ok {
 		t.Fatal("partial patch was not projected")
 	}
 	// The host applies the call while its final frame is still pacing.
 	if err := os.WriteFile(path, []byte("new()\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	preview, ok := worker.projectStockPreview("*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n*** End Patch\n", workspace, true)
+	preview, ok := previewPatch("*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n*** End Patch\n", workspace, true)
 	if !ok || len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "-old()") {
 		t.Fatalf("final projection re-read the applied file: %+v", preview)
 	}
@@ -413,8 +419,8 @@ func TestStockPatchFinalPreviewSurvivesTransportCancellation(t *testing.T) {
 	<-sub.Events()
 	ctx, cancel := context.WithCancel(t.Context())
 	worker := startLiveDiffPreview(ctx, broker, workspace, "thread", applyPatchToolName)
-	t.Cleanup(worker.stop)
-	worker.finish("*** Begin Patch\n*** Update File: file.go\n@@\n-package old\n+package new\n*** End Patch\n")
+	t.Cleanup(worker.Stop)
+	worker.Finish("*** Begin Patch\n*** Update File: file.go\n@@\n-package old\n+package new\n*** End Patch\n")
 	cancel()
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 		return preview.Complete && len(preview.Files) == 1
@@ -450,7 +456,7 @@ func TestLiveDiffCodeModeConstPatchDoesNotLeakScript(t *testing.T) {
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", "exec")
-	t.Cleanup(worker.stop)
+	t.Cleanup(worker.Stop)
 
 	patch := "*** Begin Patch\n*** Add File: result.txt\n+content\n*** End Patch\n"
 	encoded, err := json.Marshal(patch)
@@ -459,7 +465,7 @@ func TestLiveDiffCodeModeConstPatchDoesNotLeakScript(t *testing.T) {
 	}
 	source := "const patch = " + string(encoded) + "; text(await tools.apply_patch(patch));"
 	marker := strings.Index(source, "*** Begin Patch")
-	worker.appendDelta(source[:marker+len("*** Begin Patch")])
+	worker.Append(source[:marker+len("*** Begin Patch")])
 	select {
 	case <-sub.Ready():
 		for _, event := range testReview(broker).TakePreviews(sub) {
@@ -471,7 +477,7 @@ func TestLiveDiffCodeModeConstPatchDoesNotLeakScript(t *testing.T) {
 		t.Fatal("partial exec patch did not update its live preview")
 	}
 
-	worker.appendDelta(source[marker+len("*** Begin Patch"):])
+	worker.Append(source[marker+len("*** Begin Patch"):])
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 		return preview.Status == previewmodel.PreviewEdit && len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+content")
 	})
@@ -488,12 +494,12 @@ func TestLiveDiffCodeModeEscapedPatchMarkerDoesNotLeakScript(t *testing.T) {
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", "exec")
-	t.Cleanup(worker.stop)
+	t.Cleanup(worker.Stop)
 
 	source := `const emoji = "\u{1F600}"; const label = "don\'t\/stop"; const patch = "\x2a** Begin Patch\n*** Add File: result.txt\n+content\n*** End Patch\n"; text(await tools.apply_patch(patch));`
 	marker := strings.Index(source, `\x2a`)
 	closingQuote := marker + strings.Index(source[marker:], `";`)
-	worker.appendDelta(source[:closingQuote])
+	worker.Append(source[:closingQuote])
 	// Paced frames reveal the JavaScript before the patch marker, as token
 	// streaming would. Once the marker is revealed, the script stays hidden.
 	revealed := false
@@ -513,7 +519,7 @@ func TestLiveDiffCodeModeEscapedPatchMarkerDoesNotLeakScript(t *testing.T) {
 			t.Fatal("escaped exec patch did not update its live preview")
 		}
 	}
-	worker.appendDelta(source[closingQuote:])
+	worker.Append(source[closingQuote:])
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 		return preview.Status == previewmodel.PreviewEdit && len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+content")
 	})
@@ -522,13 +528,13 @@ func TestLiveDiffCodeModeEscapedPatchMarkerDoesNotLeakScript(t *testing.T) {
 	}
 }
 
-func newLiveDiffWorkerTest(t *testing.T, workspace string) (*previewmodel.Session, *reviewSubscription, *liveDiffPreviewWorker) {
+func newLiveDiffWorkerTest(t *testing.T, workspace string) (*previewmodel.Session, *reviewSubscription, *previewbinding.Stream) {
 	t.Helper()
 	broker := newLivePreview(t.Context())
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
-	t.Cleanup(worker.stop)
+	t.Cleanup(worker.Stop)
 	return broker, sub, worker
 }
