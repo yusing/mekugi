@@ -32,24 +32,23 @@ type appServerShellEdits struct {
 }
 
 func (u *appServerUI) captureShellEdit(command string) *appServerShellEdit {
-	if u.proxy == nil || u.proxy.replayStore == nil || u.replay != nil {
+	if u.retained == nil || u.replay != nil {
 		return nil
 	}
 	ctx := u.session.waitContext
 	if ctx == nil {
 		ctx = u.ctx
 	}
-	t := &mekugiResponseTransform{ctx: ctx, proxy: u.proxy, directory: u.session.cwd,
-		threadID: u.Thread, shellThreadID: u.Thread, shellTurnID: u.Turn}
+	options := executionCaptureEnvironment(ctx, u.session.cwd, u.retained, nil)
 	input := commandanalysis.Command{Command: command, Workdir: u.session.cwd, Shell: u.shellEdits.shell}
-	observation, observed := changecapture.Capture(ctx, []commandanalysis.Command{input}, false, false, t.execCaptureEnvironment(nil))
+	observation, observed := changecapture.Capture(ctx, []commandanalysis.Command{input}, false, false, options)
 	if !observed {
 		return nil
 	}
 	call := "shell:" + rand.Text()
 	u.restoreDiffThread(binding.ThreadInfo{ID: u.Thread, Cwd: u.session.cwd}, true)
-	t.openExecWindow(call, observation, nil)
-	u.proxy.execWindows.setSession(call, call)
+	admitExecutionWindow(u.execWindows, u.review, &execWindow{ref: call, thread: u.Thread, turn: u.Turn, group: rand.Text()}, observation, nil, options, u.Thread, "/root")
+	u.execWindows.setSession(call, call)
 	return &appServerShellEdit{ctx: ctx, call: call, workspace: u.session.cwd, thread: u.Thread,
 		history: mekugiHistory{ToolName: nativeExecCommandToolName, ExecObservation: observation,
 			ExecutingThread: u.Thread, Caller: u.session.path(u.Thread)}}
@@ -57,7 +56,7 @@ func (u *appServerUI) captureShellEdit(command string) *appServerShellEdit {
 
 func (u *appServerUI) discardShellEdit(edit *appServerShellEdit) {
 	if edit != nil {
-		u.proxy.execWindows.close(edit.call)
+		u.execWindows.close(edit.call)
 	}
 }
 
@@ -104,7 +103,7 @@ func (u *appServerUI) observeShellEdit(thread, method string, item binding.Threa
 		output = *item.AggregatedOutput
 	}
 	host := &binding.ToolResult{CallID: item.ID, Tool: item.Source, Status: item.Status, ExitCode: item.ExitCode}
-	if err := u.proxy.finalizeExecObservations(context.WithoutCancel(edit.ctx), edit.workspace,
+	if err := finalizeExecObservations(u.retained, u.execWindows, u.audience, u.captureNotice, context.WithoutCancel(edit.ctx), edit.workspace,
 		[]execCompletion{{callID: edit.call, history: edit.history, result: binding.ExecutionResult{Terminal: true, Succeeded: host.Status == "completed" && host.ExitCode != nil && *host.ExitCode == 0, ExitCode: host.ExitCode, Text: output}, host: host}}); err != nil {
 		u.discardShellEdit(edit)
 		u.setNotice("Shell change capture failed: "+err.Error(), true)

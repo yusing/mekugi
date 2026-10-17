@@ -45,7 +45,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 			t.Fatal(err)
 		}
 		u := newAppServerSessionTestUI(t, workspace)
-		u.proxy = &mekugiProxy{replayStore: store}
+		setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
 		key := [3]string{"main", "turn", "command"}
 		first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 		first.Finish(new("first\n"), new(0))
@@ -95,7 +95,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 			t.Fatal(err)
 		}
 		restored := newAppServerSessionTestUI(t, workspace)
-		restored.proxy = &mekugiProxy{replayStore: reopened}
+		setTestAppServerIntegration(restored, &mekugiProxy{replayStore: reopened})
 		entry.native = &liveActivityNativeItem{thread: "fork", turn: key[1], item: key[2]}
 		restored.restoreCommandSegments(&entry, item, workspace)
 		if len(entry.native.segments) != 2 {
@@ -126,7 +126,7 @@ func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	u.ctx = ctx
 	defer cancel()
-	u.proxy = &mekugiProxy{replayStore: store}
+	setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
 	lock := flock.New(filepath.Join(store.directory, "store.lock"))
 	if err := lock.Lock(); err != nil {
 		t.Fatal(err)
@@ -213,7 +213,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	if result.stdout != "first\n" || result.stderr != "second\n" || result.code != 1 {
 		t.Fatalf("stock command changed: %+v", result)
 	}
-	u.proxy = &mekugiProxy{replayStore: store}
+	setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
 	item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(1), new(result.stdout+result.stderr)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
 	awaitMain(t, u, "skipped")
@@ -232,7 +232,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	for _, target := range []string{"main", "fork", "child", "child-other-workspace", "child-missing-workspace"} {
 		t.Run(target, func(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
-			restored.proxy = &mekugiProxy{replayStore: store}
+			setTestAppServerIntegration(restored, &mekugiProxy{replayStore: store})
 			turns := []binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}}
 			view := restored.view
 			if strings.HasPrefix(target, "child") {
@@ -298,7 +298,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	for _, mismatch := range []string{"workspace", "turn", "item", "command", "output", "exit"} {
 		t.Run(mismatch, func(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
-			restored.proxy = &mekugiProxy{replayStore: store}
+			setTestAppServerIntegration(restored, &mekugiProxy{replayStore: store})
 			copy := item
 			entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "unrelated", turn: key[1], item: key[2]}}
 			scope := workspace
@@ -334,7 +334,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 				t.Fatal(err)
 			}
 			u := newAppServerSessionTestUI(t, workspace)
-			u.proxy = &mekugiProxy{replayStore: store}
+			setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo one; false'", AggregatedOutput: new("one\n"), ExitCode: new(1)}
 			entry := activityPaneEntry{Seq: 1, Text: "Run `echo one`\n\nRun `false`", native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID, command: item.Command}}
 			first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
@@ -422,7 +422,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u.proxy = &mekugiProxy{replayStore: store}
+	setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
 	listing := "amber1..amber5 +343 -658\namber6 +158 -81\n"
 	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo before; mchanges --list'", ExitCode: new(0), AggregatedOutput: new("before\n" + listing)}
 	entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID}}

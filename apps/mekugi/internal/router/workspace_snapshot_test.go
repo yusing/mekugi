@@ -215,7 +215,7 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 			ExecObservation: &changecapture.Observation{Commands: []commandanalysis.Command{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
 	}
 	finalize := func(ref string, history mekugiHistory) mekugiHistory {
-		if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
+		if err := finalizeExecObservations(proxy.replayStore, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
 			t.Fatal(err)
 		}
 		record, _, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID(ref, false))
@@ -327,7 +327,7 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 		ref, workspace string
 		history        mekugiHistory
 	}{{"outer", f.workspace, outer}, {"nested", inner, nested}} {
-		if err := proxy.finalizeExecObservations(f.ctx, call.workspace, []execCompletion{{callID: call.ref, history: call.history, result: binding.DecodeExecutionResult(call.history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
+		if err := finalizeExecObservations(proxy.replayStore, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, call.workspace, []execCompletion{{callID: call.ref, history: call.history, result: binding.DecodeExecutionResult(call.history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
 			t.Fatal(err)
 		}
 	}

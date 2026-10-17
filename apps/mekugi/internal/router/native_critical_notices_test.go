@@ -27,7 +27,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	issues.AddNotice("", "capacity", "router-wide capacity warning")
 	u, _ := newAppServerTestUI()
 	u.issues = issues
-	u.proxy = &mekugiProxy{activity: activity}
+	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
 	u.view.Conversation = true
 
 	first := u.applyCriticalNotices()
@@ -120,7 +120,7 @@ func TestNativeRequestNoticeChildOutcomeKeepsOtherTurnsPending(t *testing.T) {
 	activity := newSubagentActivity()
 	activity.observe("main", "", "/root", false)
 	activity.observe("child", "main", "/root/worker", true)
-	u.proxy = &mekugiProxy{activity: activity}
+	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
 	for _, thread := range []string{"main", "child", "other"} {
 		u.issues.Report(requestexecution.Failure{Session: "session", Thread: thread, Turn: "turn",
 			Phase: "inspect_response"}, fmt.Errorf("upstream closed for %s", thread))

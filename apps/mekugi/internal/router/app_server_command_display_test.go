@@ -225,7 +225,7 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 func TestAppServerCommandTimeoutInput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	f := newNativeTraceFixture(t)
-	u.proxy = &mekugiProxy{nativeTrace: nativetrace.New(f.root)}
+	setTestAppServerIntegration(u, &mekugiProxy{nativeTrace: nativetrace.New(f.root)})
 	for _, thread := range []string{"main", "child"} {
 		f.start(thread, thread, "outer", "source")
 		timeoutMS, wantTimeout := 12500, "12.5s"

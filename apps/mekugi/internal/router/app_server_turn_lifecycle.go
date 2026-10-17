@@ -9,12 +9,10 @@ import (
 // Native turn completion retires display state even when interrupted tools
 // never return. It neither finalizes capture nor stops a host-owned process.
 func (u *appServerUI) endTurnPreviews(thread, turn string) {
-	if u.proxy != nil {
-		u.proxy.execWindows.stopTurnPreviews(thread, turn)
-		if live := u.proxy.review.Preview(); live != nil {
-			live.SetTurn(thread, turn, false)
-			live.FinishTurn(u.session.cwd, thread, turn)
-		}
+	u.execWindows.stopTurnPreviews(thread, turn)
+	if live := u.review.Preview(); live != nil {
+		live.SetTurn(thread, turn, false)
+		live.FinishTurn(u.session.cwd, thread, turn)
 	}
 	if u.shell != nil {
 		for id, pending := range u.shell.livePending {

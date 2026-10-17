@@ -79,14 +79,14 @@ func execDerivedUpstreamItem(derivedCallID, arguments string) map[string]json.Ra
 // first; the others keep a record naming it. An empty effect is retained
 // without a change ID, so replay neither reads the workspace again nor
 // allocates an ID for read-only work.
-func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace string, members []execCompletion) error {
+func finalizeExecObservations(store *mekugiReplayStore, windows *execWindowRegistry, activity *subagentActivity, notice func(string, string, string, string), ctx context.Context, workspace string, members []execCompletion) error {
 	var pending []execCompletion
 	for _, member := range members {
 		if member.history.ExecObservation == nil || !member.result.Terminal {
 			continue
 		}
 		derived := legacycall.ExecCallID(member.callID, member.history.ExecObservation.CodeMode)
-		retained, found, err := p.replayStore.lookup(ctx, workspace, derived)
+		retained, found, err := store.lookup(ctx, workspace, derived)
 		if err != nil {
 			return err
 		}
@@ -114,22 +114,22 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	}
 	observation := changecapture.Merge(observations)
 	script := execObservationScript(observation)
-	if observation.Tree != "" && p.replayStore != nil {
+	if observation.Tree != "" && store != nil {
 		// Closing, comparing, and claiming are one step per workspace, so
 		// concurrent finalizations cannot both record one effect.
-		defer p.replayStore.snapshots.Serialize(workspace)()
+		defer store.snapshots.Serialize(workspace)()
 	}
-	view := p.execWindows.close(refs...)
+	view := windows.close(refs...)
 	for _, path := range view.created {
 		observation.AddCreatedPath(path.Data, path.Tree)
 	}
 	background := slices.Compact(slices.Sorted(slices.Values(view.background)))
 	comparison := changecapture.Comparison{Excluded: view.excluded, Workspace: workspace, Claims: view.claims}
-	if view.snapshot && p.replayStore != nil {
-		comparison.Workspaces = p.replayStore.snapshots
+	if view.snapshot && store != nil {
+		comparison.Workspaces = store.snapshots
 	}
 	result := changecapture.Reconcile(ctx, observation, comparison)
-	p.execWindows.claim(refs, result.Claims)
+	windows.claim(refs, result.Claims)
 	reviews, complete := result.Files, result.Complete
 	outcome := &result.Outcome
 	outcome.Overlaps, outcome.Background = view.overlaps, background
@@ -183,8 +183,8 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		ReplayCarrier:   true,
 		UpstreamItem:    execDerivedUpstreamItem(derivedCallID, arguments),
 	}
-	if len(reviews) != 0 && p.replayStore != nil {
-		changeID, err := p.replayStore.changes.Reserve(ctx, p.replayStore.scoped(ctx).changeScope(), workspace, thread, correlation)
+	if len(reviews) != 0 && store != nil {
+		changeID, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, thread, correlation)
 		if err != nil {
 			return changeError(err)
 		}
@@ -193,7 +193,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	if !complete && record.Report != "" {
 		record.Report += "\nMekugi could not capture complete file evidence."
 	}
-	if p.replayStore != nil && outcome.Status == changecapture.StatusFailed && len(failureReports) != 0 {
+	if store != nil && outcome.Status == changecapture.StatusFailed && len(failureReports) != 0 {
 		// Retain the bounded host evidence, not an invented reconstruction of
 		// output the host omitted. This never changes the host's tool result.
 		output := command.OmittedOutput{Stdout: strings.Join(failureReports, "\n")}
@@ -203,13 +203,15 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		if outcome.Exit != nil && *outcome.Exit > 0 && *outcome.Exit <= 255 {
 			exit = *outcome.Exit
 		}
-		session, err := p.replayStore.recoverySession(ctx)
+		session, err := store.recoverySession(ctx)
 		var ref string
 		if err == nil {
 			ref, err = session.Publish(ctx, output, exit)
 		}
 		if err != nil {
-			p.notice("", thread, "failure_output_storage", "Failed-command output could not be retained. The command outcome remains available without its output.")
+			if notice != nil {
+				notice("", thread, "failure_output_storage", "Failed-command output could not be retained. The command outcome remains available without its output.")
+			}
 		} else {
 			outcome.OutputRef = ref
 		}
@@ -232,11 +234,11 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 			ReplayCarrier: true, UpstreamItem: execDerivedUpstreamItem(memberCallID, memberArguments),
 		}
 	}
-	if err := p.replayStore.put(context.WithoutCancel(ctx), workspace, records); err != nil {
+	if err := store.put(context.WithoutCancel(ctx), workspace, records); err != nil {
 		return err
 	}
 	if record.ChangeID != "" {
-		_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity, responses.StringField(first.history.UpstreamItem, "id"))
+		_ = store.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, activity, responses.StringField(first.history.UpstreamItem, "id"))
 	}
 	return nil
 }

@@ -198,8 +198,8 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 	key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
 	event := p.Observation(method, u.now())
 	facts := sessionEventFacts{tracked: u.execTrack.Tracking(key), wait: u.readWaitEvidence(event.Item, key)}
-	if p.Item.Type == "commandExecution" && u.proxy != nil {
-		if ms, known := u.proxy.nativeTrace.CommandTimeout(p.ThreadID, key[2]); known {
+	if p.Item.Type == "commandExecution" && u.nativeTrace != nil {
+		if ms, known := u.nativeTrace.CommandTimeout(p.ThreadID, key[2]); known {
 			facts.commandTimeout = strconv.FormatUint(ms/1000, 10)
 			if fraction := ms % 1000; fraction != 0 {
 				facts.commandTimeout += "." + strings.TrimRight(fmt.Sprintf("%03d", fraction), "0")
@@ -211,8 +211,8 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 		u.endTurnPreviews(p.ThreadID, p.Turn.ID)
 	}
 	result := u.projectSessionEvent(event, facts)
-	if result.started && u.proxy != nil {
-		u.proxy.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
+	if result.started && u.review != nil {
+		u.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
 	}
 	if method == "thread/started" && p.Thread.ID != "" && p.Thread.ID != u.Thread {
 		s.restoreThreadSettings(p.Thread)
@@ -229,9 +229,9 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 		}
 	}
 	u.retainWaitProgress(key, result.wait)
-	if u.proxy != nil {
+	if u.usage != nil {
 		for _, thread := range result.spawned {
-			u.proxy.usage.MarkNew(thread)
+			u.usage.MarkNew(thread)
 		}
 	}
 	if result.publish {
@@ -548,10 +548,10 @@ func (s *appServerSession) collab(item observation.Item, id string, now time.Tim
 // observeCost reads all consumption metrics from the same canonical owner.
 // App-server context and exit usage are separate, never priced or added here.
 func (u *appServerUI) observeCost(thread string, agent *activityPaneAgent) {
-	if u.proxy == nil || u.proxy.usage == nil {
+	if u.usage == nil {
 		return
 	}
-	report, observed := u.proxy.usage.Snapshot(thread)
+	report, observed := u.usage.Snapshot(thread)
 	agent.Roundtrips = report.Roundtrips
 	agent.OutputThroughput = report.RoundOutput.Throughput
 	agent.InputTokens, agent.OutputTokens = report.InputTokens, report.OutputTokens
@@ -564,8 +564,8 @@ func (u *appServerUI) observeCost(thread string, agent *activityPaneAgent) {
 }
 
 func (u *appServerUI) restoreUsage(info binding.ThreadInfo) {
-	if u.proxy != nil && u.proxy.usage != nil {
-		u.proxy.usage.Restore(info.ID, len(info.Turns) > 0)
+	if u.usage != nil {
+		u.usage.Restore(info.ID, len(info.Turns) > 0)
 	}
 }
 

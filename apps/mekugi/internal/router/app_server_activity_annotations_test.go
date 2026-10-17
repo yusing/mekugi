@@ -100,7 +100,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 			activity := newSubagentActivity()
 			activity.attachNativePane("main")
 			proxy := &mekugiProxy{activity: activity}
-			u.proxy = proxy
+			setTestAppServerIntegration(u, proxy)
 			thread, view := "main", u.view
 			if child {
 				thread, view = "child", u.agents
@@ -142,7 +142,7 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	activity.attachNativePane("main")
 	trace := newNativeTraceFixture(t)
 	proxy := &mekugiProxy{activity: activity, nativeTrace: nativetrace.New(trace.root)}
-	u.proxy = proxy
+	setTestAppServerIntegration(u, proxy)
 	cells := []struct{ call, source, output string }{
 		{"silent", `await tools.exec_command({cmd: "git log"}); await tools.exec_command({cmd: "true"})`, `"Script completed\nWall time 0.1 seconds\nOutput:"`},
 		{"printed", `text(await tools.exec_command({cmd: "go version"}))`, `"Script completed\nWall time 0.1 seconds\nOutput:\nclean"`},

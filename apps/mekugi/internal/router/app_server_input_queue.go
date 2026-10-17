@@ -103,7 +103,7 @@ func (u *appServerUI) flushInput() error {
 			return err
 		}
 	}
-	emitting := u.proxy != nil && u.proxy.control.EmittingToolInput(u.session.cwd, u.Thread)
+	emitting := u.controlObservations != nil && u.controlObservations.EmittingToolInput(u.session.cwd, u.Thread)
 	next := u.sessionPresentation().NextInput(&u.Live, u.conversation(), emitting)
 	if next.Interrupt {
 		return u.interruptTurn()

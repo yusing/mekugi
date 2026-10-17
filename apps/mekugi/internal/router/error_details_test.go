@@ -30,7 +30,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			activity := newSubagentActivity()
 			activity.attachNativePane("main")
 			proxy := &mekugiProxy{activity: activity}
-			u.proxy = proxy
+			setTestAppServerIntegration(u, proxy)
 			thread, view, focus := "main", u.view, 0
 			if child {
 				thread, view, focus = "child", u.agents, 0

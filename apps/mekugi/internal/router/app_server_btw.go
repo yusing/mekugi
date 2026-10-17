@@ -175,8 +175,8 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 		if method == "thread/unsubscribe" {
 			if m.Error != nil {
 				u.setNotice("Could not unload side conversation: "+m.Error.Message, true)
-			} else if u.proxy != nil {
-				u.proxy.control.SetSideThread(b.Thread, false)
+			} else if u.controlObservations != nil {
+				u.controlObservations.SetSideThread(b.Thread, false)
 			}
 			return true, nil
 		}
@@ -209,8 +209,8 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 			b.Thread = result.Thread.ID
 			// Register before turn/start, so even pre-sampling compaction is
 			// rejected before the provider request can run.
-			if u.proxy != nil {
-				u.proxy.control.SetSideThread(b.Thread, true)
+			if u.controlObservations != nil {
+				u.controlObservations.SetSideThread(b.Thread, true)
 			}
 			u.requests.TrackSide(b.Thread, appServerRequest{side: b})
 		case "turn/start":
@@ -246,8 +246,8 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 	}
 	u.dirty = true
 	if m.Method == "thread/closed" {
-		if u.proxy != nil {
-			u.proxy.control.SetSideThread(thread, false)
+		if u.controlObservations != nil {
+			u.controlObservations.SetSideThread(thread, false)
 		}
 		u.requests.CloseSide(thread)
 		if !b.Closed {

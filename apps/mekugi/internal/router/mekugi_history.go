@@ -323,7 +323,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 			key = completed.callID
 		}
 		if members := execGroups[key]; len(members) != 0 {
-			if err := p.finalizeExecObservations(ctx, workspace, members); err != nil {
+			if err := finalizeExecObservations(p.replayStore, p.execWindows, p.activity, p.noticeSink, ctx, workspace, members); err != nil {
 				return nil, err
 			}
 			delete(execGroups, key)

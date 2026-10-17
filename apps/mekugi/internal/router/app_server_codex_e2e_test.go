@@ -162,7 +162,7 @@ func runAppServerPreviewWith(t *testing.T, provider inferencegateway.Forwarder, 
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
 	reviewSource := new(changecapture.Service)
-	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, &observations, options.approvals)
+	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, testAppServerIntegration(proxy), nil, "", true, nil, nil, nil, "", nil, &observations, options.approvals)
 	if err != nil {
 		t.Fatal(err)
 	}

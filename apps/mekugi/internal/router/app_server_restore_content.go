@@ -172,10 +172,7 @@ func (u *appServerUI) readRestoredChildren() error {
 func (u *appServerUI) readRestoredRollouts() {
 	r := u.restoring
 	r.itemAt, r.pane = make(map[string]map[string]time.Time), make(map[string][]*restoredPlacement)
-	var activity *subagentActivity
-	if u.proxy != nil {
-		activity = u.proxy.activity
-	}
+	activity := u.audience
 	infos := []binding.ThreadInfo{r.root}
 	for _, id := range r.state.View().Threads {
 		infos = append(infos, r.threads[id])

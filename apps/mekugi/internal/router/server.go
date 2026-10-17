@@ -398,7 +398,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			return startAppServerUI(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals)
+			return startAppServerUI(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, appServerIntegration{controlObservations: &mekugiCalls.control, usage: mekugiCalls.usage, audience: mekugiCalls.activity, review: mekugiCalls.review, execWindows: mekugiCalls.execWindows, nativeTrace: mekugiCalls.nativeTrace, retained: mekugiCalls.replayStore, captureNotice: mekugiCalls.noticeSink, guard: mekugiCalls.guard, execTrack: mekugiCalls.execTrack, skillsManager: mekugiCalls.skillsManager}, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.Directory()

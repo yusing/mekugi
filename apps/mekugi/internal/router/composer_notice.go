@@ -64,11 +64,7 @@ func (d *nativeCriticalNoticeDelivery) finish(success bool) {
 
 func (u *appServerUI) applyCriticalNotices() *nativeCriticalNoticeDelivery {
 	defer func() { u.publishPresentation(u.now()) }()
-	var activity *subagentActivity
-	if u.proxy != nil {
-		activity = u.proxy.activity
-	}
-	claim := claimNativeNotices(u.issues, u.Thread, activity)
+	claim := claimNativeNotices(u.issues, u.Thread, u.audience)
 	if claim == nil {
 		return nil
 	}

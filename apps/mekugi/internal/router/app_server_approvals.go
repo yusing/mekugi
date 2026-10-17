@@ -11,7 +11,6 @@ import (
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -188,8 +187,8 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 					u.endApproval(a, "Turn ended before an answer")
 				}
 			}
-			if u.proxy != nil {
-				u.proxy.control.ClearFeedback(p.ThreadID, p.Turn.ID)
+			if u.controlObservations != nil {
+				u.controlObservations.ClearFeedback(p.ThreadID, p.Turn.ID)
 			}
 		}
 		return false, nil
@@ -223,7 +222,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 	if err != nil {
 		return true, fmt.Errorf("%s: %w", m.Method, err)
 	}
-	decoded, err := conversationbinding.DecodeApproval(m.Method, m.ID, params, u.session.cwd, u.approvals.patches[params.ItemID], u.proxy != nil)
+	decoded, err := conversationbinding.DecodeApproval(m.Method, m.ID, params, u.session.cwd, u.approvals.patches[params.ItemID], u.controlObservations != nil)
 	if err != nil {
 		return true, err
 	}
@@ -376,12 +375,8 @@ func (u *appServerUI) applyApproval(a *nativeApproval, choice prompt.Choice, rea
 		a.guard.reply <- reply
 	} else {
 		answer := func() error { return u.requests.Respond(a.request, a.responses[choice.ID]) }
-		if choice.Deny && (u.proxy != nil || reason != "") {
-			var observations *sessioncontrol.Observations
-			if u.proxy != nil {
-				observations = &u.proxy.control
-			}
-			if err := observations.AnswerWithFeedback(a.Thread, a.Turn, "Command: "+a.Subject+"\n"+feedback, answer); err != nil {
+		if choice.Deny && (u.controlObservations != nil || reason != "") {
+			if err := u.controlObservations.AnswerWithFeedback(a.Thread, a.Turn, "Command: "+a.Subject+"\n"+feedback, answer); err != nil {
 				return err
 			}
 		} else if err := answer(); err != nil {

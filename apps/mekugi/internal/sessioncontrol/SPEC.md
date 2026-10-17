@@ -87,6 +87,11 @@ completion. Acknowledgement settles submission, not execution. Compaction blocks
 shell submission for retry. Rejected commands return to an empty composer or, when
 newer prose exists, local history instead. Observed edits use the ordinary recorder.
 
+The native client borrows observation, accounting, review and capture owners
+independently of provider request preparation. Shell observations share the ordinary
+capture admission and completion path, retaining the submission's original workspace
+and thread through later presentation switches. Replay starts no observation window.
+
 ### Session replacement and exit
 
 Confirmed replacement retires Main's source operations together, preserving queued

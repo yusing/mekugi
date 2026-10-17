@@ -239,7 +239,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, workspace)
-			u.proxy = &mekugiProxy{replayStore: store}
+			setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'cat > a.go; cat > b.go; go test ./...'", ExitCode: new(2), AggregatedOutput: new("test failed")}
 			output := u.session.activity.Outputs(u.session.Scope()).New()
 			output.Finish(new("test failed"), new(2))
@@ -247,7 +247,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 				execTrackView{complete: true, output: true, code: 2, segments: []commandSegment{{}, {}, {exit: 2, output: output}}})
 			awaitCommandSegments(t, u)
 			restored := newAppServerSessionTestUI(t, workspace)
-			restored.proxy = &mekugiProxy{replayStore: testReplayStore(mekugiReplayStore{directory: store.directory})}
+			setTestAppServerIntegration(restored, &mekugiProxy{replayStore: testReplayStore(mekugiReplayStore{directory: store.directory})})
 			restored.shell.saved.data = reviewReceiptSnapshot(t, trackedEditReceiptData(thread, item.ID))
 			turns := []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}}
 			view := restored.view

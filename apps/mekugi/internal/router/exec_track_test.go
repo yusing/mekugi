@@ -745,7 +745,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u.proxy = &mekugiProxy{replayStore: store}
+	setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
 	cwd := t.TempDir()
 	script := "mcat " + quoteShellWord(cwd+"/a.go") + "; rg needle " + quoteShellWord(cwd+"/src")
 	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), Cwd: cwd, Status: "inProgress"}
@@ -772,7 +772,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	}
 	awaitCommandSegments(t, u)
 	restored := newAppServerSessionTestUI(t, u.session.cwd)
-	restored.proxy = &mekugiProxy{replayStore: store}
+	setTestAppServerIntegration(restored, &mekugiProxy{replayStore: store})
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	segments := restored.view.Entries[0].Source.native.segments
 	if len(segments) != 2 || segments[0].text != "Read `a.go`" || segments[1].text != "Search `needle` in `src`" || segments[0].source != "mcat "+quoteShellWord(cwd+"/a.go") {
@@ -789,7 +789,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	// Child history can omit command cwd while retaining its own workspace.
 	item.Cwd = ""
 	child := newAppServerSessionTestUI(t, u.session.cwd)
-	child.proxy = &mekugiProxy{replayStore: store}
+	setTestAppServerIntegration(child, &mekugiProxy{replayStore: store})
 	child.session.path("child")
 	child.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
 	parts := child.agents.Entries[0].Source.native.segments

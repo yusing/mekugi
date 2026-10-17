@@ -68,7 +68,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	u := newAppServerSessionTestUI(t, workspace)
 	u.agents = u.shell.agents
 	activity := newSubagentActivity()
-	u.proxy = &mekugiProxy{activity: activity}
+	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
 	u.resumeThread = "main"
 
 	rootRecords := []map[string]any{
@@ -243,7 +243,7 @@ func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	}
 	// Attach only the activity collector.
 	activity := newSubagentActivity()
-	u.proxy = &mekugiProxy{activity: activity}
+	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
 	activity.attachNativePane("saved")
 	activity.collect("saved", "late", "error", "exec script failed: late")
 	appServerTestMessage(t, u, `{"id":2,"result":{"data":[],"nextCursor":null}}`)

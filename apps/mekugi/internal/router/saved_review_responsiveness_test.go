@@ -224,7 +224,7 @@ func TestAppServerSavedReviewHydrationKeepsTerminalResponsive(t *testing.T) {
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
 	reviewSource := new(changecapture.Service)
-	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, &observations, false)
+	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, testAppServerIntegration(proxy), nil, "", true, nil, nil, nil, "", nil, &observations, false)
 	if err != nil {
 		t.Fatal(err)
 	}

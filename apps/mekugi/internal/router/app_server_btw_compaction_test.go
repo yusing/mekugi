@@ -81,7 +81,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 	for _, completionFirst := range []bool{false, true} {
 		t.Run(map[bool]string{false: "error-first", true: "completion-first"}[completionFirst], func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.proxy = newManagedMekugiProxy(t)
+			setTestAppServerIntegration(u, newManagedMekugiProxy(t))
 			u.Turn, u.sessionPresentation().Status.Text = "main-turn", "Working"
 			appServerTestKeys(t, u, "/btw explain ")
 			image := filepath.Join(t.TempDir(), "side.png")
@@ -89,7 +89,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			appServerTestKeys(t, u, "\r")
 			fork := btwTestRequest(t, w, "thread/fork", "main")
 			btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
-			if !u.proxy.control.IsSideThread("side") {
+			if !u.controlObservations.IsSideThread("side") {
 				t.Fatal("side not registered before turn/start")
 			}
 			start := btwTestRequest(t, w, "turn/start", "side")
@@ -132,7 +132,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 
 func TestAppServerBTWCompactionCloseRecreateIgnoresLateFailure(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.proxy = newManagedMekugiProxy(t)
+	setTestAppServerIntegration(u, newManagedMekugiProxy(t))
 	btwTestStart(t, u, w)
 	old := u.btw
 	if err := u.closeBTW(); err != nil {
@@ -149,14 +149,14 @@ func TestAppServerBTWCompactionCloseRecreateIgnoresLateFailure(t *testing.T) {
 	btwTestReply(t, u, interrupt, `{}`)
 	unload := btwTestRequest(t, w, "thread/unsubscribe", "side")
 	btwTestReply(t, u, unload, `{}`)
-	if u.btw == old || u.btw.Thread != "new-side" || !u.btw.Busy || u.Text != "" || u.proxy.control.IsSideThread("side") || !u.proxy.control.IsSideThread("new-side") {
+	if u.btw == old || u.btw.Thread != "new-side" || !u.btw.Busy || u.Text != "" || u.controlObservations.IsSideThread("side") || !u.controlObservations.IsSideThread("new-side") {
 		t.Fatalf("late events crossed lifecycle: %+v draft=%q", u.btw, u.Text)
 	}
 }
 
 func TestAppServerBTWCompactionBeforeStartAckDoesNotResend(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.proxy = newManagedMekugiProxy(t)
+	setTestAppServerIntegration(u, newManagedMekugiProxy(t))
 	appServerTestKeys(t, u, "/btw initial\r")
 	fork := btwTestRequest(t, w, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)

@@ -48,7 +48,8 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := newAppServerSessionTestUI(t, directory)
-	u.proxy = newManagedMekugiProxy(t)
+	proxy := newManagedMekugiProxy(t)
+	setTestAppServerIntegration(u, proxy)
 	u.serviceTiers = inferencegateway.NewTiers(config.ServiceTiers)
 	u.sessionPresentation().Status.Text = "Ready"
 	u.view.Painter.Theme = diffrender.DarkTheme
@@ -68,8 +69,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 				assertNativeUISnapshot(t, "native-main-configured-tier", rows)
 			}
 			// Passthrough routes tiers too, but has no observation proxy.
-			proxy := u.proxy
-			u.proxy = nil
+			setTestAppServerIntegration(u, nil)
 			passthrough, _ := u.testMainFrame(100, 10, 0)
 			if strings.Join(rows, "\n") != strings.Join(passthrough, "\n") {
 				t.Fatal("passthrough composer lost configured tier")
@@ -79,7 +79,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 				t.Fatalf("status does not reflect routed tier: %s", body)
 			}
 			u.statusPanelKey("\x1b")
-			u.proxy = proxy
+			setTestAppServerIntegration(u, proxy)
 			if u.serviceTier != tc.requested || u.model != tc.model {
 				t.Fatal("presentation replaced host settings")
 			}

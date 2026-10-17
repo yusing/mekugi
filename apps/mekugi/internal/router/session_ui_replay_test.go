@@ -63,7 +63,7 @@ func replayPlaybackTestNew(t *testing.T) *uiReplayPlayback {
 
 func replayPlaybackTestPaint(t *testing.T, p *uiReplayPlayback, width, height int) string {
 	t.Helper()
-	if p.ui.client != nil || p.ui.requests != nil || len(p.ui.session.metadata) != 0 || p.ui.proxy != nil || p.ui.execTrack != nil || p.ui.session.waitStore != nil {
+	if p.ui.client != nil || p.ui.requests != nil || len(p.ui.session.metadata) != 0 || (p.ui.controlObservations != nil || p.ui.usage != nil || p.ui.audience != nil || p.ui.retained != nil || p.ui.execWindows != nil || p.ui.nativeTrace != nil || p.ui.guard != nil) || p.ui.execTrack != nil || p.ui.session.waitStore != nil {
 		t.Fatal("playback constructed live execution dependencies")
 	}
 	screen := vt.NewEmulator(width, height)
@@ -133,7 +133,7 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	if p.Paused || p.Position != p.From || p.ui.Text != "" {
 		t.Fatalf("replay controls leaked into live composer/transport: paused=%v position=%v draft=%q", p.Paused, p.Position, p.ui.Text)
 	}
-	if p.ui.client != nil || p.ui.requests != nil || len(p.ui.session.metadata) != 0 || p.ui.proxy != nil || p.ui.execTrack != nil || p.ui.session.waitStore != nil {
+	if p.ui.client != nil || p.ui.requests != nil || len(p.ui.session.metadata) != 0 || (p.ui.controlObservations != nil || p.ui.usage != nil || p.ui.audience != nil || p.ui.retained != nil || p.ui.execWindows != nil || p.ui.nativeTrace != nil || p.ui.guard != nil) || p.ui.execTrack != nil || p.ui.session.waitStore != nil {
 		t.Fatal("offline playback constructed live execution dependencies")
 	}
 }

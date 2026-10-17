@@ -60,7 +60,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	defer u.shell.diffScreen.Close()
 	auto := newLivePreview(t.Context())
 	defer auto.Close()
-	u.proxy = &mekugiProxy{review: testReview(auto), execWindows: &execWindowRegistry{}}
+	setTestAppServerIntegration(u, &mekugiProxy{review: testReview(auto), execWindows: &execWindowRegistry{}})
 	workspace := u.session.cwd
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}})
 	u.shell.saved.scope = testReview(auto).Scope()
@@ -78,12 +78,12 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	queued.ID, queued.Complete, queued.Evaluated, queued.Tool = "queued-final", true, true, applyPatchToolName
 	auto.Update(queued, false)
 	canceled := false
-	u.proxy.execWindows.open(&execWindow{ref: "cell", thread: "main", turn: "turn", previewCancel: func() { canceled = true }})
+	u.execWindows.open(&execWindow{ref: "cell", thread: "main", turn: "turn", previewCancel: func() { canceled = true }})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "interrupted"}})
 	if !canceled || u.shell.liveDock.Views[main.ID] != nil || u.shell.liveDock.Views[child.ID] == nil {
 		t.Fatal("interrupt did not retire only its own live preview")
 	}
-	if !u.proxy.execWindows.find("cell").closed.IsZero() {
+	if !u.execWindows.find("cell").closed.IsZero() {
 		t.Fatal("display cleanup finalized capture")
 	}
 	// An asynchronous worker can race with interruption and the next turn.

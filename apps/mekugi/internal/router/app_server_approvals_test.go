@@ -6,6 +6,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -33,8 +34,8 @@ import (
 
 func approvalTestCommand(t *testing.T, u *appServerUI, id any, params map[string]any) {
 	t.Helper()
-	if u.proxy == nil {
-		u.proxy = &mekugiProxy{}
+	if u.controlObservations == nil {
+		u.controlObservations = new(sessioncontrol.Observations)
 	}
 	request := map[string]any{"threadId": "main", "turnId": "turn", "itemId": "cmd", "command": "git push origin main"}
 	for key, value := range params {
@@ -122,7 +123,7 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 	if got := wire.String(); !strings.Contains(got, `"id":"first"`) || !strings.Contains(got, `"decision":"decline"`) {
 		t.Fatalf("wrong response identity or offered payload: %s", got)
 	}
-	feedback := u.proxy.control.Feedback("main", "turn")
+	feedback := u.controlObservations.Feedback("main", "turn")
 	if !strings.Contains(feedback, "explicit reason") || strings.Contains(feedback, "editor content") {
 		t.Fatalf("reason was reconstructed from terminal state: %s", feedback)
 	}
@@ -453,7 +454,7 @@ func TestNativeApprovalDenialProjectsFeedbackInSameTurn(t *testing.T) {
 			}
 			for _, scope := range [][2]string{{thread, "other"}, {"other", "turn"}, {thread, "turn"}, {thread, "turn"}} {
 				request := &codexresponses.Request{Fields: map[string]jsontext.Value{"input": jsontext.Value(`[{"type":"custom_tool_call_output","call_id":"call","output":"exec command rejected by user"}]`)}}
-				if err := request.AppendApprovalFeedback(u.proxy.control.Feedback(scope[0], scope[1])); err != nil {
+				if err := request.AppendApprovalFeedback(u.controlObservations.Feedback(scope[0], scope[1])); err != nil {
 					t.Fatal(err)
 				}
 				got := string(request.Fields["input"])
@@ -463,7 +464,7 @@ func TestNativeApprovalDenialProjectsFeedbackInSameTurn(t *testing.T) {
 				}
 			}
 			questionTestMessage(t, u, nil, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn", "status": "completed"}})
-			if u.proxy.control.Feedback(thread, "turn") != "" {
+			if u.controlObservations.Feedback(thread, "turn") != "" {
 				t.Fatal("completed-turn feedback retained")
 			}
 		})
@@ -499,7 +500,7 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	}
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "\r")
-	feedback := u.proxy.control.Feedback("main", "turn")
+	feedback := u.controlObservations.Feedback("main", "turn")
 	if !strings.Contains(feedback, "wait for review") || strings.Contains(feedback, "answer to question") {
 		t.Fatalf("wrong denial reason: %s", feedback)
 	}

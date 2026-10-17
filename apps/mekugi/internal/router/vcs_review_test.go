@@ -73,7 +73,7 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			u.proxy = &mekugiProxy{replayStore: store}
+			setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
 			key := [3]string{"main", "t", "commit"}
 			command := "git commit -m directory"
 			hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})

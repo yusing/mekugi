@@ -415,6 +415,7 @@ type nativePreviewStep struct {
 type nativePreview struct {
 	t           *testing.T
 	ui          *appServerUI
+	proxy       *mekugiProxy
 	input       *appServerTestInput
 	store       *mekugiReplayStore
 	usage       *accounting.Service
@@ -483,10 +484,12 @@ func newNativePreview(t *testing.T) *nativePreview {
 		}
 	}
 	usage := newTestUsage(t)
-	u.proxy = newManagedMekugiProxy(t)
-	u.proxy.usage = usage
-	u.proxy.activity.observe("main", "", "/root", false)
-	u.proxy.activity.attachNativePane("main")
+	proxy := newManagedMekugiProxy(t)
+	setTestAppServerIntegration(u, proxy)
+	proxy.usage = usage
+	u.usage = usage
+	u.audience.observe("main", "", "/root", false)
+	u.audience.attachNativePane("main")
 	u.model, u.reasoningEffort = "gpt-6-luna", "medium"
 	if err := json.Unmarshal([]byte(`[{"model":"gpt-6-luna","defaultReasoningEffort":"medium","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"high"}],"serviceTiers":[{"id":"priority"}]}]`), &u.models); err != nil {
 		t.Fatal(err)
@@ -499,7 +502,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 	u.shell.AuxiliaryLabel, u.shell.Auxiliary, u.shell.preparePane = label, attachment.Pane, attachment.Prepare
 	u.shell.saved = savedDiff{workspace: workspace, store: store, data: new(presentation.Snapshot), coverage: "CONNECTING"}
 	u.session.start("main", workspace)
-	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}}
+	p := &nativePreview{t: t, ui: u, proxy: proxy, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}}
 	store.liveDiff = func(changes []reviewChange) {
 		u.shell.applyDiff(t.Context(), reviewEvent{Kind: "change", Changes: changes})
 	}
@@ -777,7 +780,7 @@ func (p *nativePreview) receive(to, from, id, kind, body string) {
 	if to == "main" {
 		parent = ""
 	}
-	transform, _ := prepareActivityModelTest(p.t, p.ui.proxy, cmp.Or(p.models[to], "gpt-test"), "preview-"+to, to, parent, path, []any{envelope})
+	transform, _ := prepareActivityModelTest(p.t, p.proxy, cmp.Or(p.models[to], "gpt-test"), "preview-"+to, to, parent, path, []any{envelope})
 	transform.Close()
 	p.ui.applyObservedActivity()
 }

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"slices"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -309,7 +308,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 		execs, dynamic := commandanalysis.LiteralExecCommands(originalInput, t.directory, t.sessionShell)
 		// Source-resolved edit operands acquire baselines; a cell that may write
 		// elsewhere, including a dynamic one, is bounded by a workspace snapshot.
-		observation, observed := changecapture.Capture(t.ctx, execs, dynamic, true, t.execCaptureEnvironment(patches))
+		observation, observed := changecapture.Capture(t.ctx, execs, dynamic, true, executionCaptureEnvironment(t.ctx, t.directory, t.proxy.replayStore, patches))
 		previewOpened := t.openStockExecWindow(callID, observation, patches, execs, dynamic, true)
 		if len(patches) == 0 && !observed && !previewOpened {
 			return false, nil
@@ -337,24 +336,6 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 	return false, nil
 }
 
-func (t *mekugiResponseTransform) execCaptureEnvironment(patches []changecapture.PatchObservation) changecapture.Options {
-	env := changecapture.Options{Directory: t.directory}
-	if t.proxy != nil && t.proxy.replayStore != nil {
-		env.Changes = storeChangeResolver(t.ctx, t.proxy.replayStore)
-		env.Workspaces = t.proxy.replayStore.snapshots
-	}
-	for _, patch := range patches {
-		for _, file := range patch.Files {
-			for _, path := range []string{file.BeforePath, file.AfterPath} {
-				if path != "" && !slices.Contains(env.Excluded, path) {
-					env.Excluded = append(env.Excluded, path)
-				}
-			}
-		}
-	}
-	return env
-}
-
 func (t *mekugiResponseTransform) openExecWindow(callID string, observation *changecapture.Observation, patches []changecapture.PatchObservation) {
 	if observation == nil && len(patches) == 0 || t.proxy == nil {
 		return
@@ -363,25 +344,7 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *cha
 		t.execGroup = rand.Text()
 	}
 	window := &execWindow{ref: callID, thread: t.shellThreadID, turn: t.shellTurnID, group: t.execGroup}
-	window.paths = t.execCaptureEnvironment(patches).Excluded
-	var commands []commandanalysis.Command
-	if observation != nil {
-		observation.Group = t.execGroup
-		window.roots = slices.Clone(observation.Roots)
-		window.paths = append(window.paths, observation.ScopePaths()...)
-		commands = observation.Commands
-	}
-	if len(patches) != 0 {
-		window.roots = changecapture.AddRoot(window.roots, t.directory)
-	}
-	t.proxy.execWindows.open(window, commands...)
-	if live := t.proxy.review.Preview(); observation != nil && live.Enabled() {
-		var snapshots *changecapture.Workspaces
-		if t.proxy.replayStore != nil {
-			snapshots = t.proxy.replayStore.snapshots
-		}
-		t.proxy.execWindows.preview(callID, *observation, live, t.directory, t.threadID, t.operationCaller(), snapshots)
-	}
+	admitExecutionWindow(t.proxy.execWindows, t.proxy.review, window, observation, patches, executionCaptureEnvironment(t.ctx, t.directory, t.proxy.replayStore, patches), t.threadID, t.operationCaller())
 }
 
 // Display baselines are process-local. They preserve running LiveDiff without
@@ -389,7 +352,7 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *cha
 func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *changecapture.Observation, patches []changecapture.PatchObservation, commands []commandanalysis.Command, dynamic, codeMode bool) bool {
 	display := authored
 	if (authored == nil || authored.Class == execscope.Opaque.String()) && t.proxy != nil && t.proxy.review.Preview().Enabled() {
-		env := t.execCaptureEnvironment(patches)
+		env := executionCaptureEnvironment(t.ctx, t.directory, t.proxy.replayStore, patches)
 		env.PreviewOnly = true
 		if preview, ok := changecapture.Capture(t.ctx, commands, dynamic, codeMode, env); ok {
 			if authored != nil {

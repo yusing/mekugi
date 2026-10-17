@@ -331,7 +331,7 @@ func TestAppServerCompactCancelRestoresWaitingInputDespiteSuccessfulCompletion(t
 
 func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.proxy = &mekugiProxy{}
+	setTestAppServerIntegration(u, &mekugiProxy{})
 	u.session.start(u.Thread, "")
 	u.agents = newActivityAdapter()
 	u.view.Painter.Theme = diffrender.DarkTheme
@@ -481,7 +481,7 @@ func TestAppServerCompactSteerCancelDuringInterrupt(t *testing.T) {
 
 func TestUISnapshotNativeCompactSteerInterrupt(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.proxy = &mekugiProxy{}
+	setTestAppServerIntegration(u, &mekugiProxy{})
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.view.Clock = u.clock

@@ -8,6 +8,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/conversation/completion"
@@ -19,6 +20,7 @@ import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -99,7 +101,14 @@ type appServerUI struct {
 	client                  *appserver.Client
 	view                    *activityAdapter
 	agents                  *activityAdapter
-	proxy                   *mekugiProxy
+	controlObservations     *sessioncontrol.Observations
+	usage                   *accounting.Service
+	audience                *subagentActivity
+	review                  *savedReview
+	execWindows             *execWindowRegistry
+	nativeTrace             *nativetrace.Reader
+	retained                *mekugiReplayStore
+	captureNotice           func(string, string, string, string)
 	guard                   *shellApprovalServer
 	execTrack               *commandsegments.Observer // Per-segment command reports; nil when not tracking.
 	shellEdits              appServerShellEdits
@@ -142,18 +151,18 @@ type appServerUI struct {
 func StartAppServerUI(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
 	issues := requestexecution.NewFailures(notices)
-	return startAppServerUI(terminalViews, reviewSource, views, conversation, activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, observations, approvals)
+	return startAppServerUI(terminalViews, reviewSource, views, conversation, activity, service, prefs, nil, ctx, cmd, stdin, stdout, appServerIntegration{}, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, observations, approvals)
 }
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *requestexecution.Failures, resumeThread string, faint bool, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool) (func() error, error) {
+func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, integration appServerIntegration, issues *requestexecution.Failures, resumeThread string, faint bool, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
 			guardHash = hash
 		}
 	}
-	if guardHash != "" && (proxy == nil || proxy.guard == nil) {
+	if guardHash != "" && integration.guard == nil {
 		return nil, errors.New("Shell guard approval channel is unavailable")
 	}
 	var resumeCwd string
@@ -167,10 +176,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	// Live settings and trusted reasoning configuration_update items are Codex
 	// opt-ins. Enable them only for this native app-server invocation.
 	cmd.Args = append(cmd.Args, "-c", "features.step_model_switching=true", "-c", "features.reasoning_effort_override=true")
-	var tracker *commandsegments.Observer
-	if proxy != nil {
-		tracker = proxy.execTrack
-	}
+	tracker := integration.execTrack
 	c, err := appserver.Start(cmd, func(message appserver.Message) {
 		if message.Method != "item/started" {
 			return
@@ -184,7 +190,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(terminalViews.NewThreadView()), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(terminalViews.NewThreadView()), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, captureNotice: integration.captureNotice, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.attachPresentation()
 	u.sessionPresentation().Status.Set("Connecting…", false)
 	u.attachActivity()
@@ -193,15 +199,13 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		u.titleGenerator = generator
 		u.titleUpdates = generator.updates
 	}
-	if proxy != nil {
-		u.execTrack = proxy.execTrack
-		u.guard = proxy.guard
-		if u.guard != nil {
-			u.approvals.initGuards(u.guard.guards)
-		}
-		if proxy.skillsManager {
-			u.skillEnvironment = cmd.Environ()
-		}
+	u.execTrack = integration.execTrack
+	u.guard = integration.guard
+	if u.guard != nil {
+		u.approvals.initGuards(u.guard.guards)
+	}
+	if integration.skillsManager {
+		u.skillEnvironment = cmd.Environ()
 	}
 	u.resumeArgv = slices.Clone(resumeArgv)
 	u.replayDebugDirectory = debugDirectory
@@ -231,8 +235,8 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		defer u.cancelPickerScan()
 		defer u.shell.diffScreen.Close()
 		defer func() { u.commits.Close() }()
-		if proxy != nil {
-			defer proxy.activity.releasePane()
+		if u.audience != nil {
+			defer u.audience.releasePane()
 		}
 		defer c.Input.Close()
 		defer u.discardDraftImages()
@@ -330,7 +334,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						u.dirty = true
 					case <-tick.C:
-						if len(u.conversation().Unsent) > 0 && u.conversation().Unsent[0].Question != nil && (u.proxy == nil || !u.proxy.control.EmittingToolInput(u.session.cwd, u.Thread)) {
+						if len(u.conversation().Unsent) > 0 && u.conversation().Unsent[0].Question != nil && (u.controlObservations == nil || !u.controlObservations.EmittingToolInput(u.session.cwd, u.Thread)) {
 							if err := u.flushInput(); err != nil {
 								return err
 							}
@@ -669,7 +673,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if err := u.requests.Notify("initialized", map[string]any{}); err != nil {
 				return err
 			}
-			if u.proxy != nil {
+			if u.execWindows != nil {
 				if err := u.request("environment/info", map[string]any{"environmentId": "local"}); err != nil {
 					return err
 				}
@@ -740,8 +744,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			if method == "thread/start" {
 				u.Settings.RestoredEffort()
-				if u.proxy != nil {
-					u.proxy.usage.MarkNew(result.Thread.ID)
+				if u.usage != nil {
+					u.usage.MarkNew(result.Thread.ID)
 				}
 			}
 			u.models, u.modelsLoading = nil, true // A cleared or switched session lists them again.
@@ -755,12 +759,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					return err
 				}
 			}
-			if u.proxy != nil || u.panes != nil {
-				var waitStore *mekugiReplayStore
-				if u.proxy != nil {
-					waitStore = u.proxy.replayStore
-				}
-				if err := u.openWaitStore(waitStore); err != nil {
+			if u.retained != nil || u.panes != nil {
+				if err := u.openWaitStore(u.retained); err != nil {
 					u.setNotice("Wait targets could not be retained: "+err.Error(), true)
 				}
 			}
@@ -770,8 +770,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if u.agents != nil {
 				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
 			}
-			if u.proxy != nil {
-				u.proxy.activity.attachNativePane(u.Thread)
+			if u.audience != nil {
+				u.audience.attachNativePane(u.Thread)
 			}
 			// Resumed history is applied once the roster is read, so Main can
 			// follow child activity in order. An active snapshot keeps its
@@ -1326,12 +1326,7 @@ func (u *appServerUI) ensureShell() {
 	u.agents.ChildrenOnly = true
 	u.agents.StatusLabel = "" // Fed by app-server directly, never by a collector connection.
 	u.agents.mainView = u.view
-	var store *mekugiReplayStore
-	var review *savedReview
-	if u.proxy != nil {
-		store = u.proxy.replayStore
-		review = u.proxy.review
-	}
+	store, review := u.retained, u.review
 	if review == nil {
 		review = newSavedReview(u.ctx, nil)
 	}
@@ -1362,7 +1357,7 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 // Router-owned annotations and authenticated directed inputs supplement the
 // native event stream without becoming assistant speech or execution events.
 func (u *appServerUI) applyObservedActivity() {
-	if u.proxy == nil || u.historyPending() {
+	if u.historyPending() {
 		return
 	}
 	// Provider rounds can start within one host turn, before another usage
@@ -1379,8 +1374,11 @@ func (u *appServerUI) applyObservedActivity() {
 		u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
 		u.dirty = true
 	}
-	entries := u.proxy.activity.takeNativeActivity(u.Thread)
-	for _, start := range u.proxy.activity.takeRequestStarts(u.Thread) {
+	if u.audience == nil {
+		return
+	}
+	entries := u.audience.takeNativeActivity(u.Thread)
+	for _, start := range u.audience.takeRequestStarts(u.Thread) {
 		entries = append(entries, u.transcriptUpdates(u.session.providerStarted(start.thread, start.at), false)...)
 	}
 	for i := range entries {
@@ -1390,7 +1388,7 @@ func (u *appServerUI) applyObservedActivity() {
 		u.applyActivity(entries, nil)
 		u.dirty = true
 	}
-	for _, ref := range u.proxy.activity.takeUnreturned(u.Thread) {
+	for _, ref := range u.audience.takeUnreturned(u.Thread) {
 		if main, activity := u.view.markUnreturned(ref.thread, ref.call), u.agents.markUnreturned(ref.thread, ref.call); main || activity {
 			u.dirty = true
 		}
