@@ -20,6 +20,8 @@ not captures, commands or host-owned work. Omitting Live Preview leaves saved
 review and captured Activity receipts available.
 
 Retained hydration consumes the selected History and Changes owners directly.
+Captured receipts attach to completed host operation identities; retained capture
+correlation is used only when no host operation identity is available.
 It validates complete attempts before replacing an immutable review projection;
 missing or inconsistent evidence cannot publish partial files or receipts.
 Asynchronous loading preserves that atomicity across attachment replacement and

@@ -121,14 +121,14 @@ func capturedReceipt(workspace string, value legacycall.History, files []diffmod
 	}
 	evidence := presentation.ReceiptEvidence{Files: files, Source: binding.EditReceiptSource(value.ToolName, value.Source), ChangeID: value.ChangeID, Labels: value.ExecOutcome.Labels, DeletedDirectories: value.ExecOutcome.DeletedDirectories}
 	receipt := &presentation.Receipt{Thread: value.ExecutingThread, Text: presentation.ReceiptText(workspace, evidence)}
-	if !value.ExecOutcome.CodeMode {
-		if call, ok := strings.CutSuffix(value.CorrelationID, "\x00exec"); ok {
-			receipt.Calls = append(receipt.Calls, call)
-		}
-	}
 	for _, result := range value.HostResults {
 		if result.Tool == "exec_command" || result.Tool == "userShell" {
 			receipt.Calls = append(receipt.Calls, result.CallID)
+		}
+	}
+	if len(receipt.Calls) == 0 && !value.ExecOutcome.CodeMode {
+		if call, ok := strings.CutSuffix(value.CorrelationID, "\x00exec"); ok {
+			receipt.Calls = append(receipt.Calls, call)
 		}
 	}
 	if receipt.Text == "" && len(receipt.Calls) == 0 {
