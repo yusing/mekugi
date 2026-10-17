@@ -132,9 +132,9 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 			exit = err.(*exec.ExitError).ExitCode()
 		}
 		// Presentation may discard an old thread's completion after a switch.
-		u.retiredThreads = map[string]string{u.Thread: u.Thread}
+		u.RetireThreads(u.Thread)
 		completeShellEditTestCommand(t, u, command, exit)
-		u.retiredThreads = nil
+		u.Readmit(u.Thread)
 		if u.Turn != "model" {
 			t.Fatal("shell completion ended the model turn")
 		}

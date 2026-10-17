@@ -5,7 +5,6 @@ package router
 import (
 	"context"
 	json "encoding/json/v2"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -13,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
@@ -152,8 +153,8 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), client: client, requests: sessioncontrol.NewRequests[appServerRequest](client), view: activityui.NewView(), agents: activityui.NewView()})
-	if err := u.request("initialize", nil); err != nil {
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](client), view: activityui.NewView(), agents: activityui.NewView()})
+	if err := u.Request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}
 	for u.Thread == "" || u.modelsLoading {

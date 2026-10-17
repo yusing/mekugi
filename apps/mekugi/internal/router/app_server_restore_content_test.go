@@ -85,7 +85,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	u.ensureShell()
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", workspace)
-	u.startup.Thread = "main"
+	u.Startup.Thread = "main"
 	root := binding.ThreadInfo{ID: "main", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "root-turn", Status: "completed", Items: []binding.ThreadItem{
 		{ID: "spawn", Type: "collabAgentToolCall", Status: "completed", Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "Inspect the change."},
 		{ID: "followup", Type: "collabAgentToolCall", Status: "completed", Tool: "followupTask", SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "Check again."},
@@ -150,7 +150,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 	u.ensureShell()
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
-	u.startup.Thread = "main"
+	u.Startup.Thread = "main"
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.cwd}); err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 	u.ensureShell()
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
-	u.startup.Thread = "main"
+	u.Startup.Thread = "main"
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.cwd}); err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			}
 			liveDiffScopeCapture(t, store, workspace, "main", "edit", filepath.Join(workspace, "restored.go"), "before", "after")
 			u := newAppServerSessionTestUI(t, workspace)
-			w := u.client.Input.(*appServerTestInput)
+			w := u.Host.Input.(*appServerTestInput)
 			auto := newLivePreview(t.Context())
 			defer auto.Close()
 			auto.Enable()

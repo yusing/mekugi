@@ -36,7 +36,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	}
 	// A subsequent attachment may see the same still-running command. Losing
 	// its earlier bytes must not turn the remaining bytes into complete output.
-	u.releaseRetired("main")
+	u.Readmit("main")
 	u.startSession("main", u.cwd)
 	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	report.send(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "later\n"})

@@ -74,7 +74,7 @@ func TestAppServerHookOutcomesInChildFeed(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
 			u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
-			_ = u.requests.ReadThreadMetadata("main", "child", true, appServerRequest{})
+			_ = u.Requests.ReadThreadMetadata("main", "child", true, appServerRequest{})
 			run := hookTestRun(u.cwd, status)
 			run["entries"] = []map[string]any{{"kind": "error", "text": "cannot execute\npermission denied\x1b]0;unsafe\a"}}
 			// Completion alone must be visible, independently of Main's same run ID.

@@ -22,7 +22,7 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 		caption.Model, caption.Effort, caption.Tier = u.model, u.reasoningEffort, u.displayServiceTier()
 	}
 	caption = sessionCaption(&u.session, m, caption, u.serviceTiers)
-	info := sessionpresentation.MainInfo{Workspace: u.cwd, Title: cmp.Or(u.names.Pending(u.Thread), u.title), BackendVersion: u.backendVersion, Skills: u.source.ActiveSkills()["Main"]}
+	info := sessionpresentation.MainInfo{Workspace: u.cwd, Title: cmp.Or(u.Names.Pending(u.Thread), u.title), BackendVersion: u.backendVersion, Skills: u.source.ActiveSkills()["Main"]}
 	if approval := u.approvals.View(); approval.Count > 0 {
 		if caller := u.session.KnownCaller(approval.Approval.Thread); caller != "/root" {
 			info.ApprovalCaller = caller

@@ -90,7 +90,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 		t.Fatal("closing Diff did not reclaim its width")
 	}
 	// Metadata discovery is independent of the composer destination.
-	w := u.client.Input.(*appServerTestInput)
+	w := u.Host.Input.(*appServerTestInput)
 	appServerOneRequest(t, w, "thread/read", "")
 	u.Turn = "active"
 	keys("/skills\r\t\x03\x07\x16\x7f\x1b[1;2A\x1b[200~pasted\x03\r\x1b[201~")

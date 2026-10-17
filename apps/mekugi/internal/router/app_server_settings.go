@@ -62,7 +62,7 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 		u.setNotice("Settings update pending", false)
 		return false, nil
 	}
-	if err := u.requests.ApplySettings(&u.Live, decision); err != nil {
+	if err := u.Requests.ApplySettings(&u.Live, decision); err != nil {
 		return false, err
 	}
 
@@ -223,7 +223,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		}
 		u.models = append(u.models, result.Data...)
 		if result.NextCursor != "" {
-			return true, u.request("model/list", map[string]any{"cursor": result.NextCursor, "includeHidden": true})
+			return true, u.Request("model/list", map[string]any{"cursor": result.NextCursor, "includeHidden": true})
 		}
 		u.modelsLoading = false
 		if u.picker.Setting != "" {
@@ -302,7 +302,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	}
 	decision := confirmation.Update
 	if decision.Action == sessioncontrol.SettingsTurn {
-		if err := u.requests.ApplySettings(&u.Live, decision); err != nil {
+		if err := u.Requests.ApplySettings(&u.Live, decision); err != nil {
 			return true, err
 		}
 		u.setNotice("Settings saved · updating active turn…", false)

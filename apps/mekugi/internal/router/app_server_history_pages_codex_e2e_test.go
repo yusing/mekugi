@@ -147,14 +147,14 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	fullDuration += time.Since(projectionStarted)
 	read.Thread.Turns = nil
 	u, _ := newAppServerTestUI()
-	u.client = client
-	u.requests = sessioncontrol.NewRequests[appServerRequest](client)
+	u.Host = client
+	u.Requests = sessioncontrol.NewRequests[appServerRequest](client)
 	u.ctx = t.Context()
 	u.agents = activityui.NewView()
 	u.ensureShell()
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", workspace)
-	u.startup.Thread = "main"
+	u.Startup.Thread = "main"
 	u.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
 	u.restoring = &appServerActivityRestore{root: binding.ThreadInfo{ID: "main", Cwd: workspace}, state: restoredDiscoveryTestState("main", thread), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
 	started = time.Now()
@@ -214,8 +214,8 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	client = start()
 	t.Cleanup(client.Close)
 	fresh, _ := newAppServerTestUI()
-	fresh.client, fresh.ctx, fresh.agents = client, t.Context(), activityui.NewView()
-	fresh.requests = sessioncontrol.NewRequests[appServerRequest](client)
+	fresh.Host, fresh.ctx, fresh.agents = client, t.Context(), activityui.NewView()
+	fresh.Requests = sessioncontrol.NewRequests[appServerRequest](client)
 	fresh.startSession("main", workspace)
 	fresh.registerThread(binding.ThreadInfo{ID: forked.Thread.ID, AgentNickname: "worker", AgentRole: "worker"})
 	fresh.restoring = &appServerActivityRestore{root: binding.ThreadInfo{ID: "main", Cwd: workspace}, state: restoredDiscoveryTestState("main", forked.Thread.ID), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
@@ -262,7 +262,7 @@ func drainHistoryLoader(t *testing.T, u *appServerUI) int {
 	t.Helper()
 	total := 0
 	for u.historyLoading() != nil {
-		m := awaitHistoryRPC(t, u.client, u.historyLoading().state.RequestID())
+		m := awaitHistoryRPC(t, u.Host, u.historyLoading().state.RequestID())
 		total += len(m.Result)
 		if err := u.message(m); err != nil {
 			t.Fatal(err)

@@ -66,12 +66,12 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), client: client, view: activityui.NewView(), agents: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), Host: client, view: activityui.NewView(), agents: activityui.NewView(), Requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
 	setTestAppServerIntegration(u, proxy)
 	u.ensureShell()
 
 	defer terminalTest(u).Diff.Close()
-	if err := u.request("initialize", nil); err != nil {
+	if err := u.Request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}
 	tick := time.NewTicker(50 * time.Millisecond)
@@ -89,7 +89,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 			u.applyObservedActivity()
 			if u.Thread != "" && !started {
 				started = true
-				if err := u.request("turn/start", map[string]any{"threadId": u.Thread, "input": appserver.Input("Spawn the assigned child and wait for its report.")}); err != nil {
+				if err := u.Request("turn/start", map[string]any{"threadId": u.Thread, "input": appserver.Input("Spawn the assigned child and wait for its report.")}); err != nil {
 					t.Fatal(err)
 				}
 			}

@@ -101,7 +101,7 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 			}
 			u.Text = "next turn"
 			appServerTestKeys(t, u, "\r")
-			w := u.client.Input.(*appServerTestInput)
+			w := u.Host.Input.(*appServerTestInput)
 			if u.restoring == nil || len(restoreContentRequests(t, w)) != 2 {
 				t.Fatal("restored input became available before retained read settled")
 			}

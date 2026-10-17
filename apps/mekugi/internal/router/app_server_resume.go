@@ -33,7 +33,7 @@ import (
 )
 
 func (u *appServerUI) openSession() error {
-	opening, err := u.requests.OpenSession(&u.startup, &u.Live, u.approvalMode, appServerRequest{label: "resume/settings"})
+	opening, err := u.Requests.OpenSession(&u.Startup, &u.Live, u.approvalMode, appServerRequest{label: "resume/settings"})
 	u.sessionPresentation().BeginOpening(opening)
 	if err != nil {
 		return err
@@ -54,7 +54,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	if m.Error != nil {
 		return fail(m.Error.Message)
 	}
-	thread := cmp.Or(u.Replacement.Target, u.startup.Thread)
+	thread := cmp.Or(u.Replacement.Target, u.Startup.Thread)
 	info, err := binding.DecodeHistoryThread(m.Result, thread)
 	if err != nil {
 		return fail(err.Error())
@@ -73,8 +73,8 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	}
 	evidence, newerThan := retained.ResumeBaseline()
 	evidence = evidence.WithNewer(resumeSettingsEvidence(rollout.ResumeSettings(info.ID, info.Path, newerThan)))
-	err = u.requests.Resume(&u.startup, &u.Live, evidence, u.approvalMode)
-	if u.startup.MissingSettings {
+	err = u.Requests.Resume(&u.Startup, &u.Live, evidence, u.approvalMode)
+	if u.Startup.MissingSettings {
 		u.setNotice(sessionpresentation.ResumeSettingsUnavailable, true)
 	}
 	return err
@@ -99,7 +99,7 @@ func (u *appServerUI) holdResumeEvent(m appserver.Message, resuming bool) (hold,
 	if !resuming && (thread == "" || u.session.KnownCaller(thread) != "" || u.session.KnownCaller(p.Thread.ParentThreadID) != "") {
 		return false, false
 	}
-	root := cmp.Or(u.Replacement.Target, u.startup.Thread)
+	root := cmp.Or(u.Replacement.Target, u.Startup.Thread)
 	delta := strings.HasSuffix(m.Method, "/delta") || strings.HasSuffix(m.Method, "Delta")
 	return true, !delta || thread == "" || thread == root
 }
@@ -120,7 +120,7 @@ func (u *appServerUI) resumeLastResponse(m appserver.Message) error {
 	if m.Error != nil {
 		return fmt.Errorf("find latest thread: %s", m.Error.Message)
 	}
-	if err := u.startup.Latest(m.Result); err != nil {
+	if err := u.Startup.Latest(m.Result); err != nil {
 		return err
 	}
 	return u.openSession()

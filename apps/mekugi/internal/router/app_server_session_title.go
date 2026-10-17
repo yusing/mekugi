@@ -30,30 +30,30 @@ func (u *appServerUI) titleCommand(text string) bool {
 
 func (u *appServerUI) renameSessionTitle(name string) {
 	u.dirty = true
-	u.names.Manual(u.Thread, name)
+	u.Names.Manual(u.Thread, name)
 	if u.Thread == "" {
 		return
 	}
 	// Suppress generation before persistence, even if transport rejects the save.
 	u.titleGenerator.nameChanged(u.Thread, name)
-	u.requestSessionTitle(u.names.Next(u.Thread))
+	u.requestSessionTitle(u.Names.Next(u.Thread))
 }
 
 // Automatic candidates become visible only after host confirmation.
 func (u *appServerUI) persistSessionTitle(update sessionTitleUpdate) {
-	if !u.names.AllowsGenerated(update.thread) || !u.titleGenerator.acceptCandidate(update.thread) {
+	if !u.Names.AllowsGenerated(update.thread) || !u.titleGenerator.acceptCandidate(update.thread) {
 		return
 	}
-	u.requestSessionTitle(u.names.Generated(update.thread, update.name))
+	u.requestSessionTitle(u.Names.Generated(update.thread, update.name))
 }
 
 func (u *appServerUI) requestSessionTitle(save *sessioncontrol.NameSave) {
 	if save == nil {
 		return
 	}
-	_, err := u.requests.Send("thread/name/set", map[string]any{"threadId": save.Thread, "name": save.Name}, "", appServerRequest{title: save})
+	_, err := u.Requests.Send("thread/name/set", map[string]any{"threadId": save.Thread, "name": save.Name}, "", appServerRequest{title: save})
 	if err != nil {
-		u.names.Complete(*save)
+		u.Names.Complete(*save)
 		u.setNotice("Session title could not be saved", false)
 		u.dirty = true
 	}
@@ -61,7 +61,7 @@ func (u *appServerUI) requestSessionTitle(save *sessioncontrol.NameSave) {
 
 func (u *appServerUI) sessionTitleMessage(m appserver.Message, update *sessioncontrol.NameSave) bool {
 	if update != nil {
-		latest := u.names.Complete(*update)
+		latest := u.Names.Complete(*update)
 		if m.Error != nil {
 			if update.Thread == u.Thread && latest {
 				u.setNotice("Session title could not be saved: "+m.Error.Message, false)
@@ -70,7 +70,7 @@ func (u *appServerUI) sessionTitleMessage(m appserver.Message, update *sessionco
 		} else {
 			u.confirmSessionTitle(update.Thread, update.Name)
 		}
-		u.requestSessionTitle(u.names.Next(update.Thread))
+		u.requestSessionTitle(u.Names.Next(update.Thread))
 		return true
 	}
 	if m.Method != "thread/name/updated" {

@@ -25,7 +25,7 @@ func appliedSettingsTestUI(t *testing.T, workspace, thread string) (*appServerUI
 	if err := u.panes.open(&terminalTest(u).Shell, &u.mainView, workspace, thread, false); err != nil {
 		t.Fatal(err)
 	}
-	return u, u.client.Input.(*appServerTestInput)
+	return u, u.Host.Input.(*appServerTestInput)
 }
 
 func appliedSettingsTestNotify(t *testing.T, u *appServerUI, model, effort, tier string) {
@@ -35,7 +35,7 @@ func appliedSettingsTestNotify(t *testing.T, u *appServerUI, model, effort, tier
 
 func appliedSettingsTestResume(t *testing.T, u *appServerUI, w *appServerTestInput, info binding.ThreadInfo) (map[string]any, int) {
 	t.Helper()
-	u.startup.Thread = info.ID
+	u.Startup.Thread = info.ID
 	if err := u.openSession(); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestAppServerAppliedSettingsFreshOwnerResumeBeforeFirstTurn(t *testing.T) {
 			}
 			// No live writer, parent, rollout, or previous UI is needed for recovery.
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
-			fresh.startup.Config = map[string]any{"model_provider": "routed"}
+			fresh.Startup.Config = map[string]any{"model_provider": "routed"}
 			params, _ := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			wantConfig := map[string]any{"model": "saved-model", "model_provider": "routed", "model_reasoning_effort": "high"}
 			var wantTier any = "priority"
@@ -93,7 +93,7 @@ func TestAppServerAppliedSettingsFlagsOverridePerField(t *testing.T) {
 			u, _ := appliedSettingsTestUI(t, "/workspace", "saved")
 			appliedSettingsTestNotify(t, u, "saved-model", "high", "priority")
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
-			fresh.startup.Config = map[string]any{field: "explicit"}
+			fresh.Startup.Config = map[string]any{field: "explicit"}
 			params, _ := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			want := map[string]any{"model": "saved-model", "model_reasoning_effort": "high"}
 			var tier any = "priority"
@@ -102,8 +102,8 @@ func TestAppServerAppliedSettingsFlagsOverridePerField(t *testing.T) {
 			} else {
 				want[field] = "explicit"
 			}
-			if !reflect.DeepEqual(params["config"], want) || params["serviceTier"] != tier || !reflect.DeepEqual(fresh.startup.Config, map[string]any{field: "explicit"}) {
-				t.Fatalf("per-field precedence or immutable launch flags lost: %#v flags=%#v", params, fresh.startup.Config)
+			if !reflect.DeepEqual(params["config"], want) || params["serviceTier"] != tier || !reflect.DeepEqual(fresh.Startup.Config, map[string]any{field: "explicit"}) {
+				t.Fatalf("per-field precedence or immutable launch flags lost: %#v flags=%#v", params, fresh.Startup.Config)
 			}
 		})
 	}

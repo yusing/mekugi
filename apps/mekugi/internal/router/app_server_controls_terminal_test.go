@@ -73,7 +73,7 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 	if frame := paint(); !strings.Contains(frame, "Locked · /unlock") {
 		t.Fatalf("lock is not visible:\n%s", frame)
 	}
-	wire := u.client.Input.(*appServerTestInput)
+	wire := u.Host.Input.(*appServerTestInput)
 	appServerOneRequest(t, wire, "thread/read", "") // Child metadata from the earlier spawn.
 	appServerTestKeys(t, u, "/unlock\r")
 	appServerTestTurn(t, u, "work")

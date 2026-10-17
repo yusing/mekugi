@@ -65,8 +65,8 @@ func (c appServerTestTransport) Respond(id jsontext.Value, result any) error {
 }
 func appServerTestRequest(t *testing.T, u *appServerUI, id, method string) {
 	t.Helper()
-	u.client.Input.(*appServerTestInput).requestID = id
-	if err := u.request(method, nil); err != nil {
+	u.Host.Input.(*appServerTestInput).requestID = id
+	if err := u.Request(method, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -75,7 +75,7 @@ func (*appServerTestInput) Close() error { return nil }
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
 	client := &appserver.Client{Input: w}
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), issues: testCriticalErrors(), history: testHistory(), client: client, view: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"})
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), issues: testCriticalErrors(), history: testHistory(), Host: client, view: activityui.NewView(), Requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"})
 	u.approvals.grants = sessioncontrol.NewApprovalGrants(testGuards())
 	u.view.Painter.FileLink = markdownFileLinks(u.cwd)
 	return u, w
@@ -185,7 +185,7 @@ func TestAppServerIdleStateUsesDefaultText(t *testing.T) {
 
 func appServerTestKeys(t *testing.T, u *appServerUI, keys string) {
 	t.Helper()
-	decoder := u.client.Input.(interface {
+	decoder := u.Host.Input.(interface {
 		keyDecoder() *terminalsession.Decoder
 	}).keyDecoder()
 	for _, key := range []byte(keys) {

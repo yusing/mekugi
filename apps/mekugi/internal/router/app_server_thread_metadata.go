@@ -13,7 +13,7 @@ import (
 func (u *appServerUI) requestThreadMetadata(thread string) error {
 	path := u.session.KnownCaller(thread)
 	known := path != "" && path != sessionpresentation.Placeholder(thread) && u.session.Agent(path).Role != ""
-	return u.requests.ReadThreadMetadata("main", thread, known, appServerRequest{metadata: thread})
+	return u.Requests.ReadThreadMetadata("main", thread, known, appServerRequest{metadata: thread})
 }
 
 func (u *appServerUI) applyThreadMetadata(m appserver.Message, thread string) bool {

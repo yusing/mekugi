@@ -53,7 +53,7 @@ func (u *appServerUI) flushBTW() error {
 	u.bindSkills(&parts[0], true)
 	u.snapshotDraftSkills(&parts[0])
 	b.Pending = parts[0]
-	update, err := u.requests.StartSide(b, sessioncontrol.SideMain{
+	update, err := u.Requests.StartSide(b, sessioncontrol.SideMain{
 		Thread: u.Thread, Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier,
 		Blocked: u.Starting() || u.InputPending() || u.Settings.Pending(), Replacing: u.Replacement.Pending(),
 	}, u.now())
@@ -85,7 +85,7 @@ func (u *appServerUI) closeBTW() error {
 	b.Close()
 	u.conversation().Side = nil
 	u.pruneDraftImages()
-	return u.requests.ReleaseSide(b)
+	return u.Requests.ReleaseSide(b)
 }
 
 func (u *appServerUI) applyCloseSide(in sessionpresentation.CloseSideIntent) error {

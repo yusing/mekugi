@@ -55,11 +55,11 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), client: client, view: activityui.NewView(), agents: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), Host: client, view: activityui.NewView(), agents: activityui.NewView(), Requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
 	u.ensureShell()
 
 	defer terminalTest(u).Diff.Close()
-	if err := u.request("initialize", nil); err != nil {
+	if err := u.Request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}
 	started := false
@@ -75,7 +75,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 			u.flushStreamOutput()
 			if u.Thread != "" && !started {
 				started = true
-				if err := u.request("turn/start", map[string]any{"threadId": u.Thread, "input": appserver.Input("Spawn the assigned child.")}); err != nil {
+				if err := u.Request("turn/start", map[string]any{"threadId": u.Thread, "input": appserver.Input("Spawn the assigned child.")}); err != nil {
 					t.Fatal(err)
 				}
 			}

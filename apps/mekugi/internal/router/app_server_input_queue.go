@@ -124,7 +124,7 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 	if len(parts) == 1 && parts[0].Text == "/compact" {
 		u.Compaction.Begin(sessioncontrol.CompactIntent(parts[0].Compact))
 		u.sessionPresentation().Status.SetText("Compacting context" + "…")
-		return u.request("thread/compact/start", map[string]any{"threadId": u.Thread})
+		return u.Request("thread/compact/start", map[string]any{"threadId": u.Thread})
 	}
 	for i := range parts {
 		u.bindSkills(&parts[i], true)
@@ -172,7 +172,7 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		}
 		u.setNotice(notice, true)
 	}
-	if _, err := u.requests.SendInput(request, appServerRequest{}); err != nil {
+	if _, err := u.Requests.SendInput(request, appServerRequest{}); err != nil {
 		u.applyInputEffects(u.sessionPresentation().ApplyInputResult(&u.Live, u.conversation(), u.SubmissionFailed()))
 		return err
 	}

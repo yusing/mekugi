@@ -65,14 +65,12 @@ type appServerUI struct {
 	feedback noticepresentation.Model
 	history  *history.Service
 	segments *reports.Service
-	sessioncontrol.Live
+	sessioncontrol.Client[appServerRequest]
 	conversationState     *conversationmodel.Service
-	startup               sessioncontrol.Startup
 	resumePending         []appserver.Message
 	clock                 func() time.Time // Optional deterministic presentation clock.
 	backendVersion        string
 	title                 string // Host-confirmed thread name, independent of naming work.
-	names                 sessioncontrol.Names
 	titleGenerator        *sessionNaming
 	titleUpdates          <-chan sessionTitleUpdate
 	side                  *sessioncontrol.Side
@@ -92,7 +90,6 @@ type appServerUI struct {
 	commandSegmentWrites  chan commandSegmentWrite           // Completed replay writes, consumed only by the UI.
 	commandSegmentPending int
 	restoredSegments      map[string]*reports.Report // Turn-local, validated and adopted history.
-	client                *appserver.Client
 	view                  *activityui.View
 	source                *sessionpresentation.ActivitySource
 	agents                *activityui.View
@@ -136,8 +133,6 @@ type appServerUI struct {
 	models                 []appServerModel
 	modelsLoading          bool
 	reasoningKey           *bool
-	requests               *sessioncontrol.Requests[appServerRequest]
-	retiredThreads         map[string]string
 	ownedImages            map[string]bool
 	dirty                  bool
 	panes                  *nativePreferences
@@ -178,7 +173,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	// opt-ins. Enable them only for this native app-server invocation.
 	cmd.Args = append(cmd.Args, "-c", "features.step_model_switching=true", "-c", "features.reasoning_effort_override=true")
 	tracker := integration.execTrack
-	c, err := appserver.Start(cmd, func(message appserver.Message) {
+	control, err := sessioncontrol.Start[appServerRequest](cmd, func(message appserver.Message) {
 		if message.Method != "item/started" {
 			return
 		}
@@ -191,7 +186,9 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, observations: observations, history: service, segments: segments, client: c, view: activityui.NewView(), agents: terminalViews.NewThreadView(), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, startup: sessioncontrol.Startup{Thread: resumeThread}, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, observations: observations, history: service, segments: segments, Client: control, view: activityui.NewView(), agents: terminalViews.NewThreadView(), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, dirty: true, ctx: ctx, serviceTiers: serviceTiers, approvalMode: approvals}
+	c := u.Host
+	u.Startup.Thread = resumeThread
 	u.attachPresentation()
 	u.sessionPresentation().Status.Set("Connecting…", false)
 	u.guardHookCheck.hash = guardHash
@@ -210,13 +207,13 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	u.resumeArgv = slices.Clone(resumeArgv)
 	u.replayDebugDirectory = debugDirectory
 	u.sessionCapture = capture
-	u.startup.Config = appServerResumeConfig(cmd.Args, resumeArgv)
+	u.Startup.Config = appServerResumeConfig(cmd.Args, resumeArgv)
 	u.notifications = &nativeNotifications{out: stdout, focused: true}
-	u.startup.Workspace = resumeCwd
+	u.Startup.Workspace = resumeCwd
 	if prefs != nil {
 		u.panes = &nativePreferences{service: prefs}
 	}
-	if err := u.request("initialize", nil); err != nil {
+	if err := u.Request("initialize", nil); err != nil {
 		c.Close()
 		<-c.Done
 		return nil, err
@@ -468,15 +465,6 @@ type appServerRequest struct {
 	status   *appServerStatusReport
 }
 
-func (u *appServerUI) request(method string, params any) error {
-	if method == "initialize" {
-		_, err := u.requests.Initialize(appServerRequest{})
-		return err
-	}
-	_, err := u.requests.Send(method, params, "main", appServerRequest{})
-	return err
-}
-
 func (u *appServerUI) message(m appserver.Message) (err error) {
 	defer u.settlePresentation()
 	u.issues.ObserveTurnCompletion(m.Method, m.Params)
@@ -484,14 +472,14 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	var response sessioncontrol.Request[appServerRequest]
 	var correlated bool
 	if m.Method == "" {
-		response, correlated = u.requests.Take(string(m.ID))
+		response, correlated = u.Requests.Take(string(m.ID))
 	}
 	if u.sessionTitleMessage(m, response.Owner.title) {
 		return nil
 	}
 	defer u.refreshPicker()
 	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
-	if update, err := u.requests.ObserveSide(m, response, u.Thread, u.controlObservations); update.Handled {
+	if update, err := u.Requests.ObserveSide(m, response, u.Thread, u.controlObservations); update.Handled {
 		u.dirty = true
 		u.applySideUpdate(update)
 		if err != nil {
@@ -502,7 +490,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		return nil
 	}
-	if u.retiredSessionEvent(m) {
+	if u.RetiredEvent(m) {
 		return nil
 	}
 	// Any event can make stacked input sendable: an acknowledgement, a turn
@@ -527,7 +515,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if held, err := u.holdOlderHistoryEvent(m); held || err != nil {
 		return err
 	}
-	resuming := u.startup.Thread != "" && u.startup.Thread != sessioncontrol.ResumePicker && (u.Thread == "" || u.restoring != nil)
+	resuming := u.Startup.Thread != "" && u.Startup.Thread != sessioncontrol.ResumePicker && (u.Thread == "" || u.restoring != nil)
 	if (resuming || u.Replacement.Target != "") && m.Method != "" {
 		if hold, keep := u.holdResumeEvent(m, resuming); hold {
 			if !keep {
@@ -579,7 +567,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if u.pickerMessage(method, m) {
 			return nil
 		}
-		if method == "thread/list" && u.startup.Thread == "--last" {
+		if method == "thread/list" && u.Startup.Thread == "--last" {
 			return u.resumeLastResponse(m)
 		}
 		if handled, err := u.settingsMessage(method, m); handled || err != nil {
@@ -653,12 +641,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if json.Unmarshal(m.Result, &initialized) == nil {
 				u.backendVersion = backendVersion(initialized.UserAgent)
 			}
-			if err := u.requests.Initialized(u.execWindows != nil); err != nil {
+			if err := u.Requests.Initialized(u.execWindows != nil); err != nil {
 				return err
 			}
 			return u.openSession()
 		case "thread/start", "thread/resume":
-			result, err := u.startup.Accept(&u.Live, method, m.Result)
+			result, err := u.Startup.Accept(&u.Live, method, m.Result)
 			if err != nil {
 				return err
 			}
@@ -667,11 +655,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					return err
 				}
 				u.LeaveThread()
-				u.startup.Thread, u.startup.Workspace = "", ""
-				u.releaseRetired(result.Thread.ID)
+				u.Startup.Thread, u.Startup.Workspace = "", ""
+				u.Readmit(result.Thread.ID)
 				if method == "thread/resume" {
 					// Restoration below replays events buffered during the switch.
-					u.startup.Thread = result.Thread.ID
+					u.Startup.Thread = result.Thread.ID
 					u.resetDiffScope()
 				} else {
 					// Seed the Diff's lineage; after a switch, requests alone cannot.
@@ -687,9 +675,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.sessionPresentation().Status.SetText("Ready")
 			u.title = result.Thread.Name
 			u.titleGenerator.register(result.Thread)
-			if name := u.names.Attach(u.Thread); name != "" {
+			if name := u.Names.Attach(u.Thread); name != "" {
 				u.titleGenerator.nameChanged(u.Thread, name)
-				u.requestSessionTitle(u.names.Next(u.Thread))
+				u.requestSessionTitle(u.Names.Next(u.Thread))
 			}
 			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
 			if method == "thread/resume" {
@@ -702,12 +690,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				}
 			}
 			u.models, u.modelsLoading = nil, true // A cleared or switched session lists them again.
-			if err := u.request("model/list", map[string]any{"includeHidden": true}); err != nil {
+			if err := u.Request("model/list", map[string]any{"includeHidden": true}); err != nil {
 				return err
 			}
 			u.startSession(u.Thread, result.Thread.Cwd)
 			if u.notifications != nil {
-				if err := u.request("config/read", map[string]any{"cwd": result.Thread.Cwd, "includeLayers": false}); err != nil {
+				if err := u.Request("config/read", map[string]any{"cwd": result.Thread.Cwd, "includeLayers": false}); err != nil {
 					return err
 				}
 			}
@@ -750,11 +738,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.reasoningEffort = result.ReasoningEffort
 				if repair != nil {
 					// Preserve saved null intent before a corrective dispatch can fail.
-					if u.panes != nil && u.panes.attachment != nil && u.startup.Evidence.Model != "" {
+					if u.panes != nil && u.panes.attachment != nil && u.Startup.Evidence.Model != "" {
 						if err := u.panes.stage(u.shell.Shell.Preferences(&u.mainView)); err != nil {
 							u.paneError(err)
 						} else {
-							u.panes.attachment.Recover(u.startup.Evidence, u.now())
+							u.panes.attachment.Recover(u.Startup.Evidence, u.now())
 							u.paneError(u.panes.attachment.Save(u.now(), true))
 						}
 					}
@@ -762,9 +750,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 						return err
 					}
 				}
-				if u.startup.MissingSettings {
+				if u.Startup.MissingSettings {
 					u.setNotice(sessionpresentation.ResumeSettingsUnavailable, true)
-					u.startup.MissingSettings = false
+					u.Startup.MissingSettings = false
 				}
 				u.retainAppliedSettings()
 				return u.restorePaneContent(result.Thread)

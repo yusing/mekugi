@@ -31,7 +31,7 @@ func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.Thread, u.startup.Thread = "", "saved"
+	u.Thread, u.Startup.Thread = "", "saved"
 	if err := u.openSession(); err != nil {
 		t.Fatal(err)
 	}
@@ -62,10 +62,10 @@ func TestAppServerResumeSettingsOverridesPerField(t *testing.T) {
 	for _, field := range []string{"", "model", "model_reasoning_effort", "service_tier"} {
 		t.Run("override="+field, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.Thread, u.startup.Thread = "", info.ID
-			u.startup.Config = map[string]any{"model_provider": "routed"}
+			u.Thread, u.Startup.Thread = "", info.ID
+			u.Startup.Config = map[string]any{"model_provider": "routed"}
 			if field != "" {
-				u.startup.Config[field] = "explicit"
+				u.Startup.Config[field] = "explicit"
 			}
 			if err := u.openSession(); err != nil {
 				t.Fatal(err)
@@ -102,8 +102,8 @@ func TestAppServerResumeSettingsOverridesPerField(t *testing.T) {
 			if field != "" {
 				wantLaunch[field] = "explicit"
 			}
-			if !reflect.DeepEqual(u.startup.Config, wantLaunch) {
-				t.Fatalf("mutated launch overrides: %#v", u.startup.Config)
+			if !reflect.DeepEqual(u.Startup.Config, wantLaunch) {
+				t.Fatalf("mutated launch overrides: %#v", u.Startup.Config)
 			}
 		})
 	}
@@ -112,7 +112,7 @@ func TestAppServerResumeSettingsOverridesPerField(t *testing.T) {
 func TestAppServerResumeSettingsNullIntent(t *testing.T) {
 	info := resumeSettingsRollout(t, `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"saved-model"}}}`, "")
 	u, w := newAppServerTestUI()
-	u.Thread, u.startup.Thread = "", info.ID
+	u.Thread, u.Startup.Thread = "", info.ID
 	if err := u.openSession(); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 	for _, effort := range []string{"", "high"} {
 		t.Run("launch="+effort, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.Thread, u.startup.Thread, u.ResumeEffort = "", "saved", true
+			u.Thread, u.Startup.Thread, u.ResumeEffort = "", "saved", true
 			u.agents = activityui.NewView()
 			appServerTestRequest(t, u, "1", "thread/resume")
 			savedEffort := "null"
@@ -199,7 +199,7 @@ func TestAppServerResumeSettingsPreflightFailure(t *testing.T) {
 			if switching {
 				u.Replacement.Resume("saved")
 			} else {
-				u.Thread, u.startup.Thread = "", "saved"
+				u.Thread, u.Startup.Thread = "", "saved"
 			}
 			if err := u.openSession(); err != nil {
 				t.Fatal(err)

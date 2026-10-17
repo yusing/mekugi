@@ -139,7 +139,7 @@ func TestRunningProcessesRestoredAndSwitched(t *testing.T) {
 		t.Fatal("restored history created a process")
 	}
 	processNotify(t, u, "main", "cmd", "sleep 100", "inProgress")
-	wire := u.client.Input.(*appServerTestInput)
+	wire := u.Host.Input.(*appServerTestInput)
 	wire.Reset()
 	appServerTestKeys(t, u, "/clear\r")
 	r := appServerOneRequest(t, wire, "thread/start", "")
@@ -157,7 +157,7 @@ func TestRunningProcessesInteraction(t *testing.T) {
 		processNotify(t, u, "main", fmt.Sprint(i), fmt.Sprintf("sleep %d", i+1), "inProgress")
 	}
 	u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
-	wire := u.client.Input.(*appServerTestInput)
+	wire := u.Host.Input.(*appServerTestInput)
 	wire.Reset()
 	for _, closeKey := range []string{"\x1b", "q", "\x03"} {
 		appServerTestKeys(t, u, "/ps\r")

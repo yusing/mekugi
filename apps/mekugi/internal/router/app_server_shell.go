@@ -32,7 +32,7 @@ func (u *appServerUI) submitShell() error {
 	u.shellEdits.pending.Discard()
 	u.shellEdits.pending = nil
 	edit := u.captureShellEdit(command)
-	if err := u.request("thread/shellCommand", map[string]any{"threadId": u.Thread, "command": command}); err != nil {
+	if err := u.Request("thread/shellCommand", map[string]any{"threadId": u.Thread, "command": command}); err != nil {
 		edit.Discard()
 		return err // Keep the draft when transport submission fails.
 	}

@@ -146,7 +146,7 @@ func (u *appServerUI) requestPicker(target completion.Target, cwd string) {
 		method, params = "skills/list", map[string]any{"cwds": []string{cwd}, "forceReload": true}
 	}
 	p.Pending, p.PendingCwd = new(target), cwd
-	if err := u.request(method, params); err != nil {
+	if err := u.Request(method, params); err != nil {
 		p.Pending, p.Loading = nil, false
 		p.Resolved, p.ResolvedCwd = target, cwd
 		p.Problem = "Search failed: " + err.Error()

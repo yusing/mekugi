@@ -60,7 +60,7 @@ func (u *appServerUI) requestSkillHistory(h *appServerChildHistory, cursor strin
 	if cursor != "" {
 		params["cursor"] = cursor
 	}
-	id, err := u.requests.Send("thread/items/list", params, "main", appServerRequest{label: "activity-skills/" + h.info.ID})
+	id, err := u.Requests.Send("thread/items/list", params, "main", appServerRequest{label: "activity-skills/" + h.info.ID})
 	h.skills.request = id
 	return err
 }

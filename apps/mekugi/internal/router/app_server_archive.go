@@ -35,7 +35,7 @@ func (u *appServerUI) chooseArchive(confirm bool) {
 	p.Kind, p.Open, p.Choices = "", false, nil
 	if confirm {
 		u.Replacement.Archive()
-		if err := u.request("thread/archive", map[string]any{"threadId": u.Thread}); err != nil {
+		if err := u.Request("thread/archive", map[string]any{"threadId": u.Thread}); err != nil {
 			u.Replacement.Finish()
 			u.setNotice("Failed to archive current thread: "+err.Error(), true)
 		} else {

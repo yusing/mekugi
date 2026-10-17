@@ -8,11 +8,8 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
-	json "encoding/json/v2"
 	"slices"
 	"time"
-
-	"github.com/yusing/mekugi/backends/codex/appserver"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
@@ -80,7 +77,7 @@ func (u *appServerUI) sessionCommand(command string) error {
 	if u.serviceTier != "" {
 		params["serviceTier"] = u.serviceTier
 	}
-	if err := u.request("thread/start", params); err != nil {
+	if err := u.Request("thread/start", params); err != nil {
 		u.Replacement.Finish()
 		return err
 	}
@@ -133,13 +130,12 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.paneError(u.panes.save(u.shell.Shell.Preferences(&u.mainView), time.Now(), true))
 	}
 	u.cancelPickerScan()
-	if u.retiredThreads == nil {
-		u.retiredThreads = make(map[string]string)
+	roster := u.session.Roster()
+	retired := make([]string, 0, len(roster))
+	for _, agent := range roster {
+		retired = append(retired, agent.Thread)
 	}
-	u.retiredThreads[u.Thread] = u.Thread
-	for _, agent := range u.session.Roster() {
-		u.retiredThreads[agent.Thread] = u.Thread
-	}
+	u.RetireThreads(u.Thread, retired...)
 	u.hideQuestions()
 	retainedQuestions := u.questionCalls()
 	if u.notifications != nil {
@@ -147,8 +143,8 @@ func (u *appServerUI) clearSessionPresentation() error {
 	}
 	u.statusPanel = nil
 	u.sessionPresentation().ClosePanel()
-	u.requests.Retire("main") // Retire old-thread response correlation.
-	if err := u.request("thread/unsubscribe", map[string]any{"threadId": u.Thread}); err != nil {
+	u.Requests.Retire("main") // Retire old-thread response correlation.
+	if err := u.Request("thread/unsubscribe", map[string]any{"threadId": u.Thread}); err != nil {
 		return err
 	}
 	u.picker = composerPicker{}
@@ -190,34 +186,6 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.shell.StopDrag()
 	}
 	return nil
-}
-
-func (u *appServerUI) retiredSessionEvent(m appserver.Message) bool {
-	if len(u.retiredThreads) == 0 || m.Method == "" {
-		return false
-	}
-	var p struct {
-		ThreadID string             `json:"threadId"`
-		Thread   binding.ThreadInfo `json:"thread"`
-	}
-	if json.Unmarshal(m.Params, &p) != nil {
-		return false
-	}
-	if root := u.retiredThreads[p.Thread.ParentThreadID]; root != "" {
-		u.retiredThreads[p.Thread.ID] = root
-	}
-	return u.retiredThreads[p.ThreadID] != "" || u.retiredThreads[p.Thread.ID] != ""
-}
-
-// releaseRetired readmits a session the UI returns to, with its descendants.
-// retiredThreads maps each retired thread to the session root it belonged to.
-func (u *appServerUI) releaseRetired(root string) {
-	delete(u.retiredThreads, root)
-	for thread, owner := range u.retiredThreads {
-		if owner == root {
-			delete(u.retiredThreads, thread)
-		}
-	}
 }
 
 // resetDiffScope starts the saved Diff over for a resumed root thread; its

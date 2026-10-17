@@ -2,8 +2,11 @@
 
 The application coordinates Main's submissions, interruption, native shell,
 settings and session replacement. It issues app-server requests and correlates
-their results; Codex owns request identities, transport, execution, permissions
-and process lifetime.
+their results. Its live client binds the actual app-server connection to one
+request ledger, startup admission, Main operations and independent title saves.
+Thread retirement filters late notifications, including newly observed descendants;
+readmission restores that root and its descendants without reviving host work.
+Codex owns request identities, transport, execution, permissions and process lifetime.
 
 Admission follows outstanding operations, not displayed status or elapsed time.
 Request acknowledgement, committed user input and host turn completion are separate

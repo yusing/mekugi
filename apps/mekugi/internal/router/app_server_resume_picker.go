@@ -51,7 +51,7 @@ func (u *appServerUI) resumeCommand(text string) error {
 func (u *appServerUI) openResumePicker(startup bool) error {
 	cwd := u.cwd
 	if startup {
-		cwd = u.startup.Workspace
+		cwd = u.Startup.Workspace
 	}
 	u.cancelPickerScan()
 	u.picker.Open = false
@@ -71,7 +71,7 @@ func (u *appServerUI) loadResumePage(reset bool) error {
 	if p.Cursor != "" {
 		params["cursor"] = p.Cursor
 	}
-	id, err := u.requests.Send("thread/list", params, "main", appServerRequest{label: resumePickerList})
+	id, err := u.Requests.Send("thread/list", params, "main", appServerRequest{label: resumePickerList})
 	if err != nil {
 		u.resumePickerFailed("Could not list sessions: " + err.Error())
 		return nil
@@ -197,14 +197,14 @@ func (u *appServerUI) applyResumeAction(action sessionpresentation.ResumeAction)
 		}
 		u.closeResumePicker()
 		if p.Startup {
-			u.startup.Thread = action.Thread
+			u.Startup.Thread = action.Thread
 			return u.openSession()
 		}
 		return u.resumeSession(action.Thread)
 	case sessionpresentation.ResumeDismiss:
 		u.closeResumePicker()
 		if p.Startup {
-			u.startup.Thread = ""
+			u.Startup.Thread = ""
 			return u.openSession()
 		}
 	case sessionpresentation.ResumeCancel:

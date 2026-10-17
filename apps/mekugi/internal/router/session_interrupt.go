@@ -32,7 +32,7 @@ func (u *appServerUI) applyInterruption(intent sessioncontrol.Interrupt) error {
 		return nil
 	}
 	u.endSyncQuestions(intent.Turn)
-	_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.Thread, "turnId": intent.Turn}, "main", appServerRequest{label: intent.Label})
+	_, err := u.Requests.Send("turn/interrupt", map[string]any{"threadId": u.Thread, "turnId": intent.Turn}, "main", appServerRequest{label: intent.Label})
 	if err != nil && intent.Label == "steer/interrupt" {
 		u.SteerInterruptAckPending = false
 	}

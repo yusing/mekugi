@@ -67,7 +67,7 @@ func (u *appServerUI) restoreList() error {
 	if view.Cursor != "" {
 		params["cursor"] = view.Cursor
 	}
-	return u.request("thread/list", params)
+	return u.Request("thread/list", params)
 }
 
 func (u *appServerUI) restoreContentNotice(message string) {
@@ -208,7 +208,7 @@ func (u *appServerUI) readNextRestoredChild() error {
 	view := r.state.View()
 	if view.Next < len(view.Threads) {
 		u.sessionPresentation().Status.SetText(fmt.Sprintf("Restoring Activity %d/%d…", view.Next+1, len(view.Threads)))
-		return u.request("thread/read", map[string]any{"threadId": view.Threads[view.Next], "includeTurns": r.threads[view.Threads[view.Next]].HistoryMode != "paginated"})
+		return u.Request("thread/read", map[string]any{"threadId": view.Threads[view.Next], "includeTurns": r.threads[view.Threads[view.Next]].HistoryMode != "paginated"})
 	}
 	if !view.Rendered {
 		// Evidence for a child whose history could not be read still reaches Main.

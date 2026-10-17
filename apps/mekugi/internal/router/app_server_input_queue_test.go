@@ -151,7 +151,7 @@ func TestAppServerStartPayloadRetiresAfterCommitAndAcknowledgement(t *testing.T)
 
 func TestAppServerProgrammaticTurnResponseHasNoComposerPayload(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	if err := u.request("turn/start", map[string]any{"threadId": u.Thread, "input": []map[string]any{{"type": "text", "text": "host input"}}}); err != nil {
+	if err := u.Request("turn/start", map[string]any{"threadId": u.Thread, "input": []map[string]any{{"type": "text", "text": "host input"}}}); err != nil {
 		t.Fatal(err)
 	}
 	request := appServerOneRequest(t, wire, "turn/start", "host input")

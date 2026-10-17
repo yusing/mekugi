@@ -156,7 +156,7 @@ func TestAppServerShellMainCompletionRace(t *testing.T) {
 
 func TestAppServerShellOlderCompletionKeepsNewOrigin(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	w := u.client.Input.(*appServerTestInput)
+	w := u.Host.Input.(*appServerTestInput)
 	appServerTestTurn(t, u, "model")
 	appServerTestKeys(t, u, "!pwd\r")
 	appServerTestMessage(t, u, `{"id":1,"result":{}}`)

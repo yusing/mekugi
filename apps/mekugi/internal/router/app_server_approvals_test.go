@@ -195,7 +195,7 @@ func TestNativeApprovalTerminalInput(t *testing.T) {
 
 func TestNativeApprovalFileChangeAndPermissions(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/work")
-	input := u.client.Input.(*appServerTestInput)
+	input := u.Host.Input.(*appServerTestInput)
 	u.Turn = "turn"
 	questionTestMessage(t, u, nil, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 		"id": "patch", "type": "fileChange", "changes": []any{map[string]any{"path": "/work/a.go", "kind": map[string]any{"type": "update"}, "diff": ""}},

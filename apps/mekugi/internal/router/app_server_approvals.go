@@ -309,7 +309,7 @@ func (u *appServerUI) decideApproval(intent sessionpresentation.ApprovalIntent) 
 // applyApproval also settles decisions covered by an existing exact-command
 // grant; those carry their admitted authority rather than a new renderer intent.
 func (u *appServerUI) applyApproval(a *sessioncontrol.Approval, choice prompt.Choice, reason string) error {
-	outcome, delivered, err := a.Decide(choice, reason, u.approvals.grants, u.requests, u.controlObservations)
+	outcome, delivered, err := a.Decide(choice, reason, u.approvals.grants, u.Requests, u.controlObservations)
 	if err != nil {
 		return err
 	}

@@ -107,7 +107,7 @@ func newResumeSessionTestUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 
 func TestAppServerResumePickerStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.Thread, u.startup.Thread, u.startup.Workspace = "", sessioncontrol.ResumePicker, "/work"
+	u.Thread, u.Startup.Thread, u.Startup.Workspace = "", sessioncontrol.ResumePicker, "/work"
 	u.agents = activityui.NewView()
 	appServerTestRequest(t, u, "0", "initialize")
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
@@ -143,8 +143,8 @@ func TestAppServerResumePickerStartup(t *testing.T) {
 	}
 	resumeTestKeys(t, u, "\x1b[B", "\r")
 	resume := resumeTestPrepared(t, u, w)
-	if resume.Params.ThreadID != "named" || u.resumePicker != nil || u.startup.Thread != "named" {
-		t.Fatalf("picker resumed %+v; state resume=%q", resume.Params, u.startup.Thread)
+	if resume.Params.ThreadID != "named" || u.resumePicker != nil || u.Startup.Thread != "named" {
+		t.Fatalf("picker resumed %+v; state resume=%q", resume.Params, u.Startup.Thread)
 	}
 	// Once a thread is chosen, early events wait for its history as usual.
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"named","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
@@ -157,7 +157,7 @@ func TestAppServerResumePickerStartup(t *testing.T) {
 
 func TestAppServerResumePickerStartupEscapeAndQuit(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.Thread, u.startup.Thread, u.startup.Workspace = "", sessioncontrol.ResumePicker, "/work"
+	u.Thread, u.Startup.Thread, u.Startup.Workspace = "", sessioncontrol.ResumePicker, "/work"
 	if err := u.openResumePicker(true); err != nil {
 		t.Fatal(err)
 	}
@@ -167,13 +167,13 @@ func TestAppServerResumePickerStartupEscapeAndQuit(t *testing.T) {
 		t.Fatal("first Escape must only clear the search")
 	}
 	resumeTestKeys(t, u, "\x1b")
-	if u.resumePicker != nil || u.startup.Thread != "" {
+	if u.resumePicker != nil || u.Startup.Thread != "" {
 		t.Fatal("Escape did not leave the picker")
 	}
 	resumeTestOne(t, w, "thread/start")
 
 	u, w = newAppServerTestUI()
-	u.Thread, u.startup.Thread = "", sessioncontrol.ResumePicker
+	u.Thread, u.Startup.Thread = "", sessioncontrol.ResumePicker
 	if err := u.openResumePicker(true); err != nil {
 		t.Fatal(err)
 	}

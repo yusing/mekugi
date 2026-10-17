@@ -85,7 +85,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 			if child {
 				thread, view = "child", u.testActivity(u.agents)
 				u.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker"})
-				_ = u.requests.ReadThreadMetadata("main", thread, true, appServerRequest{})
+				_ = u.Requests.ReadThreadMetadata("main", thread, true, appServerRequest{})
 				u.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
 			}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "batch", "status": "inProgress"}})

@@ -70,7 +70,7 @@ func (u *appServerUI) requestChildHistory(request sessionpresentation.PageReques
 	} else if request.Cursor != "" {
 		params["cursor"] = request.Cursor
 	}
-	id, err := u.requests.Send(method, params, "main", appServerRequest{label: "activity/" + method})
+	id, err := u.Requests.Send(method, params, "main", appServerRequest{label: "activity/" + method})
 	if err != nil {
 		return err
 	}
@@ -249,7 +249,7 @@ func (u *appServerUI) cancelOlderActivity(intent sessionpresentation.HistoryInte
 	if id == "" {
 		return nil
 	}
-	u.requests.Forget(id) // Cancel observation, never host execution.
+	u.Requests.Forget(id) // Cancel observation, never host execution.
 	u.setNotice("Older child history loading cancelled", false)
 	return u.finishChildHistory()
 }

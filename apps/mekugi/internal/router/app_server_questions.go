@@ -338,7 +338,7 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 	}
 	attached := questionAnswerAttachments(c.Call, u.prompts.SecretState(c.ID).Editors, u.prompts.SecretState(c.ID).Answers)
 	if len(c.RequestID) > 0 {
-		if err := c.Answer(u.requests, u.prompts.SecretState(c.ID).Answers); err != nil {
+		if err := c.Answer(u.Requests, u.prompts.SecretState(c.ID).Answers); err != nil {
 			return err
 		}
 		if u.questions.Active == c.Call {

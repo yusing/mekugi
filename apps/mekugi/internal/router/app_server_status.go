@@ -100,7 +100,7 @@ func (u *appServerUI) showStatus() error {
 }
 
 func (u *appServerUI) requestStatus(method string, params any, report *appServerStatusReport) error {
-	_, err := u.requests.Send(method, params, "main", appServerRequest{status: report})
+	_, err := u.Requests.Send(method, params, "main", appServerRequest{status: report})
 	if err != nil {
 		u.renderStatus(report, []sessionpresentation.StatusField{{Group: "Account", Value: "Status refresh failed: " + err.Error(), Alert: true}})
 		return err

@@ -24,7 +24,7 @@ func TestAppServerReplacementRetiresOnlyMainRequests(t *testing.T) {
 	// save still settles its original owner without renaming the replacement.
 	btwTestReply(t, u, status, `{"account":{"type":"chatgpt"}}`)
 	btwTestReply(t, u, title, `{}`)
-	if wire.Len() != 0 || u.title != "Fresh title" || !u.names.AllowsGenerated("main") {
+	if wire.Len() != 0 || u.title != "Fresh title" || !u.Names.AllowsGenerated("main") {
 		t.Fatalf("late main responses affected replacement: title=%q wire=%s", u.title, wire.String())
 	}
 	// The in-flight side fork still needs its own cleanup. Retiring Main must
