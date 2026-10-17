@@ -152,7 +152,7 @@ func (u *appServerUI) readRestoredChildren() error {
 		for _, item := range turn.Items {
 			if item.Type == "collabAgentToolCall" {
 				item.SenderThreadID = u.Thread
-				entries := u.collab(item, item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
+				entries := u.session.collab(item, item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
 				u.applyRestoredActivity(entries)
 				for _, entry := range entries {
 					if main, ok := mainActivityEntry(entry); ok {
@@ -430,6 +430,6 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 			*entries = append(*entries, exit)
 		}
 	case "collabAgentToolCall":
-		*entries = append(*entries, u.collab(item, item.ID, observed, activitypresentation.HistoricalCollaboration)...)
+		*entries = append(*entries, u.session.collab(item, item.ID, observed, activitypresentation.HistoricalCollaboration)...)
 	}
 }

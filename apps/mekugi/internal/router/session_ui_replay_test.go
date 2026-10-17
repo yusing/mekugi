@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"strings"
@@ -62,6 +61,9 @@ func replayPlaybackTestNew(t *testing.T) *uiReplayPlayback {
 
 func replayPlaybackTestPaint(t *testing.T, p *uiReplayPlayback, width, height int) string {
 	t.Helper()
+	if p.ui.client != nil || p.ui.requests != nil || len(p.ui.session.metadata) != 0 || p.ui.proxy != nil || p.ui.execTrack != nil || p.ui.session.waitStore != nil {
+		t.Fatal("playback constructed live execution dependencies")
+	}
 	screen := vt.NewEmulator(width, height)
 	defer screen.Close()
 	p.ui.shell.frame.Rows = nil
@@ -74,8 +76,6 @@ func replayPlaybackTestPaint(t *testing.T, p *uiReplayPlayback, width, height in
 func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	t.Parallel()
 	p := replayPlaybackTestNew(t)
-	var outgoing bytes.Buffer
-	p.ui.client.Input = replayDiscard{Writer: &outgoing}
 	if err := p.advance(4500 * time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
@@ -123,16 +123,15 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 			t.Fatalf("future content survived rewind: %+v", entry)
 		}
 	}
-	p.ui.client.Input = replayDiscard{Writer: &outgoing}
 	for _, key := range []byte{'\n', 'a', '/', '?', 'j', 'k', 'r'} {
 		if quit, err := p.key(key); err != nil || quit {
 			t.Fatalf("replay key %q: quit=%v error=%v", key, quit, err)
 		}
 	}
-	if p.Paused || p.Position != p.From || p.ui.Text != "" || outgoing.Len() != 0 {
-		t.Fatalf("replay controls leaked into live composer/transport: paused=%v position=%v draft=%q writes=%d", p.Paused, p.Position, p.ui.Text, outgoing.Len())
+	if p.Paused || p.Position != p.From || p.ui.Text != "" {
+		t.Fatalf("replay controls leaked into live composer/transport: paused=%v position=%v draft=%q", p.Paused, p.Position, p.ui.Text)
 	}
-	if p.ui.proxy != nil || p.ui.execTrack != nil || p.ui.session.waitStore != nil {
+	if p.ui.client != nil || p.ui.requests != nil || len(p.ui.session.metadata) != 0 || p.ui.proxy != nil || p.ui.execTrack != nil || p.ui.session.waitStore != nil {
 		t.Fatal("offline playback constructed live execution dependencies")
 	}
 }

@@ -51,6 +51,12 @@ snapshot received before history. Presentation borrows that identity rather than
 maintaining another selection. Main status completes only for that selected turn.
 Closing a turn retires its text/wait correlation without ending yielded commands.
 
+Live observation adapters perform metadata requests, command tracking, preview
+control and usage enrichment separately from presentation dispatch. Offline
+playback admits recorded metadata directly and constructs no backend client or
+request tracker. Both sources use the same item, turn and transcript projection;
+the terminal attachment retains its own pacing and navigation.
+
 ## History
 
 Child history opens at the newest turn's recent items. Older pages continue from

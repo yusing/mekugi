@@ -116,6 +116,12 @@ func (s *appServerSession) start(thread, cwd string) {
 }
 
 func (s *appServerSession) registerThread(info binding.ThreadInfo) {
+	s.registerThreadFacts(info)
+	s.restoreThreadSettings(info)
+}
+
+// registerThreadFacts admits supplied metadata without reading retained state.
+func (s *appServerSession) registerThreadFacts(info binding.ThreadInfo) {
 	if info.ID != "" {
 		s.Thread(info.ID)
 	}
@@ -146,6 +152,10 @@ func (s *appServerSession) registerThread(info binding.ThreadInfo) {
 	s.paths[info.ID] = path
 	s.agent(path).thread = info.ID
 	s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole, s.agent(path).Role)
+}
+
+func (s *appServerSession) restoreThreadSettings(info binding.ThreadInfo) {
+	path := s.paths[info.ID]
 	restoreContextUsage(s.agent(path), info)
 	if agent := s.agent(path); !agent.settingsLive {
 		settings := rollout.ResumeSettings(info.ID, info.Path, time.Time{})
@@ -189,8 +199,7 @@ func (s *appServerSession) next() uint64 {
 	return s.seq
 }
 
-// sessionEvent handles what the session adapter owns. Main-thread turn
-// lifecycle and Main's own messages continue to the transcript handler.
+// sessionEvent owns live enrichment and effects around shared presentation.
 func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error) {
 	s := &u.session
 	if s.paths == nil {
@@ -199,7 +208,6 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 	if method == "hook/started" || method == "hook/completed" {
 		return true, u.hookEvent(method, p)
 	}
-	u.observeProgress(method, p)
 	if method == "item/started" {
 		u.observeShellItem(p.ThreadID, p.Item)
 	}
@@ -218,25 +226,90 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		}
 	}
 
-	main := p.ThreadID == u.Thread
 	if h := u.childHistory(p.ThreadID); h != nil {
 		h.state.ObserveLive()
 	}
-	if p.ThreadID != "" && !main {
+	if p.ThreadID != "" && p.ThreadID != u.Thread {
 		if err := u.requestThreadMetadata(p.ThreadID); err != nil {
 			return true, err
 		}
 	}
+
+	key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
+	facts := sessionEventFacts{tracked: u.execTrack.Tracking(key), wait: u.readWaitEvidence(p.Item, key)}
+	if p.Item.Type == "commandExecution" && u.proxy != nil {
+		if ms, known := u.proxy.nativeTrace.CommandTimeout(p.ThreadID, key[2]); known {
+			facts.commandTimeout = strconv.FormatUint(ms/1000, 10)
+			if fraction := ms % 1000; fraction != 0 {
+				facts.commandTimeout += "." + strings.TrimRight(fmt.Sprintf("%03d", fraction), "0")
+			}
+			facts.commandTimeout += "s"
+		}
+	}
+	if method == "turn/completed" {
+		u.endTurnPreviews(p.ThreadID, p.Turn.ID)
+	}
+	result := u.projectSessionEvent(method, p, facts)
+	if result.started && u.proxy != nil {
+		u.proxy.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
+	}
+	if method == "thread/started" && p.Thread.ID != "" && p.Thread.ID != u.Thread {
+		s.restoreThreadSettings(p.Thread)
+	}
+	if method == "thread/tokenUsage/updated" || method == "turn/completed" {
+		if method == "thread/tokenUsage/updated" && p.ThreadID == u.Thread {
+			u.exitUsage = p.TokenUsage.Total
+		}
+		u.observeCost(p.ThreadID, s.agent(s.path(p.ThreadID)))
+	}
+	if p.Item.Type == "subAgentActivity" && p.Item.AgentThreadID != "" && p.Item.AgentThreadID != u.Thread {
+		if err := u.requestThreadMetadata(p.Item.AgentThreadID); err != nil {
+			return true, err
+		}
+	}
+	u.retainWaitProgress(key, result.wait)
+	if u.proxy != nil {
+		for _, thread := range result.spawned {
+			u.proxy.usage.MarkNew(thread)
+		}
+	}
+	if result.publish {
+		u.applyActivity(result.entries, slices.Clone(s.agents))
+	}
+	return result.handled, nil
+}
+
+type sessionEventFacts struct {
+	commandTimeout string
+	tracked        bool
+	wait           waitEvidence
+}
+
+type sessionProjection struct {
+	entries                   []activityPaneEntry
+	wait                      *activitypresentation.WaitProgress
+	spawned                   []string
+	handled, publish, started bool
+}
+
+// projectSessionEvent applies admitted observations through the existing model
+// owners. It performs no host requests, storage operations or execution tracking;
+// the source adapter supplies enrichment and publishes the returned entries.
+func (u *appServerUI) projectSessionEvent(method string, p appServerEvent, facts sessionEventFacts) sessionProjection {
+	s := &u.session
+	u.observeProgress(method, p)
+	main := p.ThreadID == u.Thread
+	result := sessionProjection{publish: true}
 	var entries []activityPaneEntry
 	now := u.now()
 	switch method {
 	case "thread/started":
 		info := p.Thread
 		if info.ID == "" || info.ID == u.Thread {
-			return true, nil
+			return sessionProjection{handled: true}
 		}
 		old := s.path(info.ID)
-		s.registerThread(info)
+		s.registerThreadFacts(info)
 		u.renameThreadActivity(old, s.paths[info.ID])
 
 	case "thread/status/changed":
@@ -248,9 +321,6 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			agent.ObserveActive(false, now)
 		}
 	case "thread/tokenUsage/updated":
-		if main {
-			u.exitUsage = p.TokenUsage.Total
-		}
 		agent := s.agent(s.path(p.ThreadID))
 		agent.LastResponse = now // Usage arrives once per provider response.
 		agent.ContextWindow = p.TokenUsage.ModelContextWindow
@@ -259,7 +329,6 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		if p.TokenUsage.Last != nil {
 			agent.ContextTokens = p.TokenUsage.Last.TotalTokens
 		}
-		u.observeCost(p.ThreadID, agent)
 	case "turn/started", "turn/completed":
 		agent := s.agent(s.path(p.ThreadID))
 		active := u.Turn
@@ -274,16 +343,13 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		})
 		if method == "turn/started" {
 			if !updates.Admitted {
-				return true, nil
+				return sessionProjection{handled: true}
 			}
-			if u.proxy != nil {
-				u.proxy.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
-			}
+			result.started = true
 			if !main {
 				agent.turn = p.Turn.ID
 			}
 		} else {
-			u.endTurnPreviews(p.ThreadID, p.Turn.ID)
 			for _, progress := range updates.Waits {
 				value := progress.Value
 				entries = append(entries, activityPaneEntry{
@@ -296,7 +362,6 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			if updates.Current {
 				agent.turn = ""
 			}
-			u.observeCost(p.ThreadID, agent)
 		}
 
 	case "item/commandExecution/outputDelta":
@@ -316,11 +381,12 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		agent := s.path(p.ThreadID)
 		if method != "item/completed" && item.Type != "reasoning" && item.Type != "userMessage" && s.Transcript(p.ThreadID, p.TurnID).Turn != nil {
 			if dropped := u.transcriptUpdates(s.transcript.OtherItemStarted(p.ThreadID, s.Thread(p.ThreadID)), false); len(dropped) != 0 {
-				u.applyActivity(dropped, nil)
+				entries = append(entries, dropped...)
 			}
 		}
 
-		if text, wait, handled := u.itemProgress(item, p.ThreadID, p.TurnID, id, method, true); handled {
+		if text, wait, handled, progress := s.itemProgress(item, p.ThreadID, p.TurnID, id, method, true, facts.wait); handled {
+			result.wait = progress
 			if text != "" {
 				native.wait = wait
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "progress", Text: text, Observed: now, native: native})
@@ -336,23 +402,12 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 					s.paths[item.AgentThreadID] = item.AgentPath
 					u.renameThreadActivity(old, item.AgentPath)
 				}
-				if err := u.requestThreadMetadata(item.AgentThreadID); err != nil {
-					return true, err
-				}
 			}
 		case "reasoning":
 			entries = append(entries, u.transcriptUpdates(s.observeTranscript(p.text, main), true)...)
 
 		case "commandExecution", "webSearch":
-			if item.Type == "commandExecution" && u.proxy != nil {
-				if ms, known := u.proxy.nativeTrace.CommandTimeout(p.ThreadID, id); known {
-					native.commandTimeout = strconv.FormatUint(ms/1000, 10)
-					if fraction := ms % 1000; fraction != 0 {
-						native.commandTimeout += "." + strings.TrimRight(fmt.Sprintf("%03d", fraction), "0")
-					}
-					native.commandTimeout += "s"
-				}
-			}
+			native.commandTimeout = facts.commandTimeout
 			native.commandCwd = appServerCommandDirectory(item, s.cwd)
 			native.searchResults = appServerSearchResults(item)
 			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerToolText(item, s.cwd), CallID: id, Observed: now, native: native}
@@ -382,7 +437,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 				}
 			}
 			s.completeCommand(native, item)
-			if run := s.commands[key]; run != nil && u.execTrack.Tracking(key) {
+			if run := s.commands[key]; run != nil && facts.tracked {
 				run.completion, run.completed, run.completedAt = &entry, item, now
 				break
 			}
@@ -405,24 +460,30 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			}
 		case "collabAgentToolCall":
 			if method == "item/completed" {
-				entries = append(entries, u.collab(item, id, now, activitypresentation.ObservedCollaboration)...)
+				deliveries := s.collab(item, id, now, activitypresentation.ObservedCollaboration)
+				entries = append(entries, deliveries...)
+				for _, entry := range deliveries {
+					if entry.start != nil {
+						result.spawned = append(result.spawned, s.agent(entry.Agent).thread)
+					}
+				}
 			}
 		case "agentMessage":
 			if main {
-				return false, nil
+				return sessionProjection{entries: entries, publish: len(entries) != 0}
 			}
 			entries = append(entries, u.transcriptUpdates(s.observeTranscript(p.text, false), true)...)
 
 		default:
 			if main {
-				return false, nil // Main's messages belong to the transcript handler.
+				return sessionProjection{entries: entries, publish: len(entries) != 0} // Main's messages belong to the transcript handler.
 			}
-			return true, nil
+			return sessionProjection{entries: entries, publish: len(entries) != 0, handled: true}
 		}
 	}
-	u.applyActivity(entries, slices.Clone(s.agents))
-	// Main's turn lifecycle also drives the composer state.
-	return !main || !strings.HasPrefix(method, "turn/"), nil
+	result.entries = entries
+	result.handled = !main || !strings.HasPrefix(method, "turn/")
+	return result
 }
 
 // roll reveals one frame's share of pending output, or all of an instant
@@ -493,10 +554,9 @@ func (u *appServerUI) flushStreamOutput() {
 	u.dirty = true
 }
 
-// collab binds neutral delivery facts to existing caller labels, feed identities
-// and accounting. History never marks a new live usage owner.
-func (u *appServerUI) collab(item binding.ThreadItem, id string, now time.Time, origin activitypresentation.CollaborationOrigin) []activityPaneEntry {
-	s := &u.session
+// collab binds neutral delivery facts to existing caller labels and feed
+// identities. The live adapter applies accounting after this projection.
+func (s *appServerSession) collab(item binding.ThreadItem, id string, now time.Time, origin activitypresentation.CollaborationOrigin) []activityPaneEntry {
 	deliveries, confirmed := activitypresentation.ProjectCollaboration(observation.Item{
 		ID: id, Tool: item.Tool, Status: item.Status, SenderThreadID: item.SenderThreadID,
 		ReceiverThreadIDs: item.ReceiverThreadIDs, Prompt: item.Prompt, Model: item.Model, ReasoningEffort: item.ReasoningEffort,
@@ -522,9 +582,6 @@ func (u *appServerUI) collab(item binding.ThreadItem, id string, now time.Time, 
 			}
 			switch d.Kind {
 			case "start":
-				if origin == activitypresentation.ObservedCollaboration && u.proxy != nil {
-					u.proxy.usage.MarkNew(d.To)
-				}
 				if agent := s.agent(to); agent.settings.Model == "" {
 					agent.settings.Model, agent.settings.Effort = d.Model, d.Effort
 				}

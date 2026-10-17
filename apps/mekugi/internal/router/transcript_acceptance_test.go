@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"os"
@@ -58,8 +57,6 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 	source.Cwd = cwd
 	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
-	var outgoing bytes.Buffer
-	p.ui.client.Input = replayDiscard{Writer: &outgoing}
 	if err := p.seek(4 * time.Second); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +73,6 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 	if err := p.seek(time.Second); err != nil {
 		t.Fatal(err)
 	}
-	p.ui.client.Input = replayDiscard{Writer: &outgoing}
 	if p.ui == oldUI || p.ui.questionCount() != 0 || !p.ui.now().Equal(source.Start.Add(time.Second)) {
 		t.Fatal("seek retained future transcript/question state or lost recorded clock")
 	}
@@ -105,8 +101,8 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 			}
 		}
 	}
-	if receipts != 1 || replies != 1 || outgoing.Len() != 0 {
-		t.Fatalf("replay duplicated receipts/replies or sent traffic: receipts=%d replies=%d bytes=%d", receipts, replies, outgoing.Len())
+	if receipts != 1 || replies != 1 || p.ui.client != nil || p.ui.requests != nil {
+		t.Fatalf("replay duplicated receipts/replies or constructed live transport: receipts=%d replies=%d", receipts, replies)
 	}
 }
 
@@ -181,8 +177,6 @@ func TestSessionUIReplayTranscriptMessageDeltaRetiresProviderThinking(t *testing
 	}}
 	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
-	var outgoing bytes.Buffer
-	p.ui.client.Input = replayDiscard{Writer: &outgoing}
 	if err := p.advance(time.Second); err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +190,7 @@ func TestSessionUIReplayTranscriptMessageDeltaRetiresProviderThinking(t *testing
 	if !strings.Contains(frame, "Arrived without an item start") || strings.Contains(frame, "Thinking") {
 		t.Fatalf("direct message delta did not replace pending thinking:\n%s", frame)
 	}
-	if outgoing.Len() != 0 {
-		t.Fatalf("replay sent %d bytes while replacing provider thinking", outgoing.Len())
+	if p.ui.client != nil || p.ui.requests != nil {
+		t.Fatal("replay constructed live transport while replacing provider thinking")
 	}
 }

@@ -83,7 +83,7 @@ no independent timer or background worker and retains no live-session resources.
 The required Rollout binding supplies [Codex's offline decoding and source-identity
 verification](../../backends/codex/SPEC.md#supplied-offline-rollouts). An unbound or
 incomplete source fails explicitly. Messages and public reasoning share
-[Activity's interpretation](../activity/SPEC.md#transcript-observations).
+[Conversation's interpretation](../conversation/SPEC.md#transcript-observations).
 
 ## Records
 

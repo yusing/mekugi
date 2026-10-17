@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"fmt"
 	"reflect"
 	"strings"
@@ -161,8 +160,6 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 	}
 	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 4)
 	t.Cleanup(p.close)
-	var wire bytes.Buffer
-	p.ui.client.Input = replayDiscard{Writer: &wire}
 	for _, step := range []struct {
 		at        time.Duration
 		questions int
@@ -175,8 +172,8 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 		}
 		replayPlaybackTestPaint(t, p, 120, 28)
 	}
-	if wire.Len() != 0 {
-		t.Fatalf("playback submitted question answer: %q", wire.String())
+	if p.ui.client != nil || p.ui.requests != nil || len(p.ui.session.metadata) != 0 {
+		t.Fatal("playback constructed live question transport")
 	}
 }
 

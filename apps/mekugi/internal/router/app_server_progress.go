@@ -5,6 +5,7 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/modules/activity/waittargets"
 )
 
 // History can retain an unfinished item in a stopped turn. The owning turn
@@ -19,22 +20,56 @@ func appServerHistoryProgressPhase(item binding.ThreadItem, turnStatus string) s
 	return "item/completed"
 }
 
-// itemProgress adapts host progress and supplies admitted wait evidence. Activity
-// owns wait selection and lifecycle; storage failures remain auxiliary notices.
+// waitEvidence is admitted storage input, separate from wait projection.
+type waitEvidence struct {
+	targets []waittargets.Target
+	found   bool
+}
+
+func (u *appServerUI) readWaitEvidence(item binding.ThreadItem, key [3]string) waitEvidence {
+	s := &u.session
+	var evidence waitEvidence
+	if item.Type != "collabAgentToolCall" || item.Tool != "wait" || key[0] == "" || key[1] == "" || key[2] == "" || s.waitStore == nil || s.waits.HasSnapshot(s.Transcript(key[0], key[1]).Turn, key[2]) {
+		return evidence
+	}
+	var err error
+	evidence.targets, evidence.found, err = s.readWaitTargets(key)
+	if err != nil {
+		u.setNotice("Wait targets could not be restored: "+err.Error(), true)
+	}
+	return evidence
+}
+
+func (u *appServerUI) retainWaitProgress(key [3]string, progress *activitypresentation.WaitProgress) {
+	if progress != nil && progress.Retain {
+		if err := u.session.writeWaitTargets(key, progress.Snapshot); err != nil {
+			u.setNotice("Wait targets could not be retained: "+err.Error(), true)
+		}
+	}
+}
+
+// itemProgress retains the live/history storage boundary around shared projection.
 func (u *appServerUI) itemProgress(item binding.ThreadItem, thread, turn, id, phase string, observed bool) (string, *activitypresentation.Value, bool) {
+	key := [3]string{thread, turn, id}
+	text, wait, handled, progress := u.session.itemProgress(item, thread, turn, id, phase, observed, u.readWaitEvidence(item, key))
+	u.retainWaitProgress(key, progress)
+	return text, wait, handled
+}
+
+func (s *appServerSession) itemProgress(item binding.ThreadItem, thread, turn, id, phase string, observed bool, evidence waitEvidence) (string, *activitypresentation.Value, bool, *activitypresentation.WaitProgress) {
 	if item.Type == "contextCompaction" {
 		if phase == "item/completed" {
-			return "Context compacted", nil, true
+			return "Context compacted", nil, true, nil
 		}
-		return "", nil, true
+		return "", nil, true, nil
 	}
 	if item.Type != "collabAgentToolCall" || item.Tool != "wait" {
-		return "", nil, false
+		return "", nil, false, nil
 	}
-	s := &u.session
 	in := activitypresentation.WaitObservation{
 		Item:  observation.Item{ID: id, Status: item.Status, ReceiverThreadIDs: item.ReceiverThreadIDs},
 		Phase: phase, Observed: observed && thread != "" && turn != "" && id != "", Caller: s.path(thread),
+		Snapshot: evidence.targets, SnapshotFound: evidence.found,
 	}
 	in.Item.AgentsStates = make(map[string]observation.AgentState, len(item.AgentsStates))
 	for target, state := range item.AgentsStates {
@@ -44,22 +79,8 @@ func (u *appServerUI) itemProgress(item binding.ThreadItem, thread, turn, id, ph
 		agent := s.agent(name)
 		in.Agents = append(in.Agents, activitypresentation.WaitAgent{Thread: target, Name: name, Responding: agent != nil && agent.Responding})
 	}
-	store := s.Transcript(thread, turn).Turn
-	key := [3]string{thread, turn, id}
-	if thread != "" && turn != "" && id != "" && !s.waits.HasSnapshot(store, id) && s.waitStore != nil {
-		var err error
-		in.Snapshot, in.SnapshotFound, err = s.readWaitTargets(key)
-		if err != nil {
-			u.setNotice("Wait targets could not be restored: "+err.Error(), true)
-		}
-	}
-	progress := s.waits.Observe(store, in)
-	if progress.Retain {
-		if err := s.writeWaitTargets(key, progress.Snapshot); err != nil {
-			u.setNotice("Wait targets could not be retained: "+err.Error(), true)
-		}
-	}
-	return (activityui.Block{Value: progress.Value}).ProgressText(), &progress.Value, true
+	progress := s.waits.Observe(s.Transcript(thread, turn).Turn, in)
+	return (activityui.Block{Value: progress.Value}).ProgressText(), &progress.Value, true, &progress
 }
 
 // Main progress consumes Activity's authoritative retained item evidence. The

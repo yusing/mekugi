@@ -24,8 +24,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/contracts/observation"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -51,10 +49,6 @@ type uiReplayPlayback struct {
 	ctx          context.Context
 }
 
-type replayDiscard struct{ io.Writer }
-
-func (replayDiscard) Close() error { return nil }
-
 func newUIReplayPlayback(views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
 	p := &uiReplayPlayback{views: views, conversation: conversation, observations: observations, activity: activity, ctx: ctx, Player: playback.NewPlayer(source, speed)}
 	p.reset()
@@ -68,18 +62,12 @@ func (p *uiReplayPlayback) reset() {
 		p.close()
 	}
 	p.paintedAt = time.Time{}
-	// The real message/projector/render path, but no app-server process, router,
-	// replay store, filesystem observers, input submission, or notification sink.
-	client := &appserver.Client{Input: replayDiscard{io.Discard}}
-	u := &appServerUI{presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, client: client, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
+	// The read-only terminal attachment uses shared projection without a backend
+	// client, request tracker, writable store, observers or notification sink.
+	u := &appServerUI{presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
 	u.sessionPresentation().Status.Set("Replay", false)
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	u.session.start(p.Source.Thread, p.Source.Cwd)
-	for id := range p.Source.Threads {
-		if id != p.Source.Thread {
-			u.session.metadata[id] = ""
-		}
-	}
 	u.ensureShell()
 	if previous != nil {
 		u.shell.fileReadSlot = previous.fileReadSlot
@@ -97,7 +85,7 @@ func (p *uiReplayPlayback) close() {
 
 func (p *uiReplayPlayback) apply(e playback.Event) error {
 	if id := e.ThreadID; id != "" && id != p.Source.Thread && p.ui.session.paths[id] == "" {
-		p.ui.session.registerThread(binding.ThreadInfo{ID: id, AgentNickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
+		p.ui.session.registerThreadFacts(binding.ThreadInfo{ID: id, AgentNickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
 	}
 	switch {
 	case e.Hook != nil:
@@ -111,7 +99,32 @@ func (p *uiReplayPlayback) apply(e playback.Event) error {
 		if p.ui.replayTranscript(e.Event) {
 			return nil
 		}
-		return p.ui.observedEvent(string(e.Kind), replayPresentationEvent(e.Event))
+		result := p.ui.projectSessionEvent(string(e.Kind), replayPresentationEvent(e.Event), sessionEventFacts{})
+		if result.publish {
+			p.ui.applyActivity(result.entries, slices.Clone(p.ui.session.agents))
+		}
+		// Playback selects recorded turns without creating or settling live
+		// control operations. Status uses the same admitted observation clock.
+		if e.ThreadID == p.Source.Thread {
+			switch e.Kind {
+			case observation.TurnStarted:
+				if result.started {
+					p.ui.Turn = e.TurnID
+					p.ui.sessionPresentation().Status.Started = e.At
+					p.ui.sessionPresentation().Status.Set("Working", false)
+				}
+			case observation.TurnCompleted:
+				if e.TurnID == p.ui.Turn {
+					p.ui.Turn = ""
+					p.ui.sessionPresentation().Status.Complete(e.TurnStatus, nil, e.At)
+					for _, call := range p.ui.questionCalls() {
+						if !call.Resolved {
+							p.ui.renderQuestionRecord(call)
+						}
+					}
+				}
+			}
+		}
 	}
 	return nil
 }
