@@ -40,7 +40,6 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 		if !exists {
 			index = len(blocks)
 			indexes[key] = index
-			block.Collapsed = true
 			block.Reads = []activitymodel.Read{{Path: source}}
 			blocks = append(blocks, block)
 		}

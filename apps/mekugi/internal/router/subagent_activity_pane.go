@@ -268,6 +268,7 @@ func (entry activityPaneEntry) ActivityFacts() activitypresentation.Facts {
 	}
 	if n := entry.native; n != nil {
 		facts.Running, facts.Live, facts.Restored, facts.Unconfirmed = n.running, n.live, !n.live, n.unconfirmed()
+		facts.ItemComplete = n.phase == "item/completed"
 		facts.Spans, facts.Question = n.spans, n.question
 		facts.Suppressed, facts.RosterOnly = n.phase == "queued-summary", n.wait != nil
 		facts.OutputComplete = n.exit != nil && *n.exit == 0 || !n.live && len(n.segments) > 0 ||

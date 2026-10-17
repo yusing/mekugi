@@ -120,7 +120,6 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 					block.Thought = entry.native.thought
 				}
 			}
-			block.Collapsed = block.Collapsible() && (entry.native == nil || !entry.native.live || entry.native.phase != "item/completed")
 		}
 		return blocks
 	case "command":
@@ -168,11 +167,9 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 				last := &blocks[len(blocks)-1]
 				last.Tail, last.TailOmitted = entry.outputTail, entry.outputOmit
 				last.Changes = entry.native.changes
-				// A read's output is what the agent read; it starts collapsed.
-				last.Collapsed = last.ReadOutput() && last.Collapsible()
 			}
 		}
-		return activityui.GroupOperations(blocks)
+		return activityui.Disclosure(nil).Blocks(activitypresentation.GroupOperations(activityui.Values(blocks)))
 	}
 	return []activityui.Block{{Kind: "text", Body: source}}
 }
@@ -241,15 +238,10 @@ func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitt
 	}
 	blocks[last].ExitCode, blocks[last].Exited = code, true
 	blocks[last].Tail, blocks[last].TailOmitted, blocks[last].Output = tail, omitted, output
-	blocks[last].Collapsed = false
 	return blocks
 }
 
-// commandSegmentBlocks adds terminal disclosure to admitted segment values.
+// commandSegmentBlocks groups admitted segment values.
 func commandSegmentBlocks(command activitypresentation.Command) []activityui.Block {
-	blocks := activityui.Disclosure(nil).Blocks(command.SegmentValues(false))
-	for i := range blocks {
-		blocks[i].Collapsed = blocks[i].ReadOutput() && blocks[i].Collapsible()
-	}
-	return activityui.GroupOperations(blocks)
+	return activityui.Disclosure(nil).Blocks(activitypresentation.GroupOperations(command.SegmentValues(false)))
 }

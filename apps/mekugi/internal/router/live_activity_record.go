@@ -13,11 +13,11 @@ import (
 type liveActivityRecord = activitypresentation.Record[activityPaneEntry]
 
 func (v *activityAdapter) appendEntry(entry activityPaneEntry, blocks []activityui.Block) {
-	v.Model.Append(entry, v.Disclosure.Keep(entry.Seq, blocks))
+	v.Model.Append(entry, activityui.Values(blocks))
 	v.View.Observe(v.Entries[len(v.Entries)-1].Publish(), true)
 }
 func (v *activityAdapter) replaceEntry(index int, entry activityPaneEntry, blocks []activityui.Block) {
-	v.Model.Replace(index, entry, v.Disclosure.Keep(entry.Seq, blocks))
+	v.Model.Replace(index, entry, activityui.Values(blocks))
 	v.View.Observe(v.Entries[index].Publish(), false)
 }
 func (v *activityAdapter) mutateEntry(index int, mutate func(*liveActivityRecord)) {
@@ -31,8 +31,8 @@ func (v *activityAdapter) removeEntries(from, to int) {
 	v.Model.Remove(from, to)
 	v.Runs = nil
 }
-func (v *activityAdapter) blocks(index int) []activityui.Block {
-	return v.Disclosure.Blocks(v.Entries[index].Values)
+func (v *activityAdapter) sourceBlocks(index int) []activityui.Block {
+	return activityui.Disclosure(nil).Blocks(v.Entries[index].Values)
 }
 
 // Parsed blocks are ephemeral. The model attaches canonical membership to their values.

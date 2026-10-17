@@ -25,9 +25,12 @@ func expansionFixture(main bool) *activityAdapter {
 	}
 	narrative := strings.Repeat("An event with retained details.\n", 8)
 	v.appendEntry(activityPaneEntry{Seq: 1, Agent: agent, Kind: "text", Text: narrative, Observed: now}, []activityui.Block{{Kind: "text", Body: narrative}})
-	v.appendEntry(activityPaneEntry{Seq: 2, Agent: agent, Kind: "reasoning", Observed: now}, []activityui.Block{{Kind: "summary", Label: "Inspecting", Body: "**Inspecting**\n\n" + strings.Repeat("Public reasoning detail.\n\n", 6), Collapsed: true, Live: true}})
-	v.appendEntry(activityPaneEntry{Seq: 3, Agent: agent, Kind: "tool", Text: "Run printf", Observed: now}, []activityui.Block{{Kind: "op", Verb: "Run", Label: "printf", Code: strings.Repeat("echo retained-source\n", 8), Lang: "bash", Fenced: true, Tail: []string{"first output", "last output"}, Collapsed: true}})
+	v.appendEntry(activityPaneEntry{Seq: 2, Agent: agent, Kind: "reasoning", Observed: now}, []activityui.Block{{Kind: "summary", Label: "Inspecting", Body: "**Inspecting**\n\n" + strings.Repeat("Public reasoning detail.\n\n", 6), Live: true}})
+	v.appendEntry(activityPaneEntry{Seq: 3, Agent: agent, Kind: "tool", Text: "Run printf", Observed: now}, []activityui.Block{{Kind: "op", Verb: "Run", Label: "printf", Code: strings.Repeat("echo retained-source\n", 8), Lang: "bash", Fenced: true, Tail: []string{"first output", "last output"}}})
 	v.LastSeq = 3
+	// Disclosure fixtures belong to the renderer, independently of source facts.
+	v.Disclosure.Collapse(2, 0)
+	v.Disclosure.Collapse(3, 0)
 	return v
 }
 
@@ -90,10 +93,11 @@ func TestLiveActivityExpansionViewportCache(t *testing.T) {
 		v := viewportSyntaxView(main, "viewportfixture")
 		const skillSource = "package offscreenSkill"
 		v.replaceEntry(1, v.Entries[1].Source, append(v.blocks(1), activityui.Block{
-			Kind: "op", Verb: "Attached skill", Label: "viewport", Collapsed: true,
+			Kind: "op", Verb: "Attached skill", Label: "viewport",
 			Tail: strings.Split(strings.Repeat("Skill detail.\n\n", 20)+"```viewportfixture\n"+skillSource+"\n```", "\n"),
 		}))
 		first := strings.ReplaceAll(v.blocks(1)[0].Code, "\t", "    ")
+		v.Disclosure.Collapse(v.Entries[1].Source.Seq, len(v.Entries[1].Values)-1)
 		for range 2 {
 			v.ToggleExpansion()
 			v.Viewport(v.RenderFeed(70, 9), 9)

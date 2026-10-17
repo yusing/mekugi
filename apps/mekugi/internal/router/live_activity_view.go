@@ -122,7 +122,7 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 			for i, v0 := range slices.Backward(v.Entries) {
 				if v0.Source.Agent == entry.Agent && v0.Source.CallID == entry.CallID && entry.CallID != "" {
 					code, _ := strconv.Atoi(entry.Text)
-					blocks := commandExitBlocks(v.blocks(i), code, entry.outputTail, entry.outputOmit)
+					blocks := commandExitBlocks(v.sourceBlocks(i), code, entry.outputTail, entry.outputOmit)
 					setCommandFacts(blocks, commandPresentation(v0.Source))
 					v.replaceEntry(i, v0.Source, blocks)
 					break
@@ -143,7 +143,7 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 				}
 				entry.Seq = prior.Seq
 				blocks[0].ExitCode, blocks[0].Exited = v.Entries[i].Values[0].ExitCode, v.Entries[i].Values[0].Exited
-				for _, annotation := range v.blocks(i)[1:] {
+				for _, annotation := range v.sourceBlocks(i)[1:] {
 					if annotation.BatchExit {
 						blocks = retainBatchResult(blocks, annotation)
 					} else if annotation.Kind == "filter" {
@@ -188,7 +188,7 @@ func (v *activityAdapter) markUnreturned(thread, call string) bool {
 		if !output || noted {
 			return false
 		}
-		v.replaceEntry(i, entry.Source, append(v.blocks(i), activityui.Block{Kind: "filter", Body: unreturnedOutputNote}))
+		v.replaceEntry(i, entry.Source, append(v.sourceBlocks(i), activityui.Block{Kind: "filter", Body: unreturnedOutputNote}))
 		return true
 	}
 	return false

@@ -155,7 +155,7 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 			native.approval = entry.native.approval
 			current := previous.Source
 			current.native = &native
-			blocks := v.blocks(i)
+			blocks := v.sourceBlocks(i)
 			if native.command != "" && len(blocks) > 1 && !slices.ContainsFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }) {
 				blocks = parseLiveActivity(current)
 			} else {
@@ -178,7 +178,7 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 		entry.Seq, entry.Observed = previous.Source.Seq, previous.Source.Observed
 		entry.native.question = previous.Source.native.question
 		blocks := parseLiveActivity(entry)
-		for _, annotation := range v.blocks(i) {
+		for _, annotation := range v.sourceBlocks(i) {
 			if annotation.Repeated != "" && len(blocks) > 0 {
 				blocks[len(blocks)-1].Repeated = annotation.Repeated
 			}

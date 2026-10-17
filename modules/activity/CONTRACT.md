@@ -23,6 +23,11 @@ flattening and stage folding. Dialogs consume that same flat membership.
 Contributed retained pages keep their provider's stable identity and frozen source;
 live command refresh cannot replace them with another invocation's content.
 
+Initial disclosure comes from published content and observed item completion.
+Terminal settlement remains separate from that completion fact. The renderer
+retains later disclosure choices and applies them after source replacement;
+source reconciliation does not read terminal annotations.
+
 ## Operation rows
 
 Operations use flat, colored verb rows. Adjacent verbs share the widest visible

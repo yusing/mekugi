@@ -96,7 +96,7 @@ func (v *activityAdapter) applyCapturedEdits(receipts []*changepresentation.Rece
 			}
 			exit := 0
 			var batch *activityui.Block
-			for _, block := range v.blocks(i) {
+			for _, block := range v.sourceBlocks(i) {
 				if block.BatchExit {
 					batch = new(block)
 					continue

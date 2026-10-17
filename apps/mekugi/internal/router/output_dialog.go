@@ -95,7 +95,7 @@ func (u *terminalUI) openEntry(view *activityAdapter, seq uint64) bool {
 		if entry.Source.Seq != seq {
 			continue
 		}
-		blocks := view.blocks(index)
+		blocks := view.sourceBlocks(index)
 		for i := range blocks {
 			blocks[i].Source = entry.Source.Seq
 			if blocks[i].Verb == "" {

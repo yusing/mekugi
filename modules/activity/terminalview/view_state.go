@@ -90,6 +90,14 @@ func (v *View) blocks(index int) []Block {
 
 // Observe updates terminal deadlines without mutating the source record.
 func (v *View) Observe(entry presentation.Entry, appended bool) {
+	blocks := Disclosure(nil).Blocks(entry.Values)
+	for i, block := range blocks {
+		blocks[i].Collapsed = entry.Kind == "reasoning" && block.Collapsible() && !(entry.Live && entry.ItemComplete) ||
+			entry.Kind == "attachments" && block.ReadOutput() ||
+			(entry.Kind == "tool" || block.Segment) && block.ReadOutput() && block.Collapsible()
+	}
+	measureGroups(blocks)
+	v.Disclosure.Keep(entry.Seq, blocks)
 	if entry.Restored && entry.OutputComplete {
 		if v.collapsed == nil {
 			v.collapsed = make(map[uint64]bool)

@@ -77,3 +77,7 @@ func TestLiveActivityRecordMutationOwnsInvalidation(t *testing.T) {
 	}
 	assertLiveActivityCacheFresh(t, v)
 }
+
+func (v *activityAdapter) blocks(index int) []activityui.Block {
+	return v.Disclosure.Blocks(v.Entries[index].Values)
+}
