@@ -304,7 +304,7 @@ func (v *View) conversationLead(index int) bool {
 	case entry.Agent != v.conversationSpeaker():
 		return false
 	case entry.Kind == "reasoning":
-		return len(blocks) > 0 && ReasoningSummaryBody(blocks[0].Body) != ""
+		return len(blocks) > 0 && activitypresentation.ReasoningSummaryBody(blocks[0].Body) != ""
 	}
 	return entry.Kind == "text" && strings.TrimSpace(entry.Text) != ""
 }

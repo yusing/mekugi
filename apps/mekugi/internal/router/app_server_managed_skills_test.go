@@ -72,7 +72,7 @@ func TestManagedSkillAttachmentContentsAndIdentity(t *testing.T) {
 	if !ok || text != "use $review then $review please" || len(spans) != 2 {
 		t.Fatalf("shared transcript identity lost: %q %+v", text, spans)
 	}
-	blocks := appServerAttachmentBlocks(u.session.cwd, content)
+	blocks := appServerAttachmentValues(u.session.cwd, content)
 	if len(blocks) != 1 || blocks[0].Verb != "Attached skill" || blocks[0].Label != "review" {
 		t.Fatalf("missing receipt: %+v", blocks)
 	}
@@ -114,7 +114,7 @@ func TestManagedSkillReadFailureIsExplicit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocks := appServerAttachmentBlocks(u.session.cwd, content)
+	blocks := appServerAttachmentValues(u.session.cwd, content)
 	if u.conversation().Submitted[u.Submission().ID].Text != "use $review please" || len(blocks) != 1 || blocks[0].Verb != "Attach failed" || !strings.Contains(blocks[0].Label, "review") {
 		t.Fatalf("failed skill lost prompt or receipt: %+v", blocks)
 	}

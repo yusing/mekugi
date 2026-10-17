@@ -790,11 +790,11 @@ func appServerEditText(item observation.Item, cwd string) string {
 
 // appServerEditPages retains host-supplied completed diffs for navigation only.
 // It neither captures the filesystem nor creates durable change evidence.
-func appServerEditPages(item observation.Item, cwd, phase string) []activityui.Block {
+func appServerEditPages(item observation.Item, cwd, phase string) []activitypresentation.Value {
 	if phase != "item/completed" || item.Status != "" && item.Status != "completed" {
 		return nil
 	}
-	var pages []activityui.Block
+	var pages []activitypresentation.Value
 	for _, change := range item.Changes {
 		path, diff := pathdisplay.ForWorkspace(cwd, change.Path), change.Diff
 		syntaxPath := ""
@@ -821,7 +821,7 @@ func appServerEditPages(item observation.Item, cwd, phase string) []activityui.B
 		if change.Kind.MovePath != "" {
 			verb = "Move"
 		}
-		pages = append(pages, activityui.Block{Kind: "op", Verb: verb, Path: path, SyntaxPath: syntaxPath, Code: diff, Lang: lang, Fenced: true})
+		pages = append(pages, activitypresentation.Value{Kind: "op", Verb: verb, Path: path, SyntaxPath: syntaxPath, Code: diff, Lang: lang, Fenced: true})
 	}
 	return pages
 }

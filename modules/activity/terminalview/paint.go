@@ -304,9 +304,9 @@ func (p *Painter) blockRows(block Block, width int) []string {
 	case "summary":
 		// Public reasoning shares one streaming block across providers.
 		if block.Label == "" {
-			block.Label = ReasoningSections(block.Body)[0].Label
+			block.Label = presentation.ReasoningSections(block.Body)[0].Label
 		}
-		body := ReasoningSummaryBody(block.Body)
+		body := presentation.ReasoningSummaryBody(block.Body)
 		if body == "" {
 			// A request's thinking block before its first delta.
 			if block.Live && strings.TrimSpace(block.Body) == "" {

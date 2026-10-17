@@ -1,4 +1,4 @@
-package terminalview
+package presentation
 
 import (
 	"strings"
@@ -9,12 +9,12 @@ func TestReasoningSections(t *testing.T) {
 	tests := []struct {
 		name string
 		text string
-		want []Block
+		want []Value
 	}{
 		{
 			name: "multiple bold titles",
 			text: "  **Inspecting the renderer**\n\nThe first paragraph.\n\nMore detail.\n\n**Checking timing**\n\nThe second paragraph.\n  ",
-			want: []Block{
+			want: []Value{
 				{Kind: "summary", Label: "Inspecting the renderer", Body: "**Inspecting the renderer**\n\nThe first paragraph.\n\nMore detail."},
 				{Kind: "summary", Label: "Checking timing", Body: "**Checking timing**\n\nThe second paragraph."},
 			},
@@ -22,7 +22,7 @@ func TestReasoningSections(t *testing.T) {
 		{
 			name: "markdown headings without blank separators",
 			text: "# Inspecting\nFirst paragraph.\n## Checking\nSecond paragraph.",
-			want: []Block{
+			want: []Value{
 				{Kind: "summary", Label: "Inspecting", Body: "# Inspecting\nFirst paragraph."},
 				{Kind: "summary", Label: "Checking", Body: "## Checking\nSecond paragraph."},
 			},
@@ -30,7 +30,7 @@ func TestReasoningSections(t *testing.T) {
 		{
 			name: "plain titles and paragraphs",
 			text: "Short title\n\nFirst paragraph.\n\nSecond paragraph.\n\nShort title two\n\nThird paragraph.",
-			want: []Block{
+			want: []Value{
 				{Kind: "summary", Label: "Short title", Body: "Short title\n\nFirst paragraph.\n\nSecond paragraph."},
 				{Kind: "summary", Label: "Short title two", Body: "Short title two\n\nThird paragraph."},
 			},
@@ -38,7 +38,7 @@ func TestReasoningSections(t *testing.T) {
 		{
 			name: "untitled introduction before explicit title",
 			text: "An introductory sentence.\n\n**Checking**\n\nA detailed sentence.",
-			want: []Block{
+			want: []Value{
 				{Kind: "summary", Body: "An introductory sentence."},
 				{Kind: "summary", Label: "Checking", Body: "**Checking**\n\nA detailed sentence."},
 			},
@@ -46,32 +46,32 @@ func TestReasoningSections(t *testing.T) {
 		{
 			name: "heading only bold",
 			text: " \n**Checking tests**\n\n",
-			want: []Block{{Kind: "summary", Label: "Checking tests", Body: "**Checking tests**"}},
+			want: []Value{{Kind: "summary", Label: "Checking tests", Body: "**Checking tests**"}},
 		},
 		{
 			name: "heading only markdown",
 			text: "\n### Checking tests\n",
-			want: []Block{{Kind: "summary", Label: "Checking tests", Body: "### Checking tests"}},
+			want: []Value{{Kind: "summary", Label: "Checking tests", Body: "### Checking tests"}},
 		},
 		{
 			name: "hash in title is content",
 			text: "# Checking C#\n\nA paragraph.",
-			want: []Block{{Kind: "summary", Label: "Checking C#", Body: "# Checking C#\n\nA paragraph."}},
+			want: []Value{{Kind: "summary", Label: "Checking C#", Body: "# Checking C#\n\nA paragraph."}},
 		},
 		{
 			name: "optional closing heading hashes",
 			text: "## Checking tests ##\n\nA paragraph.",
-			want: []Block{{Kind: "summary", Label: "Checking tests", Body: "## Checking tests ##\n\nA paragraph."}},
+			want: []Value{{Kind: "summary", Label: "Checking tests", Body: "## Checking tests ##\n\nA paragraph."}},
 		},
 		{
 			name: "headings inside backtick fence",
 			text: "**Real title**\n\n```markdown\n# Not a title\n**Not a title either**\n\nPlain fake title\n\nA code paragraph.\n```\n\nA real paragraph.",
-			want: []Block{{Kind: "summary", Label: "Real title", Body: "**Real title**\n\n```markdown\n# Not a title\n**Not a title either**\n\nPlain fake title\n\nA code paragraph.\n```\n\nA real paragraph."}},
+			want: []Value{{Kind: "summary", Label: "Real title", Body: "**Real title**\n\n```markdown\n# Not a title\n**Not a title either**\n\nPlain fake title\n\nA code paragraph.\n```\n\nA real paragraph."}},
 		},
 		{
 			name: "headings inside tilde fence and section after it",
 			text: "~~~markdown\n# Not a title\n**Also code**\n~~~\n\n# Real title\n\nA paragraph.",
-			want: []Block{
+			want: []Value{
 				{Kind: "summary", Body: "~~~markdown\n# Not a title\n**Also code**\n~~~"},
 				{Kind: "summary", Label: "Real title", Body: "# Real title\n\nA paragraph."},
 			},
@@ -95,7 +95,7 @@ func TestReasoningSectionsPlainTitleBoundaries(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := tc.title + "\n\nA paragraph."
-			assertReasoningSections(t, body, []Block{{Kind: "summary", Label: tc.title, Body: body}})
+			assertReasoningSections(t, body, []Value{{Kind: "summary", Label: tc.title, Body: body}})
 		})
 	}
 }
@@ -123,12 +123,12 @@ func TestReasoningSectionsDoesNotSplitProse(t *testing.T) {
 	}
 	for _, tc := range texts {
 		t.Run(tc.name, func(t *testing.T) {
-			assertReasoningSections(t, tc.text, []Block{{Kind: "summary", Body: tc.text}})
+			assertReasoningSections(t, tc.text, []Value{{Kind: "summary", Body: tc.text}})
 		})
 	}
 }
 
-func assertReasoningSections(t *testing.T, text string, want []Block) {
+func assertReasoningSections(t *testing.T, text string, want []Value) {
 	t.Helper()
 	got := ReasoningSections(text)
 	if len(got) != len(want) {

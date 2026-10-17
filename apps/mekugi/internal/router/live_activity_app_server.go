@@ -20,8 +20,6 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func questionReplyText(replies []binding.QuestionReply) string {
@@ -39,7 +37,7 @@ type liveActivityNativeItem struct {
 	commandStarted     time.Time // UI receipt of host start notification; not reconstructed on replay.
 	commandEnded       time.Time
 	duration           time.Duration
-	questions          []activityui.Question
+	questions          []activitypresentation.Question
 	replySource        string // Stock async envelope or synchronous turn prompt.
 	thread, turn, item string
 	phase              string
@@ -59,12 +57,12 @@ type liveActivityNativeItem struct {
 	question           uint64                           // Original user entry.
 	thought            time.Duration                    // Reasoning time from its start to completion.
 	replaces           string                           // Pending thinking block this reasoning item takes over.
-	attachments        []activityui.Block               // Submitted file snapshot outcomes, recovered from host history.
+	attachments        []activitypresentation.Value     // Submitted file snapshot outcomes, recovered from host history.
 	capturedEdit       *changepresentation.Receipt      // Exact invocation receipt reconciled by the live diff owner.
-	editPages          []activityui.Block               // Completed host file changes, available before outer-cell capture.
+	editPages          []activitypresentation.Value     // Completed host file changes, available before outer-cell capture.
 	segments           []commandSegment                 // A tracked command's own segments, replacing its single row.
 	output             *activitymodel.Output            // A command's retained host output, which the output dialog reads.
-	hook               *activityui.HookDetails
+	hook               *activitypresentation.HookDetails
 }
 
 func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {
@@ -144,7 +142,7 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 		if previous.Source.native != nil && previous.Source.native.phase == "input/pending" && entry.Agent == "You" && entry.native.thread == previous.Source.native.thread && entry.Text == previous.Source.Text {
 			// Reconcile the local echo with Codex's authoritative user item.
 			entry.Seq, entry.Observed = previous.Source.Seq, previous.Source.Observed
-			v.replaceEntry(i, entry, parseLiveActivity(entry))
+			v.Model.Replace(i, entry, activityValues(entry))
 			return true
 		}
 		if !entry.native.sameItem(previous.Source.native) {
@@ -155,13 +153,13 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 			native.approval = entry.native.approval
 			current := previous.Source
 			current.native = &native
-			blocks := v.sourceBlocks(i)
-			if native.command != "" && len(blocks) > 1 && !slices.ContainsFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }) {
-				blocks = parseLiveActivity(current)
+			blocks := v.sourceValues(i)
+			if native.command != "" && len(blocks) > 1 && !slices.ContainsFunc(blocks, func(b activitypresentation.Value) bool { return b.BatchExit }) {
+				blocks = activityValues(current)
 			} else {
-				setApprovalBlocks(blocks, native.approval)
+				activitypresentation.ApplyApproval(blocks, native.approval)
 			}
-			v.replaceEntry(i, current, blocks)
+			v.Model.Replace(i, current, blocks)
 			return true
 		}
 		entry.native.approval = previous.Source.native.approval
@@ -177,8 +175,8 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 		}
 		entry.Seq, entry.Observed = previous.Source.Seq, previous.Source.Observed
 		entry.native.question = previous.Source.native.question
-		blocks := parseLiveActivity(entry)
-		for _, annotation := range v.sourceBlocks(i) {
+		blocks := activityValues(entry)
+		for _, annotation := range v.sourceValues(i) {
 			if annotation.Repeated != "" && len(blocks) > 0 {
 				blocks[len(blocks)-1].Repeated = annotation.Repeated
 			}
@@ -186,7 +184,7 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 				blocks = append(blocks, annotation)
 			}
 		}
-		v.replaceEntry(i, entry, blocks)
+		v.Model.Replace(i, entry, blocks)
 		return true
 	}
 	return false

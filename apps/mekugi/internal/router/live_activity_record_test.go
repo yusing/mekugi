@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -83,4 +85,21 @@ func TestLiveActivityRecordMutationOwnsInvalidation(t *testing.T) {
 func (v *activityAdapter) blocks(index int) []activityui.Block {
 	v.publishActivity()
 	return v.Disclosure.Blocks(v.Entries[index].Values)
+}
+
+// Renderer fixtures supply blocks; source production retains only neutral values.
+func (v *activityAdapter) appendEntry(entry activityPaneEntry, blocks []activityui.Block) {
+	v.Model.Append(entry, activityui.Values(blocks))
+}
+func (v *activityAdapter) replaceEntry(index int, entry activityPaneEntry, blocks []activityui.Block) {
+	v.Model.Replace(index, entry, activityui.Values(blocks))
+}
+func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
+	return activityui.Disclosure(nil).Blocks(activityValues(entry))
+}
+func commandSegmentBlocks(command activitypresentation.Command) []activityui.Block {
+	return activityui.Disclosure(nil).Blocks(activitypresentation.GroupOperations(command.SegmentValues(false)))
+}
+func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitted int) []activityui.Block {
+	return activityui.Disclosure(nil).Blocks(activitypresentation.CommandExit(activityui.Values(blocks), code, tail, omitted))
 }

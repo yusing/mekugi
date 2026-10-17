@@ -5,7 +5,6 @@ import (
 
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // openActivityEdit resolves an exact admitted invocation without consulting the
@@ -44,7 +43,7 @@ func (u *terminalUI) activityEditPages(view *activityAdapter, seq uint64, path s
 		if receipt := native.capturedEdit; receipt != nil && len(receipt.Pages) > 0 {
 			pages = activitypresentation.ContributedDetails(receipt.Pages)
 		} else {
-			pages = activitypresentation.DetailPages(activityui.Values(native.editPages))
+			pages = activitypresentation.DetailPages(native.editPages)
 			for i := range pages {
 				pages[i].ID = fmt.Sprintf("host:%s\x00%s/%d", native.thread, native.item, i)
 			}

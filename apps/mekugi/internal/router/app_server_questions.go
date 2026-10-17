@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -486,13 +488,13 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 	}
 	states := []string{}
 	var body []string
-	var records []activityui.Question
+	var records []activitypresentation.Question
 	for _, q := range c.View().Questions {
 		state := q.State
 		if !slices.Contains(states, state) {
 			states = append(states, state)
 		}
-		record := activityui.Question{Text: q.Text, State: state}
+		record := activitypresentation.Question{Text: q.Text, State: state}
 		line := q.Text
 		if len(q.Answer) > 0 {
 			answers := q.Answer

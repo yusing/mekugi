@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -14,7 +16,6 @@ import (
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Codex's synthetic path for the invocation's -c layer, which holds Mekugi's
@@ -87,7 +88,7 @@ func (u *appServerUI) hookEvent(method string, event appServerEvent) error {
 
 func (s *appServerSession) hookEntry(thread string, observation history.HookObservation, live bool) activityPaneEntry {
 	run := observation.Run
-	hook := &activityui.HookDetails{HandlerType: run.HandlerType, ExecutionMode: run.ExecutionMode,
+	hook := &activitypresentation.HookDetails{HandlerType: run.HandlerType, ExecutionMode: run.ExecutionMode,
 		Status: run.Status, HasError: observation.HasError}
 	n := &liveActivityNativeItem{thread: thread, turn: observation.Turn, item: run.ID, hook: hook,
 		phase: "item/completed", live: live, status: run.Status}

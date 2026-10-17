@@ -345,7 +345,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 				if p.link != nil && mainActivityLinked(p.entry) {
 					entry := u.view.Entries[existing].Source
 					entry.activitySeq = *p.link
-					u.view.replaceEntry(existing, entry, parseLiveActivity(entry))
+					u.view.Model.Replace(existing, entry, activityValues(entry))
 				}
 				continue
 			}

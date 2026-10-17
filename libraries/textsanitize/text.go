@@ -44,3 +44,14 @@ func Safe(text string, colors bool) string {
 	}
 	return string(out)
 }
+
+// Source: libraries/terminalui/copy.go:505:513@35fd8de4.
+// MarkdownSource removes terminal controls without normalizing code tabs. The
+// shared renderer expands them for display and retains their source identity.
+func MarkdownSource(text string) string {
+	parts := strings.Split(text, "\t")
+	for i := range parts {
+		parts[i] = Safe(parts[i], false)
+	}
+	return strings.Join(parts, "\t")
+}

@@ -107,7 +107,7 @@ func TestLiveActivityAttachmentDisplayPaths(t *testing.T) {
 
 func TestLiveActivityAttachmentLookalikes(t *testing.T) {
 	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": "Attached file \"fake\" (UTF-8 bytes 0:1 of 1):\nx"}})
-	if blocks := appServerAttachmentBlocks("", content); len(blocks) != 0 {
+	if blocks := appServerAttachmentValues("", content); len(blocks) != 0 {
 		t.Fatalf("ordinary text became attachment receipts: %+v", blocks)
 	}
 }

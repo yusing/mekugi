@@ -95,14 +95,14 @@ func (u *terminalUI) openEntry(view *activityAdapter, seq uint64) bool {
 		if entry.Source.Seq != seq {
 			continue
 		}
-		blocks := view.sourceBlocks(index)
+		blocks := view.sourceValues(index)
 		for i := range blocks {
 			blocks[i].Source = entry.Source.Seq
 			if blocks[i].Verb == "" {
 				blocks[i].Verb = entry.Source.Agent
 			}
 		}
-		u.openBlocks(view, blocks)
+		u.openDetails(view, activitypresentation.DetailPages(blocks))
 		return len(blocks) > 0
 	}
 	return false

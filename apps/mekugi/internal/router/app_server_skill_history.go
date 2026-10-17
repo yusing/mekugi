@@ -9,8 +9,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Skill counts need the whole current context, independent of the deliberately
@@ -105,7 +103,7 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 		switch item.Type {
 		case "userMessage":
 			record.Source.Kind, native.item = "attachments", item.ID+"/attachments"
-			native.attachments = appServerAttachmentBlocks(u.session.cwd, item.Content)
+			native.attachments = appServerAttachmentValues(u.session.cwd, item.Content)
 		case "commandExecution":
 			u.restoreCommandSegments(&record.Source, item, u.session.cwd)
 			if item.ExitCode != nil && *item.ExitCode != 0 && len(native.segments) == 0 {
@@ -115,7 +113,7 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 		default:
 			continue
 		}
-		record.Values = activityui.Values(parseLiveActivity(record.Source))
+		record.Values = activityValues(record.Source)
 		scan.names = scan.names.With(activitypresentation.SkillLoads(record)...)
 	}
 	if page.NextCursor != "" {

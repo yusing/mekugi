@@ -10,7 +10,8 @@ owning layout, themes, feature state or I/O.
 Remove control sequences, including cursor movement, clipboard writes and terminal
 titles. Preserve readable Unicode, combining marks, joiners and newlines; expand
 tabs to four spaces. Callers may explicitly retain valid SGR color sequences.
-Plain-content consumers strip colors as well.
+Plain-content consumers strip colors as well. Authored Markdown source preserves
+tabs while removing controls, so code copying retains the submitted bytes.
 
 Structured-output parsers may strip escape sequences before interpreting fields,
 preserving tabs and line delimiters. Displayed fields still use full sanitization.

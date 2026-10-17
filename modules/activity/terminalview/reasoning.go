@@ -1,7 +1,6 @@
 package terminalview
 
 import (
-	"slices"
 	"strings"
 	"time"
 
@@ -10,42 +9,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
-
-// Source: codex-rs/tui/src/chatwidget/streaming.rs:9:24@86be5320 latest_summary_line.
-func ReasoningSummaryHeader(text string) string {
-	for _, line := range slices.Backward(strings.Split(text, "\n")) {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "<!--") {
-			continue
-		}
-		line = strings.TrimSpace(strings.TrimLeft(line, "#"))
-		if rest, ok := strings.CutPrefix(line, "**"); ok {
-			bold, trailing, closed := strings.Cut(rest, "**")
-			if !closed {
-				continue
-			}
-			line = bold + trailing
-		}
-		if line != "" {
-			return line
-		}
-	}
-	return "Thinking"
-}
-
-// ReasoningSummaryBody removes a detected section title only when paragraphs
-// follow it. Heading-only summaries remain public content, not empty bodies.
-func ReasoningSummaryBody(text string) string {
-	text = strings.TrimSpace(text)
-	text = strings.TrimSpace(strings.TrimSuffix(text, "<!-- -->"))
-	lines := strings.Split(text, "\n")
-	if len(lines) > 1 && reasoningTitle(lines, 0) != "" {
-		if body := strings.TrimSpace(strings.Join(lines[1:], "\n")); body != "" {
-			return body
-		}
-	}
-	return text
-}
 
 // ThinkingTailRows is how much reasoning stays visible while it
 // streams, following grok-build's truncated thinking blocks.
@@ -80,7 +43,7 @@ func CompactReasoning(blocks []Block) []Block {
 func (p *Painter) thinkingHeader(block Block, width int) (string, bool) {
 	label := block.Label
 	if label == "" {
-		label = ReasoningSections(block.Body)[0].Label
+		label = presentation.ReasoningSections(block.Body)[0].Label
 	}
 	if label == "" && block.Live {
 		label = "Thinking…"
@@ -143,9 +106,9 @@ func (p *Painter) ReasoningElided(block Block, width int) bool {
 
 func (p *Painter) reasoningContent(block Block, width int) (rows []string, short, titleOnly bool) {
 	if block.Label == "" {
-		block.Label = ReasoningSections(block.Body)[0].Label
+		block.Label = presentation.ReasoningSections(block.Body)[0].Label
 	}
-	body := ReasoningSummaryBody(block.Body)
+	body := presentation.ReasoningSummaryBody(block.Body)
 	if body == "" {
 		return nil, false, false
 	}

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -294,7 +296,7 @@ func TestCodexReasoningSummaryPresentation(t *testing.T) {
 		{"**Checking tests**\n\n", "Checking tests", "**Checking tests**"},
 		{"**Unfinished heading", "Thinking", "**Unfinished heading"},
 	} {
-		if activityui.ReasoningSummaryHeader(tc.text) != tc.header || activityui.ReasoningSummaryBody(tc.text) != tc.body {
+		if activitypresentation.ReasoningSummaryHeader(tc.text) != tc.header || activitypresentation.ReasoningSummaryBody(tc.text) != tc.body {
 			t.Fatalf("Codex summary parsing differs for %q", tc.text)
 		}
 	}

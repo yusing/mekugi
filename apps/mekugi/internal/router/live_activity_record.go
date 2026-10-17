@@ -2,9 +2,9 @@ package router
 
 import (
 	"context"
+	"slices"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // liveActivityRecord keeps the source and its presentation together through
@@ -12,23 +12,8 @@ import (
 // presentation changes, including updates that do not reparse the source.
 type liveActivityRecord = activitypresentation.Record[activityPaneEntry]
 
-func (v *activityAdapter) appendEntry(entry activityPaneEntry, blocks []activityui.Block) {
-	v.Model.Append(entry, activityui.Values(blocks))
-}
-func (v *activityAdapter) replaceEntry(index int, entry activityPaneEntry, blocks []activityui.Block) {
-	v.Model.Replace(index, entry, activityui.Values(blocks))
-}
-func (v *activityAdapter) sourceBlocks(index int) []activityui.Block {
-	return activityui.Disclosure(nil).Blocks(v.Entries[index].Values)
-}
-
-// Parsed blocks are ephemeral. The model attaches canonical membership to their values.
-func identifyActivityBlocks(blocks []activityui.Block, source uint64) {
-	values := activityui.Values(blocks)
-	activitypresentation.Identify(values, source)
-	for i := range blocks {
-		blocks[i].Value = values[i]
-	}
+func (v *activityAdapter) sourceValues(index int) []activitypresentation.Value {
+	return slices.Clone(v.Entries[index].Values)
 }
 
 // attachActivity transfers the initial adapter feed into the composed attachment.

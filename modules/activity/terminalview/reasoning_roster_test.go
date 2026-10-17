@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -46,7 +48,7 @@ func TestUISnapshotReasoningRosterTitles(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := Painter{Theme: diffrender.DarkTheme}
-			blocks := ReasoningSections(tc.body)
+			blocks := Disclosure(nil).Blocks(presentation.ReasoningSections(tc.body))
 			for i := range blocks {
 				blocks[i].Live, blocks[i].Thought = tc.live, 12*time.Second
 			}

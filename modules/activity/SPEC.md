@@ -101,8 +101,10 @@ program invocations retain program source rather than becoming skill reads.
 The same content values can carry authored messages and reasoning supplied by host
 adapters. Their kind does not establish host execution state.
 
-Parsing supplies renderer-neutral source values. Presentation combines them with
-observed timing, outcomes, identities, questions, hooks and bounded output. Grouping
+The presentation owner interprets admitted item facts into renderer-neutral source
+values, combining observed timing, outcomes, identities, questions, hooks and bounded
+output. Public reasoning section detection belongs to that same source projection;
+terminal disclosure and geometry are applied only after publication. Grouping
 preserves source identities for dialogs and cross-pane navigation under the
 [presentation contract](CONTRACT.md#operation-rows). Shared fence and inline-code
 recognition belongs to `sourceanalysis`.

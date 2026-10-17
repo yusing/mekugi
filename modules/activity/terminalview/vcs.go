@@ -20,22 +20,6 @@ func (b Block) committed() bool {
 		slices.ContainsFunc(b.Changes, func(row ChangeRow) bool { return row.Footer }) && b.VCS()
 }
 
-// FoldStages drops staging rows that lead straight into a commit of the same
-// invocation: the commit's rows name the files it recorded. A failed or
-// skipped stage, or one before a skipped commit, stays visible.
-func FoldStages(blocks []Block) []Block {
-	values := make([]presentation.Value, len(blocks))
-	for i, block := range blocks {
-		values[i] = block.Value
-	}
-	grouped := presentation.FoldStages(values)
-	out := make([]Block, len(grouped))
-	for i, value := range grouped {
-		out[i] = Block{Value: value}
-	}
-	return out
-}
-
 // vcsRow lays out a VCS operation on one row where it fits: the verb, its
 // heading cut short to leave room for the source, then any exit.
 func (p *Painter) vcsRow(block Block, width int) []string {

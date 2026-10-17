@@ -112,35 +112,6 @@ func TestVCSFooterFollowsElidedRows(t *testing.T) {
 	}
 }
 
-func TestFoldStagesIntoTheirCommit(t *testing.T) {
-	stage := Block{Kind: "op", Verb: "Stage", Label: "`a.go` · git"}
-	commit := Block{Kind: "op", Verb: "Commit", Label: "`x` · git"}
-	check := Block{Kind: "op", Verb: "Check", Label: "`working tree` · git diff --check"}
-	verbs := func(blocks []Block) string {
-		var out []string
-		for _, block := range blocks {
-			out = append(out, block.Verb)
-		}
-		return strings.Join(out, " ")
-	}
-	failed, skipped := stage, commit
-	failed.ExitCode, skipped.Skipped = 1, true
-	for _, tc := range []struct {
-		blocks []Block
-		want   string
-	}{
-		{[]Block{check, stage, stage, commit}, "Check Commit"},
-		{[]Block{stage}, "Stage"},
-		{[]Block{stage, check, commit}, "Stage Check Commit"},
-		{[]Block{failed, skipped}, "Stage Commit"},
-		{[]Block{stage, skipped}, "Stage Commit"},
-	} {
-		if got := verbs(FoldStages(tc.blocks)); got != tc.want {
-			t.Errorf("%s: folded to %q, want %q", verbs(tc.blocks), got, tc.want)
-		}
-	}
-}
-
 func TestDialogColorsVCSPatches(t *testing.T) {
 	lines := []string{"diff --git a/a.go b/a.go", "@@ -1 +1 @@", "-old", "+new"}
 	var p Painter

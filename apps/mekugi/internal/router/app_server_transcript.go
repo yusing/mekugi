@@ -105,7 +105,7 @@ func (v *activityAdapter) applyTranscript(update observation.TextUpdate, content
 		if ref.ThreadID == main {
 			workspace = cwd
 		}
-		if blocks := appServerAttachmentBlocks(workspace, content); len(blocks) > 0 {
+		if blocks := appServerAttachmentValues(workspace, content); len(blocks) > 0 {
 			entry.Agent = agent
 			entry.Seq, entry.Kind, entry.Text = v.LastSeq+1, "attachments", ""
 			entry.native = &liveActivityNativeItem{thread: ref.ThreadID, turn: ref.TurnID, item: ref.ItemID + "/attachments", phase: update.Phase, live: update.Live, attachments: blocks}

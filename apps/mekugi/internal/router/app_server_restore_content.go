@@ -405,7 +405,7 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 	}
 	switch item.Type {
 	case "userMessage":
-		if blocks := appServerAttachmentBlocks(info.Cwd, item.Content); len(blocks) > 0 {
+		if blocks := appServerAttachmentValues(info.Cwd, item.Content); len(blocks) > 0 {
 			entry.Kind, entry.native.item = "attachments", item.ID+"/attachments"
 			entry.native.attachments = blocks
 			*entries = append(*entries, entry)

@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -14,12 +16,11 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Derive receipts from the submitted envelope, never from current filesystem
 // state or file-body text. The same host user item supplies live and replay UI.
-func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.Block {
+func appServerAttachmentValues(cwd string, content jsontext.Value) []activitypresentation.Value {
 	var parts []struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
@@ -27,11 +28,11 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 	if json.Unmarshal(content, &parts) != nil {
 		return nil
 	}
-	var blocks []activityui.Block
+	var blocks []activitypresentation.Value
 	seen := make(map[string]bool)
 	contents := make(map[int]string)
 	indexes := make(map[string]int)
-	appendContent := func(key, rest string, block activityui.Block, source string) {
+	appendContent := func(key, rest string, block activitypresentation.Value, source string) {
 		_, body, ok := strings.Cut(rest, "):\n")
 		if !ok {
 			return
@@ -68,12 +69,12 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 				}
 				key := verb + "\x00skill\x00" + name + "\x00" + source
 				if verb == "Attached skill" {
-					appendContent(key, rest, activityui.Block{Kind: "op", Verb: verb, Label: textsanitize.Safe(label, false)}, source)
+					appendContent(key, rest, activitypresentation.Value{Kind: "op", Verb: verb, Label: textsanitize.Safe(label, false)}, source)
 					continue
 				}
 				if !seen[key] {
 					seen[key] = true
-					blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Label: textsanitize.Safe(label, false)})
+					blocks = append(blocks, activitypresentation.Value{Kind: "op", Verb: verb, Label: textsanitize.Safe(label, false)})
 				}
 				continue
 			}
@@ -103,12 +104,12 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 			}
 			key := verb + "\x00" + path + "\x00" + label
 			if verb == "Attached" {
-				appendContent(key, rest, activityui.Block{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path)}, path)
+				appendContent(key, rest, activitypresentation.Value{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path)}, path)
 				continue
 			}
 			if !seen[key] {
 				seen[key] = true
-				blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path), Label: textsanitize.Safe(label, false)})
+				blocks = append(blocks, activitypresentation.Value{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path), Label: textsanitize.Safe(label, false)})
 			}
 		}
 	}

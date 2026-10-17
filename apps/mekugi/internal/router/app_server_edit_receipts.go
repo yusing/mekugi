@@ -9,8 +9,6 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func capturedEditActivity(workspace string, history mekugiHistory) *changepresentation.Receipt {
@@ -90,13 +88,13 @@ func (v *activityAdapter) applyCapturedEdits(receipts []*changepresentation.Rece
 					native.capturedEdit = nil
 					entry.native = &native
 					entry.Text = activitypresentation.ShellSource(toolActivityShellSource(appServerDisplayCommand(native.command)), native.commandCwd)
-					v.replaceEntry(i, entry, parseLiveActivity(entry))
+					v.Model.Replace(i, entry, activityValues(entry))
 				}
 				continue
 			}
 			exit := 0
-			var batch *activityui.Block
-			for _, block := range v.sourceBlocks(i) {
+			var batch *activitypresentation.Value
+			for _, block := range v.sourceValues(i) {
 				if block.BatchExit {
 					batch = new(block)
 					continue
@@ -150,7 +148,7 @@ func (v *activityAdapter) applyCapturedEdits(receipts []*changepresentation.Rece
 				native.capturedEdit = receipt
 				entry.native = &native
 				entry.Text = text
-				blocks := parseLiveActivity(entry)
+				blocks := activityValues(entry)
 				// Reparsed tracked blocks already carry each segment's own exit.
 				// A receipt must not spread one failure to successful siblings.
 				if len(v.Entries[i].Values) > 0 && len(entry.native.segments) == 0 {
@@ -159,9 +157,9 @@ func (v *activityAdapter) applyCapturedEdits(receipts []*changepresentation.Rece
 					}
 				}
 				if batch != nil {
-					blocks = retainBatchResult(blocks, *batch)
+					blocks = activitypresentation.RetainBatchResult(blocks, *batch)
 				}
-				v.replaceEntry(i, entry, blocks)
+				v.Model.Replace(i, entry, blocks)
 			}
 		}
 	}

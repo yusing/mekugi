@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/charmbracelet/x/ansi"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 )
@@ -29,7 +31,7 @@ func TestMarkdownClosingFenceBoundaries(t *testing.T) {
 			if (block.Code == "code") != tc.valid {
 				t.Fatalf("code=%q", block.Code)
 			}
-			sections := ReasoningSections(body + "\n# AFTER\n\nA paragraph.")
+			sections := presentation.ReasoningSections(body + "\n# AFTER\n\nA paragraph.")
 			if (len(sections) == 2 && sections[1].Label == "AFTER") != tc.valid {
 				t.Fatalf("sections=%+v", sections)
 			}

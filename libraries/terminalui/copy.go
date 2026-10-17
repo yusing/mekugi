@@ -501,13 +501,3 @@ func copyCode(source string, identity uint64) CopyFragment {
 func CopyDecoration(row string) string {
 	return copyTag(CopyFragment{Omit: true, Width: ansi.StringWidth(row)}) + row
 }
-
-// MarkdownSource removes terminal controls without normalizing code tabs. The
-// shared renderer expands them for display and retains their source identity.
-func MarkdownSource(text string) string {
-	parts := strings.Split(text, "\t")
-	for i := range parts {
-		parts[i] = textsanitize.Safe(parts[i], false)
-	}
-	return strings.Join(parts, "\t")
-}

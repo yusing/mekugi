@@ -101,10 +101,10 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 							entry.Observed = previous.Source.Observed
 						}
 						entry.Seq = previous.Source.Seq
-						if replaced || activityui.ReasoningSummaryHeader(previous.Source.Text) == activityui.ReasoningSummaryHeader(entry.Text) {
+						if replaced || activitypresentation.ReasoningSummaryHeader(previous.Source.Text) == activitypresentation.ReasoningSummaryHeader(entry.Text) {
 							entry.Observed = previous.Source.Observed
 						}
-						v.replaceEntry(i, entry, parseLiveActivity(entry))
+						v.Model.Replace(i, entry, activityValues(entry))
 						updated = true
 						break
 					}
@@ -118,15 +118,15 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 			for i, v0 := range slices.Backward(v.Entries) {
 				if v0.Source.Agent == entry.Agent && v0.Source.CallID == entry.CallID && entry.CallID != "" {
 					code, _ := strconv.Atoi(entry.Text)
-					blocks := commandExitBlocks(v.sourceBlocks(i), code, entry.outputTail, entry.outputOmit)
-					setCommandFacts(blocks, commandPresentation(v0.Source))
-					v.replaceEntry(i, v0.Source, blocks)
+					blocks := activitypresentation.CommandExit(v.sourceValues(i), code, entry.outputTail, entry.outputOmit)
+					commandPresentation(v0.Source).ApplyFacts(blocks)
+					v.Model.Replace(i, v0.Source, blocks)
 					break
 				}
 			}
 			continue
 		}
-		blocks := parseLiveActivity(entry)
+		blocks := activityValues(entry)
 		if entry.Kind == "tool" && entry.CallID != "" && len(blocks) > 0 &&
 			slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, blocks[0].Verb) {
 			// A confirmed receipt replaces the provisional Run or requested
@@ -139,14 +139,14 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 				}
 				entry.Seq = prior.Seq
 				blocks[0].ExitCode, blocks[0].Exited = v.Entries[i].Values[0].ExitCode, v.Entries[i].Values[0].Exited
-				for _, annotation := range v.sourceBlocks(i)[1:] {
+				for _, annotation := range v.sourceValues(i)[1:] {
 					if annotation.BatchExit {
-						blocks = retainBatchResult(blocks, annotation)
+						blocks = activitypresentation.RetainBatchResult(blocks, annotation)
 					} else if annotation.Kind == "filter" {
 						blocks = append(blocks, annotation)
 					}
 				}
-				v.replaceEntry(i, entry, blocks)
+				v.Model.Replace(i, entry, blocks)
 				blocks = nil
 				break
 			}
@@ -154,7 +154,7 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 				continue
 			}
 		}
-		v.appendEntry(entry, blocks)
+		v.Model.Append(entry, blocks)
 	}
 	v.Model.Trim(liveActivityFeedLimit)
 	v.publishActivity()
@@ -174,7 +174,7 @@ func (v *activityAdapter) markUnreturned(thread, call string) bool {
 		if !output || noted {
 			return false
 		}
-		v.replaceEntry(i, entry.Source, append(v.sourceBlocks(i), activityui.Block{Kind: "filter", Body: unreturnedOutputNote}))
+		v.Model.Replace(i, entry.Source, append(v.sourceValues(i), activitypresentation.Value{Kind: "filter", Body: unreturnedOutputNote}))
 		return true
 	}
 	return false
