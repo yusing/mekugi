@@ -260,37 +260,44 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			agent.ContextTokens = p.TokenUsage.Last.TotalTokens
 		}
 		u.observeCost(p.ThreadID, agent)
-	case "turn/started":
-		if s.Transcript(p.ThreadID, p.Turn.ID).Turn == nil {
-			return true, nil
-		}
-		if u.proxy != nil {
-			u.proxy.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
-		}
-		agent := s.agent(s.path(p.ThreadID))
-		agent.TurnStarted(now)
-		if !main {
-			agent.turn = p.Turn.ID
-		}
-	case "turn/completed":
-		u.endTurnPreviews(p.ThreadID, p.Turn.ID)
-		entries = append(entries, u.endTurnWaits(p.ThreadID, p.Turn.ID, now)...)
+	case "turn/started", "turn/completed":
 		agent := s.agent(s.path(p.ThreadID))
 		active := u.Turn
 		if !main {
 			active = agent.turn
 		}
-		stores := s.Transcript(p.ThreadID, p.Turn.ID)
-		current := stores.Turn != nil && (active == "" || active == p.Turn.ID)
-		if stores.Turn != nil {
-			entries = append(entries, u.transcriptUpdates(s.transcript.TurnCompleted(p.ThreadID, p.Turn.ID, p.Turn.Status, now, current, stores), true)...)
-			s.CloseTurn(p.ThreadID, p.Turn.ID)
+		updates := s.ObserveTurn(sessionpresentation.TurnModels{
+			Transcript: s.transcript, Waits: &s.waits, Agent: &agent.AgentLifecycle, Selected: active,
+		}, sessionpresentation.TurnObservation{
+			Kind: observation.Kind(method), Thread: p.ThreadID, Turn: p.Turn.ID,
+			Status: p.Turn.Status, At: now,
+		})
+		if method == "turn/started" {
+			if !updates.Admitted {
+				return true, nil
+			}
+			if u.proxy != nil {
+				u.proxy.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
+			}
+			if !main {
+				agent.turn = p.Turn.ID
+			}
+		} else {
+			u.endTurnPreviews(p.ThreadID, p.Turn.ID)
+			for _, progress := range updates.Waits {
+				value := progress.Value
+				entries = append(entries, activityPaneEntry{
+					Seq: s.next(), Agent: s.path(p.ThreadID), Kind: "progress",
+					Text: (activityui.Block{Value: value}).ProgressText(), Observed: now,
+					native: &liveActivityNativeItem{thread: p.ThreadID, turn: p.Turn.ID, item: progress.ID, phase: method, wait: &value, live: value.Live},
+				})
+			}
+			entries = append(entries, u.transcriptUpdates(updates.Text, true)...)
+			if updates.Current {
+				agent.turn = ""
+			}
+			u.observeCost(p.ThreadID, agent)
 		}
-		if current {
-			agent.TurnCompleted(p.Turn.Status == "completed", now)
-			agent.turn = ""
-		}
-		u.observeCost(p.ThreadID, agent)
 
 	case "item/commandExecution/outputDelta":
 		// Bounded as it arrives; the next frame shows it, so bursts cost one render.

@@ -2,9 +2,7 @@ package router
 
 import (
 	"slices"
-	"time"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -45,19 +43,4 @@ func (r *execWindowRegistry) stopTurnPreviews(thread, turn string) {
 			window.previewCancel = nil
 		}
 	}
-}
-
-// A wait may have no item/completed notification after interruption. Close
-// only that turn's presentation, without claiming any child has finished.
-func (u *appServerUI) endTurnWaits(thread, turn string, now time.Time) []activityPaneEntry {
-	var entries []activityPaneEntry
-	for _, progress := range u.session.waits.EndTurn(u.session.Transcript(thread, turn).Turn) {
-		value := progress.Value
-		entries = append(entries, activityPaneEntry{
-			Seq: u.session.next(), Agent: u.session.path(thread), Kind: "progress",
-			Text: (activityui.Block{Value: value}).ProgressText(), Observed: now,
-			native: &liveActivityNativeItem{thread: thread, turn: turn, item: progress.ID, phase: "turn/completed", wait: &value, live: value.Live},
-		})
-	}
-	return entries
 }

@@ -43,6 +43,14 @@ replacement preserves them. Late observations cannot repopulate a retired attach
 Backward replay reconstructs into a fresh attachment, and shutdown releases it.
 These boundaries restore no processes, handles, approval grants or dispatched operations.
 
+Turn observations join Conversation's transcript and Activity's wait and agent
+models through these same scopes. Completion settles its own turn's presentation;
+an older turn cannot stop a newer response or consume its pending transcript.
+Main's selected turn remains owned by session control, including an active resume
+snapshot received before history. Presentation borrows that identity rather than
+maintaining another selection. Main status completes only for that selected turn.
+Closing a turn retires its text/wait correlation without ending yielded commands.
+
 ## History
 
 Child history opens at the newest turn's recent items. Older pages continue from
