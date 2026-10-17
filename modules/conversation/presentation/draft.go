@@ -59,3 +59,24 @@ func (m *Session) TakeDraft(revision uint64) (composer.Draft, error) {
 	}
 	return m.Editor.Take(), nil
 }
+
+// EditorTarget distinguishes ordinary input from the current non-secret prompt.
+type EditorTarget struct {
+	Call, Question, Request string
+	Revision                uint64
+}
+
+func (m *Session) EditorTarget() EditorTarget {
+	if m.ordinaryEditor() {
+		return EditorTarget{Revision: m.Editor.Revision()}
+	}
+	view := m.PromptDraftView()
+	return EditorTarget{Call: view.Call, Question: view.Question, Request: view.Request, Revision: view.Revision}
+}
+
+func (m *Session) ApplyEditor(target EditorTarget, action composer.Action) (bool, error) {
+	if target != m.EditorTarget() || m.Questions.Current() != nil && m.Questions.Current().IsSecret {
+		return false, ErrDraftChanged
+	}
+	return m.Editor.Apply(action)
+}

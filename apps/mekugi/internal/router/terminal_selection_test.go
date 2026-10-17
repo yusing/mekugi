@@ -221,7 +221,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				}
 				u.main.Text, u.main.CursorBack, u.Focus = "before after", len("after"), 2
 				if key == "question" {
-					u.main.questions.Active = &prompt.Call{Questions: []prompt.Question{{}}}
+					u.main.questions.Active = &prompt.Call{ID: "selection-question", Thread: u.main.Thread, Questions: []prompt.Question{{}}}
 				}
 				selected := selectionTestSnapshot(u)
 				action := key

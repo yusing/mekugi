@@ -28,3 +28,26 @@ func (u *appServerUI) testPaint(out io.Writer, width, height int) error {
 	u.settlePresentation()
 	return u.paint(out, width, height)
 }
+
+func (u *appServerUI) deleteDraft(backward bool) {
+	key := "\x1b[3~"
+	if backward {
+		key = "\x7f"
+	}
+	u.applyComposerKey(key)
+}
+func (u *appServerUI) undoDraft(redo bool) {
+	key := "\x1a"
+	if redo {
+		key = "\x19"
+	}
+	u.applyComposerKey(key)
+}
+
+func (u *appServerUI) recallInput(backward bool) {
+	if u.Editor.Recall(backward) {
+		u.mainView.CursorColumn = nil
+		u.setNotice("", false)
+		u.pruneDraftImages()
+	}
+}

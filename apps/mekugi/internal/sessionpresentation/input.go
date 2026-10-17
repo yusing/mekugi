@@ -74,3 +74,52 @@ func (m *Model) TakeInput(intent SubmitIntent, control *sessioncontrol.Live, con
 	value, err := conversation.TakeDraft(intent.Revision)
 	return value, plan, err
 }
+
+type EditorIntent struct {
+	Version Version
+	Target  conversationmodel.EditorTarget
+	Action  composer.Action
+}
+
+func (m *Model) ApplyEditor(intent EditorIntent, conversation *conversationmodel.Session) (bool, error) {
+	if intent.Version != m.view.Version {
+		return false, ErrStaleIntent
+	}
+	if m.View().ReadOnly != Editable {
+		return false, ErrInputUnavailable
+	}
+	return conversation.ApplyEditor(intent.Target, intent.Action)
+}
+
+type ComposerOperation uint8
+
+const (
+	NoComposerOperation ComposerOperation = iota
+	SubmitComposer
+	QueueComposer
+	CancelComposer
+	AttachClipboard
+	EditExternally
+	RestoreWaiting
+	IncreaseEffort
+	DecreaseEffort
+)
+
+type ComposerIntent struct {
+	Version   Version
+	Target    conversationmodel.EditorTarget
+	Operation ComposerOperation
+}
+
+func (m *Model) AdmitComposer(intent ComposerIntent, conversation *conversationmodel.Session) error {
+	if intent.Version != m.view.Version {
+		return ErrStaleIntent
+	}
+	if m.View().ReadOnly != Editable || intent.Operation < SubmitComposer || intent.Operation > DecreaseEffort {
+		return ErrInputUnavailable
+	}
+	if intent.Target != conversation.EditorTarget() {
+		return conversationmodel.ErrDraftChanged
+	}
+	return nil
+}

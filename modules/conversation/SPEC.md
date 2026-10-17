@@ -44,13 +44,16 @@ respect Unicode graphemes, including combining marks beside attachments. Images
 are numbered in draft order after insertion, deletion, joining or external editing.
 
 The current ordinary draft publishes a detached snapshot and monotonic content
-revision. Edits, replacement, undo, restore and taking the draft advance that
+revision. Edits, caret changes, replacement, undo, restore and taking the draft advance that
 revision; restoring identical text does not revive an earlier submission target.
 Question and approval editors are excluded from ordinary-draft publication.
 Their active non-secret draft has a separate detached publication naming its call,
 question or approval and content revision. Parked history and secret buffers remain
 private to their owners. Prompt key interpretation returns targeted actions;
-Conversation applies admitted choice, note and editing changes.
+Conversation applies admitted choice, note and editing changes. Source-range
+deletions, insertion, caret movement, undo/redo and history recall share one editor
+action contract. Actions name the ordinary draft or exact active prompt and its
+revision; stale actions leave both content and editing history unchanged.
 
 Undo groups a typed word, a repeated deletion run, a paste, an attachment, a clear
 or an editor save. It retains at most 100 edits and resets on submission. Local

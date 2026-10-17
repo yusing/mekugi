@@ -278,7 +278,7 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		u.questions.AutoOpen = false
 		u.hideQuestions()
 	case conversationui.PromptCursor:
-		u.moveDraft(key)
+		u.applyComposerKey(key)
 	case conversationui.PromptPrevious:
 		u.moveQuestion(-1)
 	case conversationui.PromptNext:

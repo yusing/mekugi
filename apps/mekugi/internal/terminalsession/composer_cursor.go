@@ -7,8 +7,8 @@ import (
 )
 
 // Source: apps/mekugi/internal/router/app_server_composer.go:58:127@1b46b141.
-// MoveDraft maps terminal keys and wrapped geometry to a caret or history intent.
-func (m *Main) MoveDraft(d composer.Draft, sequence string) (at, recall int) {
+// moveDraft maps terminal keys and wrapped geometry to a caret or history intent.
+func (m *Main) moveDraft(d composer.Draft, sequence string) (at, recall int) {
 	at = d.Cursor()
 	vertical := sequence == "\x1b[A" || sequence == "\x1bOA" || sequence == "\x1b[B" || sequence == "\x1bOB"
 	if !vertical {

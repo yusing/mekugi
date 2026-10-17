@@ -15,13 +15,6 @@ func (u *appServerUI) rememberInput(draft conversationmodel.Input) {
 		u.conversation().Editor.Remember(draft.Draft)
 	}
 }
-func (u *appServerUI) recallInput(backward bool) {
-	if u.Editor.Recall(backward) {
-		u.mainView.CursorColumn = nil
-		u.setNotice("", false)
-		u.pruneDraftImages()
-	}
-}
 func (u *appServerUI) draftSnapshot() conversationmodel.Input {
 	return conversationmodel.Input{Draft: u.Draft.Editable()}
 }
@@ -30,11 +23,6 @@ func (u *appServerUI) recordDraft() {
 	u.Editor.Record()
 	u.setNotice("", false)
 	u.pruneDraftImages()
-}
-func (u *appServerUI) undoDraft(redo bool) {
-	u.Editor.Undo(redo)
-	u.mainView.CursorColumn = nil
-	u.setNotice("", false)
 }
 
 // Images referenced by undo/redo remain usable. Submission transfers file

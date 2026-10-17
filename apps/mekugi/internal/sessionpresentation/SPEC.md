@@ -223,6 +223,12 @@ requests or manufactures host-resumable history.
 ## Ordinary input
 
 Ordinary draft edits and submission name the attached view and draft revision.
+Editor actions name the ordinary draft or active prompt identity and revision.
+Admission precedes text, caret or history mutation; the same source-coordinate
+actions are usable without terminal keys. Composer operation intents use the same
+version and editor target before submission, cancellation, waiting-input restore,
+clipboard acquisition, external editing or effort changes. Secret editor actions remain local to
+the terminal after prompt admission.
 Admission precedes taking the draft or reading attachment sources, so a stale
 intent cannot clear, capture or submit newer input. Main owns the input destination;
 a displayed child, replay or a prompt-owned editor cannot admit ordinary input.

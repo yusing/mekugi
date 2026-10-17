@@ -903,12 +903,12 @@ func (u *appServerUI) key(key string) (bool, error) {
 		u.mainView.Keybindings = false
 	}
 	if key == "\x1b\x7f" || key == "\x1b\x08" {
-		u.deleteWord(true)
+		u.applyComposerKey(key)
 		return false, nil
 	}
 	// macOS terminals commonly encode Option+Left/Right as Meta-b/f.
 	if key == "\x1bb" || key == "\x1bf" {
-		u.moveDraft(key)
+		u.applyComposerKey(key)
 		return false, nil
 	}
 	// Unbound Meta input retains the ordinary key after dismissing help.
@@ -931,183 +931,7 @@ func (u *appServerUI) key(key string) (bool, error) {
 		return false, nil
 	}
 	u.mainView.Keybindings = false
-	if strings.HasPrefix(key, "\x1b") {
-		switch key {
-		case "\x1b[1;2A", "\x1b[1;2B":
-			return false, u.stepReasoning(strings.HasSuffix(key, "A"))
-		case "\x1b[1;3A", "\x1b[1;2D":
-			u.editQueued()
-		case "\x1b[122;6u":
-			u.undoDraft(true)
-		case "\x1b[3;3~":
-			u.deleteWord(false)
-		case "\x1b[127;3u", "\x1b[8;3u":
-			u.deleteWord(true)
-		case "\x1b[3~":
-			u.deleteDraft(false)
-		case "\x1b[5~":
-			u.transcriptView().ScrollKey('b')
-		case "\x1b[6~":
-			u.transcriptView().ScrollKey(' ')
-		default:
-			// Only caret movement ends an edit run; forward deletes still group.
-			u.moveDraft(key)
-		}
-		return false, nil
-	}
-	switch key {
-	case "\x05": // Ctrl+E discloses the displayed transcript, leaving the draft intact.
-		u.transcriptView().ToggleExpansion()
-	case "\x17": // macOS terminals may encode Option+Backspace as Ctrl+W.
-		u.deleteWord(true)
-	case "\x0b": // Ctrl+K kills to the logical line end, or joins at its newline.
-		at := u.Cursor()
-		end := len(u.Text)
-		if next := strings.IndexByte(u.Text[at:], '\n'); next >= 0 {
-			end = at + next
-			if next == 0 {
-				end++
-			}
-		}
-		for _, span := range u.Spans() {
-			start, tokenEnd := span.Start, span.End
-			if end > start && end < tokenEnd {
-				end = tokenEnd
-			}
-		}
-		u.deleteDraftRange(at, end)
-	case "\x1a":
-		u.undoDraft(false)
-	case "\x19":
-		u.undoDraft(true)
-	case "\x07":
-		if q := u.currentQuestion(); q != nil && q.IsSecret {
-			u.setNotice("External editor is unavailable for secret answers", false)
-			return false, nil
-		}
-		return false, errOpenComposerEditor
-	case "\x16":
-		u.pasteImage()
-	case "\x03":
-		if u.Replacement.Archiving() {
-			u.setNotice("Archiving session…", false)
-			return false, nil
-		}
-		// As in Codex, Ctrl-C first clears the draft (undoable with Ctrl+Z),
-		// then cancels queued compaction, interrupts the active turn, or quits.
-		if u.Text != "" {
-			u.deleteDraftRange(0, len(u.Text))
-			u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
-			if u.Turn != "" || u.Starting() || u.InputPending() {
-				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
-			}
-			if u.mainView.InterruptLocked {
-				u.setNotice("Draft cleared · Ctrl+Z restores · Locked · /unlock", false)
-			}
-			return false, nil
-		}
-		if u.cancelQueuedCompact() {
-			return false, nil
-		}
-		if u.Turn != "" || u.Starting() || u.InputPending() || u.Compaction.Pending() || u.Compaction.ContinuationPending() || len(u.conversation().Unsent)+len(u.conversation().Queued) > 0 {
-			return false, u.keyboardInterrupt()
-		}
-		if u.mainView.InterruptLocked {
-			u.lockNotice()
-			return false, nil
-		}
-		return true, nil
-	case "\x7f", "\x08":
-		u.deleteDraft(true)
-	case "\n":
-		u.insertDraft("\n")
-	case "\r":
-		if u.Replacement.Archiving() {
-			u.setNotice("Archiving session…", false)
-			return false, nil
-		}
-		text := strings.TrimSpace(u.Text)
-		if text == "/archive" {
-			u.showArchivePicker()
-			return false, nil
-		}
-		if handled, err := u.controlsCommand(text); handled {
-			return false, err
-		}
-		if u.titleCommand(text) {
-			return false, nil
-		}
-		if text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
-			return false, u.submitBTW()
-		}
-		if u.conversation().ShellMode() {
-			return false, u.submitShell()
-		}
-		if text == "/compact" || text == "/clear" {
-			return false, u.sessionCommand(text)
-		}
-		if text == "/resume" || strings.HasPrefix(text, "/resume ") {
-			return false, u.resumeCommand(text)
-		}
-		if text == "/ps" {
-			u.showRunningProcesses()
-			return false, nil
-		}
-		if text == "/session" {
-			u.showSessionMetrics()
-			return false, nil
-		}
-		if text == "/status" {
-			return false, u.showStatus()
-		}
-		if text == "/copy" {
-			u.showCopyPicker()
-			return false, nil
-		}
-		if text == "/skills" {
-			u.deleteDraftRange(0, len(u.Text))
-			u.openMenu("menu")
-			u.picker.Choices = []completion.Choice{{Name: "list"}, {Name: "manage"}}
-			return false, nil
-		}
-		if text == "/quit" {
-			if u.Turn == "" && !u.Starting() && !u.InputPending() {
-				u.Text = ""
-				u.Editor.Changed()
-				return true, nil
-			}
-			u.setNotice("Interrupt the active turn before quitting", false)
-			return false, nil
-		}
-		if handled, err := u.settingsCommand(text); handled {
-			return false, err
-		}
-		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /archive, /btw, /status, /session, /ps, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
-			return false, nil
-		}
-		if text == "" || u.Thread == "" || u.restoring != nil {
-			return false, nil
-		}
-		view := u.sessionPresentation().View()
-		return false, u.submitInput(sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.SendInput})
-	case "\t":
-		// Tab queues busy input for the next turn; otherwise it sends like Enter.
-		text := strings.TrimSpace(u.Text)
-		if text == "/compact" {
-			return false, u.submitCompact(true)
-		}
-		if u.conversation().ShellMode() || text == "" || strings.HasPrefix(text, "/") || u.Turn == "" && !u.Starting() && !u.InputPending() {
-			return u.key("\r")
-		}
-		view := u.sessionPresentation().View()
-		return false, u.submitInput(sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.QueueNextTurn})
-	default:
-		if len(key) > 0 && key[0] >= 32 {
-			u.insertDraft(key)
-		}
-	}
-	return false, nil
+	return u.applyComposerKey(key)
 }
 
 // historyPending reports resumed history that Main has yet to show. Router
