@@ -163,14 +163,14 @@ func resumeSession(attached *attachedPresentation, terminal *terminalsession.Att
 // A failed switch keeps the current thread, including events it buffered.
 // Input typed for the new session returns to the composer rather than
 // reaching the old thread.
-func (u *appServerUI) resumeSessionFailed(message string) error {
-	u.Replacement.Finish()
-	u.ResumeEffort = false
-	restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
-	u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
-	u.attached.presentation.Status.SetText("Ready")
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Could not resume session: "+message, true)
-	return u.replayResumePending()
+func resumeSessionFailed(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, message string) error {
+	control.Replacement.Finish()
+	control.ResumeEffort = false
+	restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, slices.Concat(attached.conversation.Unsent, attached.conversation.Queued)...)
+	attached.conversation.Unsent, attached.conversation.Queued = nil, nil
+	attached.presentation.Status.SetText("Ready")
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not resume session: "+message, true)
+	return replayResumePending(dispatch, resumePending)
 }
 
 func applyResumeAction(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, approvalMode bool, quit *bool, action sessionpresentation.ResumeAction) error {

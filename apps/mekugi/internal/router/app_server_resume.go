@@ -53,17 +53,17 @@ func openSession(attached *attachedPresentation, control *sessioncontrol.Client[
 	return nil
 }
 
-func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
+func resumeSettingsResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, approvalMode bool, dirty *bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, panes *nativePreferences, m appserver.Message) error {
 	fail := func(message string) error {
-		if u.Replacement.Target != "" {
-			return u.resumeSessionFailed(message)
+		if control.Replacement.Target != "" {
+			return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, message)
 		}
 		return fmt.Errorf("read resume settings: %s", message)
 	}
 	if m.Error != nil {
 		return fail(m.Error.Message)
 	}
-	thread := cmp.Or(u.Replacement.Target, u.Startup.Thread)
+	thread := cmp.Or(control.Replacement.Target, control.Startup.Thread)
 	info, err := binding.DecodeHistoryThread(m.Result, thread)
 	if err != nil {
 		return fail(err.Error())
@@ -72,19 +72,19 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	// Codex skips persisted model/effort when the routing provider is explicit.
 	// Read settings before resume can write its new defaults into the rollout.
 	var retained preferences.Snapshot
-	if u.panes != nil {
-		state, err := u.panes.read(info.Cwd, thread)
+	if panes != nil {
+		state, err := panes.read(info.Cwd, thread)
 		if err != nil {
-			u.dirty = paneError(u.attached.source, err) || u.dirty
+			(*dirty) = paneError(attached.source, err) || (*dirty)
 		} else {
 			retained = state.Snapshot
 		}
 	}
 	evidence, newerThan := retained.ResumeBaseline()
 	evidence = evidence.WithNewer(resumeSettingsEvidence(rollout.ResumeSettings(info.ID, info.Path, newerThan)))
-	err = u.Requests.Resume(&u.Startup, &u.Live, evidence, u.approvalMode)
-	if u.Startup.MissingSettings {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ResumeSettingsUnavailable, true)
+	err = control.Requests.Resume(&control.Startup, &control.Live, evidence, approvalMode)
+	if control.Startup.MissingSettings {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ResumeSettingsUnavailable, true)
 	}
 	return err
 }
@@ -114,11 +114,11 @@ func holdResumeEvent(session *sessionpresentation.Attachment, control *sessionco
 }
 
 // replayResumePending delivers events buffered while a thread was pending.
-func (u *appServerUI) replayResumePending() error {
-	pending := u.resumePending
-	u.resumePending = nil
+func replayResumePending(dispatch func(appserver.Message) error, resumePending *[]appserver.Message) error {
+	pending := (*resumePending)
+	(*resumePending) = nil
 	for _, event := range pending {
-		if err := u.message(event); err != nil {
+		if err := dispatch(event); err != nil {
 			return err
 		}
 	}

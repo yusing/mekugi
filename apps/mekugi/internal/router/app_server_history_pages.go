@@ -107,18 +107,18 @@ func requestChildHistory(attached *attachedPresentation, key *scope.Key[*appServ
 	return nil
 }
 
-func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) error {
-	h := historyLoading(&u.attached, &u.childHistoryState)
+func childHistoryResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], restoring **appServerActivityRestore, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retained changes.Scope, retainedSession *history.Session, activityService *activitymodel.Service, usage *accounting.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, method string, m appserver.Message) error {
+	h := historyLoading(attached, childKey)
 	if h == nil || !h.state.AcceptResponse(string(m.ID)) {
 		return nil
 	}
 	if m.Error != nil {
-		return u.failChildHistory(m.Error.Message)
+		return failChildHistory(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending, m.Error.Message)
 	}
 	if method == "activity/thread/turns/list" {
 		var page binding.TurnPage
 		if err := json.Unmarshal(m.Result, &page); err != nil {
-			return u.failChildHistory("Invalid turn page: " + err.Error())
+			return failChildHistory(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending, "Invalid turn page: "+err.Error())
 		}
 		ids := make([]string, len(page.Data))
 		for i, turn := range page.Data {
@@ -131,33 +131,33 @@ func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) e
 			h.info.Turns = append(h.info.Turns, turn)
 		}
 		if err != nil {
-			return u.failChildHistory(err.Error())
+			return failChildHistory(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending, err.Error())
 		}
 		if !decision.Complete {
-			return requestChildHistory(&u.attached, &u.childHistoryState, u.Requests, u.restoring, decision.Next)
+			return requestChildHistory(attached, childKey, control.Requests, (*restoring), decision.Next)
 		}
 		if decision.Limited {
-			restoreHistoryNotice(&u.attached, u.restoring, "Activity turn metadata is limited to eight pages; older turns and their evidence were not loaded.", true)
+			restoreHistoryNotice(attached, (*restoring), "Activity turn metadata is limited to eight pages; older turns and their evidence were not loaded.", true)
 		}
 		slices.Reverse(h.info.Turns)
-		hydrateChildHistoryMetadata(&u.attached, u.usage, h)
+		hydrateChildHistoryMetadata(attached, usage, h)
 		if decision.Next.Kind == sessionpresentation.NoPage {
 			// Thread-scoped hooks need no turn or item page to be visible.
 			for _, p := range h.placements {
 				if p.entry.Kind == "hook" {
 					entry := p.entry
-					entry.Seq = u.attached.session.Activity().NextSequence()
-					applyRestoredActivity(&u.attached, u.review, &u.pendingEditReceipts, []sessionpresentation.ActivityEntry{entry})
+					entry.Seq = attached.session.Activity().NextSequence()
+					applyRestoredActivity(attached, (*reviewOwner), receipts, []sessionpresentation.ActivityEntry{entry})
 				}
 			}
 			h.placements = slices.DeleteFunc(h.placements, func(p *restoredPlacement) bool { return p.entry.Kind == "hook" })
-			return u.finishChildHistory()
+			return finishChildHistory(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending)
 		}
-		return requestChildHistory(&u.attached, &u.childHistoryState, u.Requests, u.restoring, decision.Next)
+		return requestChildHistory(attached, childKey, control.Requests, (*restoring), decision.Next)
 	}
 	var page binding.ItemPage
 	if err := json.Unmarshal(m.Result, &page); err != nil {
-		return u.failChildHistory("Invalid item page: " + err.Error())
+		return failChildHistory(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending, "Invalid item page: "+err.Error())
 	}
 	ids := make([]sessionpresentation.ItemIdentity, len(page.Data))
 	for i, entry := range page.Data {
@@ -165,7 +165,7 @@ func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) e
 	}
 	decision, err := h.state.Items(ids, page.NextCursor)
 	if err != nil {
-		return u.failChildHistory(err.Error())
+		return failChildHistory(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending, err.Error())
 	}
 	var items []binding.ThreadItem
 	for _, index := range decision.Accepted {
@@ -180,32 +180,32 @@ func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) e
 	// chronological positions while the adapter retains protocol payloads.
 	turn := h.info.Turns[decision.Turn]
 	turn.Items = items
-	renderChildHistoryPage(&u.attached, u.shell, &u.Client, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, h, turn, decision)
-	return u.finishChildHistory()
+	renderChildHistoryPage(attached, terminal, control, clock, restoring, parent, (*reviewOwner), receipts, retained, (*retainedSession), activityService, usage, segments, restoredSegments, h, turn, decision)
+	return finishChildHistory(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending)
 }
 
-func (u *appServerUI) failChildHistory(message string) error {
-	h := historyLoading(&u.attached, &u.childHistoryState)
+func failChildHistory(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], restoring **appServerActivityRestore, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retained changes.Scope, retainedSession *history.Session, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, message string) error {
+	h := historyLoading(attached, childKey)
 	h.state.Fail(message)
 	if h.state.View(h.info.ID).Initial {
-		restoreHistoryNotice(&u.attached, u.restoring, "Could not restore "+u.attached.session.Caller(h.info.ID)+" history: "+message, false)
-		u.restoring.pane[u.attached.session.Caller(h.info.ID)] = h.placements
+		restoreHistoryNotice(attached, (*restoring), "Could not restore "+attached.session.Caller(h.info.ID)+" history: "+message, false)
+		(*restoring).pane[attached.session.Caller(h.info.ID)] = h.placements
 	} else {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Older child history: "+message+" · Ctrl-B o retries", true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Older child history: "+message+" · Ctrl-B o retries", true)
 	}
-	return u.finishChildHistory()
+	return finishChildHistory(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending)
 }
 
-func (u *appServerUI) finishChildHistory() error {
-	h := historyLoading(&u.attached, &u.childHistoryState)
-	if u.attached.presentation.FinishHistory(h.state) {
-		u.restoring.state.ReadComplete()
-		return u.readNextRestoredChild()
+func finishChildHistory(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], restoring **appServerActivityRestore, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retained changes.Scope, retainedSession *history.Session, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, dispatch func(appserver.Message) error, resumePending *[]appserver.Message) error {
+	h := historyLoading(attached, childKey)
+	if attached.presentation.FinishHistory(h.state) {
+		(*restoring).state.ReadComplete()
+		return readNextRestoredChild(attached, terminal, control, picker, editor, questions, approvals, clock, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending)
 	}
 	pending := h.pending
 	h.pending = nil
 	for _, m := range pending {
-		if err := u.message(m); err != nil {
+		if err := dispatch(m); err != nil {
 			return err
 		}
 	}
@@ -252,34 +252,34 @@ func loadOlderActivity(attached *attachedPresentation, terminal *terminalsession
 	return requestChildHistory(attached, childKey, control.Requests, (*restoring), request)
 }
 
-func (u *appServerUI) cancelOlderActivity(intent sessionpresentation.HistoryIntent) error {
+func cancelOlderActivity(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retained changes.Scope, retainedSession *history.Session, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, intent sessionpresentation.HistoryIntent) error {
 	defer func() {
-		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+		settlePresentation(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
 	}()
-	h := childHistory(&u.attached.session, &u.childHistoryState, intent.Thread)
+	h := childHistory(&attached.session, childKey, intent.Thread)
 	if intent.Thread == "" {
 		return nil
 	}
-	model := u.attached.presentation
+	viewModel := attached.presentation
 	var state *sessionpresentation.History
 	if h != nil {
 		state = h.state
 	}
-	id, err := model.CancelHistory(intent, state)
+	id, err := viewModel.CancelHistory(intent, state)
 	if err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
 	}
 	if id == "" {
 		return nil
 	}
-	u.Requests.Forget(id) // Cancel observation, never host execution.
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Older child history loading cancelled", false)
-	return u.finishChildHistory()
+	control.Requests.Forget(id) // Cancel observation, never host execution.
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "Older child history loading cancelled", false)
+	return finishChildHistory(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending)
 }
 
-func (u *appServerUI) holdOlderHistoryEvent(m appserver.Message) (bool, error) {
-	h := historyLoading(&u.attached, &u.childHistoryState)
+func holdOlderHistoryEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retained changes.Scope, retainedSession *history.Session, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, m appserver.Message) (bool, error) {
+	h := historyLoading(attached, childKey)
 	if h == nil || m.Method == "" {
 		return false, nil
 	}
@@ -295,7 +295,7 @@ func (u *appServerUI) holdOlderHistoryEvent(m appserver.Message) (bool, error) {
 		h.pending = append(h.pending, m)
 		return true, nil
 	case sessionpresentation.CancelRead:
-		if err := u.cancelOlderActivity(sessionpresentation.HistoryIntent{Version: u.attached.presentation.View().Version, Thread: h.info.ID}); err != nil {
+		if err := cancelOlderActivity(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending, sessionpresentation.HistoryIntent{Version: attached.presentation.View().Version, Thread: h.info.ID}); err != nil {
 			return true, err
 		}
 	}

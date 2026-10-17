@@ -5,6 +5,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
@@ -55,20 +62,20 @@ func submitInput(attached *attachedPresentation, terminal *terminalsession.Attac
 
 // applyComposerInput resolves terminal output through the current owners. Every
 // semantic action retains the publication and editor target it came from.
-func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (bool, error) {
+func applyComposerInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, dirty *bool, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, reasoningKey **bool, input terminalsession.ComposerInput) (bool, error) {
 	if input.Err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), input.Err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), input.Err.Error(), true)
 		return false, nil
 	}
 	if input.Command.Operation != sessionpresentation.NoComposerOperation {
-		return u.applyComposerCommand(input.Command)
+		return applyComposerCommand(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, dirty, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, reasoningKey, input.Command)
 	}
 	kind, changed := input.LocalEdit, input.Changed
 	if input.Editor.Action.Kind != composer.NoAction {
 		var err error
-		changed, err = u.attached.presentation.ApplyEditor(input.Editor, u.attached.conversation)
+		changed, err = attached.presentation.ApplyEditor(input.Editor, attached.conversation)
 		if err != nil {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 			return false, nil
 		}
 		kind = input.Editor.Action.Kind
@@ -80,148 +87,148 @@ func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (b
 		if !changed {
 			return false, nil
 		}
-		u.shell.Main.CursorColumn = nil
+		terminal.Main.CursorColumn = nil
 	case composer.DeleteAction:
 		if !changed {
 			return false, nil
 		}
 	}
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
 	if kind != composer.UndoAction && kind != composer.RedoAction {
-		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
+		pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side))
 	}
 	return false, nil
 }
 
-func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIntent) (bool, error) {
-	if err := u.attached.presentation.AdmitComposer(intent, u.attached.conversation); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+func applyComposerCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, dirty *bool, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, reasoningKey **bool, intent sessionpresentation.ComposerIntent) (bool, error) {
+	if err := attached.presentation.AdmitComposer(intent, attached.conversation); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false, nil
 	}
 	switch intent.Operation {
 	case sessionpresentation.IncreaseEffort, sessionpresentation.DecreaseEffort:
-		return false, stepReasoning(&u.attached, u.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.panes, &u.dirty, u.restoring != nil, u.clock, u.models, u.modelsLoading, &u.reasoningKey, intent.Operation == sessionpresentation.IncreaseEffort)
+		return false, stepReasoning(attached, terminal, control, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, panes, dirty, (*restoring) != nil, clock, (*models), (*modelsLoading), reasoningKey, intent.Operation == sessionpresentation.IncreaseEffort)
 	case sessionpresentation.RestoreWaiting:
-		editQueued(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock)
+		editQueued(attached, terminal, control, picker, questions, approvals, clock)
 	case sessionpresentation.EditExternally:
-		if q := u.questions.Current(); q != nil && q.IsSecret {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "External editor is unavailable for secret answers", false)
+		if q := questions.Current(); q != nil && q.IsSecret {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "External editor is unavailable for secret answers", false)
 			return false, nil
 		}
 		return false, &composerEditorRequest{intent: intent}
 	case sessionpresentation.AttachClipboard:
-		pasteImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, u.ctx, intent)
+		pasteImage(attached, terminal, editor, questions, approvals, clock, owned, (*side), parent, intent)
 	case sessionpresentation.CancelComposer:
-		if u.Replacement.Archiving() {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Archiving session…", false)
+		if control.Replacement.Archiving() {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Archiving session…", false)
 			return false, nil
 		}
 		// As in Codex, Ctrl-C first clears the draft (undoable with Ctrl+Z),
 		// then cancels queued compaction, interrupts the active turn, or quits.
-		if u.Text != "" {
-			deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
-			if u.Turn != "" || u.Starting() || u.InputPending() {
-				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
+		if (*editor).Text != "" {
+			deleteDraftRange(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
+			if control.Turn != "" || control.Starting() || control.InputPending() {
+				setNotice(&attached.feedback, terminal, presentationTime(clock), "Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
 			}
-			if u.shell.Main.InterruptLocked {
-				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Draft cleared · Ctrl+Z restores · Locked · /unlock", false)
+			if terminal.Main.InterruptLocked {
+				setNotice(&attached.feedback, terminal, presentationTime(clock), "Draft cleared · Ctrl+Z restores · Locked · /unlock", false)
 			}
 			return false, nil
 		}
-		if cancelQueuedCompact(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock) {
+		if cancelQueuedCompact(attached, terminal, control, picker, questions, approvals, clock) {
 			return false, nil
 		}
-		if u.Turn != "" || u.Starting() || u.InputPending() || u.Compaction.Pending() || u.Compaction.ContinuationPending() || len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) > 0 {
-			return false, keyboardInterrupt(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.review, &u.pendingEditReceipts)
+		if control.Turn != "" || control.Starting() || control.InputPending() || control.Compaction.Pending() || control.Compaction.ContinuationPending() || len(attached.conversation.Unsent)+len(attached.conversation.Queued) > 0 {
+			return false, keyboardInterrupt(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, (*reviewOwner), receipts)
 		}
-		if u.shell.Main.InterruptLocked {
-			lockNotice(&u.attached, u.shell, u.clock)
+		if terminal.Main.InterruptLocked {
+			lockNotice(attached, terminal, clock)
 			return false, nil
 		}
 		return true, nil
 	case sessionpresentation.SubmitComposer:
-		if u.Replacement.Archiving() {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Archiving session…", false)
+		if control.Replacement.Archiving() {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Archiving session…", false)
 			return false, nil
 		}
-		text := strings.TrimSpace(u.Text)
+		text := strings.TrimSpace((*editor).Text)
 		if text == "/archive" {
-			showArchivePicker(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages)
+			showArchivePicker(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned))
 			return false, nil
 		}
-		if handled, err := controlsCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, text); handled {
+		if handled, err := controlsCommand(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, text); handled {
 			return false, err
 		}
-		if titleCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.titleGenerator, &u.dirty, text) {
+		if titleCommand(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, generator, dirty, text) {
 			return false, nil
 		}
 		if text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
-			return false, submitBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.skillEnvironment)
+			return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment)
 		}
-		if u.attached.conversation.ShellMode() {
-			return false, submitShell(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, u.restoring != nil, u.skillEnvironment, u.ctx, u.review, &u.shellEdits, u.retained, u.retainedSession, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, u.reviewSource, u.preparePane)
+		if attached.conversation.ShellMode() {
+			return false, submitShell(attached, terminal, control, picker, editor, clock, (*restoring) != nil, environment, parent, (*reviewOwner), shellEdits, retained, (*retainedSession), changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)
 		}
 		if text == "/compact" || text == "/clear" {
-			return false, sessionCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.restoring != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, u.statusConfig.Provider, u.approvalMode, text)
+			return false, sessionCommand(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*restoring) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, statusConfig.Provider, approvalMode, text)
 		}
 		if text == "/resume" || strings.HasPrefix(text, "/resume ") {
-			return false, resumeCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.restoring, &u.resumePicker, u.skillEnvironment, u.approvalMode, text)
+			return false, resumeCommand(attached, terminal, control, picker, editor, clock, restoring, resumePicker, environment, approvalMode, text)
 		}
 		if text == "/ps" {
-			showRunningProcesses(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, &u.detailFiles)
+			showRunningProcesses(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, files)
 			return false, nil
 		}
 		if text == "/session" {
-			showSessionMetrics(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, &u.dirty, u.sessionCapture, u.replayDebugDirectory)
+			showSessionMetrics(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, dirty, capture, debugDirectory)
 			return false, nil
 		}
 		if text == "/status" {
-			return false, showStatus(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, &u.dirty, u.statusConfig, u.replayDebugDirectory)
+			return false, showStatus(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, dirty, (*statusConfig), debugDirectory)
 		}
 		if text == "/copy" {
-			showCopyPicker(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages)
+			showCopyPicker(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned)
 			return false, nil
 		}
 		if text == "/skills" {
-			deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
-			u.picker.openMenu("menu")
-			u.picker.Choices = []completion.Choice{{Name: "list"}, {Name: "manage"}}
+			deleteDraftRange(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
+			picker.openMenu("menu")
+			picker.Choices = []completion.Choice{{Name: "list"}, {Name: "manage"}}
 			return false, nil
 		}
 		if text == "/quit" {
-			if u.Turn == "" && !u.Starting() && !u.InputPending() {
-				u.Text = ""
-				u.Editor.Changed()
+			if control.Turn == "" && !control.Starting() && !control.InputPending() {
+				(*editor).Text = ""
+				(*editor).Changed()
 				return true, nil
 			}
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Interrupt the active turn before quitting", false)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Interrupt the active turn before quitting", false)
 			return false, nil
 		}
-		if handled, err := settingsCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, u.models, u.modelsLoading, text); handled {
+		if handled, err := settingsCommand(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, (*models), (*modelsLoading), text); handled {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /archive, /btw, /status, /session, /ps, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /archive, /btw, /status, /session, /ps, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
 			return false, nil
 		}
-		if text == "" || u.Thread == "" || u.restoring != nil {
+		if text == "" || control.Thread == "" || (*restoring) != nil {
 			return false, nil
 		}
-		view := u.attached.presentation.View()
-		return false, submitInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.SendInput})
+		view := attached.presentation.View()
+		return false, submitInput(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.SendInput})
 	case sessionpresentation.QueueComposer:
 		// Tab queues busy input for the next turn; otherwise it sends like Enter.
-		text := strings.TrimSpace(u.Text)
+		text := strings.TrimSpace((*editor).Text)
 		if text == "/compact" {
-			return false, submitCompact(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.restoring != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, true)
+			return false, submitCompact(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*restoring) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, true)
 		}
-		if u.attached.conversation.ShellMode() || text == "" || strings.HasPrefix(text, "/") || u.Turn == "" && !u.Starting() && !u.InputPending() {
+		if attached.conversation.ShellMode() || text == "" || strings.HasPrefix(text, "/") || control.Turn == "" && !control.Starting() && !control.InputPending() {
 			intent.Operation = sessionpresentation.SubmitComposer
-			return u.applyComposerCommand(intent)
+			return applyComposerCommand(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, dirty, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, reasoningKey, intent)
 		}
-		view := u.attached.presentation.View()
-		return false, submitInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.QueueNextTurn})
+		view := attached.presentation.View()
+		return false, submitInput(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.QueueNextTurn})
 	}
 	return false, nil
 }

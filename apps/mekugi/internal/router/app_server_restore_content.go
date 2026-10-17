@@ -5,6 +5,8 @@ import (
 	"context"
 	"iter"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
@@ -98,24 +100,24 @@ func restoreHistoryNotice(attached *attachedPresentation, restoring *appServerAc
 	attached.session.Activity().AdvanceSequence(attached.source.LastSeq)
 }
 
-func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message) error {
-	r := u.restoring
+func restoreActivityResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], restoring **appServerActivityRestore, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retained changes.Scope, retainedSession *history.Session, audience *sessioncontrol.Audience, reviewSource *changecapture.Service, preparePane func(*scope.Store), activityService *activitymodel.Service, usage *accounting.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, views *sessionpresentation.Service, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, method string, m appserver.Message) error {
+	r := (*restoring)
 	if r == nil {
 		return nil
 	}
 	if m.Error != nil {
-		restoreHistoryNotice(&u.attached, u.restoring, "Could not restore "+method+" history: "+m.Error.Message, true)
+		restoreHistoryNotice(attached, (*restoring), "Could not restore "+method+" history: "+m.Error.Message, true)
 		if method == "thread/list" {
-			return u.readRestoredChildren()
+			return readRestoredChildren(attached, terminal, control, picker, editor, questions, approvals, clock, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, audience, reviewSource, preparePane, activityService, segments, restoredSegments, dispatch, resumePending)
 		}
 		r.state.ReadComplete()
-		return u.readNextRestoredChild()
+		return readNextRestoredChild(attached, terminal, control, picker, editor, questions, approvals, clock, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending)
 	}
 	if method == "thread/list" {
 		var result binding.ThreadPage
 		if err := json.Unmarshal(m.Result, &result); err != nil {
-			restoreHistoryNotice(&u.attached, u.restoring, "Invalid roster history: "+err.Error(), true)
-			return u.readRestoredChildren()
+			restoreHistoryNotice(attached, (*restoring), "Invalid roster history: "+err.Error(), true)
+			return readRestoredChildren(attached, terminal, control, picker, editor, questions, approvals, clock, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, audience, reviewSource, preparePane, activityService, segments, restoredSegments, dispatch, resumePending)
 		}
 		ids := make([]string, len(result.Data))
 		for i, info := range result.Data {
@@ -127,54 +129,54 @@ func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message
 			r.threads[info.ID] = info
 		}
 		if notice != "" {
-			restoreHistoryNotice(&u.attached, u.restoring, notice, true)
+			restoreHistoryNotice(attached, (*restoring), notice, true)
 		}
 		if r.state.View().Listed {
-			return u.readRestoredChildren()
+			return readRestoredChildren(attached, terminal, control, picker, editor, questions, approvals, clock, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, audience, reviewSource, preparePane, activityService, segments, restoredSegments, dispatch, resumePending)
 		}
-		return restoreList(&u.Client, u.restoring)
+		return restoreList(control, (*restoring))
 	}
 	view := r.state.View()
 	info, err := binding.DecodeHistoryThread(m.Result, view.Threads[view.Next])
 	if err != nil {
-		restoreHistoryNotice(&u.attached, u.restoring, "Invalid Activity history: "+err.Error(), true)
+		restoreHistoryNotice(attached, (*restoring), "Invalid Activity history: "+err.Error(), true)
 	} else if info.HistoryMode == "paginated" {
-		return startChildHistory(&u.attached, &u.Client, &u.childHistoryState, &u.restoring, u.presentationState, info)
+		return startChildHistory(attached, control, childKey, restoring, views, info)
 	} else {
-		restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, info, false)
+		restoreActivityThread(attached, terminal, clock, restoring, parent, (*reviewOwner), receipts, retained, (*retainedSession), activityService, usage, segments, restoredSegments, info, false)
 	}
 	r.state.ReadComplete()
-	return u.readNextRestoredChild()
+	return readNextRestoredChild(attached, terminal, control, picker, editor, questions, approvals, clock, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending)
 }
 
-func (u *appServerUI) readRestoredChildren() error {
-	r := u.restoring
+func readRestoredChildren(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, restoring **appServerActivityRestore, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retained changes.Scope, retainedSession *history.Session, audience *sessioncontrol.Audience, reviewSource *changecapture.Service, preparePane func(*scope.Store), activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, dispatch func(appserver.Message) error, resumePending *[]appserver.Message) error {
+	r := (*restoring)
 	r.state.EndDiscovery()
 	// Register names before rendering cross-agent assignments and messages.
 	for _, id := range r.state.View().Threads {
 		info := r.threads[id]
-		registerThread(&u.attached.session, info)
-		restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, info, false)
-		u.attached.session.Lifecycle(id).RestoreTiming(restoredAgentIntervals(info.Turns))
+		registerThread(&attached.session, info)
+		restoreDiffThread(attached, terminal, (*reviewOwner), reviewSource, preparePane, info, false)
+		attached.session.Lifecycle(id).RestoreTiming(restoredAgentIntervals(info.Turns))
 	}
-	readRestoredRollouts(&u.attached, &u.restoring, u.retainedSession, u.audience, u.activity)
+	readRestoredRollouts(attached, restoring, (*retainedSession), audience, activityService)
 	for _, turn := range r.root.Turns {
 		for _, item := range turn.Items {
 			if item.Type == "collabAgentToolCall" {
-				item.SenderThreadID = u.Thread
-				entries := u.attached.session.Collaboration(item.Observation(), item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
-				applyRestoredActivity(&u.attached, u.review, &u.pendingEditReceipts, entries)
+				item.SenderThreadID = control.Thread
+				entries := attached.session.Collaboration(item.Observation(), item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
+				applyRestoredActivity(attached, (*reviewOwner), receipts, entries)
 				for _, entry := range entries {
 					if main, ok := sessionpresentation.MainActivityEntry(entry); ok {
-						seq := u.attached.childSource.EntrySeq(entry)
+						seq := attached.childSource.EntrySeq(entry)
 						r.main = append(r.main, &restoredPlacement{entry: main, turn: turn.ID, anchor: item.ID, at: entry.Observed, link: &seq})
 					}
 				}
 			}
 		}
 	}
-	u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
-	return u.readNextRestoredChild()
+	attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: attached.session.Roster()})
+	return readNextRestoredChild(attached, terminal, control, picker, editor, questions, approvals, clock, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending)
 }
 
 // readRestoredRollouts reads each thread's retained rollout once every name
@@ -214,12 +216,12 @@ func readRestoredRollouts(attached *attachedPresentation, restoring **appServerA
 	}
 }
 
-func (u *appServerUI) readNextRestoredChild() error {
-	r := u.restoring
+func readNextRestoredChild(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, restoring **appServerActivityRestore, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retained changes.Scope, retainedSession *history.Session, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, dispatch func(appserver.Message) error, resumePending *[]appserver.Message) error {
+	r := (*restoring)
 	view := r.state.View()
 	if view.Next < len(view.Threads) {
-		u.attached.presentation.Status.SetText(fmt.Sprintf("Restoring Activity %d/%d…", view.Next+1, len(view.Threads)))
-		return u.Request("thread/read", map[string]any{"threadId": view.Threads[view.Next], "includeTurns": r.threads[view.Threads[view.Next]].HistoryMode != "paginated"})
+		attached.presentation.Status.SetText(fmt.Sprintf("Restoring Activity %d/%d…", view.Next+1, len(view.Threads)))
+		return control.Request("thread/read", map[string]any{"threadId": view.Threads[view.Next], "includeTurns": r.threads[view.Threads[view.Next]].HistoryMode != "paginated"})
 	}
 	if !view.Rendered {
 		// Evidence for a child whose history could not be read still reaches Main.
@@ -231,36 +233,36 @@ func (u *appServerUI) readNextRestoredChild() error {
 			}
 		}
 		r.pane = nil
-		restoreMainHistory(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, u.review, &u.pendingEditReceipts, u.notifications, u.retained, u.retainedSession, u.activity, u.segments, &u.restoredSegments, r.root.Turns, r.main, r.itemAt[r.root.ID])
+		restoreMainHistory(attached, terminal, control, picker, editor, questions, approvals, clock, panel, resumePicker, parent, (*reviewOwner), receipts, notifications, retained, (*retainedSession), activityService, segments, restoredSegments, r.root.Turns, r.main, r.itemAt[r.root.ID])
 		r.root.Turns, r.main = nil, nil
 		r.state.ContentRendered()
 		for _, notice := range r.notices {
-			restoreHistoryNotice(&u.attached, u.restoring, notice.message, notice.incomplete)
+			restoreHistoryNotice(attached, (*restoring), notice.message, notice.incomplete)
 		}
 		r.notices = nil
 	}
-	return u.finishRestoredContent()
+	return finishRestoredContent(attached, control, restoring, reviewOwner, dispatch, resumePending)
 }
 
 // Scope publication and durable hydration are separate events. Keep Enter
 // guarded until the controller has consumed the final scope, not just until
 // Codex's history replies have arrived.
-func (u *appServerUI) finishRestoredContent() error {
-	r := u.restoring
+func finishRestoredContent(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], restoring **appServerActivityRestore, reviewOwner **sessionreview.Review, dispatch func(appserver.Message) error, resumePending *[]appserver.Message) error {
+	r := (*restoring)
 	if r == nil || !r.state.Ready() {
 		return nil
 	}
-	if u.review != nil && u.review.Restoring() {
-		u.attached.presentation.Status.SetText("Restoring saved Diff…")
+	if (*reviewOwner) != nil && (*reviewOwner).Restoring() {
+		attached.presentation.Status.SetText("Restoring saved Diff…")
 		return nil
 	}
 
-	u.restoring = nil
-	u.attached.presentation.Status.SetText("Ready")
-	if u.Turn != "" {
-		u.attached.presentation.Status.SetText("Working")
+	(*restoring) = nil
+	attached.presentation.Status.SetText("Ready")
+	if control.Turn != "" {
+		attached.presentation.Status.SetText("Working")
 	}
-	return u.replayResumePending()
+	return replayResumePending(dispatch, resumePending)
 }
 
 func historyTime(seconds int64) time.Time {

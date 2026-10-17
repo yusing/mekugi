@@ -53,81 +53,6 @@ import (
 	"golang.org/x/term"
 )
 
-type appServerUI struct {
-	attached      attachedPresentation
-	terminalViews terminalsession.Views
-	preparePane   func(*scope.Store)
-	reviewSource  *changecapture.Service
-	*composer.Editor
-	history  *history.Service
-	segments *reports.Service
-	sessioncontrol.Client[appServerRequest]
-	conversationState     *conversationmodel.Service
-	resumePending         []appserver.Message
-	clock                 func() time.Time // Optional deterministic presentation clock.
-	backendVersion        string
-	title                 string // Host-confirmed thread name, independent of naming work.
-	titleGenerator        *sessionNaming
-	titleUpdates          <-chan sessionTitleUpdate
-	side                  *sessioncontrol.Side
-	notifications         *nativeNotifications
-	questions             nativeQuestionDock
-	approvals             nativeApprovalDock
-	approvalMode          bool // Codex's configured policy applies, not --yolo's.
-	guardHookCheck        approvalHookCheck
-	statusPanel           *appServerStatusReport
-	sessionCapture        *transportcapture.Recorder
-	resumePicker          *appServerResumePicker
-	statusConfig          appServerStatusConfig
-	picker                composerPicker
-	skillEnvironment      []string
-	commits               *activitypresentation.CommitReader // Attached Activity enrichment owner.
-	commandSegmentWrites  chan commandSegmentWrite           // Completed replay writes, consumed only by the UI.
-	commandSegmentPending int
-	restoredSegments      map[string]*reports.Report // Turn-local, validated and adopted history.
-	controlObservations   *sessioncontrol.Observations
-	usage                 *accounting.Service
-	audience              *sessioncontrol.Audience
-	review                *sessionreview.Review
-	execWindows           *executionobservation.Windows
-	nativeTrace           *nativetrace.Reader
-	retained              changes.Scope
-	changeSource          changes.Service
-	snapshots             *changecapture.Workspaces
-	recovered             *recovery.Service
-	publishChanges        func([]changes.Update)
-	captureNotice         func(string, string, string, string)
-	guard                 *sessioncontrol.ShellApprovals
-	execTrack             *commandsegments.Observer // Per-segment command reports; nil when not tracking.
-	shellEdits            appServerShellEdits
-	pendingEditReceipts   []*changepresentation.Receipt // Observed edits can precede their host Activity item.
-	issues                *requestexecution.Failures
-	shell                 *terminalsession.Attachment
-	detailFiles
-	streams                terminalsession.Streams
-	activity               *activitymodel.Service
-	observations           *binding.Observation
-	retainedSession        history.Session
-	ctx                    context.Context
-	quitRequested          bool
-	archived               bool
-	exitUsage              binding.TokenUsage
-	resumeArgv             []string
-	replayDebugDirectory   string
-	model, reasoningEffort string
-	serviceTier            string
-	serviceTiers           *inferencegateway.Tiers // Invocation defaults and confirmed thread/model choices.
-	models                 []appServerModel
-	modelsLoading          bool
-	reasoningKey           *bool
-	ownedImages            map[string]bool
-	dirty                  bool
-	panes                  *nativePreferences
-	restoring              *appServerActivityRestore
-	presentationState      *sessionpresentation.Service
-	childHistoryState      scope.Key[*appServerChildHistory]
-}
-
 // StartAppServerUI starts the native terminal frontend without router observers.
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
@@ -175,230 +100,269 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	}
 	shell, preparePane := terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
 	attached := newAttachedPresentation(views, conversation, observations)
-	u := &appServerUI{attached: attached, terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, observations: observations, history: service, segments: segments, Client: control, shell: shell, preparePane: preparePane, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, dirty: true, ctx: ctx, serviceTiers: serviceTiers, approvalMode: approvals}
-	c := u.Host
-	u.Startup.Thread = resumeThread
-	attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
-	u.attached.presentation.Status.Set("Connecting…", false)
-	u.guardHookCheck.hash = guardHash
+	var (
+		editor              *composer.Editor
+		resumePending       []appserver.Message
+		clock               func() time.Time
+		version, title      string
+		titleUpdates        <-chan sessionTitleUpdate
+		side                *sessioncontrol.Side
+		notifications       *nativeNotifications
+		questions           nativeQuestionDock
+		approvalDock        nativeApprovalDock
+		guardHook           approvalHookCheck
+		panel               *appServerStatusReport
+		resumePicker        *appServerResumePicker
+		statusConfig        appServerStatusConfig
+		picker              composerPicker
+		environment         []string
+		commits             *activitypresentation.CommitReader
+		writes              chan commandSegmentWrite
+		pendingWrites       int
+		restoredSegments    map[string]*reports.Report
+		shellEdits          appServerShellEdits
+		receipts            []*changepresentation.Receipt
+		files               detailFiles
+		streams             terminalsession.Streams
+		retainedSession     history.Session
+		quit, archived      bool
+		exitUsage           binding.TokenUsage
+		model, effort, tier string
+		models              []appServerModel
+		modelsLoading       bool
+		reasoningKey        *bool
+		ownedImages         map[string]bool
+		panes               *nativePreferences
+		restoring           *appServerActivityRestore
+		childKey            scope.Key[*appServerChildHistory]
+	)
+	dirty := true
+	observationInputs, usage, audience := integration.controlObservations, integration.usage, integration.audience
+	reviewOwner, windows, trace := integration.review, integration.execWindows, integration.nativeTrace
+	retained, changeSource, snapshots, recovered := integration.retained, integration.changeSource, integration.snapshots, integration.recovered
+	publishChanges, captureNotice, guard := integration.publishChanges, integration.captureNotice, integration.guard
+	c := control.Host
+	control.Startup.Thread = resumeThread
+	attachPresentation(&attached, shell, &picker, &editor, &questions, &approvalDock, control.Thread, &reviewOwner, &commits, ctx, retained, changeSource, activity != nil)
+	attached.presentation.Status.Set("Connecting…", false)
+	guardHook.hash = guardHash
 	if generator != nil {
-		u.titleGenerator = generator
-		u.titleUpdates = generator.updates
+		titleUpdates = generator.updates
 	}
-	u.execTrack = integration.execTrack
-	u.guard = integration.guard
-	if u.guard != nil {
-		u.approvals.grants = sessioncontrol.NewApprovalGrants(integration.guards)
+	if guard != nil {
+		approvalDock.grants = sessioncontrol.NewApprovalGrants(integration.guards)
 	}
 	if integration.skillsManager {
-		u.skillEnvironment = cmd.Environ()
+		environment = cmd.Environ()
 	}
-	u.resumeArgv = slices.Clone(resumeArgv)
-	u.replayDebugDirectory = debugDirectory
-	u.sessionCapture = capture
-	u.Startup.Config = appServerResumeConfig(cmd.Args, resumeArgv)
-	u.notifications = &nativeNotifications{out: stdout, focused: true}
-	u.Startup.Workspace = resumeCwd
+	resumeArgv = slices.Clone(resumeArgv)
+	control.Startup.Config = appServerResumeConfig(cmd.Args, resumeArgv)
+	notifications = &nativeNotifications{out: stdout, focused: true}
+	control.Startup.Workspace = resumeCwd
 	if prefs != nil {
-		u.panes = &nativePreferences{service: prefs}
+		panes = &nativePreferences{service: prefs}
 	}
-	if err := u.Request("initialize", nil); err != nil {
+	if err := control.Request("initialize", nil); err != nil {
 		c.Close()
 		<-c.Done
 		return nil, err
 	}
 
-	u.shell.Faint = faint
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	shell.Faint = faint
+	settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
+	var dispatch func(appserver.Message) error
+	dispatch = func(m appserver.Message) error {
+		return dispatchHostMessage(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, windows, audience, reviewSource, preparePane, approvals, generator, &dirty, activity, &streams, tracker, trace, usage, &exitUsage, segments, &restoredSegments, views, &files, &statusConfig, issues, &quit, dispatch, &resumePending, &commits, terminalViews, conversation, observations, service, panes, &models, &modelsLoading, &reasoningKey, &archived, m)
+	}
 	return func() error {
-		u.review.Loader = sessionreview.NewLoader(ctx, u.review.Projection)
-		defer u.review.Loader.Close()
+		reviewOwner.Loader = sessionreview.NewLoader(ctx, reviewOwner.Projection)
+		defer reviewOwner.Loader.Close()
 		defer func() {
-			u.retainedSession.Close()
+			retainedSession.Close()
 		}()
-		defer u.picker.cancelScan()
-		defer u.shell.Diff.Close()
-		defer func() { u.commits.Close() }()
-		if u.audience != nil {
-			defer u.audience.Detach()
+		defer picker.cancelScan()
+		defer shell.Diff.Close()
+		defer func() { commits.Close() }()
+		if audience != nil {
+			defer audience.Detach()
 		}
 		defer c.Input.Close()
-		defer func() { discardDraftImages(u.ownedImages) }()
+		defer func() { discardDraftImages(ownedImages) }()
 		defer c.Output.Close()
 		exited := false
 		var err error
 		for {
 			err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1004;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1004;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
-				defer func() { u.notifications.clearTerminalTitle(&u.attached.feedback, u.shell, u.clock) }()
-				review := u.review
+				defer func() { notifications.clearTerminalTitle(&attached.feedback, shell, clock) }()
+				review := reviewOwner
 				review.Preview().Enable()
 				defer func() { review.Preview().Disable() }()
-				u.review.Loader.AwaitResync()
+				reviewOwner.Loader.AwaitResync()
 				sub := review.Subscribe()
 				defer func() { review.Unsubscribe(sub) }()
 				diffEvents, diffGap, diffReady, previewGap := sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
 				autoChanged := review.Changed()
 				resubscribe := func() {
 					review.Unsubscribe(sub)
-					u.review.Loader.AwaitResync()
+					reviewOwner.Loader.AwaitResync()
 					sub = review.Subscribe()
 					diffEvents, diffGap, diffReady, previewGap = sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
-					u.dirty = true
+					dirty = true
 				}
 				tick := time.NewTicker(33 * time.Millisecond)
 				defer tick.Stop()
 				width, height := 0, 0
-				agePaint := presentationTime(u.clock)
+				agePaint := presentationTime(clock)
 				for {
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
 					case <-autoChanged:
-						u.review.Projection.Workspace = review.Workspace()
-						publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
-						u.dirty = true
+						reviewOwner.Projection.Workspace = review.Workspace()
+						publishReview(&attached, shell, reviewOwner, reviewSource, preparePane)
+						dirty = true
 					case <-diffGap:
 						resubscribe()
 					case <-previewGap:
 						resubscribe()
-					case result := <-u.review.Loader.Updates():
+					case result := <-reviewOwner.Loader.Updates():
 						if sub.Invalidated() {
 							resubscribe()
 						}
-						loadedReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, result)
-						if err := u.finishRestoredContent(); err != nil {
+						loadedReview(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, result)
+						if err := finishRestoredContent(&attached, &control, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
 							return err
 						}
-						u.dirty = true
+						dirty = true
 					case <-diffReady:
-						if !admitReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, ctx, sub, review.TakePreviews(sub)...) {
+						if !admitReviewEvents(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, clock, ctx, sub, review.TakePreviews(sub)...) {
 							resubscribe()
 						}
-						if err := u.finishRestoredContent(); err != nil {
+						if err := finishRestoredContent(&attached, &control, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
 							return err
 						}
-						u.dirty = true
+						dirty = true
 					case event := <-diffEvents:
-						if !admitReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, ctx, sub, event) {
+						if !admitReviewEvents(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, clock, ctx, sub, event) {
 							resubscribe()
 						}
-						if err := u.finishRestoredContent(); err != nil {
+						if err := finishRestoredContent(&attached, &control, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
 							return err
 						}
-						u.dirty = true
-					case result := <-u.fileReads:
-						u.dirty = u.detailFiles.loadedMarkdownFile(&u.attached.session, u.presentationState, u.attached.cwd, u.shell, result) || u.dirty
-					case result := <-u.picker.scanResults:
-						u.dirty = u.picker.applyScan(u.attached.cwd, u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()), result) || u.dirty
-					case <-u.commits.Updates():
-						u.dirty = startCommitReads(&u.attached, u.commits) || u.dirty
-					case err := <-u.commandSegmentWrites:
-						commandSegmentRetained(&u.commandSegmentPending, u.issues, &u.dirty, err)
-					case update := <-u.titleUpdates:
-						persistSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, &u.dirty, update)
-					case request := <-u.guard.Requests():
-						addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
-						u.dirty = true
+						dirty = true
+					case result := <-files.fileReads:
+						dirty = files.loadedMarkdownFile(&attached.session, views, attached.cwd, shell, result) || dirty
+					case result := <-picker.scanResults:
+						dirty = picker.applyScan(attached.cwd, picker.completionTarget(editor.Draft, attached.conversation.ShellMode()), result) || dirty
+					case <-commits.Updates():
+						dirty = startCommitReads(&attached, commits) || dirty
+					case err := <-writes:
+						commandSegmentRetained(&pendingWrites, issues, &dirty, err)
+					case update := <-titleUpdates:
+						persistSessionTitle(&control, generator, &attached.feedback, shell, clock, &dirty, update)
+					case request := <-guard.Requests():
+						addGuardApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, panel != nil || resumePicker != nil, notifications, reviewOwner, &receipts, request)
+						dirty = true
 					case message, ok := <-c.Messages:
 						if !ok {
 							exited = true
 							return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.Done)
 						}
-						if err := u.message(message); err != nil || u.quitRequested {
+						if err := dispatch(message); err != nil || quit {
 							return err
 						}
-						u.dirty = true
+						dirty = true
 					case key, ok := <-keys:
 						if !ok {
 							return io.EOF
 						}
-						if event := u.shell.Decoder.Feed(key, time.Now()); event.Kind != terminalsession.NoInput {
-							if err := u.applyInput(u.shell, u.shell.FrameInput(presentationTime(u.clock), mekugiVersion()).Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
+						if event := shell.Decoder.Feed(key, time.Now()); event.Kind != terminalsession.NoInput {
+							if err := applyInput(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvals, generator, &dirty, activity, segments, &restoredSegments, &files, &statusConfig, capture, debugDirectory, &quit, dispatch, &resumePending, panes, &models, &modelsLoading, &reasoningKey, shell, shell.FrameInput(presentationTime(clock), mekugiVersion()).Dispatch(&shell.Interaction, event)); err != nil || quit {
 								return err
 							}
 						}
-						u.dirty = true
+						dirty = true
 					case <-tick.C:
-						if len(u.attached.conversation.Unsent) > 0 && u.attached.conversation.Unsent[0].Question != nil && (u.controlObservations == nil || !u.controlObservations.EmittingToolInput(u.attached.cwd, u.Thread)) {
-							if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+						if len(attached.conversation.Unsent) > 0 && attached.conversation.Unsent[0].Question != nil && (observationInputs == nil || !observationInputs.EmittingToolInput(attached.cwd, control.Thread)) {
+							if err := flushInput(&attached, shell, &control, &picker, &questions, &approvalDock, clock, model, serviceTiers, environment, ownedImages, &guardHook, &editor, ctx, restoring != nil, observationInputs, reviewOwner, &receipts); err != nil {
 								return err
 							}
 						}
-						u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), false) || u.dirty
-						startSkillHistory(&u.attached, &u.Client, &u.childHistoryState, &u.restoring)
-						applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
-						publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
-						if err := applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, u.shell.Main.Resume.PageDemand()); err != nil {
+						dirty = refreshSessionMetrics(panel, capture, presentationTime(clock), false) || dirty
+						startSkillHistory(&attached, &control, &childKey, &restoring)
+						applyObservedActivity(&attached, shell, &control, &streams, usage, reviewOwner, &approvalDock, &receipts, clock, &dirty, restoring, audience)
+						publishPresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, presentationTime(clock))
+						if err := applyResumeAction(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, &panel, &resumePicker, approvals, &quit, shell.Main.Resume.PageDemand()); err != nil {
 							return err
 						}
-						flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
-						u.dirty = startCommitReads(&u.attached, u.commits) || u.dirty
-						u.dirty = paneError(u.attached.source, u.panes.save(u.shell.Shell.Preferences(u.shell.Main), presentationTime(u.clock), false)) || u.dirty
-						if expireNotice(&u.attached.feedback, u.shell, presentationTime(u.clock)) || expireApprovals(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts) {
-							u.dirty = true
+						flushStreamOutput(&attached, shell, &control, &streams, tracker, reviewOwner, &approvalDock, &receipts, clock, ctx, retained, segments, &writes, &pendingWrites, issues, &dirty)
+						dirty = startCommitReads(&attached, commits) || dirty
+						dirty = paneError(attached.source, panes.save(shell.Shell.Preferences(shell.Main), presentationTime(clock), false)) || dirty
+						if expireNotice(&attached.feedback, shell, presentationTime(clock)) || expireApprovals(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, notifications, reviewOwner, &receipts) {
+							dirty = true
 						}
-						now := presentationTime(u.clock)
-						publishActivity(&u.attached, u.shell)
-						if activityui.Settle(now, u.shell.Transcript, u.shell.Agents) {
-							u.dirty = true
+						now := presentationTime(clock)
+						publishActivity(&attached, shell)
+						if activityui.Settle(now, shell.Transcript, shell.Agents) {
+							dirty = true
 						}
-						for _, view := range []*activityui.View{u.shell.Transcript, u.shell.Agents} {
+						for _, view := range []*activityui.View{shell.Transcript, shell.Agents} {
 							if view.ExpireFlash(now) {
-								u.dirty = true
+								dirty = true
 							}
 							if view.Pace(now) {
-								u.dirty = true
+								dirty = true
 							}
 						}
-						settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-						if u.attached.presentation.View().Status.Animating || u.shell.Agents.HasLiveStatus() {
-							u.dirty = true
+						settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
+						if attached.presentation.View().Status.Animating || shell.Agents.HasLiveStatus() {
+							dirty = true
 						}
 						if time.Since(agePaint) >= time.Second {
-							u.dirty = true
-							agePaint = presentationTime(u.clock)
+							dirty = true
+							agePaint = presentationTime(clock)
 						}
-						if err := u.drainKeys(keys); err != nil || u.quitRequested {
+						if err := drainKeys(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvals, generator, &dirty, activity, segments, &restoredSegments, &files, &statusConfig, capture, debugDirectory, &quit, dispatch, &resumePending, panes, &models, &modelsLoading, &reasoningKey, keys); err != nil || quit {
 							return err
 						}
-						notices := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
-						settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-						if u.shell.Live.Tick(presentationTime(u.clock)) || u.shell.Agents.RosterEasing {
-							u.dirty = true
+						notices := applyCriticalNotices(&attached, shell, &control, &picker, &editor, clock, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, audience, &dirty, issues)
+						settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
+						if shell.Live.Tick(presentationTime(clock)) || shell.Agents.RosterEasing {
+							dirty = true
 						}
 						w, h, err := term.GetSize(int(stdout.Fd()))
 						if err != nil {
 							notices.finish(terminalsession.NoticeReceipt{})
 							return err
 						}
-						if u.dirty || w != width || h != height {
+						if dirty || w != width || h != height {
 							width, height = w, h
-							if err := paintSession(&u.attached, u.shell, &u.detailFiles, u.ctx, presentationTime(u.clock), stdout, w, h); err != nil {
+							if err := paintSession(&attached, shell, &files, ctx, presentationTime(clock), stdout, w, h); err != nil {
 								notices.finish(terminalsession.NoticeReceipt{})
 								return err
 							}
-							notices.finish(u.shell.Frame.Notices)
-							u.dirty = false
+							notices.finish(shell.Frame.Notices)
+							dirty = false
 						}
-						u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), presentationTime(u.clock))
+						notifications.writeTerminalTitle(&attached.feedback, shell, clock, attached.cwd, control.Thread, questions.Questions, approvalDock.Approvals, control.Turn != "" || control.Starting(), presentationTime(clock))
 						continue
 					}
-					settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-					u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), presentationTime(u.clock))
+					settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
+					notifications.writeTerminalTitle(&attached.feedback, shell, clock, attached.cwd, control.Thread, questions.Questions, approvalDock.Approvals, control.Turn != "" || control.Starting(), presentationTime(clock))
 				}
 			})
 			var fileEditor *openFileEditor
 			var composerEditor *composerEditorRequest
 			if errors.As(err, &composerEditor) {
-				openComposerEditor(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, composerEditor.intent, stdin, stdout)
+				openComposerEditor(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &side, &ownedImages, environment, ctx, composerEditor.intent, stdin, stdout)
 			} else if errors.As(err, &fileEditor) {
-				openSelectedFileEditor(&u.attached, u.shell, u.clock, u.ctx, fileEditor.path, stdin, stdout)
+				openSelectedFileEditor(&attached, shell, clock, ctx, fileEditor.path, stdin, stdout)
 			} else {
 				break
 			}
-			u.dirty = true
+			dirty = true
 		}
-		if saveErr := u.panes.save(u.shell.Shell.Preferences(u.shell.Main), presentationTime(u.clock), true); saveErr != nil {
+		if saveErr := panes.save(shell.Shell.Preferences(shell.Main), presentationTime(clock), true); saveErr != nil {
 			fmt.Fprintln(stdout, "Pane layout or settings could not be saved:", textsanitize.Safe(saveErr.Error(), false))
 		}
 		if !exited {
@@ -409,29 +373,29 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 				<-c.Done
 			}
 		}
-		finishCommandSegments(&u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
-		for key, run := range u.attached.session.Commands() {
+		finishCommandSegments(&writes, &pendingWrites, issues, &dirty)
+		for key, run := range attached.session.Commands() {
 			if run.Entry.Native.Invocation.ReleaseSegmentOutputs() {
-				u.execTrack.ReleaseOutput(key)
+				tracker.ReleaseOutput(key)
 			}
 		}
-		u.review.Close()
-		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-		hideApprovals(&u.approvals, u.shell, &u.attached.conversation.PromptEditor, u.Editor)
-		if unsent := conversationmodel.Join(slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued, []conversationmodel.Input{draftSnapshot(u.Editor)})...); unsent.Text != "" {
+		reviewOwner.Close()
+		editor = hideQuestionEditor(&questions, attached.conversation, shell, editor, control.Thread)
+		hideApprovals(&approvalDock, shell, &attached.conversation.PromptEditor, editor)
+		if unsent := conversationmodel.Join(slices.Concat(attached.conversation.Unsent, attached.conversation.Queued, []conversationmodel.Input{draftSnapshot(editor)})...); unsent.Text != "" {
 			fmt.Fprintln(stdout, "Unsent draft:\n"+textsanitize.Safe(unsent.Text, false))
 		}
-		unknown := slices.Clone(u.Steers())
-		if !u.Submission().Committed {
-			unknown = append(unknown, u.Submission().ID)
+		unknown := slices.Clone(control.Steers())
+		if !control.Submission().Committed {
+			unknown = append(unknown, control.Submission().ID)
 		}
-		if unknown := conversationmodel.Join(u.attached.conversation.Parts(unknown)...); unknown.Text != "" {
+		if unknown := conversationmodel.Join(attached.conversation.Parts(unknown)...); unknown.Text != "" {
 			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+textsanitize.Safe(unknown.Text, false))
 		}
-		if u.attached.conversation.Shell.Text != "" {
-			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(u.attached.conversation.Shell.Text, false))
+		if attached.conversation.Shell.Text != "" {
+			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(attached.conversation.Shell.Text, false))
 		}
-		u.attached.session.Retire()
+		attached.session.Retire()
 		if err != nil {
 			c.Diagnostics.Lock()
 			defer c.Diagnostics.Unlock()
@@ -440,7 +404,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 			}
 		}
 		color := term.IsTerminal(int(stdout.Fd())) && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
-		return errors.Join(err, writeExitSummary(u.exitUsage, u.archived, u.Thread, u.resumeArgv, u.replayDebugDirectory, stdout, color))
+		return errors.Join(err, writeExitSummary(exitUsage, archived, control.Thread, resumeArgv, debugDirectory, stdout, color))
 	}, nil
 }
 
@@ -454,70 +418,70 @@ type appServerRequest struct {
 	status   *appServerStatusReport
 }
 
-func (u *appServerUI) message(m appserver.Message) (err error) {
+func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, windows *executionobservation.Windows, audience *sessioncontrol.Audience, reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, dirty *bool, activityService *activitymodel.Service, streams *terminalsession.Streams, tracker *commandsegments.Observer, trace *nativetrace.Reader, usage *accounting.Service, exitUsage *binding.TokenUsage, segments *reports.Service, restoredSegments *map[string]*reports.Report, views *sessionpresentation.Service, files *detailFiles, statusConfig *appServerStatusConfig, issues *requestexecution.Failures, quit *bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, commits **activitypresentation.CommitReader, terminalViews terminalsession.Views, conversationState *conversationmodel.Service, bindings *binding.Observation, historyService *history.Service, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, reasoningKey **bool, archived *bool, m appserver.Message) (err error) {
 	defer func() {
-		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+		settlePresentation(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
 	}()
-	u.issues.ObserveTurnCompletion(m.Method, m.Params)
-	observeShellMessage(&u.shellEdits, &u.attached, u.shell, u.clock, m)
+	issues.ObserveTurnCompletion(m.Method, m.Params)
+	observeShellMessage(shellEdits, attached, terminal, clock, m)
 	var response sessioncontrol.Request[appServerRequest]
 	var correlated bool
 	if m.Method == "" {
-		response, correlated = u.Requests.Take(string(m.ID))
+		response, correlated = control.Requests.Take(string(m.ID))
 	}
-	if sessionTitleMessage(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, &u.dirty, &u.title, m, response.Owner.title) {
+	if sessionTitleMessage(control, generator, &attached.feedback, terminal, clock, dirty, title, m, response.Owner.title) {
 		return nil
 	}
 	defer func() {
-		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 	}()
 	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
-	if update, err := u.Requests.ObserveSide(m, response, u.Thread, u.controlObservations); update.Handled {
-		u.dirty = true
-		applySideUpdate(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, update)
+	if update, err := control.Requests.ObserveSide(m, response, control.Thread, observations); update.Handled {
+		(*dirty) = true
+		applySideUpdate(attached, terminal, control, picker, questions, approvals, clock, update)
 		if err != nil {
 			return err
 		}
 		if update.Flush {
-			return flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.side, &u.ownedImages, u.skillEnvironment)
+			return flushBTW(attached, terminal, control, picker, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, side, owned, environment)
 		}
 		return nil
 	}
-	if u.RetiredEvent(m) {
+	if control.RetiredEvent(m) {
 		return nil
 	}
 	// Any event can make stacked input sendable: an acknowledgement, a turn
 	// start or end, or settled settings.
 	defer func() {
 		if err == nil {
-			err = flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts)
+			err = flushInput(attached, terminal, control, picker, questions, approvals, clock, (*model), (*tiers), environment, (*owned), hook, editor, parent, (*restoring) != nil, observations, (*reviewOwner), receipts)
 		}
 		if err == nil {
-			err = flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.side, &u.ownedImages, u.skillEnvironment)
+			err = flushBTW(attached, terminal, control, picker, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, side, owned, environment)
 		}
 	}()
 	if m.Method == "skills/changed" {
-		u.picker.toggleOwnsManager = false
-		u.picker.SkillsLoaded = false
-		u.picker.SkillsProblem = ""
-		u.picker.Resolved = completion.Target{}
+		picker.toggleOwnsManager = false
+		picker.SkillsLoaded = false
+		picker.SkillsProblem = ""
+		picker.Resolved = completion.Target{}
 	}
 	// Input observations precede the output items that answer them. Drain
 	// before a completion, not just on the next paint tick, so links bind once.
-	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
-	if held, err := u.holdOlderHistoryEvent(m); held || err != nil {
+	applyObservedActivity(attached, terminal, control, streams, usage, (*reviewOwner), approvals, receipts, clock, dirty, (*restoring), audience)
+	if held, err := holdOlderHistoryEvent(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending, m); held || err != nil {
 		return err
 	}
-	resuming := u.Startup.Thread != "" && u.Startup.Thread != sessioncontrol.ResumePicker && (u.Thread == "" || u.restoring != nil)
-	if (resuming || u.Replacement.Target != "") && m.Method != "" {
-		if hold, keep := holdResumeEvent(&u.attached.session, &u.Live, u.Startup, m, resuming); hold {
+	resuming := control.Startup.Thread != "" && control.Startup.Thread != sessioncontrol.ResumePicker && (control.Thread == "" || (*restoring) != nil)
+	if (resuming || control.Replacement.Target != "") && m.Method != "" {
+		if hold, keep := holdResumeEvent(&attached.session, &control.Live, control.Startup, m, resuming); hold {
 			if !keep {
 				return nil
 			}
-			if len(u.resumePending) == 256 {
+			if len((*resumePending)) == 256 {
 				return errors.New("resume event capacity exceeded; session state is incomplete")
 			}
-			u.resumePending = append(u.resumePending, m)
+			(*resumePending) = append((*resumePending), m)
 			return nil
 		}
 	}
@@ -531,53 +495,53 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		if method == "thread/archive" {
 			if m.Error != nil {
-				u.Replacement.Finish()
-				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Failed to archive current thread: "+m.Error.Message, true)
+				control.Replacement.Finish()
+				setNotice(&attached.feedback, terminal, presentationTime(clock), "Failed to archive current thread: "+m.Error.Message, true)
 			} else {
-				u.archived, u.quitRequested = true, true
+				(*archived), (*quit) = true, true
 			}
 			return nil
 		}
 		if strings.HasPrefix(method, "activity-skills/") {
-			return skillHistoryResponse(&u.attached, &u.Client, &u.childHistoryState, &u.restoring, u.ctx, u.retained, &u.dirty, u.activity, u.segments, &u.restoredSegments, strings.TrimPrefix(method, "activity-skills/"), m)
+			return skillHistoryResponse(attached, control, childKey, restoring, parent, retained, dirty, activityService, segments, restoredSegments, strings.TrimPrefix(method, "activity-skills/"), m)
 		}
 		if strings.HasPrefix(method, "activity/") {
-			return u.childHistoryResponse(method, m)
+			return childHistoryResponse(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, usage, segments, restoredSegments, dispatch, resumePending, method, m)
 		}
 		if method == "resume/settings" {
-			return u.resumeSettingsResponse(m)
+			return resumeSettingsResponse(attached, terminal, control, picker, questions, approvals, clock, approvalMode, dirty, dispatch, resumePending, panes, m)
 		}
 		if method == "config/read" {
-			u.notifications.notificationConfig(&u.attached.feedback, u.shell, u.clock, m)
+			notifications.notificationConfig(&attached.feedback, terminal, clock, m)
 			return nil
 		}
 		if method == resumePickerList {
-			return resumePickerResponse(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, m)
+			return resumePickerResponse(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, approvalMode, quit, m)
 		}
-		if handled, err := statusMessage(u.Requests, &u.dirty, u.statusPanel, method, m, response.Owner.status); handled {
+		if handled, err := statusMessage(control.Requests, dirty, (*panel), method, m, response.Owner.status); handled {
 			return err
 		}
-		if u.picker.pickerMessage(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment, method, m) {
+		if picker.pickerMessage(attached, terminal, clock, control.Requests, (*editor), parent, environment, method, m) {
 			return nil
 		}
-		if method == "thread/list" && u.Startup.Thread == "--last" {
-			return resumeLastResponse(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode, m)
+		if method == "thread/list" && control.Startup.Thread == "--last" {
+			return resumeLastResponse(attached, control, picker, clock, resumePicker, approvalMode, m)
 		}
-		if handled, err := settingsMessage(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, &u.model, &u.reasoningEffort, &u.serviceTier, &u.models, &u.modelsLoading, &u.reasoningKey, &u.statusConfig, method, m); handled || err != nil {
+		if handled, err := settingsMessage(attached, terminal, control, picker, editor, childKey, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, model, effort, tier, models, modelsLoading, reasoningKey, statusConfig, method, m); handled || err != nil {
 			return err
 		}
-		if method == "thread/read" && applyThreadMetadata(&u.attached, u.shell, &u.Client, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, m, response.Owner.metadata) {
+		if method == "thread/read" && applyThreadMetadata(attached, terminal, control, (*reviewOwner), approvals, receipts, clock, m, response.Owner.metadata) {
 			return nil
 		}
 		if method == "thread/list" || method == "thread/read" {
-			return u.restoreActivityResponse(method, m)
+			return restoreActivityResponse(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, audience, reviewSource, preparePane, activityService, usage, segments, restoredSegments, views, dispatch, resumePending, method, m)
 		}
 		if method == "turn/start" || method == "turn/steer" {
-			submissionResponse(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, method, m.Error)
+			submissionResponse(attached, terminal, control, picker, questions, approvals, clock, method, m.Error)
 			return nil
 		}
 		if method == "thread/shellCommand" {
-			shellResponse(&u.attached, u.shell, &u.Client, &u.Editor, u.clock, &u.shellEdits, m.Error)
+			shellResponse(attached, terminal, control, editor, clock, shellEdits, m.Error)
 			return nil
 		}
 		if method == "environment/info" {
@@ -588,7 +552,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					} `json:"shell"`
 				}
 				if json.Unmarshal(m.Result, &info) == nil {
-					u.shellEdits.shell = info.Shell.Path
+					shellEdits.shell = info.Shell.Path
 				}
 			}
 			return nil
@@ -599,30 +563,30 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				failure = m.Error.Message
 			}
 			if method == "thread/compact/start" {
-				applyInputEffects(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, u.attached.presentation.AcknowledgeCompaction(&u.Live, u.attached.conversation, failure, m.Error != nil))
+				applyInputEffects(attached, terminal, questions, approvals, picker, control.Turn, clock, attached.presentation.AcknowledgeCompaction(&control.Live, attached.conversation, failure, m.Error != nil))
 			} else {
-				applyInputEffects(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, u.attached.presentation.AcknowledgeInterrupt(&u.Live, u.attached.conversation, method, failure, m.Error != nil))
+				applyInputEffects(attached, terminal, questions, approvals, picker, control.Turn, clock, attached.presentation.AcknowledgeInterrupt(&control.Live, attached.conversation, method, failure, m.Error != nil))
 			}
 			return nil
 		}
 		if method == "approval/hooks" {
-			return guardHookResponse(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.restoring != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, m)
+			return guardHookResponse(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*restoring) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, m)
 		}
-		if method == "thread/start" && u.Replacement.Pending() && m.Error != nil {
-			u.Replacement.Finish()
-			restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
-			u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
-			u.attached.presentation.Status.SetText("Ready")
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Could not clear session: "+m.Error.Message, true)
+		if method == "thread/start" && control.Replacement.Pending() && m.Error != nil {
+			control.Replacement.Finish()
+			restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, slices.Concat(attached.conversation.Unsent, attached.conversation.Queued)...)
+			attached.conversation.Unsent, attached.conversation.Queued = nil, nil
+			attached.presentation.Status.SetText("Ready")
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not clear session: "+m.Error.Message, true)
 			return nil
 		}
-		if method == "thread/resume" && u.Replacement.Target != "" && m.Error != nil {
-			return u.resumeSessionFailed(m.Error.Message)
+		if method == "thread/resume" && control.Replacement.Target != "" && m.Error != nil {
+			return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, m.Error.Message)
 		}
 		if m.Error != nil {
-			u.attached.presentation.Status.Set(method+": "+m.Error.Message, true)
+			attached.presentation.Status.Set(method+": "+m.Error.Message, true)
 			if method == "initialize" || method == "thread/start" || method == "thread/resume" {
-				return errors.New(u.attached.presentation.Status.Text)
+				return errors.New(attached.presentation.Status.Text)
 			}
 			return nil
 		}
@@ -632,136 +596,136 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				UserAgent string `json:"userAgent"`
 			}
 			if json.Unmarshal(m.Result, &initialized) == nil {
-				u.backendVersion = backendVersion(initialized.UserAgent)
+				(*backend) = backendVersion(initialized.UserAgent)
 			}
-			if err := u.Requests.Initialized(u.execWindows != nil); err != nil {
+			if err := control.Requests.Initialized(windows != nil); err != nil {
 				return err
 			}
-			return openSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode)
+			return openSession(attached, control, picker, clock, resumePicker, approvalMode)
 		case "thread/start", "thread/resume":
-			result, err := u.Startup.Accept(&u.Live, method, m.Result)
+			result, err := control.Startup.Accept(&control.Live, method, m.Result)
 			if err != nil {
 				return err
 			}
-			if u.Replacement.Pending() {
+			if control.Replacement.Pending() {
 				// Detach only after host acceptance; process and operation owners remain live.
-				closing := u.side
+				closing := (*side)
 				if closing != nil {
-					u.side = nil
+					(*side) = nil
 					closing.Close()
-					u.attached.conversation.Side = nil
-					pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
-					if err := u.Requests.ReleaseSide(closing); err != nil {
+					attached.conversation.Side = nil
+					pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side))
+					if err := control.Requests.ReleaseSide(closing); err != nil {
 						return err
 					}
 				}
-				if u.panes != nil {
-					u.dirty = paneError(u.attached.source, u.panes.save(u.shell.Shell.Preferences(u.shell.Main), time.Now(), true)) || u.dirty
+				if panes != nil {
+					(*dirty) = paneError(attached.source, panes.save(terminal.Shell.Preferences(terminal.Main), time.Now(), true)) || (*dirty)
 				}
-				u.picker.cancelScan()
-				roster := u.attached.session.Roster()
+				picker.cancelScan()
+				roster := attached.session.Roster()
 				retired := make([]string, 0, len(roster))
 				for _, agent := range roster {
 					retired = append(retired, agent.Thread)
 				}
-				u.RetireThreads(u.Thread, retired...)
-				u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-				retainedQuestions := u.questions.calls()
-				if u.notifications != nil {
-					clear(u.notifications.blocked)
+				control.RetireThreads(control.Thread, retired...)
+				(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
+				retainedQuestions := questions.calls()
+				if notifications != nil {
+					clear(notifications.blocked)
 				}
-				u.statusPanel = nil
-				u.attached.presentation.ClosePanel()
-				u.Requests.Retire("main") // Retire old-thread response correlation.
-				if err := u.Request("thread/unsubscribe", map[string]any{"threadId": u.Thread}); err != nil {
+				(*panel) = nil
+				attached.presentation.ClosePanel()
+				control.Requests.Retire("main") // Retire old-thread response correlation.
+				if err := control.Request("thread/unsubscribe", map[string]any{"threadId": control.Thread}); err != nil {
 					return err
 				}
-				u.picker = composerPicker{}
-				u.exitUsage = binding.TokenUsage{}
-				u.attached.feedback = noticepresentation.Model{}
-				u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
-				releaseSegmentOutputs(&u.attached, u.execTrack)
-				waiting := u.attached.conversation
-				u.attached.session.Retire()
-				workspace := u.attached.cwd
-				u.attached = newAttachedPresentation(u.presentationState, u.conversationState, u.observations)
-				u.attached.cwd = workspace
-				u.attached.conversation.CarryInput(waiting)
-				u.Editor = &u.attached.conversation.Editor
+				(*picker) = composerPicker{}
+				(*exitUsage) = binding.TokenUsage{}
+				attached.feedback = noticepresentation.Model{}
+				terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+				releaseSegmentOutputs(attached, tracker)
+				waiting := attached.conversation
+				attached.session.Retire()
+				workspace := attached.cwd
+				(*attached) = newAttachedPresentation(views, conversationState, bindings)
+				attached.cwd = workspace
+				attached.conversation.CarryInput(waiting)
+				(*editor) = &attached.conversation.Editor
 
-				u.picker.State, u.picker.MenuState = &u.attached.conversation.Completion, u.attached.presentation.Menu()
-				u.approvals.Approvals = &u.attached.conversation.Approvals
-				u.questions.carryLocal(u.attached.conversation, retainedQuestions, u.Thread)
-				u.terminalViews.ReplaceConversation(u.shell)
-				u.commits = attachCommitReader(&u.attached.session, u.commits, u.ctx, u.activity != nil)
-				u.attached.presentation.Attach(sessionpresentation.Thread{ID: cmp.Or(u.Thread, "/root"), Caller: "/root"}, false)
-				if u.shell != nil {
-					u.shell.Selection = nil
-					u.detailFiles.closeOutput(&u.attached.session, u.shell)
-					u.shell.Focus = 0
-					u.shell.StopDrag()
+				picker.State, picker.MenuState = &attached.conversation.Completion, attached.presentation.Menu()
+				approvals.Approvals = &attached.conversation.Approvals
+				questions.carryLocal(attached.conversation, retainedQuestions, control.Thread)
+				terminalViews.ReplaceConversation(terminal)
+				(*commits) = attachCommitReader(&attached.session, (*commits), parent, activityService != nil)
+				attached.presentation.Attach(sessionpresentation.Thread{ID: cmp.Or(control.Thread, "/root"), Caller: "/root"}, false)
+				if terminal != nil {
+					terminal.Selection = nil
+					files.closeOutput(&attached.session, terminal)
+					terminal.Focus = 0
+					terminal.StopDrag()
 				}
-				u.LeaveThread()
-				u.Startup.Thread, u.Startup.Workspace = "", ""
-				u.Readmit(result.Thread.ID)
+				control.LeaveThread()
+				control.Startup.Thread, control.Startup.Workspace = "", ""
+				control.Readmit(result.Thread.ID)
 				if method == "thread/resume" {
 					// Restoration below replays events buffered during the switch.
-					u.Startup.Thread = result.Thread.ID
-					resetDiffScope(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, u.ctx)
+					control.Startup.Thread = result.Thread.ID
+					resetDiffScope(attached, terminal, (*reviewOwner), reviewSource, preparePane, parent)
 				} else {
 					// Seed the Diff's lineage; after a switch, requests alone cannot.
-					restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, result.Thread, true)
+					restoreDiffThread(attached, terminal, (*reviewOwner), reviewSource, preparePane, result.Thread, true)
 				}
 			}
-			u.statusConfig = appServerStatusConfig{}
-			if err := json.Unmarshal(m.Result, &u.statusConfig); err != nil {
+			(*statusConfig) = appServerStatusConfig{}
+			if err := json.Unmarshal(m.Result, statusConfig); err != nil {
 				return err
 			}
-			u.Thread = result.Thread.ID
-			attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
-			u.attached.presentation.Status.SetText("Ready")
-			u.title = result.Thread.Name
-			u.titleGenerator.register(result.Thread)
-			if name := u.Names.Attach(u.Thread); name != "" {
-				u.titleGenerator.nameChanged(u.Thread, name)
-				requestSessionTitle(&u.Client, &u.attached.feedback, u.shell, u.clock, &u.dirty, u.Names.Next(u.Thread))
+			control.Thread = result.Thread.ID
+			attachPresentation(attached, terminal, picker, editor, questions, approvals, control.Thread, reviewOwner, commits, parent, retained, changeSource, activityService != nil)
+			attached.presentation.Status.SetText("Ready")
+			(*title) = result.Thread.Name
+			generator.register(result.Thread)
+			if name := control.Names.Attach(control.Thread); name != "" {
+				generator.nameChanged(control.Thread, name)
+				requestSessionTitle(control, &attached.feedback, terminal, clock, dirty, control.Names.Next(control.Thread))
 			}
-			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
+			(*model), (*effort), (*tier) = result.Model, result.ReasoningEffort, result.ServiceTier
 			if method == "thread/resume" {
-				u.Settings.RestoreEffort = u.TakeResumeEffort()
+				control.Settings.RestoreEffort = control.TakeResumeEffort()
 			}
 			if method == "thread/start" {
-				u.Settings.RestoredEffort()
-				if u.usage != nil {
-					u.usage.MarkNew(result.Thread.ID)
+				control.Settings.RestoredEffort()
+				if usage != nil {
+					usage.MarkNew(result.Thread.ID)
 				}
 			}
-			u.models, u.modelsLoading = nil, true // A cleared or switched session lists them again.
-			if err := u.Request("model/list", map[string]any{"includeHidden": true}); err != nil {
+			(*models), (*modelsLoading) = nil, true // A cleared or switched session lists them again.
+			if err := control.Request("model/list", map[string]any{"includeHidden": true}); err != nil {
 				return err
 			}
-			startAttachedSession(&u.attached, u.observations, u.Thread, result.Thread.Cwd)
-			u.streams = terminalsession.Streams{}
-			u.retainedSession.Close()
-			u.retainedSession = history.Session{}
-			if u.notifications != nil {
-				if err := u.Request("config/read", map[string]any{"cwd": result.Thread.Cwd, "includeLayers": false}); err != nil {
+			startAttachedSession(attached, bindings, control.Thread, result.Thread.Cwd)
+			(*streams) = terminalsession.Streams{}
+			retainedSession.Close()
+			(*retainedSession) = history.Session{}
+			if notifications != nil {
+				if err := control.Request("config/read", map[string]any{"cwd": result.Thread.Cwd, "includeLayers": false}); err != nil {
 					return err
 				}
 			}
-			if u.retained.Store != nil || u.panes != nil {
-				if err := openWaitStore(u.ctx, u.history, &u.retainedSession, u.Thread, u.retained.Store, u.retained.Writes, u.retained.Limits); err != nil {
-					setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait targets could not be retained: "+err.Error(), true)
+			if retained.Store != nil || panes != nil {
+				if err := openWaitStore(parent, historyService, retainedSession, control.Thread, retained.Store, retained.Writes, retained.Limits); err != nil {
+					setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait targets could not be retained: "+err.Error(), true)
 				}
 			}
-			restoreContextUsage(u.attached.session.Agent("/root"), result.Thread)
-			restoreUsage(u.usage, result.Thread)
-			observeCost(u.usage, u.Thread, u.attached.session.Agent("/root"))
-			if u.attached.childSource != nil {
-				u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
+			restoreContextUsage(attached.session.Agent("/root"), result.Thread)
+			restoreUsage(usage, result.Thread)
+			observeCost(usage, control.Thread, attached.session.Agent("/root"))
+			if attached.childSource != nil {
+				attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: attached.session.Roster()})
 			}
-			if u.audience != nil {
-				u.audience.Attach(u.Thread)
+			if audience != nil {
+				audience.Attach(control.Thread)
 			}
 			// Resumed history is applied once the roster is read, so Main can
 			// follow child activity in order. An active snapshot keeps its
@@ -769,63 +733,63 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if method == "thread/resume" {
 				for _, turn := range result.Thread.Turns {
 					if turn.Status == "inProgress" {
-						u.Turn = turn.ID
-						u.attached.presentation.Status.Started = presentationTime(u.clock)
-						u.attached.presentation.Status.SetText("Working")
-						u.attached.session.Lifecycle(u.Thread).ResumeActive()
+						control.Turn = turn.ID
+						attached.presentation.Status.Started = presentationTime(clock)
+						attached.presentation.Status.SetText("Working")
+						attached.session.Lifecycle(control.Thread).ResumeActive()
 					}
 				}
 			}
-			if u.panes != nil {
-				u.dirty = paneError(u.attached.source, u.panes.open(&u.shell.Shell, u.shell.Main, result.Thread.Cwd, u.Thread, method == "thread/resume")) || u.dirty
+			if panes != nil {
+				(*dirty) = paneError(attached.source, panes.open(&terminal.Shell, terminal.Main, result.Thread.Cwd, control.Thread, method == "thread/resume")) || (*dirty)
 			}
 			if method == "thread/resume" {
-				repair, err := result.RepairDefaultEffort(&u.Live)
+				repair, err := result.RepairDefaultEffort(&control.Live)
 				if err != nil {
 					return err
 				}
-				u.reasoningEffort = result.ReasoningEffort
+				(*effort) = result.ReasoningEffort
 				if repair != nil {
 					// Preserve saved null intent before a corrective dispatch can fail.
-					if u.panes != nil && u.panes.attachment != nil && u.Startup.Evidence.Model != "" {
-						if err := u.panes.stage(u.shell.Shell.Preferences(u.shell.Main)); err != nil {
-							u.dirty = paneError(u.attached.source, err) || u.dirty
+					if panes != nil && panes.attachment != nil && control.Startup.Evidence.Model != "" {
+						if err := panes.stage(terminal.Shell.Preferences(terminal.Main)); err != nil {
+							(*dirty) = paneError(attached.source, err) || (*dirty)
 						} else {
-							u.panes.attachment.Recover(u.Startup.Evidence, presentationTime(u.clock))
-							u.dirty = paneError(u.attached.source, u.panes.attachment.Save(presentationTime(u.clock), true)) || u.dirty
+							panes.attachment.Recover(control.Startup.Evidence, presentationTime(clock))
+							(*dirty) = paneError(attached.source, panes.attachment.Save(presentationTime(clock), true)) || (*dirty)
 						}
 					}
-					if _, err := updateSettings(&u.attached, u.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.panes, &u.dirty, u.restoring != nil, u.clock, repair); err != nil {
+					if _, err := updateSettings(attached, terminal, control, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, panes, dirty, (*restoring) != nil, clock, repair); err != nil {
 						return err
 					}
 				}
-				if u.Startup.MissingSettings {
-					setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ResumeSettingsUnavailable, true)
-					u.Startup.MissingSettings = false
+				if control.Startup.MissingSettings {
+					setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ResumeSettingsUnavailable, true)
+					control.Startup.MissingSettings = false
 				}
-				u.dirty = paneError(u.attached.source, u.panes.retainAppliedSettings(u.shell, preferences.Scope{Workspace: u.attached.cwd, Thread: u.Thread}, u.Settings.RestoreEffort, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: presentationTime(u.clock)})) || u.dirty
-				return restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, result.Thread)
+				(*dirty) = paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)})) || (*dirty)
+				return restorePaneContent(attached, terminal, control, restoring, (*reviewOwner), reviewSource, preparePane, result.Thread)
 			}
-			u.dirty = paneError(u.attached.source, u.panes.retainAppliedSettings(u.shell, preferences.Scope{Workspace: u.attached.cwd, Thread: u.Thread}, u.Settings.RestoreEffort, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: presentationTime(u.clock)})) || u.dirty
+			(*dirty) = paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)})) || (*dirty)
 		}
 		return nil
 	}
-	u.notifications.resolve(m)
-	if handled, err := approvalMessage(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, m); handled {
+	notifications.resolve(m)
+	if handled, err := approvalMessage(attached, terminal, control, picker, editor, questions, approvals, clock, (*panel) != nil || (*resumePicker) != nil, notifications, (*reviewOwner), receipts, observations, m); handled {
 		return err
 	}
-	if handled, err := questionMessage(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, m); handled {
+	if handled, err := questionMessage(attached, terminal, control, picker, editor, questions, approvals, clock, (*panel) != nil || (*resumePicker) != nil, notifications, (*reviewOwner), receipts, m); handled {
 		return err
 	}
 	if len(m.ID) != 0 {
 		// Never auto-approve an unexpected server request. Leave it pending,
 		// visibly blocked, until interrupted.
-		u.attached.presentation.Status.Set("Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true)
-		u.notifications.blockNotification(&u.attached.feedback, u.shell, u.clock, m)
-		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.attached.presentation.Status.Text, Observed: presentationTime(u.clock)}}})
+		attached.presentation.Status.Set("Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true)
+		notifications.blockNotification(&attached.feedback, terminal, clock, m)
+		attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: attached.presentation.Status.Text, Observed: presentationTime(clock)}}})
 		return nil
 	}
-	if handled, err := settingsMessage(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, &u.model, &u.reasoningEffort, &u.serviceTier, &u.models, &u.modelsLoading, &u.reasoningKey, &u.statusConfig, "", m); handled || err != nil {
+	if handled, err := settingsMessage(attached, terminal, control, picker, editor, childKey, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, model, effort, tier, models, modelsLoading, reasoningKey, statusConfig, "", m); handled || err != nil {
 		return err
 	}
 	switch m.Method {
@@ -839,7 +803,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if err != nil {
 		return fmt.Errorf("%s: %w", m.Method, err)
 	}
-	return observedEvent(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, &u.statusPanel, &u.resumePicker, u.review, &u.pendingEditReceipts, u.notifications, u.retainedSession, u.execWindows, u.activity, &u.streams, u.execTrack, u.nativeTrace, u.usage, &u.exitUsage, m.Method, p)
+	return observedEvent(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, panel, resumePicker, (*reviewOwner), receipts, notifications, (*retainedSession), windows, activityService, streams, tracker, trace, usage, exitUsage, m.Method, p)
 }
 
 // observedEvent retains application lifecycle and control handling for decoded
@@ -903,51 +867,51 @@ func observedEvent(attached *attachedPresentation, terminal *terminalsession.Att
 }
 
 // applyMainKey settles typed Main effects before resuming terminal interpretation.
-func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, error) {
+func applyMainKey(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, dirty *bool, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, reasoningKey **bool, next terminalsession.KeyContinuation) (bool, error) {
 	defer func() {
-		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+		settlePresentation(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
 	}()
-	if !prepareComposerInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals) {
+	if !prepareComposerInput(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals) {
 		return false, nil
 	}
 	// Acquisition stays application-owned; interpretation consumes its publication.
-	if u.picker.Open && u.picker.Kind == "" && u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()) != u.picker.Target {
-		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	if picker.Open && picker.Kind == "" && picker.completionTarget((*editor).Draft, attached.conversation.ShellMode()) != picker.Target {
+		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 	}
-	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+	publishPresentation(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), presentationTime(clock))
 	refresh := false
 	defer func() {
 		if refresh {
-			u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+			picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 		}
 	}()
-	focused := u.shell == nil || u.shell.Focus == 0
-	input := u.shell.Main.ContinueKey(next, u.shell.Prompts, transcriptView(u.attached.presentation, u.shell), focused)
+	focused := terminal == nil || terminal.Focus == 0
+	input := terminal.Main.ContinueKey(next, terminal.Prompts, transcriptView(attached.presentation, terminal), focused)
 	for {
 		refresh = refresh || input.Regular
 		switch {
 		case input.Prompt != nil:
-			if handled, err := applyPromptInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, u.notifications, *input.Prompt); handled || err != nil {
+			if handled, err := applyPromptInput(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, notifications, *input.Prompt); handled || err != nil {
 				return false, err
 			}
 		case input.Panel != nil:
-			if input.ClearSelection && u.shell != nil {
-				u.shell.Selection = nil
+			if input.ClearSelection && terminal != nil {
+				terminal.Selection = nil
 			}
-			applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, &u.dirty, u.sessionCapture, *input.Panel)
-			u.dirty = true
+			applyPanelAction(attached, terminal, clock, panel, dirty, capture, *input.Panel)
+			(*dirty) = true
 		case input.Menu != nil:
-			if applyMenuResult(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, u.ctx, u.skillEnvironment, *input.Menu) {
+			if applyMenuResult(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, parent, environment, *input.Menu) {
 				return false, nil
 			}
 		case input.Composer != nil:
-			return u.applyComposerInput(*input.Composer)
+			return applyComposerInput(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, dirty, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, reasoningKey, *input.Composer)
 		}
 		if input.Next == nil {
 			return false, nil
 		}
-		publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
-		input = u.shell.Main.ContinueKey(*input.Next, u.shell.Prompts, transcriptView(u.attached.presentation, u.shell), focused)
+		publishPresentation(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), presentationTime(clock))
+		input = terminal.Main.ContinueKey(*input.Next, terminal.Prompts, transcriptView(attached.presentation, terminal), focused)
 	}
 }
 
