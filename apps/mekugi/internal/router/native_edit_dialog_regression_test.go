@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/activitydetail"
@@ -53,7 +55,7 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		change := binding.FileChange{Path: path, Diff: tc.host}
 		change.Kind.Type = tc.kind
 		item := binding.ThreadItem{Type: "fileChange", Status: "completed", Changes: []binding.FileChange{change}}
-		u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
+		u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
 	}
 	if !u.shell.openActivityEdit(u.view, 1, path) {
 		t.Fatal("edit dialog did not open")

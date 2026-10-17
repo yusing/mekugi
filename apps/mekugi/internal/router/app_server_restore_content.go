@@ -419,8 +419,8 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 		entry.native.commandCwd = appServerCommandDirectory(facts, info.Cwd)
 		entry.native.workdir = appServerCommandWorkdir(facts, info.Cwd)
 		if item.Type == "fileChange" {
-			entry.Text = appServerEditText(facts, info.Cwd)
-			entry.native.editPages = appServerEditPages(facts, info.Cwd, entry.native.phase)
+			entry.Text = activitypresentation.HostEditText(facts, info.Cwd)
+			entry.native.editPages = activitypresentation.HostEditPages(facts, info.Cwd, entry.native.phase)
 		}
 		s.completeCommand(entry.native, facts)
 		appServerCommandOutput(&entry, facts, time.Time{})

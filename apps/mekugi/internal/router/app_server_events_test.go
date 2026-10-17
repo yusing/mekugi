@@ -201,11 +201,3 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 		t.Fatal("completed turn opened saved diff")
 	}
 }
-
-func TestAppServerChangeCounts(t *testing.T) {
-	change := binding.FileChange{Diff: "@@\n-x\n+y\n"}
-	change.Kind.Type = "update"
-	if added, removed := appServerChangeCounts(change.Observation()); added != 1 || removed != 1 {
-		t.Fatalf("counts %d %d", added, removed)
-	}
-}

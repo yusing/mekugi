@@ -159,7 +159,9 @@ bodies from the feed; authored Markdown and retained evidence remain unchanged.
 Activity hosts composed detail contributions, preferring an exact retained match
 from [change history](../changehistory/SPEC.md#saved-review-presentation). With no
 matching contribution, captured receipts and completed native file-change items
-retain fallback details, including before an outer batch exits.
+retain fallback details, including before an outer batch exits. Activity projects
+those supplied file changes into operation summaries and completed detail pages;
+live, restored and replay consumers share that projection.
 Pending, failed and declined items supply no completed-host diff fallback. This
 navigation neither snapshots the workspace nor publishes change evidence;
 [live preview](../livepreview/SPEC.md) owns provisional diffs and

@@ -51,10 +51,10 @@ func TestHostMovePaths(t *testing.T) {
 			change.Kind.MovePath = "/w/internal/new.go"
 		}
 		item := binding.ThreadItem{Status: "completed", Changes: []binding.FileChange{change}}
-		if got := appServerEditText(item.Observation(), "/w"); got != "Move `internal/{old.go=>new.go}` · +0 −0 · apply_patch" {
+		if got := activitypresentation.HostEditText(item.Observation(), "/w"); got != "Move `internal/{old.go=>new.go}` · +0 −0 · apply_patch" {
 			t.Fatalf("host move summary = %q", got)
 		}
-		pages := appServerEditPages(item.Observation(), "/w", "item/completed")
+		pages := activitypresentation.HostEditPages(item.Observation(), "/w", "item/completed")
 		if len(pages) != 1 || pages[0].Path != "internal/{old.go=>new.go}" || pages[0].Code != "move \"internal/old.go\" -> \"internal/new.go\"\n" {
 			t.Fatalf("host move pages = %+v", pages)
 		}
@@ -80,7 +80,7 @@ func TestHostMoveDialogMetadata(t *testing.T) {
 		change := binding.FileChange{Path: "/w/internal/old.go", Diff: body + "\n\nMoved to: /w/internal/new.go"}
 		change.Kind.MovePath = "/w/internal/new.go"
 		item := binding.ThreadItem{Status: "completed", Changes: []binding.FileChange{change}}
-		pages := appServerEditPages(item.Observation(), "/w", "item/completed")
+		pages := activitypresentation.HostEditPages(item.Observation(), "/w", "item/completed")
 		want := body + "\n\nMoved to: internal/new.go"
 		if len(pages) != 1 || pages[0].Code != want || item.Changes[0].Diff != change.Diff {
 			t.Fatalf("host metadata projection = %+v, want %q", pages, want)
@@ -92,7 +92,7 @@ func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
 	change := binding.FileChange{Path: "/w/internal/old.go", Diff: "@@ -1 +1 @@\n-var answer = 41\n+var answer = 42\n"}
 	change.Kind.Type, change.Kind.MovePath = "update", "/w/internal/new.go"
 	item := binding.ThreadItem{Status: "completed", Changes: []binding.FileChange{change}}
-	pages := appServerEditPages(item.Observation(), "/w", "item/completed")
+	pages := activitypresentation.HostEditPages(item.Observation(), "/w", "item/completed")
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "move", editPages: pages}}}}

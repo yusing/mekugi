@@ -397,8 +397,8 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 			entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(s.cwd, item.Path)), CallID: id, Observed: now, native: native})
 		case "fileChange":
 			if len(item.Changes) > 0 {
-				native.editPages = appServerEditPages(item, s.cwd, method)
-				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerEditText(item, s.cwd), CallID: id, Observed: now, native: native})
+				native.editPages = activitypresentation.HostEditPages(item, s.cwd, method)
+				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: activitypresentation.HostEditText(item, s.cwd), CallID: id, Observed: now, native: native})
 			}
 		case "collabAgentToolCall":
 			if method == "item/completed" {
@@ -684,95 +684,4 @@ func appServerDisplayCommand(command string) string {
 		}
 	}
 	return command
-}
-
-// appServerEditText is one Activity operation per changed file, with its
-// line counts taken from the patch Codex applied.
-func appServerEditText(item observation.Item, cwd string) string {
-	var parts []string
-	for _, change := range item.Changes {
-		added, removed := appServerChangeCounts(change)
-		verb := "Edit"
-		switch change.Kind.Type {
-		case "add":
-			verb = "Create"
-		case "delete":
-			verb = "Delete"
-		}
-		path := pathdisplay.ForWorkspace(cwd, change.Path)
-		if moved := change.Kind.MovePath; moved != "" {
-			verb, path = "Move", pathdisplay.Move(cwd, change.Path, moved)
-		}
-		text := verb + " " + markdownsyntax.QuoteCode(path) + fmt.Sprintf(" · +%d −%d", added, removed)
-		switch item.Status {
-		case "failed", "declined":
-			text += " · " + item.Status
-		case "inProgress":
-			// Started patches may still await approval; only completion confirms them.
-			text += " · pending"
-		}
-		parts = append(parts, text+" · apply_patch")
-	}
-	return strings.Join(parts, "\n\n")
-}
-
-// appServerEditPages retains host-supplied completed diffs for navigation only.
-// It neither captures the filesystem nor creates durable change evidence.
-func appServerEditPages(item observation.Item, cwd, phase string) []activitypresentation.Value {
-	if phase != "item/completed" || item.Status != "" && item.Status != "completed" {
-		return nil
-	}
-	var pages []activitypresentation.Value
-	for _, change := range item.Changes {
-		path, diff := pathdisplay.ForWorkspace(cwd, change.Path), change.Diff
-		syntaxPath := ""
-		if moved := change.Kind.MovePath; moved != "" {
-			path = pathdisplay.Move(cwd, change.Path, moved)
-			syntaxPath = pathdisplay.ForWorkspace(cwd, moved)
-			if body, ok := strings.CutSuffix(diff, "\n\nMoved to: "+moved); ok {
-				diff = body + "\n\nMoved to: " + pathdisplay.ForWorkspace(cwd, moved)
-			}
-			if diff == "" {
-				diff = fmt.Sprintf("move %q -> %q\n", pathdisplay.ForWorkspace(cwd, change.Path), pathdisplay.ForWorkspace(cwd, moved))
-			}
-		}
-		if diff == "" {
-			continue
-		}
-		verb, lang := "Edit", "diff"
-		switch change.Kind.Type {
-		case "add":
-			verb, lang = "Create", ""
-		case "delete":
-			verb, lang = "Delete", ""
-		}
-		if change.Kind.MovePath != "" {
-			verb = "Move"
-		}
-		pages = append(pages, activitypresentation.Value{Kind: "op", Verb: verb, Path: path, SyntaxPath: syntaxPath, Code: diff, Lang: lang, Fenced: true})
-	}
-	return pages
-}
-
-func appServerChangeCounts(change observation.FileChange) (added, removed int) {
-	lines := strings.Split(strings.TrimSuffix(change.Diff, "\n"), "\n")
-	if change.Diff == "" {
-		return 0, 0
-	}
-	switch change.Kind.Type {
-	case "add":
-		return len(lines), 0
-	case "delete":
-		return 0, len(lines)
-	}
-	for _, line := range lines {
-		switch {
-		case strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---"):
-		case strings.HasPrefix(line, "+"):
-			added++
-		case strings.HasPrefix(line, "-"):
-			removed++
-		}
-	}
-	return added, removed
 }

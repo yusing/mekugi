@@ -324,12 +324,12 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 	case "commandExecution", "fileChange", "webSearch":
 		text := appServerToolText(facts, u.session.cwd)
 		if item.Type == "fileChange" {
-			text = appServerEditText(facts, u.session.cwd)
+			text = activitypresentation.HostEditText(facts, u.session.cwd)
 		}
 		entry := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
 			native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, commandCwd: appServerCommandDirectory(facts, u.session.cwd), status: item.Status, duration: appServerDuration(facts), searchResults: appServerSearchResults(facts), workdir: appServerCommandWorkdir(facts, u.session.cwd)}}
 		if item.Type == "fileChange" {
-			entry.native.editPages = appServerEditPages(facts, u.session.cwd, method)
+			entry.native.editPages = activitypresentation.HostEditPages(facts, u.session.cwd, method)
 		}
 		u.session.completeCommand(entry.native, facts)
 		appServerCommandOutput(&entry, facts, time.Time{})
