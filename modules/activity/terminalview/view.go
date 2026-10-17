@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/observation"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -32,54 +33,55 @@ const (
 // Main and child transcripts share this renderer. Entries carry
 // sequence numbers, so a reconnect snapshot merges without duplicating retained rows.
 type View struct {
-	Clock          func() time.Time // Shared with the owning replay UI, nil for live time.
-	entries        []activitypresentation.Entry
-	roster         []activitypresentation.AgentRow
-	lastSeq        uint64
-	Display        Display
-	MainStatus     string
-	MainSummary    []Block
-	DisplayRequest *DisplayIntent
-	outputVersions map[outputIdentity]int
-	outputCache    map[activitypresentation.OutputDemand]activitypresentation.OutputResult
-	outputDemands  []activitypresentation.OutputDemand
-	completed      map[uint64]time.Time
-	commandFrames  map[uint64]*heldCommandFrame
-	collapsed      map[uint64]bool
-	Disclosure     Disclosure
-	Selected       string
-	Hovered        string
-	Hits           []Hit
-	Following      bool
-	Offset         int
-	RosterOffset   int
-	RosterManual   bool
-	RosterSelected string
-	rosterEnd      int
-	SkillsHover    string // Agent whose loaded-skill count is under the pointer.
-	SkillsRequest  string // Agent whose active skills a roster click asked to open.
-	Unseen         int
-	StatusLabel    string
-	HistoryHint    string // Intentionally unloaded child history, separate from missing evidence.
-	HistoryOrder   bool   // Stable IDs need not follow presentation order after older-page insertion.
-	RoleColors     map[string]string
-	LivePreviews   map[string][]string // Temporary caller-local transcript replacements.
-	FeedOnly       bool
-	Conversation   bool                        // Full, unclipped messages in the displayed transcript.
-	ChildrenOnly   bool                        // Main owns root activity; this view retains child entries.
-	Bare           bool                        // The shell's pane title replaces the heading and footer rows.
-	Focused        bool                        // Show key hints only while the view has keyboard focus.
-	LineCounts     map[string]diffmodel.Counts // Captured edit lines by caller key, for the native roster.
-	NetCounts      *diffmodel.Counts           // Composed project outcome, independent of roster rows.
-	rosterPace     map[string]rosterMetricPace // Roster metrics easing toward their latest values, by agent.
-	RosterLines    map[string]diffmodel.Counts // Line counts as last shown by the roster.
-	RosterEasing   bool                        // The last roster frame showed metrics still easing.
-	Painter        Painter
-	Runs           map[RunKey]Run
-	syntaxWindow   *liveActivitySyntaxWindow // Invocation-local rows being decorated within a run.
-	Paced          map[uint64]PaceState      // Live invocations still revealing their operations, by entry.
-	Events         map[string]Event          // Each agent's latest standalone event, which settles its output.
-	pacedSeq       uint64                    // Entries up to this sequence have been considered for pacing.
+	Clock           func() time.Time // Shared with the owning replay UI, nil for live time.
+	entries         []activitypresentation.Entry
+	roster          []activitypresentation.AgentRow
+	lastSeq         uint64
+	Display         Display
+	MainStatus      string
+	MainSummary     []Block
+	DisplayRequest  *DisplayIntent
+	outputVersions  map[outputIdentity]int
+	outputCache     map[activitypresentation.OutputDemand]activitypresentation.OutputResult
+	outputDemands   []activitypresentation.OutputDemand
+	completed       map[uint64]time.Time
+	commandFrames   map[uint64]*heldCommandFrame
+	reasoningFrames map[observation.ItemRef]*reasoningFrame
+	collapsed       map[uint64]bool
+	Disclosure      Disclosure
+	Selected        string
+	Hovered         string
+	Hits            []Hit
+	Following       bool
+	Offset          int
+	RosterOffset    int
+	RosterManual    bool
+	RosterSelected  string
+	rosterEnd       int
+	SkillsHover     string // Agent whose loaded-skill count is under the pointer.
+	SkillsRequest   string // Agent whose active skills a roster click asked to open.
+	Unseen          int
+	StatusLabel     string
+	HistoryHint     string // Intentionally unloaded child history, separate from missing evidence.
+	HistoryOrder    bool   // Stable IDs need not follow presentation order after older-page insertion.
+	RoleColors      map[string]string
+	LivePreviews    map[string][]string // Temporary caller-local transcript replacements.
+	FeedOnly        bool
+	Conversation    bool                        // Full, unclipped messages in the displayed transcript.
+	ChildrenOnly    bool                        // Main owns root activity; this view retains child entries.
+	Bare            bool                        // The shell's pane title replaces the heading and footer rows.
+	Focused         bool                        // Show key hints only while the view has keyboard focus.
+	LineCounts      map[string]diffmodel.Counts // Captured edit lines by caller key, for the native roster.
+	NetCounts       *diffmodel.Counts           // Composed project outcome, independent of roster rows.
+	rosterPace      map[string]rosterMetricPace // Roster metrics easing toward their latest values, by agent.
+	RosterLines     map[string]diffmodel.Counts // Line counts as last shown by the roster.
+	RosterEasing    bool                        // The last roster frame showed metrics still easing.
+	Painter         Painter
+	Runs            map[RunKey]Run
+	syntaxWindow    *liveActivitySyntaxWindow // Invocation-local rows being decorated within a run.
+	Paced           map[uint64]PaceState      // Live invocations still revealing their operations, by entry.
+	Events          map[string]Event          // Each agent's latest standalone event, which settles its output.
+	pacedSeq        uint64                    // Entries up to this sequence have been considered for pacing.
 
 	Expansion       uint8 // 0 default, 1 expanded events, 2 expanded all.
 	FeedSpans       []Span
@@ -699,8 +701,14 @@ func (v *View) Current(agent activitypresentation.Agent, now time.Time, widths .
 // joins Main's detached summary into the child roster.
 func (v *View) SummaryBlocks(entries []activitypresentation.Entry) []Block {
 	var blocks []Block
+	var last activitypresentation.Entry
 	for i, entry := range entries {
 		entry = v.commandEntry(entry)
+		entry = v.reasoningEntry(entry)
+		last = entry
+		if entry.Suppressed {
+			continue
+		}
 		next := v.Disclosure.Blocks(entry.Values)
 		if pace, ok := v.Paced[entry.Seq]; ok && pace.Shown < len(next) {
 			next = next[:pace.Shown]
@@ -711,7 +719,7 @@ func (v *View) SummaryBlocks(entries []activitypresentation.Entry) []Block {
 		blocks = append(blocks, next...)
 	}
 	if len(blocks) > 0 {
-		blocks[len(blocks)-1].Live = entries[len(entries)-1].StatusAnimating()
+		blocks[len(blocks)-1].Live = last.StatusAnimating()
 	}
 	return blocks
 }

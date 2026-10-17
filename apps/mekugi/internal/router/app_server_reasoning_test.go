@@ -527,8 +527,8 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 				reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 				start()
 				*at = at.Add(3 * time.Second)
-				completedAt := *at
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": binding.ThreadItem{ID: "first", Type: "reasoning", Summary: []string{"Original summary."}}})
+				original := view.Entries[0].Source
 				if reveal == "painted" {
 					rollCommandOutput(u)
 					if got := view.Entries[0].Source; got.Native.Thought != 3*time.Second {
@@ -539,19 +539,15 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 				start()
 				*at = at.Add(time.Second)
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": binding.ThreadItem{ID: "first", Type: "reasoning", Summary: []string{completion.text}}})
-				if got := view.Entries[0].Source; reveal == "painted" && (got.Native.Phase != "item/completed" || got.Text != "Original summary.") {
-					t.Errorf("duplicate completion replayed a finished summary: phase=%s text=%q", got.Native.Phase, got.Text)
+				if got := view.Entries[0].Source; got.Native.Phase != "item/completed" {
+					t.Errorf("duplicate completion reopened canonical reasoning: phase=%s", got.Native.Phase)
 				}
 				rollCommandOutput(u)
-				paintedAt := completedAt
-				if reveal == "draining" {
-					paintedAt = *at
-				}
 				want := completion.text
 				if want == "" {
 					want = "Original summary."
 				}
-				if got := view.Entries[0].Source; got.Text != want || got.Native.Thought != 3*time.Second || got.Observed != completedAt || got.Completed != paintedAt {
+				if got := view.Entries[0].Source; got.Text != want || got.Native.Thought != 3*time.Second || got.Observed != original.Observed || got.Completed != original.Completed {
 					t.Errorf("refreshed completion lost content or original timing: text=%q thought=%v observed=%v completed=%v", got.Text, got.Native.Thought, got.Observed, got.Completed)
 				}
 				if got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, strings.TrimSuffix(want, ".")) || !strings.Contains(got, "Thinking") {

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/activity/presentation"
 )
@@ -50,17 +51,29 @@ func (v *View) Update(publication presentation.Publication, display Display) {
 		previous[entry.Seq] = entry.Revision
 	}
 	v.Display = display
-	if len(v.commandFrames) > 0 {
+	if len(v.commandFrames) > 0 || len(v.reasoningFrames) > 0 {
 		publication.Entries = slices.Clone(publication.Entries)
+	}
+	var seenText map[observation.ItemRef]bool
+	if len(v.reasoningFrames) > 0 {
+		seenText = make(map[observation.ItemRef]bool)
 	}
 	for i, entry := range publication.Entries {
 		frame := v.commandFrames[entry.Seq]
+		reasoning := v.reasoningFrames[entry.TextRef]
+		if reasoning != nil {
+			seenText[entry.TextRef] = true
+		}
 		v.updateCommandFrame(entry)
 		entry = v.commandEntry(entry)
+		entry = v.reasoningEntry(entry)
 		publication.Entries[i] = entry
 		revision, exists := previous[entry.Seq]
-		if !exists || revision != entry.Revision || frame != nil && (frame.dirty || !frame.released.IsZero()) {
+		if !exists || revision != entry.Revision || frame != nil && (frame.dirty || !frame.released.IsZero()) || reasoning != nil && reasoning.dirty {
 			v.observe(entry, !exists)
+		}
+		if reasoning != nil {
+			reasoning.dirty = false
 		}
 		if frame != nil {
 			if !frame.released.IsZero() {
@@ -73,6 +86,11 @@ func (v *View) Update(publication presentation.Publication, display Display) {
 			}
 		}
 		delete(previous, entry.Seq)
+	}
+	for ref := range v.reasoningFrames {
+		if !seenText[ref] {
+			delete(v.reasoningFrames, ref)
+		}
 	}
 	for seq := range previous {
 		v.forget(seq)

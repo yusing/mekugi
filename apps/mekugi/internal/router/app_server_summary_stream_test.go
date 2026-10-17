@@ -120,3 +120,37 @@ func TestAppServerEmptyReasoningStartsDoNotCreateRows(t *testing.T) {
 		}
 	}
 }
+
+func TestReasoningSourceCompletesBeforeTerminalReveal(t *testing.T) {
+	for _, thread := range []string{"main", "child"} {
+		t.Run(thread, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
+			body := "Inspecting retained facts\n\n" + strings.Repeat("Public checkpoint.\n", 24)
+			appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": body})
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{body}}})
+			source, view := u.source, u.view
+			if thread == "child" {
+				source, view = u.childSource, u.agents
+			}
+			if len(source.Entries) != 1 || source.Entries[0].Source.Text != body || source.Entries[0].Source.Native.Phase != "item/completed" {
+				t.Fatalf("source completion waited for terminal reveal: %+v", source.Entries)
+			}
+			if strings.Contains(strings.Join(view.RenderFeed(80, 50).Lines, "\n"), "Public checkpoint") {
+				t.Fatal("source completion bypassed terminal reveal")
+			}
+			revision, sequence := source.Revision, source.LastSeq
+			for range 20 {
+				u.flushSummaryOutput()
+				u.publishActivity()
+			}
+			if source.Revision != revision || source.LastSeq != sequence {
+				t.Fatal("terminal reveal revised semantic source state")
+			}
+			if !strings.Contains(strings.Join(view.RenderFeed(80, 50).Lines, "\n"), "Public checkpoint") {
+				t.Fatal("terminal reveal did not reach admitted content")
+			}
+		})
+	}
+}

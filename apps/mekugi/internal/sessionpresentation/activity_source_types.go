@@ -6,6 +6,7 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
@@ -18,7 +19,7 @@ type ActivityEntry struct {
 	ErrorDetail string `json:",omitempty"` // Full error evidence; Text is the bounded preview.
 	CallID      string `json:",omitempty"`
 	Observed    time.Time
-	Completed   time.Time `json:"-"` // Completion after the observed output has been presented.
+	Completed   time.Time `json:"-"` // Admitted completion; terminal reveal keeps its own clock.
 
 	Native      *NativeItem         `json:"-"` // In-process app-server lifecycle input, not a provider observation.
 	Assignment  *ActivityAssignment `json:"-"` // Validated native NEW_TASK, not an ordinary message.
@@ -71,6 +72,9 @@ func (entry ActivityEntry) ActivityFacts() activitypresentation.Facts {
 		facts.AssignmentTo, facts.AssignmentText = entry.Assignment.To, entry.Assignment.Text
 	}
 	if n := entry.Native; n != nil {
+		if entry.Kind == "reasoning" {
+			facts.TextRef = observation.ItemRef{ThreadID: n.Thread, TurnID: n.Turn, ItemID: n.Item}
+		}
 		facts.Running, facts.Live, facts.Restored, facts.Unconfirmed = n.Running, n.Live, !n.Live, n.Unconfirmed()
 		facts.ItemComplete = n.Phase == "item/completed"
 		facts.Spans, facts.Question = n.Spans, n.Question

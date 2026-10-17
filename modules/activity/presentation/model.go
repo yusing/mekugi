@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -14,6 +15,7 @@ import (
 // The original typed source stays on its record; Facts is a transient semantic projection.
 type Source interface{ ActivityFacts() Facts }
 type Facts struct {
+	TextRef                                               observation.ItemRef
 	Seq                                                   uint64
 	Agent, Kind, Text                                     string
 	Observed                                              time.Time

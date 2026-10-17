@@ -88,6 +88,9 @@ func TestLiveActivityRecordMutationOwnsInvalidation(t *testing.T) {
 
 func (v *activityAdapter) blocks(index int) []activityui.Block {
 	v.publishActivity()
+	if v.Entries[index].Source.Kind == "reasoning" {
+		return v.View.SummaryBlocks([]activitypresentation.Entry{v.Entries[index].Publish()})
+	}
 	return v.Disclosure.Blocks(v.Entries[index].Values)
 }
 

@@ -88,6 +88,9 @@ independently of painter configuration. Private host evidence and retained outpu
 handles stay in the binding; terminal consumers receive detached publications,
 identity-addressed details and output windows. Command reveal frames and animation
 cursors never become semantic source state.
+Public reasoning enters the source feed with its complete admitted text and
+completion immediately. Terminal reveal may lag that publication, but subsequent
+animation changes only the terminal overlay, not source content or sequence.
 The attachment's command-operation index references Activity's canonical
 invocations and pending report evidence. Completion is visible there before a
 terminal finishes revealing its buffered output; process lists use canonical

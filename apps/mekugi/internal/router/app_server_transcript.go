@@ -1,6 +1,7 @@
 package router
 
 import (
+	"slices"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/transcript"
 )
@@ -39,9 +41,14 @@ func transcriptItem(item binding.ThreadItem, thread, turn, id string) observatio
 func (u *appServerUI) transcriptUpdates(updates []observation.TextUpdate, paced bool) []sessionpresentation.ActivityEntry {
 	for i := range updates {
 		updates[i].Sequence = u.session.Activity().NextSequence()
+		if updates[i].Kind == "reasoning" && updates[i].Phase == "item/completed" {
+			updates[i].Completed = updates[i].Observed
+		}
 	}
 	if paced {
-		updates = u.streams.Reasoning.Queue(updates)
+		for _, update := range u.streams.Reasoning.Queue(slices.Clone(updates)) {
+			u.holdReasoning(update)
+		}
 	}
 	entries := make([]sessionpresentation.ActivityEntry, 0, len(updates))
 	for _, update := range updates {
@@ -67,8 +74,18 @@ func (u *appServerUI) flushSummaryOutput() {
 	if len(updates) == 0 {
 		return
 	}
-	u.applyActivity(u.transcriptUpdates(updates, false), nil)
+	for _, update := range updates {
+		u.holdReasoning(update)
+	}
 	u.dirty = true
+}
+
+func (u *appServerUI) holdReasoning(update observation.TextUpdate) {
+	for _, view := range []*activityui.View{u.view, u.agents} {
+		if view != nil {
+			view.HoldReasoning(update)
+		}
+	}
 }
 
 // observeMessageQuestions is the single adapter for live, restored and playback
