@@ -29,9 +29,10 @@ func TestUISnapshotMarkdownFileLoading(t *testing.T) {
 				t.Fatal(err)
 			}
 			u := &terminalUI{main: main, width: 80, height: 18}
-			u.openMarkdownFile(main.view, "sample."+extension+":40")
+			u.main.openMarkdownFile(u, main.view, "sample."+extension+":40")
 			rows := make([]string, u.height)
-			u.paintOutput(rows, u.width, u.height)
+			u.main.prepareOutput(u)
+			u.output.Paint(rows, u.width, u.height)
 			if extension == "go" {
 				uisnapshot.AssertTerminal(t, "testdata/snapshots/native-markdown-file-loading.txt", rows, u.width)
 			}
@@ -59,7 +60,7 @@ func TestUISnapshotMarkdownFileLoading(t *testing.T) {
 			if u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
 				t.Fatal("source copy reread the changed file")
 			}
-			u.openMarkdownFile(main.view, "sample."+extension)
+			u.main.openMarkdownFile(u, main.view, "sample."+extension)
 			awaitMarkdownFile(t, u)
 			if frame := drawOutputDialog(u); !strings.Contains(frame, "changed after opening") {
 				t.Fatalf("reopening did not read current content: %s", frame)
@@ -80,8 +81,8 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 			}
 			u := main.shell
 			u.width, u.height = 80, 18
-			u.openMarkdownFile(main.view, path)
-			results := u.markdownFileUpdates()
+			u.main.openMarkdownFile(u, main.view, path)
+			results := u.main.fileReads
 			switch boundary {
 			case "close":
 				u.outputKey("q")
@@ -98,7 +99,7 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 			}
 			select {
 			case result := <-results:
-				u.loadedMarkdownFile(result)
+				u.main.loadedMarkdownFile(u, result)
 			case <-time.After(5 * time.Second):
 				t.Fatal("file read did not finish")
 			}
@@ -116,19 +117,20 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 func TestMarkdownFileCapacityAndReadErrors(t *testing.T) {
 	main, _ := newAppServerTestUI()
 	main.cwd = t.TempDir()
-	u := &terminalUI{main: main, width: 80, height: 18, fileReadSlot: make(chan struct{}, 1)}
+	main.fileReadSlot = make(chan struct{}, 1)
+	u := &terminalUI{main: main, width: 80, height: 18}
 	// Reserve physical capacity independently of the dialog. This models an
 	// outstanding syscall, not a kernel-blocked filesystem fixture.
-	u.fileReadSlot <- struct{}{}
-	u.openMarkdownFile(main.view, "missing.go")
+	main.fileReadSlot <- struct{}{}
+	u.main.openMarkdownFile(u, main.view, "missing.go")
 	if frame := drawOutputDialog(u); !strings.Contains(frame, "capacity exhausted") {
 		t.Fatalf("exhausted read capacity was hidden: %s", frame)
 	}
 	u.outputKey("q")
-	if len(u.fileReadSlot) != 1 {
+	if len(main.fileReadSlot) != 1 {
 		t.Fatal("closing a dialog released physical read capacity")
 	}
-	<-u.fileReadSlot
+	<-main.fileReadSlot
 	for _, name := range []string{"oversized.go", "unreadable.go"} {
 		path := filepath.Join(main.cwd, name)
 		if err := os.WriteFile(path, nil, 0600); err != nil {
@@ -141,10 +143,10 @@ func TestMarkdownFileCapacityAndReadErrors(t *testing.T) {
 		} else if err := os.Chmod(path, 0); err != nil {
 			t.Fatal(err)
 		}
-		u.openMarkdownFile(main.view, name)
+		u.main.openMarkdownFile(u, main.view, name)
 		awaitMarkdownFile(t, u)
 		drawOutputDialog(u)
-		if u.output.pages[0].Kind != "error" {
+		if u.output.Pages[0].Kind != "error" {
 			if name == "unreadable.go" && os.Geteuid() == 0 {
 				continue // Root bypasses this fixture's mode-bit denial.
 			}
@@ -169,7 +171,7 @@ func TestSessionUIReplayPausedMarkdownFileCompletion(t *testing.T) {
 	if err := os.WriteFile(path, []byte("package replay_file\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	p.ui.shell.openMarkdownFile(p.ui.view, "source.go")
+	p.ui.shell.main.openMarkdownFile(p.ui.shell, p.ui.view, "source.go")
 	frames := 0
 	err := p.run(make(chan byte), func() error {
 		var frame strings.Builder

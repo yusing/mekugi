@@ -105,6 +105,12 @@ does not republish source state. Output demands are resolved by application
 integration, outside the painter. Older-page insertion preserves the terminal's
 anchor around the source transition without transferring navigation to the feed.
 
+An open detail selection retains its original output references in the application,
+independently of feed aging. It publishes detached page identities, membership and
+output versions; only the selected output is hydrated. Close and replacement retire
+that selection, and stale output requests cannot resolve a later dialog. Terminal
+layout and navigation retain no source or output handle.
+
 ## History
 
 Child history opens at the newest turn's recent items. Older pages continue from

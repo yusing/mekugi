@@ -223,7 +223,10 @@ uncolored panes. Its theme-aware fill and accent frame preserve syntax, diff and
 selection colors. Close uses the top-right button, Esc/q or outside click.
 
 Arrows/j/k, page keys, b/space, g/G and Home/End scroll; the wheel affects only the
-dialog. Left/Right or clickable tabs choose pages. Tab paths retain nearby
+dialog. Page membership, output versions and selected content arrive as detached
+values from the application. The dialog requests content by its selection and page
+identity; it never opens retained output or refreshes a source model while laying out.
+Left/Right or clickable tabs choose pages. Tab paths retain nearby
 directories and filenames. Each page keeps independent scroll, search and follow
 state. Live pages follow until scrolled away; End or returning to bottom resumes.
 `/` starts case-insensitive substring search, Enter finds and n/N advances,

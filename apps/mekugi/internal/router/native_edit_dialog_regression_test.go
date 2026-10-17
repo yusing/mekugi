@@ -71,7 +71,7 @@ func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
 			t.Run(fmt.Sprintf("captured=%t/%s", captured, tc.kind), func(t *testing.T) {
 				u, wantText := openRegressionEditDialog(t, tc, captured)
 				drawOutputDialog(u)
-				block := u.output.pages[0]
+				block := u.output.Pages[0]
 				if block.Verb != tc.verb {
 					t.Fatalf("verb = %q, want %q", block.Verb, tc.verb)
 				}
@@ -150,7 +150,8 @@ func TestUISnapshotNativeEditDialogSurroundingContext(t *testing.T) {
 			after := strings.Replace(before, fmt.Sprintf("historical_line_%02d", tc.line), "changed_line", 1)
 			u, _ := openRegressionEditDialog(t, editDialogRegressionCase{kind: "update", before: before, after: after}, true)
 			rows := make([]string, 36)
-			u.paintOutput(rows, 100, len(rows))
+			u.main.prepareOutput(u)
+			u.output.Paint(rows, 100, len(rows))
 			uisnapshot.Assert(t, "testdata/snapshots/native-edit-dialog-context-"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
 		})
 	}

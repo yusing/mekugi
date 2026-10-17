@@ -126,20 +126,20 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 				t.Fatal("no command dialog")
 			}
 			dialog := u.shell.output
-			dialog.layout(76)
+			u.shell.layoutOutput(76)
 			if !strings.Contains(dialog.Document.Text, "first") {
 				t.Fatalf("initial output missing: %q", dialog.Document.Text)
 			}
 			notify("item/commandExecution/outputDelta", map[string]any{"itemId": item.ID, "delta": "second\n"})
 			awaitMain(t, u, "second")
-			dialog.layout(76)
+			u.shell.layoutOutput(76)
 			if !strings.Contains(dialog.Document.Text, "second") {
 				t.Errorf("dialog ignored later bounded tail: %q", dialog.Document.Text)
 			}
 			item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(7), new("aggregate\n")
 			notify("item/completed", map[string]any{"item": item})
 			awaitMain(t, u, "exit 7")
-			dialog.layout(76)
+			u.shell.layoutOutput(76)
 			if dialog.Document.Live || !strings.Contains(dialog.Document.Text, "aggregate") {
 				t.Errorf("dialog ignored host completion: live=%v text=%q", dialog.Document.Live, dialog.Document.Text)
 			}

@@ -19,8 +19,8 @@ import (
 func awaitMarkdownFile(t *testing.T, u *terminalUI) {
 	t.Helper()
 	select {
-	case result := <-u.markdownFileUpdates():
-		if !u.loadedMarkdownFile(result) {
+	case result := <-u.main.fileReads:
+		if !u.main.loadedMarkdownFile(u, result) {
 			t.Fatal("file result was not admitted")
 		}
 	case <-time.After(5 * time.Second):
@@ -59,10 +59,10 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			awaitMarkdownFile(t, u)
 			u.width, u.height = 80, 18
 			frame := drawOutputDialog(u)
-			if u.output.file.Path != "src/source #1?%.go" || u.output.file.First > 0 && !strings.Contains(frame, "package target") {
+			if u.output.File.Path != "src/source #1?%.go" || u.output.File.First > 0 && !strings.Contains(frame, "package target") {
 				t.Fatalf("path or line destination lost: %q", frame)
 			}
-			if u.output.file.First > 0 {
+			if u.output.File.First > 0 {
 				if !strings.Contains(ansi.Strip(u.output.Document.Title), target[strings.LastIndexByte(target, ':'):]) {
 					t.Fatal("title lost the original location")
 				}
@@ -114,12 +114,13 @@ func TestMarkdownFileDialogSanitizesDisplayKeepsSourceCopy(t *testing.T) {
 		}
 		main, _ := newAppServerTestUI()
 		u := &terminalUI{main: main, width: 80, height: 18}
-		if !u.openMarkdownFile(main.view, path) {
+		if !u.main.openMarkdownFile(u, main.view, path) {
 			t.Fatal("existing file did not open")
 		}
 		awaitMarkdownFile(t, u)
 		rows := make([]string, u.height)
-		u.paintOutput(rows, u.width, u.height)
+		u.main.prepareOutput(u)
+		u.output.Paint(rows, u.width, u.height)
 		if strings.Contains(strings.Join(rows, "\n"), control) {
 			t.Fatal("file emitted a clipboard control in the rendered frame")
 		}
@@ -143,7 +144,7 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	main, _ := newAppServerTestUI()
 	main.cwd = workspace
 	u := &terminalUI{main: main, width: 80, height: 18}
-	u.openMarkdownFile(main.view, path+":30-31")
+	u.main.openMarkdownFile(u, main.view, path+":30-31")
 	awaitMarkdownFile(t, u)
 	drawOutputDialog(u)
 	x, y := outputSelectionPoint(t, u, "bold")
@@ -176,7 +177,7 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	u.outputMouse(0, x, y, false)
 	u.outputMouse(0, x, y, true)
 	awaitMarkdownFile(t, u)
-	if u.output.file.Path != "sample.go" || len(u.output.pages) != 1 {
+	if u.output.File.Path != "sample.go" || len(u.output.Pages) != 1 {
 		t.Fatal("rendered local link did not open the source file")
 	}
 }
@@ -192,11 +193,12 @@ func TestUISnapshotMarkdownFileViews(t *testing.T) {
 	main.cwd = workspace
 	main.view.Painter.Theme = diffrender.TerminalTheme
 	u := &terminalUI{main: main, width: 80, height: 24}
-	u.openMarkdownFile(main.view, path)
+	u.main.openMarkdownFile(u, main.view, path)
 	awaitMarkdownFile(t, u)
 	for _, view := range []string{"markdown", "file"} {
 		rows := make([]string, u.height)
-		u.paintOutput(rows, u.width, u.height)
+		u.main.prepareOutput(u)
+		u.output.Paint(rows, u.width, u.height)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/native-markdown-file-"+view+"-view.txt", append(rows, "plain after file view"), u.width)
 		u.outputKey("\x1b[C")
 	}
@@ -223,7 +225,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	u.outputMouse(0, x, y, false)
 	u.outputMouse(0, x, y, true)
 	awaitMarkdownFile(t, u)
-	if u.output == before || u.output.file.Path != "sample.go" {
+	if u.output == before || u.output.File.Path != "sample.go" {
 		t.Fatal("dialog link did not open the file")
 	}
 	drawOutputDialog(u)
@@ -236,7 +238,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 		if target != "https://example.com" && strings.Contains(main.view.Painter.Inline("[file](<"+target+">)"), "\x1b]8;") {
 			t.Fatalf("linked non-file destination %q", target)
 		}
-		if u.openMarkdownFile(main.view, target) {
+		if u.main.openMarkdownFile(u, main.view, target) {
 			t.Fatalf("opened non-file destination %q", target)
 		}
 	}
@@ -244,13 +246,13 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 		if !strings.Contains(main.view.Painter.Inline("[file](<"+target+">)"), "\x1b]8;") {
 			t.Fatalf("local destination was not linked: %q", target)
 		}
-		if !u.openMarkdownFile(main.view, target) {
+		if !u.main.openMarkdownFile(u, main.view, target) {
 			t.Fatalf("local destination was not admitted: %q", target)
 		}
 		awaitMarkdownFile(t, u)
 		drawOutputDialog(u)
 		errorText := ansi.Strip(u.output.Document.Lines[2].Text)
-		if errorText == "" || u.output.file.Source != "" {
+		if errorText == "" || u.output.File.Source != "" {
 			t.Fatalf("local read failure did not settle to an error: %q", target)
 		}
 		u.outputKey("y")
@@ -259,26 +261,26 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 		}
 	}
 	main.cwd = ""
-	if u.openMarkdownFile(main.view, "sample.go") {
+	if u.main.openMarkdownFile(u, main.view, "sample.go") {
 		t.Fatal("relative file resolved without workspace metadata")
 	}
 	path := filepath.Join(workspace, "sample.go")
-	if !u.openMarkdownFile(main.view, path) {
+	if !u.main.openMarkdownFile(u, main.view, path) {
 		t.Fatal("absolute path was not admitted")
 	}
 	awaitMarkdownFile(t, u)
-	if u.output.file.Path != path {
+	if u.output.File.Path != path {
 		t.Fatal("external absolute path was shortened")
 	}
 	path += ":1-2"
 	if err := os.WriteFile(path, []byte("literal file name\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if !u.openMarkdownFile(main.view, path) {
+	if !u.main.openMarkdownFile(u, main.view, path) {
 		t.Fatal("literal file name was not admitted")
 	}
 	awaitMarkdownFile(t, u)
-	if u.output.file.Path != path || u.output.file.First != 0 {
+	if u.output.File.Path != path || u.output.File.First != 0 {
 		t.Fatal("location parsing took precedence over an exact file name")
 	}
 }
@@ -304,12 +306,13 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 			main.cwd = workspace
 			main.view.Painter.Theme = test.theme
 			u := &terminalUI{main: main, width: 80, height: 18}
-			if !u.openMarkdownFile(main.view, path+test.location) {
+			if !u.main.openMarkdownFile(u, main.view, path+test.location) {
 				t.Fatal("existing file did not open")
 			}
 			awaitMarkdownFile(t, u)
 			rows := make([]string, u.height)
-			u.paintOutput(rows, u.width, u.height)
+			u.main.prepareOutput(u)
+			u.output.Paint(rows, u.width, u.height)
 			uisnapshot.AssertTerminal(t, "testdata/snapshots/"+test.name+".txt", append(rows, "plain after file dialog"), u.width)
 			if failure {
 				if ansi.Strip(u.output.Document.Lines[2].Text) != "file is not UTF-8 text" {

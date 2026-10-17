@@ -141,7 +141,7 @@ func TestMainBatchCollapsesOutOfView(t *testing.T) {
 	}
 	row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "Searched") })
 	u := &terminalUI{}
-	if !u.openOutput(v.bind(u), feed.Snippets[row]) || len(u.output.pages) != 3 {
+	if !u.openOutput(v.bind(u), feed.Snippets[row]) || len(u.output.Pages) != 3 {
 		t.Fatalf("collapsed batch did not open its operations in the dialog: %+v", u.output)
 	}
 }
@@ -222,10 +222,14 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 					break
 				}
 			}
-			if u.shell.output == nil || len(u.shell.output.pages) != 6 ||
-				!slices.ContainsFunc(u.shell.output.pages, func(b outputPage) bool { return b.ExitCode == 2 }) ||
-				!slices.ContainsFunc(u.shell.output.pages, func(b outputPage) bool { return b.Lang == "diff" && strings.Contains(b.Code, "+new") }) ||
-				!slices.ContainsFunc(u.shell.output.pages, func(b outputPage) bool { return b.Lang == "diff" && strings.Contains(b.Code, "+other") }) {
+			if u.shell.output == nil || len(u.shell.output.Pages) != 6 ||
+				!slices.ContainsFunc(u.shell.output.Pages, func(b sessionpresentation.DetailItem) bool { return b.ExitCode == 2 }) ||
+				!slices.ContainsFunc(u.shell.output.Pages, func(b sessionpresentation.DetailItem) bool {
+					return b.Lang == "diff" && strings.Contains(b.Code, "+new")
+				}) ||
+				!slices.ContainsFunc(u.shell.output.Pages, func(b sessionpresentation.DetailItem) bool {
+					return b.Lang == "diff" && strings.Contains(b.Code, "+other")
+				}) {
 				t.Fatal("rendered batch click did not open failed-command and edit details")
 			}
 		})

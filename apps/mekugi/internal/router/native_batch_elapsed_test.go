@@ -60,10 +60,10 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 						continue
 					}
 					found = true
-					if block.Duration != 81*time.Millisecond || !u.shell.openOutput(view.bind(u.shell), snippet) || len(u.shell.output.pages) != 2 {
+					if block.Duration != 81*time.Millisecond || !u.shell.openOutput(view.bind(u.shell), snippet) || len(u.shell.output.Pages) != 2 {
 						t.Fatal("group lost timing or output pages")
 					}
-					for page, member := range u.shell.output.pages {
+					for page, member := range u.shell.output.Pages {
 						if member.Duration != time.Duration(*items[page].DurationMS)*time.Millisecond || strings.Join(member.Tail, "\n") != strings.TrimSuffix(*items[page].AggregatedOutput, "\n") {
 							t.Fatal("dialog page lost invocation output or timing")
 						}

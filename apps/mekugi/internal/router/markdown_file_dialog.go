@@ -11,7 +11,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -57,8 +58,7 @@ func (u *appServerUI) markdownFileAllowed(target string) bool {
 }
 
 type markdownFileResult struct {
-	dialog       *outputDialog
-	attachment   *scope.Store
+	id           sessionpresentation.DetailID
 	thread       string
 	workspace    string
 	path, source string
@@ -67,33 +67,19 @@ type markdownFileResult struct {
 	err          error
 }
 
-func (u *terminalUI) markdownFileUpdates() <-chan markdownFileResult {
-	if u.output == nil {
-		return nil
-	}
-	return u.output.fileRead
-}
-
 // openMarkdownFile publishes loading before starting one bounded physical read.
 // Retiring a dialog cannot release the slot of a still-blocked filesystem call.
-func (u *terminalUI) openMarkdownFile(view *activityui.View, target string) bool {
-	workspace := ""
-	if u.main != nil {
-		workspace = u.main.cwd
-	}
+func (u *appServerUI) openMarkdownFile(terminal *terminalUI, view *activityui.View, target string) bool {
+	workspace := u.cwd
 	path, ok := markdownFileTarget(workspace, target)
 	if !ok {
 		return false
 	}
 	display := pathdisplay.ForWorkspace(workspace, path)
-	u.openBlocks(view, []activityui.Block{{Kind: "reads", Verb: "Read", Path: display, Body: "Loading…"}})
-	d := u.output
-	d.file = &activitypresentation.DetailFile{Path: display}
-	result := markdownFileResult{dialog: d, workspace: workspace, path: path}
-	if u.main != nil {
-		result.attachment = u.main.session.Scope()
-		result.thread = u.main.sessionPresentation().View().Displayed.ID
-	}
+	terminal.openDetails(view, activitypresentation.DetailPages([]activitypresentation.Value{{Kind: "reads", Verb: "Read", Path: display, Body: "Loading…"}}))
+	d := terminal.output
+	d.File = &activitypresentation.DetailFile{Path: display}
+	result := markdownFileResult{id: d.ID, workspace: workspace, path: path, thread: u.sessionPresentation().View().Displayed.ID}
 	if u.fileReadSlot == nil {
 		u.fileReadSlot = make(chan struct{}, 1)
 	}
@@ -101,11 +87,11 @@ func (u *terminalUI) openMarkdownFile(view *activityui.View, target string) bool
 	case u.fileReadSlot <- struct{}{}:
 	default:
 		result.err = fmt.Errorf("local file read capacity exhausted; close and reopen after the pending read finishes")
-		u.loadedMarkdownFile(result)
+		u.loadedMarkdownFile(terminal, result)
 		return true
 	}
 	results := make(chan markdownFileResult, 1)
-	d.fileRead = results
+	u.fileReads = results
 	go func(slot chan struct{}) {
 		data, err := readMarkdownFile(path)
 		if os.IsNotExist(err) {
@@ -122,38 +108,36 @@ func (u *terminalUI) openMarkdownFile(view *activityui.View, target string) bool
 	return true
 }
 
-func (u *terminalUI) loadedMarkdownFile(result markdownFileResult) bool {
-	d := result.dialog
-	if u.output != d {
+func (u *appServerUI) loadedMarkdownFile(terminal *terminalUI, result markdownFileResult) bool {
+	d := terminal.output
+	if d == nil || d.ID != result.id {
 		return false
 	}
-	if u.main != nil && (u.main.session.Scope() != result.attachment || u.main.sessionPresentation().View().Displayed.ID != result.thread || u.main.cwd != result.workspace) {
-		u.output = nil
+	_, current := u.session.DetailView(result.id)
+	if !current || u.sessionPresentation().View().Displayed.ID != result.thread || u.cwd != result.workspace {
+		terminal.closeOutput()
 		return true
 	}
 	display := pathdisplay.ForWorkspace(result.workspace, result.path)
-	block := activityui.Block{Kind: "reads", Verb: "Read", Path: display + result.location, SyntaxPath: result.path, Reads: []activitymodel.Read{{Path: display + result.location}}}
+	block := activitypresentation.Value{Kind: "reads", Verb: "Read", Path: display + result.location, SyntaxPath: result.path, Reads: []activitymodel.Read{{Path: display + result.location}}}
 	content := textsanitize.Safe(result.source, false)
 	if result.err != nil {
 		block.Kind, block.Verb, block.Body = "error", "", textsanitize.Safe(result.err.Error(), false)
 	} else {
 		block.Tail = strings.Split(content, "\n")
 	}
-	pages := []activityui.Block{block}
+	pages := []activitypresentation.Value{block}
 	if format, _ := sourcekind.Classify(result.path); result.err == nil && format.Kind == "markdown" {
 		rendered := block
 		rendered.Body, rendered.Tail = content, nil
 		rendered.DetailLines = len(block.Tail)
-		pages = []activityui.Block{rendered, block}
+		pages = []activitypresentation.Value{rendered, block}
 	}
-	d.fileRead = nil
-	d.file = &activitypresentation.DetailFile{Path: display, Source: result.source, First: result.first, Last: result.last}
+	u.fileReads = nil
+	d.File = &activitypresentation.DetailFile{Path: display, Source: result.source, First: result.first, Last: result.last}
 	// Publish source now; layout applies tabs and the reveal after any frozen
 	// loading selection is cleared. Changing chrome here would dismiss it.
-	d.pages = nil
-	for _, page := range activitypresentation.DetailPages(activityui.Values(pages)) {
-		d.pages = append(d.pages, outputPage{DetailPage: page})
-	}
+	u.replaceDetails(terminal, activitypresentation.DetailPages(pages))
 	return true
 }
 

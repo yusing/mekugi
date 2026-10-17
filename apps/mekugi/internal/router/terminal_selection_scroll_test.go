@@ -269,7 +269,7 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 	}
 	u.shell.selectionMouse(0, x, y, false)
 	u.shell.selectionMouse(0, x, y, true)
-	if u.shell.output == nil || !strings.Contains(fmt.Sprint(u.shell.output.pages), "prompt 00") {
+	if u.shell.output == nil || !strings.Contains(fmt.Sprint(u.shell.output.Pages), "prompt 00") {
 		t.Fatal("scrolled prompt click used the old viewport target")
 	}
 }

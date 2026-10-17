@@ -32,7 +32,8 @@ func processNotify(t *testing.T, u *appServerUI, thread, id, command, status str
 // processDialog paints the open /ps dialog over a blank screen.
 func processDialog(u *appServerUI, width, height int) []string {
 	rows := make([]string, height)
-	u.shell.paintOutput(rows, width, height)
+	u.shell.main.prepareOutput(u.shell)
+	u.shell.output.Paint(rows, width, height)
 	return rows
 }
 

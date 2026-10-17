@@ -681,7 +681,8 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			if !tc.early {
 				notify("item/started")
 				u.shell.openEntry(view.View, view.Entries[len(view.Entries)-1].Source.Seq)
-				u.shell.paintOutput(make([]string, 18), 80, 18)
+				u.shell.main.prepareOutput(u.shell)
+				u.shell.output.Paint(make([]string, 18), 80, 18)
 			}
 			if tc.guard {
 				u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Thread: thread, Item: "cmd", Argv: []string{"git", "push", "origin", "main"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
@@ -748,7 +749,8 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				t.Fatal("approval command has no clickable output dialog")
 			}
 			rows = make([]string, 18)
-			u.shell.paintOutput(rows, 80, len(rows))
+			u.shell.main.prepareOutput(u.shell)
+			u.shell.output.Paint(rows, 80, len(rows))
 			if !strings.Contains(u.shell.output.Document.Title, color+label+terminalui.Reset) {
 				t.Fatalf("dialog lost the decision: %q", rows)
 			}

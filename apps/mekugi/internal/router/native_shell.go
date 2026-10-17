@@ -226,7 +226,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	content.Status = u.shellStatus()
 	rows := u.Shell.Compose(plan, content)
 	if u.output != nil {
-		u.paintOutput(rows[:height-1], width, height-1)
+		u.output.Paint(rows[:height-1], width, height-1)
 	}
 	copyRows := make([][]terminalui.CopySpan, len(rows))
 	for y := range rows {

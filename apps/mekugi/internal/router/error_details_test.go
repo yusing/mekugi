@@ -162,7 +162,7 @@ func TestErrorDetailsKeyboardPaginationAndFiltering(t *testing.T) {
 	}})
 	u.testActivity(u.agents).setDisplayFilter(true, "/root/a")
 	u.shell.openErrors()
-	if u.shell.output == nil || len(u.shell.output.pages) != 2 || u.shell.output.Page != 1 {
+	if u.shell.output == nil || len(u.shell.output.Pages) != 2 || u.shell.output.Page != 1 {
 		t.Fatal("keyboard error details lost selection or filter")
 	}
 	drawOutputDialog(u.shell)

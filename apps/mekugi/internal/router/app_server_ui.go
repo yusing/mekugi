@@ -116,6 +116,8 @@ type appServerUI struct {
 	pendingEditReceipts    []*changepresentation.Receipt // Observed edits can precede their host Activity item.
 	issues                 *requestexecution.Failures
 	shell                  *terminalUI
+	fileReadSlot           chan struct{} // Physical capacity survives dialog and attachment retirement.
+	fileReads              <-chan markdownFileResult
 	streams                terminalsession.Streams
 	session                sessionpresentation.Attachment
 	activity               *activitymodel.Service
@@ -304,8 +306,8 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							return err
 						}
 						u.dirty = true
-					case result := <-u.shell.markdownFileUpdates():
-						u.dirty = u.shell.loadedMarkdownFile(result) || u.dirty
+					case result := <-u.fileReads:
+						u.dirty = u.loadedMarkdownFile(u.shell, result) || u.dirty
 					case result := <-u.picker.scanResults:
 						u.applyPickerScan(result)
 					case <-u.commits.Updates():
@@ -1218,6 +1220,7 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
 	u.shell.width, u.shell.height = max(1, width), max(1, height)
 	u.mainView.ContentPainted = false
+	u.prepareOutput(u.shell)
 	ctx := u.ctx
 	if ctx == nil {
 		ctx = context.Background()

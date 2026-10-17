@@ -132,7 +132,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 			if err := u.testPaint(screen, 160, 40); err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(u.shell.output.Document.Text, "+after_batch") || u.shell.output.view != view.View {
+			if !strings.Contains(u.shell.output.Document.Text, "+after_batch") || u.shell.output.View != view.View {
 				t.Fatalf("wrong edit opened:\n%s", screen.String())
 			}
 			if u.session.Commands()[[3]string{thread, "batch", "slow-sibling"}] == nil {
@@ -217,7 +217,7 @@ func TestNativeCapturedDetailIsAttachmentScoped(t *testing.T) {
 	// consume the accepted snapshot without reopening evidence.
 	u.review.Projection.Changes = nil
 	u.review.Projection.Retained.Store = testHistory().Attach(filepath.Join(t.TempDir(), "unavailable"))
-	if !u.shell.openActivityEdit(u.view, 1, "scope.go") || !strings.Contains(u.shell.output.pages[0].Code, "+after") {
+	if !u.shell.openActivityEdit(u.view, 1, "scope.go") || !strings.Contains(u.shell.output.Pages[0].Code, "+after") {
 		t.Fatal("accepted capture did not resolve without retained storage")
 	}
 	u.shell.outputKey("\x1b")

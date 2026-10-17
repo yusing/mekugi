@@ -67,7 +67,7 @@ func TestConversationThreadsReplyUnderAssignment(t *testing.T) {
 	shell := &terminalUI{}
 	v.Opening = snippet
 	shell.openRequested(v.bind(shell))
-	if shell.output == nil || !strings.Contains(shell.output.pages[0].Body, "Review the follow-scroll") {
+	if shell.output == nil || !strings.Contains(shell.output.Pages[0].Body, "Review the follow-scroll") {
 		t.Fatal("collapsed assignment did not open full dialog")
 	}
 	if again := threadPlain(v.RenderFeed(width, 40)); len(again) != len(plain) {
@@ -223,7 +223,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 			if !shell.openOutput(v.bind(shell), snippet) {
 				t.Fatal("reasoning did not request dialog")
 			}
-			page := v.Painter.DetailDocument(shell.output.pages[0].DetailPage, nil, nil, 80)
+			page := v.Painter.DetailDocument(shell.output.Pages[0].DetailPage, nil, nil, 80)
 			if page.Text != v.Entries[opened].Source.Text {
 				t.Fatalf("wrong item opened: %q", page.Text)
 			}

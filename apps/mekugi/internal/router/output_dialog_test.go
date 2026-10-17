@@ -19,6 +19,7 @@ import (
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
@@ -41,11 +42,12 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 			Native: &sessionpresentation.NativeItem{Command: command, Output: output},
 		}}})
 		u := &terminalUI{}
-		if !u.openEntry(view.bind(u), 1) || len(u.output.pages) != 1 {
+		if !u.openEntry(view.bind(u), 1) || len(u.output.Pages) != 1 {
 			t.Fatal("missing combined output page")
 		}
 		rows := make([]string, 24)
-		u.paintOutput(rows, 100, len(rows))
+		u.main.prepareOutput(u)
+		u.output.Paint(rows, 100, len(rows))
 		if u.output.Document.Text != "build failed" {
 			t.Fatalf("combined output lost host text: %q", u.output.Document.Text)
 		}
@@ -68,9 +70,15 @@ func dialogForOutput(output *activitymodel.Output) *terminalUI {
 	return u
 }
 
+func (u *terminalUI) layoutOutput(width int) {
+	u.main.prepareOutput(u)
+	u.output.Layout(width)
+}
+
 func drawOutputDialog(u *terminalUI) string {
 	rows := make([]string, 18)
-	u.paintOutput(rows, 80, len(rows))
+	u.main.prepareOutput(u)
+	u.output.Paint(rows, 80, len(rows))
 	return ansi.Strip(strings.Join(rows, "\n"))
 }
 
@@ -107,7 +115,6 @@ func TestOutputDialogWheelAndOutsideClickIsolation(t *testing.T) {
 		output.Write(fmt.Sprintf("line %02d\n", i))
 	}
 	u := dialogForOutput(output)
-	u.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: activityui.NewView()})
 	drawOutputDialog(u)
 	feedOffset := u.main.view.Offset
 	u.outputMouse(64, 0, 0, false)
@@ -129,7 +136,6 @@ func TestOutputDialogSearchAndCopyRetainedText(t *testing.T) {
 	output.Write("alpha\nneedle one\nbeta\nneedle two\n")
 	output.Finish(nil, new(0))
 	u := dialogForOutput(output)
-	u.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: activityui.NewView()})
 	drawOutputDialog(u)
 	u.outputKey("/")
 	for _, key := range []string{"n", "e", "e", "d", "l", "e", "\r"} {
@@ -219,7 +225,7 @@ func TestOutputDialogRestoredCommandUsesRetainedAggregate(t *testing.T) {
 	if index < 0 || !terminal.openOutput(u.view, feed.Snippets[index]) {
 		t.Fatal("restored command has no output dialog target")
 	}
-	terminal.output.layout(76)
+	terminal.layoutOutput(76)
 	if got := terminal.output.Document.Text; got != "first\nsecond\nthird" {
 		t.Fatalf("restored dialog output = %q", got)
 	}
@@ -261,10 +267,10 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 	if index < 0 || !terminal.openOutput(u.view, feed.Snippets[index]) {
 		t.Fatal("merged command has no output dialog target")
 	}
-	if terminal.output.pages[0].output != retained {
+	if !terminal.output.Pages[0].Retained {
 		t.Fatal("completion replaced retained output identity")
 	}
-	terminal.output.layout(76)
+	terminal.layoutOutput(76)
 	if got := terminal.output.Document.Text; got != "aggregate\nfinal" {
 		t.Fatalf("merged retained output = %q", got)
 	}
@@ -288,12 +294,12 @@ func TestOutputDialogTrackedSegmentKeepsOwnRetention(t *testing.T) {
 	view.appendEntry(entry, blocks)
 	u := &terminalUI{}
 	u.openBlocks(view.bind(u), blocks)
-	u.output.layout(76)
+	u.layoutOutput(76)
 	if got := u.output.Document.Text; got != "segment one" {
 		t.Fatalf("first segment = %q", got)
 	}
 	u.outputKey("\x1b[C")
-	u.output.layout(76)
+	u.layoutOutput(76)
 	if got := u.output.Document.Text; got != "segment two" || !strings.Contains(ansi.Strip(u.output.Document.Detail), "exit 2") {
 		t.Fatalf("second segment = %q detail %q", got, u.output.Document.Detail)
 	}
@@ -306,13 +312,14 @@ func TestUISnapshotOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 			output.Write("modal content\n")
 			output.Finish(nil, new(0))
 			u := dialogForOutput(output)
-			u.output.view.Painter.Theme = diffrender.TerminalTheme
+			u.output.View.Painter.Theme = diffrender.TerminalTheme
 			const height = 20
 			rows := make([]string, height)
 			for i := range rows {
 				rows[i] = "background"
 			}
-			u.paintOutput(rows, width, height)
+			u.main.prepareOutput(u)
+			u.output.Paint(rows, width, height)
 			// paintOutput overlays with cursor addressing, so snapshot its final VT rows.
 			screen := vt.NewEmulator(width, height)
 			defer screen.Close()
@@ -349,9 +356,9 @@ func TestOutputDialogRestoredMultiReadKeepsCombinedOutput(t *testing.T) {
 		t.Fatal("restored multi-read has no dialog target")
 	}
 	found := false
-	for i := range terminal.output.pages {
+	for i := range terminal.output.Pages {
 		terminal.output.ShowPage(i)
-		terminal.output.layout(76)
+		terminal.layoutOutput(76)
 		if terminal.output.Document.Text == "content of a\ncontent of b" {
 			found = true
 		}
@@ -416,7 +423,6 @@ func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
 		output.Write(fmt.Sprintf("row %02d\n", i))
 	}
 	u := dialogForOutput(output)
-	u.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: activityui.NewView()})
 	drawOutputDialog(u)
 	u.Focus = 0
 	for _, key := range []byte{2, '3'} {
@@ -481,7 +487,7 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 			break
 		}
 	}
-	if u.output == nil || len(u.output.pages) != 2 || u.output.pages[0].Source != 10 || u.output.pages[1].Source != 10 {
+	if u.output == nil || len(u.output.Pages) != 2 || u.output.Pages[0].Source != 10 || u.output.Pages[1].Source != 10 {
 		t.Fatal("click did not open command pages")
 	}
 	frame := drawOutputDialog(u)
@@ -504,7 +510,7 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 	drawOutputDialog(u)
 	u.outputKey("\x1b[C")
 	drawOutputDialog(u)
-	if len(u.output.pages) != 3 || u.output.Document.Text != "third only" {
+	if len(u.output.Pages) != 3 || u.output.Document.Text != "third only" {
 		t.Fatalf("late command missing or mixed: %+v", u.output.Document)
 	}
 	// A lossy report must replace the tabs with the authoritative combined buffer.
@@ -514,7 +520,7 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 	view.Entries[0].Source.Native.Output = combined
 	view.Entries[0].Source.OutputTail = []string{"first", "second", "third"}
 	frame = drawOutputDialog(u)
-	if len(u.output.pages) != 1 || !strings.Contains(frame, "combined output") || u.output.Document.Text != "first\nsecond\nthird" || !strings.Contains(frame, "exit 1") {
+	if len(u.output.Pages) != 1 || !strings.Contains(frame, "combined output") || u.output.Document.Text != "first\nsecond\nthird" || !strings.Contains(frame, "exit 1") {
 		t.Fatalf("lossy report falsely attributed combined output: %s", frame)
 	}
 
@@ -536,7 +542,7 @@ func TestOutputDialogSingleObservedCommandWithoutTail(t *testing.T) {
 			t.Fatal("empty command output is not clickable")
 		}
 		u := &terminalUI{}
-		if !u.openOutput(view.bind(u), snippet) || len(u.output.pages) != 1 || u.output.pages[0].output != output {
+		if !u.openOutput(view.bind(u), snippet) || len(u.output.Pages) != 1 || !u.output.Pages[0].Retained {
 			t.Fatal("single command lost its retained output")
 		}
 		return
@@ -561,7 +567,7 @@ func TestOutputDialogMergedTrackedReadsKeepAllInvocations(t *testing.T) {
 			break
 		}
 	}
-	if u.output == nil || len(u.output.pages) != 2 {
+	if u.output == nil || len(u.output.Pages) != 2 {
 		t.Fatal("merged row lost an invocation")
 	}
 	for i, path := range []string{"first.go", "second.py"} {
@@ -576,9 +582,12 @@ func TestOutputDialogMergedTrackedReadsKeepAllInvocations(t *testing.T) {
 func TestSharedDialogCloseButton(t *testing.T) {
 	for _, width := range []int{12, 40, 80, 160} {
 		u := dialogForOutput(&activitymodel.Output{})
-		u.output.pages[0].Body = "Dialog body"
+		page := u.output.Pages[0].DetailPage
+		page.Body = "Dialog body"
+		u.main.replaceDetails(u, []activitypresentation.DetailPage{page})
 		rows := make([]string, 20)
-		u.paintOutput(rows, width, len(rows))
+		u.main.prepareOutput(u)
+		u.output.Paint(rows, width, len(rows))
 		frame := ansi.Strip(strings.Join(rows, "\n"))
 		if !strings.Contains(frame, terminalui.DialogClose) {
 			t.Fatalf("width %d: no close button: %s", width, frame)
@@ -669,7 +678,7 @@ func TestBatchDialogDoesNotAttributeInvocationTimingToSegments(t *testing.T) {
 			if segmented {
 				want = ""
 			}
-			for i := range u.output.pages {
+			for i := range u.output.Pages {
 				u.output.ShowPage(i)
 				drawOutputDialog(u)
 				if title := ansi.Strip(u.output.Document.Title); (want != "" && !strings.HasSuffix(title, want)) || (want == "" && (strings.Contains(title, " · 4s") || strings.Contains(title, " · 7s") || strings.Contains(title, "total"))) {
@@ -685,7 +694,7 @@ func TestBatchDialogDoesNotAttributeInvocationTimingToSegments(t *testing.T) {
 			if segmented {
 				want = ""
 			}
-			for i := range u.output.pages {
+			for i := range u.output.Pages {
 				u.output.ShowPage(i)
 				drawOutputDialog(u)
 				if title := ansi.Strip(u.output.Document.Title); ((want != "" && !strings.HasSuffix(title, want)) || (want == "" && (strings.Contains(title, " · 4s") || strings.Contains(title, " · 7s") || strings.Contains(title, "total")))) || strings.Contains(title, "Running") {
@@ -763,12 +772,12 @@ func TestOutputDialogFlatPagesSurviveFeedAgingAndRelease(t *testing.T) {
 	ui := &terminalUI{}
 	ui.openBlocks(view.bind(ui), view.blocks(0))
 	view.Model.Remove(0, len(view.Entries))
-	ui.output.layout(60)
+	ui.layoutOutput(60)
 	if ui.output.Document.Text != "first\nlast" || strings.Contains(ansi.Strip(ui.output.Document.Detail), "exit") {
 		t.Fatalf("aged output = %+v", ui.output.Document)
 	}
 	output.Release()
-	ui.output.layout(60)
+	ui.layoutOutput(60)
 	var rows []string
 	for i := range ui.output.Document.Lines {
 		rows = append(rows, ui.output.Document.Rows(i, 60)...)
@@ -777,7 +786,7 @@ func TestOutputDialogFlatPagesSurviveFeedAgingAndRelease(t *testing.T) {
 		t.Fatalf("released output = %+v", ui.output.Document)
 	}
 
-	if len(ui.output.pages) != 1 || ui.output.pages[0].output != output || len(ui.output.pages[0].Members) != 0 {
+	if len(ui.output.Pages) != 1 || !ui.output.Pages[0].Retained || len(ui.output.Pages[0].Members) != 0 {
 		t.Fatal("origin duplicated membership or retained a full snapshot")
 	}
 }
@@ -838,14 +847,14 @@ func TestOutputDialogFoldedStageKeepsSegmentPages(t *testing.T) {
 	if !opened {
 		t.Fatal("commit row cannot open")
 	}
-	ui.output.layout(60)
+	ui.layoutOutput(60)
 	if ui.output.Document.Text != "committed" {
 		t.Fatalf("commit row selected page %d: %q", ui.output.Page, ui.output.Document.Text)
 	}
 	view.Model.Remove(0, 1)
 	for i, want := range []string{"staged", "committed"} {
 		ui.output.ShowPage(i)
-		ui.output.layout(60)
+		ui.layoutOutput(60)
 		if ui.output.Document.Text != want {
 			t.Fatalf("page %d = %q", i, ui.output.Document.Text)
 		}

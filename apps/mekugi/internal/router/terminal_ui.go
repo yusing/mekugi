@@ -1,9 +1,10 @@
 package router
 
 import (
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"strings"
 	"time"
+
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -20,8 +21,7 @@ type terminalUI struct {
 	selection     *terminalSelection
 	frame         terminalsession.Frame
 	input         terminalsession.Decoder
-	output        *outputDialog // Open over both panes, taking every key.
-	fileReadSlot  chan struct{} // Physical read capacity survives dialog and attachment replacement.
+	output        *terminalsession.ContentDialog // Open over both panes, taking every key.
 	diffScreen    *terminalsession.DiffScreen
 	preparePane   func(*scope.Store)
 	agents        *activityui.View

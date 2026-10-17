@@ -187,7 +187,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 					if !u.openOutput(v.bind(u), v.Opening) {
 						t.Fatal("attachment click did not open shared dialog")
 					}
-					page := v.Painter.DetailDocument(u.output.pages[0].DetailPage, nil, nil, 80)
+					page := v.Painter.DetailDocument(u.output.Pages[0].DetailPage, nil, nil, 80)
 					if page.Text != textsanitize.Safe(body, false) {
 						t.Fatalf("dialog changed submitted content: got %d bytes, want %d", len(page.Text), len(body))
 					}

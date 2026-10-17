@@ -7,6 +7,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestSessionUIReplayQueuedContinuationSurvivesExpiredEscape(t *testing.T) {
@@ -24,8 +26,7 @@ func TestSessionUIReplayQueuedContinuationSurvivesExpiredEscape(t *testing.T) {
 					ctx, cancel := context.WithCancel(t.Context())
 					p.ctx = ctx
 					if dialog {
-						u, _ := outputSelectionFixture("first\nsecond\n", false)
-						p.ui.shell.output = u.output
+						p.ui.shell.openBlocks(p.ui.view, []activityui.Block{{Kind: "text", Body: "first\nsecond\n"}})
 					}
 					original := p.ui.shell.output
 					keys := make(chan byte, 64)
@@ -85,8 +86,7 @@ func TestSessionUIReplayStandaloneEscapeClosesDialogThenQuits(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		p.ctx = ctx
-		u, _ := outputSelectionFixture("first\nsecond\n", false)
-		p.ui.shell.output = u.output
+		p.ui.shell.openBlocks(p.ui.view, []activityui.Block{{Kind: "text", Body: "first\nsecond\n"}})
 		keys := make(chan byte, 1)
 		done := make(chan error, 1)
 		go func() {

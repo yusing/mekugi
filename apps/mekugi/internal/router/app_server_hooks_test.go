@@ -120,12 +120,12 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 				t.Fatal("hook dialog did not open")
 			}
 			d := u.shell.output
-			d.layout(80)
+			u.shell.layoutOutput(80)
 			for _, key := range []string{"g", "/", "policy"} {
 				u.shell.outputKey(key)
 			}
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.cwd, status)})
-			d.layout(80)
+			u.shell.layoutOutput(80)
 			want := "Hook Ran"
 			if status == "failed" {
 				want = "Hook Failed"

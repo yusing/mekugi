@@ -229,7 +229,8 @@ func navigationBatchDialog() *terminalUI {
 func navigationBatchDialogFrame(t *testing.T, u *terminalUI, width int) string {
 	t.Helper()
 	rows := make([]string, 18)
-	u.paintOutput(rows, width, len(rows))
+	u.main.prepareOutput(u)
+	u.output.Paint(rows, width, len(rows))
 	screen := vt.NewEmulator(width, len(rows))
 	defer screen.Close()
 	if _, err := screen.Write([]byte("\x1b[H" + strings.Join(rows, "\r\n"))); err != nil {
@@ -247,7 +248,7 @@ func TestNativeNavigationBatchDialogPathTabs(t *testing.T) {
 			rect := dialogFrameRect(t, rows)
 			row := rows[rect.Y+2]
 			visible := 0
-			for page, block := range u.output.pages {
+			for page, block := range u.output.Pages {
 				prefix := fmt.Sprintf(" %d Read", page+1)
 				index := strings.Index(row, prefix)
 				if index < 0 {

@@ -84,11 +84,11 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 						break
 					}
 				}
-				if !opened || len(u.shell.output.pages) != 1 || u.shell.output.pages[0].EditSource != "" {
+				if !opened || len(u.shell.output.Pages) != 1 || u.shell.output.Pages[0].EditSource != "" {
 					t.Fatal("unresolved edit has no ordinary command dialog")
 				}
 				// The interpreter projection is the original source, not a made-up edit.
-				page := u.view.Painter.DetailDocument(u.shell.output.pages[0].DetailPage, nil, nil, 100)
+				page := u.view.Painter.DetailDocument(u.shell.output.Pages[0].DetailPage, nil, nil, 100)
 				var source string
 				for _, line := range page.Lines {
 					source += ansi.Strip(line.Text) + "\n"

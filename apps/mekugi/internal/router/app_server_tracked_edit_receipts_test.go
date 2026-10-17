@@ -45,7 +45,7 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 			native.CapturedEdit = nil // Host refresh carries no router receipt.
 			native.Segments = []sessionpresentation.ActivitySegment{{Source: "python3", Text: "Edit `a.go` · python3 (requested)"}, {Source: "go test ./...", Text: "Run `go test ./...`", Running: true}}
 			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 99, Agent: entry.Source.Agent, Kind: "tool", CallID: entry.Source.CallID, Text: entry.Source.Text, Native: &native}}})
-			if !u.shell.openActivityEdit(view.bind(u.shell), entry.Source.Seq, "a.go") || !strings.Contains(u.shell.output.pages[0].Code, "+after") {
+			if !u.shell.openActivityEdit(view.bind(u.shell), entry.Source.Seq, "a.go") || !strings.Contains(u.shell.output.Pages[0].Code, "+after") {
 				t.Fatal("early observed source was lost")
 			}
 			u.shell.outputKey("\x1b")
@@ -192,7 +192,8 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 		t.Fatalf("output row does not open its output: row %d", row)
 	}
 	rows := make([]string, 12)
-	u.shell.paintOutput(rows, 100, len(rows))
+	u.shell.main.prepareOutput(u.shell)
+	u.shell.output.Paint(rows, 100, len(rows))
 	assertNativeUISnapshot(t, "captured-edit-output-dialog", rows)
 }
 
@@ -347,7 +348,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 						if !u.shell.openActivityEdit(view.bind(u.shell), entry.Source.Seq, path) {
 							t.Fatalf("%s: observed Edited link cannot open before durable capture", call)
 						}
-						code := u.shell.output.pages[0].Code
+						code := u.shell.output.Pages[0].Code
 						if !strings.Contains(code, fmt.Sprintf("-before source %d", i)) {
 							t.Fatalf("%s: wrong observed source: %q", call, code)
 						}

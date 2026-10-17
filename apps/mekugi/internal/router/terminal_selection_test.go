@@ -76,7 +76,8 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 					rows := slices.Clone(u.frame.Rows)
 					if dialog {
 						rows = make([]string, u.height)
-						u.paintOutput(rows, u.width, u.height)
+						u.main.prepareOutput(u)
+						u.output.Paint(rows, u.width, u.height)
 					} else {
 						u.paintSelection(rows)
 					}
@@ -212,7 +213,6 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				mention := "[Selected message]"
 				if dialog {
 					u, _ = outputSelectionFixture("hello world\n", false)
-					u.main, _ = newAppServerTestUI()
 					x, y := outputSelectionPoint(t, u, "hello")
 					outputSelectionDrag(u, x, y, x+4, y)
 					mention = "[Selected dialog]"
@@ -363,14 +363,14 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 		u.paintSelection(u.frame.Rows)
 		u.selectionMouse(0, 0, 0, true)
 		if question {
-			if u.output == nil || !strings.Contains(fmt.Sprint(u.output.pages), "First target") || strings.Contains(fmt.Sprint(u.output.pages), "Advanced target") {
+			if u.output == nil || !strings.Contains(fmt.Sprint(u.output.Pages), "First target") || strings.Contains(fmt.Sprint(u.output.Pages), "Advanced target") {
 				t.Fatal("clicked an advancing question target")
 			}
 			u.outputKey("\x1b")
 			if u.output != nil || u.main.view.Offset != 0 {
 				t.Fatal("dismissing question changed transcript")
 			}
-		} else if u.output == nil || !strings.Contains(fmt.Sprint(u.output.pages), "First target") || strings.Contains(fmt.Sprint(u.output.pages), "Advanced target") {
+		} else if u.output == nil || !strings.Contains(fmt.Sprint(u.output.Pages), "First target") || strings.Contains(fmt.Sprint(u.output.Pages), "Advanced target") {
 			t.Fatal("clicked an advancing snippet target")
 		}
 	}

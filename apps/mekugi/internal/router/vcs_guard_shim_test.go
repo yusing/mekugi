@@ -117,7 +117,7 @@ exit 127
 					seen[snippet] = true
 					block, _ := view.SnippetBlock(snippet)
 					u := &terminalUI{}
-					if block.BatchExit || !view.ClickTarget(&block, snippet, 100) || !u.openOutput(view.bind(u), snippet) || len(u.output.pages) != 2 || u.output.Page != i {
+					if block.BatchExit || !view.ClickTarget(&block, snippet, 100) || !u.openOutput(view.bind(u), snippet) || len(u.output.Pages) != 2 || u.output.Page != i {
 						t.Fatal("command click did not select its separate output")
 					}
 				}

@@ -101,7 +101,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if u.shell.output == nil || len(u.shell.output.pages) != 1 || u.shell.output.pages[0].Body != body {
+			if u.shell.output == nil || len(u.shell.output.Pages) != 1 || u.shell.output.Pages[0].Body != body {
 				t.Fatal("rendered count did not open the unique skill names")
 			}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "live", "item": map[string]any{"id": "reset", "type": "contextCompaction"}})

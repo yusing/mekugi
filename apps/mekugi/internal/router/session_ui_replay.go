@@ -74,7 +74,7 @@ func (p *uiReplayPlayback) reset() {
 	u.startSession(p.Source.Thread, p.Source.Cwd)
 	u.ensureShell()
 	if previous != nil {
-		u.shell.fileReadSlot = previous.fileReadSlot
+		u.fileReadSlot = previous.main.fileReadSlot
 		u.shell.Focus = previous.Focus
 		u.shell.DiffOpen = previous.DiffOpen
 	}
@@ -332,8 +332,8 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 		select {
 		case <-p.ctx.Done():
 			return p.ctx.Err()
-		case result := <-p.ui.shell.markdownFileUpdates():
-			if p.ui.shell.loadedMarkdownFile(result) {
+		case result := <-p.ui.fileReads:
+			if p.ui.loadedMarkdownFile(p.ui.shell, result) {
 				if err := paint(); err != nil {
 					return err
 				}

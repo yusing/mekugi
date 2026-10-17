@@ -505,7 +505,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
 								for _, entry := range view.Entries {
 									if entry.Source.Native != nil && entry.Source.Native.Item == "edit" {
-										if !u.shell.openActivityEdit(view.bind(u.shell), entry.Source.Seq, "source.go") || !strings.Contains(u.shell.output.pages[0].Code, "+package p; var B=2") {
+										if !u.shell.openActivityEdit(view.bind(u.shell), entry.Source.Seq, "source.go") || !strings.Contains(u.shell.output.Pages[0].Code, "+package p; var B=2") {
 											t.Fatal("completed shell edit waited for the next cell or sibling exit to become clickable")
 										}
 										u.shell.outputKey("\x1b")

@@ -60,7 +60,7 @@ func (u *terminalUI) selectionAction(action terminalsession.SelectionIntent) {
 		u.main.refreshPicker()
 		u.main.Run = composer.NoRun
 		u.Focus = 0
-		u.output = nil
+		u.closeOutput()
 	case 'c':
 		u.copyText(s.Text())
 	case 27:
@@ -78,7 +78,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			if release && !s.Moved() {
 				u.selection = nil
 				if s.link != "" {
-					if !u.openMarkdownFile(s.view, s.link) {
+					if !u.main.openMarkdownFile(u, s.view, s.link) {
 						link := s.link
 						if parsed, err := url.Parse(link); err == nil && parsed.Scheme == "file" {
 							link = parsed.Path

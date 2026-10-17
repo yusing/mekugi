@@ -183,7 +183,8 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.attachPresentation()
 	if u.shell != nil {
 		u.shell.agents = u.agents
-		u.shell.selection, u.shell.output = nil, nil
+		u.shell.selection = nil
+		u.shell.closeOutput()
 		u.shell.Focus = 0
 		u.shell.StopDrag()
 	}

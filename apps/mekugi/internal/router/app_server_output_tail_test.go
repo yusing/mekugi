@@ -174,7 +174,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	if !terminal.openOutput(u.view, snippet) {
 		t.Fatal("command did not open output dialog")
 	}
-	terminal.output.layout(76)
+	terminal.layoutOutput(76)
 	if got := terminal.output.Document.Text; got != "ok 1\nok 2\nPASS" {
 		t.Fatalf("dialog output = %q", got)
 	}
@@ -207,7 +207,7 @@ func TestAppServerSingleLineOutputStaysVisible(t *testing.T) {
 		if index < 0 || !terminal.openOutput(u.view, feed.Snippets[index]) {
 			t.Fatal("single output line has no dialog target")
 		}
-		terminal.output.layout(76)
+		terminal.layoutOutput(76)
 		if terminal.output.Document.Text != "done" {
 			t.Fatalf("dialog output = %q", terminal.output.Document.Text)
 		}
@@ -264,7 +264,7 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 			if !terminal.openOutput(u.view, snippet) {
 				t.Fatal("final Read did not open output dialog")
 			}
-			terminal.output.layout(80)
+			terminal.layoutOutput(80)
 			if got := terminal.output.Document.Text; got != "first\nsecond" {
 				t.Fatalf("read dialog output = %q", got)
 			}
@@ -497,7 +497,7 @@ func TestAppServerMainClipsLongCommandSourceUntilOpened(t *testing.T) {
 	if !terminal.openOutput(u.view, snippet) {
 		t.Fatal("clipped source did not open output dialog")
 	}
-	terminal.output.layout(76)
+	terminal.layoutOutput(76)
 	if got := terminal.output.Document; strings.Count(ansi.Strip(fmt.Sprint(got.Lines)), "print('row')") != 30 || got.Text != "boom" {
 		t.Fatalf("dialog lost source or output: %+v", got)
 	}
@@ -612,11 +612,11 @@ func TestAppServerCollapsedReadsMerge(t *testing.T) {
 				t.Fatal("merged read row has no toggle")
 			}
 			terminal := &terminalUI{main: u}
-			if !terminal.openOutput(u.view, snippet) || len(terminal.output.pages) != 3 {
+			if !terminal.openOutput(u.view, snippet) || len(terminal.output.Pages) != 3 {
 				t.Fatal("merged reads did not open three dialog pages")
 			}
 			for i := range 3 {
-				terminal.output.layout(80)
+				terminal.layoutOutput(80)
 				if page := terminal.output.Document.Text; !strings.Contains(page, fmt.Sprintf("read-%d\nmore-%d", i, i)) {
 					t.Fatalf("read page %d = %q", i, page)
 				}

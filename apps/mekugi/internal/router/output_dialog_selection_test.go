@@ -23,7 +23,6 @@ func outputSelectionFixture(text string, live bool) (*terminalUI, *activitymodel
 		output.Finish(nil, new(0))
 	}
 	u := dialogForOutput(output)
-	u.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: activityui.NewView()})
 	drawOutputDialog(u)
 	return u, output
 }
@@ -51,7 +50,8 @@ func outputDialogScreen(u *terminalUI) []string {
 		h = 18
 	}
 	rows := make([]string, h)
-	u.paintOutput(rows, w, h)
+	u.main.prepareOutput(u)
+	u.output.Paint(rows, w, h)
 	return renderedDialogRows(rows, w)
 }
 
@@ -194,7 +194,7 @@ func TestOutputDialogMouseSelectionClearedByNavigation(t *testing.T) {
 	for _, action := range []string{"page", "wheel", "width", "height"} {
 		t.Run(action, func(t *testing.T) {
 			u, _ := outputSelectionFixture("alpha\nbeta\n", false)
-			u.output.refreshPages(activitypresentation.DetailPages(activityui.Values([]activityui.Block{{Value: u.output.pages[0].Value}, {Kind: "op", Verb: "Run", Code: "second"}})))
+			u.main.replaceDetails(u, activitypresentation.DetailPages(activityui.Values([]activityui.Block{{Value: u.output.Pages[0].Value}, {Kind: "op", Verb: "Run", Code: "second"}})))
 			x, y := outputSelectionPoint(t, u, "alpha")
 			outputSelectionDrag(u, x, y, x+4, y)
 			switch action {
@@ -203,9 +203,11 @@ func TestOutputDialogMouseSelectionClearedByNavigation(t *testing.T) {
 			case "wheel":
 				u.outputMouse(64, x, y, false)
 			case "width":
-				u.paintOutput(make([]string, 18), 50, 18)
+				u.main.prepareOutput(u)
+				u.output.Paint(make([]string, 18), 50, 18)
 			case "height":
-				u.paintOutput(make([]string, 8), 80, 8)
+				u.main.prepareOutput(u)
+				u.output.Paint(make([]string, 8), 80, 8)
 			}
 			if u.output == nil || u.output.Selection != nil {
 				t.Fatal("navigation retained stale selection or closed dialog")
@@ -223,10 +225,9 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 	output.Write(source)
 	output.Finish(nil, new(0))
 	u := dialogForOutput(output)
-	u.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: activityui.NewView()})
 	block := activityui.Block{Content: activitymodel.ParseOperation("Skill `example`")}
-	block.Source, block.Output = u.output.pages[0].Source, u.output.pages[0].Output
-	u.output.refreshPages(activitypresentation.DetailPages(activityui.Values([]activityui.Block{block})))
+	block.Source, block.Output = u.output.Pages[0].Source, u.output.Pages[0].Output
+	u.main.replaceDetails(u, activitypresentation.DetailPages(activityui.Values([]activityui.Block{block})))
 	frame := drawOutputDialog(u)
 	if !strings.Contains(frame, "Use careful steps.") || strings.Contains(frame, "**") || strings.Contains(frame, "# Skill guide") {
 		t.Fatalf("skill Markdown not rendered in dialog: %q", frame)
@@ -259,7 +260,8 @@ func TestUISnapshotOutputDialogSharedSelectionActions(t *testing.T) {
 	x, y := outputSelectionPoint(t, u, "alpha")
 	outputSelectionDrag(u, x, y, x+4, y)
 	rows := make([]string, 18)
-	u.paintOutput(rows, 80, len(rows))
+	u.main.prepareOutput(u)
+	u.output.Paint(rows, 80, len(rows))
 	screen := vt.NewEmulator(80, len(rows))
 	defer screen.Close()
 	for y, row := range rows {
@@ -288,13 +290,14 @@ func TestOutputDialogSelectionFooterClippedHints(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("width=%d", tt.width), func(t *testing.T) {
 			u, _ := outputSelectionFixture("alpha\nbeta\n", false)
-			u.main, _ = newAppServerTestUI()
 			rows := make([]string, 18)
 			u.width, u.height = tt.width, len(rows)
-			u.paintOutput(rows, tt.width, len(rows))
+			u.main.prepareOutput(u)
+			u.output.Paint(rows, tt.width, len(rows))
 			x, y := outputSelectionPoint(t, u, "alpha")
 			outputSelectionDrag(u, x, y, x+4, y)
-			u.paintOutput(rows, tt.width, len(rows))
+			u.main.prepareOutput(u)
+			u.output.Paint(rows, tt.width, len(rows))
 			selection := u.output.Selection
 			rect := dialogFrameRect(t, renderedDialogRows(rows, tt.width))
 			u.outputMouse(0, rect.X+3+tt.at, rect.Y+rect.H-1, false)

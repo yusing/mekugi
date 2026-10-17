@@ -106,7 +106,7 @@ func TestLiveActivityDetailsOnlyForHiddenContent(t *testing.T) {
 					if !u.openOutput(v.bind(u), target) {
 						t.Fatal("hidden content not reachable")
 					}
-					page := v.Painter.DetailDocument(u.output.pages[0].DetailPage, nil, nil, 36)
+					page := v.Painter.DetailDocument(u.output.Pages[0].DetailPage, nil, nil, 36)
 					if strings.TrimSpace(page.Text) != strings.TrimSpace(tc.text) {
 						t.Fatalf("dialog lost original content: %q", page.Text)
 					}
@@ -132,7 +132,7 @@ func TestLiveActivityClippedNarrativeRetainsDialog(t *testing.T) {
 	if !u.openOutput(v.bind(u), feed.Snippets[5]) {
 		t.Fatal("excerpt did not open")
 	}
-	if got := v.Painter.DetailDocument(u.output.pages[0].DetailPage, nil, nil, 40).Text; strings.TrimSpace(got) != strings.TrimSpace(body) {
+	if got := v.Painter.DetailDocument(u.output.Pages[0].DetailPage, nil, nil, 40).Text; strings.TrimSpace(got) != strings.TrimSpace(body) {
 		t.Fatalf("lost body: %q", got)
 	}
 }
@@ -165,8 +165,8 @@ func TestLiveActivitySharedNarrativeDialogRefresh(t *testing.T) {
 	}
 	entry.Text += "Newly streamed detail."
 	v.replaceEntry(0, entry, parseLiveActivity(entry))
-	u.output.refreshPages(nil)
-	if got := u.output.pages[0]; got.Source != 1 || !got.Live || !strings.HasSuffix(got.Body, "Newly streamed detail.") {
+	u.main.prepareOutput(u)
+	if got := u.output.Pages[0]; got.Source != 1 || !got.Live || !strings.HasSuffix(got.Body, "Newly streamed detail.") {
 		t.Fatalf("dialog did not refresh its exact source: %+v", got)
 	}
 	if !v.Following {
@@ -203,7 +203,7 @@ func TestLiveActivityTruncatedReasoningHeading(t *testing.T) {
 					}
 					if target.Run != 0 {
 						u := &terminalUI{}
-						if !u.openOutput(v.bind(u), target) || v.Painter.DetailDocument(u.output.pages[0].DetailPage, nil, nil, width).Text != body {
+						if !u.openOutput(v.bind(u), target) || v.Painter.DetailDocument(u.output.Pages[0].DetailPage, nil, nil, width).Text != body {
 							t.Fatal("elided heading cannot open full original content")
 						}
 						v.Snippet = target
