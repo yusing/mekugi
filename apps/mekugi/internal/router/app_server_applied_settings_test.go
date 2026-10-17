@@ -172,6 +172,25 @@ func TestAppServerAppliedSettingsStartResultPersists(t *testing.T) {
 	}
 }
 
+func TestAppServerAppliedSettingsFlushesCurrentLayoutBeforeTick(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	u, _ := appliedSettingsTestUI(t, "/workspace", "saved")
+	u.shell.Split = 63
+	appliedSettingsTestNotify(t, u, "model", "high", "flex")
+	state, err := testPanePreferences().read("/workspace", "saved")
+	if err != nil || state.layout.Split != 63 || state.Settings.Model != "model" {
+		t.Fatal("immediate settings flush lost layout changed since the last tick", err)
+	}
+	u.shell.Split = 67
+	if err := u.clearSessionPresentation(); err != nil {
+		t.Fatal(err)
+	}
+	state, err = testPanePreferences().read("/workspace", "saved")
+	if err != nil || state.layout.Split != 67 || state.Settings.Model != "model" {
+		t.Fatal("replacement did not flush the old attachment's current layout", err)
+	}
+}
+
 func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T) {
 	for _, effort := range []string{"", "high", "medium"} {
 		t.Run("replacement="+effort, func(t *testing.T) {
@@ -179,6 +198,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 			u, w := appliedSettingsTestUI(t, "/workspace", "saved")
 			observed := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 			u.clock = func() time.Time { return observed }
+			u.shell.Focus = 2 // Resume normalizes hidden-Diff focus before checkpointing.
 			appliedSettingsTestNotify(t, u, "saved-model", "", "")
 			before, err := u.panes.read("/workspace", "saved")
 			if err != nil {
@@ -198,7 +218,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				t.Fatal("did not wait for default restoration")
 			}
 			after, err := u.panes.read("/workspace", "saved")
-			if err != nil || before.Settings != after.Settings || after.ResumeObserved.IsZero() {
+			if err != nil || before.Settings != after.Settings || after.ResumeObserved.IsZero() || after.layout.Focus != 0 {
 				t.Fatalf("resume metadata replaced pending default intent: %v", err)
 			}
 			var correctionID int

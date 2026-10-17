@@ -52,7 +52,7 @@ func TestPreferencesEffectFreeReadsKeepAttachedScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := owner.Save(initial, time.Now(), true); err != nil {
+	if err := owner.Save(time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
 	got, err := service.Read(scope, "terminal")
@@ -70,12 +70,22 @@ func TestPreferencesEffectFreeReadsKeepAttachedScope(t *testing.T) {
 		t.Fatalf("construction/read/unchanged save created state: %v %v", entries, err)
 	}
 	layout := jsontext.Value(`{"focus":1,"futureTerminalField":{"value":3}}`)
-	if err := owner.Save(layout, time.Now(), true); err != nil {
+	expected := decodePresentation(t, layout)
+	owner.StagePresentation(layout)
+	now := time.Now()
+	if err := owner.Save(now, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Read(preferences.Scope{Workspace: scope.Workspace, Thread: "other"}, "terminal"); err != nil {
+		t.Fatal(err)
+	}
+	layout[9] = '2' // Caller-owned bytes must not mutate the pending snapshot.
+	if err := owner.Save(now.Add(time.Second), false); err != nil {
 		t.Fatal(err)
 	}
 	restarted := newPreferences(t)
 	got, err = restarted.Read(scope, "terminal")
-	if err != nil || !reflect.DeepEqual(decodePresentation(t, got.Presentation), decodePresentation(t, layout)) || owner.Scope() != scope {
+	if err != nil || !reflect.DeepEqual(decodePresentation(t, got.Presentation), expected) || owner.Scope() != scope {
 		t.Fatalf("attached target changed: scope=%+v read=%+v err=%v", owner.Scope(), got, err)
 	}
 
@@ -124,7 +134,7 @@ func TestPreferencesFlatV1RecoveryAndConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := owner.Save(state.Presentation, cutoff, true); err != nil {
+	if err := owner.Save(cutoff, true); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.Stat(preferencePath(t, scope))
@@ -133,7 +143,7 @@ func TestPreferencesFlatV1RecoveryAndConfirmation(t *testing.T) {
 	}
 	checkpoint := cutoff.Add(time.Minute)
 	owner.Recover(partial, checkpoint)
-	if err := owner.Save(state.Presentation, checkpoint, true); err != nil {
+	if err := owner.Save(checkpoint, true); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := newPreferences(t).Read(scope, "terminal")
@@ -149,7 +159,7 @@ func TestPreferencesFlatV1RecoveryAndConfirmation(t *testing.T) {
 	}
 	confirmed := preferences.Applied{Model: "confirmed", Observed: checkpoint.Add(time.Minute)}
 	owner.Apply(confirmed)
-	if err := owner.Save(state.Presentation, confirmed.Observed, true); err != nil {
+	if err := owner.Save(confirmed.Observed, true); err != nil {
 		t.Fatal(err)
 	}
 	restored, err = newPreferences(t).Read(scope, "terminal")
@@ -182,7 +192,8 @@ func TestPreferencesAtomicReplacementPreservesLinkReferent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := owner.Save(jsontext.Value(`{"focus":1}`), time.Now(), true); err != nil {
+	owner.StagePresentation(jsontext.Value(`{"focus":1}`))
+	if err := owner.Save(time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Lstat(path)

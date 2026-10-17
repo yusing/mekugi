@@ -142,12 +142,17 @@ func (a *Attachment) Recover(evidence Evidence, observed time.Time) {
 	a.state.ResumeEvidence, a.state.ResumeObserved = evidence, observed
 }
 
+// StagePresentation admits detached renderer state without scheduling or writing.
+func (a *Attachment) StagePresentation(presentation jsontext.Value) {
+	if !bytes.Equal(presentation, a.state.Presentation) {
+		a.state.Presentation = bytes.Clone(presentation)
+	}
+}
+
 // Save coalesces layout bursts. Applied/recovery changes and exit use flush.
 // A failed save is reported once, rather than retried on every animation frame.
-func (a *Attachment) Save(presentation jsontext.Value, now time.Time, flush bool) error {
-	a.state.Presentation = presentation
-	if a.state.Settings != a.last.Settings || a.state.ResumeObserved != a.last.ResumeObserved || a.state.ResumeEvidence != a.last.ResumeEvidence || !bytes.Equal(presentation, a.last.Presentation) {
-		a.state.Presentation = bytes.Clone(presentation)
+func (a *Attachment) Save(now time.Time, flush bool) error {
+	if a.state.Settings != a.last.Settings || a.state.ResumeObserved != a.last.ResumeObserved || a.state.ResumeEvidence != a.last.ResumeEvidence || !bytes.Equal(a.state.Presentation, a.last.Presentation) {
 		a.last, a.pending, a.due = a.state, true, now.Add(250*time.Millisecond)
 	}
 	if !a.pending || !flush && now.Before(a.due) {

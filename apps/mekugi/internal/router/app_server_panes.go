@@ -68,15 +68,23 @@ func (p *nativePreferences) open(u *terminalUI, workspace, thread string, resume
 	return nil
 }
 
+func (p *nativePreferences) stage(layout terminalsession.Preferences) error {
+	state, err := p.encoding.Encode(layout)
+	if err != nil {
+		return err
+	}
+	p.attachment.StagePresentation(state)
+	return nil
+}
+
 func (p *nativePreferences) save(u *terminalUI, now time.Time, flush bool) error {
 	if p == nil || p.attachment == nil {
 		return nil
 	}
-	state, err := p.encoding.Encode(u.paneState())
-	if err != nil {
+	if err := p.stage(u.paneState()); err != nil {
 		return err
 	}
-	return p.attachment.Save(state, now, flush)
+	return p.attachment.Save(now, flush)
 }
 
 // Only authoritative start/resume results and settings notifications reach here.
@@ -91,8 +99,12 @@ func (u *appServerUI) retainAppliedSettings() {
 			return
 		}
 	}
+	if err := u.panes.stage(u.shell.paneState()); err != nil {
+		u.paneError(err)
+		return
+	}
 	u.panes.attachment.Apply(preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: u.now()})
-	u.paneError(u.panes.save(u.shell, u.now(), true))
+	u.paneError(u.panes.attachment.Save(u.now(), true))
 }
 
 func (u *appServerUI) paneError(err error) {

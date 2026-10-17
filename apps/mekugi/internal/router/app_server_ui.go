@@ -810,8 +810,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 						// Do not let that transient effort replace saved null intent
 						// on a fresh-process retry if the corrective update fails.
 						if u.panes != nil && u.panes.attachment != nil && u.resumeEvidence.Model != "" {
-							u.panes.attachment.Recover(u.resumeEvidence, u.now())
-							u.paneError(u.panes.save(u.shell, u.now(), true))
+							if err := u.panes.stage(u.shell.paneState()); err != nil {
+								u.paneError(err)
+							} else {
+								u.panes.attachment.Recover(u.resumeEvidence, u.now())
+								u.paneError(u.panes.attachment.Save(u.now(), true))
+							}
 						}
 						settings["reasoning_effort"] = nil
 						if _, err := u.updateSettings(map[string]any{"collaborationMode": result.CollaborationMode}); err != nil {

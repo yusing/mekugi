@@ -53,6 +53,11 @@ cancellation or session replacement. Applied settings and recovery checkpoints f
 without waiting for layout debounce. Unchanged state is not rewritten. A failed
 save is reported once rather than retried on every frame.
 
+The renderer stages an owned copy of its opaque presentation separately from
+settings and recovery changes. Application coordination samples current layout
+before an immediate flush, so changes since the last debounce tick are retained
+with the authoritative settings. Saving already-staged state requires no renderer.
+
 ## Lifecycle
 
 The composed service depends on session history and creates no files during

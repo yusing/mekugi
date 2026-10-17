@@ -153,13 +153,16 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(testPanePath(t, p)), 0700); err != nil {
 		t.Fatal(err)
 	}
-	for _, body := range []string{"{", `{"version":2}`, `{"version":1,"focus":99}`, `{"version":1,"focus":1,"diffOpen":false}`, strings.Repeat("x", 4097)} {
+	for _, body := range []string{"{", `{"version":2}`, `{"version":1,"focus":99,"settings":{"model":"invalid-layout","observed":"2026-10-01T00:00:00Z"}}`, `{"version":1,"focus":1,"diffOpen":false}`, strings.Repeat("x", 4097)} {
 		if err := os.WriteFile(testPanePath(t, p), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
 		err := p.open(u.shell, "/workspace", "thread", true)
 		if err == nil || u.shell.Focus != 0 || u.shell.Split != 0 {
 			t.Fatalf("invalid state applied: %s %v", body, err)
+		}
+		if state, readErr := p.read("/workspace", "thread"); readErr == nil || state.Settings.Model != "" {
+			t.Fatal("invalid renderer state contributed saved settings")
 		}
 		u.paneError(err)
 		if u.Thread != "main" || !strings.Contains(u.view.Entries[len(u.view.Entries)-1].Source.Text, "Pane layout") {
