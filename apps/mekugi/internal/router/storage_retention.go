@@ -21,8 +21,6 @@ import (
 const sessionRetention = history.SessionRetention
 const defaultReplayStorageBytes = history.DefaultStorageBytes
 
-type storageTurnKey struct{}
-
 type storageSessionKey struct{}
 
 type storageSessionIdentity struct {
@@ -72,55 +70,6 @@ func (s *mekugiReplayStore) beginSession(ctx context.Context, thread, routing st
 		return ctx, nil, err
 	}
 	return ctx, release, nil
-}
-
-// A turn lease covers host handoff gaps and yielded tools. Only a delivered
-// terminal with no pending tools releases it; shutdown also releases all leases.
-func (p *mekugiProxy) beginStorageSession(ctx context.Context, thread, routing string) (context.Context, error) {
-	ctx, release, err := p.replayStore.beginSession(ctx, thread, routing)
-	if err != nil {
-		return ctx, err
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.closed {
-		release()
-		return ctx, errors.New("router closed before session storage could be leased")
-	}
-	if p.storageLeases == nil {
-		p.storageLeases = make(map[string]func())
-	}
-	if p.storageLeases[thread] != nil {
-		release()
-	} else {
-		p.storageLeases[thread] = release
-	}
-	p.storageSequence++
-	if p.storageTurns == nil {
-		p.storageTurns = make(map[string]uint64)
-	}
-	p.storageTurns[thread] = p.storageSequence
-	return context.WithValue(ctx, storageTurnKey{}, p.storageSequence), nil
-}
-
-func (p *mekugiProxy) releaseIdleStorageSession(ctx context.Context, thread string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	// An older delivered terminal must not release a newer host handoff.
-	generation, ok := ctx.Value(storageTurnKey{}).(uint64)
-	if !ok || generation != p.storageTurns[thread] {
-		return
-	}
-	for _, session := range p.calls.PinnedSessions() {
-		if strings.HasSuffix(session, "\x00"+thread) {
-			return
-		}
-	}
-	if release := p.storageLeases[thread]; release != nil {
-		release()
-		delete(p.storageLeases, thread)
-		delete(p.storageTurns, thread)
-	}
 }
 
 // Called under store.lock. Ownership is recorded before publishing a capability.

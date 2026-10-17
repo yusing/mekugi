@@ -98,18 +98,6 @@ func (h mekugiHistory) confirmsReport(raw json.RawMessage) bool {
 	return state == "Script completed" && body == h.Report
 }
 
-// Admission shares the execution-lifetime lock with turn-lease release.
-func (p *mekugiProxy) activateSession(sessionID string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.closed {
-		return errors.New("mekugi response proxy is closed")
-	}
-	p.calls.Pin(sessionID)
-	return nil
-}
-func (p *mekugiProxy) deactivateSession(sessionID string) { p.calls.Unpin(sessionID) }
-
 func orderedCalls(histories map[string]mekugiHistory) []history.Call {
 	ids := slices.SortedFunc(maps.Keys(histories), func(a, b string) int {
 		return cmp.Or(cmp.Compare(histories[a].sequence, histories[b].sequence), strings.Compare(a, b))

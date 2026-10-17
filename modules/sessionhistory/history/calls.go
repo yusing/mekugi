@@ -41,52 +41,14 @@ type cachedSession struct {
 type CallCache struct {
 	mu              sync.RWMutex
 	sessions        map[string]*cachedSession
-	activeSessions  map[string]int
+	activeSessions  map[string]callPin
+	leases          map[string]callLease
+	draining        bool
+	closed          bool
 	historyBytes    int
 	sessionSequence uint64
 }
 
-func (p *CallCache) Pin(sessionID string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.activeSessions == nil {
-		p.activeSessions = make(map[string]int)
-	}
-	p.activeSessions[sessionID]++
-	if session := p.sessions[sessionID]; session != nil {
-		p.touch(session)
-	}
-}
-func (p *CallCache) Unpin(sessionID string) {
-	if p == nil {
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.activeSessions[sessionID] <= 1 {
-		delete(p.activeSessions, sessionID)
-	} else {
-		p.activeSessions[sessionID]--
-	}
-}
-func (p *CallCache) PinnedSessions() []string {
-	if p == nil {
-		return nil
-	}
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return slices.Collect(maps.Keys(p.activeSessions))
-}
-func (p *CallCache) Clear() {
-	if p == nil {
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	clear(p.sessions)
-	clear(p.activeSessions)
-	p.historyBytes = 0
-}
 func (p *CallCache) touch(session *cachedSession) {
 	p.sessionSequence++
 	session.lastUsed = p.sessionSequence
@@ -147,6 +109,9 @@ func (p *CallCache) Remember(sessionID string, histories []Call) error {
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.closed {
+		return errCallsClosed
+	}
 
 	if p.sessions == nil {
 		p.sessions = make(map[string]*cachedSession)
@@ -204,7 +169,7 @@ func (p *CallCache) Remember(sessionID string, histories []Call) error {
 	}
 	candidates := make([]sessionCandidate, 0, len(p.sessions))
 	for id, session := range p.sessions {
-		if id == sessionID || p.activeSessions[id] != 0 {
+		if id == sessionID || p.activeSessions[id].count != 0 {
 			continue
 		}
 		candidates = append(candidates, sessionCandidate{id: id, lastUsed: session.lastUsed})

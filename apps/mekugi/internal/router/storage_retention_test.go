@@ -574,30 +574,27 @@ func TestStoragePreparationProtectsLeaseFromPreviousTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &mekugiProxy{replayStore: store, calls: testHistory().Calls()}
+	cache := testHistory().Calls()
+	t.Cleanup(cache.Close)
 	key := "/w\x00thread"
-	if err := p.activateSession(key); err != nil {
-		t.Fatal(err)
-	}
-	ctx, err := p.beginStorageSession(t.Context(), "thread", "old")
+	older, err := cache.Begin(key, "thread")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		p.deactivateSession(key)
-		p.releaseIdleStorageSession(ctx, "thread")
-	})
-	// New preparation reserves activity before acquiring or sharing the turn lease.
-	if err := p.activateSession(key); err != nil {
-		t.Fatal(err)
-	}
-	ctx, err = p.beginStorageSession(t.Context(), "thread", "new")
+	_, release, err := store.beginSession(t.Context(), "thread", "old")
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The prior request's terminal closes at the former preparation/activation gap.
-	p.deactivateSession(key)
-	p.releaseIdleStorageSession(ctx, "thread")
+	if err := older.BindLease(release); err != nil {
+		t.Fatal(err)
+	}
+	// Reserve the newer request before acquiring storage. The older terminal
+	// must preserve its lease even inside that acquisition gap.
+	newer, err := cache.Begin(key, "thread")
+	if err != nil {
+		t.Fatal(err)
+	}
+	older.Finish(true)
 	lease := flock.New(filepath.Join(store.directory, strings.TrimSuffix(retainedhistory.SessionName("thread"), ".json")+".lock"))
 	acquired, err := lease.TryLock()
 	if acquired {
@@ -606,8 +603,14 @@ func TestStoragePreparationProtectsLeaseFromPreviousTerminal(t *testing.T) {
 	if err != nil || acquired {
 		t.Fatalf("running preparation lost its lease: acquired=%v err=%v", acquired, err)
 	}
-	p.deactivateSession(key)
-	p.releaseIdleStorageSession(ctx, "thread")
+	_, release, err = store.beginSession(t.Context(), "thread", "new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := newer.BindLease(release); err != nil {
+		t.Fatal(err)
+	}
+	newer.Finish(true)
 	acquired, err = lease.TryLock()
 	if err != nil || !acquired {
 		t.Fatalf("idle completion retained its lease: acquired=%v err=%v", acquired, err)
@@ -648,7 +651,9 @@ func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
 	if err != nil || acquired {
 		t.Fatalf("newer handoff lost lease: acquired=%v err=%v", acquired, err)
 	}
-	p.releaseIdleStorageSession(newer.ctx, "thread")
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {

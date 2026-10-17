@@ -80,6 +80,10 @@ Cross-process leases cover active turns, host handoffs, workers and yielded call
 A delivered terminal without a tool handoff releases its turn lease independently
 of answer text or optional UI tracking; shutdown releases owned leases. Cleanup
 never stops host processes or changes continuation lifetimes.
+Request pins and handoff leases share this owner's invocation lifetime. A request
+reserves its explicit thread before acquiring storage; only the newest admitted
+request can release an idle handoff, after every request for that thread has
+unpinned. Stale completion and concurrent preparation cannot release newer work.
 
 The application schedules age cleanup at startup and hourly without blocking
 startup, UI handling or request preparation. Admission coalesces pressure into
@@ -123,8 +127,9 @@ follows the [publication contract](../../docs/contracts/record-publication.md#cr
 The invocation's bounded call cache uses the same neutral historical facts.
 Ordered batch admission is atomic, protects the arriving calls, and evicts older
 eligible entries without evicting pinned sessions. Request-local confirmation,
-native process references and preview watches never enter the cache. Cache pins
-also let application coordination preserve leases across concurrent requests.
+native process references and preview watches never enter the cache. Request
+handles couple cache pins to the same owner's handoff lifetime without deriving
+thread identity from cache-key spelling.
 
 Host-record publication preserves original translation facts while merging
 completed status, provider passthrough metadata and generated-commentary identities.

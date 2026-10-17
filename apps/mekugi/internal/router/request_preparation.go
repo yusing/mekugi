@@ -26,10 +26,8 @@ func (p *mekugiProxy) Prepare(ctx context.Context, request *codexresponses.Reque
 func (t *mekugiResponseTransform) Usage() *accounting.Observation { return t.usageTracker }
 
 func (t *mekugiResponseTransform) BindExecution(ctx context.Context) {
-	for _, key := range []any{storageSessionKey{}, storageTurnKey{}} {
-		if value := t.ctx.Value(key); value != nil {
-			ctx = context.WithValue(ctx, key, value)
-		}
+	if identity := t.ctx.Value(storageSessionKey{}); identity != nil {
+		ctx = context.WithValue(ctx, storageSessionKey{}, identity)
 	}
 	t.ctx = ctx
 }

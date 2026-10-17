@@ -27,7 +27,6 @@ import (
 	"errors"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -51,14 +50,9 @@ type mekugiProxy struct {
 	execWindows      *execWindowRegistry
 	nativeTrace      *nativetrace.Reader
 	control          sessioncontrol.Observations
-	mu               sync.RWMutex
 	calls            *history.CallCache
 	replayStore      *mekugiReplayStore
 	noticeSink       func(string, string, string, string)
-	storageTurns     map[string]uint64
-	storageSequence  uint64
-	storageLeases    map[string]func()
-	closed           bool
 }
 
 func newMekugiProxy(registry *frontends.Registry, projections []binding.InputProjection, usage *accounting.Service, service *history.Service) *mekugiProxy {
@@ -89,21 +83,14 @@ func (p *mekugiProxy) Close() error {
 	if p == nil {
 		return nil
 	}
-	p.mu.Lock()
-	p.closed = true
-	defer p.mu.Unlock()
+	p.calls.StopAdmission()
 	if p.execTrack != nil {
 		p.execTrack.Close()
 	}
 	p.guard.close()
-	var cleanupErr error
-	for _, release := range p.storageLeases {
-		release()
-	}
-	clear(p.storageLeases)
-	p.calls.Clear()
+	p.calls.Close()
 	p.activity.close()
-	return cleanupErr
+	return nil
 }
 
 type mekugiTranslationState struct {
@@ -131,7 +118,7 @@ type mekugiResponseTransform struct {
 	model            string
 	visible          map[string]mekugiHistory
 	historySessionID string
-	sessionActive    bool
+	retainedRequest  *history.CallRequest
 	threadID         string
 
 	originalTools             jsonv1.RawMessage
@@ -166,13 +153,7 @@ func (t *mekugiResponseTransform) Close() {
 	for itemID := range t.previews {
 		t.endPreview(itemID)
 	}
-	if t.sessionActive {
-		t.proxy.deactivateSession(t.historySessionID)
-		if t.storageIdle {
-			t.proxy.releaseIdleStorageSession(t.ctx, t.shellThreadID)
-		}
-		t.sessionActive = false
-	}
+	t.retainedRequest.Finish(t.storageIdle)
 }
 
 // ObserveUsage records provider-authoritative token usage for this response.
@@ -276,22 +257,26 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 	}
 	historySessionID := directory + "\x00" + threadID
-	if err := p.activateSession(historySessionID); err != nil {
+	retained, err := p.calls.Begin(historySessionID, threadID)
+	if err != nil {
 		return nil, err
 	}
-	ctx, err = p.beginStorageSession(ctx, threadID, sessionID)
+	ctx, release, err := p.replayStore.beginSession(ctx, threadID, sessionID)
+	if err == nil {
+		err = retained.BindLease(release)
+	}
 	if err != nil {
-		p.deactivateSession(historySessionID)
+		retained.Finish(false)
 		return nil, storageIOError(err)
 	}
 	ctx, err = p.replayStore.prepareHandleScope(ctx, metadata)
 	if err != nil {
-		p.deactivateSession(historySessionID)
+		retained.Finish(false)
 		return nil, err
 	}
 	visible, err := p.reconcileVisibleInput(ctx, request, directory, historySessionID)
 	if err != nil {
-		p.deactivateSession(historySessionID)
+		retained.Finish(false)
 		return nil, err
 	}
 	// Only accepted requests may change retained ancestry or collect activity.
@@ -335,7 +320,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		model:            strings.TrimSpace(request.Model() + " " + request.ReasoningEffort()),
 		historySessionID: historySessionID,
 		visible:          visible,
-		sessionActive:    true,
+		retainedRequest:  retained,
 		threadID:         activityThreadID,
 
 		originalTools:             originalTools,
