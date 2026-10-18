@@ -1,0 +1,74 @@
+package launch
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/backends/codex/binding"
+
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+)
+
+func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
+	const script = "git show --stat --oneline 3333fb1c; skills-mgr get mekugi-owners; git cherry-pick 3333fb1c"
+	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script),
+		Status: "failed", ExitCode: new(1), AggregatedOutput: new("git output\nskill output\nconflict\n")}
+	for _, mode := range []string{"live", "resume", "child history"} {
+		t.Run(mode, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			view := u.testActivity(u.shell.Transcript)
+			switch mode {
+			case "live":
+				started := item
+				started.Status, started.ExitCode, started.AggregatedOutput = "inProgress", nil, nil
+				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": started})
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			case "resume":
+				u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
+			case "child history":
+				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+				restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
+				view = u.testActivity(u.shell.Agents)
+			}
+			finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
+			got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: view.View}, attached: attachedPresentation{source: view.ActivitySource}}), 140)
+			if mode == "resume" {
+				feed := view.RenderFeed(140, 10)
+				if !strings.Contains(got, "1 failed command") || !terminalTest(u).openOutput(view.bind(terminalTest(u)), feed.Snippets[0]) || len(terminalTest(u).Dialog.Pages) != 1 {
+					t.Fatalf("resumed batch lost its summary or aggregate output: %s", got)
+				}
+				if output := terminalTest(u).Dialog.Output; output == nil || !output.View.Exited || output.View.Exit != 1 || !strings.Contains(strings.Join(output.View.Lines, "\n"), "conflict") {
+					t.Fatal("resumed batch lost its failed command output")
+				}
+			} else if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "Ran   shell batch · exit 1") || !strings.Contains(got, "┆ conflict") {
+				t.Fatalf("missing unique batch result:\n%s", got)
+			}
+			for _, record := range view.Entries {
+				blocks := record.Values
+				for _, block := range blocks {
+					if !block.BatchExit && (block.ExitCode != 0 || len(block.Tail) != 0) {
+						t.Fatalf("batch result attributed to an operation: %+v", block)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestCommandExitBlocksKeepsBatchIdentity(t *testing.T) {
+	blocks := []activityui.Block{{Kind: "op", Verb: "Run", Code: "true"}, {Kind: "op", Verb: "Skill", Label: "example"}, {Kind: "filter"}}
+	for range 2 {
+		blocks = commandExitBlocks(blocks, 1, []string{"failure"}, 3)
+	}
+	if len(blocks) != 4 || !blocks[3].BatchExit || blocks[3].ExitCode != 1 || blocks[3].TailOmitted != 3 || blocks[0].ExitCode != 0 || blocks[1].ExitCode != 0 {
+		t.Fatalf("batch status duplicated or attributed to operations: %+v", blocks)
+	}
+	tracked := []activityui.Block{{Kind: "op", Verb: "Run", Segment: true}, {Kind: "op", Verb: "Run", Segment: true, ExitCode: 2}}
+	tracked = commandExitBlocks(tracked, 2, []string{"combined"}, 0)
+	if len(tracked) != 2 || tracked[0].ExitCode != 0 || tracked[1].ExitCode != 2 || len(tracked[1].Tail) != 0 {
+		t.Fatalf("aggregate overwrote tracked outcomes: %+v", tracked)
+	}
+}

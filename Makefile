@@ -58,7 +58,7 @@ mekugi-pprof:
 # Plays a fake session automatically; keys act as in the real UI (Ctrl-C clears,
 # interrupts, then exits).
 preview-native-ui:
-	env -u BASH_ENV MEKUGI_NATIVE_UI_PREVIEW=1 $(GO) test $(GO_BUILD_FLAGS) ./apps/mekugi/internal/router -run '^TestNativeUIPreview$$' -count=1 -timeout 0
+	env -u BASH_ENV MEKUGI_NATIVE_UI_PREVIEW=1 $(GO) test $(GO_BUILD_FLAGS) ./apps/mekugi/internal/launch -run '^TestNativeUIPreview$$' -count=1 -timeout 0
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test: workspace-check
@@ -69,13 +69,13 @@ test-host:
 	@codex --version
 	@set -eu; \
 	pattern="^($$(printf '%s' '$(strip $(HOST_ACCEPTANCE_TESTS))' | tr ' ' '|'))$$"; \
-	if ! available="$$(env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) -tags=codex_e2e ./apps/mekugi/internal/router -list "$$pattern")"; then \
+	if ! available="$$(env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) -tags=codex_e2e ./apps/mekugi/internal/launch -list "$$pattern")"; then \
 		printf '%s\n' "$$available"; exit 1; \
 	fi; \
 	for name in $(HOST_ACCEPTANCE_TESTS); do \
 		printf '%s\n' "$$available" | grep -Fxq "$$name" || { printf 'Missing host acceptance test: %s\n' "$$name" >&2; exit 1; }; \
 	done; \
-	$(MAKE) --no-print-directory test TEST_PACKAGES=./apps/mekugi/internal/router TEST_RUN="$$pattern" TEST_FLAGS='-tags=codex_e2e -count=1 -v'
+	$(MAKE) --no-print-directory test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN="$$pattern" TEST_FLAGS='-tags=codex_e2e -count=1 -v'
 
 lint: workspace-check
 	env -u BASH_ENV $(WORKSPACE) run golangci-lint run @workspace

@@ -176,9 +176,9 @@ func allowedImport(directory, pkg, imported string) error {
 		if rest, ok := strings.CutPrefix(target, owner+"/internal/"); ok {
 			dependency, _, _ := strings.Cut(rest, "/")
 			if area == "inspectioncli" && dependency != area ||
-				neutral && (dependency == "router" || dependency == "terminalsession") ||
+				neutral && (dependency == "launch" || dependency == "terminalsession") ||
 				area == "headless" && dependency == "sessionpresentation" ||
-				area == "frontends" && slices.Contains([]string{"router", "composition", "launch"}, dependency) {
+				area == "frontends" && slices.Contains([]string{"composition", "launch"}, dependency) {
 				return deny()
 			}
 		}

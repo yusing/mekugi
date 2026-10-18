@@ -13,9 +13,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
@@ -23,18 +20,14 @@ import (
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/textsanitize"
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
-	headlessclient "github.com/yusing/mekugi/apps/mekugi/internal/headless"
-	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"golang.org/x/term"
 )
@@ -109,7 +102,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	// Before handoff Ctrl-C cancels startup. Once started, Codex receives the
-	// foreground group's interrupt itself; never forward it or stop its router.
+	// foreground group's interrupt itself; never forward it or stop its
 	interrupts := make(chan os.Signal, 1)
 	signal.Notify(interrupts, os.Interrupt)
 	defer signal.Stop(interrupts)
@@ -140,8 +133,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			}
 		}
 	}()
-	ready := make(chan router.Session, 1)
-	routerDone := make(chan error, 1)
+
 	var debugPaths []string
 	defer func() {
 		if len(debugPaths) == 0 {
@@ -151,180 +143,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		directory := filepath.Dir(debugPaths[0])
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", commandargs.Quote(directory))
 	}()
-	go func() {
-		routerDone <- router.RunSession(frontends.Terminal, frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, issues, func(session router.Session) {
-			ready <- session
-		}, func(paths []string) { debugPaths = paths })
-	}()
-	stopFailedStartup := func(err error) (int, error) {
-		cancel()
-		return 1, errors.Join(err, <-routerDone)
-	}
-	var session router.Session
-	select {
-	case err := <-routerDone:
-		return 1, err
-	case session = <-ready:
-	}
-	if session.ThirdPartyOnly {
-		selectedModels := modelcatalog.Selection{GrokEnabled: session.GrokEnabled, GrokUnprefixed: session.GrokUnprefixed, OpenCode: session.OpenCode}
-		catalogDirectory, catalogPath, err := prepareProviderCatalog(ctx, executable, args, selectedModels)
-		if err != nil {
-			return stopFailedStartup(err)
-		}
-		defer func() {
-			if err := os.RemoveAll(catalogDirectory); err != nil {
-				runErr = errors.Join(runErr, err)
-				code = 1
-			}
-		}()
-		index := slices.Index(args, "--")
-		if index < 0 {
-			index = len(args)
-		}
-		args = slices.Insert(slices.Clone(args), index, "-c", fmt.Sprintf("model_catalog_json=%q", catalogPath))
-		args, err = thirdPartyDefaultArgs(args, selectedModels)
-		if err != nil {
-			return stopFailedStartup(err)
-		}
-	}
-
-	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.CodeModeEnabled, session.SkillsManagerAvailable, !session.ThirdPartyOnly)...)
-	cmd.Env = append(slices.DeleteFunc(os.Environ(), func(entry string) bool {
-		return strings.HasPrefix(entry, shellhook.Environment+"=")
-	}), "MEKUGI_BASE_URL="+session.BaseURL)
-	if session.NativeTraceDirectory != "" {
-		cmd.Env = append(cmd.Env, "CODEX_ROLLOUT_TRACE_ROOT="+session.NativeTraceDirectory)
-	}
-	if session.AXReadOutput != "" {
-		cmd.Env = append(cmd.Env, evidence.AXReadOutputEnvironment+"="+session.AXReadOutput)
-	}
-	guards := session.Guards
-	if !appUI {
-		guards = nil
-	}
-	guard := len(guards) != 0
-	if guard && session.FrontendDirectory == "" {
-		return stopFailedStartup(errors.New("Shell guard requires Mekugi mode; use --shell-guard=false to disable it"))
-	}
-	if session.FrontendDirectory != "" {
-		helper := ""
-		if appUI {
-			helper = execTrackHelper()
-		}
-		var reportEndpoints segmenttransport.Endpoints
-		if frontends.Segments.Live != nil {
-			reportEndpoints = frontends.Segments.Live.Endpoints()
-		}
-		cmd.Env, err = frontendShellEnvironment(cmd.Env, session.FrontendDirectory, helper, guards, reportEndpoints)
-		if err != nil {
-			return stopFailedStartup(err)
-		}
-		if helper != "" {
-			guardDirectory := ""
-			for _, registration := range guards {
-				if registration.Kind == binding.RemoteWrite {
-					guardDirectory, _ = shellapproval.Paths(session.FrontendDirectory)
-				}
-			}
-			sudoDirectory, tracker := "", ""
-			for _, entry := range cmd.Env {
-				if value, ok := strings.CutPrefix(entry, shellapproval.DirectoryEnvironment+"="); ok {
-					sudoDirectory = value
-				}
-				if value, ok := strings.CutPrefix(entry, shellinstrumentation.ShTrackerEnvironment+"="); ok {
-					tracker = value
-				}
-			}
-			var hash string
-			if guard {
-				prior, disabled, discoverErr := shellhook.Discover(ctx, cmd)
-				if discoverErr != nil {
-					return stopFailedStartup(fmt.Errorf("prepare shell guard: %w", discoverErr))
-				}
-				var config, state string
-				config, state, hash, err = shellhook.Config(helper, guardDirectory, sudoDirectory, tracker, prior, disabled)
-				if err == nil {
-					cmd.Args = append(cmd.Args, "-c", config, "-c", state)
-					for _, key := range disabled {
-						fmt.Fprintf(os.Stderr, "mekugi: shell guard replaces incompatible hook %q for this invocation\n", key)
-					}
-				}
-			} else if tracker != "" {
-				cmd.Args, hash, err = optionalTrackingHookArgs(cmd.Args, helper, tracker)
-			}
-			if err != nil {
-				if guard {
-					return stopFailedStartup(err)
-				}
-				fmt.Fprintln(os.Stderr, "mekugi: sh segment tracking unavailable:", err)
-			} else if guard {
-				cmd.Env = append(cmd.Env, shellhook.Environment+"="+hash)
-			}
-		}
-	}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
-	cmd.WaitDelay = 5 * time.Second
-	stopStartupInterrupts()
-	select {
-	case <-interrupts:
-		cancel()
-	default:
-	}
-	var waitCodex func() error
-	err = ctx.Err()
-	if err == nil {
-		if headless {
-			if !session.CodeModeEnabled {
-				err = errors.New("headless requires Mekugi mode")
-			} else {
-				waitCodex, err = headlessclient.Start(ctx, cmd, os.Stdin, os.Stdout, frontends.Notifications)
-			}
-		} else if appUI {
-			if session.StartAppUI != nil {
-				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
-			} else {
-				waitCodex, err = router.StartAppServerUI(frontends.Terminal, frontends.Changes, frontends.Presentation, frontends.Conversation, frontends.Observation, frontends.Activity, frontends.History, frontends.Preferences, frontends.Notifications, ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
-			}
-		} else {
-			err = cmd.Start()
-			waitCodex = cmd.Wait
-		}
-	}
-	if err != nil {
-		return stopFailedStartup(fmt.Errorf("launch codex: %w", err))
-	}
-	codexDone := make(chan error, 1)
-	go func() { codexDone <- waitCodex() }()
-	var codexErr, routerErr error
-	select {
-	case codexErr = <-codexDone:
-		cancel()
-		routerErr = <-routerDone
-	case routerErr = <-routerDone:
-		if routerErr == nil && ctx.Err() == nil {
-			routerErr = errors.New("router stopped before codex exited")
-		}
-		cancel()
-		codexErr = <-codexDone
-	}
-	if exitErr, ok := errors.AsType[*exec.ExitError](codexErr); ok {
-		if appUI || headless {
-			// UI failures carry context (for example a lost app-server)
-			// around the process status. Do not discard that diagnostic merely
-			// because we can preserve the child's exit code.
-			routerErr = errors.Join(codexErr, routerErr)
-		}
-		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
-			return 128 + int(status.Signal()), routerErr
-		}
-		return exitErr.ExitCode(), routerErr
-	}
-	if err := errors.Join(codexErr, routerErr); err != nil {
-		return 1, err
-	}
-	return 0, nil
+	return runInvocation(frontends.Terminal, frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, issues, executable, args, os.Environ(), os.Stdin, os.Stdout, os.Stderr, appUI, headless, resumeThread, resumeArgv, approvals, stopStartupInterrupts, interrupts, func(paths []string) { debugPaths = paths })
 }
 
 // Reasoning shortcuts are session-local Codex config overrides. Preserve option
@@ -375,7 +194,7 @@ const userBashEnvEnvironment = "MEKUGI_USER_BASH_ENV"
 const frontendBashEnvMarker = "# Mekugi frontend shell startup\n"
 
 // frontendShellEnvironment restores the frontend PATH in Codex's Bash command
-// shells and, with a helper, reports each command's segments to the router.
+// shells and, with a helper, reports each command's segments to the
 // A guard puts the helper ahead of the version-control tools, and defines a
 // function for each absolute path to one, in Bash, so remote writes
 // wait for the user's approval.

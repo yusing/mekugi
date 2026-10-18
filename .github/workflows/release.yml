@@ -68,7 +68,7 @@ jobs:
         run: make test TEST_PACKAGES='./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec'
       - name: Test welcome and linked version
         run: |
-          MEKUGI_TEST_BUILD_VERSION="$BUILD_TAG" make test TEST_PACKAGES=./apps/mekugi/internal/router TEST_RUN='^(TestMekugi(BuildVersion|LinkedBuildVersion)|TestNativeWelcome|TestUISnapshotNativeWelcome)' TEST_FLAGS="-ldflags='-X github.com/yusing/mekugi/apps/mekugi/internal/router.buildVersion=$BUILD_TAG'"
+          MEKUGI_TEST_BUILD_VERSION="$BUILD_TAG" make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^(TestMekugi(BuildVersion|LinkedBuildVersion)|TestNativeWelcome|TestUISnapshotNativeWelcome)' TEST_FLAGS="-ldflags='-X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG'"
       - name: Build and package
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -76,7 +76,7 @@ jobs:
           test "$(go env GOOS)_$(go env GOARCH)" = "$PLATFORM"
           package_dir="$RUNNER_TEMP/package"
           mkdir -p "$package_dir" "$RUNNER_TEMP/artifacts"
-          make build-binaries BUILD_OUTPUT="$package_dir" BUILD_LDFLAGS="-s -w -X github.com/yusing/mekugi/apps/mekugi/internal/router.buildVersion=$BUILD_TAG"
+          make build-binaries BUILD_OUTPUT="$package_dir" BUILD_LDFLAGS="-s -w -X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG"
           "$package_dir/mekugi" --help
           cp LICENSE "$package_dir/"
           tar -czf "$RUNNER_TEMP/artifacts/mekugi_${PLATFORM}.tar.gz" -C "$package_dir" mekugi mekugi-exec LICENSE

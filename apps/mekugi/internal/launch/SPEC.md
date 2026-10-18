@@ -133,11 +133,15 @@ preserving it across child environment changes. Explicit capture and
 
 ## Lifecycle and failure
 
+Launch constructs invocation resources and the native attachment from their actual
+owners, joins their lifetimes, and binds live and replay observations to the shared
+session presentation. Module state stays with its composed owner.
+
 Before host handoff, Ctrl-C cancels startup and prevents launch, including an
 interrupt already consumed by the startup receiver. After handoff, Codex owns
-terminal Ctrl-C; the wrapper neither forwards it twice nor stops the router.
+terminal Ctrl-C; the wrapper neither forwards it twice nor stops the invocation server.
 SIGTERM cancels the child and services with bounded process cleanup. Unexpected
-router termination also stops Codex. Ordinary child exit status is preserved;
+invocation-server termination also stops Codex. Ordinary child exit status is preserved;
 signal exits use `128 + signal`.
 
 Startup errors, launch failure, cancellation and child exit release owned services

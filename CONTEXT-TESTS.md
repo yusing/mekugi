@@ -12,8 +12,8 @@ The inherited tracking guard also makes isolated command shells skip reporting.
 and tests while iterating, for example:
 
 ```sh
-make test TEST_PACKAGES=./apps/mekugi/internal/router TEST_RUN='^TestShellRunnerMRun'
-make test TEST_PACKAGES='./backends/codex/appserver ./apps/mekugi/internal/router' TEST_RUN=AppServer
+make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestShellRunnerMRun'
+make test TEST_PACKAGES='./backends/codex/appserver ./apps/mekugi/internal/launch' TEST_RUN=AppServer
 ```
 
 The default is `@workspace`, expanded from the explicit members in `go.work`.
@@ -46,65 +46,65 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Workspace enumeration and generated module reference | `./apps/mekugi/cmd/workspace ./contracts/module ./backends/codex/binding ./testsupport/moduletest`, plus composition consumers for binding changes; `make check-generated` verifies the checked-in reference |
 | Module descriptors, lifetimes, or contribution slots | `./apps/mekugi/internal/composition ./apps/mekugi/internal/launch ./apps/mekugi/internal/sessionpresentation`, including real frontend composition, selected status publications and startup, plus affected module acceptance |
 | Captured diff model, composition, merge and status | `./libraries/diffmodel/...`, plus affected router and terminal consumers |
-| Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./modules/activity/terminalview ./modules/changehistory/terminalview ./modules/livepreview/terminalview`, plus affected router integration tests |
+| Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./modules/activity/terminalview ./modules/changehistory/terminalview ./modules/livepreview/terminalview`, plus affected Launch integration tests |
 | Shared content dialogs and detail pages | `./libraries/terminalui ./apps/mekugi/internal/terminalsession ./modules/activity/presentation ./modules/activity/terminalview`, plus router output-dialog, process, local-file, selection/copy and replay consumers; preserve wrapped search, page identity, retained output after feed aging and actual rendered frames |
-| Neutral activity content, source interpretation and retained output | `./modules/activity/... ./contracts/scope ./libraries/sourceanalysis/markdownsyntax ./libraries/commandargs ./libraries/commandanalysis/shellsyntax`, plus symbol execution, router live/restored/replay command/receipt/segment/dialog and terminal operation-group/tail consumers |
-| Message and public-reasoning projection | `./contracts/scope ./backends/codex/binding ./modules/conversation/transcript ./modules/conversation/codexbinding ./modules/activity/terminalview`, plus composition, router live/child/history/paging and replay consumers, no-start/closed-turn admission, optional Activity and attachment retirement; compile tagged app fixtures after observation API changes |
+| Neutral activity content, source interpretation and retained output | `./modules/activity/... ./contracts/scope ./libraries/sourceanalysis/markdownsyntax ./libraries/commandargs ./libraries/commandanalysis/shellsyntax`, plus symbol execution, Launch live/restored/replay command/receipt/segment/dialog and terminal operation-group/tail consumers |
+| Message and public-reasoning projection | `./contracts/scope ./backends/codex/binding ./modules/conversation/transcript ./modules/conversation/codexbinding ./modules/activity/terminalview`, plus composition, Launch live/child/history/paging and replay consumers, no-start/closed-turn admission, optional Activity and attachment retirement; compile tagged app fixtures after observation API changes |
 | VCS activity summaries and immutable-commit enrichment | `./modules/activity/presentation ./modules/activity/terminalview`, plus router VCS, command/segment, restored Activity and replay consumers; cover attachment cancellation, directory/hash isolation and rendered change rows |
-| Codex app-server RPC transport and process lifecycle | `./backends/codex/appserver` and `./apps/mekugi/internal/router -run AppServer` |
-| Native trace decoding, bounded state and tool correlation | `./backends/codex/nativetrace ./apps/mekugi/internal/router`, including `NativeTrace`, `NativeHostTrace`, patch/exec confirmation, pending/yield, output-note, timeout and retained-replay consumers; compile tagged app fixtures after result API changes |
+| Codex app-server RPC transport and process lifecycle | `./backends/codex/appserver` and `./apps/mekugi/internal/launch -run AppServer` |
+| Native trace decoding, bounded state and tool correlation | `./backends/codex/nativetrace ./apps/mekugi/internal/launch`, including `NativeTrace`, `NativeHostTrace`, patch/exec confirmation, pending/yield, output-note, timeout and retained-replay consumers; compile tagged app fixtures after result API changes |
 | Headless JSONL delivery and one-shot execution | `./apps/mekugi/internal/headless`, plus launcher headless acceptance, session-control correlation and backend shutdown consumers |
 | Live request correlation, input settlement and Main operation lifecycles | `./apps/mekugi/internal/sessioncontrol`, plus router submission/steer, Escape/Ctrl-C, shell, settings, question replies, resume/clear, title/status and side-answer consumers; compile tagged app fixtures after control API changes |
 | Attachment lifetime, restoration and anchored history | `./apps/mekugi/internal/sessionpresentation ./backends/codex/binding ./modules/activity/presentation ./modules/activity/terminalview`, plus router scope retirement, child-thread switching, discovery, history paging/retry/cancel, tracked live/restored commands, roster and backward replay consumers with actual renderer snapshots; compile tagged history fixtures after API changes |
 | Main status, progress and displayed-thread captions | `./apps/mekugi/internal/sessionpresentation`, plus router progress, prompt/notice precedence, full-error details, controls, child settings and replay consumers with actual renderer snapshots; compile tagged app fixtures after model API changes |
 | Conversation drafts, prompts, scoped queues, attachments and side answers | `./modules/conversation/... ./apps/mekugi/internal/sessioncontrol ./backends/codex/binding`, plus router composer, queue/steer restoration, question/approval keys and rendered docks, sudo secret entry, side-answer cleanup, clear/resume scope, attachment/history and clipboard-lifetime consumers; compile tagged app fixtures after model API changes |
 | File/skill completion and shared choice lists | `./modules/conversation/completion ./modules/conversation/terminalview ./libraries/terminalui`, plus router picker, file-scan cancellation, skill toggles/attachments, copy/settings/archive menus and actual renderer snapshots; compile tagged app fixtures after picker API changes |
-| Manual compaction, cancellation and continuation | `./apps/mekugi/internal/sessioncontrol`, plus router `Compaction`, `Compact`, lifecycle, shell/input and clear/resume consumers; installed-host `TestAppServerCompactEnterInterruptsNativeCodex` and `TestAppServerQueuedCompactContinuesNativeCodex` |
+| Manual compaction, cancellation and continuation | `./apps/mekugi/internal/sessioncontrol`, plus Launch `Compaction`, `Compact`, lifecycle, shell/input and clear/resume consumers; installed-host `TestAppServerCompactEnterInterruptsNativeCodex` and `TestAppServerQueuedCompactContinuesNativeCodex` |
 | Rollout evidence and offline source decoding | `./backends/codex/rollout`, plus router context, resume-settings, restored-Activity, session-inspection, corpus and optional-AX consumers |
-| Offline reconstruction, scheduling and playback | `./modules/sessionreplay/... ./backends/codex/rollout`, plus router `SessionUIReplay`, hook and optional-transport consumers |
-| Authenticated catalog, pinned workers, dispatch and recovery delivery | `./apps/mekugi/internal/frontends`, plus launch `WorkerArguments` and affected router integration |
-| Prepared execution observations, running windows and native-shell capture | `./apps/mekugi/internal/executionobservation`, plus router request/terminal consumers; preserve compaction, failed/partial effects, fork/resume, report settlement, publication pressure and renderer snapshots; compile tagged app fixtures after API changes |
-| Router behavior | `./apps/mekugi/internal/router` |
-| Bounded notices, feedback and recovery | `./modules/notifications/...`, plus router `Critical`, `Notice`, `Notification`, request-fault, cleanup and title consumers |
-| Applied settings and renderer preferences | `./modules/sessionpreferences/...`, plus router `NativePaneState`, `AppliedSettings`, resume, controls and settings consumers |
+| Offline reconstruction, scheduling and playback | `./modules/sessionreplay/... ./backends/codex/rollout`, plus Launch `SessionUIReplay`, hook and optional-transport consumers |
+| Authenticated catalog, pinned workers, dispatch and recovery delivery | `./apps/mekugi/internal/frontends`, plus launch `WorkerArguments` and affected Launch integration |
+| Prepared execution observations, running windows and native-shell capture | `./apps/mekugi/internal/executionobservation`, plus Launch request/terminal consumers; preserve compaction, failed/partial effects, fork/resume, report settlement, publication pressure and renderer snapshots; compile tagged app fixtures after API changes |
+| Launch behavior | `./apps/mekugi/internal/launch` |
+| Bounded notices, feedback and recovery | `./modules/notifications/...`, plus Launch `Critical`, `Notice`, `Notification`, request-fault, cleanup and title consumers |
+| Applied settings and renderer preferences | `./modules/sessionpreferences/...`, plus Launch `NativePaneState`, `AppliedSettings`, resume, controls and settings consumers |
 | Session publication, namespaces, leases, and retention | `./modules/sessionhistory/... ./modules/activity/waittargets ./libraries/legacycall`, plus composition record contributions and router persistence/fork/recovery, commentary provenance and wait-target restoration |
 | Retained-file admission | `./libraries/persistence ./libraries/legacycall ./modules/activity/waittargets`, plus router wait/legacy/snapshot/commentary consumers; cover regular publication, symlink replacement, special files and size bounds on the affected platforms |
-| Cross-owner evidence and fork publication | `./apps/mekugi/internal/recordtransactions`, plus router `RecordTransactions`, retained-input/fork, change/recovery failure, snapshot-lease and retention consumers |
-| Command-segment observation, report transport and retained reports | `./modules/commandsegments/... ./backends/codex/binding`, plus router `ExecTrack`, `ExecPreviewTrack`, `ExecWindow`, `CommandSegments`, `StorageInspection`, capture/preview, timing, output-dialog and restored-activity consumers; cover subscription concurrency and compile tagged app fixtures after observation API changes |
-| Composed approval policy, transport and grants | `./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/binding ./apps/mekugi/internal/sessioncontrol ./apps/mekugi/internal/composition`, plus launcher `SelectedGuards` and router `ShellApprovalComposition`, `NativeApprovalGuard`, `Sudo` consumers |
-| Shared shell instrumentation | `./libraries/shellinstrumentation/... ./libraries/commandanalysis/...`, plus router `ExecTrack`, `VCSGuard`, `Sudo` and guard-display consumers |
+| Cross-owner evidence and fork publication | `./apps/mekugi/internal/recordtransactions`, plus Launch `RecordTransactions`, retained-input/fork, change/recovery failure, snapshot-lease and retention consumers |
+| Command-segment observation, report transport and retained reports | `./modules/commandsegments/... ./backends/codex/binding`, plus Launch `ExecTrack`, `ExecPreviewTrack`, `ExecWindow`, `CommandSegments`, `StorageInspection`, capture/preview, timing, output-dialog and restored-activity consumers; cover subscription concurrency and compile tagged app fixtures after observation API changes |
+| Composed approval policy, transport and grants | `./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/binding ./apps/mekugi/internal/sessioncontrol ./apps/mekugi/internal/composition`, plus launcher `SelectedGuards` and Launch `ShellApprovalComposition`, `NativeApprovalGuard`, `Sudo` consumers |
+| Shared shell instrumentation | `./libraries/shellinstrumentation/... ./libraries/commandanalysis/...`, plus Launch `ExecTrack`, `VCSGuard`, `Sudo` and guard-display consumers |
 | Shell/source execution-scope classification | `./libraries/commandanalysis/... ./libraries/sourceanalysis/sourceparse`, plus router observation, native trace, preview, and display tests |
-| OpenAI transport, pool lifetime and Codex request shaping | `./providers/openai/... ./libraries/httptransport/... ./backends/codex/responses`, plus router `Provider`, `WebSocket`, `Models`, `CodexAuxiliary`, timeout/cancellation and capture consumers |
+| OpenAI transport, pool lifetime and Codex request shaping | `./providers/openai/... ./libraries/httptransport/... ./backends/codex/responses`, plus Launch `Provider`, `WebSocket`, `Models`, `CodexAuxiliary`, timeout/cancellation and capture consumers |
 | Third-party credentials, metadata and inference transport | `./providers/grok/... ./providers/opencode/... ./libraries/httptransport`, plus router and launcher `Grok`, `OpenCode`, `ThirdParty`, provider-error and accounting consumers |
-| Provider routing, dedicated WebSocket lifecycle and executor integration | `./apps/mekugi/internal/inferencegateway ./apps/mekugi/internal/router`, including route/credential isolation, pinned prices, HTTP/WebSocket errors, prewarm, continuation/steering, cancellation, tier and naming consumers; compile tagged app fixtures after exchange API changes |
-| Provider request envelopes, catalogs, encoding, connection history, streams, delivery and response-body bridge | `./backends/codex/responses ./libraries/modelprotocol/...`, plus router request/history, instruction/stock-tool projection, native collaboration, Grok/OpenCode, cancellation, failed-terminal and capture consumers; compile tagged messaging fixtures after collaboration API changes |
-| Optional session naming | `./modules/sessionnaming/...`, plus router `SessionTitle`, `NativeSessionTitle`, `TerminalTitle`, and submitted-assignment consumers; installed persistence/resume cases in `app_server_session_title_codex_e2e_test.go` |
+| Provider routing, dedicated WebSocket lifecycle and executor integration | `./apps/mekugi/internal/inferencegateway ./apps/mekugi/internal/launch`, including route/credential isolation, pinned prices, HTTP/WebSocket errors, prewarm, continuation/steering, cancellation, tier and naming consumers; compile tagged app fixtures after exchange API changes |
+| Provider request envelopes, catalogs, encoding, connection history, streams, delivery and response-body bridge | `./backends/codex/responses ./libraries/modelprotocol/...`, plus Launch request/history, instruction/stock-tool projection, native collaboration, Grok/OpenCode, cancellation, failed-terminal and capture consumers; compile tagged messaging fixtures after collaboration API changes |
+| Optional session naming | `./modules/sessionnaming/...`, plus Launch `SessionTitle`, `NativeSessionTitle`, `TerminalTitle`, and submitted-assignment consumers; installed persistence/resume cases in `app_server_session_title_codex_e2e_test.go` |
 | Inactive instruction loading | `./modules/contextreset/...`, plus router selected-skill acquisition and attachment consumers |
 | Reserved MCP transport | `./libraries/mcptransport`, plus application worker/bridge dispatch and tagged guard-outage fixtures |
-| Shell-hook helper, registration, and effective configuration | `./apps/mekugi/internal/launch ./apps/mekugi/cmd/mekugi-exec ./backends/codex/shellhook ./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/shellapproval ./apps/mekugi/internal/router -run 'TestGuardDiscovery\|TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestOptionalTrackingHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
+| Shell-hook helper, registration, and effective configuration | `./apps/mekugi/internal/launch ./apps/mekugi/cmd/mekugi-exec ./backends/codex/shellhook ./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/shellapproval ./apps/mekugi/internal/launch -run 'TestGuardDiscovery\|TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestOptionalTrackingHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
 | Shared diff decoration and terminal primitives | `./libraries/diffrender/... ./libraries/terminalui/...`, plus affected native and replay consumers |
 | Shared display-text sanitization | `./libraries/textsanitize`, plus diff, Markdown, activity, native dialog and source-copy consumers |
 | Saved review, Activity details and Diff interaction | `./modules/changehistory/... ./modules/activity/... ./apps/mekugi/internal/sessionreview ./apps/mekugi/internal/composition`, plus router scope/restore, badges/counts, exact-edit navigation, editor, frozen selection, preferences and replay consumers; cover immutable publication, absent contributions/native fallback, receipt allocation, blocked-storage PTY, replacement/capacity and actual renderer checks |
-| Live preview or streaming | `./modules/livepreview/...`, plus router `Diff\|Preview\|Native\|Terminal\|Selection\|SessionUIReplay`, plus terminal acceptance below |
-| Terminal input, layout, selection and frame delivery | `./apps/mekugi/internal/terminalsession ./apps/mekugi/internal/router`, including `TerminalUI`, `NativeUI`, `Selection`, `Clipboard`, `NativePaneState`, `Roster`, prompt and `SessionUIReplay` consumers; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
+| Live preview or streaming | `./modules/livepreview/...`, plus Launch `Diff\|Preview\|Native\|Terminal\|Selection\|SessionUIReplay`, plus terminal acceptance below |
+| Terminal input, layout, selection and frame delivery | `./apps/mekugi/internal/terminalsession ./apps/mekugi/internal/launch`, including `TerminalUI`, `NativeUI`, `Selection`, `Clipboard`, `NativePaneState`, `Roster`, prompt and `SessionUIReplay` consumers; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./modules/outputdeduplication/...` |
 | Duplicate-output projection and submitted attachment codec | `./modules/outputdeduplication/... ./libraries/modelprotocol/attachments ./backends/codex/binding`, plus router duplicate-output, attachment, continuation, and provider-prefix consumers |
-| Per-thread provider accounting, pricing and retained throughput | `./modules/usage/... ./contracts/inference ./backends/codex/responses`, plus router `ThreadUsage`, `TokenUsage`, `TokenCost`, `OutputThroughput`, `Roster` and naming consumers |
+| Per-thread provider accounting, pricing and retained throughput | `./modules/usage/... ./contracts/inference ./backends/codex/responses`, plus Launch `ThreadUsage`, `TokenUsage`, `TokenCost`, `OutputThroughput`, `Roster` and naming consumers |
 | Transport capture and stream diagnostics | `./modules/transportdiagnostics/...`, plus router HTTP/WebSocket, stream failure, debug, metrics, corpus and replay consumers |
 | Offline call, corpus and storage inspection | `./modules/sessioninspection/... ./apps/mekugi/internal/inspectioncli`, plus router retained-writer, logical-session, corpus, optional-contributor and debug consumers |
 | Debug bundles, private failure records and offline diagnosis | `./modules/diagnostics/...`, plus router debug, critical-notice, failure, optional-contributor and retention consumers |
 | Agent-experience evidence | `./modules/agentmetrics/...`, plus router compiled-reader, inspection and debug consumers |
 | Semantic symbol queries | `./modules/symbolquery/...`, plus router symbol/activity/AX and recovery consumers |
-| Structural inspection | `./modules/sourceoutline/... ./libraries/sourceanalysis/... ./apps/mekugi/internal/frontends`, then router integration |
+| Structural inspection | `./modules/sourceoutline/... ./libraries/sourceanalysis/... ./apps/mekugi/internal/frontends`, then Launch integration |
 | Raw source reading | `./modules/fileread/... ./apps/mekugi/internal/frontends`, then router read/recovery/AX and activity consumers |
-| Retained changes, frozen selections, and mutation | `./modules/changehistory/...`, plus router `MChanges`, `Changes`, retention/fork/recovery, and live-view consumers |
+| Retained changes, frozen selections, and mutation | `./modules/changehistory/...`, plus Launch `MChanges`, `Changes`, retention/fork/recovery, and live-view consumers |
 | Passive change acquisition and filesystem reconciliation | `./modules/changehistory/capture ./backends/codex/binding`, plus router patch, terminal/yielded command, sibling/overlap, shell edit, preview, failed-effect/restart and publication consumers; compile tagged app fixtures after observation API changes |
 | Retained paging | `./modules/outputrecovery/... ./apps/mekugi/internal/frontends`, then router mread/storage/fork integration |
 | Shared command options and output admission | `./libraries/commandargs/... ./libraries/outputbudget/...`, plus affected frontend integration |
-| Bounded commands | `./modules/boundedcommand/... ./apps/mekugi/internal/frontends`, plus `./apps/mekugi/internal/router -run MRun` for authenticated delivery and process lifecycle |
+| Bounded commands | `./modules/boundedcommand/... ./apps/mekugi/internal/frontends`, plus `./apps/mekugi/internal/launch -run MRun` for authenticated delivery and process lifecycle |
 | Invocation options, configuration, model catalog, launch and process dispatch | `./apps/mekugi/internal/launch/...`, plus router reused-configuration, resume-model, service-tier, catalog/picker and startup consumers and executable build; compile tagged auth/resume fixtures after catalog API changes |
-| Native frontend host acceptance | `-tags codex_e2e ./apps/mekugi/internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
-| Native mrun continuation acceptance | `-tags codex_e2e ./apps/mekugi/internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
+| Native frontend host acceptance | `-tags codex_e2e ./apps/mekugi/internal/launch -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
+| Native mrun continuation acceptance | `-tags codex_e2e ./apps/mekugi/internal/launch -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
 | Cross-package or broad contract | `@workspace` |
 
 Native reader latency checks include a fresh authenticated worker, a 3,000-row
@@ -112,7 +112,7 @@ read, the three-document architecture batch, and an eight-file Go inspection at
 the default shared budget. Run them without installing a binary:
 
 ```sh
-make test TEST_PACKAGES=./apps/mekugi/internal/router TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeFrontends -benchtime=3x -count=1'
+make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeFrontends -benchtime=3x -count=1'
 ```
 
 The inspection batch intentionally exercises incomplete-output recovery. These
@@ -131,7 +131,7 @@ Fresh-process resolver and authenticated frontend benchmarks use normal caches;
 the frontend measurements exclude registry creation and active-session leases:
 
 ```sh
-make test TEST_PACKAGES='./modules/symbolquery/query ./apps/mekugi/internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
+make test TEST_PACKAGES='./modules/symbolquery/query ./apps/mekugi/internal/launch' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
 ```
 
 Frontend descriptions and supplementary `guidance.md` live with their command
@@ -140,7 +140,7 @@ its Codex binding owns the shared layout and instruction projection. Check the
 actual authenticated snapshot and prepared-request projection after prose changes:
 
 ```sh
-make test TEST_PACKAGES='./modules/agentguidance/... ./apps/mekugi/internal/frontends ./apps/mekugi/internal/router ./apps/mekugi/internal/composition' TEST_RUN='Guidance|Instruction|ConflictRewrite|Prewarm|ComposedFrontendCatalog'
+make test TEST_PACKAGES='./modules/agentguidance/... ./apps/mekugi/internal/frontends ./apps/mekugi/internal/launch ./apps/mekugi/internal/composition' TEST_RUN='Guidance|Instruction|ConflictRewrite|Prewarm|ComposedFrontendCatalog'
 ```
 
 ## Static checks
@@ -157,10 +157,10 @@ Enable the staged-tree snapshot commit gate as described in
 
 `make test-ui-snapshots` runs offline rendered-output regression tests without Codex
 or model requests. Select a case with `SNAPSHOT='^TestUISnapshotNativeSessionShortcuts$'`.
-Set `SNAPSHOT_PACKAGES=./apps/mekugi/internal/router` (or another owning package) to avoid
+Set `SNAPSHOT_PACKAGES=./apps/mekugi/internal/launch` (or another owning package) to avoid
 compiling and testing unrelated UI packages; the check still includes the snapshot
 harness tests. The same package selection applies to `update-ui-snapshots`.
-Router fixtures cover
+Launch fixtures cover
 skills and file pickers, Main's composer, resume
 sessions, the Agents roster, and responsive Activity layouts. Activity blocks and
 output dialogs live in `modules/activity/terminalview/testdata/snapshots/`.
@@ -206,7 +206,7 @@ isolating mutable thread, workspace, and process state. Startup and shutdown
 tests still need their own owners. Disposable Git fixtures must isolate system
 and global configuration so setup does not invoke personal signing programs or
 hooks; keep repository-local settings for filter and worktree boundary tests.
-Resolve fixture shells with `execTrackShellExecutable` in `apps/mekugi/internal/router/exec_track_test.go`:
+Resolve fixture shells with `execTrackShellExecutable` in `apps/mekugi/internal/launch/exec_track_test.go`:
 `exec.Command` resolves names before `Cmd.Env` is set, so an isolated environment alone
 can still select the live session's approval guard. Keep fixture tools first for nested shells.
 Use controlled time for in-process lifetimes, including retention retries and

@@ -21,7 +21,6 @@ import (
 	"github.com/yusing/mekugi/libraries/mcptransport"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
-	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 )
 
 // Source: main.go:36:48 process signals and router exit behavior.
@@ -70,7 +69,7 @@ func Run() (exitCode int) {
 		case "inspect-sessions":
 			return inspectioncli.RunSessionCorpusInspection(runtime.Inspection, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "replay-session":
-			return router.RunSessionUIReplay(runtime.Terminal, runtime.Presentation, runtime.Conversation, runtime.Observation, runtime.Activity, runtime.Replay, ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
+			return RunSessionUIReplay(runtime.Terminal, runtime.Presentation, runtime.Conversation, runtime.Observation, runtime.Activity, runtime.Replay, ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
 		case "inspect-session":
 			return inspectioncli.RunSessionInspection(runtime.Inspection, runtime.Diagnostics, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "inspect-storage":

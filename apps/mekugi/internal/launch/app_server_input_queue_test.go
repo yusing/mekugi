@@ -1,0 +1,490 @@
+package launch
+
+import (
+	"bytes"
+	json "encoding/json/v2"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
+	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
+	"github.com/charmbracelet/x/ansi"
+)
+
+type appServerTurnRequest struct {
+	ID     int    `json:"id"`
+	Method string `json:"method"`
+	Params struct {
+		ThreadID            string `json:"threadId"`
+		ServiceTier         string `json:"serviceTier"`
+		ExpectedTurnID      string `json:"expectedTurnId"`
+		ClientUserMessageID string `json:"clientUserMessageId"`
+		Input               []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+			Path string `json:"path"`
+		} `json:"input"`
+	} `json:"params"`
+}
+
+func (r appServerTurnRequest) text() string {
+	var text string
+	for _, input := range r.Params.Input {
+		text += input.Text
+	}
+	return text
+}
+
+// appServerTurnRequests drains the requests written since the last call.
+func appServerTurnRequests(t *testing.T, w *appServerTestInput) []appServerTurnRequest {
+	t.Helper()
+	return appServerDrainRequests[appServerTurnRequest](t, w)
+}
+
+func appServerDrainRequests[T any](t *testing.T, w *appServerTestInput) []T {
+	t.Helper()
+	var requests []T
+	for line := range bytes.SplitSeq(bytes.TrimSpace(w.Bytes()), []byte{'\n'}) {
+		if len(line) == 0 {
+			continue
+		}
+		var request T
+		if err := json.Unmarshal(line, &request); err != nil {
+			t.Fatal(err)
+		}
+		requests = append(requests, request)
+	}
+	w.Reset()
+	return requests
+}
+
+func appServerOneRequest(t *testing.T, w *appServerTestInput, method, text string) appServerTurnRequest {
+	t.Helper()
+	requests := appServerTurnRequests(t, w)
+	if len(requests) != 1 || requests[0].Method != method || requests[0].text() != text {
+		t.Fatalf("requests = %+v, want one %s %q", requests, method, text)
+	}
+	return requests[0]
+}
+
+func appServerTestTurn(t *testing.T, u *appServerUI, turn string) {
+	t.Helper()
+	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"`+turn+`"}}}`)
+}
+
+func appServerTestTurnEnd(t *testing.T, u *appServerUI, turn, status string) {
+	t.Helper()
+	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"`+turn+`","status":"`+status+`"}}}`)
+}
+
+func appServerTestUserMessage(t *testing.T, u *appServerUI, id, clientID, text string) {
+	t.Helper()
+	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":"main","turnId":"t","item":{"id":%q,"clientId":%q,"type":"userMessage","content":[{"type":"text","text":%q}]}}}`, id, clientID, text))
+}
+
+func TestAppServerSteersStackUntilSendable(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestTurn(t, u, "t")
+	appServerTestKeys(t, u, "first\r")
+	first := appServerOneRequest(t, w, "turn/steer", "first")
+	if first.Params.ExpectedTurnID != "t" || first.Params.ClientUserMessageID == "" {
+		t.Fatalf("steer identity: %+v", first.Params)
+	}
+	appServerTestKeys(t, u, "second\rthird\r")
+	if requests := appServerTurnRequests(t, w); len(requests) != 0 || len(u.attached.conversation.Unsent) != 2 {
+		t.Fatalf("steer sent while another was unresolved: %+v unsent=%d", requests, len(u.attached.conversation.Unsent))
+	}
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, first.ID))
+	stacked := appServerOneRequest(t, w, "turn/steer", "second\nthird")
+	if stacked.Params.ExpectedTurnID != "t" || stacked.Params.ClientUserMessageID == first.Params.ClientUserMessageID {
+		t.Fatalf("stacked steer identity: %+v", stacked.Params)
+	}
+	// The committed message leaves the preview for the transcript, matched
+	// by its client ID even before the steer's acknowledgement.
+	appServerTestUserMessage(t, u, "user-1", first.Params.ClientUserMessageID, "first")
+	appServerTestUserMessage(t, u, "user-2", stacked.Params.ClientUserMessageID, "second\nthird")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, stacked.ID))
+	if len(u.Steers()) != 0 || len(u.attached.conversation.Submitted) != 0 || len(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Pending, 80)) != 0 {
+		t.Fatalf("committed steers still pending: %+v", u.Steers())
+	}
+	if len(u.attached.source.Entries) != 2 || u.attached.source.Entries[1].Source.Text != "second\nthird" {
+		t.Fatalf("committed steers missing from transcript: %+v", u.attached.source.Entries)
+	}
+	appServerTestTurnEnd(t, u, "t", "completed")
+	if u.Text != "" || len(appServerTurnRequests(t, w)) != 0 {
+		t.Fatal("committed steers were restored or resent")
+	}
+}
+
+func TestAppServerStartPayloadRetiresAfterCommitAndAcknowledgement(t *testing.T) {
+	for _, commitFirst := range []bool{false, true} {
+		t.Run(fmt.Sprint(commitFirst), func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			appServerTestKeys(t, u, "task\r")
+			request := appServerOneRequest(t, wire, "turn/start", "task")
+			appServerTestTurn(t, u, "t")
+			ack := func() { appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, request.ID)) }
+			commit := func() { appServerTestUserMessage(t, u, "user", request.Params.ClientUserMessageID, "task") }
+			first, second := ack, commit
+			if commitFirst {
+				first, second = commit, ack
+			}
+			first()
+			if len(u.attached.conversation.Submitted) != 1 {
+				t.Fatal("payload retired before both observations")
+			}
+			second()
+			if len(u.attached.conversation.Submitted) != 0 || u.InputPending() || u.PendingStart() != "" {
+				t.Fatal("settled submission retained payload or operation metadata")
+			}
+			if len(u.InputHistory) != 1 || u.InputHistory[0].Text != "task" || len(u.attached.source.Entries) != 1 {
+				t.Fatal("retirement lost input history or committed transcript")
+			}
+		})
+	}
+}
+
+func TestAppServerProgrammaticTurnResponseHasNoComposerPayload(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	if err := u.Request("turn/start", map[string]any{"threadId": u.Thread, "input": []map[string]any{{"type": "text", "text": "host input"}}}); err != nil {
+		t.Fatal(err)
+	}
+	request := appServerOneRequest(t, wire, "turn/start", "host input")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, request.ID))
+	if len(u.attached.conversation.Submitted) != 0 || u.InputPending() || len(u.InputHistory) != 0 {
+		t.Fatal("programmatic request acquired composer payload or pending input")
+	}
+}
+
+func TestAppServerQueuedInputStacksIntoNextTurn(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestTurn(t, u, "t")
+	appServerTestKeys(t, u, "one\ttwo\t")
+	if requests := appServerTurnRequests(t, w); len(requests) != 0 || len(u.attached.conversation.Queued) != 2 || u.Text != "" {
+		t.Fatalf("queued input sent early: %+v", requests)
+	}
+	appServerTestTurnEnd(t, u, "t", "completed")
+	start := appServerOneRequest(t, w, "turn/start", "one\ntwo")
+	if len(u.attached.conversation.Queued) != 0 || !u.Starting() || len(u.attached.source.Entries) != 1 || u.attached.source.Entries[0].Source.Text != "one\ntwo" {
+		t.Fatalf("queued turn not started and echoed: %+v", u.attached.source.Entries)
+	}
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t2"}}}`, start.ID))
+	if len(u.InputHistory) != 2 || u.InputHistory[0].Text != "one" {
+		t.Fatalf("history does not keep each entry: %+v", u.InputHistory)
+	}
+
+	// Idle Tab sends like Enter.
+	u, w = newAppServerTestUI()
+	appServerTestKeys(t, u, "now\t")
+	appServerOneRequest(t, w, "turn/start", "now")
+}
+
+func TestAppServerQueuedAttachmentsKeepFilesUntilSent(t *testing.T) {
+	u, w := newAppServerTestUI()
+	path := filepath.Join(t.TempDir(), "queued.png")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	appServerTestTurn(t, u, "t")
+	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
+	appServerTestKeys(t, u, " see\t")
+	appServerTestKeys(t, u, "other\x7f")
+	if _, err := os.Stat(path); err != nil || !u.ownedImages[path] {
+		t.Fatalf("queued image reclaimed: %v", err)
+	}
+	appServerTestKeys(t, u, "\x03\x03") // Clear the draft, then interrupt: queued input returns.
+	appServerTestTurnEnd(t, u, "t", "interrupted")
+	if u.Text != "[Image 1] see" || len(u.Images) != 1 || u.Images[0].Path != path {
+		t.Fatalf("interrupt did not restore queued attachment: %q %+v", u.Text, u.Images)
+	}
+	appServerTurnRequests(t, w)
+	appServerTestKeys(t, u, "\r")
+	request := appServerOneRequest(t, w, "turn/start", " see")
+	if request.Params.Input[0].Path != path || u.ownedImages[path] {
+		t.Fatalf("sent image not handed to Codex: %+v", request.Params.Input)
+	}
+}
+
+func TestAppServerInterruptRestoresSteersAndQueuedInput(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestTurn(t, u, "t")
+	appServerTestKeys(t, u, "accepted\r")
+	accepted := appServerOneRequest(t, w, "turn/steer", "accepted")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, accepted.ID))
+	appServerTestKeys(t, u, "later\t\x03")
+	appServerOneRequest(t, w, "turn/interrupt", "")
+	appServerTestKeys(t, u, "typed while interrupting\r")
+	if requests := appServerTurnRequests(t, w); len(requests) != 0 {
+		t.Fatalf("steered the interrupted turn: %+v", requests)
+	}
+	appServerTestTurnEnd(t, u, "t", "interrupted")
+	if requests := appServerTurnRequests(t, w); len(requests) != 0 || u.Text != "accepted\ntyped while interrupting\nlater" || len(u.attached.conversation.Queued)+len(u.attached.conversation.Unsent) != 0 {
+		t.Fatalf("input not restored: requests=%+v draft=%q", requests, u.Text)
+	}
+}
+
+func TestAppServerInterruptRestoresUnresolvedSteerOnce(t *testing.T) {
+	for _, tt := range []struct {
+		name, response string
+		committed      bool
+	}{
+		{"rejected after interrupt", `{"code":-1,"message":"no active turn to steer"}`, false},
+		{"accepted after interrupt", "", false},
+		{"committed before interrupt", "", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			appServerTestTurn(t, u, "t")
+			appServerTestKeys(t, u, "unresolved\r")
+			steer := appServerOneRequest(t, w, "turn/steer", "unresolved")
+			if tt.committed {
+				appServerTestUserMessage(t, u, "user-1", steer.Params.ClientUserMessageID, "unresolved")
+			}
+			appServerTestKeys(t, u, "\x03")
+			appServerOneRequest(t, w, "turn/interrupt", "")
+			appServerTestTurnEnd(t, u, "t", "interrupted")
+			if requests := appServerTurnRequests(t, w); len(requests) != 0 {
+				t.Fatalf("sent before the steer resolved: %+v", requests)
+			}
+			if tt.response != "" {
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":%s}`, steer.ID, tt.response))
+			} else {
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, steer.ID))
+			}
+			want := "unresolved"
+			if tt.committed {
+				want = ""
+			}
+			if requests := appServerTurnRequests(t, w); len(requests) != 0 || u.Text != want || u.attached.presentation.Status.Alert {
+				t.Fatalf("requests=%+v draft=%q alert=%v status=%q", requests, u.Text, u.attached.presentation.Status.Alert, u.attached.presentation.Status.Text)
+			}
+		})
+	}
+}
+
+func TestAppServerPlainInterruptRestoresQueuedInput(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestTurn(t, u, "t")
+	appServerTestKeys(t, u, "queued\t\x03")
+	appServerOneRequest(t, w, "turn/interrupt", "")
+	if u.attached.presentation.Status.Text != "Interrupting…" {
+		t.Fatalf("status = %q", u.attached.presentation.Status.Text)
+	}
+	appServerTestKeys(t, u, "draft")
+	appServerTestTurnEnd(t, u, "t", "interrupted")
+	if u.Text != "queued\ndraft" || len(u.attached.conversation.Queued) != 0 || len(appServerTurnRequests(t, w)) != 0 {
+		t.Fatalf("queued input not returned to composer: %q", u.Text)
+	}
+}
+
+func TestAppServerEditQueuedStack(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestTurn(t, u, "t")
+	appServerTestKeys(t, u, "one\ttwo\tdraft")
+	appServerTestKeys(t, u, "\x1b[1;3A")
+	if u.Text != "one\ntwo\ndraft" || len(u.attached.conversation.Queued) != 0 {
+		t.Fatalf("alt+up edited %q, queued %+v", u.Text, u.attached.conversation.Queued)
+	}
+	appServerTestKeys(t, u, "\x1b[1;2D")
+	if u.Text != "one\ntwo\ndraft" || len(u.attached.conversation.Queued) != 0 || w.Len() != 0 {
+		t.Fatalf("shift+left edited %q", u.Text)
+	}
+	appServerTestTurnEnd(t, u, "t", "completed")
+	if len(appServerTurnRequests(t, w)) != 0 {
+		t.Fatal("dequeued input was sent after the turn ended")
+	}
+}
+
+func TestAppServerUnconfirmedSteerReturnsAfterTurnEnds(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestTurn(t, u, "t")
+	appServerTestKeys(t, u, "unconfirmed\r")
+	steer := appServerOneRequest(t, w, "turn/steer", "unconfirmed")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, steer.ID))
+	appServerTestTurnEnd(t, u, "t", "completed")
+	if u.Text != "unconfirmed" || len(u.Steers()) != 0 || len(appServerTurnRequests(t, w)) != 0 {
+		t.Fatalf("unconfirmed steer resent or lost: draft=%q", u.Text)
+	}
+}
+
+func TestAppServerInputStackedDuringSettingsSendsAfterApply(t *testing.T) {
+	u, w := newAppServerTestUI()
+	u.reasoningEffort = "low"
+	appServerTestKeys(t, u, "/reasoning high\r")
+	appServerOneRequest(t, w, "thread/settings/update", "")
+	appServerTestKeys(t, u, "prompt\r")
+	if len(appServerTurnRequests(t, w)) != 0 || !strings.Contains(ansi.Strip(strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Pending, 80), "\n")), "Sending when settings apply") {
+		t.Fatal("prompt not held while settings apply")
+	}
+	appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"effort":"high"}}}`)
+	appServerOneRequest(t, w, "turn/start", "prompt")
+}
+
+func TestAppServerEndedTurnKeepsSteerOrder(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		interrupt   bool
+		response    string
+		wantRequest string
+		wantDraft   string
+	}{
+		{"interrupt restore after rejection", true, `"error":{"code":-1,"message":"no active turn to steer"}`, "", "A\nB\nC"},
+		{"interrupt restore after acceptance", true, `"result":{"turnId":"t"}`, "", "A\nB\nC"},
+		{"turn ended", false, `"result":{"turnId":"t"}`, "C", "A\nB"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			appServerTestTurn(t, u, "t")
+			appServerTestKeys(t, u, "A\r")
+			a := appServerOneRequest(t, w, "turn/steer", "A")
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, a.ID))
+			appServerTestKeys(t, u, "B\r")
+			b := appServerOneRequest(t, w, "turn/steer", "B")
+			appServerTestKeys(t, u, "C\r")
+			status := "completed"
+			if tt.interrupt {
+				appServerTestKeys(t, u, "\x03")
+				appServerOneRequest(t, w, "turn/interrupt", "")
+				status = "interrupted"
+			}
+			appServerTestTurnEnd(t, u, "t", status)
+			if requests := appServerTurnRequests(t, w); len(requests) != 0 {
+				t.Fatalf("settled before the in-flight steer resolved: %+v", requests)
+			}
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, b.ID, tt.response))
+			if tt.wantRequest != "" {
+				appServerOneRequest(t, w, "turn/start", tt.wantRequest)
+			} else if requests := appServerTurnRequests(t, w); len(requests) != 0 {
+				t.Fatalf("unexpected resend: %+v", requests)
+			}
+			if u.Text != tt.wantDraft {
+				t.Fatalf("draft = %q, want %q", u.Text, tt.wantDraft)
+			}
+		})
+	}
+}
+
+func TestAppServerRejectedStartReturnsInputStackedBehindIt(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestKeys(t, u, "A\r")
+	start := appServerOneRequest(t, w, "turn/start", "A")
+	appServerTestKeys(t, u, "steer\rB\t")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, start.ID))
+	if requests := appServerTurnRequests(t, w); len(requests) != 0 || u.Text != "A\nsteer\nB" || len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) != 0 {
+		t.Fatalf("stacked input jumped a rejected start: %+v draft=%q", requests, u.Text)
+	}
+}
+
+func TestAppServerTextFallbackCommitsOneIdenticalSteer(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestTurn(t, u, "t")
+	for range 2 {
+		appServerTestKeys(t, u, "yes\r")
+		steer := appServerOneRequest(t, w, "turn/steer", "yes")
+		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, steer.ID))
+	}
+	for _, method := range []string{"item/started", "item/completed"} {
+		appServerTestMessage(t, u, `{"method":"`+method+`","params":{"threadId":"main","turnId":"t","item":{"id":"user-1","type":"userMessage","content":[{"type":"text","text":"yes"}]}}}`)
+	}
+	if len(u.Steers()) != 1 {
+		t.Fatalf("one commit settled %d steers", 2-len(u.Steers()))
+	}
+}
+
+func TestAppServerRestoreKeepsCaret(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	appServerTestTurn(t, u, "t")
+	appServerTestKeys(t, u, "queued\tabcd\x1b[D\x1b[D\x1b[1;3A")
+	if u.Text != "queued\nabcd" || u.Cursor() != len("queued\nab") {
+		t.Fatalf("draft=%q caret=%d", u.Text, u.Cursor())
+	}
+}
+
+func TestAppServerInterruptBeforeFirstCommitRestoresCleanComposer(t *testing.T) {
+	for _, responseFirst := range []bool{false, true} {
+		t.Run(fmt.Sprint(responseFirst), func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			appServerTestKeys(t, u, "first prompt\r")
+			start := appServerOneRequest(t, w, "turn/start", "first prompt")
+			if responseFirst {
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, start.ID))
+			}
+			appServerTestKeys(t, u, "\x03")
+			if requests := appServerTurnRequests(t, w); len(requests) != 0 {
+				t.Fatalf("interrupted without a host turn: %+v", requests)
+			}
+			appServerTestTurn(t, u, "t")
+			appServerOneRequest(t, w, "turn/interrupt", "")
+			appServerTestTurnEnd(t, u, "t", "interrupted")
+			if !responseFirst {
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, start.ID))
+			}
+			if u.Text != "first prompt" || len(u.attached.source.Entries) != 0 || u.attached.presentation.Status.Text != "Ready" || u.Starting() || u.Turn != "" {
+				t.Fatalf("not clean: draft=%q entries=%+v status=%q starting=%v turn=%q", u.Text, u.attached.source.Entries, u.attached.presentation.Status.Text, u.Starting(), u.Turn)
+			}
+			if len(appServerTurnRequests(t, w)) != 0 {
+				t.Fatal("automatically resent restored input")
+			}
+			var frame bytes.Buffer
+			if err := u.testPaint(&frame, 80, 24); err != nil {
+				t.Fatal(err)
+			}
+			if got := appServerComposerScreenText(t, frame.Bytes(), 80, 24); strings.TrimSpace(got) != "first prompt" {
+				t.Fatalf("composer frame = %q", got)
+			}
+		})
+	}
+}
+
+func TestAppServerInterruptLocallyStackedInputDoesNotQuit(t *testing.T) {
+	u, w := newAppServerTestUI()
+	u.Settings.Admit(sessioncontrol.SettingsPlan{Action: sessioncontrol.SettingsTurn})
+	appServerTestKeys(t, u, "not sent\r")
+	quit, err := u.key("\x03")
+	if quit || err != nil || u.Text != "not sent" || len(u.attached.conversation.Unsent) != 0 || w.Len() != 0 {
+		t.Fatalf("quit=%v err=%v draft=%q requests=%s", quit, err, u.Text, w.String())
+	}
+}
+
+func TestAppServerEditAllWaitingInput(t *testing.T) {
+	for _, key := range []string{"\x1b[1;3A", "\x1b[1;2D"} {
+		t.Run(fmt.Sprintf("%q", key), func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			appServerTestTurn(t, u, "t")
+			appServerTestKeys(t, u, "host owned\r")
+			sent := appServerOneRequest(t, w, "turn/steer", "host owned")
+			appServerTestKeys(t, u, "first\rsecond\rqueued\tdraft\x1b[D"+key)
+			if u.Text != "first\nsecond\nqueued\ndraft" || u.CursorBack != 1 || len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) != 0 || u.attached.conversation.Submitted[u.Submission().ID].Text != "host owned" {
+				t.Fatalf("dequeue: draft=%q cursorBack=%d submission=%q", u.Text, u.CursorBack, u.attached.conversation.Submitted[u.Submission().ID].Text)
+			}
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, sent.ID))
+			if len(appServerTurnRequests(t, w)) != 0 {
+				t.Fatal("dequeued steers sent when the earlier submission resolved")
+			}
+			appServerTestKeys(t, u, "\t")
+			appServerTestUserMessage(t, u, "host", sent.Params.ClientUserMessageID, "host owned")
+			appServerTestTurnEnd(t, u, "t", "completed")
+			appServerOneRequest(t, w, "turn/start", "first\nsecond\nqueued\ndraft")
+		})
+	}
+}
+
+func TestAppServerEditQueuedStackPreservesImages(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	appServerTestTurn(t, u, "t")
+	for _, path := range []string{"first.png", "second.png"} {
+		insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, path)
+		appServerTestKeys(t, u, "\t")
+	}
+	appServerTestKeys(t, u, "\x1b[1;3A")
+	if u.Text != "[Image 1]\n[Image 2]" || len(u.Images) != 2 || u.Images[0].Path != "first.png" || u.Images[1].Path != "second.png" {
+		t.Fatalf("images not restored together: %q %+v", u.Text, u.Images)
+	}
+}

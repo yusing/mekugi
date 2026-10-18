@@ -1,0 +1,107 @@
+package launch
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
+	"github.com/charmbracelet/x/vt"
+	"github.com/creack/pty"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+)
+
+func TestNativeDialogPTYCloseAndResize(t *testing.T) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	frames := make(chan []byte, 4)
+	go func() {
+		var pending synchronizedFrameBuffer
+		buf := make([]byte, 8192)
+		for {
+			n, err := master.Read(buf)
+			pending.Append(buf[:n])
+			for {
+				frame, ok := pending.Next()
+				if !ok {
+					break
+				}
+				frames <- append([]byte(nil), frame...)
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Underlying conversation"}}})
+	screen := vt.NewEmulator(120, 32)
+	defer screen.Close()
+	paint := func(width, height int) string {
+		t.Helper()
+		if err := pty.Setsize(master, &pty.Winsize{Cols: uint16(width), Rows: uint16(height)}); err != nil {
+			t.Fatal(err)
+		}
+		screen.Resize(width, height)
+		if err := u.testPaint(slave, width, height); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case frame := <-frames:
+			if _, err := screen.Write(frame); err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("PTY frame timeout")
+		}
+		return screen.String()
+	}
+	paint(120, 32)
+	pages := []activityui.Block{{Kind: "op", Verb: "Run", Code: "mchanges amber1", Tail: strings.Split("amber1\n--- a.go\n+++ a.go\n@@ -1 +1 @@\n-var answer = 41\n+var answer = 42", "\n")}}
+	terminalTest(u).openBlocks(u.shell.Transcript, pages)
+	for _, size := range [][2]int{{120, 32}, {48, 20}, {160, 40}} {
+		frame := paint(size[0], size[1])
+		if !strings.Contains(frame, "[×]") || !strings.Contains(frame, "+var answer = 42") {
+			t.Fatalf("%v dialog missing from PTY:\n%s", size, frame)
+		}
+		found := false
+		for y := 0; y < size[1]; y++ {
+			var row strings.Builder
+			for x := 0; x < size[0]; x++ {
+				row.WriteString(screen.CellAt(x, y).Content)
+			}
+			if x := strings.Index(row.String(), "+var answer = 42"); x >= 0 {
+				// Locate by cells rather than UTF-8 byte offsets in the gutter.
+				for col := 0; col+15 < size[0]; col++ {
+					if screen.CellAt(col, y).Content != "+" {
+						continue
+					}
+					keyword := screen.CellAt(col+1, y).Style
+					number := screen.CellAt(col+14, y).Style
+					if keyword.Fg != nil && number.Fg != nil && keyword.Fg != number.Fg && keyword.Bg != nil {
+						found = true
+					}
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("%v diff lost token colors or row fill", size)
+		}
+	}
+	x, y := dialogFramePoint(t, strings.Split(paint(160, 40), "\n"), "[×]")
+	for _, end := range []string{"M", "m"} {
+		if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x+1, y+1, end)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	frame := paint(160, 40)
+	if terminalTest(u).Dialog != nil || strings.Contains(frame, "[×]") || !strings.Contains(frame, "Underlying conversation") {
+		t.Fatalf("close lost original pane:\n%s", frame)
+	}
+}
