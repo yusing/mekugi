@@ -1,0 +1,605 @@
+package executionobservation
+
+import (
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/livepreview/projection"
+
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+)
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func observeTestCommand(t *testing.T, workdir, command string) *changecapture.Observation {
+	t.Helper()
+	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workdir, Shell: "bash"}}, false, false, changecapture.Options{})
+	if !observed {
+		t.Fatalf("%q was not observed; observation=%+v", command, observation)
+	}
+	return observation
+}
+
+func reviewSummary(workspace string, files []diffmodel.ReviewFile) []string {
+	var summary []string
+	for _, file := range files {
+		text := file.Action().Title() + " " + strings.TrimPrefix(cmpOrPath(file.AfterPath, file.BeforePath), workspace+"/")
+		if file.Action() == diffmodel.ReviewMove {
+			text = "Move " + strings.TrimPrefix(file.BeforePath, workspace+"/") + " -> " + strings.TrimPrefix(file.AfterPath, workspace+"/")
+		}
+		if file.CopyFrom != "" {
+			text += " (copy of " + strings.TrimPrefix(file.CopyFrom, workspace+"/") + ")"
+		}
+		if file.Binary {
+			text += " binary"
+		}
+		if file.Incomplete != "" {
+			text += " incomplete"
+		}
+		summary = append(summary, text)
+	}
+	slices.Sort(summary)
+	return summary
+}
+
+func cmpOrPath(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func TestExecObservationReconcilesDeclaredEffects(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		setup   map[string]string
+		command string
+		run     func(t *testing.T, workspace string)
+		want    []string
+	}{
+		{
+			name: "copy", setup: map[string]string{"a.txt": "a\n"}, command: "cp a.txt b.txt",
+			run:  func(t *testing.T, w string) { writeTestFile(t, filepath.Join(w, "b.txt"), "a\n") },
+			want: []string{"Create b.txt (copy of a.txt)"},
+		},
+		{
+			name: "copy into directory", setup: map[string]string{"a.txt": "a\n", "dir/keep": ""}, command: "cp a.txt dir",
+			run:  func(t *testing.T, w string) { writeTestFile(t, filepath.Join(w, "dir/a.txt"), "a\n") },
+			want: []string{"Create dir/a.txt (copy of a.txt)"},
+		},
+		{
+			name: "move", setup: map[string]string{"old.go": "package x\n"}, command: "mv old.go new.go",
+			run: func(t *testing.T, w string) {
+				if err := os.Rename(filepath.Join(w, "old.go"), filepath.Join(w, "new.go")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: []string{"Move old.go -> new.go"},
+		},
+		{
+			name: "glob delete", setup: map[string]string{"a.tmp": "1\n", "b.tmp": "2\n", "c.txt": "3\n"}, command: "rm *.tmp",
+			run: func(t *testing.T, w string) {
+				_ = os.Remove(filepath.Join(w, "a.tmp"))
+				_ = os.Remove(filepath.Join(w, "b.tmp"))
+			},
+			want: []string{"Delete a.tmp", "Delete b.tmp"},
+		},
+		{
+			name: "recursive delete", setup: map[string]string{"build/x.o": "x", "build/sub/y.o": "y"}, command: "rm -rf build",
+			run:  func(t *testing.T, w string) { _ = os.RemoveAll(filepath.Join(w, "build")) },
+			want: []string{"Delete build/sub/y.o", "Delete build/x.o"},
+		},
+		{
+			name: "redirect", command: "cd sub && printf 'x\\n' > out.txt",
+			setup: map[string]string{"sub/.keep": ""},
+			run:   func(t *testing.T, w string) { writeTestFile(t, filepath.Join(w, "sub/out.txt"), "x\n") },
+			want:  []string{"Create sub/out.txt"},
+		},
+		{
+			name: "binary", setup: map[string]string{"blob": "\xff\x00"}, command: "truncate -s 0 blob",
+			run:  func(t *testing.T, w string) { writeTestFile(t, filepath.Join(w, "blob"), "\xfe\x01") },
+			want: []string{"Edit blob binary"},
+		},
+		{
+			name: "symlink", command: "ln -s target link",
+			run: func(t *testing.T, w string) {
+				if err := os.Symlink("target", filepath.Join(w, "link")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: []string{"Create link"},
+		},
+		{
+			name: "unchanged", setup: map[string]string{"a": "same\n"}, command: "touch a",
+			run: func(*testing.T, string) {},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			for path, content := range test.setup {
+				writeTestFile(t, filepath.Join(workspace, path), content)
+			}
+			observation := observeTestCommand(t, workspace, test.command)
+			test.run(t, workspace)
+			result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+			reviews, complete := result.Files, result.Complete
+			if !complete {
+				t.Fatalf("incomplete evidence: %+v", reviews)
+			}
+			if got := reviewSummary(workspace, reviews); !slices.Equal(got, test.want) {
+				t.Fatalf("reviews = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+// Running the commands checks capture against real shell semantics, where an
+// earlier statement decides what a later destination names.
+func TestExecObservationFollowsShellSemantics(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is unavailable")
+	}
+	for _, test := range []struct {
+		name    string
+		setup   map[string]string
+		links   map[string]string
+		command string
+		want    []string
+		partial bool
+	}{
+		{name: "move into a new directory", setup: map[string]string{"a.txt": "a\n"}, command: "mkdir old && mv a.txt old", want: []string{"Move a.txt -> old/a.txt"}},
+		{name: "copy into a new directory", setup: map[string]string{"app": "bin\n"}, command: "mkdir -p dist && cp app dist", want: []string{"Create dist/app (copy of app)"}},
+		{
+			name: "replace a directory", setup: map[string]string{"build/new.js": "new\n", "dist/old.js": "old\n"},
+			command: "rm -rf dist && cp -r build dist", want: []string{"Create dist/new.js (copy of build/new.js)", "Delete dist/old.js"},
+		},
+		{
+			name: "copy a tree created by the command", setup: map[string]string{"keep": ""},
+			command: "mkdir src && printf 'x\\n' > src/new && cp -r src dst", want: []string{"Create dst/new", "Create src/new"},
+		},
+		{name: "glob over a created file", setup: map[string]string{"a.txt": "a\n", "dir/.keep": ""}, command: "printf 'b\\n' > b.txt && mv *.txt dir", want: []string{"Create dir/b.txt", "Move a.txt -> dir/a.txt"}},
+		{name: "write through a symlink", setup: map[string]string{"real": "old\n"}, links: map[string]string{"link": "real"}, command: "printf 'new\\n' > link", want: []string{"Edit real"}},
+		{name: "dangling symlink", links: map[string]string{"link": "missing"}, command: "printf 'new\\n' > link", want: []string{"Edit link incomplete"}, partial: true},
+		{name: "empty files are not moves", setup: map[string]string{"empty": ""}, command: "rm empty && touch other", want: []string{"Create other", "Delete empty"}},
+		{name: "NUL content is binary", setup: map[string]string{"data": "a\x00b"}, command: "printf 'c' >> data", want: []string{"Edit data binary"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			for path, content := range test.setup {
+				writeTestFile(t, filepath.Join(workspace, path), content)
+			}
+			for link, target := range test.links {
+				if err := os.Symlink(target, filepath.Join(workspace, link)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			observation := observeTestCommand(t, workspace, test.command)
+			command := exec.Command(bash, "-c", test.command)
+			command.Dir = workspace
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("%s: %v\n%s", test.command, err, output)
+			}
+			result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+			reviews, complete := result.Files, result.Complete
+			if complete == test.partial {
+				t.Fatalf("complete = %v: %+v", complete, reviews)
+			}
+			if got := reviewSummary(workspace, reviews); !slices.Equal(got, test.want) {
+				t.Fatalf("reviews = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestExecObservationSymlinkReviewsLinkTarget(t *testing.T) {
+	workspace := t.TempDir()
+	writeTestFile(t, filepath.Join(workspace, "target"), "secret content\n")
+	observation := observeTestCommand(t, workspace, "ln -s target link")
+	if err := os.Symlink("target", filepath.Join(workspace, "link")); err != nil {
+		t.Fatal(err)
+	}
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews := result.Files
+	if len(reviews) != 1 || !strings.Contains(reviews[0].Diff, "+-> target") || strings.Contains(reviews[0].Diff, "secret") {
+		t.Fatalf("symlink review = %+v", reviews)
+	}
+}
+
+func TestExecObservationBoundsFileBytes(t *testing.T) {
+	workspace := t.TempDir()
+	large := filepath.Join(workspace, "large")
+	writeTestFile(t, large, strings.Repeat("x", changecapture.MaxFileBytes+1))
+	observation := observeTestCommand(t, workspace, "touch large")
+	if result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{}); !result.Complete || len(result.Files) != 0 {
+		t.Fatalf("an unchanged oversized file was reported: %+v", result.Files)
+	}
+	writeTestFile(t, large, strings.Repeat("y", changecapture.MaxFileBytes+2))
+	if result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{}); result.Complete || len(result.Files) != 1 || result.Files[0].Incomplete == "" {
+		t.Fatalf("a changed oversized file = %+v, complete=%v", result.Files, result.Complete)
+	}
+}
+
+func TestExecObservationSkipsNeutralCommands(t *testing.T) {
+	for _, command := range []string{"ls", "git status", `rg -n pattern internal/{router,ui}`, `find "$HOME/.codex/sessions" -type f -print`, `[ -d "$directory" ] && echo directory`, "skills-mgr info", "skills-mgr get golang-best-practices"} {
+		for _, codeMode := range []bool{false, true} {
+			if _, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: t.TempDir(), Shell: "bash"}}, false, codeMode, changecapture.Options{}); observed {
+				t.Errorf("%q was observed without a declared scope", command)
+			}
+		}
+	}
+	if _, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: "rm a", Workdir: t.TempDir(), Shell: "bash"}}, true, true, changecapture.Options{}); !observed {
+		t.Error("a dynamic exec cell was not observed")
+	}
+}
+
+func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T) {
+	workspace := t.TempDir()
+	target := filepath.Join(workspace, "target.txt")
+	writeTestFile(t, target, "before\n")
+	writeTestFile(t, filepath.Join(workspace, "edit.py"), "from pathlib import Path\nPath('target.txt').write_text('after\\n')\n")
+	source := `const r = await tools.exec_command({cmd: "python3 edit.py"}); await tools.write_stdin({session_id: r.session_id, chars: ""});`
+	commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, "bash")
+	if dynamic || len(commands) != 1 || commands[0].Command != "python3 edit.py" {
+		t.Fatalf("same-cell command and polling = %+v dynamic=%v", commands, dynamic)
+	}
+	observation, observed := changecapture.Capture(t.Context(), commands, dynamic, true, changecapture.Options{Directory: workspace})
+	if !observed || observation == nil || observation.Class == execscope.Opaque.String() || !observation.CodeMode {
+		t.Fatalf("exec observation = %+v observed=%v; polling must not make the literal command opaque", observation, observed)
+	}
+	var baseline *changecapture.File
+	for i := range observation.Files {
+		if observation.Files[i].Path == target {
+			baseline = &observation.Files[i]
+			break
+		}
+	}
+	if baseline == nil || baseline.Content != "before\n" || baseline.Origin != "" ||
+		!slices.ContainsFunc(observation.Programs, func(program execscope.Program) bool { return program.Label == "python3" && program.Direct }) {
+		t.Fatalf("same-cell direct baseline/program = %+v / %+v", baseline, observation.Programs)
+	}
+	writeTestFile(t, target, "after\n")
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 1 || reviews[0].Origin != "" ||
+		!strings.Contains(reviews[0].Diff, "-before\n+after\n") {
+		t.Fatalf("same-cell direct review = %+v complete=%v coverage=%q", reviews, complete, coverage)
+	}
+}
+
+// retainCommandObservation seeds an older saved command for replay tests.
+// New model calls use exec; retained host evidence keeps its original identity.
+func retainCommandObservation(t *testing.T, transform *mekugiResponseTransform, callID, arguments string) {
+	t.Helper()
+	command, ok := commandanalysis.ExecCommandArguments(arguments, transform.directory, transform.sessionShell)
+	if !ok {
+		t.Fatal("invalid retained command fixture")
+	}
+	observation, observed := changecapture.Capture(transform.ctx, []commandanalysis.Command{command}, false, false, executionCaptureEnvironment(transform.ctx, transform.directory, transform.retained, transform.changeSource, transform.snapshots, nil))
+	if !observed {
+		return
+	}
+	transform.openExecWindow(callID, observation, nil)
+	item := map[string]json.RawMessage{"type": responses.MustMarshalJSON("function_call"), "call_id": responses.MustMarshalJSON(callID), "name": responses.MustMarshalJSON(nativeExecCommandToolName), "arguments": responses.MustMarshalJSON(arguments)}
+	transform.recordLocal(callID, &mekugiHistory{ToolName: nativeExecCommandToolName, Script: arguments, CarrierKind: codeModeCarrierFunction, CarrierName: nativeExecCommandToolName, CarrierPayload: arguments, ReplayCarrier: true, UpstreamItem: item, ExecObservation: observation, ExecutingThread: transform.shellThreadID, Caller: transform.operationCaller()})
+	if err := transform.commitLocalCall(callID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func reconcileExecItems(t *testing.T, proxy *Preparer, workspace string, items []any) *mekugiResponseTransform {
+	t.Helper()
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
+		"model": "gpt-test", "tools": testExecResponsesTools(), "tool_choice": "auto",
+		"input": append(items, map[string]any{"role": "user", "content": "continue"}),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transform, err := proxy.prepareRequest(t.Context(), &request, "exec-session-next", "stock-thread", codexresponses.TurnMetadata{
+		RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(transform.Close)
+	return transform
+}
+
+func nativeExecOutput(state string) string {
+	return "Chunk ID: 1\nWall time: 0.1 seconds\n" + state + "\nOutput:\n"
+}
+
+func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
+	for _, test := range []struct {
+		name, status string
+		yielded      bool
+		exit         string
+		wantOutcome  string
+	}{
+		{name: "completed", exit: "0", wantOutcome: "command completed · exit 0"},
+		{name: "failed", exit: "1", wantOutcome: "command failed · exit 1"},
+		{name: "failed out of range", exit: "300", wantOutcome: "command failed · exit 300"},
+		{name: "yielded", yielded: true, exit: "0", wantOutcome: "command completed · exit 0"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			proxy := newManagedMekugiProxy(t)
+			attachTestReplayStore(t, proxy)
+			workspace := t.TempDir()
+			target := filepath.Join(workspace, "a.txt")
+			writeTestFile(t, target, "gone\n")
+			transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
+			arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "rm a.txt", "workdir": workspace, "yield_time_ms": 1000}))
+			retainCommandObservation(t, transform, "exec-call", arguments)
+			if history := transform.local["exec-call"]; history.ExecObservation == nil || history.CarrierPayload != arguments {
+				t.Fatalf("stock exec_command was not retained before exposure: %+v", history)
+			}
+			if err := os.Remove(target); err != nil {
+				t.Fatal(err)
+			}
+			call := map[string]any{"type": "function_call", "id": "exec-call-item", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments}
+			items := []any{call}
+			if test.yielded {
+				items = append(items, map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process running with session ID 9")})
+				reconcileExecItems(t, proxy, workspace, items)
+				if _, found, _ := testProxyStore(proxy).lookup(t.Context(), workspace, "exec-call:exec:1"); found {
+					t.Fatal("a running session was finalized")
+				}
+				items = append(items,
+					map[string]any{"type": "function_call", "call_id": "stdin-call", "name": "write_stdin", "arguments": `{"session_id":9,"chars":""}`},
+					map[string]any{"type": "function_call_output", "call_id": "stdin-call", "output": nativeExecOutput("Process exited with code " + test.exit)},
+				)
+			} else {
+				items = append(items, map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code " + test.exit)})
+			}
+			next := reconcileExecItems(t, proxy, workspace, items)
+			history, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "exec-call:exec:1")
+			if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
+				t.Fatalf("derived record = %+v found=%v err=%v", history, found, err)
+			}
+			if history.ExecOutcome == nil {
+				t.Fatal("missing host outcome")
+			}
+			if strings.HasPrefix(test.name, "failed") {
+				if history.ExecOutcome.OutputRef == "" {
+					t.Fatal("failed host result has no durable mread reference")
+				}
+				store, err := openMekugiReplayStore(testProxyStore(proxy).directory)
+				if err != nil {
+					t.Fatal(err)
+				}
+				output, err := store.recoverOutput(next.ctx, history.ExecOutcome.OutputRef)
+				if err != nil || output.ExitCode != 0 || output.Stdout != history.Report {
+					t.Fatalf("failed output reference is not readable after restart: %+v, %v", output, err)
+				}
+			}
+			changes, err := testProxyStore(proxy).changes.Read(next.ctx, testProxyStore(proxy).scoped(next.ctx).changeScope(), changes.Query{
+				Workspace: workspace, IDs: []string{history.ChangeID}, View: "history", MaxTokens: 4000,
+			})
+			if err != nil || !strings.Contains(changes, "-gone") || !strings.Contains(changes, "exec_command input:\nrm a.txt") ||
+				!strings.Contains(changes, "observed scope: a.txt") || !strings.Contains(changes, test.wantOutcome) {
+				t.Fatalf("mchanges history = %q, %v", changes, err)
+			}
+			// Replay of the same visible input neither re-reads nor re-allocates.
+			reconcileExecItems(t, proxy, workspace, items)
+			again, _, _ := testProxyStore(proxy).lookup(t.Context(), workspace, "exec-call:exec:1")
+			if again.ChangeID != history.ChangeID {
+				t.Fatalf("replay reallocated change %s -> %s", history.ChangeID, again.ChangeID)
+			}
+			if again.ExecOutcome.OutputRef != history.ExecOutcome.OutputRef {
+				t.Fatal("replay reallocated failed-output evidence")
+			}
+		})
+	}
+}
+
+func TestNativeExecCommandWithoutEffectAllocatesNoChange(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	workspace := t.TempDir()
+	transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
+	arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "rm -f missing.txt"}))
+	retainCommandObservation(t, transform, "exec-call", arguments)
+	reconcileExecItems(t, proxy, workspace, []any{
+		map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
+		map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code 0")},
+	})
+	history, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "exec-call:exec:1")
+	if err != nil || !found || history.ChangeID != "" || len(history.ReviewFiles) != 0 {
+		t.Fatalf("empty observation = %+v found=%v err=%v", history, found, err)
+	}
+}
+
+func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
+	for _, command := range []string{
+		`rg -n pattern internal/{router,ui}`,
+		`[ -d "$directory" ] && echo directory`,
+		`find "$HOME/.codex/sessions" -type f -print`,
+		`skills-mgr info`,
+		`skills-mgr get golang-best-practices`,
+	} {
+		for _, codeMode := range []bool{false, true} {
+			mode := "native"
+			if codeMode {
+				mode = "exec"
+			}
+			t.Run(mode+"/"+command, func(t *testing.T) {
+				proxy := newManagedMekugiProxy(t)
+				attachTestReplayStore(t, proxy)
+				if codeMode {
+					transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+					transform.sessionShell = "bash"
+					call := map[string]any{
+						"type": "custom_tool_call", "id": "code-item", "call_id": "code-call", "name": "exec",
+						"input": "text(await tools.exec_command(" + string(responses.MustMarshalJSON(map[string]string{"cmd": command})) + "));", "status": "completed",
+					}
+					if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "response", "status": "completed", "output": []any{call}})); err != nil {
+						t.Fatal(err)
+					}
+					request := codexresponses.Request{Fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
+						"type": "custom_tool_call_output", "call_id": "code-call", "output": []any{
+							map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+						},
+					}})}}
+					if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
+						t.Fatal(err)
+					}
+					index, err := testProxyStore(proxy).changes.Inspect(testProxyStore(proxy).changeScope(), workspace)
+					if err != nil || len(index.Changes) != 0 {
+						t.Fatalf("read-only exec command allocated changes: %+v, %v", index, err)
+					}
+				} else {
+					workspace := t.TempDir()
+					transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
+					arguments := string(responses.MustMarshalJSON(map[string]string{"cmd": command}))
+					retainCommandObservation(t, transform, "exec-call", arguments)
+					reconcileExecItems(t, proxy, workspace, []any{
+						map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
+						map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code 0")},
+					})
+					index, err := testProxyStore(proxy).changes.Inspect(testProxyStore(proxy).changeScope(), workspace)
+					if err != nil || len(index.Changes) != 0 {
+						t.Fatalf("read-only native command allocated changes: %+v, %v", index, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+	transform.sessionShell = "bash"
+	writeTestFile(t, filepath.Join(workspace, "f"), "old\n")
+	call := map[string]any{
+		"type": "custom_tool_call", "id": "code-item", "call_id": "code-call", "name": "exec",
+		"input": `text(await tools.exec_command({cmd: "printf 'new\\n' > f"}));`, "status": "completed",
+	}
+	if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "response", "status": "completed", "output": []any{call}})); err != nil {
+		t.Fatal(err)
+	}
+	if history := transform.local["code-call"]; history.ExecObservation == nil || !history.ExecObservation.CodeMode {
+		t.Fatalf("exec command was not observed: %+v", history)
+	}
+	writeTestFile(t, filepath.Join(workspace, "f"), "new\n")
+	request := codexresponses.Request{Fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
+		"type": "custom_tool_call_output", "call_id": "code-call", "output": []any{
+			map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+		},
+	}})}}
+	if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
+		t.Fatal(err)
+	}
+	history, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "code-call:effects")
+	if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
+		t.Fatalf("exec record = %+v found=%v err=%v", history, found, err)
+	}
+	if history.ExecOutcome == nil || history.ExecOutcome.Status != "" {
+		t.Fatalf("missing host exit must not claim a command result: %+v", history.ExecOutcome)
+	}
+	// Consume the actual producer's retained record through the offline CLI.
+	rollout := filepath.Join(t.TempDir(), "rollout.jsonl")
+	writeStockRollout(t, rollout,
+		map[string]any{"type": "session_meta", "payload": map[string]any{"cwd": workspace}},
+		stockRolloutItem(call),
+	)
+	var stdout, stderr strings.Builder
+	if code := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", rollout, "--replay-dir", testProxyStore(proxy).directory}, &stdout, &stderr); code != 0 {
+		t.Fatalf("inspection: %d %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"outcome":"unconfirmed"`) ||
+		!strings.Contains(stdout.String(), `"review_files":1`) ||
+		!strings.Contains(stdout.String(), `"change_id":"`+history.ChangeID+`"`) {
+		t.Fatalf("derived shell evidence missing: %s", stdout.String())
+	}
+}
+
+func TestLiveDiffTeeHeredocPreview(t *testing.T) {
+	workspace := t.TempDir()
+	writeTestFile(t, filepath.Join(workspace, "log"), "one\n")
+	command := "tee -a log <<'EOF' >/dev/null\ntwo\nEOF\n"
+	files, _, recognized, err := projection.Shell(t.Context(), command, workspace, true)
+	if !recognized || err != nil {
+		t.Fatalf("heredoc recognized=%v err=%v", recognized, err)
+	}
+	if got := reviewSummary(workspace, files); !slices.Equal(got, []string{"Edit log"}) {
+		t.Fatalf("heredoc preview = %q", got)
+	}
+}
+
+func TestLiveDiffFileOperationsPreserveSiblingStreams(t *testing.T) {
+	workspace := t.TempDir()
+	writeTestFile(t, filepath.Join(workspace, "a.txt"), "a\n")
+	previewContext := t.Context()
+	previewProject := previewProjector(previewContext, nativeExecCommandToolName)
+	for _, test := range []struct {
+		command string
+		want    []string
+	}{
+		{"mv a.txt b.txt\n", nil},
+		{"cp a.txt b.txt\n", nil},
+		{"rm a.txt\n", nil},
+		{"cp a.txt b.txt\ntee sibling.txt <<'EOF'\nnew content\nEOF\n", []string{"Create sibling.txt"}},
+		{"rm a.txt\ncat > sibling.txt <<'EOF'\nnew content\nEOF\n", []string{"Create sibling.txt"}},
+		{"mv a.txt b.txt\ncat > sibling.txt <<'EOF'\nnew content\nEOF\n", []string{"Create sibling.txt"}},
+		{"cat > sibling.txt <<'EOF'\nnew content\nEOF\nmv a.txt b.txt\n", []string{"Create sibling.txt"}},
+	} {
+		preview, _ := previewProject(string(responses.MustMarshalJSON(map[string]string{"cmd": test.command})), workspace, false)
+		if got := reviewSummary(workspace, preview.Files); !slices.Equal(got, test.want) {
+			t.Fatalf("%q stream = %q, want %q", test.command, got, test.want)
+		}
+	}
+	files, _, _, err := projection.Shell(previewContext, "mv a.txt b.txt\ncat > b.txt <<'EOF'\nnew content\nEOF\n", workspace, false)
+	if len(files) != 0 || err == nil {
+		t.Fatal("a dependent write borrowed the pre-move baseline")
+	}
+}
+
+func TestExecReceiptAndSummaryText(t *testing.T) {
+	workspace := t.TempDir()
+	history := mekugiHistory{
+		ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusCompleted, Labels: []string{"cp"}},
+		ReviewFiles: []diffmodel.ReviewFile{
+			func() diffmodel.ReviewFile {
+				file := diffmodel.RenderReviewFile("", filepath.Join(workspace, "b.txt"), "", "a\n")
+				file.CopyFrom = filepath.Join(workspace, "a.txt")
+				return file
+			}(),
+			diffmodel.RenderBinaryReviewFile(filepath.Join(workspace, "blob"), filepath.Join(workspace, "blob"), 2, 2, "aa", "bb"),
+		},
+	}
+	want := "Create `b.txt` (copy of `a.txt`) +1 -0 · cp\n```diff\n@@ -0,0 +1,1 @@\n+a\n```\n\nEdit `blob` binary · cp"
+	if got := changepresentation.ReceiptText(workspace, receiptEvidence(history)); got != want {
+		t.Fatalf("receipt = %q, want %q", got, want)
+	}
+}

@@ -1,0 +1,516 @@
+package binding
+
+// Source: internal/router/subagent_tool_display_javascript.go:15:515@b530a2ac.
+
+import (
+	jsonv1 "encoding/json"
+	"maps"
+	"slices"
+	"strings"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
+
+	sitter "github.com/tree-sitter/go-tree-sitter"
+)
+
+// SingleExecutionCall recognizes one transparent Codex JavaScript invocation.
+func SingleExecutionCall(source string, requireResultMetadata bool) (map[string]jsonv1.RawMessage, bool) {
+	calls, ok := ExecutionCalls(source, requireResultMetadata)
+	if !ok || len(calls) != 1 {
+		return nil, false
+	}
+	return calls[0], true
+}
+
+// ExecutionCalls preserves literal tool arguments in supported transparent
+// JavaScript. Result metadata is required for continuation correlation, but not
+// for provisional source previews. Recognition never executes the source.
+func ExecutionCalls(source string, requireResultMetadata bool) ([]map[string]jsonv1.RawMessage, bool) {
+	parser := sitter.NewParser()
+	defer parser.Close()
+	if parser.SetLanguage(sourceparse.JavaScript) != nil {
+		return nil, false
+	}
+	bytes := []byte(source)
+	tree := parser.Parse(bytes, nil)
+	if tree == nil {
+		return nil, false
+	}
+	defer tree.Close()
+	root := tree.RootNode()
+	if root.HasError() {
+		return nil, false
+	}
+	var statements []*sitter.Node
+	for i := range root.NamedChildCount() {
+		node := root.NamedChild(uint(i))
+		if node.Kind() != "comment" {
+			statements = append(statements, node)
+		}
+	}
+	if len(statements) == 0 {
+		return nil, false
+	}
+	var calls []map[string]jsonv1.RawMessage
+	bindings := make(map[string]string)
+	for i := 0; i < len(statements); i++ {
+		first := statements[i]
+		var expression *sitter.Node
+		batchProjection := false
+		if first.Kind() == "expression_statement" {
+			expression = first.NamedChild(0)
+			if args, ok := sourceparse.JavaScriptCallArguments(expression, bytes, "text"); ok && len(args) == 1 {
+				expression = args[0]
+			} else if args, ok := sourceparse.JavaScriptCallArguments(expression, bytes, "generatedImage"); ok && len(args) == 1 && !requireResultMetadata {
+				expression = args[0]
+			} else if requireResultMetadata {
+				return nil, false
+			}
+		} else if first.Kind() == "lexical_declaration" && first.NamedChildCount() == 1 && i+1 < len(statements) {
+			declaration := first.NamedChild(0)
+			binding := declaration.ChildByFieldName("name")
+			if binding == nil || binding.Kind() != "identifier" {
+				return nil, false
+			}
+			name := binding.Utf8Text(bytes)
+			// A local runtime binding changes every call in the program, including earlier calls.
+			if slices.Contains([]string{"tools", "text", "JSON", "Object", "Promise", "generatedImage"}, name) {
+				return nil, false
+			}
+			value := declaration.ChildByFieldName("value")
+			if first.Child(0).Kind() == "const" && !requireResultMetadata {
+				if literal, ok := sourceparse.JavaScriptValue(value, bytes); ok {
+					if value, ok := literal.(string); ok {
+						bindings[name] = value
+						continue
+					}
+				}
+			}
+			if !executionResultProjection(statements[i+1], bytes, name, requireResultMetadata) {
+				batchProjection = !requireResultMetadata &&
+					(executionBatchForEachProjection(statements[i+1], bytes, name) ||
+						executionBatchIndexedPresentation(statements[i+1], bytes, name, map[string]bool{name: true}))
+				if !batchProjection {
+					return nil, false
+				}
+			}
+			expression = value
+			i++
+		}
+		if expression != nil && expression.Kind() == "await_expression" && !requireResultMetadata {
+			if args, ok := sourceparse.JavaScriptCallArguments(expression.NamedChild(0), bytes, "tools", "apply_patch"); ok && len(args) == 1 && args[0].Kind() == "identifier" {
+				if patch, found := bindings[args[0].Utf8Text(bytes)]; found {
+					calls = append(calls, map[string]jsonv1.RawMessage{"name": responses.MustMarshalJSON("apply_patch"), "input": responses.MustMarshalJSON(patch)})
+					continue
+				}
+			}
+		}
+		if !requireResultMetadata && expression != nil && expression.Kind() == "member_expression" &&
+			expression.ChildByFieldName("optional_chain") == nil {
+			property := expression.ChildByFieldName("property")
+			object := expression.ChildByFieldName("object")
+			if property != nil && property.Kind() == "property_identifier" && property.Utf8Text(bytes) == "output" &&
+				object != nil && object.Kind() == "parenthesized_expression" && object.NamedChildCount() == 1 {
+				expression = object.NamedChild(0)
+			}
+		}
+		nested, ok := executionAwaitedCalls(expression, bytes, requireResultMetadata)
+		if !ok || batchProjection && !executionPromiseBatch(expression, bytes) {
+			return nil, false
+		}
+		calls = append(calls, nested...)
+	}
+	return calls, true
+}
+
+func executionProtectedBindingName(node *sitter.Node, source []byte) bool {
+	if node == nil {
+		return false
+	}
+	if node.Kind() == "identifier" || node.Kind() == "shorthand_property_identifier_pattern" {
+		if strings.ContainsRune(node.Utf8Text(source), '\\') {
+			return true // An escape may spell a protected binding after JS decoding.
+		}
+		return slices.Contains([]string{"tools", "Promise"}, node.Utf8Text(source))
+	}
+	for i := range node.NamedChildCount() {
+		if executionProtectedBindingName(node.NamedChild(uint(i)), source) {
+			return true
+		}
+	}
+	return false
+}
+
+func executionPromiseBatch(expression *sitter.Node, source []byte) bool {
+	if expression == nil || expression.Kind() != "await_expression" {
+		return false
+	}
+	call := expression.NamedChild(0)
+	for _, method := range []string{"all", "allSettled"} {
+		if args, ok := sourceparse.JavaScriptCallArguments(call, source, "Promise", method); ok &&
+			len(args) == 1 && args[0].Kind() == "array" {
+			return true
+		}
+	}
+	return false
+}
+
+// Accept the common compact projection used for a Promise batch:
+//
+//	results.forEach((result, i) => text(JSON.stringify({i, result})))
+//
+// The callback must only print a JSON object made from its own parameters.
+// This keeps display recognition presentation-only and rejects callbacks with
+// additional effects or values from outside the callback.
+func executionBatchForEachProjection(statement *sitter.Node, source []byte, binding string) bool {
+	if statement.Kind() != "expression_statement" || statement.NamedChildCount() != 1 {
+		return false
+	}
+	call := statement.NamedChild(0)
+	args, ok := sourceparse.JavaScriptCallArguments(call, source, binding, "forEach")
+	if !ok || len(args) != 1 || args[0].Kind() != "arrow_function" {
+		return false
+	}
+	callback := args[0]
+	parameters := callback.ChildByFieldName("parameters")
+	body := callback.ChildByFieldName("body")
+	if parameters == nil || body == nil || parameters.Kind() != "formal_parameters" {
+		return false
+	}
+	allowed := make(map[string]bool, parameters.NamedChildCount())
+	for i := range parameters.NamedChildCount() {
+		parameter := parameters.NamedChild(uint(i))
+		if parameter.Kind() != "identifier" {
+			return false
+		}
+		name := parameter.Utf8Text(source)
+		if strings.ContainsRune(name, '\\') || name == "text" || name == "JSON" {
+			return false
+		}
+		allowed[name] = true
+	}
+	if len(allowed) == 0 {
+		return false
+	}
+	return executionBatchPrintedObject(body, source, allowed)
+}
+
+// The indexed form consumes the same completed batch, once per result. Its
+// loop header is checked structurally so unrelated work cannot be hidden.
+func executionBatchIndexedPresentation(statement *sitter.Node, source []byte, binding string, allowed map[string]bool) bool {
+	if statement.Kind() != "for_statement" {
+		return false
+	}
+	initializer := statement.ChildByFieldName("initializer")
+	condition := statement.ChildByFieldName("condition")
+	increment := statement.ChildByFieldName("increment")
+	body := statement.ChildByFieldName("body")
+	if initializer == nil || initializer.Kind() != "lexical_declaration" || initializer.NamedChildCount() != 1 ||
+		initializer.ChildByFieldName("kind").Kind() != "let" || condition == nil ||
+		condition.Kind() != "binary_expression" || increment == nil || increment.Kind() != "update_expression" ||
+		body == nil {
+		return false
+	}
+	declaration := initializer.NamedChild(0)
+	index := declaration.ChildByFieldName("name")
+	start := declaration.ChildByFieldName("value")
+	if index == nil || index.Kind() != "identifier" || start == nil || start.Kind() != "number" ||
+		start.Utf8Text(source) != "0" {
+		return false
+	}
+	indexName := index.Utf8Text(source)
+	if indexName == binding || slices.Contains([]string{"text", "JSON", "tools", "Promise"}, indexName) ||
+		strings.ContainsRune(indexName, '\\') ||
+		!sourceparse.JavaScriptMemberPath(condition.ChildByFieldName("left"), source, indexName) ||
+		!sourceparse.JavaScriptMemberPath(condition.ChildByFieldName("right"), source, binding, "length") ||
+		condition.ChildByFieldName("operator").Kind() != "<" ||
+		!sourceparse.JavaScriptMemberPath(increment.ChildByFieldName("argument"), source, indexName) ||
+		increment.ChildByFieldName("operator").Kind() != "++" {
+		return false
+	}
+	locals := maps.Clone(allowed)
+	locals[indexName] = true
+	return executionPresentationStatement(body, source, locals)
+}
+
+// A forEach callback prints an object built only from its local result and
+// index references. This inspects output shape, not JS execution.
+func executionBatchPrintedObject(body *sitter.Node, source []byte, allowed map[string]bool) bool {
+	textArgs, ok := sourceparse.JavaScriptCallArguments(body, source, "text")
+	if !ok || len(textArgs) != 1 {
+		return false
+	}
+	jsonArgs, ok := sourceparse.JavaScriptCallArguments(textArgs[0], source, "JSON", "stringify")
+	if !ok || len(jsonArgs) != 1 || jsonArgs[0].Kind() != "object" {
+		return false
+	}
+	object := jsonArgs[0]
+	if object.NamedChildCount() == 0 {
+		return false
+	}
+	for i := range object.NamedChildCount() {
+		member := object.NamedChild(uint(i))
+		var value *sitter.Node
+		switch member.Kind() {
+		case "pair":
+			key := member.ChildByFieldName("key")
+			value = member.ChildByFieldName("value")
+			if key == nil || key.Kind() != "property_identifier" && key.Kind() != "string" ||
+				value == nil {
+				return false
+			}
+		case "shorthand_property_identifier":
+			value = member
+		case "spread_element":
+			if member.NamedChildCount() != 1 {
+				return false
+			}
+			value = member.NamedChild(0)
+		default:
+			return false
+		}
+		if value == nil || (value.Kind() != "identifier" && value.Kind() != "shorthand_property_identifier") || !allowed[value.Utf8Text(source)] {
+			return false
+		}
+	}
+	return true
+}
+
+func executionAwaitedCalls(expression *sitter.Node, bytes []byte, requireResultMetadata bool) ([]map[string]jsonv1.RawMessage, bool) {
+	if expression == nil || expression.Kind() != "await_expression" {
+		return nil, false
+	}
+	call := expression.NamedChild(0)
+	if call == nil || call.Kind() != "call_expression" {
+		return nil, false
+	}
+	if !requireResultMetadata {
+		for _, method := range []string{"all", "allSettled"} {
+			if args, ok := sourceparse.JavaScriptCallArguments(call, bytes, "Promise", method); ok && len(args) == 1 && args[0].Kind() == "array" {
+				var calls []map[string]jsonv1.RawMessage
+				for i := range args[0].NamedChildCount() {
+					node := args[0].NamedChild(uint(i))
+					item, ok := executionStaticToolCall(node, bytes)
+					if !ok {
+						return nil, false
+					}
+					calls = append(calls, item)
+				}
+				return calls, len(calls) > 0
+			}
+		}
+	}
+	item, ok := executionStaticToolCall(call, bytes)
+	if !ok {
+		return nil, false
+	}
+	return []map[string]jsonv1.RawMessage{item}, true
+}
+
+func executionStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jsonv1.RawMessage, bool) {
+	if call == nil || call.Kind() != "call_expression" {
+		return nil, false
+	}
+	callee, args := call.ChildByFieldName("function"), call.ChildByFieldName("arguments")
+	if callee == nil || args == nil || args.NamedChildCount() > 1 {
+		return nil, false
+	}
+	property := callee.ChildByFieldName("property")
+	name := ""
+	if property != nil {
+		name = property.Utf8Text(bytes)
+	} else {
+		return nil, false
+	}
+	switch name {
+	case "exec_command", "view_image", "write_stdin", "apply_patch",
+		"list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource",
+		"clock.curr_time", "clock__curr_time", "curr_time",
+		"clock.sleep", "clock__sleep", "sleep", "get_context_remaining", "new_context",
+		"web.run", "web__run", "image_gen.imagegen", "image_gen__imagegen", "wait":
+	default:
+		group, tool, qualified := strings.Cut(strings.TrimPrefix(name, "mcp__"), "__")
+		if !qualified || group == "" || tool == "" {
+			return nil, false
+		}
+	}
+	if !sourceparse.JavaScriptMemberPath(callee, bytes, "tools", name) || call.ChildByFieldName("optional_chain") != nil {
+		return nil, false
+	}
+	var value any
+	if args.NamedChildCount() == 1 {
+		var ok bool
+		value, ok = sourceparse.JavaScriptValue(args.NamedChild(0), bytes)
+		if !ok {
+			return nil, false
+		}
+	}
+	item := map[string]jsonv1.RawMessage{"name": responses.MustMarshalJSON(name)}
+	if text, ok := value.(string); ok {
+		item["input"] = responses.MustMarshalJSON(text)
+	} else if args.NamedChildCount() != 0 {
+		item["arguments"] = responses.MustMarshalJSON(string(responses.MustMarshalJSON(value)))
+	}
+	return item, true
+}
+
+// Inspect the projection tree so formatting never determines whether a wrapper
+// is transparent. Only the bound result and the supported metadata copy qualify.
+func executionResultProjection(statement *sitter.Node, source []byte, binding string, requireResultMetadata bool) bool {
+	if statement.Kind() != "expression_statement" || statement.NamedChildCount() != 1 {
+		return false
+	}
+	args, ok := sourceparse.JavaScriptCallArguments(statement.NamedChild(0), source, "text")
+	if !ok && !requireResultMetadata {
+		args, ok = sourceparse.JavaScriptCallArguments(statement.NamedChild(0), source, "generatedImage")
+		return ok && len(args) == 1 && sourceparse.JavaScriptMemberPath(args[0], source, binding)
+	}
+	if !ok || len(args) != 1 {
+		return false
+	}
+	value := args[0]
+	if sourceparse.JavaScriptMemberPath(value, source, binding, "output") {
+		return !requireResultMetadata
+	}
+	if sourceparse.JavaScriptMemberPath(value, source, binding) {
+		return true
+	}
+	args, ok = sourceparse.JavaScriptCallArguments(value, source, "JSON", "stringify")
+	if !ok || len(args) != 1 {
+		return false
+	}
+	if sourceparse.JavaScriptMemberPath(args[0], source, binding) {
+		return true
+	}
+	args, ok = sourceparse.JavaScriptCallArguments(args[0], source, "Object", "assign")
+	if !ok || len(args) != 3 || !sourceparse.JavaScriptMemberPath(args[1], source, binding) {
+		return false
+	}
+	target, targetOK := sourceparse.JavaScriptValue(args[0], source)
+	metadata, metadataOK := sourceparse.JavaScriptValue(args[2], source)
+	targetObject, targetIsObject := target.(map[string]any)
+	metadataObject, metadataIsObject := metadata.(map[string]any)
+	return targetOK && metadataOK && targetIsObject && metadataIsObject &&
+		len(targetObject) == 0 && len(metadataObject) == 1 && metadataObject["retained"] == false
+}
+
+func executionPresentationStatement(node *sitter.Node, source []byte, allowed map[string]bool) bool {
+	if node == nil {
+		return false
+	}
+	switch node.Kind() {
+	case "comment", "empty_statement":
+		return true
+	case "statement_block":
+		locals := maps.Clone(allowed)
+		for i := range node.NamedChildCount() {
+			if !executionPresentationStatement(node.NamedChild(uint(i)), source, locals) {
+				return false
+			}
+		}
+		return true
+	case "lexical_declaration":
+		if node.Child(0).Kind() != "const" || node.NamedChildCount() != 1 {
+			return false
+		}
+		declaration := node.NamedChild(0)
+		name := declaration.ChildByFieldName("name")
+		if name == nil || name.Kind() != "identifier" || executionProtectedBindingName(name, source) {
+			return false
+		}
+		key := name.Utf8Text(source)
+		if allowed[key] || key == "text" || key == "JSON" || !executionPresentationValue(declaration.ChildByFieldName("value"), source, allowed) {
+			return false
+		}
+		allowed[key] = true
+		return true
+	case "expression_statement":
+		args, ok := sourceparse.JavaScriptCallArguments(node.NamedChild(0), source, "text")
+		return ok && len(args) == 1 && executionPresentationValue(args[0], source, allowed)
+	case "if_statement":
+		if !executionPresentationValue(node.ChildByFieldName("condition"), source, allowed) ||
+			!executionPresentationStatement(node.ChildByFieldName("consequence"), source, maps.Clone(allowed)) {
+			return false
+		}
+		alternative := node.ChildByFieldName("alternative")
+		return alternative == nil || executionPresentationStatement(alternative, source, maps.Clone(allowed))
+	case "else_clause":
+		return node.NamedChildCount() == 1 && executionPresentationStatement(node.NamedChild(0), source, allowed)
+	case "continue_statement":
+		return node.NamedChildCount() == 0
+	case "for_in_statement":
+		kind, operator := node.ChildByFieldName("kind"), node.ChildByFieldName("operator")
+		left, right := node.ChildByFieldName("left"), node.ChildByFieldName("right")
+		if kind == nil || kind.Kind() != "const" || operator == nil || operator.Kind() != "of" ||
+			left == nil || left.Kind() != "identifier" || executionProtectedBindingName(left, source) ||
+			right == nil || right.Kind() != "identifier" || !allowed[right.Utf8Text(source)] {
+			return false
+		}
+		name := left.Utf8Text(source)
+		if allowed[name] || name == "text" || name == "JSON" {
+			return false
+		}
+		locals := maps.Clone(allowed)
+		locals[name] = true
+		return executionPresentationStatement(node.ChildByFieldName("body"), source, locals)
+	}
+	return false
+}
+
+func executionPresentationValue(node *sitter.Node, source []byte, allowed map[string]bool) bool {
+	if node == nil {
+		return false
+	}
+	if _, ok := sourceparse.JavaScriptValue(node, source); ok {
+		return true
+	}
+	switch node.Kind() {
+	case "identifier", "shorthand_property_identifier":
+		return allowed[node.Utf8Text(source)]
+	case "member_expression":
+		property := node.ChildByFieldName("property")
+		return node.ChildByFieldName("optional_chain") == nil && property != nil && property.Kind() == "property_identifier" &&
+			executionPresentationValue(node.ChildByFieldName("object"), source, allowed)
+	case "subscript_expression":
+		index := node.ChildByFieldName("index")
+		return node.ChildByFieldName("optional_chain") == nil && index != nil && (index.Kind() == "identifier" || index.Kind() == "number") &&
+			executionPresentationValue(index, source, allowed) && executionPresentationValue(node.ChildByFieldName("object"), source, allowed)
+	case "call_expression":
+		args, ok := sourceparse.JavaScriptCallArguments(node, source, "JSON", "stringify")
+		return ok && len(args) == 1 && executionPresentationValue(args[0], source, allowed)
+	case "binary_expression":
+		operator := node.ChildByFieldName("operator")
+		if operator == nil || !slices.Contains([]string{"+", "===", "!==", "==", "!=", "&&", "||", "??"}, operator.Kind()) {
+			return false
+		}
+	case "object":
+		for i := range node.NamedChildCount() {
+			field := node.NamedChild(uint(i))
+			if field.Kind() == "pair" {
+				key := field.ChildByFieldName("key")
+				if key == nil || key.Kind() != "property_identifier" && key.Kind() != "string" || !executionPresentationValue(field.ChildByFieldName("value"), source, allowed) {
+					return false
+				}
+			} else if field.Kind() == "shorthand_property_identifier" || field.Kind() == "spread_element" {
+				if !executionPresentationValue(field, source, allowed) {
+					return false
+				}
+			} else {
+				return false
+			}
+		}
+		return true
+	case "parenthesized_expression", "ternary_expression", "template_string", "template_substitution", "spread_element":
+	case "string_fragment", "escape_sequence":
+		return true
+	default:
+		return false
+	}
+	for i := range node.NamedChildCount() {
+		if !executionPresentationValue(node.NamedChild(uint(i)), source, allowed) {
+			return false
+		}
+	}
+	return true
+}

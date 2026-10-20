@@ -1,0 +1,141 @@
+package tokenizer
+
+import (
+	"bytes"
+	"encoding/json/v2"
+	"math/rand/v2"
+	"os"
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+)
+
+// Generated with github.com/tiktoken-go/tokenizer v0.8.1 before removing that
+// dependency. Byte slices retain invalid UTF-8 and control-character cases.
+func TestPinnedTokenIDs(t *testing.T) {
+	data, err := os.ReadFile("testdata/o200k_golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixtures []struct {
+		Text    []byte
+		IDs     []uint
+		Pieces  [][]byte
+		Decoded []byte
+	}
+	if err := json.Unmarshal(data, &fixtures); err != nil {
+		t.Fatal(err)
+	}
+	codec, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, fixture := range fixtures {
+		ids, pieces, err := codec.Encode(string(fixture.Text))
+		if err != nil || !reflect.DeepEqual(ids, fixture.IDs) {
+			t.Fatalf("fixture %d IDs = %v, want %v: %v", i, ids, fixture.IDs, err)
+		}
+		if len(pieces) != len(fixture.Pieces) {
+			t.Fatalf("fixture %d pieces length = %d, want %d", i, len(pieces), len(fixture.Pieces))
+		}
+		for j, piece := range pieces {
+			if !bytes.Equal([]byte(piece), fixture.Pieces[j]) {
+				t.Fatalf("fixture %d piece %d differs", i, j)
+			}
+		}
+		if count, err := codec.Count(string(fixture.Text)); err != nil || count != len(fixture.IDs) {
+			t.Fatalf("fixture %d count = %d, want %d: %v", i, count, len(fixture.IDs), err)
+		}
+		if decoded := strings.Join(pieces, ""); !bytes.Equal([]byte(decoded), fixture.Decoded) {
+			t.Fatalf("fixture %d pieces join to %q, want %q", i, decoded, fixture.Decoded)
+		}
+	}
+}
+
+func BenchmarkCount(b *testing.B) {
+	c, err := New()
+	if err != nil {
+		b.Fatal(err)
+	}
+	text := strings.Repeat("Review the implementation and preserve exact input. 世界🙂\n", 1000)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(text)))
+	for b.Loop() {
+		if _, err := c.Count(text); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestVocabularyAndConcurrentCodecs(t *testing.T) {
+	vocabulary, err := loadVocabulary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vocabulary) != 199998 {
+		t.Fatalf("vocabulary size = %d", len(vocabulary))
+	}
+	shared, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workers sync.WaitGroup
+	for range 8 {
+		workers.Go(func() {
+			own, err := New()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			for _, codec := range []*Codec{own, shared} {
+				for range 20 {
+					ids, pieces, err := codec.Encode("Hello, 世界🙂")
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					count, err := codec.Count("Hello, 世界🙂")
+					if err != nil || count != len(ids) || strings.Join(pieces, "") != "Hello, 世界🙂" {
+						t.Errorf("concurrent encoding: count=%d IDs=%v pieces=%q err=%v", count, ids, pieces, err)
+					}
+				}
+			}
+		})
+	}
+	workers.Wait()
+}
+
+// Long pieces take the heap merge; it must select exactly the verbatim merges.
+func TestLongPieceMergeMatchesVerbatimMerge(t *testing.T) {
+	c, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	random := rand.New(rand.NewPCG(1, 2))
+	letters := make([]byte, longPieceBytes+1)
+	for i := range letters {
+		letters[i] = "abcdefghijklmnopqrstuvwxyz"[random.IntN(26)]
+	}
+	for name, piece := range map[string]string{
+		"repeated":   strings.Repeat("a", longPieceBytes+1),
+		"whitespace": strings.Repeat(" \t", longPieceBytes),
+		"letters":    string(letters),
+		"multibyte":  strings.Repeat("世界🙂", longPieceBytes/10),
+	} {
+		codec := c
+		got, want := codec.mergeLongPiece(piece), codec.mergePairs(piece)
+		if len(got) != len(want) {
+			t.Fatalf("%s: %d parts, want %d", name, len(got), len(want))
+		}
+		for i := range want {
+			if got[i].offset != want[i].offset {
+				t.Fatalf("%s: part %d offset = %d, want %d", name, i, got[i].offset, want[i].offset)
+			}
+		}
+	}
+	count, err := c.Count(strings.Repeat("a", 120000))
+	if err != nil || count != 15000 {
+		t.Fatalf("long repeated piece count = %d, want 15000: %v", count, err)
+	}
+}

@@ -77,8 +77,8 @@ fixture; the installed-host acceptance drives the real loader directly.
 Stock `apply_patch` and `exec_command` remain Codex-owned. The router uses
 selected workspace metadata only for bounded observation and durable review
 scope, not to authorize or execute a patch. See the
-[filesystem boundary](architecture/boundary.md) and
-[stock execution](spec/execution.md) contracts.
+[retained authority](../docs/contracts/record-publication.md) and
+[stock execution](../backends/codex/SPEC.md#execution-authority) contracts.
 
 ### Interpret end-to-end evidence
 
@@ -93,7 +93,7 @@ workspace state are known. The router serves `GET /v1/models`; a model-refresh
 Launch the router and probe together from this repository:
 
 ```sh
-go run ./cmd/mekugi codex --model gpt-5.6-luna \
+go run ./apps/mekugi/cmd/mekugi codex --model gpt-5.6-luna \
   --sandbox workspace-write --ask-for-approval never \
   exec --ephemeral -C /absolute/path/to/disposable/fixture "PROMPT"
 ```

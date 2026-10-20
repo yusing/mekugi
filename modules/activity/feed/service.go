@@ -1,0 +1,49 @@
+package feed
+
+import (
+	"fmt"
+	"slices"
+
+	"github.com/yusing/mekugi/contracts/activitydetail"
+	"github.com/yusing/mekugi/contracts/scope"
+)
+
+// Service accesses activity state owned by the application's attachment store.
+// It holds no per-session map, host resources or background work.
+type Service struct {
+	details []activitydetail.Provider
+	outputs scope.Key[Retention]
+}
+
+func New(details []activitydetail.Provider) (*Service, error) {
+	seen := make(map[string]bool)
+	for _, provider := range details {
+		if provider.Name == "" || provider.Resolve == nil {
+			return nil, fmt.Errorf("Activity detail provider requires a name and resolver")
+		}
+		if seen[provider.Name] {
+			return nil, fmt.Errorf("duplicate Activity detail provider %q", provider.Name)
+		}
+		seen[provider.Name] = true
+	}
+	return &Service{details: slices.Clone(details)}, nil
+}
+
+func (s *Service) ActivityDetail(store *scope.Store, request activitydetail.Request) activitydetail.Result {
+	if s != nil {
+		for _, provider := range s.details {
+			if result := provider.Resolve(store, request); len(result.Pages) > 0 {
+				return result
+			}
+		}
+	}
+	return activitydetail.Result{}
+}
+
+// Outputs returns the attachment's shared retention, or nil when activity is absent.
+func (s *Service) Outputs(store *scope.Store) *Retention {
+	if s == nil {
+		return nil
+	}
+	return s.outputs.Value(store)
+}
