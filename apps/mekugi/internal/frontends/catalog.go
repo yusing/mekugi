@@ -22,7 +22,7 @@ type (
 		ReplayDirectory   string
 		FrontendDirectory string
 		ordered           []catalogEntry
-		FrontendGuidance  string
+		FrontendGuidance  binding.FrontendGuidance
 		Guidance          *binding.Guidance
 		wrappers          map[string]string
 		Frontends         map[string]string

@@ -1,7 +1,10 @@
 package frontends
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,13 +16,25 @@ import (
 
 func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	registry := sharedTestRegistry(t)
-	guide := registry.FrontendGuidance
-	if !strings.Contains(guide, "redirect to a file only when the task needs that artifact, not for display preference") {
+	guide := registry.FrontendGuidance.Descriptions
+	if !strings.Contains(registry.FrontendGuidance.Workflow, "redirect to a file only when the task needs that artifact, not for display preference") {
 		t.Fatal("projected frontend guidance lacks output artifact rule")
 	}
-	generated, err := os.ReadFile(filepath.Join(registry.SnapshotDir, "frontend_guidance.md"))
-	if err != nil || string(generated) != guide || strings.Contains(guide, "{{") || strings.Contains(guide, "<instruction id=") {
+	generated, err := os.ReadFile(filepath.Join(registry.SnapshotDir, "frontend_guidance.json"))
+	var saved binding.FrontendGuidance
+	if err == nil {
+		err = json.Unmarshal(generated, &saved)
+	}
+	if err != nil || saved != registry.FrontendGuidance || strings.Contains(guide, "{{") || strings.Contains(guide, "<instruction id=") {
 		t.Fatalf("standalone generated frontend guidance differs from projection: %v", err)
+	}
+	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, manifestFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(generated)
+	if manifest.GuidanceSHA256 != hex.EncodeToString(digest[:]) {
+		t.Fatal("snapshot sections are not authenticated")
 	}
 	byName := make(map[string]catalogEntry, len(registry.ordered))
 	for _, contribution := range registry.ordered {
@@ -42,7 +57,7 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 		}
 	}
 	changed, err := testGuidance().Frontends([]command.Spec{{Name: "mcat", Description: "updated valid description"}})
-	if err != nil || strings.Count(changed, "updated valid description") != 1 {
+	if err != nil || strings.Count(changed.Descriptions, "updated valid description") != 1 {
 		t.Fatalf("selected description not rendered: %v", err)
 	}
 	for _, initial := range []string{"stock tool description", "stock tool description\n" + frontendGuidanceStart + "stale" + frontendGuidanceEnd} {

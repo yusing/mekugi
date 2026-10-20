@@ -176,7 +176,7 @@ func TestMChangesHistoryReportsSavedEffectsWithoutCommandResult(t *testing.T) {
 func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "slice-arguments")
-	description := f.registry.FrontendGuidance
+	description := f.registry.FrontendGuidance.Descriptions
 	_, usageErr := testChanges().Parse([]string{"--invalid"}, f.workspace)
 	agentUsage := strings.Replace(strings.TrimPrefix(usageErr.Error(), "unknown option --invalid; "), "--summary|--history|--net", "--summary|--net", 1)
 	if !strings.Contains(description, "Usage: `"+agentUsage+"`") {

@@ -18,8 +18,11 @@ var Codex = Bindings{
 				return forExecution(input, service.Conflicts)
 			},
 			AfterAttachments: afterAttachments,
-			Frontends:        func(commands []command.Spec) (string, error) { return frontendGuide(commands, service.Sections) },
+			Frontends: func(commands []command.Spec) (binding.FrontendGuidance, error) {
+				return frontendGuide(commands, service.Sections)
+			},
 			ToolDescription:  toolDescription,
+			BaseInstructions: baseInstructions,
 		}
 	},
 }

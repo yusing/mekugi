@@ -106,7 +106,7 @@ func TestBindingsRegister(t *testing.T) {
 				},
 				Guidance: func(got *int) Guidance {
 					checkService(got, capability.GuidanceProjection)
-					return Guidance{Frontends: func([]command.Spec) (string, error) { return "guide", nil }}
+					return Guidance{Frontends: func([]command.Spec) (FrontendGuidance, error) { return FrontendGuidance{Descriptions: "guide"}, nil }}
 				},
 				SessionNaming: func(got *int) SessionNaming {
 					checkService(got, capability.ThreadNaming)
@@ -154,7 +154,7 @@ func TestBindingsRegister(t *testing.T) {
 			if registrar.guidance.Frontends == nil {
 				t.Fatal("guidance factory value was not registered")
 			}
-			if guide, err := registrar.guidance.Frontends(nil); err != nil || guide != "guide" {
+			if guide, err := registrar.guidance.Frontends(nil); err != nil || guide.Descriptions != "guide" {
 				t.Fatalf("registered guidance = %q, %v", guide, err)
 			}
 		})

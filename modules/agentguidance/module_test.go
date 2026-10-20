@@ -49,7 +49,7 @@ func TestModuleGuidanceWithoutContributions(t *testing.T) {
 		t.Fatal("descriptor must host the guidance slot")
 	}
 	guide, err := g.Frontends(nil)
-	if err != nil || guide != "" {
+	if err != nil || guide != (binding.FrontendGuidance{}) {
 		t.Fatalf("empty catalog = %q, %v", guide, err)
 	}
 	const conflict = "- You share updates in the `commentary` channel."
@@ -91,15 +91,15 @@ func TestModuleGuidanceSelectedCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, spec := range commands {
-		if strings.Count(guide, spec.Description) != 1 {
+		if strings.Count(guide.Descriptions, spec.Description) != 1 {
 			t.Fatalf("description %q was not included exactly once: %s", spec.Description, guide)
 		}
 	}
-	if !strings.Contains(guide, "<tool name=\"reader\">\n"+commands[0].Description+"\nSelected workflow.\n</tool>") || strings.Contains(guide, "Absent workflow.") || strings.Contains(guide, `<tool name="absent">`) {
+	if !strings.Contains(guide.Descriptions, "<tool name=\"reader\">\n"+commands[0].Description+"\n</tool>") || strings.Contains(guide.Workflow, "Absent workflow.") || !strings.Contains(guide.Workflow, "Selected workflow.") || strings.Contains(guide.Descriptions, "Selected workflow.") || strings.Contains(guide.Descriptions, `<tool name="absent">`) {
 		t.Fatalf("selected catalog = %s", guide)
 	}
-	projected, err := g.ToolDescription("Stock execution contract.", guide, false)
-	if err != nil || projected != "Stock execution contract.\n\n"+guide {
+	projected, err := g.ToolDescription("Stock execution contract.", guide.Descriptions, false)
+	if err != nil || projected != "Stock execution contract.\n\n"+guide.Descriptions {
 		t.Fatalf("description projection = %q, %v", projected, err)
 	}
 	commands[0].Description = "Updated authoritative description."
@@ -107,8 +107,8 @@ func TestModuleGuidanceSelectedCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	projected, err = g.ToolDescription(projected, refreshed, false)
-	if err != nil || projected != "Stock execution contract.\n\n"+refreshed || strings.Contains(projected, "Read exact source.") {
+	projected, err = g.ToolDescription(projected, refreshed.Descriptions, false)
+	if err != nil || projected != "Stock execution contract.\n\n"+refreshed.Descriptions || strings.Contains(projected, "Read exact source.") {
 		t.Fatalf("description refresh = %q, %v", projected, err)
 	}
 }
@@ -131,7 +131,7 @@ func TestModuleGuidanceRejectsInvalidSupplements(t *testing.T) {
 }
 
 func TestModuleGuidanceRejectsFraming(t *testing.T) {
-	for _, framing := range []string{"<!-- mekugi-frontends:start -->", "<!-- mekugi-frontends:end -->", `</tool>`, `<mekugi-frontends>`} {
+	for _, framing := range []string{"<!-- mekugi-frontends:start -->", "<!-- mekugi-frontends:end -->", "<!-- mekugi-workflow:start -->", "<!-- mekugi-workflow:end -->", `</tool>`, `<mekugi-frontends>`} {
 		t.Run(framing, func(t *testing.T) {
 			g := registeredGuidance(t, guidance.Section{Command: "reader", Text: framing})
 			if _, err := g.Frontends([]command.Spec{{Name: "reader", Description: "Read."}}); err == nil {

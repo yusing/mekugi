@@ -196,6 +196,7 @@ func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 	parsed, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model":           "gpt-test",
 		"access_programs": map[string]string{"cyber": "standard"},
+		"instructions":    "Caller-owned compaction instructions.",
 		"input": []any{
 			map[string]any{"type": "additional_tools", "role": "developer", "tools": []any{}},
 			map[string]any{"type": "message", "role": "developer", "content": "instructions"},

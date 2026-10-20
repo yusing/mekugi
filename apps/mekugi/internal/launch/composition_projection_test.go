@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"github.com/yusing/mekugi/contracts/command"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
@@ -177,6 +178,17 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 				t.Fatalf("provider input = %+v", modelRequest.Input)
 			}
 			wantInstructions, wantContent := "Keep authority.", "Keep policy.\n\n"
+			if !tc.withoutGuidance {
+				specs := make([]command.Spec, len(runtime.Commands))
+				for i, contribution := range runtime.Commands {
+					specs[i] = contribution.Spec
+				}
+				guide, err := runtime.Guidance.Frontends(specs)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantInstructions += "\n\n" + guide.Workflow
+			}
 			if tc.withoutGuidance {
 				wantInstructions, wantContent = instructions, input[0]["content"].(string)
 			}

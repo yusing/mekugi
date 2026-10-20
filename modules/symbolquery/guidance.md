@@ -1,1 +1,1 @@
-Default token budget: 4000.
+Before removing a field or changing a signature, use msymbol refs to acquire semantic references across affected packages and tests. Read all returned reference rows before dependent edits, continuing incomplete output; report skipped or unavailable coverage rather than treating text matches as complete caller coverage.

@@ -104,7 +104,7 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	if len(validationErrors) != 0 {
 		return fail(errors.Join(validationErrors...))
 	}
-	var frontendGuidance string
+	var frontendGuidance binding.FrontendGuidance
 	if guidance != nil {
 		specs := make([]command.Spec, len(commands))
 		for i, contribution := range commands {
@@ -116,7 +116,11 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 		}
 	}
 
-	guidanceHash := sha256.Sum256([]byte(frontendGuidance))
+	guidanceBytes, err := json.Marshal(&frontendGuidance)
+	if err != nil {
+		return fail(fmt.Errorf("encode frontend guidance: %w", err))
+	}
+	guidanceHash := sha256.Sum256(guidanceBytes)
 	manifest := workerManifest{
 		ReplayDirectory: config.ReplayDirectory,
 		AXReadOutput:    config.AXReadOutput,
@@ -135,7 +139,7 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	}
 	snapshotDirectory = authenticatedDirectory
 	executable := filepath.Join(snapshotDirectory, workerExecutableFilename)
-	if err := os.WriteFile(filepath.Join(snapshotDirectory, "frontend_guidance.md"), []byte(frontendGuidance), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(snapshotDirectory, "frontend_guidance.json"), guidanceBytes, 0o600); err != nil {
 		return fail(fmt.Errorf("write generated frontend guidance: %w", err))
 	}
 	if err := writeToolWorkerManifest(snapshotDirectory, manifest); err != nil {

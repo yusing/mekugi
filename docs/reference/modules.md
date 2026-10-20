@@ -100,7 +100,7 @@ Read bounded logical source rows
 
 - Composition: selected; lifetime: `stateless`.
 - Requires: none.
-- Contributes: `commands`, `guidance`.
+- Contributes: `commands`.
 - Commands: `mcat`.
 - Codex connections: `executable-frontend`.
 - Capabilities: `executable-frontend` (required).
@@ -136,7 +136,7 @@ Publish and page retained output
 
 - Composition: selected; lifetime: `stateless`.
 - Requires: `sessionhistory`.
-- Contributes: `commands`, `guidance`, `record-kinds`.
+- Contributes: `commands`, `record-kinds`.
 - Hosts: `references`.
 - Commands: `mread`.
 - Records: `cursor`, `output`.

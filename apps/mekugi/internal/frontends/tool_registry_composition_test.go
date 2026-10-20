@@ -1,6 +1,7 @@
 package frontends
 
 import (
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,11 +31,11 @@ func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
 			}
 			for _, spec := range all {
 				selected := slices.ContainsFunc(commands, func(c command.Contribution) bool { return c.Spec == spec.Spec })
-				if strings.Contains(registry.FrontendGuidance, "<tool name=\""+spec.Name+"\">") != selected {
+				if strings.Contains(registry.FrontendGuidance.Descriptions, "<tool name=\""+spec.Name+"\">") != selected {
 					t.Fatalf("%s guidance does not match selection", spec.Name)
 				}
 			}
-			if len(commands) == 0 && registry.FrontendGuidance != "" {
+			if len(commands) == 0 && registry.FrontendGuidance != (binding.FrontendGuidance{}) {
 				t.Fatal("empty catalog projects guidance")
 			}
 

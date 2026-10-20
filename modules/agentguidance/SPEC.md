@@ -8,7 +8,8 @@ conflicts, and selected-skill identities without changing caller authority.
 ## Behavior
 
 Mekugi preserves the caller's base `instructions` value and every system or developer message,
-except for complete explicit omission blocks and pinned inherited stock-prompt conflicts.
+except for complete explicit omission blocks, pinned inherited stock-prompt conflicts, and the
+marked Mekugi workflow section appended to base instructions.
 It does not detect stock prompt shapes, replace editing sections, select model-specific workflows,
 inspect `model_instructions_file`, or create or modify instruction files. It does not restore the
 retired shell carrier, HPATCH, hash-target editing, or CTP instructions.
@@ -25,20 +26,27 @@ Stock line and paragraph matches preserve caller-added qualifications. Planning
 guidance and the stock plan tool remain host-owned. Invocation-local Codex flags omit
 collaboration-mode instructions.
 
-Each executable helper owns its description and supplementary guidance. The guidance
-slot collects command-keyed supplements; absent command contributions contribute
-no text. The module renders the exact validated invocation catalog directly from
-these values and its embedded layout. No checked-in duplicate catalog is required.
-The application authenticates and publishes the resulting invocation snapshot
-before exposing its commands. The guide is appended to the authoritative `exec`
-description when it exposes `tools.exec_command`. Stock names, schemas, inputs,
-results, and execution authority stay unchanged. Refresh replaces the marked
-section in place; malformed or duplicate markers reject before forwarding.
+Each executable helper owns its capability description and command-keyed workflow
+guidance. Descriptions contain capabilities, syntax, options and output semantics;
+workflow guidance explains when and how to use the helper during a task. Absent
+command contributions contribute neither description nor workflow guidance. The
+module renders both from the validated invocation catalog, without a duplicate
+checked-in catalog. The application authenticates and publishes both sections
+before exposing its commands.
 
-The projected helper guidance explains when the tools reduce work, not just their syntax:
+Capability descriptions remain in the authoritative `exec` description when it
+exposes `tools.exec_command`. Workflow guidance is appended to the Responses `instructions` field, preserving
+any existing value. Codex's selected base text remains unchanged when carried as
+a developer input message; Mekugi does not infer its identity from message order
+or wording. The workflow section is part of the request's base instruction layer,
+not conversation history or a tool description. Stock names, schemas,
+inputs, results, and execution authority stay unchanged. Refresh replaces each
+marked section in place; malformed or duplicate markers reject before forwarding.
+
+The base workflow section explains when the tools reduce work:
 structural outlines for navigation, semantic references for caller-impacting edits, bounded
 command windows and retained-output recovery, and explicit captured-change ranges for reviewers.
-It also notes that frontend commands support ordinary shell pipes.
+Capability descriptions include support for ordinary shell pipes.
 On macOS, the execution guidance directs agents to select Bash explicitly unless
 the task requires another shell. This leaves Codex's account-shell detection and
 user shell commands unchanged.
@@ -85,7 +93,7 @@ examples remain unchanged; Codex still owns its selection and execution.
 
 The module is stateless, with no records or background resources. Its binding
 registers early omission filtering, execution-only conflict projection, late
-selected-skill projection, frontend assembly, and marked-description replacement.
+selected-skill projection, frontend assembly, and marked-description and base-workflow replacement.
 Omissions run before preparation, including compaction and execution-free requests.
 Execution conflicts retain their existing preparation position; unsupported prewarm
 handshakes bypass them. Attachment matching precedes selected-skill compaction.
@@ -97,10 +105,12 @@ remains available. Provider compatibility prose belongs to its backend consumers
 ## Acceptance
 
 1. Stock, custom, missing, null, top-level, and developer-carried base instructions are forwarded
-   unchanged except for complete explicit omission blocks and exact inherited conflict fragments.
+   unchanged except for complete explicit omission blocks, exact inherited conflict fragments,
+   and the marked base-workflow section.
    Fenced examples and non-instruction content are not rewritten.
 2. When `exec` exposes command execution, its authoritative description receives one
-   registry-derived frontend section. Refresh is idempotent; malformed markers reject
+   registry-derived capability section, while base instructions receive the workflow section.
+   Workflow rules do not remain in tool descriptions. Refresh is idempotent; malformed markers reject
    before forwarding. Unrelated descriptions, sibling tools, and stock execution
    contracts remain unchanged.
 3. Ordinary, fork, side-thread, subagent, model-switch, compaction-continuation, and resume

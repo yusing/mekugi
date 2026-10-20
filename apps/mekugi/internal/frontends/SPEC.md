@@ -52,9 +52,10 @@ successful activation. Stateful commands receive their constructed module servic
 through typed composition and an explicit authenticated per-call scope.
 
 The [guidance module](../../../../modules/agentguidance/SPEC.md) renders selected,
-validated descriptions and command-owned supplements. The catalog identity binds
-the rendered guidance, and its invocation snapshot is published before commands
-are exposed. Guidance remains call-local. Guidance assembly and metrics are
+validated capability descriptions and command-owned workflow guidance as separate
+sections. The catalog identity binds both sections, and their invocation snapshot
+is published before commands are exposed. Capability descriptions populate the
+execution tool; workflow guidance populates base instructions. Guidance remains call-local. Guidance assembly and metrics are
 optional; their absence leaves authenticated catalog validation and dispatch intact.
 
 Read observation uses the caller-supplied AX output path authenticated in the

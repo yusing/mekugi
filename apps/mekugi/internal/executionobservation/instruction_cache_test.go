@@ -85,7 +85,7 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 					t.Errorf("first turn changed prewarmed input item %d:\nprewarm: %s\nturn:    %s", index, warmInput[index], turnInput[index])
 				}
 			}
-			if got := responses.StringField(warm.Fields, "instructions"); got != testBaseInstructions+"\n"+projected {
+			if got := responses.StringField(warm.Fields, "instructions"); got != testBaseInstructions+"\n"+projected+"\n\n"+proxy.registry.FrontendGuidance.Workflow {
 				t.Fatalf("effective instruction cleanup = %q", got)
 			}
 			for _, raw := range warmInput {

@@ -1,6 +1,7 @@
 package binding
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/yusing/mekugi/contracts/command"
@@ -20,7 +21,8 @@ func TestGuidanceRegistration(t *testing.T) {
 	guidance := Guidance{
 		BeforePreparation: project, ForExecution: project,
 		AfterAttachments: func(input InstructionInput, _ bool) (InstructionUpdate, error) { return project(input) },
-		Frontends:        func([]command.Spec) (string, error) { return "", nil },
+		Frontends:        func([]command.Spec) (FrontendGuidance, error) { return FrontendGuidance{}, nil },
+		BaseInstructions: func(raw json.RawMessage, _ string, _ bool) (json.RawMessage, error) { return raw, nil },
 		ToolDescription:  func(description, _ string, _ bool) (string, error) { return description, nil },
 	}
 	if err := registry.Guidance(guidance); err != nil {

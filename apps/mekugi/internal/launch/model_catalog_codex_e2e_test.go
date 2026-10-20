@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Real Codex consumes the account catalog through the same handler and launch
@@ -100,6 +102,7 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	}
 	models := inferencegateway.ModelsHandler(client, true, nil)
 	workspace := t.TempDir()
+	proxy := newManagedMekugiProxy(t)
 	fixture := &toolFrontendCodexProvider{
 		workspace: workspace, program: `text(await tools.exec_command({cmd:"printf MODE_OK"}));`,
 		expected: []string{"MODE_OK"}, finalText: "catalog host accepted",
@@ -108,11 +111,20 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			_, err = binding.PrepareStockExecution(request.Fields, codexresponses.DecodeToolCatalog(request.Fields), "", nil)
+			workflow := proxy.registry.FrontendGuidance.Workflow
+			base := responses.StringField(request.Fields, "instructions")
+			if strings.Count(base, workflow) != 1 {
+				return fmt.Errorf("native request lost separated base workflow")
+			}
+			for _, field := range []string{"input", "tools"} {
+				if bytes.Contains(request.Fields[field], []byte("On macOS, pass")) {
+					return fmt.Errorf("native request retained workflow in %s", field)
+				}
+			}
+			_, err = binding.PrepareStockExecution(request.Fields, codexresponses.DecodeToolCatalog(request.Fields), binding.FrontendGuidance{}, nil)
 			return err
 		},
 	}
-	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	inference := testResponsesHandler(ctx, time.Minute, fixture, nil, proxy)
 	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

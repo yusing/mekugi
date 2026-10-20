@@ -46,7 +46,7 @@ func TestCompositionFrontendCatalog(t *testing.T) {
 	var names []string
 	for name := range registry.Frontends {
 		names = append(names, name)
-		if strings.Count(registry.FrontendGuidance, "<tool name=\""+name+"\">") != 1 {
+		if strings.Count(registry.FrontendGuidance.Descriptions, "<tool name=\""+name+"\">") != 1 {
 			t.Fatalf("%s missing or repeated in authenticated guidance", name)
 		}
 	}

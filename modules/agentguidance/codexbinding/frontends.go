@@ -1,13 +1,17 @@
 package codexbinding
 
 import (
+	"bytes"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 const frontendGuidanceStart = "<!-- mekugi-frontends:start -->"
@@ -16,58 +20,88 @@ const frontendGuidanceEnd = "<!-- mekugi-frontends:end -->"
 //go:embed frontends.md
 var preamble string
 
+const workflowStart = "<!-- mekugi-workflow:start -->"
+const workflowEnd = "<!-- mekugi-workflow:end -->"
+
+//go:embed workflow.md
+var workflowPreamble string
+
 var frontendFramingTag = regexp.MustCompile(`</?(?:tool|mekugi-frontends)[\t\r\n />]`)
 
-func frontendGuide(commands []command.Spec, sections map[string]string) (string, error) {
+func frontendGuide(commands []command.Spec, sections map[string]string) (binding.FrontendGuidance, error) {
 	if len(commands) == 0 {
-		return "", nil
+		return binding.FrontendGuidance{}, nil
 	}
-	var output strings.Builder
+	var output, workflow strings.Builder
+	workflow.WriteString(workflowStart + "\n" + workflowPreamble)
 	output.WriteString(preamble)
 	for _, spec := range commands {
 		if err := spec.Validate(); err != nil {
-			return "", err
+			return binding.FrontendGuidance{}, err
 		}
 		for _, text := range []string{spec.Description, sections[spec.Name]} {
-			if strings.Contains(text, frontendGuidanceStart) || strings.Contains(text, frontendGuidanceEnd) {
-				return "", fmt.Errorf("session frontend %s description contains guidance marker", spec.Name)
+			if strings.Contains(text, frontendGuidanceStart) || strings.Contains(text, frontendGuidanceEnd) || strings.Contains(text, workflowStart) || strings.Contains(text, workflowEnd) {
+				return binding.FrontendGuidance{}, fmt.Errorf("session frontend %s description contains guidance marker", spec.Name)
 			}
 			if frontendFramingTag.MatchString(text) {
-				return "", fmt.Errorf("session frontend %s description contains framing tag", spec.Name)
+				return binding.FrontendGuidance{}, fmt.Errorf("session frontend %s description contains framing tag", spec.Name)
 			}
 		}
 		fmt.Fprintf(&output, "<tool name=\"%s\">\n%s", spec.Name, spec.Description)
 		if text := sections[spec.Name]; text != "" {
-			output.WriteString("\n" + text)
+			workflow.WriteString("\n" + text + "\n")
 		}
 		output.WriteString("\n</tool>\n\n")
 	}
 	output.WriteString("</mekugi-frontends>\n" + frontendGuidanceEnd)
-	return output.String(), nil
+	workflow.WriteString(workflowEnd)
+	return binding.FrontendGuidance{Descriptions: output.String(), Workflow: workflow.String()}, nil
 }
 
 // Source: internal/router/frontend_guidance.go:88:125@[7a069269].
 // Removal and refresh share validation without changing absent-marker behavior.
 func toolDescription(description, guide string, remove bool) (string, error) {
-	startCount, endCount := strings.Count(description, frontendGuidanceStart), strings.Count(description, frontendGuidanceEnd)
+	return replaceSection(description, guide, frontendGuidanceStart, frontendGuidanceEnd, remove, true)
+}
+
+func baseInstructions(raw json.RawMessage, workflow string, remove bool) (json.RawMessage, error) {
+	text, ok := responses.DecodeString(raw)
+	if !ok && len(raw) != 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, errors.New("base instructions must be a string or null")
+	}
+	updated, err := replaceSection(text, workflow, workflowStart, workflowEnd, remove || workflow == "", false)
+	if err != nil {
+		return nil, err
+	}
+	if updated == text {
+		return raw, nil
+	}
+	return responses.MustMarshalJSON(updated), nil
+}
+
+func replaceSection(text, section, start, end string, remove, trim bool) (string, error) {
+	startCount, endCount := strings.Count(text, start), strings.Count(text, end)
 	if startCount == 0 && endCount == 0 {
 		if remove {
-			return description, nil
+			return text, nil
 		}
-		if strings.TrimSpace(description) == "" {
-			return guide, nil
+		if text == "" {
+			return section, nil
 		}
-		return strings.TrimRight(description, "\r\n") + "\n\n" + guide, nil
+		if trim {
+			text = strings.TrimRight(text, "\r\n")
+		}
+		return text + "\n\n" + section, nil
 	}
 	if startCount != 1 || endCount != 1 {
-		return "", errors.New("tool description contains incomplete or duplicate guidance markers")
+		return "", errors.New("guidance contains incomplete or duplicate markers")
 	}
-	startIndex, endIndex := strings.Index(description, frontendGuidanceStart), strings.Index(description, frontendGuidanceEnd)
+	startIndex, endIndex := strings.Index(text, start), strings.Index(text, end)
 	if startIndex > endIndex {
-		return "", errors.New("tool description contains reversed guidance markers")
+		return "", errors.New("guidance contains reversed markers")
 	}
 	if remove {
-		guide = ""
+		section = ""
 	}
-	return description[:startIndex] + guide + description[endIndex+len(frontendGuidanceEnd):], nil
+	return text[:startIndex] + section + text[endIndex+len(end):], nil
 }

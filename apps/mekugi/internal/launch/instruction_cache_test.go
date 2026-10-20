@@ -38,6 +38,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 		upstream.SetReadLimit(codexresponses.MaxResponseBytes)
 		defer upstream.CloseNow()
 		var warmedTools json.RawMessage
+		var warmedInstructions json.RawMessage
 		for index, id := range ids {
 			request, err := providerSocketRead(ctx, upstream)
 			if err != nil {
@@ -47,11 +48,21 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 			if bytes.Contains(request["input"], []byte("omitted-rtk-policy")) || bytes.Contains(request["input"], []byte("mekugi:omit")) || bytes.Contains(request["input"], []byte(conflictingProgress)) || bytes.Contains(request["input"], []byte("recommended_plugins")) {
 				t.Error("provider received omitted or conflicting instructions")
 			}
+			if id != "warm" && !bytes.Equal(request["instructions"], warmedInstructions) {
+				t.Error("continuation changed or lost base workflow")
+			}
 			var input []json.RawMessage
 			_ = json.Unmarshal(request["input"], &input)
 			switch id {
 			case "warm":
 				warmedTools = bytes.Clone(request["tools"])
+				warmedInstructions = bytes.Clone(request["instructions"])
+				if responses.StringField(request, "instructions") != proxy.registry.FrontendGuidance.Workflow {
+					t.Error("prewarm did not deliver workflow in base instructions")
+				}
+				if bytes.Contains(request["input"], []byte("On macOS, pass")) {
+					t.Error("workflow remains in tool description")
+				}
 				if string(request["generate"]) != "false" ||
 					!bytes.Contains(request["input"], []byte("mekugi-frontends:start")) ||
 					!bytes.Contains(request["input"], []byte("tools.exec_command")) ||
