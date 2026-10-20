@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -208,7 +207,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		if outcome.Exit != nil && *outcome.Exit > 0 && *outcome.Exit <= 255 {
 			exit = *outcome.Exit
 		}
-		session, err := recovered.Attach(scope.Retained{Directory: selected.Store.Directory(), Namespace: selected.Namespace, Thread: selected.Thread}, selected.Limits, selected.Writes)
+		session, err := recovered.AttachStore(selected.Store, selected.Namespace, selected.Thread, selected.Limits, selected.Writes)
 		var ref string
 		if err == nil {
 			ref, err = session.Publish(ctx, output, exit)

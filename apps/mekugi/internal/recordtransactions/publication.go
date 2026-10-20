@@ -10,7 +10,6 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -128,7 +127,7 @@ func RetainInput(ctx context.Context, selected changes.Scope, owner changes.Serv
 		}
 		names := append(files, dependencies...)
 		if len(input.References) > 0 {
-			session, err := outputs.Attach(scope.Retained{Directory: selected.Store.Directory(), Namespace: selected.Namespace, Thread: selected.Thread}, selected.Limits, selected.Writes)
+			session, err := outputs.AttachStore(selected.Store, selected.Namespace, selected.Thread, selected.Limits, selected.Writes)
 			if err != nil {
 				return err
 			}

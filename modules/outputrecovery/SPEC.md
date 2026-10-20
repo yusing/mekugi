@@ -77,7 +77,9 @@ so adopting one command does not lose its later handles when the parent expires.
 Stateless with durable records. Composition supplies the retained history owner
 and collected reference resolvers. Calls receive the authenticated retained
 namespace and thread explicitly; a directory or textual reference alone grants
-no cross-session authority. Recovery restores captured facts, never processes.
+no cross-session authority. In-process callers reuse their selected history store;
+external frontends attach through session history after validating retained storage.
+Recovery restores captured facts, never processes.
 
 ## Codex connection
 

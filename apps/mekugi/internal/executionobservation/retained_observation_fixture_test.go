@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/persistence"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -68,7 +67,7 @@ func (s *mekugiReplayStore) lockStorageSnapshot(ctx context.Context) (func(), er
 
 func (s *mekugiReplayStore) recoverySession(ctx context.Context) (*recovery.Session, error) {
 	s = s.scoped(ctx)
-	return s.recovery.Attach(scope.Retained{Directory: s.directory, Namespace: s.session.Namespace, Thread: s.session.Thread}, s.retentionLimits(), s.writes)
+	return s.recovery.AttachStore(s.publication, s.session.Namespace, s.session.Thread, s.retentionLimits(), s.writes)
 }
 
 // Retained-evidence fixture configuration. Production borrows the actual owners.

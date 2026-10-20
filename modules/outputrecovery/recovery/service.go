@@ -60,14 +60,21 @@ type Session struct {
 }
 
 func (service *Service) Attach(selected scope.Retained, limits history.Limits, writes *persistence.Counter) (*Session, error) {
-	if selected.Directory == "" {
+	return service.AttachStore(service.history.Attach(selected.Directory), selected.Namespace, selected.Thread, limits, writes)
+}
+
+// AttachStore borrows the caller's selected history store without acquiring a lease.
+// The caller retains authentication and lease ownership through delivery.
+func (service *Service) AttachStore(store *history.Store, namespace, thread string, limits history.Limits, writes *persistence.Counter) (*Session, error) {
+	if store == nil || store.Directory() == "" {
 		return nil, errors.New("read recovery storage is unavailable")
 	}
+	selected := scope.Retained{Directory: store.Directory(), Namespace: namespace, Thread: thread}
 	info, err := os.Lstat(filepath.Join(selected.Directory, "store.lock"))
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, errors.New("read recovery storage is missing or invalid")
 	}
-	return &Session{service: service, scope: selected, store: service.history.Attach(selected.Directory), limits: limits, writes: writes}, nil
+	return &Session{service: service, scope: selected, store: store, limits: limits, writes: writes}, nil
 }
 
 func (s *Session) Reserve(ctx context.Context, count int) ([]string, error) {

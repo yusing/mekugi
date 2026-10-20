@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 	"github.com/yusing/mekugi/modules/outputrecovery/internal/paging"
@@ -24,16 +23,20 @@ func openTestRecovery(t *testing.T, directory string) *Session {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := histories.Open(t.Context(), directory); err != nil {
+	store, err := histories.Open(t.Context(), directory)
+	if err != nil {
 		t.Fatal(err)
 	}
 	service, err := New(histories, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := service.Attach(scope.Retained{Directory: directory}, DefaultLimits(), nil)
+	session, err := service.AttachStore(store, "", "", DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if session.store != store {
+		t.Fatal("recovery did not reuse the selected history store")
 	}
 	return session
 }
