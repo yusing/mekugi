@@ -56,3 +56,20 @@ func TestSupplementStartDeduplicatesAssignmentAcrossAttachment(t *testing.T) {
 		t.Fatal("reattachment lost source deduplication")
 	}
 }
+
+func TestSupplementEditReceiptRequiresHostIdentity(t *testing.T) {
+	var invocation, thread scope.Store
+	owner := RequestSupplements(&invocation)
+	owner.Attach("main")
+	now := time.Unix(1700000000, 0)
+	event := Supplement{Thread: "main", Source: "receipt", Kind: SupplementEditReceipt, Text: "Edit `file.go` +1 -1"}
+	owner.Collect(&thread, event, now)
+	event.Calls = []string{"command", "sibling"}
+	owner.Collect(&thread, event, now)
+	owner.Collect(&thread, event, now)
+	event.Calls[0] = "mutated"
+	got := owner.Take(Audience{Root: "main", Threads: map[string]string{"main": "/root"}}, now)
+	if len(got) != 1 || got[0].Kind != SupplementEditReceipt || got[0].Calls[0] != "command" || got[0].Calls[1] != "sibling" {
+		t.Fatalf("receipt lost admission, identity or deduplication: %+v", got)
+	}
+}

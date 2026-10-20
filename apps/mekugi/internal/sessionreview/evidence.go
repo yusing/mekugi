@@ -51,7 +51,7 @@ func hydrateReview(ctx context.Context, retained changes.Scope, builder *present
 		item, _, _ := strings.Cut(history.CorrelationID, "\x00")
 		attempt := presentation.Attempt{AttemptIdentity: identity, Operation: activitydetail.Operation{Thread: cmp.Or(history.ExecutingThread, event.Thread), Item: item}}
 		if history.ExecOutcome != nil && history.ExecutingThread != "" {
-			attempt.Receipt = capturedReceipt(event.Workspace, history, files)
+			attempt.Receipt = CapturedReceipt(event.Workspace, history, files)
 		}
 		origin := presentation.Origin{Change: event.ID, Caller: history.Caller, Source: cmp.Or(history.Source, history.ToolName)}
 		for n, file := range files {
@@ -114,8 +114,9 @@ func reconcileReview(ctx context.Context, retained changes.Scope, service change
 	return builder.RequirePresent(present)
 }
 
-// Completed host identity is correlated before producing feature presentation.
-func capturedReceipt(workspace string, value legacycall.History, files []diffmodel.ReviewFile) *presentation.Receipt {
+// CapturedReceipt correlates retained command identity for live annotations and
+// restored review publications before producing feature presentation.
+func CapturedReceipt(workspace string, value legacycall.History, files []diffmodel.ReviewFile) *presentation.Receipt {
 	if value.ExecOutcome == nil {
 		return nil
 	}

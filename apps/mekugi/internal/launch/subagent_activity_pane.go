@@ -4,7 +4,9 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
 func takeNativeActivity(a *sessioncontrol.Audience, root string) []sessionpresentation.ActivityEntry {
@@ -24,8 +26,11 @@ func takeNativeActivity(a *sessioncontrol.Audience, root string) []sessionpresen
 		if s := event.Start; s != nil {
 			entry.Start = &sessionpresentation.ActivityStart{Model: s.Model, Effort: s.Effort, Tier: s.Tier}
 		}
-		if event.Kind == "output_dedupe" {
+		if event.Kind == "output_dedupe" || event.Kind == activitypresentation.SupplementEditReceipt {
 			entry.Native = &sessionpresentation.NativeItem{Thread: event.Thread}
+		}
+		if event.Kind == activitypresentation.SupplementEditReceipt {
+			entry.Native.CapturedEdit = &changepresentation.Receipt{Thread: event.Thread, Calls: event.Calls, Text: event.Text}
 		}
 		entries = append(entries, entry)
 	}

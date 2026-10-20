@@ -114,7 +114,11 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 			return changeError(err)
 		}
 		if len(reviews) != 0 {
-			_ = publishEditReceipt(context.WithoutCancel(ctx), p.retained, p.changeSource, workspace, thread, derivedCallID, p.activity, responses.StringField(history.UpstreamItem, "id"))
+			displayID := ""
+			if history.ToolName == applyPatchToolName {
+				displayID = responses.StringField(history.UpstreamItem, "id")
+			}
+			_ = publishEditReceipt(context.WithoutCancel(ctx), p.retained, p.changeSource, workspace, thread, derivedCallID, p.activity, displayID)
 		}
 	}
 	return nil

@@ -10,6 +10,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 
@@ -279,6 +280,7 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 			}
 			trace.end("thread", "runtime")
 			history.nativeCell = nativetrace.New(trace.root).ReadCell("thread", "cell", source.String())
+			proxy.activity.Attach("thread")
 			if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON("Script running with cell ID 7\nWall time 0.1 seconds\nOutput:\n"))); err != nil {
 				t.Fatal(err)
 			}
@@ -322,6 +324,15 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 						}
 						seen[path] = true
 					}
+				}
+			}
+			_, receipts := proxy.activity.Take("thread")
+			if len(receipts) != len(ids) {
+				t.Fatalf("completed patch receipts = %+v, want %d", receipts, len(ids))
+			}
+			for _, receipt := range receipts {
+				if receipt.Kind != activitypresentation.SupplementEditReceipt || len(receipt.Calls) != 1 || !strings.HasPrefix(receipt.Calls[0], "patch-") {
+					t.Fatalf("receipt lost native patch identity: %+v", receipt)
 				}
 			}
 			net, err := testProxyStore(proxy).changes.Read(t.Context(), testProxyStore(proxy).scoped(t.Context()).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net", MaxTokens: 4000})

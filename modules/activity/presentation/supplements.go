@@ -12,6 +12,10 @@ import (
 
 const SupplementMessageBytes = 64 << 10
 
+// SupplementEditReceipt annotates a retained host call, never a new tool event.
+// Calls identifies the original host items whose captured effects Text describes.
+const SupplementEditReceipt = "edit_receipt"
+
 type SupplementAssignment struct {
 	ID, From, To, Text string
 	Created            time.Time
@@ -20,6 +24,7 @@ type SupplementMessage struct{ From, To, Text string }
 type SupplementStart struct{ Model, Effort, Tier string }
 type Supplement struct {
 	Thread, Source, Kind, Text, CallID string
+	Calls                              []string // Ordered host identities for an edit receipt.
 	Observed                           time.Time
 	Assignment                         *SupplementAssignment
 	Message                            *SupplementMessage
@@ -81,6 +86,11 @@ func (s *Supplements) Collect(thread *scope.Store, event Supplement, now time.Ti
 		return false
 	}
 	switch event.Kind {
+	case SupplementEditReceipt:
+		if len(event.Calls) == 0 || slices.Contains(event.Calls, "") {
+			return false
+		}
+		event.Calls = slices.Clone(event.Calls)
 	case "output_dedupe", "error", "reply", "start", "assignment":
 	default:
 		return false

@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -18,6 +19,7 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	jsonv1 "encoding/json"
 	"maps"
@@ -277,7 +279,7 @@ func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 // A cell that edits through an interpreter and
 // reads in the same cell still yields host identities for its confirmed edit,
 // live and after history is restored into a new UI.
-func TestCodeModeCellEditReceipt(t *testing.T) {
+func TestUISnapshotCodeModeCellEditReceipt(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	trace := newNativeTraceFixture(t)
@@ -340,11 +342,30 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	live := newAppServerSessionTestUI(t, workspace)
 	live.Thread = "thread-1"
 	live.startSession(live.Thread, workspace)
-	live.review.Projection.Data = snapshot
-	publishFixtureReview(t, live)
+	live.audience = proxy.activity
+	live.audience.Attach(live.Thread)
+	// Deliver the real producer's annotation before the host item, with no
+	// saved-review publication available to mask a dropped supplement.
+	applyObservedActivity(&live.attached, live.shell, &live.Client, &live.streams, live.usage, live.review, &live.approvals, &live.pendingEditReceipts, live.clock, &live.dirty, live.restoring, live.audience)
+	if len(live.pendingEditReceipts) != 1 || !slices.Equal(live.pendingEditReceipts[0].Calls, calls) {
+		t.Fatalf("receipt did not retain nested host identities: %+v", live.pendingEditReceipts)
+	}
+	observedReceipt := live.pendingEditReceipts[0]
 	appServerTestNotify(t, live, "item/completed", map[string]any{"threadId": "thread-1", "turnId": "turn", "item": item})
+	assertCapturedCommand(t, live.testActivity(live.shell.Transcript), "thread-1", "edit-exec", "Edit", 0)
+	sibling := binding.ThreadItem{ID: "read-exec", Type: "commandExecution", Command: read, ExitCode: new(0)}
+	appServerTestNotify(t, live, "item/completed", map[string]any{"threadId": "thread-1", "turnId": "turn", "item": sibling})
+	if len(live.pendingEditReceipts) != 0 || len(live.attached.source.Entries) != 2 {
+		t.Fatalf("receipt duplicated host rows or remained pending: entries=%+v pending=%+v", live.attached.source.Entries, live.pendingEditReceipts)
+	}
+	assertNativeUISnapshot(t, "supplement-edit-receipt", live.testActivity(live.shell.Transcript).RenderFeed(100, 30).Lines)
+	// A later retained publication reconciles the same identity, not another row.
+	live.review.Projection.Data = snapshot
 	applyCapturedEdits(&live.attached, live.review, &live.pendingEditReceipts)
 	assertCapturedCommand(t, live.testActivity(live.shell.Transcript), "thread-1", "edit-exec", "Edit", 0)
+	if len(live.attached.source.Entries) != 2 {
+		t.Fatal("retained publication duplicated receipt")
+	}
 	restored := newAppServerSessionTestUI(t, workspace)
 	restored.Thread = "thread-1"
 	restored.startSession(restored.Thread, workspace)
@@ -352,6 +373,19 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	publishFixtureReview(t, restored)
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
 	assertCapturedCommand(t, restored.testActivity(restored.shell.Transcript), "thread-1", "edit-exec", "Edit", 0)
+	// An annotation queued while history was loading must enrich that restored
+	// invocation without replacing its identity or adding an independent row.
+	restored.audience = sessioncontrol.NewAudience(nil)
+	restored.audience.Attach(restored.Thread)
+	event := activitypresentation.Supplement{Thread: restored.Thread, Source: "late-receipt", Kind: activitypresentation.SupplementEditReceipt, Text: observedReceipt.Text, Calls: observedReceipt.Calls}
+	for range 2 {
+		restored.audience.Collect(event)
+		applyObservedActivity(&restored.attached, restored.shell, &restored.Client, &restored.streams, restored.usage, restored.review, &restored.approvals, &restored.pendingEditReceipts, restored.clock, &restored.dirty, nil, restored.audience)
+	}
+	assertCapturedCommand(t, restored.testActivity(restored.shell.Transcript), "thread-1", "edit-exec", "Edit", 0)
+	if len(restored.attached.source.Entries) != 1 {
+		t.Fatalf("late receipt duplicated restored invocation: %+v", restored.attached.source.Entries)
+	}
 }
 
 func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -47,16 +48,21 @@ func publishEditReceipt(ctx context.Context, selected changes.Scope, source chan
 			if call.ID != callID || call.Thread != thread {
 				continue
 			}
-			if len(record.History.ReviewFiles) != 0 {
-				if receipt := changepresentation.ReceiptText(workspace, receiptEvidence(legacyHistory(record.History))); receipt != "" {
-					// The observed receipt and the invocation share one display identity.
-					// An opaque command stays Run until its actual effects are known.
-					identity := displayID
-					if identity == "" {
-						identity = callID
+			history := legacyHistory(record.History)
+			receipt := sessionreview.CapturedReceipt(workspace, record.History, history.ReviewFiles)
+			if history.ToolName == applyPatchToolName {
+				receipt = &changepresentation.Receipt{Text: changepresentation.ReceiptText(workspace, receiptEvidence(history))}
+				for _, result := range history.HostResults {
+					if result.Tool == applyPatchToolName {
+						receipt.Calls = append(receipt.Calls, result.CallID)
 					}
-					activity.Collect(activitypresentation.Supplement{Thread: thread, Source: "edit-receipt\x00" + workspace + "\x00" + callID, Kind: "tool", Text: receipt, CallID: identity})
 				}
+				if len(receipt.Calls) == 0 && displayID != "" {
+					receipt.Calls = []string{displayID}
+				}
+			}
+			if receipt != nil && receipt.Text != "" {
+				activity.Collect(activitypresentation.Supplement{Thread: thread, Source: "edit-receipt\x00" + workspace + "\x00" + callID, Kind: activitypresentation.SupplementEditReceipt, Text: receipt.Text, Calls: receipt.Calls})
 			}
 			return nil
 		}

@@ -41,6 +41,9 @@ changing an older authored timestamp. Capacity loss produces an auxiliary notice
 Thinking-request starts and unreturned-output notes share this boundary; they do
 not reconstruct a provider-derived roster lifecycle. Conversation can consume
 these observations without optional Activity output retention or roster placement.
+Captured-edit supplements annotate their original host items through the same
+receipt reconciliation as retained review, including items loaded from history.
+An early receipt waits for its host identity instead of creating a second tool row.
 
 Activity projects admitted collaboration completions into ordered spawn,
 assignment and directed-message facts. Live and replay completions with a completed

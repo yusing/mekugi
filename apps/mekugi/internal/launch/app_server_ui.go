@@ -961,13 +961,24 @@ func applyObservedActivity(attached *attachedPresentation, terminal *terminalses
 		return
 	}
 	entries := takeNativeActivity(audience, control.Thread)
+	receivedReceipt := false
+	// Receipts enrich the existing host item through the same reconciliation as
+	// retained review publications. Keep early receipts pending until it arrives.
+	entries = slices.DeleteFunc(entries, func(entry sessionpresentation.ActivityEntry) bool {
+		if entry.Kind != activitypresentation.SupplementEditReceipt {
+			return false
+		}
+		*receipts = append(*receipts, entry.Native.CapturedEdit)
+		receivedReceipt = true
+		return true
+	})
 	for _, start := range audience.TakeStarts(control.Thread) {
 		entries = append(entries, transcriptUpdates(attached, terminal, streams, control.Thread, providerStarted(attached, start.Thread, start.At), false)...)
 	}
 	for i := range entries {
 		entries[i].Seq = attached.session.Activity().NextSequence()
 	}
-	if len(entries) != 0 {
+	if len(entries) != 0 || receivedReceipt {
 		applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, entries, nil)
 		(*dirty) = true
 	}

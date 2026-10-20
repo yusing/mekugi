@@ -19,7 +19,7 @@ func TestCapturedReceiptUsesHostIdentity(t *testing.T) {
 		{"legacy", false, nil, []string{"retained"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			receipt := capturedReceipt(t.TempDir(), legacycall.History{
+			receipt := CapturedReceipt(t.TempDir(), legacycall.History{
 				ExecutingThread: "thread", CorrelationID: "retained\x00exec",
 				ExecOutcome: &legacycall.Outcome{CodeMode: test.codeMode}, HostResults: test.results,
 			}, nil)
