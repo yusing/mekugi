@@ -197,14 +197,19 @@ func (c *Pane) Paint(ctx context.Context, out io.Writer, width, height int) erro
 	}
 	selectionChanged := c.navigationFile != activeKey
 	c.navigationFile = activeKey
+	navResized := stack != c.stack || resized && c.navigation.Focused
 	c.files, c.lines, c.offset, c.rows, c.stack = files, lines, offset, rows, stack
 	c.navRows = cmp.Or(stack, rows)
 	if !sameFiles {
 		c.navigation.Rebuild(files, c.workspace)
 		c.refreshChanges()
 	}
-	if resized && c.navigation.Focused {
-		c.navigation.EnsureVisible(c.navRows)
+	if navResized {
+		if c.navigation.ChangesTab {
+			c.navigation.Changes.EnsureVisible(c.navRows)
+		} else {
+			c.navigation.EnsureVisible(c.navRows)
+		}
 	}
 	if selectionChanged && !c.navigation.Focused {
 		c.revealFile()
@@ -251,11 +256,6 @@ func (c *Pane) Paint(ctx context.Context, out io.Writer, width, height int) erro
 		nav = renderNav(width-1, rows)
 	}
 	if stack > 0 {
-		if c.navigation.ChangesTab {
-			c.navigation.Changes.EnsureVisible(stack)
-		} else {
-			c.navigation.EnsureVisible(stack)
-		}
 		stacked := renderNav(width-1, stack)
 		for row := range stack {
 			writeRow(row+1, stacked[row])

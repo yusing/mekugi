@@ -240,7 +240,10 @@ updates preserve the selected file and scroll position. Tab switches Files/Chang
 jumps hunks. `s` shows/focuses or hides the navigator without covering the diff.
 Narrow layouts stack navigation above content. List and content focus are separate:
 arrows act on the focused region, list clicks retain list focus, and content clicks
-focus content. Enter opens the selected file at its heading; Escape returns to
+focus content. Scrolling either navigator with the mouse wheel can move past the
+selected row without changing the selection or the content viewport. Keyboard
+navigation and explicit file/change jumps reveal their destinations.
+Enter opens the selected file at its heading; Escape returns to
 the list. Selection is shaded and hover underlines text, excluding graph/tree lanes.
 
 Files use stable path order, folders first in tree mode. Tree/flat choice and
