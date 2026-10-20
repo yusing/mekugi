@@ -64,7 +64,7 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal 
 			}
 		}
 	}
-	if attached.conversation.Questions.Current() != nil || attached.conversation.Approvals.Open {
+	if !attached.presentation.DisplayingSide() && (attached.conversation.Questions.Current() != nil || attached.conversation.Approvals.Open) {
 		p.Open = false
 		return
 	}
@@ -95,7 +95,7 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal 
 			p.Open = false
 		}
 	}()
-	if p.Kind == "menu" || p.Kind == "copy" || p.Kind == "settings" || p.Kind == "archive" || p.Kind == "rewind" {
+	if p.Kind == "menu" || p.Kind == "copy" || p.Kind == "settings" || p.Kind == "archive" || p.Kind == "rewind" || p.Kind == "side-replace" {
 		p.Open = true
 		return
 	}

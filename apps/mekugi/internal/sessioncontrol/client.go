@@ -17,6 +17,7 @@ type Client[T any] struct {
 	Startup  Startup
 	Names    Names
 	Requests *Requests[T]
+	BTW      *Side
 	retired  map[string]string // Retired thread to its former session root.
 }
 

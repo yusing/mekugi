@@ -63,6 +63,7 @@ type InputEffect struct {
 	Resume        *sessionpresentation.ResumeAction
 	Menu          *MenuResult
 	Side          *sessionpresentation.CloseSideIntent
+	BTW           *sessionpresentation.CloseSideIntent
 	Dialog        *DialogIntent
 	Reference     *sessionpresentation.ReferenceIntent
 	Selection     *SelectionInput
@@ -288,11 +289,16 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 		if key == "\x1b" && in.selectionKey(state, key, yield) {
 			return
 		}
-		if handled, close := main.Side.Key(key); handled {
-			state.Selection = nil
-			if close != nil {
-				yield(InputEffect{Side: close})
+		if !main.Menu.Open() {
+			if handled, close := main.BTW.Key(key); handled {
+				if close != nil {
+					yield(InputEffect{BTW: close})
+				}
+				return
 			}
+		}
+		if key == "\x1b" && main.session.Side != nil {
+			yield(InputEffect{Side: &sessionpresentation.CloseSideIntent{Version: main.session.Version, Exchange: main.session.Side.ID}})
 			return
 		}
 	}

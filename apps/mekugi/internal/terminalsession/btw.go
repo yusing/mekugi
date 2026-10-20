@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// SideDock retains only terminal interaction state for a published exchange.
-type SideDock struct {
+// BTWDock retains only terminal interaction state for a published exchange.
+type BTWDock struct {
 	version      sessionpresentation.Version
 	body         *conversationmodel.SideView
 	running      bool
@@ -20,20 +20,20 @@ type SideDock struct {
 	CopyAnswer   []string
 }
 
-func (s *SideDock) Update(v sessionpresentation.View) {
-	if v.Side == nil {
-		*s = SideDock{}
+func (s *BTWDock) Update(v sessionpresentation.View) {
+	if v.BTW == nil {
+		*s = BTWDock{}
 		return
 	}
-	if s.body == nil || s.version.Attachment != v.Version.Attachment || s.body.ID != v.Side.ID {
-		*s = SideDock{}
+	if s.body == nil || s.version.Attachment != v.Version.Attachment || s.body.ID != v.BTW.ID {
+		*s = BTWDock{}
 	}
-	s.version, s.body, s.running = v.Version, v.Side, v.SideRunning
+	s.version, s.body, s.running = v.Version, v.BTW, v.BTWRunning
 }
-func (s *SideDock) Open() bool { return s.body != nil }
+func (s *BTWDock) Open() bool { return s.body != nil }
 
 // Source: apps/mekugi/internal/router/app_server_btw.go:100:117@630ce384.
-func (s *SideDock) Key(key string) (handled bool, close *sessionpresentation.CloseSideIntent) {
+func (s *BTWDock) Key(key string) (handled bool, close *sessionpresentation.CloseSideIntent) {
 	if s.body == nil {
 		return false, nil
 	}
@@ -51,7 +51,7 @@ func (s *SideDock) Key(key string) (handled bool, close *sessionpresentation.Clo
 }
 
 // Source: apps/mekugi/internal/router/app_server_btw.go:349:362@[ce8700a8].
-func (s *SideDock) Render(painter *activityui.Painter, now time.Time, width, height int) conversationui.SideFrame {
+func (s *BTWDock) Render(painter *activityui.Painter, now time.Time, width, height int) conversationui.SideFrame {
 	if s.body == nil {
 		return conversationui.SideFrame{}
 	}

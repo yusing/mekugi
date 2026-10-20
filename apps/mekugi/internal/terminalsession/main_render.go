@@ -15,8 +15,8 @@ func (m *Main) Update(view sessionpresentation.View) {
 	m.session = view
 	m.Panel.Update(view)
 	m.Resume.Update(view)
-	m.Side.Update(view)
 	m.Menu.Update(view)
+	m.BTW.Update(view)
 }
 
 type MainOptions struct {
@@ -30,7 +30,7 @@ type MainOptions struct {
 // Source: apps/mekugi/internal/router/app_server_ui.go:1131:1208@ceef0946.
 func (m *Main) Render(transcript *activityui.View, painter *activityui.Painter, prompts *Prompts, options MainOptions, width, height, dock int) (out MainFrame) {
 	presentation := m.session
-	readOnly := presentation.Displayed.ID != presentation.Main.ID
+	readOnly := presentation.ReadOnly != sessionpresentation.Editable
 	defer func() {
 		out.Notices = NoticeReceipt{Attachment: presentation.Version.Attachment, Feedback: presentation.Status.FeedbackRevision}
 		if !readOnly {

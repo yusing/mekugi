@@ -1,5 +1,5 @@
 ─ 3 Agents · 4 · 3 finished ─────────────────────────────────────────────────────────────────────── ↑≥0 ↓≥100 · ≥$0.00 ─
- ● main           idle                                                                                                  
- ✓ ├ child        done                                                          0%  50.0 tok/s  ↑≥0 ↓≥100  ≥$0.00  ≥T+1
+ ● main  idle                                                                                                           
+ ✓ ├ child  done                                                                0%  50.0 tok/s  ↑≥0 ↓≥100  ≥$0.00  ≥T+1
  ✓ ├ interrupted  done                                                          0%                                     
- ✓ └ legacy       done                                                          0%                                     
+ ✓ └ legacy  done                                                               0%                                     

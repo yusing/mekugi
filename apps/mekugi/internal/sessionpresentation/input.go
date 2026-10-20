@@ -36,6 +36,7 @@ func (m *Model) inputAdmission(control *sessioncontrol.Live, ordinary, restoring
 var ErrInputUnavailable = errors.New("Ordinary input is unavailable for this view.")
 
 func (m *Model) TakeInput(intent SubmitIntent, control *sessioncontrol.Live, conversation *conversationmodel.Session, restoring bool) (composer.Draft, sessioncontrol.QueuePlan, error) {
+	conversation = m.InputConversation(conversation)
 	if intent.Version != m.view.Version {
 		return composer.Draft{}, sessioncontrol.QueuePlan{}, ErrStaleIntent
 	}
@@ -73,12 +74,17 @@ func (v View) EditorTarget() conversationmodel.EditorTarget {
 
 // PasteIntent names a completed paste destination, never its payload.
 type PasteIntent struct {
+	Thread  string
 	Version Version
 	Target  conversationmodel.EditorTarget
 	Menu    uint64
 }
 
 func (m *Model) AdmitPaste(in PasteIntent, conversation *conversationmodel.Session) error {
+	if in.Thread != "" && in.Thread != m.view.Input.ID || in.Thread == "" && m.DisplayingSide() {
+		return ErrStaleIntent
+	}
+	conversation = m.InputConversation(conversation)
 	if in.Version != m.view.Version {
 		return ErrStaleIntent
 	}
@@ -107,6 +113,7 @@ type ReferenceIntent struct {
 // Reference admits the input destination and its return to Main together. The
 // application then passes the source to Conversation's attachment pipeline.
 func (m *Model) Reference(in ReferenceIntent, conversation *conversationmodel.Session) error {
+	conversation = m.InputConversation(conversation)
 	if in.Version != m.view.Version {
 		return ErrStaleIntent
 	}
@@ -116,10 +123,14 @@ func (m *Model) Reference(in ReferenceIntent, conversation *conversationmodel.Se
 	if in.Target != conversation.EditorTarget() {
 		return conversationmodel.ErrDraftChanged
 	}
+	if m.DisplayingSide() {
+		return nil
+	}
 	return m.Display(DisplayIntent{Version: in.Version, Thread: m.view.Main})
 }
 
 func (m *Model) ApplyEditor(intent EditorIntent, conversation *conversationmodel.Session) (bool, error) {
+	conversation = m.InputConversation(conversation)
 	if intent.Version != m.view.Version {
 		return false, ErrStaleIntent
 	}
@@ -145,12 +156,17 @@ const (
 )
 
 type ComposerIntent struct {
+	Thread    string
 	Version   Version
 	Target    conversationmodel.EditorTarget
 	Operation ComposerOperation
 }
 
 func (m *Model) AdmitComposer(intent ComposerIntent, conversation *conversationmodel.Session) error {
+	if intent.Thread != "" && intent.Thread != m.view.Input.ID || intent.Thread == "" && m.DisplayingSide() {
+		return ErrStaleIntent
+	}
+	conversation = m.InputConversation(conversation)
 	if intent.Version != m.view.Version {
 		return ErrStaleIntent
 	}

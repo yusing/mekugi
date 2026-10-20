@@ -90,7 +90,7 @@ func autoOpenQuestions(attached *attachedPresentation, terminal *terminalsession
 // composerVacant reports an empty, idle composer with no overlay, which a
 // pending dock may take over without capturing keys meant for a draft.
 func composerVacant(editor *composer.Editor, terminal *terminalsession.Attachment, picker *composerPicker, presentation *sessionpresentation.Model, overlay bool) bool {
-	if presentation.View().ReadOnly != sessionpresentation.Editable {
+	if presentation.View().ReadOnly != sessionpresentation.Editable || presentation.DisplayingSide() {
 		return false
 	}
 	if editor.Text != "" || len(editor.Images) > 0 || len(editor.Files) > 0 || len(editor.Skills) > 0 || len(editor.Selections) > 0 || terminal.Main.Pasting() || pickerVisible(picker, presentation, terminal) || terminal.Main.Keybindings || overlay {
@@ -122,6 +122,10 @@ func focusPrompt(picker *composerPicker, terminal *terminalsession.Attachment) {
 }
 func hideQuestionEditor(questions *nativeQuestionDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, editor *composer.Editor, main string) *composer.Editor {
 	if q := questions.Current(); q != nil {
+		editor = &conversation.Editor
+		if q.IsSecret {
+			editor = &terminal.Prompts.Secret
+		}
 		parkQuestion(questions, terminal, editor, main, q)
 		editor = &conversation.Editor
 		terminal.Prompts.Secret = composer.Editor{}
@@ -216,7 +220,10 @@ func resolveQuestionCall(attached *attachedPresentation, terminal *terminalsessi
 		return
 	}
 	if questions.activeCall() == c {
-		(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
+		mainEditor := hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
+		if !attached.presentation.DisplayingSide() {
+			*editor = mainEditor
+		}
 	}
 	for _, d := range c.Resolve(outcome) {
 		saveUnsentAnswer(attached, terminal, clock, d)

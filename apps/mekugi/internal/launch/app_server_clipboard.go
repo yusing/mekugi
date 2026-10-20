@@ -45,7 +45,7 @@ func insertImage(attached *attachedPresentation, terminal *terminalsession.Attac
 // file, as terminals paste for copied or dropped files, attaches that file
 // instead, followed by a space as in Codex. The user's file is never removed.
 func finishPaste(attached *attachedPresentation, terminal *terminalsession.Attachment, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, side **sessioncontrol.Side, owned *map[string]bool, text string) {
-	if q := questions.Current(); q != nil {
+	if q := questions.Current(); q != nil && !attached.presentation.DisplayingSide() {
 		q.Edit(!q.Note)
 	}
 	path, ok := pastedImagePath(text)
@@ -211,7 +211,7 @@ func applyPaste(attached *attachedPresentation, terminal *terminalsession.Attach
 		menu = published.Kind
 	}
 	switch {
-	case approvals.Open:
+	case approvals.Open && !attached.presentation.DisplayingSide():
 		if a := approvals.calls()[0]; a.DenialChoice() >= 0 && text != "" {
 			a.Selected = a.DenialChoice()
 			insertDraft(attached, (*editor), terminal, clock, (*owned), questions, approvals, (*side), text)
@@ -219,7 +219,7 @@ func applyPaste(attached *attachedPresentation, terminal *terminalsession.Attach
 		}
 	case menu == sessionpresentation.MenuManageSkills:
 		picker.Query += text
-	case menu == sessionpresentation.MenuSkills || menu == sessionpresentation.MenuCopy || menu == sessionpresentation.MenuSettings || menu == sessionpresentation.MenuArchive || menu == sessionpresentation.MenuRewind:
+	case menu == sessionpresentation.MenuSkills || menu == sessionpresentation.MenuCopy || menu == sessionpresentation.MenuSettings || menu == sessionpresentation.MenuArchive || menu == sessionpresentation.MenuRewind || menu == sessionpresentation.MenuSideReplace:
 	default:
 		finishPaste(attached, terminal, editor, questions, approvals, clock, side, owned, text)
 	}

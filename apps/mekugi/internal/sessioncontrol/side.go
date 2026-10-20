@@ -7,13 +7,16 @@ import conversationmodel "github.com/yusing/mekugi/modules/conversation/presenta
 // Closing its presentation does not retire pending fork/start acknowledgements.
 type Side struct {
 	*conversationmodel.SideAnswer
-	Thread, Turn            string
-	Busy, Starting, Closed  bool
-	Interrupting, Unloading bool
+	Thread, Turn                string
+	Source, Model, Effort, Tier string
+	ForkPending, FromSide       bool
+	Busy, Starting, Closed      bool
+	Interrupting, Unloading     bool
+	RestoreTarget               *conversationmodel.Session
 }
 
 func (s *Side) Ready(replacing bool) bool {
-	return s != nil && s.Pending.Text != "" && !s.Starting && s.Turn == "" && !replacing
+	return s != nil && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !replacing
 }
 
 func (s *Side) Close() {

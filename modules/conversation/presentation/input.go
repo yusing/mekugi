@@ -51,6 +51,7 @@ type Session struct {
 	Submitted      map[string]Submission
 	Shell          Input
 	Side           *SideAnswer
+	BTW            *SideAnswer
 }
 
 // Source: apps/mekugi/internal/router/app_server_shell.go:15:17@[cf6c7832]

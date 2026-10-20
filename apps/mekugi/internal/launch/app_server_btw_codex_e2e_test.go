@@ -176,6 +176,15 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 				}
 				terminal.await("Working")
 			}
+			terminal.send("/side\r")
+			terminal.awaitMatch("empty side ready", func(frame string) bool { return strings.Contains(frame, "1 Side") && strings.Contains(frame, "Ready") })
+			select {
+			case request := <-p.requests:
+				t.Fatalf("empty fork sampled: %s", request.key)
+			default:
+			}
+			terminal.send("\x1b")
+			terminal.awaitMatch("empty Side closed", func(frame string) bool { return !strings.Contains(frame, "1 Side") })
 			terminal.send("/btw Side question\r")
 			side := next()
 			mainMetadata, _ := codexresponses.DecodeTurnMetadata(main.headers)
@@ -202,26 +211,26 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 				t.Fatal("branch omitted the current conversation")
 			}
 			terminal.await("Side streaming answer")
-			if active && !strings.Contains(terminal.screen.String(), "Working") {
-				t.Fatal("side stream changed main turn state")
+			if active {
+				terminal.await("Working")
 			}
 			close(p.sideGate)
-			terminal.await("/btw · completed")
+			terminal.awaitMatch("side completed", func(frame string) bool { return strings.Contains(frame, "/btw · completed") })
 			terminal.send("/btw Side followup\r")
 			followup := next()
 			if followup.key != side.key || !bytes.Contains(followup.body, []byte("Side question")) || !bytes.Contains(followup.body, []byte("Side streaming answer")) {
 				t.Fatal("follow-up did not retain its side context and identity")
 			}
 			terminal.await("Side followup answer")
-			terminal.await("/btw · completed")
+			terminal.awaitMatch("side completed", func(frame string) bool { return strings.Contains(frame, "/btw · completed") })
 			if active {
 				terminal.send("/btw Side cancel\r")
 				next()
 				terminal.await("Side cancel streaming")
 			}
-			terminal.send("kept draft\x1b")
-			terminal.awaitMatch("dock closed, draft kept", func(frame string) bool {
-				return !strings.Contains(frame, "╭─ /btw") && strings.Contains(frame, "kept draft")
+			terminal.send("\x021kept draft\x1b")
+			terminal.awaitMatch("side closed, Main draft kept", func(frame string) bool {
+				return !strings.Contains(frame, "/btw ·") && strings.Contains(frame, "kept draft")
 			})
 			if active {
 				select {

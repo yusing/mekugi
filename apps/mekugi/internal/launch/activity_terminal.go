@@ -35,10 +35,11 @@ func deliverActivity(view *activityui.View, source *sessionpresentation.Activity
 		view.MainStatus = mainView.StatusLabel
 	}
 	display := session.View()
-	view.Update(publication, activityui.Display{Caller: display.Displayed.Caller, Attachment: display.Version.Attachment, Revision: display.Version.Revision})
+	view.Update(publication, activityui.Display{Caller: display.Displayed.Caller, SideCaller: display.SideThread.Caller, Attachment: display.Version.Attachment, Revision: display.Version.Revision})
 }
 
 func publishActivity(attached *attachedPresentation, terminal *terminalsession.Attachment) {
+	attached.session.ProjectSide(attached.childSource, attached.presentation.View().SideThread, attached.conversation.Side)
 	refreshRosterRoles(&attached.session, attached.childSource)
 	session := attached.presentation
 	if terminal.Transcript != nil {

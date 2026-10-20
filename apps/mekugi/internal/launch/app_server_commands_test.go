@@ -116,7 +116,7 @@ func TestUISnapshotComposerCommandWithPastedImage(t *testing.T) {
 			draft := draftSnapshot(u.Editor)
 			if key == "\r" {
 				btwTestRequest(t, wire, "thread/fork", "main")
-				draft = u.side.Pending
+				draft = u.BTW.Pending
 			} else if wire.Len() != 0 || !strings.HasPrefix(draft.Text, "/btw ") {
 				t.Fatalf("Tab submitted or lost command: %q %s", draft.Text, wire.String())
 			}

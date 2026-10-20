@@ -285,6 +285,8 @@ it neither opens the live wait store nor consults today's roster.
 
 Feeds retain the newest 2,000 records while protecting live invocations.
 Reordering preserves source identity independently of publication order.
+Bounded side-conversation projections remain until their source owner retires them.
+Ordinary feed aging cannot reorder their retained exchanges.
 
 The model derives canonical roster order, observed status, latest activity and
 active skills. Missing parents promote their children without reordering siblings.

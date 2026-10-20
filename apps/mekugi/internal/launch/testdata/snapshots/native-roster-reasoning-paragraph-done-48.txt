@@ -1,4 +1,4 @@
 ─ 3 Agents · 2 · 2 working ─────────────────────
- ◐ main      Checking main, Thought             
+ ◐ main  Checking main, Thought                 
  ◐ └ worker  Checking child, Thought         0%
  Roles: ● worker

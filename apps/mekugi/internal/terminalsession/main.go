@@ -23,7 +23,7 @@ type Main struct {
 	Keybindings, InterruptLocked                           bool
 	PredictionsDisabled                                    bool
 	Menu                                                   Menu
-	Side                                                   SideDock
+	BTW                                                    BTWDock
 	Resume                                                 ResumePicker
 	Panel                                                  StatusPanel
 	ComposerRect, PromptRect, NoticeDetails, NoticeDismiss Rect
@@ -64,8 +64,6 @@ type composerDocument struct {
 // Source: apps/mekugi/internal/router/app_server_ui.go:1241:1455@[ce8700a8].
 func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, dock int) (out MainFrame) {
 	presentation, readOnly := in.Session, in.ReadOnly
-	var sideRect Rect
-	defer func() { m.Side.Rect = sideRect }()
 	width, height = max(1, width), max(1, height)
 	m.NoticeDetails, m.NoticeDismiss = Rect{}, Rect{}
 	boxed := width >= 12 && height >= 3
@@ -107,12 +105,10 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 			out.Rows = append([]string{ansi.Truncate(in.Welcome, max(1, width), "…")}, out.Rows...)
 			out.Dock.Y++
 			m.ComposerRect.Y++
+			m.BTW.Rect.Y++
 			m.PromptRect.Y++
 			m.NoticeDetails.Y++
 			m.NoticeDismiss.Y++
-			if sideRect.H > 0 {
-				sideRect.Y++
-			}
 			out.Feed.Y++
 		}()
 	}
@@ -140,13 +136,13 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 		dock = 0
 		room -= len(questionRows)
 	}
-	if !readOnly && m.Side.Open() {
-		side := m.Side.Render(painter, in.Now, width, max(0, min(height/2, room)))
-		btwRows = side.Rows
-	}
-	if len(btwRows) > 0 {
-		dock = 0
-		room -= len(btwRows)
+
+	if !readOnly && m.BTW.Open() && !in.Picker {
+		btwRows = m.BTW.Render(painter, in.Now, width, max(0, min(height/2, room))).Rows
+		if len(btwRows) > 0 {
+			dock = 0
+			room -= len(btwRows)
+		}
 	}
 	if in.Picker {
 		dock = 0
@@ -171,10 +167,7 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 	dockAt := len(frame)
 	frame = append(frame, make([]string, dock)...)
 	frame = append(frame, pending...)
-	if m.Side.Open() {
-		sideRect = Rect{2, len(frame) + 1, max(0, width-2), max(0, len(btwRows)-2)}
-	}
-	frame = append(frame, btwRows...)
+
 	out.Questions = Rect{0, len(frame), width, len(questionRows)}
 	if presentation.Questions.Call != nil {
 		m.PromptRect = out.Questions
@@ -184,6 +177,8 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 		m.PromptRect = Rect{0, len(frame), width, len(approvalRows)}
 	}
 	frame = append(frame, approvalRows...)
+	m.BTW.Rect = Rect{0, len(frame), width, len(btwRows)}
+	frame = append(frame, btwRows...)
 	frame = append(frame, make([]string, gap)...)
 	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
 	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078

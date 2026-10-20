@@ -472,7 +472,8 @@ Changed token/cost/context/edit metrics ease from displayed values over half a
 second; first observations appear immediately. Usage totals follow eased rows;
 composed net edits update immediately, and unknown counts never interpolate.
 Visible metric values determine column widths; separator halves align across
-visible rows, all metrics stay dim, edit colors included. Narrow rows omit metrics
+visible rows, all metrics stay dim, edit colors included. Focus changes preserve
+name and activity column alignment. Narrow rows omit metrics
 before losing usable activity. No model label is added. Observed roles color the
 existing status glyph; unknown/conflicting roles retain ordinary colors.
 
@@ -487,7 +488,11 @@ into a comma-joined summary. The viewport moves only when selection leaves it.
 Hover emphasizes the name; selection shades the row. Returning to Main brings
 its roster row into view and clears the previous child highlight. Remembering a
 child for toggling does not present it as the displayed transcript.
-Click selects the transcript, not input authority; Main's composer stays Main's.
+Clicking a subagent selects its read-only transcript; Main’s draft stays Main’s.
+The invocation-local Side destination remains available through thread navigation;
+its tab lives beside Main in the shared tab bar, outside the roster counts.
+Its editable destination follows
+[Conversation’s side contract](../conversation/SPEC.md#side-questions).
 Arrows/k/j stop at either end; n/Tab/p also navigate, a toggles Main/current child.
 Roster wheel scrolling changes neither selection nor transcript follow. Transcript
 page/wheel scrolling pauses follow and Esc resumes it; frozen selections retain

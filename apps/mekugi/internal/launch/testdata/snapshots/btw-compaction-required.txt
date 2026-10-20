@@ -1,3 +1,24 @@
-╭─ /btw · Side question requires compaction. Compact Main, then close this panel and retry /btw.
-│ Why did this fail?
-╰─ Esc close · /compact Main, then retry /btw
+┌ 1 Main ────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Mekugi dev • codex                                                                                          │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│╭─ /btw · Side question requires compaction. Close this answer, compact Main, then retry.                   │
+││ Why did this fail?                                                                                        │
+│╰─ Esc close · /compact Main, then retry /btw                                                               │
+│                                                                                                            │
+│╭──────────────────────────────────────────────────────────────────────────────────────────────────────────╮│
+││ ❯                                                                                                        ││
+│╰───────────────────────────────────────────────────────────────────────────────────────────────────── 0% ─╯│
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ 1 Main  2 Diff  3 Agents   ^B 1-3 views · ^E expand events

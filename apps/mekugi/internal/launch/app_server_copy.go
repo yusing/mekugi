@@ -28,16 +28,40 @@ import (
 func showCopyPicker(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool) {
 	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
 	var response string
-	for _, entry := range slices.Backward(attached.source.Entries) {
-		n := entry.Source.Native
-		if n == nil || n.Thread != control.Thread || entry.Source.Agent != "Main" {
-			continue
+	answerOwner := control.BTW
+	if answerOwner == nil && attached.presentation.DisplayingSide() && *side != nil && !(*side).OneOff {
+		answerOwner = *side
+	}
+	if answerOwner != nil {
+		answers := answerOwner.Answer
+		if answerOwner.Busy || answerOwner.Starting {
+			answers = nil
+			if history := answerOwner.History; len(history) > 0 {
+				answers = history[len(history)-1].Answer
+			}
 		}
-		if entry.Source.Kind == "text" && n.Phase == "item/completed" {
-			response = entry.Source.Text
+		for _, answer := range slices.Backward(answers) {
+			if strings.TrimSpace(answer.Text) != "" {
+				response = answer.Text
+				break
+			}
 		}
-		if strings.TrimSpace(response) != "" {
-			break
+	} else {
+		source, thread, agent := attached.source, control.Thread, "Main"
+		if attached.presentation.DisplayingSide() {
+			source, thread, agent = attached.childSource, (*side).Thread, (*side).Caller()
+		}
+		for _, entry := range slices.Backward(source.Entries) {
+			n := entry.Source.Native
+			if n == nil || n.Thread != thread || entry.Source.Agent != agent {
+				continue
+			}
+			if (entry.Source.Kind == "text" || entry.Source.Kind == "final") && n.Phase == "item/completed" {
+				response = entry.Source.Text
+			}
+			if strings.TrimSpace(response) != "" {
+				break
+			}
 		}
 	}
 	if strings.TrimSpace(response) == "" {

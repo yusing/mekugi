@@ -28,7 +28,7 @@ import (
 
 func editorTestIntent(u *appServerUI) sessionpresentation.ComposerIntent {
 	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
-	return sessionpresentation.ComposerIntent{Version: v.Version, Target: v.EditorTarget(), Operation: sessionpresentation.EditExternally}
+	return sessionpresentation.ComposerIntent{Thread: v.Input.ID, Version: v.Version, Target: v.EditorTarget(), Operation: sessionpresentation.EditExternally}
 }
 
 func TestComposerEditorResultKeepsOriginalTarget(t *testing.T) {

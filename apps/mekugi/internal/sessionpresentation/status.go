@@ -2,6 +2,7 @@ package sessionpresentation
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -80,6 +81,8 @@ type MainInputs struct {
 	Feedback               *noticepresentation.Model
 	Conversation           *conversationmodel.Session
 	Restoring, SideRunning bool
+	BTWRunning             bool
+	SideThreads            []string
 	Processes              int
 	History                []HistoryView
 }
@@ -124,22 +127,67 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 		v.InterruptAvailable = turn != "" || control.Starting() || control.InputPending() || len(in.Conversation.Unsent)+len(in.Conversation.Queued) > 0
 	}
 	v.Questions = in.Conversation.Questions.View(thread)
+	if side := in.Conversation.Side; side != nil && side.OneOff {
+		for _, thread := range in.SideThreads {
+			v.Questions.Count += in.Conversation.Questions.Count(thread)
+		}
+	}
 	v.Approvals = in.Conversation.Approvals.View()
 	v.Draft = in.Conversation.DraftView()
 	v.PromptDraft = in.Conversation.PromptDraftView()
 	v.Admission = m.inputAdmission(in.Control, v.Draft.Available, in.Restoring)
 	v.History = m.HistoryView(in.History)
-	v.Side, v.SideRunning = nil, false
+	v.Side = nil
+	v.BTW, v.BTWRunning = nil, false
+	if body := in.Conversation.BTW; body != nil {
+		v.BTW = &conversationmodel.SideView{History: body.History, ID: body.ID, Question: body.Question, Status: body.Status, Answer: body.Answer, Alert: body.Alert, Truncated: body.Truncated, AttachmentNotice: body.AttachmentNotice, Started: body.Started}
+		v.BTWRunning = in.BTWRunning
+	}
 	if in.Conversation.Side != nil {
-		side := in.Conversation.Side.View()
-		v.Side, v.SideRunning = &side, in.SideRunning
+		v.Side = &SideToken{ID: in.Conversation.Side.ID, Label: in.Conversation.Side.Label()}
+	}
+	if m.DisplayingSide() && in.Conversation.Side != nil {
+		side := in.Conversation.Side
+		v.Draft = side.Drafts.DraftView()
+		v.PromptDraft = side.Drafts.PromptDraftView()
+		v.Questions = side.Drafts.Questions.View(v.SideThread.ID)
+		v.Approvals = side.Drafts.Approvals.View()
+		if side.OneOff {
+			for _, thread := range in.SideThreads {
+				v.Questions.Count += in.Conversation.Questions.Count(thread)
+			}
+			for _, approval := range in.Conversation.Approvals.Pending {
+				if slices.Contains(in.SideThreads, approval.Thread) {
+					v.Approvals.Count++
+				}
+			}
+		}
+		v.Pending = side.Drafts.Pending(nil, conversationmodel.Waiting)
+		if len(v.Pending.Queued) > 0 {
+			v.Pending.Reason = conversationmodel.RetryAttachments
+			v.Pending.Waiting = append(v.Pending.Waiting, v.Pending.Queued...)
+			v.Pending.Queued = nil
+		}
+		v.Interrupt, v.InterruptAvailable = sessioncontrol.InterruptTarget{}, false
+		v.Admission = m.inputAdmission(in.Control, true, in.Restoring)
+		v.Status.State = Label{Text: side.Status, Alert: side.Alert, Running: in.SideRunning}
+		v.Status.Composer = v.Status.State
+		if in.SideRunning {
+			v.Status.Composer.Animation = Pulse
+			v.Status.Composer.Elapsed = now.Sub(side.Started)
+			v.Status.Composer.ElapsedKnown = !side.Started.IsZero()
+		}
+		v.Status.Animating = in.SideRunning || in.BTWRunning
+		v.Status.FeedbackRevision = in.Feedback.Revision
+		v.Status.Feedback = Label{Text: in.Feedback.Text, Alert: in.Feedback.Alert}
+		return v
 	}
 	s := &v.Status
 	state := m.Status
 	s.Session = Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,
 		Completion: state.completed, CompletionKnown: state.completionKnown}
 	s.State = s.Session
-	s.Animating = in.Processes > 0 || in.SideRunning || !state.Alert && (turn != "" || pending)
+	s.Animating = in.Processes > 0 || in.SideRunning || in.BTWRunning || !state.Alert && (turn != "" || pending)
 	switch {
 	case archiving:
 		s.Session = Label{Text: "Archiving session…", Animation: Pulse}

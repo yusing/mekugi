@@ -1,13 +1,14 @@
 package terminalsession
 
 import (
+	"strings"
+	"time"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
-	"strings"
-	"time"
 )
 
 func (m *Menu) Height(width int) int {
@@ -15,7 +16,7 @@ func (m *Menu) Height(width int) int {
 		return 0
 	}
 	p := m.body
-	if p.Kind == "archive" || p.Kind == "rewind" {
+	if p.Kind == "archive" || p.Kind == "rewind" || p.Kind == "side-replace" {
 		return min(8, max(1, len(p.Choices))) + 3 + len(panelWrap(p.Explanation, max(1, width-4)))
 	}
 	return conversationui.PickerHeight(len(p.Choices), conversationui.PickerOptions{SkillsMenu: p.Kind == "menu", Manage: p.Kind == "manage"}, width)
@@ -45,7 +46,7 @@ func (m *Menu) Render(painter *terminalui.Painter, selection string, width, heig
 	if height > 1 {
 		footer := ""
 		switch p.Kind {
-		case "archive", "rewind":
+		case "archive", "rewind", "side-replace":
 			put(0, "  "+bold+p.Title+reset)
 			if height >= 5 {
 				for _, line := range panelWrap(p.Explanation, max(1, width-4)) {

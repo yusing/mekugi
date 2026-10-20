@@ -1,0 +1,24 @@
+┌ 1 Side ──────────────────────────────────────────────────────────────────────────────────────────┐
+│❯ First question                                                                         12:00:00 │
+
+│● /side                                                                                  12:00:00 │
+│┃ First answer                                                                                    │
+
+
+
+
+
+
+
+
+│  Replace Side?                                                                                   │
+│  Replace closes only Side, interrupts its running answer and creates a fresh snapshot of Main.   │
+│› Cancel   Keep the current side conversation                                                     │
+│  Replace  Close Side and create a fresh snapshot of Main                                         │
+│                                                                                                  │
+│  ↑/↓ navigate · enter select · esc cancel                                                        │
+
+
+
+
+ 1 Main  Side  2 Diff  3 Agents   ^B 1-3 views · ^E expand events

@@ -49,7 +49,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **File, directory and skill attachments.** [Send selected contents or a bounded directory tree directly](#composer)
   without a separate agent read; unreadable or oversized attachments have explicit notices.
 - **Composer additions.** Mention selected messages or diffs, and ask
-  [`/btw` side questions](#composer) without interrupting Main.
+  [side conversations](#composer) without interrupting Main.
 - **Usage, throughput and cost.** See per-thread usage and estimated API costs
   in Agents, with output tokens/sec in Main's composer and child-agent rows,
   plus launch-wide average throughput, usage
@@ -179,7 +179,12 @@ keeps the original session usable.
 
 `/rewind` opens a user-turn dialog while idle, after the first user turn. Select a turn to branch immediately
 before it, excluding that turn and later conversation while keeping current
-settings and pending input. Files and retained change/output evidence stay unchanged.
+settings and pending input. Choose Keep edits (the default) or Revert captured
+edits from that turn onward, including descendant agents. When there are no such
+captured edits, rewind skips this choice. Revert uses `mchanges`
+and preserves unrelated edits through its normal merge behavior. Missing evidence
+disables Revert; conflicts stop that rewind. Keep remains available. Retained
+change/output evidence stays available, including any recorded reversal.
 After switching, a separate confirmation offers to archive the original thread;
 No is selected by default. Declining keeps both sessions. Archive failure leaves
 the new branch usable and the original available.
@@ -229,7 +234,8 @@ diagnostics go to stderr. Run/shutdown failure exits nonzero. `codex exec` is un
 
 Main starts at full width, with Agents below. Toggle Diff to split the view;
 close it to restore full width. Click a child to switch the displayed transcript.
-The composer always targets Main. Narrow terminals show one pane.
+Subagent transcripts are read-only. Selecting Side uses its separate composer;
+returning to Main restores Main’s draft. Narrow terminals show one pane.
 
 | Action | Shortcut |
 | --- | --- |
@@ -257,8 +263,19 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
 - Enabled `$skill-name` references attach instructions, using `skills-mgr` when available.
   Use it for managed skills, `/skills` for Codex toggles; click receipts for submitted contents.
 - Select transcript or saved Diff text and press `r` to mention it.
-- `/btw QUESTION` answers while Main works; repeat to follow up. Esc closes the panel,
-  discarding the unresumable side conversation. If compaction is needed, reset Main and retry.
+- `/side` creates a fresh answer-only snapshot with a Side tab beside Main. Only one
+  Side is open; repeat `/side` to choose Replace or Cancel. Select Side to read or
+  reply with its own draft.
+  Esc closes it and interrupts only its answer, without archiving or deleting a thread.
+  Side is ephemeral and is not restored on resume. If compaction is needed, compact
+  Main and create a fresh side.
+- `/oneoff TASK` runs isolated work in the same side slot, inheriting Main's tools
+  and permissions. It selects One-off immediately and keeps the completed result
+  available. Main stays usable and receives no one-off transcript; file edits and
+  other external effects still affect the shared workspace. Replace or Cancel
+  chooses what happens when Side or One-off is already open.
+- `/btw QUESTION` opens an independent temporary answer dock, leaving Main and
+  Side/One-off usable. Repeat `/btw` for a follow-up; Esc closes only that dock.
 - `/model`, `/effort` (or `/reasoning`), and `/tier` open pickers or accept values.
   `/tier default` clears the tier. Changes reach upcoming steps without editing config.
 - `/compact` resets context: Enter interrupts then resets, Tab queues. `/clear` starts
@@ -288,7 +305,8 @@ See [saved-review controls](modules/changehistory/SPEC.md#terminal-review) and
 ### Agents pane
 
 Click a child to read its full transcript; click Main to return. Input stays with
-Main. In Agents, arrows navigate threads and `a` returns to Main. In the transcript,
+Main for subagents; the Side tab selects a separate editable conversation.
+In Agents, arrows navigate threads and `a` returns to Main. In the transcript,
 Esc resumes following; `Ctrl-B o` loads older child history. The roster shows active time, round trips,
 throughput, usage, estimated API cost, and composed captured edits. Usage/rates survive
 resume while retained; `≥` marks lower bounds, `?` uncertain edits, unavailable metrics stay blank.

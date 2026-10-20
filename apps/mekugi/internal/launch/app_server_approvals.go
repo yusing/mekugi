@@ -231,12 +231,12 @@ func endApproval(attached *attachedPresentation, terminal *terminalsession.Attac
 	}
 	wasOpen := approvals.Open && index == 0
 	if wasOpen {
-		hideApprovals(approvals, terminal, &attached.conversation.PromptEditor, (*editor))
+		hideApprovals(approvals, terminal, &attached.conversation.PromptEditor, &attached.conversation.Editor)
 	}
 	approvals.Remove(a.Approval)
 	delete(approvals.handles, a.Approval)
 	terminal.Prompts.ForgetApproval(a.ID)
-	if wasOpen {
+	if wasOpen && !attached.presentation.DisplayingSide() {
 		openApprovals(approvals, questions, attached.conversation, terminal, picker, editor, control.Thread)
 	}
 	if a.RequestID != nil && notifications != nil {

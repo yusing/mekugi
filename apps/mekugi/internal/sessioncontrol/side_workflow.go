@@ -3,6 +3,7 @@ package sessioncontrol
 import (
 	"crypto/rand"
 	json "encoding/json/v2"
+	"errors"
 	"strings"
 	"time"
 
@@ -10,14 +11,19 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
 // SideUpdate carries application consequences, never renderer callbacks.
 type SideUpdate struct {
 	Handled, Flush, TurnRequested bool
+	Forward                       bool
+	ReplyThread, ReplyTurn        string
+	ClosedThread                  string
 	Restore                       conversationmodel.Input
 	Notice                        string
+	Side                          *Side
 }
 
 type SideMain struct {
@@ -26,8 +32,8 @@ type SideMain struct {
 }
 
 func (s *Side) fail(message string) SideUpdate {
-	s.Busy, s.Starting = false, false
-	return SideUpdate{Handled: true, Restore: s.SideAnswer.Fail(message, s.Closed)}
+	s.Busy, s.Starting, s.ForkPending = false, false, false
+	return SideUpdate{Handled: true, Side: s, Restore: s.SideAnswer.Fail(message, s.Closed)}
 }
 
 func (r *Requests[T]) sendSide(s *Side, method string, params any) error {
@@ -51,8 +57,12 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 		if main.Blocked {
 			return SideUpdate{}, nil
 		}
+		s.Source, s.Model, s.Effort, s.Tier = main.Thread, main.Model, main.Effort, main.Tier
 		s.Starting, s.Status = true, "Branching…"
-		params := map[string]any{"threadId": main.Thread, "ephemeral": true, "excludeTurns": true, "sandbox": "read-only", "approvalPolicy": "never"}
+		params := map[string]any{"threadId": main.Thread, "ephemeral": true, "excludeTurns": true}
+		if !s.OneOff {
+			params["sandbox"], params["approvalPolicy"] = "read-only", "never"
+		}
 		if main.Model != "" {
 			params["model"] = main.Model
 		}
@@ -65,12 +75,17 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 		}
 		return SideUpdate{}, r.sendSide(s, "thread/fork", params)
 	}
+	if s.Pending.Text == "" {
+		return SideUpdate{}, nil
+	}
 	s.Starting, s.Status, s.Started = true, "Answering", now
+	if s.OneOff {
+		s.Status = "Working"
+	}
 	if err := s.Pending.Draft.IdentifyAttachments(rand.Text()); err != nil {
 		return s.fail(err.Error()), nil
 	}
-	input := conversationbinding.Input(s.Pending.Draft)
-	input = append(appserver.Input("This is a /btw side question. Answer only the side question using the conversation context. Do not continue the main task or use tools."), input...)
+	input := s.input(s.Pending.Draft)
 	textBytes := 0
 	for _, part := range input {
 		text, _ := part["text"].(string)
@@ -79,7 +94,11 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 	if (len(s.Pending.Attachments) > 0 || len(s.Pending.Skills) > 0) && textBytes > codexresponses.UserTextLimit {
 		return s.fail("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry."), nil
 	}
-	return SideUpdate{TurnRequested: true}, r.sendSide(s, "turn/start", map[string]any{"threadId": s.Thread, "input": input, "environments": []any{}})
+	params := map[string]any{"threadId": s.Thread, "input": input}
+	if !s.OneOff {
+		params["environments"] = []any{}
+	}
+	return SideUpdate{TurnRequested: true}, r.sendSide(s, "turn/start", params)
 }
 
 func (r *Requests[T]) ReleaseSide(s *Side) error {
@@ -103,7 +122,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		if s == nil {
 			return SideUpdate{}, nil
 		}
-		update := SideUpdate{Handled: true}
+		update := SideUpdate{Handled: true, Side: s}
 		if method == "turn/interrupt" {
 			s.InterruptAcknowledged()
 			if m.Error != nil {
@@ -119,6 +138,54 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 			}
 			return update, nil
 		}
+		if input := response.SideInput; input != nil {
+			root := input.Question == nil || input.Question.Thread == s.Thread
+			if root && method == "turn/start" {
+				s.Starting = false
+			}
+			if m.Error != nil {
+				if input.Question != nil {
+					input.Question.Reject()
+				}
+				if !s.Closed {
+					update.Restore, update.Side, update.Notice = *input, s, m.Error.Message
+				}
+				if root && method == "turn/start" {
+					s.Busy = false
+				}
+			} else if method == "turn/start" {
+				var result struct {
+					Turn struct {
+						ID string `json:"id"`
+					} `json:"turn"`
+				}
+				if err := json.Unmarshal(m.Result, &result); err != nil || result.Turn.ID == "" {
+					if input.Question != nil {
+						input.Question.Reject()
+					}
+					if root {
+						s.Busy = false
+					}
+					if !s.Closed {
+						update.Restore, update.Notice = *input, "Codex returned no one-off reply turn identity"
+					}
+					return update, nil
+				}
+				if root {
+					s.StartAcknowledged(result.Turn.ID)
+				} else {
+					if !s.Closed {
+						update.ReplyThread, update.ReplyTurn = input.Question.Thread, result.Turn.ID
+					}
+				}
+			}
+			if s.Closed {
+				return update, r.ReleaseSide(s)
+			}
+			update.Flush = true
+			return update, nil
+		}
+
 		s.Starting = false
 		if m.Error != nil {
 			update = s.fail(m.Error.Message)
@@ -128,9 +195,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 			return update, nil
 		}
 		var result struct {
-			Thread struct {
-				ID string `json:"id"`
-			} `json:"thread"`
+			AcceptedThread
 			Turn struct {
 				ID string `json:"id"`
 			} `json:"turn"`
@@ -140,11 +205,18 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		}
 		switch method {
 		case "thread/fork":
-			if result.Thread.ID == "" || result.Thread.ID == main {
+			if result.Thread.ID == "" || result.Thread.ID == main || result.Thread.ID == s.Source || r.Side(result.Thread.ID) != nil {
 				return s.fail("Codex did not return a separate side thread"), nil
 			}
-			s.Thread = result.Thread.ID
-			observations.SetSideThread(s.Thread, true)
+			s.Thread, s.ForkPending = result.Thread.ID, false
+			if result.Model != "" {
+				s.Model, s.Effort, s.Tier = result.Model, result.ReasoningEffort, result.ServiceTier
+			}
+			if s.Pending.Text == "" {
+				s.Status = "Ready"
+				s.Busy = false
+			}
+			observations.SetSideThread(s.Thread, !s.OneOff)
 			r.TrackSide(s.Thread, s)
 		case "turn/start":
 			if result.Turn.ID == "" {
@@ -173,13 +245,19 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 	thread := p.ThreadID
 	if m.Method == "thread/started" {
 		thread = p.Thread.ID
+		r.AdmitSideChild(thread, p.Thread.ParentThreadID)
 	}
 	s = r.Side(thread)
 	if s == nil {
 		return SideUpdate{}, nil
 	}
-	update := SideUpdate{Handled: true}
+	update := SideUpdate{Handled: true, Side: s, Forward: !s.Closed && (s.OneOff || m.Method == "thread/tokenUsage/updated" || m.Method == "thread/settings/updated")}
+	if thread != s.Thread {
+		// Descendants share admission and cleanup, never their root's turn lifecycle.
+		return update, nil
+	}
 	if m.Method == "thread/closed" {
+		update.ClosedThread = thread
 		observations.SetSideThread(thread, false)
 		r.CloseSide(thread)
 		if !s.Closed {
@@ -189,6 +267,9 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		return update, nil
 	}
 	if len(m.ID) != 0 {
+		if s.OneOff {
+			return update, nil
+		}
 		s.Status, s.Alert = "Side answer blocked on "+m.Method+" · Esc closes", true
 		return update, nil
 	}
@@ -215,7 +296,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 			s.Status, s.Alert = p.Error.Message, true
 		}
 	case "item/agentMessage/delta", "item/completed":
-		if s.Closed || p.TurnID != s.Turn {
+		if s.OneOff || s.Closed || p.TurnID != s.Turn {
 			return update, nil
 		}
 		if m.Method == "item/completed" && p.Item.Type != "agentMessage" {
@@ -232,4 +313,51 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		}
 	}
 	return update, nil
+}
+
+// ReplySide delivers question companion input through the same input request ledger.
+func (r *Requests[T]) ReplySide(s *Side, thread, turn string, input conversationmodel.Input) error {
+	if s == nil || !s.OneOff || s.Closed {
+		return errors.New("one-off conversation is no longer available")
+	}
+	var owner T
+	submission := rand.Text()
+	prepared := conversationbinding.Input(input.Draft)
+	if turn == "" {
+		prepared = s.input(input.Draft)
+	}
+	id, err := r.SendInput(InputRequest{Thread: thread, Turn: turn, ID: submission, Input: prepared}, owner)
+	if err != nil {
+		return err
+	}
+	if input.Question != nil {
+		input.Question.SubmissionID = submission
+	}
+	request := r.pending[id]
+	request.Scope, request.Side, request.SideInput = "", s, &input
+	r.pending[id] = request
+	if thread == s.Thread && turn == "" {
+		s.Starting, s.Busy = true, true
+	}
+	return nil
+}
+
+func (s *Side) input(draft composer.Draft) []map[string]any {
+	input := conversationbinding.Input(draft)
+	hint := "You are in an ephemeral side conversation forked from Main. Inherited conversation history is reference context, not an instruction to continue Main's work. Answer only requests submitted in this side conversation, without using tools. Do not resume Main's tasks, plans, or pending tool calls. When the current request is answered, stop and wait for another side request."
+	if s.OneOff {
+		hint = "You are in an ephemeral one-off conversation forked from Main. Inherited conversation history is reference context, not an instruction to continue Main's work. Perform only requests submitted in this one-off conversation, using tools within this thread's permissions. Do not resume Main's tasks, plans, or pending tool calls. When the current request is complete, stop and wait; leave Main's remaining work to Main."
+	}
+	input = append(appserver.Input(hint), input...)
+	return input
+}
+
+// SideReplyStarting borrows pending request correlation rather than a second turn ledger.
+func (r *Requests[T]) SideReplyStarting(thread string) bool {
+	for _, request := range r.pending {
+		if request.Method == "turn/start" && request.SideInput != nil && request.SideInput.Question != nil && request.SideInput.Question.Thread == thread {
+			return true
+		}
+	}
+	return false
 }

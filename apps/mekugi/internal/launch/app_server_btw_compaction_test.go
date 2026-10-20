@@ -97,7 +97,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			}
 			start := btwTestRequest(t, w, "turn/start", "side")
 			btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
-			if len(u.side.Pending.Images) != 1 || u.side.Pending.Text == "" {
+			if len(u.BTW.Pending.Images) != 1 || u.BTW.Pending.Text == "" {
 				t.Fatal("start acknowledgement discarded retry input")
 			}
 			appServerTestKeys(t, u, "newer draft")
@@ -120,8 +120,8 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			if u.Text != before || strings.Count(before, "/btw") != 1 || !strings.HasSuffix(before, "newer draft") || len(u.Images) != 1 || u.Images[0].Path != image {
 				t.Fatalf("restoration lost/duplicated input: %q images=%+v", u.Text, u.Images)
 			}
-			if u.side.Busy || u.side.Pending.Text != "" || u.side.Status != conversationmodel.SideCompactionRequired || u.Turn != "main-turn" || u.attached.presentation.Status.Text != "Working" {
-				t.Fatalf("failure state = %+v Main=%s/%s", u.side, u.Turn, u.attached.presentation.Status.Text)
+			if u.BTW.Busy || u.BTW.Pending.Text != "" || u.BTW.Status != conversationmodel.SideCompactionRequired || u.Turn != "main-turn" || u.attached.presentation.Status.Text != "Working" {
+				t.Fatalf("failure state = %+v Main=%s/%s", u.BTW, u.Turn, u.attached.presentation.Status.Text)
 			}
 			if err := submitBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.skillEnvironment); err != nil {
 				t.Fatal(err)
@@ -137,8 +137,8 @@ func TestAppServerBTWCompactionCloseRecreateIgnoresLateFailure(t *testing.T) {
 	u, w := newAppServerTestUI()
 	setTestAppServerIntegration(u, newManagedMekugiProxy(t))
 	btwTestStart(t, u, w)
-	old := u.side
-	if err := closeBTW(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
+	old := u.BTW
+	if err := closeBTWQuestion(&u.attached, &u.Client); err != nil {
 		t.Fatal(err)
 	}
 	interrupt := btwTestRequest(t, w, "turn/interrupt", "side")
@@ -152,8 +152,8 @@ func TestAppServerBTWCompactionCloseRecreateIgnoresLateFailure(t *testing.T) {
 	btwTestReply(t, u, interrupt, `{}`)
 	unload := btwTestRequest(t, w, "thread/unsubscribe", "side")
 	btwTestReply(t, u, unload, `{}`)
-	if u.side == old || u.side.Thread != "new-side" || !u.side.Busy || u.Text != "" || u.controlObservations.IsSideThread("side") || !u.controlObservations.IsSideThread("new-side") {
-		t.Fatalf("late events crossed lifecycle: %+v draft=%q", u.side, u.Text)
+	if u.BTW == old || u.BTW.Thread != "new-side" || !u.BTW.Busy || u.Text != "" || u.controlObservations.IsSideThread("side") || !u.controlObservations.IsSideThread("new-side") {
+		t.Fatalf("late events crossed lifecycle: %+v draft=%q", u.BTW, u.Text)
 	}
 }
 
@@ -167,21 +167,21 @@ func TestAppServerBTWCompactionBeforeStartAckDoesNotResend(t *testing.T) {
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "failed", "error": map[string]any{"message": conversationmodel.SideCompactionRequired}}})
 	before := u.Text
 	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
-	if w.Len() != 0 || u.side.Turn != "" || u.side.Busy || u.Text != before || !strings.Contains(before, "initial") {
-		t.Fatalf("late start acknowledgement revived rejection: panel=%+v draft=%q sent=%q", u.side, u.Text, w.String())
+	if w.Len() != 0 || u.BTW.Turn != "" || u.BTW.Busy || u.Text != before || !strings.Contains(before, "initial") {
+		t.Fatalf("late start acknowledgement revived rejection: panel=%+v draft=%q sent=%q", u.BTW, u.Text, w.String())
 	}
 }
 
 func TestUISnapshotBTWCompactionRequired(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-	setSideTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "Why did this fail?", Status: conversationmodel.SideCompactionRequired, Alert: true}})
+	setBTWTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "Why did this fail?", Status: conversationmodel.SideCompactionRequired, Alert: true}})
 	for _, test := range []struct {
 		name  string
 		width int
 	}{{"btw-compaction-required", 110}, {"btw-compaction-required-narrow", 60}} {
 		t.Run(test.name, func(t *testing.T) {
-			uisnapshot.Assert(t, "testdata/snapshots/"+test.name+".txt", strings.Join(u.btwRows(test.width, 8), "\n")+"\n")
+			uisnapshot.Assert(t, "testdata/snapshots/"+test.name+".txt", strings.Join(u.sideFrame(test.width, 24), "\n")+"\n")
 		})
 	}
 }

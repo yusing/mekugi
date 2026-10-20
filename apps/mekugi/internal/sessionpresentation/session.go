@@ -58,8 +58,10 @@ type View struct {
 	History            HistoryDock
 	Interrupt          sessioncontrol.InterruptTarget
 	InterruptAvailable bool
-	Side               *conversationmodel.SideView
-	SideRunning        bool
+	Side               *SideToken
+	BTW                *conversationmodel.SideView
+	BTWRunning         bool
+	SideThread         Thread
 	Panel              *PanelView
 }
 
@@ -135,7 +137,7 @@ func (m *Model) readOnly() ReadOnly {
 	if m.replay {
 		return Replay
 	}
-	if m.DisplayingChild() {
+	if m.DisplayingChild() && !m.DisplayingSide() {
 		return ChildDisplayed
 	}
 	return Editable
@@ -172,10 +174,19 @@ func cloneView(v View) View {
 
 	if v.Side != nil {
 		side := *v.Side
-		side.Answer = slices.Clone(side.Answer)
+
 		v.Side = &side
 	}
 	v.Caption.Items = slices.Clone(v.Caption.Items)
+	if v.BTW != nil {
+		body := *v.BTW
+		body.Answer = slices.Clone(body.Answer)
+		body.History = slices.Clone(body.History)
+		for i := range body.History {
+			body.History[i].Answer = slices.Clone(body.History[i].Answer)
+		}
+		v.BTW = &body
+	}
 	if v.Questions.Call != nil {
 		call := *v.Questions.Call
 		call.Questions = slices.Clone(call.Questions)
@@ -202,9 +213,13 @@ func (m *Model) Display(intent DisplayIntent) error {
 	}
 	if intent.Thread != m.view.Displayed {
 		m.view.Displayed = intent.Thread
+		m.view.Input = m.view.Main
+		if m.DisplayingSide() {
+			m.view.Input = intent.Thread
+		}
 		m.view.Version.Revision++
 	}
-	if intent.Thread.ID != m.view.Main.ID {
+	if intent.Thread.ID != m.view.Main.ID && intent.Thread != m.view.SideThread {
 		m.lastChild = intent.Thread.ID
 	}
 	return nil

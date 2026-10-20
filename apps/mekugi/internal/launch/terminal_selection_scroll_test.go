@@ -39,7 +39,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 				view.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 			}
 			if surface == "btw" {
-				setSideTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: text}}}})
+				setBTWTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: text}}}})
 			} else {
 				if surface == "Activity" {
 					for i := 0; i < len(lines); i += 4 {
@@ -89,7 +89,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			}
 			// Arrivals must not replace even off-screen source while selecting.
 			if surface == "btw" {
-				u.side.Answer[0].Text = "replacement"
+				u.BTW.Answer[0].Text = "replacement"
 			}
 			for attempts := 0; s.Top() > 0 && attempts < 30; attempts++ {
 				mouse(64, x, y, false)
@@ -298,6 +298,7 @@ func TestOutputSelectionEdgeDragScrolls(t *testing.T) {
 
 func TestTerminalBTWSelectionAcrossExchanges(t *testing.T) {
 	u, _ := newAppServerTestUI()
+	u.attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Main content"}}})
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	terminalTest(u).DiffOpen = false
 	side := new(conversationmodel.SideAnswer)
@@ -310,7 +311,7 @@ func TestTerminalBTWSelectionAcrossExchanges(t *testing.T) {
 	}
 	side.Append("answer", "```\n"+strings.Join(lines, "\n")+"\n```", true)
 	side.Complete("completed", "")
-	setSideTest(u, &sessioncontrol.Side{SideAnswer: side})
+	setBTWTest(u, &sessioncontrol.Side{SideAnswer: side})
 	screen := vt.NewEmulator(120, 30)
 	defer screen.Close()
 	paint := func() {
@@ -349,6 +350,9 @@ func TestTerminalBTWSelectionAcrossExchanges(t *testing.T) {
 	}
 	if firstY < 0 {
 		t.Fatalf("first question unavailable: %s", screen.String())
+	}
+	if firstY != s.Rect.Y {
+		t.Fatal("frozen selection pinned an answer row above the first question")
 	}
 	terminalTest(u).selectionMouse(32, s.Rect.X, firstY, false)
 	terminalTest(u).selectionMouse(0, s.Rect.X, firstY, true)

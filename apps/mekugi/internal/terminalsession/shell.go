@@ -18,6 +18,7 @@ type Shell struct {
 	Theme          diffrender.Theme
 	Layout         Layout
 	Tabs           [4]Rect
+	SideTab        Rect
 }
 
 type ShellPlan struct {
@@ -36,6 +37,8 @@ type ShellContent struct {
 }
 
 type ShellStatus struct {
+	SideLabel                         string
+	SideSelected                      bool
 	Child, Locked, DiffUnseen, Prefix bool
 	Responding, LiveCount             int
 	Expansion                         uint8
@@ -110,14 +113,20 @@ func (s *Shell) PromptVisible(prompt Rect, dialog bool, selection Rect) bool {
 func (s *Shell) Status(in ShellStatus, width, height int) string {
 	s.Clamp()
 	s.Tabs = [4]Rect{}
+	s.SideTab = Rect{}
 	if in.Playback {
 		return in.PlaybackBar
 	}
 	var tabs strings.Builder
 	tab := func(digit int, name, badge string, shown bool) {
 		text := fmt.Sprintf(" %d %s", digit, name)
+		selected := (s.Focus == digit-1 && digit != 3 || digit == 3 && s.Focus == 3) && (digit != 1 || !in.Child)
+		if digit == 0 {
+			text = " " + name
+			selected = s.Focus == 0 && in.SideSelected
+		}
 		switch {
-		case (s.Focus == digit-1 && digit != 3 || digit == 3 && s.Focus == 3) && (digit != 1 || !in.Child):
+		case selected:
 			text = "\x1b[7;1m" + text + badge + " \x1b[27;22m"
 		case shown:
 			text += badge + " "
@@ -129,7 +138,12 @@ func (s *Shell) Status(in ShellStatus, width, height int) string {
 		if digit == 3 {
 			pane = 3
 		}
-		s.Tabs[pane] = Rect{left, height - 1, max(0, min(ansi.StringWidth(text), width-left)), 1}
+		rect := Rect{left, height - 1, max(0, min(ansi.StringWidth(text), width-left)), 1}
+		if digit == 0 {
+			s.SideTab = rect
+		} else {
+			s.Tabs[pane] = rect
+		}
 		tabs.WriteString(text)
 	}
 	diffBadge := ""
@@ -141,6 +155,9 @@ func (s *Shell) Status(in ShellStatus, width, height int) string {
 		agentsBadge = terminalui.Amber + superscript(in.Responding) + "\x1b[39m"
 	}
 	tab(1, "Main", "", !in.Child)
+	if in.SideLabel != "" {
+		tab(0, in.SideLabel, "", in.SideSelected)
+	}
 	if s.Auxiliary != nil {
 		tab(2, s.AuxiliaryLabel, diffBadge, s.DiffOpen)
 	}

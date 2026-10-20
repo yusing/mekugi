@@ -15,6 +15,7 @@ import (
 // The original typed source stays on its record; Facts is a transient semantic projection.
 type Source interface{ ActivityFacts() Facts }
 type Facts struct {
+	Retained                                              bool // Bounded projections retired explicitly by their source owner.
 	TextRef                                               observation.ItemRef
 	Seq                                                   uint64
 	Agent, Kind, Text                                     string
@@ -216,7 +217,7 @@ func (m *Model[S, A]) Accept(seq uint64) bool {
 func (m *Model[S, A]) Trim(limit int) []uint64 {
 	var retired []uint64
 	for i, extra := 0, len(m.Entries)-limit; extra > 0 && i < len(m.Entries); {
-		if m.Entries[i].Source.ActivityFacts().Running {
+		if facts := m.Entries[i].Source.ActivityFacts(); facts.Running || facts.Retained {
 			i++
 			continue
 		}

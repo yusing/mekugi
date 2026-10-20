@@ -71,3 +71,24 @@ func TestRosterVisibleNamesDetermineWidth(t *testing.T) {
 		})
 	}
 }
+
+func TestRosterFocusPreservesColumnAlignment(t *testing.T) {
+	v := NewView()
+	publication := &presentation.Publication{}
+	for _, name := range []string{"/root", "/root/long-reviewer", "/root/b"} {
+		publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: presentation.Agent{AgentFacts: presentation.AgentFacts{Name: name}}})
+	}
+	v.Update(publication, Display{Caller: "/root", SideCaller: "/side"})
+	var previous string
+	for _, focused := range []bool{false, true} {
+		rows := v.NativeRoster(80, 4, time.Unix(100, 0), focused)
+		for i, row := range rows {
+			rows[i] = strings.TrimRight(ansi.Strip(row), " ")
+		}
+		plain := ansi.Strip(strings.Join(rows, "\n"))
+		if previous != "" && previous != plain {
+			t.Fatalf("focus moved roster columns:\n%s\n%s", previous, plain)
+		}
+		previous = plain
+	}
+}

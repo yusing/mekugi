@@ -323,7 +323,7 @@ The application resolves and reads files; rendering receives their content or er
 
 ## Selection and source copy
 
-Dragging across text in the displayed transcript, the composer, a side-question dock, the
+Dragging across text in the displayed transcript, the composer, the
 saved Diff, or a shared content dialog selects the visible text and offers
 Reference (r/R), Copy (Ctrl+C, also c/C), and Clear (Escape) in the status bar or
 dialog footer. Selection actions and the existing pane shortcut bar share bold key
@@ -391,13 +391,18 @@ clipboard content. Streaming and other threads cannot replace that response.
 Enter copies and Escape cancels; absent responses show an explicit empty state.
 Copying during work neither interrupts nor submits input.
 
-The `/btw` side-answer dock leaves ordinary input targeting Main. It shows elapsed
-Answering progress until settlement and preserves truncation/omission notices.
-The dock occupies at most half the available Main height. Follow-ups append
-question/answer exchanges and follow the newest output; PgUp/PgDn scrolls through
-the retained conversation. Frozen selection retains that scrollable conversation.
-Reference, Copy and Clear exclude decoration and preserve Markdown source. Escape clears selection, dismisses
-prompts/menus, then closes the side answer under Conversation's cleanup contract.
+The single side conversation has a selectable Side tab beside Main in
+the shared tab bar. It uses the existing tab selection styling and remains
+available without the optional Agents pane. The tab disappears when Side closes.
+It uses the same Main-pane transcript, scrolling, selection and copying as other
+threads. Selected Side input targets its own draft; Main and subagent selection
+remain available. `/side` creates a fresh snapshot, offering Replace/Cancel when
+one exists. The shared choice menu preserves the prior conversation on cancellation.
+Escape dismisses selection and menus before closing Side under
+[Conversation's cleanup contract](../../../../modules/conversation/SPEC.md#side-questions).
+An independent `/btw` answer dock appears above the composer without replacing
+the displayed transcript. Escape closes that dock before Side; Page Up/Down
+scroll its answer, and `/copy` selects its latest completed response while open.
 
 ## Preferences
 

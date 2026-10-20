@@ -88,7 +88,7 @@ func applyEditorDraft(attached *attachedPresentation, terminal *terminalsession.
 		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 	}()
 	(*editor).Run = composer.NoRun
-	if q := questions.Current(); q != nil && !q.Note {
+	if q := questions.Current(); q != nil && !q.Note && !attached.presentation.DisplayingSide() {
 		q.Selected = len(q.Choices)
 	}
 	if text == (*editor).Text {

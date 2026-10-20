@@ -2,23 +2,28 @@
 package presentation
 
 import (
+	"crypto/rand"
 	"slices"
 	"time"
 	"unicode/utf8"
 )
 
-const SideCompactionRequired = "Side question requires compaction. Compact Main, then close this panel and retry /btw."
+const SideCompactionRequired = "Side question requires compaction. Close this answer, compact Main, then retry."
 
 type Answer struct{ ID, Text string }
 
 // SideExchange is a completed display exchange, independent of host context.
 type SideExchange struct {
+	ID                                  uint64
 	Question, AttachmentNotice, Failure string
 	Answer                              []Answer
 }
 
 // SideAnswer retains bounded display history. Codex owns the full side context.
 type SideAnswer struct {
+	OneOff           bool
+	Key              string
+	Drafts           Session
 	History          []SideExchange
 	ID               uint64
 	Question, Status string
@@ -39,24 +44,20 @@ type SideView struct {
 	Started          time.Time
 }
 
-func (s *SideAnswer) View() SideView {
-	history := slices.Clone(s.History)
-	for i := range history {
-		history[i].Answer = slices.Clone(history[i].Answer)
-	}
-	return SideView{History: history, ID: s.ID, Question: s.Question, Status: s.Status, Answer: slices.Clone(s.Answer), Alert: s.Alert, Truncated: s.Truncated, AttachmentNotice: s.AttachmentNotice, Started: s.Started}
-}
-
 func (s *SideAnswer) Begin(question string, pending Input) {
 	history := s.History
-	if s.ID != 0 {
-		exchange := SideExchange{Question: s.Question, AttachmentNotice: s.AttachmentNotice, Answer: s.Answer}
+	if s.ID != 0 && s.Question != "" {
+		exchange := SideExchange{ID: s.ID, Question: s.Question, AttachmentNotice: s.AttachmentNotice, Answer: s.Answer}
 		if s.Alert {
 			exchange.Failure = s.Status
 		}
 		history = append(history, exchange)
 	}
-	*s = SideAnswer{History: history, Truncated: s.Truncated, ID: s.ID + 1, Question: question, Pending: pending, AttachmentNotice: pending.AttachmentNotice, Status: "Waiting for Main's submission…"}
+	key := s.Key
+	if key == "" {
+		key = rand.Text()
+	}
+	*s = SideAnswer{OneOff: s.OneOff, Key: key, Drafts: s.Drafts, History: history, Truncated: s.Truncated, ID: s.ID + 1, Question: question, Pending: pending, AttachmentNotice: pending.AttachmentNotice, Status: "Waiting for Main's submission…"}
 	s.bound()
 }
 
@@ -65,7 +66,7 @@ func (s *SideAnswer) Fail(message string, closed bool) Input {
 	pending := s.Pending
 	s.Pending = Input{}
 	if !closed && pending.Text != "" {
-		return Join(Input{Text: "/btw"}, pending)
+		return pending
 	}
 	return Input{}
 }
@@ -137,4 +138,18 @@ func (s *SideAnswer) bound() {
 	for i := range s.Answer {
 		retain(&s.Answer[i].Text)
 	}
+}
+
+// Label and Caller identify the shared side destination without changing host identity.
+func (s *SideAnswer) Label() string {
+	if s.OneOff {
+		return "One-off"
+	}
+	return "Side"
+}
+func (s *SideAnswer) Caller() string {
+	if s.OneOff {
+		return "/oneoff"
+	}
+	return "/side"
 }

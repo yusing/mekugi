@@ -291,33 +291,57 @@ Submitted payload identities are independent of renderer sequence numbers.
 
 ## Side questions
 
-`/btw QUESTION` opens a temporary conversation without changing Main's input,
-execution, transcript or settings. Follow-ups reuse its host snapshot and append
-to the displayed conversation. Each exchange has an attachment-local identity,
-including repeated questions.
-Terminal navigation resets for a new exchange, while closing names the published
-exchange and session version so delayed input cannot dismiss a newer answer.
-Pending Main input settles before the first snapshot; an already-running turn
-continues. Later Main activity does not enter follow-ups.
-The snapshot uses Main's effective model, reasoning effort and service tier.
-Codex owns its ephemeral history and context. The answer requests no tools,
-disables environment access and uses read-only permissions without approvals;
-Codex does not guarantee that non-environment tools are unavailable.
+`/side` opens a fresh ephemeral snapshot of Main in the shared tab bar. Only one
+side conversation is open at a time. `/oneoff TASK` uses the same slot for a
+work-capable ephemeral fork, selects it on submission, and labels it One-off.
+Creating either kind when the slot is occupied offers Replace or Cancel;
+Replace closes the previous side before creating a distinct host thread, while
+Cancel leaves it unchanged.
+Selecting Side displays its conversation through the shared Main-pane transcript
+and routes ordinary composer input to Side. Main and Side retain separate drafts;
+selecting a subagent remains read-only. Side settings are the effective model,
+reasoning effort and service tier captured from Main when its snapshot is created.
+Settings and Main-only commands require returning to Main.
 
-A running answer refuses another side submission without consuming the draft.
-Failures stay with the side answer. Rejected input and attachments return ahead
-of newer Main input. If Codex requires compaction, Main stays untouched and the
-side conversation refuses follow-ups: compact Main, close the side answer and
-retry with a new snapshot. This follows Codex's decision, not a context estimate.
-Side events never enter Main's questions, roster, notifications or transcript.
+Pending Main input settles before the snapshot; already-running Main work continues.
+Later Main activity does not enter follow-ups. Codex owns ephemeral history and
+context. Side answers request no tools, disable environment access and use read-only
+permissions without approvals; Codex does not guarantee that non-environment tools
+are unavailable. Answer-only Side events never enter Main's questions, notifications
+or transcript.
+One-off inherits Main's tools, environments and permissions and uses the ordinary
+Activity, change-evidence, questions and approval workflows with its own host
+identities. Its instructions limit work to requests in the fork. Main remains
+independently usable, and no one-off result is submitted back to Main. Tool edits
+and other external effects remain real and may affect their shared workspace.
 
-Closing discards the visible conversation and cancels only its side turn.
+Completed Side and One-off results remain selectable while idle. One-off supports
+host compaction independently of Main. A running answer refuses another submission
+without consuming its draft. Failures remain visible and rejected input retains
+attachments for retry in the same conversation. Rejected attachment companions
+for a One-off descendant retain their original recipient in the waiting queue.
+Enter in an empty One-off composer retries one companion; closing the slot cancels
+queued retries.
+If an answer-only Side requires compaction, Main stays
+untouched: compact Main and create a fresh side snapshot.
+The selected side composer shows loading, answering and failure state. Escape closes
+Side after dismissing selection or menus, interrupting only its running turn and
+unloading its host thread, without archiving or deleting it.
+
 [Session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md#session-replacement-and-exit)
-retains delayed host correlation and cleanup without reviving a closed view or
-replacing a newer side answer. The transient display retains at most 256 KiB across
-256 items across questions and answers, dropping oldest exchanges when needed and
-reporting truncation; Codex retains the full context. Side answers are
-neither persisted nor restored on resume.
+retains delayed fork/start correlation and cleanup after close or Main replacement.
+The transient conversation retains at most 256 KiB and 256 items across questions
+and answers, dropping oldest exchanges with a truncation notice. Side membership,
+answers and drafts are invocation-local and are not restored on resume.
+
+`/btw QUESTION` owns a separate answer-only thread and temporary answer dock.
+It snapshots Main independently and never reuses, replaces, blocks or closes the
+Side/One-off slot. Repeated `/btw` requests follow up its own conversation, and
+Escape closes only its dock before affecting the displayed conversation. Main,
+Side and One-off input remain usable while the answer runs. Its bounded answer
+history, pending request, failure recovery and delayed cleanup have independent
+lifetimes. Rejected input returns to its originating composer, or Main if that
+side conversation has closed. Main replacement closes both transient conversations.
 
 ## Lifetime
 

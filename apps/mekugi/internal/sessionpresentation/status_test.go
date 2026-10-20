@@ -106,6 +106,7 @@ func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 	c.conversation.Unsent = []conversationmodel.Input{{Text: "waiting"}}
 	c.conversation.Queued = []conversationmodel.Input{{Text: "queued"}}
 	c.conversation.Side = &conversationmodel.SideAnswer{Question: "side", Answer: []conversationmodel.Answer{{ID: "answer", Text: "original"}}}
+	c.conversation.BTW = &conversationmodel.SideAnswer{Answer: []conversationmodel.Answer{{Text: "current"}}, History: []conversationmodel.SideExchange{{Question: "first", Answer: []conversationmodel.Answer{{Text: "earlier"}}}}}
 	caption := sessionpresentation.Caption{Items: []presentationcontract.Item{{Text: "caption"}}}
 	v := c.publish(caption)
 	want := c.model().View()
@@ -119,7 +120,11 @@ func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 	v.Approvals.Approval.Choices[0].Label = "changed"
 	v.Pending.Waiting[0].Text = "changed"
 	v.Pending.Queued[0].Text = "changed"
-	v.Side.Answer[0].Text = "changed by reader"
+	v.Side.ID++
+	v.BTW.Answer[0].Text = "changed"
+	v.BTW.History[0].Answer[0].Text = "changed"
+	c.conversation.BTW.Answer[0].Text = "changed by owner"
+	c.conversation.BTW.History[0].Answer[0].Text = "changed by owner"
 	c.conversation.Side.Answer[0].Text = "changed by owner"
 	caption.Items[0].Text = "changed"
 	c.model().Status.Set("new state", false)

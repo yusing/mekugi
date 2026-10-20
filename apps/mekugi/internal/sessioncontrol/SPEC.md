@@ -152,13 +152,18 @@ and switches wait while it is pending; displayed children never change its targe
 `/quit` exits only while idle. Exit prints unsent drafts and stacked input; unresolved
 or uncommitted transmitted input says outcome unknown and is never resent.
 
-Side-thread correlation outlives a closed dock or Main replacement until delayed
+Side-thread correlation outlives a closed side conversation or Main replacement until delayed
 fork/start responses and cleanup settle. A later start acknowledgement cannot revive
 a completed turn. Interruption/unsubscription targets only that side thread;
-its notifications never become Main observations. Closing the dock drops its
+its notifications never become Main observations. Closing Side drops its
 visible exchange, not pending host correlation.
+The temporary `/btw` answer has a separate operation and exchange from the
+Side/One-off slot. Both can run concurrently, with independent follow-ups and
+cancellation. Main replacement closes both; closing either leaves the other intact.
 The existing request ledger correlates side replies and notifications to the
-side operation, independently of any renderer. That operation borrows
+side operation, independently of any renderer. An empty `/side` forks without
+starting a turn; the scoped answer-only instruction precedes each later user
+submission. Forks preserve Main’s effective settings without changing Main. That operation borrows
 Conversation's current exchange and owns fork/start validation, effective fork
 settings, side classification before sampling, and delayed cleanup. Acquisition
 prepares attachments before dispatch; restoration returns the existing input

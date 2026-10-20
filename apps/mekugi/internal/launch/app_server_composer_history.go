@@ -31,6 +31,11 @@ func recordDraft(attached *attachedPresentation, editor *composer.Editor, termin
 // lifetime to Codex; only this session's never-submitted files are reclaimed.
 func pruneDraftImages(owned map[string]bool, editor *composer.Editor, conversation *conversationmodel.Session, questions *nativeQuestionDock, approvals *nativeApprovalDock, prompts *terminalsession.Prompts, side *sessioncontrol.Side) {
 	used := make(map[string]bool)
+	if conversation.BTW != nil {
+		for _, image := range conversation.BTW.Pending.Images {
+			used[image.Path] = true
+		}
+	}
 	for _, image := range editor.Images {
 		used[image.Path] = true
 	}
@@ -39,7 +44,22 @@ func pruneDraftImages(owned map[string]bool, editor *composer.Editor, conversati
 			used[image.Path] = true
 		}
 	}
-	stacks := [][]composer.Undo{editor.UndoDrafts, editor.RedoDrafts}
+	stacks := [][]composer.Undo{editor.UndoDrafts, editor.RedoDrafts, conversation.Editor.UndoDrafts, conversation.Editor.RedoDrafts}
+	for _, image := range conversation.Editor.Images {
+		used[image.Path] = true
+	}
+	if side != nil {
+		e := &side.Drafts.Editor
+		for _, image := range e.Images {
+			used[image.Path] = true
+		}
+		stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{{Draft: e.HistoryDraft}})
+		for _, h := range e.InputHistory {
+			for _, image := range h.Draft.Images {
+				used[image.Path] = true
+			}
+		}
+	}
 	for _, c := range questions.Calls {
 		call := questions.handles[c]
 		for _, e := range prompts.SecretState(call.ID).Editors {

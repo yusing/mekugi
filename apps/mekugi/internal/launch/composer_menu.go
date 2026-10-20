@@ -9,6 +9,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -35,30 +36,74 @@ func (p *composerPicker) menuView(workspace, text string, control *sessioncontro
 		view.QueueCompact = strings.TrimSpace(text) == "/compact"
 	case sessionpresentation.MenuSettings:
 		view.Setting = p.Setting
+	case sessionpresentation.MenuSideReplace:
+		view.Title = "Replace Side?"
+		if p.sideTask != nil {
+			view.Title = "Replace with One-off?"
+		}
+		view.Explanation = "Replace closes only Side, interrupts its running answer and creates a fresh snapshot of Main."
 	case sessionpresentation.MenuArchive:
 		view.Title = "Archive this session?"
 		view.Explanation = archivePrompt(control)
 		if p.archiveTarget != "" {
 			view.Dialog = true
 			view.Title = "Archive the original session?"
-			view.Explanation = "The new branch is ready. Archive original thread " + p.archiveTarget + "? Files remain unchanged."
+			view.Explanation = "The new branch is ready. Archive original thread " + p.archiveTarget + "?"
 		}
 	case sessionpresentation.MenuRewind:
 		view.Dialog = true
 		view.Title = "Rewind before a user turn"
-		view.Explanation = "Choose a user turn. The branch excludes it and later conversation; files remain unchanged."
+		view.Explanation = "The branch excludes this turn and later conversation. Next, choose whether to keep or revert captured edits."
+	case sessionpresentation.MenuRewindEdits:
+		view.Dialog = true
+		view.Title = "Keep or revert edits?"
+		view.Explanation = "Keep files, or revert captured edits from this turn onward, including descendants. Conflicts stop the rewind."
+		if p.rewind != nil && p.Loading {
+			view.Choices = nil
+			view.Title = "Checking captured edits…"
+			view.Explanation = "Rewind continues automatically if there are no captured edits to revert."
+		}
+		if p.rewind != nil && p.rewind.problem != "" {
+			view.Explanation = "Revert unavailable: " + p.rewind.problem + ". Keep edits leaves files unchanged."
+		}
 	}
 	return view
 }
 
 // Apply each menu effect and publish before a continuation can derive another intent.
-func applyMenuResult(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, dirty *bool, parent context.Context, environment []string, result terminalsession.MenuResult) bool {
+func applyMenuResult(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, dirty *bool, parent context.Context, environment []string, result terminalsession.MenuResult) bool {
 	if result.Action.Kind == sessionpresentation.MenuNoAction {
 		return result.Handled
 	}
-	accepted := applyMenuAction(attached, terminal, control, picker, editor, childKey, applied, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, panes, dirty, parent, environment, result.Action)
+	if picker.Kind == sessionpresentation.MenuSideReplace && result.Action.Kind == sessionpresentation.MenuAccept {
+		if err := attached.presentation.AdmitMenu(result.Action); err != nil {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			return true
+		}
+		picker.Open, picker.Kind, picker.Choices = false, "", nil
+		if result.Action.Choice.ID == 2 {
+			pending := conversationmodel.Input{}
+			oneoff := picker.sideTask != nil
+			if oneoff {
+				pending = prepareDraft(picker, terminal, attached.cwd, environment, sideTaskDraft(*picker.sideTask))
+				(*editor).Take()
+			}
+			picker.sideTask = nil
+			err := closeSide(attached, terminal, control, editor, questions, approvals, side, &owned)
+			if err == nil {
+				err = openFreshSide(attached, terminal, control, editor, side, applied, presentationTime(clock), oneoff, pending)
+			}
+			if err != nil {
+				setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			}
+		}
+		picker.sideTask = nil
+		settlePresentation(attached, terminal, control, picker, editor, childKey, applied, *tiers, title, backend, restoring, *side, clock, questions, approvals, overlay)
+		return true
+	}
+	accepted := applyMenuAction(attached, terminal, control, picker, editor, childKey, applied, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, owned, panes, dirty, parent, environment, result.Action)
 	picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
-	settlePresentation(attached, terminal, control, picker, editor, childKey, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay)
+	settlePresentation(attached, terminal, control, picker, editor, childKey, applied, (*tiers), title, backend, restoring, *side, clock, questions, approvals, overlay)
 	return result.Handled && !(accepted && result.Submit)
 }
 func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, dirty *bool, parent context.Context, environment []string, action sessionpresentation.MenuAction) bool {
@@ -76,6 +121,7 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 		p.Query = action.Query
 		return true
 	case sessionpresentation.MenuDismiss:
+		p.sideTask = nil
 		switch p.Kind {
 		case "menu", "manage":
 			picker.closeSkillsModal(attached, terminal, clock, (*editor))
@@ -99,8 +145,8 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 			picker.chooseSkillsAction(attached, (*editor), terminal, clock, owned, questions, approvals, side, choice)
 		case "manage":
 			toggleSkill(picker, control.Requests, attached.cwd, choice)
-		case "rewind":
-			chooseRewind(attached, terminal, control, picker, applied, restoring, clock, choice)
+		case "rewind", "rewind-edits":
+			chooseRewind(attached, terminal, control, picker, applied, restoring, clock, choice, parent)
 		case "archive":
 			chooseArchive(picker, control, &attached.feedback, terminal, clock, choice.ID == archiveConfirmChoice)
 		case "settings":

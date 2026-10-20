@@ -100,17 +100,15 @@ func TestConversationSidePresentation(t *testing.T) {
 	side.Begin("question", presentation.Input{Text: "[Image 1]", Images: []composer.Token{{Start: 0, End: 9, Path: "owned.png"}}})
 	side.Append("answer", "partial", false)
 	side.Append("answer", "complete", true)
-	view := side.View()
-	view.Answer[0].Text = "mutated view"
 	if side.Answer[0].Text != "complete" {
-		t.Fatal("side view retained mutable state")
+		t.Fatal("completed answer did not replace streamed content")
 	}
 	side.Append("answer", strings.Repeat("界", 100_000), false)
 	if len(side.Answer[0].Text) > 256<<10 || !utf8.ValidString(side.Answer[0].Text) || !side.Truncated {
 		t.Fatal("side display bound split UTF-8")
 	}
 	restored := side.Fail(presentation.SideCompactionRequired, false)
-	if restored.Text != "/btw\n[Image 1]" || restored.Images[0].Path != "owned.png" || side.Pending.Text != "" {
+	if restored.Text != "[Image 1]" || restored.Images[0].Path != "owned.png" || restored.Images[0].Start != 0 || side.Pending.Text != "" {
 		t.Fatalf("side rejection lost attachment: %+v", restored)
 	}
 	side.Begin("follow-up", presentation.Input{Text: "follow-up"})
@@ -127,13 +125,8 @@ func TestConversationSideHistory(t *testing.T) {
 	side.Complete("failed", "first failure")
 	side.Begin("second", presentation.Input{})
 	side.Append("same-id", "second answer", true)
-	view := side.View()
-	if len(view.History) != 1 || view.History[0].Question != "first" || view.History[0].Answer[0].Text != "first answer" || view.History[0].Failure != "first failure" || view.Answer[0].Text != "second answer" {
-		t.Fatalf("lost exchange: %+v", view)
-	}
-	view.History[0].Answer[0].Text = "changed"
-	if side.History[0].Answer[0].Text != "first answer" {
-		t.Fatal("history publication aliases owner")
+	if len(side.History) != 1 || side.History[0].Question != "first" || side.History[0].Answer[0].Text != "first answer" || side.History[0].Failure != "first failure" || side.Answer[0].Text != "second answer" {
+		t.Fatalf("lost exchange: %+v", side)
 	}
 	for range 140 {
 		side.Begin("next", presentation.Input{})

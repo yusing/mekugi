@@ -71,6 +71,11 @@ func applyEffect(attached *attachedPresentation, terminal *terminalsession.Attac
 			setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
 			return false, nil
 		}
+		if attached.presentation.DisplayingSide() {
+			view := attached.presentation.View()
+			_ = attached.presentation.Display(sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main})
+			*editor = &attached.conversation.Editor
+		}
 		if !effect.PendingPrompt.ApprovalsFirst || !openApprovals(approvals, questions, attached.conversation, terminal, picker, editor, control.Thread) {
 			openQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread)
 		}
@@ -80,9 +85,14 @@ func applyEffect(attached *attachedPresentation, terminal *terminalsession.Attac
 	case effect.Resume != nil:
 		return false, applyResumeAction(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, approvalMode, quit, *effect.Resume)
 	case effect.Menu != nil:
-		return !applyMenuResult(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, parent, environment, *effect.Menu), nil
+		return !applyMenuResult(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, side, clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, parent, environment, *effect.Menu), nil
 	case effect.Side != nil:
 		return false, applyCloseSide(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, *effect.Side)
+	case effect.BTW != nil:
+		view := attached.presentation.View()
+		if effect.BTW.Version == view.Version && view.BTW != nil && effect.BTW.Exchange == view.BTW.ID {
+			return false, closeBTWQuestion(attached, control)
+		}
 	case effect.Dialog != nil:
 		outputIntent(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, environment, parent, files, surface, *effect.Dialog)
 	case effect.Reference != nil:

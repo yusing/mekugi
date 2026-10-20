@@ -115,7 +115,7 @@ func (m *Main) ComposerKey(key string, prompts *Prompts, transcript *activityui.
 		}
 	}
 	if operation != sessionpresentation.NoComposerOperation {
-		return ComposerInput{Command: sessionpresentation.ComposerIntent{Version: view.Version, Target: target, Operation: operation}}
+		return ComposerInput{Command: sessionpresentation.ComposerIntent{Thread: view.Input.ID, Version: view.Version, Target: target, Operation: operation}}
 	}
 	secret := view.Questions.Call != nil && view.Questions.Call.Questions[view.Questions.Index].Secret
 	if secret {

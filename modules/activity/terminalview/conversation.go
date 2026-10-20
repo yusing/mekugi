@@ -72,10 +72,10 @@ func (v *View) RenderConversation(width int) Feed {
 		last, j := i, i+1
 		// Codex can report consecutive steers as separate user items even
 		// though they form one uninterrupted input in the transcript.
-		if first := v.entries[i]; first.Agent == "You" && first.InputGroup != "" {
+		if first := v.entries[i]; (first.Agent == "You" || first.Kind == "user") && first.InputGroup != "" {
 			for ; j < len(v.entries); j++ {
 				next := v.entries[j]
-				if !v.Visible(next) || next.Agent != "You" || next.InputGroup != first.InputGroup {
+				if !v.Visible(next) || (next.Agent != "You" && next.Kind != "user") || next.InputGroup != first.InputGroup {
 					break
 				}
 				last = j
@@ -156,7 +156,7 @@ func (v *View) RenderConversation(width int) Feed {
 	lead, headed := -1, false // Latest lead's position, and whether tools follow it.
 	for k := 0; k < len(items); k++ {
 		switch entry := v.entries[items[k].first]; {
-		case entry.Agent == "You":
+		case (entry.Agent == "You" || entry.Kind == "user"):
 			lead = -1
 		case v.conversationLead(items[k].first):
 			lead, headed = k, false
@@ -190,7 +190,7 @@ func (v *View) RenderConversation(width int) Feed {
 		}
 		thread.Followed = continues(k, k+1)
 		key := RunKey{First: v.entries[it.first].Seq, Last: v.entries[it.last].Seq, Revision: v.runRevision(it.first, it.last+1), Width: width, Theme: v.Painter.Theme, Hover: -1, Main: true, Thread: thread, Excerpt: v.excerpt(v.Passed[v.entries[it.first].Seq]), Tail: v.tailRows(), Expansion: v.Expansion}
-		if v.entries[it.first].Agent == "You" {
+		if v.entries[it.first].Agent == "You" || v.entries[it.first].Kind == "user" {
 			key.Expansion, key.Excerpt = 0, false
 		}
 		if it.lead >= 0 {
@@ -261,7 +261,7 @@ func (v *View) RenderConversation(width int) Feed {
 		owner := it.first
 		for row := range run.Lines {
 			start := head
-			if v.entries[it.first].Agent == "You" {
+			if v.entries[it.first].Agent == "You" || v.entries[it.first].Kind == "user" {
 				for owner < it.last && run.EntryRows[v.entries[owner+1].Seq] <= row {
 					owner++
 				}
@@ -344,7 +344,7 @@ const conversationSourceRows = 5
 // the item cannot join a thread.
 func (v *View) threadAgent(index int) string {
 	entry := v.entries[index]
-	if entry.Agent == "You" || entry.Agent == v.conversationSpeaker() && entry.Kind != "start" && entry.Kind != "assignment" || len(v.entries[index].Values) == 0 {
+	if (entry.Agent == "You" || entry.Kind == "user") || entry.Agent == v.conversationSpeaker() && entry.Kind != "start" && entry.Kind != "assignment" || len(v.entries[index].Values) == 0 {
 		return ""
 	}
 	return trafficAgent(entry, v.blocks(index)[0])
@@ -445,7 +445,7 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 				}
 			}
 		}
-	case entry.Agent == "You":
+	case (entry.Agent == "You" || entry.Kind == "user"):
 		for k := first; k <= last; k++ {
 			next := v.entries[k]
 			entryRows[next.Seq] = len(out.lines)
@@ -574,14 +574,17 @@ func (v *View) userItemContinued(out *conversationLines, entry activitypresentat
 	if len(rows) == 0 {
 		rows = []string{""}
 	}
-	stamp := terminalui.Dim + entry.Observed.Local().Format("15:04:05") + terminalui.Undim
+	stamp := ""
+	if entry.Kind != "user" || !entry.Observed.IsZero() {
+		stamp = terminalui.Dim + entry.Observed.Local().Format("15:04:05") + terminalui.Undim
+	}
 	for k, row := range rows {
 		lead := "  "
 		if k == 0 && !continued {
 			lead = PromptColor + "❯" + terminalui.Reset + " "
 		}
 		line := terminalui.Reset + ansi.Truncate(lead+row, width, "…") + terminalui.Reset
-		if k == 0 && !continued && ansi.StringWidth(line)+2+ansi.StringWidth(stamp) <= width {
+		if k == 0 && !continued && stamp != "" && ansi.StringWidth(line)+2+ansi.StringWidth(stamp) <= width {
 			line += strings.Repeat(" ", width-ansi.StringWidth(line)-ansi.StringWidth(stamp)) + stamp
 		}
 		if band != "" {
@@ -716,7 +719,10 @@ func threadHeading(lead, detail string, entry, previous activitypresentation.Ent
 	}
 	head = ansi.Truncate(head, width, "…")
 	if !reply {
-		stamp := terminalui.Dim + entry.Observed.Local().Format("15:04:05") + terminalui.Undim
+		stamp := ""
+		if entry.Kind != "user" || !entry.Observed.IsZero() {
+			stamp = terminalui.Dim + entry.Observed.Local().Format("15:04:05") + terminalui.Undim
+		}
 		if gap := width - ansi.StringWidth(head) - ansi.StringWidth(stamp); gap >= 2 {
 			head += strings.Repeat(" ", gap) + stamp
 		}

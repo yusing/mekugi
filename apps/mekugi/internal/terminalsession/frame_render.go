@@ -67,6 +67,9 @@ func (in FrameInput) Status() ShellStatus {
 		Child: in.Main.session.Displayed.ID != in.Main.session.Main.ID, Responding: responding,
 		DiffUnseen: in.DiffUnseen, Prefix: in.Prefix, LiveCount: in.Live.Live(), Locked: in.Main.InterruptLocked,
 	}
+	if side := in.Main.session.Side; side != nil && in.Main.session.SideThread.ID != "" {
+		status.SideLabel, status.SideSelected = "Side", in.Main.session.Displayed == in.Main.session.SideThread
+	}
 	if in.Shell.Focus == 0 && !in.Prefix {
 		status.Expansion = in.displayedTranscript().Expansion
 	}
@@ -144,6 +147,9 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 			content.MainRight = in.Main.HeaderRight(in.Transcript, plan.Left.W, shell.Focus == 0)
 			if view.Displayed.ID != view.Main.ID {
 				content.MainName, content.MainDetail = "Thread", in.Agents.Painter.Agent(view.Displayed.Caller)
+				if view.Displayed == view.SideThread {
+					content.MainName, content.MainDetail = "Side", ""
+				}
 				content.MainSkills = ""
 				content.MainRight = strings.TrimSpace(scrollLabel(in.Agents) + " " + in.Agents.HistoryHint)
 			}

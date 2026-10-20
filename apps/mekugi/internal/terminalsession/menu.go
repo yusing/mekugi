@@ -1,11 +1,12 @@
 package terminalsession
 
 import (
+	"slices"
+	"unicode/utf8"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/conversation/completion"
-	"slices"
-	"unicode/utf8"
 )
 
 type Menu struct {
@@ -106,7 +107,7 @@ func (m *Menu) Key(key string) MenuResult {
 		}
 	case "\t":
 		switch p.Kind {
-		case sessionpresentation.MenuArchive, sessionpresentation.MenuSettings:
+		case sessionpresentation.MenuArchive, sessionpresentation.MenuSideReplace, sessionpresentation.MenuSettings:
 			move(1)
 		case sessionpresentation.MenuCompletion:
 			if len(p.Choices) > 0 {

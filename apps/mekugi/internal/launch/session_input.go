@@ -91,6 +91,31 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false, nil
 	}
+	if intent.Operation == sessionpresentation.CancelComposer && (*editor).Text == "" && control.BTW != nil {
+		return false, closeBTWQuestion(attached, control)
+	}
+	if attached.presentation.DisplayingSide() {
+		text := strings.TrimSpace((*editor).Text)
+		switch intent.Operation {
+		case sessionpresentation.SubmitComposer, sessionpresentation.QueueComposer:
+			if !strings.HasPrefix(text, "/") && !strings.HasPrefix(text, "!") || text == "/side" || text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
+				return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}, *tiers, *title, *backend, *restoring != nil, side, *panel != nil || *resumePicker != nil, owned, environment)
+			}
+			if text != "/copy" {
+				setNotice(&attached.feedback, terminal, presentationTime(clock), "Return to Main to use this command; Side retains its captured settings", false)
+				return false, nil
+			}
+		case sessionpresentation.CancelComposer:
+			if (*editor).Text == "" {
+				return false, closeSide(attached, terminal, control, editor, questions, approvals, side, owned)
+			}
+			(*editor).Apply(composer.Action{Kind: composer.DeleteAction, Start: 0, End: len((*editor).Text)})
+			return false, nil
+		case sessionpresentation.RestoreWaiting, sessionpresentation.IncreaseEffort, sessionpresentation.DecreaseEffort, sessionpresentation.AcceptPrediction:
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Return to Main to use this control", false)
+			return false, nil
+		}
+	}
 	switch intent.Operation {
 	case sessionpresentation.AcceptPrediction:
 		_, err := attached.conversation.AcceptPrediction(intent.Target.Revision)
@@ -103,7 +128,7 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 	case sessionpresentation.RestoreWaiting:
 		editQueued(attached, terminal, control, picker, questions, approvals, clock)
 	case sessionpresentation.EditExternally:
-		if q := questions.Current(); q != nil && q.IsSecret {
+		if q := questions.Current(); q != nil && q.IsSecret && !attached.presentation.DisplayingSide() {
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "External editor is unavailable for secret answers", false)
 			return false, nil
 		}
@@ -155,7 +180,7 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		if titleCommand(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, generator, dirty, text) {
 			return false, nil
 		}
-		if text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
+		if text == "/side" || text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
 			return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment)
 		}
 		if attached.conversation.ShellMode() {

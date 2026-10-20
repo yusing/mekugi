@@ -12,6 +12,7 @@ import (
 
 // Source: apps/mekugi/internal/router/subagent_activity_pane.go:15:32@45fbe279
 type ActivityEntry struct {
+	Side        bool `json:"-"` // Invocation-local side projection, retired with its owner.
 	Seq         uint64
 	Agent       string
 	Kind        string
@@ -65,7 +66,7 @@ type ActivityEvent struct {
 
 // Source: apps/mekugi/internal/router/subagent_activity_pane.go:91:113@45fbe279
 func (entry ActivityEntry) ActivityFacts() activitypresentation.Facts {
-	facts := activitypresentation.Facts{Seq: entry.Seq, Agent: entry.Agent, Kind: entry.Kind, Text: entry.Text, Observed: entry.Observed, Activity: entry.ActivitySeq, Completed: entry.Completed, ContextBoundary: ContextBoundary(entry)}
+	facts := activitypresentation.Facts{Retained: entry.Side, Seq: entry.Seq, Agent: entry.Agent, Kind: entry.Kind, Text: entry.Text, Observed: entry.Observed, Activity: entry.ActivitySeq, Completed: entry.Completed, ContextBoundary: ContextBoundary(entry)}
 	if entry.Assignment != nil {
 		facts.Assignment = true
 		facts.AssignmentTo, facts.AssignmentText = entry.Assignment.To, entry.Assignment.Text

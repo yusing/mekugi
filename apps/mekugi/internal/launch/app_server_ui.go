@@ -305,6 +305,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 						}
 						dirty = true
 					case <-tick.C:
+						if side != nil && len(side.Drafts.Unsent) > 0 {
+							if err := flushBTW(&attached, shell, &control, &picker, &questions, &approvalDock, clock, preferences.Applied{Model: model, Effort: effort, Tier: tier}, &side, &ownedImages, environment, &guardHook, observationInputs); err != nil {
+								return err
+							}
+						}
 						if len(attached.conversation.Unsent) > 0 && attached.conversation.Unsent[0].Question != nil && (observationInputs == nil || !observationInputs.EmittingToolInput(attached.cwd, control.Thread)) {
 							if err := flushInput(&attached, shell, &control, &picker, &questions, &approvalDock, clock, model, serviceTiers, environment, ownedImages, &guardHook, &editor, ctx, restoring != nil, observationInputs, reviewOwner, &receipts); err != nil {
 								return err
@@ -409,7 +414,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		}
 		reviewOwner.Close()
 		editor = hideQuestionEditor(&questions, attached.conversation, shell, editor, control.Thread)
-		hideApprovals(&approvalDock, shell, &attached.conversation.PromptEditor, editor)
+		hideApprovals(&approvalDock, shell, &attached.conversation.PromptEditor, &attached.conversation.Editor)
 		inputHistory.saveDraft(attached.conversation, editor)
 		if historyErr := inputHistory.close(); historyErr != nil {
 			fmt.Fprintln(stdout, "Input history could not be saved:", textsanitize.Safe(historyErr.Error(), false))
@@ -453,6 +458,11 @@ type appServerRequest struct {
 
 func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, windows *executionobservation.Windows, audience *sessioncontrol.Audience, reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, dirty *bool, activityService *activitymodel.Service, streams *terminalsession.Streams, tracker *commandsegments.Observer, trace *nativetrace.Reader, usage *accounting.Service, exitUsage *binding.TokenUsage, segments *reports.Service, restoredSegments *map[string]*reports.Report, views *sessionpresentation.Service, files *detailFiles, statusConfig *appServerStatusConfig, issues *requestexecution.Failures, quit *bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, commits **activitypresentation.CommitReader, terminalViews terminalsession.Views, conversationState *conversationmodel.Service, bindings *binding.Observation, historyService *history.Service, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, reasoningKey **bool, archived *bool, m appserver.Message) (err error) {
 	defer func() {
+		if r := control.Rewind; r != nil && r.Completed && r.Failed && r.Item == "" && shellEdits.pending != nil && shellEdits.pending.Thread() == r.Thread {
+			shellEdits.pending.Discard()
+			shellEdits.pending = nil
+		}
+		finishRewindRevert(attached, terminal, control, clock)
 		settlePresentation(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
 	}()
 	issues.ObserveTurnCompletion(m.Method, m.Params)
@@ -483,17 +493,20 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 	defer func() {
 		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 	}()
-	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
+	// Side control settles first; work-capable forks share native event consumers.
 	if update, err := control.Requests.ObserveSide(m, response, control.Thread, observations); update.Handled {
 		(*dirty) = true
 		applySideUpdate(attached, terminal, control, picker, questions, approvals, clock, update)
 		if err != nil {
 			return err
 		}
+
 		if update.Flush {
-			return flushBTW(attached, terminal, control, picker, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, side, owned, environment)
+			return flushBTW(attached, terminal, control, picker, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, side, owned, environment, hook, observations)
 		}
-		return nil
+		if !update.Forward || update.Side == control.BTW {
+			return nil
+		}
 	}
 	if control.RetiredEvent(m) {
 		return nil
@@ -505,7 +518,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			err = flushInput(attached, terminal, control, picker, questions, approvals, clock, (*model), (*tiers), environment, (*owned), hook, editor, parent, (*restoring) != nil, observations, (*reviewOwner), receipts)
 		}
 		if err == nil {
-			err = flushBTW(attached, terminal, control, picker, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, side, owned, environment)
+			err = flushBTW(attached, terminal, control, picker, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, side, owned, environment, hook, observations)
 		}
 	}()
 	if m.Method == "skills/changed" {
@@ -549,6 +562,10 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		}
 		if method == "rewind/turns" {
 			rewindTurnsResponse(control, picker, response.Owner, m)
+			return nil
+		}
+		if method == "rewind/source" {
+			rewindSourceResponse(control, picker, parent, response.Owner, m)
 			return nil
 		}
 		if method == "rewind/archive" {
@@ -695,6 +712,9 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				return nil
 			}
 			if control.Replacement.Pending() {
+				if err := closeBTWQuestion(attached, control); err != nil {
+					return err
+				}
 				// Detach only after host acceptance; process and operation owners remain live.
 				closing := (*side)
 				if closing != nil {
@@ -879,6 +899,14 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		return err
 	}
 	if len(m.ID) != 0 {
+		var target struct {
+			Thread string `json:"threadId"`
+		}
+		if json.Unmarshal(m.Params, &target) == nil && control.Requests.WorkSide(target.Thread) {
+			side := control.Requests.Side(target.Thread)
+			side.Status, side.Alert = "Blocked on unsupported request "+m.Method, true
+			return nil
+		}
 		// Never auto-approve an unexpected server request. Leave it pending,
 		// visibly blocked, until interrupted.
 		attached.presentation.Status.Set("Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true)
@@ -906,7 +934,39 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 // observedEvent retains application lifecycle and control handling for decoded
 // host facts. Offline transcript observations bypass it through their reducer.
 func observedEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], panel **appServerStatusReport, resumePicker **appServerResumePicker, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retainedSession history.Session, windows *executionobservation.Windows, activityService *activitymodel.Service, streams *terminalsession.Streams, tracker *commandsegments.Observer, trace *nativetrace.Reader, usage *accounting.Service, exitUsage *binding.TokenUsage, method string, p binding.Notification) error {
+	if r := control.Rewind; r != nil && r.Sent && p.ThreadID == r.Thread && p.TurnID == r.Turn && p.Item.Type == "commandExecution" && p.Item.Source == "userShell" {
+		if method == "item/started" && r.Item == "" {
+			r.Item = p.Item.ID
+		}
+		if method == "item/completed" && r.Item != "" && p.Item.ID == r.Item {
+			r.Completed, r.Failed = true, p.Item.ExitCode == nil || *p.Item.ExitCode != 0 || p.Item.Status != "completed"
+		}
+	}
 	text := binding.RetainedTranscript(p.Observation(method, presentationTime(clock)))
+	if target := control.Requests.Side(p.ThreadID); target != nil && target.OneOff && !target.Closed {
+		if method == "item/started" || method == "item/completed" {
+			if observeMessageQuestions(attached, terminal, control, approvals, clock, questions, editor, picker, *panel != nil || *resumePicker != nil, notifications, text, p.Item.Observation(), false) {
+				return nil
+			}
+		}
+		if method == "turn/completed" {
+			for _, c := range questions.calls() {
+				if c.Thread == p.ThreadID && c.Turn == p.Turn.ID && c.Sync {
+					resolveQuestionCall(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts, c, "Turn ended")
+				}
+			}
+		}
+	}
+	if method == "thread/started" {
+		attached.session.Caller(p.Thread.ID)
+		attached.session.Activity().Agent(p.Thread.ID).ParentThread = p.Thread.ParentThreadID
+	}
+	if method == "thread/started" && control.Requests.WorkSide(p.Thread.ID) {
+		side := control.Requests.Side(p.Thread.ID)
+		p.Thread.Path = side.Caller() + strings.TrimPrefix(p.Thread.Path, "/root")
+		attached.session.Caller(p.Thread.ID)
+		attached.session.Activity().Agent(p.Thread.ID).Isolated = true
+	}
 	if handled, err := sessionEvent(attached, terminal, control, streams, childKey, tracker, activityService, usage, trace, windows, reviewOwner, approvals, receipts, retainedSession, exitUsage, clock, method, p); handled || err != nil {
 		return err
 	}
@@ -914,6 +974,9 @@ func observedEvent(attached *attachedPresentation, terminal *terminalsession.Att
 	switch method {
 	case "turn/started":
 		if p.ThreadID == control.Thread {
+			if r := control.Rewind; r != nil && r.Sent && r.Turn == "" {
+				r.Turn = p.Turn.ID
+			}
 			control.Started(p.Turn.ID)
 			attached.presentation.Status.Started = presentationTime(clock)
 			attached.presentation.Status.Set("Working", false)
@@ -930,6 +993,9 @@ func observedEvent(attached *attachedPresentation, terminal *terminalsession.Att
 			}
 		}
 		if p.ThreadID == control.Thread && p.Turn.ID == control.Turn {
+			if r := control.Rewind; r != nil && r.Turn == p.Turn.ID && p.Turn.Status != "completed" {
+				r.Completed, r.Failed = true, true
+			}
 			control.Completed(p.Turn.Status == "completed")
 			endSyncQuestions(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts, p.Turn.ID)
 			var failure *string
@@ -998,7 +1064,9 @@ func applyMainKey(attached *attachedPresentation, terminal *terminalsession.Atta
 			applyPanelAction(attached, terminal, clock, panel, dirty, capture, *input.Panel)
 			(*dirty) = true
 		case input.Menu != nil:
-			if applyMenuResult(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, parent, environment, *input.Menu) {
+			handled := applyMenuResult(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, side, clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, parent, environment, *input.Menu)
+			dispatchRewind(attached, terminal, control, picker, clock, parent, (*reviewOwner), shellEdits, retained, (*retainedSession), changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)
+			if handled {
 				return false, nil
 			}
 		case input.Composer != nil:
@@ -1072,7 +1140,41 @@ func applyObservedActivity(attached *attachedPresentation, terminal *terminalses
 	if audience == nil {
 		return
 	}
-	entries := takeNativeActivity(audience, control.Thread)
+	roots := []string{control.Thread}
+	target := attached.presentation.View().SideThread
+	borrowed := ""
+	if control.Requests.WorkSide(target.ID) {
+		borrowed = target.ID
+		roots = append(roots, borrowed)
+	}
+	audience.BorrowSide(borrowed)
+	var entries []sessionpresentation.ActivityEntry
+	admitted := false
+	if borrowed != "" {
+		snapshot, _ := audience.Snapshot(borrowed)
+		for thread, name := range snapshot.Threads {
+			if control.Requests.Side(thread) != nil {
+				continue
+			}
+			control.Requests.TrackSide(thread, control.Requests.Side(borrowed))
+			attached.session.Caller(thread)
+			agent := attached.session.Activity().Agent(thread)
+			agent.Isolated, agent.AudiencePending = true, false
+			previous := agent.Name
+			agent.Name = target.Caller + strings.TrimPrefix(name, "/root")
+			renameThreadActivity(attached, terminal, previous, agent.Name)
+			admitted = true
+		}
+	}
+	for _, root := range roots {
+		extra := takeNativeActivity(audience, root)
+		for i := range extra {
+			if root == borrowed {
+				extra[i].Agent = strings.Replace(extra[i].Agent, "/root", target.Caller, 1)
+			}
+		}
+		entries = append(entries, extra...)
+	}
 	receivedReceipt := false
 	// Receipts enrich the existing host item through the same reconciliation as
 	// retained review publications. Keep early receipts pending until it arrives.
@@ -1084,19 +1186,23 @@ func applyObservedActivity(attached *attachedPresentation, terminal *terminalses
 		receivedReceipt = true
 		return true
 	})
-	for _, start := range audience.TakeStarts(control.Thread) {
-		entries = append(entries, transcriptUpdates(attached, terminal, streams, control.Thread, providerStarted(attached, start.Thread, start.At), false)...)
+	for _, root := range roots {
+		for _, start := range audience.TakeStarts(root) {
+			entries = append(entries, transcriptUpdates(attached, terminal, streams, control.Thread, providerStarted(attached, start.Thread, start.At), false)...)
+		}
 	}
 	for i := range entries {
 		entries[i].Seq = attached.session.Activity().NextSequence()
 	}
-	if len(entries) != 0 || receivedReceipt {
-		applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, entries, nil)
+	if len(entries) != 0 || receivedReceipt || admitted {
+		applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, entries, attached.session.Roster())
 		(*dirty) = true
 	}
-	for _, ref := range audience.TakeUnreturned(control.Thread) {
-		if main, activity := attached.source.MarkUnreturned(ref.Thread, ref.Call), attached.childSource.MarkUnreturned(ref.Thread, ref.Call); main || activity {
-			(*dirty) = true
+	for _, root := range roots {
+		for _, ref := range audience.TakeUnreturned(root) {
+			if main, activity := attached.source.MarkUnreturned(ref.Thread, ref.Call), attached.childSource.MarkUnreturned(ref.Thread, ref.Call); main || activity {
+				(*dirty) = true
+			}
 		}
 	}
 }

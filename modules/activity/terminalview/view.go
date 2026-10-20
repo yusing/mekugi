@@ -251,6 +251,9 @@ func (v *View) KeepSelection() {
 // never shows Main's entries, so it neither counts nor selects Main.
 func (v *View) feedAgents() []activitypresentation.AgentRow {
 	rows := v.Roster()
+	if v.Display.SideCaller != "" {
+		rows = append([]activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: v.Display.SideCaller}}}}, rows...)
+	}
 	if v.ChildrenOnly {
 		rows = slices.DeleteFunc(rows, func(row activitypresentation.AgentRow) bool { return row.Agent.Name == "/root" })
 	}

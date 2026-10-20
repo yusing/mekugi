@@ -8,6 +8,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -26,10 +27,34 @@ import (
 // Reading Model.View does not run this projection or bind an attachment.
 func publishPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, now time.Time) sessionpresentation.View {
 	m := attached.presentation
+	if side != nil {
+		id := cmp.Or(side.Thread, "side:"+side.Key)
+		m.SetSide(sessionpresentation.Thread{ID: id, Caller: side.Caller()})
+		if side.Thread != "" {
+			attached.session.RegisterThread(observation.Thread{ID: side.Thread, Path: side.Caller()})
+			agent := attached.session.Activity().Agent(side.Thread)
+			agent.Isolated = true
+			if !agent.SettingsLive {
+				agent.Settings = preferences.Evidence{Model: side.Model, Effort: side.Effort, Tier: side.Tier, TierKnown: side.Model != "" || side.Tier != ""}
+			}
+		}
+	} else {
+		m.SetSide(sessionpresentation.Thread{})
+	}
 	view := m.View()
+	if m.DisplayingSide() {
+		*editor = &side.Drafts.Editor
+	} else if q := attached.conversation.Questions.Current(); q != nil && q.IsSecret {
+		*editor = &terminal.Prompts.Secret
+	} else {
+		*editor = &attached.conversation.Editor
+	}
 	var caption sessionpresentation.Caption
 	if view.Displayed.ID == view.Main.ID {
 		caption.Model, caption.Effort, caption.Tier = settings.Model, settings.Effort, tiers.Effective(settings.Model, settings.Tier, control.Thread)
+	}
+	if m.DisplayingSide() {
+		caption = sessionpresentation.Caption{Model: side.Model, Effort: side.Effort, Tier: tiers.Effective(side.Model, side.Tier, side.Thread)}
 	}
 	caption = sessionCaption(&attached.session, m, caption, tiers)
 	info := sessionpresentation.MainInfo{Workspace: attached.cwd, Title: cmp.Or(control.Names.Pending(control.Thread), title), BackendVersion: backend, Skills: attached.source.ActiveSkills()["Main"]}
@@ -39,9 +64,10 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 		}
 	}
 	view = m.Publish(sessionpresentation.MainInputs{
-		Info: info,
-		Menu: picker.menuView(attached.cwd, (*editor).Text, &control.Live), Control: &control.Live, Feedback: &attached.feedback, Conversation: attached.conversation, Restoring: restoring,
-		SideRunning: side != nil && (side.Busy || side.Starting), Processes: runningProcessCount(&attached.session), History: historyViews(attached, childKey),
+		BTWRunning: control.BTW != nil && (control.BTW.Busy || control.BTW.Starting),
+		Info:       info,
+		Menu:       picker.menuView(attached.cwd, (*editor).Text, &control.Live), Control: &control.Live, Feedback: &attached.feedback, Conversation: attached.conversation, Restoring: restoring,
+		SideThreads: control.Requests.SideThreads(side), SideRunning: side != nil && (side.Busy || side.Starting), Processes: runningProcessCount(&attached.session), History: historyViews(attached, childKey),
 	}, caption, now)
 	terminal.Prompts.Update(view)
 	terminal.Main.Update(view)
@@ -69,6 +95,9 @@ func attachPresentation(attached *attachedPresentation, terminal *terminalsessio
 // settlePresentation runs before another intent can observe this session.
 // Opening a prompt does not mark it painted or acknowledge a notice.
 func settlePresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool) {
+	if picker.Open && picker.Kind == "rewind-edits" && !picker.Loading && picker.rewind.problem == "" && picker.rewind.command == "" && !restoring && !control.Replacement.Pending() && control.Thread == picker.rewindThread && !sessionBusy(&control.Live, attached.conversation) {
+		forkChosenRewind(attached, terminal, control, picker, settings, clock)
+	}
 	autoOpenApprovals(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
 	autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
 	publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, presentationTime(clock))
@@ -81,13 +110,19 @@ func displaySession(attached *attachedPresentation, terminal *terminalsession.At
 		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
 	}()
 	m := attached.presentation
-	if intent.Thread != m.View().Main && attached.session.KnownCaller(intent.Thread.ID) != intent.Thread.Caller {
+	if intent.Thread != m.View().Main && intent.Thread != m.View().SideThread && attached.session.KnownCaller(intent.Thread.ID) != intent.Thread.Caller {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
 		return false
 	}
+	crossesSide := m.View().Displayed != intent.Thread && (m.DisplayingSide() || intent.Thread == m.View().SideThread)
 	if err := m.Display(intent); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false
+	}
+	if crossesSide {
+		picker.sideTask = nil
+		picker.Open, picker.Kind, picker.Choices = false, "", nil
+		picker.cancelScan()
 	}
 	return true
 }

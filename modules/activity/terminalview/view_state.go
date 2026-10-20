@@ -13,6 +13,7 @@ import (
 
 // Display carries application admission without host identity or a live owner.
 type Display struct {
+	SideCaller           string
 	Caller               string
 	Attachment, Revision uint64
 }

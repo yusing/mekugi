@@ -81,7 +81,8 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	if len(totals) > 0 {
 		right = terminalui.Dim + strings.Join(totals, " · ") + terminalui.Undim
 	}
-	lines := []string{terminalui.PaneRule("─", "─", "─", terminalui.PaneTitle(3, "Agents", detail, focused), right, width, terminalui.PaneBorder(focused))}
+	heading := terminalui.PaneTitle(3, "Agents", detail, focused)
+	lines := []string{terminalui.PaneRule("─", "─", "─", heading, right, width, terminalui.PaneBorder(focused))}
 
 	limit = max(1, limit)
 	legend := ""
@@ -148,11 +149,7 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 			color = "\x1b[1m" + v.Painter.Theme.Accent()
 		}
 		name := terminalui.DimAgentColor(row.Agent.Name) + tree[:split] + terminalui.Undim + color + v.hoverName(tree[split:], row.Agent.Name) + terminalui.Reset
-		gap := "  "
-		if focused {
-			gap += strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree)))
-		}
-		line := agentLine{row: row, prefix: " " + v.NativeGlyph(row.Agent) + " " + name + gap}
+		line := agentLine{row: row, prefix: " " + v.NativeGlyph(row.Agent) + " " + name + "  "}
 		laid = append(laid, line)
 		parts = append(parts, RosterMetricParts(v, row.Agent, now))
 		widest = max(widest, ansi.StringWidth(line.prefix))

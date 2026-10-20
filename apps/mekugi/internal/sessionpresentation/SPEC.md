@@ -54,7 +54,10 @@ new attachment's facts.
 
 Displaying a child changes no execution identity and cancels no host work. Main
 remains the input, question and approval destination. Child display makes the
-composer read-only; returning to Main restores its existing draft.
+composer read-only; returning to Main restores its existing draft. The single side
+conversation is a separately admitted editable destination with its own draft and
+captured settings. Its header target uses the same display intent and transcript
+as Main and subagents; closing returns display to Main without changing Main work.
 [Replay](../../../../modules/sessionreplay/SPEC.md) is read-only even while Main is
 displayed. Display and pagination intents name their view version and target
 identity, so stale actions cannot affect a replacement session. History targets and
@@ -261,8 +264,8 @@ Referencing selected source admits its version and editor target as one operatio
 including return from a displayed child to Main. Replay rejects it. Rejected
 admission preserves both the displayed thread and input.
 Admission precedes taking the draft or reading attachment sources, so a stale
-intent cannot clear, capture or submit newer input. Main owns the input destination;
-a displayed child, replay or a prompt-owned editor cannot admit ordinary input.
+intent cannot clear, capture or submit newer input. Main and the selected side own separate input destinations;
+a displayed subagent, replay or a prompt-owned editor cannot admit ordinary input.
 Restoration and archival preserve the editable draft until submission is admitted.
 Pending session replacement accepts locally stacked input without sending it to the
 old thread; successful replacement carries that input into the new attachment.
@@ -304,6 +307,10 @@ and generation; candidates remain hidden until host confirmation.
 Main's composer shows its turn state and user-only feedback, or a read-only label
 for a displayed child. Its caption uses the displayed thread's model, effort,
 effective tier, context and output rate; missing child settings never borrow Main's.
+Side and One-off use that same caption projection. Their confirmed fork settings,
+live settings updates, effective per-thread tier and usage stay scoped to their
+own identity; switching back to Main restores Main's metrics. Closing a side
+conversation retires its displayed metrics.
 Known context uses the latest host last-turn total and context window independently
 of cumulative usage. Before usage arrives it shows 0% used; an absent window shows
 only the known count. Host reports, including compaction reductions, replace the

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -103,14 +102,16 @@ func (f *Frame) SelectionMouse(in FrameInput, previous *SourceSelection, mouse M
 	rect.W = min(rect.W, pane.X+pane.W-rect.X)
 	rect.H = min(rect.H, pane.Y+pane.H-rect.Y)
 	questions, snippets := view.FeedQuestions, view.FeedSnippets
-	if in.Main.Side.Open() {
-		btw := in.Main.Side.Rect
-		btw.X += pane.X
-		btw.Y += pane.Y
+	if in.Main.BTW.Open() {
+		btw := in.Main.BTW.Rect
+		btw.X += pane.X + 2
+		btw.Y += pane.Y + 1
+		btw.W, btw.H = max(0, btw.W-2), max(0, btw.H-2)
 		if btw.Contains(x, y) {
 			rect, mention, questions, snippets = btw, "side answer", nil, nil
 		}
 	}
+
 	if !rect.Contains(x, y) {
 		composer := in.Main.ComposerRect
 		composer.X += pane.X
@@ -190,15 +191,10 @@ func (s *SourceSelection) captureDocument(main *Main, composer composerDocument)
 				}
 			}
 		}
+
 	case "side answer":
-		b := &main.Side
-		var lines []string
-		fixed := s.Rect.H - min(b.Rows, len(b.CopyAnswer))
-		for y := s.Rect.Y; y < s.Rect.Y+fixed; y++ {
-			lines = append(lines, ansi.Cut(s.Rows[y], s.Rect.X, s.Rect.X+s.Rect.W))
-		}
-		lines = append(lines, b.CopyAnswer...)
-		s.Document(lines, max(0, len(b.CopyAnswer)-b.Rows-b.Scroll), fixed)
+		b := &main.BTW
+		s.Document(b.CopyAnswer, max(0, len(b.CopyAnswer)-b.Rows-b.Scroll), 0)
 	}
 	return nil
 }

@@ -10,6 +10,9 @@ func (m *Model) DisplayingChild() bool {
 // Roster keys and hit targets resolve to stable thread identities before
 // admission. The highlighted row remains renderer-local.
 func (m *Model) ActivityTarget(caller string, source *ActivitySource) Thread {
+	if caller != "" && caller == m.view.SideThread.Caller {
+		return m.view.SideThread
+	}
 	target := m.view.Main
 	if caller != "/root" && caller != "" {
 		target = Thread{ID: caller, Caller: caller}

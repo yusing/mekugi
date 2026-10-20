@@ -16,7 +16,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -113,7 +112,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
-	setSideTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: "**side answer**"}}}})
+	setBTWTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: "**side answer**"}}}})
 	var wire bytes.Buffer
 	if err := u.testPaint(&wire, 80, 30); err != nil {
 		t.Fatal(err)
@@ -121,9 +120,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if strings.Contains(wire.String(), "mekugi-copy") {
 		t.Fatal("private source transport escaped")
 	}
-	rect := u.shell.Main.Side.Rect
-	rect.X += terminalTest(u).Layout.Main.X
-	rect.Y += terminalTest(u).Layout.Main.Y
+	rect := terminalTest(u).Layout.Main
 	y := -1
 	x := -1
 	for row := rect.Y; row < rect.Y+rect.H; row++ {
@@ -145,7 +142,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if err := terminalTest(u).send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
-	if u.side == nil || terminalTest(u).Selection != nil {
+	if u.BTW == nil || terminalTest(u).Selection != nil {
 		t.Fatal("Escape closed dock before selection")
 	}
 	selectionTestDrag(t, terminalTest(u), x, y, x+10, y)
@@ -155,7 +152,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if !strings.Contains(terminalTest(u).Frame.Clipboard, base64.StdEncoding.EncodeToString([]byte("**side answer**"))) {
 		t.Fatal("btw clipboard missing")
 	}
-	if u.side == nil || terminalTest(u).Selection != nil {
+	if u.BTW == nil || terminalTest(u).Selection != nil {
 		t.Fatal("copy closed the dock or retained selection")
 	}
 	u.Text, u.CursorBack = "before after", len("after")
@@ -163,27 +160,8 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if err := terminalTest(u).key('r'); err != nil {
 		t.Fatal(err)
 	}
-	if u.side == nil || terminalTest(u).Selection != nil || terminalTest(u).Focus != 0 || u.Text != "before [Selected side answer] after" || len(u.Selections) != 1 || u.Selections[0].Text != "**side answer**" {
-		t.Fatalf("btw reference: draft=%q selections=%+v dock=%v", u.Text, u.Selections, u.side != nil)
-	}
-}
-
-func TestAppServerBTWShimmerElapsed(t *testing.T) {
-	u, _ := newAppServerTestUI()
-	start := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
-	now := start.Add(75 * time.Second)
-	u.clock = func() time.Time { return now }
-	setSideTest(u, &sessioncontrol.Side{Busy: true, SideAnswer: &conversationmodel.SideAnswer{Status: "Answering", Started: start}})
-	a := u.btwRows(80, 8)[0]
-	now = now.Add(100 * time.Millisecond)
-	b := u.btwRows(80, 8)[0]
-	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Answering · 1m15s") || !publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Status.Animating {
-		t.Fatalf("status=%q / %q", a, b)
-	}
-	u.side.Busy = false
-	u.side.Status = "completed"
-	if strings.Contains(ansi.Strip(u.btwRows(80, 8)[0]), "Answering") {
-		t.Fatal("completed answer still shimmers")
+	if u.BTW == nil || terminalTest(u).Selection != nil || terminalTest(u).Focus != 0 || u.Text != "before [Selected side answer] after" || len(u.Selections) != 1 || u.Selections[0].Text != "**side answer**" {
+		t.Fatalf("btw reference: draft=%q selections=%+v dock=%v", u.Text, u.Selections, u.BTW != nil)
 	}
 }
 
@@ -192,8 +170,8 @@ func TestUISnapshotBTWCopyDock(t *testing.T) {
 	start := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return start.Add(75 * time.Second) }
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-	setSideTest(u, &sessioncontrol.Side{Busy: true, SideAnswer: &conversationmodel.SideAnswer{Status: "Answering", Started: start, Question: "Which option?", Answer: []conversationmodel.Answer{{Text: "Name | Value\n--- | ---\n**alpha** | `x`"}}}})
-	uisnapshot.Assert(t, "testdata/snapshots/btw-copy-dock.txt", strings.Join(u.btwRows(60, 12), "\n")+"\n")
+	setBTWTest(u, &sessioncontrol.Side{Busy: true, SideAnswer: &conversationmodel.SideAnswer{Status: "Answering", Started: start, Question: "Which option?", Answer: []conversationmodel.Answer{{Text: "Name | Value\n--- | ---\n**alpha** | `x`"}}}})
+	uisnapshot.Assert(t, "testdata/snapshots/btw-copy-dock.txt", strings.Join(u.sideFrame(80, 30), "\n")+"\n")
 }
 
 func TestTerminalSourceScrolledMainReply(t *testing.T) {

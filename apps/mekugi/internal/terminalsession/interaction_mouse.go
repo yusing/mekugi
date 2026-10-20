@@ -39,6 +39,15 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 		return
 	}
 	if state.Selection == nil && !shell.Dragging() {
+		if main != nil && shell.SideTab.Contains(x, y) {
+			if button == 0 && !release && main.session.SideThread.ID != "" {
+				state.Prefix = false
+				if yield(InputEffect{Display: &sessionpresentation.DisplayIntent{Version: main.session.Version, Thread: main.session.SideThread}}) {
+					shell.Focus = 0
+				}
+			}
+			return
+		}
 		for pane, rect := range shell.Tabs {
 			if rect.Contains(x, y) {
 				if button == 0 && !release {
@@ -112,19 +121,7 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 			return
 		}
 	}
-	if main != nil && main.Side.Open() && !release && button&64 != 0 {
-		r := main.Side.Rect
-		r.X += shell.Layout.Main.X
-		r.Y += shell.Layout.Main.Y
-		if r.Contains(x, y) {
-			delta := 3
-			if button&1 != 0 {
-				delta = -delta
-			}
-			main.Side.Scroll = max(0, main.Side.Scroll+delta)
-			return
-		}
-	}
+
 	navigatorWidth := 0
 	navigator, hasNavigator := shell.Auxiliary.(terminalui.PaneNavigator)
 	if hasNavigator {
