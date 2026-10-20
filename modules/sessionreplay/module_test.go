@@ -163,7 +163,7 @@ func TestDescriptorRejectsMissingAndConflictingBindings(t *testing.T) {
 	if _, err := service.Read(t.Context(), playback.ReadOptions{}); err == nil {
 		t.Fatal("unbound source accepted")
 	}
-	if err := sessionreplay.Module.Bindings.Register(script, service); err == nil {
+	if err := sessionreplay.Module.Bindings.Register(script, service, nil); err == nil {
 		t.Fatal("incomplete scripted binding accepted")
 	}
 }

@@ -37,7 +37,8 @@ prerequisites. There is no JavaScript or WASM plugin runtime.
 ## CTR-PLUGIN-001: Catalog and composition boundary
 
 Application composition selects the compiled catalog. The Codex binding collects
-executable registrations; this owner validates names and implementation availability,
+executable registrations from descriptor command contributions when the module declares
+its executable-frontend connection; this owner validates names and implementation availability,
 authenticates and publishes invocation snapshots, pins workers, and exposes PATH.
 Contributions use portable executable leaf names, reject duplicates, and pair a
 command description with its compiled implementation and read-observation policy.

@@ -31,7 +31,7 @@ func testInputProjections() []binding.InputProjection {
 	if err != nil {
 		panic(err)
 	}
-	if err := outputdeduplication.Module.Bindings.Register(registry, service); err != nil {
+	if err := outputdeduplication.Module.Bindings.Register(registry, service, nil); err != nil {
 		panic(err)
 	}
 	return registry.InputProjections()

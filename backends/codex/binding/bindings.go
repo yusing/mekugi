@@ -13,7 +13,7 @@ import (
 type Bindings[S any] struct {
 	Requires        []capability.Requirement
 	Observation     func(S) Observation
-	Frontends       []command.Spec
+	Frontends       bool // Exposes the descriptor's command contributions.
 	Rollout         func(S, RolloutSource) error
 	InputProjection func(S) InputProjection
 	Guidance        func(S) Guidance
@@ -21,10 +21,12 @@ type Bindings[S any] struct {
 	ShellApproval   func(S) ShellApproval
 }
 
-func (b Bindings[S]) Register(r Registrar, service S) error {
-	for _, spec := range b.Frontends {
-		if err := r.Frontend(spec); err != nil {
-			return err
+func (b Bindings[S]) Register(r Registrar, service S, commands []command.Definition[S]) error {
+	if b.Frontends {
+		for _, definition := range commands {
+			if err := r.Frontend(definition.Spec); err != nil {
+				return err
+			}
 		}
 	}
 	if b.Rollout != nil {
@@ -66,7 +68,7 @@ func (b Bindings[S]) Reference() module.BindingReference {
 		mechanism capability.Mechanism
 		declared  bool
 	}{
-		{capability.ExecutableFrontend, len(b.Frontends) != 0},
+		{capability.ExecutableFrontend, b.Frontends},
 		{capability.Rollout, b.Rollout != nil},
 		{capability.InputProjection, b.InputProjection != nil},
 		{capability.GuidanceProjection, b.Guidance != nil},

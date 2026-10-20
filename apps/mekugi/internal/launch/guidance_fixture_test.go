@@ -36,7 +36,7 @@ var testGuidance = sync.OnceValue(func() *binding.Guidance {
 		panic(err)
 	}
 	registry := new(binding.Registry)
-	if err := agentguidance.Module.Bindings.Register(registry, service); err != nil {
+	if err := agentguidance.Module.Bindings.Register(registry, service, nil); err != nil {
 		panic(err)
 	}
 	return registry.RegisteredGuidance()

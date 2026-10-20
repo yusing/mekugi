@@ -26,7 +26,9 @@ unavailable mechanisms remain explicit gaps.
 
 Codex bindings declare their supported connection families. The backend registers
 those declarations at activation; capability requirements remain separate from
-which connections a module declares.
+which connections a module declares. The executable-frontend connection exposes
+the descriptor's complete command contributions, without a second command list in
+the binding. A missing connection or a connection without commands fails activation.
 
 Typed dependency closures resolve earlier handles. Constructors assemble state
 without acquiring resources. Startup acquires invocation resources after

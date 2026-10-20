@@ -24,7 +24,7 @@ func replayTestService(t *testing.T, diagnostics *transportcapture.Service) *pla
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sessionreplay.Module.Bindings.Register(new(binding.Registry), service); err != nil {
+	if err := sessionreplay.Module.Bindings.Register(new(binding.Registry), service, nil); err != nil {
 		t.Fatal(err)
 	}
 	return service

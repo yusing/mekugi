@@ -81,6 +81,7 @@ type entry struct {
 	references      []reference.Resolver
 	guidance        []guidance.Section
 	capabilities    []capability.Requirement
+	frontends       bool
 	validFactory    bool
 	construct       func(module.Slots, binding.Binder) error
 	start, stop     func(context.Context) error
@@ -111,6 +112,7 @@ func (c *Composition) Add[D, S any, B interface {
 		references:   slices.Clone(descriptor.Contributes.References),
 		guidance:     slices.Clone(descriptor.Contributes.Guidance),
 		capabilities: slices.Clone(backend.Requires),
+		frontends:    backend.Frontends,
 		validFactory: descriptor.New != nil && deps != nil,
 	}
 	if roster, ok := any(descriptor.Views).(terminalui.RosterDefinition[*activityview.View]); ok {
@@ -135,7 +137,8 @@ func (c *Composition) Add[D, S any, B interface {
 		}
 		node.activityDetails = append(node.activityDetails, provider)
 	}
-	for _, definition := range descriptor.Contributes.Commands {
+	commands := slices.Clone(descriptor.Contributes.Commands)
+	for _, definition := range commands {
 		contribution := command.Contribution{Spec: definition.Spec, ObserveRead: definition.ObserveRead}
 		if definition.Run != nil {
 			contribution.Run = func(ctx context.Context, request command.Request) (command.Output, error) {
@@ -206,14 +209,7 @@ func (c *Composition) Add[D, S any, B interface {
 			return err
 		}
 		handle.value, handle.ready = service, true
-		registrar := &moduleRegistrar{Binder: binder, allowed: node.commands, registered: make(map[string]bool)}
-		if err := backend.Register(registrar, service); err != nil {
-			return err
-		}
-		if len(registrar.registered) != len(node.commands) {
-			return errors.New("executable contributions and Codex registrations differ")
-		}
-		return nil
+		return backend.Register(binder, service, commands)
 	}
 	if descriptor.Start != nil {
 		node.start = func(ctx context.Context) error { return descriptor.Start(ctx, handle.Value()) }
@@ -223,27 +219,6 @@ func (c *Composition) Add[D, S any, B interface {
 	}
 	c.entries = append(c.entries, node)
 	return handle
-}
-
-type moduleRegistrar struct {
-	binding.Binder
-	allowed    []command.Contribution
-	registered map[string]bool
-}
-
-func (r *moduleRegistrar) Frontend(spec command.Spec) error {
-	index := slices.IndexFunc(r.allowed, func(declared command.Contribution) bool { return declared.Spec == spec })
-	if index < 0 {
-		return fmt.Errorf("undeclared frontend %q", spec.Name)
-	}
-	if r.registered[spec.Name] {
-		return fmt.Errorf("duplicate frontend %q", spec.Name)
-	}
-	if err := r.Binder.Frontend(spec); err != nil {
-		return err
-	}
-	r.registered[spec.Name] = true
-	return nil
 }
 
 type Gap struct {
@@ -349,6 +324,9 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 		}
 		if (node.start == nil) != (node.stop == nil) || len(node.resources) != 0 && node.start == nil || node.lifetime != module.Invocation && (node.start != nil || len(node.resources) != 0) {
 			failures = append(failures, fmt.Errorf("%s: lifecycle does not match declared resources", node.id))
+		}
+		if node.frontends != (len(node.commands) != 0) {
+			failures = append(failures, fmt.Errorf("%s: executable contributions and Codex frontend connection differ", node.id))
 		}
 		for _, contribution := range node.commands {
 			if contribution.Run == nil {

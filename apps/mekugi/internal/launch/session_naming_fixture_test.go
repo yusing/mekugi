@@ -22,7 +22,7 @@ var testNaming = sync.OnceValue(func() *binding.SessionNaming {
 		panic(err)
 	}
 	registry := new(binding.Registry)
-	if err := sessionnaming.Module.Bindings.Register(registry, service); err != nil {
+	if err := sessionnaming.Module.Bindings.Register(registry, service, nil); err != nil {
 		panic(err)
 	}
 	return registry.RegisteredNaming()

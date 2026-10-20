@@ -22,9 +22,7 @@ type testDescriptor = module.Descriptor[struct{}, *testService, binding.Bindings
 
 func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
 	definitions := make([]command.Definition[*testService], len(specs))
-	frontends := make([]command.Spec, len(specs))
 	for i, spec := range specs {
-		frontends[i] = spec.Spec
 		definitions[i] = command.Definition[*testService]{Spec: spec.Spec, ObserveRead: spec.ObserveRead}
 		if spec.Run != nil {
 			definitions[i].Run = func(_ *testService, ctx context.Context, request command.Request) (command.Output, error) {
@@ -38,7 +36,7 @@ func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
 		New: func(_ struct{}, slots module.Slots) (*testService, error) {
 			return &testService{string(id), slots.Guidance}, nil
 		},
-		Bindings: binding.Bindings[*testService]{Frontends: frontends},
+		Bindings: binding.Bindings[*testService]{Frontends: len(specs) != 0},
 	}
 }
 func emptyDeps() struct{} { return struct{}{} }
@@ -81,6 +79,26 @@ func TestCompositionTypedDependenciesAndCollectedSlots(t *testing.T) {
 	}
 }
 
+func TestCompositionFreezesFrontendDeclarations(t *testing.T) {
+	var c Composition
+	d := descriptor("reader", frontend("read"))
+	c.Add(d, emptyDeps)
+	d.Contributes.Commands[0].Name = "undeclared"
+	registry := new(binding.Registry)
+	runtime, err := c.Activate(t.Context(), registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := runtime.Close(t.Context()); err != nil {
+			t.Error(err)
+		}
+	})
+	if len(runtime.Commands) != 1 || runtime.Commands[0].Name != "read" || !slices.Equal(registry.Commands(), []command.Spec{runtime.Commands[0].Spec}) {
+		t.Fatalf("runtime=%v registered=%v", runtime.Commands, registry.Commands())
+	}
+}
+
 func TestCompositionValidatesBeforeConstruction(t *testing.T) {
 	unavailable := capability.Mechanism("not-implemented")
 	for _, tt := range []struct {
@@ -93,6 +111,16 @@ func TestCompositionValidatesBeforeConstruction(t *testing.T) {
 		{"duplicate module", []testDescriptor{descriptor("same"), descriptor("same")}, "duplicate module same"},
 		{"duplicate frontend", []testDescriptor{descriptor("first", frontend("same")), descriptor("second", frontend("same"))}, "duplicate frontend"},
 		{"invalid frontend", []testDescriptor{descriptor("invalid", command.Contribution{Spec: command.Spec{Name: "bad"}})}, "inconsistent executable contribution"},
+		{"missing frontend connection", []testDescriptor{func() testDescriptor {
+			d := descriptor("missing-connection", frontend("read"))
+			d.Bindings.Frontends = false
+			return d
+		}()}, "executable contributions and Codex frontend connection differ"},
+		{"missing frontend contribution", []testDescriptor{func() testDescriptor {
+			d := descriptor("missing-command")
+			d.Bindings.Frontends = true
+			return d
+		}()}, "executable contributions and Codex frontend connection differ"},
 		{"capability", []testDescriptor{func() testDescriptor {
 			d := descriptor("required")
 			d.Bindings.Requires = []capability.Requirement{{Mechanism: unavailable, Required: true}}

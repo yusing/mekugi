@@ -15,14 +15,14 @@ var testGuards = sync.OnceValue(func() []binding.ShellApproval {
 	if err != nil {
 		panic(err)
 	}
-	if err := remotewriteapproval.Module.Bindings.Register(registry, remote); err != nil {
+	if err := remotewriteapproval.Module.Bindings.Register(registry, remote, nil); err != nil {
 		panic(err)
 	}
 	sudo, err := sudoapproval.Module.New(sudoapproval.Deps{}, module.Slots{})
 	if err != nil {
 		panic(err)
 	}
-	if err := sudoapproval.Module.Bindings.Register(registry, sudo); err != nil {
+	if err := sudoapproval.Module.Bindings.Register(registry, sudo, nil); err != nil {
 		panic(err)
 	}
 	return registry.RegisteredGuards()

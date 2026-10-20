@@ -16,7 +16,7 @@ import (
 func TestBindingsReference(t *testing.T) {
 	bindings := Bindings[struct{}]{
 		Requires:        []capability.Requirement{{Mechanism: capability.Rollout, Required: true}},
-		Frontends:       []command.Spec{{Name: "reader"}, {Name: "writer"}},
+		Frontends:       true,
 		Rollout:         func(struct{}, RolloutSource) error { panic("Rollout executed") },
 		InputProjection: func(struct{}) InputProjection { panic("InputProjection executed") },
 		Guidance:        func(struct{}) Guidance { panic("Guidance executed") },
@@ -89,8 +89,9 @@ func TestBindingsRegister(t *testing.T) {
 				}
 				factories = append(factories, mechanism)
 			}
+			commands := []command.Definition[*int]{{Spec: command.Spec{Name: "reader", Description: "Read"}}, {Spec: command.Spec{Name: "writer", Description: "Write"}}}
 			bindings := Bindings[*int]{
-				Frontends: []command.Spec{{Name: "reader", Description: "Read"}, {Name: "writer", Description: "Write"}},
+				Frontends: true,
 				Rollout: func(got *int, source RolloutSource) error {
 					checkService(got, capability.Rollout)
 					identity, err := source.Identity("fixture")
@@ -121,7 +122,7 @@ func TestBindingsRegister(t *testing.T) {
 				},
 			}
 			registrar := &referenceRegistrar{failAt: failAt, failure: errors.New("registration failed")}
-			err := bindings.Register(registrar, service)
+			err := bindings.Register(registrar, service, commands)
 			if failAt != 0 {
 				if !errors.Is(err, registrar.failure) {
 					t.Fatalf("Register() = %v, want %v", err, registrar.failure)
@@ -147,7 +148,7 @@ func TestBindingsRegister(t *testing.T) {
 			if got := slices.Compact(slices.Clone(registrar.calls)); !slices.Equal(got, bindings.Reference().Mechanisms) {
 				t.Fatalf("registered mechanisms = %v, reference = %v", got, bindings.Reference().Mechanisms)
 			}
-			if !slices.Equal(registrar.frontends, bindings.Frontends) || registrar.projection.Name != "projection" || registrar.naming.NewThread == nil || registrar.approval.Kind != Sudo {
+			if !slices.EqualFunc(registrar.frontends, commands, func(a command.Spec, b command.Definition[*int]) bool { return a == b.Spec }) || registrar.projection.Name != "projection" || registrar.naming.NewThread == nil || registrar.approval.Kind != Sudo {
 				t.Fatalf("registered values differ: %+v", registrar)
 			}
 			if registrar.guidance.Frontends == nil {
@@ -162,7 +163,7 @@ func TestBindingsRegister(t *testing.T) {
 
 func TestEmptyBindingsRegister(t *testing.T) {
 	registrar := new(referenceRegistrar)
-	if err := (Bindings[struct{}]{}).Register(registrar, struct{}{}); err != nil || len(registrar.calls) != 0 {
+	if err := (Bindings[struct{}]{}).Register(registrar, struct{}{}, nil); err != nil || len(registrar.calls) != 0 {
 		t.Fatalf("empty Register() = %v, calls = %v", err, registrar.calls)
 	}
 }
@@ -174,7 +175,7 @@ func TestBindingsRegisterRolloutError(t *testing.T) {
 		InputProjection: func(struct{}) InputProjection { panic("registered after rollout failure") },
 	}
 	registrar := new(referenceRegistrar)
-	if err := bindings.Register(registrar, struct{}{}); !errors.Is(err, failure) {
+	if err := bindings.Register(registrar, struct{}{}, nil); !errors.Is(err, failure) {
 		t.Fatalf("Register() = %v, want %v", err, failure)
 	}
 	if !slices.Equal(registrar.calls, []capability.Mechanism{capability.Rollout}) {

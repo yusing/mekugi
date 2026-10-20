@@ -50,7 +50,7 @@ func New[D, S, V any, B interface {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := backend.Register(script, service); err != nil {
+	if err := backend.Register(script, service, descriptor.Contributes.Commands); err != nil {
 		t.Fatal(err)
 	}
 	if descriptor.Stop != nil {

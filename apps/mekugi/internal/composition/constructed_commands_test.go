@@ -42,7 +42,7 @@ func TestConstructedCommandBindsServiceAndDependencies(t *testing.T) {
 		},
 		Start:    func(_ context.Context, s *service) error { s.started = true; return nil },
 		Stop:     func(_ context.Context, s *service) error { s.started = false; return nil },
-		Bindings: binding.Bindings[*service]{Frontends: []command.Spec{spec}},
+		Bindings: binding.Bindings[*service]{Frontends: true},
 	}, base.Value)
 	runtime, err := c.Activate(t.Context(), new(binding.Registry))
 	if err != nil {
