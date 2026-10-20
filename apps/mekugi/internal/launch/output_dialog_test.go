@@ -20,6 +20,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
@@ -47,13 +48,87 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 		if !u.openEntry(view.bind(u), 1) || len(u.Dialog.Pages) != 1 {
 			t.Fatal("missing combined output page")
 		}
+		if got := u.Dialog.Pages[0].Code; got != sessionpresentation.CommandSource(command, "").Display {
+			t.Fatalf("combined page lost original source: %q", got)
+		}
 		rows := make([]string, 24)
 		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 		u.Dialog.Paint(rows, 100, len(rows))
 		if u.Dialog.Document.Text != "build failed" {
 			t.Fatalf("combined output lost host text: %q", u.Dialog.Document.Text)
 		}
+		var source []string
+		for _, line := range u.Dialog.Document.Lines {
+			if line.Gutter == "│" {
+				source = append(source, ansi.Strip(line.Text))
+			}
+		}
+		if got, want := strings.Join(source, "\n"), textsanitize.Safe(u.Dialog.Pages[0].Code, false); got != want {
+			t.Fatalf("rendered source = %q, want %q", got, want)
+		}
 		assertNativeUISnapshot(t, "combined-edit-output", rows)
+	}
+}
+
+func TestOutputDialogCombinedEditSourceCopy(t *testing.T) {
+	command := "cat > notes.md <<'EOF'\n# Notes\nEOF\nsed -n '1,4p' notes.md"
+	for _, partial := range []bool{false, true} {
+		t.Run(fmt.Sprintf("partial=%v", partial), func(t *testing.T) {
+			output := new(activitymodel.Retention).New()
+			output.Finish(new("read failed"), new(2))
+			native := &sessionpresentation.NativeItem{Command: shellinstrumentation.ShScript("/private/exec-track.sh", command), Output: output, Exit: new(2)}
+			if partial {
+				native.Segments = []sessionpresentation.ActivitySegment{
+					{Source: "cat > notes.md <<'EOF'\n# Notes\nEOF", Text: "Edit `notes.md` · cat (requested)"},
+					{Source: "sed -n '1,4p' notes.md", Text: "Read `notes.md`"},
+				}
+			}
+			view := newActivityAdapter()
+			view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Kind: "tool", Text: toolActivityShell(command), Native: native}}})
+			u := &terminalUI{Attachment: &terminalsession.Attachment{Height: 30}}
+			if !u.openEntry(view.bind(u), 1) || len(u.Dialog.Pages) != 1 {
+				t.Fatal("missing combined page")
+			}
+			rows := outputDialogScreen(u)
+			x, first := dialogFramePoint(t, rows, "cat > notes.md")
+			_, last := dialogFramePoint(t, rows, "sed -n '1,4p' notes.md")
+			outputSelectionDrag(u, x, first, x+len("sed -n '1,4p' notes.md"), last)
+			if u.Dialog.Selection == nil || u.Dialog.Selection.Text() != command {
+				t.Fatalf("source selection = %+v", u.Dialog.Selection)
+			}
+			if u.Dialog.Document.Text != "read failed" || !strings.Contains(ansi.Strip(u.Dialog.Document.Detail), "exit 2") {
+				t.Fatalf("source replaced aggregate output/outcome: %+v", u.Dialog.Document)
+			}
+		})
+	}
+}
+
+func TestOutputDialogTrackedEditSource(t *testing.T) {
+	for _, captured := range []bool{false, true} {
+		t.Run(fmt.Sprintf("captured=%v", captured), func(t *testing.T) {
+			retention := new(activitymodel.Retention)
+			native := &sessionpresentation.NativeItem{}
+			for i, source := range []string{"cat > first.md <<'EOF'\none\nEOF", "cat > second.md <<'EOF'\ntwo\nEOF", "cat > third.md <<'EOF'\nthree\nEOF"} {
+				output := retention.New()
+				output.Finish(new(""), new(i))
+				native.Segments = append(native.Segments, sessionpresentation.ActivitySegment{Source: source, Text: execSegmentText(source), Output: output, Exit: i, Skipped: i == 2})
+			}
+			entry := sessionpresentation.ActivityEntry{Seq: 1, Kind: "tool", Native: native}
+			command := sessionpresentation.CommandPresentation(entry)
+			command.Captured = captured
+			pages := activitypresentation.DetailPages(command.DetailValues())
+			if len(pages) != 3 {
+				t.Fatalf("tracked edit pages = %+v", pages)
+			}
+			for i, page := range pages {
+				if page.ID != fmt.Sprintf("1/o%d", i+2) || page.Code != native.Segments[i].Source || page.ExitCode != i || page.Skipped != (i == 2) {
+					t.Fatalf("segment %d lost source, identity or outcome: %+v", i, page)
+				}
+				if i == 0 && captured && page.Verb != "Edited" {
+					t.Fatalf("silent captured edit lost its source page: %+v", page)
+				}
+			}
+		})
 	}
 }
 

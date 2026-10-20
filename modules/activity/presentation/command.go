@@ -155,7 +155,7 @@ func (c Command) SegmentValues(detail bool) []Value {
 				}
 				return edit || segment.Writer && value.Verb == "Run"
 			})
-			if len(operations) == 0 && (len(segment.Tail) > 0 || segment.TailOmitted > 0 || hasOutput(segment.Output, segment.OutputContent)) {
+			if len(operations) == 0 && (detail && (len(paths) > 0 || segment.Writer) || len(segment.Tail) > 0 || segment.TailOmitted > 0 || hasOutput(segment.Output, segment.OutputContent)) {
 				operations = []Value{edited(paths, segment.Source)}
 			}
 		}
@@ -177,6 +177,9 @@ func (c Command) SegmentValues(detail bool) []Value {
 			continue
 		}
 		last := &operations[len(operations)-1]
+		if detail && last.EditSource != "" {
+			last.Code, last.Lang, last.Fenced = textsanitize.Safe(segment.Source, false), "bash", true
+		}
 		last.ExitCode, last.Segment = segment.ExitCode, true
 		last.Operation = segmentIndex + 1
 		last.Exited = !segment.Running && !segment.Skipped
@@ -244,7 +247,7 @@ func (c Command) DetailValues() []Value {
 					classified[i].Label += " · requested"
 				}
 			}
-			values[0].Code, values[0].RequestedOperations = "", classified
+			values[0].RequestedOperations = classified
 		}
 	} else {
 		for _, grouped := range GroupOperations(c.SegmentValues(true)) {

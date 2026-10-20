@@ -390,6 +390,9 @@ neither interrupts work nor submits model input.
 Detail pages preserve original operation identity through feed grouping. New tracked
 segments appear while open. Missing boundaries label combined output explicitly,
 preserving requested source, actual edits and invocation outcome independently.
+Classified edit summaries supplement the complete, uninstrumented shell source
+in combined pages. Tracked edit pages retain their original segment source,
+including silent captured edits. Grouping does not replace source with edit labels.
 The header shows target, result position, ranges, retained line count and known
 exit. Source has a solid numbered gutter; output a dashed one. Single-range reads
 start at the requested line. File reads use file syntax, numbered search matches
