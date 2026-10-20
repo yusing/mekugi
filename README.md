@@ -28,7 +28,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
   and the UI stay intact. Transcript suffixes mark repeated output; `/session`
   shows occurrences and estimated saved tokens. Disable with
   `--deduplicate-output=false`;
-  see the [projection contract](modules/outputdeduplication/SPEC.md).
+  see the [projection contract](doc/spec/execution.md#duplicate-output-projection).
 - **Session continuity.** Retained change evidence and output remain available across
   resume and forks, subject to [storage retention](#replay-storage).
 
@@ -94,18 +94,16 @@ run on stock Alpine Linux; use a source build for other environments.
 
 ### Build from source
 
-Source installs require **Go 1.27+**, CGO enabled, a C toolchain, and **Make**.
-Build the coordinated workspace from a checkout:
+Source installs require **Go 1.27+**, CGO enabled, and a C toolchain:
 
 ```sh
-git clone https://github.com/yusing/mekugi.git
-cd mekugi
-make install
+go install github.com/yusing/mekugi/cmd/mekugi@latest github.com/yusing/mekugi/cmd/mekugi-exec@latest
 ```
 
 Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`.
 
-`make install` installs both `mekugi` and `mekugi-exec`. `make uninstall`
+From a checkout with **Make**, run `make install` to install `mekugi` and
+`mekugi-exec`. `make uninstall`
 removes only those binaries. Running sessions keep their worker executable, so
 start a new session to pick up an update.
 
@@ -125,8 +123,8 @@ flags go **before** `codex`, `grok`, or standalone Codex arguments.
 
 Codex's approval/sandbox policy applies. The UI's [remote-write guard](#approvals) needs
 unsandboxed execution: configure `sandbox_mode="danger-full-access"`, or use `--yolo` to
-disable Codex approvals/sandboxing while keeping the guard. To disable Mekugi's
-remote-write and sudo guarding while retaining Codex policy, use `--shell-guard=false`.
+disable Codex approvals/sandboxing while keeping the guard. To disable only the guard
+and keep Codex's configured policy, use `--vcs-guard=false`.
 
 ```sh
 mekugi codex
@@ -138,8 +136,7 @@ mekugi exec "Explain this repository"
 Interactive launches open the [UI](#ui); noninteractive commands retain Codex's
 arguments/output/exit status. Ctrl-C cancels startup; exit prints resume/replay commands.
 Mekugi mode needs JavaScript `exec`. There is no daemon, fixed/custom endpoint, or `--oss`.
-See [launch limits](apps/mekugi/internal/launch/SPEC.md) and
-[request integration](docs/contracts/responses-transport.md); invocation overrides leave config unchanged.
+See [launch and transport limits](doc/spec/router.md); invocation overrides leave config unchanged.
 
 ### Grok models
 
@@ -147,7 +144,7 @@ Use `grok login --oauth` or `XAI_API_KEY` (takes precedence); Codex credentials 
 The default follows `[models].default` in `~/.grok/config.toml`, then the latest standard model (currently `grok-4.7`);
 `-m`/`-c model=...` overrides it. Standalone IDs need `grok:`; `mekugi grok` uses plain IDs.
 Subagents use fresh context (`fork_turns="none"`). Build Fast needs OAuth;
-encrypted OpenAI history cannot switch to Grok. See [Grok requirements](providers/grok/SPEC.md).
+encrypted OpenAI history cannot switch to Grok. See [Grok requirements](doc/spec/grok.md).
 
 ### OpenCode Go and Zen
 
@@ -159,7 +156,7 @@ OPENCODE_ZEN_API_KEY='your-key' mekugi -m opencode-zen:kimi-k3
 Keys can also live in [settings](#mekugi-settings). `OPENCODE_API_KEY` overrides file
 keys; per-service variables override it, and an empty value disables that service.
 Models/prices refresh hourly; the picker updates next launch. See
-[OpenCode](providers/opencode/SPEC.md).
+[OpenCode](doc/spec/opencode.md).
 
 ### Resume
 
@@ -170,7 +167,7 @@ model/effort/tier, layout, roster, child history, and retained Diff return; expl
 `-m`/`-c` overrides named settings. Drafts, selections, filters, and scroll positions do
 not return. Third-party `exec resume`/`exec
 fork` uses the mode's default model unless given `-m`. See [resume
-details](apps/mekugi/internal/sessionpresentation/SPEC.md#resume-and-switching).
+details](doc/spec/native_ui.md).
 
 ### Approvals
 
@@ -181,25 +178,22 @@ turn. Your draft/attachments return afterward.
 
 The guard asks before supported Git/GitHub/Mercurial/SVN/Jujutsu remote writes in
 interactive Mekugi mode, even with `--yolo`; headless/noninteractive runs have no guard.
-It needs `mekugi-exec` beside `mekugi`, synchronous native command hooks, and unsandboxed execution.
+It needs `mekugi-exec` beside `mekugi`, native MCP hooks, and unsandboxed execution.
 Approve once, approve the exact command/workdir/executable for this UI session, or deny.
 Denial, a five-minute timeout, or an unreachable approval connection fails only that
 command with status 1; the shell follows normal `;`/`&&` behavior. Session grants expire
-when the UI closes. At startup, incompatible caller hooks produce a warning and
-are disabled for that invocation. Other hooks and configuration files remain
-unchanged. Managed conflicts, unverifiable matchers, or missing/conflicting guard
-hooks at turn admission block with an explanation. Read-only commands run without asking.
+when the UI closes. Missing/conflicting trusted guard hooks block turns; explicit hook
+overrides conflict. Read-only commands run without asking.
 
 Coverage is incomplete for runtime-computed commands, `eval`, scripts/sourced files, and
 arbitrary programs invoking VCS internally. See [guard
-limits](modules/remotewriteapproval/SPEC.md).
+limits](doc/spec/execution.md#req-execution-003--guard-remote-vcs-writes).
 
 Interactive sudo commands also ask for approval, even with cached credentials or
 passwordless sudo. If authentication is needed afterward, a separate secret password
-dialog keeps the answer out of model input and retained history. The shared
-`--shell-guard` toggle controls both sudo and remote-write approval and grants no
-sandbox permissions. See
-[sudo support and limits](modules/sudoapproval/SPEC.md).
+dialog keeps the answer out of model input and retained history. Sudo approval works
+independently of `--vcs-guard` and grants no sandbox permissions. See
+[sudo support and limits](doc/spec/execution.md#req-execution-004--unlock-sudo-through-the-native-dialog).
 
 ### Headless execution
 
@@ -222,7 +216,7 @@ The composer always targets Main. Narrow terminals show one pane.
 | Action | Shortcut |
 | --- | --- |
 | Show Main / toggle Diff / focus Agents | `Ctrl-B`, then `1` / `2` / `3` |
-| Resize Main/Diff split | Drag its divider, or `Ctrl-B`, then Left/Right; Agents height fits its content |
+| Resize splits | Drag dividers, or `Ctrl-B`, then arrows; Up/Down in Agents adjusts its height |
 | Resize Diff navigator | `Ctrl-B`, then `[` / `]` |
 | Browse displayed transcript | `Ctrl-B`, then PageUp / PageDown |
 
@@ -230,9 +224,8 @@ The wheel scrolls under the pointer. Markdown supports colored code, responsive 
 and terminal Mermaid flowcharts; unsupported diagrams remain source. `/title TITLE`
 saves a manual title and skips automatic naming. Otherwise a new session may make a
 separate GPT-6 Luna medium-reasoning title request; unavailable credentials or Luna
-silently skip it. Notifications follow Codex's `tui.notifications`. See
-[terminal controls](apps/mekugi/internal/terminalsession/SPEC.md) and
-[session behavior](apps/mekugi/internal/sessionpresentation/SPEC.md).
+silently skip it. Notifications follow Codex's `tui.notifications`. See the [UI
+contract](doc/spec/native_ui.md) for complete controls.
 
 ### Composer
 
@@ -259,7 +252,7 @@ uncommitted steers; committed input is never resent and Tab-queued input stays q
 Without steers, Esc interrupts without resending. Ctrl-C clears the draft first, then
 interrupts/restores input. Picker/help/selection dismissal takes precedence. Copying
 needs OSC 52; Linux image paste needs `wl-paste` or `xclip`. See [input
-details](apps/mekugi/internal/terminalsession/SPEC.md#composer-controls).
+details](doc/spec/native_ui.md).
 
 ### Live diff pane
 
@@ -267,11 +260,10 @@ Source-content edits stream, including patches, `cat` heredocs, and supported Py
 writes. Copies, removals, formatters, and other command effects stay in saved changes.
 Only completed edits become saved changes. Temporary views replace
 only the editing agent's transcript. `/live` toggles them without stopping capture;
-new launches enable them again. In saved Diff, `s` opens the navigator, `/` filters,
+new launches enable them again. `v` switches views, `s` opens the navigator, `/` filters,
 `n`/`p` changes files, `[`/`]` jumps hunks. Tab opens Changes by caller. Click an Edit
 for its hunk; `Ctrl-B e` pins files, `Ctrl-B r` resumes following.
-See [saved-review controls](modules/changehistory/SPEC.md#terminal-review) and
-[live-view controls](modules/livepreview/SPEC.md#terminal-live-views).
+See [all diff controls](doc/spec/changes.md#live-terminal-view).
 
 ### Agents pane
 
@@ -281,7 +273,7 @@ Esc resumes following; `Ctrl-B o` loads older child history. The roster shows ac
 throughput, usage, estimated API cost, and composed captured edits. Usage/rates survive
 resume while retained; `≥` marks lower bounds, `?` uncertain edits, unavailable metrics stay blank.
 Main's throughput appears beside composer context. Herdr is optional; redirected
-sessions keep Codex input/output. See [activity details](modules/activity/CONTRACT.md).
+sessions keep Codex input/output. See [activity details](doc/spec/activity_display.md).
 
 ### Output dialog
 
@@ -290,8 +282,8 @@ Supported Bash/dash-backed sh lists show per-command output/status/time; missing
 are labeled combined. Host-omitted text cannot be recovered. Left/Right switches tabs;
 `/` searches, `n`/`N` moves matches, `y` copies, Esc/`q` closes. Select text to copy portions.
 Local links read current UTF-8 files up to 8 MiB; relative paths use the workspace,
-`:line` scrolls, reopening rereads. See [dialog controls](modules/activity/CONTRACT.md)
-and [command tracking](modules/commandsegments/SPEC.md).
+`:line` scrolls, reopening rereads. See [dialog controls](doc/spec/activity_display.md)
+and [command tracking](doc/spec/execution.md).
 
 ## Recoverable output and change review
 
@@ -317,9 +309,9 @@ mread REF
 
 Captured edits are not a live Git diff. Named ignored files are included; unknown-target
 commands capture observed effects, possibly from other writers. Previews are
-provisional; missing evidence is labeled. Ignored untracked files require explicit named
-targets to be retained and reverted/reapplied. Revert merges later edits, may create conflicts, and
-is captured too. See [changes](modules/changehistory/SPEC.md), [capture coverage](docs/contracts/change-evidence.md), and [retained reads](modules/outputrecovery/SPEC.md).
+provisional; missing evidence is labeled. Dependency-directory contents are not retained
+and cannot be reverted/reapplied. Revert merges later edits, may create conflicts, and
+is captured too. See [changes](doc/spec/changes.md) and [reads](doc/spec/read.md).
 
 ## Configuration
 
@@ -349,7 +341,7 @@ for that thread/model during the invocation. The composer shows the effective ti
 | --- | --- | --- |
 | `--ansi-faint` | `auto` | Detect mosh; `on` uses ANSI faint, `off` fixed muted colors |
 | `--mode` | `mekugi` | `passthrough` forwards Codex without Mekugi tools |
-| `--shell-guard` | `true` | Guard UI remote writes and sudo commands, even with `--yolo` |
+| `--vcs-guard` | `true` | Ask before UI remote writes, even with `--yolo` |
 | `--deduplicate-output` | `true` | Reference duplicates in model input; full results/evidence stay intact |
 | `--grok-auth-file` | `~/.grok/auth.json` | OAuth store |
 | `--timeout` | `10m` | Wait for response start |
@@ -357,7 +349,7 @@ for that thread/model during the invocation. The composer shows the effective ti
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |
 | `--debug` | Disabled | Record private [diagnostic evidence](docs/contributing/development.md#diagnostics) |
 
-`mekugi --mode passthrough --shell-guard=false codex` retains Codex policy/metrics, but
+`mekugi --mode passthrough --vcs-guard=false codex` retains Codex policy/metrics, but
 disables Mekugi tools/guard. Use `--ansi-faint=off` if a multiplexer hides mosh.
 
 ### Context reset and recovery
@@ -371,9 +363,9 @@ readable while their [storage](#replay-storage) is retained.
 - **Instructions:** wrapped sessions disable `/goal`; `<!-- mekugi:omit -->` through
   `<!-- /mekugi:omit -->` omits marked blocks without changing files/unmarked policy.
   With `skills-mgr`, managed selections attach instructions and the stock catalog is
-  disabled for the session. See [guidance](modules/agentguidance/SPEC.md).
+  disabled for the session. See [guidance](doc/spec/guide.md).
 - **Recovery:** see [resets](#context-reset-and-recovery) and [storage](#replay-storage).
-- **Frontend commands:** [compiled helpers](apps/mekugi/internal/frontends/SPEC.md) run through stock
+- **Frontend commands:** [compiled helpers](doc/spec/plugin.md) run through stock
   execution. JavaScript plugin loading has been removed; existing plugin files
   are left untouched.
 - **Environment:** router/executor must share paths/runtime directory; `MEKUGI_RUNTIME_DIR`
@@ -389,7 +381,7 @@ after **14 inactive days**; capacity cleanup removes oldest inactive sessions, n
 running work. **Codex chats/workspace files are never deleted.** Cleanup invalidates
 references; power loss can lose recent records. If retention fails, free space and retry
 retention, not the operation. Stop wrappers before moving storage aside. Use `mekugi
-inspect-storage`; see [storage details](modules/sessionhistory/SPEC.md).
+inspect-storage`; see [storage details](doc/spec/router.md).
 
 ## Metrics
 
@@ -399,7 +391,7 @@ Left/Right or Tab switches tabs; Up/Down/PgUp/PgDn scrolls, `[`/`]` selects exch
 usage. Throughput divides authoritative output tokens (including reasoning) by measured
 request seconds, including latency/retries, excluding tools/idle time. Missing
 measurements are unavailable; costs are API estimates, not subscription charges. Local
-estimates are not billing figures. See [metrics](modules/transportdiagnostics/SPEC.md).
+estimates are not billing figures. See [metrics](doc/spec/metrics.md).
 
 ```sh
 curl -sS "${MEKUGI_BASE_URL%/v1}/api/metrics"
@@ -410,8 +402,8 @@ Captures exclude prompts, patches, and credentials.
 
 ## Documentation
 
-[Documentation](docs/index.md) · [Contributing](CONTRIBUTING.md) ·
-[Comparisons](doc/benchmarks.md) · [Codex
+[Contributing](CONTRIBUTING.md) · [Product](doc/product.md) · [Interfaces](doc/spec/index.md) ·
+[Architecture](doc/architecture/index.md) · [Comparisons](doc/benchmarks.md) · [Codex
 end-to-end checks](doc/codex-router-e2e.md)
 
 ## License

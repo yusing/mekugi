@@ -1,0 +1,156 @@
+package router
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+
+	"github.com/yusing/mekugi/internal/responses"
+)
+
+// responsesInput keeps provider-owned JSON raw while exposing its two standard
+// shapes to the router.
+type responsesInput struct {
+	raw   json.RawMessage
+	text  *string
+	items []json.RawMessage
+	array bool
+}
+
+type responsesTextPart struct {
+	raw      json.RawMessage
+	typeName string
+	text     *string
+}
+
+// decodeResponsesInput decodes a Responses input field into its structured form.
+func decodeResponsesInput(raw json.RawMessage) (responsesInput, error) {
+	input := responsesInput{raw: bytes.Clone(raw)}
+	if text, ok := decodeJSONString(raw); ok {
+		input.text = new(text)
+		return input, nil
+	}
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) == nil {
+		input.items = items
+		input.array = true
+		return input, nil
+	}
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return responsesInput{}, err
+	}
+	return input, nil
+}
+
+// encode marshals the responsesInput back to JSON.
+func (input responsesInput) encode() (json.RawMessage, error) {
+	if input.text != nil {
+		return responses.MarshalJSON(*input.text)
+	}
+	if input.array {
+		return responses.MarshalJSON(input.items)
+	}
+	return bytes.Clone(input.raw), nil
+}
+
+// rewriteRequestMessages retains each projection's role and content policy.
+// Unselected items and non-message input keep their provider-owned bytes.
+func rewriteRequestMessages(request *parsedResponsesRequest, topic string, transform func(responsesItem) ([]byte, bool, error)) error {
+	if len(request.fields["input"]) == 0 {
+		return nil
+	}
+	input, err := decodeResponsesInput(request.fields["input"])
+	if err != nil {
+		return fmt.Errorf("decode %s: %w", topic, err)
+	}
+	changed := false
+	for index, raw := range input.items {
+		item, ok := decodeResponsesItem(raw)
+		if !ok || item.Type != "" && item.Type != "message" {
+			continue
+		}
+		content, updated, err := transform(item)
+		if err != nil {
+			return err
+		}
+		if updated {
+			item.setContent(content)
+			input.items[index] = responses.MustMarshalJSON(item)
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	encoded, err := input.encode()
+	if err != nil {
+		return fmt.Errorf("encode %s: %w", topic, err)
+	}
+	request.setInput(encoded)
+	return nil
+}
+
+// transformResponsesTextContent transforms selected text parts in message content.
+func transformResponsesTextContent(
+	raw json.RawMessage,
+	transform func(string) string,
+	isTextPart func(string) bool,
+) (json.RawMessage, bool, error) {
+	if text, ok := decodeJSONString(raw); ok {
+		return responses.MustMarshalJSON(transform(text)), true, nil
+	}
+	parts, ok := decodeResponsesTextParts(raw)
+	if !ok {
+		return raw, false, nil
+	}
+	changed := false
+	for index := range parts {
+		part := &parts[index]
+		if part.text == nil || !isTextPart(part.typeName) {
+			continue
+		}
+		updated, err := replaceRawField(part.raw, "text", responses.MustMarshalJSON(transform(*part.text)))
+		if err != nil {
+			return nil, false, err
+		}
+		part.raw = updated
+		changed = true
+	}
+	if !changed {
+		return raw, false, nil
+	}
+	encoded, err := encodeResponsesTextParts(parts)
+	return encoded, true, err
+}
+
+func decodeResponsesTextParts(raw json.RawMessage) ([]responsesTextPart, bool) {
+	var values []json.RawMessage
+	if json.Unmarshal(raw, &values) != nil || values == nil {
+		return nil, false
+	}
+	parts := make([]responsesTextPart, len(values))
+	for index, value := range values {
+		var fields struct {
+			Type string  `json:"type"`
+			Text *string `json:"text"`
+		}
+		_ = json.Unmarshal(value, &fields)
+		parts[index] = responsesTextPart{raw: value, typeName: fields.Type, text: fields.Text}
+	}
+	return parts, true
+}
+
+func encodeResponsesTextParts(parts []responsesTextPart) (json.RawMessage, error) {
+	values := make([]json.RawMessage, len(parts))
+	for index := range parts {
+		values[index] = parts[index].raw
+	}
+	return responses.MarshalJSON(values)
+}
+
+func isResponsesInputTextPart(typeName string) bool {
+	return typeName == "input_text" || typeName == "text"
+}

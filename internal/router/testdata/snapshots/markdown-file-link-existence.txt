@@ -1,0 +1,5 @@
+"Historical replacement count or resulting speed/cost savings.           "
+"Missing: missing.go, \x1b[36mmissing.go\x1b[m, missing.                               "
+"Existing: \x1b[36;4m\x1b]8;;sample.go:1\asample.go:1\x1b[m\x1b]8;;\a, \x1b[36;4m\x1b]8;;sample.go\asample.go\x1b[m\x1b]8;;\a, \x1b[36;4m\x1b]8;;sample.go:1-2\asource\x1b[m\x1b]8;;\a.                               "
+"Web: \x1b[36;4m\x1b]8;;https://example.com\aremote\x1b[m\x1b]8;;\a.                                                            "
+"plain after links                                                       "

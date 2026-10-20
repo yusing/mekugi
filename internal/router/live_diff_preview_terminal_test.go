@@ -1,0 +1,419 @@
+package router
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	chroma "github.com/alecthomas/chroma/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/creack/pty"
+	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/ui/diffview"
+)
+
+// The UI harness consumes complete terminal frames, not publication callbacks.
+// It runs the real viewer process against the authenticated router event stream.
+type liveDiffTerminalHarness struct {
+	ctx     context.Context
+	pty     *os.File
+	chunks  <-chan []byte
+	height  uint16
+	done    chan struct{}
+	waitErr error
+	pending string
+}
+
+func startLiveDiffTerminal(t *testing.T, workspace, replay, connection string, height uint16, extraEnv ...string) *liveDiffTerminalHarness {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLiveDiffTerminalProcess$")
+	cmd.Env = append(os.Environ(), "MEKUGI_LIVE_DIFF_TEST_CHILD=1",
+		"MEKUGI_LIVE_DIFF_WORKSPACE="+workspace, "MEKUGI_LIVE_DIFF_REPLAY="+replay,
+		"MEKUGI_LIVE_DIFF_SESSION="+connection)
+	cmd.Env = append(cmd.Env, extraEnv...)
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: height, Cols: 100})
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	t.Cleanup(func() { cancel(); terminal.Close(); <-done })
+	chunks := readPTYChunks(ctx, terminal, 8192, 64)
+	harness := &liveDiffTerminalHarness{ctx: ctx, pty: terminal, chunks: chunks, height: height, done: done}
+	go func() { harness.waitErr = cmd.Wait(); close(done) }()
+	return harness
+}
+
+func (h *liveDiffTerminalHarness) frame(t *testing.T, check func(string) bool) string {
+	t.Helper()
+	last := ""
+	for {
+		footer := fmt.Sprintf("\x1b[%d;1H\x1b[0m\x1b[2K", h.height)
+		end := -1
+		if start := strings.Index(h.pending, footer); start >= 0 {
+			if stop := strings.Index(h.pending[start+len(footer):], "\x1b[?2026l"); stop >= 0 {
+				end = start + len(footer) + stop + len("\x1b[?2026l")
+			}
+		}
+		if end >= 0 {
+			frame := h.pending[:end]
+			if strings.Count(frame, "\x1b[?2026h") != 1 ||
+				strings.Index(frame, "\x1b[?2026h") > strings.Index(frame, "\x1b[1;1H") {
+				t.Fatalf("frame was not synchronized before row clearing: %q", frame)
+			}
+			h.pending = h.pending[end:]
+			last = frame
+			if check(frame) {
+				return frame
+			}
+			continue
+		}
+		select {
+		case chunk, open := <-h.chunks:
+			if !open {
+				t.Fatalf("viewer exited before expected frame: %q", last)
+			}
+			h.pending += string(chunk)
+		case <-h.ctx.Done():
+			t.Fatalf("waiting for terminal frame: last=%q pending=%q", last, h.pending)
+		}
+	}
+}
+
+func (h *liveDiffTerminalHarness) write(t *testing.T, input string) {
+	t.Helper()
+	if _, err := h.pty.WriteString(input); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (h *liveDiffTerminalHarness) quit(t *testing.T) {
+	t.Helper()
+	h.write(t, "\x03")
+	select {
+	case <-h.done:
+		if h.waitErr != nil {
+			t.Fatalf("viewer did not exit cleanly: %v", h.waitErr)
+		}
+	case <-h.ctx.Done():
+		t.Fatal("viewer did not stop")
+	}
+}
+
+func liveDiffFrameRow(frame string, row int) string {
+	return ansi.Strip(liveDiffFrameRawRow(frame, row))
+}
+
+func liveDiffFrameRawRow(frame string, row int) string {
+	start := strings.LastIndex(frame, fmt.Sprintf("\x1b[%d;1H\x1b[0m\x1b[2K", row))
+	if start < 0 {
+		return ""
+	}
+	text := frame[start:]
+	text, _, _ = strings.Cut(text, fmt.Sprintf("\x1b[%d;1H", row+1))
+	return text
+}
+
+func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	liveDiffTestChange(t, store, workspace, "one", "captured.go")
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	initial := ui.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "Diff preview") })
+	if strings.Contains(initial, "Waiting for live input") {
+		t.Fatalf("initial stream header: %q", initial)
+	}
+	if strings.Contains(initial, "m motion") {
+		t.Fatalf("removed motion toggle remains in the stream footer: %q", initial)
+	}
+
+	preview := previewViewFixture("one", 100)
+	preview.Workspace = workspace
+	broker.publishPreview(preview, false)
+	stream := ui.frame(t, func(frame string) bool {
+		return strings.Contains(ansi.Strip(frame), "◐ edit") && strings.Contains(ansi.Strip(frame), "+stream_0100")
+	})
+	if strings.Contains(stream, "80│+new") {
+		t.Fatal("default stream mode shared the pane with captured diff")
+	}
+
+	// Stream scrolling pauses its cards without changing captured-diff following.
+	ui.write(t, "g\x1b[<65;2;18M")
+	// Keys reach the viewer asynchronously; ending the turn first would switch
+	// to diff mode and scroll the diff instead of the stream.
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "STREAM · ") && !strings.Contains(ansi.Strip(frame), "stream_0100")
+	})
+	broker.publishTurn(false)
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "v stream") && strings.Contains(ansi.Strip(frame), "1│-old")
+	})
+	ui.write(t, "g")
+	// The diff footer reports the call still streaming in the other mode.
+	paused := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream (1 live)") })
+	pausedHeader := liveDiffFrameRow(paused, 1)
+
+	ui.write(t, "v")
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "STREAM · v diff") && strings.Contains(ansi.Strip(frame), "stream_0001")
+	})
+	ui.write(t, "r")
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "stream_0100") })
+	final := previewViewFixture("one", 101)
+	final.Workspace, final.Complete = workspace, true
+	broker.publishPreview(final, false)
+	completed := ui.frame(t, func(frame string) bool {
+		return strings.Contains(ansi.Strip(frame), "○ edit") && strings.Contains(ansi.Strip(frame), "+stream_0101")
+	})
+	if strings.Contains(completed, "80│+new") {
+		t.Fatal("completed stream stopped owning the full pane")
+	}
+	if strings.Contains(completed, "\x1b[3;1H\x1b[0m\x1b[2K\x1b[38;2;") {
+		t.Fatal("completed stream dimmed its existing rows")
+	}
+
+	// Toggling modes preserves captured-diff paused position.
+	broker.publishTurn(false)
+	resumedDiff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
+	if liveDiffFrameRow(resumedDiff, 1) == "" || pausedHeader == "" {
+		t.Fatal("turn transition lost captured-diff navigation state")
+	}
+
+	// Router coverage loss clears retained stream cards.
+	broker.publishTurn(true)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
+	broker.mu.Lock()
+	broker.emitLocked(liveDiffEvent{Kind: "coverage", Status: "RECONNECTING: test interruption"})
+	broker.mu.Unlock()
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "RECONNECTING") && !strings.Contains(ansi.Strip(frame), "○ edit")
+	})
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalTurnRevisionPreservesManualReconnectChoice(t *testing.T) {
+	controller := newLiveDiffTerminalController(nil, "", nil)
+	defer controller.close()
+	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "turn", Status: "active", TurnRevision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	controller.handleKey('v')
+	if !controller.diffMode {
+		t.Fatal("manual toggle did not select diff mode")
+	}
+	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "turn", Status: "active", TurnRevision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if !controller.diffMode {
+		t.Fatal("replayed turn revision reset manual mode")
+	}
+	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "turn", Status: "active", TurnRevision: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if controller.diffMode {
+		t.Fatal("new active turn did not reset manual mode to stream")
+	}
+}
+
+func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, _, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
+	ui.write(t, "v")
+	id, err := store.reserveChange(t.Context(), workspace, "thread", "nearby")
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff := "@@ -1,5 +1,5 @@\n-old first\n+new first\n See the editing guide\n and prerequisites.\n-old second\n+new second\n tail\n"
+	path := filepath.Join(workspace, "readme.md")
+	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"nearby": {
+		ChangeID: id, CorrelationID: "nearby", ReviewFiles: []mekugi.ReviewFile{{BeforePath: path, AfterPath: path, Diff: diff}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "new second") })
+	for _, kind := range []byte{'-', '+'} {
+		if !strings.Contains(frame, livediff.TerminalTheme.WordBackground(kind)) {
+			t.Fatalf("PTY Diff frame has no %c word emphasis: %q", kind, frame)
+		}
+	}
+	for _, text := range []string{"See the editing guide", "and prerequisites."} {
+		if strings.Count(ansi.Strip(frame), text) != 1 {
+			t.Fatalf("duplicated composed context %q: %q", text, ansi.Strip(frame))
+		}
+	}
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22, "COLORFGBG=15;0")
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
+	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
+	t.Cleanup(worker.stop)
+	// Python source stays buffered until the heredoc closes, so setup lines
+	// cannot flash as a script diff before an edit target becomes recognizable.
+	input := "cat > big.py <<'EOF'\n" + strings.Repeat("# context\n", 30) + "return 42\nEOF\n"
+	tip, colored := "return 42", livediff.DarkTheme.Foreground(chroma.Keyword)+"return"
+	worker.appendDelta(input)
+	// Revealed rows fade in, so wait for the tip to settle on its syntax color.
+	frame := ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, colored) && strings.Contains(ansi.Strip(frame), tip)
+	})
+	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A big.py") ||
+		strings.Contains(frame, "Waiting for captured") {
+		t.Fatalf("empty shell preview wasted space or lost syntax: %q", frame)
+	}
+	// A full-height preview still follows after resizing and stays visible
+	// when the first capture arrives.
+	ui.height = 12
+	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 70}); err != nil {
+		t.Fatal(err)
+	}
+	frame = ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(ansi.Strip(frame), tip)
+	})
+	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A big.py") {
+		t.Fatal("resize restored an empty split")
+	}
+	liveDiffTestChange(t, store, workspace, "thread", "captured.go")
+	frame = ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), tip) })
+	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A big.py") {
+		t.Fatal("capture displaced the full-pane stream")
+	}
+	worker.stop()
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "○ A big.py") })
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true, "child": true}},
+	})
+	liveDiffTestChange(t, store, workspace, "capture", "captured.go")
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
+	ui.write(t, "v")
+	ui.write(t, "g")
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
+	ui.write(t, "v")
+	first := previewViewFixture("first", 100)
+	first.Workspace, first.Caller = workspace, "/root"
+	second := previewViewFixture("second", 200)
+	second.Workspace, second.Thread, second.Caller = workspace, "child", "/root/editor"
+	broker.publishPreview(first, false)
+	broker.publishPreview(second, false)
+	frame := ui.frame(t, func(frame string) bool {
+		text := ansi.Strip(frame)
+		return strings.Contains(text, "stream_0100") && strings.Contains(text, "stream_0200")
+	})
+	if text := ansi.Strip(frame); !strings.Contains(text, "main · ◐ edit") || !strings.Contains(text, "editor · ◐ edit") {
+		t.Fatalf("concurrent frame lost attribution: %q", frame)
+	}
+	// Child callers keep the agents pane's color for the same canonical path.
+	if !strings.Contains(frame, activityui.Color("/root/editor")+"editor") || !strings.Contains(frame, "STREAM · v diff") {
+		t.Fatalf("concurrent frame lost attribution: %q", frame)
+	}
+	for i := 101; i <= 150; i++ {
+		first = previewViewFixture("first", i)
+		first.Workspace, first.Caller = workspace, "/root"
+		broker.publishPreview(first, false)
+	}
+	frame = ui.frame(t, func(frame string) bool {
+		text := ansi.Strip(frame)
+		return strings.Contains(text, "stream_0150") && strings.Contains(text, "stream_0200")
+	})
+	if text := ansi.Strip(frame); strings.Index(text, "main · ◐ edit") > strings.Index(text, "editor · ◐ edit") {
+		t.Fatal("concurrent delta reordered the cards")
+	}
+	broker.publishPreview(first, true)
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(ansi.Strip(frame), "main · ○ edit") && strings.Contains(ansi.Strip(frame), "stream_0200")
+	})
+	ui.height = 12
+	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 70}); err != nil {
+		t.Fatal(err)
+	}
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(ansi.Strip(frame), "stream_0200")
+	})
+	broker.publishPreview(second, true)
+	ui.frame(t, func(frame string) bool { return strings.Count(ansi.Strip(frame), "○ edit") == 2 })
+	ui.write(t, "v")
+	diff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
+	if !strings.Contains(diff, "v stream") {
+		t.Fatal("stream updates changed the paused diff mode")
+	}
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalBoundedDiffPresentation(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "Diff preview") })
+	path := filepath.Join(workspace, "src", "main.go")
+	before := "package main\nconst liveTail = 1\n"
+	after := strings.Replace(before, "liveTail = 1", "liveTail = 2", 1)
+	preview := boundLiveDiffPreview(diffview.Preview{ID: "tail", Workspace: workspace, Thread: "thread", Caller: "/root", Status: diffview.PreviewRunning, Files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", filepath.Join(workspace, "large.txt"), "", strings.Repeat("padding\n", 10000)), mekugi.RenderReviewFile(path, path, before, after)}})
+	if !preview.DiffText || !preview.Truncated || len(preview.Files) != 0 {
+		t.Fatalf("not a bounded diff tail: %+v", preview)
+	}
+	broker.publishPreview(preview, false)
+	frame := ui.frame(t, func(frame string) bool {
+		return strings.Contains(ansi.Strip(frame), "liveTail = 2") && strings.Contains(frame, livediff.DarkTheme.RowBackground('+')) && strings.Contains(frame, livediff.DarkTheme.Foreground(chroma.KeywordDeclaration))
+	})
+	plain := ansi.Strip(frame)
+	if strings.Contains(plain, workspace) || !strings.Contains(plain, "src/main.go") {
+		t.Fatalf("header path not shortened: %q", plain)
+	}
+	if !strings.Contains(frame, livediff.DarkTheme.RowBackground('-')) {
+		t.Fatal("missing deletion fill")
+	}
+	if !strings.Contains(frame, livediff.DarkTheme.Foreground(chroma.KeywordDeclaration)) {
+		t.Fatal("missing source syntax")
+	}
+	ui.quit(t)
+}

@@ -1,0 +1,304 @@
+package router
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"encoding/json/jsontext"
+	"io"
+	"maps"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/responses"
+)
+
+func readDebugInstructionRows(ctx context.Context, path string) ([][]byte, error) {
+	var decoder debugInstructionDecoder
+	var rows [][]byte
+	var decodeErr error
+	err := readDebugInspectionFile(ctx, path, true, func(_ int, row map[string]jsontext.Value) {
+		if decodeErr != nil {
+			return
+		}
+		decodeErr = decoder.resolve(row)
+		if decodeErr == nil {
+			var data []byte
+			data, decodeErr = json.Marshal(row)
+			rows = append(rows, data)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rows, decodeErr
+}
+
+func TestDebugSessionArtifacts(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var paths []string
+	err := RunSession(ctx, []string{"--debug", "--mode", "passthrough"}, nil, func(session Session) {
+		if session.AXReadOutput == "" {
+			t.Error("debug did not enable runtime AX reads")
+		}
+		cancel()
+	}, func(artifacts []string) { paths = artifacts })
+	if err != nil || len(paths) != 6 {
+		t.Fatalf("debug session: %v, paths %v", err, paths)
+	}
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil || !filepath.IsAbs(path) || info.Mode().Perm() != 0o600 {
+			t.Fatalf("artifact %s: %v, %v", path, info, err)
+		}
+	}
+	log, _ := os.ReadFile(paths[0])
+	if !bytes.Contains(log, []byte("router_start")) || !bytes.Contains(log, []byte("router_stop")) {
+		t.Fatal("missing lifecycle diagnostics")
+	}
+	metrics, _ := os.ReadFile(paths[2])
+	var exported struct {
+		StorageWrites *struct {
+			Bytes uint64 `json:"bytes"`
+			Scope string `json:"scope"`
+		} `json:"storage_writes"`
+	}
+	if err := json.Unmarshal(metrics, &exported); err != nil || exported.StorageWrites == nil || exported.StorageWrites.Bytes == 0 || exported.StorageWrites.Scope == "" {
+		t.Fatalf("missing application write accounting: %s, %v", metrics, err)
+	}
+	root, err := debugStorageDirectory()
+	if err != nil || filepath.Dir(filepath.Dir(paths[0])) != root {
+		t.Fatalf("bundle not in managed state: %v, %v", paths, err)
+	}
+}
+
+func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	custom := filepath.Join(t.TempDir(), "custom capture.jsonl")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var paths []string
+	if err := RunSession(ctx, []string{"--debug", "--mode", "passthrough", "--capture-output", custom}, nil,
+		func(Session) { cancel() }, func(artifacts []string) { paths = artifacts }); err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 6 || paths[1] != custom {
+		t.Fatalf("selected capture destination changed: %q", paths)
+	}
+	debugDir := filepath.Dir(paths[0])
+	bundle, err := os.Stat(filepath.Join(debugDir, "capture.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := os.Stat(custom)
+	if err != nil || !os.SameFile(bundle, selected) {
+		t.Fatalf("debug capture does not resolve to the selected file: %v", err)
+	}
+	// Representative retained provider evidence in the real producer's chosen
+	// capture destination must reach the existing replay consumer.
+	replayTestWrite(t, filepath.Dir(custom), filepath.Base(custom), map[string]any{
+		"boundary": "provider", "thread_id": "root", "captured_at": time.UnixMilli(replayTestEpoch + 50), "duration_ms": 20,
+	})
+	rollout := replayTestWrite(t, t.TempDir(), "rollout-root.jsonl", replayTestMeta("root"),
+		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
+		replayTestItem("root", "turn", replayTestEpoch+1, replayTestEpoch+2, map[string]any{
+			"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "Replay complete."}},
+		}))
+	replay, err := readSessionUIReplay(t.Context(), rollout, debugDir, 1)
+	if err != nil || replay == nil || replay.Providers != 1 {
+		t.Fatalf("custom capture replay: %v, error=%v", replay, err)
+	}
+}
+
+func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	flags := newRouterFlags(io.Discard)
+	*flags.debug = true
+	d, err := openDebugOutput(flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"model":"test","instructions":"exact\n  text\t","input":[{"role":"developer","content":[{"type":"input_text","text":"inherited"}]},{"type":"additional_tools","tools":[{"name":"shell","description":"exact tool"}]},{"role":"user","content":"excluded user"},{"type":"custom_tool_call","input":"excluded script"}]}`)
+	headers := http.Header{"Authorization": {"excluded credential"}, "X-Client-Request-Id": {"client-1"}}
+	d.instructions(body, body, headers, "session-1", "request-1", 1)
+	dump, _ := os.ReadFile(d.paths[3])
+	rows, err := readDebugInstructionRows(t.Context(), d.paths[3])
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("instruction records: %d, %v", len(rows), err)
+	}
+	var got struct {
+		Instructions   string            `json:"instructions"`
+		Developers     []json.RawMessage `json:"developer_messages"`
+		Additional     []json.RawMessage `json:"additional_tools"`
+		Cached         int               `json:"cached_input_items"`
+		Scope          string            `json:"scope"`
+		WireDevelopers []json.RawMessage `json:"wire_developer_messages"`
+	}
+	if err := json.Unmarshal(rows[0], &got); err != nil || got.Instructions != "exact\n  text\t" || len(got.Developers) != 1 || len(got.Additional) != 1 || got.Cached != 1 {
+		t.Fatalf("instruction selection: %+v, %v", got, err)
+	}
+	if bytes.Contains(dump, []byte("excluded")) {
+		t.Fatal("dump retained data outside instruction scope")
+	}
+	if got.Scope != "projected_responses_request" || !sameJSONValue(responses.MustMarshalJSON(got.WireDevelopers), responses.MustMarshalJSON(got.Developers)) {
+		t.Fatal("dump does not distinguish projection from wire instructions")
+	}
+	// Post-startup write failure is retained for shutdown, not returned into
+	// request execution or printed over the active Codex terminal.
+	if err := d.dump.Close(); err != nil {
+		t.Fatal(err)
+	}
+	d.instructions(body, body, headers, "session-1", "request-2", 0)
+	if err := d.close(); err == nil {
+		t.Fatal("debug write failure was lost")
+	}
+}
+
+func TestDebugStartupFailureReportsArtifacts(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	missing := filepath.Join(t.TempDir(), "missing", "capture.jsonl")
+	var paths []string
+	err := RunSession(t.Context(), []string{"--debug", "--mode", "passthrough", "--capture-output", missing}, nil, func(Session) {
+		t.Error("ready despite capture initialization failure")
+	}, func(artifacts []string) { paths = artifacts })
+	if err == nil || len(paths) != 6 {
+		t.Fatalf("startup failure lost artifact paths: %v", err)
+	}
+}
+
+func TestDebugCanceledStartupReportsArtifacts(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	var paths []string
+	err := RunSession(ctx, []string{"--debug", "--mode", "passthrough"}, nil, func(Session) {
+		t.Error("canceled startup reached readiness")
+	}, func(artifacts []string) { paths = artifacts })
+	if err != nil || len(paths) != 6 {
+		t.Fatalf("canceled startup lost paths: %v, %v", paths, err)
+	}
+}
+
+func TestDebugWebSocketInheritedInstructions(t *testing.T) {
+	t.Parallel()
+	flags := newRouterFlags(io.Discard)
+	*flags.debug = true
+	d, err := openDebugOutput(flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The plugin proxy fixture is shared until TestMain exits, so do not put
+	// its directory under this test's temporary TMPDIR.
+	t.Cleanup(func() { _ = d.close(); _ = os.RemoveAll(filepath.Dir(d.paths[0])) })
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	var firstDevelopers []json.RawMessage
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.CloseNow()
+		for _, id := range []string{"first", "second"} {
+			request, err := providerSocketRead(ctx, conn)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			var input []json.RawMessage
+			_ = json.Unmarshal(request["input"], &input)
+			if id == "first" {
+				for _, raw := range input {
+					var item map[string]json.RawMessage
+					_ = json.Unmarshal(raw, &item)
+					if responses.StringField(item, "role") == "developer" {
+						firstDevelopers = append(firstDevelopers, raw)
+					}
+				}
+			} else if len(input) != 1 || responses.StringField(request, "previous_response_id") != "first" {
+				t.Error("continuation did not use upstream cached input")
+			}
+			lines, err := readDebugInstructionRows(ctx, d.paths[3])
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			var record struct {
+				Instructions   json.RawMessage   `json:"instructions"`
+				Developers     []json.RawMessage `json:"developer_messages"`
+				Cached         int               `json:"cached_input_items"`
+				WireDevelopers []json.RawMessage `json:"wire_developer_messages"`
+				WireAdditional []json.RawMessage `json:"wire_additional_tools"`
+				WireParent     string            `json:"wire_previous_response_id"`
+				ProjectedBytes int               `json:"projected_input_bytes"`
+				WireBytes      int               `json:"wire_input_bytes"`
+			}
+			if err := json.Unmarshal(lines[len(lines)-1], &record); err != nil {
+				t.Error(err)
+				return
+			}
+			if !sameJSONValue(record.Instructions, request["instructions"]) || len(record.Developers) == 0 || !sameJSONValue(responses.MustMarshalJSON(record.Developers), responses.MustMarshalJSON(firstDevelopers)) {
+				t.Errorf("dump lost exact final or inherited instructions: top-level equal=%v, dump developer count=%d, wire count=%d", sameJSONValue(record.Instructions, request["instructions"]), len(record.Developers), len(firstDevelopers))
+			}
+			if record.WireBytes != len(request["input"]) || record.ProjectedBytes < record.WireBytes || (id == "second" && record.ProjectedBytes == record.WireBytes) {
+				t.Errorf("incorrect projected/wire byte evidence: %d/%d", record.ProjectedBytes, record.WireBytes)
+			}
+			if id == "second" && record.Cached == 0 {
+				t.Error("dump lost cached-prefix provenance")
+			}
+			if id == "second" && (len(record.WireDevelopers) != 0 || len(record.WireAdditional) != 0 || record.WireParent != "first") {
+				t.Error("dump claims cached instructions were sent on continuation")
+			}
+			if err := providerSocketWrite(ctx, conn, socketEvent("response.created", id)); err != nil {
+				t.Error(err)
+				return
+			}
+			if err := providerSocketWrite(ctx, conn, socketEvent("response.completed", id)); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+		_, _, _ = conn.Read(ctx)
+	}))
+	t.Cleanup(upstream.Close)
+	proxy := newManagedMekugiProxy(t)
+	endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(upstream.URL, upstream.Client()), nil, proxy)
+	t.Cleanup(endpoint.Close)
+	server := httptest.NewServer(d.handler(endpoint))
+	t.Cleanup(server.Close)
+	headers := codexAuthHeaders()
+	headers.Set(sessionIDHeader, "debug-session")
+	maps.Copy(headers, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil}))
+	conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: headers})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.CloseNow() })
+	for _, id := range []string{"first", "second"} {
+		request := map[string]any{"type": "response.create", "model": "gpt-test", "instructions": "Follow the task.", "tools": []any{map[string]string{"type": "function", "name": "lookup"}}}
+		if id == "first" {
+			request["input"] = []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"role": "developer", "content": "Preserve\n  exact spacing."}, map[string]string{"role": "user", "content": "first task"}}
+		} else {
+			request["previous_response_id"] = "first"
+			request["input"] = []any{map[string]string{"role": "user", "content": "next task"}}
+		}
+		socketWrite(t, ctx, conn, request)
+		for {
+			event := socketRead(t, ctx, conn)
+			if responses.StringField(event, "type") == "error" {
+				t.Fatalf("request failed: %s", responses.MustMarshalJSON(event))
+			}
+			if responses.StringField(event, "type") == "response.completed" {
+				break
+			}
+		}
+	}
+}

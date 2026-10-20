@@ -1,0 +1,14 @@
+default
+
+expansion 1
+├ Hook Ran preToolUse · Applying VCS guard · builtin · 5ms
+├ Hook Ran sessionStart · hooks.json · 5ms
+│          ┆ context: <skills>
+└ Hook Blocked preToolUse · Checking generated files · hooks.json · 5ms
+               ┆ feedback: generated file
+expansion 2
+├ Hook Ran preToolUse · Applying VCS guard · builtin · 5ms
+├ Hook Ran sessionStart · hooks.json · 5ms
+│          ┆ context: <skills>
+└ Hook Blocked preToolUse · Checking generated files · hooks.json · 5ms
+               ┆ feedback: generated file
