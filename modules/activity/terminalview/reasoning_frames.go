@@ -21,6 +21,7 @@ func (v *View) HoldReasoning(update observation.TextUpdate) {
 	if update.Kind != "reasoning" || !update.Live {
 		return
 	}
+	v.publication = nil
 	if update.Phase == "discarded" || update.Phase != "queued-summary" && strings.TrimSpace(update.Text) == "" {
 		delete(v.reasoningFrames, update.Ref)
 		return

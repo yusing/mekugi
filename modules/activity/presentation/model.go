@@ -117,10 +117,12 @@ func (m *Model[S, A]) Mutate(index int, mutate func(*Record[S])) {
 }
 func (m *Model[S, A]) Revise(index int) { m.Revision++; m.Entries[index].Revision = m.Revision }
 func (m *Model[S, A]) Remove(from, to int) {
+	m.Revision++
 	m.Entries = slices.Delete(m.Entries, from, to)
 	m.skills = nil
 }
 func (m *Model[S, A]) Reorder(indices []int) {
+	m.Revision++
 	records := slices.Clone(m.Entries)
 	for i, old := range indices {
 		m.Entries[i] = records[old]

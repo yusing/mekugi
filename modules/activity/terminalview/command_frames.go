@@ -24,6 +24,7 @@ type heldCommandFrame struct {
 }
 
 func (v *View) HoldCommand(seq uint64, snapshot CommandFrame) {
+	v.publication = nil
 	if v.commandFrames == nil {
 		v.commandFrames = make(map[uint64]*heldCommandFrame)
 	}
@@ -50,6 +51,7 @@ func (v *View) CurrentCommandFrame(seq uint64) (CommandFrame, uint64, bool) {
 // settlement. A command with no reveal frame uses its admitted source snapshot.
 func (v *View) HoldCurrentCommand(seq uint64, fallback CommandFrame) {
 	if frame := v.commandFrames[seq]; frame != nil {
+		v.publication = nil
 		frame.project = true
 		return
 	}
@@ -87,6 +89,7 @@ func (frame CommandFrame) Project(entry presentation.Entry) presentation.Entry {
 
 func (v *View) ReleaseCommand(seq uint64, at time.Time) {
 	if frame := v.commandFrames[seq]; frame != nil {
+		v.publication = nil
 		frame.released = at
 	}
 }

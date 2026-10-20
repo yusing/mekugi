@@ -28,7 +28,9 @@ func TestUISnapshotNativeMainQuotedReplyBoundary(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
 		"item": map[string]any{"id": "answer", "type": "agentMessage", "text": "> Read retained output before searching the transcript for exact historical details."}})
 	for i := range u.attached.source.Entries {
-		u.attached.source.Entries[i].Source.Observed = time.Date(2026, 10, 6, 11, 50, 6+i*6, 0, time.Local)
+		u.attached.source.Mutate(i, func(record *sessionpresentation.ActivityRecord) {
+			record.Source.Observed = time.Date(2026, 10, 6, 11, 50, 6+i*6, 0, time.Local)
+		})
 	}
 	for _, width := range []int{100, 32} {
 		feed := u.testActivity(u.shell.Transcript).RenderFeed(width, 60)

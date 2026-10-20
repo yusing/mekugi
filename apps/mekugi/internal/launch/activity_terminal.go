@@ -1,6 +1,8 @@
 package launch
 
 import (
+	"slices"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -14,8 +16,14 @@ func deliverActivity(view *activityui.View, source *sessionpresentation.Activity
 		return
 	}
 	publication := source.Publication(session, mainSource)
+	detached := false
 	for i, entry := range publication.Entries {
 		if view.NeedsCommandContent(entry.Seq, entry.Revision) {
+			if !detached {
+				publication = new(*publication)
+				publication.Entries = slices.Clone(publication.Entries)
+				detached = true
+			}
 			publication.Entries[i].Command = new(sessionpresentation.ActivityContent(source.Entries[i].Source))
 		}
 	}

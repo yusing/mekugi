@@ -13,10 +13,11 @@ import (
 // source facts and publishes detached values without a terminal dependency.
 type ActivitySource struct {
 	*activitypresentation.Model[ActivityEntry, ActivityAgent]
-	Audience   ActivityAudience
-	Coverage   string
-	Prepared   func(thread, id string) (activitypresentation.PreparedContent, bool)
-	Repetition func(thread, id string) string // Authenticated invocation-owned annotations.
+	Audience    ActivityAudience
+	Coverage    string
+	publication *activityPublication
+	Prepared    func(thread, id string) (activitypresentation.PreparedContent, bool)
+	Repetition  func(thread, id string) string // Authenticated invocation-owned annotations.
 }
 
 type ActivityAudience uint8

@@ -31,7 +31,7 @@ func TestRosterVisibleNamesDetermineWidth(t *testing.T) {
 			}
 			render := func(rows []presentation.AgentRow) []string {
 				v := NewView()
-				v.Update(presentation.Publication{Roster: rows}, Display{Caller: "/root"})
+				v.Update(&presentation.Publication{Roster: rows}, Display{Caller: "/root"})
 				var lines []string
 				switch mode {
 				case "native":

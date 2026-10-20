@@ -46,22 +46,28 @@ func (v *View) requestDisplay(caller string) {
 	v.DisplayRequest = &DisplayIntent{Caller: cmp.Or(caller, "/root"), Attachment: v.Display.Attachment, Revision: v.Display.Revision}
 }
 
-// Update replaces detached input, retaining only renderer-owned state between frames.
-func (v *View) Update(publication presentation.Publication, display Display) {
+// Update consumes immutable detached input, retaining renderer-owned state between frames.
+func (v *View) Update(publication *presentation.Publication, display Display) {
+	v.Display = display
+	if v.publication == publication {
+		return
+	}
+	v.publication = publication
+	entries := publication.Entries
 	v.LineCounts, v.NetCounts = publication.LineCounts, publication.NetCounts
 	previous := make(map[uint64]uint64, len(v.entries))
 	for _, entry := range v.entries {
 		previous[entry.Seq] = entry.Revision
 	}
-	v.Display = display
-	if len(v.commandFrames) > 0 || len(v.reasoningFrames) > 0 {
-		publication.Entries = slices.Clone(publication.Entries)
+	overlay := len(v.commandFrames) > 0 || len(v.reasoningFrames) > 0
+	if overlay {
+		entries = slices.Clone(entries)
 	}
 	var seenText map[observation.ItemRef]bool
 	if len(v.reasoningFrames) > 0 {
 		seenText = make(map[observation.ItemRef]bool)
 	}
-	for i, entry := range publication.Entries {
+	for i, entry := range entries {
 		frame := v.commandFrames[entry.Seq]
 		reasoning := v.reasoningFrames[entry.TextRef]
 		if reasoning != nil {
@@ -70,7 +76,9 @@ func (v *View) Update(publication presentation.Publication, display Display) {
 		v.updateCommandFrame(entry)
 		entry = v.commandEntry(entry)
 		entry = v.reasoningEntry(entry)
-		publication.Entries[i] = entry
+		if overlay {
+			entries[i] = entry
+		}
 		revision, exists := previous[entry.Seq]
 		if !exists || revision != entry.Revision || frame != nil && (frame.dirty || !frame.released.IsZero()) || reasoning != nil && reasoning.dirty {
 			v.observe(entry, !exists)
@@ -102,7 +110,7 @@ func (v *View) Update(publication presentation.Publication, display Display) {
 		v.Runs = nil
 	}
 	versions := make(map[outputIdentity]int)
-	for _, entry := range publication.Entries {
+	for _, entry := range entries {
 		for output, version := range entry.Outputs {
 			versions[outputIdentity{entry.Seq, output}] = version
 		}
@@ -119,7 +127,7 @@ func (v *View) Update(publication presentation.Publication, display Display) {
 		v.Runs = nil
 		v.Hovered = ""
 	}
-	v.entries, v.roster, v.lastSeq, v.Display, v.outputVersions = publication.Entries, publication.Roster, publication.LastSeq, display, versions
+	v.entries, v.roster, v.lastSeq, v.outputVersions = entries, publication.Roster, publication.LastSeq, versions
 	v.trackPace(v.Now())
 	v.KeepSelection()
 }

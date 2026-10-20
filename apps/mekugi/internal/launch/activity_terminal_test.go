@@ -91,7 +91,7 @@ func (v *activityAdapter) testConversationItem(first, last, width int, thread ac
 func (v *activityAdapter) testUserItem(entry sessionpresentation.ActivityEntry, width int) activityui.Run {
 	view := activityui.NewView()
 	view.Painter = v.Painter
-	view.Update(activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: entry.ActivityFacts()}}}, activityui.Display{})
+	view.Update(&activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: entry.ActivityFacts()}}}, activityui.Display{})
 	return view.ConversationItem(0, 0, width, activityui.ConversationThread{})
 }
 
@@ -133,5 +133,31 @@ func (v *activityAdapter) testAudience() {
 	}
 	if v.ChildrenOnly {
 		v.Audience = sessionpresentation.ChildAudience
+	}
+}
+
+func TestActivityIdleDeliveryKeepsDisplayAdmission(t *testing.T) {
+	v := newActivityAdapter()
+	entries := make([]sessionpresentation.ActivityEntry, activitypresentation.FeedLimit)
+	for i := range entries {
+		entries[i] = sessionpresentation.ActivityEntry{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: "retained"}
+	}
+	v.Apply(sessionpresentation.ActivityEvent{Entries: entries})
+	v.publishActivity()
+	if allocations := testing.AllocsPerRun(10, func() { v.publishActivity() }); allocations > 5 {
+		t.Fatalf("idle delivery rebuilt retained feed: %g allocations", allocations)
+	}
+	// Display versions advance independently of Activity and must reach intents.
+	session := new(sessionpresentation.Model)
+	session.Attach(sessionpresentation.Thread{ID: "main", Caller: "/root"}, false)
+	deliverActivity(v.View, v.ActivitySource, session, nil, nil)
+	want := session.View().Version
+	if v.Display.Attachment != want.Attachment || v.Display.Revision != want.Revision {
+		t.Fatalf("unchanged Activity kept stale display admission: %+v, want %+v", v.Display, want)
+	}
+	fresh := activityui.NewView()
+	deliverActivity(fresh, v.ActivitySource, session, nil, nil)
+	if fresh.Empty() {
+		t.Fatal("fresh renderer missed reused publication")
 	}
 }

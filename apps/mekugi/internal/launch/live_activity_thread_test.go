@@ -138,7 +138,7 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 			}
 
 			// Reasoning after the latest item is outside the thread until it continues.
-			v.Entries = v.Entries[:2]
+			v.Model.Remove(2, len(v.Entries))
 			v.Runs = nil
 			pending := strings.Join(threadPlain(v.RenderFeed(width, 40)), "\n")
 			if strings.Contains(pending, " lines") || strings.Contains(pending, "│ The reviewer") {

@@ -14,7 +14,7 @@ func TestOutputContextDemandBoundsAndExpansion(t *testing.T) {
 	output := new(feed.Retention).New()
 	output.Finish(new(strings.Repeat("retained context\n", 20000)+"var answer = 42"), new(0))
 	v := NewView()
-	v.Update(presentation.Publication{Entries: []presentation.Entry{{Facts: presentation.Facts{Seq: 7, Outputs: map[int]int{1: output.Version()}}}}}, Display{})
+	v.Update(&presentation.Publication{Entries: []presentation.Entry{{Facts: presentation.Facts{Seq: 7, Outputs: map[int]int{1: output.Version()}}}}}, Display{})
 	block := Block{Value: presentation.Value{Content: feed.Content{Kind: "op"}, Source: 7, Output: 1, Tail: []string{"var answer = 42"}, TailOmitted: 20000}}
 	for _, excluded := range []string{"layout", "collapsed", "empty", "changes"} {
 		candidate := block
@@ -69,7 +69,7 @@ func TestOutputDemandCacheIdentityAndVersion(t *testing.T) {
 		{Facts: presentation.Facts{Seq: 7, Outputs: map[int]int{1: 1, 2: 3}}},
 		{Facts: presentation.Facts{Seq: 8, Outputs: map[int]int{1: 1}}},
 	}}
-	v.Update(publication, Display{})
+	v.Update(new(publication), Display{})
 	keys := []presentation.OutputDemand{{Source: 7, Output: 1, Version: 1, Bytes: OutputContextBytes}, {Source: 7, Output: 2, Version: 3, Bytes: OutputContextBytes}, {Source: 8, Output: 1, Version: 1, Bytes: OutputContextBytes}}
 	for i, key := range keys {
 		v.Hydrate([]presentation.OutputResult{{Demand: key, View: feed.OutputView{Lines: []string{string(rune('a' + i))}}}})
@@ -80,8 +80,9 @@ func TestOutputDemandCacheIdentityAndVersion(t *testing.T) {
 			t.Fatalf("cache conflated source/output identity: %+v", key)
 		}
 	}
+	publication.Entries = slices.Clone(publication.Entries)
 	publication.Entries[0].Outputs = map[int]int{1: 2, 2: 3}
-	v.Update(publication, Display{})
+	v.Update(new(publication), Display{})
 	v.Hydrate([]presentation.OutputResult{{Demand: keys[0], View: feed.OutputView{Lines: []string{"stale"}}}})
 	block := Block{Value: presentation.Value{Source: 7, Output: 1}}
 	if _, ok := v.output(block, OutputContextBytes); ok {
@@ -101,7 +102,7 @@ func TestOutputDemandCacheIdentityAndVersion(t *testing.T) {
 			t.Fatalf("version update discarded unrelated output: %+v", key)
 		}
 	}
-	v.Update(presentation.Publication{}, Display{})
+	v.Update(&presentation.Publication{}, Display{})
 	if _, ok := v.output(block, 0); ok || len(v.outputCache) != 0 || len(v.OutputDemands()) != 0 {
 		t.Fatal("removed source retained cache or requested unauthorized output")
 	}

@@ -36,6 +36,7 @@ const (
 // sequence numbers, so a reconnect snapshot merges without duplicating retained rows.
 type View struct {
 	Clock           func() time.Time // Shared with the owning replay UI, nil for live time.
+	publication     *activitypresentation.Publication
 	entries         []activitypresentation.Entry
 	roster          []activitypresentation.AgentRow
 	lastSeq         uint64

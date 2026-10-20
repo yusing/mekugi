@@ -119,9 +119,13 @@ running state rather than index membership.
 
 The application binds source feeds and terminal views separately. Semantic
 transitions publish detached values before subsequent input or animation; painting
-does not republish source state. Output demands are resolved by application
-integration, outside the painter. Older-page insertion preserves the terminal's
-anchor around the source transition without transferring navigation to the feed.
+does not republish source state. Idle maintenance reuses the detached Activity
+publication while its feed revisions, retained output versions, roster facts,
+status contributions and saved-review totals are unchanged. Display admission and
+terminal reveal and pacing still settle before the next intent. Output demands are
+resolved by application integration, outside the painter. Older-page insertion
+preserves the terminal's anchor around the source transition without transferring
+navigation to the feed.
 
 An open detail selection retains its original output references in the application,
 independently of feed aging. It publishes detached page identities, membership and

@@ -51,7 +51,7 @@ func TestFrozenSelectionRequestsUpdatedOutput(t *testing.T) {
 		Facts:  activitypresentation.Facts{Seq: 8, Agent: "Main", Kind: "text", Text: strings.Repeat("recent line\n", 12)},
 		Values: []activitypresentation.Value{{Content: feed.Content{Kind: "text", Body: strings.Repeat("recent line\n", 12)}, Source: 8}},
 	}}}
-	view.Update(publication, activityui.Display{Caller: "/root"})
+	view.Update(new(publication), activityui.Display{Caller: "/root"})
 	painted := main.Render(view, &view.Painter, &prompts, MainOptions{Now: time.Unix(100, 0)}, 60, 8, 0)
 	for _, demand := range painted.Demands {
 		view.Hydrate([]activitypresentation.OutputResult{{Demand: demand, View: feed.OutputView{Lines: []string{"old retained line", "tail"}}}})
@@ -68,7 +68,7 @@ func TestFrozenSelectionRequestsUpdatedOutput(t *testing.T) {
 	publication.Entries = slices.Clone(publication.Entries)
 	publication.Entries[0].Revision++
 	publication.Entries[0].Outputs = map[int]int{1: 3}
-	view.Update(publication, activityui.Display{Caller: "/root"})
+	view.Update(new(publication), activityui.Display{Caller: "/root"})
 	in := FrameInput{Main: &main, Transcript: view, Shell: &Shell{Layout: Layout{Main: Rect{0, 0, 60, 8}}}, Width: 60, Height: 8}
 	mouse := Mouse{X: view.FeedLeft - 1, Y: view.FeedTop - 1}
 	result := frame.SelectionMouse(in, nil, mouse)
