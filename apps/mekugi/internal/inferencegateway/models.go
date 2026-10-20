@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"sync"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
 // MaxCatalogBytes bounds the single complete cached catalog.
@@ -20,7 +22,7 @@ type CatalogFailure struct {
 	UpstreamStatus, DownstreamStatus int
 }
 
-func ModelsHandler(provider *Client, report func(*http.Request, CatalogFailure)) http.HandlerFunc {
+func ModelsHandler(provider *Client, codeModeOnly bool, report func(*http.Request, CatalogFailure)) http.HandlerFunc {
 	// Session-local, single-entry cache. The gate coalesces concurrent refreshes
 	// without keeping canceled callers waiting for an upstream operation.
 	gate := make(chan struct{}, 1)
@@ -90,6 +92,18 @@ func ModelsHandler(provider *Client, report func(*http.Request, CatalogFailure))
 				cause += ": " + string(body)
 			}
 			failure = CatalogFailure{Err: errors.New(cause), Code: fmt.Sprintf("models_http_%d", response.StatusCode), Summary: fmt.Sprintf("the upstream model catalog returned HTTP %d", response.StatusCode)}
+		}
+		if codeModeOnly && response.StatusCode == http.StatusOK {
+			body, err = binding.CodeModeOnlyModelCatalog(body)
+			if err == nil && len(body) > MaxCatalogBytes {
+				err = errors.New("projected model catalog exceeds the router buffer budget")
+			}
+			if err != nil {
+				failure = CatalogFailure{Err: err, Code: "models_execution_interface", Summary: "the upstream model catalog could not be prepared for JavaScript execution"}
+				release()
+				http.Error(writer, failure.Summary, http.StatusBadGateway)
+				return
+			}
 		}
 		if cacheable && response.StatusCode == http.StatusOK {
 			headers := make(http.Header)

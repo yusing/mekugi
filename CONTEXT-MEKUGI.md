@@ -14,7 +14,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Options/catalog | `launch/options`, `launch/modelcatalog`, `launch/catalog.go`: launch/resume configuration, selected provider metadata and bundled discovery |
 | Frontends | `frontends/{registry,worker,session,recovery}.go`: authenticated catalog/PATH, dispatch, executable pinning, worker leases and retained delivery |
 | Headless | `headless`: noninteractive app-server client and JSONL evidence; Launch admits/dispatches it |
-| Inference gateway | `inferencegateway`: Responses admission, provider selection, socket lifetime, catalog/auxiliary endpoints; `service_tier.go`: applied tier shared by requests/display |
+| Inference gateway | `inferencegateway`: Responses admission, provider selection, socket lifetime, catalog/auxiliary endpoints; `models.go`: invocation-scoped catalog cache and Codex execution-mode projection; `service_tier.go`: applied tier shared by requests/display |
 | Request execution | `requestexecution`: shared HTTP/WebSocket attempt, preparation, delivery, cancellation and failure; `{request_guidance,response_delivery,stream_diagnostics,naming_inference}.go`: integration seams |
 | Execution observation | `executionobservation`: passive stock-tool observations, capture windows, completion and publication; `{exec_observation,exec_changes,exec_report_observation,shell_observation,native_apply_patch,final_answer_stream}.go`: focused seams |
 | Session control | `sessioncontrol/client.go`: sole host connection/request ledger; package owns submission, interruption, compaction, settings, startup/resume, prompts, approvals, side threads and authenticated audience |

@@ -79,8 +79,9 @@ independent of user catalogs and other processes' shared caches. Profiles and
 catalogs, command failure or private-file failure prevent the main host launch.
 Preparation is bounded to one minute and 8 MiB; its directory is private (0700)
 and file mode is 0600, with both removed on exit or launch failure. User
-configuration and shared caches remain untouched. Codex retains its catalog
-command behavior, and `/v1/models` preserves its native body and ETag.
+configuration and shared caches remain untouched by catalog preparation. Codex
+retains its catalog command behavior. Generated catalogs use `code_mode_only`;
+OpenAI discovery follows the [catalog transport contract](../../../../docs/contracts/responses-transport.md#catalog-and-auxiliary-exchanges).
 
 ## Host integration
 
@@ -89,6 +90,11 @@ overrides enable `features.code_mode` and `features.code_mode_only`, including
 normalizing conflicting caller feature toggles without changing prompt operands
 after `--`. Unsupported execution catalogs fail before inference under the
 [backend authority contract](../../../../backends/codex/SPEC.md#execution-authority).
+OpenAI discovery also sets model metadata to `code_mode_only`, since metadata
+overrides those feature flags. Account discovery and refresh remain available;
+Mekugi does not pin a bundled OpenAI catalog or edit the shared host cache.
+Explicit caller-supplied static catalogs retain host selection semantics and
+must expose the supported interface.
 
 Wrapped launches enable Codex's native rollout trace in a private, session-scoped
 temporary directory. The recorder includes prompts and responses and has no

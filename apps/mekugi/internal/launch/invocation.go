@@ -348,7 +348,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if capture != nil {
 		mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	}
-	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, issues.ReportCatalog))
+	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, options.Mode == "mekugi", issues.ReportCatalog))
 	inferencegateway.RegisterCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
 
 	executor := requestexecution.Executor{Provider: provider, Client: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}

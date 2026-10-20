@@ -22,7 +22,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 )
 
-const testNativeModelCatalog = `{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","shell_type":"unified_exec","apply_patch_tool_type":"freeform","model_messages":{"instructions_template":"native instructions"}}]}`
+const testNativeModelCatalog = `{"models":[{"slug":"gpt-5.6-sol","tool_mode":"code_mode","multi_agent_version":"v2","shell_type":"unified_exec","apply_patch_tool_type":"freeform","model_messages":{"instructions_template":"native instructions"}}]}`
 
 func TestCatalogWorkingDirectory(t *testing.T) {
 	tests := []struct {
@@ -155,7 +155,7 @@ func TestPrepareGrokCatalog(t *testing.T) {
 		t.Fatalf("catalog models: %v, %v", catalog.Models, err)
 	}
 	grok := catalog.Models[1]
-	if grok["slug"] != "grok-4.6" || grok["apply_patch_tool_type"] != "freeform" || grok["shell_type"] != "unified_exec" {
+	if grok["slug"] != "grok-4.6" || grok["tool_mode"] != "code_mode_only" || grok["apply_patch_tool_type"] != "freeform" || grok["shell_type"] != "unified_exec" {
 		t.Fatalf("lost Grok execution metadata: %v", grok)
 	}
 	var recorded struct {

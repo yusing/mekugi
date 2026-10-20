@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"golang.org/x/term"
 )
 
@@ -67,6 +68,10 @@ func prepareProviderCatalog(ctx context.Context, executable string, args []strin
 	body, err = modelcatalog.Build(body, selection)
 	if err != nil {
 		return "", "", fmt.Errorf("prepare provider model catalog: %w", err)
+	}
+	body, err = binding.CodeModeOnlyModelCatalog(body)
+	if err != nil {
+		return "", "", fmt.Errorf("prepare execution model catalog: %w", err)
 	}
 	directory, err = os.MkdirTemp("", "mekugi-models-")
 	if err != nil {

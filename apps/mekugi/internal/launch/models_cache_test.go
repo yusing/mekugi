@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,47 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
+func TestModelsHandlerEnforcesExecutionModeBeforeCaching(t *testing.T) {
+	const catalog = `{"models":[{"slug":"gpt-6-astra","tool_mode":"code_mode","future":42}],"extra":true}`
+	calls := 0
+	provider := newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return serverHTTPResponse(`{"models":[null]}`), nil
+		}
+		response := serverHTTPResponse(catalog)
+		response.Header.Set("ETag", "account-version")
+		return response, nil
+	})})
+	handler := inferencegateway.ModelsHandler(provider, true, nil)
+	for request := range 3 {
+		recorder := httptest.NewRecorder()
+		handler(recorder, catalogCacheRequest())
+		if request == 0 {
+			if recorder.Code != http.StatusBadGateway {
+				t.Fatalf("malformed catalog returned %d", recorder.Code)
+			}
+			continue
+		}
+		var got struct {
+			Models []struct {
+				Slug   string `json:"slug"`
+				Mode   string `json:"tool_mode"`
+				Future int    `json:"future"`
+			} `json:"models"`
+			Extra bool `json:"extra"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if recorder.Code != http.StatusOK || len(got.Models) != 1 || got.Models[0].Slug != "gpt-6-astra" ||
+			got.Models[0].Mode != "code_mode_only" || got.Models[0].Future != 42 || !got.Extra ||
+			recorder.Header().Get("ETag") != "account-version" || calls != 2 {
+			t.Fatalf("projected catalog/cache = %d %s; calls=%d", recorder.Code, recorder.Body, calls)
+		}
+	}
+}
+
 func catalogCacheRequest() *http.Request {
 	r := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.157.1", nil)
 	r.Header = codexAuthHeaders()
@@ -34,7 +76,7 @@ func TestModelsHandlerCacheReplaysBodyAndHeaders(t *testing.T) {
 		calls++
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}, "Cache-Control": {"private", "max-age=60"}, "Etag": {"version-one"}, "X-Private": {"not-forwarded"}}, Body: io.NopCloser(strings.NewReader(catalog))}, nil
 	})})
-	handler := inferencegateway.ModelsHandler(provider, (*requestexecution.Failures)(nil).ReportCatalog)
+	handler := inferencegateway.ModelsHandler(provider, false, (*requestexecution.Failures)(nil).ReportCatalog)
 	for range 3 {
 		w := httptest.NewRecorder()
 		handler(w, catalogCacheRequest())
@@ -49,7 +91,7 @@ func TestModelsHandlerCacheReplaysBodyAndHeaders(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("upstream calls = %d, want 1", calls)
 	}
-	inferencegateway.ModelsHandler(provider, (*requestexecution.Failures)(nil).ReportCatalog)(httptest.NewRecorder(), catalogCacheRequest())
+	inferencegateway.ModelsHandler(provider, false, (*requestexecution.Failures)(nil).ReportCatalog)(httptest.NewRecorder(), catalogCacheRequest())
 	if calls != 2 {
 		t.Fatalf("new handler reused old cache: calls = %d", calls)
 	}
@@ -62,7 +104,7 @@ func TestModelsHandlerCachePartitionsAndReplacesLatestEntry(t *testing.T) {
 			handler := inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 				calls++
 				return serverHTTPResponse(fmt.Sprintf(`{"generation":%d}`, calls)), nil
-			})}), (*requestexecution.Failures)(nil).ReportCatalog)
+			})}), false, (*requestexecution.Failures)(nil).ReportCatalog)
 			for i, want := range []int{1, 1, 2, 2, 3} {
 				r := catalogCacheRequest()
 				if i == 2 || i == 3 {
@@ -104,7 +146,7 @@ func TestModelsHandlerCacheDoesNotStoreFailures(t *testing.T) {
 				default:
 					return &http.Response{StatusCode: 200, Body: io.NopCloser(io.LimitReader(serverRepeatingReader{}, inferencegateway.MaxCatalogBytes+1))}, nil
 				}
-			})}), (*requestexecution.Failures)(nil).ReportCatalog)
+			})}), false, (*requestexecution.Failures)(nil).ReportCatalog)
 			for i := range 3 {
 				w := httptest.NewRecorder()
 				handler(w, catalogCacheRequest())
@@ -125,7 +167,7 @@ func TestModelsHandlerCacheDoesNotStoreFailures(t *testing.T) {
 
 func TestModelsHandlerWarmCacheStillValidatesAuthentication(t *testing.T) {
 	calls := 0
-	handler := inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) { calls++; return serverHTTPResponse(`{"models":[]}`), nil })}), (*requestexecution.Failures)(nil).ReportCatalog)
+	handler := inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) { calls++; return serverHTTPResponse(`{"models":[]}`), nil })}), false, (*requestexecution.Failures)(nil).ReportCatalog)
 	handler(httptest.NewRecorder(), catalogCacheRequest())
 	for _, kind := range []string{"missing", "duplicate"} {
 		r := catalogCacheRequest()
@@ -155,7 +197,7 @@ func TestModelsHandlerCacheCoalescesConcurrentRequests(t *testing.T) {
 		}
 		<-release
 		return serverHTTPResponse(`{"models":[]}`), nil
-	})}), (*requestexecution.Failures)(nil).ReportCatalog)
+	})}), false, (*requestexecution.Failures)(nil).ReportCatalog)
 	var wg sync.WaitGroup
 	for range 12 {
 		wg.Go(func() {
@@ -185,7 +227,7 @@ func TestModelsHandlerCacheCanceledWaitDoesNotForward(t *testing.T) {
 		}
 		<-release
 		return serverHTTPResponse(`{"models":[]}`), nil
-	})}), (*requestexecution.Failures)(nil).ReportCatalog)
+	})}), false, (*requestexecution.Failures)(nil).ReportCatalog)
 	go func() { defer close(done); handler(httptest.NewRecorder(), catalogCacheRequest()) }()
 	<-started
 	ctx, cancel := context.WithCancel(t.Context())
@@ -229,7 +271,7 @@ func TestModelsHandlerCacheGateReleasedBeforeDownstreamWrite(t *testing.T) {
 					return nil, errors.New("temporary upstream failure")
 				}
 				return serverHTTPResponse(`{"models":[]}`), nil
-			})}), (*requestexecution.Failures)(nil).ReportCatalog)
+			})}), false, (*requestexecution.Failures)(nil).ReportCatalog)
 			if mode == "cache hit" {
 				w := httptest.NewRecorder()
 				handler(w, catalogCacheRequest())
@@ -286,7 +328,7 @@ func TestModelsHandlerCacheCanceledFetchDoesNotBlockRetry(t *testing.T) {
 			return nil, request.Context().Err()
 		}
 		return serverHTTPResponse(`{"models":[]}`), nil
-	})}), (*requestexecution.Failures)(nil).ReportCatalog)
+	})}), false, (*requestexecution.Failures)(nil).ReportCatalog)
 	ctx, cancel := context.WithCancel(t.Context())
 	firstDone := make(chan struct{})
 	go func() {

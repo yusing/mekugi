@@ -24,7 +24,7 @@ rg '^func Test' apps/mekugi/internal/launch/*_codex_e2e_test.go
 
 | Fixture | Coverage and limits |
 | --- | --- |
-| OpenAI | Local base-URL override: web-tool exposure, turn metadata, reasoning-effort updates and workspace routing over WebSockets and HTTP/SSE fallback; WebSocket prewarm and side-thread continuity |
+| OpenAI | Local base-URL override: web-tool exposure, turn metadata, reasoning-effort updates and workspace routing over WebSockets and HTTP/SSE fallback; WebSocket prewarm and side-thread continuity. `TestCodeModeOnlyCatalogNativeCodex` covers account-catalog execution-mode enforcement with a stale shared cache and actual JavaScript tool execution |
 | Frontends | Authenticated command through stock `tools.exec_command`: cwd, environment, argv/stdin separation and exit status |
 | mrun | Codex-owned PTY yield and `write_stdin` continuation |
 | mchanges | Nested stock patch/shell calls with unprinted results; durable receipts, net review, cross-thread explicit IDs, caught failures and cross-request yielded completion; traces removed before reads, replay store reopened |

@@ -18,6 +18,9 @@ presentation and replay never execute a call again, serialize independent
 
 The application admits the JavaScript execution interface before inference;
 catalogs exposing top-level `apply_patch` or `exec_command` instead are unsupported.
+The binding sets model-catalog `tool_mode` to `code_mode_only` for Mekugi-owned
+discovery and generated catalogs, preserving other model metadata. Model metadata
+takes precedence over Codex feature flags, so both boundaries enforce the interface.
 The binding discovers the stock execution owner across native tool catalogs and
 refreshes only its composed guidance. Unsupported interfaces remain distinct from
 malformed catalogs; the application supplies their compatibility diagnostic.

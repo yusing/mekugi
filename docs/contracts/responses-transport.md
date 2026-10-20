@@ -22,7 +22,12 @@ delivery diagnostics; transport passes each admitted exchange to that executor.
 invocation memory, bounded to 8 MiB, without disk persistence or an expiry timer.
 Authenticated requests with identical
 credentials, account, session header and query, including client version, reuse
-its exact body and forwarded headers; concurrent matches share the fetch.
+its delivered body and forwarded headers; concurrent matches share the fetch.
+In Mekugi mode, successful catalogs set every model's `tool_mode` to
+`code_mode_only` before caching and delivery, preserving all other metadata and
+the upstream version ETag. Malformed catalogs fail without being cached.
+Passthrough preserves the original body. This projection keeps account discovery
+and refresh active without relying on edits to Codex's shared cache.
 Invalid authentication cannot read the cache. An absent session header scopes
 reuse to the router lifetime. A successful different key replaces the entry.
 Router restart, including resume, clears it; forks and model switches reuse only
