@@ -8,7 +8,10 @@ Validated request ancestry and authorized restored threads expand the scope.
 Switching retires the previous attachment; subsequent request observations must
 belong to the new lineage. Retained changes are delivered only after successful
 [publication](../../../../docs/contracts/record-publication.md) and only to an
-included thread and workspace. Scope snapshots remain immutable after delivery.
+included thread and workspace. Scope snapshots remain immutable after delivery. A fork admits the frozen
+inherited calls in its own retained streams across recorded workspaces, including
+child edits, preserving their original attribution
+without admitting subsequent edits to the original conversation.
 
 Membership and retained changes precede sampled previews. Replaceable preview
 updates coalesce without delaying completed receipts; an overflowing subscriber
@@ -20,6 +23,8 @@ not captures, commands or host-owned work. Omitting Live Preview leaves saved
 review and captured Activity receipts available.
 
 Retained hydration consumes the selected History and Changes owners directly.
+Changes supplies caller-filtered snapshots and resolves frozen fork visibility;
+review hydrates those admitted calls without reconstructing namespace policy.
 Captured receipts attach to completed host operation identities; retained capture
 correlation is used only when no host operation identity is available.
 It validates complete attempts before replacing an immutable review projection;

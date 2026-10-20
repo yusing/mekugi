@@ -120,6 +120,15 @@ and side questions retain drafts for retry during replacement. `/resume` has the
 same idle admission requirement, including stacked input; restoration is specified
 by [session presentation](../sessionpresentation/SPEC.md#resume-and-switching).
 
+`/fork` takes no arguments and creates a saved branch of the latest completed
+conversation, then switches to it. It uses the same idle admission as `/resume`,
+inherits current settings and carries pending input through the existing
+replacement flow. The original remains resumable and workspace files are unchanged.
+Failure preserves the original attachment and restores waiting input. Fork history
+uses the same durable authorization and evidence restoration as resumed history.
+Inherited retained records are published before switching; storage waits leave
+input and host delivery responsive.
+
 `/archive` confirms with No selected initially. Success archives Main through Codex,
 stops its turn and exits only after host success; failure keeps the session usable.
 It requires an established session outside restoration/replacement. New submissions

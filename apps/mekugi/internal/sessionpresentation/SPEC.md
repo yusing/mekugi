@@ -203,6 +203,9 @@ the selected workspace, Main, roster, children, preferences and retained Diff.
 Returning to a left thread readmits it. Failure replays buffered events into the
 preserved attachment and restores waiting input. Drafts are not stored per thread.
 
+`/fork` switches to the host-created branch through this same attachment and
+history restoration flow. It has no selection dialog and never submits a prompt.
+
 ### Restoration
 
 Main hydrates host messages and command/edit items after child histories, retaining

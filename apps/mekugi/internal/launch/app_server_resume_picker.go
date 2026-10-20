@@ -164,12 +164,24 @@ func resumeSession(attached *attachedPresentation, terminal *terminalsession.Att
 // Input typed for the new session returns to the composer rather than
 // reaching the old thread.
 func resumeSessionFailed(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, message string) error {
+	operation := "resume"
+	if control.Replacement.Forking() {
+		operation = "fork"
+		control.Requests.Retire("fork")
+		if target := control.Replacement.Target; target != "" {
+			control.RetireThreads(target)
+			if err := control.Request("thread/unsubscribe", map[string]any{"threadId": target}); err != nil {
+				message += "; releasing fork: " + err.Error()
+			}
+		}
+		control.Startup.ForkSettings, control.Startup.ForkSettingsAck = nil, false
+	}
 	control.Replacement.Finish()
 	control.ResumeEffort = false
 	restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, slices.Concat(attached.conversation.Unsent, attached.conversation.Queued)...)
 	attached.conversation.Unsent, attached.conversation.Queued = nil, nil
 	attached.presentation.Status.SetText("Ready")
-	setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not resume session: "+message, true)
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not "+operation+" session: "+message, true)
 	return replayResumePending(dispatch, resumePending)
 }
 

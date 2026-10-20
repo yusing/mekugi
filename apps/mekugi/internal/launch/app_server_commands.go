@@ -38,6 +38,7 @@ var nativeCommands = []completion.Choice{
 	{Name: "/title", Description: "Rename this session"},
 	{Name: "/status", Description: "Show session settings and usage limits"},
 	{Name: "/copy", Description: "Copy the last response or part of it"},
+	{Name: "/fork", Description: "Fork this conversation and switch to the branch"},
 	{Name: "/resume", Description: "Resume a saved session"},
 	{Name: "/archive", Description: "Archive this session"},
 	{Name: "/compact", Description: "Compact context now; Tab queues while busy"},
@@ -61,10 +62,18 @@ func sessionCommand(attached *attachedPresentation, terminal *terminalsession.At
 		return submitCompact(attached, terminal, control, picker, editor, questions, approvals, clock, settings, tiers, restoring, owned, environment, hook, observations, parent, reviewOwner, receipts, false)
 	}
 	if sessionBusy(&control.Live, attached.conversation) {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "/clear is disabled while a task is in progress", true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), command+" is disabled while a task is in progress", true)
 		return nil
 	}
 	prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take())
+	if command == "/fork" {
+		if err := control.Requests.Fork(&control.Startup, &control.Live, settings, provider, approvalMode); err != nil {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not fork session: "+err.Error(), true)
+			return nil
+		}
+		attached.presentation.Status.SetText("Forking session…")
+		return nil
+	}
 	control.Replacement.Clear()
 	attached.presentation.Status.SetText("Starting new session…")
 	params := sessioncontrol.ThreadPermissions(map[string]any{"sessionStartSource": "clear"}, approvalMode)

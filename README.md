@@ -172,6 +172,11 @@ not return. Third-party `exec resume`/`exec
 fork` uses the mode's default model unless given `-m`. See [resume
 details](apps/mekugi/internal/sessionpresentation/SPEC.md#resume-and-switching).
 
+While idle, `/fork` takes no arguments and creates a saved branch of the completed
+conversation, then switches to it with current settings and pending input. The
+original stays resumable and workspace files remain unchanged. A failed fork
+keeps the original session usable.
+
 ### Approvals
 
 Codex approvals open over an empty composer; otherwise press `Ctrl-B`, then `q`. Arrows

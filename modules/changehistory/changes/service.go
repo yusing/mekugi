@@ -87,6 +87,8 @@ type Service interface {
 	Publish(*history.Transaction, Scope, string, map[string]Publication) ([]Update, error)
 	Repair(context.Context, Scope, string, map[string]Publication) ([]Update, error)
 	Inspect(Scope, string) (Snapshot, error)
+	// InspectVisible filters calls to admitted threads and includes all frozen
+	// inherited calls/workspaces of admitted fork namespaces. Nil admits all calls.
 	InspectVisible(Scope, string, map[string]bool) ([]Snapshot, error)
 	Dependencies(Scope, string, []string, bool) ([]string, error)
 	PrepareFork(Scope, string, string, string) (ForkPlan, error)

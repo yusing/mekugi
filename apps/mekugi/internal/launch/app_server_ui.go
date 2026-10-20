@@ -216,6 +216,13 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 				agePaint := presentationTime(clock)
 				for {
 					select {
+					case retainedErr := <-control.Startup.ForkRetained():
+						pending := control.Startup.ForkRetention
+						pending.Err, pending.Complete = retainedErr, true
+						if err := dispatch(pending.Message); err != nil {
+							return err
+						}
+						dirty = true
 					case result := <-inputHistory.loads:
 						inputHistory.loaded(attached.conversation, result)
 						dirty = true
@@ -452,6 +459,17 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 	var response sessioncontrol.Request[appServerRequest]
 	var correlated bool
 	if m.Method == "" {
+		if pending, ok := control.Requests.Lookup(string(m.ID)); ok && pending.Method == "thread/fork" && pending.Side == nil && pending.Prediction == nil && control.Replacement.Forking() && m.Error == nil && retained.Store != nil {
+			if waiting := control.Startup.ForkRetention; waiting != nil {
+				if !waiting.Complete {
+					return nil
+				}
+			} else if accepted, err := control.Startup.Accept(&control.Live, "thread/fork", m.Result); err == nil {
+				control.Startup.RetainFork(parent, retained, changeSource, control.Thread, m, accepted)
+				attached.presentation.Status.SetText("Retaining fork history…")
+				return nil
+			}
+		}
 		response, correlated = control.Requests.Take(string(m.ID))
 	}
 	if handled, err := control.ObservePrediction(m, response, observations); handled {
@@ -501,8 +519,14 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 	if held, err := holdOlderHistoryEvent(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending, m); held || err != nil {
 		return err
 	}
+	if handled, err := control.Requests.ObserveForkSettings(&control.Startup, &control.Live, m, correlated && response.Owner.label == "fork/settings"); handled {
+		if err != nil {
+			return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, err.Error())
+		}
+		return nil
+	}
 	resuming := control.Startup.Thread != "" && control.Startup.Thread != sessioncontrol.ResumePicker && (control.Thread == "" || (*restoring) != nil)
-	if (resuming || control.Replacement.Target != "") && m.Method != "" {
+	if (resuming || control.Replacement.Target != "" || control.Replacement.Forking()) && m.Method != "" {
 		if hold, keep := holdResumeEvent(&attached.session, &control.Live, control.Startup, m, resuming); hold {
 			if !keep {
 				return nil
@@ -610,7 +634,17 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not clear session: "+m.Error.Message, true)
 			return nil
 		}
-		if method == "thread/resume" && control.Replacement.Target != "" && m.Error != nil {
+		if method == "thread/fork" && control.Startup.ForkRetention != nil {
+			pending := control.Startup.ForkRetention
+			control.Startup.ForkRetention = nil
+			if pending.Err != nil {
+				if accepted, err := control.Startup.Accept(&control.Live, method, m.Result); err == nil {
+					control.Replacement.Target = accepted.Thread.ID
+				}
+				return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, "retaining history: "+pending.Err.Error())
+			}
+		}
+		if (method == "thread/resume" && control.Replacement.Target != "" || method == "thread/fork" && control.Replacement.Forking()) && m.Error != nil {
 			return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, m.Error.Message)
 		}
 		if m.Error != nil {
@@ -632,10 +666,20 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				return err
 			}
 			return openSession(attached, control, picker, clock, resumePicker, approvalMode)
-		case "thread/start", "thread/resume":
+		case "thread/start", "thread/resume", "thread/fork":
 			result, err := control.Startup.Accept(&control.Live, method, m.Result)
 			if err != nil {
+				if control.Replacement.Forking() {
+					return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, err.Error())
+				}
 				return err
+			}
+			if held, err := control.Requests.PrepareForkEffort(&control.Startup, &control.Live, method, &result, appServerRequest{label: "fork/settings"}); held {
+				if err != nil {
+					return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, err.Error())
+				}
+				attached.presentation.Status.SetText("Restoring fork settings…")
+				return nil
 			}
 			if control.Replacement.Pending() {
 				// Detach only after host acceptance; process and operation owners remain live.
@@ -700,7 +744,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				control.LeaveThread()
 				control.Startup.Thread, control.Startup.Workspace = "", ""
 				control.Readmit(result.Thread.ID)
-				if method == "thread/resume" {
+				if method == "thread/resume" || method == "thread/fork" {
 					// Restoration below replays events buffered during the switch.
 					control.Startup.Thread = result.Thread.ID
 					resetDiffScope(attached, terminal, (*reviewOwner), reviewSource, preparePane, parent)
@@ -730,7 +774,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				requestSessionTitle(control, &attached.feedback, terminal, clock, dirty, control.Names.Next(control.Thread))
 			}
 			(*model), (*effort), (*tier) = result.Model, result.ReasoningEffort, result.ServiceTier
-			if method == "thread/resume" {
+			if method == "thread/resume" || method == "thread/fork" {
 				control.Settings.RestoreEffort = control.TakeResumeEffort()
 			}
 			if method == "thread/start" {
@@ -770,7 +814,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			// Resumed history is applied once the roster is read, so Main can
 			// follow child activity in order. An active snapshot keeps its
 			// steer/interrupt target meanwhile.
-			if method == "thread/resume" {
+			if method == "thread/resume" || method == "thread/fork" {
 				for _, turn := range result.Thread.Turns {
 					if turn.Status == "inProgress" {
 						control.Turn = turn.ID
@@ -783,7 +827,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			if panes != nil {
 				(*dirty) = paneError(attached.source, panes.open(&terminal.Shell, terminal.Main, result.Thread.Cwd, control.Thread, method == "thread/resume")) || (*dirty)
 			}
-			if method == "thread/resume" {
+			if method == "thread/resume" || method == "thread/fork" {
 				repair, err := result.RepairDefaultEffort(&control.Live)
 				if err != nil {
 					return err

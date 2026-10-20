@@ -67,6 +67,12 @@ func (r *Requests[T]) Respond(id jsontext.Value, result any) error {
 	return r.transport.Respond(id, result)
 }
 
+// Lookup observes correlation without settling it while admission work is pending.
+func (r *Requests[T]) Lookup(id string) (Request[T], bool) {
+	request, ok := r.pending[id]
+	return request, ok
+}
+
 // Take consumes a response identity once. Unknown or retired identities have no
 // owner and must not settle a newer operation with the same method.
 func (r *Requests[T]) Take(id string) (Request[T], bool) {

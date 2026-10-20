@@ -264,6 +264,15 @@ func TestModuleForkDependencyPublicationAndRetirement(t *testing.T) {
 	if err != nil || len(inherited.Changes[id].Calls) != 1 || len(inherited.Streams) != 1 || inherited.Streams[0].Thread != "fork" {
 		t.Fatalf("fork membership: %+v, %v", inherited, err)
 	}
+	for _, admitted := range []bool{true, false} {
+		visible, err := f.service.InspectVisible(child, f.workspace, map[string]bool{"fork": admitted})
+		if err != nil || len(visible) != 1 {
+			t.Fatalf("fork visible indexes: %+v, %v", visible, err)
+		}
+		if got := len(visible[0].Changes[id].Calls); (got == 1) != admitted || got > 1 {
+			t.Fatalf("fork admitted=%v: visible calls=%d", admitted, got)
+		}
+	}
 	inheritedText, err := f.service.Read(t.Context(), child, changes.Query{Workspace: f.workspace, Mine: true, View: "summary"})
 	if err != nil || !strings.Contains(inheritedText, "edit.txt") {
 		t.Fatalf("fork own-thread read: %q, %v", inheritedText, err)
@@ -331,5 +340,39 @@ func TestModuleForkDependencyPublicationAndRetirement(t *testing.T) {
 	next, err := f.service.Reserve(t.Context(), child, f.workspace, "fork", "new")
 	if err != nil || next == id {
 		t.Fatalf("retired identity reused: %q, %v", next, err)
+	}
+}
+
+func TestInspectVisibleFiltersCallsAtOwner(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	own := f.reserve(t, "owner", "own")
+	f.publish(t, own, "own", "own-call", "owner", nil)
+	other := f.reserve(t, "sibling", "other")
+	f.publish(t, other, "other", "other-call", "sibling", nil)
+	for _, selection := range []struct {
+		name               string
+		threads            map[string]bool
+		wantOwn, wantOther int
+	}{
+		{"owner", map[string]bool{"owner": true}, 1, 0},
+		{"all", nil, 1, 1},
+	} {
+		t.Run(selection.name, func(t *testing.T) {
+			indexes, err := f.service.InspectVisible(f.selected, f.workspace, selection.threads)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(indexes) != 1 {
+				t.Fatalf("visible indexes: %+v", indexes)
+			}
+			if gotOwn, gotOther := len(indexes[0].Changes[own].Calls), len(indexes[0].Changes[other].Calls); gotOwn != selection.wantOwn || gotOther != selection.wantOther {
+				t.Fatalf("visible calls: own=%d sibling=%d", gotOwn, gotOther)
+			}
+		})
+	}
+	unfiltered, err := f.service.Inspect(f.selected, f.workspace)
+	if err != nil || len(unfiltered.Changes[other].Calls) != 1 {
+		t.Fatal("visible inspection changed retained membership", err)
 	}
 }

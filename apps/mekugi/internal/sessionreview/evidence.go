@@ -100,16 +100,14 @@ func reconcileReview(ctx context.Context, retained changes.Scope, service change
 		if err != nil {
 			return err
 		}
-		threads := scope.Workspaces[workspace]
 		for _, index := range indexes {
+			if !filepath.IsAbs(index.Workspace) {
+				return errors.New("live diff workspace must be absolute")
+			}
 			for stream, info := range index.Streams {
 				for number := 1; number <= info.Next; number++ {
 					id := changes.ID(index.Streams[stream].Name, number)
 					change := index.Changes[id]
-					change.Calls = slices.Clone(change.Calls)
-					change.Calls = slices.DeleteFunc(change.Calls, func(call changes.Call) bool {
-						return threads != nil && !threads[cmp.Or(call.Thread, info.Thread)]
-					})
 					for _, call := range change.Calls {
 						present[presentation.AttemptKey{Workspace: index.Workspace, Call: call.ID}] = true
 					}

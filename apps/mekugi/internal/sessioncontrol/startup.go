@@ -2,13 +2,18 @@ package sessioncontrol
 
 import (
 	"cmp"
+	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
@@ -19,6 +24,9 @@ type Startup struct {
 	Config            map[string]any
 	Evidence          preferences.Evidence
 	MissingSettings   bool
+	ForkRetention     *ForkRetention
+	ForkSettings      *Settings
+	ForkSettingsAck   bool
 }
 
 const ResumePicker = "--pick"
@@ -138,6 +146,31 @@ func (r *Requests[T]) Resume(s *Startup, control *Live, evidence preferences.Evi
 	return err
 }
 
+// Fork branches the idle conversation with its currently applied settings. The
+// replacement remains pending until the host returns a distinct thread identity.
+func (r *Requests[T]) Fork(s *Startup, control *Live, applied preferences.Applied, provider string, approvals bool) error {
+	params := ThreadPermissions(map[string]any{"threadId": control.Thread, "model": applied.Model, "serviceTier": nil}, approvals)
+	if provider != "" {
+		params["modelProvider"] = provider
+	}
+	if applied.Effort != "" {
+		params["config"] = map[string]any{"model_reasoning_effort": applied.Effort}
+	}
+	if applied.Tier != "" {
+		params["serviceTier"] = applied.Tier
+	}
+	var owner T
+	if _, err := r.Send("thread/fork", params, "main", owner); err != nil {
+		return err
+	}
+	s.ForkSettings, s.ForkSettingsAck = nil, false
+	control.Replacement.Fork()
+	control.ResumeEffort = applied.Effort == ""
+	s.Evidence = preferences.Evidence{Model: applied.Model, Effort: applied.Effort, Tier: applied.Tier, TierKnown: true}
+	s.MissingSettings = false
+	return nil
+}
+
 // ThreadPermissions preserves --yolo's thread policy. Approval mode leaves both
 // settings to Codex configuration and invocation overrides.
 func ThreadPermissions(params map[string]any, approvals bool) map[string]any {
@@ -167,6 +200,9 @@ func (s *Startup) Accept(control *Live, method string, data jsontext.Value) (Acc
 	if method == "thread/resume" && result.Thread.ID != s.Target(control) {
 		return result, errors.New("thread/resume returned a different thread identity")
 	}
+	if method == "thread/fork" && (!control.Replacement.Forking() || result.Thread.ID == control.Thread) {
+		return result, errors.New("thread/fork returned an invalid replacement identity")
+	}
 	return result, nil
 }
 
@@ -191,4 +227,108 @@ func (result *AcceptedThread) RepairDefaultEffort(control *Live) (map[string]any
 		result.ReasoningEffort = ""
 	}
 	return nil, nil
+}
+
+// ForkRetention holds the unchanged host response until its inherited evidence
+// is durable. The event loop remains available while storage is pending.
+type ForkRetention struct {
+	Message  appserver.Message
+	Done     <-chan error
+	Err      error
+	Complete bool
+}
+
+func (s *Startup) RetainFork(ctx context.Context, selected changes.Scope, source changes.Service, original string, message appserver.Message, accepted AcceptedThread) {
+	selected.Thread, selected.Namespace = accepted.Thread.ID, accepted.Thread.ID
+	done := make(chan error, 1)
+	s.ForkRetention = &ForkRetention{Message: message, Done: done}
+	go func() {
+		done <- recordtransactions.RetainInput(ctx, selected, source, nil, recordtransactions.Input{
+			Workspace:  accepted.Thread.Cwd,
+			Initialize: &history.Scope{Thread: accepted.Thread.ID, Namespace: accepted.Thread.ID, Fork: original},
+		})
+	}()
+}
+
+func (s *Startup) ForkRetained() <-chan error {
+	if s.ForkRetention == nil || s.ForkRetention.Complete {
+		return nil
+	}
+	return s.ForkRetention.Done
+}
+
+// PrepareForkEffort keeps the original attachment admitted until the fork's
+// nullable effort is confirmed. Fork responses omit the complete mode; a cheap
+// loaded-thread resume supplies it without changing the fork's settings.
+func (r *Requests[T]) PrepareForkEffort(s *Startup, control *Live, method string, result *AcceptedThread, settingsOwner T) (bool, error) {
+	if !control.Replacement.Forking() || !control.ResumeEffort || result.ReasoningEffort == "" {
+		return false, nil
+	}
+	control.Replacement.Target = result.Thread.ID
+	if s.ForkSettings != nil {
+		return true, errors.New("Codex did not restore default reasoning")
+	}
+	if method == "thread/fork" {
+		var owner T
+		_, err := r.Send("thread/resume", map[string]any{"threadId": result.Thread.ID}, "main", owner)
+		return true, err
+	}
+	target := Live{Settings: Settings{RestoreEffort: true}}
+	repair, err := result.RepairDefaultEffort(&target)
+	if err != nil {
+		return true, err
+	}
+	if repair == nil {
+		return true, errors.New("Codex did not supply the settings needed to restore default reasoning")
+	}
+	repair["threadId"] = result.Thread.ID
+	if _, err := r.Send("thread/settings/update", repair, "fork", settingsOwner); err != nil {
+		return true, err
+	}
+	s.ForkSettings = &Settings{RestoreEffort: true}
+	s.ForkSettings.Admit(SettingsPlan{Action: SettingsThread, Change: repair})
+	return true, nil
+}
+
+// ObserveForkSettings settles only the fork target, independently of Main's
+// settings owner. Both acknowledgement and confirmation precede final admission.
+func (r *Requests[T]) ObserveForkSettings(s *Startup, control *Live, m appserver.Message, ack bool) (bool, error) {
+	if !control.Replacement.Forking() || s.ForkSettings == nil {
+		return false, nil
+	}
+	confirmed := false
+	if m.Method == "thread/settings/updated" && s.ForkSettings.BlocksInput() {
+		var event struct {
+			ThreadID string `json:"threadId"`
+			Settings struct {
+				Effort string `json:"effort"`
+			} `json:"threadSettings"`
+		}
+		if err := json.Unmarshal(m.Params, &event); err != nil {
+			return true, err
+		}
+		if event.ThreadID == control.Replacement.Target {
+			if event.Settings.Effort != "" {
+				return true, errors.New("Codex did not restore default reasoning")
+			}
+			s.ForkSettings.Confirmed("", event.Settings.Effort)
+			confirmed = true
+		}
+	}
+	if ack {
+		if m.Error != nil {
+			return true, errors.New(m.Error.Message)
+		}
+		s.ForkSettingsAck = true
+	}
+	if !ack && !confirmed {
+		return false, nil
+	}
+	if s.ForkSettingsAck && !s.ForkSettings.BlocksInput() {
+		s.ForkSettingsAck = false
+		var owner T
+		_, err := r.Send("thread/resume", map[string]any{"threadId": control.Replacement.Target}, "main", owner)
+		return true, err
+	}
+	return true, nil
 }

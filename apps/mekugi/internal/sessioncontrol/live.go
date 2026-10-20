@@ -204,6 +204,7 @@ const (
 	replacementIdle replacementPhase = iota
 	replacementClear
 	replacementResume
+	replacementFork
 	replacementArchive
 )
 
@@ -218,5 +219,7 @@ func (o *Replacement) Clear()          { *o = Replacement{phase: replacementClea
 func (o *Replacement) Resume(thread string) {
 	*o = Replacement{phase: replacementResume, Target: thread}
 }
-func (o *Replacement) Archive() { *o = Replacement{phase: replacementArchive} }
-func (o *Replacement) Finish()  { *o = Replacement{} }
+func (o *Replacement) Fork()         { *o = Replacement{phase: replacementFork} }
+func (o *Replacement) Forking() bool { return o.phase == replacementFork }
+func (o *Replacement) Archive()      { *o = Replacement{phase: replacementArchive} }
+func (o *Replacement) Finish()       { *o = Replacement{} }

@@ -161,7 +161,11 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		if attached.conversation.ShellMode() {
 			return false, submitShell(attached, terminal, control, picker, editor, clock, (*restoring) != nil, environment, parent, (*reviewOwner), shellEdits, retained, (*retainedSession), changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)
 		}
-		if text == "/compact" || text == "/clear" {
+		if fields := strings.Fields(text); len(fields) > 1 && fields[0] == "/fork" {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Use /fork without arguments", true)
+			return false, nil
+		}
+		if text == "/compact" || text == "/clear" || text == "/fork" {
 			return false, sessionCommand(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*restoring) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, statusConfig.Provider, approvalMode, text)
 		}
 		if text == "/resume" || strings.HasPrefix(text, "/resume ") {

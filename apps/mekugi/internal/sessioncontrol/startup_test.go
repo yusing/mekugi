@@ -1,6 +1,7 @@
 package sessioncontrol
 
 import (
+	"errors"
 	"maps"
 	"reflect"
 	"testing"
@@ -85,5 +86,34 @@ func TestStartupPickerIsNotAnInSessionResumeFlag(t *testing.T) {
 	control.Replacement.Resume("--last")
 	if opening, err := requests.OpenSession(&startup, &control, false, struct{}{}); err != nil || opening != OpeningResume || transport.sends[0].method != "thread/read" {
 		t.Fatal("literal replacement target became a startup flag")
+	}
+}
+
+func TestStartupForkUsesCurrentSettings(t *testing.T) {
+	for _, effort := range []string{"", "high"} {
+		transport := &requestTransport{id: "fork"}
+		requests := NewRequests[string](transport)
+		startup := Startup{Config: map[string]any{"model": "launch-model"}}
+		control := Live{Thread: "main"}
+		applied := preferences.Applied{Model: "current-model", Effort: effort, Tier: "priority"}
+		if err := requests.Fork(&startup, &control, applied, "routed", false); err != nil {
+			t.Fatal(err)
+		}
+		params := transport.sends[0].params.(map[string]any)
+		if params["threadId"] != "main" || params["model"] != applied.Model || params["modelProvider"] != "routed" || params["serviceTier"] != applied.Tier || params["sandbox"] != "danger-full-access" || !control.Replacement.Forking() || control.ResumeEffort != (effort == "") {
+			t.Fatalf("fork settings: %+v %+v", params, control)
+		}
+		if effort != "" && params["config"].(map[string]any)["model_reasoning_effort"] != effort {
+			t.Fatal("fork lost current effort")
+		}
+		if startup.Config["model"] != "launch-model" {
+			t.Fatal("fork mutated invocation defaults")
+		}
+	}
+	transport := &requestTransport{err: errors.New("closed")}
+	requests := NewRequests[string](transport)
+	startup, control := Startup{}, Live{Thread: "main"}
+	if err := requests.Fork(&startup, &control, preferences.Applied{}, "", true); err == nil || control.Replacement.Pending() {
+		t.Fatal("transport failure left a replacement gate")
 	}
 }
