@@ -161,8 +161,22 @@ func Patch(input, workspace string) (PatchObservation, error) {
 	}
 	return observation, nil
 }
-func ReviewPatch(files []PatchFile) ([]diffmodel.ReviewFile, bool) {
+
+// ReviewPatchEndpoints returns the same observed endpoints used for the review.
+// Continuing named observations can share this boundary without a second read.
+func ReviewPatchEndpoints(files []PatchFile) ([]diffmodel.ReviewFile, []File, bool) {
 	reviews := make([]diffmodel.ReviewFile, 0, len(files))
+	var endpoints []File
+	endpoint := func(path, text string, exists bool, err error) {
+		file := File{Path: path, Content: text, Size: int64(len(text))}
+		if exists {
+			file.Kind = Text
+		}
+		if err != nil {
+			file.Error = err.Error()
+		}
+		endpoints = append(endpoints, file)
+	}
 	complete := true
 	appendDifference := func(pathBefore, pathAfter, before, after string, existedBefore, existsAfter bool) {
 		if existedBefore == existsAfter && before == after && (pathBefore == pathAfter || !existedBefore) {
@@ -182,12 +196,14 @@ func ReviewPatch(files []PatchFile) ([]diffmodel.ReviewFile, bool) {
 			readPath = file.BeforePath
 		}
 		after, afterExists, afterErr := ReadPatchFile(readPath)
+		endpoint(readPath, after, afterExists, afterErr)
 		move := file.BeforePath != "" && file.AfterPath != "" && file.BeforePath != file.AfterPath
 		var sourceAfter string
 		var sourceExists bool
 		var sourceErr error
 		if move {
 			sourceAfter, sourceExists, sourceErr = ReadPatchFile(file.BeforePath)
+			endpoint(file.BeforePath, sourceAfter, sourceExists, sourceErr)
 		}
 		if file.Error != "" || file.TargetError != "" || afterErr != nil || sourceErr != nil {
 			reason := strings.Join([]string{file.Error, file.TargetError}, "; ")
@@ -215,7 +231,7 @@ func ReviewPatch(files []PatchFile) ([]diffmodel.ReviewFile, bool) {
 		appendDifference(file.BeforePath, file.BeforePath, file.Before, sourceAfter, file.Exists, sourceExists)
 		appendDifference(file.AfterPath, file.AfterPath, file.TargetBefore, after, file.TargetExists, afterExists)
 	}
-	return reviews, complete
+	return reviews, endpoints, complete
 }
 
 // Native patch baselines in a exec cell share one observation window, not

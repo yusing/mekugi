@@ -9,7 +9,6 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
-	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -160,6 +159,7 @@ func classifyExecShellSource(command, workdir, shell string, deadline time.Time,
 		return plan
 	}
 	walker := execShellWalker{source: command, authoredOnly: authoredOnly, cwd: filepath.Clean(workdir), plan: &plan, deadline: deadline, depth: depth, changes: changes}
+	walker.braceExpansion = shellsyntax.InterpreterIdentity(shell) == "bash"
 	walker.stmts(program.Stmts)
 	return plan
 }
@@ -168,9 +168,10 @@ func classifyExecShellSource(command, workdir, shell string, deadline time.Time,
 // to be in. cwd is empty once a cd may or may not have taken effect; relative
 // operands are then opaque.
 type execShellWalker struct {
-	source       string
-	statement    *syntax.Stmt
-	authoredOnly bool
+	source         string
+	statement      *syntax.Stmt
+	authoredOnly   bool
+	braceExpansion bool
 	// A pipe from an unsupported process is output, not authored text.
 	generatedInput bool
 	// generatedOrigin retains a recognized VCS producer through a pipeline.
@@ -736,6 +737,14 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 		break
 	}
 	identity := shellsyntax.InterpreterIdentity(name)
+	if identity == "set" {
+		values, literal := shellsyntax.Args(args)
+		if !literal || slices.ContainsFunc(values, func(value string) bool {
+			return strings.HasPrefix(value, "+") && strings.Contains(value, "B") || value == "braceexpand"
+		}) {
+			w.braceExpansion = false
+		}
+	}
 	w.program = Program{Label: execProgramLabel(identity, args), Direct: execProgramDirect(identity, args)}
 	if strings.Contains(name, "/") && filepath.Dir(name) != "/bin" && filepath.Dir(name) != "/usr/bin" {
 		// A path names a program of its own, not the system tool.
@@ -942,7 +951,7 @@ func execNeutralCommand(identity string, args []*syntax.Word) bool {
 		if !checked {
 			return true
 		}
-		values, ok := execNeutralArgs(args)
+		values, ok := shellsyntax.BraceArgs(args)
 		if !ok {
 			return false
 		}
@@ -1005,28 +1014,6 @@ func execNeutralCommand(identity string, args []*syntax.Word) bool {
 		}
 	}
 	return false
-}
-
-// execNeutralArgs expands only lexical braces for reader option checks. This
-// does not resolve parameters, expand filesystem globs, or execute the shell.
-func execNeutralArgs(words []*syntax.Word) ([]string, bool) {
-	var values []string
-	for _, word := range words {
-		copy := *word
-		copy.Parts = slices.Clone(word.Parts)
-		syntax.SplitBraces(&copy)
-		for expanded, err := range expand.BracesSeq(nil, &copy) {
-			if err != nil || len(values) >= 4096 {
-				return nil, false
-			}
-			args, ok := shellsyntax.Args([]*syntax.Word{expanded})
-			if !ok {
-				return nil, false
-			}
-			values = append(values, args...)
-		}
-	}
-	return values, true
 }
 
 // cd moves the walker as if it succeeded. A directory that is not a literal
@@ -1536,7 +1523,7 @@ func (w *execShellWalker) awk(identity string, args []*syntax.Word) {
 
 func (w *execShellWalker) find(args []*syntax.Word) {
 	for _, arg := range args {
-		values, ok := execNeutralArgs([]*syntax.Word{arg})
+		values, ok := shellsyntax.BraceArgs([]*syntax.Word{arg})
 		if !ok && execFindReadPath(arg) {
 			continue
 		}

@@ -357,7 +357,7 @@ func TestNativePatchReviewChecksActualDeletionAndMove(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if reviews, complete := changecapture.ReviewPatch(observation.Files); !complete || len(reviews) != 0 {
+		if reviews, _, complete := changecapture.ReviewPatchEndpoints(observation.Files); !complete || len(reviews) != 0 {
 			t.Fatalf("unchanged deletion or move fabricated a diff: %+v, complete=%t", reviews, complete)
 		}
 		if strings.Contains(patch, "Move to") {
@@ -365,7 +365,7 @@ func TestNativePatchReviewChecksActualDeletionAndMove(t *testing.T) {
 			if err := os.WriteFile(destination, []byte("copied\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			reviews, complete := changecapture.ReviewPatch(observation.Files)
+			reviews, _, complete := changecapture.ReviewPatchEndpoints(observation.Files)
 			if !complete || len(reviews) != 1 || reviews[0].Action() != diffmodel.ReviewAdd {
 				t.Fatalf("partial move was not reported as destination creation: %+v, complete=%t", reviews, complete)
 			}
@@ -393,7 +393,7 @@ func TestNativePatchReviewShowsOnlyObservedPartialCodeModeEffect(t *testing.T) {
 	if err := os.WriteFile(first, []byte("new\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reviews, complete := changecapture.ReviewPatch(observation.Files)
+	reviews, _, complete := changecapture.ReviewPatchEndpoints(observation.Files)
 	if !complete || len(reviews) != 1 || reviews[0].AfterPath != first {
 		t.Fatalf("partial effect = %+v, complete=%t", reviews, complete)
 	}

@@ -104,13 +104,21 @@ Ranges do not bridge available IDs, unselected IDs, or different failure reasons
 same review composition as the live view. It follows moves; diff output and edit
 dialogs show workspace-relative paths inside the owning workspace and preserve
 absolute paths outside it. Retained evidence keeps canonical paths. It never reads
-the live workspace. Pending or retired history and
+the live workspace. Composed text creations and deletions each use one complete
+file section, preserving all retained rows and line endings when applied with Git.
+Display-region boundaries do not split those operations into repeated file sections.
+Pending or retired history and
 inconsistent, incomplete, partial-coverage, or binary capture chains
 fail rather than claim a complete net diff; ordinary reads preserve that evidence.
 Complete captured diffs remain composable regardless of command exit status,
 including older retained records. Normal views
 describe captured file differences, not command outcomes; execution and capture
 diagnostics are available in `--history` only.
+An overlapping named writer can own multiple ordered intervals around another
+operation's patch. Its intervals retain one change identity and become readable
+only after its terminal result. Exact-operation details include only that
+operation's intervals, while net composition interleaves all selected evidence
+in captured order. Retaining an interval boundary does not complete the host call.
 Path filters apply to the composed files. An empty composition is explicit and
 distinct from no selected captures or a path filter matching no captured files.
 An empty own-thread selection names the workspace and suggests explicit IDs for
@@ -308,9 +316,14 @@ encoding. Provisional file stamps are excluded from durable comparison and stora
 Private checkpoints never substitute for retained inline evidence.
 
 Change indexes retain identities, ordered attempt membership, allocation state,
-and retirement markers. Historical record names, namespace ownership, and
-selection encodings remain readable. Immutable call envelopes remain the source
-of captured evidence, decoded through the shared historical codec.
+pending evidence dependencies, and retirement markers. Pending interval boundaries
+and published continuation endpoints remain dependencies across fork and resume,
+without becoming completed attempts. A terminal writer with no captured changes
+releases its pending reservation while preserving allocation high-water marks.
+Missing retained boundaries are errors.
+Historical record names, namespace ownership, and selection encodings remain
+readable. Immutable call envelopes remain the source of captured evidence, decoded
+through the shared historical codec.
 
 Repair adopts only verified durable attempts. Evidence, index and fork publication
 follow the shared [publication contract](../../docs/contracts/record-publication.md#cross-owner-publication).

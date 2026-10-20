@@ -186,7 +186,7 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 	}
 	var output strings.Builder
 	for _, chain := range ordered {
-		for _, file := range chain.FilesWithHighlights() {
+		for _, file := range chain.Files() {
 			if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath) && !changePathMatches(options, file.AfterPath) {
 				continue
 			}

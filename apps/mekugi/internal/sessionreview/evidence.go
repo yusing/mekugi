@@ -52,6 +52,17 @@ func hydrateReview(ctx context.Context, retained changes.Scope, builder *present
 		attempt := presentation.Attempt{AttemptIdentity: identity, Operation: activitydetail.Operation{Thread: cmp.Or(history.ExecutingThread, event.Thread), Item: item}}
 		if history.ExecOutcome != nil && history.ExecutingThread != "" {
 			attempt.Receipt = CapturedReceipt(event.Workspace, history, files)
+		} else if writer, interval := strings.CutSuffix(history.CorrelationID, "\x00exec"); interval && history.ExecObservation != nil {
+			// A writer interval becomes visible only with its terminal membership.
+			// Borrow that operation's real host identity without altering the
+			// earlier immutable boundary or fabricating an intermediate completion.
+			terminal, found, err := retained.Store.ReadHostCall(event.Workspace, legacycall.ExecCallID(writer, history.ExecObservation.CodeMode), false)
+			if err != nil {
+				return err
+			}
+			if found {
+				attempt.Receipt = CapturedReceipt(event.Workspace, terminal.History, files)
+			}
 		}
 		origin := presentation.Origin{Change: event.ID, Caller: history.Caller, Source: cmp.Or(history.Source, history.ToolName)}
 		for n, file := range files {

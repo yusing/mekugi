@@ -23,10 +23,13 @@ const maxExecWindows = 1024
 // the call to observing its terminal result. The registry is in memory, so
 // after a restart, records carry no overlap tags for windows opened before it.
 type execWindow struct {
-	ref    string
-	roots  []string
-	thread string
-	turn   string
+	intervalMu sync.Mutex
+	scope      changes.Scope
+	cuts       []execIntervalCut
+	ref        string
+	roots      []string
+	thread     string
+	turn       string
 	// group identifies the response that emitted the call.
 	group  string
 	paths  []string
@@ -50,6 +53,31 @@ type Windows struct {
 	windows []*execWindow
 	// Reports is supplied during invocation setup, before observations begin.
 	Reports *segments.Observer
+}
+
+// Only windows sharing a writer serialize interval publication. Never hold the
+// registry mutex across storage, so unrelated lifecycle delivery stays runnable.
+func (r *Windows) lockIntervals(refs []string) func() {
+	if r == nil {
+		return func() {}
+	}
+	refs = slices.Sorted(slices.Values(refs))
+	r.mu.Lock()
+	var windows []*execWindow
+	for _, ref := range slices.Compact(refs) {
+		if window := r.find(ref); window != nil {
+			windows = append(windows, window)
+		}
+	}
+	r.mu.Unlock()
+	for _, window := range windows {
+		window.intervalMu.Lock()
+	}
+	return sync.OnceFunc(func() {
+		for _, window := range slices.Backward(windows) {
+			window.intervalMu.Unlock()
+		}
+	})
 }
 
 func (r *Windows) find(ref string) *execWindow {

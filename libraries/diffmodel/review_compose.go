@@ -361,6 +361,36 @@ type ReviewHighlightedFile struct {
 	Highlighted bool
 }
 
+// Files returns visible original-to-latest diffs for patch serialization.
+// Adjacent regions form one hunk regardless of display highlights. In particular,
+// a creation or deletion must not repeat /dev/null sections or zero-side anchors:
+// Git can overwrite or reorder their content instead of applying the full file.
+// The composition and its per-region display metadata remain unchanged.
+func (c *ReviewComposition) Files() []ReviewFile {
+	projection := *c
+	projection.regions = nil
+	for _, region := range c.regions {
+		if n := len(projection.regions); n > 0 {
+			last := &projection.regions[n-1]
+			if last.hidden == region.hidden &&
+				last.beforeStart+len(last.before) == region.beforeStart &&
+				last.afterStart+len(last.after) == region.afterStart {
+				last.before = append(last.before, region.before...)
+				last.after = append(last.after, region.after...)
+				continue
+			}
+		}
+		region.before, region.after = slices.Clone(region.before), slices.Clone(region.after)
+		projection.regions = append(projection.regions, region)
+	}
+	highlighted := projection.FilesWithHighlights()
+	files := make([]ReviewFile, len(highlighted))
+	for i, file := range highlighted {
+		files[i] = file.ReviewFile
+	}
+	return files
+}
+
 // FilesWithHighlights returns visible unhidden original-to-latest regions,
 // with highlights introduced by ApplyWithHighlight. Matching captured context
 // is included when available; unknown source is never synthesized. Path-only

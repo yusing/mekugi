@@ -49,6 +49,17 @@ func publishEditReceipt(ctx context.Context, selected changes.Scope, source chan
 				continue
 			}
 			history := legacyHistory(record.History)
+			history.ReviewFiles = nil
+			for _, member := range index.Changes[id].Calls {
+				part, found, err := selected.Store.ReadHostCall(workspace, member.ID, false)
+				if err != nil {
+					return err
+				}
+				if !found {
+					return fmt.Errorf("edit receipt interval is unavailable")
+				}
+				history.ReviewFiles = append(history.ReviewFiles, legacyHistory(part.History).ReviewFiles...)
+			}
 			receipt := sessionreview.CapturedReceipt(workspace, record.History, history.ReviewFiles)
 			if history.ToolName == applyPatchToolName {
 				receipt = &changepresentation.Receipt{Text: changepresentation.ReceiptText(workspace, receiptEvidence(history))}
@@ -121,7 +132,13 @@ func agentEditNotice(ctx context.Context, selected changes.Scope, source changes
 		}
 		authored := authoredChangeHistory(legacyHistory(record))
 		if len(authored.ReviewFiles) == 0 {
-			continue
+			intervals, err := readExecIntervals(ctx, selected, source, workspace, callID, history.ExecObservation != nil && history.ExecObservation.CodeMode)
+			if err != nil {
+				return "", err
+			}
+			if len(intervals) == 0 {
+				continue
+			}
 		}
 		id := authored.ChangeID
 		if !found || id == "" || seen[id] {

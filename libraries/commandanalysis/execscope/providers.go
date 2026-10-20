@@ -97,6 +97,9 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 		return true
 	}
 	values, ok := shellsyntax.Args(args)
+	if w.braceExpansion && execFormatterIdentity(key) {
+		values, ok = shellsyntax.BraceArgs(args)
+	}
 	if !ok {
 		w.opaque("provider arguments are dynamic")
 		return true

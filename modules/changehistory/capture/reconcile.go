@@ -111,7 +111,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 			return
 		}
 		metadata[before.Path] = before
-		if before.Stamp != "" {
+		if observation.endpoints == nil && before.Stamp != "" {
 			// An uncaptured file with the same identity, size, and time was
 			// not written.
 			if info, err := os.Lstat(before.Path); err == nil && execFileStamp(info) == before.Stamp {
@@ -119,7 +119,10 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 				return
 			}
 		}
-		current := ReadFile(before.Path, &budget)
+		current, supplied := observation.endpoints[before.Path]
+		if !supplied {
+			current = ReadFile(before.Path, &budget)
+		}
 		after[before.Path] = current
 		record(before, current)
 	}
@@ -256,7 +259,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 		if beforePath == "" && changed.before.CopyOf != "" {
 			// A created copy names its source when the content matches.
 			source, captured := after[changed.before.CopyOf]
-			if !captured {
+			if !captured && observation.endpoints == nil {
 				source = ReadFile(changed.before.CopyOf, &budget)
 			}
 			if source.Error == "" && FilePresent(source) && SameContent(source, changed.after) {
@@ -343,6 +346,33 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 		complete, coverage = false, CoveragePartial
 	}
 	return reviews, complete, coverage
+}
+
+// ReviewInterval closes only named paths with supplied observed endpoints. It
+// reuses ordinary reconciliation, provenance and size bounds without rereading
+// the filesystem or making a host-completion claim.
+func ReviewInterval(before, endpoints []File) ([]diffmodel.ReviewFile, []File) {
+	observation := Observation{endpoints: make(map[string]File)}
+	var boundaries []File
+	budget := MaxContentBytes
+	for _, file := range before {
+		for _, boundary := range endpoints {
+			if file.Path != boundary.Path {
+				continue
+			}
+			if len(boundary.Content) > budget {
+				boundary.Content, boundary.Error = "", "overlapping writer boundary exceeds capture bound"
+			} else {
+				budget -= len(boundary.Content)
+			}
+			observation.Files = append(observation.Files, file)
+			observation.endpoints[file.Path] = boundary
+			boundaries = append(boundaries, boundary)
+			break
+		}
+	}
+	reviews, _, _ := reconcile(observation, nil, nil)
+	return reviews, boundaries
 }
 
 // boundExecReviews keeps the encoded reviews within the derived record's

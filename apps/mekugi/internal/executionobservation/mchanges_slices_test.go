@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -462,6 +463,74 @@ func TestMChangesSlicesNetComposesRepeatedEditsAndRejectsIncompleteEvidence(t *t
 	stdout, stderr, status = f.run(t, "mchanges --net "+incomplete)
 	if status == 0 || stdout != "" || !(strings.Contains(stderr, "incomplete") || strings.Contains(stderr, "pending")) {
 		t.Fatalf("incomplete net evidence was not rejected: %q, %q, %d", stdout, stderr, status)
+	}
+}
+
+func TestMChangesNetGitRoundTrip(t *testing.T) {
+	t.Parallel()
+	initial := strings.Repeat("original row\r\n", 149)
+	appended := initial + strings.Repeat("appended row\r\n", 11) + "last row"
+	for _, test := range []struct {
+		name               string
+		before, mid, after string
+		create, remove     bool
+	}{
+		{"creation-append", "", initial, appended, true, false},
+		{"creation-prepend", "", initial, "first row\r\n" + initial, true, false},
+		{"deletion", appended, initial, "", false, true},
+		{"modification", initial, "first row\r\n" + initial, "first row\r\n" + appended, false, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newMChangesSliceFixture(t, "net-git-"+test.name)
+			gitTestRun(t, f.workspace, "init", "--quiet")
+			path := filepath.Join(f.workspace, "file.txt")
+			if !test.create {
+				writeTestFile(t, path, test.before)
+				gitTestRun(t, f.workspace, "-c", "core.autocrlf=false", "add", "--", "file.txt")
+			}
+			beforePath, afterPath := path, path
+			if test.create {
+				beforePath = ""
+			}
+			if test.remove {
+				afterPath = ""
+			}
+			first := f.reserve(t, f.thread, "first")
+			f.publish(t, first, "first", "first-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{
+				diffmodel.RenderReviewFile(beforePath, path, test.before, test.mid),
+			}})
+			last := f.reserve(t, f.thread, "last")
+			f.publish(t, last, "last", "last-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{
+				diffmodel.RenderReviewFile(path, afterPath, test.mid, test.after),
+			}})
+			patch, stderr, status := f.run(t, "mchanges --net "+first+".."+last+" --max-tokens 15500")
+			if status != 0 || stderr != "" {
+				t.Fatalf("net read: %q, %q, %d", patch, stderr, status)
+			}
+			git := func(input string, args ...string) string {
+				t.Helper()
+				cmd := exec.CommandContext(t.Context(), "git", args...)
+				cmd.Dir = f.workspace
+				cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_TERMINAL_PROMPT=0")
+				cmd.Stdin = strings.NewReader(input)
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("git %v: %v: %s\npatch:\n%s", args, err, out, patch)
+				}
+				return string(out)
+			}
+			git(patch, "apply", "--cached", "--unidiff-zero", "--whitespace=nowarn", "-p0")
+			if test.remove {
+				if out := git("", "ls-files"); out != "" {
+					t.Fatalf("deleted file remains in index: %q", out)
+				}
+			} else if out := git("", "show", ":file.txt"); out != test.after {
+				t.Fatalf("staged bytes = %q; want %q", out, test.after)
+			}
+			if (test.create || test.remove) && strings.Count(patch, "\n+++ ") != 1 {
+				t.Fatalf("creation or deletion has multiple file sections:\n%s", patch)
+			}
+		})
 	}
 }
 

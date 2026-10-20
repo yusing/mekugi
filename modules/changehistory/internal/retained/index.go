@@ -41,7 +41,8 @@ type changeStream struct {
 type trackedChange struct {
 	Correlation  string
 	Calls        []trackedCall
-	RetiredCalls int `json:",omitzero"`
+	Dependencies []string `json:",omitzero"`
+	RetiredCalls int      `json:",omitzero"`
 }
 
 type trackedCall struct {
@@ -120,6 +121,13 @@ func validateChangeIndex(index changeIndex) error {
 		stream, number, err := changes.ParseID(id)
 		if err != nil || number > streams[stream] || change.Correlation == "" || correlations[change.Correlation] || change.RetiredCalls < 0 {
 			return errors.New("invalid change identity or stream membership")
+		}
+		dependencies := make(map[string]bool, len(change.Dependencies))
+		for _, id := range change.Dependencies {
+			if id == "" || dependencies[id] {
+				return errors.New("invalid or duplicated change dependency")
+			}
+			dependencies[id] = true
 		}
 		counts[stream]++
 		correlations[change.Correlation] = true
@@ -211,7 +219,7 @@ func changeStreamName(index int) string {
 func (s *store) publishChanges(workspace string, histories map[string]changes.Publication) error {
 	tracked := make([]string, 0, len(histories))
 	for id, history := range histories {
-		if history.ChangeID != "" {
+		if history.ChangeID != "" || history.NoEffect {
 			tracked = append(tracked, id)
 		}
 	}
@@ -229,9 +237,21 @@ func (s *store) publishChanges(workspace string, histories map[string]changes.Pu
 	changed := false
 	for _, callID := range tracked {
 		history := histories[callID]
+		if history.NoEffect {
+			changed = retireEmptyReservation(&index, history.CorrelationID) || changed
+			continue
+		}
 		change, exists := index.Changes[history.ChangeID]
 		if !exists || change.Correlation != history.CorrelationID {
 			return errors.New("change identity does not match replay record")
+		}
+		if history.Dependency {
+			if !slices.Contains(change.Dependencies, callID) {
+				change.Dependencies = append(change.Dependencies, callID)
+				index.Changes[history.ChangeID] = change
+				changed = true
+			}
+			continue
 		}
 		if !slices.ContainsFunc(change.Calls, func(call trackedCall) bool { return call.ID == callID }) {
 			managed := history.Managed
@@ -266,7 +286,7 @@ func (s *store) repairVisibleChangeCalls(ctx context.Context, workspace string, 
 	for callID, history := range histories {
 		// Old replay facts remain visible, but unsupported IDs have no entry
 		// in the current review index. Do not revive them during index repair.
-		if _, _, err := changes.ParseID(history.ChangeID); err == nil && history.Confirmed {
+		if _, _, err := changes.ParseID(history.ChangeID); (err == nil || history.NoEffect) && history.Confirmed {
 			confirmed = append(confirmed, callID)
 		}
 	}
@@ -285,6 +305,17 @@ func (s *store) repairVisibleChangeCalls(ctx context.Context, workspace string, 
 		changed := false
 		for _, callID := range confirmed {
 			history := histories[callID]
+			if history.NoEffect {
+				record, found, err := s.read(workspace, callID, false)
+				if err != nil {
+					return err
+				}
+				if !found || record.History.CorrelationID != history.CorrelationID || record.History.ChangeID != "" || len(record.History.ReviewFiles) != 0 || record.History.ExecOutcome == nil || record.History.ExecOutcome.Coverage != "exact" {
+					return errors.New("no-effect completion is missing or inconsistent")
+				}
+				changed = retireEmptyReservation(&index, history.CorrelationID) || changed
+				continue
+			}
 			change, exists := index.Changes[history.ChangeID]
 			if !exists || change.Correlation != history.CorrelationID {
 				return errors.New("visible change identity is missing or inconsistent")
@@ -389,4 +420,24 @@ func expandChangeRefs(refs []string) ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// A witnessed boundary can reserve an identity before the writer has effects.
+// Its terminal no-effect fact releases that reservation, never a completed edit.
+func retireEmptyReservation(index *changeIndex, correlation string) bool {
+	for id, change := range index.Changes {
+		if change.Correlation != correlation || len(change.Calls) != 0 || len(change.Dependencies) == 0 {
+			continue
+		}
+		delete(index.Changes, id)
+		stream, _, _ := changes.ParseID(id)
+		for i := range index.Streams {
+			if index.streamName(i) == stream {
+				index.Streams[i].Retired++
+				break
+			}
+		}
+		return true
+	}
+	return false
 }

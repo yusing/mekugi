@@ -98,6 +98,13 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 			if retained.CorrelationID != member.callID+"\x00exec" {
 				return errors.New("retained stock exec_command observation is inconsistent")
 			}
+			if retained.ChangeID == "" && retained.Attempt > 1 {
+				completed := legacyHistory(retained)
+				completed.confirmed = true
+				if _, err := source.Repair(ctx, selected, workspace, changePublications(map[string]mekugiHistory{derived: completed})); err != nil {
+					return changeError(err)
+				}
+			}
 			continue
 		}
 		pending = append(pending, member)
@@ -105,6 +112,33 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 	members = pending
 	if len(members) == 0 {
 		return nil
+	}
+	var intervalRefs []string
+	for _, member := range members {
+		intervalRefs = append(intervalRefs, member.callID)
+	}
+	unlockIntervals := windows.lockIntervals(intervalRefs)
+	defer unlockIntervals()
+	var intervals []execInterval
+	for i := range members {
+		member := &members[i]
+		parts, err := readExecIntervals(ctx, selected, source, workspace, member.callID, member.history.ExecObservation.CodeMode)
+		if err != nil {
+			return err
+		}
+		if len(parts) != 0 && len(members) > 1 {
+			unlockIntervals()
+			// An independently witnessed patch boundary separates this writer
+			// from siblings that otherwise share one coarse response window.
+			for _, single := range members {
+				if err := finalizeExecObservations(selected, source, snapshots, recovered, publish, windows, activity, notice, ctx, workspace, []execCompletion{single}); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		intervals = append(intervals, parts...)
+		member.history.ExecObservation = rebaseExecIntervals(member.history.ExecObservation, parts)
 	}
 	first := members[0]
 	thread := first.history.ExecutingThread
@@ -176,7 +210,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		Caller:          first.history.Caller,
 		Source:          observation.SourceLabel(),
 		CorrelationID:   correlation,
-		Attempt:         1,
+		Attempt:         len(intervals) + 1,
 		ReviewFiles:     reviews,
 		Report:          strings.Join(reports, "\n"),
 		ExecOutcome:     outcome,
@@ -186,6 +220,9 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		CarrierPayload:  arguments,
 		ReplayCarrier:   true,
 		UpstreamItem:    execDerivedUpstreamItem(derivedCallID, arguments),
+	}
+	if len(intervals) != 0 && (len(reviews) != 0 || slices.ContainsFunc(intervals, func(interval execInterval) bool { return len(interval.before.ReviewFiles) != 0 })) {
+		record.ChangeID = intervals[0].before.ChangeID
 	}
 	if len(reviews) != 0 && selected.Store != nil {
 		changeID, err := source.Reserve(ctx, selected, workspace, thread, correlation)
@@ -221,6 +258,11 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		}
 	}
 	records := map[string]mekugiHistory{derivedCallID: record}
+	if record.ChangeID != "" {
+		for _, interval := range intervals {
+			records[interval.call] = interval.before
+		}
+	}
 	for _, member := range members[1:] {
 		memberObservation := *member.history.ExecObservation
 		memberCallID := legacycall.ExecCallID(member.callID, memberObservation.CodeMode)

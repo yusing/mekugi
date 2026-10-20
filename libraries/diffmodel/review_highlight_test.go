@@ -58,6 +58,29 @@ func TestReviewCompositionHighlightPathOnly(t *testing.T) {
 	}
 }
 
+func TestReviewCompositionFilesPreservesDisplayRegions(t *testing.T) {
+	var c ReviewComposition
+	for i, file := range []ReviewFile{
+		RenderReviewFile("", "file.txt", "", "first\r\n"),
+		RenderReviewFile("file.txt", "file.txt", "first\r\n", "first\r\nlast"),
+	} {
+		if err := c.ApplyWithHighlight(file, false, i == 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := c.FilesWithHighlights()
+	if len(before) != 2 || before[0].Highlighted || !before[1].Highlighted {
+		t.Fatalf("display regions: %#v", before)
+	}
+	want := RenderReviewFile("", "file.txt", "", "first\r\nlast")
+	if files := c.Files(); !reflect.DeepEqual(files, []ReviewFile{want}) {
+		t.Fatalf("serialized files: %#v; want %#v", files, want)
+	}
+	if !reflect.DeepEqual(before, c.FilesWithHighlights()) {
+		t.Fatal("serialization changed display regions or highlights")
+	}
+}
+
 func TestReviewCompositionHighlightFailureIsAtomic(t *testing.T) {
 	var c ReviewComposition
 	if err := c.ApplyWithHighlight(composeCapture("a\nb\n", "A\nb\n"), false, true); err != nil {

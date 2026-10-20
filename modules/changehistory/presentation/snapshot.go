@@ -214,6 +214,15 @@ func (b *Builder) Add(attempt Attempt) error {
 	b.next.attempts[attempt.Key] = attempt
 	b.next.order = append(b.next.order, attempt.Key)
 	if attempt.Receipt != nil {
+		for i, prior := range b.next.receipts {
+			if len(prior.Calls) != 0 && prior.Thread == attempt.Receipt.Thread && slices.Equal(prior.Calls, attempt.Receipt.Calls) {
+				merged := *prior
+				merged.Text = strings.TrimSpace(prior.Text + "\n" + attempt.Receipt.Text)
+				merged.Pages = append(slices.Clone(prior.Pages), attempt.Receipt.Pages...)
+				b.next.receipts[i] = &merged
+				return nil
+			}
+		}
 		b.next.receipts = append(b.next.receipts, attempt.Receipt)
 	}
 	return nil
@@ -250,6 +259,7 @@ func (s *Snapshot) ActivityDetail(request activitydetail.Request) activitydetail
 	if request.Thread == "" || request.Item == "" {
 		return activitydetail.Result{}
 	}
+	var result activitydetail.Result
 	for attempt := range s.Attempts() {
 		match := attempt.Operation == request.Operation
 		if receipt := attempt.Receipt; receipt != nil {
@@ -258,7 +268,6 @@ func (s *Snapshot) ActivityDetail(request activitydetail.Request) activitydetail
 		if !match || len(attempt.Chunks) == 0 {
 			continue
 		}
-		var result activitydetail.Result
 		for i, chunk := range attempt.Chunks {
 			workspace := cmp.Or(chunk.Workspace, attempt.Key.Workspace)
 			target := pathdisplay.ForWorkspace(workspace, cmp.Or(chunk.Review.AfterPath, chunk.Review.BeforePath))
@@ -272,9 +281,9 @@ func (s *Snapshot) ActivityDetail(request activitydetail.Request) activitydetail
 				result.Selected = page.ID
 			}
 		}
-		if result.Selected != "" {
-			return result
-		}
 	}
-	return activitydetail.Result{}
+	if result.Selected == "" {
+		return activitydetail.Result{}
+	}
+	return result
 }

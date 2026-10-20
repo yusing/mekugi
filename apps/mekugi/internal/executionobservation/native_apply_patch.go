@@ -32,6 +32,7 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 		return nil
 	}
 	windowFiles := changecapture.PatchWindowFiles(history.NativePatches)
+	var endpoints []changecapture.File
 	occurrences := make(map[string]int)
 	for index, observation := range history.NativePatches {
 		occurrence := occurrences[observation.Input]
@@ -49,7 +50,8 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 			continue
 		}
 		correlation := callID + "\x00" + strconv.Itoa(index)
-		reviews, complete := changecapture.ReviewPatch(windowFiles[index])
+		reviews, observed, complete := changecapture.ReviewPatchEndpoints(windowFiles[index])
+		endpoints = append(endpoints, observed...)
 		// Attempts remain durable, but IDs select actual or incomplete file
 		// evidence, not successful no-ops or rejected patches with no effects.
 		changeID := ""
@@ -121,5 +123,5 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 			_ = publishEditReceipt(context.WithoutCancel(ctx), p.retained, p.changeSource, workspace, thread, derivedCallID, p.activity, displayID)
 		}
 	}
-	return nil
+	return p.resumeExecIntervals(ctx, workspace, callID, endpoints)
 }

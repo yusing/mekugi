@@ -1,6 +1,7 @@
 package shellsyntax
 
 import (
+	"slices"
 	"strings"
 
 	"mvdan.cc/sh/v3/expand"
@@ -165,6 +166,29 @@ func Args(words []*syntax.Word) ([]string, bool) {
 			}
 		}
 		values = append(values, value)
+	}
+	return values, true
+}
+
+// BraceArgs expands bounded lexical braces before reading static arguments.
+// It never resolves parameters, expands filesystem globs, or executes source.
+// Source: libraries/commandanalysis/execscope/shell.go:1007:1028@2f371767.
+func BraceArgs(words []*syntax.Word) ([]string, bool) {
+	var values []string
+	for _, word := range words {
+		copy := *word
+		copy.Parts = slices.Clone(word.Parts)
+		syntax.SplitBraces(&copy)
+		for expanded, err := range expand.BracesSeq(nil, &copy) {
+			if err != nil || len(values) >= 4096 {
+				return nil, false
+			}
+			args, ok := Args([]*syntax.Word{expanded})
+			if !ok {
+				return nil, false
+			}
+			values = append(values, args...)
+		}
 	}
 	return values, true
 }

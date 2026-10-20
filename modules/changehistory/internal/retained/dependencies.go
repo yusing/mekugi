@@ -26,6 +26,9 @@ func changeDependencies(index changeIndex, ids []string, existingOnly bool) ([]s
 		if existingOnly && len(names) == 0 {
 			names = append(names, changeIndexName(index.Workspace, index.Namespace))
 		}
+		for _, id := range change.Dependencies {
+			names = append(names, legacycall.Name(index.Workspace, id, false))
+		}
 		for _, call := range change.Calls {
 			names = append(names, legacycall.Name(index.Workspace, call.ID, false))
 		}

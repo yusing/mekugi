@@ -69,6 +69,15 @@ func retainObservationInput(ctx context.Context, selected changes.Scope, source 
 	for call, item := range histories {
 		input.Files = append(input.Files, legacycall.Name(workspace, call, false))
 		input.Changes = append(input.Changes, item.ChangeID)
+		if item.ExecObservation != nil {
+			intervals, err := readExecIntervals(ctx, selected, source, workspace, call, item.ExecObservation.CodeMode)
+			if err != nil {
+				return err
+			}
+			for _, interval := range intervals {
+				input.Changes = append(input.Changes, interval.before.ChangeID)
+			}
+		}
 	}
 	var items []map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &items)

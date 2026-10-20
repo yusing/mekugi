@@ -57,6 +57,9 @@ func (*service) PrepareFork(selected changes.Scope, source, dest, fork string) (
 			return nil, err
 		}
 		for _, change := range index.Changes {
+			for _, id := range change.Dependencies {
+				plan.names = append(plan.names, legacycall.Name(index.Workspace, id, false))
+			}
 			for _, call := range change.Calls {
 				plan.names = append(plan.names, legacycall.Name(index.Workspace, call.ID, false))
 			}

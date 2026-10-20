@@ -45,6 +45,10 @@ by executing it or consults a router working directory. Consumers supply the
 selected directory, environment facts and retained-change resolver. Dynamic or
 unknown targets remain separate from recognized literal paths.
 
+Named formatter targets accept bounded lexical brace expansion in Bash, including
+literal alternatives and ranges. Parameters, command substitutions and other
+dynamic expressions remain unresolved; expansion never executes shell code.
+
 Source reads use bounded nonblocking opens. Read-only producer queries run only
 validated argument vectors under the shared deadline; they never run shell query
 text. VCS and fixer providers share the classifier registry. Capture, authorization,

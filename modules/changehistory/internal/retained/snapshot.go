@@ -14,7 +14,7 @@ import (
 )
 
 func projectChange(value trackedChange) changes.Change {
-	result := changes.Change{Correlation: value.Correlation, RetiredCalls: value.RetiredCalls}
+	result := changes.Change{Correlation: value.Correlation, RetiredCalls: value.RetiredCalls, Dependencies: slices.Clone(value.Dependencies)}
 	for _, call := range value.Calls {
 		result.Calls = append(result.Calls, changes.Call{ID: call.ID, Thread: call.Thread, Sequence: call.Sequence, Managed: call.Managed})
 	}

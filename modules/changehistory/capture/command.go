@@ -83,7 +83,10 @@ type Omission struct {
 // Observation is the durable pre-call capture of one observed call: a
 // native exec_command, or all literal commands of one exec cell.
 type Observation struct {
-	Commands []commandanalysis.Command
+	// endpoints is an operation-local, already observed boundary. Interval
+	// reconciliation must not replace it with a later filesystem read.
+	endpoints map[string]File
+	Commands  []commandanalysis.Command
 	// CommandClasses retain pre-call classification for repeated literal
 	// occurrences, without reclassifying providers after execution.
 	CommandClasses []string `json:",omitempty"`

@@ -182,3 +182,49 @@ func TestAuthoredChangesNamedFormatterKeepsFinalSourceEdits(t *testing.T) {
 		t.Fatalf("final authored source not reviewable: %q, %v", net, err)
 	}
 }
+
+func TestAuthoredChangesBraceFormatterKeepsCreationChain(t *testing.T) {
+	f := newMChangesSliceFixture(t, "brace-formatter")
+	before := "package p; var A=1\n"
+	var created []diffmodel.ReviewFile
+	for _, name := range []string{"first.go", "second.go"} {
+		path := filepath.Join(f.workspace, name)
+		writeTestFile(t, path, before)
+		created = append(created, diffmodel.RenderReviewFile("", path, "", before))
+	}
+	creation := f.reserve(t, f.thread, "create")
+	f.publish(t, creation, "create", "create-call", mekugiHistory{ReviewFiles: created})
+	command := "gofmt -w {first,second}.go"
+	observation := observeTestCommand(t, f.workspace, command)
+	host := exec.Command(execTrackShellExecutable(t, "bash"), "-c", command)
+	host.Dir = f.workspace
+	if output, err := host.CombinedOutput(); err != nil {
+		t.Fatalf("formatter: %v: %s", err, output)
+	}
+	proxy := testProxyWithStore(f.store)
+	history := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread, ExecObservation: observation}
+	if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, f.workspace, []execCompletion{{callID: "format", history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(map[string]any{"exit_code": 0}))}}); err != nil {
+		t.Fatal(err)
+	}
+	formatted, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("format", false))
+	if err != nil || !found || formatted.ChangeID == "" || len(formatted.ReviewFiles) != 2 {
+		t.Fatalf("formatter transition missing: %+v, %v", formatted, err)
+	}
+	var edited []diffmodel.ReviewFile
+	for _, file := range formatted.ReviewFiles {
+		if file.Origin != "" {
+			t.Fatalf("named formatter excluded from authored evidence: %+v", file)
+		}
+		data, err := os.ReadFile(file.AfterPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		edited = append(edited, diffmodel.RenderReviewFile(file.AfterPath, file.AfterPath, string(data), strings.ReplaceAll(string(data), "A = 1", "A = 2")))
+	}
+	last := f.reserve(t, f.thread, "edit")
+	f.publish(t, last, "edit", "edit-call", mekugiHistory{ReviewFiles: edited})
+	net, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{creation, formatted.ChangeID, last}, View: "net"})
+	if err != nil || strings.Count(net, "+var A = 2") != 2 {
+		t.Fatalf("creation/format/edit chain: %q, %v", net, err)
+	}
+}

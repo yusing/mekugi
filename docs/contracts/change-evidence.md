@@ -35,7 +35,8 @@ missing or corrupt evidence is unavailable, never an empty diff.
 Complete stock patches and literal command operands establish pre-edit targets
 without executing source. Supported commands include text redirection and
 `cat`/`printf`/`echo`/`tee`, file operations including `mv` and `rm`, in-place
-`sed`/`perl`, individually named formatter targets, source-derived Python and
+`sed`/`perl`, individually named formatter targets (including literal Bash brace
+alternatives and ranges), source-derived Python and
 JavaScript writes, local VCS operands, and `mchanges apply`/`revert`. Recognized
 RTK wrappers and inline shells preserve the underlying source boundary.
 
@@ -116,6 +117,11 @@ Before/after evidence cannot separate concurrent user, hook or process writes
 without host per-write facts. Overlapping calls attribute snapshot differences
 to the first finisher; remaining calls compare only later differences, so an
 effect is recorded once. Siblings can share a record with overlap diagnostics.
+When a later native patch supplies an observed boundary inside an open named
+writer, capture retains separate writer-before-patch, patch, and writer-after-patch
+intervals. Each interval keeps its originating operation. Writer intervals remain
+pending until that writer's terminal result; the patch can complete independently.
+Unavailable boundaries retain incomplete evidence rather than an invented chain.
 Writes restored before return have no recoverable intermediate diff; repeated-write
 uncertainty remains diagnostic. Observation neither instruments nor reruns the
 process to reconstruct those bytes.

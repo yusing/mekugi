@@ -5,6 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
+	"github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
@@ -15,7 +16,7 @@ func changePublications(histories map[string]mekugiHistory) map[string]changes.P
 		for _, file := range value.ReviewFiles {
 			managed = managed && file.Origin != ""
 		}
-		result[id] = changes.Publication{ChangeID: value.ChangeID, CorrelationID: value.CorrelationID, ExecutingThread: value.ExecutingThread, Sequence: value.sequence, Managed: managed, Confirmed: value.confirmed}
+		result[id] = changes.Publication{ChangeID: value.ChangeID, CorrelationID: value.CorrelationID, ExecutingThread: value.ExecutingThread, Sequence: value.sequence, Managed: managed, Confirmed: value.confirmed, NoEffect: value.ChangeID == "" && len(value.ReviewFiles) == 0 && value.ExecOutcome != nil && value.ExecOutcome.Coverage == capture.CoverageExact}
 	}
 	return result
 }

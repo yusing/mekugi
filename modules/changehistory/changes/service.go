@@ -35,6 +35,10 @@ type Publication struct {
 	ChangeID, CorrelationID, ExecutingThread string
 	Sequence                                 uint64
 	Managed, Confirmed                       bool
+	// Dependency retains evidence without publishing a completed attempt.
+	Dependency bool
+	// NoEffect settles an unfinished reservation without publishing an attempt.
+	NoEffect bool
 }
 
 type Call struct {
@@ -45,6 +49,7 @@ type Call struct {
 type Change struct {
 	Correlation  string
 	Calls        []Call
+	Dependencies []string
 	RetiredCalls int
 }
 type Stream struct {

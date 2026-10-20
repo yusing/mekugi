@@ -310,6 +310,9 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 		// elsewhere, including a dynamic one, is bounded by a workspace snapshot.
 		observation, observed := changecapture.Capture(t.ctx, execs, dynamic, true, executionCaptureEnvironment(t.ctx, t.directory, t.retained, t.changeSource, t.snapshots, patches))
 		previewOpened := t.openStockExecWindow(callID, observation, patches, execs, dynamic, true)
+		if err := t.splitExecIntervals(callID, patches); err != nil {
+			return false, err
+		}
 		if len(patches) == 0 && !observed && !previewOpened {
 			return false, nil
 		}
@@ -343,7 +346,7 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *cha
 	if t.execGroup == "" {
 		t.execGroup = rand.Text()
 	}
-	window := &execWindow{ref: callID, thread: t.shellThreadID, turn: t.shellTurnID, group: t.execGroup}
+	window := &execWindow{ref: callID, thread: t.shellThreadID, turn: t.shellTurnID, group: t.execGroup, scope: observationScope(t.ctx, t.retained)}
 	admitExecutionWindow(t.execWindows, t.review, window, observation, patches, executionCaptureEnvironment(t.ctx, t.directory, t.retained, t.changeSource, t.snapshots, patches), t.threadID, t.operationCaller())
 }
 
