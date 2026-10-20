@@ -83,7 +83,7 @@ func (p *execPreviewTrack) state() (state execPreviewState) {
 			if p.streamable != nil {
 				writer = p.streamable[p.Source(segment.Source, "")]
 			} else {
-				writer = (activitypresentation.CommandSource{Script: segment.Source, Display: frontends.ShellDisplaySource(segment.Source), Directory: ""}).WritesFiles()
+				writer = (activitypresentation.CommandSource{Script: segment.Source, Display: frontends.ShellDisplaySource(segment.Source), Directory: ""}).WritesFilesIn(script)
 			}
 			if streamable && writer && !segment.Ended && !match.Done && (segment.Began || i > last) {
 				state.settled = false

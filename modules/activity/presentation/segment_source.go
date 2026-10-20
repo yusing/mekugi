@@ -11,6 +11,28 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
+// WritesFilesIn retains literal source from the containing shell command when
+// a tracked segment executes a script created by an earlier statement.
+func (source CommandSource) WritesFilesIn(script string) bool {
+	if source.WritesFiles() {
+		return true
+	}
+	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), "")
+	if err != nil {
+		return false
+	}
+	for _, statement := range program.Stmts {
+		if strings.TrimSpace(sourceStatementSource(script, statement)) == strings.TrimSpace(source.Script) {
+			if text, ok := sourceEditStatement(script, statement); ok && slices.ContainsFunc(Operations(text), func(value Value) bool {
+				return slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, value.Verb)
+			}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // WritesFiles classifies visible writer intent without establishing effects.
 func (source CommandSource) WritesFiles() bool {
 	// Activity retains write classification for formatters and file copies.

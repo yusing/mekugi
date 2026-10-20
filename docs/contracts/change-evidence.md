@@ -46,7 +46,10 @@ later statements cannot establish their relative targets.
 
 Named targets remain eligible despite ignore rules, file suffixes, directory
 names or generated-file banners. An input script is not itself an edit target;
-recursive operations may name trees. Tracked Bash/sh commands report paths
+literal heredoc script creation followed by interpreter execution can establish
+its write targets before either command runs. Other newly created scripts retain
+the selected-workspace fallback, without learning before-state after execution.
+Recursive operations may name trees. Tracked Bash/sh commands report paths
 created by `mktemp`; capture compares only those paths and their contents, never
 the temporary parent. Dry-run, help, version and failed invocations establish no
 creation. Recorded creation followed by deletion cancels in the net view.

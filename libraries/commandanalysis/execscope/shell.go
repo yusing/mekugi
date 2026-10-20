@@ -159,7 +159,7 @@ func classifyExecShellSource(command, workdir, shell string, deadline time.Time,
 		plan.raise(Opaque, "command substitution")
 		return plan
 	}
-	walker := execShellWalker{authoredOnly: authoredOnly, cwd: filepath.Clean(workdir), plan: &plan, deadline: deadline, depth: depth, changes: changes}
+	walker := execShellWalker{source: command, authoredOnly: authoredOnly, cwd: filepath.Clean(workdir), plan: &plan, deadline: deadline, depth: depth, changes: changes}
 	walker.stmts(program.Stmts)
 	return plan
 }
@@ -168,6 +168,8 @@ func classifyExecShellSource(command, workdir, shell string, deadline time.Time,
 // to be in. cwd is empty once a cd may or may not have taken effect; relative
 // operands are then opaque.
 type execShellWalker struct {
+	source       string
+	statement    *syntax.Stmt
 	authoredOnly bool
 	// A pipe from an unsupported process is output, not authored text.
 	generatedInput bool
@@ -309,6 +311,7 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 	switch command := stmt.Cmd.(type) {
 	case nil:
 	case *syntax.CallExpr:
+		w.statement = stmt
 		w.call(command)
 	case *syntax.BinaryCmd:
 		// Both sides may run, so the scope is their union.

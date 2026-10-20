@@ -66,6 +66,29 @@ func inspectExecSource(input execProviderInput, source, script string, language 
 	if scan.result.open {
 		scan.result.reason = "unresolved interpreter targets"
 	}
+	if input.created {
+		// A failed redirection may leave an older script executable by the
+		// following statement. Preserve its named candidates as well.
+		input.created = false
+		if previous, previousPath, reason := execProgramSource(input); reason == "" && previous != source {
+			prior := inspectExecSource(input, previous, previousPath, language, python)
+			for _, entry := range prior.scope {
+				entry.Operands = slices.DeleteFunc(entry.Operands, func(operand Operand) bool {
+					return slices.ContainsFunc(scan.result.scope, func(existing Entry) bool {
+						return existing.Kind == entry.Kind && slices.Contains(existing.Operands, operand)
+					})
+				})
+				if len(entry.Operands) > 0 {
+					scan.result.scope = append(scan.result.scope, entry)
+				}
+			}
+			scan.result.programs = append(scan.result.programs, prior.programs...)
+			scan.result.open = scan.result.open || prior.open
+			if scan.result.reason == "" {
+				scan.result.reason = prior.reason
+			}
+		}
+	}
 	return scan.result
 }
 

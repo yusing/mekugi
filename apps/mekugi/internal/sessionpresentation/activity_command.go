@@ -56,7 +56,10 @@ func CommandPresentation(entry ActivityEntry) activitypresentation.Command {
 			Tail: segment.Tail, TailOmitted: segment.Omit, Changes: segment.Changes,
 		}
 		if !segment.Running && !segment.Skipped && segment.Exit == 0 {
-			value.Writer = (activitypresentation.CommandSource{Script: segment.Source, Display: frontends.ShellDisplaySource(segment.Source), Directory: ""}).WritesFiles()
+			// One observed operation in one captured invocation needs no source
+			// guess to replace its Run row. Grouped calls still keep neighbors.
+			value.Writer = c.Captured && len(n.CapturedEdit.Calls) == 1 && len(n.Segments) == 1 ||
+				(activitypresentation.CommandSource{Script: segment.Source, Display: frontends.ShellDisplaySource(segment.Source), Directory: ""}).WritesFilesIn(c.Script)
 		}
 		if segment.Output != nil {
 			snapshot, _ := segment.Output.Context(0)

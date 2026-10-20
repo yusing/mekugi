@@ -19,14 +19,16 @@ const Budget = 200 * time.Millisecond
 const SourceLimit = 1 << 20
 
 type execProviderInput struct {
-	authoredOnly bool
-	depth        int
-	identity     string
-	args         []string
-	cwd          string
-	stdin        string
-	deadline     time.Time
-	changes      ChangeResolver
+	createdSource, createdScript string
+	created                      bool
+	authoredOnly                 bool
+	depth                        int
+	identity                     string
+	args                         []string
+	cwd                          string
+	stdin                        string
+	deadline                     time.Time
+	changes                      ChangeResolver
 }
 
 type execProviderResult struct {
@@ -109,7 +111,9 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 		w.opaque("scope provider deadline")
 		return true
 	}
-	result := provider(execProviderInput{authoredOnly: w.authoredOnly, identity: identity, args: values, cwd: w.cwd, stdin: w.stdin, deadline: w.deadline, depth: w.depth, changes: w.changes})
+	input := execProviderInput{authoredOnly: w.authoredOnly, identity: identity, args: values, cwd: w.cwd, stdin: w.stdin, deadline: w.deadline, depth: w.depth, changes: w.changes}
+	input.createdSource, input.createdScript, input.created = CreatedScript(w.source, w.statement, w.cwd)
+	result := provider(input)
 	if result.unhandled {
 		return false
 	}
@@ -136,6 +140,25 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 
 // execProgramSource selects literal eval/stdin/script input without evaluating it.
 func ReadSource(input Interpreter) (source, script, reason string) {
+	return readSource(input, func(path string) (string, string) {
+		file, err := sourceparse.Open(path)
+		if err != nil {
+			return "", "interpreter source unavailable"
+		}
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil || !info.Mode().IsRegular() {
+			return "", "interpreter source is not regular"
+		}
+		data, err := io.ReadAll(io.LimitReader(file, SourceLimit+1))
+		if err != nil || len(data) > SourceLimit {
+			return "", "interpreter source exceeds capture bound"
+		}
+		return string(data), ""
+	})
+}
+
+func readSource(input Interpreter, read func(string) (string, string)) (source, script, reason string) {
 	python := strings.HasPrefix(input.Identity, "python")
 	for i := 0; i < len(input.Arguments); i++ {
 		arg := input.Arguments[i]
@@ -164,20 +187,8 @@ func ReadSource(input Interpreter) (source, script, reason string) {
 			}
 			arg = filepath.Join(input.Directory, arg)
 		}
-		file, err := sourceparse.Open(arg)
-		if err != nil {
-			return "", arg, "interpreter source unavailable"
-		}
-		defer file.Close()
-		info, err := file.Stat()
-		if err != nil || !info.Mode().IsRegular() {
-			return "", arg, "interpreter source is not regular"
-		}
-		data, err := io.ReadAll(io.LimitReader(file, SourceLimit+1))
-		if err != nil || len(data) > SourceLimit {
-			return "", arg, "interpreter source exceeds capture bound"
-		}
-		return string(data), arg, ""
+		source, reason = read(arg)
+		return source, arg, reason
 	}
 	if input.Stdin != "" {
 		return input.Stdin, "", ""

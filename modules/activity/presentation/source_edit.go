@@ -86,6 +86,12 @@ func sourceEditStatement(script string, statement *syntax.Stmt) (string, bool) {
 		return "", false
 	}
 	projection, ok := shellInterpreterScriptProjection(source.String())
+	if !ok {
+		if content, _, created := execscope.CreatedScript(script, statement, "/"); created {
+			projection = shellScriptProjection{Source: content, Language: languageName, Command: source.String()}
+			ok = true
+		}
+	}
 	if !ok || projection.Language != "python" && projection.Language != "javascript" || len(projection.Source) > execscope.SourceLimit {
 		return "", false
 	}

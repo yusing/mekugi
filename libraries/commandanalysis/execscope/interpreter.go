@@ -9,5 +9,8 @@ type Interpreter struct {
 }
 
 func execProgramSource(input execProviderInput) (string, string, string) {
+	if input.created {
+		return input.createdSource, input.createdScript, ""
+	}
 	return ReadSource(Interpreter{Identity: input.identity, Arguments: input.args, Directory: input.cwd, Stdin: input.stdin})
 }

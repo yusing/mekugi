@@ -31,6 +31,22 @@ func TestExecCompletedReceiptKeepsPythonValidation(t *testing.T) {
 	}
 }
 
+func TestExecCompletedReceiptKeepsCreatedValidation(t *testing.T) {
+	writer := "cat > check.py <<'PY'\nassert True\nPY"
+	check := "python3 check.py"
+	entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{
+		Thread: "main", Item: "cmd", Command: writer + "\n" + check,
+		Segments:     []sessionpresentation.ActivitySegment{{Source: writer, Text: execSegmentText(writer)}, {Source: check, Text: execSegmentText(check)}},
+		CapturedEdit: &presentation.Receipt{Thread: "main", Calls: []string{"cmd"}, Text: "Create `check.py` +1 -0 · cat"},
+	}}
+	blocks := commandSegmentBlocks(sessionpresentation.CommandPresentation(entry))
+	if !slices.ContainsFunc(blocks, func(block activityui.Block) bool {
+		return block.Verb == "Run" && strings.Contains(block.Label+block.Code, check)
+	}) {
+		t.Fatalf("creation receipt removed independent validation: %+v", blocks)
+	}
+}
+
 func TestNativeCompletedReceiptWithdrawal(t *testing.T) {
 	u, _ := newTrackedAppServerUI(t)
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": binding.ThreadItem{ID: "edit", Type: "commandExecution", Command: "python3 edit.py; read -r answer", Status: "inProgress"}})
