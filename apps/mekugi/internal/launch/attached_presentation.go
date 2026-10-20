@@ -13,6 +13,7 @@ import (
 // attachedPresentation borrows scoped feature models independently of the live
 // connection, terminal, invocation services and asynchronous resource lifetimes.
 type attachedPresentation struct {
+	inputHistory        *appServerInputHistory
 	session             sessionpresentation.Attachment
 	source, childSource *sessionpresentation.ActivitySource
 	transcript          observation.Transcript

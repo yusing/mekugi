@@ -33,11 +33,18 @@ type State struct {
 	Run                    Run
 }
 
+// HistoryEntry keeps restoration provenance outside editable draft state.
+type HistoryEntry struct {
+	Draft
+	Source   string
+	Restored bool
+}
+
 type Editor struct {
 	Draft
 	revision               uint64
 	UndoDrafts, RedoDrafts []Undo
-	InputHistory           []Draft
+	InputHistory           []HistoryEntry
 	HistoryDraft           Draft
 	HistoryBack            int
 	Run                    Run
@@ -72,10 +79,97 @@ func (e *Editor) Remember(draft Draft) {
 	if draft.Text == "" {
 		return
 	}
-	e.InputHistory = append(e.InputHistory, draft.Clone())
+	e.InputHistory = append(e.InputHistory, HistoryEntry{Draft: draft.Clone()})
 	if len(e.InputHistory) > 100 {
 		e.InputHistory = slices.Clone(e.InputHistory[len(e.InputHistory)-100:])
 	}
+}
+
+// RestoreHistory reconciles one ordered occurrence with shared or live history.
+// Matching is source-scoped and consumes occurrences, preserving repeated input.
+func (e *Editor) RestoreHistory(source string, draft Draft) {
+	for i := range e.InputHistory {
+		entry := &e.InputHistory[i]
+		if entry.Source == source && entry.Text == draft.Text && !entry.Restored {
+			if len(entry.Images)+len(entry.Files)+len(entry.Skills)+len(entry.Selections) == 0 {
+				entry.Draft = draft.Clone()
+			}
+			entry.Restored = true
+			return
+		}
+	}
+	e.Remember(draft)
+	if draft.Text != "" {
+		entry := &e.InputHistory[len(e.InputHistory)-1]
+		entry.Source, entry.Restored = source, true
+	}
+}
+
+// PrependHistory reconciles restored occurrences in shared chronological order.
+// Live acknowledgements remain newer; parked and undo navigation follows the
+// same entries when enrichment moves a restored occurrence.
+func (e *Editor) PrependHistory(entries []HistoryEntry, parked ...*State) {
+	positions := make([]int, len(e.InputHistory))
+	for i := range positions {
+		positions[i] = -1
+	}
+	var shared []HistoryEntry
+	for _, entry := range entries {
+		for i, local := range e.InputHistory {
+			if positions[i] < 0 && local.Restored && local.Source == entry.Source && local.Text == entry.Text {
+				positions[i] = len(shared)
+				entry = local
+				break
+			}
+		}
+		shared = append(shared, entry)
+	}
+	var history []HistoryEntry
+	// Restored records absent from the bounded shared tail precede that tail.
+	for i, entry := range e.InputHistory {
+		if positions[i] < 0 && entry.Restored {
+			positions[i] = len(history) + len(shared)
+			history = append(history, entry)
+		}
+	}
+	prefix := len(history)
+	for i, position := range positions {
+		if position >= len(shared) {
+			positions[i] -= len(shared)
+		} else if position >= 0 {
+			positions[i] += prefix
+		}
+	}
+	history = append(history, shared...)
+	for i, entry := range e.InputHistory {
+		if positions[i] < 0 {
+			positions[i] = len(history)
+			history = append(history, entry)
+		}
+	}
+	rebase := func(back *int) {
+		if *back > 0 && *back <= len(positions) {
+			*back = len(history) - positions[len(positions)-*back]
+			if *back > 100 {
+				*back = 0
+			}
+		}
+	}
+	rebase(&e.HistoryBack)
+	for _, stack := range [][]Undo{e.UndoDrafts, e.RedoDrafts} {
+		for i := range stack {
+			rebase(&stack[i].HistoryBack)
+		}
+	}
+	for _, state := range parked {
+		rebase(&state.Snapshot.HistoryBack)
+		for _, stack := range [][]Undo{state.UndoDrafts, state.RedoDrafts} {
+			for i := range stack {
+				rebase(&stack[i].HistoryBack)
+			}
+		}
+	}
+	e.InputHistory = slices.Clone(history[max(0, len(history)-100):])
 }
 
 func (e *Editor) Recall(backward bool) bool {
@@ -93,7 +187,7 @@ func (e *Editor) Recall(backward bool) bool {
 	e.HistoryBack = next
 	snapshot := e.HistoryDraft
 	if next > 0 {
-		snapshot = e.InputHistory[len(e.InputHistory)-next]
+		snapshot = e.InputHistory[len(e.InputHistory)-next].Draft
 	}
 	e.Replace(snapshot)
 	return true

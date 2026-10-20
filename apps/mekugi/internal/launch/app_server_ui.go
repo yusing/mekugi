@@ -89,6 +89,9 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	}
 	shell, preparePane := terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
 	attached := newAttachedPresentation(views, conversation, observations)
+	processCwd, _ := filepath.Abs(cmd.Dir)
+	inputHistory := newInputHistory(cmd.Environ(), processCwd)
+	attached.inputHistory = inputHistory
 	var (
 		editor              *composer.Editor
 		resumePending       []appserver.Message
@@ -148,6 +151,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		panes = &nativePreferences{service: prefs}
 	}
 	if err := control.Request("initialize", nil); err != nil {
+		_ = inputHistory.close()
 		c.Close()
 		<-c.Done
 		return nil, err
@@ -200,6 +204,12 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 				agePaint := presentationTime(clock)
 				for {
 					select {
+					case result := <-inputHistory.loads:
+						inputHistory.loaded(attached.conversation, result)
+						dirty = true
+					case historyErr := <-inputHistory.failures:
+						setNotice(&attached.feedback, shell, presentationTime(clock), "Input history unavailable: "+historyErr.Error(), true)
+						dirty = true
 					case <-ctx.Done():
 						return ctx.Err()
 					case <-autoChanged:
@@ -367,6 +377,10 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		reviewOwner.Close()
 		editor = hideQuestionEditor(&questions, attached.conversation, shell, editor, control.Thread)
 		hideApprovals(&approvalDock, shell, &attached.conversation.PromptEditor, editor)
+		inputHistory.saveDraft(attached.conversation, editor)
+		if historyErr := inputHistory.close(); historyErr != nil {
+			fmt.Fprintln(stdout, "Input history could not be saved:", textsanitize.Safe(historyErr.Error(), false))
+		}
 		if unsent := conversationmodel.Join(slices.Concat(attached.conversation.Unsent, attached.conversation.Queued, []conversationmodel.Input{draftSnapshot(editor)})...); unsent.Text != "" {
 			fmt.Fprintln(stdout, "Unsent draft:\n"+textsanitize.Safe(unsent.Text, false))
 		}
@@ -498,6 +512,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		}
 		if method == "config/read" {
 			notifications.notificationConfig(&attached.feedback, terminal, clock, m)
+			attached.inputHistory.configure(m)
 			return nil
 		}
 		if method == resumePickerList {
@@ -633,8 +648,10 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				waiting := attached.conversation
 				attached.session.Retire()
 				workspace := attached.cwd
+				inputHistory := attached.inputHistory
 				(*attached) = newAttachedPresentation(views, conversationState, bindings)
 				attached.cwd = workspace
+				attached.inputHistory = inputHistory
 				attached.conversation.CarryInput(waiting)
 				(*editor) = &attached.conversation.Editor
 
@@ -667,6 +684,13 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				return err
 			}
 			control.Thread = result.Thread.ID
+			attached.inputHistory.selectThread(control.Thread)
+			for i := range attached.conversation.Editor.InputHistory {
+				entry := &attached.conversation.Editor.InputHistory[i]
+				if entry.Source == control.Thread {
+					entry.Restored = false
+				}
+			}
 			attachPresentation(attached, terminal, picker, editor, questions, approvals, control.Thread, reviewOwner, commits, parent, retained, changeSource, activityService != nil)
 			attached.presentation.Status.SetText("Ready")
 			(*title) = result.Thread.Name

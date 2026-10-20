@@ -57,10 +57,13 @@ revision; stale actions leave both content and editing history unchanged.
 
 Undo groups a typed word, a repeated deletion run, a paste, an attachment, a clear
 or an editor save. It retains at most 100 edits and resets on submission. Local
-input history retains at most 100 entries per thread. Browsing restores the saved
-draft and caret after the newest entry. Live history keeps attachment bindings;
-resume hydrates from host history without another durable input store. Main and
-answer drafts do not survive process restart.
+input history retains at most 100 entries. Browsing restores the saved draft and
+caret after the newest entry. Live history keeps attachment bindings; resume
+hydrates from host thread history. The interactive adapter also recalls ordinary
+text from Codex’s shared composer history across fresh launches. Acknowledged
+ordinary input and the ordinary exit draft join that history when Codex history
+persistence is enabled. Persisted recall is text-only, not automatic draft
+restoration; attachment bindings and answer drafts remain process-local.
 
 Joining drafts preserves send order, separates nonempty entries with newlines,
 retains immutable attachment snapshots and keeps the last entry's caret. Rejected

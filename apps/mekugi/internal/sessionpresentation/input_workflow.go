@@ -60,6 +60,7 @@ func (m *Model) PruneInput(control *sessioncontrol.Live, conversation *conversat
 }
 
 type InputEffects struct {
+	History          []string
 	Restored         conversationmodel.InputRestoration
 	Withdrawn        string
 	Notice           string
@@ -70,14 +71,17 @@ type InputEffects struct {
 func (m *Model) AcknowledgeInput(control *sessioncontrol.Live, conversation *conversationmodel.Session, method, failure string, failed bool) InputEffects {
 	defer m.PruneInput(control, conversation)
 	submission := conversation.Submitted[control.Submission().ID]
+	var remembered []string
 	if !failed {
-		conversation.Acknowledged(control.Submission().ID)
+		remembered = conversation.Acknowledged(control.Submission().ID)
 	}
 	result := control.AcknowledgeInput(failed, len(submission.Parts) == 1 && submission.Parts[0].Question != nil, len(conversation.Unsent) > 0)
 	if result.Action == sessioncontrol.InputRejected {
 		m.Status.Set(method+": "+failure, true)
 	}
-	return m.ApplyInputResult(control, conversation, result)
+	effects := m.ApplyInputResult(control, conversation, result)
+	effects.History = remembered
+	return effects
 }
 
 // ApplyInputResult settles payloads before publishing renderer consequences.

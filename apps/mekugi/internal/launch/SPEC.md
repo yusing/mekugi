@@ -161,6 +161,16 @@ redirected output uses complete lines. Display failure stops progress only.
 Cancellation/deadline failures take precedence over generic process/configuration
 advice, and private bootstrap stderr is not exposed. Normal launch advertises no browser URL.
 
+### Composer recall
+
+Fresh interactive sessions load recent ordinary text from Codex’s shared composer
+history. Acknowledged prompts, shell input and the ordinary exit draft are saved
+under the selected host configuration. Question reply envelopes and secret
+editors never enter this history. Storage runs independently of input and host
+delivery; failures leave the composer usable and produce a visible notice.
+History recall preserves the current draft and caret when returning past the
+newest entry.
+
 ### Interactive exit
 
 After terminal restoration, the client prints unsent drafts/notices, Main's latest

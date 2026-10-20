@@ -1,8 +1,10 @@
 package launch
 
 import (
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -108,5 +110,171 @@ func TestAppServerInputHistoryUndoRestoresNavigation(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b[B")
 	if u.Text != "draft" {
 		t.Fatalf("older browse draft changed=%q", u.Text)
+	}
+}
+
+func TestAppServerInputHistoryFreshSessionRecallsExitDraft(t *testing.T) {
+	directory := t.TempDir()
+	first, _ := newAppServerTestUI()
+	first.attached.inputHistory = newInputHistory([]string{"CODEX_HOME=" + directory}, directory)
+	first.attached.inputHistory.selectThread(first.Thread)
+	appServerTestRequest(t, first, "42", "config/read")
+	appServerTestMessage(t, first, `{"id":42,"result":{"config":{"history":{"persistence":"save-all"}}}}`)
+	// The acknowledged input goes through the real presentation effects path.
+	appServerTestKeys(t, first, "submitted\r")
+	appServerTestMessage(t, first, `{"id":1,"result":{}}`)
+	first.AwaitingTurn = false
+	appServerTestKeys(t, first, "foo")
+	first.attached.inputHistory.saveDraft(first.attached.conversation, first.Editor)
+	if err := first.attached.inputHistory.close(); err != nil {
+		t.Fatal(err)
+	}
+
+	second, _ := newAppServerTestUI()
+	second.attached.inputHistory = newInputHistory([]string{"CODEX_HOME=" + directory}, directory)
+	second.attached.inputHistory.selectThread(second.Thread)
+	appServerTestRequest(t, second, "42", "config/read")
+	appServerTestMessage(t, second, `{"id":42,"result":{"config":{"history":{}}}}`)
+	defer func() {
+		if err := second.attached.inputHistory.close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	result := <-second.attached.inputHistory.loads
+	second.attached.inputHistory.loaded(second.attached.conversation, result)
+	appServerTestKeys(t, second, "draft\x1b[D\x1b[A")
+	if second.Text != "foo" {
+		t.Fatalf("fresh session recall=%q", second.Text)
+	}
+	appServerTestKeys(t, second, "\x1b[A")
+	if second.Text != "submitted" {
+		t.Fatalf("acknowledged recall=%q", second.Text)
+	}
+	appServerTestKeys(t, second, "\x1b[B\x1b[B")
+	if second.Text != "draft" || second.CursorBack != 1 {
+		t.Fatalf("restored draft=%q caret=%d", second.Text, second.CursorBack)
+	}
+}
+
+func TestAppServerInputHistoryDisabledAndReplyExclusion(t *testing.T) {
+	for _, persistence := range []string{"none", "save-all"} {
+		t.Run(persistence, func(t *testing.T) {
+			directory := t.TempDir()
+			u, _ := newAppServerTestUI()
+			h := newInputHistory([]string{"CODEX_HOME=" + directory}, directory)
+			h.selectThread(u.Thread)
+			h.configure(appserver.Message{Result: []byte(`{"config":{"history":{"persistence":"` + persistence + `"}}}`)})
+			// Pending question replies are never included in the saved exit draft.
+			u.attached.conversation.Unsent = []conversationmodel.Input{{Text: "private reply", ReplyCount: 1}}
+			u.Text = "ordinary"
+			h.saveDraft(u.attached.conversation, u.Editor)
+			if err := h.close(); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filepath.Join(directory, "history.jsonl"))
+			if persistence == "none" {
+				if !os.IsNotExist(err) {
+					t.Fatalf("disabled history created: %v", err)
+				}
+			} else if err != nil || strings.Contains(string(data), "private reply") || !strings.Contains(string(data), "ordinary") {
+				t.Fatalf("exit history=%q err=%v", data, err)
+			}
+		})
+	}
+}
+
+func TestAppServerInputHistoryResumeReconcilesShared(t *testing.T) {
+	for _, sharedFirst := range []bool{false, true} {
+		t.Run(map[bool]string{false: "resume-first", true: "shared-first"}[sharedFirst], func(t *testing.T) {
+			directory := t.TempDir()
+			if err := os.WriteFile(filepath.Join(directory, "history.jsonl"), []byte("{\"session_id\":\"main\",\"ts\":1,\"text\":\"saved\"}\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			u, _ := newAppServerTestUI()
+			h := newInputHistory([]string{"CODEX_HOME=" + directory}, directory)
+			u.attached.inputHistory = h
+			defer func() {
+				if err := h.close(); err != nil {
+					t.Error(err)
+				}
+			}()
+			u.startSession(u.Thread, "/workspace")
+			h.selectThread(u.Thread)
+			h.configure(appserver.Message{Result: []byte(`{"config":{"history":{}}}`)})
+			loaded := <-h.loads
+			if sharedFirst {
+				h.loaded(u.attached.conversation, loaded)
+			}
+			u.restoreHistory([]binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{Type: "userMessage", ID: "input", Content: []byte(`[{"type":"text","text":"saved"}]`)}}}})
+			if !sharedFirst {
+				h.loaded(u.attached.conversation, loaded)
+			}
+			if len(u.InputHistory) != 1 {
+				t.Fatalf("one persisted prompt recalled %d times: %+v", len(u.InputHistory), u.InputHistory)
+			}
+		})
+	}
+}
+
+func TestAppServerHistoryResumePreservesLiveImageBinding(t *testing.T) {
+	directory := t.TempDir()
+	u, _ := newAppServerTestUI()
+	h := newInputHistory([]string{"CODEX_HOME=" + directory}, directory)
+	u.attached.inputHistory = h
+	h.selectThread(u.Thread)
+	h.configure(appserver.Message{Result: []byte(`{"config":{"history":{}}}`)})
+	h.loaded(u.attached.conversation, <-h.loads)
+	defer func() {
+		if err := h.close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	path := filepath.Join(directory, "image.png")
+	if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
+	appServerTestKeys(t, u, "\r")
+	appServerTestMessage(t, u, `{"id":1,"result":{}}`)
+	if len(u.InputHistory) != 1 || len(u.InputHistory[0].Images) != 1 {
+		t.Fatalf("setup=%+v", u.InputHistory)
+	}
+	u.restoreHistory([]binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{Type: "userMessage", ID: "input", Content: []byte(`[{"type":"text","text":"[Image 1]"}]`)}}}})
+	if len(u.InputHistory) != 1 || len(u.InputHistory[0].Images) != 1 {
+		t.Fatalf("resume dropped live image binding: %+v", u.InputHistory)
+	}
+}
+func TestAppServerHistoryResumeLoadOrderPreservesNewest(t *testing.T) {
+	for _, sharedFirst := range []bool{false, true} {
+		t.Run(map[bool]string{false: "resume-first", true: "shared-first"}[sharedFirst], func(t *testing.T) {
+			directory := t.TempDir()
+			data := "{\"session_id\":\"main\",\"ts\":1,\"text\":\"saved\"}\n{\"session_id\":\"other\",\"ts\":2,\"text\":\"newest\"}\n"
+			if err := os.WriteFile(filepath.Join(directory, "history.jsonl"), []byte(data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			u, _ := newAppServerTestUI()
+			h := newInputHistory([]string{"CODEX_HOME=" + directory}, directory)
+			u.attached.inputHistory = h
+			defer func() {
+				if err := h.close(); err != nil {
+					t.Error(err)
+				}
+			}()
+			u.startSession(u.Thread, "/workspace")
+			h.selectThread(u.Thread)
+			h.configure(appserver.Message{Result: []byte(`{"config":{"history":{}}}`)})
+			loaded := <-h.loads
+			if sharedFirst {
+				h.loaded(u.attached.conversation, loaded)
+			}
+			u.restoreHistory([]binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{Type: "userMessage", ID: "input", Content: []byte(`[{"type":"text","text":"saved"}]`)}}}})
+			if !sharedFirst {
+				h.loaded(u.attached.conversation, loaded)
+			}
+			appServerTestKeys(t, u, "\x1b[A")
+			if u.Text != "newest" {
+				t.Fatalf("newest history=%q entries=%+v", u.Text, u.InputHistory)
+			}
+		})
 	}
 }

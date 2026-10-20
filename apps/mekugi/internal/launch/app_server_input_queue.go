@@ -186,6 +186,15 @@ func submissionResponse(attached *attachedPresentation, terminal *terminalsessio
 }
 
 func applyInputEffects(attached *attachedPresentation, terminal *terminalsession.Attachment, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, effects sessionpresentation.InputEffects) {
+	for i, text := range effects.History {
+		if h := attached.inputHistory; h != nil {
+			history := attached.conversation.Editor.InputHistory
+			if index := len(history) - len(effects.History) + i; index >= 0 {
+				history[index].Source = h.thread
+			}
+			h.remember(text)
+		}
+	}
 	if effects.Withdrawn != "" {
 		attached.source.RemovePendingInput(effects.Withdrawn)
 		attached.presentation.SettleWithdrawnInput(effects, len(attached.source.Model.Entries) > 0)

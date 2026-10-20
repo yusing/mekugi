@@ -152,3 +152,47 @@ func TestExternalEditPreservesBindingsAtomically(t *testing.T) {
 		t.Fatal("editor undo did not restore bindings")
 	}
 }
+
+func TestHistoryRestorationPreservesRepeatedOccurrencesAndSources(t *testing.T) {
+	for _, sharedFirst := range []bool{false, true} {
+		e := Editor{}
+		persisted := []HistoryEntry{
+			{Draft: Draft{Text: "same"}, Source: "other"},
+			{Draft: Draft{Text: "same"}, Source: "session"},
+			{Draft: Draft{Text: "same"}, Source: "session"},
+		}
+		if sharedFirst {
+			e.PrependHistory(persisted)
+		}
+		e.RestoreHistory("session", Draft{Text: "same", Skills: []Token{{Name: "first"}}})
+		e.RestoreHistory("session", Draft{Text: "same", Skills: []Token{{Name: "second"}}})
+		if !sharedFirst {
+			e.PrependHistory(persisted)
+		}
+		if len(e.InputHistory) != 3 || e.InputHistory[0].Source != "other" || e.InputHistory[1].Skills[0].Name != "first" || e.InputHistory[2].Skills[0].Name != "second" {
+			t.Fatalf("sharedFirst=%v history=%+v", sharedFirst, e.InputHistory)
+		}
+	}
+}
+
+func TestHistoryMergeRebasesParkedAndUndoNavigation(t *testing.T) {
+	e := Editor{Draft: Draft{Text: "draft", CursorBack: 2}}
+	e.RestoreHistory("main", Draft{Text: "old"})
+	e.Recall(true)
+	parked := e.Park()
+	e.Recall(false)
+	e.PrependHistory([]HistoryEntry{{Draft: Draft{Text: "old"}, Source: "main"}, {Draft: Draft{Text: "new"}, Source: "other"}}, &parked)
+	e.Undo(false)
+	if e.Text != "old" || e.HistoryBack != 2 {
+		t.Fatalf("undo=%+v", e)
+	}
+	e.Resume(parked)
+	e.Recall(false)
+	if e.Text != "new" {
+		t.Fatalf("parked history skipped newest: %q", e.Text)
+	}
+	e.Recall(false)
+	if e.Text != "draft" || e.CursorBack != 2 {
+		t.Fatalf("parked draft=%+v", e.Draft)
+	}
+}

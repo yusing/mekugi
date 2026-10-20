@@ -67,7 +67,11 @@ func pruneDraftImages(owned map[string]bool, editor *composer.Editor, conversati
 			}
 		}
 	}
-	for _, history := range [][]composer.Draft{conversation.Editor.InputHistory, {editor.HistoryDraft}, conversationmodel.Drafts(conversation.Unsent), conversationmodel.Drafts(conversation.Queued)} {
+	var inputHistory []composer.Draft
+	for _, entry := range conversation.Editor.InputHistory {
+		inputHistory = append(inputHistory, entry.Draft)
+	}
+	for _, history := range [][]composer.Draft{inputHistory, {editor.HistoryDraft}, conversationmodel.Drafts(conversation.Unsent), conversationmodel.Drafts(conversation.Queued)} {
 		for _, snapshot := range history {
 			for _, path := range snapshot.AnswerImages {
 				used[path] = true

@@ -108,6 +108,16 @@ reads because the item-list API does not support their rollouts. Errors never
 trigger an unbounded fallback. Decoding neither resumes a thread nor restores a
 live operation.
 
+## Composer history
+
+The message-history adapter shares Codex’s `history.jsonl` under the launched
+process’s Codex home. It uses the stock record schema, file locking, private
+permissions and configured history retention. The effective `history.persistence`
+and `history.max_bytes` values come from the host’s configuration response;
+Mekugi does not change them. Reads retain available complete text entries and
+report malformed or unavailable history. This store is independent of thread
+rollouts and never replays input or execution.
+
 ## Native shell hooks
 
 The backend owns the native PreToolUse schema, command-hook registration and

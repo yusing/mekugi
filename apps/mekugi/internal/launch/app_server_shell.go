@@ -77,6 +77,13 @@ func shellResponse(attached *attachedPresentation, terminal *terminalsession.Att
 		return
 	}
 	rememberInput(attached.conversation, draft)
+	if h := attached.inputHistory; h != nil {
+		history := attached.conversation.Editor.InputHistory
+		if len(history) > 0 {
+			history[len(history)-1].Source = h.thread
+		}
+		h.remember(draft.Text)
+	}
 }
 
 func observeShellItem(shell *sessioncontrol.Shell, main string, thread string, item binding.ThreadItem) {

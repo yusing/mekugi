@@ -79,7 +79,8 @@ func (m *Session) ReturnBatch(batch InputBatch) {
 }
 
 // Acknowledged records ordinary input once, independently of host commitment.
-func (m *Session) Acknowledged(id string) {
+func (m *Session) Acknowledged(id string) []string {
+	var remembered []string
 	submission := m.Submitted[id]
 	for i, part := range submission.Parts {
 		if part.InHistory {
@@ -87,9 +88,13 @@ func (m *Session) Acknowledged(id string) {
 		}
 		if part.Question == nil && part.ReplyCount == 0 {
 			m.Editor.Remember(part.Draft)
+			if part.Text != "" {
+				remembered = append(remembered, part.Text)
+			}
 		}
 		submission.Parts[i].InHistory = true
 	}
+	return remembered
 }
 
 // MatchSubmitted preserves ordered fallback for hosts omitting client identity.

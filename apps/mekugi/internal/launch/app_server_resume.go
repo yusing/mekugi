@@ -271,7 +271,11 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 			draft := conversationmodel.Input{Text: text.String()}
 			draft.Selections = composer.RestoreSelections(draft.Text, attachmentFrames)
 			draft.Skills = conversationbinding.SkillBindings(draft.Text, conversationbinding.ContentSkills(content), spans)
-			rememberInput(attached.conversation, draft)
+			if attached.inputHistory != nil && len(binding.QuestionReplies(draft.Text)) == 0 {
+				attached.conversation.Editor.RestoreHistory(control.Thread, draft.Draft)
+			} else {
+				rememberInput(attached.conversation, draft)
+			}
 		}
 	}
 	method := "item/completed"
