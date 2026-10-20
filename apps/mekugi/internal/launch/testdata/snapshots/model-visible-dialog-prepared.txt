@@ -1,0 +1,18 @@
+
+
+
+
+
+╭─ Model-visible ─────────────────────────────────────────────────── 2 / 2 [×] ─╮
+│ Latest Mekugi-prepared content · whole execution cell cell                    │
+│  1 Run                                 Model-visible                          │
+├───────────────────────────────────────────────────────────────────────────────┤
+│ [same as O1]                                                                  │
+│                                                                               │
+│                                                                               │
+╰─ ↑↓ PgUp/PgDn g/G scroll · ←→ view · / find · y copy · esc ───────────────────╯
+
+
+
+
+

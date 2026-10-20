@@ -49,4 +49,8 @@ func startAttachedSession(a *attachedPresentation, observations *binding.Observa
 func (a *attachedPresentation) bindRepetitions(audience *sessioncontrol.Audience, root string) {
 	lookup := func(thread, id string) string { return audience.Repetition(root, thread, id) }
 	a.source.Repetition, a.childSource.Repetition = lookup, lookup
+	prepared := func(thread, id string) (activitypresentation.PreparedContent, bool) {
+		return audience.Prepared(root, thread, id)
+	}
+	a.source.Prepared, a.childSource.Prepared = prepared, prepared
 }

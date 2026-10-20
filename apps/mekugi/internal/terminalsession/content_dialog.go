@@ -59,6 +59,9 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 			}
 			tab.Line = d.File.First
 		}
+		if detail.ModelVisible {
+			tab = DialogTab{ID: detail.ID, Name: "Model-visible", Exact: true}
+		}
 		tabs[i] = tab
 	}
 	d.Navigation = "command"
@@ -67,6 +70,12 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 	}
 	if d.File != nil {
 		d.Navigation = "view"
+	}
+	for _, page := range d.Pages {
+		if page.ModelVisible {
+			d.Navigation = "view"
+			break
+		}
 	}
 	d.ForceTabs = d.Processes && len(d.Pages) > 0 && d.Pages[0].Source != 0
 	d.SetPages(tabs)
@@ -90,7 +99,9 @@ func (d *ContentDialog) Layout(width int) {
 		}
 	}
 	if key == d.laidKey {
-		d.Document.Title = d.View.Painter.DialogPageTitle(activityui.Block{Value: page.Value, OutputSnapshot: output}, d.View.Now(), width)
+		if !page.ModelVisible {
+			d.Document.Title = d.View.Painter.DialogPageTitle(activityui.Block{Value: page.Value, OutputSnapshot: output}, d.View.Now(), width)
+		}
 		return
 	}
 	if d.File != nil && d.File != d.laidKey.file {

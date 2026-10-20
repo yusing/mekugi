@@ -15,6 +15,7 @@ type ActivitySource struct {
 	*activitypresentation.Model[ActivityEntry, ActivityAgent]
 	Audience   ActivityAudience
 	Coverage   string
+	Prepared   func(thread, id string) (activitypresentation.PreparedContent, bool)
 	Repetition func(thread, id string) string // Authenticated invocation-owned annotations.
 }
 

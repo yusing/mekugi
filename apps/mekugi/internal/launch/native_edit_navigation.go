@@ -16,10 +16,15 @@ import (
 // Diff painter, retained storage, or current workspace contents.
 func openActivityEdit(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, activity *activitymodel.Service, u *terminalsession.Attachment, view *activityui.View, seq uint64, path string) bool {
 	pages, selected := activityEditPages(attached, terminal, activity, view, seq, path)
-	for i, page := range pages {
+	for _, page := range pages {
 		if page.ID == selected {
 			openDetails(attached, terminal, files, u, view, pages)
-			u.Dialog.ShowPage(i)
+			for i, page := range u.Dialog.Pages {
+				if page.ID == selected {
+					u.Dialog.ShowPage(i)
+					break
+				}
+			}
 			return true
 		}
 	}
@@ -38,10 +43,16 @@ func activityEditPages(attached *attachedPresentation, terminal *terminalsession
 				request.Directory = request.Directory || original.DirectoryDeletion() && original.EditPath() == path
 			}
 		}
+		withPreparedSource := func(pages []activitypresentation.DetailPage) []activitypresentation.DetailPage {
+			for i := range pages {
+				pages[i].PreparedSource = seq
+			}
+			return pages
+		}
 		if activity != nil {
 			result := activity.ActivityDetail(attached.session.Scope(), request)
 			if len(result.Pages) > 0 {
-				return activitypresentation.ContributedDetails(result.Pages), result.Selected
+				return withPreparedSource(activitypresentation.ContributedDetails(result.Pages)), result.Selected
 			}
 		}
 		var pages []activitypresentation.DetailPage
@@ -55,7 +66,7 @@ func activityEditPages(attached *attachedPresentation, terminal *terminalsession
 		}
 		for _, page := range pages {
 			if path == "" || page.Path == path {
-				return pages, page.ID
+				return withPreparedSource(pages), page.ID
 			}
 		}
 		return nil, ""

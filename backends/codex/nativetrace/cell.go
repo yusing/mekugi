@@ -80,6 +80,21 @@ func (c *Cell) ExecCommands() []string {
 	return calls
 }
 
+// ToolCalls lists the observed nested host identities of an ended cell. It
+// establishes cell membership only, never a per-tool share of printed output.
+func (c *Cell) ToolCalls() []string {
+	if c == nil || !c.ended {
+		return nil
+	}
+	var calls []string
+	for _, tool := range c.tools {
+		if tool.CallID != "" {
+			calls = append(calls, tool.CallID)
+		}
+	}
+	return calls
+}
+
 // Pending reports an unfinished cell, patch, or yielded command.
 func (c *Cell) Pending() bool {
 	if c == nil {

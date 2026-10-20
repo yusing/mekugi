@@ -1,0 +1,2 @@
+"\x1b[38;5;114;1mCreate\x1b[m \x1b[2m/tmp/\x1b[22;1mlarge.txt\x1b[m                                       "
+"  \x1b[2m… +9 lines\x1b[m                                                "

@@ -23,6 +23,11 @@ type DetailPage struct {
 	Value
 	ID       string
 	Revision uint64
+	// PreparedSource links frozen contributed pages to the host observation
+	// without allowing live source refresh to replace their original content.
+	PreparedSource uint64
+	ModelVisible   bool
+	Prepared       *PreparedContent
 }
 
 // DetailFile is supplied local source, after the application resolves and reads it.
@@ -52,6 +57,18 @@ func RefreshDetails(pages []DetailPage, sources map[uint64]DetailSource) []Detai
 		}
 		source, exists := sources[page.Source]
 		if !exists || page.Source == 0 {
+			refreshed = append(refreshed, page)
+			continue
+		}
+		if page.AttachmentID != "" {
+			for _, current := range source.Values {
+				if current.AttachmentID == page.AttachmentID {
+					page.Value = current
+					page.Source = source.Seq
+					break
+				}
+			}
+			page.Revision = source.Revision
 			refreshed = append(refreshed, page)
 			continue
 		}

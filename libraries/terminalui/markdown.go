@@ -374,7 +374,7 @@ func (p *Painter) Markdown(text string, width int, subdued bool) []string {
 		}
 		flushQuote()
 		if delimiter, ok := markdownsyntax.FenceDelimiter(line); ok {
-			fence, lang = delimiter, strings.TrimSpace(line[len(delimiter):])
+			fence, lang = delimiter, strings.TrimSpace(strings.TrimLeft(line, " ")[len(delimiter):])
 			if copying {
 				fenceIdentity = CopyID(strconv.Itoa(i), identity)
 			}
@@ -593,7 +593,7 @@ func (p *Painter) MarkdownPreview(text string) string {
 		}
 		source[i] = line
 	}
-	if fence, ok := markdownsyntax.FenceDelimiter(source[0]); ok && strings.EqualFold(strings.TrimSpace(source[0][len(fence):]), "mermaid") {
+	if fence, ok := markdownsyntax.FenceDelimiter(source[0]); ok && strings.EqualFold(strings.TrimSpace(strings.TrimLeft(source[0], " ")[len(fence):]), "mermaid") {
 		for _, line := range source[1:] {
 			if markdownsyntax.ClosesFence(line, fence) {
 				break

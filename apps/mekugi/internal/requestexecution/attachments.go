@@ -15,13 +15,14 @@ import (
 
 // ProjectFileAttachments splits only complete versioned text parts. Malformed
 // lookalikes remain ordinary user text; non-user messages are never interpreted.
-func ProjectFileAttachments(request *codexresponses.Request) bool {
+func ProjectFileAttachments(request *codexresponses.Request) (bool, map[int]string) {
+	identities := make(map[int]string)
 	if !bytes.Contains(request.Fields["input"], []byte("mekugi-file-attachments-v")) {
-		return false
+		return false, nil
 	}
 	var items []map[string]jsontext.Value
 	if json.Unmarshal(request.Fields["input"], &items) != nil {
-		return false
+		return false, nil
 	}
 	var projected []map[string]jsontext.Value
 	changed := false
@@ -67,6 +68,7 @@ func ProjectFileAttachments(request *codexresponses.Request) bool {
 		}
 		var kept []map[string]jsontext.Value
 		var attached []string
+		var attachedIDs []string
 		for _, part := range parts {
 			var kind, text string
 			_ = json.Unmarshal(part["type"], &kind)
@@ -77,9 +79,12 @@ func ProjectFileAttachments(request *codexresponses.Request) bool {
 				changed = true
 				continue
 			}
-			frames, ok := attachments.Decode(text)
+			snapshot, ok := attachments.DecodeSnapshot(text)
 			if kind == "input_text" && ok {
-				attached = append(attached, frames...)
+				attached = append(attached, snapshot.Frames...)
+				for _, frame := range snapshot.Frames {
+					attachedIDs = append(attachedIDs, snapshot.ReceiptID(frame))
+				}
 			} else {
 				kept = append(kept, part)
 			}
@@ -102,7 +107,10 @@ func ProjectFileAttachments(request *codexresponses.Request) bool {
 			delete(item, "internal_chat_message_metadata_passthrough")
 			projected = append(projected, item)
 		}
-		for _, frame := range attached {
+		for i, frame := range attached {
+			if attachedIDs[i] != "" {
+				identities[len(projected)] = attachedIDs[i]
+			}
 			content, _ := json.Marshal([]map[string]string{{"type": "input_text", "text": frame}})
 			projected = append(projected, map[string]jsontext.Value{"type": []byte(`"message"`), "role": []byte(`"user"`), "content": content})
 		}
@@ -111,5 +119,5 @@ func ProjectFileAttachments(request *codexresponses.Request) bool {
 		input, _ := json.Marshal(projected)
 		request.Fields["input"] = input
 	}
-	return changed
+	return changed, identities
 }

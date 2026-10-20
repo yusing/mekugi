@@ -8,6 +8,11 @@ import (
 
 // Source: internal/ui/activity/markdown.go:7:26@[b5ba67e3] fence boundaries.
 func FenceDelimiter(line string) (string, bool) {
+	trimmed := strings.TrimLeft(line, " ")
+	if len(line)-len(trimmed) > 3 {
+		return "", false
+	}
+	line = trimmed
 	ticks := 0
 	for ticks < len(line) && line[ticks] == '`' {
 		ticks++

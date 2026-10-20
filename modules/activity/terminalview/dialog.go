@@ -300,6 +300,21 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string 
 // DetailDocument paints an admitted page and optional local-file source metadata.
 // Source: apps/mekugi/internal/router/output_dialog.go:453:480@563f0c37.
 func (p *Painter) DetailDocument(detail presentation.DetailPage, output *activitymodel.OutputView, file *presentation.DetailFile, width int) terminalui.DialogPage {
+	if detail.ModelVisible {
+		page := terminalui.DialogPage{Title: "Model-visible", Detail: "Latest Mekugi-prepared content"}
+		if detail.Prepared == nil {
+			page.Text = "Unavailable: no retained Mekugi-prepared content for this item."
+		} else {
+			page.Text = detail.Prepared.Text
+			if detail.Prepared.Cell {
+				page.Detail += " · whole execution cell " + textsanitize.Safe(detail.Prepared.ID, false)
+			}
+		}
+		for _, line := range strings.Split(textsanitize.Safe(page.Text, false), "\n") {
+			page.Add(terminalui.DialogLine{Text: line, Wrap: true})
+		}
+		return page
+	}
 	page := p.DialogPage(Block{Value: detail.Value, OutputSnapshot: output}, width)
 	if file == nil {
 		return page

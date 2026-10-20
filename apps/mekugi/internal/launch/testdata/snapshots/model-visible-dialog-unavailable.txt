@@ -1,0 +1,18 @@
+
+
+
+
+
+╭─ Model-visible ─────────────────────────────────────────────────── 2 / 2 [×] ─╮
+│ Latest Mekugi-prepared content                                                │
+│  1 Run                                 Model-visible                          │
+├───────────────────────────────────────────────────────────────────────────────┤
+│ Unavailable: no retained Mekugi-prepared content for this item.               │
+│                                                                               │
+│                                                                               │
+╰─ ↑↓ PgUp/PgDn g/G scroll · ←→ view · / find · y copy · esc ───────────────────╯
+
+
+
+
+

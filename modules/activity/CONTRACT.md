@@ -277,6 +277,9 @@ complete file totals. Output syntax detection stops above 8 KiB of retained
 context; explicit file/search/diff hints retain a 256 KiB limit. Tails use retained
 header/context before selecting rows. Unknown or oversized content stays plain.
 
+Large Create previews targeting `/tmp` collapse their source in the default
+Activity view. Expanded all and original dialog pages retain the complete source.
+
 ## Authored content
 
 Messages retain authored Markdown and sender-colored rails. Outgoing/incoming
@@ -391,6 +394,17 @@ never revives them. Session switching closes the dialog. Reading or closing it
 neither interrupts work nor submits model input.
 
 ## Content dialog
+
+Operation and attachment dialogs include a Model-visible tab alongside original
+details. It shows the latest retained Mekugi-prepared content, after Mekugi
+transformations, without claiming provider consumption. A nested command or patch
+exposes only its explicitly identified whole execution-cell output, never an inferred
+per-command share. Missing or oversized observations show unavailable content.
+Observations are bounded and invocation-local: switching preserves admitted
+content, while eviction and fresh resume may leave it unavailable until another
+real request supplies it. Captured-edit pages keep their frozen original source
+and a separate link to the observed host item for prepared-content lookup.
+Original details and copies remain unchanged.
 
 Detail pages preserve original operation identity through feed grouping. New tracked
 segments appear while open. Missing boundaries label combined output explicitly,

@@ -114,6 +114,8 @@ type mekugiTranslationState struct {
 }
 
 type mekugiResponseTransform struct {
+	activity         *sessioncontrol.Audience
+	nativeTrace      *nativetrace.Reader
 	generation       sessioncontrol.Generation
 	toolTrace        requestexecution.Trace
 	ctx              context.Context
@@ -323,6 +325,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		p.activity.BeginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model), time.Now())
 	}
 	transform := &mekugiResponseTransform{
+		activity: p.activity, nativeTrace: p.nativeTrace,
 		ctx:         ctx,
 		control:     p.control,
 		review:      p.review,

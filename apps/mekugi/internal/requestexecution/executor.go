@@ -249,7 +249,7 @@ func (a *requestAttempt) prepareWire() error {
 			return fmt.Errorf("prepare collaboration bridge: %w", err)
 		}
 	}
-	attachmentsProjected := ProjectFileAttachments(&a.request)
+	attachmentsProjected, attachmentIDs := ProjectFileAttachments(&a.request)
 	// Match attachment sources before compact skill rewriting drops native paths.
 	if a.executor.Observations != nil {
 		if guidance := a.executor.Guidance; guidance != nil {
@@ -268,6 +268,11 @@ func (a *requestAttempt) prepareWire() error {
 		return fmt.Errorf("request with file attachments exceeds the %d-byte request limit; reduce attachments or conversation context", codexresponses.MaxRequestBytes)
 	}
 	a.forwardBody = nativeBody
+	if observer, ok := a.prepared.(interface {
+		ObservePreparedContent(*codexresponses.Request, map[int]string)
+	}); ok {
+		observer.ObservePreparedContent(&a.request, attachmentIDs)
+	}
 	if exchange := a.executor.Exchange; exchange != nil {
 		started := time.Now()
 		reason, err := exchange.State.Reconcile(&a.request, !inferencegateway.IsThirdPartyModel(a.request.Model()))

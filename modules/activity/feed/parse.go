@@ -71,7 +71,7 @@ func ParseOperation(paragraph string) Content {
 			if n := len(body); n > 0 && markdownsyntax.ClosesFence(body[n-1], delimiter) {
 				body = body[:n-1]
 			}
-			block.Fenced, block.Lang, block.Code = true, strings.TrimSpace(rest[0][len(delimiter):]), strings.Join(body, "\n")
+			block.Fenced, block.Lang, block.Code = true, strings.TrimSpace(strings.TrimLeft(rest[0], " ")[len(delimiter):]), strings.Join(body, "\n")
 		} else if code, end, ok := markdownsyntax.CodeSpan(joined, 0); ok && end == len(joined) {
 			block.Code = code
 		} else {

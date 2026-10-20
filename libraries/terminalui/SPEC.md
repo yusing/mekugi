@@ -55,7 +55,9 @@ hyperlink; wrapping preserves the destination without underlining padding/gutter
 Raw file-shaped text and inline code use caller-admitted destinations without
 filesystem probes. The [terminal consumer](../../apps/mekugi/internal/terminalsession/SPEC.md#content-dialogs)
 owns local-file admission and opening. Spaces may be enclosed in code or an explicit
-link. Fenced code stays literal.
+link. Fenced code stays literal. Backtick fences accept up to three leading
+spaces, including nested list content; indentation does not turn fence delimiters
+into visible prose. Source copying preserves the authored code.
 
 ATX headings require one to six markers and a space or line end; closing markers
 are hidden. Setext underlines make the previous paragraph an H1/H2. Headings are

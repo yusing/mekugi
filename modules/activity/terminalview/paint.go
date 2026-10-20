@@ -442,6 +442,10 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			label = row
 		}
 		code, body := block.Code, block.Body
+		omittedSource := 0
+		if block.Verb == "Create" && !block.Expanded && strings.HasPrefix(block.EditPath(), "/tmp/") && strings.Count(code, "\n") >= 5 {
+			omittedSource, code = strings.Count(code, "\n")+1, ""
+		}
 		exit := ""
 		if block.ExitCode != 0 && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)) {
 			exit = terminalui.Red + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
@@ -456,6 +460,9 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			label, code = strings.TrimSpace(label+" "+inline), ""
 		}
 		lines := terminalui.Hang(block.lead(VerbColor(block.Verb), block.Verb), label, width)
+		if omittedSource > 0 {
+			lines = append(lines, "  "+Elision{Hidden: omittedSource, Hovered: block.Hovered}.String())
+		}
 		if code != "" {
 			lang := block.Lang
 			if !block.Fenced && (block.Verb == "MCP" || strings.HasPrefix(block.Verb, "Tool")) {

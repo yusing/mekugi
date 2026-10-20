@@ -1,6 +1,7 @@
 package terminalview
 
 import (
+	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,28 @@ import (
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+func TestUISnapshotTemporaryCreate(t *testing.T) {
+	code := strings.Repeat("temporary content\n", 8) + "last line"
+	block := Block{Content: activitymodel.ParseOperation("Create `/tmp/large.txt`\n```text\n" + code + "\n```")}
+	p := Painter{Theme: diffrender.DarkTheme}
+	rows := p.Block(block, 60)
+	if strings.Contains(ansi.Strip(strings.Join(rows, "\n")), "temporary content") {
+		t.Fatal("large temporary source stayed open")
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/temporary_create.txt", rows, 60)
+	block.Expanded = true
+	if !strings.Contains(ansi.Strip(strings.Join(p.Block(block, 60), "\n")), "last line") {
+		t.Fatal("expanded source missing")
+	}
+	if got := p.DialogPage(block, 60).Text; got != code {
+		t.Fatalf("original dialog source changed: %q", got)
+	}
+	block.Expanded, block.Label = false, "`/workspace/large.txt`"
+	if !strings.Contains(ansi.Strip(strings.Join(p.Block(block, 60), "\n")), "last line") {
+		t.Fatal("ordinary Create collapsed")
+	}
+}
 
 func TestUISnapshotActivityBlocks(t *testing.T) {
 	for _, tc := range []struct {

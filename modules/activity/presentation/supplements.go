@@ -69,6 +69,8 @@ func RequestSupplements(invocation *scope.Store) *Supplements {
 	return invocationSupplements.Value(invocation)
 }
 
+func (s *Supplements) Attached(root string) bool { return root != "" && s.root == root }
+
 func (s *Supplements) Attach(root string) { s.root = root }
 func (s *Supplements) Detach()            { s.root = "" }
 func (s *Supplements) Clear() {

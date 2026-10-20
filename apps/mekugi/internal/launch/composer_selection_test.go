@@ -86,7 +86,7 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	content, _ := json.Marshal([]map[string]string{{"type": "input_text", "text": "explain [Selected diff hunk @amber1:42-45] "}, {"type": "input_text", "text": envelope}})
 	items, _ := json.Marshal([]map[string]jsontext.Value{{"type": []byte(`"message"`), "role": []byte(`"user"`), "content": content}})
 	request := &codexresponses.Request{Fields: map[string]jsontext.Value{"input": items}}
-	if !requestexecution.ProjectFileAttachments(request) || !strings.Contains(string(request.Fields["input"]), `+new\n-old`) || strings.Contains(string(request.Fields["input"]), "mekugi-file-attachments") {
+	if changed, _ := requestexecution.ProjectFileAttachments(request); !changed || !strings.Contains(string(request.Fields["input"]), `+new\n-old`) || strings.Contains(string(request.Fields["input"]), "mekugi-file-attachments") {
 		t.Fatalf("projected input = %s", request.Fields["input"])
 	}
 	// The host echo keeps the concise label as one styled token.

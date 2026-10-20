@@ -56,6 +56,20 @@ func TestUISnapshotMarkdownClosingFences(t *testing.T) {
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown_closing_fences.txt", rows, 24)
 }
 
+func TestUISnapshotMarkdownIndentedFences(t *testing.T) {
+	p := Painter{Theme: diffrender.DarkTheme}
+	code := "  func main() {\n  \tprintln(42)  \n  }"
+	source := "- Example:\n\n  ```go\n" + code + "\n  ```\nAfter code"
+	rows := p.Markdown(source, 40, false)
+	if strings.Contains(ansi.Strip(strings.Join(rows, "\n")), "```") {
+		t.Fatal("raw fence in rendered Markdown")
+	}
+	if got := selectedMarkdown(t, "  ```go\n"+code+"\n  ```", 40); got != code {
+		t.Fatalf("source copy changed: %q", got)
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown_indented_fences.txt", rows, 40)
+}
+
 func TestUISnapshotMarkdownHeadings(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

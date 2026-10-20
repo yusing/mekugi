@@ -17,12 +17,14 @@ const MaxActivityMetadataBytes = 16 << 10
 // delivered IDs remain available until shutdown. Bounded live queues drop only
 // auxiliary updates with a notice, without disabling later updates or replaying expired activity.
 type Audience struct {
-	notice      func(string, string)
-	mu          sync.Mutex
-	threads     map[string]*activityThread
-	closed      bool
-	invocation  scope.Store
-	supplements *activitypresentation.Supplements
+	notice        func(string, string)
+	mu            sync.Mutex
+	threads       map[string]*activityThread
+	closed        bool
+	invocation    scope.Store
+	supplements   *activitypresentation.Supplements
+	prepared      []preparedContent
+	preparedBytes int
 }
 
 type activityThread struct {
@@ -146,6 +148,7 @@ func (a *Audience) Close() {
 	defer a.mu.Unlock()
 	a.closed = true
 	clear(a.threads)
+	a.prepared, a.preparedBytes = nil, 0
 	a.supplements.Clear()
 }
 func (a *Audience) Detach() {
