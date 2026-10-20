@@ -222,7 +222,7 @@ The composer always targets Main. Narrow terminals show one pane.
 | Action | Shortcut |
 | --- | --- |
 | Show Main / toggle Diff / focus Agents | `Ctrl-B`, then `1` / `2` / `3` |
-| Resize Main/Diff split | Drag its divider, or `Ctrl-B`, then Left/Right; Agents height fits its content |
+| Resize Main/Diff split | Drag its divider, or `Ctrl-B`, then Left/Right; repeat arrows within 500 ms without another prefix. Agents height fits its content |
 | Resize Diff navigator | `Ctrl-B`, then `[` / `]` |
 | Browse displayed transcript | `Ctrl-B`, then PageUp / PageDown |
 

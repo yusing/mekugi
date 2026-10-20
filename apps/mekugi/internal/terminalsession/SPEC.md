@@ -234,6 +234,10 @@ frames. The roster uses four rows unfocused and up to 40% of the height when
 focused. Its separator captures pointer gestures without storing a preferred
 roster height. Column-divider dragging and prefix Left/Right resizing share the
 retained split; saved Diff owns its file-navigator width.
+After Ctrl-B then Left/Right, further Left/Right presses resize without another
+prefix for 500 milliseconds after each resize. Other keys immediately resume
+their normal action. Paste, pointer input, dialogs and terminal focus loss end
+the repeat window; paging and other prefix commands remain single-shot.
 
 Ctrl-B then 1 selects Main, 2 toggles Diff, and 3 focuses Agents. Ctrl-B PgUp/PgDn
 scrolls the displayed transcript or its active live source; the wheel targets the

@@ -3,6 +3,7 @@ package terminalsession
 import (
 	"iter"
 	"strings"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -12,10 +13,11 @@ import (
 
 // Interaction owns the input stream and its frozen, successfully delivered source.
 type Interaction struct {
-	Decoder   Decoder
-	Frame     Frame
-	Selection *SourceSelection
-	Prefix    bool
+	Decoder     Decoder
+	Frame       Frame
+	Selection   *SourceSelection
+	Prefix      bool
+	resizeUntil time.Time
 }
 
 type PendingPromptInput struct {
@@ -83,11 +85,16 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 	return func(yield func(InputEffect) bool) {
 		if in.Dialog != nil {
 			state.Prefix = false
+			state.resizeUntil = time.Time{}
+		}
+		if !in.Now.Before(state.resizeUntil) {
+			state.resizeUntil = time.Time{}
 		}
 		switch event.Kind {
 		case NoInput:
 			return
 		case PasteStart, PasteInput, PasteEnd:
+			state.resizeUntil = time.Time{}
 			if event.Kind == PasteStart {
 				state.Prefix = false
 			}
@@ -109,11 +116,13 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 		case FocusInput:
 			focused := event.Text == "\x1b[I"
 			if !focused {
+				state.resizeUntil = time.Time{}
 				in.ClearSkillsHover()
 			}
 			yield(InputEffect{Focused: &focused})
 			return
 		case MouseInput:
+			state.resizeUntil = time.Time{}
 			if in.Main != nil && in.Main.Keybindings {
 				in.Main.Keybindings = false
 				return
@@ -124,6 +133,13 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 			return
 		}
 		key := event.Text
+		if (key == "\x1b[D" || key == "\x1b[C") && (state.Prefix || !state.resizeUntil.IsZero()) {
+			state.Prefix = false
+			state.resizeUntil = in.Now.Add(500 * time.Millisecond)
+			in.Resize(key)
+			return
+		}
+		state.resizeUntil = time.Time{}
 		if strings.HasPrefix(key, "\x1b") {
 			if state.Prefix {
 				state.Prefix = false
@@ -185,7 +201,10 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 
 // Send routes a complete key, including a decoder-expired lone Escape.
 func (in FrameInput) Send(state *Interaction, key string) iter.Seq[InputEffect] {
-	return func(yield func(InputEffect) bool) { in.send(state, key, yield) }
+	return func(yield func(InputEffect) bool) {
+		state.resizeUntil = time.Time{}
+		in.send(state, key, yield)
+	}
 }
 
 func (in FrameInput) SelectPane(state *Interaction, pane int) iter.Seq[InputEffect] {
@@ -323,6 +342,7 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 }
 
 func (in FrameInput) selectPane(state *Interaction, pane int, yield func(InputEffect) bool) bool {
+	state.resizeUntil = time.Time{}
 	if pane == 0 && in.Main != nil {
 		v := in.Main.session
 		if !yield(InputEffect{Display: &sessionpresentation.DisplayIntent{Version: v.Version, Thread: v.Main}}) {

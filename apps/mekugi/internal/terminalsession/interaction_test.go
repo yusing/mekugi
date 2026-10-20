@@ -2,10 +2,86 @@ package terminalsession
 
 import (
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
+
+func TestPrefixResizeRepeat(t *testing.T) {
+	var state Interaction
+	in := FrameInput{Main: &Main{}, Transcript: activityui.NewView(), Shell: &Shell{Panes: Panes{Split: 60}}, Width: 140, Now: time.Unix(100, 0)}
+	// Feed the same fragmented escape sequences as live terminal input.
+	feed := func(keys string, wantSplit int, wantKeys string) {
+		t.Helper()
+		var gotKeys string
+		for _, b := range []byte(keys) {
+			for effect := range in.Dispatch(&state, state.Decoder.Feed(b, in.Now)) {
+				if effect.Main != nil {
+					gotKeys += effect.Main.key
+				}
+			}
+		}
+		if in.Shell.Split != wantSplit || gotKeys != wantKeys {
+			t.Fatalf("input %q: split=%d, keys=%q; want %d, %q", keys, in.Shell.Split, gotKeys, wantSplit, wantKeys)
+		}
+	}
+	feed("\x02\x1b[C", 63, "")
+	feed("\x1b]10;rgb:ff/ff/ff\a\x1b[I", 63, "") // Terminal replies leave repeats intact.
+	in.Now = in.Now.Add(400 * time.Millisecond)
+	feed("\x1b[C", 66, "")
+	in.Now = in.Now.Add(400 * time.Millisecond) // Repeat renews the deadline.
+	feed("\x1b[D", 63, "")
+	in.Now = in.Now.Add(500 * time.Millisecond)
+	feed("\x1b[D", 63, "\x1b[D") // Expired arrows retain their normal action.
+	feed("\x02\x1b[Cx\x1b[D", 66, "x\x1b[D")
+	feed("\x02\x1b[C\x1b[A\x1b[D", 69, "\x1b[A\x1b[D")
+	feed("\x02h\x1b[C", 66, "\x1b[C") // Existing non-arrow prefix commands are single-shot.
+	feed("\x02\x1b[C\x02\x02\x1b[D", 69, "\x02\x1b[D")
+	feed("\x02\x1b[5~\x1b[C", 69, "\x1b[C")
+}
+
+func TestPrefixResizeRepeatCancellation(t *testing.T) {
+	for _, stop := range []string{"paste", "pointer", "focus loss", "dialog", "escape", "pane"} {
+		t.Run(stop, func(t *testing.T) {
+			var state Interaction
+			in := FrameInput{Main: &Main{}, Prompts: &Prompts{}, Transcript: activityui.NewView(), Shell: &Shell{Panes: Panes{Split: 60}}, Width: 140, Now: time.Unix(100, 0)}
+			dispatch := func(event Input) {
+				for range in.Dispatch(&state, event) {
+				}
+			}
+			dispatch(Input{KeyInput, "\x02"})
+			dispatch(Input{KeyInput, "\x1b[C"})
+			switch stop {
+			case "paste":
+				dispatch(Input{Kind: PasteStart})
+			case "pointer":
+				dispatch(Input{Kind: MouseInput})
+			case "focus loss":
+				dispatch(Input{FocusInput, "\x1b[O"})
+			case "dialog":
+				in.Dialog = &ContentDialog{}
+				dispatch(Input{})
+				in.Dialog = nil
+			case "escape":
+				for range in.Send(&state, "\x1b") {
+				}
+			case "pane":
+				for range in.SelectPane(&state, 0) {
+				}
+			}
+			keys := 0
+			for effect := range in.Dispatch(&state, Input{KeyInput, "\x1b[C"}) {
+				if effect.Main != nil && effect.Main.key == "\x1b[C" {
+					keys++
+				}
+			}
+			if in.Shell.Split != 63 || keys != 1 {
+				t.Fatalf("resize window survived %s: split=%d, normal arrows=%d", stop, in.Shell.Split, keys)
+			}
+		})
+	}
+}
 
 func TestOuterInputContinuesAfterDisplayPublication(t *testing.T) {
 	var main Main
