@@ -2,13 +2,13 @@
 ┃ Main reply stays in the
 ┃ transcript.
 
-├ Ran echo activity-01
-├ Ran echo activity-02
-├ Ran echo activity-03
-├ Ran echo activity-04
-├ Ran echo activity-05
-├ Ran echo activity-06
-├ Ran echo activity-07
+└ Ran echo activity-01
+      echo activity-02
+      echo activity-03
+      echo activity-04
+      echo activity-05
+      echo activity-06
+      echo activity-07
       ↓ Back to bottom · esc
 
 ╭─ ◐ Working ──────────────────────╮

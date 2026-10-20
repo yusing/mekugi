@@ -183,7 +183,7 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
 	}
 	got := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
-	under := "Ran git log\n│     ┆ commit abc\n│     " + "output not returned to the model" + "\n"
+	under := "Ran git log\n      ┆ commit abc\n      " + "output not returned to the model" + "\n"
 	if strings.Count(got, "output not returned to the model") != 1 || !strings.Contains(got, under) {
 		t.Fatalf("want one note, under git log's output:\n%s", got)
 	}

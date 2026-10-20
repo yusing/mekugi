@@ -68,3 +68,28 @@ func TestValueHasNoRendererOrLiveState(t *testing.T) {
 	}
 	visit(reflect.TypeFor[Value]())
 }
+
+func TestOperationGroupsPreserveOutcomesAndAnnotations(t *testing.T) {
+	values := []Value{
+		{Kind: "op", Verb: "Search", Source: 1, Exited: true, ExitCode: 2, Code: "rg needle missing", Tail: []string{"missing path"}},
+		{Kind: "filter", Source: 1, Label: "output not returned to the model"},
+		{Kind: "op", Verb: "Search", Source: 2, Exited: true, Code: "rg needle src", Tail: []string{"src/a.go:needle"}},
+		{Kind: "op", Verb: "Search", Source: 3}, // Unknown exit remains distinct.
+		{Kind: "op", Verb: "Search", Source: 4, Running: true},
+		{Kind: "op", Verb: "Search", Source: 5, Skipped: true},
+		{Kind: "op", Verb: "Search", Source: 6, Workdir: "/other"},
+	}
+	got := GroupOperations(values)
+	if got[0].GroupHeader != "Search" || !got[0].GroupStart || got[1].GroupHeader != "Search" || got[1].GroupStart || got[2].GroupStart {
+		t.Fatalf("shared group lost its annotation: %#v", got[:3])
+	}
+	for i := range got {
+		if i >= 3 && got[i].GroupHeader != "" {
+			t.Errorf("distinct state grouped at %d", i)
+		}
+		got[i].GroupHeader, got[i].GroupStart = "", false
+		if !reflect.DeepEqual(got[i], values[i]) {
+			t.Errorf("operation evidence changed at %d", i)
+		}
+	}
+}

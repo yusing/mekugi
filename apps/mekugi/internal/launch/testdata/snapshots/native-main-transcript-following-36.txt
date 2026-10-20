@@ -1,15 +1,15 @@
-├ Ran echo activity-09
-├ Ran echo activity-10
-├ Ran echo activity-11
-├ Ran echo activity-12
-├ Ran echo activity-13
-├ Ran echo activity-14
-├ Ran echo activity-15
-├ Ran echo activity-16
-├ Ran echo activity-17
-├ Ran echo activity-18
-├ Ran echo activity-19
-└ Ran echo activity-20
+      echo activity-09
+      echo activity-10
+      echo activity-11
+      echo activity-12
+      echo activity-13
+      echo activity-14
+      echo activity-15
+      echo activity-16
+      echo activity-17
+      echo activity-18
+      echo activity-19
+      echo activity-20
 
 ╭─ ◐ Working ──────────────────────╮
 │ ❯                                │

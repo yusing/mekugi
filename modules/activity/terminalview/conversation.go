@@ -467,14 +467,14 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 				}
 			}
 		}
-		// The operations form a tree under the reasoning above them. An edit
+		// The operations form a tree under the reasoning above them. An operation
 		// group's later rows and output notes continue their operation's branch.
 		var parts [][]string
-		var toggles []Snippet // Aligned with every rendered row, including grouped edits.
+		var toggles []Snippet // Aligned with every rendered row, including grouped operations.
 		// Its connectors sit beneath the reasoning bullet. Keep invocation identities
 		// even when adjacent edits share a heading or edit the same path.
 		if v.Expansion == 0 {
-			group = MergeLiveActivityReads(group)
+			group = MergeTargets(group)
 		}
 		laid = AlignVerbs(GroupOperations(group))
 		// A batch that has scrolled out of view keeps one row, which opens

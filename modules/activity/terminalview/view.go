@@ -1311,7 +1311,7 @@ func (v *View) LayoutFeed(width int) Feed {
 				observed = v.entries[first].Observed // A stable heading while the run grows.
 			}
 			if v.Expansion == 0 {
-				blocks = MergeLiveActivityReads(blocks)
+				blocks = MergeTargets(blocks)
 			}
 			return v.renderRun(key.First, agent, observed, blocks, width, clip)
 		}
@@ -1375,7 +1375,7 @@ func (v *View) renderRun(first uint64, agent string, observed time.Time, blocks 
 	}
 	previousMessage, previousSummary := false, false
 	operation := func(block Block) bool { return block.Kind == "op" || block.Kind == "reads" }
-	// An edit group's later rows and output notes continue the branch above.
+	// An operation group's later rows and output notes continue the branch above.
 	continued := func(block Block) bool {
 		return block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart
 	}

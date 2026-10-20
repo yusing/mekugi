@@ -55,7 +55,7 @@ func TestVCSCommitEnrichmentKeepsSegmentDirectory(t *testing.T) {
 	report.conn.Close()
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, strings.Join(outputs, "")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-	awaitMain(t, u, "Committed second")
+	awaitMain(t, u, "second · git -C")
 	index := slices.IndexFunc(u.attached.source.Entries, func(record sessionpresentation.ActivityRecord) bool {
 		return record.Source.Native != nil && record.Source.Native.Item == "cmd"
 	})

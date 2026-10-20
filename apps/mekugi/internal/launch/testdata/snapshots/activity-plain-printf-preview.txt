@@ -4,8 +4,8 @@ AGENTS  1 agents · 0 responding                                                
 ● probe                                                                                    12:00:00
 ▎ List .codex/sessions/2026/09/30
 ▎ Ran  printf 'Alice Smith\n'
-▎ Ran  printf 'Evidence-location metadata\n'
-▎ Ran  printf '%s\n' 'count=42'
+▎      printf 'Evidence-location metadata\n'
+▎      printf '%s\n' 'count=42'
 
 
 

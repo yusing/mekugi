@@ -56,9 +56,7 @@ func (b Block) Collapsible() bool {
 	return false
 }
 
-// GroupOperations groups adjacent edits from one source and outcome, across
-// invocations, so their rows share one verb cell. Invocation identities stay
-// on their rows. Other operations stand alone.
+// GroupOperations applies shared semantic grouping and measures terminal columns.
 func GroupOperations(blocks []Block) []Block {
 	blocks = slices.Clone(blocks)
 	values := make([]presentation.Value, len(blocks))
@@ -126,7 +124,7 @@ func RowVerb(b Block) string {
 		return "Ran"
 	case b.committed():
 		return "Committed"
-	case b.GroupHeader != "":
+	case b.EditSource != "":
 		return EditVerb(b)
 	}
 	return b.Verb
@@ -171,7 +169,7 @@ func measureGroups(blocks []Block) {
 		}
 		starts[i] = -1
 		blocks[i].VerbAlign, blocks[i].PathAlign, blocks[i].StatAlign, blocks[i].StatScale = 0, 0, 0, 0
-		if start < 0 || b.Kind != "op" {
+		if start < 0 || b.Kind != "op" || b.EditSource == "" {
 			continue
 		}
 		starts[i] = start
@@ -237,47 +235,32 @@ func EditStat(label string) (path string, added, removed int, tail string, ok bo
 	return path, added, removed, match[3], true
 }
 
-// MergeLiveActivityReads collapses adjacent targets of the same action, joining
-// ranges of the same path. Reads whose content is collapsed join too, each
-// target counting the lines read from it; a read still streaming, failed or
-// left open stays its own row until it settles. Merged blocks own their
-// slices; parsed entries are shared. Skill reads retain invocation output and
-// timing in Members, with total duration on the grouped row.
-func MergeLiveActivityReads(blocks []Block) []Block {
+// MergeTargets applies shared target grouping to terminal disclosure, retaining
+// each original invocation for details and navigation.
+func MergeTargets(blocks []Block) []Block {
+	values := make([]presentation.Value, len(blocks))
+	counts := make([]int, len(blocks))
+	for i, b := range blocks {
+		values[i] = b.Value
+		if b.readContent() {
+			counts[i] = b.TailOmitted + len(b.Tail)
+		} else if len(b.Tail) > 0 || b.TailOmitted > 0 {
+			counts[i] = -1
+		}
+	}
 	var merged []Block
 	for i := 0; i < len(blocks); {
+		value, size := presentation.TargetRun(values[i:], counts[i:])
 		first := blocks[i]
-		j := i + 1
-		for j < len(blocks) && first.Repeated == "" && blocks[j].Repeated == "" && mergesReads(first, blocks[j]) {
-			j++
-		}
-		if j > i+1 {
-			values := make([]presentation.Value, j-i)
-			counts := make([]int, j-i)
-			for k, b := range blocks[i:j] {
-				values[k] = b.Value
-				if b.readContent() {
-					counts[k] = b.TailOmitted + len(b.Tail)
-				}
-				first.Flash = first.Flash || b.Flash
-				first.Collapsed = first.Collapsed || b.Collapsed
-			}
-			first.Value = presentation.MergeReads(values, counts)
+		first.Value = value
+		for _, b := range blocks[i : i+size] {
+			first.Flash = first.Flash || b.Flash
+			first.Collapsed = first.Collapsed || b.Collapsed
 		}
 		merged = append(merged, first)
-		i = j
+		i += size
 	}
 	return merged
-}
-
-// mergesReads reports whether next joins the read row last.
-func mergesReads(last, next Block) bool {
-	joins := func(b Block) bool {
-		return b.Kind == "reads" && !b.Running && !b.Skipped && b.Approval == "" && b.Results == nil && b.ExitCode == 0 &&
-			(b.Verb == "Skill" || b.Started.IsZero() && b.Duration == 0) &&
-			(len(b.Tail) == 0 && b.TailOmitted == 0 || b.readContent())
-	}
-	return last.Verb == next.Verb && last.Workdir == next.Workdir && joins(last) && joins(next)
 }
 
 // readContent reports collapsed content that one target's row can count.

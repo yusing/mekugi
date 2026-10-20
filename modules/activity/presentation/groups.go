@@ -31,6 +31,45 @@ func Group(value Value, members []Value) Value {
 	return value
 }
 
+// TargetRun compacts the first consecutive run of settled target-only operations.
+// A negative count keeps an operation's disclosed output on its own row; positive
+// counts describe collapsed read content. Nil counts describe source-only values.
+func TargetRun(values []Value, counts []int) (Value, int) {
+	count := func(i int) int {
+		if counts == nil {
+			return 0
+		}
+		return counts[i]
+	}
+	joins := func(i int) bool {
+		b := values[i]
+		return b.Kind == "reads" && !b.Running && !b.Skipped && b.Approval == "" && b.Results == nil && b.ExitCode == 0 &&
+			b.Repeated == "" && (b.Verb == "Skill" || b.Started.IsZero() && b.Duration == 0) && count(i) >= 0
+	}
+	end := 1
+	for end < len(values) && sameAction(values[0], values[end]) && joins(0) && joins(end) {
+		end++
+	}
+	if end == 1 {
+		return values[0], end
+	}
+	if counts == nil {
+		counts = make([]int, end)
+	}
+	return MergeReads(values[:end], counts[:end]), end
+}
+
+// sameAction is shared by target compaction and verb-cell grouping.
+func sameAction(a, b Value) bool {
+	if (a.Hook == nil) != (b.Hook == nil) || a.Hook != nil && *a.Hook != *b.Hook {
+		return false
+	}
+	return (a.Kind == "op" || a.Kind == "reads") && (b.Kind == "op" || b.Kind == "reads") &&
+		a.Verb != "" && a.Verb == b.Verb && a.Workdir == b.Workdir && a.Owner == b.Owner &&
+		a.Running == b.Running && a.Skipped == b.Skipped && a.Exited == b.Exited && a.BatchExit == b.BatchExit &&
+		a.Requested == b.Requested && a.Approval == b.Approval
+}
+
 // Source: modules/activity/terminalview/blocks.go:369:407@[3e523196].
 // MergeReads combines targets and their ranges after disclosure admits adjacent
 // reads. counts supplies each collapsed invocation's retained line count.
@@ -80,10 +119,12 @@ func Reasoning(values []Value) Value {
 func Batch(values []Value) Value { return Group(Value{Kind: "batch"}, values) }
 
 // Source: modules/activity/terminalview/blocks.go:129:177@[3e523196].
-// GroupOperations derives shared edit headings and invocation counts.
+// GroupOperations derives shared verb headings, preserving each operation and outcome.
 func GroupOperations(blocks []Value) []Value {
 	blocks = slices.Clone(blocks)
 	previous, previousSource, start := "", "", -1
+	var last Value
+	lastIndex := -1
 	for i := range blocks {
 		b := &blocks[i]
 		b.GroupCount = 0
@@ -95,10 +136,20 @@ func GroupOperations(blocks []Value) []Value {
 		heading := ""
 		if b.EditSource != "" {
 			heading = b.EditHeading()
+		} else if sameAction(last, *b) && last.EditSource == "" {
+			heading = b.Verb
+			if previous == "" {
+				blocks[lastIndex].GroupHeader, blocks[lastIndex].GroupStart = heading, true
+				for k := lastIndex + 1; k < i; k++ {
+					blocks[k].GroupHeader = heading
+				}
+				previous = heading
+			}
 		}
 		b.GroupHeader = heading
-		b.GroupStart = heading != "" && (heading != previous || b.EditSource != previousSource)
+		b.GroupStart = heading != "" && (heading != previous || b.EditSource != previousSource || b.Workdir != last.Workdir)
 		previous, previousSource = heading, b.EditSource
+		last, lastIndex = *b, i
 		if b.GroupStart {
 			start = i
 		}

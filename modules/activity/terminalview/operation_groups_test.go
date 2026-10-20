@@ -472,7 +472,7 @@ func TestMergedReadsCountContentPerTarget(t *testing.T) {
 	}
 	open := read(5, "open.go", "1:2", 3)
 	open.Collapsed = false // Open output stays with its invocation.
-	blocks := activityui.MergeLiveActivityReads([]activityui.Block{
+	blocks := activityui.MergeTargets([]activityui.Block{
 		read(1, test, "1147:1167", 19),
 		read(2, test, "1738:1788", 50),
 		read(3, "plugins/inspect_file.ts", "135:185", 50),
@@ -501,7 +501,7 @@ func TestMergedReadsCountContentPerTarget(t *testing.T) {
 	running.Collapsed, running.Running = false, true
 	failed := read(7, "b.go", "1:2", 2)
 	failed.Collapsed, failed.ExitCode = false, 1
-	if merged := activityui.MergeLiveActivityReads([]activityui.Block{read(8, "c.go", "1:2", 2), running, failed}); len(merged) != 3 {
+	if merged := activityui.MergeTargets([]activityui.Block{read(8, "c.go", "1:2", 2), running, failed}); len(merged) != 3 {
 		t.Fatalf("unsettled reads merged: %+v", merged)
 	}
 }

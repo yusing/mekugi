@@ -11,7 +11,7 @@ func TestMergeReadGroupsRetainsIndependentFirstMembers(t *testing.T) {
 		return Block{Source: source, Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "file.go", Ranges: []string{"1:2"}}}}
 	}
 	input := []Block{read(1), read(2), {Kind: "op", Verb: "Run", Source: 3}, read(4), read(5)}
-	groups := MergeLiveActivityReads(input)
+	groups := MergeTargets(input)
 	if len(groups) != 3 {
 		t.Fatalf("groups=%d, want 3", len(groups))
 	}

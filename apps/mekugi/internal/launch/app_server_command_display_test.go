@@ -447,7 +447,7 @@ func TestActivityReadsKeepInvocationWorkdirsApart(t *testing.T) {
 	if len(blocks) != 3 || !blocks[0].ShowWorkdir || blocks[1].ShowWorkdir || blocks[1].Workdir != other {
 		t.Fatalf("blocks = %+v", blocks)
 	}
-	if merged := activityui.MergeLiveActivityReads(blocks); len(merged) != 3 {
+	if merged := activityui.MergeTargets(blocks); len(merged) != 3 {
 		t.Fatalf("reads across directories merged: %+v", merged)
 	}
 }
@@ -456,10 +456,10 @@ func TestActivityReadsKeepWorkdirsApart(t *testing.T) {
 	read := func(workdir string) activityui.Block {
 		return activityui.Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "a.go"}}, Workdir: workdir}
 	}
-	if merged := activityui.MergeLiveActivityReads([]activityui.Block{read(""), read("/other")}); len(merged) != 2 {
+	if merged := activityui.MergeTargets([]activityui.Block{read(""), read("/other")}); len(merged) != 2 {
 		t.Fatalf("reads in different directories merged: %+v", merged)
 	}
-	if merged := activityui.MergeLiveActivityReads([]activityui.Block{read("/other"), read("/other")}); len(merged) != 1 {
+	if merged := activityui.MergeTargets([]activityui.Block{read("/other"), read("/other")}); len(merged) != 1 {
 		t.Fatalf("reads in one directory did not merge: %+v", merged)
 	}
 }

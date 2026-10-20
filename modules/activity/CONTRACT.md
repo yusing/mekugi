@@ -18,7 +18,7 @@ host reconciliation and detached displayed-thread admission; the
 Display intents carry their admission version; detail and edit
 targets preserve source identity, and skill intents name their agent. Application
 owners resolve host identities and retain output handles. Group members retain
-entry, operation and reasoning-section identity through read merges, reasoning compaction, batch
+entry, operation and reasoning-section identity through operation grouping, reasoning compaction, batch
 flattening and stage folding. Dialogs consume that same flat membership.
 Contributed retained pages keep their provider's stable identity and frozen source;
 live command refresh cannot replace them with another invocation's content.
@@ -78,13 +78,18 @@ counts; Activity keeps invocation rows for exact cross-pane navigation.
 Tool-managed files remain rows in their source group. Output-not-returned notes
 align with command text and stay muted in either theme.
 
-Consecutive settled same-action targets by one agent merge within and across
-calls. Read ranges join by file; target-only actions retain their targets. A group
-that cannot fit uses separate target rows. Collapsed reads show each target's
-line count, shortening its path before that count, and preserve one dialog page
-per invocation. Streaming, failed or otherwise detail-bearing operations remain
-separate. Timed operations remain distinct, except successful Skill reads may
-group with total elapsed time and individual dialog timing.
+Consecutive same-action operations by one agent share a verb cell and branch
+within and across calls. Each operation retains its source, output, timing and
+outcome. Running, skipped, requested, unknown and approval states remain distinct
+groups; failures keep their own exit status. Aggregate batch outcomes stay separate.
+Different command directories start separate groups. Consecutive settled target-only
+operations also merge targets. Read ranges join by file; target-only actions retain
+their targets. A group that cannot fit
+uses separate target rows. Collapsed reads show each target's line count,
+shortening its path before that count, and preserve one dialog page per invocation.
+Streaming, failed or otherwise detail-bearing operations retain individual rows.
+Timed operations retain individual rows, except successful Skill reads may group
+with total elapsed time and individual dialog timing.
 
 Semantic symbol queries retain quoted source: definitions display Read,
 references display Search, malformed calls remain Run. Read spans use `L25–46`.

@@ -8,9 +8,9 @@ AGENTS  1 agents · 0 responding                                                
 ▎      ┆ ls: cannot access '.codex/sessions/2026/09/30': No such file or directory
 ▎ Ran  printf 'Alice Smith\n'
 ▎      ┆ Alice Smith
-▎ Ran  printf 'Evidence-location metadata\n'
+▎      printf 'Evidence-location metadata\n'
 ▎      ┆ Evidence-location metadata
-▎ Ran  printf '%s\n' 'count=42'
+▎      printf '%s\n' 'count=42'
 ▎      ┆ count=42
 
 

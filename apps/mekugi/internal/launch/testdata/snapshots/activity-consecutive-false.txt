@@ -1,0 +1,13 @@
+● Main                                                                                      12:00:00
+▎ Inspect command -v gopls
+▎         ┆ /usr/bin/gopls
+▎         command -v codex
+▎         ┆ /usr/bin/codex
+▎         command -v bash
+▎         ┆ /usr/bin/bash
+▎ Search  needle in missing · exit 2
+▎         ┆ rg: missing: No such file or directory
+▎         needle in src
+▎         ┆ src/a.go:needle
+▎         another in src
+▎         ┆ src/b.go:another

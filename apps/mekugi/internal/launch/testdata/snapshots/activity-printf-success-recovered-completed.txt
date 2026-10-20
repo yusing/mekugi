@@ -3,7 +3,7 @@ AGENTS  1 agents · 0 responding                                                
 ───────────────────────────────────────────────────────────────────────────────────────────────────
 ● probe                                                                                    12:00:00
 ▎ Ran test -f /tmp/.tmpw4Pr3l/pyproject.toml
-▎ Ran test -f /tmp/.tmpw4Pr3l/uv.lock
+▎     test -f /tmp/.tmpw4Pr3l/uv.lock
 
 
 

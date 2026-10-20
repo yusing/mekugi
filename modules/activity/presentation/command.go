@@ -58,17 +58,11 @@ func Operations(text string) []Value {
 	}
 	var merged []Value
 	for i := 0; i < len(values); {
-		first := values[i]
-		j := i + 1
-		for j < len(values) && first.Kind == "reads" && values[j].Kind == "reads" && first.Verb == values[j].Verb {
-			j++
-		}
-		if j > i+1 {
-			first = MergeReads(values[i:j], make([]int, j-i))
-			first.Members = nil
-		}
+		first, size := TargetRun(values[i:], nil)
+		// Parsed targets belong to one invocation, not separate dialog pages.
+		first.Members = nil
 		merged = append(merged, first)
-		i = j
+		i += size
 	}
 	return merged
 }
