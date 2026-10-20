@@ -87,10 +87,10 @@ import check compares these declarations against all production source,
 including platform-tagged files.
 
 Application session control, session presentation and headless code cannot
-import terminal libraries, feature terminal views, the terminal adapter or the
-remaining router. Session presentation reaches the backend through session
-control; headless is independent of session presentation. Frontend hosting
-cannot depend on launch, composition or the remaining router.
+import terminal libraries, feature terminal views or the terminal adapter.
+Session presentation reaches the backend through session control; headless is
+independent of session presentation. Frontend hosting cannot depend on launch
+or composition.
 
 ## Generated reference
 

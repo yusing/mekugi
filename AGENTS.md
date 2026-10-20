@@ -20,8 +20,8 @@ adds no value for the agent.
 
 For feature work, locate the semantic owner in `CONTEXT-MEKUGI.md` and read its specification.
 The [composition contract](docs/contracts/composition.md) owns workspace and dependency rules.
-The [modular design](doc/design/modular-monorepo.md) explains the architecture; its migration
-inventory and future integrations are not current capability claims or implementation tasks.
+The [modular design](doc/design/modular-monorepo.md) explains architectural constraints; its future
+integrations and acceptance criteria are not current capability or verification claims.
 
 - **Extend the owner, not the wiring.** Keep each feature's behavior, records, presentation and
   bindings together. Extend an existing responsibility before adding a module; a new module needs

@@ -29,6 +29,6 @@ notices or classify application diagnostics.
 
 ## Acceptance
 
-Provider and router consumers cover cancellation, idle reads, partial bytes,
+Provider and application consumers cover cancellation, idle reads, partial bytes,
 backpressure, rejected responses, and exact byte replay. Package tests cover
 client isolation and wrapper closure ownership without provider configuration.
