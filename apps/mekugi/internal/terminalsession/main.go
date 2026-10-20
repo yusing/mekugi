@@ -49,6 +49,14 @@ type MainFrame struct {
 	Demands               []activitypresentation.OutputDemand
 	Rows                  []string
 	Feed, Dock, Questions Rect
+	composer              composerDocument
+}
+
+// composerDocument retains rendered draft rows before caret-following clipping.
+// Secret input is already masked; the frame publishes this only after delivery.
+type composerDocument struct {
+	rows []string
+	top  int
 }
 
 // layout reserves the transcript window and paints Main's surrounding docks.
@@ -103,6 +111,7 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 	}
 	visible := min(6, height-borderRows)
 	firstRow := max(0, caret.Row-visible+1)
+	out.composer = composerDocument{rows: draft, top: firstRow}
 	draft = draft[firstRow:min(len(draft), firstRow+visible)]
 
 	room := max(0, height-len(draft)-borderRows)

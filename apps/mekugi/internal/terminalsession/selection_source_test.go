@@ -11,7 +11,31 @@ import (
 	"github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
+
+func TestComposerSelectionOffscreenSecretRemainsMasked(t *testing.T) {
+	var main Main
+	view := activityui.NewView()
+	text := strings.Repeat("secret\n", 19) + "secret"
+	painted := main.layout(mainInput{Draft: composer.Draft{Text: text}, Secret: true}, &view.Painter, 40, 12, 0)
+	var frame Frame
+	if err := frame.Write(io.Discard, RenderedFrame{Rows: painted.Rows, composer: painted.composer}, 40, false); err != nil {
+		t.Fatal(err)
+	}
+	in := FrameInput{Main: &main, Transcript: view, Shell: &Shell{Layout: Layout{Main: Rect{W: 40, H: 12}}}, Width: 40, Height: 12}
+	r := main.ComposerRect
+	result := frame.SelectionMouse(in, nil, Mouse{X: r.X + 5, Y: r.Y + r.H - 1})
+	if result.Selection == nil || result.Selection.ScreenRows() == 0 {
+		t.Fatal("secret composer did not retain masked offscreen rows")
+	}
+	s := result.Selection
+	s.ScrollKey("\x1b[H")
+	s.Mouse(0, r.X, r.Y, true)
+	if got, want := s.Text(), strings.ReplaceAll(text, "secret", "••••••"); got != want {
+		t.Fatalf("secret selection copied %q, want masked rows", got)
+	}
+}
 
 func TestFrozenSelectionRequestsUpdatedOutput(t *testing.T) {
 	var main Main

@@ -153,14 +153,16 @@ func (f *Frame) SelectionMouse(in FrameInput, previous *SourceSelection, mouse M
 		next.Selection, next.Link = previous.Restart(x, y), link
 		out.Selection = &next
 	} else {
-		out.Demands = out.Selection.captureDocument(in.Main)
+		out.Demands = out.Selection.captureDocument(in.Main, f.composer)
 	}
 	out.Handled = true
 	return out
 }
 
-func (s *SourceSelection) captureDocument(main *Main) []activitypresentation.OutputDemand {
+func (s *SourceSelection) captureDocument(main *Main, composer composerDocument) []activitypresentation.OutputDemand {
 	switch s.Mention {
+	case "text":
+		s.Document(composer.rows, composer.top, 0)
 	case "message", "activity":
 		if s.View.FeedLines > s.Rect.H {
 			feed := s.View.RenderFeed(s.Rect.W, s.View.FeedLines)

@@ -20,6 +20,7 @@ type Frame struct {
 	Copy      [][]terminalui.CopySpan
 	Width     int
 	Clipboard string
+	composer  composerDocument
 }
 
 // SourceContext binds painted source to its original attachment and display.
@@ -66,6 +67,7 @@ func (f *Frame) Write(out io.Writer, rendered RenderedFrame, width int, faint bo
 	if err == nil {
 		f.Notices = rendered.Notices
 		f.Source = rendered.Source
+		f.composer = rendered.composer
 		f.Clipboard = ""
 		f.Rows, f.Width, f.Copy = rows, width, copied
 	}

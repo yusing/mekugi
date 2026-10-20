@@ -333,7 +333,7 @@ the dialog open; `y` is also a dialog selection-copy shortcut. Escape clears a
 selection before closing the dialog. Selecting live dialog content pauses follow;
 search and page changes dismiss that selection.
 Copy requests the terminal clipboard via OSC 52, and Clear leaves the draft intact.
-Main, child transcripts, saved Diff, side-answer and dialog selections retain a frozen document,
+Main, child transcripts, composer, saved Diff, side-answer and dialog selections retain a frozen document,
 including off-screen rows, until the selection is dismissed. Mouse-wheel scrolling
 during a held drag extends the range through that document; dragging above or
 below its scrollable viewport scrolls one row per motion event. Up/Down,
@@ -342,7 +342,10 @@ Scrolling after releasing the drag leaves the selected range unchanged. Newly
 exposed rows retain source-aware Markdown copying and their original click targets;
 saved Diff rows retain their gutters and change attribution. Static selections
 retain their existing dismissal behavior. Resizing or resuming editing dismisses
-the selection. Local links in Main, child transcripts and shared dialogs follow
+the selection. Composer selection scrolls the full rendered draft independently
+of its caret-following viewport, preserving draft text and caret; secret input
+remains masked throughout the frozen document.
+Local links in Main, child transcripts and shared dialogs follow
 the [content-dialog contract](#content-dialogs).
 Clipboard availability is controlled by the user's terminal.
 

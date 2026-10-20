@@ -46,6 +46,7 @@ type RenderedFrame struct {
 	SelectionRetained, DiffPainted bool
 	Prompt                         PromptReceipt
 	PromptVisible                  bool
+	composer                       composerDocument
 }
 
 func (in FrameInput) displayedTranscript() *activityui.View {
@@ -117,6 +118,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 			return out, nil
 		}
 		out.Notices = main.Notices
+		out.composer = main.composer
 		content.Main, content.Dock = main.Rows, main.Dock
 		dockAt, dockRows := content.Dock.Y, content.Dock.H
 		if dockRows > 0 && dockAt+dockRows <= len(content.Main) {
