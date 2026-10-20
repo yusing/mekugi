@@ -143,7 +143,7 @@ func TestNativeRosterOverflowLegendKeepsSelectedRole(t *testing.T) {
 		{Name: "/root/d", Role: "worker"},
 	}})
 	for _, agent := range v.Agents[1:] {
-		v.Selected = agent.Name
+		v.displayThread(agent.Name)
 		lines := v.NativeRoster(60, 8, time.Now(), true)
 		legend := lines[len(lines)-1]
 		if !strings.HasPrefix(ansi.Strip(legend), " Roles: ● "+agent.Role) || !strings.Contains(legend, v.RoleColor(agent.Role)+"●") {

@@ -2,6 +2,7 @@ package launch
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 	"strings"
@@ -99,6 +100,84 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 	}
 	if first == nil || u.attached.session.Transcript("first", "work").Turn != first || !u.attached.session.Agent("/root/first").Responding {
 		t.Fatal("display switching retired a child's work scope")
+	}
+}
+
+func TestNativeRosterReturnToMain(t *testing.T) {
+	for _, tc := range []struct{ name, child, keys string }{
+		{"Main selector", "worker11", "\x021"},
+		{"toggle", "worker11", "\x023a"},
+		{"previous", "worker00", "\x023p"},
+		{"Main row", "worker00", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			keys := func(input string) {
+				t.Helper()
+				for _, key := range []byte(input) {
+					if err := terminalTest(u).key(key); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			for i := range 12 {
+				name := fmt.Sprintf("worker%02d", i)
+				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": name, "agentNickname": name}})
+			}
+			editOrdinaryInput(t, u, "Main draft")
+			v := u.shell.Agents
+			u.testActivity(v).displayThread("/root/" + tc.child)
+			before := u.attached.childSource.Publication(u.attached.presentation, u.attached.source)
+			if err := u.testPaint(io.Discard, 100, 30); err != nil {
+				t.Fatal(err)
+			}
+			if tc.keys != "" {
+				keys(tc.keys)
+			} else {
+				clicked := false
+				for _, hit := range v.Hits {
+					if hit.Agent != "/root" || hit.Skills {
+						continue
+					}
+					r := terminalTest(u).Layout.Roster
+					for _, suffix := range []string{"M", "m"} {
+						if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.X+hit.First, r.Y+hit.Row, suffix)); err != nil {
+							t.Fatal(err)
+						}
+					}
+					clicked = true
+					break
+				}
+				if !clicked {
+					t.Fatal("Main has no roster target")
+				}
+			}
+			if err := u.testPaint(io.Discard, 100, 30); err != nil {
+				t.Fatal(err)
+			}
+			view := u.attached.presentation.View()
+			if view.Displayed != view.Main || view.Input != view.Main || view.ReadOnly != sessionpresentation.Editable || u.Text != "Main draft" {
+				t.Fatalf("Main admission or draft lost: %+v", view)
+			}
+			if after := u.attached.childSource.Publication(u.attached.presentation, u.attached.source); after != before {
+				t.Fatal("display-only switch replaced the source publication")
+			}
+			if v.RosterOffset != 0 || v.Selected != "/root/"+tc.child {
+				t.Fatalf("Main remains offscreen or remembered child lost: offset=%d selected=%s", v.RosterOffset, v.Selected)
+			}
+			for _, focused := range []bool{true, false} {
+				rows := v.NativeRoster(100, 4, time.Unix(100, 0), focused)
+				for _, hit := range v.Hits {
+					if strings.Contains(rows[hit.Row-1], v.Painter.Theme.SelectionBackground()) != (focused && hit.Agent == "/root") {
+						t.Fatalf("stale roster highlight: %q", rows[hit.Row-1])
+					}
+				}
+			}
+			keys("\x023a")
+			if u.attached.presentation.View().Displayed.ID != tc.child {
+				t.Fatal("toggle lost the remembered child")
+			}
+		})
 	}
 }
 

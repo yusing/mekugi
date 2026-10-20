@@ -3,6 +3,7 @@ package terminalview
 // Source: apps/mekugi/internal/router/native_roster.go:18:474@[29de53cc].
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"slices"
@@ -26,6 +27,8 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 		return nil
 	}
 	v.Hits = v.Hits[:0]
+	// The remembered child is only a toggle target, not the displayed selection.
+	selectedCaller := cmp.Or(v.displayedCaller(), "/root")
 	v.paceRosterMetrics(rows, now)
 	finished := 0
 	for _, row := range rows {
@@ -97,7 +100,7 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 			// Keep the selected role discoverable when the full legend cannot fit.
 			if ansi.StringWidth(" Roles: "+strings.Join(labels, "  ")) > width {
 				for _, row := range rows {
-					if row.Agent.Name == v.Selected {
+					if row.Agent.Name == selectedCaller {
 						if index := slices.Index(roles, Role(row.Agent)); index > 0 {
 							labels[0], labels[index] = labels[index], labels[0]
 						}
@@ -109,13 +112,15 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 			limit--
 		}
 	}
-	selected := max(0, slices.IndexFunc(rows, func(row activitypresentation.AgentRow) bool { return row.Agent.Name == v.Selected }))
+	selected := max(0, slices.IndexFunc(rows, func(row activitypresentation.AgentRow) bool { return row.Agent.Name == selectedCaller }))
 	start := 0
-	if len(rows) > limit {
+	if limit == 1 {
+		start = selected
+	} else if len(rows) > limit {
 		start = max(0, min(selected-limit+2, len(rows)-limit+1))
 	}
 	end := min(len(rows), start+limit)
-	if end < len(rows) {
+	if end < len(rows) && limit > 1 {
 		end-- // Room for the hidden-count row.
 	}
 	nameWidth := 4
@@ -187,13 +192,13 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 		}
 		next++
 		line = ansi.Truncate(line, width, "…")
-		if focused && item.row.Agent.Name == v.Selected || v.displayingChild() && item.row.Agent.Name == v.displayedCaller() {
+		if item.row.Agent.Name == selectedCaller && (focused || v.displayingChild()) {
 			line = v.selectRow(line, width)
 		}
 		lines = append(lines, line)
 		v.Hits = append(v.Hits, Hit{Row: len(lines), First: 1, Last: width, Agent: item.row.Agent.Name})
 	}
-	if hidden := len(rows) - end; hidden > 0 {
+	if hidden := len(rows) - end; hidden > 0 && limit > 1 {
 		lines = append(lines, ansi.Truncate(terminalui.Dim+fmt.Sprintf("   +%d more · ^B 3 shows all", hidden)+terminalui.Undim, width, "…"))
 	}
 	if legend != "" {

@@ -478,7 +478,9 @@ observed final answer without a newer open response or error, not verified task
 completion. Finished children retain separate selectable rows and their captured
 edit and usage metrics, even when the roster is unfocused; names never collapse
 into a comma-joined summary. The viewport moves only when selection leaves it.
-Hover emphasizes the name; selection shades the row.
+Hover emphasizes the name; selection shades the row. Returning to Main brings
+its roster row into view and clears the previous child highlight. Remembering a
+child for toggling does not present it as the displayed transcript.
 Click selects the transcript, not input authority; Main's composer stays Main's.
 Arrows/k/j stop at either end; n/Tab/p also navigate, a toggles Main/current child.
 Roster wheel scrolling changes neither selection nor transcript follow. Transcript
