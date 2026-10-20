@@ -10,12 +10,13 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/module"
 )
 
 type testService struct {
 	name     string
-	commands []command.Contribution
+	guidance []guidance.Section
 }
 type testDescriptor = module.Descriptor[struct{}, *testService, binding.Bindings[*testService], module.NoViews]
 
@@ -35,7 +36,7 @@ func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
 	return testDescriptor{
 		ID: id, Lifetime: module.Stateless, Contributes: module.Contributions[*testService]{Commands: definitions},
 		New: func(_ struct{}, slots module.Slots) (*testService, error) {
-			return &testService{string(id), slots.Commands}, nil
+			return &testService{string(id), slots.Guidance}, nil
 		},
 		Bindings: binding.Bindings[*testService]{Frontends: frontends},
 	}
@@ -50,16 +51,18 @@ func TestCompositionTypedDependenciesAndCollectedSlots(t *testing.T) {
 	base := c.Add(descriptor("base"), emptyDeps)
 	type deps struct{ Base *testService }
 	host := c.Add(module.Descriptor[deps, *testService, binding.Bindings[*testService], module.NoViews]{
-		ID: "host", Requires: []module.ID{"base"}, Lifetime: module.Stateless, HostsCommands: true,
+		ID: "host", Requires: []module.ID{"base"}, Lifetime: module.Stateless, HostsGuidance: true,
 		New: func(d deps, slots module.Slots) (*testService, error) {
 			if d.Base != base.Value() {
 				t.Fatal("typed dependency lost identity")
 			}
-			return &testService{d.Base.name, slots.Commands}, nil
+			return &testService{d.Base.name, slots.Guidance}, nil
 		},
 	}, func() deps { return deps{base.Value()} })
 	contribution := frontend("later")
-	c.Add(descriptor("later", contribution), emptyDeps)
+	later := descriptor("later", contribution)
+	later.Contributes.Guidance = []guidance.Section{{Command: "later", Text: "read"}}
+	c.Add(later, emptyDeps)
 	registry := new(binding.Registry)
 	runtime, err := c.Activate(t.Context(), registry)
 	if err != nil {
@@ -70,10 +73,10 @@ func TestCompositionTypedDependenciesAndCollectedSlots(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	if len(base.Value().commands) != 0 {
+	if len(base.Value().guidance) != 0 {
 		t.Fatal("non-host received slots")
 	}
-	if host.Value().name != "base" || !slices.EqualFunc(host.Value().commands, []command.Contribution{contribution}, func(a, b command.Contribution) bool { return a.Spec == b.Spec }) || !slices.EqualFunc(registry.Commands(), runtime.Commands, func(a command.Spec, b command.Contribution) bool { return a == b.Spec }) {
+	if host.Value().name != "base" || !slices.Equal(host.Value().guidance, later.Contributes.Guidance) || !slices.EqualFunc(registry.Commands(), runtime.Commands, func(a command.Spec, b command.Contribution) bool { return a == b.Spec }) {
 		t.Fatalf("host=%+v registered=%v runtime=%v", host.Value(), registry.Commands(), runtime.Commands)
 	}
 }
@@ -119,9 +122,8 @@ func TestCompositionZeroAndLeaveOneOutContributions(t *testing.T) {
 		t.Run(omit, func(t *testing.T) {
 			var c Composition
 			hostDescriptor := descriptor("host")
-			hostDescriptor.HostsCommands = true
 			hostDescriptor.Bindings.Requires = []capability.Requirement{{Mechanism: "optional-observation"}}
-			host := c.Add(hostDescriptor, emptyDeps)
+			c.Add(hostDescriptor, emptyDeps)
 			var want []command.Contribution
 			for _, name := range []string{"first", "second"} {
 				if omit == name || omit == "both" {
@@ -135,8 +137,8 @@ func TestCompositionZeroAndLeaveOneOutContributions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !slices.EqualFunc(host.Value().commands, want, func(a, b command.Contribution) bool { return a.Spec == b.Spec }) || !slices.EqualFunc(runtime.Commands, want, func(a, b command.Contribution) bool { return a.Spec == b.Spec }) {
-				t.Fatalf("host=%v runtime=%v want=%v", host.Value().commands, runtime.Commands, want)
+			if !slices.EqualFunc(runtime.Commands, want, func(a, b command.Contribution) bool { return a.Spec == b.Spec }) {
+				t.Fatalf("runtime=%v want=%v", runtime.Commands, want)
 			}
 			if len(runtime.Gaps) != 1 || runtime.Gaps[0].Module != "host" || runtime.Gaps[0].Result.State != capability.Unsupported {
 				t.Fatalf("optional gap=%v", runtime.Gaps)

@@ -44,7 +44,7 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 			native.Phase = "item/commandExecution/outputDelta"
 			native.CapturedEdit = nil // Host refresh carries no router receipt.
 			native.Segments = []sessionpresentation.ActivitySegment{{Source: "python3", Text: "Edit `a.go` · python3 (requested)"}, {Source: "go test ./...", Text: "Run `go test ./...`", Running: true}}
-			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 99, Agent: entry.Source.Agent, Kind: "tool", CallID: entry.Source.CallID, Text: entry.Source.Text, Native: &native}}})
+			view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 99, Agent: entry.Source.Agent, Kind: "tool", CallID: entry.Source.CallID, Text: entry.Source.Text, Native: &native}}})
 			if !terminalTest(u).openActivityEdit(view.bind(terminalTest(u)), entry.Source.Seq, "a.go") || !strings.Contains(terminalTest(u).Dialog.Pages[0].Code, "+after") {
 				t.Fatal("early observed source was lost")
 			}
@@ -115,7 +115,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 			segments[3].Exit, segments[3].Tail = 1, []string{"permission denied"}
 			segments[4].Skipped = true
 			command := strings.Join(sources, "; ")
-			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+			view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 				Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
 				Native: &sessionpresentation.NativeItem{Thread: thread, Item: "cmd", Command: command, Segments: segments},
 			}}})
@@ -163,7 +163,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 			Timing: segmenttransport.Timing{Started: started, Ended: started.Add(elapsed), ElapsedNS: int64(elapsed)}})
 	}
 	command := "cat > a.go; go vet ./...; cat > b.go"
-	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: "/root/child", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
 		Native: &sessionpresentation.NativeItem{Thread: "child", Item: "cmd", Command: command, Segments: segments},
 	}}})
@@ -201,7 +201,7 @@ func TestAppServerTrackedEditReceiptExactAnchor(t *testing.T) {
 	view := newActivityAdapter()
 	add := func(seq uint64, thread, item string) {
 		source := "cat > a.go"
-		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+		view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 			Seq: seq, Agent: thread, Kind: "tool", CallID: thread + ":" + item, Text: toolActivityShell(source),
 			Native: &sessionpresentation.NativeItem{Thread: thread, Item: item, Command: source,
 				Segments: []sessionpresentation.ActivitySegment{{Source: source, Text: execSegmentText(source)}},
@@ -283,7 +283,7 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 		output := u.activity.Outputs(u.attached.session.Scope()).New()
 		output.Finish(new("host diagnostic"), new(0))
 		command := "cat > a.go; cat > b.go"
-		u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+		u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 			Seq: 1, Agent: "Main", Kind: "tool", CallID: "sibling", Text: toolActivityShell(command), OutputTail: tail,
 			Native: &sessionpresentation.NativeItem{Thread: "main", Item: "sibling", Command: command, Output: output, Segments: []sessionpresentation.ActivitySegment{
 				{Source: "cat > a.go", Text: execSegmentText("cat > a.go")},

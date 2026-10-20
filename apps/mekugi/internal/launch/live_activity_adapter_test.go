@@ -26,10 +26,9 @@ func newTranscriptAdapter(view *activityui.View, audience sessionpresentation.Ac
 
 // Apply delivers the admitted source revision before terminal input or animation
 // can consult its selection and caches. The source reducer itself never paints.
-func (v *activityAdapter) Apply(event sessionpresentation.ActivityEvent) bool {
-	ended := v.ActivitySource.Apply(event)
+func (v *activityAdapter) Apply(event sessionpresentation.ActivityEvent) {
+	v.ActivitySource.Apply(event)
 	v.publishActivity()
-	return ended
 }
 
 func (v *activityAdapter) displayingChild() bool { return v.display.DisplayingChild() }

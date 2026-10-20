@@ -30,8 +30,9 @@ func nativeBatchFixture(t *testing.T) *appServerUI {
 	u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
 
 	t.Cleanup(func() { _ = terminalTest(u).Diff.Close() })
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "MAIN_TRANSCRIPT", Observed: u.clock()}}})
-	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/editor"}, {Name: "/root/reviewer"}}, Entries: []sessionpresentation.ActivityEntry{
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "MAIN_TRANSCRIPT", Observed: u.clock()}}})
+	u.testActivity(u.shell.Agents).Coverage = ""
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/editor"}, {Name: "/root/reviewer"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/editor", Kind: "commentary", Text: "EDITOR_TRANSCRIPT", Observed: u.clock()},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "commentary", Text: "OTHER_ACTIVITY remains readable", Observed: u.clock()},
 	}})

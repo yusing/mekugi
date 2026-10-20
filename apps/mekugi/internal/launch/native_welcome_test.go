@@ -86,7 +86,7 @@ func TestNativeWelcomeDoesNotReplaceHistoryOrLiveDock(t *testing.T) {
 		t.Run(fmt.Sprint(dock), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			if dock == 0 {
-				u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Submitted prompt"}}})
+				u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Submitted prompt"}}})
 			}
 			rows, _ := u.testMainFrame(80, 24, dock)
 			if strings.Contains(strings.Join(rows, "\n"), "Mekugi "+mekugiVersion()) {

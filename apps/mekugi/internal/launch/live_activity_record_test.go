@@ -25,14 +25,14 @@ func TestLiveActivityRecordRetentionAndHistoryInsertion(t *testing.T) {
 	}
 	entries[2] = sessionpresentation.ActivityEntry{Seq: 3, Agent: "/root/worker", Kind: "tool", Text: "Run `printf result`", Observed: now,
 		Native: &sessionpresentation.NativeItem{Thread: "child", Turn: "turn", Item: "command", Phase: "item/completed"}, OutputTail: []string{"result"}}
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
+	v.Apply(sessionpresentation.ActivityEvent{Entries: entries})
 	if !v.MarkUnreturned("child", "command") {
 		t.Fatal("output annotation missing")
 	}
 	revision := v.Entries[2].Revision
 	v.RenderFeed(90, 24)
 	before := v.LastSeq
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: before + 1, Agent: "/root/worker", Kind: "text", Text: "Older page one", Observed: now},
 		{Seq: before + 2, Agent: "/root/worker", Kind: "text", Text: "Older page two", Observed: now},
 	}})
@@ -57,7 +57,7 @@ func TestLiveActivityRecordMutationOwnsInvalidation(t *testing.T) {
 	v.testAudience()
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v.Clock = func() time.Time { return now }
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/finished", Kind: "text", Text: "Independent result", Observed: now},
 		{Seq: 2, Agent: "/root/other", Kind: "text", Text: "Another result", Observed: now},
 		{Seq: 3, Agent: "/root/working", Kind: "text", Text: "Original result", Observed: now},

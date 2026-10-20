@@ -53,6 +53,15 @@ func TestSnapshotBuilderPreservesAcceptedEvidence(t *testing.T) {
 		t.Fatalf("original capture unavailable: %+v", frozen)
 	}
 
+	if allocations := testing.AllocsPerRun(5, func() {
+		unchanged := NewBuilder(accepted)
+		if err := unchanged.Add(first); err != nil || unchanged.Finish() != accepted {
+			t.Fatal("duplicate attempt changed accepted evidence", err)
+		}
+	}); allocations > 1 {
+		t.Fatalf("unchanged evidence copied collections: %.0f allocations", allocations)
+	}
+
 	extension := NewBuilder(accepted)
 	if found, err := extension.Known(first.AttemptIdentity); !found || err != nil {
 		t.Fatalf("accepted identity: found=%v err=%v", found, err)

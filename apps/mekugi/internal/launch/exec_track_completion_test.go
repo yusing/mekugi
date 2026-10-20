@@ -86,7 +86,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 			if runningProcessCount(&u.attached.session) != 0 || u.attached.source.RetainedOutput(target.Source, target.Output) != retained {
 				t.Fatal("report wait revived execution or retired the displayed segment target")
 			}
-			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
+			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 			now = now.Add(execTrackCompletionWait - time.Nanosecond)
 			flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 			frame := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 30).Lines, "\n"))

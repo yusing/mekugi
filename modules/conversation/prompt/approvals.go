@@ -78,13 +78,6 @@ func (m *Approvals) Show() bool {
 }
 func (m *Approvals) Hide()        { m.Open = false }
 func (a *Approval) Move(step int) { a.Selected = (a.Selected + step + len(a.Choices)) % len(a.Choices) }
-func (a *Approval) SelectDenial() bool {
-	if n := a.DenialChoice(); n >= 0 {
-		a.Selected = n
-		return true
-	}
-	return false
-}
 
 type ApprovalView struct {
 	Selected                                        int

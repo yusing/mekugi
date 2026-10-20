@@ -526,7 +526,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 		scope.Workspaces[workspace][thread] = true
 	}
 	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
-	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: u.attached.session.Roster()})
 	u.attached.presentation.Status.Text = "Ready"
 	p.populate()
 	return p

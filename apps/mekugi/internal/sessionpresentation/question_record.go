@@ -55,6 +55,6 @@ func RecordQuestion(c *prompt.Call, request, selected string, at time.Time, sour
 			continue
 		}
 		entry := ActivityEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: at, Native: &NativeItem{Thread: c.Thread, Turn: c.Turn, Item: id, Phase: "question", Questions: records}}
-		v.Apply(ActivityEvent{Kind: "entries", Entries: []ActivityEntry{entry}})
+		v.Apply(ActivityEvent{Entries: []ActivityEntry{entry}})
 	}
 }

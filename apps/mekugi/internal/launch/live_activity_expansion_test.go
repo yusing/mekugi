@@ -214,7 +214,7 @@ func TestLiveActivityExpansionReusesUserPrompt(t *testing.T) {
 	v.Conversation = true
 	v.testAudience()
 	v.Clock = func() time.Time { return time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local) }
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "You", Kind: "text", Text: "Keep this prompt and its wrapped source.\n\n```go\npackage example\n```", Observed: time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local)},
 		{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("An expandable event.\n", 8), Observed: time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local)},
 	}})

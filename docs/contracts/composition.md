@@ -33,8 +33,8 @@ without acquiring resources. Startup acquires invocation resources after
 construction and binding succeed; shutdown and failed startup drain in reverse
 order, including the partially started owner.
 
-The command host receives all collected contributions, including later entries,
-and accepts an empty catalog. Reader contributions declare read observation so
+The application frontend host receives all collected command contributions,
+including later entries, and accepts an empty catalog. Reader contributions declare read observation so
 the host can retain AX evidence without a command-name switch.
 
 Activity hosts detail providers with unique nonempty names and callable resolvers.

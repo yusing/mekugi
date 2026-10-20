@@ -121,12 +121,6 @@ func NewBuilder(base *Snapshot) *Builder {
 	if base != nil {
 		b.next = *base
 	}
-	b.next.attempts = maps.Clone(b.next.attempts)
-	if b.next.attempts == nil {
-		b.next.attempts = make(map[AttemptKey]Attempt)
-	}
-	b.next.order = slices.Clone(b.next.order)
-	b.next.receipts = slices.Clone(b.next.receipts)
 	return b
 }
 
@@ -167,6 +161,14 @@ func (b *Builder) Add(attempt Attempt) error {
 	}
 	if bytes > changes.MaxReadBytes {
 		return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
+	}
+	if b.next.attempts == nil || b.base != nil && len(b.next.order) == len(b.base.order) {
+		b.next.attempts = maps.Clone(b.next.attempts)
+		if b.next.attempts == nil {
+			b.next.attempts = make(map[AttemptKey]Attempt)
+		}
+		b.next.order = slices.Clone(b.next.order)
+		b.next.receipts = slices.Clone(b.next.receipts)
 	}
 	b.next.bytes = bytes
 	b.next.attempts[attempt.Key] = attempt

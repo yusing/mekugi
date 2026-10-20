@@ -189,7 +189,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 				if i == 79 {
 					text = "LATEST_TRANSCRIPT"
 				}
-				view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: caller, Kind: "text", Text: text}}})
+				view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: caller, Kind: "text", Text: text}}})
 			}
 			screen := vt.NewEmulator(120, 40)
 			defer screen.Close()
@@ -250,7 +250,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 					t.Fatal("Activity still advertises r follow")
 				}
 			}
-			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: caller, Kind: "text", Text: "LATEST_TRANSCRIPT new"}}})
+			view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: caller, Kind: "text", Text: "LATEST_TRANSCRIPT new"}}})
 			paint(140, 32)
 			if view.Following || view.Offset != offset {
 				t.Fatal("new output moved manual scrollback")

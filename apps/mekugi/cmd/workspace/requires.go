@@ -3,9 +3,7 @@ package main
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"io/fs"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -15,26 +13,11 @@ import (
 
 // checkRequires checks the declarative module.go surface against production
 // imports and the module's typed Deps. Module IDs are repository leaf names.
-func checkRequires(m member) error {
+func checkRequires(m member, files map[string]*ast.File) error {
 	imports, deps, requires := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	found := false
-	err := filepath.WalkDir(m.directory, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			if path != m.directory && (entry.Name() == "testdata" || strings.HasPrefix(entry.Name(), ".")) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-		if err != nil {
-			return err
-		}
+	for _, path := range slices.Sorted(maps.Keys(files)) {
+		file := files[path]
 		aliases := map[string]string{}
 		for _, imp := range file.Imports {
 			name, _ := strconv.Unquote(imp.Path.Value)
@@ -53,7 +36,7 @@ func checkRequires(m member) error {
 			imports[id], aliases[alias] = true, id
 		}
 		if filepath.Dir(path) != m.directory {
-			return nil
+			continue
 		}
 		for _, decl := range file.Decls {
 			general, ok := decl.(*ast.GenDecl)
@@ -111,10 +94,6 @@ func checkRequires(m member) error {
 				}
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		return err
 	}
 	if !found {
 		return fmt.Errorf("%s: missing Module descriptor in module.go", m.directory)

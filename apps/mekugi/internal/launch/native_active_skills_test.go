@@ -46,7 +46,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 				view, owner = u.testActivity(u.shell.Agents), "/root/worker"
 			}
 			for range liveActivityFeedLimit {
-				view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: owner, Kind: "text", Text: "note"}}})
+				view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: owner, Kind: "text", Text: "note"}}})
 			}
 			terminalTest(u).Focus = 3
 			screen := vt.NewEmulator(120, 28)

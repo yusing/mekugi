@@ -322,7 +322,7 @@ func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.shell.Transcript.Conversation = true
 	u.testActivity(u.shell.Transcript).testAudience()
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "Check the audience"},
 		{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `config.go`"},
 		{Seq: 3, Agent: "/root/worker", Kind: "final", Text: "Checked"},

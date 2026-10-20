@@ -50,7 +50,7 @@ func (v *ActivitySource) ApplyTranscript(update observation.TextUpdate, content 
 				}
 			}
 			entry.Text = answer
-			v.Apply(ActivityEvent{Kind: "entries", Entries: []ActivityEntry{entry}})
+			v.Apply(ActivityEvent{Entries: []ActivityEntry{entry}})
 			return
 		}
 		if ref.ThreadID == main {
@@ -59,7 +59,7 @@ func (v *ActivitySource) ApplyTranscript(update observation.TextUpdate, content 
 			entry.Agent += " · user"
 		}
 	}
-	v.Apply(ActivityEvent{Kind: "entries", Entries: []ActivityEntry{entry}})
+	v.Apply(ActivityEvent{Entries: []ActivityEntry{entry}})
 	if user {
 		workspace := ""
 		if ref.ThreadID == main {
@@ -69,7 +69,7 @@ func (v *ActivitySource) ApplyTranscript(update observation.TextUpdate, content 
 			entry.Agent = agent
 			entry.Seq, entry.Kind, entry.Text = v.LastSeq+1, "attachments", ""
 			entry.Native = &NativeItem{Thread: ref.ThreadID, Turn: ref.TurnID, Item: ref.ItemID + "/attachments", Phase: update.Phase, Live: update.Live, Attachments: blocks}
-			v.Apply(ActivityEvent{Kind: "entries", Entries: []ActivityEntry{entry}})
+			v.Apply(ActivityEvent{Entries: []ActivityEntry{entry}})
 		}
 	}
 }

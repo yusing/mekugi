@@ -111,7 +111,7 @@ func TestUISnapshotTemporaryWriteActivity(t *testing.T) {
 				v.Painter.Theme = diffrender.DarkTheme
 				output := new(activitymodel.Retention).New()
 				output.Finish(new("/tmp/mekugi-batches.YcIbga/plan.json\n"), new(0))
-				v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+				v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 					Seq: 1, Agent: agent, Kind: "tool", CallID: "plan", Text: toolActivityShell(command), Observed: now,
 					OutputTail: []string{"/tmp/mekugi-batches.YcIbga/plan.json"},
 					Native:     &sessionpresentation.NativeItem{Command: command, Duration: 157 * time.Millisecond, Output: output},

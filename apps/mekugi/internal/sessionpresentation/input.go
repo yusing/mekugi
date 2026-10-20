@@ -9,13 +9,6 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-type DraftEditIntent struct {
-	Version    Version
-	Revision   uint64
-	Start, End int
-	Text       string
-}
-
 type SubmitIntent struct {
 	Version  Version
 	Revision uint64
@@ -28,7 +21,7 @@ type InputAdmission struct {
 }
 
 func (m *Model) inputAdmission(control *sessioncontrol.Live, ordinary, restoring bool) InputAdmission {
-	if m.View().ReadOnly != Editable || control == nil {
+	if m.readOnly() != Editable || control == nil {
 		return InputAdmission{Reason: ErrInputUnavailable.Error()}
 	}
 	if !ordinary {
@@ -41,16 +34,6 @@ func (m *Model) inputAdmission(control *sessioncontrol.Live, ordinary, restoring
 }
 
 var ErrInputUnavailable = errors.New("Ordinary input is unavailable for this view.")
-
-func (m *Model) EditDraft(intent DraftEditIntent, conversation *conversationmodel.Session) error {
-	if intent.Version != m.view.Version {
-		return ErrStaleIntent
-	}
-	if m.View().ReadOnly != Editable {
-		return ErrInputUnavailable
-	}
-	return conversation.EditDraft(intent.Revision, intent.Start, intent.End, intent.Text)
-}
 
 func (m *Model) TakeInput(intent SubmitIntent, control *sessioncontrol.Live, conversation *conversationmodel.Session, restoring bool) (composer.Draft, sessioncontrol.QueuePlan, error) {
 	if intent.Version != m.view.Version {
@@ -99,7 +82,7 @@ func (m *Model) AdmitPaste(in PasteIntent, conversation *conversationmodel.Sessi
 	if in.Version != m.view.Version {
 		return ErrStaleIntent
 	}
-	if m.View().ReadOnly != Editable {
+	if m.readOnly() != Editable {
 		return ErrInputUnavailable
 	}
 	if in.Target != conversation.EditorTarget() {
@@ -140,7 +123,7 @@ func (m *Model) ApplyEditor(intent EditorIntent, conversation *conversationmodel
 	if intent.Version != m.view.Version {
 		return false, ErrStaleIntent
 	}
-	if m.View().ReadOnly != Editable {
+	if m.readOnly() != Editable {
 		return false, ErrInputUnavailable
 	}
 	return conversation.ApplyEditor(intent.Target, intent.Action)
@@ -170,7 +153,7 @@ func (m *Model) AdmitComposer(intent ComposerIntent, conversation *conversationm
 	if intent.Version != m.view.Version {
 		return ErrStaleIntent
 	}
-	if m.View().ReadOnly != Editable || intent.Operation < SubmitComposer || intent.Operation > DecreaseEffort {
+	if m.readOnly() != Editable || intent.Operation < SubmitComposer || intent.Operation > DecreaseEffort {
 		return ErrInputUnavailable
 	}
 	if intent.Target != conversation.EditorTarget() {

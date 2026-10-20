@@ -27,7 +27,7 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	text := presentation.ReceiptText(workspace, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file})}))
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: text, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move"}}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: text, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move"}}}})
 	var rows []string
 	for _, block := range activityui.Disclosure(nil).Blocks(activitypresentation.Operations(text)) {
 		rows = append(rows, u.shell.Transcript.Painter.Block(block, 100)...)

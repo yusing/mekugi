@@ -2,26 +2,7 @@ package composer
 
 import (
 	"errors"
-	"unicode/utf8"
 )
-
-// Edit replaces a source range as one undoable operation. Bound tokens and
-// Unicode graphemes remain atomic; screen coordinates never enter the editor.
-func (e *Editor) Edit(start, end int, text string) error {
-	if !e.validRange(start, end) || !utf8.ValidString(text) {
-		return errors.New("Draft edit must use complete text or attachment boundaries.")
-	}
-	if start == end && text == "" {
-		e.Run = NoRun
-		return nil
-	}
-	e.Record()
-	e.Draft.Remove(start, end)
-	e.Draft.InsertText(text)
-	e.Run = NoRun
-	e.Changed()
-	return nil
-}
 
 func (e *Editor) validRange(start, end int) bool {
 	boundary := func(at int) bool {

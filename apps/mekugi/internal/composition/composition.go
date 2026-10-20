@@ -82,7 +82,7 @@ type entry struct {
 	guidance        []guidance.Section
 	capabilities    []capability.Requirement
 	validFactory    bool
-	construct       func(module.Slots, binding.Binder, *Runtime) error
+	construct       func(module.Slots, binding.Binder) error
 	start, stop     func(context.Context) error
 }
 
@@ -179,7 +179,7 @@ func (c *Composition) Add[D, S any, B interface {
 		}
 		node.diagnostics = append(node.diagnostics, contribution)
 	}
-	node.construct = func(slots module.Slots, binder binding.Binder, runtime *Runtime) error {
+	node.construct = func(slots module.Slots, binder binding.Binder) error {
 		if !descriptor.HostsActivityDetails {
 			slots.ActivityDetails = nil
 		}
@@ -195,9 +195,6 @@ func (c *Composition) Add[D, S any, B interface {
 		if !descriptor.HostsGuidance {
 			slots.Guidance = nil
 		}
-		if !descriptor.HostsCommands {
-			slots.Commands = nil
-		}
 		if !descriptor.HostsRecords {
 			slots.RecordKinds = nil
 		}
@@ -209,7 +206,7 @@ func (c *Composition) Add[D, S any, B interface {
 			return err
 		}
 		handle.value, handle.ready = service, true
-		registrar := &moduleRegistrar{binder: binder, runtime: runtime, allowed: node.commands, registered: make(map[string]bool)}
+		registrar := &moduleRegistrar{Binder: binder, allowed: node.commands, registered: make(map[string]bool)}
 		if err := backend.Register(registrar, service); err != nil {
 			return err
 		}
@@ -229,8 +226,7 @@ func (c *Composition) Add[D, S any, B interface {
 }
 
 type moduleRegistrar struct {
-	runtime    *Runtime
-	binder     binding.Binder
+	binding.Binder
 	allowed    []command.Contribution
 	registered map[string]bool
 }
@@ -243,42 +239,10 @@ func (r *moduleRegistrar) Frontend(spec command.Spec) error {
 	if r.registered[spec.Name] {
 		return fmt.Errorf("duplicate frontend %q", spec.Name)
 	}
-	if err := r.binder.Frontend(spec); err != nil {
+	if err := r.Binder.Frontend(spec); err != nil {
 		return err
 	}
 	r.registered[spec.Name] = true
-	return nil
-}
-
-func (r *moduleRegistrar) InputProjection(projection binding.InputProjection) error {
-	if err := r.binder.InputProjection(projection); err != nil {
-		return err
-	}
-	r.runtime.InputProjections = append(r.runtime.InputProjections, projection)
-	return nil
-}
-
-func (r *moduleRegistrar) Guidance(guidance binding.Guidance) error {
-	if err := r.binder.Guidance(guidance); err != nil {
-		return err
-	}
-	r.runtime.Guidance = &guidance
-	return nil
-}
-
-func (r *moduleRegistrar) SessionNaming(naming binding.SessionNaming) error {
-	if err := r.binder.SessionNaming(naming); err != nil {
-		return err
-	}
-	r.runtime.Naming = &naming
-	return nil
-}
-
-func (r *moduleRegistrar) Observation(observation binding.Observation) error {
-	if err := r.binder.Observation(observation); err != nil {
-		return err
-	}
-	r.runtime.Observation = &observation
 	return nil
 }
 
@@ -286,14 +250,6 @@ type Gap struct {
 	Module    module.ID
 	Mechanism capability.Mechanism
 	Result    capability.Result
-}
-
-func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
-	if err := r.binder.ShellApproval(guard); err != nil {
-		return err
-	}
-	r.runtime.Guards = append(r.runtime.Guards, guard)
-	return nil
 }
 
 type Runtime struct {
@@ -338,7 +294,7 @@ func (r *Runtime) Close(ctx context.Context) error {
 }
 
 // Activate validates the entire list before construction or resource startup.
-func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Runtime, error) {
+func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*Runtime, error) {
 	if c.sealed {
 		return nil, errors.New("composition is already activated")
 	}
@@ -438,10 +394,15 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		return nil, err
 	}
 	for _, node := range c.entries {
-		if err := node.construct(module.Slots{ActivityDetails: slices.Clone(activityDetails), ReplayTiming: slices.Clone(replayTiming), DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder, runtime); err != nil {
+		if err := node.construct(module.Slots{ActivityDetails: slices.Clone(activityDetails), ReplayTiming: slices.Clone(replayTiming), DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder); err != nil {
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
 	}
+	runtime.InputProjections = binder.InputProjections()
+	runtime.Guidance = binder.RegisteredGuidance()
+	runtime.Naming = binder.RegisteredNaming()
+	runtime.Observation = binder.RegisteredObservation()
+	runtime.Guards = binder.RegisteredGuards()
 	for _, node := range c.entries {
 		if err := ctx.Err(); err != nil {
 			return nil, errors.Join(err, runtime.Close(context.WithoutCancel(ctx)))
@@ -455,8 +416,4 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		}
 	}
 	return runtime, nil
-}
-
-func (r *moduleRegistrar) Rollout(attach func(binding.RolloutSource) error) error {
-	return r.binder.Rollout(attach)
 }

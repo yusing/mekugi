@@ -91,7 +91,7 @@ func TestLiveActivityScrollStopsAtLastFullViewport(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation = true
 	v.testAudience()
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: strings.Repeat("Content row\n", 30) + "Last row"}}})
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: strings.Repeat("Content row\n", 30) + "Last row"}}})
 	feed := v.RenderFeed(80, 8)
 	bottom := v.Viewport(feed, 8)
 	for _, key := range []byte{'j', terminalui.PaneWheelDown, ' ', 'G'} {
@@ -179,7 +179,8 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 	}
 	now := time.Now()
 	view := newActivityAdapter()
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/explorer"}}, Entries: []sessionpresentation.ActivityEntry{{
+	view.Coverage = ""
+	view.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/explorer"}}, Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: "/root/explorer", Kind: "start", Start: testActivityStart(t, &request), Observed: now,
 		Assignment: &sessionpresentation.ActivityAssignment{ID: "task-1", From: "/root", To: "/root/explorer", Text: "Inspect parser.\n\n- Preserve behavior."},
 	}}})
@@ -195,16 +196,16 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 	v := newActivityAdapter()
 	caller := "/root/worker"
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: caller, Kind: "tool", CallID: "call", Text: "Run\n```bash\npython3 edit.py\n```",
 	}}})
 	if len(v.Entries) != 1 || v.blocks(0)[0].Verb != "Run" {
 		t.Fatalf("pending command = %+v", v.Entries)
 	}
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 3, Agent: caller, Kind: "exit", CallID: "call", Text: "1",
 	}}})
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 4, Agent: caller, Kind: "tool", CallID: "call", Text: "Edit `edit.py` +1 -1",
 	}}})
 	if len(v.Entries) != 1 || v.blocks(0)[0].Verb != "Edit" || v.Entries[0].Source.Seq != 1 || v.LastSeq != 4 {
@@ -214,7 +215,7 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 		!strings.Contains(ansi.Strip(strings.Join(v.Painter.Block(v.blocks(0)[0], 80), "\n")), "exit 1") {
 		t.Fatalf("replacement lost failure: %+v", v.blocks(0))
 	}
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 5, Agent: caller, Kind: "tool", CallID: "other", Text: "Edit `other.py` +1 -0",
 	}}})
 	if len(v.Entries) != 2 || v.blocks(1)[0].Verb != "Edit" {
@@ -225,7 +226,8 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 func TestLiveActivityViewCollapsesReadsAcrossRun(t *testing.T) {
 	view := newActivityAdapter()
 	now := time.Now()
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
+	view.Coverage = ""
+	view.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "tool", Text: "Read `../ab/README.md 186:241`\n\nRead `../ab/prepare.ts 440:485`", Observed: now},
 		{Seq: 2, Agent: "/root/a", Kind: "tool", Text: "Read `../ab/prepare.ts 580:609`", Observed: now},
 	}})
@@ -237,7 +239,8 @@ func TestLiveActivityViewCollapsesReadsAcrossRun(t *testing.T) {
 
 func TestLiveActivityViewSanitizesChildText(t *testing.T) {
 	view := newActivityAdapter()
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
+	view.Coverage = ""
+	view.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "commentary", Text: "hi \x1b]0;title\x07 \x1b[2J there", Observed: time.Now()},
 	}})
 	for _, line := range view.Render(100, 12, time.Now()) {
@@ -250,7 +253,8 @@ func TestLiveActivityViewSanitizesChildText(t *testing.T) {
 func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 	now := time.Now()
 	view := newActivityAdapter()
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
+	view.Coverage = ""
+	view.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root/inventory", Final: true}, {Name: "/root/review", Responding: true}, {Name: "/root/review/probe"},
 	}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/inventory", Kind: "start", Start: &sessionpresentation.ActivityStart{Model: "m", Effort: "high"}, Observed: now},
@@ -295,7 +299,7 @@ func TestLiveActivityRosterPointerSelection(t *testing.T) {
 	now := time.Now()
 	for _, size := range [][2]int{{110, 16}, {70, 16}, {40, 6}} {
 		view := liveActivityTestView("/root/a", "/root/b")
-		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+		view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 			{Seq: 1, Agent: "/root/a", Kind: "commentary", Text: "alpha", Observed: now},
 			{Seq: 2, Agent: "/root/b", Kind: "commentary", Text: "bravo", Observed: now},
 		}})
@@ -401,11 +405,12 @@ func TestLiveActivityLinksAndCommandExit(t *testing.T) {
 func TestLiveActivityViewAppliesExitToMatchingRun(t *testing.T) {
 	view := newActivityAdapter()
 	now := time.Now()
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
+	view.Coverage = ""
+	view.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", CallID: "call-1", Kind: "tool", Text: "Run `false`", Observed: now},
 		{Seq: 2, Agent: "/root/a", CallID: "other", Kind: "tool", Text: "Run `true`", Observed: now},
 	}})
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 3, Agent: "/root/a", CallID: "call-1", Kind: "exit", Text: "1", Observed: now}}})
+	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 3, Agent: "/root/a", CallID: "call-1", Kind: "exit", Text: "1", Observed: now}}})
 	got := strings.Join(plainLines(view.Render(90, 15, now)), "\n")
 	if !strings.Contains(got, "▎ Ran false · exit 1\n▎ Ran true") || !strings.Contains(strings.Join(view.Render(90, 15, now), "\n"), terminalui.Red+"\x1b[1mRan") {
 		t.Fatalf("exit rendering = %s", got)
@@ -415,7 +420,8 @@ func TestLiveActivityViewAppliesExitToMatchingRun(t *testing.T) {
 func TestLiveActivityCompactionAppearsInFeedAndRoster(t *testing.T) {
 	view := newActivityAdapter()
 	now := time.Now()
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
+	view.Coverage = ""
+	view.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "compaction", Text: "Context compacted", Observed: now},
 	}})
 	got := strings.Join(plainLines(view.Render(110, 15, now)), "\n")

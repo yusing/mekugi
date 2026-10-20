@@ -59,7 +59,6 @@ type ActivityAgent struct {
 
 // Source: apps/mekugi/internal/router/subagent_activity_pane.go:60:64@45fbe279
 type ActivityEvent struct {
-	Kind    string
 	Agents  []ActivityAgent `json:",omitempty"`
 	Entries []ActivityEntry `json:",omitempty"`
 }

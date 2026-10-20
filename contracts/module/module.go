@@ -39,7 +39,6 @@ type Slots struct {
 	DiagnosticSections []diagnosticsection.Contribution
 	Inspection         []inspection.Contribution
 	Guidance           []guidance.Section
-	Commands           []command.Contribution
 	RecordKinds        []recordkind.Spec
 	References         []reference.Resolver
 }
@@ -69,7 +68,6 @@ type Descriptor[D, S, B, V any] struct {
 	Resources               []string
 	Contributes             Contributions[S]
 	HostsGuidance           bool
-	HostsCommands           bool
 	HostsRecords            bool
 	HostsReferences         bool
 	HostsActivityDetails    bool

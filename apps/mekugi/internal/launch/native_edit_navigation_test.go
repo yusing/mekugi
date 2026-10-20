@@ -43,7 +43,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 				if repeated {
 					path = "file20.go"
 				}
-				u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `" + path + "` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "earlier"}}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Edit `file20.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
+				u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `" + path + "` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "earlier"}}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Edit `file20.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
 				terminalTest(u).DiffOpen, terminalTest(u).Focus = true, 1
 				for _, key := range []byte("a\t/amber1\r") {
 					if err := terminalTest(u).key(key); err != nil {
@@ -184,7 +184,7 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "clicked"}, Correlation: "call\x000", Change: "amber1"}, Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[:1]})
 	publishFixtureReview(t, u)
 
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
 	if err := os.WriteFile(filepath.Join(u.attached.cwd, "target.go"), []byte("unrelated_workspace_content\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

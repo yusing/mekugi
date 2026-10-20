@@ -55,7 +55,6 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 
 func attachPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, review **sessionreview.Review, commits **activitypresentation.CommitReader, parent context.Context, retained changes.Scope, changeSource changes.Service, activityPresent bool) {
 	(*review) = attachReview(parent, (*review), retained, changeSource)
-	attached.bindSources()
 	(*commits) = attachCommitReader(&attached.session, (*commits), parent, activityPresent)
 	conversation := attached.conversation
 	if (*editor) != &terminal.Prompts.Secret {

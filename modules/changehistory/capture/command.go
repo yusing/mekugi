@@ -808,26 +808,3 @@ func (o Observation) SourceLabel() string {
 	}
 	return strings.Join(labels, "+")
 }
-
-// Durable drops provisional metadata and normalizes omitted collections for
-// immutable-record comparison. The live observation keeps its own state.
-func (o *Observation) Durable() *Observation {
-	if o == nil {
-		return nil
-	}
-	observation := *o
-	observation.WindowStart = observation.WindowStart.UTC()
-	observation.Files = slices.Clone(observation.Files)
-	for i := range observation.Files {
-		observation.Files[i].WatchStamp = ""
-		observation.Files[i].WatchMoveOnly = false
-	}
-	observation.Listings = slices.Clone(observation.Listings)
-	for i := range observation.Listings {
-		if len(observation.Listings[i].Entries) == 0 {
-			observation.Listings[i].Entries = nil
-		}
-	}
-	observation.Inventory = observation.Inventory.Durable()
-	return &observation
-}

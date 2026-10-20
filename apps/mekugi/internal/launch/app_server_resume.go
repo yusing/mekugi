@@ -214,7 +214,7 @@ func restoreMainHistory(attached *attachedPresentation, terminal *terminalsessio
 			if turn.Error != nil && strings.TrimSpace(turn.Error.Message) != "" {
 				text += ": " + turn.Error.Message
 			}
-			attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "error", Text: text,
+			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "error", Text: text,
 				Observed: historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt))}}})
 		}
 		if turn.Status == "inProgress" {
@@ -281,7 +281,7 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 	progressPhase := appServerHistoryProgressPhase(facts, turn.Status)
 	if text, wait, progress := itemProgress(attached, terminal, retainedSession, clock, facts, control.Thread, turn.ID, item.ID, progressPhase, false); progress {
 		if text != "" {
-			attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 				Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
 				Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: progressPhase, Wait: wait},
 			}}})
@@ -292,7 +292,7 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 	case "imageView":
 		entry := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(attached.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
 			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, SearchResults: sessionpresentation.SearchResults(facts)}}
-		attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
 		text := sessionpresentation.ToolText(facts, attached.cwd)
 		if item.Type == "fileChange" {
@@ -306,11 +306,11 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 		attached.session.CompleteCommand(entry.Native, facts, activityService.Outputs(attached.session.Scope()))
 		sessionpresentation.CommandOutput(&entry, facts, time.Time{})
 		restoreCommandSegments(parent, retained, segments, attached, activityService, (*restoredSegments), &entry, item, attached.cwd)
-		attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
 			exit := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
 			exit.OutputTail, exit.OutputOmit = sessionpresentation.OutputTail(item.AggregatedOutput)
-			attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{exit}})
+			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{exit}})
 		}
 	default:
 		if update, ok := historicalTranscript([]binding.ThreadItem{item}, control.Thread, turn.ID, true, false, presentationTime(clock))[item.ID]; ok {

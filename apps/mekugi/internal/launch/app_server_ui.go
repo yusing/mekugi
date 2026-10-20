@@ -707,7 +707,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			restoreUsage(usage, result.Thread)
 			observeCost(usage, control.Thread, attached.session.Agent("/root"))
 			if attached.childSource != nil {
-				attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: attached.session.Roster()})
+				attached.childSource.Apply(sessionpresentation.ActivityEvent{Agents: attached.session.Roster()})
 			}
 			if audience != nil {
 				audience.Attach(control.Thread)
@@ -771,7 +771,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		// visibly blocked, until interrupted.
 		attached.presentation.Status.Set("Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true)
 		notifications.blockNotification(&attached.feedback, terminal, clock, m)
-		attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: attached.presentation.Status.Text, Observed: presentationTime(clock)}}})
+		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: attached.presentation.Status.Text, Observed: presentationTime(clock)}}})
 		return nil
 	}
 	if handled, err := settingsMessage(attached, terminal, control, picker, editor, childKey, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, model, effort, tier, models, modelsLoading, reasoningKey, statusConfig, "", m); handled || err != nil {
@@ -917,7 +917,7 @@ func applyActivity(attached *attachedPresentation, approvals *nativeApprovalDock
 			continue
 		}
 		if attached.session.KnownCaller(main) == "" {
-			attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 		} else {
 			sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 			applyCapturedEdits(attached, review, pending)
@@ -954,7 +954,7 @@ func applyObservedActivity(attached *attachedPresentation, terminal *terminalses
 		}
 	}
 	if usageChanged {
-		attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: attached.session.Roster()})
+		attached.childSource.Apply(sessionpresentation.ActivityEvent{Agents: attached.session.Roster()})
 		(*dirty) = true
 	}
 	if audience == nil {

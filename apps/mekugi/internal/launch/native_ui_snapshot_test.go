@@ -33,7 +33,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 			// An idle session avoids wall-clock durations and status animation.
 			u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
-			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 				{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the snapshot workflow.", Observed: now},
 				{Seq: 2, Agent: "Main", Kind: "final", Text: "Review the **rendered frame**, accept its baseline, then rerun the offline check.", Observed: now},
 			}})
@@ -107,7 +107,8 @@ func snapshotActivityView(now time.Time) *activityAdapter {
 	v := newActivityAdapter()
 	v.Painter.Theme = diffrender.DarkTheme
 	v.Selected = "/root/review"
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
+	v.Coverage = ""
+	v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root", Final: true, InputTokens: 1200, OutputTokens: 240, Cost: .02, CostKnown: true},
 		{Name: "/root/inventory", Role: "worker", Final: true},
 		{Name: "/root/review", Role: "review", Responding: true, Started: now.Add(-2 * time.Minute), WorkTimer: activitypresentation.WorkTimer{Known: true, Since: now.Add(-2 * time.Minute)}},
@@ -141,7 +142,8 @@ func TestUISnapshotNativeRosterEditCounts(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v := newActivityAdapter()
 	v.Painter.Theme = diffrender.DarkTheme
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
+	v.Coverage = ""
+	v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root", Final: true, InputTokens: 2000},
 		{Name: "/root/cleanup", Final: true, InputTokens: 1000},
 	}})
@@ -159,7 +161,8 @@ func TestUISnapshotNativeRosterContext(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			v := newActivityAdapter()
 			v.Painter.Theme = diffrender.DarkTheme
-			v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
+			v.Coverage = ""
+			v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{
 				{Name: "/root", ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000},
 				{Name: "/root/child", ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000},
 			}})

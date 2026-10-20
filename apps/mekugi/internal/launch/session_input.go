@@ -26,20 +26,6 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
-func editInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, intent sessionpresentation.DraftEditIntent) bool {
-	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
-	}()
-	if err := attached.presentation.EditDraft(intent, attached.conversation); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
-		return false
-	}
-	terminal.Main.CursorColumn = nil
-	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
-	pruneDraftImages(owned, (*editor), attached.conversation, questions, approvals, terminal.Prompts, side)
-	return true
-}
-
 func submitInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessionpresentation.SubmitIntent) error {
 	defer func() {
 		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay)

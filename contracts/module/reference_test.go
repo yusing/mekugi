@@ -23,7 +23,7 @@ func TestDescriptorReference(t *testing.T) {
 	descriptor := Descriptor[struct{}, struct{}, NoBindings, NoViews]{
 		ID: "example", Summary: "Declared metadata", Requires: []ID{"dependency"},
 		Lifetime: Invocation, Resources: []string{"retained store"},
-		HostsCommands: true, HostsGuidance: true, HostsRecords: true, HostsReferences: true,
+		HostsGuidance: true, HostsRecords: true, HostsReferences: true,
 		HostsInspection: true, HostsDiagnosticSections: true, HostsReplayTiming: true,
 		HostsActivityDetails: true,
 		New:                  func(struct{}, Slots) (struct{}, error) { panic("New executed") },
@@ -86,7 +86,7 @@ func TestDescriptorReference(t *testing.T) {
 		ID: "example", Summary: "Declared metadata", Requires: []ID{"dependency"},
 		Lifetime: Invocation, Resources: []string{"retained store"},
 		Contributes: []string{"commands", "guidance", "record-kinds", "references", "activity-details", "inspection", "diagnostic-sections", "replay-timing", "presentation"},
-		Hosts:       []string{"commands", "guidance", "record-kinds", "references", "activity-details", "inspection", "diagnostic-sections", "replay-timing"},
+		Hosts:       []string{"guidance", "record-kinds", "references", "activity-details", "inspection", "diagnostic-sections", "replay-timing"},
 		Commands:    []string{"reader", "writer"}, Records: []string{"changes", "cursor", "output"}, References: []string{"changes"},
 	}
 	got := descriptor.Reference()
@@ -114,10 +114,10 @@ func TestDescriptorReference(t *testing.T) {
 
 func TestDescriptorReferenceSlotsAreIndependent(t *testing.T) {
 	descriptor := Descriptor[struct{}, struct{}, NoBindings, NoViews]{
-		HostsCommands: true,
-		Contributes:   Contributions[struct{}]{Guidance: []guidance.Section{{Command: "reader"}}},
+		HostsRecords: true,
+		Contributes:  Contributions[struct{}]{Guidance: []guidance.Section{{Command: "reader"}}},
 	}
-	want := Reference{Contributes: []string{"guidance"}, Hosts: []string{"commands"}}
+	want := Reference{Contributes: []string{"guidance"}, Hosts: []string{"record-kinds"}}
 	if got := descriptor.Reference(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Reference() = %+v, want %+v", got, want)
 	}

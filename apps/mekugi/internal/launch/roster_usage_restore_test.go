@@ -77,7 +77,7 @@ func TestUISnapshotNativeRosterRestoredUsage(t *testing.T) {
 	u := restoredUsageRosterFixture(t)
 	u.usage.Observation("historical", "historical", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
 	observeCost(u.usage, "historical", u.attached.session.Agent(u.attached.session.KnownCaller("historical")))
-	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: u.attached.session.Roster()})
 	u.shell.Agents.Painter.Theme = diffrender.DarkTheme
 	u.shell.Agents.Selected = u.attached.session.KnownCaller("child")
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)

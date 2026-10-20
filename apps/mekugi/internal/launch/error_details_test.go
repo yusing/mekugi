@@ -155,7 +155,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 func TestErrorDetailsKeyboardPaginationAndFiltering(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/worker")
-	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "error", Text: "old error"},
 		{Seq: 2, Agent: "/root/b", Kind: "error", Text: "other agent"},
 		{Seq: 3, Agent: "/root/a", Kind: "error", Text: "new error"},
@@ -180,7 +180,7 @@ func TestErrorDetailsSearchAcrossVisualWraps(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	query := strings.Repeat("q", 80) + " forced cleanup"
 	full := strings.Repeat("prefix ", 160) + query + strings.Repeat(" tail", 80) + "\n" + query
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "error", Text: full}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "error", Text: full}}})
 	if !terminalTest(u).openEntry(u.shell.Transcript, 1) {
 		t.Fatal("could not open error")
 	}
@@ -213,7 +213,7 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 				u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/worker")
 			}
 			full := "Failed: " + strings.Repeat("diagnostic ", 40) + "\nrejected: forced cleanup is not permitted"
-			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: agent, Kind: "error", Text: full}}})
+			view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: agent, Kind: "error", Text: full}}})
 			u.Text = "preserve draft"
 			if child {
 				u.testActivity(u.shell.Agents).setDisplayFilter(true, agent)
@@ -251,7 +251,7 @@ func TestUISnapshotErrorDetailsConversation(t *testing.T) {
 	view.Conversation = true
 	view.testAudience()
 	view.Clock = func() time.Time { return time.Date(2026, 10, 2, 12, 40, 21, 0, time.Local) }
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "error", Observed: view.Now(),
+	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "error", Observed: view.Now(),
 		Text: "exec script failed", ErrorDetail: "exec script failed: exec_command failed: CreateProcess { message: Rejected(\"" + strings.Repeat("escaped command ", 30) + "\") }\nrejected: forced cleanup is not permitted"}}})
 	assertNativeUISnapshot(t, "error-details-conversation", view.RenderFeed(80, 20).Lines)
 }

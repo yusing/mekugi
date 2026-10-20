@@ -95,7 +95,7 @@ func restoreHistoryNotice(attached *attachedPresentation, restoring *appServerAc
 		r.notices = append(r.notices, restoredHistoryNotice{message, incomplete}) // Shown after Main's history.
 		return
 	}
-	attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
+	attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
 	// Notices advance Main independently of the Activity sequence.
 	attached.session.Activity().AdvanceSequence(attached.source.LastSeq)
 }
@@ -175,7 +175,7 @@ func readRestoredChildren(attached *attachedPresentation, terminal *terminalsess
 			}
 		}
 	}
-	attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: attached.session.Roster()})
+	attached.childSource.Apply(sessionpresentation.ActivityEvent{Agents: attached.session.Roster()})
 	return readNextRestoredChild(attached, terminal, control, picker, editor, questions, approvals, clock, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending)
 }
 
@@ -276,7 +276,7 @@ func applyRestoredActivity(attached *attachedPresentation, review *sessionreview
 	for i := range entries {
 		entries[i].Agent = sessionpresentation.ActivityOwner(entries[i])
 	}
-	attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries, Agents: attached.session.Roster()})
+	attached.childSource.Apply(sessionpresentation.ActivityEvent{Entries: entries, Agents: attached.session.Roster()})
 	applyCapturedEdits(attached, review, pending)
 }
 
@@ -305,7 +305,7 @@ func restoreActivityThread(attached *attachedPresentation, terminal *terminalses
 		s.Lifecycle(info.ID).Restore(restoredAgentIntervals(info.Turns), uint64(len(info.Turns)), false)
 	}
 	observeCost(usage, info.ID, agent)
-	attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: s.Roster()})
+	attached.childSource.Apply(sessionpresentation.ActivityEvent{Agents: s.Roster()})
 	var r *appServerActivityRestore
 	var itemAt map[string]time.Time
 	byTurn := make(map[int][]*restoredPlacement)

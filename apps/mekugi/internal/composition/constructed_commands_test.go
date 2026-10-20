@@ -9,7 +9,7 @@ import (
 	"github.com/yusing/mekugi/contracts/module"
 )
 
-func TestConstructedCommandBindsServiceAndDependenciesForEarlierHost(t *testing.T) {
+func TestConstructedCommandBindsServiceAndDependencies(t *testing.T) {
 	type dependency struct{ value string }
 	type service struct {
 		dependency *dependency
@@ -17,9 +17,6 @@ func TestConstructedCommandBindsServiceAndDependenciesForEarlierHost(t *testing.
 		started    bool
 	}
 	var c Composition
-	hostDescriptor := descriptor("host")
-	hostDescriptor.HostsCommands = true
-	host := c.Add(hostDescriptor, emptyDeps)
 	base := c.Add(module.Descriptor[struct{}, *dependency, module.NoBindings, module.NoViews]{
 		ID: "dependency", Lifetime: module.Stateless,
 		New: func(struct{}, module.Slots) (*dependency, error) {
@@ -41,9 +38,6 @@ func TestConstructedCommandBindsServiceAndDependenciesForEarlierHost(t *testing.
 			},
 		}}},
 		New: func(d *dependency, _ module.Slots) (*service, error) {
-			if len(host.Value().commands) != 1 || host.Value().commands[0].Spec != spec {
-				t.Fatal("earlier host did not receive the later contributor before its construction")
-			}
 			return &service{dependency: d, value: "constructed service"}, nil
 		},
 		Start:    func(_ context.Context, s *service) error { s.started = true; return nil },
@@ -65,13 +59,13 @@ func TestConstructedCommandBindsServiceAndDependenciesForEarlierHost(t *testing.
 	// Mutating the constructed values also rejects closures over zero values or copies.
 	constructed.Value().value = "live service"
 	base.Value().value = "live dependency"
-	for _, contribution := range []command.Contribution{host.Value().commands[0], runtime.Commands[0]} {
+	for _, contribution := range runtime.Commands {
 		output, err := contribution.Run(t.Context(), command.Request{Args: []string{"argument"}})
 		if err != nil || output.Stdout != "live service:live dependency:argument" {
 			t.Fatalf("constructed command output=%+v err=%v", output, err)
 		}
 	}
-	if calls != 2 {
-		t.Fatalf("command calls=%d, want 2", calls)
+	if calls != 1 {
+		t.Fatalf("command calls=%d, want 1", calls)
 	}
 }

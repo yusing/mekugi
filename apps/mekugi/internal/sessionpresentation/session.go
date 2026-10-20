@@ -127,14 +127,18 @@ func (m *Model) Attach(main Thread, replay bool) {
 
 func (m *Model) View() View {
 	v := cloneView(m.view)
-	v.ReadOnly = Editable
-	switch {
-	case m.replay:
-		v.ReadOnly = Replay
-	case v.Displayed.ID != v.Main.ID:
-		v.ReadOnly = ChildDisplayed
-	}
+	v.ReadOnly = m.readOnly()
 	return v
+}
+
+func (m *Model) readOnly() ReadOnly {
+	if m.replay {
+		return Replay
+	}
+	if m.DisplayingChild() {
+		return ChildDisplayed
+	}
+	return Editable
 }
 
 // cloneView keeps both retained publications and subsequent readers isolated

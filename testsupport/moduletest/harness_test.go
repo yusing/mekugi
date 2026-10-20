@@ -10,6 +10,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/testsupport/moduletest"
 )
@@ -57,7 +58,7 @@ func TestHarnessOwnsTemporaryResourceLifecycle(t *testing.T) {
 		descriptor := module.Descriptor[string, *service, binding.Bindings[*service], module.NoViews]{
 			ID: "resource", Lifetime: module.Invocation, Resources: []string{"temporary resource"}, Contributes: module.Contributions[*service]{Commands: []command.Definition[*service]{{Spec: spec.Spec}}},
 			New: func(dir string, slots module.Slots) (*service, error) {
-				if dir != directory || !slices.EqualFunc(slots.Commands, []command.Contribution{spec}, func(a, b command.Contribution) bool { return a.Spec == b.Spec }) {
+				if dir != directory || !slices.Equal(slots.Guidance, []guidance.Section{{Command: "read", Text: "bounded read"}}) {
 					t.Fatalf("dependencies=%q slots=%v", dir, slots)
 				}
 				events = append(events, "construct")
@@ -79,7 +80,7 @@ func TestHarnessOwnsTemporaryResourceLifecycle(t *testing.T) {
 				return os.Remove(s.path)
 			},
 		}
-		got := moduletest.New(t, descriptor, directory, module.Slots{Commands: []command.Contribution{spec}}, script)
+		got := moduletest.New(t, descriptor, directory, module.Slots{Guidance: []guidance.Section{{Command: "read", Text: "bounded read"}}}, script)
 		if got.path != path || !slices.Equal(script.Commands(), []command.Spec{spec.Spec}) {
 			t.Fatalf("service=%+v commands=%v", got, script.Commands())
 		}

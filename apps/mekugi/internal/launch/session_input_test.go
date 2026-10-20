@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -17,9 +18,7 @@ func TestNonTerminalCurrentPublicationWithoutPaint(t *testing.T) {
 	edit := func(text string) {
 		t.Helper()
 		v := read()
-		if !editInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, sessionpresentation.DraftEditIntent{Version: v.Version, Revision: v.Draft.Revision, End: len(v.Draft.Draft.Text), Text: text}) {
-			t.Fatal(u.attached.feedback.Text)
-		}
+		editOrdinaryInput(t, u, text)
 		if next := read(); next.Draft.Draft.Text != text || next.Version == v.Version {
 			t.Fatalf("edit did not publish: %+v", next)
 		}
@@ -62,9 +61,16 @@ func TestNonTerminalCurrentPublicationWithoutPaint(t *testing.T) {
 func editOrdinaryInput(t *testing.T, u *appServerUI, text string) {
 	t.Helper()
 	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
-	if !v.Draft.Available || !editInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, sessionpresentation.DraftEditIntent{Version: v.Version, Revision: v.Draft.Revision, End: len(v.Draft.Draft.Text), Text: text}) {
-		t.Fatalf("ordinary edit rejected: %s", u.attached.feedback.Text)
+	if !v.Draft.Available {
+		t.Fatal("ordinary draft unavailable")
 	}
+	for _, action := range []composer.Action{{Kind: composer.DeleteAction, End: len(v.Draft.Draft.Text)}, {Kind: composer.InsertAction, Text: text}} {
+		v = u.attached.presentation.View()
+		if _, err := u.attached.presentation.ApplyEditor(sessionpresentation.EditorIntent{Version: v.Version, Target: u.attached.conversation.EditorTarget(), Action: action}, u.attached.conversation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 }
 
 func ordinarySubmitIntent(u *appServerUI, mode sessioncontrol.InputMode) sessionpresentation.SubmitIntent {

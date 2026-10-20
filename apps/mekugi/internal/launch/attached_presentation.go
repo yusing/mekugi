@@ -28,29 +28,10 @@ func newAttachedPresentation(views *sessionpresentation.Service, conversation *c
 	a.presentation = views.Session(store)
 	a.conversation = conversation.Session(store)
 	a.transcript = observations.NewTranscript(store)
-	a.bindSources()
-	return a
-}
-
-// bindSources adopts any admitted initial feed into the attachment's one model.
-// Source: apps/mekugi/internal/router/live_activity_record.go:13:42@bfd2668c.
-func (a *attachedPresentation) bindSources() {
-	if a.source == nil {
-		a.source = sessionpresentation.NewActivitySource(sessionpresentation.MainAudience)
-	}
-	if a.childSource == nil {
-		a.childSource = sessionpresentation.NewActivitySource(sessionpresentation.ChildAudience)
-		a.childSource.Coverage = ""
-	}
 	state := a.session.Activity()
-	if a.source.Model != &state.Main {
-		state.Main = *a.source.Model
-		a.source.Model = &state.Main
-	}
-	if a.childSource.Model != &state.Children {
-		state.Children = *a.childSource.Model
-		a.childSource.Model = &state.Children
-	}
+	a.source = &sessionpresentation.ActivitySource{Model: &state.Main, Audience: sessionpresentation.MainAudience, Coverage: "CONNECTING"}
+	a.childSource = &sessionpresentation.ActivitySource{Model: &state.Children, Audience: sessionpresentation.ChildAudience}
+	return a
 }
 
 // startAttachedSession admits the host's root identity without replacing the

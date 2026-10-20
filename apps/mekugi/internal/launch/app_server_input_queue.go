@@ -139,7 +139,7 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 		request.Tier = selectedServiceTier(tiers, model, control.Thread)
 		if len(binding.QuestionReplies(s.Text)) == 0 {
 			echo := attached.source.LastSeq + 1
-			attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: presentationTime(clock),
+			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: presentationTime(clock),
 				Native: &sessionpresentation.NativeItem{Thread: control.Thread, Item: "input/" + id, Phase: "input/pending", Spans: sessionpresentation.DraftSpans(s.Draft)}}}})
 		}
 	}

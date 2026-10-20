@@ -334,7 +334,7 @@ func renderChildHistoryPage(attached *attachedPresentation, terminal *terminalse
 	agent := *attached.session.Agent(name)
 	restoreActivityThread(attached, terminal, clock, restoring, parent, reviewOwner, receipts, retained, retainedSession, activityService, usage, segments, restoredSegments, info, page.Older)
 	*attached.session.Agent(name) = agent
-	attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: attached.session.Roster()})
+	attached.childSource.Apply(sessionpresentation.ActivityEvent{Agents: attached.session.Roster()})
 	first := uint64(0)
 	for _, entry := range attached.childSource.Entries {
 		if entry.Source.Seq > before {
@@ -384,7 +384,7 @@ func hydrateChildHistoryMetadata(attached *attachedPresentation, usage *accounti
 	restoreContextUsage(agent, h.info)
 	restoreUsage(usage, h.info)
 	observeCost(usage, h.info.ID, agent)
-	attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: attached.session.Roster()})
+	attached.childSource.Apply(sessionpresentation.ActivityEvent{Agents: attached.session.Roster()})
 }
 
 // Insert the admitted source page through the shared model and terminal owners.

@@ -46,13 +46,6 @@ func (m *Session) DraftView() DraftView {
 	return DraftView{Draft: m.Editor.Draft.Editable(), Revision: m.Editor.Revision(), Available: true}
 }
 
-func (m *Session) EditDraft(revision uint64, start, end int, text string) error {
-	if !m.ordinaryEditor() || revision != m.Editor.Revision() {
-		return ErrDraftChanged
-	}
-	return m.Editor.Edit(start, end, text)
-}
-
 func (m *Session) TakeDraft(revision uint64) (composer.Draft, error) {
 	if !m.ordinaryEditor() || revision != m.Editor.Revision() {
 		return composer.Draft{}, ErrDraftChanged

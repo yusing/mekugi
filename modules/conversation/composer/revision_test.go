@@ -27,7 +27,7 @@ func TestEditorRevisionSurvivesRestoration(t *testing.T) {
 		}
 	})
 	check(func() {
-		if err := e.Edit(0, len(e.Text), "changed"); err != nil {
+		if _, err := e.Apply(Action{Kind: DeleteAction, End: len(e.Text)}); err != nil {
 			t.Fatal(err)
 		}
 	})

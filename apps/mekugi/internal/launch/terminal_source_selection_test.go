@@ -202,7 +202,7 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	// Scroll back to the original reply above a long trailing tool run.
 	u.Turn = "running"
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
 	u.shell.Transcript.Following, u.shell.Transcript.Offset = false, 0
 	screen := vt.NewEmulator(80, 30)
 	defer screen.Close()

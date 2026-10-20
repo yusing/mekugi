@@ -23,3 +23,5 @@ func (r *Registry) Observation(observation Observation) error {
 	r.observations = &observation
 	return nil
 }
+
+func (r *Registry) RegisteredObservation() *Observation { return r.observations }

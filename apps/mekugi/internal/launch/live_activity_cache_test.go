@@ -77,7 +77,7 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 			if change == "settled output" {
 				entries = append(entries, sessionpresentation.ActivityEntry{Seq: 4, Agent: entry.Agent, Kind: "text", Text: "The next event settles output", Observed: now})
 			}
-			v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
+			v.Apply(sessionpresentation.ActivityEvent{Entries: entries})
 			v.RenderFeed(90, 24)
 			stableKey, stable := liveActivityCacheRun(t, v, 1)
 			changedKey, before := liveActivityCacheRun(t, v, 3)
@@ -105,7 +105,7 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 				case "receipt":
 					update.Text, update.Native = "Edit `result.go` +3 -1", nil
 				}
-				v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{update}})
+				v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{update}})
 			}
 			if _, present := v.Runs[changedKey]; present {
 				t.Fatal("in-place update retained its stale cached run")
@@ -137,7 +137,7 @@ func TestLiveActivityCacheMainUpdateRemainsFresh(t *testing.T) {
 	v.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v.Clock = func() time.Time { return now }
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the result", Observed: now}}})
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the result", Observed: now}}})
 	applyTranscriptFixture(v, true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", "Initial explanation", binding.ThreadItem{})
 	v.RenderFeed(90, 24)
 	stableKey, stable := liveActivityCacheRun(t, v, 1)
@@ -163,7 +163,7 @@ func TestLiveActivityCacheMainInvalidatesLaterQuotes(t *testing.T) {
 	v.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v.Clock = func() time.Time { return now }
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "Main", Kind: "text", Text: "Completed prefix", Observed: now},
 		{Seq: 2, Agent: "You", Kind: "text", Text: "Original prompt", Observed: now, Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "turn", Item: "prompt"}},
 		{Seq: 3, Agent: "/root/worker", Kind: "text", Text: "Intervening agent activity", Observed: now},
@@ -217,7 +217,7 @@ func BenchmarkLiveActivityCacheCommandDelta(b *testing.B) {
 						if main {
 							agent = "Main"
 						}
-						v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: agent, Kind: "text", Text: strings.Repeat("Completed analysis of the implementation.\n", 8), Observed: now}}})
+						v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: agent, Kind: "text", Text: strings.Repeat("Completed analysis of the implementation.\n", 8), Observed: now}}})
 					}
 					agent := "/root/working"
 					if main {
@@ -225,14 +225,14 @@ func BenchmarkLiveActivityCacheCommandDelta(b *testing.B) {
 					}
 					entry := sessionpresentation.ActivityEntry{Seq: 81, Agent: agent, Kind: "tool", Text: "Run `go test ./...`", Observed: now,
 						Native: &sessionpresentation.NativeItem{Thread: "child", Turn: "turn", Item: "command", Phase: "item/commandExecution/outputDelta", Running: true}, OutputTail: []string{"package result 0"}}
-					v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+					v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 					v.RenderFeed(90, 24)
 					b.ReportAllocs()
 					iteration := 0
 					for b.Loop() {
 						entry.Seq = v.LastSeq + 1
 						entry.OutputTail = []string{fmt.Sprintf("package result %d", iteration%10)}
-						v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+						v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 						if cold {
 							v.Runs = nil
 						}

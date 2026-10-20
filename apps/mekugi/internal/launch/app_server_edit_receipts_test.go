@@ -214,7 +214,7 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 
 func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 	v := newActivityAdapter()
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: "Run `git show`; Skill `mekugi-owners`; Run `git cherry-pick`",
 		Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Phase: "item/completed", Segments: []sessionpresentation.ActivitySegment{
 			{Text: "Run `git show`", Tail: []string{"commit summary"}},
@@ -247,12 +247,12 @@ func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 		"go test ./internal/router",
 		"python3 -c 'open(\"c.go\", \"w\").write(\"PRIVATE_FAILED_BODY\")'",
 	} {
-		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+		v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 			Seq: uint64(i + 1), Agent: "Main", Kind: "tool", CallID: calls[i], Text: toolActivityShell(source),
 			Native: &sessionpresentation.NativeItem{Thread: "main", Item: calls[i], Phase: "item/completed"},
 		}}})
 	}
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 5, Agent: "Main", Kind: "exit", CallID: "tests", Text: "2"},
 		{Seq: 6, Agent: "Main", Kind: "exit", CallID: "failed-edit", Text: "1"},
 	}})

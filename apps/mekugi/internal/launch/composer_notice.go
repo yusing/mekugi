@@ -61,7 +61,7 @@ func applyCriticalNotices(attached *attachedPresentation, terminal *terminalsess
 	}
 	delivery = &nativeCriticalNoticeDelivery{errors: claim.Errors, progress: claim.Progress}
 	for _, message := range attached.feedback.Receive(claim, presentationTime(clock)) {
-		attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: presentationTime(clock)}}})
+		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: presentationTime(clock)}}})
 	}
 	if len(claim.Errors.Messages) > 0 {
 		terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}

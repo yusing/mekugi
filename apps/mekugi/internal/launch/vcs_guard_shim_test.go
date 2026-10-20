@@ -104,7 +104,7 @@ exit 127
 					t.Fatal("live output crossed a command boundary")
 				}
 				view := newActivityAdapter()
-				view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: execSegmentText(args[3]), Native: &sessionpresentation.NativeItem{Command: args[3], Running: true, Segments: live.segments}}}})
+				view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: execSegmentText(args[3]), Native: &sessionpresentation.NativeItem{Command: args[3], Running: true, Segments: live.segments}}}})
 				finishPacing(view)
 				feed := view.RenderFeed(100, 30)
 				if !strings.Contains(strings.Join(feed.Lines, "\n"), "RAN <argument with spaces>") {

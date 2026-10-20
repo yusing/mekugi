@@ -48,7 +48,7 @@ func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.attached.session.Caller("early")
-	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
 	for _, agent := range u.attached.session.Roster() {
 		if !agent.Started.IsZero() {
 			t.Fatalf("thread registration started timer: %+v", agent)

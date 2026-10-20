@@ -162,7 +162,7 @@ func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	before := u.attached.presentation.View()
 	u.title, u.backendVersion, u.attached.cwd = "Unpublished title", "9.9.9", "/unpublished"
-	u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Unpublished activity"}}})
+	u.attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Unpublished activity"}}})
 	rows, _ := u.mainFrame(100, 24, 0)
 	painted := strings.Join(rows, "\n")
 	if !strings.Contains(painted, "codex v1.2.3") || strings.Contains(painted, "9.9.9") || strings.Contains(painted, "Unpublished activity") || !strings.Contains(u.mainHeaderRight(100, true), "Published title") {

@@ -197,7 +197,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 		t.Run(closeKey, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.Turn, u.attached.presentation.Status.Text = "active", "Working"
-			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
+			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
 			shell := terminalTest(u)
 			shell.Layout.Main = terminalsession.Rect{0, 0, 60, 12}
 			appServerTestKeys(t, u, "/status\r")
@@ -394,7 +394,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.model = "gpt-6-sol"
 			u.Turn = "active"
-			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Hidden transcript must not be selected"}}})
+			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Hidden transcript must not be selected"}}})
 			appServerTestKeys(t, u, "/status\r")
 			screen := vt.NewEmulator(160, 48)
 			defer screen.Close()

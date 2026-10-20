@@ -116,7 +116,7 @@ func TestApprovalBindingAndEditorWithoutRenderer(t *testing.T) {
 	approvals.Show()
 	editor.Open(&main, decoded.Record.Editor)
 	main.InsertText("Use the other command")
-	decoded.Record.SelectDenial()
+	decoded.Record.Selected = decoded.Record.DenialChoice()
 	choice := decoded.Record.Choices[decoded.Record.Selected]
 	if decoded.Responses[choice.ID]["decision"] != "decline" {
 		t.Fatal("denial changed host behavior")

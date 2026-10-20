@@ -30,7 +30,16 @@ func deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.
 		return
 	}
 	view := publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, presentationTime(clock))
-	editInput(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, sessionpresentation.DraftEditIntent{Version: view.Version, Revision: view.Draft.Revision, Start: start, End: end})
+	defer func() {
+		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+	}()
+	if _, err := attached.presentation.ApplyEditor(sessionpresentation.EditorIntent{Version: view.Version, Target: view.EditorTarget(), Action: composer.Action{Kind: composer.DeleteAction, Start: start, End: end}}, attached.conversation); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+		return
+	}
+	terminal.Main.CursorColumn = nil
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
+	pruneDraftImages(owned, *editor, attached.conversation, questions, approvals, terminal.Prompts, side)
 }
 
 func removeDraft(attached *attachedPresentation, editor *composer.Editor, terminal *terminalsession.Attachment, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side, start, end int, run composer.Run) {

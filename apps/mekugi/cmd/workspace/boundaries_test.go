@@ -183,7 +183,7 @@ var Module = module.Descriptor[Deps, int, int, int]{Requires: %s}
 				}
 				writeWorkspaceSource(t, filepath.Join(owner, "internal", file), tag+"package internal\nimport _ \"github.com/yusing/mekugi/modules/extra/api\"\n")
 			}
-			err := checkRequires(member{owner, prefix + "/" + owner})
+			err := checkImports([]member{{owner, prefix + "/" + owner}})
 			if tt.reason == "" {
 				if err != nil {
 					t.Fatal(err)

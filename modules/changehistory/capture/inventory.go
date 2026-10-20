@@ -2,8 +2,6 @@ package capture
 
 // Source: apps/mekugi/internal/router/exec_inventory.go:1:59@1e6d58c6.
 
-import "slices"
-
 // Retained records from the former workspace observer remain decodable.
 // No new workspace inventory is produced or compared.
 const InventoryNote = "observed during command window"
@@ -35,27 +33,4 @@ type Inventory struct {
 	// dependency trees. Ordinary ignored files remain eligible for capture.
 	Pruned  []string   `json:",omitempty"`
 	Omitted []Omission `json:",omitempty"`
-}
-
-// durable drops request-local preview stamps and spells empty collections as
-// they read back.
-func (i *Inventory) Durable() *Inventory {
-	if i == nil {
-		return nil
-	}
-	inventory := *i
-	inventory.Files = slices.Clone(inventory.Files)
-	for index := range inventory.Files {
-		inventory.Files[index].WatchStamp = ""
-	}
-	if len(inventory.Files) == 0 {
-		inventory.Files = nil
-	}
-	if len(inventory.Entries) == 0 {
-		inventory.Entries = nil
-	}
-	if len(inventory.Blobs) == 0 {
-		inventory.Blobs = nil
-	}
-	return &inventory
 }

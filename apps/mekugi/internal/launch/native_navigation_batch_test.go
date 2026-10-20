@@ -97,7 +97,8 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.attached.presentation.Status.Text = "Ready"
 	terminalTest(u).DiffUnseen = true
-	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}})
+	u.testActivity(u.shell.Agents).Coverage = ""
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}})
 	screen := navigationBatchPaint(t, u, 120, 24)
 	footer := strings.Split(screen.String(), "\n")[23]
 	start := strings.Index(footer, "2 Diff ●")

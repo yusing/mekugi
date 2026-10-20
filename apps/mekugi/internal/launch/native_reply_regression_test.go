@@ -239,7 +239,7 @@ func TestNativeMainRepliesQuoteTheirMessageOnce(t *testing.T) {
 		t.Fatalf("replies separated only by Main's own tools quoted the message %d times", got)
 	}
 	// Another message between replies makes the next one quote it again.
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Blocked on a request"}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Blocked on a request"}}})
 	reply("third", "Continuing.")
 	if got := quotes(); got != 2 {
 		t.Fatalf("reply after another message quoted %d times; want 2\n%s", got, ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n")))

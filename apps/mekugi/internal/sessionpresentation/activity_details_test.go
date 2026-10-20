@@ -16,7 +16,7 @@ func TestDetailSelectionRetainsSourceAndRejectsStaleRequests(t *testing.T) {
 	output := retention.New()
 	output.Write("first\n")
 	entry := ActivityEntry{Seq: 1, Agent: "/root", Kind: "tool", Text: "Run `printf first`", Native: &NativeItem{Output: output, Running: true}}
-	source.Apply(ActivityEvent{Kind: "entries", Entries: []ActivityEntry{entry}})
+	source.Apply(ActivityEvent{Entries: []ActivityEntry{entry}})
 	pages := activity.DetailPages(source.Entries[0].Values)
 	id := attachment.OpenDetails(Version{Attachment: 7}, source, pages, false)
 	view, ok := attachment.DetailView(id)

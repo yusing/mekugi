@@ -40,7 +40,7 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 	if empty, _ := v.testCurrent(v.Agents[0], now); ansi.Strip(empty) != "Read root.go" {
 		t.Errorf("main without inbound = %q", empty)
 	}
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 3, Agent: "/root/a", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/a", To: "/root", Text: "Older inbound"}, Observed: now},
 		{Seq: 4, Agent: "/root/a", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/a", To: "/root", Text: "Latest inbound"}, Observed: now},
 	}})
@@ -53,7 +53,8 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 func TestRosterDesignSeparateHeaderTreeAndMetrics(t *testing.T) {
 	now := time.Now()
 	v := newActivityAdapter()
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
+	v.Coverage = ""
+	v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root", Role: "root-role"},
 		{Name: "/root/a", Role: "explorer", Turns: 1, Roundtrips: 1},
 		{Name: "/root/b", Responding: true},
@@ -117,7 +118,7 @@ func TestRosterDesignCompactViewportAndWheel(t *testing.T) {
 	v.Agents[0].Responding = true
 	v.Agents[7].Responding = true
 	// A responding agent's earlier error counts once, as its visible ◐ status.
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 9, Agent: "/root/g", Kind: "error", Text: "failed", Observed: now},
 		{Seq: 10, Agent: "/root/h", Kind: "error", Text: "failed", Observed: now},
 	}})
@@ -229,7 +230,7 @@ func TestNativeActivitySkipsMainInNavigationAndCounts(t *testing.T) {
 	v := newActivityAdapter()
 	v.ChildrenOnly = true
 	v.testAudience()
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{{Name: "/root"}, {Name: "/root/a"}, {Name: "/root/b"}}})
+	v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root"}, {Name: "/root/a"}, {Name: "/root/b"}}})
 	if v.Selected != "/root/a" {
 		t.Fatalf("default selection = %q, want the first child", v.Selected)
 	}

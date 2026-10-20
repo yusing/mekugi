@@ -28,8 +28,8 @@ func TestModuleIndexWorkspaceReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 25 || len(selected) != 24 || selected["modules/contextreset"] {
-		t.Fatalf("workspace=%d selected=%d contextreset=%v", len(entries), len(selected), selected["modules/contextreset"])
+	if selected["modules/contextreset"] {
+		t.Fatal("contextreset must remain unselected")
 	}
 	records := make(map[string][]string)
 	for _, entry := range entries {

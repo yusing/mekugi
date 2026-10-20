@@ -466,9 +466,13 @@ func appServerTestFeatures(u *appServerUI, views ...terminalsession.Views) *appS
 	source, child, workspace := u.attached.source, u.attached.childSource, u.attached.cwd
 	u.attached = newAttachedPresentation(u.presentationState, u.conversationState, &observations)
 	if source != nil {
+		u.attached.session.Activity().Main = *source.Model
+		source.Model = u.attached.source.Model
 		u.attached.source = source
 	}
 	if child != nil {
+		u.attached.session.Activity().Children = *child.Model
+		child.Model = u.attached.childSource.Model
 		u.attached.childSource = child
 	}
 	u.attached.cwd = workspace

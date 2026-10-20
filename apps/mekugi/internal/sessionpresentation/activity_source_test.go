@@ -28,13 +28,13 @@ func TestActivitySourceAdmissionWithoutRenderer(t *testing.T) {
 	if len(publication.Entries) != 2 || publication.Entries[0].Text != "**Checking child**" || len(publication.Roster) != 2 {
 		t.Fatalf("detached publication=%+v", publication)
 	}
-	children.Apply(ActivityEvent{Kind: "coverage"})
-	if children.Coverage != "RECONNECTING" {
-		t.Fatal("coverage was not admitted without a terminal")
+	children.Apply(ActivityEvent{Entries: []ActivityEntry{{Seq: 4, Agent: "/root/worker", Kind: "final", Text: "Later result", Observed: now}}})
+	if len(children.Agents) != 2 || len(publication.Entries) != 2 {
+		t.Fatal("entry update replaced the roster or mutated its prior publication")
 	}
-	children.Apply(ActivityEvent{Kind: "snapshot"})
-	if children.Coverage != "" || len(publication.Entries) != 2 {
-		t.Fatal("snapshot changed the published value or retained coverage")
+	children.Apply(ActivityEvent{Agents: []ActivityAgent{}})
+	if len(children.Agents) != 0 {
+		t.Fatal("empty roster replacement was ignored")
 	}
 }
 

@@ -41,7 +41,7 @@ func (d Descriptor[D, S, B, V]) Reference() Reference {
 		count int
 		host  bool
 	}{
-		{"commands", len(d.Contributes.Commands), d.HostsCommands},
+		{"commands", len(d.Contributes.Commands), false},
 		{"guidance", len(d.Contributes.Guidance), d.HostsGuidance},
 		{"record-kinds", len(d.Contributes.RecordKinds), d.HostsRecords},
 		{"references", len(d.Contributes.References), d.HostsReferences},

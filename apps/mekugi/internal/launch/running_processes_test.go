@@ -95,7 +95,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	for i := range entries {
 		entries[i] = sessionpresentation.ActivityEntry{Seq: u.attached.source.LastSeq + uint64(i) + 1, Agent: "Main", Kind: "text", Text: "Later event"}
 	}
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: entries})
 	u.attached.session.Activity().AdvanceSequence(u.attached.source.LastSeq)
 	reopen := func() {
 		if err := terminalTest(u).send("\x1b"); err != nil {

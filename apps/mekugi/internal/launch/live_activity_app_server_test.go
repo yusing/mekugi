@@ -94,8 +94,8 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	v := u.testActivity(u.shell.Transcript)
 	question := "The original request"
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: question, Observed: time.Now(), Native: &sessionpresentation.NativeItem{Thread: "root", Turn: "turn", Item: "prompt"}}}})
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("Working through the request.\n", 20)}}})
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: question, Observed: time.Now(), Native: &sessionpresentation.NativeItem{Thread: "root", Turn: "turn", Item: "prompt"}}}})
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("Working through the request.\n", 20)}}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "The answer"})
 	if err := u.testPaint(&bytes.Buffer{}, 120, 24); err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	}
 	// Editing an answer after the same prompt is submitted again must retain
 	// its original target, not jump to the newer identical question.
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: question}}})
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: question}}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Edited answer"})
 	for _, record := range v.Entries {
 		if record.Source.Native != nil && record.Source.Native.Item == "answer" && record.Source.Native.Question != 1 {
@@ -140,7 +140,7 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 func TestAppServerActivityExcludesMain(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
-	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root", Kind: "text", Text: "MAIN_ONLY"},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "text", Text: "CHILD_ONLY"},
 	}, Agents: []sessionpresentation.ActivityAgent{{Name: "/root"}, {Name: "/root/reviewer"}}})
@@ -180,7 +180,7 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 
 	legacy := newActivityAdapter()
 	for seq, text := range []string{"Initial public summary", "Updated public summary"} {
-		event := sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(seq + 1), Agent: "/root/reviewer", Kind: "reasoning", CallID: "summary-1", Text: text}}}
+		event := sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(seq + 1), Agent: "/root/reviewer", Kind: "reasoning", CallID: "summary-1", Text: text}}}
 		u.testActivity(u.shell.Agents).Apply(event)
 		legacy.Apply(event)
 		u.testActivity(u.shell.Transcript).Apply(event)
@@ -199,7 +199,7 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	if idle := strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 20).Lines, "\n"); !strings.Contains(idle, "Updated public summary") {
 		t.Fatal("reasoning transcript disappeared after completion")
 	}
-	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 3, Agent: "/root/reviewer", Kind: "reasoning", CallID: "summary-2", Text: "Later public summary"},
 		{Seq: 4, Agent: "/root", Kind: "reasoning", CallID: "main-summary", Text: "Main only summary"},
 	}})
@@ -333,12 +333,12 @@ func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation, v.FeedOnly = true, true
 	v.testAudience()
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "You", Kind: "text", Text: strings.Repeat("Long original prompt\n", 30)},
 		{Seq: 2, Agent: "You", Kind: "text", Text: "Steering prompt", Native: &sessionpresentation.NativeItem{Thread: "root", Turn: "turn", Item: "steer"}},
 	}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "Live answer", binding.ThreadItem{})
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: "Steering prompt"}}})
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: "Steering prompt"}}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Final answer body"})
 	v.Render(80, 12, time.Now())
 	if v.QuestionRows[1] == v.QuestionRows[2] {
@@ -416,7 +416,7 @@ func TestAppServerMainDoesNotPinItemFirstRow(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation, v.FeedOnly = true, true
 	v.testAudience()
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Question?", Observed: time.Now()}}})
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Question?", Observed: time.Now()}}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: strings.Repeat("answer row\n\n", 20)})
 	v.Render(60, 60, time.Now())
 	v.Offset, v.Following = 6, false
@@ -430,10 +430,10 @@ func TestAppServerActivityHeadingShowsLateRole(t *testing.T) {
 	v := newActivityAdapter()
 	v.ChildrenOnly = true
 	v.testAudience()
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe"}},
+	v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe"}},
 		Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/probe", Kind: "text", Text: "hello", Observed: time.Now()}}})
 	v.Render(60, 8, time.Now())
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe", Role: "explorer"}}})
+	v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe", Role: "explorer"}}})
 	if frame := ansi.Strip(strings.Join(v.Render(60, 8, time.Now()), "\n")); !strings.Contains(frame, "probe · explorer") {
 		t.Fatalf("heading kept a stale role:\n%s", frame)
 	}
@@ -485,7 +485,7 @@ func TestAppServerPacesBatchedOperations(t *testing.T) {
 
 	// Restored history shows at once.
 	restored := newActivityAdapter()
-	restored.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "List `.`\n\nSearch `needle`",
+	restored.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "List `.`\n\nSearch `needle`",
 		Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: "old", Phase: "item/completed"}}}})
 	if len(restored.Paced) != 0 {
 		t.Fatal("restored history was paced")

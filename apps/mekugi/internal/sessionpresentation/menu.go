@@ -48,7 +48,7 @@ func (m *Model) AdmitMenu(in MenuAction) error {
 	}
 	switch in.Kind {
 	case MenuAccept:
-		if p.Kind == MenuCompletion && (m.View().ReadOnly != Editable || !m.view.Draft.Available) {
+		if p.Kind == MenuCompletion && (m.readOnly() != Editable || !m.view.Draft.Available) {
 			return ErrInputUnavailable
 		}
 		for _, choice := range p.Choices {

@@ -39,7 +39,7 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 		output.Write("build failed\n")
 		output.Finish(nil, new(2))
 		view := newActivityAdapter()
-		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+		view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 			Seq: 1, Agent: "Main", Kind: "tool", Text: toolActivityShell(command),
 			Native: &sessionpresentation.NativeItem{Command: command, Output: output},
 		}}})
@@ -481,7 +481,7 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 		{Text: "Read `main.go`", Output: first},
 		{Text: "Search `return` in `main.go`", Output: second, Running: true},
 	}}}
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 	feed := view.RenderFeed(90, 30)
 	u := &terminalUI{Attachment: &terminalsession.Attachment{}}
 	for _, snippet := range feed.Snippets {
@@ -532,7 +532,7 @@ func TestOutputDialogSingleObservedCommandWithoutTail(t *testing.T) {
 	output := new(activitymodel.Retention).New()
 	view := newActivityAdapter()
 	entry := sessionpresentation.ActivityEntry{Seq: 10, Agent: "Main", Kind: "tool", Text: "Read `main.go`", Native: &sessionpresentation.NativeItem{Command: "cat main.go", Output: output, Running: true, Segments: []sessionpresentation.ActivitySegment{{Source: "cat main.go", Text: "Read `main.go`", Running: true}}}}
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 	finishPacing(view)
 	feed := view.RenderFeed(90, 30)
 	for _, snippet := range feed.Snippets {
@@ -560,7 +560,7 @@ func TestOutputDialogMergedTrackedReadsKeepAllInvocations(t *testing.T) {
 		output.Write(path + " only\n")
 		output.Finish(nil, new(0))
 		text := "Read `" + path + "`"
-		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: "Main", Kind: "tool", Text: text, Native: &sessionpresentation.NativeItem{Thread: "main", Item: path, Segments: []sessionpresentation.ActivitySegment{{Text: text, Output: output}}}}}})
+		view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: "Main", Kind: "tool", Text: text, Native: &sessionpresentation.NativeItem{Thread: "main", Item: path, Segments: []sessionpresentation.ActivitySegment{{Text: text, Output: output}}}}}})
 	}
 	feed := view.RenderFeed(90, 30)
 	u := &terminalUI{Attachment: &terminalsession.Attachment{}}
@@ -671,7 +671,7 @@ func TestBatchDialogDoesNotAttributeInvocationTimingToSegments(t *testing.T) {
 				entry.Native.Segments = []sessionpresentation.ActivitySegment{{Text: "Run `echo first`", Output: first}, {Text: "Run `echo second`", Output: second, Running: true}}
 			}
 			view := newActivityAdapter()
-			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+			view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 			u := &terminalUI{Attachment: &terminalsession.Attachment{}}
 			if !u.openEntry(view.bind(u), 1) {
 				t.Fatal("could not open batch")

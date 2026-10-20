@@ -45,7 +45,7 @@ func MainActivityLinked(entry ActivityEntry) bool {
 
 func (v *ActivitySource) ApplyMain(entry ActivityEntry) {
 	entry.Seq = v.LastSeq + 1
-	v.Apply(ActivityEvent{Kind: "entries", Entries: []ActivityEntry{entry}})
+	v.Apply(ActivityEvent{Entries: []ActivityEntry{entry}})
 }
 
 // applyActivity projects the collector once into the two audiences. Ordinary
@@ -55,7 +55,7 @@ func ApplyActivity(main, children *ActivitySource, entries []ActivityEntry, agen
 	for i := range paneEntries {
 		paneEntries[i].Agent = ActivityOwner(paneEntries[i])
 	}
-	children.Apply(ActivityEvent{Kind: "entries", Entries: paneEntries, Agents: agents})
+	children.Apply(ActivityEvent{Entries: paneEntries, Agents: agents})
 	for i, entry := range entries {
 		if entry, admitted := MainActivityEntry(entry); admitted {
 			if MainActivityLinked(entry) {

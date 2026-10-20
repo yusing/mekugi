@@ -275,7 +275,7 @@ func recordApproval(attached *attachedPresentation, approvals *nativeApprovalDoc
 	if attached.session.KnownCaller(main) != "" {
 		applyActivity(attached, approvals, terminal, review, pending, main, clock, []sessionpresentation.ActivityEntry{entry}, nil)
 	} else {
-		attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 	}
 }
 

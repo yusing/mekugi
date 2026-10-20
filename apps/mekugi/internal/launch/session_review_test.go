@@ -19,7 +19,7 @@ func TestReviewReceiptsWithoutTerminal(t *testing.T) {
 			u := &appServerUI{review: r, reviewSource: new(changecapture.Service)}
 			for _, target := range []**sessionpresentation.ActivitySource{&u.attached.source, &u.attached.childSource} {
 				*target = &sessionpresentation.ActivitySource{Model: new(activity.Model[sessionpresentation.ActivityEntry, sessionpresentation.ActivityAgent])}
-				(*target).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+				(*target).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 					Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `write source.go`", CallID: "edit",
 					Native: &sessionpresentation.NativeItem{Thread: "main", Item: "edit", Phase: "item/completed"},
 				}}})

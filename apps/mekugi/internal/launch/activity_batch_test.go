@@ -85,7 +85,8 @@ func TestUISnapshotActivityPlainPrintfHeadings(t *testing.T) {
 			}
 			v := newActivityAdapter()
 			v.Painter.Theme = diffrender.DarkTheme
-			v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe", Final: true}}, Entries: []sessionpresentation.ActivityEntry{entry}})
+			v.Coverage = ""
+			v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe", Final: true}}, Entries: []sessionpresentation.ActivityEntry{entry}})
 			assertNativeUISnapshot(t, "activity-plain-printf-"+state, v.Render(100, 18, now))
 		})
 	}
@@ -181,7 +182,8 @@ func TestUISnapshotActivityPrintfSuccessMarkers(t *testing.T) {
 				}
 				v := newActivityAdapter()
 				v.Painter.Theme = diffrender.DarkTheme
-				v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe", Final: true}}, Entries: []sessionpresentation.ActivityEntry{entry}})
+				v.Coverage = ""
+				v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe", Final: true}}, Entries: []sessionpresentation.ActivityEntry{entry}})
 				assertNativeUISnapshot(t, "activity-printf-success-"+producer.name+"-"+state, v.Render(100, 18, now))
 			})
 		}

@@ -25,20 +25,8 @@ const (
 const unreturnedOutputNote = "output not returned to the model"
 
 // Source: apps/mekugi/internal/router/live_activity_view.go:28:162@45fbe279
-func (v *ActivitySource) Apply(event ActivityEvent) bool {
-	switch event.Kind {
-	case "end":
-		return true
-	case "coverage":
-		v.Coverage = "RECONNECTING"
-		return false
-	case "snapshot":
-		v.Coverage = ""
-	case "entries", "agents", "heartbeat":
-	default:
-		return false
-	}
-	if event.Agents != nil || event.Kind == "snapshot" {
+func (v *ActivitySource) Apply(event ActivityEvent) {
+	if event.Agents != nil {
 		v.Agents = event.Agents
 	}
 	for _, entry := range event.Entries {
@@ -157,7 +145,6 @@ func (v *ActivitySource) Apply(event ActivityEvent) bool {
 		v.Model.Append(entry, blocks)
 	}
 	v.Model.Trim(activitypresentation.FeedLimit)
-	return false
 }
 
 // Source: apps/mekugi/internal/router/live_activity_view.go:164:184@45fbe279
@@ -191,12 +178,6 @@ func (v *ActivitySource) RemoveThinking(native *NativeItem) {
 			return
 		}
 	}
-}
-
-// NewActivitySource starts an unattached feed; attachment binding transfers this
-// model once and preserves its identity for all subsequent source transitions.
-func NewActivitySource(audience ActivityAudience) *ActivitySource {
-	return &ActivitySource{Audience: audience, Coverage: "CONNECTING", Model: new(activitypresentation.Model[ActivityEntry, ActivityAgent])}
 }
 
 // InsertHistoryPage preserves admitted identities while ordering an older page.

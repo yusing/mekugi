@@ -51,10 +51,8 @@ func (p *uiReplayPlayback) reset() {
 	u.transcript = p.observations.NewTranscript(u.session.Scope())
 	state := u.session.Activity()
 	state.StartRoster(sessionpresentation.ActivityAgent{Thread: p.Source.Thread, Name: "/root", Role: "main"})
-	u.source = sessionpresentation.NewActivitySource(sessionpresentation.MainAudience)
-	u.childSource = sessionpresentation.NewActivitySource(sessionpresentation.ChildAudience)
-	u.source.Model, u.childSource.Model = &state.Main, &state.Children
-	u.childSource.Coverage = ""
+	u.source = &sessionpresentation.ActivitySource{Model: &state.Main, Audience: sessionpresentation.MainAudience, Coverage: "CONNECTING"}
+	u.childSource = &sessionpresentation.ActivitySource{Model: &state.Children, Audience: sessionpresentation.ChildAudience}
 	u.shell, _ = p.terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
 	u.view, u.agents = u.shell.Transcript, u.shell.Agents
 	u.view.Clock, u.agents.Clock = func() time.Time { return p.At }, func() time.Time { return p.At }

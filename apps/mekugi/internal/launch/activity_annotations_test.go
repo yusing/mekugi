@@ -16,7 +16,7 @@ func TestCapturedEditRetainsOutputAnnotations(t *testing.T) {
 		for _, filterFirst := range []bool{false, true} {
 			t.Run(fmt.Sprintf("withdraw=%t/filterFirst=%t", withdraw, filterFirst), func(t *testing.T) {
 				v := newActivityAdapter()
-				v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: "Run `printf output > source.go`", OutputTail: []string{"output"}, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Phase: "item/started", Command: "printf output > source.go", Running: true, Live: true}}}})
+				v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: "Run `printf output > source.go`", OutputTail: []string{"output"}, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Phase: "item/started", Command: "printf output > source.go", Running: true, Live: true}}}})
 				receipt := &changepresentation.Receipt{Thread: "main", Calls: []string{"cmd"}, Text: "Edit `source.go` +1 -1"}
 				if withdraw {
 					v.ApplyCapturedEdits([]*changepresentation.Receipt{receipt})
@@ -29,7 +29,7 @@ func TestCapturedEditRetainsOutputAnnotations(t *testing.T) {
 				if filterFirst {
 					note()
 				}
-				v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
+				v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 				if !filterFirst {
 					note()
 				}
@@ -41,7 +41,7 @@ func TestCapturedEditRetainsOutputAnnotations(t *testing.T) {
 					v.ApplyCapturedEdits([]*changepresentation.Receipt{&next})
 					for _, approve := range []bool{false, true} {
 						if approve {
-							v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(3 + pass), Agent: "Main", Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Phase: "approval/updated", Approval: "Approved"}}}})
+							v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(3 + pass), Agent: "Main", Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Phase: "approval/updated", Approval: "Approved"}}}})
 						}
 						frame := ansi.Strip(strings.Join(v.RenderFeed(100, 30).Lines, "\n"))
 						if strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, "output not returned to the model") != 1 {

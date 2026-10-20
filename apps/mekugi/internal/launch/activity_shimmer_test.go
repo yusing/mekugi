@@ -40,18 +40,18 @@ func TestAppServerReasoningAnimationLifecycle(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
 	v := u.testActivity(u.shell.Agents)
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/reviewer", Responding: true}}, Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reasoning", CallID: "r", Native: &sessionpresentation.NativeItem{Phase: "summary", Live: true}, Text: "Checking the answer target", Observed: time.Unix(0, 0)}}})
+	v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/reviewer", Responding: true}}, Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reasoning", CallID: "r", Native: &sessionpresentation.NativeItem{Phase: "summary", Live: true}, Text: "Checking the answer target", Observed: time.Unix(0, 0)}}})
 	first, _ := v.testCurrent(v.Agents[0], v.Entries[0].Source.Observed)
 	second, _ := v.testCurrent(v.Agents[0], v.Entries[0].Source.Observed.Add(500*time.Millisecond))
 	if !v.HasLiveStatus() || first == second || ansi.Strip(first) != ansi.Strip(second) {
 		t.Fatal("live summary animation froze in roster or changed text")
 	}
 	before := v.Entries[0].Source.Observed
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: "/root/reviewer", Kind: "reasoning", CallID: "r", Native: &sessionpresentation.NativeItem{Phase: "summary", Live: true}, Text: "Checking the answer target", Observed: time.Unix(1, 0)}}})
+	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: "/root/reviewer", Kind: "reasoning", CallID: "r", Native: &sessionpresentation.NativeItem{Phase: "summary", Live: true}, Text: "Checking the answer target", Observed: time.Unix(1, 0)}}})
 	if v.Entries[0].Source.Observed != before {
 		t.Fatal("unchanged header restarted animation")
 	}
-	v.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/reviewer"}}})
+	v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/reviewer"}}})
 	if v.HasLiveStatus() || !strings.Contains(ansi.Strip(strings.Join(v.RenderFeed(80, 20).Lines, "\n")), "Checking the answer target") {
 		t.Fatal("completed reasoning animation or transcript retention is wrong")
 	}

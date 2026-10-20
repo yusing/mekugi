@@ -71,7 +71,7 @@ func TestAppServerPendingPatchIsNotEdited(t *testing.T) {
 		v.ChildrenOnly = agent != "Main"
 		v.testAudience()
 		patch := activitypresentation.HostEditText((binding.ThreadItem{Status: "inProgress", Changes: []binding.FileChange{{Path: "c.go", Diff: "+new\n-old\n"}}}).Observation(), "")
-		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: agent, Kind: "tool", CallID: "patch", Text: patch}}})
+		v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: agent, Kind: "tool", CallID: "patch", Text: patch}}})
 		feed := v.RenderFeed(100, 80)
 		if agent == "Main" {
 			feed = v.testRenderConversation(100)
@@ -382,13 +382,13 @@ func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 	view := u.testActivity(u.shell.Transcript)
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
+	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 	if !view.MarkUnreturned("main", "cmd") {
 		t.Fatal("output note was not admitted")
 	}
 	for _, receiptText := range []string{"Edit `source.go` +1 -1", ""} {
 		view.ApplyCapturedEdits([]*changepresentation.Receipt{{Thread: "main", Calls: []string{"cmd"}, Text: receiptText}})
-		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: "Main", Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: "cmd", Phase: "approval/updated", Approval: "Approved"}}}})
+		view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: "Main", Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: "cmd", Phase: "approval/updated", Approval: "Approved"}}}})
 		frame := ansi.Strip(strings.Join(view.RenderFeed(100, 30).Lines, "\n"))
 		if strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, "output not returned to the model") != 1 || strings.Contains(frame, "exit 1") {
 			t.Fatalf("held frame lost current annotations or exposed its delayed outcome:\n%s", frame)
@@ -424,7 +424,7 @@ func TestAppServerHeldCompletionSettlesFromDisplayTime(t *testing.T) {
 	now = now.Add(time.Hour)
 	rollCommandOutput(u)
 	u.testActivity(u.shell.Transcript).RenderFeed(100, 30)
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 	if settleActivity(now.Add(activityui.OutputDebounce-time.Nanosecond), u.testActivity(u.shell.Transcript)) {
 		t.Fatal("annotation refresh reset display settlement to host completion")
 	}
