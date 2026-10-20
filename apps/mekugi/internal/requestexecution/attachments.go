@@ -16,7 +16,7 @@ import (
 // ProjectFileAttachments splits only complete versioned text parts. Malformed
 // lookalikes remain ordinary user text; non-user messages are never interpreted.
 func ProjectFileAttachments(request *codexresponses.Request) bool {
-	if !bytes.Contains(request.Fields["input"], []byte("mekugi-file-attachments-v1")) {
+	if !bytes.Contains(request.Fields["input"], []byte("mekugi-file-attachments-v")) {
 		return false
 	}
 	var items []map[string]jsontext.Value

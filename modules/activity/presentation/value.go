@@ -33,6 +33,7 @@ type Value struct {
 
 	feed.Content
 	Repeated                             string
+	AttachmentID                         string // Durable submitted snapshot and source, shared by its chunks.
 	Ended, Started                       time.Time
 	Duration                             time.Duration
 	NotificationTiming                   bool

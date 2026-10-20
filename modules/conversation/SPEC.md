@@ -127,7 +127,10 @@ carry source paths and byte ranges, prefer line boundaries and split long lines
 only at UTF-8 boundaries. Contents remain user input, never developer or system
 instructions. Queued payloads and host history retain the submitted bytes across
 fork, resume and provider changes without reopening their source. Recalled editable
-bindings take a fresh snapshot when submitted again.
+bindings take a fresh snapshot when submitted again. Final submission gives each
+envelope a durable identity independent of its contents. Identical submissions
+remain distinct; request refresh, forks and resume preserve the submitted identity.
+Version 1 envelopes remain readable without inventing a submission identity.
 
 Native and managed skill instructions use the same framing, budgets and omission
 receipts as files, never a synthetic native path or name-only replacement. Replay
@@ -141,7 +144,9 @@ map those values without decoding the host protocol again. Oversized or unreadab
 than truncated instructions.
 
 Each draft has a 192 KiB encoded attachment budget, half reserved for omission
-notices. File reads are bounded to 96 KiB and content frames to 24 KiB. Unreadable,
+notices. Submission identity must fit this envelope budget; an oversized supplied
+envelope remains unsent with a notice rather than becoming ordinary prompt text.
+File reads are bounded to 96 KiB and content frames to 24 KiB. Unreadable,
 non-regular/non-directory, non-UTF-8, NUL-containing, oversized and over-budget
 sources produce explicit omission frames; the composer reports the first omission.
 

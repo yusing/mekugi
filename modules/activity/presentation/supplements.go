@@ -46,7 +46,10 @@ type queuedSupplement struct {
 	Supplement
 	queued time.Time
 }
-type supplementThread struct{ seen map[string]struct{} }
+type supplementThread struct {
+	seen        map[string]struct{}
+	repetitions map[string]string
+}
 
 // Supplements owns invocation-scoped auxiliary observations. Its application
 // serializes access together with the supplied thread scopes and authority facts.
@@ -127,6 +130,12 @@ func (s *Supplements) Collect(thread *scope.Store, event Supplement, now time.Ti
 		return true
 	}
 	state.seen[event.Source] = struct{}{}
+	if event.Kind == "output_dedupe" && event.CallID != "" {
+		if state.repetitions == nil {
+			state.repetitions = make(map[string]string)
+		}
+		state.repetitions[event.CallID] = event.Text
+	}
 	if event.Kind == "start" && event.Assignment != nil && event.Assignment.ID != "" {
 		state.seen[supplementID(event.Assignment.ID)] = struct{}{}
 	}
@@ -224,4 +233,13 @@ func (s *Supplements) TakeUnreturned(audience Audience) []Unreturned {
 	refs := slices.DeleteFunc(s.unreturned, func(ref Unreturned) bool { _, admitted := audience.Threads[ref.Thread]; return !admitted })
 	s.unreturned = nil
 	return refs
+}
+
+// Repetition retains the delivered annotation independently of its transient
+// event and attached feed. Callers must authenticate the requested thread.
+func (s *Supplements) Repetition(root string, thread *scope.Store, id string) string {
+	if s.root == "" || s.root != root {
+		return ""
+	}
+	return s.threads.Value(thread).repetitions[id]
 }

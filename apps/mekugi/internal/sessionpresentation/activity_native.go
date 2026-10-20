@@ -117,6 +117,7 @@ func (v *ActivitySource) MergeNative(entry ActivityEntry) bool {
 		entry.Native.Question = previous.Source.Native.Question
 		blocks := ActivityContent(entry).Values()
 		blocks = activitypresentation.RetainAnnotations(blocks, v.Entries[i].Values)
+		v.annotateRepetitions(entry, blocks)
 		v.Model.Replace(i, entry, blocks)
 		return true
 	}

@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
@@ -43,4 +44,9 @@ func startAttachedSession(a *attachedPresentation, observations *binding.Observa
 	a.transcript = observations.NewTranscript(a.session.Scope())
 	clear(a.session.Commands())
 	a.cwd = workspace
+}
+
+func (a *attachedPresentation) bindRepetitions(audience *sessioncontrol.Audience, root string) {
+	lookup := func(thread, id string) string { return audience.Repetition(root, thread, id) }
+	a.source.Repetition, a.childSource.Repetition = lookup, lookup
 }

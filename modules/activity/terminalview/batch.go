@@ -35,7 +35,7 @@ func CollapseBatch(blocks []Block) (Block, bool) {
 		switch {
 		case block.Kind == "filter":
 			continue
-		case block.Kind != "op" && block.Kind != "reads", block.Verb == "", block.Verb == "Attach failed", block.Running, block.Skipped, block.Approval != "", block.Hook != nil,
+		case block.Kind != "op" && block.Kind != "reads", block.Verb == "", block.Verb == "Attach failed", block.Repeated != "", block.Running, block.Skipped, block.Approval != "", block.Hook != nil,
 			block.EditSource != "" && block.EditHeading() != "Edited", len(block.Questions) > 0:
 			return Block{}, false
 		}

@@ -9,7 +9,7 @@ Reduce repeated model-input text while preserving host execution and evidence.
 The module owns request-local matching, reference text, eligibility, and repetition
 receipts. The Codex binding selects original host parts and submitted attachment
 bodies. The application applies the projection after its evidence consumers and
-maps returned call receipts to native activity identities. The module also owns
+maps returned receipts to native activity and durable attachment identities. The module also owns
 local token-savings estimates; capture aggregates their receipts without reading
 output content or initializing a tokenizer.
 
@@ -22,7 +22,16 @@ input, host result, Codex rollout, retained replay and change evidence, and UI
 keep the full text. Transcript output rows add `N lines repeated` for partial
 replacement or `repeated` for full replacement. A multi-command cell puts its
 returned-output summary on the last command row; the suffix describes the cell
-result, not each command independently. Every evidence consumer, including command
+result, not each command independently. File and skill attachment rows carry the
+same suffix, aggregated across chunks of each submitted snapshot. Refreshing a
+request does not add another receipt. Identity-keyed annotations remain available
+when native items arrive late or the same process replaces its transcript feed;
+restoration resolves only the arriving item, without republishing unrelated history.
+Operation batches with repetition annotations keep their individual rows visible.
+Attachment dialogs retain the original
+submitted content. Legacy attachment envelopes without durable submission identity
+still deduplicate model input but receive no guessed transcript suffix. Every
+evidence consumer, including command
 and patch observation, result confirmation, failure observation, retention, and continuation
 advice, reads the original output before this final projection.
 

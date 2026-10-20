@@ -1,8 +1,10 @@
 package sessionpresentation
 
 import (
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"slices"
 	"strconv"
+	"strings"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
@@ -11,8 +13,9 @@ import (
 // source facts and publishes detached values without a terminal dependency.
 type ActivitySource struct {
 	*activitypresentation.Model[ActivityEntry, ActivityAgent]
-	Audience ActivityAudience
-	Coverage string
+	Audience   ActivityAudience
+	Coverage   string
+	Repetition func(thread, id string) string // Authenticated invocation-owned annotations.
 }
 
 type ActivityAudience uint8
@@ -35,6 +38,19 @@ func (v *ActivitySource) Apply(event ActivityEvent) {
 		}
 		if entry.Kind == "output_dedupe" {
 			for i, previous := range v.Entries {
+				if strings.HasPrefix(entry.CallID, attachments.ReceiptPrefix) {
+					if previous.Source.Kind == "attachments" && previous.Source.Native != nil && entry.Native != nil && previous.Source.Native.Thread == entry.Native.Thread &&
+						slices.ContainsFunc(previous.Values, func(value activitypresentation.Value) bool { return value.AttachmentID == entry.CallID }) {
+						v.Model.Mutate(i, func(record *ActivityRecord) {
+							for j := range record.Values {
+								if record.Values[j].AttachmentID == entry.CallID {
+									record.Values[j].Repeated = entry.Text
+								}
+							}
+						})
+					}
+					continue
+				}
 				if previous.Source.Native == nil || previous.Source.Native.Item != entry.CallID || entry.Native == nil || previous.Source.Native.Thread != entry.Native.Thread {
 					continue
 				}
@@ -142,6 +158,7 @@ func (v *ActivitySource) Apply(event ActivityEvent) {
 				continue
 			}
 		}
+		v.annotateRepetitions(entry, blocks)
 		v.Model.Append(entry, blocks)
 	}
 	v.Model.Trim(activitypresentation.FeedLimit)
@@ -190,4 +207,21 @@ func (v *ActivitySource) InsertHistoryPage(before uint64, belongs func(ActivityE
 		}
 	}
 	v.Model.InsertHistory(before, at)
+}
+
+func (v *ActivitySource) annotateRepetitions(entry ActivityEntry, values []activitypresentation.Value) {
+	if v.Repetition == nil || entry.Native == nil || len(values) == 0 {
+		return
+	}
+	if entry.Kind == "attachments" {
+		for i := range values {
+			if values[i].AttachmentID != "" {
+				values[i].Repeated = v.Repetition(entry.Native.Thread, values[i].AttachmentID)
+			}
+		}
+		return
+	}
+	if label := v.Repetition(entry.Native.Thread, entry.Native.Item); label != "" {
+		values[len(values)-1].Repeated = label
+	}
 }

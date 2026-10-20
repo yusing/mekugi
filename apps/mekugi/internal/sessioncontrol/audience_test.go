@@ -57,3 +57,34 @@ func TestNativeActivityOmitsHostOwnedToolSpeech(t *testing.T) {
 		t.Fatalf("host-owned speech duplicated: %+v", got)
 	}
 }
+
+func TestRepetitionLookupRetainsAuthenticatedOrigin(t *testing.T) {
+	a := NewAudience(nil)
+	a.Attach("root")
+	a.Observe("child", "root", "/root/reader", true)
+	a.Collect(activitypresentation.Supplement{Thread: "child", Source: "receipt", Kind: "output_dedupe", CallID: "snapshot", Text: "repeated"})
+	a.Take("root")
+	if a.Repetition("root", "child", "snapshot") != "repeated" {
+		t.Fatal("queue drain lost retained annotation")
+	}
+	a.Detach()
+	if a.Repetition("root", "child", "snapshot") != "" {
+		t.Fatal("detached audience exposed annotation")
+	}
+	a.Attach("other")
+	if a.Repetition("other", "child", "snapshot") != "" {
+		t.Fatal("foreign root exposed annotation")
+	}
+	a.Attach("root")
+	if a.Repetition("root", "child", "snapshot") != "repeated" {
+		t.Fatal("reattachment lost annotation")
+	}
+	a.Invalidate("child")
+	if a.Repetition("root", "child", "snapshot") != "" {
+		t.Fatal("invalidated ancestry exposed annotation")
+	}
+	a.Close()
+	if a.Repetition("root", "child", "snapshot") != "" {
+		t.Fatal("closed audience exposed annotation")
+	}
+}

@@ -1,6 +1,8 @@
 package sessioncontrol
 
 import (
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	"testing"
 	"time"
 
@@ -59,5 +61,27 @@ func TestSideWorkflowWithoutRenderer(t *testing.T) {
 				t.Fatal("late start acknowledgement revived completed side work")
 			}
 		})
+	}
+}
+
+func TestSideAttachmentSubmissionIdentity(t *testing.T) {
+	body := "immutable side snapshot\n"
+	envelope := attachments.Encode(composer.FileFrames("/workspace/side.txt", body))
+	var previous string
+	for range 2 {
+		side := &Side{SideAnswer: &conversationmodel.SideAnswer{Pending: conversationmodel.Input{Text: "question", Attachments: []string{envelope}}}, Thread: "side", Busy: true}
+		transport := &requestTransport{id: "start"}
+		requests := NewRequests[struct{}](transport)
+		update, err := requests.StartSide(side, SideMain{Thread: "main"}, time.Time{})
+		if err != nil || !update.TurnRequested {
+			t.Fatalf("side start: %+v %v", update, err)
+		}
+		params := transport.sends[0].params.(map[string]any)
+		input := params["input"].([]map[string]any)
+		snapshot, ok := attachments.DecodeSnapshot(input[len(input)-1]["text"].(string))
+		if !ok || snapshot.ID == "" || snapshot.ID == previous || snapshot.Frames[0] != composer.FileFrames("/workspace/side.txt", body)[0] {
+			t.Fatal("side submission lost unique identity or original contents")
+		}
+		previous = snapshot.ID
 	}
 }

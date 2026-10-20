@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -166,4 +167,23 @@ func frameText(content string, header func(start, end, total int) string) []stri
 		}
 	}
 	return frames
+}
+
+// IdentifyAttachments runs only at final submission, after snapshot composition.
+// Resubmission gets a fresh identity; host history and request projections keep it.
+func (d *Draft) IdentifyAttachments(submission string) error {
+	identified := slices.Clone(d.Attachments)
+	for i, text := range d.Attachments {
+		snapshot, ok := attachments.DecodeSnapshot(text)
+		if !ok {
+			continue
+		}
+		snapshot.ID = fmt.Sprintf("%s/%d", submission, i)
+		identified[i] = snapshot.Encode()
+		if len(identified[i]) > attachments.Budget {
+			return fmt.Errorf("Attachment exceeds the 192 KiB envelope limit after submission metadata. Reduce the attachment and retry.")
+		}
+	}
+	d.Attachments = identified
+	return nil
 }

@@ -14,6 +14,7 @@ func TestCollapseBatchKeepsUnsettledOrSingleWork(t *testing.T) {
 	for name, blocks := range map[string][]Block{
 		"single":         {read, {Kind: "filter"}},
 		"running":        {read, func() Block { b := run; b.Running = true; return b }()},
+		"repetition":     {read, func() Block { b := run; b.Repeated = "repeated"; return b }()},
 		"skipped":        {read, func() Block { b := run; b.Skipped = true; return b }()},
 		"approval":       {read, func() Block { b := run; b.Approval = "Approved"; return b }()},
 		"requested edit": {read, {Kind: "op", Verb: "Edit", EditSource: "cat (requested)"}},

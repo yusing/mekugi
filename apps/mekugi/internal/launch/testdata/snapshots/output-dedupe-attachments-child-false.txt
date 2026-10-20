@@ -1,0 +1,14 @@
+❯ review snapshots                                                      12:34:56
+
+├ Attached file.txt (601 lines)
+└ Attached skill guide (21 lines)
+
+❯ review snapshots                                                      12:34:56
+
+├ Attached file.txt · 600 lines repeated (602 lines)
+└ Attached skill guide · repeated (21 lines)
+
+❯ review snapshots                                                      12:34:56
+
+├ Attached file.txt (602 lines)
+└ Attached skill guide (21 lines)

@@ -7,6 +7,14 @@ func RetainAnnotations(values, current []Value) []Value {
 	var repeated string
 	var filters []Value
 	for _, annotation := range current {
+		if annotation.AttachmentID != "" {
+			for i := range values {
+				if values[i].AttachmentID == annotation.AttachmentID {
+					values[i].Repeated = annotation.Repeated
+				}
+			}
+			continue
+		}
 		if annotation.Repeated != "" {
 			repeated = annotation.Repeated
 		}

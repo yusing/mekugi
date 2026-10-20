@@ -1,0 +1,12 @@
+❯ review snapshots                                                      12:34:56
+
+└ Attached • Attached skill
+
+❯ review snapshots                                                      12:34:56
+
+├ Attached /workspace/file.txt · 600 lines repeated (602 lines)
+└ Attached skill guide · repeated (21 lines)
+
+❯ review snapshots                                                      12:34:56
+
+└ Attached • Attached skill

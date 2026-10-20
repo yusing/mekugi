@@ -52,13 +52,13 @@ func AttachmentValues(cwd string, content jsontext.Value) []activitypresentation
 		if part.Type != "text" {
 			continue
 		}
-		frames, ok := attachments.Decode(part.Text)
+		snapshot, ok := attachments.DecodeSnapshot(part.Text)
 		if !ok {
 			continue
 		}
 		// Each envelope is a submitted snapshot; only its chunks belong together.
 		clear(indexes)
-		for _, frame := range frames {
+		for _, frame := range snapshot.Frames {
 			if name, source, rest := attachments.ParseSkillFrame(frame); name != "" {
 				verb, label := "Attached skill", name
 				if strings.HasPrefix(rest, ": CONTENT NOT ATTACHED (") {
@@ -71,7 +71,7 @@ func AttachmentValues(cwd string, content jsontext.Value) []activitypresentation
 				}
 				key := verb + "\x00skill\x00" + name + "\x00" + source
 				if verb == "Attached skill" {
-					appendContent(key, rest, activitypresentation.Value{Kind: "op", Verb: verb, Label: textsanitize.Safe(label, false)}, source)
+					appendContent(key, rest, activitypresentation.Value{Kind: "op", Verb: verb, Label: textsanitize.Safe(label, false), AttachmentID: snapshot.ReceiptID(frame)}, source)
 					continue
 				}
 				if !seen[key] {
@@ -106,7 +106,7 @@ func AttachmentValues(cwd string, content jsontext.Value) []activitypresentation
 			}
 			key := verb + "\x00" + path + "\x00" + label
 			if verb == "Attached" {
-				appendContent(key, rest, activitypresentation.Value{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path)}, path)
+				appendContent(key, rest, activitypresentation.Value{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path), AttachmentID: snapshot.ReceiptID(frame)}, path)
 				continue
 			}
 			if !seen[key] {

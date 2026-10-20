@@ -711,6 +711,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			}
 			if audience != nil {
 				audience.Attach(control.Thread)
+				attached.bindRepetitions(audience, control.Thread)
 			}
 			// Resumed history is applied once the roster is read, so Main can
 			// follow child activity in order. An active snapshot keeps its

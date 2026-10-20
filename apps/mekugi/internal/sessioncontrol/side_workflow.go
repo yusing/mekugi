@@ -1,6 +1,7 @@
 package sessioncontrol
 
 import (
+	"crypto/rand"
 	json "encoding/json/v2"
 	"strings"
 	"time"
@@ -65,6 +66,9 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 		return SideUpdate{}, r.sendSide(s, "thread/fork", params)
 	}
 	s.Starting, s.Status, s.Started = true, "Answering", now
+	if err := s.Pending.Draft.IdentifyAttachments(rand.Text()); err != nil {
+		return s.fail(err.Error()), nil
+	}
 	input := conversationbinding.Input(s.Pending.Draft)
 	input = append(appserver.Input("This is a /btw side question. Answer only the side question using the conversation context. Do not continue the main task or use tools."), input...)
 	textBytes := 0

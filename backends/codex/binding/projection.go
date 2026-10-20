@@ -24,10 +24,11 @@ type ProjectionResult struct {
 // ProjectionReceipt describes repeated text in this request copy, not host
 // completion or provider billing. Call keys keep the original Codex identity.
 type ProjectionReceipt struct {
-	SavedTokens       int64
-	TokensMeasured    bool
-	OutputRepetitions uint64
-	RepeatedCalls     map[string]string
+	SavedTokens         int64
+	TokensMeasured      bool
+	OutputRepetitions   uint64
+	RepeatedCalls       map[string]string
+	RepeatedAttachments map[string]string
 }
 
 func (r *Registry) InputProjection(projection InputProjection) error {

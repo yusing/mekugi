@@ -121,6 +121,11 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 	}
 	s := conversationmodel.Submission{Draft: composer.Join(conversationmodel.Drafts(parts)...), Parts: parts}
 	id := rand.Text()
+	if err := s.Draft.IdentifyAttachments(id); err != nil {
+		restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, parts...)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+		return nil
+	}
 	input := conversationbinding.Input(s.Draft)
 	textBytes := 0
 	for _, part := range input {

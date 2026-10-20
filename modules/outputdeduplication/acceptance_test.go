@@ -126,7 +126,7 @@ func TestAcceptanceDurableAttachmentBodies(t *testing.T) {
 		t.Fatalf("projected attachment frames = %q, complete = %v", frames, ok)
 	}
 	if got[1]["output"] != "[same as O1]\n" || result.Receipt == nil || result.Receipt.OutputRepetitions != 2 ||
-		!reflect.DeepEqual(result.Receipt.RepeatedCalls, map[string]string{"tool-repeat": "repeated"}) {
+		!reflect.DeepEqual(result.Receipt.RepeatedCalls, map[string]string{"tool-repeat": "repeated"}) || len(result.Receipt.RepeatedAttachments) != 0 {
 		t.Fatalf("tool = %+v, receipt = %+v", got[1], result.Receipt)
 	}
 }

@@ -374,6 +374,9 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			continue
 		}
 		transportcapture.ObserveOutputDeduplication(ctx, summary.OutputRepetitions, summary.SavedTokens, summary.TokensMeasured)
+		for id, label := range summary.RepeatedAttachments {
+			p.activity.Collect(activitypresentation.Supplement{Thread: activityThreadID, Source: "output-dedupe\x00" + id, Kind: "output_dedupe", CallID: id, Text: label})
+		}
 		if len(summary.RepeatedCalls) == 0 {
 			continue
 		}

@@ -37,28 +37,44 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 		repeatedBytes += result.RepeatedBytes
 		return result.Text
 	}
-	projectFrame := func(text string) string {
-		header, body, ok := duplicateAttachmentBody(text)
-		if !ok {
-			return text
-		}
-		return projectBody(header, body)
-	}
 	projectAttachment := func(text string) string {
-		frames, ok := attachments.Decode(text)
+		snapshot, ok := attachments.DecodeSnapshot(text)
 		if !ok {
 			return text
 		}
+		type counts struct{ lines, body, repeated int }
+		totals := make(map[string]counts)
 		changed := false
-		for i, frame := range frames {
-			frames[i] = projectFrame(frame)
-			changed = changed || frames[i] != frame
+		for i, frame := range snapshot.Frames {
+			header, body, ok := duplicateAttachmentBody(frame)
+			if !ok {
+				continue
+			}
+			repeatedLines, bodyBytes, repeatedBytes = 0, 0, 0
+			snapshot.Frames[i] = projectBody(header, body)
+			changed = changed || snapshot.Frames[i] != frame
+			if id := snapshot.ReceiptID(frame); id != "" {
+				count := totals[id]
+				count.lines += repeatedLines
+				count.body += bodyBytes
+				count.repeated += repeatedBytes
+				totals[id] = count
+			}
+		}
+		for id, count := range totals {
+			if label := repetitionLabel(count.lines, count.body, count.repeated); label != "" {
+				if summary.RepeatedAttachments == nil {
+					summary.RepeatedAttachments = make(map[string]string)
+				}
+				summary.RepeatedAttachments[id] = label
+			}
 		}
 		if changed {
-			return attachments.Encode(frames)
+			return snapshot.Encode()
 		}
 		return text
 	}
+
 	for at, raw := range items {
 		var item map[string]jsonv1.RawMessage
 		if json.Unmarshal(raw, &item) != nil {
@@ -98,11 +114,7 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 			items[at] = responses.MustMarshalJSON(item)
 			changed = true
 		}
-		if repeatedLines > 0 {
-			label := fmt.Sprintf("%d lines repeated", repeatedLines)
-			if repeatedBytes == bodyBytes {
-				label = "repeated"
-			}
+		if label := repetitionLabel(repeatedLines, bodyBytes, repeatedBytes); label != "" {
 			summary.RepeatedCalls[id] = label
 		}
 	}
@@ -220,4 +232,14 @@ func duplicateOutputBody(text string) (header, body string) {
 		body = payload
 	}
 	return text[:len(text)-len(body)], body
+}
+
+func repetitionLabel(lines, body, repeated int) string {
+	if lines == 0 {
+		return ""
+	}
+	if repeated == body {
+		return "repeated"
+	}
+	return fmt.Sprintf("%d lines repeated", lines)
 }

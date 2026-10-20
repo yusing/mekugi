@@ -283,6 +283,9 @@ func TestLiveActivityAttachmentStackedSnapshots(t *testing.T) {
 				drafts = append(drafts, conversationmodel.Input{Text: "review", Attachments: []string{attachments.Encode(frames)}})
 			}
 			joined := conversationmodel.Join(drafts...)
+			if err := joined.IdentifyAttachments("stacked"); err != nil {
+				t.Fatal(err)
+			}
 			content, err := json.Marshal(conversationbinding.Input(joined.Draft))
 			if err != nil {
 				t.Fatal(err)
@@ -292,6 +295,9 @@ func TestLiveActivityAttachmentStackedSnapshots(t *testing.T) {
 			blocks := v.blocks(1)
 			if len(blocks) != 2 {
 				t.Fatalf("stacked snapshots collapsed together: %d receipts", len(blocks))
+			}
+			if blocks[0].AttachmentID == "" || blocks[0].AttachmentID == blocks[1].AttachmentID {
+				t.Fatal("stacked envelopes lost independent submission indices")
 			}
 			for i, want := range []string{"first\n", second} {
 				page := v.Painter.DialogPage(blocks[i], 80)
