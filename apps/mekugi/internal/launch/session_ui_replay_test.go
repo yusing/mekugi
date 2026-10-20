@@ -270,7 +270,7 @@ func newTestUIReplayPlayback(activity *activitymodel.Service, ctx context.Contex
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
 	reviewSource := new(changecapture.Service)
-	return newUIReplayPlayback(testTerminalViews(reviewSource), testPresentation(), conversation, &observations, activity, ctx, source, speed)
+	return newUIReplayPlayback(testTerminalViews(reviewSource), replayOwners{testPresentation(), conversation, &observations, activity}, ctx, source, speed)
 }
 
 func runTestSessionUIReplay(activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) int {

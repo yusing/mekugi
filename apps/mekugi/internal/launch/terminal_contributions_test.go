@@ -53,7 +53,7 @@ func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
 func TestReplayAuxiliaryAbsenceSurvivesReset(t *testing.T) {
 	owner, _ := newAppServerTestUI()
 	start := time.Unix(1, 0)
-	p := newUIReplayPlayback(terminalsession.Views{}, owner.presentationState, owner.conversationState, owner.observations, owner.activity, t.Context(), &playback.Source{Thread: "main", Start: start, End: start.Add(time.Second)}, 1)
+	p := newUIReplayPlayback(terminalsession.Views{}, replayOwners{owner.presentationState, owner.conversationState, owner.observations, owner.activity}, t.Context(), &playback.Source{Thread: "main", Start: start, End: start.Add(time.Second)}, 1)
 	defer p.close()
 	p.ui.shell.Focus, p.ui.shell.DiffOpen = 3, true
 	p.reset()
@@ -157,7 +157,7 @@ func TestNativeRosterConstructorReplacementAndReplay(t *testing.T) {
 	if terminalTest(u).Layout.Roster.H == 0 || terminalTest(u).Tabs[3].W == 0 {
 		t.Fatal("declared roster did not reach painting")
 	}
-	p := newUIReplayPlayback(runtime.Terminal, u.presentationState, u.conversationState, u.observations, u.activity, t.Context(), replayPlaybackTestSource(), 1)
+	p := newUIReplayPlayback(runtime.Terminal, replayOwners{u.presentationState, u.conversationState, u.observations, u.activity}, t.Context(), replayPlaybackTestSource(), 1)
 	defer p.close()
 	p.reset()
 	if len(created) != 4 || p.ui.agents != created[3] {

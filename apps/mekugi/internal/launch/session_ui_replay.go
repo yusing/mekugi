@@ -24,7 +24,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/contracts/observation"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
@@ -38,20 +37,17 @@ import (
 type uiReplayPlayback struct {
 	terminalViews terminalsession.Views
 	*playback.Player
-	views        *sessionpresentation.Service
-	conversation *conversationmodel.Service
-	observations *binding.Observation
-	activity     *activitymodel.Service
-	paintedAt    time.Time
-	ui           *replayAttachment
-	prefix       bool
-	frames       []time.Duration
-	writeTime    time.Duration
-	ctx          context.Context
+	replayOwners
+	paintedAt time.Time
+	ui        *replayAttachment
+	prefix    bool
+	frames    []time.Duration
+	writeTime time.Duration
+	ctx       context.Context
 }
 
-func newUIReplayPlayback(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
-	p := &uiReplayPlayback{terminalViews: terminalViews, views: views, conversation: conversation, observations: observations, activity: activity, ctx: ctx, Player: playback.NewPlayer(source, speed)}
+func newUIReplayPlayback(terminalViews terminalsession.Views, owners replayOwners, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
+	p := &uiReplayPlayback{terminalViews: terminalViews, replayOwners: owners, ctx: ctx, Player: playback.NewPlayer(source, speed)}
 	p.reset()
 	return p
 }
@@ -63,53 +59,12 @@ func (p *uiReplayPlayback) close() {
 
 func (p *uiReplayPlayback) apply(e playback.Event) error {
 	defer p.publish()
-	if id := e.ThreadID; id != "" && id != p.Source.Thread && p.ui.session.KnownCaller(id) == "" {
-		p.ui.session.RegisterThread(observation.Thread{ID: id, Nickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
-	}
-	switch {
-	case e.Hook != nil:
-		entry := hookEntry(&p.ui.session, p.activity, p.ui.cwd, e.ThreadID, *e.Hook, false)
-		entry.Seq = p.ui.session.Activity().NextSequence()
-		sessionpresentation.ApplyActivity(p.ui.source, p.ui.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
-	case e.Kind == observation.ProviderStarted:
-		if e.ThreadID == "" {
-			return nil
-		}
-		updates := p.ui.transcript.ProviderStarted(e.ThreadID, e.At, p.ui.session.Thread(e.ThreadID))
-		sessionpresentation.ApplyActivity(p.ui.source, p.ui.childSource, p.ui.session.AdmitText(updates, p.Source.Thread), nil)
-	case e.Kind == observation.ProviderCompleted:
-	default:
-		if p.transcript(e.Event) {
-			return nil
-		}
-		result := sessionpresentation.ReduceObservation(&p.ui.session, p.ui.presentation, p.ui.source, p.ui.childSource, p.ui.transcript, &p.ui.waits, p.activity.Outputs(p.ui.session.Scope()), sessionpresentation.ObservationInput{Event: e.Event, Text: binding.RetainedTranscript(e.Event), Main: p.Source.Thread, Selected: p.ui.Turn, Workspace: p.ui.cwd})
-		if result.Publish {
-			p.ui.streams.Deliver(result.Deliveries, p.ui.view, p.ui.agents)
+	p.ui.apply(p.replayOwners, p.Source, p.At, e, func(deliveries []sessionpresentation.ActivityDelivery, publish bool) {
+		p.ui.streams.Deliver(deliveries, p.ui.view, p.ui.agents)
+		if publish {
 			p.ui.publishActivity()
 		}
-		// Playback selects recorded turns without creating or settling live
-		// control operations. Status uses the same admitted observation clock.
-		if e.ThreadID == p.Source.Thread {
-			switch e.Kind {
-			case observation.TurnStarted:
-				if result.Started {
-					p.ui.Turn = e.TurnID
-					p.ui.presentation.Status.Started = e.At
-					p.ui.presentation.Status.Set("Working", false)
-				}
-			case observation.TurnCompleted:
-				if e.TurnID == p.ui.Turn {
-					p.ui.Turn = ""
-					p.ui.presentation.Status.Complete(e.TurnStatus, nil, e.At)
-					for _, call := range p.ui.conversation.Questions.Calls {
-						if !call.Resolved {
-							sessionpresentation.RecordQuestion(call, "", p.ui.Turn, p.At, p.ui.source, p.ui.childSource)
-						}
-					}
-				}
-			}
-		}
-	}
+	})
 	return nil
 }
 func (p *uiReplayPlayback) advance(position time.Duration) error {
@@ -407,27 +362,12 @@ func RunSessionUIReplay(terminalViews terminalsession.Views, views *sessionprese
 		return fail(errors.New("interactive playback requires a terminal; use --headless for profiling"))
 	}
 	fmt.Fprintln(stderr, "Loading recorded session and child items…")
-	rollouts, err := discoverDebugRollouts(ctx, []string{*session})
-	if err != nil {
-		return fail(err)
-	}
-	paths := rollouts[*session]
-	if len(paths) == 0 {
-		return fail(fmt.Errorf("session %q not found in Codex sessions or archived_sessions", *session))
-	}
-	if len(paths) != 1 {
-		return fail(fmt.Errorf("session %q has multiple rollouts in Codex sessions or archived_sessions", *session))
-	}
-	directory, err := history.ReplayDirectory()
-	if err != nil {
-		return fail(err)
-	}
-	source, err := service.Read(ctx, playback.ReadOptions{Path: paths[0], HistoryDirectory: directory, DebugDirectory: *debug, Seed: *seed})
+	source, err := readReplaySource(ctx, service, *session, *debug, *seed)
 	if err != nil {
 		return fail(err)
 	}
 	duration := source.End.Sub(source.Start)
-	p := newUIReplayPlayback(terminalViews, views, conversation, observations, activity, ctx, source, *speed)
+	p := newUIReplayPlayback(terminalViews, replayOwners{views, conversation, observations, activity}, ctx, source, *speed)
 	defer p.close()
 	if err = p.Bounds(*from, *until); err != nil {
 		return fail(err)
@@ -502,4 +442,24 @@ func RunSessionUIReplay(terminalViews terminalsession.Views, views *sessionprese
 	}
 	fmt.Fprintln(stdout)
 	return 0
+}
+
+// readReplaySource admits exactly one recorded Main rollout by literal session ID.
+func readReplaySource(ctx context.Context, service *playback.Service, session, debug string, seed uint64) (*playback.Source, error) {
+	rollouts, err := discoverDebugRollouts(ctx, []string{session})
+	if err != nil {
+		return nil, err
+	}
+	paths := rollouts[session]
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("session %q not found in Codex sessions or archived_sessions", session)
+	}
+	if len(paths) != 1 {
+		return nil, fmt.Errorf("session %q has multiple rollouts in Codex sessions or archived_sessions", session)
+	}
+	directory, err := history.ReplayDirectory()
+	if err != nil {
+		return nil, err
+	}
+	return service.Read(ctx, playback.ReadOptions{Path: paths[0], HistoryDirectory: directory, DebugDirectory: debug, Seed: seed})
 }
