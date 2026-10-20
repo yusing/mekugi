@@ -1,0 +1,4 @@
+  main · ◐ A report.py +3 -0
+  1│+s = open('target.txt').read()                                             
+  2│+s = s.replace('old', 'new')                                               
+▎ 3│+print(s)                                                                  

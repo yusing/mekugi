@@ -1,0 +1,167 @@
+package router
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/dlclark/regexp2/v2"
+	"github.com/yusing/mekugi/capturer"
+)
+
+type proxyRegistryFixture struct {
+	once      sync.Once
+	registry  *toolRegistry
+	directory string
+	err       error
+}
+
+var proxyTestFixture proxyRegistryFixture
+
+const routerTestWorkerEnvironment = "MEKUGI_ROUTER_TEST_WORKER"
+const routerTestWorkerUnscopedEnvironment = "MEKUGI_ROUTER_TEST_WORKER_UNSCOPED"
+
+var testThreadSequence atomic.Uint64
+
+// uniqueTestThread names a thread no other run in this process uses. The shared
+// registry keeps one replay store per process, so a fixed thread ID would see an
+// earlier -count run's handles and fork points.
+func uniqueTestThread(prefix string) string {
+	return fmt.Sprintf("%s-%d", prefix, testThreadSequence.Add(1))
+}
+
+// Ordinary proxy tests borrow the real, immutable built-in frontend catalog.
+func sharedProxyTestRegistry(t *testing.T) *toolRegistry {
+	t.Helper()
+	return proxyTestFixture.get(t)
+}
+func buildToolRegistryForTest(
+	t *testing.T,
+	ctx context.Context,
+) (*toolRegistry, error) {
+	t.Helper()
+	directory := t.TempDir()
+	if _, err := openMekugiReplayStore(filepath.Join(directory, "replay")); err != nil {
+		return nil, err
+	}
+	return buildToolRegistryAt(ctx,
+		filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
+}
+
+func (fixture *proxyRegistryFixture) get(t *testing.T) *toolRegistry {
+	t.Helper()
+	fixture.once.Do(func() {
+		fixture.directory, fixture.err = os.MkdirTemp("", "mekugi-proxy-tests-")
+		if fixture.err != nil {
+			return
+		}
+		if _, fixture.err = openMekugiReplayStore(filepath.Join(fixture.directory, "replay")); fixture.err != nil {
+			return
+		}
+		fixture.registry, fixture.err = buildToolRegistryAt(
+			t.Context(),
+			filepath.Join(fixture.directory, "runtime"),
+			filepath.Join(fixture.directory, "replay"),
+		)
+		if fixture.err == nil {
+			fixture.err = fixture.registry.installFrontends()
+		}
+	})
+	if fixture.err != nil {
+		t.Fatal(fixture.err)
+	}
+	return fixture.registry
+}
+
+func newProxyWithSharedTestRegistry(t *testing.T, registry *toolRegistry) *mekugiProxy {
+	t.Helper()
+	proxy := newMekugiProxy(registry)
+	t.Cleanup(func() {
+		if err := proxy.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	return proxy
+}
+
+func TestMain(m *testing.M) {
+	if os.Getenv(routerTestWorkerEnvironment) == "1" {
+		if filepath.Base(os.Args[0]) == "mread" && os.Getenv(routerTestWorkerUnscopedEnvironment) == "1" {
+			_ = os.Unsetenv("CODEX_THREAD_ID")
+		}
+		if handled, code := RunToolPluginWorker(
+			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
+		); handled {
+			os.Exit(code)
+		}
+	}
+	// Keep test publications and configuration outside the user's directories,
+	// including parallel cases. Tests that need settings supply their own config.
+	var stateDirectory string
+	var err error
+	// Child test executables must retain their parent's authenticated store path.
+	if os.Getenv("MEKUGI_ROUTER_TEST_STATE_ISOLATED") == "" {
+		stateDirectory, err = os.MkdirTemp("", "mekugi-test-state-")
+		if err == nil {
+			err = os.Setenv("XDG_STATE_HOME", stateDirectory)
+		}
+		if err == nil {
+			err = os.Setenv("XDG_CONFIG_HOME", filepath.Join(stateDirectory, "config"))
+		}
+		if err == nil {
+			err = os.Setenv("MEKUGI_ROUTER_TEST_STATE_ISOLATED", "1")
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
+	// Chroma lexers set regexp2 match timeouts, which lazily start one shared
+	// clock goroutine. Start it here so a synctest bubble never owns it.
+	clock := regexp2.MustCompile("x", regexp2.None)
+	clock.MatchTimeout = 1000 * time.Hour
+	if _, err := clock.MatchString("x"); err != nil {
+		fmt.Fprintln(os.Stderr, "start regexp2 timeout clock:", err)
+		os.Exit(1)
+	}
+	if err := os.Unsetenv(capturer.AXReadOutputEnvironment); err != nil {
+		fmt.Fprintln(os.Stderr, "isolate AX test instrumentation:", err)
+		os.Exit(1)
+	}
+	for _, name := range []string{
+		"OPENCODE_API_KEY",
+		"OPENCODE_GO_API_KEY",
+		"OPENCODE_ZEN_API_KEY",
+	} {
+		if err := os.Setenv(name, ""); err != nil {
+			fmt.Fprintf(os.Stderr, "isolate test environment variable %s: %v\n", name, err)
+			os.Exit(1)
+		}
+	}
+	code := m.Run()
+	if stateDirectory != "" {
+		err = os.RemoveAll(stateDirectory)
+	}
+	for _, fixture := range []*proxyRegistryFixture{&proxyTestFixture} {
+		if fixture.registry != nil {
+			err = errors.Join(err, fixture.registry.Close())
+		}
+		if fixture.directory != "" {
+			err = errors.Join(err, os.RemoveAll(fixture.directory))
+		}
+	}
+	if execTrackHelperDirectory != "" {
+		err = errors.Join(err, os.RemoveAll(execTrackHelperDirectory))
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "clean up router test fixtures: %v\n", err)
+		code = 1
+	}
+	os.Exit(code)
+}

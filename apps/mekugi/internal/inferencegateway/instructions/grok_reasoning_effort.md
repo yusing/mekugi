@@ -1,1 +1,0 @@
-For Grok overrides: low, medium, high, or xhigh.

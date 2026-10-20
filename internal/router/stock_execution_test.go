@@ -1,0 +1,439 @@
+package router
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
+)
+
+func TestStockSearchOutputPassesThroughRequestPreparation(t *testing.T) {
+	for _, shape := range []string{"native", "exec result", "exec stdout"} {
+		t.Run(shape, func(t *testing.T) {
+			workspace := t.TempDir()
+			var stdout strings.Builder
+			for file := range 6 {
+				name := fmt.Sprintf("result-%d.go", file)
+				if err := os.WriteFile(filepath.Join(workspace, name), nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				for line := range 8 {
+					fmt.Fprintf(&stdout, "%s:%d: needle %s\n", name, line+1, strings.Repeat("matching context ", 8))
+				}
+			}
+			command := map[string]any{"cmd": "rg -n needle .", "workdir": workspace}
+			call := map[string]any{"type": "function_call", "name": "exec_command", "call_id": "search", "arguments": string(mustTestJSON(t, command))}
+			output := map[string]any{"type": "function_call_output", "call_id": "search", "output": "Chunk ID: abc\nWall time: 0.1 seconds\nProcess exited with code 0\nOutput:\n" + stdout.String()}
+			tools := testExecResponsesTools()
+			input := []any{map[string]any{"role": "user", "content": "Find needle in result-0.go."}}
+			if shape != "native" {
+				tools = nil
+				input = append([]any{testCodeModeAdditionalTools(testCodeModeDescription)}, input...)
+				source := "text(await tools.exec_command(" + string(mustTestJSON(t, command)) + "))"
+				body := string(mustTestJSON(t, map[string]any{"exit_code": 0, "output": stdout.String(), "wall_time_seconds": 0.1}))
+				if shape == "exec stdout" {
+					source = "const r = await tools.exec_command(" + string(mustTestJSON(t, command)) + "); text(r.output)"
+					body = stdout.String()
+				}
+				call = map[string]any{"type": "custom_tool_call", "name": "exec", "call_id": "search", "input": source}
+				output = map[string]any{"type": "custom_tool_call_output", "call_id": "search", "output": []any{
+					map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+					map[string]any{"type": "input_text", "text": body},
+				}}
+			}
+			input = append(input, map[string]any{"role": "assistant", "content": "Looking for result-0.go."}, call, output)
+			request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-test", "input": input, "tools": tools}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			proxy := newManagedMekugiProxy(t)
+			attachTestReplayStore(t, proxy)
+			for range 2 { // Historical results remain identical on subsequent requests.
+				transform, err := proxy.prepareRequest(t.Context(), &request, "session", "thread", codexTurnMetadata{
+					RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
+				}, true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				transform.Close()
+				var projected []map[string]json.RawMessage
+				if err := json.Unmarshal(request.fields["input"], &projected); err != nil {
+					t.Fatal(err)
+				}
+				if !sameJSONValue(mustTestJSON(t, call), mustTestJSON(t, projected[len(projected)-2])) ||
+					!sameJSONValue(mustTestJSON(t, output), mustTestJSON(t, projected[len(projected)-1])) {
+					t.Fatal("stock search arguments or result changed")
+				}
+			}
+		})
+	}
+}
+
+func TestStreamedCodeModeObservedCallCommitsAtInputAndItemCompletion(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+	transform.sessionShell = "bash"
+	target := filepath.Join(workspace, "file.txt")
+	if err := os.WriteFile(target, []byte("old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := `text(await tools.exec_command({cmd: "touch file.txt"}));`
+	call := map[string]any{
+		"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec",
+		"input": source, "status": "completed",
+	}
+	for _, event := range []map[string]any{
+		{"type": "response.output_item.added", "item": map[string]any{
+			"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec", "status": "in_progress",
+		}},
+		{"type": "response.custom_tool_call_input.done", "item_id": "item", "call_id": "call", "input": source},
+	} {
+		if _, err := transform.TransformSSE(mustTestJSON(t, event)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history, exists := transform.local["call"]
+	if !exists || history.ExecObservation == nil || len(history.ExecObservation.Files) == 0 ||
+		history.ExecObservation.Files[0].watchStamp == "" {
+		if history.ExecObservation == nil {
+			t.Fatal("expected an observed baseline")
+		}
+		var paths, stamps []string
+		for _, file := range history.ExecObservation.Files {
+			paths = append(paths, file.Path)
+			stamps = append(stamps, file.watchStamp)
+		}
+		t.Fatalf("expected a live observed file: exists=%v class=%q paths=%v stamps=%v omitted=%d", exists, history.ExecObservation.Class, paths, stamps, len(history.ExecObservation.Omitted))
+	}
+	if _, found, err := proxy.replayStore.lookup(t.Context(), workspace, "call"); err != nil || !found {
+		t.Fatalf("input completion was not durable: found=%v err=%v", found, err)
+	}
+	visible, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
+		"type": "response.output_item.done", "item": call,
+	}))
+	if err != nil || len(visible) != 1 {
+		t.Fatalf("item completion conflicted with retained input: events=%d err=%v", len(visible), err)
+	}
+	retained, found, err := proxy.replayStore.lookup(t.Context(), workspace, "call")
+	if err != nil || !found || responses.StringField(retained.UpstreamItem, "input") != source ||
+		retained.ExecObservation == nil || len(retained.ExecObservation.Files) == 0 ||
+		retained.ExecObservation.Files[0].watchStamp != "" {
+		t.Fatalf("completed call lost its durable input or captured baseline: found=%v err=%v", found, err)
+	}
+}
+
+func TestStreamedCodeModeEmptyDirectoryListingCommits(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+	transform.sessionShell = "bash"
+	if err := os.Mkdir(filepath.Join(workspace, "emptydir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	source := `text(await tools.exec_command({cmd: "rm -rf emptydir"}));`
+	call := map[string]any{
+		"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec",
+		"input": source, "status": "completed",
+	}
+	for _, event := range []map[string]any{
+		{"type": "response.output_item.added", "item": map[string]any{
+			"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec", "status": "in_progress",
+		}},
+		{"type": "response.custom_tool_call_input.done", "item_id": "item", "call_id": "call", "input": source},
+	} {
+		if _, err := transform.TransformSSE(mustTestJSON(t, event)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history := transform.local["call"]
+	if history.ExecObservation == nil || len(history.ExecObservation.Listings) == 0 ||
+		history.ExecObservation.Listings[0].Entries == nil {
+		t.Fatal("fixture did not capture the empty directory listing")
+	}
+	if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
+		"type": "response.output_item.done", "item": call,
+	})); err != nil {
+		t.Fatalf("completion conflicted with retained empty listing: %v", err)
+	}
+}
+
+func TestCompletedCodeModeCallInputChangeHasSafeDiagnostic(t *testing.T) {
+	transform, _, _, _ := newMekugiTestTransform(t)
+	transform.local["call"] = mekugiHistory{ToolName: "exec", Script: "original input"}
+	_, err := transform.TransformSSE(responses.MustMarshalJSON(map[string]any{
+		"type": "response.output_item.done",
+		"item": map[string]any{"type": "custom_tool_call", "id": "item", "call_id": "call",
+			"name": "exec", "input": "changed private input", "status": "completed"},
+	}))
+	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
+	if !ok || diagnostic.code != "mekugi_sse:code_mode_call_input_changed" ||
+		strings.Contains(diagnostic.summary, "private input") {
+		t.Fatalf("completed call diagnostic = %#v, error = %v", diagnostic, err)
+	}
+}
+
+func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
+	guide := newManagedMekugiProxy(t).registry.frontendGuidance
+	t.Run("exec", func(t *testing.T) {
+		fields := map[string]json.RawMessage{
+			"tools": responses.MustMarshalJSON([]any{map[string]any{
+				"type": "function", "name": "lookup", "description": "unchanged",
+				"parameters": map[string]any{"type": "object"}, "strict": true,
+			}}),
+			"input": responses.MustMarshalJSON([]any{testCodeModeAdditionalTools(testCodeModeDescription)}),
+		}
+		var before []map[string]json.RawMessage
+		if err := json.Unmarshal(fields["tools"], &before); err != nil {
+			t.Fatal(err)
+		}
+		execution, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide)
+		if err != nil || execution == nil {
+			t.Fatalf("execution = %+v, %v", execution, err)
+		}
+		var after []map[string]json.RawMessage
+		if err := json.Unmarshal(fields["tools"], &after); err != nil {
+			t.Fatal(err)
+		}
+		if !sameJSONValue(responses.MustMarshalJSON(before), responses.MustMarshalJSON(after)) {
+			t.Fatalf("unrelated stock tool changed: before=%s after=%s", responses.MustMarshalJSON(before), responses.MustMarshalJSON(after))
+		}
+		if !strings.Contains(string(fields["input"]), frontendGuidanceStart) ||
+			!strings.Contains(string(fields["input"]), "redirect to a file only when the task needs that artifact, not for display preference") {
+			t.Fatalf("exec contract or frontend guidance missing: %s", fields["input"])
+		}
+	})
+
+	t.Run("unsupported execution", func(t *testing.T) {
+		fields := map[string]json.RawMessage{"tools": responses.MustMarshalJSON([]any{map[string]any{"type": "function", "name": "exec_command"}})}
+		before := responses.MustMarshalJSON(fields)
+		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err == nil || !strings.Contains(err.Error(), "required exec interface") {
+			t.Fatalf("unsupported model accepted: %v", err)
+		}
+		if !sameJSONValue(before, responses.MustMarshalJSON(fields)) {
+			t.Fatal("rejected catalog was changed")
+		}
+	})
+
+}
+
+func TestStockExecutionNamespacesUseOneInterface(t *testing.T) {
+	guide := newManagedMekugiProxy(t).registry.frontendGuidance
+	for _, additional := range []bool{false, true} {
+		for _, name := range []string{"exec", "exec_command", "apply_patch"} {
+			kind := "custom"
+			if name == "exec_command" {
+				kind = "function"
+			}
+			definitions := []any{map[string]any{"type": "namespace", "name": "functions", "tools": []any{
+				map[string]any{"type": kind, "name": name, "description": testCodeModeDescription},
+			}}}
+			fields := map[string]json.RawMessage{"tools": responses.MustMarshalJSON(definitions)}
+			if additional {
+				fields = map[string]json.RawMessage{"input": responses.MustMarshalJSON([]any{map[string]any{"type": "additional_tools", "role": "developer", "tools": definitions}})}
+			}
+			owner, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide)
+			if name != "exec" {
+				if err == nil || !strings.Contains(err.Error(), "required exec interface") {
+					t.Fatalf("additional=%v %s accepted: %v", additional, name, err)
+				}
+				continue
+			}
+			if err != nil || owner == nil || !strings.Contains(string(responses.MustMarshalJSON(fields)), frontendGuidanceStart) {
+				t.Fatalf("additional=%v exec guidance missing: %v", additional, err)
+			}
+			before := responses.MustMarshalJSON(fields)
+			if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(fields)) {
+				t.Fatalf("namespace refresh changed stock catalog: %v", err)
+			}
+		}
+	}
+
+}
+
+func TestStockExecutionAllowsHostSelectedToolSubset(t *testing.T) {
+	guide := newManagedMekugiProxy(t).registry.frontendGuidance
+	for _, tools := range [][]any{
+		{map[string]any{"type": "function", "name": "collaboration.wait_agent"}},
+	} {
+		fields := map[string]json.RawMessage{"tools": responses.MustMarshalJSON(tools)}
+		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil {
+			t.Fatalf("stock subset %s: %v", fields["tools"], err)
+		}
+	}
+	description := "Run JS with tools.exec_command and collaboration tools."
+	fields := map[string]json.RawMessage{
+		"tools": responses.MustMarshalJSON([]any{}),
+		"input": responses.MustMarshalJSON([]any{testCodeModeAdditionalTools(description)}),
+	}
+	if result, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil || result == nil {
+		t.Fatalf("exec subset = %+v, %v", result, err)
+	}
+	fields = map[string]json.RawMessage{
+		"input": responses.MustMarshalJSON([]any{testCodeModeAdditionalTools("Run JS with tools.apply_patch.\n" + guide)}),
+	}
+	if result, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil || result == nil {
+		t.Fatalf("patch-only exec subset = %+v, %v", result, err)
+	}
+	if strings.Contains(string(fields["input"]), "mekugi-frontends:start") {
+		t.Fatalf("patch-only exec retained irrelevant frontend guide: %s", fields["input"])
+	}
+}
+
+func TestCodeModeStockBatchPassesThroughUnchanged(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+	patch := "*** Begin Patch\n*** Add File: batched.txt\n+batched\n*** End Patch\n"
+	source := `await Promise.all([tools.apply_patch(` +
+		string(responses.MustMarshalJSON(patch)) + `), tools.exec_command({cmd: "printf ready"})]);`
+	item := map[string]any{
+		"type": "custom_tool_call", "id": "batch-item", "call_id": "batch-call",
+		"name": "exec", "input": source, "status": "completed",
+	}
+	response := responses.MustMarshalJSON(map[string]any{"id": "response", "status": "completed", "output": []any{item}})
+	got, err := transform.TransformJSON(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Output []map[string]json.RawMessage `json:"output"`
+	}
+	if err := json.Unmarshal(got, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Output) != 1 || responses.StringField(decoded.Output[0], "input") != source {
+		t.Fatalf("stock JavaScript changed: %s", got)
+	}
+	if history, found := transform.local["batch-call"]; !found || len(history.NativePatches) != 1 {
+		t.Fatalf("stock batch was not retained before exposure: found=%v history=%+v", found, history)
+	}
+	history, found, err := transform.proxy.replayStore.lookup(transform.ctx, workspace, "batch-call")
+	if err != nil || !found || len(history.NativePatches) != 1 || history.NativePatches[0].Input != patch {
+		t.Fatalf("stock batch observation = %+v, found=%v, err=%v", history.NativePatches, found, err)
+	}
+}
+
+func TestCodeModeOpaqueSourcePassesThroughUnchanged(t *testing.T) {
+	for _, source := range []string{
+		`await lookup({query:"Unrecognized helper"});`,
+		`text("lookup({query:'read'})"); // lookup({query:'read'})`,
+		`const broken = ; lookup({query:"read"});`,
+	} {
+		for _, stream := range []bool{false, true} {
+			transform, _, _, _ := newMekugiTestTransform(t)
+			call := map[string]any{"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec", "input": source, "status": "completed"}
+			var result []byte
+			if stream {
+				for _, event := range []map[string]any{
+					{"type": "response.output_item.added", "item": map[string]any{"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec", "status": "in_progress"}},
+					{"type": "response.custom_tool_call_input.done", "item_id": "item", "call_id": "call", "input": source},
+					{"type": "response.output_item.done", "item": call},
+				} {
+					events, err := transform.TransformSSE(mustTestJSON(t, event))
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, raw := range events {
+						var decoded struct {
+							Item map[string]json.RawMessage `json:"item"`
+						}
+						if json.Unmarshal(raw, &decoded) == nil && responses.StringField(decoded.Item, "status") == "completed" {
+							result = decoded.Item["input"]
+						}
+					}
+				}
+			} else {
+				raw, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"status": "completed", "output": []any{call}}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var decoded struct {
+					Output []map[string]json.RawMessage `json:"output"`
+				}
+				if err := json.Unmarshal(raw, &decoded); err != nil || len(decoded.Output) != 1 {
+					t.Fatalf("stock call output = %s, %v", raw, err)
+				}
+				result = decoded.Output[0]["input"]
+			}
+			var forwarded string
+			if json.Unmarshal(result, &forwarded) != nil || forwarded != source {
+				t.Fatalf("stock source changed: %s", result)
+			}
+		}
+	}
+}
+
+func TestStockExecCommandContinuationUsesWriteStdin(t *testing.T) {
+	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+		"input": responses.MustMarshalJSON([]any{
+			continuationTestCall(nativeExecCommandToolName, "run-call", `{"cmd":"sleep 100"}`),
+			continuationTestOutput("run-call", "Wall time: 0.1 seconds\nProcess running with session ID 42\nOutput:\npartial"),
+		}),
+	}}
+	projectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(request.fields["input"], &items); err != nil {
+		t.Fatal(err)
+	}
+	texts := executionOutputTexts(items[1]["output"])
+	if len(texts) != 2 || !strings.Contains(texts[1], "tools.write_stdin") || !strings.Contains(texts[1], `"session_id":42`) {
+		t.Fatalf("stock continuation = %v", texts)
+	}
+}
+
+func TestStockWaitArgumentsPassThrough(t *testing.T) {
+	transform, _, _, _ := newMekugiTestTransform(t)
+	arguments := `{"cell_id":"cell-1","yield_time_ms":1}`
+	call := map[string]any{
+		"type": "function_call", "id": "wait-item", "call_id": "wait-call",
+		"namespace": "functions", "name": "wait", "arguments": arguments,
+	}
+	response := responses.MustMarshalJSON(map[string]any{"status": "completed", "output": []any{call}})
+	visible, err := transform.TransformJSON(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Output []map[string]json.RawMessage `json:"output"`
+	}
+	if err := json.Unmarshal(visible, &decoded); err != nil || len(decoded.Output) != 1 ||
+		responses.StringField(decoded.Output[0], "arguments") != arguments {
+		t.Fatalf("stock wait arguments changed: %s, %v", visible, err)
+	}
+	for _, event := range []map[string]any{
+		{"type": "response.output_item.added", "item": call},
+		{"type": "response.output_item.done", "item": call},
+	} {
+		wire := responses.MustMarshalJSON(event)
+		stream, err := transform.TransformSSE(wire)
+		if err != nil || len(stream) != 1 || string(stream[0]) != string(wire) {
+			t.Fatalf("stock streaming wait changed: %s, %v", stream, err)
+		}
+	}
+}
+
+func TestCodeModeWriteStdinArgumentsPassThrough(t *testing.T) {
+	transform, _, _, _ := newMekugiTestTransform(t)
+	source := `text(await tools.write_stdin({session_id:42,chars:"",yield_time_ms:1}));`
+	call := map[string]any{
+		"type": "custom_tool_call", "id": "code-wait-item", "call_id": "code-wait-call",
+		"name": "exec", "input": source, "status": "completed",
+	}
+	visible, err := transform.TransformJSON(responses.MustMarshalJSON(map[string]any{"status": "completed", "output": []any{call}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Output []map[string]json.RawMessage `json:"output"`
+	}
+	if err := json.Unmarshal(visible, &decoded); err != nil || len(decoded.Output) != 1 ||
+		responses.StringField(decoded.Output[0], "input") != source {
+		t.Fatalf("exec write_stdin changed: %s, %v", visible, err)
+	}
+}

@@ -1,0 +1,726 @@
+package router
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/ui/diffview"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+)
+
+// The native shell owns terminal presentation; Codex app-server owns execution.
+type terminalUI struct {
+	selection                                      *terminalSelection
+	clipboard                                      string
+	pasteEnd                                       int
+	hostReply                                      []byte
+	hostReplyDiscard, hostReplyEscape              bool
+	diffFailure                                    string
+	output                                         *outputDialog // Open over both panes, taking every key.
+	diffScreen                                     *nativeDiffScreen
+	diff                                           *liveDiffTerminalController
+	agents                                         *liveActivityView
+	main                                           *appServerUI
+	auto                                           *autoLiveDiff
+	width, height, split, horizontal, rosterHeight int
+	focus, drag                                    int // 0 transcript/composer, 1 diff, 3 roster; drag 1 main, 2 auxiliary, 3 files, 4 roster
+	diffOpen                                       bool
+	diffUnseen                                     bool // Saved changes arrived while Diff was closed.
+	liveDock                                       diffview.PreviewPane
+	livePending                                    map[string]nativePendingPreview
+	liveHidden                                     bool // Presentation only, local to this frontend session.
+	prefix                                         bool
+	sequenceAt                                     time.Time
+	sequence, agentEscape                          string
+	paste                                          bool
+	layout                                         terminalLayout
+	paneTabs                                       [4]terminalRect // Visible status-bar selectors, indexed by pane.
+	paintedRows                                    []string
+	paintedCopy                                    [][]activityui.CopySpan
+	paintedWidth                                   int
+	faint                                          bool // Output capability is local to this terminal, not request or global state.
+}
+
+// The native Diff emulator is allocated only when its pane is painted.
+type nativeDiffScreen struct{ *vt.Emulator }
+
+func (s *nativeDiffScreen) Close() error {
+	if s.Emulator == nil {
+		return nil
+	}
+	err := s.Emulator.Close()
+	s.Emulator = nil
+	return err
+}
+
+type terminalRect struct{ x, y, w, h int }
+
+type terminalLayout struct {
+	codex, diff, roster, live              terminalRect
+	mainSkills                             terminalRect // Main's active-skill count in its title.
+	vertical, horizontal, rosterHorizontal int
+}
+
+func (r terminalRect) contains(x, y int) bool {
+	return r.w > 0 && r.h > 0 && x >= r.x && x < r.x+r.w && y >= r.y && y < r.y+r.h
+}
+
+// Decode once before routing. In particular, mouse reports and bracketed paste
+// must never leak their payload into pane commands or layout shortcuts.
+func (u *terminalUI) key(key byte) error {
+	if u.output != nil {
+		u.prefix = false
+	}
+	// Paste payload is opaque, including incomplete OSC/CSI and shortcut bytes.
+	// Forward it immediately; only the exact end marker changes parser state.
+	if u.paste {
+		const end = "\x1b[201~"
+		if key == end[u.pasteEnd] {
+			u.pasteEnd++
+		} else if key == 27 {
+			u.pasteEnd = 1
+		} else {
+			u.pasteEnd = 0
+		}
+		if u.pasteEnd == len(end) {
+			u.paste = false
+			u.pasteEnd = 0
+		}
+		// The status panel and output dialog are not input destinations. Keep
+		// paste termination entirely in this decoder, including the final marker byte.
+		if u.output != nil || u.main != nil && (u.main.statusPanel != nil || u.main.resumePicker != nil) {
+			return nil
+		}
+		if u.focus == 0 {
+			// Bypass shell shortcuts: even the ESC in the paste terminator
+			// belongs to the composer, not selection dismissal or transcript follow.
+			_, err := u.main.key(key)
+			return err
+		}
+		return nil
+	}
+
+	// Terminal OSC replies are never pane input; color reports style the panes.
+	if u.hostReply != nil {
+		done := key == 7 || u.hostReplyEscape && key == '\\'
+		u.hostReplyEscape = key == 27
+		if len(u.hostReply) < 4<<20 && !u.hostReplyDiscard {
+			u.hostReply = append(u.hostReply, key)
+		} else {
+			u.hostReplyDiscard = true
+		}
+		if !done {
+			return nil
+		}
+		if !u.hostReplyDiscard {
+			u.terminalColor(string(u.hostReply))
+		}
+		u.hostReply = nil
+		u.hostReplyDiscard = false
+		u.hostReplyEscape = false
+		return nil
+	}
+	if u.sequence == "\x1b" && key == ']' {
+		u.sequence = ""
+		u.hostReply = []byte{27, ']'}
+		return nil
+	}
+
+	if u.sequence != "" {
+		u.sequence += string(key)
+		if len(u.sequence) > 128 {
+			u.sequence = ""
+			return nil
+		}
+		s := u.sequence
+		if s == "\x1b[" || s == "\x1bO" {
+			return nil
+		}
+		if len(s) > 2 && s[1] == '[' && (key < 0x40 || key > 0x7e) {
+			return nil
+		}
+		u.sequence = ""
+		if s == "\x1b[I" || s == "\x1b[O" {
+			if u.main != nil && u.main.notifications != nil {
+				u.main.notifications.focused = s == "\x1b[I"
+			}
+			if s == "\x1b[O" {
+				u.clearSkillsHover()
+			}
+			return nil
+		}
+		if s == "\x1b[200~" {
+			u.paste = true
+			u.pasteEnd = 0
+			u.prefix = false
+			if u.focus == 0 {
+				return u.send(s)
+			}
+			return nil
+		}
+		if s == "\x1b[201~" {
+			u.paste = false
+			if u.focus == 0 {
+				return u.send(s)
+			}
+			return nil
+		}
+		if strings.HasPrefix(s, "\x1b[<") {
+			if u.main != nil && u.main.keybindings {
+				u.main.keybindings = false
+				return nil
+			}
+			return u.mouse(s)
+		}
+		if u.prefix {
+			u.prefix = false
+			u.resize(s)
+			return nil
+		}
+		return u.send(s)
+	}
+	if key != 27 && u.output == nil && u.selectionKey(string(key)) {
+		return nil
+	}
+	if key == 27 {
+		u.sequence = "\x1b"
+		u.sequenceAt = time.Now()
+		return nil
+	}
+	if u.output != nil {
+		return u.send(string([]byte{key}))
+	}
+	if u.prefix {
+		u.prefix = false
+		switch key {
+		case 2:
+			return u.send(string([]byte{2}))
+		case '1', '2':
+			u.selectNativePane(int(key - '1'))
+		case '3':
+			u.selectNativePane(3)
+		case 'o':
+			return u.main.loadOlderActivity()
+		case 'q':
+			if u.main != nil && u.main.composerReadOnly() {
+				u.selectNativePane(0)
+			}
+			if u.main != nil && !u.main.openApprovals() {
+				u.main.openQuestions()
+			}
+		case '!':
+			u.openErrors()
+		case 'e':
+			u.liveDock.NextBatch(u.main.transcriptCaller())
+		case 'r':
+			u.liveDock.ScrollBatch(u.main.transcriptCaller(), 'r')
+		default:
+			u.resize(string(key))
+		}
+		return nil
+	}
+	if key == 2 {
+		if u.main != nil {
+			u.main.keybindings = false
+		}
+		u.prefix = true
+		return nil
+	}
+	return u.send(string([]byte{key}))
+}
+
+func (u *terminalUI) resize(key string) {
+	if key == "\x1b[5~" || key == "\x1b[6~" {
+		if u.layout.live.h > 0 {
+			caller := u.main.transcriptCaller()
+			action := byte('b')
+			if key == "\x1b[6~" {
+				action = ' '
+			}
+			u.liveDock.ScrollBatch(caller, action)
+			return
+		}
+		if key == "\x1b[5~" {
+			u.main.transcriptView().scrollKey('b')
+		} else {
+			u.main.transcriptView().scrollKey(' ')
+		}
+		return
+	}
+	if u.split == 0 {
+		u.split = max(30, u.width/2)
+	}
+	if u.horizontal == 0 {
+		u.horizontal = max(4, (u.height-1)*3/5)
+		if u.layout.horizontal > 0 {
+			u.horizontal = u.layout.horizontal
+		}
+	}
+	// The bottom roster leaves the columns above it at least nine rows.
+	columns := u.height - 1
+	if u.layout.rosterHorizontal >= 0 {
+		columns = u.layout.rosterHorizontal
+	}
+	if u.focus == 3 && (key == "\x1b[A" || key == "k" || key == "\x1b[B" || key == "j") {
+		if u.rosterHeight == 0 {
+			u.rosterHeight = max(3, (u.height-1)/5)
+		}
+		if key == "\x1b[A" || key == "k" {
+			u.rosterHeight++
+		} else {
+			u.rosterHeight--
+		}
+		u.rosterHeight = min(max(3, u.rosterHeight), max(3, u.height-11))
+		return
+	}
+	switch key {
+	case "\x1b[D", "h":
+		u.split -= 3
+	case "\x1b[C", "l":
+		u.split += 3
+	case "\x1b[A", "k":
+		u.horizontal--
+	case "\x1b[B", "j":
+		u.horizontal++
+	case "[", "]":
+		n := &u.diff.navigation
+		if n.Columns == 0 {
+			n.Columns = max(25, u.layout.diff.w/4)
+		}
+		if key == "[" {
+			n.Columns -= 2
+		} else {
+			n.Columns += 2
+		}
+		n.Columns = max(16, n.Columns)
+		u.diff.dirty = true
+	}
+	u.split = min(max(30, u.split), max(30, u.width-41))
+	u.horizontal = min(max(4, u.horizontal), max(4, columns-5))
+}
+
+// terminalColor applies OSC 10/11 default-color reports to every pane, as the
+// standalone Activity and diff views did for their own queries.
+func (u *terminalUI) terminalColor(reply string) {
+	views := []*liveActivityView{u.agents}
+	if u.main != nil {
+		views = append(views, u.main.view)
+	}
+	if fg, ok := livediff.ForegroundColor(reply); ok {
+		for _, view := range views {
+			if view != nil {
+				view.painter.Colors.Foreground, view.painter.Colors.HasForeground = fg, true
+			}
+		}
+	}
+	theme, ok := livediff.BackgroundTheme(reply)
+	if !ok {
+		return
+	}
+	bg, _ := livediff.BackgroundColor(reply)
+	for _, view := range views {
+		if view != nil {
+			view.painter.Theme = theme
+			view.painter.Colors.Background, view.painter.Colors.HasBackground = bg, true
+		}
+	}
+	if u.diff != nil {
+		u.diff.theme, u.diff.background, u.diff.backgrounded = theme, bg, true
+		u.diff.dirty = true
+	}
+}
+
+func (u *terminalUI) send(s string) error {
+	if u.output != nil {
+		u.outputKey(s)
+		return nil
+	}
+	if s != "\x1b" && u.selectionKey(s) {
+		return nil
+	}
+	if s == "\x1b" && u.main != nil && u.main.historyLoading != nil {
+		return u.main.cancelOlderActivity()
+	}
+	if u.main != nil && u.focus == 0 && u.main.composerReadOnly() {
+		transcript := u.main.transcriptView()
+		switch s {
+		case "\x05":
+			transcript.toggleExpansion()
+		case "\x1b[5~":
+			transcript.scrollKey('b')
+		case "\x1b[6~":
+			transcript.scrollKey(' ')
+		case "\x1b":
+			if !u.selectionKey(s) {
+				transcript.follow()
+			}
+		}
+		return nil
+	}
+	if u.main != nil && u.focus == 0 && u.main.statusPanel != nil {
+		if u.selection != nil && !u.selection.dragging {
+			u.selection = nil
+			if s == "\x1b" {
+				return nil
+			}
+		}
+		u.main.statusPanelKey(s)
+		return nil
+	}
+	if u.main != nil && u.focus == 0 && u.main.resumePicker != nil {
+		return u.main.resumePickerKey(s)
+	}
+
+	if s == "\x1b" && u.main != nil && u.focus == 0 && !u.main.paste {
+		if handled, err := u.main.approvalKey(s); handled {
+			return err
+		}
+		if handled, err := u.main.questionKey(s); handled {
+			return err
+		}
+	}
+	if s == "\x1b" && u.main != nil && u.focus == 0 && u.main.keybindings {
+		u.main.keybindings = false
+		return nil
+	}
+	if s == "\x1b" && u.main != nil && u.focus == 0 && u.main.pickerKey(s) {
+		return nil
+	}
+	if u.main != nil && u.focus == 0 && !u.main.paste {
+		if s == "\x1b" && u.selectionKey(s) {
+			return nil
+		}
+		if handled, err := u.main.btwKey(s); handled {
+			u.selection = nil
+			return err
+		}
+	}
+
+	if s == "\x1b" && u.main != nil && !u.main.keybindings {
+		var transcript *liveActivityView
+		if u.focus == 0 {
+			transcript = u.main.transcriptView()
+		}
+		if transcript != nil && !transcript.following {
+			transcript.follow()
+			u.selection = nil
+			u.agentEscape = ""
+			return nil
+		}
+	}
+	if u.selection != nil && !u.selection.dragging {
+		if s == "\x1b" && u.selectionKey(s) {
+			return nil
+		}
+		// Editing or navigating dismisses the contextual actions.
+		u.selection = nil
+	}
+
+	if s == "\x1b" && u.focus == 3 {
+		u.focus = 0
+		return nil
+	}
+	if s == "\x1b" && u.focus == 0 && u.main != nil && !u.main.paste {
+		if u.main.turn != "" || u.main.starting() || u.main.submission.text != "" || len(u.main.unsent)+len(u.main.queued) > 0 {
+			return u.main.keyboardEscape()
+		}
+		return nil
+	}
+
+	if u.focus == 0 {
+		for _, key := range []byte(s) {
+			quit, err := u.main.key(key)
+			if err != nil {
+				return err
+			}
+			u.main.quitRequested = u.main.quitRequested || quit
+		}
+		return nil
+	}
+	for _, key := range []byte(s) {
+		if u.focus == 1 {
+			if key == 'e' && u.main != nil && u.diff.diffMode && !u.diff.help && u.diff.escape == "" {
+				n := &u.diff.navigation
+				if n.Focused && !n.Filtering && !n.ChangesTab && n.Cursor >= 0 && n.Cursor < len(n.Entries) {
+					if file := n.Entries[n.Cursor].File; file >= 0 && file < len(u.diff.files) {
+						return &openFileEditor{path: u.diff.files[file].Path}
+					}
+				}
+			}
+			if u.diff.handleKey(key) {
+				u.diffOpen = false
+				u.focus = 0
+			}
+		} else {
+			only, selected := u.agents.only, u.agents.selected
+			var quit bool
+			u.agentEscape, quit = u.agents.handleRosterKey(u.agentEscape, key)
+			u.showRosterPick(only, selected)
+			if quit {
+				u.focus = 0
+			}
+		}
+	}
+	return nil
+}
+
+func (u *terminalUI) mouse(s string) error {
+	fields := strings.Split(s[3:len(s)-1], ";")
+	if len(fields) != 3 {
+		return nil
+	}
+	var v [3]int
+	for i, f := range fields {
+		n, err := strconv.Atoi(f)
+		if err != nil || n < 0 {
+			return nil
+		}
+		v[i] = n
+	}
+	button, x, y := v[0], v[1]-1, v[2]-1
+	release := s[len(s)-1] == 'm'
+	if u.main != nil {
+		u.main.view.skillsHover = ""
+		if button == 35 && !release && u.output == nil && u.layout.mainSkills.contains(x, y) {
+			u.main.view.skillsHover = "Main"
+		}
+	}
+	if u.agents != nil && (u.output != nil || !u.layout.roster.contains(x, y)) {
+		u.agents.skillsHover = ""
+	}
+	if u.output != nil {
+		u.outputMouse(button, x, y, release)
+		return nil
+	}
+	if u.selection == nil && u.drag == 0 {
+		for pane, rect := range u.paneTabs {
+			if rect.contains(x, y) {
+				if button == 0 && !release {
+					u.prefix = false
+					u.selectNativePane(pane)
+				}
+				return nil
+			}
+		}
+	}
+	if u.main != nil && !u.main.composerReadOnly() && u.main.statusPanel != nil && u.layout.codex.contains(x, y) {
+		if u.selectionMouse(button, x, y, release) {
+			return nil
+		}
+		if !release {
+			switch button &^ 28 {
+			case 0:
+				u.focus = 0
+			case 64:
+				u.main.statusPanelKey("\x1b[A")
+			case 65:
+				u.main.statusPanelKey("\x1b[B")
+			}
+		}
+		return nil
+	}
+	if u.main != nil && !u.main.composerReadOnly() && u.main.resumePicker != nil && u.layout.codex.contains(x, y) {
+		if release {
+			return nil
+		}
+		if button&^28 == 0 {
+			u.focus = 0
+		}
+		return u.main.resumePickerMouse(button&^28, y-u.layout.codex.y)
+	}
+	if u.main != nil && u.main.questions.rect.contains(x-u.layout.codex.x, y-u.layout.codex.y) {
+		if !release && button&^28 == 0 {
+			u.main.openQuestions()
+		}
+		return nil
+	}
+	if u.main != nil && u.main.pickerVisible() && u.main.picker.rect.contains(x-u.layout.codex.x, y-u.layout.codex.y) {
+		if !release {
+			switch button &^ 28 {
+			case 0:
+				p := &u.main.picker
+				row := y - u.layout.codex.y - p.rect.y - p.rowStart
+				if row >= 0 && row < p.rowCount {
+					p.selected = p.top + row
+					if p.target.kind == '/' {
+						return u.send("\r")
+					}
+					u.main.pickerKey("\r")
+					u.main.refreshPicker()
+				}
+			case 64:
+				u.main.pickerKey("\x10")
+			case 65:
+				u.main.pickerKey("\x0e")
+			}
+		}
+		return nil
+	}
+	if u.selectionMouse(button, x, y, release) {
+		return nil
+	}
+	if u.selection == nil && u.drag == 0 && u.main != nil && u.main.composerNoticeMouse(button, x-u.layout.codex.x, y-u.layout.codex.y, release) {
+		return nil
+	}
+	if u.main != nil && u.main.btw != nil && !release && button&64 != 0 {
+		r := u.main.btw.rect
+		r.x += u.layout.codex.x
+		r.y += u.layout.codex.y
+		if r.contains(x, y) {
+			delta := outputDialogWheelRows
+			if button&1 != 0 {
+				delta = -delta
+			}
+			u.main.btw.scroll = max(0, u.main.btw.scroll+delta)
+			return nil
+		}
+	}
+	if release && u.drag != 0 {
+		u.drag = 0
+		return nil
+	}
+	if button&32 != 0 && u.drag != 0 {
+		switch u.drag {
+		case 1:
+			u.split = x
+		case 2:
+			u.horizontal = y
+		case 4:
+			u.rosterHeight = min(max(3, u.height-y-2), max(3, u.height-11))
+		case 3:
+			u.diff.navigation.Columns = max(16, x-u.layout.diff.x)
+			u.diff.dirty = true
+		}
+		return nil
+	}
+	if button&^28 == 0 && !release {
+		switch {
+		case x == u.layout.vertical && u.layout.vertical >= 0 && (u.layout.rosterHorizontal < 0 || y < u.layout.rosterHorizontal):
+			u.drag = 1
+			return nil
+		case y == u.layout.rosterHorizontal && u.layout.rosterHorizontal >= 0:
+			u.drag = 4
+			return nil
+		case y == u.layout.horizontal && x > u.layout.vertical && u.layout.horizontal >= 0:
+			u.drag = 2
+			return nil
+		case u.layout.diff.contains(x, y) && u.diff.diffMode && u.diff.navigation.Width(u.layout.diff.w) > 0 && x-u.layout.diff.x == u.diff.navigation.Width(u.layout.diff.w):
+			u.drag = 3
+			return nil
+		}
+	}
+	if u.layout.live.contains(x, y) {
+		if !release {
+			switch button &^ 28 {
+			case 0:
+				u.focus = 0
+			case 64:
+				u.liveDock.ScrollBatch(u.main.transcriptCaller(), terminalui.PaneWheelUp)
+			case 65:
+				u.liveDock.ScrollBatch(u.main.transcriptCaller(), terminalui.PaneWheelDown)
+			}
+		}
+		return nil
+	}
+	if button&^28 == 0 && !release && u.main != nil && u.layout.mainSkills.contains(x, y) {
+		u.focus = 0
+		u.openSkills(u.main.view, "Main")
+		return nil
+	}
+	pane := -1
+	var r terminalRect
+	switch {
+	case u.layout.codex.contains(x, y):
+		pane = 0
+		r = u.layout.codex
+	case u.layout.diff.contains(x, y):
+		pane = 1
+		r = u.layout.diff
+	case u.layout.roster.contains(x, y):
+		pane = 3
+		r = u.layout.roster
+	}
+	if pane < 0 {
+		return nil
+	}
+	if pane != 1 && u.diff != nil && u.diff.clearHover() {
+		u.diff.dirty = true
+	}
+
+	if button&^28 == 0 && !release {
+		u.focus = pane
+	}
+	translated := fmt.Sprintf("\x1b[<%d;%d;%dM", button, x-r.x+1, y-r.y+1)
+	if pane == 0 {
+		if !release {
+			action := byte(0)
+			switch button &^ 28 {
+			case 0:
+				action = '\r'
+			case 35:
+				action = 'h'
+			case 64:
+				action = 'k'
+			case 65:
+				action = 'j'
+			}
+			view := u.main.transcriptView()
+			view.handleMouse(action, y-r.y+1, x-r.x+1)
+			u.openRequested(view)
+		}
+		return nil
+	}
+	if release {
+		return nil
+	}
+	if pane == 1 {
+		for _, key := range []byte(translated) {
+			u.diff.handleKey(key)
+		}
+		return nil
+	}
+	action := byte(0)
+	switch button &^ 28 {
+	case 0:
+		action = '\r'
+	case 35:
+		action = 'h'
+	case 64:
+		action = 'k'
+	case 65:
+		action = 'j'
+	}
+	if pane == 3 {
+		if action == 'j' {
+			u.agents.scrollRoster(1)
+		} else if action == 'k' {
+			u.agents.scrollRoster(-1)
+		} else {
+			only, selected := u.agents.only, u.agents.selected
+			u.agents.pointAgent(action, y-r.y+1, x-r.x+1)
+			if agent := u.agents.skillsRequest; agent != "" {
+				u.agents.skillsRequest = ""
+				u.openSkills(u.agents, agent)
+			}
+			u.showRosterPick(only, selected)
+		}
+	} else {
+		u.agents.handleMouse(action, y-r.y+1, x-r.x+1)
+		u.openRequested(u.agents)
+	}
+	return nil
+}
+
+func (u *terminalUI) clearSkillsHover() {
+	if u.main != nil {
+		u.main.view.skillsHover = ""
+	}
+	if u.agents != nil {
+		u.agents.skillsHover = ""
+	}
+}

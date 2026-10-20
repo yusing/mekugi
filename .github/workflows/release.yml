@@ -36,10 +36,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7.0.0
         with:
-          go-version-file: go.work
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          go-version-file: go.mod
       - uses: actions/setup-node@v7.0.0
         if: matrix.platform == 'linux_amd64'
         with:
@@ -52,9 +49,6 @@ jobs:
       - name: Test offline suite
         if: matrix.platform == 'linux_amd64'
         run: make test TEST_FLAGS=-count=1
-      - name: Check generated module reference
-        if: matrix.platform == 'linux_amd64'
-        run: make check-generated
       - name: Install lint tools
         if: matrix.platform == 'linux_amd64'
         run: |
@@ -65,10 +59,10 @@ jobs:
         run: make lint
       - name: Test commands
         if: matrix.platform != 'linux_amd64'
-        run: make test TEST_PACKAGES='./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec'
+        run: make test TEST_PACKAGES='./cmd/mekugi ./cmd/mekugi-exec'
       - name: Test welcome and linked version
         run: |
-          MEKUGI_TEST_BUILD_VERSION="$BUILD_TAG" make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^(TestMekugi(BuildVersion|LinkedBuildVersion)|TestNativeWelcome|TestUISnapshotNativeWelcome)' TEST_FLAGS="-ldflags='-X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG'"
+          MEKUGI_TEST_BUILD_VERSION="$BUILD_TAG" make test TEST_PACKAGES=./internal/router TEST_RUN='^(TestMekugi(BuildVersion|LinkedBuildVersion)|TestNativeWelcome|TestUISnapshotNativeWelcome)' TEST_FLAGS="-ldflags='-X github.com/yusing/mekugi/internal/router.buildVersion=$BUILD_TAG'"
       - name: Build and package
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -76,7 +70,7 @@ jobs:
           test "$(go env GOOS)_$(go env GOARCH)" = "$PLATFORM"
           package_dir="$RUNNER_TEMP/package"
           mkdir -p "$package_dir" "$RUNNER_TEMP/artifacts"
-          make build-binaries BUILD_OUTPUT="$package_dir" BUILD_LDFLAGS="-s -w -X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG"
+          go build -trimpath -ldflags="-s -w -X github.com/yusing/mekugi/internal/router.buildVersion=$BUILD_TAG" -o "$package_dir/" ./cmd/mekugi ./cmd/mekugi-exec
           "$package_dir/mekugi" --help
           cp LICENSE "$package_dir/"
           tar -czf "$RUNNER_TEMP/artifacts/mekugi_${PLATFORM}.tar.gz" -C "$package_dir" mekugi mekugi-exec LICENSE

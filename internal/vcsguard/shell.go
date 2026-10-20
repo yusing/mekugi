@@ -1,0 +1,87 @@
+package vcsguard
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+
+	"github.com/yusing/mekugi/internal/shellsyntax"
+)
+
+// RealEnvironment names the variable a path function sets for the guard: the
+// absolute path the shell was asked to run. The guard runs that file rather
+// than the next PATH match, and removes the variable before it does.
+const RealEnvironment = "MEKUGI_VCS_GUARD_REAL"
+
+// standardDirectories are where packages install the guarded tools, so a path
+// to one of them is guarded even when it is not on PATH.
+var standardDirectories = []string{
+	"/usr/local/bin", "/usr/bin", "/bin", "/usr/local/sbin", "/usr/sbin", "/sbin",
+	"/opt/homebrew/bin", "/opt/local/bin", "/home/linuxbrew/.linuxbrew/bin", "/snap/bin",
+}
+
+// KnownPaths lists absolute paths of the guarded tools found in pathList and
+// the standard directories, with the files their symlinks resolve to.
+func KnownPaths(pathList string, tools []string) []string {
+	var paths []string
+	for _, directory := range slices.Concat(filepath.SplitList(pathList), standardDirectories) {
+		if !filepath.IsAbs(directory) || filepath.Base(directory) == Directory {
+			continue
+		}
+		for _, tool := range tools {
+			path := filepath.Join(directory, tool)
+			if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+				continue
+			}
+			paths = append(paths, path)
+			if resolved, err := filepath.EvalSymlinks(path); err == nil && slices.Contains(tools, filepath.Base(resolved)) {
+				paths = append(paths, resolved)
+			}
+		}
+	}
+	slices.Sort(paths)
+	return slices.Compact(paths)
+}
+
+// Functions returns Bash code that defines a function for each
+// absolute path to a guarded tool: known, and each guarded name in every
+// absolute PATH entry when the code runs. A command that names such a path
+// runs the guard, which sees the same arguments and runs that file. Bash
+// looks up functions before running a name that contains a slash; a
+// path the shell does not run itself, as through env, exec or command,
+// bypasses its function.
+func Functions(guardDirectory string, known, tools []string) string {
+	var list strings.Builder
+	for _, path := range known {
+		list.WriteString(" " + shellsyntax.Quote(path))
+	}
+	// The value is shell source for eval, carried as data through the outer
+	// expansion so runtime-directory characters cannot become shell code.
+	guard := shellsyntax.Quote(shellsyntax.Quote(guardDirectory))
+	// Function names cannot be quoted, so paths outside a plain character set
+	// are left unguarded rather than defined unsafely.
+	define := `eval "$__mekugi_p() { ` + RealEnvironment + `=$__mekugi_p $__mekugi_guard/${__mekugi_p##*/} \"\$@\"; }" 2>/dev/null`
+	return `__mekugi_vcs_paths() {
+  local IFS=: __mekugi_d __mekugi_t __mekugi_p
+  local __mekugi_guard=` + guard + `
+  local -a __mekugi_ds __mekugi_ps
+  __mekugi_ps=(` + list.String() + ` )
+  read -r -a __mekugi_ds <<<"$PATH"
+  for __mekugi_d in "${__mekugi_ds[@]}"; do
+    case $__mekugi_d in /*/` + Directory + `|/` + Directory + `) continue ;; /*) ;; *) continue ;; esac
+    for __mekugi_t in ` + strings.Join(tools, " ") + `; do __mekugi_ps+=("$__mekugi_d/$__mekugi_t"); done
+  done
+  for __mekugi_p in "${__mekugi_ps[@]}"; do
+    [ "${__mekugi_p%/*}" = ` + shellsyntax.Quote(guardDirectory) + ` ] && continue
+    case $__mekugi_p in *[!A-Za-z0-9_./+@-]*) continue ;; esac
+    [ -f "$__mekugi_p" ] && [ -x "$__mekugi_p" ] || continue
+    declare -F "$__mekugi_p" >/dev/null && continue
+    ` + define + `
+  done
+}
+# POSIX mode rejects these names, and an eval error there ends the shell.
+case :$SHELLOPTS: in *:posix:*) ;; *) __mekugi_vcs_paths ;; esac
+unset -f __mekugi_vcs_paths
+`
+}

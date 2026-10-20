@@ -1,0 +1,73 @@
+<!-- mekugi-frontends:start -->
+<mekugi-frontends>
+<usage>
+Codex owns stock editing and execution. The following session-private PATH commands run through tools.exec_command; use them when useful rather than replacing ordinary shell tools.
+On macOS, pass `shell:"bash"` to `tools.exec_command` unless the task explicitly requires another shell; Codex may otherwise select Zsh even when the login shell is Fish.
+These commands support shell pipes, for example `mchanges amber1..amber5 --net | git apply --cached -p0`.
+Keep command output in tool results; redirect to a file only when the task needs that artifact, not for display preference. The user can see exec output; responses add only useful interpretation or requested information beyond that output. Disposable logs pollute change history and diff stats.
+Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution. Give required skill and instruction reads their own exec_command in the same batch, such as a parallel call or another tools.exec_command in the same exec cell, rather than a later turn: Codex truncates one call's output past max_output_tokens without an mread reference.
+For parallel exec commands, print labeled outputs without serializing result envelopes:
+```js
+const results = await Promise.allSettled([
+  tools.exec_command({cmd: "mcat src/main.go 1:80", max_output_tokens: 2000}),
+  tools.exec_command({cmd: "rg -n TestThing .", max_output_tokens: 2000}),
+]);
+const labels = ["source", "tests"];
+for (let i = 0; i < results.length; i++) {
+  const result = results[i];
+  if (result.status === "rejected") { text(`${labels[i]}: ${result.reason}`); continue; }
+  const value = result.value;
+  text(`${labels[i]}: ${value.session_id ? `running session_id=${value.session_id}` : `exit_code=${value.exit_code}`}\n${value.output}`);
+}
+```
+</usage>
+
+<common-options>
+Options apply only to commands whose Usage lists them.
+- --max-tokens N (also --max-tokens=N) bounds output to 1–15500 tokens. Defaults: mcat 6000, mread 8000, msymbol, inspect_file, and mchanges 4000; mrun requires an explicit limit. For multi-file mcat, the token budget is shared across files.
+- -n N selects up to N rows; --tail selects the last rows in source order and requires -n or --max-tokens. These options belong to mcat and mrun. mcat keeps its default token ceiling with -n alone and always keeps complete rows. mrun's selected token window may end within a row; delivery overflow keeps row boundaries, except oversized or unterminated generic streams use byte continuation.
+- Quote paths containing spaces. An incomplete result does not establish full coverage; follow its next_call rather than rerunning the producer. mrun discards output outside its selected window.
+</common-options>
+
+{{range . -}}
+<tool name="{{.Name}}">
+{{.Description}}
+</tool>
+
+{{end -}}
+</mekugi-frontends>
+<!-- mekugi-frontends:end -->
+
+
+
+
+
+
+<instruction id="collaboration_namespace">
+Native agent operations use this projected namespace. Message arguments are plaintext; Codex owns agent execution, permissions, and lifecycle.
+</instruction>
+<instruction id="opencode_spawn">
+OpenCode model overrides: %MODELS%. Use fork_turns="none" and a self-contained message; encrypted OpenAI history is unsupported. Omit reasoning_effort for provider defaults, or select an effort supported by the model catalog.
+</instruction>
+<instruction id="grok_model">
+Grok overrides from the Codex catalog: %MODELS%. The build-fast variant requires Grok OAuth.
+</instruction>
+<instruction id="grok_fork_turns">
+For Grok overrides, explicitly use "none" and include the complete task in message.
+</instruction>
+<instruction id="grok_reasoning_effort">
+For Grok overrides: low, medium, high, or xhigh.
+</instruction>
+<instruction id="grok_input">
+The exact tool program or input, without JSON encoding or Markdown fences.
+</instruction>
+<instruction id="grok_exec">
+Only what the script passes to `text(...)` reaches you. A nested tool's result is discarded unless you print it, for example `text(await tools.exec_command({cmd: "ls"}))`. The input is JavaScript, not shell: run shell commands through `tools.exec_command`.
+</instruction>
+<instruction id="grok_format_prefix">
+The input string must obey this tool format:
+</instruction>
+
+<instruction id="interruptible_wait">
+- Use completion notifications or interruptible waits; do not shorten waits solely to record progress.
+</instruction>
