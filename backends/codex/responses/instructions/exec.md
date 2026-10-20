@@ -1,0 +1,1 @@
+Only what the script passes to `text(...)` reaches you. A nested tool's result is discarded unless you print it, for example `text(await tools.exec_command({cmd: "ls"}))`. The input is JavaScript, not shell: run shell commands through `tools.exec_command`.

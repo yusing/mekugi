@@ -1,191 +1,157 @@
-# Code tests
+# Test procedures
 
-## Focused checks
+## Runner
 
-Inside an active Mekugi shell, run tests with invocation-local
-`env -u BASH_ENV -u MEKUGI_EXEC_TRACK`.
-The session's Bash startup hook can otherwise prepend live frontends ahead of a test's
-isolated frontend PATH, sending fixture reads to the wrong retained-output store.
-The inherited tracking guard also makes isolated command shells skip reporting.
-
-`make test` applies that isolation and clears snapshot-update mode. Select packages
-and tests while iterating, for example:
+Use `make test`; the root has no Go module. Default `TEST_PACKAGES=@workspace` expands
+explicit `go.work` members. Focused runs also include `testsupport/uisnapshot`:
 
 ```sh
-make test TEST_PACKAGES=./internal/router TEST_RUN='^TestShellRunnerMRun'
-make test TEST_PACKAGES='./internal/appserver ./internal/router' TEST_RUN=AppServer
+make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestShellRunnerMRun'
+make test TEST_PACKAGES='./backends/codex/appserver ./apps/mekugi/internal/launch' TEST_RUN=AppServer
 ```
 
-The default is `./...`. The runner also includes the shared test-only snapshot
-harness in `testdata/uisnapshot`, which Go wildcard package discovery excludes.
-Unchanged successful tests can use Go's test cache; use
-`TEST_FLAGS='-count=1'` for a fresh run, `TEST_FLAGS='-count=3 -shuffle=on'` for
-repeat/isolation checks, or `TEST_FLAGS=-race` when checking concurrency. The recipe
-does not regenerate assets or install binaries. A focused pass does not cover unselected tests.
+- Unchanged successful tests may use Go's cache. `TEST_FLAGS=-count=1` requests fresh results;
+  `TEST_FLAGS='-count=3 -shuffle=on'` checks repetition/isolation; `TEST_FLAGS=-race` checks concurrency.
+- `TEST_PARALLEL=32` overlaps process/PTY waits; reduce for constrained machines. Tests changing
+  process-wide environment/cwd stay serial. Time fresh full runs and report compilation separately.
+- The recipe clears `BASH_ENV`, `MEKUGI_EXEC_TRACK` and snapshot-update mode. For raw tests in an
+  active Mekugi shell, use `env -u BASH_ENV -u MEKUGI_EXEC_TRACK`: startup hooks can put live
+  frontends ahead of fixture PATH and route reads to the wrong store; inherited tracking can
+  suppress isolated command reports.
+- Tests neither generate assets nor install binaries. Interpreter/query fixtures need Node.js
+  and ripgrep; native frontends/catalog do not need JavaScript.
+- Linux amd64 release CI runs the fresh offline suite; other platforms retain command and
+  welcome/version checks. Installed-Codex checks are separate in `CONTEXT-AUTOMATED-TESTS.md`.
+  A focused pass covers only selected tests.
 
-The release workflow runs the full fresh offline Go suite on Linux amd64;
-other platforms retain command and welcome/version checks. Tagged Codex checks remain separate acceptance routes below. `make test-host` runs
-the focused installed-Codex set described in `CONTEXT-AUTOMATED-TESTS.md`.
-Interpreter and query fixtures use Node.js and ripgrep. Native frontends and
-their catalog require no JavaScript runtime.
+## Select coverage
 
-`TEST_PARALLEL` defaults to 32 so independent process and PTY fixtures can overlap
-their waits; override it for a constrained machine. Tests that change process-wide
-environment or working directory remain serial. When full-suite timing is needed,
-use `make test TEST_FLAGS=-count=1` and reuse warm build caches where available;
-report compilation time separately from test execution.
+Start with the changed package/module from `CONTEXT-MEKUGI.md`, then its affected consumers.
+Use explicit member package paths, adding `/...` for a module's subpackages. Use `@workspace`
+for broad/cross-package contracts. The table identifies integration seams, not a requirement
+to run every listed family for every change. Application paths below are under
+`apps/mekugi/internal/`; “Launch” means its `launch` package. Braces group alternatives.
+Feature contracts in `docs/index.md` own acceptance details.
 
-For router profiling, use a temporary output directory and pass `-cpuprofile`,
-`-blockprofile`, and `-o` paths through `TEST_FLAGS`. Inspect both CPU and block
-profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time.
-
-| Changed owner | Focused check |
+| Changed boundary | Additional consumers and coverage |
 | --- | --- |
-| Root review rendering | `.` |
-| Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./internal/ui/...`, plus affected router integration tests |
-| Codex app-server RPC transport and process lifecycle | `./internal/appserver` and `./internal/router -run AppServer` |
-| Router behavior | `./internal/router` |
-| Shell/source execution-scope classification | `./internal/execscope`, plus affected router observation tests |
-| Provider request encoding and stream normalization | `./internal/providercodec`, plus router Grok/OpenCode integration tests |
-| MCP transport, shell hook and registration | `./internal/router ./cmd/mekugi -run '^TestMCP'` |
-| Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
-| Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
-| Shared Go tokenizer | `./internal/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
-| Capture metrics and AX evidence | `./capturer` |
-| Native frontends and output formatting | `./internal/router/toolplugin`, then `./internal/router` |
-| Router process entry point | `./cmd/mekugi` |
-| Native frontend host acceptance | `-tags codex_e2e ./internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
-| Native mrun continuation acceptance | `-tags codex_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
-| Cross-package or broad contract | `./...` |
+| Workspace/composition | `apps/mekugi/cmd/workspace`, `contracts/module`, `backends/codex/binding`, `testsupport/moduletest`; `composition`, `sessionpresentation`, Launch and affected modules. Cover descriptor lifetimes, real frontend composition, selected publications/startup; `make check-generated` checks reference drift |
+| Activity/messages/history | `modules/activity`, `modules/conversation/{transcript,codexbinding}`, `contracts/scope`, `backends/codex/binding`, `sessionpresentation`; Launch live/child/restored/paged/replay consumers. Cover admission, attachment retirement, discovery/retry/cancel, anchoring, roster, source/segment interpretation, retained output, VCS directory/hash isolation and rendered rows |
+| Input/control/settings | `modules/conversation`, `modules/sessionpreferences`, `sessioncontrol`, `sessionpresentation`, `backends/codex/binding`; Launch submission/steer, queues, prompts/approvals, side answers, shell, compaction, interruption, settings, resume/clear and replay. Cover draft restoration, picker acquisition/cancellation, scoped menus, secret input, clipboard lifetime, progress/notice precedence and actual rendered docks |
+| Terminal/dialogs/diff | `terminalsession`, `libraries/{terminalui,diffrender,textsanitize}`, affected Activity/Change History/Live Preview views and Launch. Cover input precedence, geometry, frozen selection, wrapping/search/copy, page identity, output after feed aging, editor handoff, styles and native/replay frames. `make preview-native-ui` plays synthetic events without model requests |
+| Review/capture/publication | `modules/{changehistory,livepreview,sessionhistory,outputrecovery}`, `sessionreview`, `recordtransactions`, `executionobservation`, `backends/codex/binding`; Launch patch/shell/yield, failed/partial effects, sibling/overlap, report settlement, fork/resume and recovery. Cover immutable publication, optional contributions/native fallback, receipts/badges, frozen selection, retention/leases, blocked-storage PTY and capacity/replacement |
+| Filesystem admission | `libraries/{persistence,legacycall}`, `modules/activity/waittargets`; historical-call/snapshot/commentary/wait-target consumers. Cover regular publication, symlink replacement, special files, size limits and affected platforms |
+| Host execution/segments/guards | `backends/codex/{appserver,nativetrace,binding,shellhook,shellapproval}`, `libraries/{shellinstrumentation,commandanalysis}`, `modules/{commandsegments,remotewriteapproval,sudoapproval}`, `apps/mekugi/cmd/mekugi-exec`; `frontends`, `sessioncontrol`, `composition`, Launch. Select RPC/shutdown, trace correlation/pending/yield/timeout/replay, `ExecTrack`, `CommandSegments`, `VCSGuard`, `Sudo`, hook/config and composed-approval cases; cover subscription concurrency and exact host behavior |
+| Requests/providers | `inferencegateway`, `requestexecution`, affected `providers`, `libraries/{httptransport,modelprotocol}`, `backends/codex/responses`; Launch HTTP/WebSocket, models/catalog, auxiliary endpoints, credentials, prices, errors, prewarm, continuation/steering, cancellation, service tier and accounting. Cover request/history/tool/guidance projection, native collaboration, failed terminals and transport capture |
+| Tools/guidance | Affected reader/command/output/guidance modules, `libraries/{commandargs,outputbudget,sourceanalysis}`, `frontends`; Launch authenticated dispatch, worker arguments, recovery/storage/fork, Activity interpretation and AX consumers. Instruction projection also uses `composition` and prepared requests; see focused commands below |
+| Diagnostics/accounting/replay | Affected `modules/{usage,transportdiagnostics,agentmetrics,diagnostics,sessioninspection,sessionreplay}`, `contracts/{inference,inspection}`, `backends/codex/rollout`, `inspectioncli`; Launch token/cost/throughput, naming, debug/failure/retention, corpus, logical-session and replay consumers, including optional contributors/transports |
+| Launch/headless/naming | Changed `launch/options`, `launch/modelcatalog`, `headless` or `modules/sessionnaming`; Launch dispatch/build, reused configuration, resume models, picker/startup, headless delivery/control/shutdown and title/name-save consumers |
 
-Native reader latency checks include a fresh authenticated worker, a 3,000-row
-read, the three-document architecture batch, and an eight-file Go inspection at
-the default shared budget. Run them without installing a binary:
+After API changes, compile affected tagged host fixtures using the compile-only command in
+`CONTEXT-AUTOMATED-TESTS.md`. Installed-host cases include native frontends/mrun/mchanges,
+guards and sandbox reporting; compaction uses `TestAppServerCompactEnterInterruptsNativeCodex`
+and `TestAppServerQueuedCompactContinuesNativeCodex`; naming persistence/resume lives in
+`launch/app_server_session_title_codex_e2e_test.go`.
 
-```sh
-make test TEST_PACKAGES=./internal/router TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeFrontends -benchtime=3x -count=1'
-```
+## Focused tools and measurements
 
-The inspection batch intentionally exercises incomplete-output recovery. These
-benchmarks clear the thread identity and exclude active-session lease/retention
-costs. `BenchmarkSelectRows` in `./internal/tokenizer` isolates row admission from
-process startup and source I/O.
-
-Go symbol checks require an existing `gopls` and install nothing. Opt in to real
-cross-package/test reference and source-freshness acceptance with:
+Native-reader latency covers a fresh authenticated worker, 3,000-row read, three-document
+architecture batch and eight-file Go inspection at the default shared budget:
 
 ```sh
-env MEKUGI_TEST_REAL_GOPLS=1 make test TEST_PACKAGES=./internal/router/toolplugin TEST_RUN='^TestNativeSymbolRealGoplsReferences$'
+make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeFrontends -benchtime=3x -count=1'
 ```
 
-Fresh-process resolver and authenticated frontend benchmarks use normal caches;
-the frontend measurements exclude registry creation and active-session leases:
+The inspection batch exercises incomplete-output recovery. These benchmarks clear thread identity
+and exclude active-session lease/retention costs. `BenchmarkSelectRows` in
+`libraries/outputbudget/tokenizer` isolates row admission from startup/source I/O.
+
+Go symbol acceptance needs an existing `gopls` and installs nothing. Opt in to cross-package/test
+references and source freshness; resolver/frontend benchmarks use normal caches and exclude
+frontend registry creation/active-session leases:
 
 ```sh
-make test TEST_PACKAGES='./internal/router/toolplugin ./internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
+env MEKUGI_TEST_REAL_GOPLS=1 make test TEST_PACKAGES=./modules/symbolquery/query TEST_RUN='^TestNativeSymbolRealGoplsReferences$'
+make test TEST_PACKAGES='./modules/symbolquery/query ./apps/mekugi/internal/launch' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
 ```
 
-Frontend prose has a separate generated consumer. Edit
-`guidance/frontend_guidance.md.tmpl` or the executable helper's description owner,
-then regenerate and check the prepared-request projection:
+Frontend descriptions and supplementary `guidance.md` belong to command modules;
+`modules/agentguidance` renders the selected catalog and its Codex binding owns layout/projection.
+After changing frontend guidance, check authenticated snapshots and prepared requests:
 
 ```sh
-env MEKUGI_UPDATE_FRONTEND_GUIDANCE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestGeneratedFrontendGuidanceIsCurrent$'
-make test TEST_PACKAGES=./internal/router TEST_RUN='GeneratedFrontendGuidance|ProjectedStockGuidance|Instruction|ConflictRewrite|WebSocketPrewarmToolGuidance'
+make test TEST_PACKAGES='./modules/agentguidance/... ./apps/mekugi/internal/frontends ./apps/mekugi/internal/launch ./apps/mekugi/internal/composition' TEST_RUN='Guidance|Instruction|ConflictRewrite|Prewarm|ComposedFrontendCatalog'
 ```
+
+For router profiles, pass temporary `-cpuprofile`, `-blockprofile` and `-o` paths through
+`TEST_FLAGS`. Inspect CPU and block profiles with `go tool pprof`; summed blocked time is not wall time.
 
 ## Static checks
 
-Run `make lint` with `golangci-lint` and `deadcode` on PATH. It uses `.golangci.yml`
-and checks production reachability separately from test reachability, including
-the shared snapshot harness tests. Tool errors and reported findings
-fail the target. Linux amd64 CI installs the versions pinned in the release workflow.
+`make lint` requires `golangci-lint` and `deadcode` on PATH. It uses `.golangci.yml`, checks production
+and test reachability separately (including the snapshot harness), and fails on tool errors/findings.
+Linux amd64 CI installs versions pinned in the release workflow.
 
-## Terminal UI snapshots
+## Terminal snapshots
 
-Enable the staged-tree snapshot commit gate as described in
-[Development](docs/contributing/development.md#build-and-test).
+Use actual-renderer `TestUISnapshot` tests with fixed time, theme, dimensions and other
+nondeterministic inputs. Owners retain fixtures in `testdata/snapshots/`. The staged-tree snapshot
+commit gate is documented in `docs/contributing/development.md#build-and-test`.
 
-`make test-ui-snapshots` runs offline rendered-output regression tests without Codex
-or model requests. Select a case with `SNAPSHOT='^TestUISnapshotNativeSessionShortcuts$'`.
-Set `SNAPSHOT_PACKAGES=./internal/router` (or another owning package) to avoid
-compiling and testing unrelated UI packages; the check still includes the snapshot
-harness tests. The same package selection applies to `update-ui-snapshots`.
-Router fixtures cover
-skills and file pickers, Main's composer, resume
-sessions, the Agents roster, and responsive Activity layouts. Activity blocks and
-output dialogs live in `internal/ui/activity/testdata/snapshots/`; diff navigation,
-change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
-Launcher debug handoffs live in `cmd/mekugi/testdata/snapshots/`.
-Shared Diff syntax and row styles live in `internal/livediff/testdata/snapshots/`.
-Other owners keep fixtures in their own `testdata/snapshots/` directories.
+```sh
+make test-ui-snapshots SNAPSHOT_PACKAGES=./apps/mekugi/internal/launch SNAPSHOT='^TestUISnapshotNativeSessionShortcuts$'
+```
 
-`testdata/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,
-wrapping, and borders remain exact. Tests fix time, theme, dimensions, and other
-nondeterministic inputs before invoking the actual renderer. Text snapshots do
-not establish color/style correctness. `testdata/uisnapshot.AssertTerminal`
-paints actual renderer rows into the shared VT emulator at a fixed width, then
-stores its canonical ANSI output as quoted rows. These fixtures cover terminal
-cell colors, emphasis, links, padding, and style restoration without depending on
-the renderer's choice of equivalent escape sequences. Include a following plain
-row when checking that a style does not leak. Activity code fills, tables,
-reasoning, wait targets, and answer flashes, shared Diff syntax and row fills,
-and native dialog, attachment, keybinding, and roster surfaces extend the
-terminal-style coverage. Theme-sensitive cases cover terminal, dark, and light
-themes; code fills also cover a reported background.
-Both snapshot forms use the same review/update commands and preserve separate
-copy, state, bounds, interaction, and PTY acceptance.
-Repository Git attributes suppress trailing-space and final-blank-row warnings
-only for these text fixtures; `git diff --check` still checks ordinary sources.
+Checks are offline, include the snapshot harness, and need neither Codex nor model requests.
+Omit `SNAPSHOT_PACKAGES` for the workspace or `SNAPSHOT` for all snapshot cases. The same selections
+apply to `make update-ui-snapshots`.
 
-A missing or changed fixture fails the test and writes a sibling `.txt.new`
-candidate with a unified diff in the failure output. The reviewed fixture stays
-unchanged. Inspect the candidate, then either move that candidate over its fixture
-or run `make update-ui-snapshots SNAPSHOT='^TestUISnapshotNativeSessionShortcuts$'` to
-regenerate the selected baseline. Omitting `SNAPSHOT` updates all matching cases.
-Updates are opt-in via `MEKUGI_UPDATE_UI_SNAPSHOTS=1`; the check recipe clears it
-so inherited configuration cannot silently accept changes. A passing comparison
-or explicit update removes its stale candidate. Rerun the check after acceptance.
+- `testsupport/uisnapshot.Assert` strips ANSI only: spacing, blank lines, wrapping and borders
+  remain exact. Text comparisons do not prove color/style correctness.
+- `AssertTerminal` paints into a fixed-width VT emulator and retains canonical ANSI as quoted rows,
+  covering colors, emphasis, links, padding and style restoration independently of equivalent escape
+  sequences. Include a following plain row to detect style leaks. Theme-sensitive cases cover
+  terminal/dark/light; code fills also cover a reported background.
+- A missing/changed fixture fails and writes a sibling `.txt.new` candidate plus a unified diff;
+  the baseline stays unchanged. Review the candidate, then move it over the fixture or run the
+  selected update recipe. Omitting `SNAPSHOT` updates all matching cases.
+- Updates require `MEKUGI_UPDATE_UI_SNAPSHOTS=1`; check recipes clear it. A pass or explicit update
+  removes stale candidates. Rerun checks after accepting a baseline.
+- Keep copy/state/bounds/interaction/PTY checks separate. Git attributes exempt only snapshot text
+  from trailing-space/final-blank-row warnings; ordinary sources still use `git diff --check`.
 
-## Boundary coverage and test cost
+## Boundary acceptance
 
-Keep repeatable test costs visible. Reuse immutable registry fixtures while
-isolating mutable thread, workspace, and process state. Startup and shutdown
-tests still need their own owners. Disposable Git fixtures must isolate system
-and global configuration so setup does not invoke personal signing programs or
-hooks; keep repository-local settings for filter and worktree boundary tests.
-Resolve fixture shells with `execTrackShellExecutable` in `internal/router/exec_track_test.go`:
-`exec.Command` resolves names before `Cmd.Env` is set, so an isolated environment alone
-can still select the live session's approval guard. Keep fixture tools first for nested shells.
-Use controlled time for in-process lifetimes, including retention retries and
-filesystem-lock contention. Keep subtests and parallel scheduling outside each
-`synctest` bubble, and create and clean up its workers inside it.
-Preserve real process-cleanup coverage and prove boundary coverage before
-shrinking large fixtures.
+Apply these routes when the requested change touches the boundary:
 
-The following acceptance routes apply only when the requested change touches their contract:
+- **Continuity:** restart durable review/output state with only the requesting thread; cover
+  affected fork/switch/resume paths. Live ancestry is not retained identity.
+- **Launcher handoff:** cancellation/rendering before and after Codex takes the terminal,
+  including redirected output and delayed startup.
+- **Live diff:** independent layout, viewport/follow and lifecycle checks plus real PTY rendered
+  frames. Show input before completion, continued following, independent diff scroll, resize and
+  preview removal. Report missing terminal coverage.
+- **Stock edits:** exact nested tool arguments/results, one host execution, pre-completion streaming,
+  failed/partial outcomes, durable `mchanges` evidence and dependent reads after persistence.
+- **Execution:** batching/parallelism, interpreter display, PTY/yield/`write_stdin`, bounded output
+  and `mread` recovery.
+- **Producer shapes:** Chat/Responses and persisted rollout events at the consuming boundary.
+  Recheck dated host observations after Codex upgrades.
+- **Instruction projection:** mixed authorization/tool text, fenced examples and idempotence through
+  stock, marked, custom and multipart developer text.
 
-- **Continuity:** for changed durable review/output state, test restart with only the
-  requesting thread and affected branch/switch/resume paths. Live ancestry is not retained identity.
-- **Launcher handoff:** validate cancellation and rendering before and after
-  Codex owns the terminal, including redirected output and delayed startup.
-- **Live diff:** test layout, viewport/follow state, and preview lifecycle
-  independently. Run UI tests and real terminal (PTY) acceptance; inspect
-  rendered frames, not only broker events. Streaming must show input before
-  completion, continued following, independent diff scrolling, resize, and
-  preview removal. Missing terminal coverage must be reported explicitly.
-- **Stock edits:** check exact nested stock-tool arguments/results, one
-  host execution, streaming before completion, failed/partial outcomes,
-  durable `mchanges` evidence, and dependent reads after persistence.
-- **Execution:** cover exec batching/parallelism, interpreter display,
-  PTY/yield/`write_stdin`, bounded output, and `mread` recovery.
-- **Producer shapes:** cover Chat versus Responses and persisted rollout events
-  at the consuming boundary. Recheck dated host observations after Codex
-  upgrades before relying on them.
-- **Instruction projection:** check mixed authorization/tool text, fenced
-  examples, and idempotence through stock, marked, custom, and multipart
-  developer text parts.
+Contracts: `docs/index.md`. Dated host evidence: `doc/codex-router-e2e.md`.
 
-The [interface specifications](doc/spec/index.md),
-[ownership contracts](doc/architecture/index.md), and
-[dated Codex observations](doc/codex-router-e2e.md) own the behavior and evidence.
+## Fixture isolation and cost
+
+Reuse immutable registries while isolating mutable thread/workspace/process state; startup/shutdown
+checks need their own owners. Disposable Git fixtures isolate global/system configuration to avoid
+personal signing/hooks, while retaining local settings for filter/worktree boundaries.
+
+Resolve fixture shells with `execTrackShellExecutable` in `launch/exec_track_test.go`:
+`exec.Command` resolves names before `Cmd.Env`, so environment isolation alone can select the live
+approval guard. Keep fixture tools first for nested shells.
+
+Use controlled time for in-process lifetimes, retention retries and filesystem locks. Keep subtests
+and parallel scheduling outside `synctest` bubbles; create/clean up workers inside. Preserve real
+process-cleanup coverage and prove boundary coverage before shrinking fixtures.

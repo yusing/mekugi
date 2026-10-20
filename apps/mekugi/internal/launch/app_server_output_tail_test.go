@@ -1,0 +1,715 @@
+package launch
+
+import (
+	"fmt"
+	"reflect"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/legacycall"
+
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/libraries/diffmodel"
+
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+)
+
+func TestAppServerOutputTailKeepsFinalLines(t *testing.T) {
+	var lines []string
+	for i := range 8 {
+		lines = append(lines, fmt.Sprintf("line %d", i))
+	}
+	output := strings.Join(lines[:6], "\n") + "\n\n\x1b[2K\n" + strings.Join(lines[6:], "\n") + "\x1b]0;title\x07\n\n"
+	tail, omitted := sessionpresentation.OutputTail(&output)
+	if want := []string{"line 3", "line 4", "line 5", "line 6", "line 7"}; !reflect.DeepEqual(tail, want) || omitted != 3 {
+		t.Fatalf("tail = %q omitted %d", tail, omitted)
+	}
+	long := strings.Repeat("é", activityui.OutputTailBytes)
+	if tail, _ := sessionpresentation.OutputTail(&long); len(tail) != 1 || len(tail[0]) > activityui.OutputTailBytes+len("…") || !strings.HasSuffix(tail[0], "…") {
+		t.Fatalf("long line tail = %q", tail)
+	}
+	for _, output := range []*string{nil, new(""), new(" \n\n")} {
+		if tail, omitted := sessionpresentation.OutputTail(output); tail != nil || omitted != 0 {
+			t.Fatalf("empty output tail = %q, %d", tail, omitted)
+		}
+	}
+}
+
+func TestAppServerFailedCommandShowsOutputTailInMain(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	for _, method := range []string{"item/started", "item/completed"} {
+		item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "go test ./...", "status": "inProgress"}
+		if method == "item/completed" {
+			item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 1, "ok\n--- FAIL: TestX\nFAIL\n"
+		}
+		appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+		"id": "read", "type": "commandExecution", "command": "cat a.go", "status": "completed", "exitCode": 0,
+		"commandActions": []map[string]any{{"type": "read", "path": "a.go", "command": "cat a.go"}}}})
+	main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
+	want := "├ Ran  go test ./... · exit 1\n│      ┆ ok\n│      ┆ --- FAIL: TestX\n│      ┆ FAIL\n└ Read a.go"
+	if !strings.Contains(main, want) {
+		t.Fatalf("Main lacks failure tail on its branch %q:\n%s", want, main)
+	}
+}
+
+func TestAppServerPendingPatchIsNotEdited(t *testing.T) {
+	for _, agent := range []string{"Main", "/root/worker"} {
+		v := newActivityAdapter()
+		v.ChildrenOnly = agent != "Main"
+		v.testAudience()
+		patch := activitypresentation.HostEditText((binding.ThreadItem{Status: "inProgress", Changes: []binding.FileChange{{Path: "c.go", Diff: "+new\n-old\n"}}}).Observation(), "")
+		v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: agent, Kind: "tool", CallID: "patch", Text: patch}}})
+		feed := v.RenderFeed(100, 80)
+		if agent == "Main" {
+			feed = v.testRenderConversation(100)
+		}
+		got := ansi.Strip(strings.Join(feed.Lines, "\n"))
+		if strings.Contains(got, "Edited") || !strings.Contains(got, "Edit c.go +1 -1 · pending") {
+			t.Fatalf("%s showed an unconfirmed patch as edited:\n%s", agent, got)
+		}
+	}
+}
+
+func TestManagedFilesDoNotBecomeEditsInMain(t *testing.T) {
+	files := make([]diffmodel.ReviewFile, 4)
+	for i := range files {
+		files[i] = diffmodel.RenderReviewFile("", fmt.Sprintf("gen-%d.txt", i), "", "x\n")
+		files[i].Origin = "generator"
+	}
+	if event := testCapturedEditActivity(t.TempDir(), legacycall.History{ReviewFiles: retainedReviewFiles(files), ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"git"}})}); event != nil {
+		t.Fatalf("generated effects created an Activity edit: %+v", event)
+	}
+}
+
+func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	notify := func(method string, params map[string]any) {
+		t.Helper()
+		params["threadId"], params["turnId"] = "main", "t"
+		appServerTestNotify(t, u, method, params)
+	}
+	main := func() string {
+		return ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
+	}
+	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "go test ./...", "status": "inProgress"}
+	notify("item/started", map[string]any{"item": item})
+	if got := main(); !strings.Contains(got, "Running go test ./...") || strings.Contains(got, "Ran") {
+		t.Fatalf("started command is not running:\n%s", got)
+	}
+	for i := range 8 {
+		notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": fmt.Sprintf("ok %d\n", i)})
+	}
+	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "--- partial"})
+	if got := main(); strings.Contains(got, "ok 7") {
+		t.Fatalf("output rendered before its frame:\n%s", got)
+	}
+	canonical := u.attached.source.Model.Publish().Entries[0]
+	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+	if got := main(); !strings.Contains(got, "┆ ok 1") || strings.Contains(got, "ok 2") {
+		t.Fatalf("burst jumped to its tail instead of rolling:\n%s", got)
+	}
+	rollCommandOutput(u)
+	want := "  +4      ┆ ok 4\n          ┆ ok 5\n          ┆ ok 6\n          ┆ ok 7\n          ┆ --- partial"
+	if got := main(); !strings.Contains(got, "└ Running go test ./...") || !strings.Contains(got, want) {
+		t.Fatalf("live tail missing header or %q:\n%s", want, got)
+	}
+	if got := u.attached.source.Model.Publish().Entries[0]; !reflect.DeepEqual(got, canonical) {
+		t.Fatalf("output animation changed the neutral record:\nbefore=%+v\nafter=%+v", canonical, got)
+	}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
+		"id": "cmd", "type": "commandExecution", "command": "make lint", "status": "inProgress"}})
+	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "child", "turnId": "c", "itemId": "cmd", "delta": "linting\n"})
+	// A rename after the start must not move the running row back.
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child",
+		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/linter"}}}}})
+	rollCommandOutput(u)
+	agents := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 60).Lines, "\n"))
+	if !strings.Contains(agents, "linter") || !strings.Contains(agents, "Running make lint") || !strings.Contains(agents, "┆ linting") || strings.Contains(agents, "ok 7") {
+		t.Fatalf("Agents lacks the child's live tail:\n%s", agents)
+	}
+	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "ok 1\nok 2\nPASS\n"
+	notify("item/completed", map[string]any{"item": item})
+	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "late\n"})
+	rollCommandOutput(u)
+	// The host's output stays readable until Main's next event, then collapses.
+	open := "      ┆ ok 1\n      ┆ ok 2\n      ┆ PASS"
+	if got := main(); !strings.Contains(got, "└ Ran go test ./...") || !strings.Contains(got, open) || strings.Contains(got, "Running") || strings.Contains(got, "late") {
+		t.Fatalf("completed command lacks its settled output %q:\n%s", open, got)
+	}
+	if settleActivity(time.Now().Add(time.Hour), u.testActivity(u.shell.Transcript)) {
+		t.Fatal("output collapsed before a later event")
+	}
+	nextEvent(t, u, "main")
+	if settleActivity(time.Now(), u.testActivity(u.shell.Transcript)) {
+		t.Fatal("output collapsed before events paused")
+	}
+	if !settleActivity(time.Now().Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript)) {
+		t.Fatal("output did not collapse after the next event")
+	}
+	feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 60)
+	got := ansi.Strip(strings.Join(feed.Lines, "\n"))
+	if collapsed := "└ Ran go test ./...\n      ┆ … +3 lines"; !strings.Contains(got, collapsed) || strings.Contains(got, "ok 1") {
+		t.Fatalf("settled output is not collapsed to %q:\n%s", collapsed, got)
+	}
+	// Either row of the command opens its full retained output in the dialog.
+	index := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "… +3 lines") })
+	snippet := feed.Snippets[index]
+	if snippet == (activityui.Snippet{}) || feed.Snippets[index-1] != snippet {
+		t.Fatalf("collapsed output has no opening target: %v", feed.Snippets)
+	}
+	terminal := terminalTest(u)
+	if !terminal.openOutput(u.shell.Transcript, snippet) {
+		t.Fatal("command did not open output dialog")
+	}
+	terminal.layoutOutput(76)
+	if got := terminal.Dialog.Document.Text; got != "ok 1\nok 2\nPASS" {
+		t.Fatalf("dialog output = %q", got)
+	}
+	terminal.outputKey("\x1b")
+	if terminal.Dialog != nil || !strings.Contains(main(), "┆ … +3 lines") {
+		t.Fatal("closing output dialog changed the command row")
+	}
+	if _, tracked := u.attached.session.Commands()[[3]string{"main", "t", "cmd"}]; tracked || len(u.attached.session.Commands()) != 1 {
+		t.Fatalf("completed command still tracked: %v", u.attached.session.Commands())
+	}
+}
+
+func TestAppServerSingleLineOutputStaysVisible(t *testing.T) {
+	for _, conversation := range []bool{false, true} {
+		u := newAppServerSessionTestUI(t, t.TempDir())
+		u.shell.Transcript.Conversation = conversation
+		u.testActivity(u.shell.Transcript).testAudience()
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+			"id": "cmd", "type": "commandExecution", "command": "echo done", "status": "completed", "exitCode": 0, "aggregatedOutput": "done\n",
+		}})
+		nextEvent(t, u, "main")
+		settleActivity(time.Now().Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript))
+		feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 60)
+		got := ansi.Strip(strings.Join(feed.Lines, "\n"))
+		if !strings.Contains(got, "┆ done") || strings.Contains(got, "+1 lines") {
+			t.Fatalf("single output line hidden: %s", got)
+		}
+		index := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(ansi.Strip(line), "┆ done") })
+		terminal := terminalTest(u)
+		if index < 0 || !terminal.openOutput(u.shell.Transcript, feed.Snippets[index]) {
+			t.Fatal("single output line has no dialog target")
+		}
+		terminal.layoutOutput(76)
+		if terminal.Dialog.Document.Text != "done" {
+			t.Fatalf("dialog output = %q", terminal.Dialog.Document.Text)
+		}
+	}
+}
+
+func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
+	for _, exit := range []int{0, 1} {
+		t.Run(fmt.Sprint(exit), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.shell.Transcript.Conversation = true
+			u.testActivity(u.shell.Transcript).testAudience()
+			item := map[string]any{
+				"id": "mixed", "type": "commandExecution",
+				"command": "pwd; skills-mgr get mekugi-owners; cat a.go",
+				"status":  "inProgress",
+			}
+			notify := func(method string, params map[string]any) {
+				t.Helper()
+				params["threadId"], params["turnId"] = "main", "t"
+				appServerTestNotify(t, u, method, params)
+			}
+			check := func(output string) {
+				t.Helper()
+				got := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 60).Lines, "\n"))
+				read, tail := strings.Index(got, "Read"), strings.Index(got, output)
+				if read < 0 || tail < read || strings.Count(got, output) != 1 {
+					t.Fatalf("output must appear once after final Read:\n%s", got)
+				}
+			}
+			notify("item/started", map[string]any{"item": item})
+			finishPacing(u.testActivity(u.shell.Transcript))
+			notify("item/commandExecution/outputDelta", map[string]any{"itemId": "mixed", "delta": "first\nsecond\n"})
+			rollCommandOutput(u)
+			check("┆ second")
+			item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", exit, "first\nsecond\n"
+			notify("item/completed", map[string]any{"item": item})
+			if exit != 0 {
+				check("┆ second")
+				nextEvent(t, u, "main")
+				settleActivity(time.Now().Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript))
+				check("┆ second")
+				return
+			}
+			// A read's output starts collapsed, without waiting for a later event.
+			check("Read  a.go (2 lines)")
+			feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 60)
+			index := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "(2 lines)") })
+			snippet := feed.Snippets[index]
+			if snippet == (activityui.Snippet{}) {
+				t.Fatal("final Read output has no toggle")
+			}
+			terminal := terminalTest(u)
+			if !terminal.openOutput(u.shell.Transcript, snippet) {
+				t.Fatal("final Read did not open output dialog")
+			}
+			terminal.layoutOutput(80)
+			if got := terminal.Dialog.Document.Text; got != "first\nsecond" {
+				t.Fatalf("read dialog output = %q", got)
+			}
+		})
+	}
+}
+
+func TestAppServerAdjacentReadOutputsStayWithInvocation(t *testing.T) {
+	for _, conversation := range []bool{false, true} {
+		t.Run(fmt.Sprint(conversation), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.shell.Transcript.Conversation = conversation
+			u.testActivity(u.shell.Transcript).testAudience()
+			for i, output := range []string{"", "first-output\n", "second-output\n"} {
+				appServerTestNotify(t, u, "item/completed", map[string]any{
+					"threadId": "main", "turnId": "t", "item": map[string]any{
+						"id": fmt.Sprint(i), "type": "commandExecution",
+						"command": fmt.Sprintf("cat file%d.go", i),
+						"status":  "completed", "exitCode": 0, "aggregatedOutput": output,
+					},
+				})
+			}
+			got := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 60).Lines, "\n"))
+			previous := -1
+			for _, token := range []string{"file0.go", "file1.go", "┆ first-output", "file2.go", "┆ second-output"} {
+				index := strings.Index(got, token)
+				if index <= previous {
+					t.Fatalf("missing or misplaced %q:\n%s", token, got)
+				}
+				previous = index
+			}
+		})
+	}
+}
+
+// rollCommandOutput plays frames until every output burst has rolled through
+// and held completions have followed.
+func rollCommandOutput(u *appServerUI) {
+	for range activityui.OutputPendingLines {
+		flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+	}
+}
+
+func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	notify := func(method string, params map[string]any) {
+		t.Helper()
+		params["threadId"], params["turnId"] = "main", "t"
+		appServerTestNotify(t, u, method, params)
+	}
+	main := func() string {
+		return ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
+	}
+	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "mrun -n 50 go test ./...", "status": "inProgress"}
+	notify("item/started", map[string]any{"item": item})
+	identities := map[*activityAdapter]uint64{}
+	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
+		identities[view] = view.Entries[len(view.Entries)-1].Source.Seq
+	}
+	var output strings.Builder
+	for i := range 20 {
+		fmt.Fprintf(&output, "ok %d\n", i)
+	}
+	// A buffering command prints everything as it exits.
+	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": output.String()})
+	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 1, output.String()
+	notify("item/completed", map[string]any{"item": item})
+	if u.attached.session.Commands()[[3]string{"main", "t", "cmd"}] != nil {
+		t.Fatal("terminal reveal retained completed source correlation")
+	}
+	canonical := u.attached.source.Entries[len(u.attached.source.Entries)-1].Source.Native.Invocation.Snapshot()
+	if canonical.Running || !canonical.Exited || canonical.ExitCode != 1 || canonical.Ended.IsZero() || runningProcessCount(&u.attached.session) != 0 {
+		t.Fatalf("visual delay held canonical host completion: %+v", canonical)
+	}
+	completed := map[*activityAdapter]activitypresentation.Entry{}
+	for view, seq := range identities {
+		entry := view.Model.Publish().Entries[len(view.Entries)-1]
+		if entry.Seq != seq || entry.Running || !entry.ItemComplete || !entry.OutputFailed || len(entry.Values) == 0 || entry.Values[0].ExitCode != 1 {
+			t.Fatalf("neutral consumer did not receive completion under the original identity: %+v", entry)
+		}
+		completed[view] = entry
+	}
+	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+	if got := main(); !strings.Contains(got, "Running") || strings.Contains(got, "ok 19") || strings.Contains(got, "exit 1") {
+		t.Fatalf("completion replaced the output before it rolled:\n%s", got)
+	}
+	rollCommandOutput(u)
+	if got := main(); !strings.Contains(got, "Ran") || !strings.Contains(got, "exit 1") || !strings.Contains(got, "┆ ok 19") {
+		t.Fatalf("held completion did not follow its rolled output:\n%s", got)
+	}
+	if len(u.attached.session.Commands()) != 0 {
+		t.Fatalf("completed command still tracked: %v", u.attached.session.Commands())
+	}
+	for view, before := range completed {
+		after := view.Model.Publish().Entries[len(view.Entries)-1]
+		if !reflect.DeepEqual(before, after) {
+			t.Fatalf("terminal animation rewrote canonical completion:\nbefore=%+v\nafter=%+v", before, after)
+		}
+	}
+}
+
+func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "printf output > source.go", "status": "inProgress"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	output := strings.Repeat("output\n", 20)
+	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "delta": output})
+	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 1, output
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+	view := u.testActivity(u.shell.Transcript)
+	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
+	if !view.MarkUnreturned("main", "cmd") {
+		t.Fatal("output note was not admitted")
+	}
+	for _, receiptText := range []string{"Edit `source.go` +1 -1", ""} {
+		view.ApplyCapturedEdits([]*changepresentation.Receipt{{Thread: "main", Calls: []string{"cmd"}, Text: receiptText}})
+		view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: "Main", Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: "cmd", Phase: "approval/updated", Approval: "Approved"}}}})
+		frame := ansi.Strip(strings.Join(view.RenderFeed(100, 30).Lines, "\n"))
+		if strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, "output not returned to the model") != 1 || strings.Contains(frame, "exit 1") {
+			t.Fatalf("held frame lost current annotations or exposed its delayed outcome:\n%s", frame)
+		}
+		if (receiptText != "") != strings.Contains(frame, "+1 -1") {
+			t.Fatalf("held frame retained stale receipt content:\n%s", frame)
+		}
+	}
+	rollCommandOutput(u)
+	frame := ansi.Strip(strings.Join(view.RenderFeed(100, 30).Lines, "\n"))
+	if !strings.Contains(frame, "exit 1") || strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, "output not returned to the model") != 1 {
+		t.Fatalf("released frame lost canonical failure or annotations:\n%s", frame)
+	}
+}
+
+func TestAppServerHeldCompletionSettlesFromDisplayTime(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	u.clock = func() time.Time { return now }
+	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "echo output", "status": "inProgress"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	output := strings.Repeat("output\n", 20)
+	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "delta": output})
+	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	completed := u.attached.source.Model.Publish().Entries[0].Completed
+	if !completed.Equal(now) {
+		t.Fatalf("neutral completion time = %v, want %v", completed, now)
+	}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "next", "type": "reasoning", "summary": []string{"**Next step**"}}})
+	now = now.Add(time.Hour)
+	rollCommandOutput(u)
+	u.testActivity(u.shell.Transcript).RenderFeed(100, 30)
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
+	if settleActivity(now.Add(activityui.OutputDebounce-time.Nanosecond), u.testActivity(u.shell.Transcript)) {
+		t.Fatal("annotation refresh reset display settlement to host completion")
+	}
+	if !settleActivity(now.Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript)) {
+		t.Fatal("displayed completion did not settle after its quiet period")
+	}
+	if got := u.attached.source.Model.Publish().Entries[0].Completed; !got.Equal(completed) {
+		t.Fatalf("terminal settlement rewrote host completion: %v -> %v", completed, got)
+	}
+}
+
+// nextEvent adds finished thinking in thread, a standalone event that settles
+// the agent's earlier output.
+func nextEvent(t *testing.T, u *appServerUI, thread string) {
+	t.Helper()
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{
+		"id": fmt.Sprintf("next-%s-%d", thread, u.attached.source.LastSeq+1), "type": "reasoning", "summary": []string{"**Next step**"}}})
+	rollCommandOutput(u)
+}
+
+func TestAppServerOutputCollapsesTogetherAfterEventsPause(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	run := func(id string) {
+		t.Helper()
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+			"id": id, "type": "commandExecution", "command": "echo " + id, "status": "completed", "exitCode": 0, "aggregatedOutput": id + " 1\n" + id + " 2\n"}})
+	}
+	run("first")
+	run("second")
+	start := time.Now()
+	if settleActivity(start.Add(time.Second), u.testActivity(u.shell.Transcript)) {
+		t.Fatal("output collapsed before it could be read")
+	}
+	// Rapid commands keep deferring the collapse rather than folding one by one.
+	if settleActivity(start.Add(activityui.OutputDebounce/2), u.testActivity(u.shell.Transcript)) {
+		t.Fatal("output collapsed while events were still arriving")
+	}
+	run("third")
+	third := u.shell.Transcript.Events["Main"].At
+	if settleActivity(third.Add(activityui.OutputDebounce/2), u.testActivity(u.shell.Transcript)) {
+		t.Fatal("a later event did not restart the pause")
+	}
+	if !settleActivity(third.Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript)) {
+		t.Fatal("settled output did not collapse after events paused")
+	}
+	got := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 60).Lines, "\n"))
+	if strings.Contains(got, "first 1") || strings.Contains(got, "second 1") || !strings.Contains(got, "third 1") {
+		t.Fatalf("only the output with a later event should collapse:\n%s", got)
+	}
+}
+
+func TestAppServerMainClipsLongCommandSourceUntilOpened(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	command := "python3 - <<'PY'\n" + strings.Repeat("print('row')\n", 30) + "PY"
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+		"id": "cmd", "type": "commandExecution", "command": command, "status": "failed", "exitCode": 1, "aggregatedOutput": "boom\n"}})
+	render := func() activityui.Feed { return u.testActivity(u.shell.Transcript).RenderFeed(90, 60) }
+	feed := render()
+	got := ansi.Strip(strings.Join(feed.Lines, "\n"))
+	if strings.Count(got, "print('row')") != 4 || !strings.Contains(got, "│ … +") ||
+		!strings.Contains(got, "exit 1") || !strings.Contains(got, "┆ boom") {
+		t.Fatalf("long command source is not bounded with its exit and output:\n%s", got)
+	}
+	index := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(ansi.Strip(line), "│ … +") })
+	snippet := feed.Snippets[index]
+	if snippet == (activityui.Snippet{}) {
+		t.Fatalf("clipped source has no toggle: %v", feed.Snippets)
+	}
+	terminal := terminalTest(u)
+	if !terminal.openOutput(u.shell.Transcript, snippet) {
+		t.Fatal("clipped source did not open output dialog")
+	}
+	terminal.layoutOutput(76)
+	if got := terminal.Dialog.Document; strings.Count(ansi.Strip(fmt.Sprint(got.Lines)), "print('row')") != 30 || got.Text != "boom" {
+		t.Fatalf("dialog lost source or output: %+v", got)
+	}
+	terminal.outputKey("q")
+	if got := ansi.Strip(strings.Join(render().Lines, "\n")); !strings.Contains(got, "│ … +") {
+		t.Fatalf("source row changed after dialog closed:\n%s", got)
+	}
+}
+
+func TestAppServerReadOutputStartsCollapsed(t *testing.T) {
+	for _, tc := range []struct {
+		command   string
+		collapsed bool
+	}{
+		{"cat a.go", true},
+		{"skills-mgr get herdr", true},
+		{"skills-mgr run herdr/x.sh list", false},
+		{"go vet ./...", false},
+	} {
+		u := newAppServerSessionTestUI(t, t.TempDir())
+		u.shell.Transcript.Conversation = true
+		u.testActivity(u.shell.Transcript).testAudience()
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+			"id": "cmd", "type": "commandExecution", "command": tc.command, "status": "completed", "exitCode": 0, "aggregatedOutput": "one\ntwo\n"}})
+		got := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
+		if collapsed := strings.Contains(got, " (2 lines)") && !strings.Contains(got, "┆ two"); collapsed != tc.collapsed {
+			t.Fatalf("%s collapsed = %v, want %v:\n%s", tc.command, collapsed, tc.collapsed, got)
+		}
+	}
+}
+
+func TestAppServerShortPaneShowsCompactTail(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+		"id": "cmd", "type": "commandExecution", "command": "go test ./...", "status": "completed", "exitCode": 0, "aggregatedOutput": "1\n2\n3\n4\n5\n6\n"}})
+	render := func(height int) string {
+		return ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).Render(90, height, time.Now()), "\n"))
+	}
+	if got, want := render(40), "└ Ran go test ./...\n  +1  ┆ 2\n      ┆ 3\n      ┆ 4\n      ┆ 5\n      ┆ 6"; !strings.Contains(got, want) {
+		t.Fatalf("tall pane lacks the whole tail %q:\n%s", want, got)
+	}
+	if got, want := render(39), "└ Ran go test ./...\n  +3  ┆ 4\n      ┆ 5\n      ┆ 6"; !strings.Contains(got, want) {
+		t.Fatalf("short pane lacks the compact tail %q:\n%s", want, got)
+	}
+}
+
+func TestAppServerInstantOperationOutputDoesNotRoll(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	notify := func(method string, params map[string]any) {
+		t.Helper()
+		params["threadId"], params["turnId"] = "main", "t"
+		appServerTestNotify(t, u, method, params)
+	}
+	main := func() string {
+		return ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
+	}
+	var output strings.Builder
+	for i := range 20 {
+		fmt.Fprintf(&output, "line %d\n", i)
+	}
+	item := map[string]any{"id": "read", "type": "commandExecution", "command": "rg -n line internal", "status": "inProgress"}
+	notify("item/started", map[string]any{"item": item})
+	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "read", "delta": output.String()})
+	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+	if got := main(); !strings.Contains(got, "┆ line 19") || strings.Contains(got, "line 14") {
+		t.Fatalf("a search's output rolled instead of showing its tail at once:\n%s", got)
+	}
+	// Its completion is not held behind a burst either.
+	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "read", "delta": "line 20\n"})
+	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output.String()+"line 20\n"
+	notify("item/completed", map[string]any{"item": item})
+	if got := main(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ line 20") || len(u.attached.session.Commands()) != 0 {
+		t.Fatalf("a search's completion waited for its output to roll:\n%s", got)
+	}
+
+	// Other commands still roll a burst through.
+	run := map[string]any{"id": "run", "type": "commandExecution", "command": "go test ./...", "status": "inProgress"}
+	notify("item/started", map[string]any{"item": run})
+	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "run", "delta": output.String()})
+	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+	if got := main(); strings.Contains(got[strings.Index(got, "Running"):], "line 19") {
+		t.Fatalf("a command's burst jumped to its tail:\n%s", got)
+	}
+}
+
+// Consecutive reads whose content collapsed share one row that counts each
+// target's lines; the dialog pages through each invocation's output.
+func TestAppServerCollapsedReadsMerge(t *testing.T) {
+	for _, conversation := range []bool{false, true} {
+		t.Run(fmt.Sprint(conversation), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.shell.Transcript.Conversation = conversation
+			u.testActivity(u.shell.Transcript).testAudience()
+			for i, command := range []string{"sed -n 1,3p a.go", "sed -n 1,2p b.go", "sed -n 5,6p a.go"} {
+				appServerTestNotify(t, u, "item/completed", map[string]any{
+					"threadId": "main", "turnId": "t", "item": map[string]any{
+						"id": fmt.Sprint(i), "type": "commandExecution", "command": command,
+						"status": "completed", "exitCode": 0, "aggregatedOutput": fmt.Sprintf("read-%d\nmore-%d\n", i, i),
+					},
+				})
+			}
+			feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 60)
+			got := ansi.Strip(strings.Join(feed.Lines, "\n"))
+			if strings.Count(got, "Read") != 1 || !strings.Contains(got, "Read a.go L1–3, L5–6 (4 lines) · b.go L1–2 (2 lines)") || strings.Contains(got, "read-0") {
+				t.Fatalf("collapsed reads did not merge:\n%s", got)
+			}
+			index := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "(4 lines)") })
+			snippet := feed.Snippets[index]
+			if snippet == (activityui.Snippet{}) {
+				t.Fatal("merged read row has no toggle")
+			}
+			terminal := terminalTest(u)
+			if !terminal.openOutput(u.shell.Transcript, snippet) || len(terminal.Dialog.Pages) != 3 {
+				t.Fatal("merged reads did not open three dialog pages")
+			}
+			for i := range 3 {
+				terminal.layoutOutput(80)
+				if page := terminal.Dialog.Document.Text; !strings.Contains(page, fmt.Sprintf("read-%d\nmore-%d", i, i)) {
+					t.Fatalf("read page %d = %q", i, page)
+				}
+				if i < 2 {
+					terminal.outputKey("\x1b[C")
+				}
+			}
+			terminal.outputKey("q")
+			if again := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 60).Lines, "\n")); again != got {
+				t.Fatalf("closed reads =\n%s\nwant\n%s", again, got)
+			}
+		})
+	}
+}
+
+func TestOutputCollapseSharesFrameAcrossLateCompletions(t *testing.T) {
+	for _, agents := range [][]string{{"Main", "Main"}, {"Main", "/root/worker"}} {
+		t.Run(strings.Join(agents, ","), func(t *testing.T) {
+			v := newActivityAdapter()
+			start := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+			late := start.Add(activityui.OutputDebounce / 2)
+			v.Events = map[string]activityui.Event{}
+			for i, agent := range agents {
+				settled := start
+				if i == 1 {
+					settled = late
+				}
+				v.appendEntry(sessionpresentation.ActivityEntry{Seq: uint64(i + 1), Agent: agent, Completed: settled, Native: &sessionpresentation.NativeItem{}}, []activityui.Block{{Kind: "op", Verb: "Run", Tail: []string{"one", "two"}}})
+			}
+			v.publishActivity()
+			for _, agent := range agents {
+				v.Events[agent] = activityui.Event{Seq: 3, At: start}
+			}
+			if settleActivity(start.Add(activityui.OutputDebounce), v) {
+				t.Fatal("earlier output collapsed in a separate frame")
+			}
+			if v.blocks(0)[0].Collapsed || v.blocks(1)[0].Collapsed {
+				t.Fatal("partially collapsed batch")
+			}
+			if !settleActivity(late.Add(activityui.OutputDebounce), v) {
+				t.Fatal("batch did not collapse")
+			}
+			if !v.blocks(0)[0].Collapsed || !v.blocks(1)[0].Collapsed {
+				t.Fatal("outputs did not collapse together")
+			}
+		})
+	}
+}
+
+func TestOutputCollapseSharesFrameAcrossPanes(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	start := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	late := start.Add(activityui.OutputDebounce / 2)
+	for i, agent := range []string{"/root", "/root/worker"} {
+		at := start
+		if i == 1 {
+			at = late
+		}
+		applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{
+			{Seq: uint64(i*2 + 1), Agent: agent, Kind: "tool", Text: "Run `echo result`", Observed: at, Completed: at, OutputTail: []string{"first output line", "last output line"}, Native: &sessionpresentation.NativeItem{Thread: agent, Item: "cmd"}},
+			{Seq: uint64(i*2 + 2), Agent: agent, Kind: "reasoning", Text: "**Next step**", Observed: at, Native: &sessionpresentation.NativeItem{Thread: agent, Item: "next"}},
+		}, nil)
+	}
+	render := func(view *activityAdapter) string {
+		return ansi.Strip(strings.Join(view.RenderFeed(90, 60).Lines, "\n"))
+	}
+	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
+		if !strings.Contains(render(view), "first output line") {
+			t.Fatalf("fixture lacks visible output: %s", render(view))
+		}
+	}
+	if settleActivity(start.Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)) {
+		t.Fatal("panes collapsed in different frames")
+	}
+	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
+		if !strings.Contains(render(view), "first output line") {
+			t.Fatal("one pane collapsed early")
+		}
+	}
+	if !settleActivity(late.Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)) {
+		t.Fatal("panes did not settle")
+	}
+	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
+		if got := render(view); strings.Contains(got, "first output line") || !strings.Contains(got, "… +2 lines") {
+			t.Fatalf("pane did not collapse:\n%s", got)
+		}
+	}
+}

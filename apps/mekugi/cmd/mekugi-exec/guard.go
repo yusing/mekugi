@@ -1,0 +1,214 @@
+package main
+
+import (
+	json "encoding/json/v2"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
+	"github.com/yusing/mekugi/modules/remotewriteapproval/remote"
+	"golang.org/x/sys/unix"
+)
+
+// guard runs a version-control command in place of the guard's PATH entry.
+// Every invocation runs the real tool by exec, keeping its arguments, argv[0],
+// environment, descriptors and exit status. A remote write first waits for
+// the router's approval; a denial, timeout or unreachable router exits 1
+// without running it, so only this command fails and the shell continues.
+func guard(name string, args []string) int {
+	explicit := os.Getenv(shellinstrumentation.RealEnvironment)
+	os.Unsetenv(shellinstrumentation.RealEnvironment) // Neither the tool nor its children inherit it.
+	argv0 := os.Args[0]
+	if explicit != "" {
+		argv0 = explicit
+	}
+	return guardCommand("", name, explicit, argv0, false, args)
+}
+
+// guardCommand also serves host-instrumented executable words. The target is
+// expanded by the native shell, and the channel is an explicit session path,
+// so env -i and login sh do not depend on inherited guard variables or PATH.
+func guardCommand(directory, name, explicit, argv0 string, defaultPath bool, args []string) int {
+	foundDirectory, real, err := guardPaths(name, explicit, defaultPath)
+	if directory == "" {
+		directory = foundDirectory
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
+		return 127
+	}
+	argv := append([]string{name}, args...)
+	environment := guardEnvironment(real)
+	lookup := func(globals []string, alias string) (string, bool) {
+		cmd := exec.Command(real, slices.Concat(globals, []string{"config", "--get", "alias." + alias})...)
+		cmd.Env = environment
+		output, err := cmd.Output()
+		if err != nil {
+			return "", false
+		}
+		return strings.TrimSuffix(string(output), "\n"), true
+	}
+	if remote.Writes(argv, lookup) {
+		if ok, reason := approve(directory, real, argv, ""); !ok {
+			fmt.Fprintf(os.Stderr, "mekugi: remote write denied: %s\n", reason)
+			return 1
+		}
+	}
+	err = unix.Exec(real, append([]string{argv0}, args...), environment)
+	fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
+	return 126
+}
+
+// Mise's system fallback must skip the guard that dispatched its shim, not
+// dispatch back to it. Its active-shim identity excludes that executable while
+// preserving the guarded PATH for the real command and its children.
+func guardEnvironment(real string) []string {
+	environment := slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, shellinstrumentation.ItemEnvironment+"=")
+	})
+	resolved, err := filepath.EvalSymlinks(real)
+	if err != nil || filepath.Base(real) == "mise" || filepath.Base(resolved) != "mise" {
+		return environment
+	}
+	helper, err := os.Executable()
+	if err != nil {
+		return environment
+	}
+	const key = "__MISE_SHIM_PATH="
+	// An inherited guard can use a different helper binary. Mise can exclude
+	// one executable identity, so keep this session's guard and remove only
+	// other guard directories from the shim's invocation-local PATH.
+	self, err := os.Stat(helper)
+	if err != nil {
+		return environment
+	}
+	for i, entry := range environment {
+		if path, ok := strings.CutPrefix(entry, "PATH="); ok {
+			paths := slices.DeleteFunc(filepath.SplitList(path), func(directory string) bool {
+				if filepath.Base(directory) != shellinstrumentation.VCSDirectory {
+					return false
+				}
+				info, err := os.Stat(filepath.Join(directory, filepath.Base(real)))
+				return err == nil && !os.SameFile(info, self)
+			})
+			environment[i] = "PATH=" + strings.Join(paths, string(os.PathListSeparator))
+		}
+	}
+	environment = slices.DeleteFunc(environment, func(entry string) bool { return strings.HasPrefix(entry, key) })
+	return append(environment, key+helper)
+}
+
+// guardPaths finds the guard directory, which holds this executable under
+// the tool's name, and the real tool: the absolute path a shell function
+// passes for a command that named it, or else the first other match in PATH.
+// Another session's guard, which a nested Mekugi may leave behind this one,
+// is not the real tool: two guards would otherwise exec each other forever.
+func guardPaths(name, explicit string, defaultPath bool) (directory, real string, err error) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", "", err
+	}
+	selfInfo, err := os.Stat(self)
+	if err != nil {
+		return "", "", err
+	}
+	if strings.Contains(os.Args[0], "/") {
+		directory = filepath.Dir(os.Args[0])
+	}
+	if explicit != "" {
+		info, err := os.Stat(explicit)
+		if filepath.Base(explicit) != name || err != nil || !info.Mode().IsRegular() {
+			return "", "", fmt.Errorf("%s: command not found", explicit)
+		}
+		if !os.SameFile(info, selfInfo) {
+			return directory, explicit, nil
+		}
+		// A path into another session's guard: find the real tool as usual.
+	}
+	pathList, pathSet := os.LookupEnv("PATH")
+	if !pathSet {
+		pathList = "/bin:/usr/bin" // execvp's default when env -i omits PATH.
+	}
+	if defaultPath {
+		// command -p changes lookup, not the environment inherited by the tool.
+		output, err := exec.Command("/usr/bin/getconf", "PATH").Output()
+		if err != nil {
+			return "", "", fmt.Errorf("resolve standard utility path: %w", err)
+		}
+		pathList = strings.TrimSpace(string(output))
+	}
+	for _, entry := range filepath.SplitList(pathList) {
+		if entry == "" {
+			entry = "."
+		}
+		candidate := filepath.Join(entry, name)
+		info, err := os.Stat(candidate)
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+			continue
+		}
+		if os.SameFile(info, selfInfo) {
+			if directory == "" {
+				directory = entry
+			}
+			continue
+		}
+		if filepath.Base(entry) == shellinstrumentation.VCSDirectory || filepath.Base(entry) == shellinstrumentation.SudoDirectory {
+			continue
+		}
+		if !strings.Contains(candidate, "/") {
+			candidate = "./" + candidate
+		}
+		return directory, candidate, nil
+	}
+	return "", "", errors.New("command not found")
+}
+
+// approve uses one local connection per command. Sandboxed execution is unsupported.
+func approve(directory, executable string, argv []string, kind string) (bool, string) {
+	const unavailable = "Mekugi approval is unavailable"
+	if directory == "" {
+		return false, unavailable
+	}
+	// The router owns the decision timeout; allow its denial to arrive before
+	// the client closes and would otherwise look like a withdrawn request.
+	deadline := time.Now().Add(shellapproval.Timeout + 5*time.Second)
+	socket, err := os.Readlink(shellapproval.ChannelOf(directory))
+	if err != nil {
+		return false, unavailable
+	}
+	conn, err := net.DialTimeout("unix", socket, time.Second)
+	if err != nil {
+		return false, unavailable
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(deadline); err != nil {
+		return false, unavailable
+	}
+	cwd, _ := os.Getwd()
+	message := shellapproval.Message{Kind: kind, Thread: os.Getenv("CODEX_THREAD_ID"), Item: os.Getenv(shellinstrumentation.ItemEnvironment), Cwd: cwd, Argv: argv, Executable: executable}
+	data, err := json.Marshal(&message)
+	if err != nil || len(data) > shellapproval.MaxMessage {
+		return false, "invalid approval request"
+	}
+	if _, err := conn.Write(data); err != nil {
+		return false, unavailable
+	}
+	var reply shellapproval.Reply
+	if err := json.UnmarshalRead(io.LimitReader(conn, shellapproval.MaxMessage), &reply); err != nil {
+		return false, "no valid answer from Mekugi"
+	}
+	if !reply.OK && reply.Reason == "" {
+		reply.Reason = "denied"
+	}
+	return reply.OK, reply.Reason
+}

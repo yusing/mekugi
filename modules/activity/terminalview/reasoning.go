@@ -1,0 +1,118 @@
+package terminalview
+
+import (
+	"strings"
+	"time"
+
+	"github.com/yusing/mekugi/modules/activity/presentation"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/terminalui"
+)
+
+// ThinkingTailRows is how much reasoning stays visible while it
+// streams, following grok-build's truncated thinking blocks.
+const ThinkingTailRows = 3
+
+// CompactReasoning joins collapsed sections of one item without changing the
+// source blocks used by expanded presentation or the dialog's section pages.
+func CompactReasoning(blocks []Block) []Block {
+	var out []Block
+	for i := 0; i < len(blocks); {
+		block := blocks[i]
+		j := i + 1
+		if block.Kind == "summary" && block.Collapsed && !block.Live {
+			for j < len(blocks) && blocks[j].Kind == "summary" && blocks[j].Collapsed && !blocks[j].Live && blocks[j].Source == block.Source {
+				j++
+			}
+		}
+		if j > i+1 {
+			values := make([]presentation.Value, j-i)
+			for k, b := range blocks[i:j] {
+				values[k] = b.Value
+			}
+			block.Value = presentation.Reasoning(values)
+		}
+		out = append(out, block)
+		i = j
+	}
+	return out
+}
+
+// thinkingHeader labels long reasoning blocks; short summaries render directly.
+func (p *Painter) thinkingHeader(block Block, width int) (string, bool) {
+	label := block.Label
+	if label == "" {
+		label = presentation.ReasoningSections(block.Body)[0].Label
+	}
+	if label == "" && block.Live {
+		label = "Thinking…"
+	} else if label == "" {
+		label = "Thought"
+	}
+	label = p.Inline(label)
+	if !block.Live && block.Thought >= time.Second {
+		elapsed := FormatDuration(block.Thought)
+		suffix := " for " + elapsed
+		label = strings.TrimSuffix(reasoningFor(label, elapsed), suffix)
+		if width > ansi.StringWidth(suffix) {
+			room := width - ansi.StringWidth(suffix)
+			return ansi.Truncate(label, room, "…") + suffix, ansi.StringWidth(label) > room
+		}
+		label += suffix
+	}
+	return ansi.Truncate(label, max(1, width), "…"), ansi.StringWidth(label) > max(1, width)
+}
+
+// Strip the visible trailing period, preserving Markdown's terminal styles.
+func reasoningFor(text, elapsed string) string {
+	if dot := strings.LastIndexByte(text, '.'); dot >= 0 && ansi.Strip(text[dot+1:]) == "" {
+		text = text[:dot] + text[dot+1:]
+	}
+	return text + " for " + elapsed
+}
+
+// reasoningRow keeps the whole row faint and italic, including text after
+// Markdown's combined style resets. Reapply only these attributes, preserving
+// inline colors, hyperlinks, and the remaining Markdown styles.
+func reasoningRow(row string) string {
+	const style = terminalui.Dim + "\x1b[3m"
+	var out strings.Builder
+	out.WriteString(style)
+	var state byte
+	for len(row) > 0 {
+		seq, _, n, next := ansi.DecodeSequence(row, state, nil)
+		if n == 0 {
+			break
+		}
+		state, row = next, row[n:]
+		out.WriteString(seq)
+		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
+			out.WriteString(style)
+		}
+	}
+	out.WriteString(terminalui.Reset)
+	return out.String()
+}
+
+// ReasoningElided uses the same wrapped body and short-summary rule as the
+// renderer. A settled one-line summary is not a collapsed detail view.
+func (p *Painter) ReasoningElided(block Block, width int) bool {
+	width = max(8, width)
+	rows, short, titleOnly := p.reasoningContent(block, width)
+	_, headingElided := p.thinkingHeader(block, width-2)
+	return len(rows) > 0 && !short && (block.Collapsed || block.Live && !block.Expanded && len(rows) > ThinkingTailRows || headingElided && !titleOnly)
+}
+
+func (p *Painter) reasoningContent(block Block, width int) (rows []string, short, titleOnly bool) {
+	if block.Label == "" {
+		block.Label = presentation.ReasoningSections(block.Body)[0].Label
+	}
+	body := presentation.ReasoningSummaryBody(block.Body)
+	if body == "" {
+		return nil, false, false
+	}
+	rows = p.Markdown(body, max(1, width-2), true)
+	titleOnly = body == strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(block.Body), "<!-- -->"))
+	return rows, len(rows) == 1 && (block.Label == "" || titleOnly), titleOnly
+}

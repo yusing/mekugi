@@ -1,0 +1,321 @@
+// Source: capturer/snapshot.go@b5162407.
+package capture
+
+import (
+	"cmp"
+	jsonv1 "encoding/json"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
+	"io"
+	"net/http"
+	"slices"
+
+	"github.com/yusing/mekugi/contracts/inference"
+
+	"github.com/yusing/mekugi/libraries/persistence"
+)
+
+type usageMetrics struct {
+	OutputThroughput    inference.OutputThroughput `json:"output_throughput,omitzero"`
+	CompleteAttempts    uint64                     `json:"complete_attempts"`
+	IncompleteAttempts  uint64                     `json:"incomplete_attempts"`
+	UnknownAttempts     uint64                     `json:"unknown_attempts"`
+	MissingAttempts     uint64                     `json:"missing_attempts"`
+	InputTokens         uint64                     `json:"input_tokens"`
+	CachedInputTokens   uint64                     `json:"cached_input_tokens"`
+	UncachedInputTokens uint64                     `json:"uncached_input_tokens"`
+	OutputTokens        uint64                     `json:"output_tokens"`
+	ReasoningTokens     uint64                     `json:"reasoning_tokens"`
+	ProviderAttempts    uint64                     `json:"provider_attempts"`
+}
+
+type requestTotals struct {
+	Retries          uint64 `json:"retries"`
+	Logical          uint64 `json:"logical"`
+	ProviderAttempts uint64 `json:"provider_attempts"`
+	Completed        uint64 `json:"completed"`
+	Failed           uint64 `json:"failed"`
+}
+
+type cacheMetrics struct {
+	ProviderCacheRate *float64 `json:"provider_cache_rate"`
+}
+
+type payloadTotals struct {
+	Bytes uint64 `json:"bytes"`
+}
+
+type transportMetrics struct {
+	ClientControlRequests    payloadTotals `json:"client_control_requests"`
+	ClientRequests           payloadTotals `json:"client_requests"`
+	ProviderAttemptRequests  payloadTotals `json:"provider_attempt_requests"`
+	ProviderControlRequests  payloadTotals `json:"provider_control_requests"`
+	ProviderControlResponses payloadTotals `json:"provider_control_responses"`
+	ProviderResponses        payloadTotals `json:"provider_responses"`
+	ClientControlResponses   payloadTotals `json:"client_control_responses"`
+	ClientResponses          payloadTotals `json:"client_responses"`
+}
+
+func addWebSocketControl(metrics *transportMetrics, record captureRecord) bool {
+	switch {
+	case record.Boundary == "codex_control" && record.ControlDirection == ResponsesWebSocketControlRequest:
+		addPayload(&metrics.ClientControlRequests, record.Request)
+	case record.Boundary == "codex_control" && record.ControlDirection == ResponsesWebSocketControlResponse:
+		addPayload(&metrics.ClientControlResponses, record.Response)
+	case record.Boundary == "provider_control" && record.ControlDirection == ResponsesWebSocketControlRequest:
+		addPayload(&metrics.ProviderControlRequests, record.Request)
+	case record.Boundary == "provider_control" && record.ControlDirection == ResponsesWebSocketControlResponse:
+		addPayload(&metrics.ProviderControlResponses, record.Response)
+	default:
+		return false
+	}
+	return true
+}
+
+type captureHealth struct {
+	Records                uint64 `json:"records"`
+	CaptureErrors          uint64 `json:"capture_errors"`
+	Incomplete             uint64 `json:"incomplete_records"`
+	MissingProvider        uint64 `json:"missing_provider_records"`
+	AttemptGaps            uint64 `json:"provider_attempt_gaps"`
+	WriteErrors            uint64 `json:"write_errors"`
+	SkippedRequests        uint64 `json:"skipped_requests"`
+	DroppedExchangeDetails uint64 `json:"dropped_exchange_details"`
+}
+
+type providerAttemptMetrics struct {
+	DurationMillis       uint64                    `json:"duration_ms"`
+	StatusCode           int                       `json:"status_code"`
+	CaptureError         string                    `json:"capture_error,omitempty"`
+	Transport            string                    `json:"transport,omitempty"`
+	ProviderResponse     *providerResponseEvidence `json:"provider_response,omitempty"`
+	Attempt              uint64                    `json:"attempt"`
+	Model                string                    `json:"model,omitempty"`
+	Status               string                    `json:"status"`
+	ResponseComplete     bool                      `json:"response_complete"`
+	Usage                *usageMetrics             `json:"usage,omitempty"`
+	Request              payloadMetrics            `json:"request"`
+	Fingerprint          *requestFingerprint       `json:"cache_fingerprint,omitempty"`
+	ProjectedFingerprint *requestFingerprint       `json:"projected_fingerprint,omitempty"`
+	Response             payloadMetrics            `json:"response"`
+}
+
+type exchangeMetrics struct {
+	StatusCode          int                      `json:"status_code"`
+	ResponseComplete    bool                     `json:"response_complete"`
+	CaptureError        string                   `json:"capture_error,omitempty"`
+	DurationMillis      uint64                   `json:"duration_ms"`
+	PredecessorSequence uint64                   `json:"predecessor_sequence,omitempty"`
+	RequestKind         string                   `json:"request_kind,omitempty"`
+	ClientFingerprint   *requestFingerprint      `json:"client_fingerprint,omitempty"`
+	CacheDiagnosis      *cacheDiagnosis          `json:"cache_diagnostics,omitempty"`
+	Sequence            uint64                   `json:"sequence"`
+	ThreadID            string                   `json:"thread_id,omitempty"`
+	Model               string                   `json:"model,omitempty"`
+	ProviderAttempts    []providerAttemptMetrics `json:"provider_attempts"`
+	Status              string                   `json:"status"`
+	Usage               *usageMetrics            `json:"usage,omitempty"`
+	ClientRequest       payloadMetrics           `json:"client_request"`
+	ClientResponse      payloadMetrics           `json:"client_response"`
+}
+
+// MetricsSnapshot is a detached, capture-owned metrics view.
+type MetricsSnapshot struct {
+	OutputDeduplication OutputDeduplicationMetrics `json:"output_deduplication,omitzero"`
+	StorageWrites       *persistence.Snapshot      `json:"storage_writes,omitempty"`
+	Schema              string                     `json:"schema"`
+	Mode                string                     `json:"mode"`
+	Requests            requestTotals              `json:"requests"`
+	Usage               usageMetrics               `json:"usage"`
+	Cache               cacheMetrics               `json:"cache"`
+	Transport           transportMetrics           `json:"transport"`
+	Exchanges           []exchangeMetrics          `json:"exchanges"`
+	Capture             captureHealth              `json:"capture"`
+}
+
+// ServeHTTP exposes capture-owned calculations on the router's existing
+// listener. It never reads or mutates router state.
+func (r *Recorder) ServeHTTP(writer http.ResponseWriter, _ *http.Request) {
+	writer.Header().Set("Content-Type", "application/json")
+	writer.Header().Set("Cache-Control", "no-store")
+	if err := r.WriteMetrics(writer); err != nil {
+		return
+	}
+}
+
+// WriteMetrics exports the same capture-owned snapshot used by the session dialog.
+func (r *Recorder) WriteMetrics(writer io.Writer) error {
+	return json.MarshalEncode(jsontext.NewEncoder(writer), r.snapshot(), jsonv1.DefaultOptionsV1())
+}
+
+// Snapshot returns an independent view safe for presentation without holding recorder locks.
+func (r *Recorder) Snapshot() MetricsSnapshot { return r.snapshot() }
+
+func (r *Recorder) snapshot() MetricsSnapshot {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	snapshot := r.metrics.Clone()
+	snapshot.StorageWrites = r.writes.Snapshot()
+	diagnoseCacheExchanges(snapshot.Exchanges)
+	return snapshot
+}
+
+func newMetricsSnapshot(mode string) MetricsSnapshot {
+	return MetricsSnapshot{
+		Schema: "mekugi.capture.metrics.v7",
+		Mode:   mode,
+	}
+}
+
+func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
+	slices.SortFunc(providers, func(first, second captureRecord) int {
+		return cmp.Compare(first.ProviderAttempt, second.ProviderAttempt)
+	})
+	if len(providers) == 0 && front.ResponseStatus == "completed" && (front.ProviderExpected == nil || *front.ProviderExpected) {
+		r.metrics.Capture.MissingProvider++
+	}
+	for index, provider := range providers {
+		if provider.ProviderAttempt != uint64(index+1) {
+			r.metrics.Capture.AttemptGaps++
+		}
+	}
+
+	exchange := exchangeMetrics{
+		StatusCode: front.StatusCode, ResponseComplete: front.ResponseComplete, CaptureError: front.CaptureError,
+		DurationMillis: front.DurationMillis,
+		RequestKind:    front.RequestKind,
+		Sequence:       front.RequestSequence, ThreadID: front.ThreadID, PredecessorSequence: front.PredecessorSequence,
+		Status: front.ResponseStatus, ClientRequest: front.Request, ClientResponse: front.Response,
+		ClientFingerprint: front.Fingerprint,
+	}
+	var exchangeUsage usageMetrics
+	r.metrics.Requests.Logical++
+	r.metrics.Requests.ProviderAttempts += uint64(len(providers))
+	r.metrics.Requests.Retries += uint64(max(0, len(providers)-1))
+	addPayload(&r.metrics.Transport.ClientRequests, front.Request)
+	addPayload(&r.metrics.Transport.ClientResponses, front.Response)
+	if front.ResponseStatus == "completed" {
+		r.metrics.Requests.Completed++
+	} else {
+		r.metrics.Requests.Failed++
+	}
+	for _, provider := range providers {
+		addPayload(&r.metrics.Transport.ProviderAttemptRequests, provider.Request)
+		addPayload(&r.metrics.Transport.ProviderResponses, provider.Response)
+		attempt := providerAttemptMetrics{
+			DurationMillis: provider.DurationMillis, StatusCode: provider.StatusCode, CaptureError: provider.CaptureError,
+			Transport:        provider.Transport,
+			ProviderResponse: provider.ProviderResponse,
+			Attempt:          provider.ProviderAttempt, Model: provider.RequestModel, Status: provider.ResponseStatus,
+			ResponseComplete: provider.ResponseComplete,
+			Fingerprint:      provider.Fingerprint, ProjectedFingerprint: provider.ProjectedFingerprint,
+			Request: provider.Request, Response: provider.Response,
+		}
+		if provider.RequestModel != "" {
+			exchange.Model = provider.RequestModel
+		}
+		if provider.Usage != nil {
+			usage := usageOf(*provider.Usage)
+			attempt.Usage = &usage
+			addUsage(&exchangeUsage, usage)
+			addUsage(&r.metrics.Usage, usage)
+		} else {
+			exchangeUsage.MissingAttempts++
+			r.metrics.Usage.MissingAttempts++
+		}
+		exchange.ProviderAttempts = append(exchange.ProviderAttempts, attempt)
+	}
+	if exchangeUsage.ProviderAttempts != 0 {
+		exchange.Usage = &exchangeUsage
+	}
+	if r.metrics.Usage.InputTokens != 0 {
+		rate := float64(r.metrics.Usage.CachedInputTokens) / float64(r.metrics.Usage.InputTokens)
+		r.metrics.Cache.ProviderCacheRate = &rate
+	}
+	if len(r.metrics.Exchanges) == maxRetainedExchangeDetails {
+		copy(r.metrics.Exchanges, r.metrics.Exchanges[1:])
+		r.metrics.Exchanges[len(r.metrics.Exchanges)-1] = exchange
+		r.metrics.Capture.DroppedExchangeDetails++
+	} else {
+		r.metrics.Exchanges = append(r.metrics.Exchanges, exchange)
+	}
+}
+
+// Clone isolates consumers of an already detached snapshot.
+func (source MetricsSnapshot) Clone() MetricsSnapshot {
+	clone := source
+	if source.StorageWrites != nil {
+		clone.StorageWrites = new(*source.StorageWrites)
+	}
+	if source.Cache.ProviderCacheRate != nil {
+		rate := *source.Cache.ProviderCacheRate
+		clone.Cache.ProviderCacheRate = &rate
+	}
+	clone.Exchanges = slices.Clone(source.Exchanges)
+	for index, exchange := range source.Exchanges {
+		clone.Exchanges[index] = exchange
+		if exchange.CacheDiagnosis != nil {
+			diagnosis := *exchange.CacheDiagnosis
+			diagnosis.Client.ChangedFields = slices.Clone(diagnosis.Client.ChangedFields)
+			diagnosis.Projected.ChangedFields = slices.Clone(diagnosis.Projected.ChangedFields)
+			diagnosis.Provider.ChangedFields = slices.Clone(diagnosis.Provider.ChangedFields)
+			clone.Exchanges[index].CacheDiagnosis = &diagnosis
+		}
+		clone.Exchanges[index].ClientFingerprint = cloneFingerprint(exchange.ClientFingerprint)
+		clone.Exchanges[index].ProviderAttempts = slices.Clone(exchange.ProviderAttempts)
+		for attemptIndex, attempt := range exchange.ProviderAttempts {
+			clone.Exchanges[index].ProviderAttempts[attemptIndex] = attempt
+			clone.Exchanges[index].ProviderAttempts[attemptIndex].ProviderResponse = cloneProviderEvidence(attempt.ProviderResponse)
+			clone.Exchanges[index].ProviderAttempts[attemptIndex].Fingerprint = cloneFingerprint(attempt.Fingerprint)
+			clone.Exchanges[index].ProviderAttempts[attemptIndex].ProjectedFingerprint = cloneFingerprint(attempt.ProjectedFingerprint)
+			if attempt.Usage != nil {
+				usage := *attempt.Usage
+				clone.Exchanges[index].ProviderAttempts[attemptIndex].Usage = &usage
+			}
+		}
+		if exchange.Usage != nil {
+			usage := *exchange.Usage
+			clone.Exchanges[index].Usage = &usage
+		}
+	}
+	return clone
+}
+
+// usageOf converts a ProviderUsage observation to internal usageMetrics.
+func usageOf(usage ProviderUsage) usageMetrics {
+	cached := min(usage.InputTokens, usage.CachedTokens)
+	result := usageMetrics{
+		InputTokens: usage.InputTokens, CachedInputTokens: cached,
+		UncachedInputTokens: usage.InputTokens - cached,
+		OutputTokens:        usage.OutputTokens, ReasoningTokens: usage.ReasoningTokens,
+		ProviderAttempts: 1,
+		OutputThroughput: usage.OutputThroughput,
+	}
+	switch {
+	case usage.EvidenceComplete == nil:
+		result.UnknownAttempts = 1
+	case !*usage.EvidenceComplete:
+		result.IncompleteAttempts = 1
+	default:
+		result.CompleteAttempts = 1
+	}
+	return result
+}
+
+func addUsage(total *usageMetrics, usage usageMetrics) {
+	total.OutputThroughput.Add(usage.OutputThroughput)
+	total.InputTokens += usage.InputTokens
+	total.CachedInputTokens += usage.CachedInputTokens
+	total.UncachedInputTokens += usage.UncachedInputTokens
+	total.OutputTokens += usage.OutputTokens
+	total.ReasoningTokens += usage.ReasoningTokens
+	total.ProviderAttempts += usage.ProviderAttempts
+	total.CompleteAttempts += usage.CompleteAttempts
+	total.IncompleteAttempts += usage.IncompleteAttempts
+	total.UnknownAttempts += usage.UnknownAttempts
+	total.MissingAttempts += usage.MissingAttempts
+}
+
+func addPayload(total *payloadTotals, payload payloadMetrics) {
+	total.Bytes += payload.Bytes
+}

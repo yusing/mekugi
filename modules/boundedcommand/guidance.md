@@ -1,0 +1,1 @@
+Requires an explicit -n or --max-tokens limit. -n N selects up to N rows; --tail selects the last rows in source order and requires -n or --max-tokens. The selected token window may end within a row; delivery overflow keeps row boundaries, except oversized or unterminated generic streams use byte continuation.
