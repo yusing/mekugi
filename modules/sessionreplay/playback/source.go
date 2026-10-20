@@ -135,6 +135,7 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 					begin := e
 					begin.At, begin.Kind = e.Started, observation.ItemStarted
 					begin.Item.Text, begin.Item.Summary, begin.Item.AggregatedOutput = "", nil, nil
+					begin.Item.Result, begin.Item.Error = nil, nil
 					begin.Item.Status, begin.Item.ExitCode, begin.Item.DurationMS = "inProgress", nil, nil
 					r.Events = append(r.Events, begin)
 					stream, err := deltas(ctx, rng, e, e.Started, e.At)

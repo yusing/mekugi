@@ -38,6 +38,10 @@ type ThreadItem struct {
 	CommandActions    []CommandAction       `json:"commandActions"`
 	Changes           []FileChange          `json:"changes"`
 	Tool              string                `json:"tool"`
+	Server            string                `json:"server"`
+	Arguments         jsontext.Value        `json:"arguments"`
+	Result            jsontext.Value        `json:"result"`
+	Error             jsontext.Value        `json:"error"`
 	SenderThreadID    string                `json:"senderThreadId"`
 	ReceiverThreadIDs []string              `json:"receiverThreadIds"`
 	AgentsStates      map[string]AgentState `json:"agentsStates"`

@@ -113,6 +113,9 @@ func OutputTail(output *string) ([]string, int) {
 }
 
 func ToolText(item observation.Item, cwd string) string {
+	if item.Type == "mcpToolCall" {
+		return activitypresentation.MCPText(item)
+	}
 	if item.Type != "webSearch" {
 		return CommandText(item, cwd)
 	}

@@ -49,6 +49,8 @@ type Item struct {
 	ID, Type, Status, Text, Delivery, Phase, Cwd, Kind, Path string
 	Command, ProcessID, ClientID, AgentThreadID, AgentPath   string
 	Tool, SenderThreadID                                     string
+	Server                                                   string         // MCP server identity.
+	Arguments, Result, Error                                 jsontext.Value // Opaque MCP input and outcome.
 	Prompt, Model, ReasoningEffort                           string
 	ReceiverThreadIDs                                        []string
 	DurationMS                                               *int64

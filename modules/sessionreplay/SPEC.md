@@ -29,7 +29,9 @@ and verified metadata; missing or ambiguous children are disclosed. Copied ances
 items and turn lifecycles retain their original ownership.
 
 Supported facts include messages, public reasoning summaries, command output,
-file changes, agent lifecycle and collaboration, compaction and image-view activity.
+file changes, MCP calls, agent lifecycle and collaboration, compaction and image-view activity.
+MCP arguments remain available at the recorded start; results and errors appear
+only at completion.
 Collaboration preserves recorded assignment/message bodies and supplied child model
 settings. Only successful completed calls claim delivered assignments or messages;
 missing facts remain unknown.

@@ -24,6 +24,10 @@ func (i ThreadItem) Observation() observation.Item {
 	if i.Type == "agentMessage" {
 		out.Text = i.Text
 	}
+	if i.Type == "mcpToolCall" {
+		out.Server = i.Server
+		out.Arguments, out.Result, out.Error = slices.Clone(i.Arguments), slices.Clone(i.Result), slices.Clone(i.Error)
+	}
 	if i.Type == "userMessage" {
 		out.Content = slices.Clone(i.Content)
 	}

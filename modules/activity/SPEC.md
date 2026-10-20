@@ -23,6 +23,10 @@ their host identity and available arguments, including MCP server/tool identity.
 Observation preserves original inputs, results, parallel execution and host-owned
 continuations. It adds no conversation commentary or model turns and does not
 reconstruct a second lifecycle from provider requests or arbitrary printed output.
+MCP starts and completions share one row per host item. Its tool details retain
+the supplied JSON arguments, result content and error, including structured or
+non-text results. Failed calls remain visibly failed. Restored history and offline
+replay use the same details without restarting the operation.
 
 Attribution requires validated stable thread relationships and canonical agent
 identity, never routing-session IDs or message text. Request preparation precedes

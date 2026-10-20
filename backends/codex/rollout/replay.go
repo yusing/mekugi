@@ -163,18 +163,20 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 	var p struct {
 		Source                                                   string `json:"source"`
 		Type, ID, Status, Text, Delivery, Phase, Cwd, Kind, Path string
-		Content                                                  jsontext.Value            `json:"content"`
-		Command                                                  jsontext.Value            `json:"command"`
-		Summary                                                  []string                  `json:"summary_text"`
-		Output                                                   *string                   `json:"aggregated_output"`
-		Exit                                                     *int                      `json:"exit_code"`
-		Process                                                  string                    `json:"process_id"`
-		Client                                                   string                    `json:"client_id"`
-		AgentThread                                              string                    `json:"agent_thread_id"`
-		AgentPath                                                string                    `json:"agent_path"`
-		Sender                                                   string                    `json:"sender_thread_id"`
-		Receivers                                                []string                  `json:"receiver_thread_ids"`
-		Tool                                                     string                    `json:"tool"`
+		Content                                                  jsontext.Value `json:"content"`
+		Command                                                  jsontext.Value `json:"command"`
+		Summary                                                  []string       `json:"summary_text"`
+		Output                                                   *string        `json:"aggregated_output"`
+		Exit                                                     *int           `json:"exit_code"`
+		Process                                                  string         `json:"process_id"`
+		Client                                                   string         `json:"client_id"`
+		AgentThread                                              string         `json:"agent_thread_id"`
+		AgentPath                                                string         `json:"agent_path"`
+		Sender                                                   string         `json:"sender_thread_id"`
+		Receivers                                                []string       `json:"receiver_thread_ids"`
+		Tool                                                     string         `json:"tool"`
+		Server                                                   string         `json:"server"`
+		Arguments, Result, Error                                 jsontext.Value
 		Prompt                                                   string                    `json:"prompt"`
 		Model                                                    string                    `json:"model"`
 		ReasoningEffort                                          string                    `json:"reasoning_effort"`
@@ -225,6 +227,8 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 		i.Type = strings.ToLower(i.Type[:1]) + i.Type[1:]
 	}
 	switch i.Type {
+	case "mcpToolCall":
+		i.Server, i.Arguments, i.Result, i.Error = p.Server, p.Arguments, p.Result, p.Error
 	case "userMessage", "reasoning", "subAgentActivity", "contextCompaction", "imageView":
 	case "collabAgentToolCall":
 		// Retained Rust enum spelling differs from app-server observation names.

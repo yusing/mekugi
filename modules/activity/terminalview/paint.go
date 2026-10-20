@@ -151,14 +151,57 @@ func (p *Painter) Label(verb, label string) string {
 }
 
 // program keeps operation source under a gutter beside its verb.
-func (p *Painter) program(lang, source string, width int) []string {
+func (p *Painter) program(lang, source string, width int, block Block) []string {
 	var lines []string
+	hidden := 0
+	width = max(1, width-2)
 	for _, line := range p.Highlight(lang, source) {
-		for _, part := range terminalui.Wrap(line, width-2, true) {
+		if block.SourceRows > 0 {
+			var count int
+			line, count = programPreview(line, width, max(0, block.SourceRows-len(lines)))
+			if len(lines) >= block.SourceRows {
+				hidden += count
+				continue
+			}
+			hidden += max(0, count-(block.SourceRows-len(lines)))
+		}
+		for _, part := range terminalui.Wrap(line, width, true) {
 			lines = append(lines, terminalui.Dim+"│"+terminalui.Undim+" "+part)
 		}
 	}
+	if hidden > 0 {
+		keep := max(1, block.SourceRows-1)
+		hidden += len(lines) - keep
+		lines = append(lines[:keep:keep], terminalui.Dim+"│"+terminalui.Undim+" "+Elision{Hidden: hidden, Hovered: block.Hovered}.String())
+	}
 	return lines
+}
+
+// programPreview counts hard-wrapped rows without materializing hidden text.
+// ANSI sequences and wide graphemes retain their geometry; only the visible
+// prefix is handed to the shared styled wrapper. Full source stays in the block.
+func programPreview(line string, width, limit int) (string, int) {
+	rows, cells, end := 1, 0, len(line)
+	if limit == 0 {
+		end = 0
+	}
+	var state byte
+	for at := 0; at < len(line); {
+		n, size := 1, 1
+		if line[at] < ' ' || line[at] > '~' || state != 0 {
+			_, size, n, state = ansi.DecodeSequence(line[at:], state, nil)
+		}
+		if size > 0 && cells+size > width {
+			rows++
+			cells = 0
+			if rows == limit+1 && limit > 0 {
+				end = at
+			}
+		}
+		cells += size
+		at += n
+	}
+	return line[:end], rows
 }
 
 func liveActivityIndent(lines []string, prefix string) []string {
@@ -468,7 +511,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			if !block.Fenced && (block.Verb == "MCP" || strings.HasPrefix(block.Verb, "Tool")) {
 				lang = "json"
 			}
-			lines = append(lines, clipSource(liveActivityIndent(p.program(lang, sourceTabs(code), width-2), "  "), block, "  "+terminalui.Dim+"│"+terminalui.Undim+" ")...)
+			lines = append(lines, liveActivityIndent(p.program(lang, sourceTabs(code), width-2, block), "  ")...)
 		}
 		if body != "" {
 			lines = append(lines, liveActivityIndent(p.Markdown(body, width-2, false), "  ")...)
@@ -712,7 +755,7 @@ func (p *Painter) ranRow(block Block, width int) []string {
 			lines = suffix(lines, label)
 		}
 	case code != "":
-		program := clipSource(liveActivityIndent(p.program(block.Lang, code, width-indent), padding), block, padding+terminalui.Dim+"│"+terminalui.Undim+" ")
+		program := liveActivityIndent(p.program(block.Lang, code, width-indent, block), padding)
 		if label != "" {
 			lines = terminalui.Hang(lead, label, width)
 		} else {

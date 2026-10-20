@@ -1,10 +1,12 @@
 package terminalview
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
@@ -60,5 +62,63 @@ func BenchmarkCommandClippedLayout(b *testing.B) {
 				p.Block(block, 90)
 			}
 		})
+	}
+}
+
+func TestProgramClipPreservesWrappedRows(t *testing.T) {
+	for _, code := range []string{
+		"#界\nx",
+		"{\n\"data\":\"" + strings.Repeat("A", 1000) + "\"\n}",
+		"/* multiline\n comment */\n" + strings.Repeat("x = 42;\n", 30),
+		"\n\n" + strings.Repeat("界e\u0301👩‍💻  ", 100) + "\n\n",
+	} {
+		for _, layout := range []bool{false, true} {
+			p := Painter{Theme: diffrender.DarkTheme, LayoutOnly: layout}
+			for _, width := range []int{3, 4, 12, 44} {
+				full := p.program("json", code, width, Block{})
+				for _, limit := range []int{1, 2, 5, len(full), len(full) + 1} {
+					for _, hover := range []bool{false, true} {
+						block := Block{SourceRows: limit, Hovered: hover}
+						want := clipSource(full, block, "\x1b[2m│\x1b[22m ")
+						got := p.program("json", code, width, block)
+						if !slices.Equal(got, want) {
+							t.Fatalf("width=%d limit=%d layout=%v hover=%v:\ngot %q\nwant %q", width, limit, layout, hover, got, want)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestProgramPreviewBoundsMaterializedSource(t *testing.T) {
+	source := strings.Repeat("A", 8<<20)
+	preview, rows := programPreview(source, 40, 5)
+	if len(preview) != 200 || rows != (len(source)+39)/40 {
+		t.Fatalf("prefix bytes=%d rows=%d", len(preview), rows)
+	}
+}
+
+func BenchmarkMCPClippedResult(b *testing.B) {
+	for _, size := range []int{1 << 20, 8 << 20} {
+		b.Run(fmt.Sprint(size), func(b *testing.B) {
+			p := Painter{Theme: diffrender.DarkTheme}
+			block := Block{Kind: "op", Verb: "MCP", Label: "screenshots · capture", Code: "{\n\"result\":{\"content\":[{\"type\":\"image\",\"data\":\"" + strings.Repeat("A", size) + "\"}]}\n}", Lang: "json", Fenced: true, SourceRows: 5}
+			b.ReportAllocs()
+			for b.Loop() {
+				p.Block(block, 78)
+			}
+		})
+	}
+}
+
+func TestProgramClipWideCommentAtNarrowWidth(t *testing.T) {
+	for _, layout := range []bool{false, true} {
+		p := Painter{Theme: diffrender.DarkTheme, LayoutOnly: layout}
+		block := Block{Kind: "op", Verb: "Run", Code: "#界\nx", Lang: "bash", Fenced: true, SourceRows: 2}
+		rows := p.Block(block, 10)
+		if len(rows) != 2 || !strings.Contains(ansi.Strip(rows[1]), "+2 lines") {
+			t.Fatalf("layout=%v: %q", layout, rows)
+		}
 	}
 }

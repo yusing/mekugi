@@ -270,6 +270,9 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 			result.Deliveries = append(result.Deliveries, ActivityDelivery{Command: delivery})
 			entries = append(entries, s.commandDone(entry, item, now)...)
 
+		case "mcpToolCall":
+			native.Running = method == "item/started" && item.Status == "inProgress"
+			entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "tool", Text: ToolText(item, in.Workspace), CallID: id, Observed: now, Native: native})
 		case "imageView":
 			entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(in.Workspace, item.Path)), CallID: id, Observed: now, Native: native})
 		case "fileChange":
