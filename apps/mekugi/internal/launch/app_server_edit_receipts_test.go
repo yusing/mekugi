@@ -454,6 +454,19 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 	check(restored.testActivity(restored.shell.Transcript))
 }
 
+func TestAppServerUserShellCaptureRetainsCommandOutcome(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Source: "userShell", Command: "printf changed > file; false", Status: "failed", ExitCode: new(2), AggregatedOutput: new("retained failure\n")}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	u.review.Projection.Data = reviewReceiptSnapshot(t, []*presentation.Receipt{{Thread: "main", Calls: []string{"cmd"}, Text: "Edit `file` +1 -0"}})
+	applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
+	blocks := u.testActivity(u.shell.Transcript).blocks(0)
+	if len(blocks) != 2 || blocks[0].Code != item.Command || blocks[0].ExitCode != 2 || len(blocks[0].Tail) != 1 ||
+		blocks[1].EditPath() != "file" || blocks[1].ExitCode != 0 {
+		t.Fatalf("receipt replaced user command or attributed its failure to the captured edit: %+v", blocks)
+	}
+}
+
 // Assemble captured-effect values for renderer-only fixtures.
 func testCapturedEditActivity(workspace string, history legacycall.History) *changepresentation.Receipt {
 	if history.ExecOutcome == nil {

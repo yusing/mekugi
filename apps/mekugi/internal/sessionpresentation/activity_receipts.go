@@ -114,7 +114,7 @@ func (v *ActivitySource) ApplyCapturedEdits(receipts []*changepresentation.Recei
 				blocks := ActivityContent(entry).Values()
 				// Reparsed tracked blocks already carry each segment's own exit.
 				// A receipt must not spread one failure to successful siblings.
-				if len(v.Entries[i].Values) > 0 && len(entry.Native.Segments) == 0 {
+				if len(v.Entries[i].Values) > 0 && len(entry.Native.Segments) == 0 && !native.UserShell {
 					for j := range blocks {
 						blocks[j].ExitCode = exit
 					}

@@ -48,3 +48,19 @@ func TestItemContentPreservesAuthoredSourceAndDetachedDetails(t *testing.T) {
 		t.Fatal("publication shared mutable questions")
 	}
 }
+
+func TestUserShellRetainsCommandAlongsideCapturedEdits(t *testing.T) {
+	command := Command{UserShell: true, Display: "printf changed > file; false", Script: "printf changed > file; false",
+		CaptureText: "Edit `file` · +1 −0 · bash", Exited: true, ExitCode: 2, Duration: time.Second,
+		Segments: []CommandSegment{{Source: "printf changed > file", Writer: true}, {Source: "false", ExitCode: 2}}}
+	values := (ItemContent{Facts: Facts{Seq: 1, Kind: "tool"}, Command: command, Details: &ItemDetails{CommandText: command.Script}}).Values()
+	values = CommandExit(values, 2, []string{"retained failure"}, 3)
+	if len(values) != 2 || !values[0].UserShell || values[0].Code != command.Display || values[0].ExitCode != 2 || values[0].Duration != time.Second ||
+		len(values[0].Tail) != 1 || values[0].TailOmitted != 3 || values[1].EditPath() != "file" || values[1].Exited {
+		t.Fatalf("capture replaced user source/output or inherited its exit: %+v", values)
+	}
+	pages := RefreshDetails(DetailPages(values[:1]), map[uint64]DetailSource{1: {Entry: Entry{Values: values}, Command: &command}})
+	if len(pages) != 1 || pages[0].Code != command.Display || !pages[0].UserShell {
+		t.Fatalf("details replaced the user command with classified segments: %+v", pages)
+	}
+}

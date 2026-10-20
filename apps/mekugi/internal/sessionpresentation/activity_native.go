@@ -14,6 +14,7 @@ import (
 // Source: apps/mekugi/internal/router/live_activity_app_server.go:1:194@45fbe279
 
 type NativeItem struct {
+	UserShell  bool                             `json:"-"` // Host command origin, independent of source classification.
 	Invocation *activitypresentation.Invocation `json:"-"` // Canonical host state, shared while terminal output settles.
 	// Admitted native phase and timing. Terminal holds use detached projections
 	// rather than delaying these host facts.

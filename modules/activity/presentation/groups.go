@@ -61,6 +61,9 @@ func TargetRun(values []Value, counts []int) (Value, int) {
 
 // sameAction is shared by target compaction and verb-cell grouping.
 func sameAction(a, b Value) bool {
+	if a.UserShell || b.UserShell {
+		return false
+	}
 	if (a.Hook == nil) != (b.Hook == nil) || a.Hook != nil && *a.Hook != *b.Hook {
 		return false
 	}

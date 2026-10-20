@@ -21,6 +21,7 @@ func (b Value) DirectoryDeletion() bool {
 // Values contain source text and bounded output facts, not renderer state or
 // handles into the attached output owner.
 type Value struct {
+	UserShell   bool
 	GroupHeader string
 	GroupStart  bool
 	GroupCount  int

@@ -72,6 +72,7 @@ func (s *Attachment) CompleteCommand(native *NativeItem, item observation.Item, 
 	if item.Type != "commandExecution" {
 		return
 	}
+	native.UserShell = item.UserShell
 	native.Exit = item.ExitCode // Displayed outcome, separate from queued visual completion.
 	if run := s.Commands()[[3]string{native.Thread, native.Turn, native.Item}]; run != nil {
 		native.Invocation = run.Entry.Native.Invocation
@@ -90,11 +91,11 @@ func (s *Attachment) CompleteCommand(native *NativeItem, item observation.Item, 
 // exit. Known failures carry their tail on the separate exit entry. Only confirmed
 // success opens the settlement window or starts restored output collapsed.
 func CommandOutput(entry *ActivityEntry, item observation.Item, settled time.Time) {
-	if item.Type != "commandExecution" || item.ExitCode != nil && *item.ExitCode != 0 {
+	if item.Type != "commandExecution" || !item.UserShell && item.ExitCode != nil && *item.ExitCode != 0 {
 		return
 	}
 	entry.OutputTail, entry.OutputOmit = OutputTail(item.AggregatedOutput)
-	if item.ExitCode == nil {
+	if item.ExitCode == nil || *item.ExitCode != 0 {
 		return
 	}
 	entry.Completed = settled

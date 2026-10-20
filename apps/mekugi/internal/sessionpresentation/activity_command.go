@@ -19,6 +19,7 @@ func CommandPresentation(entry ActivityEntry) activitypresentation.Command {
 	if n == nil {
 		return c
 	}
+	c.UserShell = n.UserShell
 	if n.Invocation != nil {
 		canonical := n.Invocation.Snapshot()
 		c.Script, c.Display, c.Directory = canonical.Script, canonical.Display, canonical.Directory

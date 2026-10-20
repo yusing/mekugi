@@ -148,6 +148,13 @@ func (entry ItemContent) Values() (blocks []Value) {
 	case "compaction":
 		return []Value{{Kind: "compaction", Body: text}}
 	case "tool":
+		if command.UserShell {
+			blocks := []Value{{Kind: "op", Verb: "Run", UserShell: true,
+				Code: textsanitize.Safe(command.Display, false), Lang: "bash", Fenced: true,
+				Running: command.Running, Output: outputID(command.Output, 1),
+				Tail: command.Tail, TailOmitted: command.TailOmitted}}
+			return append(blocks, Operations(textsanitize.Safe(command.CaptureText, false))...)
+		}
 		if entry.Details != nil && len(entry.Command.Segments) > 0 {
 			return GroupOperations(command.SegmentValues(false))
 		}
@@ -209,6 +216,11 @@ func CommandExit(blocks []Value, code int, tail []string, omitted int) []Value {
 	last, count, batch := -1, 0, -1
 	var output int
 	for i, block := range blocks {
+		if block.UserShell {
+			blocks[i].ExitCode, blocks[i].Exited = code, true
+			blocks[i].Tail, blocks[i].TailOmitted = tail, omitted
+			return blocks
+		}
 		output = cmp.Or(output, block.Output)
 		if block.Segment {
 			return blocks // Confirmed segment outcomes already own their statuses.

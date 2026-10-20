@@ -161,6 +161,7 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 
 func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 	var p struct {
+		Source                                                   string `json:"source"`
 		Type, ID, Status, Text, Delivery, Phase, Cwd, Kind, Path string
 		Content                                                  jsontext.Value            `json:"content"`
 		Command                                                  jsontext.Value            `json:"command"`
@@ -258,6 +259,7 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 			i.Text += block.Text
 		}
 	case "commandExecution":
+		i.UserShell = p.Source == "user_shell"
 		var args []string
 		if err := json.Unmarshal(p.Command, &args); err != nil {
 			return i, false, err

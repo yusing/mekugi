@@ -43,6 +43,9 @@ const OutputDebounce = 5 * time.Second
 // thinking as its header, or a successful command's output as its
 // line count.
 func (b Block) Collapsible() bool {
+	if b.UserShell {
+		return false
+	}
 	if b.Hook != nil && (b.Hook.Status != "completed" || b.Hook.HasError) {
 		return false
 	}
@@ -96,6 +99,12 @@ func AlignVerbs(blocks []Block) []Block {
 
 // RowVerb is the verb a row shows.
 func RowVerb(b Block) string {
+	if b.UserShell {
+		if b.Running {
+			return "You running"
+		}
+		return "You ran"
+	}
 	if b.Hook != nil {
 		switch b.Hook.Status {
 		case "running":

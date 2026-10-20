@@ -12,7 +12,7 @@ func TestHistoryItemObservationPreservesPublicFacts(t *testing.T) {
 	thread, err := DecodeHistoryThread([]byte(`{"thread":{"id":"child","agentNickname":"Reader",
 		"source":{"subAgent":{"thread_spawn":{"agent_path":"/root/reader","agent_role":"worker"}}},
 		"turns":[{"id":"turn","items":[
-			{"id":"command","type":"commandExecution","command":"cat file","cwd":"/workspace","status":"completed",
+			{"id":"command","type":"commandExecution","source":"userShell","command":"cat file","cwd":"/workspace","status":"completed",
 			 "commandActions":[{"type":"read","command":"cat file","path":"file"}],"durationMs":0,"exitCode":0,"aggregatedOutput":""},
 			{"id":"web","type":"webSearch","query":"fallback","action":{"type":"search","queries":["one","two"]},"results":[]},
 			{"id":"edit","type":"fileChange","changes":[{"path":"old","diff":"patch","kind":{"type":"update","movePath":"new"}},
@@ -29,7 +29,7 @@ func TestHistoryItemObservationPreservesPublicFacts(t *testing.T) {
 	}
 	items := thread.Turns[0].Items
 	command := items[0].Observation()
-	if command.Command != "cat file" || command.Cwd != "/workspace" || command.Status != "completed" ||
+	if !command.UserShell || command.Command != "cat file" || command.Cwd != "/workspace" || command.Status != "completed" ||
 		!reflect.DeepEqual(command.CommandActions, []observation.CommandAction{{Type: "read", Command: "cat file", Path: "file"}}) ||
 		command.DurationMS == nil || *command.DurationMS != 0 || command.ExitCode == nil || *command.ExitCode != 0 || command.AggregatedOutput == nil || *command.AggregatedOutput != "" {
 		t.Fatalf("command facts = %#v", command)

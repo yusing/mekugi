@@ -120,6 +120,12 @@ merge.
 
 Run changes to Running on host start and Ran on host completion. A yielded
 process stays Running across turns until exit. Replay does not revive it.
+Host-identified user shell commands show `You running` and `You ran`, retaining
+their command preview and output excerpt even after successful completion or
+history restoration. They never join counted operation batches or share their
+verb with agent commands. Source classification does not replace their command
+preview; captured edits remain available alongside it. Agent commands retain
+their ordinary classification and disclosure.
 Known nonzero exits make the verb red and append `exit N`, moving the suffix to
 its own row when needed; roster summaries retain the failure. Unknown exit is
 distinct from success and does not suppress observed aggregate output.

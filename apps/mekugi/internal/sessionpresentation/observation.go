@@ -220,6 +220,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 				}
 			}
 			native.CommandTimeout = facts.CommandTimeout
+			native.UserShell = item.UserShell
 			native.CommandCwd = CommandDirectory(item, in.Workspace)
 			native.SearchResults = SearchResults(item)
 			entry := ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "tool", Text: ToolText(item, in.Workspace), CallID: id, Observed: now, Native: native}

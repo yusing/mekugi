@@ -16,6 +16,7 @@ import (
 // Script keeps shell structure; Display has authenticated instrumentation removed.
 // Output snapshots carry retained facts, never process or storage handles.
 type Command struct {
+	UserShell                        bool
 	Source                           uint64
 	Script, Display, Directory, Text string
 	Observed, Started, Ended         time.Time
@@ -70,6 +71,9 @@ func Operations(text string) []Value {
 // Compound reports whether invocation timing must stay on a combined result.
 // Source: apps/mekugi/internal/router/live_activity_blocks.go:52:80@6d403a5a.
 func (c Command) Compound(values []Value) bool {
+	if c.UserShell {
+		return false
+	}
 	compound := len(values) > 1 || len(c.Segments) > 0
 	if compound || c.Script == "" {
 		return compound
@@ -94,6 +98,9 @@ func (c Command) ApplyFacts(values []Value) {
 	compound := c.Compound(values)
 	for i := range values {
 		value := &values[i]
+		if c.UserShell && !value.UserShell {
+			continue
+		}
 		if (value.Kind != "op" && value.Kind != "reads") || value.Skipped || compound && !value.BatchExit {
 			continue
 		}
@@ -207,6 +214,9 @@ func (c Command) SegmentValues(detail bool) []Value {
 // attribute every operation's output. Output text never manufactures boundaries.
 // Source: apps/mekugi/internal/router/output_dialog.go:189:254@6d403a5a.
 func (c Command) DetailValues() []Value {
+	if c.UserShell {
+		return nil // The visible command already retains the whole invocation.
+	}
 	if c.Source == 0 || c.Script == "" && len(c.Segments) == 0 {
 		return nil
 	}
