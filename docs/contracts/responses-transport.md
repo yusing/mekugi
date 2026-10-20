@@ -11,30 +11,20 @@ Models discovery, Grok and OpenCode retain HTTP provider transports.
 The [backend adapter](../../backends/codex/responses/SPEC.md) owns envelopes,
 native identities, connection-local history and response framing. The
 [OpenAI provider](../../providers/openai/SPEC.md) owns credentials, upstream
-connections, pooled inference and its pre-send-only fallback. Application
-inference gateway owns HTTP admission, the catalog cache, auxiliary routes and
+connections and single-attempt HTTP inference. Application
+inference gateway owns HTTP admission, catalog forwarding, auxiliary routes and
 dedicated socket lifetime. The shared request executor owns accounting and
 delivery diagnostics; transport passes each admitted exchange to that executor.
 
 ## Catalog and auxiliary exchanges
 
-`/v1/models` retains only the latest complete successful HTTP 200 catalog in
-invocation memory, bounded to 8 MiB, without disk persistence or an expiry timer.
-Authenticated requests with identical
-credentials, account, session header and query, including client version, reuse
-its delivered body and forwarded headers; concurrent matches share the fetch.
-In Mekugi mode, successful catalogs set every model's `tool_mode` to
-`code_mode_only` before caching and delivery, preserving all other metadata and
-the upstream version ETag. Malformed catalogs fail without being cached.
-Passthrough preserves the original body. This projection keeps account discovery
-and refresh active without relying on edits to Codex's shared cache.
-Invalid authentication cannot read the cache. An absent session header scopes
-reuse to the router lifetime. A successful different key replaces the entry.
-Router restart, including resume, clears it; forks and model switches reuse only
-a matching key. Failures are not cached: Codex receives the catalog error, and private
-diagnostics retain its complete cause, transport class or upstream HTTP status,
-reference and upstream/downstream statuses. Catalog refresh failures are not
-inference failures and queue no terminal notice.
+`/v1/models` forwards every authenticated request to the provider. Codex owns
+catalog caching and refresh; the gateway bounds complete responses to 8 MiB.
+Successful catalogs set every model's `tool_mode` to `code_mode_only` before
+delivery, preserving other metadata and the upstream ETag. Internal passthrough
+preserves the original body. Malformed projected catalogs fail explicitly.
+Catalog refresh failures retain upstream status and private diagnostic details,
+without becoming inference failures or queuing a terminal notice.
 
 OpenAI standalone search, native image generation/editing and history-note
 operations use authenticated forwarding without projection or automatic retry.
@@ -139,7 +129,7 @@ private errors remain separate from sanitized metrics and capture.
 After a delivered `response.created`, a deterministic translation fault emits
 `response.failed` with `invalid_prompt` unless a terminal was already delivered
 or downstream is unwritable. Its message includes a safe cause and diagnostic
-reference, advising a model switch, passthrough, or a `--debug` relaunch and report,
+reference, advising a model switch or a `--debug` relaunch and report,
 not retrying unchanged input. Pre-stream retryable provider failures retain their
 retry behavior. Protocol delivery does not acknowledge a user-visible
 [notice](../../modules/notifications/SPEC.md).
@@ -157,6 +147,5 @@ failures remain failures. Stream observations follow
 Actual transport consumers cover invocation-local launch, concurrent steering,
 successor commitment, pending tool continuations, prewarming, incremental history,
 terminal restoration, HTTP delivery, same-socket instant interruption, cancellation
-and failed-send/disconnection behavior. Provider pool acceptance is separate from
-dedicated-session acceptance; offline protocol checks do not establish installed
-Codex behavior.
+and failed-send/disconnection behavior. HTTP fallback remains HTTP upstream; retries
+remain host-owned. Offline protocol checks do not establish installed Codex behavior.

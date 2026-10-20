@@ -1280,7 +1280,7 @@ func TestProviderClientOmitsUnsafeCodexCacheKey(t *testing.T) {
 }
 
 //nolint:canonicalheader // Exact lowercase names match Codex's observed wire headers.
-func TestProviderClientPreservesCodexRequestHeadersAcrossRetries(t *testing.T) {
+func TestProviderClientPreservesCodexRequestHeaders(t *testing.T) {
 	headers := codexAuthHeaders()
 	headers.Set(codexresponses.RoutingSessionHeader, "session")
 	headers.Set(codexresponses.ThreadIDHeader, "thread")
@@ -1293,13 +1293,6 @@ func TestProviderClientPreservesCodexRequestHeadersAcrossRetries(t *testing.T) {
 	var attempts []http.Header
 	httpClient := &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
 		attempts = append(attempts, request.Header.Clone())
-		if len(attempts) == 1 {
-			return &http.Response{
-				StatusCode: http.StatusServiceUnavailable,
-				Header:     http.Header{"Retry-After": []string{"0"}},
-				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"selected model is at capacity"}}`)),
-			}, nil
-		}
 		return serverHTTPResponse("{}"), nil
 	})}
 	client := newTestProviderClient(testProviderBaseURL, httpClient)
@@ -1310,8 +1303,8 @@ func TestProviderClientPreservesCodexRequestHeadersAcrossRetries(t *testing.T) {
 	if err := response.Body.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(attempts) != 2 {
-		t.Fatalf("upstream attempts = %d, want 2", len(attempts))
+	if len(attempts) != 1 {
+		t.Fatalf("upstream attempts = %d, want 1", len(attempts))
 	}
 	for attempt, forwarded := range attempts {
 		if got := forwarded[codexresponses.SessionIDHeader]; !slices.Equal(got, []string{"cache-key"}) {

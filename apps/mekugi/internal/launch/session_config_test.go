@@ -26,7 +26,7 @@ import (
 
 func TestRunSessionReusesParsedConfigWithIndependentDebugOutputs(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	options, err := launchoptions.Parse([]string{"--debug", "--mode", "passthrough", "--ansi-faint", "off"})
+	options, err := launchoptions.Parse([]string{"--debug", "--ansi-faint", "off"})
 	if err != nil {
 		t.Fatal(err)
 	}

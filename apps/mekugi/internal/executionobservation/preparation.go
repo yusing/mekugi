@@ -356,12 +356,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		transform.usageTracker.Reasoning = request.ReasoningEffort()
 	}
 	p.observeCodeModeFailures(activityThreadID, codeModeToolName, request, visible)
-	// Continuation advice is appended to the output the model will see.
-	retainedExecution := make(map[string]binding.RetainedExecutionItem, len(visible))
-	for id, call := range visible {
-		retainedExecution[id] = binding.RetainedExecutionItem{Evidence: call.executionEvidence(true), UpstreamItem: call.UpstreamItem}
-	}
-	binding.ProjectExecutionContinuations(request, tools, codeModeToolName, retainedExecution)
 	if err := request.AppendApprovalFeedback(p.control.Feedback(threadID, metadata.TurnID)); err != nil {
 		transform.Close()
 		return nil, err

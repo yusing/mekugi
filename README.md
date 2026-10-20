@@ -24,7 +24,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
   for the session without changing instruction files or unmarked policy.
 - **Output deduplication.** Replace
   unchanged runs in tool output and attached file or skill content with references
-  to earlier visible text by default in Mekugi mode. Full host results, retained evidence,
+  to earlier visible text by default. Full host results, retained evidence,
   and the UI stay intact. Transcript suffixes mark repeated output; `/session`
   shows occurrences and estimated saved tokens. Disable with
   `--deduplicate-output=false`;
@@ -348,7 +348,6 @@ for that thread/model during the invocation. The composer shows the effective ti
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `--ansi-faint` | `auto` | Detect mosh; `on` uses ANSI faint, `off` fixed muted colors |
-| `--mode` | `mekugi` | `passthrough` forwards Codex without Mekugi tools |
 | `--shell-guard` | `true` | Guard UI remote writes and sudo commands, even with `--yolo` |
 | `--deduplicate-output` | `true` | Reference duplicates in model input; full results/evidence stay intact |
 | `--grok-auth-file` | `~/.grok/auth.json` | OAuth store |
@@ -357,8 +356,7 @@ for that thread/model during the invocation. The composer shows the effective ti
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |
 | `--debug` | Disabled | Record private [diagnostic evidence](docs/contributing/development.md#diagnostics) |
 
-`mekugi --mode passthrough --shell-guard=false codex` retains Codex policy/metrics, but
-disables Mekugi tools/guard. Use `--ansi-faint=off` if a multiplexer hides mosh.
+Use `--ansi-faint=off` if a multiplexer hides mosh.
 
 ### Context reset and recovery
 

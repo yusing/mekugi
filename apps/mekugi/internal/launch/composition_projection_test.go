@@ -18,7 +18,6 @@ import (
 
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
-	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -73,24 +72,17 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 				runtime.Guidance = nil
 			}
 			// Use the existing default-transport boundary to route the production
-			// provider client exclusively to a local TLS WebSocket fixture.
+			// provider client exclusively to a local TLS HTTP fixture.
 			received := make(chan []byte, 1)
 			upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				conn, err := websocket.Accept(w, r, nil)
-				if err != nil {
-					t.Error(err)
-					return
-				}
-				defer conn.CloseNow()
-				_, request, err := conn.Read(r.Context())
+				request, err := io.ReadAll(r.Body)
 				if err != nil {
 					t.Error(err)
 					return
 				}
 				received <- request
-				if err := conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"response.completed","response":{"id":"local-response","status":"completed","output":[]}}`)); err != nil {
-					t.Error(err)
-				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"local-response\",\"status\":\"completed\",\"output\":[]}}\n\n")
 			}))
 			defer upstream.Close()
 			transport := upstream.Client().Transport.(*http.Transport).Clone()

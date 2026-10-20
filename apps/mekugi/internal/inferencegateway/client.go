@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/providers/opencode"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/providers/openai"
 )
 
@@ -29,9 +28,6 @@ type Client struct {
 
 func NewClient(baseURL string, supplied *http.Client, diagnostics codexresponses.Diagnostics) *Client {
 	provider := openai.New(baseURL, supplied)
-	provider.ObserveWebSocket = func(ctx context.Context, payload []byte, headers, responseHeaders http.Header) openai.Observation {
-		return transportcapture.BeginWebSocketAttempt(ctx, payload, headers, responseHeaders)
-	}
 	return &Client{OpenAI: provider, Diagnostics: diagnostics}
 }
 
@@ -98,23 +94,11 @@ func (c *Client) ForwardExecution(startCtx, responseCtx context.Context, body []
 	if codexresponses.ValidCacheKey(cacheKey) {
 		upstream[codexresponses.SessionIDHeader] = []string{cacheKey}
 	}
-	var websocket *openai.WebSocketRequest
-	if c.OpenAI.WebSocketsEnabled() {
-		payload, handshake, stream, err := codexresponses.WebSocketRequest(body, upstream, cacheKey)
-		if err != nil {
-			return nil, err
-		}
-		websocket = &openai.WebSocketRequest{Payload: payload, Headers: handshake, Stream: stream}
-	}
-	response, err := c.OpenAI.Responses(startCtx, responseCtx, body, upstream, websocket)
+	response, err := c.OpenAI.Responses(startCtx, responseCtx, body, upstream)
 	if err != nil {
 		return nil, err
 	}
-	transport := "unknown"
-	if _, ok := response.Body.(*openai.WebSocketBody); ok {
-		transport = "websocket"
-	}
-	return &Response{Response: response, Transport: transport}, nil
+	return &Response{Response: response, Transport: "http"}, nil
 }
 
 // Forwarder executes a prepared request without owning request preparation.

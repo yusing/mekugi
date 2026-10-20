@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"io"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
@@ -27,6 +28,7 @@ import (
 )
 
 type btwPrewarmRequest struct {
+	headers http.Header
 	prewarm bool
 	body    []byte
 }
@@ -57,7 +59,20 @@ func builtInOpenAICodexEnvironment(t *testing.T) []string {
 
 func (p *btwPrewarmProvider) serve(w http.ResponseWriter, r *http.Request) {
 	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
-		http.Error(w, "fixture requires upstream WebSockets", http.StatusBadRequest)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			return
+		}
+		p.requests <- btwPrewarmRequest{body: body, headers: r.Header.Clone()}
+		select {
+		case <-p.release:
+		case <-r.Context().Done():
+			return
+		}
+		response := routerFaultCodexSuccessResponse()
+		defer response.Body.Close()
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.Copy(w, response.Body)
 		return
 	}
 	conn, err := websocket.Accept(w, r, nil)
@@ -125,7 +140,14 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 		t.Fatal(err)
 	}
 	provider := &btwPrewarmProvider{requests: make(chan btwPrewarmRequest, 32), release: make(chan struct{})}
-	upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if fallback && r.Header.Get("Upgrade") != "" {
+			t.Error("HTTP fallback attempted another upstream WebSocket")
+			http.Error(w, "fixture requires HTTP", http.StatusUpgradeRequired)
+			return
+		}
+		provider.serve(w, r)
+	}))
 	defer upstream.Close()
 	capture, err := new(transportcapture.Service).Open(transportcapture.Config{Mode: "mekugi"})
 	if err != nil {
@@ -136,8 +158,6 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 	// Use the same durable replay store as production.
 	attachTestReplayStore(t, proxy)
 	providerClient := newTestProviderClient(upstream.URL, upstream.Client())
-	providerClient.OpenAI.EnableWebSockets(t.Context())
-	defer providerClient.OpenAI.Close()
 	ws := testWebSocketEndpoint(t.Context(), time.Minute, providerClient, nil, proxy)
 	defer ws.Close()
 	httpResponses := testResponsesHandler(t.Context(), time.Minute, providerClient, nil, proxy)
@@ -225,7 +245,10 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 	if err := json.Unmarshal(first.body, &firstRequest); err != nil {
 		t.Fatal(err)
 	}
-	headers := make(http.Header)
+	headers := first.headers.Clone()
+	if headers == nil {
+		headers = make(http.Header)
+	}
 	for key, value := range firstRequest.ClientMetadata {
 		headers.Set(key, value)
 	}

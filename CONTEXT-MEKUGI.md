@@ -14,7 +14,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Options/catalog | `launch/options`, `launch/modelcatalog`, `launch/catalog.go`: launch/resume configuration, selected provider metadata and bundled discovery |
 | Frontends | `frontends/{registry,worker,session,recovery}.go`: authenticated catalog/PATH, dispatch, executable pinning, worker leases and retained delivery |
 | Headless | `headless`: noninteractive app-server client and JSONL evidence; Launch admits/dispatches it |
-| Inference gateway | `inferencegateway`: Responses admission, provider selection, socket lifetime, catalog/auxiliary endpoints; `models.go`: invocation-scoped catalog cache and Codex execution-mode projection; `service_tier.go`: applied tier shared by requests/display |
+| Inference gateway | `inferencegateway`: Responses admission, provider selection, socket lifetime, catalog/auxiliary endpoints; `models.go`: authenticated catalog forwarding and Codex execution-mode projection; `service_tier.go`: applied tier shared by requests/display |
 | Request execution | `requestexecution`: shared HTTP/WebSocket attempt, preparation, delivery, cancellation and failure; `{request_guidance,response_delivery,stream_diagnostics,naming_inference}.go`: integration seams |
 | Execution observation | `executionobservation`: passive stock-tool observations, capture windows, completion and publication; `{exec_observation,exec_changes,exec_report_observation,shell_observation,native_apply_patch,final_answer_stream}.go`: focused seams |
 | Session control | `sessioncontrol/client.go`: sole host connection/request ledger; package owns submission, interruption, compaction, settings, startup/resume, prompts, approvals, side threads and authenticated audience |
@@ -41,7 +41,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Command segments | `modules/commandsegments/{segments,transport,reports}`: live correlation/subscriptions, FIFO, retained publication/adoption; `libraries/shellinstrumentation`: argv/source instrumentation; Launch `exec_track.go`, Execution Observation `exec_report_observation.go`: host integration |
 | Session history | `modules/sessionhistory/history`: namespaces, leases, enrollment, retention and host-call cache; `{calls,call_requests,host_records}.go`: cache/pins/envelopes. Feature descriptors own record kinds; Record Transactions coordinates publication |
 | Persistence | `libraries/persistence`: private publication/opened-file admission; `libraries/legacycall`: historical envelopes/snapshot validation; Execution Observation `legacy_call.go`: working-value conversion |
-| Guidance | `modules/agentguidance`: inherited instruction cleanup; `codexbinding`: selected frontend descriptions/module `guidance.md`; Frontends `registry.go`: authenticated snapshot. `modules/contextreset` has supplied-history/collection code but no production caller |
+| Guidance | `modules/agentguidance`: inherited instruction cleanup; `codexbinding`: selected frontend descriptions/module `guidance.md`; Frontends `registry.go`: authenticated snapshot. |
 | Readers | `modules/{fileread,sourceoutline,symbolquery}`: raw reads, structural inspection and semantic queries; `libraries/{commandargs,outputbudget}`: grammar/admission; `libraries/sourceanalysis/structure`: shared declarations/coordinates |
 | Command/output tools | `modules/boundedcommand`: bounded foreground execution; `modules/outputrecovery`: retained publication/paging; `modules/outputdeduplication`: duplicate-output projection/local estimates; `backends/codex/binding`: composed inputs |
 | Source/command facts | `libraries/sourceanalysis/{sourcekind,sourceparse}`: capability/parsing/literal decoding/nonblocking opens; `libraries/commandanalysis/{shellsyntax,execscope}`: shell headers and execution scopes; callers retain authorization/effects |
@@ -53,7 +53,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Area | Owner |
 | --- | --- |
 | Codex RPC/processes | `backends/codex/appserver` |
-| Native facts | `backends/codex/binding`: notifications/items, tool results, history identity, submitted text, execution source/results, catalogs and continuation advice; `backends/codex/nativetrace`: bounded trace correlation |
+| Native facts | `backends/codex/binding`: notifications/items, tool results, history identity, submitted text, execution source/results, catalogs and continuation evidence; `backends/codex/nativetrace`: bounded trace correlation |
 | Rollouts | `backends/codex/rollout`: selected identity/context/resume evidence; `{inspection,replay}.go`: logical calls/endpoints and replay observations |
 | Composer recall | `backends/codex/messagehistory`: shared Codex input-history format, locking and retention; Launch `app_server_persistent_history.go`: asynchronous reads/writes; Conversation composer: recall and restored-entry reconciliation |
 | Responses | `backends/codex/responses`: envelopes/catalogs, byte-preserving projection, streams/lifecycle and Codex framing; `collaboration.go`: native-agent projection/restoration; `{session,session_provider}.go`: connection ancestry/steering/prefix confirmation; `libraries/modelprotocol`: wire facts/exact JSON |

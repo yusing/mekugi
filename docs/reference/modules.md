@@ -1,7 +1,7 @@
 # Module reference
 
 Generated from feature descriptors, Codex binding declarations and application
-composition. 24 of 25 feature modules are selected.
+composition. 24 of 24 feature modules are selected.
 Regenerate with `make generate`; verify with `make check-generated`.
 
 The [composition contract](../contracts/composition.md) defines ownership and
@@ -72,14 +72,6 @@ Receive, retain, and restore command-segment observations
 - Resources: optional private report FIFOs and consumer tasks.
 - Contributes: `record-kinds`.
 - Records: `commandsegments`.
-- Codex connections: none.
-
-## [contextreset](../../modules/contextreset/SPEC.md)
-
-Collect bounded instruction sources for future context reset
-
-- Composition: unselected; lifetime: `stateless`.
-- Requires: `fileread`, `sourceoutline`.
 - Codex connections: none.
 
 ## [conversation](../../modules/conversation/SPEC.md)

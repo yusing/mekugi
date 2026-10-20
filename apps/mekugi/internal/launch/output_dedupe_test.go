@@ -178,7 +178,7 @@ func TestDuplicateOutputEvidenceConsumersReadOriginal(t *testing.T) {
 	}
 }
 
-func TestDuplicateOutputPreparedContinuationAndScope(t *testing.T) {
+func TestDuplicateOutputPreservesHostContinuationAcrossScopes(t *testing.T) {
 	body := strings.Repeat("visible command text ", 20) + "\n"
 	for _, scope := range []string{"ordinary", "compacted", "fork", "disabled"} {
 		t.Run(scope, func(t *testing.T) {
@@ -198,8 +198,8 @@ func TestDuplicateOutputPreparedContinuationAndScope(t *testing.T) {
 			request := duplicateTestPrepare(t, proxy, input, metadata)
 			items := duplicateTestItems(t, request)
 			texts := binding.ExecutionOutputTexts(items[len(items)-1]["output"])
-			if len(texts) != 2 || !strings.Contains(texts[1], `"cell_id":"live-42"`) {
-				t.Fatalf("continuation advice lost: %q", texts)
+			if len(texts) != 1 {
+				t.Fatalf("host output parts changed: %q", texts)
 			}
 			want := "Script running with cell ID live-42\nWall time 0.1 seconds\nOutput:\n" + body
 			if scope == "compacted" {

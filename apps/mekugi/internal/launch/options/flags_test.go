@@ -1,8 +1,10 @@
 package options
 
 import (
+	"bytes"
 	"io"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -117,5 +119,23 @@ func TestShellGuardFlagAndStandaloneSplit(t *testing.T) {
 				t.Fatalf("guard = %t, want %t", config.ShellGuard, tc.want)
 			}
 		})
+	}
+}
+
+func TestPublicOptionsExposeOneInterface(t *testing.T) {
+	config, err := Parse(nil)
+	if err != nil || !config.FrontendsEnabled() {
+		t.Fatalf("default interface: config=%+v err=%v", config, err)
+	}
+	for _, mode := range []string{"mekugi", "passthrough", "direct"} {
+		if _, err := Parse([]string{"--mode", mode}); err == nil {
+			t.Fatalf("accepted response-mode selector %q", mode)
+		}
+	}
+	var help bytes.Buffer
+	flags := newFlags(&help, new(Config))
+	flags.Usage()
+	if strings.Contains(help.String(), "passthrough") || strings.Contains(help.String(), "-mode") {
+		t.Fatalf("help exposes an internal mode: %s", help.String())
 	}
 }

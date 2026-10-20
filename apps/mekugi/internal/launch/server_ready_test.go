@@ -48,7 +48,7 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 	ready := make(chan invocationFixture, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- testRunSession(testHistory(), testRecovery(), ctx, testCommands(), []string{"--mode", "passthrough"}, nil, func(session invocationFixture) {
+		done <- testRunSession(testHistory(), testRecovery(), ctx, testCommands(), nil, nil, func(session invocationFixture) {
 			ready <- session
 		}, nil)
 	}()
@@ -59,9 +59,6 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 		t.Fatalf("router stopped before ready: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("router did not become ready")
-	}
-	if session.SkillsManagerAvailable {
-		t.Fatal("passthrough session enabled skills-mgr integration")
 	}
 	baseURL := session.BaseURL
 	address := strings.TrimSuffix(strings.TrimPrefix(baseURL, "http://"), "/v1")
@@ -108,10 +105,7 @@ func TestRunSessionDoesNotNotifyOnStartupFailure(t *testing.T) {
 func TestRunSessionServesMetricsWithoutLogging(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	err := testRunSession(testHistory(), testRecovery(), ctx, testCommands(), []string{"--mode", "passthrough"}, testCriticalErrors(), func(session invocationFixture) {
-		if session.FrontendDirectory != "" {
-			t.Error("passthrough installed frontends")
-		}
+	err := testRunSession(testHistory(), testRecovery(), ctx, testCommands(), nil, testCriticalErrors(), func(session invocationFixture) {
 		response, err := http.Get(strings.TrimSuffix(session.BaseURL, "/v1") + "/api/metrics")
 		if err != nil {
 			t.Error(err)
@@ -136,7 +130,7 @@ func TestRunSessionRejectsAXCaptureAlias(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(evidence.AXReadOutputEnvironment, capture)
-	err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), []string{"--mode", "passthrough", "--capture-output", capture}, nil, func(invocationFixture) { t.Error("aliased exports reached readiness") }, nil)
+	err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), []string{"--capture-output", capture}, nil, func(invocationFixture) { t.Error("aliased exports reached readiness") }, nil)
 	if err == nil {
 		t.Fatal("aliased outputs accepted")
 	}
@@ -155,20 +149,9 @@ func TestRunSessionRejectsUnusableReplayStorageBeforeReady(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(state, "mekugi"), []byte("not a directory"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), []string{"--mode", "mekugi"}, nil, func(invocationFixture) { t.Error("unusable replay storage reached readiness") }, nil)
+	err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), nil, nil, func(invocationFixture) { t.Error("unusable replay storage reached readiness") }, nil)
 	if err == nil || !strings.Contains(err.Error(), "initialize replay storage") {
 		t.Fatalf("startup error = %v", err)
-	}
-}
-
-func TestRunSessionPassthroughIgnoresInvalidReplayStorage(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", "relative-invalid-state")
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	notified := false
-	err := testRunSession(testHistory(), testRecovery(), ctx, testCommands(), []string{"--mode", "passthrough"}, nil, func(invocationFixture) { notified = true; cancel() }, nil)
-	if err != nil || !notified {
-		t.Fatalf("passthrough ready=%v error=%v", notified, err)
 	}
 }
 

@@ -24,15 +24,15 @@ type ToolResult struct {
 	ExitCode *int `json:",omitempty"`
 }
 
-// ExecutionNextCall is advice encoded in a continuation annotation, not a request
-// to execute a tool. The application selects it from the current host catalog.
+// ExecutionNextCall is advice encoded in a historical continuation annotation,
+// not a request to execute a tool.
 type ExecutionNextCall struct {
 	Tool  string `json:"tool"`
 	Input any    `json:"input"`
 }
 
-// ExecutionContinuation is the retained annotation wire shape shared by the
-// producing projection and exact annotation recognizer.
+// ExecutionContinuation retains the historical wire shape for offline inspection.
+// New requests preserve stock Codex continuation guidance.
 type ExecutionContinuation struct {
 	Handle   map[string]any     `json:"handle"`
 	NextCall *ExecutionNextCall `json:"next_call"`

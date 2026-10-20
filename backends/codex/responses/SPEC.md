@@ -101,7 +101,7 @@ identity. Valid session affinity remains separate from caller session headers.
 
 Transport receives prepared bytes and headers and does not reinterpret Codex
 policy. The [OpenAI provider](../../../providers/openai/SPEC.md) owns credential
-validation, model-catalog exchange, pooling, retries, and upstream connections.
+validation, model-catalog exchange, HTTP forwarding, and upstream connections.
 
 ## Response delivery
 
@@ -141,10 +141,8 @@ input. A matching continuation after interruption reuses the interrupted respons
 ID. A changed, shortened or unconfirmed prefix sends full projected history
 without `previous_response_id`. Reconciliation never reruns tools.
 Accepted steering is not resent against the same parent; pending tool-result
-continuations retain that parent's response identity. Historical guidance on a
-yielded result stays in the prefix after completion; later results establish
-whether its handle remains active. A changed tool catalog can replace obsolete
-guidance and require rebasing.
+continuations retain that parent's response identity. Original host results stay
+in the prefix after completion. Changed projected input or tools require rebasing.
 
 Raw provider terminals confirm transport history independently of transformed
 native output. Completed streamed items survive partial terminal snapshots, with

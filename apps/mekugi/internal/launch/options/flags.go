@@ -36,7 +36,7 @@ func (c Config) FrontendsEnabled() bool { return c.Mode == "mekugi" }
 
 // Parse selects the launch scope without opening resources.
 func Parse(args []string) (Config, error) {
-	var config Config
+	config := Config{Mode: "mekugi"}
 	flags := newFlags(io.Discard, &config)
 	if err := flags.Parse(args); err != nil {
 		return Config{}, fmt.Errorf("parse flags: %w", err)
@@ -47,10 +47,6 @@ func Parse(args []string) (Config, error) {
 	switch {
 	case flags.NArg() != 0 && !config.Grok && !config.ThirdParty:
 		return Config{}, errors.New("positional arguments are not supported")
-	case config.Mode != "mekugi" && config.Mode != "passthrough":
-		return Config{}, errors.New("--mode must be mekugi or passthrough")
-	case (config.Grok || config.ThirdParty) && config.Mode != "mekugi":
-		return Config{}, errors.New("third-party launches require --mode mekugi")
 	case !config.Grok && !config.ThirdParty && config.GrokAuthFile != "":
 		return Config{}, errors.New("--grok-auth-file requires standalone mekugi or mekugi grok")
 	case config.Timeout <= 0:
@@ -76,7 +72,6 @@ func newFlags(stderr io.Writer, config *Config) *flag.FlagSet {
 	flags.StringVar(&config.ANSIFaint, "ansi-faint", "auto", "dim text: auto (detect mosh), on (ANSI faint), or off (fixed colors)")
 	flags.DurationVar(&config.Timeout, "timeout", DefaultRequestTimeout, "upstream response-start timeout")
 	flags.DurationVar(&config.StreamIdleTimeout, "stream-idle-timeout", 4*time.Minute, "maximum upstream inactivity between WebSocket messages or HTTP response bytes")
-	flags.StringVar(&config.Mode, "mode", "mekugi", "response mode: mekugi or passthrough")
 	flags.BoolVar(&config.ShellGuard, "shell-guard", true, "ask before remote VCS writes and sudo commands in the UI, independently of Codex approval policy")
 	flags.BoolVar(&config.DeduplicateOutput, "deduplicate-output", true, "deduplicate output and attachments in model input")
 	flags.StringVar(&config.GrokAuthFile, "grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)")

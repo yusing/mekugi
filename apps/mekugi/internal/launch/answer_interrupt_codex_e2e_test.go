@@ -3,7 +3,6 @@
 package launch
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
@@ -11,8 +10,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
@@ -29,8 +26,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/coder/websocket"
 )
 
 // Hold actual input deltas, rather than holding provider admission or a
@@ -42,49 +37,6 @@ type answerInterruptCodexProvider struct {
 	mode, input string
 	gate        chan struct{}
 	requests    chan []byte
-}
-
-func (p *answerInterruptCodexProvider) serve(w http.ResponseWriter, r *http.Request) {
-	conn, err := websocket.Accept(w, r, nil)
-	if err != nil {
-		return
-	}
-	defer conn.CloseNow()
-	conn.SetReadLimit(codexresponses.MaxRequestBytes)
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-	messages := readTestProviderMessages(ctx, conn, cancel)
-	for {
-		var message []byte
-		select {
-		case message = <-messages:
-		case <-ctx.Done():
-			return
-		}
-		if len(message) == 0 {
-			return
-		}
-		response, err := p.ForwardExecution(ctx, ctx, message, r.Header, "")
-		if err != nil {
-			if ctx.Err() == nil {
-				p.t.Error(err)
-			}
-			return
-		}
-		scanner := bufio.NewScanner(response.Body)
-		for scanner.Scan() {
-			if payload, ok := strings.CutPrefix(scanner.Text(), "data: "); ok {
-				if err := conn.Write(ctx, websocket.MessageText, []byte(payload)); err != nil {
-					response.Body.Close()
-					return
-				}
-			}
-		}
-		response.Body.Close()
-		if scanner.Err() != nil {
-			return
-		}
-	}
 }
 
 func (p *answerInterruptCodexProvider) ForwardExecution(_, ctx context.Context, body []byte, _ http.Header, _ string) (*inferencegateway.Response, error) {
@@ -227,11 +179,9 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 			attachTestReplayStore(t, proxy)
 			issues := testCriticalErrors()
 			emitted := make(chan struct{}, 2)
-			upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serveHTTPTestProvider(w, r, provider) }))
 			defer upstream.Close()
 			client := newTestProviderClient(upstream.URL, upstream.Client())
-			client.OpenAI.EnableWebSockets(t.Context())
-			defer client.OpenAI.Close()
 			handler := testResponsesHandler(t.Context(), time.Minute, client, issues, proxy)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				for key, values := range codexAuthHeaders() {

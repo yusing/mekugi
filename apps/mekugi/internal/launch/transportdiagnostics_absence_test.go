@@ -34,7 +34,7 @@ import (
 func TestTransportDiagnosticsAbsentDebugSession(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	t.Setenv(evidence.AXReadOutputEnvironment, "")
-	options, err := launchoptions.Parse([]string{"--debug", "--mode", "passthrough"})
+	options, err := launchoptions.Parse([]string{"--debug"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestTransportDiagnosticsAbsentRejectsCaptureOutput(t *testing.T) {
 			if existing {
 				writeDebugInspectionFixture(t, path, "retained capture\n")
 			}
-			options, err := launchoptions.Parse([]string{"--debug", "--mode", "passthrough", "--capture-output", path})
+			options, err := launchoptions.Parse([]string{"--debug", "--capture-output", path})
 			if err != nil {
 				t.Fatal(err)
 			}

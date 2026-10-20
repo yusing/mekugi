@@ -732,7 +732,7 @@ func TestWrapDebugPassesAXLogToCodex(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0700); err != nil {
 		t.Fatal(err)
 	}
-	code, err := wrapCodex(t.Context(), []string{"--debug", "--mode", "passthrough"}, nil)
+	code, err := wrapCodex(t.Context(), []string{"--debug"}, nil)
 	if err != nil || code != 0 {
 		t.Fatalf("debug wrap = %d, %v", code, err)
 	}

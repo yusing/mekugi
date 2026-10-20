@@ -182,7 +182,7 @@ func (c *Failures) record(f *requestFinalization, err error) {
 		case f.failurePhase == requestFailurePrepare:
 			message = "Mekugi could not prepare this request. Check the session's tool and configuration compatibility before retrying."
 		case f.failurePhase == requestFailureTransform:
-			message = "Mekugi could not safely translate the response. Retrying will fail the same way. Switch model, use passthrough mode, or relaunch with --debug and report the diagnostic reference."
+			message = "Mekugi could not safely translate the response. Retrying will fail the same way. Switch model or relaunch with --debug and report the diagnostic reference."
 		}
 		if category == string(f.failurePhase) {
 			reference := f.diagnosticReference

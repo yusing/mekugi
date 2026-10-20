@@ -172,9 +172,6 @@ func TestOpenCodeStartupAndMode(t *testing.T) {
 	if directory, _ := os.UserConfigDir(); directory != os.Getenv("XDG_CONFIG_HOME") {
 		t.Skip("platform does not use XDG_CONFIG_HOME")
 	}
-	if err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), []string{"--mode", "passthrough", "third-party"}, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "require --mode mekugi") {
-		t.Fatalf("passthrough accepted OpenCode: %v", err)
-	}
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	ready := false

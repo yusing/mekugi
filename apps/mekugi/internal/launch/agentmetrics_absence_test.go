@@ -37,7 +37,7 @@ func TestAgentMetricsAbsentDebugSession(t *testing.T) {
 	const existing = "retained AX evidence\n"
 	writeDebugInspectionFixture(t, axPath, existing)
 	t.Setenv(evidence.AXReadOutputEnvironment, axPath)
-	options, err := launchoptions.Parse([]string{"--debug", "--mode", "passthrough"})
+	options, err := launchoptions.Parse([]string{"--debug"})
 	if err != nil {
 		t.Fatal(err)
 	}

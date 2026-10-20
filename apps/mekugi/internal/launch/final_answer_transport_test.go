@@ -32,8 +32,8 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 	t.Parallel()
 	for _, upstreamWS := range []bool{false, true} {
 		for _, downstreamWS := range []bool{false, true} {
-			// Native downstream WebSocket sessions require an upstream WebSocket.
-			if downstreamWS && !upstreamWS {
+			// Preserve the host-selected transport end to end.
+			if downstreamWS != upstreamWS {
 				continue
 			}
 			for _, child := range []bool{false, true} {
@@ -99,10 +99,6 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 						}))
 						defer upstream.Close()
 						client := newTestProviderClient(upstream.URL, upstream.Client())
-						if upstreamWS {
-							client.OpenAI.EnableWebSockets(ctx)
-							defer client.OpenAI.Close()
-						}
 						var handler http.Handler = testResponsesHandler(ctx, time.Second, client, nil, proxy)
 						if downstreamWS {
 							endpoint := testWebSocketEndpoint(ctx, time.Second, client, nil, proxy)

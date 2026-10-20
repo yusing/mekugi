@@ -1,21 +1,4 @@
-# Retained inactive instruction loader: modules/contextreset/SPEC.md.
 # Production reachability only. Test-inclusive reachability has no exceptions.
-github.com/yusing/mekugi/modules/contextreset.newService
-github.com/yusing/mekugi/modules/contextreset/guidance.New
-github.com/yusing/mekugi/modules/contextreset/guidance.Skill.key
-github.com/yusing/mekugi/modules/contextreset/guidance.Service.Collect
-github.com/yusing/mekugi/modules/contextreset/guidance.priority
-github.com/yusing/mekugi/modules/contextreset/guidance.commands
-github.com/yusing/mekugi/modules/contextreset/guidance.Service.reads
-github.com/yusing/mekugi/modules/contextreset/guidance.literal
-github.com/yusing/mekugi/modules/contextreset/guidance.Service.snapshot
-github.com/yusing/mekugi/modules/contextreset/guidance.instructionPathPosition
-github.com/yusing/mekugi/modules/contextreset/guidance.openSource
-github.com/yusing/mekugi/modules/contextreset/codexbinding.Decode
-github.com/yusing/mekugi/modules/contextreset/codexbinding.responseRounds
-github.com/yusing/mekugi/modules/contextreset/codexbinding.userSkills
-github.com/yusing/mekugi/modules/contextreset/codexbinding.instructions
-github.com/yusing/mekugi/modules/contextreset/codexbinding.messageContentText
 github.com/yusing/mekugi/modules/sourceoutline/outline.Service.InspectSource
 github.com/yusing/mekugi/libraries/commandanalysis.ExecCommandArguments
 

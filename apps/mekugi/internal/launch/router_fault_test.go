@@ -120,7 +120,6 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	for _, want := range []string{
 		"Retrying will fail the same way",
 		"Switch model",
-		"passthrough mode",
 		"--debug",
 		"report the diagnostic reference",
 		"mekugi_sse:inconsistent_stock_call",

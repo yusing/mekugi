@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
-// MaxCatalogBytes bounds the single complete cached catalog.
+// MaxCatalogBytes bounds one complete catalog response.
 const MaxCatalogBytes = 8 << 20
 
 // CatalogFailure is a failed transport's facts for private application diagnostics.
@@ -23,10 +22,6 @@ type CatalogFailure struct {
 }
 
 func ModelsHandler(provider *Client, codeModeOnly bool, report func(*http.Request, CatalogFailure)) http.HandlerFunc {
-	// Session-local, single-entry cache. The gate coalesces concurrent refreshes
-	// without keeping canceled callers waiting for an upstream operation.
-	gate := make(chan struct{}, 1)
-	var cached *modelsCacheEntry
 	return func(writer http.ResponseWriter, request *http.Request) {
 		tracked := &ResponseWriter{ResponseWriter: writer}
 		writer = tracked
@@ -43,31 +38,9 @@ func ModelsHandler(provider *Client, codeModeOnly bool, report func(*http.Reques
 			}
 		}()
 
-		release := func() {}
-		key, cacheable := modelsRequestCacheKey(request)
-		if cacheable {
-			select {
-			case gate <- struct{}{}:
-				release = sync.OnceFunc(func() { <-gate })
-				defer release()
-			case <-request.Context().Done():
-				return
-			}
-			if request.Context().Err() != nil {
-				return
-			}
-			if cached != nil && cached.key == key {
-				entry := cached
-				release()
-				writeModelsResponse(writer, http.StatusOK, entry.headers, entry.body)
-				return
-			}
-		}
-
 		response, err := provider.ForwardModels(request.Context(), request.Header, request.URL.RawQuery)
 		if err != nil {
 			failure = CatalogFailure{Err: err}
-			release()
 			http.Error(writer, err.Error(), http.StatusBadGateway)
 			return
 		}
@@ -76,13 +49,11 @@ func ModelsHandler(provider *Client, codeModeOnly bool, report func(*http.Reques
 		body, err := io.ReadAll(io.LimitReader(response.Body, MaxCatalogBytes+1))
 		if err != nil {
 			failure = CatalogFailure{Err: err, Code: "models_body_read", Summary: "the upstream model catalog response could not be read"}
-			release()
 			http.Error(writer, fmt.Sprintf("read upstream models response: %v", err), http.StatusBadGateway)
 			return
 		}
 		if len(body) > MaxCatalogBytes {
 			failure = CatalogFailure{Code: "models_body_limit", Summary: "the upstream model catalog response exceeded the router buffer budget"}
-			release()
 			http.Error(writer, "upstream models response exceeds the router buffer budget", http.StatusBadGateway)
 			return
 		}
@@ -100,21 +71,16 @@ func ModelsHandler(provider *Client, codeModeOnly bool, report func(*http.Reques
 			}
 			if err != nil {
 				failure = CatalogFailure{Err: err, Code: "models_execution_interface", Summary: "the upstream model catalog could not be prepared for JavaScript execution"}
-				release()
 				http.Error(writer, failure.Summary, http.StatusBadGateway)
 				return
 			}
 		}
-		if cacheable && response.StatusCode == http.StatusOK {
-			headers := make(http.Header)
-			for _, name := range []string{"Content-Type", "Cache-Control", "ETag"} {
-				for _, value := range response.Header.Values(name) {
-					headers.Add(name, value)
-				}
+		for _, name := range []string{"Content-Type", "Cache-Control", "ETag"} {
+			for _, value := range response.Header.Values(name) {
+				writer.Header().Add(name, value)
 			}
-			cached = &modelsCacheEntry{key: key, headers: headers, body: body}
 		}
-		release()
-		writeModelsResponse(writer, response.StatusCode, response.Header, body)
+		writer.WriteHeader(response.StatusCode)
+		_, _ = writer.Write(body)
 	}
 }

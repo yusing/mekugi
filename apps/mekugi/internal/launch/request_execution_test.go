@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -17,26 +16,6 @@ import (
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
-
-func TestDeprecatedTerraRoutesToSol(t *testing.T) {
-	request := modelTestRequest(t, "gpt-5.6-terra")
-	headers := serverMetadataHeaders(t, "turn", nil)
-	headers.Set(codexresponses.ThreadIDHeader, "terra-thread")
-	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-	executor := testRequestExecutor(provider, testCriticalErrors(), nil)
-	executor.Output = io.Discard
-	if err := executor.Execute(t.Context(), t.Context(), request, headers, ""); err != nil {
-		t.Fatal(err)
-	}
-	forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := strings.TrimSpace(forwarded.Model() + " " + forwarded.ReasoningEffort()); got != "gpt-6-sol medium" {
-		t.Fatalf("route=%q", got)
-	}
-
-}
 
 // executeRequest preserves the direct attempt setup used throughout the package
 // tests while production code owns stable services through requestexecution.Executor.
@@ -77,7 +56,7 @@ func modelTestRequest(t *testing.T, model string) codexresponses.Request {
 }
 
 func TestResponsesPreserveConfiguredModelAndReasoning(t *testing.T) {
-	for _, model := range []string{"gpt-5.6", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra"} {
+	for _, model := range []string{"gpt-5.6", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra"} {
 		for _, child := range []bool{false, true} {
 			for _, stream := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/child=%t/stream=%t", model, child, stream), func(t *testing.T) {

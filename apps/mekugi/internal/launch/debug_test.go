@@ -52,7 +52,7 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 			old := os.Stderr
 			os.Stderr = output
 			defer func() { os.Stderr = old }()
-			args := []string{"--debug", "--mode", "passthrough"}
+			args := []string{"--debug"}
 			if test.overrides {
 				capture, reads := filepath.Join(directory, "capture.jsonl"), filepath.Join(directory, "reads.jsonl")
 				if test.relative {

@@ -252,9 +252,9 @@ func TestTokenUsageAutomaticSuccessorAndManualSwitch(t *testing.T) {
 		configured, leader, requestedTier, servedTier string
 		initialCost, configuredCost                   float64
 	}{
-		{"gpt-5.6-terra", "gpt-6-sol", "default", "default", .228, .228},
+		{"gpt-6-sol", "gpt-6-sol", "default", "default", .228, .228},
 		{"gpt-5.6-sol", "gpt-5.6-sol", "default", "default", .456, 1.14},
-		{"gpt-5.6-terra", "gpt-6-sol", "fast", "priority", .456, .456},
+		{"gpt-6-sol", "gpt-6-sol", "fast", "priority", .456, .456},
 		{"gpt-5.6-sol", "gpt-5.6-sol", "priority", "fast", .912, 2.28},
 	} {
 		t.Run(tc.configured+"/"+tc.requestedTier, func(t *testing.T) {
@@ -330,7 +330,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 			wantTier = "priority"
 		}
 		wantModel := "gpt-6-astra"
-		if configured == "gpt-5.6-terra" {
+		if configured == "gpt-6-sol" {
 			wantModel = "gpt-6-sol"
 		}
 		if responses.StringField(next, "model") != wantModel || responses.StringField(next, "service_tier") != wantTier {
@@ -427,7 +427,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 	if !ok || !got.Cost.Known || got.InputTokens != 200000 || math.Abs(total-2*initialCost) > 1e-10 {
 		t.Fatalf("successor repriced unsent model: report=%+v total=%v want=%v", got, total, 2*initialCost)
 	}
-	if configured != "gpt-5.6-terra" {
+	if configured != "gpt-6-sol" {
 		request.Fields["model"] = responses.MustMarshalJSON("gpt-6-astra")
 	}
 	request.Fields["previous_response_id"] = responses.MustMarshalJSON("successor")

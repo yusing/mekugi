@@ -22,7 +22,6 @@ import (
 	"github.com/yusing/mekugi/libraries/httptransport"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-	"github.com/yusing/mekugi/providers/openai"
 )
 
 func TestStreamDiagnosticsReadTermination(t *testing.T) {
@@ -102,47 +101,6 @@ func TestStreamDiagnosticsRequestLog(t *testing.T) {
 				t.Fatal("missing request_complete")
 			}
 		})
-	}
-}
-
-func TestStreamDiagnosticsWebSocketClose(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := websocket.Accept(w, r, nil)
-		if err != nil {
-			return
-		}
-		defer conn.CloseNow()
-		if _, _, err := conn.Read(ctx); err != nil {
-			return
-		}
-		for _, event := range []string{
-			`{"type":"codex.response.metadata","headers":{"x-request-id":"req_ws"}}`,
-			`{"type":"response.output_item.added","item":{"type":"custom_tool_call","id":"item_ws","call_id":"call_ws"}}`,
-			`{"type":"response.custom_tool_call_input.delta","item_id":"item_ws","delta":"private patch"}`,
-		} {
-			if err := conn.Write(ctx, websocket.MessageText, []byte(event)); err != nil {
-				return
-			}
-		}
-		_ = conn.Close(websocket.StatusGoingAway, "private close reason")
-	}))
-	defer upstream.Close()
-	client := newTestProviderClient(upstream.URL, upstream.Client())
-	client.OpenAI.EnableWebSockets(ctx)
-	defer client.OpenAI.Close()
-	response, err := client.ForwardExecution(ctx, ctx, []byte(`{"model":"gpt-test","stream":true,"input":[]}`), http.Header{"Authorization": {"Bearer test"}, openai.AccountIDHeader: {"account"}}, "session")
-	if err != nil {
-		t.Fatal(err)
-	}
-	d := &transportcapture.Stream{}
-	_, err = requestexecution.CopyResponse(io.Discard, response.Response, true, nil, &requestexecution.ResponseHooks{StreamDiagnostics: d, Transport: response.Transport})
-	if err == nil || d.WebSocketCloseCode != 1001 || d.ProviderRequestID != "req_ws" || len(d.Snapshot().PendingCalls) != 1 || d.Snapshot().PendingCalls[0].InputBytes != 13 {
-		t.Fatalf("missing websocket evidence: %+v, %v", d, err)
-	}
-	if strings.Contains(string(responses.MustMarshalJSON(d.Snapshot())), "private") {
-		t.Fatal("payload leaked")
 	}
 }
 

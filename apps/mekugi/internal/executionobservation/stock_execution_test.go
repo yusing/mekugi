@@ -281,24 +281,6 @@ func TestCodeModeOpaqueSourcePassesThroughUnchanged(t *testing.T) {
 	}
 }
 
-func TestStockExecCommandContinuationUsesWriteStdin(t *testing.T) {
-	request := codexresponses.Request{Fields: map[string]json.RawMessage{
-		"input": responses.MustMarshalJSON([]any{
-			continuationTestCall(nativeExecCommandToolName, "run-call", `{"cmd":"sleep 100"}`),
-			continuationTestOutput("run-call", "Wall time: 0.1 seconds\nProcess running with session ID 42\nOutput:\npartial"),
-		}),
-	}}
-	binding.ProjectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
-	var items []map[string]json.RawMessage
-	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
-		t.Fatal(err)
-	}
-	texts := binding.ExecutionOutputTexts(items[1]["output"])
-	if len(texts) != 2 || !strings.Contains(texts[1], "tools.write_stdin") || !strings.Contains(texts[1], `"session_id":42`) {
-		t.Fatalf("stock continuation = %v", texts)
-	}
-}
-
 func TestStockWaitArgumentsPassThrough(t *testing.T) {
 	transform, _, _, _ := newMekugiTestTransform(t)
 	arguments := `{"cell_id":"cell-1","yield_time_ms":1}`

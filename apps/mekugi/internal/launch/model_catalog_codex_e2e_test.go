@@ -121,6 +121,8 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 		}
 		if r.URL.Path == "/v1/models" {
 			models(w, r)
+		} else if r.URL.Path == "/v1/responses" && r.Method == http.MethodGet {
+			http.Error(w, "fixture requires HTTP", http.StatusUpgradeRequired)
 		} else if r.URL.Path == "/v1/responses" && r.Method == http.MethodPost {
 			inference.ServeHTTP(w, r)
 		} else {
@@ -146,7 +148,7 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	}
 	fixture.mu.Lock()
 	defer fixture.mu.Unlock()
-	if discoveries.Load() != 2 || !fixture.resultSeen || fixture.turns != 2 {
+	if discoveries.Load() < 2 || !fixture.resultSeen || fixture.turns != 2 {
 		t.Fatalf("catalog/host execution: discoveries=%d result=%t turns=%d\nstdout: %s\nstderr: %s",
 			discoveries.Load(), fixture.resultSeen, fixture.turns, &stdout, &stderr)
 	}

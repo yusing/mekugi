@@ -20,16 +20,9 @@ func TestModuleIndexWorkspaceReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	selected, err := applicationSelection(indexComposition, members)
-	if err != nil {
-		t.Fatal(err)
-	}
 	entries, err := collectModuleReferences(members)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if selected["modules/contextreset"] {
-		t.Fatal("contextreset must remain unselected")
 	}
 	records := make(map[string][]string)
 	for _, entry := range entries {
@@ -41,9 +34,6 @@ func TestModuleIndexWorkspaceReferences(t *testing.T) {
 		if !slices.Equal(records[owner], want) {
 			t.Fatalf("%s records=%v, want %v", owner, records[owner], want)
 		}
-	}
-	if _, ok := records["contextreset"]; !ok {
-		t.Fatal("unselected workspace module omitted")
 	}
 }
 

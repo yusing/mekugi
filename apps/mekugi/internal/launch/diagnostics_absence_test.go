@@ -40,7 +40,7 @@ func TestDiagnosticsAbsentNormalSession(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	ready := false
-	err := runDiagnosticsAbsentSession(t, ctx, []string{"--mode", "passthrough"}, func(session invocationFixture) {
+	err := runDiagnosticsAbsentSession(t, ctx, nil, func(session invocationFixture) {
 		defer cancel()
 		ready = true
 		client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
@@ -75,7 +75,7 @@ func TestDiagnosticsAbsentRejectsDebugBeforeBundleCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = runDiagnosticsAbsentSession(t, t.Context(), []string{"--debug", "--mode", "passthrough"}, func(invocationFixture) {
+	err = runDiagnosticsAbsentSession(t, t.Context(), []string{"--debug"}, func(invocationFixture) {
 		t.Error("unavailable diagnostics reached readiness")
 	})
 	if err == nil || !strings.Contains(err.Error(), "diagnostics are unavailable") {

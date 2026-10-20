@@ -51,7 +51,8 @@ host or adds model calls for UI plumbing. Explicit model/config/feature flags an
 resume selectors retain their meaning. Without `--yolo`, configured host approval
 and sandbox policy applies; with it, start/resume requests repeat `never` and
 `danger-full-access`. Independent remote-write/sudo guards retain their owners.
-There is one interactive UI, with no fallback client selection.
+There is one interactive UI. Public invocation options expose no response-mode
+selector; internal adapter identifiers do not select another client.
 
 The UI excludes PTY emulation or screen scraping for Main, settings clones,
 onboarding, cloud tasks, voice, Git-write or edit-rollback UI actions, browser
@@ -59,7 +60,7 @@ frontends/remote hosting, and new authentication flows. These limits do not chan
 Codex-owned execution or explicitly invoked change-history tools.
 
 `codex headless --yolo` selects the [headless client](../headless/SPEC.md).
-Launch rejects resume, unsupported CLI options, and passthrough mode; explicit
+Launch rejects resume and unsupported CLI options; explicit
 `--yolo` is required because the client cannot answer approvals.
 
 ## Model catalog
@@ -129,7 +130,7 @@ untracked; Bash keeps its independent startup path.
 
 The `--deduplicate-output` flag defaults to true and controls only the
 [model-input projection](../../../../modules/outputdeduplication/SPEC.md).
-Passthrough does not apply it. Runtime contracts belong to
+Runtime contracts belong to
 [Responses integration](../../../../docs/contracts/responses-transport.md),
 [session history](../../../../modules/sessionhistory/SPEC.md), and
 [diagnostics](../../../../modules/diagnostics/SPEC.md). Debug launch passes its

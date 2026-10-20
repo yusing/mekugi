@@ -5,16 +5,11 @@ package openai
 import (
 	"bytes"
 	"context"
-	jsonv1 "encoding/json"
-	"encoding/json/jsontext"
-	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,40 +17,21 @@ import (
 )
 
 const (
-	BaseURL                     = "https://chatgpt.com/backend-api/codex"
-	AccountIDHeader             = "Chatgpt-Account-Id"
-	maxUpstreamErrorDetailBytes = 8 << 10
-	maxUpstreamSniffBytes       = 64 << 10
-	upstreamJSONBufferBytes     = 64 << 20
-	maxUpstreamRetries          = 5
-	initialUpstreamRetryBackoff = 100 * time.Millisecond
-	maxUpstreamRetryBackoff     = 30 * time.Second
-	selectedModelAtCapacity     = "selected model is at capacity"
+	BaseURL         = "https://chatgpt.com/backend-api/codex"
+	AccountIDHeader = "Chatgpt-Account-Id"
 )
 
 // Client owns provider connections, independently of backend conversation state.
-// Configure StreamIdleTimeout and ObserveWebSocket before starting requests.
+// Configure StreamIdleTimeout before starting requests.
 type Client struct {
 	predictions       predictionSettingsCache
 	httpClient        *http.Client
 	baseURL           string
-	websockets        *providerWebSockets
 	StreamIdleTimeout time.Duration
-	ObserveWebSocket  func(context.Context, []byte, http.Header, http.Header) Observation
 }
 
 func New(baseURL string, supplied *http.Client) *Client {
 	return &Client{httpClient: httptransport.Client(supplied), baseURL: baseURL}
-}
-
-// WebSocketsEnabled reports whether full-input requests may use the pool.
-func (c *Client) WebSocketsEnabled() bool { return c.websockets != nil }
-
-// Close releases pooled resources; dedicated sockets belong to their caller.
-func (c *Client) Close() {
-	if c.websockets != nil {
-		c.websockets.close()
-	}
 }
 
 // Forward sends one auxiliary HTTP exchange without redirects or retries.
@@ -108,114 +84,39 @@ func (c *Client) Models(ctx context.Context, headers http.Header, rawQuery strin
 	return response, nil
 }
 
-// Responses sends the prepared HTTP request, or its prepared WebSocket equivalent.
-// A nil websocket request selects HTTP without opening a pool connection.
-func (c *Client) Responses(startCtx, responseCtx context.Context, body []byte, headers http.Header, websocket *WebSocketRequest) (*http.Response, error) {
+// Responses forwards one prepared HTTP attempt. Codex owns retries and fallback.
+func (c *Client) Responses(startCtx, responseCtx context.Context, body []byte, headers http.Header) (*http.Response, error) {
 	c.predictions.observe(headers)
-	if c.websockets != nil && websocket != nil {
-		response, fallback, err := c.forwardWebSocket(startCtx, responseCtx, websocket, headers)
-		if !fallback {
-			return response, err
-		}
-	}
+	requestCtx, cancelRequest := context.WithCancel(responseCtx)
+	stopStartCancellation := context.AfterFunc(startCtx, cancelRequest)
 	endpoint := strings.TrimRight(c.baseURL, "/") + "/responses"
-	for attempt := 0; ; attempt++ {
-		requestCtx, cancelRequest := context.WithCancel(responseCtx)
-		stopStartCancellation := context.AfterFunc(startCtx, cancelRequest)
-		request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(body))
-		if err != nil {
-			stopStartCancellation()
-			cancelRequest()
-			return nil, fmt.Errorf("build upstream request: %w", err)
-		}
-		request.Header = headers.Clone()
-		response, err := c.httpClient.Do(request)
-		if err != nil {
-			stopStartCancellation()
-			cancelRequest()
-			return nil, fmt.Errorf("forward upstream request: %w", err)
-		}
-		finishResponseStart := func() error {
-			if !stopStartCancellation() {
-				cancelRequest()
-				_ = response.Body.Close()
-				if err := startCtx.Err(); err != nil {
-					return err
-				}
-				return context.Canceled
-			}
-			var body io.ReadCloser = httptransport.CancelOnClose(response.Body, cancelRequest)
-			if c.StreamIdleTimeout > 0 {
-				body = httptransport.IdleRead(responseCtx, body, c.StreamIdleTimeout)
-			}
-			response.Body = body
-			return nil
-		}
-		recoverable := responseHasRecoverableUpstreamError(response)
-		if err := finishResponseStart(); err != nil {
-			return nil, fmt.Errorf("forward upstream request: %w", err)
-		}
-		if !recoverable || attempt == maxUpstreamRetries {
-			return response, nil
-		}
-		delay := upstreamRetryDelay(response, attempt)
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		stopStartCancellation()
+		cancelRequest()
+		return nil, fmt.Errorf("build upstream request: %w", err)
+	}
+	request.Header = headers.Clone()
+	client := *c.httpClient
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, err := client.Do(request)
+	if err != nil {
+		stopStartCancellation()
+		cancelRequest()
+		return nil, fmt.Errorf("forward upstream request: %w", err)
+	}
+	if !stopStartCancellation() {
+		cancelRequest()
 		_ = response.Body.Close()
-		timer := time.NewTimer(delay)
-		select {
-		case <-timer.C:
-		case <-startCtx.Done():
-			timer.Stop()
-			return nil, fmt.Errorf("wait to retry upstream request: %w", startCtx.Err())
+		if err := startCtx.Err(); err != nil {
+			return nil, fmt.Errorf("forward upstream request: %w", err)
 		}
+		return nil, fmt.Errorf("forward upstream request: %w", context.Canceled)
 	}
-}
-
-func upstreamRetryDelay(response *http.Response, attempt int) time.Duration {
-	if value := strings.TrimSpace(response.Header.Get("Retry-After")); value != "" {
-		if seconds, err := strconv.ParseUint(value, 10, 64); err == nil {
-			if seconds >= uint64(maxUpstreamRetryBackoff/time.Second) {
-				return maxUpstreamRetryBackoff
-			}
-			return min(time.Duration(seconds)*time.Second, maxUpstreamRetryBackoff)
-		}
-		if retryAt, err := http.ParseTime(value); err == nil {
-			return min(max(time.Until(retryAt), 0), maxUpstreamRetryBackoff)
-		}
+	var result io.ReadCloser = httptransport.CancelOnClose(response.Body, cancelRequest)
+	if c.StreamIdleTimeout > 0 {
+		result = httptransport.IdleRead(responseCtx, result, c.StreamIdleTimeout)
 	}
-	delay := min(initialUpstreamRetryBackoff<<attempt, maxUpstreamRetryBackoff)
-	half := delay / 2
-	return half + rand.N(delay-half)
-}
-
-func responseHasRecoverableUpstreamError(response *http.Response) bool {
-	if response == nil || response.Body == nil || response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
-		return false
-	}
-	detail, err := io.ReadAll(io.LimitReader(response.Body, maxUpstreamErrorDetailBytes+1))
-	httptransport.RestorePrefix(response, detail, response.Body)
-	if err != nil || len(detail) > maxUpstreamErrorDetailBytes {
-		return false
-	}
-	message := strings.ToLower(upstreamErrorMessage(detail))
-	return strings.Contains(message, selectedModelAtCapacity)
-}
-
-func upstreamErrorMessage(body []byte) string {
-	var envelope struct {
-		Error jsontext.Value `json:"error"`
-	}
-	if json.Unmarshal(body, &envelope, jsonv1.DefaultOptionsV1()) != nil || len(envelope.Error) == 0 {
-		return ""
-	}
-	var providerError struct {
-		Message string `json:"message"`
-	}
-	if json.Unmarshal(envelope.Error, &providerError, jsonv1.DefaultOptionsV1()) == nil {
-		return strings.TrimSpace(providerError.Message)
-	}
-	var message string
-	if json.Unmarshal(envelope.Error, &message, jsonv1.DefaultOptionsV1()) == nil {
-		return strings.TrimSpace(message)
-	}
-	return ""
+	response.Body = result
+	return response, nil
 }

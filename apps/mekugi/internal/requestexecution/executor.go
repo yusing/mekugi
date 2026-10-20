@@ -185,11 +185,6 @@ func (a *requestAttempt) prepare() error {
 			return err
 		}
 	}
-	// Terra remains a selectable legacy Codex model, but all provider requests
-	// use Sol. Do this after automatic-continuation selection.
-	if model := inferencegateway.RoutedModel(a.request.Model()); model != a.request.Model() {
-		a.request.Fields["model"] = responses.MustMarshalJSON(model)
-	}
 	if exchange := a.executor.Exchange; exchange != nil && exchange.State != nil {
 		exchange.State.RememberProviderModel(a.request)
 	}

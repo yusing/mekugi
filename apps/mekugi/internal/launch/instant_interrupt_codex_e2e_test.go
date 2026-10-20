@@ -12,8 +12,6 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -29,8 +27,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/coder/websocket"
 )
 
 // The installed Codex, not the router, owns both preemption and the live Code
@@ -46,63 +42,26 @@ type instantInterruptCodexProvider struct {
 	cell     string
 }
 
-// Mock providers keep receiving peer cancellation while their response is gated.
-func readTestProviderMessages(ctx context.Context, conn *websocket.Conn, cancel context.CancelFunc) <-chan []byte {
-	messages := make(chan []byte, 1)
-	go func() {
-		defer close(messages)
-		for {
-			_, body, err := conn.Read(ctx)
-			if err != nil {
-				cancel()
-				return
-			}
-			select {
-			case messages <- body:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-	return messages
-}
-
-func (p *instantInterruptCodexProvider) serve(w http.ResponseWriter, r *http.Request) {
-	conn, err := websocket.Accept(w, r, nil)
+// serveHTTPTestProvider streams local fixture responses over the host-selected HTTP transport.
+func serveHTTPTestProvider(w http.ResponseWriter, r *http.Request, provider inferencegateway.Forwarder) {
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return
 	}
-	defer conn.CloseNow()
-	conn.SetReadLimit(codexresponses.MaxRequestBytes)
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-	// Keep detecting peer cancellation while the model response is gated.
-	messages := readTestProviderMessages(ctx, conn, cancel)
-	for {
-		var message []byte
-		select {
-		case message = <-messages:
-		case <-ctx.Done():
+	response, err := provider.ForwardExecution(r.Context(), r.Context(), body, r.Header, "")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer response.Body.Close()
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(response.StatusCode)
+	scanner := bufio.NewScanner(response.Body)
+	for scanner.Scan() {
+		if _, err := fmt.Fprintln(w, scanner.Text()); err != nil {
 			return
 		}
-		if len(message) == 0 {
-			return
-		}
-		response, err := p.ForwardExecution(ctx, ctx, message, r.Header, "")
-		if err != nil {
-			return
-		}
-		scanner := bufio.NewScanner(response.Body)
-		for scanner.Scan() {
-			if payload, ok := strings.CutPrefix(scanner.Text(), "data: "); ok {
-				if err := conn.Write(ctx, websocket.MessageText, []byte(payload)); err != nil {
-					response.Body.Close()
-					return
-				}
-			}
-		}
-		response.Body.Close()
-		if scanner.Err() != nil {
+		if err := http.NewResponseController(w).Flush(); err != nil {
 			return
 		}
 	}
@@ -224,11 +183,9 @@ func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 			provider.program = "// @exec: {\"yield_time_ms\": 60000}\nconst result = await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(shell)) + ", workdir: " + string(responses.MustMarshalJSON(workspace)) + ", yield_time_ms: 30000}); text(result.output);"
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serveHTTPTestProvider(w, r, provider) }))
 			defer upstream.Close()
 			client := newTestProviderClient(upstream.URL, upstream.Client())
-			client.OpenAI.EnableWebSockets(t.Context())
-			defer client.OpenAI.Close()
 			issues := testCriticalErrors()
 			created := make(chan struct{}, 1)
 			handler := testResponsesHandler(t.Context(), time.Minute, client, issues, proxy)

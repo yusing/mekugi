@@ -252,7 +252,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 	reference := routerFaultNativeReference(t, failedEvents[0])
 	allOutput := stdout + stderr
 	for _, want := range []string{
-		"Retrying will fail the same way", "Switch model", "passthrough mode",
+		"Retrying will fail the same way", "Switch model",
 		"--debug", "report the diagnostic reference", "mekugi_sse",
 	} {
 		if !strings.Contains(allOutput, want) {

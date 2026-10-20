@@ -32,8 +32,7 @@ Attachment dialogs retain the original
 submitted content. Legacy attachment envelopes without durable submission identity
 still deduplicate model input but receive no guessed transcript suffix. Every
 evidence consumer, including command
-and patch observation, result confirmation, failure observation, retention, and continuation
-advice, reads the original output before this final projection.
+and patch observation, result confirmation, failure observation, and retention, reads the original output before this final projection.
 
 A unit is one host-produced text part of a `function_call_output` or
 `custom_tool_call_output`, or one submitted file or managed-skill frame body in a
@@ -45,8 +44,7 @@ snapshot, while reference rows address the earlier visible body. Ordinary user
 requests, base instructions, selection attachments, malformed envelopes, and media
 are excluded. String-content or non-`input_text` envelopes and bare frame text
 remain ordinary input. Native selected-skill XML retains its existing manager
-rewrite. Router-appended parts, including warnings, edit notices,
-and continuation advice, remain intact. Outputs without a call ID and native
+rewrite. Router-appended parts, including warnings and edit notices, remain intact. Outputs without a call ID and native
 live-session JSON envelopes are excluded.
 
 Verbatim runs aligned to logical lines and covering at least 192 bytes may be
@@ -122,5 +120,5 @@ is bounded to 256 KiB; this is not a total-heap or zero-allocation guarantee.
 Module checks cover matching thresholds, newest-source ties, visible references,
 line endings, eviction, and independent prepared requests. Binding checks cover
 eligible tool and attachment shapes and original-part bounds. Application checks
-cover original evidence, continuation advice, provider-prefix reuse, native read
+cover original evidence, host continuation results, provider-prefix reuse, native read
 ranges, call attribution, opt-out, and unchanged transcript rendering.

@@ -125,7 +125,6 @@ func TestUISnapshotNativeTierPicker(t *testing.T) {
 	}{
 		{"configured", "gpt-6.1-sol", "", map[string]string{"gpt-6.1-sol": "fast"}, 1},
 		{"unconfigured", "unconfigured", "priority", nil, 1},
-		{"legacy-terra", "gpt-5.6-terra", "flex", map[string]string{"gpt-6-sol": "fast"}, 1},
 		{"configured-flex", "gpt-6.1-sol", "default", map[string]string{"gpt-6.1-sol": "flex"}, 2},
 	} {
 		for _, width := range []int{36, 100} {
@@ -330,9 +329,6 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantTier, wantModel := "flex", model
-			if model == "gpt-5.6-terra" {
-				wantTier, wantModel = "priority", "gpt-6-sol"
-			}
 			if got := responses.StringField(forwarded.Fields, "service_tier"); got != wantTier {
 				t.Fatalf("tier=%s want=%s", got, wantTier)
 			}

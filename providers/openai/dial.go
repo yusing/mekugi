@@ -8,13 +8,6 @@ import (
 	"github.com/coder/websocket"
 )
 
-// WebSocketRequest is prepared by the backend, independently of provider transport.
-type WebSocketRequest struct {
-	Payload []byte
-	Headers http.Header
-	Stream  bool
-}
-
 // Dial opens one dedicated connection. On failed upgrade its original response
 // body remains readable and belongs to the caller, including when err is non-nil.
 func (c *Client) Dial(ctx context.Context, headers http.Header) (*websocket.Conn, *http.Response, error) {
@@ -33,4 +26,22 @@ func dialWebSocket(ctx context.Context, supplied *http.Client, endpoint string, 
 		response = transport.rejected
 	}
 	return conn, response, err
+}
+
+// Preserve non-upgrade HTTP bodies before the WebSocket library's bounded
+// diagnostic read. Successful upgrades retain their io.ReadWriteCloser intact.
+type webSocketHandshakeTransport struct {
+	http.RoundTripper
+	rejected *http.Response
+}
+
+func (transport *webSocketHandshakeTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	response, err := transport.RoundTripper.RoundTrip(request)
+	if err != nil || response.StatusCode == http.StatusSwitchingProtocols {
+		return response, err
+	}
+	transport.rejected = response
+	headerOnly := *response
+	headerOnly.Body = http.NoBody
+	return &headerOnly, nil
 }

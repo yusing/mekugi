@@ -189,10 +189,6 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	provider := inferencegateway.NewClient(openai.BaseURL, openaiHTTP, requestexecution.ProviderDiagnostics())
 	provider.ThirdPartyOnly = grokEnabled || standalone
 	provider.OpenAI.StreamIdleTimeout = options.StreamIdleTimeout
-	provider.OpenAI.EnableWebSockets(ctx)
-	// Cover early setup returns before ctx is canceled; close is idempotent
-	// with enableWebSockets' normal context-shutdown callback.
-	defer provider.OpenAI.Close()
 	if grokEnabled || standalone {
 		apiKey := strings.TrimSpace(os.Getenv("XAI_API_KEY"))
 		path := options.GrokAuthFile

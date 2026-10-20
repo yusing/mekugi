@@ -203,12 +203,10 @@ Retained carrier facts can inform classification after the consumer has validate
 their identity; classification itself authenticates neither a record nor a result.
 Opaque source and printed lookalikes cannot supply native-result provenance.
 
-Continuation annotations have one wire definition shared by their producer and
-recognizer. Recognition requires the exact annotation envelope and expected host
-handle, so unrelated text remains intact. The binding derives advice from the
-active tool catalog and validated retained facts, with request-local provenance.
-Advice never resumes a process or dispatches a call. The application admits retained
-evidence before this projection. Offline findings remain query policy.
+Codex supplies continuation handles and guidance. Request preparation preserves
+those host results without adding next-call suggestions or choosing wait durations.
+Historical annotation recognition remains available to offline inspection; it
+establishes no process lifetime or execution authority.
 
 The backend's bounded, incremental native-trace reader observes only the private
 directory selected for the invocation. It correlates executing thread, outer call
