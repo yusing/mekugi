@@ -153,6 +153,8 @@ func TestUISnapshotNativeRosterEditCounts(t *testing.T) {
 	}
 	v.Model.NetCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
 	assertNativeUISnapshot(t, "native-roster-edit-counts", v.NativeRoster(100, 6, now, true))
+	assertNativeUISnapshot(t, "native-roster-edit-counts-unfocused", v.NativeRoster(100, 6, now, false))
+	assertNativeUISnapshot(t, "native-roster-edit-counts-narrow", v.NativeRoster(48, 6, now, false))
 }
 
 func TestUISnapshotNativeRosterContext(t *testing.T) {

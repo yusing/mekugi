@@ -14,7 +14,7 @@ import (
 func TestRosterVisibleNamesDetermineWidth(t *testing.T) {
 	now := time.Unix(100, 0)
 	const width = 140
-	for _, mode := range []string{"native", "rows", "cards", "folded"} {
+	for _, mode := range []string{"native", "rows", "cards", "unfocused"} {
 		t.Run(mode, func(t *testing.T) {
 			var rows []presentation.AgentRow
 			for i, name := range []string{"a", "bb", "ccc", "dddd", "hidden"} {
@@ -26,7 +26,7 @@ func TestRosterVisibleNamesDetermineWidth(t *testing.T) {
 						Values: []presentation.Value{{Content: feed.Content{Kind: "text", Body: "Checking visible work and retaining useful source details"}}}}},
 				}})
 			}
-			if mode == "folded" {
+			if mode == "unfocused" {
 				rows[4].Agent.Responding, rows[4].Agent.Final, rows[4].Agent.Status = false, true, "answered"
 			}
 			render := func(rows []presentation.AgentRow) []string {
@@ -36,8 +36,8 @@ func TestRosterVisibleNamesDetermineWidth(t *testing.T) {
 				switch mode {
 				case "native":
 					lines = v.NativeRoster(width, 3, now, true)
-				case "folded":
-					lines = v.NativeRoster(width, 6, now, false)
+				case "unfocused":
+					lines = v.NativeRoster(width, 3, now, false)
 				case "rows":
 					lines = v.RenderRoster(v.Roster(), width, 3, now)
 				case "cards":

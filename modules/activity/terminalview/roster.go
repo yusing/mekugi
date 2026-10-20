@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/pathdisplay"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -19,16 +17,9 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
-// nativeRosterItem is one roster row: an agent, or the fold of finished ones.
-type nativeRosterItem struct {
-	row      activitypresentation.AgentRow
-	finished []activitypresentation.AgentRow
-}
-
-// NativeRoster fits the roster to its content within limit rows, under a rule
-// carrying the counts and session totals. Unfocused, finished agents fold
-// into one row. Rows show state, then timer, edited lines, tokens, cost and
-// turns; turns drop first when narrow.
+// NativeRoster fits separate agent rows within limit, under a rule carrying
+// status counts and session totals. Rows show state, then timer, edited lines,
+// tokens, cost and turns; turns drop first when narrow.
 func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []string {
 	rows := v.Roster()
 	if len(rows) == 0 || width < 20 {
@@ -36,18 +27,11 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	}
 	v.Hits = v.Hits[:0]
 	v.paceRosterMetrics(rows, now)
-	var items []nativeRosterItem
-	fold := -1
+	finished := 0
 	for _, row := range rows {
-		if !focused && row.Agent.Name != "/root" && v.agentStatus(row.Agent) == '✓' && !(v.displayingChild() && row.Agent.Name == v.displayedCaller()) {
-			if fold < 0 {
-				fold = len(items)
-				items = append(items, nativeRosterItem{})
-			}
-			items[fold].finished = append(items[fold].finished, row)
-			continue
+		if row.Agent.Name != "/root" && v.agentStatus(row.Agent) == '✓' {
+			finished++
 		}
-		items = append(items, nativeRosterItem{row: row})
 	}
 	responding, errors := v.StatusCounts(rows)
 	var input, output uint64
@@ -68,6 +52,9 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	detail := terminalui.Dim + fmt.Sprintf("%d", len(rows)) + terminalui.Undim
 	if responding > 0 {
 		detail += terminalui.Dim + " · " + terminalui.Undim + terminalui.Amber + fmt.Sprintf("%d working", responding) + terminalui.Reset
+	}
+	if finished > 0 {
+		detail += terminalui.Dim + fmt.Sprintf(" · %d finished", finished) + terminalui.Undim
 	}
 	if errors > 0 {
 		detail += terminalui.Dim + " · " + terminalui.Undim + terminalui.Red + fmt.Sprintf("%d error", errors) + terminalui.Reset
@@ -122,46 +109,32 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 			limit--
 		}
 	}
-	selected := max(0, slices.IndexFunc(items, func(item nativeRosterItem) bool { return item.finished == nil && item.row.Agent.Name == v.Selected }))
+	selected := max(0, slices.IndexFunc(rows, func(row activitypresentation.AgentRow) bool { return row.Agent.Name == v.Selected }))
 	start := 0
-	if len(items) > limit {
-		start = max(0, min(selected-limit+2, len(items)-limit+1))
+	if len(rows) > limit {
+		start = max(0, min(selected-limit+2, len(rows)-limit+1))
 	}
-	end := min(len(items), start+limit)
-	if end < len(items) {
+	end := min(len(rows), start+limit)
+	if end < len(rows) {
 		end-- // Room for the hidden-count row.
 	}
 	nameWidth := 4
-	for _, item := range items[start:end] {
-		if item.finished != nil {
-			continue
-		}
-		name, _ := RosterTree(rows, slices.IndexFunc(rows, func(other activitypresentation.AgentRow) bool { return other.Agent.Name == item.row.Agent.Name }), 0)
+	for index := start; index < end; index++ {
+		name, _ := RosterTree(rows, index, 0)
 		nameWidth = max(nameWidth, ansi.StringWidth(name))
 	}
 	nameWidth = min(nameWidth, max(8, width/4))
 	// Lay out agent rows first, so right-aligned metric columns fit their
 	// widest visible values rather than fixed widths.
 	type agentLine struct {
-		row          activitypresentation.AgentRow
-		prefix       string
-		finishedLine string
+		row    activitypresentation.AgentRow
+		prefix string
 	}
 	var laid []agentLine
 	var parts [][MetricParts]string
 	widest := 0
-	for _, item := range items[start:end] {
-		if item.finished != nil {
-			var names []string
-			for _, row := range item.finished {
-				names = append(names, terminalui.AgentColor(row.Agent.Name)+pathdisplay.AgentDisplayName(row.Agent.Name)+terminalui.Reset)
-			}
-			line := " " + terminalui.Green + "✓" + terminalui.Reset + " " + terminalui.Dim + fmt.Sprintf("%d finished · ", len(item.finished)) + terminalui.Undim + strings.Join(names, terminalui.Dim+", "+terminalui.Undim)
-			laid = append(laid, agentLine{finishedLine: ansi.Truncate(line, width, "…")})
-			continue
-		}
-		row := item.row
-		index := slices.IndexFunc(rows, func(other activitypresentation.AgentRow) bool { return other.Agent.Name == row.Agent.Name })
+	for index := start; index < end; index++ {
+		row := rows[index]
 		tree, _ := RosterTree(rows, index, 0)
 		tree = strings.TrimRight(Middle(tree, nameWidth), " ")
 		split := strings.LastIndexAny(tree, " /") + 1
@@ -186,10 +159,6 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	}
 	next := 0
 	for _, item := range laid {
-		if item.finishedLine != "" {
-			lines = append(lines, item.finishedLine)
-			continue
-		}
 		room := max(1, stateEnd-ansi.StringWidth(item.prefix))
 		// A child's skill count ends its state cell and opens those skills.
 		// Main's count is in Main's title.
@@ -224,7 +193,7 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 		lines = append(lines, line)
 		v.Hits = append(v.Hits, Hit{Row: len(lines), First: 1, Last: width, Agent: item.row.Agent.Name})
 	}
-	if hidden := len(items) - end; hidden > 0 {
+	if hidden := len(rows) - end; hidden > 0 {
 		lines = append(lines, ansi.Truncate(terminalui.Dim+fmt.Sprintf("   +%d more · ^B 3 shows all", hidden)+terminalui.Undim, width, "…"))
 	}
 	if legend != "" {

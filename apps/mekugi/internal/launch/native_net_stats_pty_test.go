@@ -48,8 +48,11 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	publish("unrelated", "/root/other", "unrelated", "", filepath.Join(workspace, "unrelated.txt"), "", "unrelated\n")
 
 	u := newAppServerSessionTestUI(t, workspace)
-	u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root"}, {Name: "/root/worker"}}
-	terminalTest(u).Focus = 3
+	u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{
+		{Name: "/root", TokensKnown: true, InputTokens: 2000, OutputTokens: 100},
+		{Name: "/root/worker", Final: true, TokensKnown: true, InputTokens: 1000, OutputTokens: 200},
+	}
+	terminalTest(u).Focus = 1
 	setSavedReviewStore(terminalTest(u), store)
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	refresh := func() {
@@ -120,10 +123,20 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 		if !strings.Contains(frame, "+3 -1") || strings.Contains(frame, "+7 -5") {
 			t.Fatalf("%d-column frame misreports composed outcome:\n%s", width, frame)
 		}
-		if width == 160 && (!strings.Contains(frame, "+4 -1") || !strings.Contains(frame, "+3 -4")) {
+		if width == 160 && (!strings.Contains(frame, "+4 -1") || !strings.Contains(frame, "+3 -4") || !strings.Contains(frame, "1 finished") || !strings.Contains(frame, "↑3K ↓300")) {
 			t.Fatalf("cumulative agent counts are missing:\n%s", frame)
 		}
 	}
+
+	// Completion keeps the child's own row and counts; a follow-up changes
+	// status without changing captured attribution or retained token totals.
+	u.attached.childSource.Agents[1].Responding = true
+	terminalTest(u).Focus = 3
+	if frame := paint(160); strings.Contains(frame, "1 finished") || !strings.Contains(frame, "+3 -4") || !strings.Contains(frame, "↑3K ↓300") {
+		t.Fatalf("follow-up lost child metrics or kept finished status:\n%s", frame)
+	}
+	u.attached.childSource.Agents[1].Responding = false
+	terminalTest(u).Focus = 1
 
 	// A new store reader and controller projection can restore the outcome
 	// without any live parent, command execution, or workspace source files.
@@ -134,7 +147,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	savedPane(terminalTest(u)).Key("a")
 	savedPane(terminalTest(u)).Key("a")
 	refresh()
-	if frame := paint(160); !strings.Contains(frame, "+3 -1") {
+	if frame := paint(160); !strings.Contains(frame, "+3 -1") || !strings.Contains(frame, "+3 -4") || !strings.Contains(frame, "1 finished") {
 		t.Fatalf("replay or caller filter changed overall outcome:\n%s", frame)
 	}
 	u.review.Projection.Reset()

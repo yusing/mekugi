@@ -98,9 +98,9 @@ func TestNativeRosterRoleLegendAndCompactSpacing(t *testing.T) {
 	now := time.Now()
 	compact := v.NativeRoster(100, 4, now, false)
 	if got := ansi.Strip(compact[1]); !strings.HasPrefix(got, " ◐ main  working") {
-		t.Fatalf("folded names left padding in compact row: %q", got)
+		t.Fatalf("agent names left padding in compact row: %q", got)
 	}
-	if got := ansi.Strip(strings.Join(compact, "\n")); strings.Contains(got, "Roles:") || !strings.Contains(got, "2 finished") {
+	if got := ansi.Strip(strings.Join(compact, "\n")); strings.Contains(got, "Roles:") || !strings.Contains(ansi.Strip(compact[0]), "2 finished") || len(compact) != 4 || strings.Contains(got, ",") {
 		t.Fatalf("compact roster: %s", got)
 	}
 	for _, width := range []int{24, 60, 140} {

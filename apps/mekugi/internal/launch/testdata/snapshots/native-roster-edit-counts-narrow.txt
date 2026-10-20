@@ -1,0 +1,3 @@
+─ 3 Agents · 2 · 1 finished ─── +2 -1 · ↑3K ↓0 ─
+ ✓ main  done                                  
+ ✓ └ cleanup  done                           0%

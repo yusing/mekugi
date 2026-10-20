@@ -451,15 +451,20 @@ remain unknown. Neither total reads current Git or workspace state.
 Changed token/cost/context/edit metrics ease from displayed values over half a
 second; first observations appear immediately. Usage totals follow eased rows;
 composed net edits update immediately, and unknown counts never interpolate.
-Slots reserve fixed widths before values arrive; separator halves align across
+Visible metric values determine column widths; separator halves align across
 visible rows, all metrics stay dim, edit colors included. Narrow rows omit metrics
 before losing usable activity. No model label is added. Observed roles color the
 existing status glyph; unknown/conflicting roles retain ordinary colors.
 
 Roster placement and resize belong to native layout. Rows compact before hiding
 agents; visible rows alone determine widths. Edge counts distinguish hidden,
-responding and error agents, with overall header counts. The viewport moves only
-when selection leaves it. Hover emphasizes the name; selection shades the row.
+responding and error agents, with overall header counts. The header includes the
+number of finished children and known aggregate token usage. Finished means an
+observed final answer without a newer open response or error, not verified task
+completion. Finished children retain separate selectable rows and their captured
+edit and usage metrics, even when the roster is unfocused; names never collapse
+into a comma-joined summary. The viewport moves only when selection leaves it.
+Hover emphasizes the name; selection shades the row.
 Click selects the transcript, not input authority; Main's composer stays Main's.
 Arrows/k/j stop at either end; n/Tab/p also navigate, a toggles Main/current child.
 Roster wheel scrolling changes neither selection nor transcript follow. Transcript
@@ -470,8 +475,8 @@ owns page admission and evidence placement. Running headers scroll normally; the
 and `/ps` dialog follow [running processes](#running-processes).
 
 Statuses mean only observed open response, latest error, plaintext FINAL_ANSWER,
-or none. Final summaries do not repeat their marker, and no glyph asserts that an
-agent finished. Operations/source/output retain five-row bounds without clipping
+or none. Final summaries do not repeat their marker, and no glyph asserts verified
+task completion. Operations/source/output retain five-row bounds without clipping
 status. Hidden-line counts underline on hover; only retained extra detail makes
 content clickable. Full authored messages use the shared transcript renderer.
 
