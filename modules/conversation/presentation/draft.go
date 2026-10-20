@@ -9,9 +9,10 @@ import (
 var ErrDraftChanged = errors.New("The draft changed; review it before submitting.")
 
 type DraftView struct {
-	Draft     composer.Draft
-	Revision  uint64
-	Available bool
+	Prediction string
+	Draft      composer.Draft
+	Revision   uint64
+	Available  bool
 }
 
 // PromptDraftView contains only the active editor, never parked histories or secrets.
@@ -43,7 +44,25 @@ func (m *Session) DraftView() DraftView {
 	if !m.ordinaryEditor() {
 		return DraftView{}
 	}
-	return DraftView{Draft: m.Editor.Draft.Editable(), Revision: m.Editor.Revision(), Available: true}
+	v := DraftView{Draft: m.Editor.Draft.Editable(), Revision: m.Editor.Revision(), Available: true}
+	if v.Draft.Text == "" && v.Revision == m.Prediction.Revision {
+		v.Prediction = m.Prediction.Text
+	}
+	return v
+}
+
+type Prediction struct {
+	Text     string
+	Revision uint64
+}
+
+func (m *Session) AcceptPrediction(revision uint64) (bool, error) {
+	v := m.DraftView()
+	if !v.Available || v.Revision != revision || v.Prediction == "" {
+		return false, ErrDraftChanged
+	}
+	m.Prediction = Prediction{}
+	return m.Editor.Apply(composer.Action{Kind: composer.InsertAction, Text: v.Prediction})
 }
 
 func (m *Session) TakeDraft(revision uint64) (composer.Draft, error) {

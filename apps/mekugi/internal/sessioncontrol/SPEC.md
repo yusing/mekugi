@@ -173,6 +173,21 @@ retire pending questions; replies retain their original command identity. Guard
 policy and grants stay with the composed approval modules. Shutdown closes report
 observation and approval transport before draining retained request facts.
 
+## Composer predictions
+
+Eligible completed Main turns and restored idle conversations may request a
+next-message suggestion using OpenAI's remote prompt and sampling configuration.
+Plan mode, unsupported models and third-party providers are ineligible. The host
+owns the ephemeral prediction fork, inherited context and inference. Predictions
+use its prediction mode without configuration overrides or fresh-thread fallback.
+The host must support prediction forks (Codex 0.162.0-alpha.20 or newer).
+Their messages, prompts and cleanup stay separate from Main and side questions.
+New input, a new turn, disablement and replacement retire eligibility immediately;
+late host acknowledgements retain only the correlation needed to unload the fork.
+Remote moderation policy suppresses matching source-turn suggestions. Incomplete
+moderation evidence suppresses that source rather than treating omitted data as safe. Unavailable
+configuration or auxiliary failure leaves ordinary conversation usable.
+
 ## Thread names
 
 Manual names entered before host identity wait for the admitted thread. Once

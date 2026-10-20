@@ -141,6 +141,7 @@ const (
 	RestoreWaiting
 	IncreaseEffort
 	DecreaseEffort
+	AcceptPrediction
 )
 
 type ComposerIntent struct {
@@ -153,7 +154,7 @@ func (m *Model) AdmitComposer(intent ComposerIntent, conversation *conversationm
 	if intent.Version != m.view.Version {
 		return ErrStaleIntent
 	}
-	if m.readOnly() != Editable || intent.Operation < SubmitComposer || intent.Operation > DecreaseEffort {
+	if m.readOnly() != Editable || intent.Operation < SubmitComposer || intent.Operation > AcceptPrediction {
 		return ErrInputUnavailable
 	}
 	if intent.Target != conversation.EditorTarget() {

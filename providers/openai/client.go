@@ -36,6 +36,7 @@ const (
 // Client owns provider connections, independently of backend conversation state.
 // Configure StreamIdleTimeout and ObserveWebSocket before starting requests.
 type Client struct {
+	predictions       predictionSettingsCache
 	httpClient        *http.Client
 	baseURL           string
 	websockets        *providerWebSockets
@@ -93,6 +94,7 @@ func Credentials(headers http.Header) (string, string, error) {
 }
 
 func (c *Client) Models(ctx context.Context, headers http.Header, rawQuery string) (*http.Response, error) {
+	c.predictions.observe(headers)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.baseURL, "/")+"/models", nil)
 	if err != nil {
 		return nil, fmt.Errorf("build upstream models request: %w", err)
@@ -109,6 +111,7 @@ func (c *Client) Models(ctx context.Context, headers http.Header, rawQuery strin
 // Responses sends the prepared HTTP request, or its prepared WebSocket equivalent.
 // A nil websocket request selects HTTP without opening a pool connection.
 func (c *Client) Responses(startCtx, responseCtx context.Context, body []byte, headers http.Header, websocket *WebSocketRequest) (*http.Response, error) {
+	c.predictions.observe(headers)
 	if c.websockets != nil && websocket != nil {
 		response, fallback, err := c.forwardWebSocket(startCtx, responseCtx, websocket, headers)
 		if !fallback {

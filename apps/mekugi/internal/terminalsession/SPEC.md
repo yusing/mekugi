@@ -175,6 +175,12 @@ completion. Local commands never become model prompts; unknown commands report
 feedback. Shell Mode, selected by an initial `!`, has a red frame and Bash syntax
 highlighting and disables attachment completion.
 
+`/predictions on|off` controls next-message suggestions, enabled by default when
+the account, model and remote configuration permit them. Suggestions appear as dim
+text in the empty composer. Tab accepts a suggestion for editing; a later Enter
+or Tab submits normally. Typing dismisses it. The setting is retained with this
+thread's preferences; unavailable suggestions never block ordinary input.
+
 `/lock` and `/unlock` control the persisted interrupt-key lock. Locked input cannot
 interrupt, discard waiting input or quit through Escape/Ctrl-C. Draft clearing,
 undo, copying, contextual dismissal, explicit commands and steering still work.
@@ -392,7 +398,7 @@ prompts/menus, then closes the side answer under Conversation's cleanup contract
 ## Preferences
 
 Successful resume restores the Main/right-column split, Diff visibility, keyboard
-focus, interrupt-key lock and diff navigator width from
+focus, interrupt-key lock, prediction preference and diff navigator width from
 [session preferences](../../../../modules/sessionpreferences/SPEC.md). Geometry is clamped
 by the current terminal layout. Roster height remains automatically fitted. Scroll
 positions, filters, selections, drafts and transient live docks are not persisted.

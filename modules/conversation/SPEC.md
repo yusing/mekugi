@@ -36,6 +36,13 @@ and reset behavior. Omitting Activity's retention does not remove the transcript
 
 ## Drafts and history
 
+After an eligible completed reply, an empty ordinary composer can show an optional
+next-message prediction. It remains separate from the draft, attachments, history
+and undo state until accepted. Tab accepts it as editable text without submitting.
+Typing or replacing the draft dismisses it; clearing that edit does not resurrect
+the old prediction. Prompts, completion menus and queued input retain precedence.
+Predictions are transient and belong to the originating thread and completed turn.
+
 The composer retains text, a byte-based caret, attachment bindings, undo/redo and
 local input history. File references, skill references, selected-text mentions and
 image placeholders are atomic during navigation and deletion. Explicit bindings,

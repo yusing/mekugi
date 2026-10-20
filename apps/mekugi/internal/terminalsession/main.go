@@ -21,6 +21,7 @@ type Main struct {
 	session                                                sessionpresentation.View
 	paste                                                  *pasteBuffer
 	Keybindings, InterruptLocked                           bool
+	PredictionsDisabled                                    bool
 	Menu                                                   Menu
 	Side                                                   SideDock
 	Resume                                                 ResumePicker
@@ -93,6 +94,12 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 	if readOnly {
 		draft = []string{""}
 		caret.Row, caret.Column = 0, 0
+	}
+	if !readOnly && !in.Picker && !in.Question && !presentation.Approvals.Open && in.Draft.Text == "" && presentation.Draft.Prediction != "" {
+		draft, _ = activityui.LayoutSpans(presentation.Draft.Prediction, nil, m.ComposerWidth)
+		for i := range draft {
+			draft[i] = terminalui.Dim + draft[i] + terminalui.Reset
+		}
 	}
 	if dock == 0 && in.Empty && height >= 6 && height > min(6, len(draft))+borderRows && !in.Picker {
 		height--

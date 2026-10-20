@@ -33,6 +33,7 @@ var nativeCommands = []completion.Choice{
 	{Name: "/skills", Description: "List or manage skills"},
 	{Name: "/btw", Description: "Ask a side question without changing Main"},
 	{Name: "/ps", Description: "Show running processes"},
+	{Name: "/predictions", Description: "Enable or disable next-message suggestions: on|off"},
 	{Name: "/session", Description: "Show request metrics, cache and transport"},
 	{Name: "/title", Description: "Rename this session"},
 	{Name: "/status", Description: "Show session settings and usage limits"},

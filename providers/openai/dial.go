@@ -18,6 +18,7 @@ type WebSocketRequest struct {
 // Dial opens one dedicated connection. On failed upgrade its original response
 // body remains readable and belongs to the caller, including when err is non-nil.
 func (c *Client) Dial(ctx context.Context, headers http.Header) (*websocket.Conn, *http.Response, error) {
+	c.predictions.observe(headers)
 	return dialWebSocket(ctx, c.httpClient, strings.TrimRight(c.baseURL, "/")+"/responses", headers)
 }
 

@@ -525,7 +525,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			waitCodex, err = startNativeSession(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, &control, usage, audience, review, windows, nativeTrace, retained, changeSource, checkpoints, recovered, review.Publish, issues.AddThreadNotice, guardServer, guards, reportObserver, skillsManagerAvailable, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals)
+			waitCodex, err = startNativeSession(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, &control, usage, audience, review, windows, nativeTrace, retained, changeSource, checkpoints, recovered, review.Publish, issues.AddThreadNotice, guardServer, guards, reportObserver, skillsManagerAvailable, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals, provider.OpenAI)
 		} else {
 			err = cmd.Start()
 			waitCodex = cmd.Wait

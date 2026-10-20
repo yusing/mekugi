@@ -92,6 +92,12 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		return false, nil
 	}
 	switch intent.Operation {
+	case sessionpresentation.AcceptPrediction:
+		_, err := attached.conversation.AcceptPrediction(intent.Target.Revision)
+		if err != nil {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+		}
+		return false, nil
 	case sessionpresentation.IncreaseEffort, sessionpresentation.DecreaseEffort:
 		return false, stepReasoning(attached, terminal, control, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, panes, dirty, (*restoring) != nil, clock, (*models), (*modelsLoading), reasoningKey, intent.Operation == sessionpresentation.IncreaseEffort)
 	case sessionpresentation.RestoreWaiting:

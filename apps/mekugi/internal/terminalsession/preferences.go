@@ -12,11 +12,12 @@ import (
 // storage and applied host settings; neither depends on these terminal fields.
 // Source: apps/mekugi/internal/router/app_server_panes.go:12:71@70e7ce50 nativePaneState
 type Preferences struct {
-	Focus            int  `json:"focus"`
-	Split            int  `json:"split"`
-	DiffOpen         bool `json:"diffOpen"`
-	InterruptLocked  bool `json:"interruptLocked,omitzero"`
-	NavigatorColumns int  `json:"navigatorColumns"`
+	Focus               int  `json:"focus"`
+	Split               int  `json:"split"`
+	DiffOpen            bool `json:"diffOpen"`
+	InterruptLocked     bool `json:"interruptLocked,omitzero"`
+	PredictionsDisabled bool `json:"predictionsDisabled,omitzero"`
+	NavigatorColumns    int  `json:"navigatorColumns"`
 }
 
 func ReadPreferences(data jsontext.Value) (Preferences, error) {
@@ -43,6 +44,7 @@ func (s *Shell) Preferences(main *Main) Preferences {
 	}
 	if main != nil {
 		state.InterruptLocked = main.InterruptLocked
+		state.PredictionsDisabled = main.PredictionsDisabled
 	}
 	return state
 }
@@ -55,6 +57,7 @@ func (s *Shell) RestorePreferences(state Preferences, main *Main) {
 	}
 	if main != nil {
 		main.InterruptLocked = state.InterruptLocked
+		main.PredictionsDisabled = state.PredictionsDisabled
 	}
 	s.Clamp()
 	if navigator, ok := s.Auxiliary.(terminalui.PaneNavigator); ok {

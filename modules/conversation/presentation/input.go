@@ -41,6 +41,7 @@ type Submission struct {
 }
 
 type Session struct {
+	Prediction     Prediction
 	Completion     completion.State
 	Editor         composer.Editor
 	PromptEditor   prompt.Editor

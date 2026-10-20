@@ -49,11 +49,12 @@ import (
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
+	"github.com/yusing/mekugi/providers/openai"
 	"golang.org/x/term"
 )
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startNativeSession(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, observationInputs *sessioncontrol.Observations, usage *accounting.Service, audience *sessioncontrol.Audience, reviewOwner *sessionreview.Review, windows *executionobservation.Windows, trace *nativetrace.Reader, retained changes.Scope, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), captureNotice func(string, string, string, string), guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, tracker *commandsegments.Observer, skillsManager bool, issues *requestexecution.Failures, resumeThread string, faint bool, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool) (func() error, error) {
+func startNativeSession(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, observationInputs *sessioncontrol.Observations, usage *accounting.Service, audience *sessioncontrol.Audience, reviewOwner *sessionreview.Review, windows *executionobservation.Windows, trace *nativetrace.Reader, retained changes.Scope, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), captureNotice func(string, string, string, string), guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, tracker *commandsegments.Observer, skillsManager bool, issues *requestexecution.Failures, resumeThread string, faint bool, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool, predictionProvider *openai.Client) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
@@ -159,11 +160,22 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 
 	shell.Faint = faint
 	settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
+	predictions := composerPredictions{provider: predictionProvider, results: make(chan predictionConfiguration, 1)}
+	syncPredictions := func() error {
+		predictions.supported = sessioncontrol.PredictionForkSupported(version)
+		before := attached.conversation.Prediction
+		err := predictions.sync(ctx, &attached, shell, &control, restoring != nil, notifications.focused)
+		dirty = dirty || before != attached.conversation.Prediction
+		return err
+	}
 	var dispatch func(appserver.Message) error
 	dispatch = func(m appserver.Message) error {
-		return dispatchHostMessage(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, windows, audience, reviewSource, preparePane, approvals, generator, &dirty, activity, &streams, tracker, trace, usage, &exitUsage, segments, &restoredSegments, views, &files, &statusConfig, issues, &quit, dispatch, &resumePending, &commits, terminalViews, conversation, observations, service, panes, &models, &modelsLoading, &reasoningKey, &archived, m)
+		err := dispatchHostMessage(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, windows, audience, reviewSource, preparePane, approvals, generator, &dirty, activity, &streams, tracker, trace, usage, &exitUsage, segments, &restoredSegments, views, &files, &statusConfig, issues, &quit, dispatch, &resumePending, &commits, terminalViews, conversation, observations, service, panes, &models, &modelsLoading, &reasoningKey, &archived, m)
+		predictions.observe(m, control.Thread)
+		return err
 	}
 	return func() error {
+		defer func() { _ = predictions.clear(&control, attached.conversation) }()
 		reviewOwner.Loader = sessionreview.NewLoader(ctx, reviewOwner.Projection)
 		defer reviewOwner.Loader.Close()
 		defer func() {
@@ -212,6 +224,14 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 						dirty = true
 					case <-ctx.Done():
 						return ctx.Err()
+					case result := <-predictions.results:
+						if err := syncPredictions(); err != nil {
+							return err
+						}
+						if err := predictions.configured(result, &control); err != nil {
+							return err
+						}
+						dirty = true
 					case <-autoChanged:
 						reviewOwner.Projection.Workspace = review.Workspace()
 						publishReview(&attached, shell, reviewOwner, reviewSource, preparePane)
@@ -320,6 +340,9 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 						if err := drainKeys(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvals, generator, &dirty, activity, segments, &restoredSegments, &files, &statusConfig, capture, debugDirectory, &quit, dispatch, &resumePending, panes, &models, &modelsLoading, &reasoningKey, keys); err != nil || quit {
 							return err
 						}
+						if err := syncPredictions(); err != nil {
+							return err
+						}
 						notices := applyCriticalNotices(&attached, shell, &control, &picker, &editor, clock, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, audience, &dirty, issues)
 						settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
 						if shell.Live.Tick(presentationTime(clock)) || shell.Agents.RosterEasing {
@@ -341,6 +364,9 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 						}
 						notifications.writeTerminalTitle(&attached.feedback, shell, clock, attached.cwd, control.Thread, questions.Questions, approvalDock.Approvals, control.Turn != "" || control.Starting(), presentationTime(clock))
 						continue
+					}
+					if err := syncPredictions(); err != nil {
+						return err
 					}
 					settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
 					notifications.writeTerminalTitle(&attached.feedback, shell, clock, attached.cwd, control.Thread, questions.Questions, approvalDock.Approvals, control.Turn != "" || control.Starting(), presentationTime(clock))
@@ -427,6 +453,10 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 	var correlated bool
 	if m.Method == "" {
 		response, correlated = control.Requests.Take(string(m.ID))
+	}
+	if handled, err := control.ObservePrediction(m, response, observations); handled {
+		*dirty = true
+		return err
 	}
 	if sessionTitleMessage(control, generator, &attached.feedback, terminal, clock, dirty, title, m, response.Owner.title) {
 		return nil

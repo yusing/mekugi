@@ -33,6 +33,18 @@ consumer delivery. Closing an incomplete exchange settles already-received
 observations before finalization. HTTP observation uses the supplied transport.
 Missing observations do not prevent inference.
 
+## Prediction configuration
+
+The provider uses the invocation's latest authenticated request snapshot to fetch
+composer prediction configuration and the desktop moderation policy. Credentials
+remain in memory and account changes invalidate cached configuration. These bounded
+auxiliary exchanges use the existing HTTP client, without redirects or retries;
+they neither generate a suggestion nor provide an inference fallback. The remote
+configuration owns eligibility, sampling, prompt and reasoning effort. The desktop
+Statsig bootstrap supplies only the prediction moderation policy to this consumer;
+unrelated assignments and telemetry are not adopted. Missing moderation policy
+has the desktop's no-additional-suppression behavior.
+
 ## Pooled inference transport
 
 HTTP requests to ChatGPT use pooled persistent WebSockets by default in both

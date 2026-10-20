@@ -110,6 +110,9 @@ func (m *Main) ComposerKey(key string, prompts *Prompts, transcript *activityui.
 		operation = sessionpresentation.SubmitComposer
 	case "\t":
 		operation = sessionpresentation.QueueComposer
+		if view.Draft.Available && view.Draft.Prediction != "" && view.Questions.Call == nil && !view.Approvals.Open {
+			operation = sessionpresentation.AcceptPrediction
+		}
 	}
 	if operation != sessionpresentation.NoComposerOperation {
 		return ComposerInput{Command: sessionpresentation.ComposerIntent{Version: view.Version, Target: target, Operation: operation}}

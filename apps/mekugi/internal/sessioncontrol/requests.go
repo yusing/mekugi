@@ -21,19 +21,21 @@ type Transport interface {
 // Request retains only routing context. Scope identifies operations retired
 // together when their owning session is replaced; Owner stays with the consumer.
 type Request[T any] struct {
-	Method string
-	Scope  string
-	Owner  T
-	Side   *Side
+	Method     string
+	Scope      string
+	Owner      T
+	Side       *Side
+	Prediction *Prediction
 }
 
 // Requests is the sole request ledger for one application client. Its event-loop
 // owner serializes issuance and response delivery; it does not execute host work.
 type Requests[T any] struct {
-	transport Transport
-	pending   map[string]Request[T]
-	sides     map[string]*Side
-	metadata  map[[2]string]bool
+	transport   Transport
+	pending     map[string]Request[T]
+	sides       map[string]*Side
+	predictions map[string]*Prediction
+	metadata    map[[2]string]bool
 }
 
 func NewRequests[T any](transport Transport) *Requests[T] {
