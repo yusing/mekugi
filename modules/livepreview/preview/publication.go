@@ -10,7 +10,7 @@ import (
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
-// Large previews retain a bounded suffix of the actual unified diff.
+// Large previews retain a bounded source window of the actual unified diff.
 func boundPreview(preview Preview) Preview {
 	const limit = 48 << 10
 	if len(responses.MustMarshalJSON(preview)) <= limit {
@@ -23,10 +23,7 @@ func boundPreview(preview Preview) Preview {
 			if file.BeforePath != "" && file.AfterPath == "" {
 				continue // Deleted files do not have live source cards.
 			}
-			diff := file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(preview.Workspace, file.BeforePath), pathdisplay.ForWorkspace(preview.Workspace, file.AfterPath))
-			if len(diff) > 16<<10 {
-				diff = diff[len(diff)-(16<<10):]
-			}
+			diff := previewDiffWindow(file, preview.Workspace, (16<<10)-len(tail))
 			tail = diff + tail
 		}
 		preview.Input = tail
@@ -49,6 +46,66 @@ func boundPreview(preview Preview) Preview {
 		preview.Input = preview.Input[1:]
 	}
 	return preview
+}
+
+// Keep arriving additions ahead of the not-yet-replaced baseline suffix in a
+// streaming rewrite. Headers travel with a clipped hunk so it keeps its lexer;
+// the partial hunk remains display-only and never supplies changed-line counts.
+func previewDiffWindow(file diffmodel.ReviewFile, workspace string, limit int) string {
+	diff := file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(workspace, file.BeforePath), pathdisplay.ForWorkspace(workspace, file.AfterPath))
+	if len(diff) <= limit {
+		return diff
+	}
+	lines := strings.SplitAfter(diff, "\n")
+	end := len(lines)
+	for i := len(lines) - 1; i >= 2; i-- {
+		if strings.HasPrefix(lines[i], "+") {
+			end = i + 1
+			break
+		}
+	}
+	start, size := end, 0
+	for start > 0 && size+len(lines[start-1]) <= limit {
+		start--
+		size += len(lines[start])
+	}
+	if start == 0 {
+		return strings.Join(lines[:end], "")
+	}
+	// Unified file headers are the first two rows. Source lines that happen
+	// to start with "--- " or "+++ " are still source, not extra headers.
+	header := strings.Join(lines[:min(2, len(lines))], "")
+	hunk := ""
+	for i := start - 1; i >= 0; i-- {
+		if strings.HasPrefix(lines[i], "@@ ") {
+			hunk = lines[i]
+			break
+		}
+	}
+	if len(header)+len(hunk) >= limit {
+		return "" // An older file cannot displace the newer source window.
+	}
+	for start < end && len(header)+len(hunk)+size > limit {
+		if strings.HasPrefix(lines[start], "@@ ") {
+			hunk = lines[start]
+		}
+		size -= len(lines[start])
+		start++
+	}
+	if size == 0 && end > 0 {
+		// Preserve a long source row's UTF-8 suffix and its diff marker.
+		line := strings.TrimSuffix(strings.Join(lines[:end], ""), "\n")
+		line = line[strings.LastIndexByte(line, '\n')+1:]
+		budget := limit - len(header) - len(hunk) - 2
+		if budget > 0 && len(line) > 1 {
+			cut := max(1, len(line)-budget)
+			for cut < len(line) && !utf8.RuneStart(line[cut]) {
+				cut++
+			}
+			return header + hunk + line[:1] + line[cut:] + "\n"
+		}
+	}
+	return header + hunk + strings.Join(lines[start:end], "")
 }
 
 // Cleanup only live state. An unconditional removal would overwrite an atomic

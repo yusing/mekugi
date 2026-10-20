@@ -80,7 +80,12 @@ Interrupted input never fabricates a final script.
 
 Patch representation omits carriage returns and missing-final-newline differences.
 A path that cannot be expressed in a patch header has no projected preview. Clipping
-retains a bounded suffix of the actual diff, never transporting command text.
+retains a bounded window of the actual diff around added source, or its tail when
+there are no additions, with the source headers needed for syntax highlighting.
+Following prioritizes arriving additions over a still-deleted baseline suffix.
+Large deletion blocks show only nearby rows while following additions; scrolling
+can inspect the remaining published source.
+Neither clipping nor following changes retained evidence or transports command text.
 Arrival-paced reveals bound lag and drain completed input within the display's
 settling interval. Projection first received at completion cannot invent an active
 stream. Finished input remains labelled preview, not success.

@@ -204,6 +204,13 @@ func liveDiffPreviewChanged(before, after []PreviewRow) (start, end, oldEnd int)
 // unchanged context must not steal focus from a growing multiline replacement.
 func liveDiffPreviewFocus(before, after []PreviewRow) int {
 	start, end, _ := liveDiffPreviewChanged(before, after)
+	// A growing rewrite can add source before a large baseline suffix that
+	// still appears deleted. Follow the arriving source, not that old suffix.
+	for i := end - 1; i >= start; i-- {
+		if after[i].Kind == '+' {
+			return i
+		}
+	}
 	for i := end - 1; i >= start; i-- {
 		if after[i].Kind == '+' || after[i].Kind == '-' {
 			return i
@@ -242,7 +249,7 @@ func (p *PreviewView) prepare(now time.Time) error {
 	}
 	p.Focus = liveDiffPreviewFocus(before, source)
 	p.born = PreviewBirths(before, source, p.born, now)
-	if current.Input != "" {
+	if current.Input != "" && !current.DiffText {
 		p.Focus = max(0, len(source)-1)
 	}
 	p.Source, p.Rendered = source, current
@@ -349,14 +356,31 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 	}
 	p.rows = rows
 	start, skip, count := focus, 0, 0
+	// Following needs only nearby removed source, not a screenful of the
+	// baseline being replaced. Manual scrolling still exposes every row.
+	removed := 0
+	compact := !p.Paused && p.Source[focus].Kind == '+'
 	for i := focus; i >= 0 && count < rows; i-- {
+		if compact && p.Source[i].Kind == '-' {
+			removed++
+			if removed > 3 {
+				break
+			}
+		}
 		n := fragmentsAt(i)
 		start = i
 		skip = max(0, n-(rows-count))
 		count += n - skip
 	}
 	end := focus + 1
+	removed = 0
 	for end < len(p.Source) && count < rows {
+		if compact && p.Source[end].Kind == '-' {
+			removed++
+			if removed > 3 {
+				break
+			}
+		}
 		count += fragmentsAt(end)
 		end++
 	}

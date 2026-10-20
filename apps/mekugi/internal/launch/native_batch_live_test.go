@@ -168,6 +168,19 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	}
 	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "deleted", Workspace: "/workspace"}, false)
 	p := nativeBatchPreview("main", "/root", "one")
+	// A rewrite's not-yet-received baseline suffix must not displace its
+	// arriving additions, including after publication clips a large diff.
+	baseline := "retained\n" + strings.Repeat("old baseline source\n", 4000)
+	var rewritten strings.Builder
+	for i := 1; i <= 40; i++ {
+		fmt.Fprintf(&rewritten, "one_line_%02d\n", i)
+	}
+	rewrite := func(source string) previewmodel.Preview {
+		next := p
+		next.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/one.txt", "/workspace/one.txt", baseline, source+"retained\n")}
+		return boundPreview(next)
+	}
+	p = rewrite(rewritten.String())
 	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
 	revealNativeDock(terminalTest(u))
 	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("child", "/root/editor", "child"), false)
@@ -185,11 +198,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if strings.Contains(frame, "one_line_40") {
 		t.Fatal("source scroll did not pause live viewport")
 	}
-	var grown strings.Builder
-	for i := 1; i <= 40; i++ {
-		fmt.Fprintf(&grown, "one_line_%02d\n", i)
-	}
-	p.Files[0] = diffmodel.RenderReviewFile("", "/workspace/one.txt", "", grown.String()+"streaming_tip\n")
+	p = rewrite(rewritten.String() + "streaming_tip\n")
 	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
 	revealNativeDock(terminalTest(u))
 	if frame = paint(140, 48); strings.Contains(frame, "streaming_tip") {
