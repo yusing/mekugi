@@ -1,0 +1,17 @@
+▎Files  2/2 · tree
+ / filter paths
+▼ /tmpfoo (1)
+  A kept.go +1 -0
+A main.go +1 -0                                                     
+
+─────────────────────────────────────────────────────────────────────
+  1/2  main.go · New file +1 -0 ─────────────────────────────────────
+  ┄ amber2 main
+  1│+new source                                                      
+  2/2  /tmpfoo/kept.go · New file +1 -0 ─────────────────────────────
+  ┄ amber4 main
+  1│+new source                                                      
+
+
+
+

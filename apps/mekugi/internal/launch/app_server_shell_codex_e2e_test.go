@@ -38,7 +38,7 @@ func TestAppServerShellNativeCodex(t *testing.T) {
 	f.store.liveDiff = testReview(auto).Publish
 	proxy.review = testReview(auto)
 	setTestProxyStore(proxy, f.store)
-	target := filepath.Join(t.TempDir(), "shell-edit.txt")
+	target := filepath.Join(savedDiffWorkspace(t), "shell-edit.txt")
 	startup := filepath.Join(t.TempDir(), "frontends.bash")
 	writeTestFile(t, startup, "export PATH="+quoteShellWord(f.registry.FrontendDirectory)+":\"$PATH\"\n")
 	before := func(t *testing.T, outer io.Writer, await func(string), awaitFrame func(func(string) bool), _ *vt.Emulator) {

@@ -191,6 +191,13 @@ composition and change navigation; receipt arrival and caller identity do not
 reorder effects. Files retain identity through moves, deletion and recreation.
 All authored captures participate regardless of command exit status.
 
+The saved Diff pane omits captures whose existing endpoints are all at `/tmp`
+or below it from Files, Changes and diff content. Relative paths resolve against
+the capture's workspace, or the selected review workspace when unspecified,
+never the application directory. Moves crossing that boundary remain visible
+with both endpoints. Capture, retained history, `mchanges`, exact-operation
+details and published edit totals remain complete.
+
 The presentation owner also supplies bounded source-text edit receipts for live
 observations and retained review. Receipts preserve captured provenance, group
 confirmed directory removals, and distinguish evidence gaps from confirmed edits.

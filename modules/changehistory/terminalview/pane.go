@@ -71,7 +71,7 @@ func (c *Pane) Invalidate() { c.dirty = true }
 // Update consumes retained presentation values without reading their source store.
 func (c *Pane) Update(publication presentation.Publication, coverage string) {
 	c.coverage = coverage
-	c.view.Update(publication)
+	c.view.Update(publication.ForDiff(c.workspace))
 	c.refreshChanges()
 	c.dirty = true
 }

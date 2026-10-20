@@ -72,6 +72,46 @@ func (p Publication) With(files []File) Publication {
 		Counts: Counts{Callers: CallerCounts(v.Files), Net: NetCounts(&v)}, initialized: true}
 }
 
+// ForDiff omits temporary-only captures from the saved pane, without changing
+// the retained publication used by details and edit totals. Boundary-crossing
+// moves keep both endpoints so their non-temporary effects remain reviewable.
+func (p Publication) ForDiff(workspace string) Publication {
+	var captures []Chunk
+	filtered := false
+	for _, file := range p.Files {
+		for _, chunk := range file.Chunks {
+			onlyTemporary := chunk.Review.BeforePath != "" || chunk.Review.AfterPath != ""
+			for _, path := range []string{chunk.Review.BeforePath, chunk.Review.AfterPath} {
+				if path == "" {
+					continue
+				}
+				if !filepath.IsAbs(path) {
+					base := cmp.Or(chunk.Workspace, workspace)
+					if !filepath.IsAbs(base) {
+						onlyTemporary = false
+						break
+					}
+					path = filepath.Join(base, path)
+				}
+				path = filepath.Clean(path)
+				if path != "/tmp" && !strings.HasPrefix(path, "/tmp/") {
+					onlyTemporary = false
+					break
+				}
+			}
+			if onlyTemporary {
+				filtered = true
+			} else {
+				captures = append(captures, chunk)
+			}
+		}
+	}
+	if !filtered {
+		return p
+	}
+	return p.With(GroupCaptures(captures))
+}
+
 // Snapshot owns exact attempts and their one derived publication. Its contents
 // remain immutable after Builder.Finish, including shared receipts and slices.
 type Snapshot struct {

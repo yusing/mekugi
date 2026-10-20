@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -12,6 +13,29 @@ import (
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
+
+// savedDiffWorkspace gives saved-pane fixtures a real project outside /tmp,
+// whose captures are intentionally omitted from that pane.
+func savedDiffWorkspace(t *testing.T) string {
+	t.Helper()
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := os.MkdirTemp(cache, "mekugi-saved-diff-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(workspace); err != nil {
+			t.Error(err)
+		}
+	})
+	return workspace
+}
 
 // Saved review and captured Activity receipts use the same application join
 // whether or not livepreview is composed into the attached session.

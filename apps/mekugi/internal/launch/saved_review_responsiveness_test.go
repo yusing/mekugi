@@ -184,7 +184,7 @@ func TestAppServerSavedReviewHydrationKeepsTerminalResponsive(t *testing.T) {
 		serveSavedReviewHost(t)
 		os.Exit(0)
 	}
-	workspace := t.TempDir()
+	workspace := savedDiffWorkspace(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

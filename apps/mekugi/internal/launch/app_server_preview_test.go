@@ -486,7 +486,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspace := t.TempDir()
+	workspace := savedDiffWorkspace(t)
 	for path, content := range nativePreviewFiles {
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(workspace, path)), 0o755); err != nil {
 			t.Fatal(err)

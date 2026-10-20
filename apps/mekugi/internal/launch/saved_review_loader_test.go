@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -142,6 +144,31 @@ func TestSavedReviewLoaderPublishesImmutableAtomicReceiptData(t *testing.T) {
 	}
 	if loader.Projection().Data != before || before.Len() != 2 || reviewSnapshotAttempt(t, before, workspace, call).Receipt != attempt.Receipt {
 		t.Fatal("failed read published partial state or replaced receipt")
+	}
+}
+
+func TestSavedDiffTemporaryFilterRetainsHistoryOnReload(t *testing.T) {
+	loader, store, workspace := savedReviewLoaderFixture(t)
+	for call, path := range map[string]string{"scratch": "/tmp/scratch.go", "project": "/project/main.go"} {
+		liveDiffScopeCapture(t, store, workspace, "main", call, path, "old", "new")
+	}
+	savedReviewLoaderEnqueue(t, loader, savedReviewLoaderScope(workspace, true, "main"))
+	published := savedReviewLoaderAccept(t, loader)
+	if files := published.Data.Publication.ForDiff(workspace).Files; len(files) != 1 || files[0].Path != "/project/main.go" {
+		t.Fatalf("saved pane files: %+v", files)
+	}
+	// A fresh reader restores the same retained evidence after pane projection.
+	reader := testReplayStore(mekugiReplayStore{directory: store.directory})
+	files, err := reader.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+	if err != nil || len(files) != 2 {
+		t.Fatalf("retained reload: files=%+v error=%v", files, err)
+	}
+	attempt := reviewSnapshotAttempt(t, published.Data, workspace, "scratch")
+	for _, view := range []string{"summary", "net"} {
+		output, err := reader.changes.Read(t.Context(), reader.changeScope(), changes.Query{Workspace: workspace, IDs: []string{attempt.Change}, View: view})
+		if err != nil || !strings.Contains(output, "/tmp/scratch.go") {
+			t.Fatalf("mchanges %s lost temporary evidence: %q error=%v", view, output, err)
+		}
 	}
 }
 

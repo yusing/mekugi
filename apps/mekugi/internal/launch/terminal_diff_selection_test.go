@@ -19,7 +19,7 @@ import (
 func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 	for _, beforePaint := range []string{"retained update", "file navigation", "scroll navigation"} {
 		t.Run(beforePaint, func(t *testing.T) {
-			workspace := t.TempDir()
+			workspace := savedDiffWorkspace(t)
 			store, err := openMekugiReplayStore(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
