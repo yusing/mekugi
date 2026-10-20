@@ -56,7 +56,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			original := bytes.Clone(input)
 			request := &codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": input}}
 			for range 2 {
-				observeActivityRequest(t, proxy, thread, map[bool]string{false:"/root",true:"/root/worker"}[thread!="main"], request)
+				observeActivityRequest(t, proxy, thread, map[bool]string{false: "/root", true: "/root/worker"}[thread != "main"], request)
 				applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
 			}
 			if !bytes.Equal(original, request.Fields["input"]) {

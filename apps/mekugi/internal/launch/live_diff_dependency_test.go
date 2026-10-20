@@ -1,8 +1,8 @@
 package launch
 
 import (
-"github.com/yusing/mekugi/libraries/legacycall"
 	"fmt"
+	"github.com/yusing/mekugi/libraries/legacycall"
 	"strings"
 	"testing"
 
