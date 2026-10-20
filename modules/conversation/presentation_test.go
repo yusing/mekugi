@@ -119,3 +119,35 @@ func TestConversationSidePresentation(t *testing.T) {
 		t.Fatal("closed side answer restored late input")
 	}
 }
+
+func TestConversationSideHistory(t *testing.T) {
+	var side presentation.SideAnswer
+	side.Begin("first", presentation.Input{})
+	side.Append("same-id", "first answer", true)
+	side.Complete("failed", "first failure")
+	side.Begin("second", presentation.Input{})
+	side.Append("same-id", "second answer", true)
+	view := side.View()
+	if len(view.History) != 1 || view.History[0].Question != "first" || view.History[0].Answer[0].Text != "first answer" || view.History[0].Failure != "first failure" || view.Answer[0].Text != "second answer" {
+		t.Fatalf("lost exchange: %+v", view)
+	}
+	view.History[0].Answer[0].Text = "changed"
+	if side.History[0].Answer[0].Text != "first answer" {
+		t.Fatal("history publication aliases owner")
+	}
+	for range 140 {
+		side.Begin("next", presentation.Input{})
+		side.Append("same-id", "answer", true)
+	}
+	if len(side.History) != 127 || !side.Truncated {
+		t.Fatalf("item bound: history=%d truncated=%v", len(side.History), side.Truncated)
+	}
+	side.Append("same-id", strings.Repeat("界", 100_000), true)
+	if len(side.History) != 0 || len(side.Question)+len(side.Answer[0].Text) > 256<<10 || !utf8.ValidString(side.Answer[0].Text) {
+		t.Fatal("byte bound failed")
+	}
+	side.Close()
+	if len(side.History) != 0 || len(side.Answer) != 0 {
+		t.Fatal("close retained conversation")
+	}
+}

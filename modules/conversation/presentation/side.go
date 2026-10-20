@@ -11,8 +11,15 @@ const SideCompactionRequired = "Side question requires compaction. Compact Main,
 
 type Answer struct{ ID, Text string }
 
-// SideAnswer retains only the current exchange. Codex owns the full side context.
+// SideExchange is a completed display exchange, independent of host context.
+type SideExchange struct {
+	Question, AttachmentNotice, Failure string
+	Answer                              []Answer
+}
+
+// SideAnswer retains bounded display history. Codex owns the full side context.
 type SideAnswer struct {
+	History          []SideExchange
 	ID               uint64
 	Question, Status string
 	Pending          Input
@@ -23,6 +30,7 @@ type SideAnswer struct {
 }
 
 type SideView struct {
+	History          []SideExchange
 	ID               uint64
 	Question, Status string
 	Answer           []Answer
@@ -32,11 +40,24 @@ type SideView struct {
 }
 
 func (s *SideAnswer) View() SideView {
-	return SideView{ID: s.ID, Question: s.Question, Status: s.Status, Answer: slices.Clone(s.Answer), Alert: s.Alert, Truncated: s.Truncated, AttachmentNotice: s.AttachmentNotice, Started: s.Started}
+	history := slices.Clone(s.History)
+	for i := range history {
+		history[i].Answer = slices.Clone(history[i].Answer)
+	}
+	return SideView{History: history, ID: s.ID, Question: s.Question, Status: s.Status, Answer: slices.Clone(s.Answer), Alert: s.Alert, Truncated: s.Truncated, AttachmentNotice: s.AttachmentNotice, Started: s.Started}
 }
 
 func (s *SideAnswer) Begin(question string, pending Input) {
-	*s = SideAnswer{ID: s.ID + 1, Question: question, Pending: pending, AttachmentNotice: pending.AttachmentNotice, Status: "Waiting for Main's submission…"}
+	history := s.History
+	if s.ID != 0 {
+		exchange := SideExchange{Question: s.Question, AttachmentNotice: s.AttachmentNotice, Answer: s.Answer}
+		if s.Alert {
+			exchange.Failure = s.Status
+		}
+		history = append(history, exchange)
+	}
+	*s = SideAnswer{History: history, Truncated: s.Truncated, ID: s.ID + 1, Question: question, Pending: pending, AttachmentNotice: pending.AttachmentNotice, Status: "Waiting for Main's submission…"}
+	s.bound()
 }
 
 func (s *SideAnswer) Fail(message string, closed bool) Input {
@@ -57,13 +78,13 @@ func (s *SideAnswer) Complete(status, failure string) {
 	}
 }
 
-func (s *SideAnswer) Close() { s.Pending, s.Answer = Input{}, nil }
+func (s *SideAnswer) Close() { s.Pending, s.Answer, s.History = Input{}, nil, nil }
 
 // Completed items replace streamed deltas, under the same UTF-8-safe display bound.
 func (s *SideAnswer) Append(id, text string, completed bool) {
 	index := slices.IndexFunc(s.Answer, func(item Answer) bool { return item.ID == id })
 	if index < 0 {
-		if len(s.Answer) >= 256 {
+		if len(s.Answer) >= 255 {
 			s.Truncated = true
 			return
 		}
@@ -73,15 +94,47 @@ func (s *SideAnswer) Append(id, text string, completed bool) {
 	if completed {
 		s.Answer[index].Text = ""
 	}
-	room := 256 << 10
-	for _, item := range s.Answer {
-		room -= len(item.Text)
-	}
-	if len(text) > room {
-		for room > 0 && !utf8.RuneStart(text[room]) {
-			room--
-		}
-		text, s.Truncated = text[:room], true
-	}
 	s.Answer[index].Text += text
+	s.bound()
+}
+
+// Evict whole old exchanges first, then truncate the current exchange on UTF-8 boundaries.
+func (s *SideAnswer) bound() {
+	bytes, items := len(s.Question)+len(s.AttachmentNotice), 1+len(s.Answer)
+	for _, a := range s.Answer {
+		bytes += len(a.Text)
+	}
+	for _, h := range s.History {
+		bytes += len(h.Question) + len(h.AttachmentNotice) + len(h.Failure)
+		items += 1 + len(h.Answer)
+		for _, a := range h.Answer {
+			bytes += len(a.Text)
+		}
+	}
+	for len(s.History) > 0 && (bytes > 256<<10 || items > 256) {
+		h := s.History[0]
+		bytes -= len(h.Question) + len(h.AttachmentNotice) + len(h.Failure)
+		items -= 1 + len(h.Answer)
+		for _, a := range h.Answer {
+			bytes -= len(a.Text)
+		}
+		s.History = slices.Delete(s.History, 0, 1)
+		s.Truncated = true
+	}
+	room := 256 << 10
+	retain := func(text *string) {
+		if len(*text) > room {
+			for room > 0 && !utf8.RuneStart((*text)[room]) {
+				room--
+			}
+			*text = (*text)[:room]
+			s.Truncated = true
+		}
+		room -= len(*text)
+	}
+	retain(&s.Question)
+	retain(&s.AttachmentNotice)
+	for i := range s.Answer {
+		retain(&s.Answer[i].Text)
+	}
 }

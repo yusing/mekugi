@@ -383,8 +383,10 @@ Copying during work neither interrupts nor submits input.
 
 The `/btw` side-answer dock leaves ordinary input targeting Main. It shows elapsed
 Answering progress until settlement and preserves truncation/omission notices.
-PgUp/PgDn scrolls; frozen selection pins the question. Reference, Copy and Clear
-exclude decoration and preserve Markdown source. Escape clears selection, dismisses
+The dock occupies at most half the available Main height. Follow-ups append
+question/answer exchanges and follow the newest output; PgUp/PgDn scrolls through
+the retained conversation. Frozen selection retains that scrollable conversation.
+Reference, Copy and Clear exclude decoration and preserve Markdown source. Escape clears selection, dismisses
 prompts/menus, then closes the side answer under Conversation's cleanup contract.
 
 ## Preferences

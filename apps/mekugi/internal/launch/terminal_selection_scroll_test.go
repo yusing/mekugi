@@ -295,3 +295,69 @@ func TestOutputSelectionEdgeDragScrolls(t *testing.T) {
 		t.Fatalf("edge drag did not select off-screen text: %q", got)
 	}
 }
+
+func TestTerminalBTWSelectionAcrossExchanges(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	t.Cleanup(func() { terminalTest(u).Diff.Close() })
+	terminalTest(u).DiffOpen = false
+	side := new(conversationmodel.SideAnswer)
+	side.Begin("first question", conversationmodel.Input{})
+	side.Append("answer", "**first answer**", true)
+	side.Begin("second question", conversationmodel.Input{})
+	var lines []string
+	for i := range 30 {
+		lines = append(lines, fmt.Sprintf("row %02d", i))
+	}
+	side.Append("answer", "```\n"+strings.Join(lines, "\n")+"\n```", true)
+	side.Complete("completed", "")
+	setSideTest(u, &sessioncontrol.Side{SideAnswer: side})
+	screen := vt.NewEmulator(120, 30)
+	defer screen.Close()
+	paint := func() {
+		t.Helper()
+		if err := u.testPaint(screen, 120, 30); err != nil {
+			t.Fatal(err)
+		}
+	}
+	paint()
+	x, y := -1, -1
+	for row, spans := range terminalTest(u).Frame.Copy {
+		for _, span := range spans {
+			if span.Text == "row 29" {
+				x, y = span.Column+5, row
+			}
+		}
+	}
+	if x < 0 {
+		t.Fatal("last answer row not painted")
+	}
+	terminalTest(u).selectionMouse(0, x, y, false)
+	s := terminalTest(u).Selection
+	if s == nil || s.ScreenRows() == 0 {
+		t.Fatal("missing frozen conversation")
+	}
+	for attempts := 0; s.Top() > 0 && attempts < 30; attempts++ {
+		terminalTest(u).selectionMouse(64, x, y, false)
+		paint()
+	}
+	firstY := -1
+	for row := s.Rect.Y; row < s.Rect.Y+s.Rect.H; row++ {
+		if strings.Contains(ansi.Strip(s.Rows[s.DocumentY(row)]), "first question") {
+			firstY = row
+			break
+		}
+	}
+	if firstY < 0 {
+		t.Fatalf("first question unavailable: %s", screen.String())
+	}
+	terminalTest(u).selectionMouse(32, s.Rect.X, firstY, false)
+	terminalTest(u).selectionMouse(0, s.Rect.X, firstY, true)
+	want := "first question\n**first answer**\n\nsecond question\n" + strings.Join(lines, "\n")
+	if got := s.Text(); got != want {
+		t.Fatalf("conversation copy = %q, want %q", got, want)
+	}
+	terminalTest(u).selectionAction('c')
+	if !strings.Contains(terminalTest(u).Frame.Clipboard, base64.StdEncoding.EncodeToString([]byte(want))) {
+		t.Fatal("clipboard lost conversation")
+	}
+}

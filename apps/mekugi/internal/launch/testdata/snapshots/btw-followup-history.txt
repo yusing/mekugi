@@ -1,0 +1,7 @@
+╭─ /btw · completed
+│ why?
+│ First answer
+│ 
+│ explain more
+│ Second answer
+╰─ /btw follow-up · Esc close

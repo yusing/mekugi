@@ -282,9 +282,9 @@ Submitted payload identities are independent of renderer sequence numbers.
 ## Side questions
 
 `/btw QUESTION` opens a temporary conversation without changing Main's input,
-execution, transcript or settings. Follow-ups reuse its host snapshot and replace
-the displayed exchange. Each exchange has an attachment-local identity, including
-repeated questions.
+execution, transcript or settings. Follow-ups reuse its host snapshot and append
+to the displayed conversation. Each exchange has an attachment-local identity,
+including repeated questions.
 Terminal navigation resets for a new exchange, while closing names the published
 exchange and session version so delayed input cannot dismiss a newer answer.
 Pending Main input settles before the first snapshot; an already-running turn
@@ -301,11 +301,12 @@ side conversation refuses follow-ups: compact Main, close the side answer and
 retry with a new snapshot. This follows Codex's decision, not a context estimate.
 Side events never enter Main's questions, roster, notifications or transcript.
 
-Closing discards the visible exchange and cancels only its side turn.
+Closing discards the visible conversation and cancels only its side turn.
 [Session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md#session-replacement-and-exit)
 retains delayed host correlation and cleanup without reviving a closed view or
 replacing a newer side answer. The transient display retains at most 256 KiB across
-256 items and reports truncation; Codex retains the full context. Side answers are
+256 items across questions and answers, dropping oldest exchanges when needed and
+reporting truncation; Codex retains the full context. Side answers are
 neither persisted nor restored on resume.
 
 ## Lifetime

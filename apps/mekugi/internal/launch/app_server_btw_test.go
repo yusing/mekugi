@@ -15,6 +15,8 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 type btwTestRPC struct {
@@ -383,8 +385,48 @@ func TestAppServerBTWRenderAndScroll(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := ansi.Strip(frame.String())
-	question, composer := strings.Index(text, "SIDE_QUESTION"), strings.Index(text, "COMPOSER_DRAFT")
+	question, composer := strings.Index(text, "LAST_ANSWER"), strings.Index(text, "COMPOSER_DRAFT")
 	if question < 0 || composer < 0 || question >= composer {
 		t.Fatalf("dock not above composer: %s", text)
+	}
+}
+
+func TestUISnapshotBTWFollowupHistory(t *testing.T) {
+	u, w := newAppServerTestUI()
+	u.startSession("main", t.TempDir())
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
+	btwTestStart(t, u, w)
+	appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"side","turnId":"side-turn","itemId":"answer","delta":"**First answer**"}}`)
+	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"side-turn","status":"completed"}}}`)
+	appServerTestKeys(t, u, "/btw explain more\r")
+	follow := btwTestRequest(t, w, "turn/start", "side")
+	btwTestReply(t, u, follow, `{"turn":{"id":"follow"}}`)
+	appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"side","turnId":"follow","itemId":"answer","delta":"**Second answer**"}}`)
+	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"follow","status":"completed"}}}`)
+	all := strings.Join(u.btwRows(60, 12), "\n")
+	for _, want := range []string{"why?", "First answer", "explain more", "Second answer"} {
+		if !strings.Contains(ansi.Strip(all), want) {
+			t.Fatalf("missing %q: %s", want, all)
+		}
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/btw-followup-history.txt", all+"\n")
+	tail := strings.Join(u.btwRows(60, 5), "\n")
+	if strings.Contains(tail, "First answer") || !strings.Contains(tail, "Second answer") {
+		t.Fatalf("not following newest exchange: %s", tail)
+	}
+	u.shell.Main.Side.Key("\x1b[5~")
+	u.shell.Main.Side.Key("\x1b[5~")
+	earlier := strings.Join(u.btwRows(60, 5), "\n")
+	if !strings.Contains(earlier, "why?") || !strings.Contains(earlier, "First answer") {
+		t.Fatalf("earlier exchange unavailable: %s", earlier)
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/btw-followup-scrolled.txt", earlier+"\n")
+	u.Text = "MAIN_DRAFT"
+	var frame bytes.Buffer
+	if err := u.testPaint(&frame, 80, 30); err != nil {
+		t.Fatal(err)
+	}
+	if u.shell.Main.Side.Rect.H > 15 || !strings.Contains(ansi.Strip(frame.String()), "MAIN_DRAFT") {
+		t.Fatal("side dock exceeded cap or hid composer")
 	}
 }
