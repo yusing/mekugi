@@ -1,6 +1,8 @@
 package sessionpresentation
 
-import "slices"
+import (
+	"slices"
+)
 
 // Source: apps/mekugi/internal/router/app_server_ui.go:1088:1162@45fbe279
 // ActivityOwner names the Activity agent an entry belongs to. A directed
@@ -57,6 +59,9 @@ func ApplyActivity(main, children *ActivitySource, entries []ActivityEntry, agen
 	}
 	children.Apply(ActivityEvent{Entries: paneEntries, Agents: agents})
 	for i, entry := range entries {
+		if entry.Native != nil && children.OutsideMain(entry.Native.Thread) {
+			continue
+		}
 		if entry, admitted := MainActivityEntry(entry); admitted {
 			if MainActivityLinked(entry) {
 				entry.ActivitySeq = children.EntrySeq(paneEntries[i])
@@ -64,4 +69,14 @@ func ApplyActivity(main, children *ActivitySource, entries []ActivityEntry, agen
 			main.ApplyMain(entry)
 		}
 	}
+}
+
+// OutsideMain reads the published host identity, never a display-name prefix.
+func (v *ActivitySource) OutsideMain(thread string) bool {
+	for _, agent := range v.Agents {
+		if agent.Thread == thread {
+			return agent.Isolated || agent.AudiencePending
+		}
+	}
+	return false
 }

@@ -73,3 +73,33 @@ func TestSupplementEditReceiptRequiresHostIdentity(t *testing.T) {
 		t.Fatalf("receipt lost admission, identity or deduplication: %+v", got)
 	}
 }
+
+func TestSupplementBorrowedAudiencePreservesIndependentDelivery(t *testing.T) {
+	var invocation scope.Store
+	owner := RequestSupplements(&invocation)
+	owner.Attach("main")
+	owner.Borrow("oneoff")
+	now := time.Unix(100, 0)
+	for _, root := range []string{"main", "oneoff"} {
+		var thread scope.Store
+		owner.Collect(&thread, Supplement{Thread: root, Source: root, Kind: "error", Text: root}, now)
+		owner.StartRequest(root, now)
+		owner.NoteUnreturned(root, []string{"call"})
+	}
+	for _, root := range []string{"main", "oneoff"} {
+		audience := Audience{Root: root, Threads: map[string]string{root: "/root"}}
+		if got := owner.Take(audience, now); len(got) != 1 || got[0].Thread != root {
+			t.Fatalf("wrong supplement audience: %+v", got)
+		}
+		if got := owner.TakeStarts(audience); len(got) != 1 || got[0].Thread != root {
+			t.Fatalf("wrong start audience: %+v", got)
+		}
+		if got := owner.TakeUnreturned(audience); len(got) != 1 || got[0].Thread != root {
+			t.Fatalf("wrong unreturned audience: %+v", got)
+		}
+	}
+	owner.Borrow("")
+	if owner.Attached("oneoff") || !owner.Attached("main") {
+		t.Fatal("releasing borrow changed Main attachment")
+	}
+}

@@ -98,8 +98,8 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		text := strings.TrimSpace((*editor).Text)
 		switch intent.Operation {
 		case sessionpresentation.SubmitComposer, sessionpresentation.QueueComposer:
-			if !strings.HasPrefix(text, "/") && !strings.HasPrefix(text, "!") || text == "/side" || text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
-				return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}, *tiers, *title, *backend, *restoring != nil, side, *panel != nil || *resumePicker != nil, owned, environment)
+			if !strings.HasPrefix(text, "/") && !strings.HasPrefix(text, "!") || sideCommand(text) != "" {
+				return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}, *tiers, *title, *backend, *restoring != nil, side, *panel != nil || *resumePicker != nil, owned, environment, hook, observations)
 			}
 			if text != "/copy" {
 				setNotice(&attached.feedback, terminal, presentationTime(clock), "Return to Main to use this command; Side retains its captured settings", false)
@@ -180,8 +180,8 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		if titleCommand(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, generator, dirty, text) {
 			return false, nil
 		}
-		if text == "/side" || text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
-			return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment)
+		if sideCommand(text) != "" {
+			return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations)
 		}
 		if attached.conversation.ShellMode() {
 			return false, submitShell(attached, terminal, control, picker, editor, clock, (*restoring) != nil, environment, parent, (*reviewOwner), shellEdits, retained, (*retainedSession), changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)

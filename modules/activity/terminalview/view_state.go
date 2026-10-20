@@ -133,7 +133,11 @@ func (v *View) Update(publication *presentation.Publication, display Display) {
 	v.KeepSelection()
 }
 
-func (v *View) Roster() []presentation.AgentRow { return slices.Clone(v.roster) }
+func (v *View) Roster() []presentation.AgentRow {
+	return slices.DeleteFunc(slices.Clone(v.roster), func(row presentation.AgentRow) bool {
+		return v.Display.SideCaller != "" && row.Agent.Name == v.Display.SideCaller
+	})
+}
 func (v *View) runRevision(first, last int) (revision uint64) {
 	for _, entry := range v.entries[first:last] {
 		revision = max(revision, entry.Revision)

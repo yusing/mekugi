@@ -162,8 +162,16 @@ Side/One-off slot. Both can run concurrently, with independent follow-ups and
 cancellation. Main replacement closes both; closing either leaves the other intact.
 The existing request ledger correlates side replies and notifications to the
 side operation, independently of any renderer. An empty `/side` forks without
-starting a turn; the scoped answer-only instruction precedes each later user
-submission. Forks preserve Main’s effective settings without changing Main. That operation borrows
+starting a turn; `/oneoff TASK` creates the same owned ephemeral fork and starts
+its task. Answer-only forks retain their restricted settings; one-off forks inherit
+permissions and environments. Each new side turn carries its scoped instruction.
+One-off tool events and prompt responses retain their original thread, turn and
+request identities. Host parent identities admit descendants into the same isolated
+audience. Activity with unresolved ancestry remains outside Main until metadata
+settles its audience. Closing the slot retires their visible activity and prompts without
+answering them or claiming that their host processes completed. Queued answers wait
+for their own thread's tool-input generation, independently of Main.
+Forks preserve Main’s effective settings without changing Main. That operation borrows
 Conversation's current exchange and owns fork/start validation, effective fork
 settings, side classification before sampling, and delayed cleanup. Acquisition
 prepares attachments before dispatch; restoration returns the existing input

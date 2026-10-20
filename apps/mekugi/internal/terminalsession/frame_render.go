@@ -68,7 +68,7 @@ func (in FrameInput) Status() ShellStatus {
 		DiffUnseen: in.DiffUnseen, Prefix: in.Prefix, LiveCount: in.Live.Live(), Locked: in.Main.InterruptLocked,
 	}
 	if side := in.Main.session.Side; side != nil && in.Main.session.SideThread.ID != "" {
-		status.SideLabel, status.SideSelected = "Side", in.Main.session.Displayed == in.Main.session.SideThread
+		status.SideLabel, status.SideSelected = side.Label, in.Main.session.Displayed == in.Main.session.SideThread
 	}
 	if in.Shell.Focus == 0 && !in.Prefix {
 		status.Expansion = in.displayedTranscript().Expansion
@@ -148,7 +148,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 			if view.Displayed.ID != view.Main.ID {
 				content.MainName, content.MainDetail = "Thread", in.Agents.Painter.Agent(view.Displayed.Caller)
 				if view.Displayed == view.SideThread {
-					content.MainName, content.MainDetail = "Side", ""
+					content.MainName, content.MainDetail = view.Side.Label, ""
 				}
 				content.MainSkills = ""
 				content.MainRight = strings.TrimSpace(scrollLabel(in.Agents) + " " + in.Agents.HistoryHint)

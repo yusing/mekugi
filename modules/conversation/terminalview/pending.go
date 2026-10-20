@@ -40,6 +40,8 @@ func Pending(view presentation.PendingView, width int) []string {
 	}
 	header := "Waiting to send"
 	switch view.Reason {
+	case presentation.RetryAttachments:
+		header = "Attachment delivery failed · Enter in empty composer retries"
 	case presentation.Steering:
 		header = "Steering after the next tool call · esc sends now · ctrl+c interrupts and restores input"
 	case presentation.CompactAfterInterrupt:

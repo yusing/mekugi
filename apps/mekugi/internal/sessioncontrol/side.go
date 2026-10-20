@@ -21,6 +21,7 @@ func (s *Side) Ready(replacing bool) bool {
 
 func (s *Side) Close() {
 	s.Closed = true
+	s.Drafts.Unsent, s.Drafts.Queued = nil, nil
 	s.SideAnswer.Close()
 }
 
@@ -64,3 +65,40 @@ func (r *Requests[T]) TrackSide(thread string, owner *Side) {
 func (r *Requests[T]) Side(thread string) *Side { return r.sides[thread] }
 func (r *Requests[T]) HasSides() bool           { return r != nil && len(r.sides) != 0 }
 func (r *Requests[T]) CloseSide(thread string)  { delete(r.sides, thread) }
+
+func (r *Requests[T]) WorkSide(thread string) bool {
+	s := r.Side(thread)
+	return s != nil && s.OneOff && !s.Closed
+}
+
+// SideThreads returns identities admitted to this side operation, including host children.
+func (r *Requests[T]) SideThreads(owner *Side) []string {
+	if r == nil || owner == nil {
+		return nil
+	}
+	var threads []string
+	for thread, side := range r.sides {
+		if side == owner {
+			threads = append(threads, thread)
+		}
+	}
+	return threads
+}
+
+// AdmitSideChild shares notification and metadata ancestry admission.
+func (r *Requests[T]) AdmitSideChild(thread, parent string) {
+	if side := r.Side(parent); thread != "" && thread != parent && side != nil && side.OneOff {
+		r.TrackSide(thread, side)
+	}
+}
+
+// RestoreInput keeps a rejected descendant companion scoped to its question.
+// Sync answers have already been committed, so retry only the companion payload.
+func (s *Side) RestoreInput(input conversationmodel.Input) bool {
+	if input.Question != nil && input.Question.Sync && input.Question.Thread != s.Thread {
+		s.Drafts.Queued = append(s.Drafts.Queued, input)
+		return true
+	}
+	s.Drafts.RestoreInput(input)
+	return false
+}

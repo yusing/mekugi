@@ -67,10 +67,18 @@ func (u *Client[T]) RetiredEvent(m appserver.Message) bool {
 	if json.Unmarshal(m.Params, &p) != nil {
 		return false
 	}
-	if root := u.retired[p.Thread.ParentThreadID]; root != "" {
-		u.retired[p.Thread.ID] = root
+	return u.RetiredThread(p.Thread.ID, p.Thread.ParentThreadID) || u.RetiredThread(p.ThreadID, "")
+}
+
+// RetiredThread also admits authoritative ancestry returned by metadata reads.
+func (u *Client[T]) RetiredThread(thread, parent string) bool {
+	if thread == "" {
+		return false
 	}
-	return u.retired[p.ThreadID] != "" || u.retired[p.Thread.ID] != ""
+	if root := u.retired[parent]; root != "" {
+		u.retired[thread] = root
+	}
+	return u.retired[thread] != ""
 }
 
 // Readmit accepts a returning session and its descendants.

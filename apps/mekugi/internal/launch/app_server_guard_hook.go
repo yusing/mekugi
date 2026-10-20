@@ -31,13 +31,17 @@ func (check *approvalHookCheck) check(control *sessioncontrol.Client[appServerRe
 	if check.hash == "" || control.Turn != "" {
 		return true, nil
 	}
-	if check.readyThread == control.Thread {
+	return check.checkThread(control.Requests, control.Thread, attached.cwd, func() { attached.presentation.Status.SetText("Checking approval guard…") })
+}
+
+func (check *approvalHookCheck) checkThread(requests *sessioncontrol.Requests[appServerRequest], thread, cwd string, waiting func()) (bool, error) {
+	if check.hash == "" || check.readyThread == thread {
 		return true, nil
 	}
 	if check.pendingThread == "" {
-		check.pendingThread = control.Thread
-		attached.presentation.Status.SetText("Checking approval guard…")
-		if _, err := control.Requests.Send("hooks/list", map[string]any{"cwds": []string{attached.cwd}}, "main", appServerRequest{label: "approval/hooks"}); err != nil {
+		check.pendingThread = thread
+		waiting()
+		if _, err := requests.Send("hooks/list", map[string]any{"cwds": []string{cwd}}, "", appServerRequest{label: "approval/hooks"}); err != nil {
 			check.pendingThread = ""
 			return false, err
 		}
@@ -48,7 +52,8 @@ func (check *approvalHookCheck) check(control *sessioncontrol.Client[appServerRe
 func guardHookResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, restoring bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, message appserver.Message) error {
 	thread := hook.pendingThread
 	hook.pendingThread = ""
-	if thread != control.Thread {
+	side := control.Requests.Side(thread)
+	if thread != control.Thread && !control.Requests.WorkSide(thread) {
 		return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, (*owned), hook, editor, parent, restoring, observations, reviewOwner, receipts)
 	}
 	var err error
@@ -56,6 +61,34 @@ func guardHookResponse(attached *attachedPresentation, terminal *terminalsession
 		err = fmt.Errorf("read approval hook: %s", message.Error.Message)
 	} else {
 		err = shellhook.Validate(message.Result, attached.cwd, hook.hash)
+	}
+	if side != nil && side.OneOff {
+		if err != nil {
+			if thread == side.Thread && len(side.Drafts.Unsent) == 0 {
+				side.Busy, side.Starting = false, false
+				side.Drafts.RestoreInput(side.Fail("Shell guard: "+err.Error(), side.Closed))
+			}
+			kept := side.Drafts.Unsent[:0]
+			for _, input := range side.Drafts.Unsent {
+				target := side.Thread
+				if input.Question != nil {
+					target = input.Question.Thread
+				}
+				if target != thread {
+					kept = append(kept, input)
+					continue
+				}
+				if input.Question != nil {
+					input.Question.Reject()
+				}
+				side.RestoreInput(input)
+			}
+			side.Drafts.Unsent = kept
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Shell guard: "+err.Error(), true)
+			return nil
+		}
+		hook.readyThread = thread
+		return nil
 	}
 	if err != nil {
 		restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, append(attached.conversation.Unsent, attached.conversation.Queued...)...)

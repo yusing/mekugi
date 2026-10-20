@@ -34,12 +34,15 @@ type ActivityEntry struct {
 // Source: apps/mekugi/internal/router/subagent_activity_pane.go:34:58@45fbe279
 type ActivityAgent struct {
 	activitypresentation.AgentLifecycle
-	Thread       string               `json:"-"` // Stable host identity; caller names remain presentation labels.
-	Turn         string               `json:"-"` // Current child turn; Main's identity stays with session control.
-	Settings     preferences.Evidence `json:"-"`
-	SettingsLive bool                 `json:"-"`
-	Name         string
-	Role         string `json:",omitzero"`
+	ParentThread    string               `json:"-"` // Host ancestry for delayed metadata admission.
+	AudiencePending bool                 `json:"-"` // Activity stays visible while its Main audience is unresolved.
+	Isolated        bool                 `json:"-"` // Invocation-local audience, keyed by host thread identity.
+	Thread          string               `json:"-"` // Stable host identity; caller names remain presentation labels.
+	Turn            string               `json:"-"` // Current child turn; Main's identity stays with session control.
+	Settings        preferences.Evidence `json:"-"`
+	SettingsLive    bool                 `json:"-"`
+	Name            string
+	Role            string `json:",omitzero"`
 	// Provider requests forwarded for the agent, shown as T+N.
 	Roundtrips  uint64  `json:",omitzero"`
 	Cost        float64 `json:",omitzero"`

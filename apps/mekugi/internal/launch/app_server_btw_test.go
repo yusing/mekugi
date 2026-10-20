@@ -23,12 +23,13 @@ type btwTestRPC struct {
 	ID     int    `json:"id"`
 	Method string `json:"method"`
 	Params struct {
-		ThreadID     string         `json:"threadId"`
-		TurnID       string         `json:"turnId"`
-		Ephemeral    bool           `json:"ephemeral"`
-		ExcludeTurns bool           `json:"excludeTurns"`
-		Config       map[string]any `json:"config"`
-		Input        []struct {
+		ThreadID       string         `json:"threadId"`
+		TurnID         string         `json:"turnId"`
+		ExpectedTurnID string         `json:"expectedTurnId"`
+		Ephemeral      bool           `json:"ephemeral"`
+		ExcludeTurns   bool           `json:"excludeTurns"`
+		Config         map[string]any `json:"config"`
+		Input          []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"input"`

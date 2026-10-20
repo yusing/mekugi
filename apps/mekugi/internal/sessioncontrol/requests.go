@@ -4,6 +4,7 @@ package sessioncontrol
 
 import (
 	"encoding/json/jsontext"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
 // Responder preserves the host-owned identity of an admitted server request.
@@ -25,6 +26,7 @@ type Request[T any] struct {
 	Scope      string
 	Owner      T
 	Side       *Side
+	SideInput  *conversationmodel.Input
 	Prediction *Prediction
 }
 

@@ -31,6 +31,7 @@ var nativeCommands = []completion.Choice{
 	{Name: "/live", Description: "Show or hide Live edits for this session"},
 	{Name: "/tier", Description: "Choose the service tier"},
 	{Name: "/skills", Description: "List or manage skills"},
+	{Name: "/oneoff", Description: "Run a task in an isolated work-capable fork"},
 	{Name: "/side", Description: "Open a fresh side conversation"},
 	{Name: "/btw", Description: "Ask a side question without changing Main"},
 	{Name: "/ps", Description: "Show running processes"},

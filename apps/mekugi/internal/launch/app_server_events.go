@@ -37,6 +37,7 @@ import (
 func registerThread(session *sessionpresentation.Attachment, info binding.ThreadInfo) {
 	s := session
 	s.RegisterThread(info.Observation())
+	s.Activity().Agent(info.ID).ParentThread = info.ParentThreadID
 	restoreThreadSettings(session, info)
 }
 
@@ -66,6 +67,15 @@ func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Atta
 	if p.ThreadID == control.Thread && p.TurnID != "" && p.Item.Type == "userMessage" && (method == "item/started" || method == "item/completed") {
 		control.HasUserTurn = true
 	}
+	if p.ThreadID != "" && p.ThreadID != control.Thread {
+		s.Caller(p.ThreadID)
+		agent := s.Activity().Agent(p.ThreadID)
+		if control.Requests.WorkSide(p.ThreadID) {
+			agent.Isolated, agent.AudiencePending = true, false
+		} else if side := attached.conversation.Side; side != nil && side.OneOff && agent.ParentThread == "" {
+			agent.AudiencePending = true
+		}
+	}
 	if method == "hook/started" || method == "hook/completed" {
 		return true, hookEvent(attached, terminal, control, childKey, activity, reviewOwner, approvals, receipts, retainedSession, clock, method, p)
 	}
@@ -90,7 +100,7 @@ func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Atta
 	if h := childHistory(&attached.session, childKey, p.ThreadID); h != nil {
 		h.state.ObserveLive()
 	}
-	if p.ThreadID != "" && p.ThreadID != control.Thread {
+	if p.ThreadID != "" && p.ThreadID != control.Thread && p.ThreadID != attached.presentation.View().SideThread.ID {
 		if err := requestThreadMetadata(control.Requests, &attached.session, p.ThreadID); err != nil {
 			return true, err
 		}
@@ -98,6 +108,7 @@ func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Atta
 
 	key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
 	event := p.Observation(method, presentationTime(clock))
+
 	facts := sessionpresentation.ObservationInput{Event: event, Text: binding.RetainedTranscript(event), Main: control.Thread, Selected: control.Turn, Workspace: attached.cwd, Tracked: tracker.Tracking(key), Wait: readWaitEvidence(attached, terminal, retainedSession, clock, event.Item, key)}
 	if p.Item.Type == "commandExecution" && trace != nil {
 		if ms, known := trace.CommandTimeout(p.ThreadID, key[2]); known {

@@ -273,3 +273,16 @@ func (a *Audience) Repetition(root, thread, id string) string {
 	node := a.threads[thread]
 	return a.supplements.Repetition(root, &node.state, id)
 }
+
+// BorrowSide admits the active work-capable side without detaching Main.
+func (a *Audience) BorrowSide(root string) {
+	if a == nil {
+		return
+	}
+	if root != "" {
+		a.Observe(root, "", "/root", false)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.supplements.Borrow(root)
+}

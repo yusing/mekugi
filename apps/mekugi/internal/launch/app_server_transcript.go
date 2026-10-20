@@ -59,7 +59,7 @@ func observeMessageQuestions(attached *attachedPresentation, terminal *terminals
 	if item.Type == "userMessage" {
 		userText, _, _ = sessionpresentation.UserText(item.Content)
 	}
-	in := conversationbinding.MessageQuestions(text, item, userText, text.Item.Ref.ThreadID == control.Thread, history)
+	in := conversationbinding.MessageQuestions(text, item, userText, (text.Item.Ref.ThreadID == control.Thread || control.Requests.WorkSide(text.Item.Ref.ThreadID)), history)
 	if questions.NeedsParking(in) {
 		(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
 	}

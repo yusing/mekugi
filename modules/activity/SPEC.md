@@ -38,7 +38,8 @@ provider response. Source identity deduplicates live and restored observations.
 
 Supplemental observations use invocation-scoped queues and thread-scoped source
 deduplication, independent of attached feed replacement. The application supplies
-authenticated ancestry and audience snapshots. Queued observations retain their
+authenticated ancestry and audience snapshots. Main and the active work-capable
+side borrow independent delivery audiences without replacing each other. Queued observations retain their
 source thread until delivery, so unresolved ancestry can become known and invalidated
 ancestry cannot leak into another root. Queue expiry uses arrival time without
 changing an older authored timestamp. Capacity loss produces an auxiliary notice.

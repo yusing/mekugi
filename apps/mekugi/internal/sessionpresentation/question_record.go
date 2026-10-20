@@ -50,11 +50,24 @@ func RecordQuestion(c *prompt.Call, request, selected string, at time.Time, sour
 	if len(request) > 0 {
 		id = "question/" + request
 	}
+
+	agent, isolated := "Main", false
 	for _, v := range sources {
 		if v == nil {
 			continue
 		}
-		entry := ActivityEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: at, Native: &NativeItem{Thread: c.Thread, Turn: c.Turn, Item: id, Phase: "question", Questions: records}}
+		for _, a := range v.Agents {
+			if a.Thread == c.Thread && a.Isolated {
+				agent, isolated = a.Name, true
+			}
+		}
+	}
+	for _, v := range sources {
+		if v == nil || isolated && v.Audience == MainAudience {
+			continue
+		}
+
+		entry := ActivityEntry{Seq: v.LastSeq + 1, Agent: agent, Kind: "question", Text: text, Observed: at, Native: &NativeItem{Thread: c.Thread, Turn: c.Turn, Item: id, Phase: "question", Questions: records}}
 		v.Apply(ActivityEvent{Entries: []ActivityEntry{entry}})
 	}
 }

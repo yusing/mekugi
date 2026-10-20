@@ -2,12 +2,16 @@ package sessionpresentation
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-type SideToken struct{ ID uint64 }
+type SideToken struct {
+	ID    uint64
+	Label string
+}
 
 type CloseSideIntent struct {
 	Version  Version
@@ -56,8 +60,10 @@ func (m *Model) InputConversation(main *conversationmodel.Session) *conversation
 // source. It carries no independent history or host lifecycle.
 func (a *Attachment) ProjectSide(source *ActivitySource, target Thread, side *conversationmodel.SideAnswer) {
 	var entries []ActivityEntry
-	if side != nil {
+	if side != nil || slices.ContainsFunc(source.Agents, func(agent ActivityAgent) bool { return agent.Isolated }) {
 		source.Agents = a.Roster()
+	}
+	if side != nil {
 		appendText := func(exchange uint64, item, kind, text string, at time.Time) {
 			if text == "" {
 				return
@@ -67,6 +73,9 @@ func (a *Attachment) ProjectSide(source *ActivitySource, target Thread, side *co
 		exchange := func(id uint64, question, notice, failure string, answers []conversationmodel.Answer, at time.Time) {
 			appendText(id, "question", "user", question, at)
 			appendText(id, "attachments", "text", notice, at)
+			if side.OneOff {
+				answers = nil
+			}
 			for i, answer := range answers {
 				appendText(id, fmt.Sprintf("answer:%d:%s", i, answer.ID), "text", answer.Text, at)
 			}

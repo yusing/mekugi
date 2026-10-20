@@ -57,6 +57,7 @@ type supplementThread struct {
 type Supplements struct {
 	threads    scope.Key[supplementThread]
 	root       string
+	borrowed   string
 	events     []queuedSupplement
 	starts     []RequestStart
 	unreturned []Unreturned
@@ -69,12 +70,17 @@ func RequestSupplements(invocation *scope.Store) *Supplements {
 	return invocationSupplements.Value(invocation)
 }
 
-func (s *Supplements) Attached(root string) bool { return root != "" && s.root == root }
+func (s *Supplements) Attached(root string) bool {
+	return root != "" && (s.root == root || s.borrowed == root)
+}
+
+// Borrow selects the one independently owned auxiliary audience. Empty releases it.
+func (s *Supplements) Borrow(root string) { s.borrowed = root }
 
 func (s *Supplements) Attach(root string) { s.root = root }
 func (s *Supplements) Detach()            { s.root = "" }
 func (s *Supplements) Clear() {
-	s.root = ""
+	s.root, s.borrowed = "", ""
 	s.events, s.starts, s.unreturned, s.restored = nil, nil, nil, nil
 }
 
@@ -187,7 +193,7 @@ func (s *Supplements) expire(now time.Time) {
 }
 
 func (s *Supplements) Take(audience Audience, now time.Time) []Supplement {
-	if s.root == "" || s.root != audience.Root {
+	if !s.Attached(audience.Root) {
 		return nil
 	}
 	s.expire(now)
@@ -206,20 +212,29 @@ func (s *Supplements) Take(audience Audience, now time.Time) []Supplement {
 }
 
 func (s *Supplements) StartRequest(thread string, at time.Time) {
-	if s.root != "" && len(s.starts) < 64 {
+	if (s.root != "" || s.borrowed != "") && len(s.starts) < 64 {
 		s.starts = append(s.starts, RequestStart{Thread: thread, At: at})
 	}
 }
 func (s *Supplements) TakeStarts(audience Audience) []RequestStart {
-	if s.root == "" || s.root != audience.Root {
+	if !s.Attached(audience.Root) {
 		return nil
 	}
-	starts := slices.DeleteFunc(s.starts, func(start RequestStart) bool { _, admitted := audience.Threads[start.Thread]; return !admitted })
-	s.starts = nil
+	var starts []RequestStart
+	kept := s.starts[:0]
+	for _, start := range s.starts {
+		if _, admitted := audience.Threads[start.Thread]; admitted {
+			starts = append(starts, start)
+		} else {
+			kept = append(kept, start)
+		}
+	}
+	clear(s.starts[len(kept):])
+	s.starts = kept
 	return starts
 }
 func (s *Supplements) NoteUnreturned(thread string, calls []string) {
-	if s.root == "" {
+	if s.root == "" && s.borrowed == "" {
 		return
 	}
 	for _, call := range calls {
@@ -229,18 +244,27 @@ func (s *Supplements) NoteUnreturned(thread string, calls []string) {
 	}
 }
 func (s *Supplements) TakeUnreturned(audience Audience) []Unreturned {
-	if s.root == "" || s.root != audience.Root {
+	if !s.Attached(audience.Root) {
 		return nil
 	}
-	refs := slices.DeleteFunc(s.unreturned, func(ref Unreturned) bool { _, admitted := audience.Threads[ref.Thread]; return !admitted })
-	s.unreturned = nil
+	var refs []Unreturned
+	kept := s.unreturned[:0]
+	for _, ref := range s.unreturned {
+		if _, admitted := audience.Threads[ref.Thread]; admitted {
+			refs = append(refs, ref)
+		} else {
+			kept = append(kept, ref)
+		}
+	}
+	clear(s.unreturned[len(kept):])
+	s.unreturned = kept
 	return refs
 }
 
 // Repetition retains the delivered annotation independently of its transient
 // event and attached feed. Callers must authenticate the requested thread.
 func (s *Supplements) Repetition(root string, thread *scope.Store, id string) string {
-	if s.root == "" || s.root != root {
+	if !s.Attached(root) {
 		return ""
 	}
 	return s.threads.Value(thread).repetitions[id]

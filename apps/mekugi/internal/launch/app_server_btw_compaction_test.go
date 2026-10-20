@@ -123,7 +123,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			if u.BTW.Busy || u.BTW.Pending.Text != "" || u.BTW.Status != conversationmodel.SideCompactionRequired || u.Turn != "main-turn" || u.attached.presentation.Status.Text != "Working" {
 				t.Fatalf("failure state = %+v Main=%s/%s", u.BTW, u.Turn, u.attached.presentation.Status.Text)
 			}
-			if err := submitBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.skillEnvironment); err != nil {
+			if err := submitBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
 				t.Fatal(err)
 			}
 			if w.Len() != 0 || u.Text != before {

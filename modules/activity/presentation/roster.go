@@ -37,3 +37,8 @@ func (s *Session[S, A]) NextSequence() uint64 {
 }
 
 func (s *Session[S, A]) AdvanceSequence(floor uint64) { s.sequence = max(s.sequence, floor) }
+
+// ForgetAgent retires a transient roster member without changing retained feed evidence.
+func (s *Session[S, A]) ForgetAgent(thread string) {
+	s.roster = slices.DeleteFunc(s.roster, func(agent A) bool { return agent.ActivityAgent().Thread == thread })
+}

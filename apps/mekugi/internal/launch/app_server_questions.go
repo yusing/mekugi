@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -156,7 +157,7 @@ func moveQuestion(questions *nativeQuestionDock, conversation *conversationmodel
 	*editor = resumeQuestion(questions, conversation, terminal, main, questions.Current())
 }
 func addQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, c *sessioncontrol.Question, replay bool) {
-	if c.Thread != control.Thread && !c.Local || !questions.Add(c.Call, replay) {
+	if c.Thread != control.Thread && !c.Local && !control.Requests.WorkSide(c.Thread) || !questions.Add(c.Call, replay) {
 		return
 	}
 	bindQuestion(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, c, replay)
@@ -187,7 +188,7 @@ func questionMessage(attached *attachedPresentation, terminal *terminalsession.A
 		if err != nil {
 			return true, err
 		}
-		if p.ThreadID != control.Thread {
+		if p.ThreadID != control.Thread && !control.Requests.WorkSide(p.ThreadID) {
 			return false, nil
 		}
 		call := conversationbinding.Questions(p.ThreadID, p.TurnID, p.ItemID, m.ID, p.Questions)
@@ -261,6 +262,9 @@ func recordSyncQuestionAnswer(attached *attachedPresentation, at time.Time, c *s
 		return
 	}
 	for _, v := range []*sessionpresentation.ActivitySource{attached.source, attached.childSource} {
+		if attached.childSource.OutsideMain(c.Thread) && v == attached.source {
+			continue
+		}
 		if v == nil {
 			continue
 		}
@@ -276,7 +280,7 @@ func recordSyncQuestionAnswer(attached *attachedPresentation, at time.Time, c *s
 				native.ReplySource = previous.Source.Text
 			}
 		}
-		v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: at, Native: native}}})
+		v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: cmp.Or(attached.session.KnownCaller(c.Thread), "Main"), Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: at, Native: native}}})
 	}
 }
 func endSyncQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, turn string) {
@@ -392,12 +396,17 @@ func submitQuestions(attached *attachedPresentation, terminal *terminalsession.A
 		if len(answerDraft.AnswerImages) > 0 || len(answerDraft.Attachments) > 0 {
 			d := conversationmodel.Input{Draft: answerDraft}
 			d.Text, d.Question, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", c.Call, true
-			d.AnswerImages = nil
 			for i, path := range answerDraft.AnswerImages {
 				label := fmt.Sprintf("[Image %d]", i+1)
 				start := len(d.Text)
 				d.Text += label + "\n"
 				d.Images = append(d.Images, composer.Token{Start: start, End: start + len(label), Path: path})
+			}
+			d.AnswerImages = nil
+			if control.Requests.WorkSide(c.Thread) {
+				target := control.Requests.Side(c.Thread)
+				target.Drafts.Unsent = append(target.Drafts.Unsent, d)
+				return flushBTW(attached, terminal, control, picker, questions, approvals, clock, settings, &target, &owned, environment, hook, observations)
 			}
 			attached.conversation.Unsent = append(attached.conversation.Unsent, d)
 			return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, owned, hook, editor, parent, restoring, observations, reviewOwner, receipts)
@@ -415,6 +424,13 @@ func submitQuestions(attached *attachedPresentation, terminal *terminalsession.A
 		return nil
 	}
 	answerDraft.Text, answerDraft.InHistory = reply, true
+	if control.Requests.WorkSide(c.Thread) {
+		target := control.Requests.Side(c.Thread)
+		input := conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))}
+
+		target.Drafts.Unsent = append(target.Drafts.Unsent, input)
+		return flushBTW(attached, terminal, control, picker, questions, approvals, clock, settings, &target, &owned, environment, hook, observations)
+	}
 	attached.conversation.Unsent = append(attached.conversation.Unsent, conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))})
 	renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
 	return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, owned, hook, editor, parent, restoring, observations, reviewOwner, receipts)

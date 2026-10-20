@@ -45,6 +45,7 @@ type composerPicker struct {
 	rewindThread, rewindProvider    string
 	rewindApprovals                 bool
 	archiveTarget                   string
+	sideTask                        *composer.Draft
 }
 
 func (p *composerPicker) completionTarget(draft composer.Draft, shellMode bool) completion.Target {

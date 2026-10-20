@@ -154,6 +154,7 @@ const (
 	CompactRunning
 	CompactQueued
 	ApplyingSettings
+	RetryAttachments
 )
 
 type PendingView struct {

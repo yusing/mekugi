@@ -35,7 +35,7 @@ func (s *Attachment) AdmitText(updates []observation.TextUpdate, main string) []
 func ProjectMessage(s *Attachment, mainSource, childSource *ActivitySource, transcript observation.Transcript, main bool, in ObservationInput) (deliveries []ActivityDelivery) {
 	updates := s.ObserveText(transcript, in.Text, main)
 	if !main {
-		ApplyActivity(mainSource, childSource, s.AdmitText(updates, in.Main), nil)
+		ApplyActivity(mainSource, childSource, s.AdmitText(updates, in.Main), s.Roster())
 		for _, update := range updates {
 			deliveries = append(deliveries, ActivityDelivery{Text: new(update)})
 		}

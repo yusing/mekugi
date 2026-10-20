@@ -13,7 +13,7 @@ func takeNativeActivity(a *sessioncontrol.Audience, root string) []sessionpresen
 	audience, events := a.Take(root)
 	var entries []sessionpresentation.ActivityEntry
 	for _, event := range events {
-		entry := sessionpresentation.ActivityEntry{Agent: audience.Threads[event.Thread], Kind: event.Kind, Text: event.Text, CallID: event.CallID, Observed: event.Observed}
+		entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: event.Thread, Item: event.Source, Phase: "supplement", Live: true}, Agent: audience.Threads[event.Thread], Kind: event.Kind, Text: event.Text, CallID: event.CallID, Observed: event.Observed}
 		if event.Kind == "error" {
 			entry.ErrorDetail, entry.Text = event.Text, activityui.ErrorPreview(event.Text)
 		}
@@ -25,9 +25,6 @@ func takeNativeActivity(a *sessioncontrol.Audience, root string) []sessionpresen
 		}
 		if s := event.Start; s != nil {
 			entry.Start = &sessionpresentation.ActivityStart{Model: s.Model, Effort: s.Effort, Tier: s.Tier}
-		}
-		if event.Kind == "output_dedupe" || event.Kind == activitypresentation.SupplementEditReceipt {
-			entry.Native = &sessionpresentation.NativeItem{Thread: event.Thread}
 		}
 		if event.Kind == activitypresentation.SupplementEditReceipt {
 			entry.Native.CapturedEdit = &changepresentation.Receipt{Thread: event.Thread, Calls: event.Calls, Text: event.Text}
