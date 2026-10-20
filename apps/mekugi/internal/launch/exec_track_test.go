@@ -362,6 +362,67 @@ c.XXXXXX"`, created: 1, reported: true},
 	}
 }
 
+func TestExecTrackMktempKeepsExistingFunctions(t *testing.T) {
+	t.Parallel()
+	shell := newExecTrackShell(t)
+	utility, err := exec.LookPath("mktemp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir()
+	if err := os.Symlink(utility, filepath.Join(path, "mktemp")); err != nil {
+		t.Fatal(err)
+	}
+	for _, function := range []string{"mktemp", "/bin/mktemp", "/usr/bin/mktemp", filepath.Join(path, "mktemp"), "command"} {
+		t.Run(function, func(t *testing.T) {
+			if strings.Contains(function, "/") {
+				if _, err := exec.LookPath(function); err != nil {
+					t.Skipf("%s unavailable: %v", function, err)
+				}
+			}
+			definition := function + `() {
+  if [ "$1" = -v ]; then builtin command "$@"; return; fi
+  printf '<%s>\n' "$@"
+  printf 'function diagnostic\n' >&2
+  return 23
+}
+`
+			script := quoteShellWord(function)
+			want := execTrackRun{"<argument with spaces>\n<>\n", "function diagnostic\n", 23}
+			if function == "command" {
+				script += " mktemp"
+				want.stdout = "<mktemp>\n" + want.stdout
+			}
+			script += ` 'argument with spaces' ''`
+			startup := filepath.Join(t.TempDir(), "startup")
+			env := append(slices.Clone(shell.env), "PATH="+path+":"+execTrackPath(), "BASH_ENV="+startup)
+			// Install the caller's definition before Bash sources instrumentation.
+			for _, tracked := range []bool{false, true} {
+				source := definition
+				key := [3]string{"thread", "turn", function}
+				if tracked {
+					source += ". " + quoteShellWord(filepath.Join(shell.root, "bash-env")) + "\n"
+					shell.hub.start(key, "bash -c "+quoteShellWord(script))
+				}
+				if err := os.WriteFile(startup, []byte(source), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if got := runShell(t, env, "bash", "-c", script); got != want {
+					t.Fatalf("tracked=%v: got %+v, want %+v", tracked, got, want)
+				}
+				if tracked {
+					if view := shell.awaitView(t, key); !view.complete {
+						t.Fatalf("report: %+v", view)
+					}
+					if report, _ := shell.hub.Read(key); len(report.Created) != 0 {
+						t.Fatalf("function reported a creation: %+v", report.Created)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)

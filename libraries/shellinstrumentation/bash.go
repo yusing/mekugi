@@ -129,7 +129,7 @@ func mktempHook(helper, control, setup string, bash bool) string {
       __mekugi_j=${__mekugi_k%%:*}/mktemp __mekugi_k=${__mekugi_k#*:}
       case $__mekugi_j in
       /*[!A-Za-z0-9/._+-]*) ;;
-      /*) [ -x "$__mekugi_j" ] && eval "$__mekugi_j() { __mekugi_mktemp $__mekugi_j \"\$@\"; }" ;;
+      /*) [ -x "$__mekugi_j" ] && ! declare -F "$__mekugi_j" >/dev/null && eval "$__mekugi_j() { __mekugi_mktemp $__mekugi_j \"\$@\"; }" ;;
       esac
     done
     unset -v __mekugi_j __mekugi_k
