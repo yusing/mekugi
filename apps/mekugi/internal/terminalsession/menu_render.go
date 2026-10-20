@@ -15,7 +15,7 @@ func (m *Menu) Height(width int) int {
 		return 0
 	}
 	p := m.body
-	if p.Kind == "archive" {
+	if p.Kind == "archive" || p.Kind == "rewind" {
 		return min(8, max(1, len(p.Choices))) + 3 + len(panelWrap(p.Explanation, max(1, width-4)))
 	}
 	return conversationui.PickerHeight(len(p.Choices), conversationui.PickerOptions{SkillsMenu: p.Kind == "menu", Manage: p.Kind == "manage"}, width)
@@ -45,8 +45,8 @@ func (m *Menu) Render(painter *terminalui.Painter, selection string, width, heig
 	if height > 1 {
 		footer := ""
 		switch p.Kind {
-		case "archive":
-			put(0, "  "+bold+"Archive this session?"+reset)
+		case "archive", "rewind":
+			put(0, "  "+bold+p.Title+reset)
 			if height >= 5 {
 				for _, line := range panelWrap(p.Explanation, max(1, width-4)) {
 					if first >= height-3 {
@@ -93,6 +93,9 @@ func SelectionStyle(painter *terminalui.Painter) string {
 // ModalFrame combines terminal transcript rows with the menu surface. It owns
 // no source feed, acquisition or backend effect.
 func (m *Menu) ModalFrame(view *activityui.View, now time.Time, width, height int) []string {
+	if m.Dialog() {
+		return m.dialogFrame(view, now, width, height)
+	}
 	ph := min(height, m.Height(width))
 	frame := make([]string, height)
 	if height > ph {
@@ -100,5 +103,43 @@ func (m *Menu) ModalFrame(view *activityui.View, now time.Time, width, height in
 	}
 	copy(frame[height-ph:], m.Render(&view.Painter.Painter, SelectionStyle(&view.Painter.Painter), width, ph))
 	m.Rect = Rect{0, height - ph, width, ph}
+	return frame
+}
+
+func (m *Menu) Dialog() bool { return m.body != nil && m.body.Dialog }
+
+func (m *Menu) dialogFrame(view *activityui.View, now time.Time, width, height int) []string {
+	frame := view.Render(width, height, now)
+	w, h := dialogSize(width, height)
+	if w < 12 || h < terminalui.DialogChrome+1 {
+		m.Rect = Rect{0, 0, width, height}
+		return m.Render(&view.Painter.Painter, SelectionStyle(&view.Painter.Painter), width, height)
+	}
+	p := m.body
+	explanation := panelWrap(p.Explanation, w-4)
+	h = min(h, terminalui.DialogChrome+len(explanation)+1+min(8, max(1, len(p.Choices))))
+	body := make([]string, h-terminalui.DialogChrome)
+	first := min(len(explanation), max(0, len(body)-2))
+	copy(body, explanation[:first])
+	if first > 0 {
+		first++
+	}
+	rows := make([]terminalui.ChoiceRow, len(p.Choices))
+	for i, choice := range p.Choices {
+		rows[i] = terminalui.ChoiceRow{Text: choice.Label()}
+	}
+	m.ChoiceListLayout.Draw(body, w-4, first, len(body)-first, terminalui.ChoiceListView{Rows: rows, Selected: m.Selected, Selection: SelectionStyle(&view.Painter.Painter), Problem: p.Problem, Loading: p.Loading})
+	m.Rect = Rect{(width - w) / 2, (height - h) / 2, w, h}
+	m.RowStart += 3 // Title, detail and separator precede the body.
+	dialog := terminalui.DialogFrame{Page: terminalui.DialogPage{Title: p.Title}, Rows: body, Footer: "↑/↓ choose · enter select · esc cancel"}
+	for i := range frame {
+		frame[i] = terminalui.Backdrop(frame[i])
+	}
+	for i, row := range view.Painter.Dialog(dialog, w, h) {
+		y := m.Rect.Y + i
+		left := ansi.Cut(frame[y], 0, m.Rect.X)
+		left += strings.Repeat(" ", max(0, m.Rect.X-ansi.StringWidth(left)))
+		frame[y] = left + terminalui.Reset + row + terminalui.Reset + ansi.Cut(frame[y], m.Rect.X+w, width) + terminalui.Reset
+	}
 	return frame
 }

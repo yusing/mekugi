@@ -64,9 +64,9 @@ func TestAppServerForkRejectsAndRestoresInput(t *testing.T) {
 			}
 		})
 	}
-	for _, command := range []string{"/fork extra", "/fork"} {
+	for _, command := range []string{"/fork extra", "/fork", "/rewind extra", "/rewind"} {
 		u, w := newResumeSessionTestUI(t)
-		if command == "/fork" {
+		if command == "/fork" || command == "/rewind" {
 			u.Turn = "busy"
 		}
 		appServerTestKeys(t, u, command+"\r")
@@ -77,92 +77,101 @@ func TestAppServerForkRejectsAndRestoresInput(t *testing.T) {
 }
 
 func TestAppServerForkRetainsEvidenceBeforeSwitch(t *testing.T) {
-	workspace := t.TempDir()
-	path := filepath.Join(workspace, "file.go")
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	parent, releaseParent := retentionTestSession(t, store, "main", 0)
-	parent = bindTestHandleScope(t, store, parent, "", "")
-	store = store.scoped(parent)
-	output, err := store.putShellOutput(parent, strings.Repeat("retained output\n", 100), "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("after"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	liveDiffScopeCapture(t, store, workspace, "main", "edit", path, "before", "after")
-	child, releaseChild := retentionTestSession(t, store, "child", 0)
-	child = bindTestHandleScope(t, store, child, "main", "")
-	liveDiffScopeCapture(t, store.scoped(child), workspace, "child", "child-edit", filepath.Join(workspace, "child.go"), "before", "after")
-	other := t.TempDir()
-	liveDiffScopeCapture(t, store.scoped(child), other, "child", "other-child-edit", filepath.Join(other, "other.go"), "before", "after")
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, w := newResumeSessionTestUI(t)
-	u.startSession("main", workspace)
-	gate := &forkTestChanges{Service: store.changes, entered: make(chan struct{}), release: make(chan struct{})}
-	u.retained, u.changeSource = store.changeScope(), gate
-	u.reasoningEffort = "high"
-	appServerTestKeys(t, u, "/fork\r")
-	fork := resumeTestOne(t, w, "thread/fork")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"branch","cwd":%q}}}`, fork.ID, workspace))
-	if u.Thread != "main" || u.Startup.ForkRetention == nil {
-		t.Fatal("switched before retained admission")
-	}
-	<-gate.entered
-	appServerTestKeys(t, u, "preserved while retaining")
-	close(gate.release)
-	pending := u.Startup.ForkRetention
-	pending.Err, pending.Complete = <-pending.Done, true
-	if err := u.message(pending.Message); err != nil {
-		t.Fatal(err)
-	}
-	resumeTestSettle(t, u, w)
-	identity, exists, err := store.publication.ReadScope("branch")
-	if err != nil || !exists || identity.Fork != "main" || u.Thread != "branch" || u.Text != "preserved while retaining" {
-		t.Fatalf("durable fork: %+v %v %v %s %q", identity, exists, err, u.Thread, u.Text)
-	}
-	// A fresh store and projection need no live parent to recover inherited review.
-	fresh, err := openMekugiReplayStore(store.publication.Directory())
-	if err != nil {
-		t.Fatal(err)
-	}
-	projection := sessionreview.Projection{Changes: fresh.changes, Retained: fresh.changeScope(), Data: new(changepresentation.Snapshot)}
-	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"branch": true}}}
-	if _, err := projection.Apply(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true}); err != nil {
-		t.Fatal(err)
-	}
-	if len(projection.Data.Publication.Files) != 3 {
-		t.Fatalf("fresh fork lost retained review: %+v", projection.Data.Publication)
-	}
-	after, err := os.ReadFile(path)
-	if err != nil || string(after) != string(before) {
-		t.Fatal("fork modified workspace files")
-	}
-	// Late edits on the original cannot grow the branch's frozen evidence.
-	liveDiffScopeCapture(t, store, workspace, "main", "later", filepath.Join(workspace, "later.go"), "a", "b")
-	liveDiffScopeCapture(t, store.scoped(child), workspace, "child", "later-child", filepath.Join(workspace, "later-child.go"), "a", "b")
-	if _, err := projection.Apply(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true}); err != nil {
-		t.Fatal(err)
-	}
-	if len(projection.Data.Publication.Files) != 3 {
-		t.Fatal("late original edits crossed fork")
-	}
-	releaseParent()
-	releaseChild()
-	retentionTestAge(t, store, "child", 30*24*time.Hour)
-	retentionTestAge(t, store, "main", 30*24*time.Hour)
-	branch, _ := retentionTestSession(t, fresh, "branch", 0)
-	if err := fresh.cleanupSessions(branch); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fresh.recoverOutput(branch, output); err != nil {
-		t.Fatalf("fresh fork lost inherited output: %v", err)
+	for _, command := range []string{"/fork", "/rewind"} {
+		t.Run(command, func(t *testing.T) {
+			workspace := t.TempDir()
+			path := filepath.Join(workspace, "file.go")
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			parent, releaseParent := retentionTestSession(t, store, "main", 0)
+			parent = bindTestHandleScope(t, store, parent, "", "")
+			store = store.scoped(parent)
+			output, err := store.putShellOutput(parent, strings.Repeat("retained output\n", 100), "", 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("after"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			liveDiffScopeCapture(t, store, workspace, "main", "edit", path, "before", "after")
+			child, releaseChild := retentionTestSession(t, store, "child", 0)
+			child = bindTestHandleScope(t, store, child, "main", "")
+			liveDiffScopeCapture(t, store.scoped(child), workspace, "child", "child-edit", filepath.Join(workspace, "child.go"), "before", "after")
+			other := t.TempDir()
+			liveDiffScopeCapture(t, store.scoped(child), other, "child", "other-child-edit", filepath.Join(other, "other.go"), "before", "after")
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, w := newResumeSessionTestUI(t)
+			u.startSession("main", workspace)
+			gate := &forkTestChanges{Service: store.changes, entered: make(chan struct{}), release: make(chan struct{})}
+			u.retained, u.changeSource = store.changeScope(), gate
+			u.reasoningEffort = "high"
+			if command == "/rewind" {
+				rewindTestTurns(t, u, w)
+				appServerTestKeys(t, u, "\r")
+			} else {
+				appServerTestKeys(t, u, "/fork\r")
+			}
+			fork := resumeTestOne(t, w, "thread/fork")
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"branch","cwd":%q}}}`, fork.ID, workspace))
+			if u.Thread != "main" || u.Startup.ForkRetention == nil {
+				t.Fatal("switched before retained admission")
+			}
+			<-gate.entered
+			appServerTestKeys(t, u, "preserved while retaining")
+			close(gate.release)
+			pending := u.Startup.ForkRetention
+			pending.Err, pending.Complete = <-pending.Done, true
+			if err := u.message(pending.Message); err != nil {
+				t.Fatal(err)
+			}
+			resumeTestSettle(t, u, w)
+			identity, exists, err := store.publication.ReadScope("branch")
+			if err != nil || !exists || identity.Fork != "main" || u.Thread != "branch" || u.Text != "preserved while retaining" {
+				t.Fatalf("durable fork: %+v %v %v %s %q", identity, exists, err, u.Thread, u.Text)
+			}
+			// A fresh store and projection need no live parent to recover inherited review.
+			fresh, err := openMekugiReplayStore(store.publication.Directory())
+			if err != nil {
+				t.Fatal(err)
+			}
+			projection := sessionreview.Projection{Changes: fresh.changes, Retained: fresh.changeScope(), Data: new(changepresentation.Snapshot)}
+			scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"branch": true}}}
+			if _, err := projection.Apply(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true}); err != nil {
+				t.Fatal(err)
+			}
+			if len(projection.Data.Publication.Files) != 3 {
+				t.Fatalf("fresh fork lost retained review: %+v", projection.Data.Publication)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || string(after) != string(before) {
+				t.Fatal("fork modified workspace files")
+			}
+			// Late edits on the original cannot grow the branch's frozen evidence.
+			liveDiffScopeCapture(t, store, workspace, "main", "later", filepath.Join(workspace, "later.go"), "a", "b")
+			liveDiffScopeCapture(t, store.scoped(child), workspace, "child", "later-child", filepath.Join(workspace, "later-child.go"), "a", "b")
+			if _, err := projection.Apply(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true}); err != nil {
+				t.Fatal(err)
+			}
+			if len(projection.Data.Publication.Files) != 3 {
+				t.Fatal("late original edits crossed fork")
+			}
+			releaseParent()
+			releaseChild()
+			retentionTestAge(t, store, "child", 30*24*time.Hour)
+			retentionTestAge(t, store, "main", 30*24*time.Hour)
+			branch, _ := retentionTestSession(t, fresh, "branch", 0)
+			if err := fresh.cleanupSessions(branch); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := fresh.recoverOutput(branch, output); err != nil {
+				t.Fatalf("fresh fork lost inherited output: %v", err)
+			}
+		})
 	}
 }
 

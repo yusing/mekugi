@@ -63,6 +63,9 @@ func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Atta
 	if s.KnownCaller(control.Thread) == "" {
 		return false, nil
 	}
+	if p.ThreadID == control.Thread && p.TurnID != "" && p.Item.Type == "userMessage" && (method == "item/started" || method == "item/completed") {
+		control.HasUserTurn = true
+	}
 	if method == "hook/started" || method == "hook/completed" {
 		return true, hookEvent(attached, terminal, control, childKey, activity, reviewOwner, approvals, receipts, retainedSession, clock, method, p)
 	}

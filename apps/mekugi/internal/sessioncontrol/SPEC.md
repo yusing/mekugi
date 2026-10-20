@@ -129,6 +129,22 @@ uses the same durable authorization and evidence restoration as resumed history.
 Inherited retained records are published before switching; storage waits leave
 input and host delivery responsive.
 
+`/rewind` is disabled until the session has a user turn. Its dialog shows readable
+user messages, including decoded question answers, and selects a turn to fork
+immediately before it, excluding that
+turn and all later conversation. It shares `/fork` admission, current settings,
+pending-input preservation and automatic switching. Workspace files remain as they
+are. Saved change and output evidence remains available in the new namespace,
+including evidence from excluded turns, because those effects have not been undone;
+conversation restoration uses only the host's truncated branch. Inheritance restores
+no running resources or approval grants.
+
+After the branch is usable, a separate confirmation offers to archive the exact
+original thread, initially selecting No. Cancellation before fork dispatch changes
+no session. Fork failure leaves the original usable; failure to switch preserves
+both saved threads. Archive failure leaves the new thread usable and reports that
+the original still exists. Resume and replay never repeat these operations.
+
 `/archive` confirms with No selected initially. Success archives Main through Codex,
 stops its turn and exits only after host success; failure keeps the session usable.
 It requires an established session outside restoration/replacement. New submissions

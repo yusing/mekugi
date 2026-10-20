@@ -5,6 +5,7 @@ package sessioncontrol
 // Source: apps/mekugi/internal/router/app_server_lifecycle.go@dd97276b.
 type Live struct {
 	Thread, Turn             string
+	HasUserTurn              bool
 	Compaction               Compaction
 	Settings                 Settings
 	Replacement              Replacement

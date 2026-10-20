@@ -243,6 +243,9 @@ func applyRestoredMain(source *sessionpresentation.ActivitySource, placements []
 }
 
 func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, notifications *nativeNotifications, retained changes.Scope, retainedSession history.Session, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, turn binding.HistoryTurn, item binding.ThreadItem) {
+	if item.Type == "userMessage" {
+		control.HasUserTurn = true
+	}
 	facts := item.Observation()
 	text := observation.TextEvent{Kind: observation.ItemCompleted, Item: transcriptItem(item, control.Thread, turn.ID, item.ID)}
 	if observeMessageQuestions(attached, terminal, control, approvals, clock, questions, editor, picker, (*panel) != nil || (*resumePicker) != nil, notifications, text, facts, true) {

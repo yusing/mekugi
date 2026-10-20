@@ -51,3 +51,16 @@ func TestCompletionChoiceHonorsOrdinaryInputAdmission(t *testing.T) {
 		t.Fatal("child display admitted an ordinary draft completion")
 	}
 }
+
+func TestRewindAndArchiveMenusRejectReplay(t *testing.T) {
+	for _, kind := range []sessionpresentation.MenuKind{sessionpresentation.MenuRewind, sessionpresentation.MenuArchive} {
+		c := newStatusConsumer()
+		c.model().Attach(sessionpresentation.Thread{ID: "main", Caller: "/root"}, true)
+		source := &sessionpresentation.MenuView{ID: 1, Kind: kind, View: completion.View{Choices: []completion.Choice{{Name: "target"}}}}
+		v := c.model().Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation, Menu: source}, sessionpresentation.Caption{}, c.now)
+		action := sessionpresentation.MenuAction{Version: v.Version, Menu: 1, Kind: sessionpresentation.MenuAccept, Choice: source.Choices[0].Identity()}
+		if !errors.Is(c.model().AdmitMenu(action), sessionpresentation.ErrReplayIntent) {
+			t.Fatal("replay admitted host operation", kind)
+		}
+	}
+}

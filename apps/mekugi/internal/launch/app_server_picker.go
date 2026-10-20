@@ -42,6 +42,9 @@ type composerPicker struct {
 	scanCwd                         string
 	toggleID, togglePath, toggleCwd string
 	toggleOwnsManager               bool
+	rewindThread, rewindProvider    string
+	rewindApprovals                 bool
+	archiveTarget                   string
 }
 
 func (p *composerPicker) completionTarget(draft composer.Draft, shellMode bool) completion.Target {
@@ -92,7 +95,7 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal 
 			p.Open = false
 		}
 	}()
-	if p.Kind == "menu" || p.Kind == "copy" || p.Kind == "settings" || p.Kind == "archive" {
+	if p.Kind == "menu" || p.Kind == "copy" || p.Kind == "settings" || p.Kind == "archive" || p.Kind == "rewind" {
 		p.Open = true
 		return
 	}

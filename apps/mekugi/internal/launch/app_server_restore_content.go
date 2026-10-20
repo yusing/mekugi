@@ -3,6 +3,7 @@ package launch
 import (
 	"cmp"
 	"context"
+	"github.com/yusing/mekugi/modules/conversation/completion"
 	"iter"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -241,13 +242,13 @@ func readNextRestoredChild(attached *attachedPresentation, terminal *terminalses
 		}
 		r.notices = nil
 	}
-	return finishRestoredContent(attached, control, restoring, reviewOwner, dispatch, resumePending)
+	return finishRestoredContent(attached, control, picker, restoring, reviewOwner, dispatch, resumePending)
 }
 
 // Scope publication and durable hydration are separate events. Keep Enter
 // guarded until the controller has consumed the final scope, not just until
 // Codex's history replies have arrived.
-func finishRestoredContent(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], restoring **appServerActivityRestore, reviewOwner **sessionreview.Review, dispatch func(appserver.Message) error, resumePending *[]appserver.Message) error {
+func finishRestoredContent(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, restoring **appServerActivityRestore, reviewOwner **sessionreview.Review, dispatch func(appserver.Message) error, resumePending *[]appserver.Message) error {
 	r := (*restoring)
 	if r == nil || !r.state.Ready() {
 		return nil
@@ -262,7 +263,20 @@ func finishRestoredContent(attached *attachedPresentation, control *sessioncontr
 	if control.Turn != "" {
 		attached.presentation.Status.SetText("Working")
 	}
-	return replayResumePending(dispatch, resumePending)
+	if err := replayResumePending(dispatch, resumePending); err != nil {
+		return err
+	}
+	if original := control.Startup.RewindOriginal; original != "" {
+		control.Startup.RewindOriginal = ""
+		picker.openMenu("archive")
+		picker.archiveTarget = original
+		picker.Target, picker.Problem, picker.Loading = completion.Target{}, "", false
+		picker.Choices = []completion.Choice{
+			{ID: 1, Name: "No, keep the original", Description: "Continue in the new branch"},
+			{ID: archiveConfirmChoice, Name: "Yes, archive the original", Description: "Keep the new branch and all workspace files"},
+		}
+	}
+	return nil
 }
 
 func historyTime(seconds int64) time.Time {

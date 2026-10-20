@@ -177,6 +177,13 @@ conversation, then switches to it with current settings and pending input. The
 original stays resumable and workspace files remain unchanged. A failed fork
 keeps the original session usable.
 
+`/rewind` opens a user-turn dialog while idle, after the first user turn. Select a turn to branch immediately
+before it, excluding that turn and later conversation while keeping current
+settings and pending input. Files and retained change/output evidence stay unchanged.
+After switching, a separate confirmation offers to archive the original thread;
+No is selected by default. Declining keeps both sessions. Archive failure leaves
+the new branch usable and the original available.
+
 ### Approvals
 
 Codex approvals open over an empty composer; otherwise press `Ctrl-B`, then `q`. Arrows

@@ -27,6 +27,7 @@ type Startup struct {
 	ForkRetention     *ForkRetention
 	ForkSettings      *Settings
 	ForkSettingsAck   bool
+	RewindOriginal    string
 }
 
 const ResumePicker = "--pick"
@@ -148,7 +149,7 @@ func (r *Requests[T]) Resume(s *Startup, control *Live, evidence preferences.Evi
 
 // Fork branches the idle conversation with its currently applied settings. The
 // replacement remains pending until the host returns a distinct thread identity.
-func (r *Requests[T]) Fork(s *Startup, control *Live, applied preferences.Applied, provider string, approvals bool) error {
+func (r *Requests[T]) Fork(s *Startup, control *Live, applied preferences.Applied, provider string, approvals bool, beforeTurn string) error {
 	params := ThreadPermissions(map[string]any{"threadId": control.Thread, "model": applied.Model, "serviceTier": nil}, approvals)
 	if provider != "" {
 		params["modelProvider"] = provider
@@ -159,9 +160,16 @@ func (r *Requests[T]) Fork(s *Startup, control *Live, applied preferences.Applie
 	if applied.Tier != "" {
 		params["serviceTier"] = applied.Tier
 	}
+	if beforeTurn != "" {
+		params["beforeTurnId"] = beforeTurn
+	}
 	var owner T
 	if _, err := r.Send("thread/fork", params, "main", owner); err != nil {
 		return err
+	}
+	s.RewindOriginal = ""
+	if beforeTurn != "" {
+		s.RewindOriginal = control.Thread
 	}
 	s.ForkSettings, s.ForkSettingsAck = nil, false
 	control.Replacement.Fork()

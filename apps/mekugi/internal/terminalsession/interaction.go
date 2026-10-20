@@ -83,7 +83,7 @@ type InputEffect struct {
 // Source: apps/mekugi/internal/router/terminal_ui.go:39:136@d16ed250.
 func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEffect] {
 	return func(yield func(InputEffect) bool) {
-		if in.Dialog != nil {
+		if in.Dialog != nil || in.Main != nil && in.Main.Menu.Dialog() {
 			state.Prefix = false
 			state.resizeUntil = time.Time{}
 		}
@@ -101,7 +101,7 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 			if in.Main == nil {
 				return
 			}
-			if in.Dialog != nil || in.Shell.Focus != 0 || in.Main.Panel.Open() || in.Main.Resume.Open() || in.Main.session.ReadOnly != sessionpresentation.Editable {
+			if in.Dialog != nil || in.Main.Menu.Dialog() || in.Shell.Focus != 0 || in.Main.Panel.Open() || in.Main.Resume.Open() || in.Main.session.ReadOnly != sessionpresentation.Editable {
 				in.Main.CancelPaste()
 				return
 			}
@@ -133,6 +133,10 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 			return
 		}
 		key := event.Text
+		if in.Main != nil && in.Main.Menu.Dialog() {
+			in.send(state, key, yield)
+			return
+		}
 		if (key == "\x1b[D" || key == "\x1b[C") && (state.Prefix || !state.resizeUntil.IsZero()) {
 			state.Prefix = false
 			state.resizeUntil = in.Now.Add(500 * time.Millisecond)
@@ -216,6 +220,11 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 	if in.Dialog != nil {
 		intent := in.Dialog.Key(key)
 		yield(InputEffect{Dialog: &intent})
+		return
+	}
+	if in.Main != nil && in.Main.Menu.Dialog() && in.Main.session.ReadOnly == sessionpresentation.Editable {
+		result := in.Main.Menu.Key(key)
+		yield(InputEffect{Menu: &result})
 		return
 	}
 	if key != "\x1b" && in.selectionKey(state, key, yield) {

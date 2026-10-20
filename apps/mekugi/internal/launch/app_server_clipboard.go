@@ -219,7 +219,7 @@ func applyPaste(attached *attachedPresentation, terminal *terminalsession.Attach
 		}
 	case menu == sessionpresentation.MenuManageSkills:
 		picker.Query += text
-	case menu == sessionpresentation.MenuSkills || menu == sessionpresentation.MenuCopy || menu == sessionpresentation.MenuSettings || menu == sessionpresentation.MenuArchive:
+	case menu == sessionpresentation.MenuSkills || menu == sessionpresentation.MenuCopy || menu == sessionpresentation.MenuSettings || menu == sessionpresentation.MenuArchive || menu == sessionpresentation.MenuRewind:
 	default:
 		finishPaste(attached, terminal, editor, questions, approvals, clock, side, owned, text)
 	}

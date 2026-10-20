@@ -96,7 +96,7 @@ func TestStartupForkUsesCurrentSettings(t *testing.T) {
 		startup := Startup{Config: map[string]any{"model": "launch-model"}}
 		control := Live{Thread: "main"}
 		applied := preferences.Applied{Model: "current-model", Effort: effort, Tier: "priority"}
-		if err := requests.Fork(&startup, &control, applied, "routed", false); err != nil {
+		if err := requests.Fork(&startup, &control, applied, "routed", false, ""); err != nil {
 			t.Fatal(err)
 		}
 		params := transport.sends[0].params.(map[string]any)
@@ -113,7 +113,7 @@ func TestStartupForkUsesCurrentSettings(t *testing.T) {
 	transport := &requestTransport{err: errors.New("closed")}
 	requests := NewRequests[string](transport)
 	startup, control := Startup{}, Live{Thread: "main"}
-	if err := requests.Fork(&startup, &control, preferences.Applied{}, "", true); err == nil || control.Replacement.Pending() {
+	if err := requests.Fork(&startup, &control, preferences.Applied{}, "", true, ""); err == nil || control.Replacement.Pending() {
 		t.Fatal("transport failure left a replacement gate")
 	}
 }

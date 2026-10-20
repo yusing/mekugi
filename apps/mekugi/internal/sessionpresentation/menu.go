@@ -10,6 +10,7 @@ const (
 	MenuManageSkills MenuKind = "manage"
 	MenuSettings     MenuKind = "settings"
 	MenuArchive      MenuKind = "archive"
+	MenuRewind       MenuKind = "rewind"
 	MenuCopy         MenuKind = "copy"
 )
 
@@ -20,6 +21,8 @@ type MenuView struct {
 	Preferred            completion.ChoiceID
 	Saving, QueueCompact bool
 	Setting, Explanation string
+	Title                string
+	Dialog               bool
 }
 type MenuActionKind uint8
 

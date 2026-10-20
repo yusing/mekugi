@@ -161,11 +161,11 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		if attached.conversation.ShellMode() {
 			return false, submitShell(attached, terminal, control, picker, editor, clock, (*restoring) != nil, environment, parent, (*reviewOwner), shellEdits, retained, (*retainedSession), changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)
 		}
-		if fields := strings.Fields(text); len(fields) > 1 && fields[0] == "/fork" {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), "Use /fork without arguments", true)
+		if fields := strings.Fields(text); len(fields) > 1 && (fields[0] == "/fork" || fields[0] == "/rewind") {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Use "+fields[0]+" without arguments", true)
 			return false, nil
 		}
-		if text == "/compact" || text == "/clear" || text == "/fork" {
+		if text == "/compact" || text == "/clear" || text == "/fork" || text == "/rewind" {
 			return false, sessionCommand(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*restoring) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, statusConfig.Provider, approvalMode, text)
 		}
 		if text == "/resume" || strings.HasPrefix(text, "/resume ") {
@@ -205,7 +205,7 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), "Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /archive, /btw, /status, /session, /ps, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Unknown command "+strings.Fields(text)[0]+" · Type / to see available commands", true)
 			return false, nil
 		}
 		if text == "" || control.Thread == "" || (*restoring) != nil {

@@ -252,7 +252,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 							resubscribe()
 						}
 						loadedReview(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, result)
-						if err := finishRestoredContent(&attached, &control, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
+						if err := finishRestoredContent(&attached, &control, &picker, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
 							return err
 						}
 						dirty = true
@@ -260,7 +260,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 						if !admitReviewEvents(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, clock, ctx, sub, review.TakePreviews(sub)...) {
 							resubscribe()
 						}
-						if err := finishRestoredContent(&attached, &control, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
+						if err := finishRestoredContent(&attached, &control, &picker, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
 							return err
 						}
 						dirty = true
@@ -268,7 +268,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 						if !admitReviewEvents(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, clock, ctx, sub, event) {
 							resubscribe()
 						}
-						if err := finishRestoredContent(&attached, &control, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
+						if err := finishRestoredContent(&attached, &control, &picker, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
 							return err
 						}
 						dirty = true
@@ -445,6 +445,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 // and title saves retain their own completion and cleanup across that boundary.
 type appServerRequest struct {
 	metadata string
+	menu     uint64
 	label    string
 	title    *sessioncontrol.NameSave
 	status   *appServerStatusReport
@@ -545,6 +546,18 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		method := response.Method
 		if response.Owner.label != "" {
 			method = response.Owner.label
+		}
+		if method == "rewind/turns" {
+			rewindTurnsResponse(control, picker, response.Owner, m)
+			return nil
+		}
+		if method == "rewind/archive" {
+			message := "Original thread " + response.Owner.metadata + " archived"
+			if m.Error != nil {
+				message = "Original thread " + response.Owner.metadata + " still exists: " + m.Error.Message
+			}
+			setNotice(&attached.feedback, terminal, presentationTime(clock), message, m.Error != nil)
+			return nil
 		}
 		if method == "thread/archive" {
 			if m.Error != nil {

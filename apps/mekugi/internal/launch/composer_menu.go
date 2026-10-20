@@ -36,7 +36,17 @@ func (p *composerPicker) menuView(workspace, text string, control *sessioncontro
 	case sessionpresentation.MenuSettings:
 		view.Setting = p.Setting
 	case sessionpresentation.MenuArchive:
+		view.Title = "Archive this session?"
 		view.Explanation = archivePrompt(control)
+		if p.archiveTarget != "" {
+			view.Dialog = true
+			view.Title = "Archive the original session?"
+			view.Explanation = "The new branch is ready. Archive original thread " + p.archiveTarget + "? Files remain unchanged."
+		}
+	case sessionpresentation.MenuRewind:
+		view.Dialog = true
+		view.Title = "Rewind before a user turn"
+		view.Explanation = "Choose a user turn. The branch excludes it and later conversation; files remain unchanged."
 	}
 	return view
 }
@@ -73,6 +83,7 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 			p.Dismissed, p.Open = p.Target, false
 			p.Kind, p.Choices, p.CopyTexts = "", nil, nil
 			picker.Setting = ""
+			p.archiveTarget, p.rewindThread = "", ""
 			picker.cancelScan()
 		}
 		return true
@@ -88,6 +99,8 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 			picker.chooseSkillsAction(attached, (*editor), terminal, clock, owned, questions, approvals, side, choice)
 		case "manage":
 			toggleSkill(picker, control.Requests, attached.cwd, choice)
+		case "rewind":
+			chooseRewind(attached, terminal, control, picker, applied, restoring, clock, choice)
 		case "archive":
 			chooseArchive(picker, control, &attached.feedback, terminal, clock, choice.ID == archiveConfirmChoice)
 		case "settings":

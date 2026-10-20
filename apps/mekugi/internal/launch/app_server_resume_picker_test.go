@@ -26,6 +26,7 @@ type resumeTestRequest struct {
 	Method string `json:"method"`
 	Params struct {
 		ThreadID     string   `json:"threadId"`
+		BeforeTurnID string   `json:"beforeTurnId"`
 		IncludeTurns *bool    `json:"includeTurns"`
 		Cwd          *string  `json:"cwd"`
 		Cursor       string   `json:"cursor"`

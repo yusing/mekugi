@@ -164,6 +164,7 @@ func resumeSession(attached *attachedPresentation, terminal *terminalsession.Att
 // Input typed for the new session returns to the composer rather than
 // reaching the old thread.
 func resumeSessionFailed(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, message string) error {
+	control.Startup.RewindOriginal = ""
 	operation := "resume"
 	if control.Replacement.Forking() {
 		operation = "fork"

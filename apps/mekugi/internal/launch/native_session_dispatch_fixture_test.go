@@ -53,7 +53,7 @@ func (u *appServerUI) applyInput(surface *terminalsession.Attachment, effects it
 }
 
 func (u *appServerUI) finishRestoredContent() error {
-	return finishRestoredContent(&u.attached, &u.Client, &u.restoring, &u.review, u.message, &u.resumePending)
+	return finishRestoredContent(&u.attached, &u.Client, &u.picker, &u.restoring, &u.review, u.message, &u.resumePending)
 }
 
 func (u *appServerUI) drainKeys(keys <-chan byte) error {

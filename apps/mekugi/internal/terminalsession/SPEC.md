@@ -168,6 +168,10 @@ actions. Application integration retains acquisition and host effects. A slash
 completion followed by submission settles its edit before deriving the submission
 from the new publication.
 
+Rewind choices and the subsequent original-session archive confirmation use the
+shared dialog frame centered over Main. Arrows select, Enter confirms, and Escape,
+the close button or an outside click cancels without changing the draft.
+
 An initial `/` opens the local command catalog. Typing filters; arrows select;
 Tab completes only the command token, preserving arguments and attachments;
 Enter executes; Escape closes unchanged. Arguments and paste close or bypass

@@ -27,6 +27,7 @@ func showArchivePicker(attached *attachedPresentation, terminal *terminalsession
 	picker.cancelScan()
 	p := picker
 	picker.openMenu("archive")
+	p.archiveTarget = ""
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", false
 	p.Choices = []completion.Choice{
 		{ID: 1, Name: "No, don't archive", Description: "Return to the current session"},
@@ -44,6 +45,16 @@ func archivePrompt(control *sessioncontrol.Live) string {
 func chooseArchive(picker *composerPicker, control *sessioncontrol.Client[appServerRequest], feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, confirm bool) {
 	p := picker
 	p.Kind, p.Open, p.Choices = "", false, nil
+	target := p.archiveTarget
+	p.archiveTarget = ""
+	if confirm && target != "" {
+		if _, err := control.Requests.Send("thread/archive", map[string]any{"threadId": target}, "rewind/archive", appServerRequest{label: "rewind/archive", metadata: target}); err != nil {
+			setNotice(feedback, terminal, presentationTime(clock), "Original thread "+target+" still exists: "+err.Error(), true)
+		} else {
+			setNotice(feedback, terminal, presentationTime(clock), "Archiving original thread "+target+"…", false)
+		}
+		return
+	}
 	if confirm {
 		control.Replacement.Archive()
 		if err := control.Request("thread/archive", map[string]any{"threadId": control.Thread}); err != nil {
