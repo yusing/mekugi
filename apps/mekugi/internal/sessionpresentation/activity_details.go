@@ -96,9 +96,7 @@ func (a *Attachment) RefreshDetails(id DetailID, requested []activity.DetailPage
 	var details []activity.DetailPage
 	for _, page := range d.pages {
 		previous[page.ID] = page
-		if !page.ModelVisible {
-			details = append(details, page.DetailPage)
-		}
+		details = append(details, page.DetailPage)
 	}
 	if requested != nil {
 		details = requested
@@ -137,43 +135,30 @@ func (a *Attachment) RefreshDetails(id DetailID, requested []activity.DetailPage
 	if !d.processes {
 		details = activity.RefreshDetails(details, sources)
 	}
-	if d.source.Prepared != nil {
-		var combined []activity.DetailPage
-		for _, detail := range details {
-			combined = append(combined, detail)
-			source := detail.Source
-			if detail.PreparedSource != 0 {
-				source = detail.PreparedSource
-			}
-			identity, ok := d.identities[source]
-			if !ok {
-				continue
-			}
-			id := identity[1]
-			if detail.AttachmentID != "" {
-				id = detail.AttachmentID
-			}
-			model := activity.DetailPage{ID: detail.ID + "/model", ModelVisible: true, Source: source}
-			if content, available := d.source.Prepared(identity[0], id); available {
-				model.Prepared = &content
-			}
-			combined = append(combined, model)
+	for i := range details {
+		detail := &details[i]
+		detail.Prepared = nil
+		source := detail.Source
+		if detail.PreparedSource != 0 {
+			source = detail.PreparedSource
 		}
-		details = combined
+		identity, ok := d.identities[source]
+		if !ok || d.source.Prepared == nil {
+			continue
+		}
+		id := identity[1]
+		if detail.AttachmentID != "" {
+			id = detail.AttachmentID
+		}
+		if content, available := d.source.Prepared(identity[0], id); available && content.Altered {
+			detail.Prepared = &content
+		}
 	}
+
 	pages := make([]detailPage, len(details))
 	for i, detail := range details {
 		prior := previous[detail.ID]
-		detail.Revision = sources[detail.Source].Revision
-		if detail.ModelVisible && !reflect.DeepEqual(detail.Prepared, prior.Prepared) {
-			d.revision++
-			detail.Revision = d.revision
-		} else if detail.ModelVisible {
-			detail.Revision = prior.Revision
-		}
-		if detail.Revision == 0 {
-			detail.Revision = prior.Revision
-		}
+		detail.Revision = prior.Revision
 		output := outputs[detail.Source][detail.Output]
 		if output == nil {
 			output = prior.output
@@ -190,6 +175,8 @@ func (a *Attachment) RefreshDetails(id DetailID, requested []activity.DetailPage
 			publication = d.revision
 		}
 		if !reflect.DeepEqual(detail, prior.DetailPage) {
+			d.revision++
+			detail.Revision = d.revision
 			detail.Value = activity.CloneValues([]activity.Value{detail.Value})[0]
 		}
 		pages[i] = detailPage{detail, output, version, publication, live}

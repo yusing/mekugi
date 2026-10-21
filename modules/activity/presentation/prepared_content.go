@@ -6,4 +6,6 @@ type PreparedContent struct {
 	ID, Text string
 	Calls    []string
 	Cell     bool
+	// Altered requires different readable content and matching original evidence.
+	Altered bool
 }

@@ -425,11 +425,14 @@ neither interrupts work nor submits model input.
 
 ## Content dialog
 
-Operation and attachment dialogs include a Model-visible tab alongside original
-details. It shows the latest retained Mekugi-prepared content, after Mekugi
-transformations, without claiming provider consumption. A nested command or patch
-exposes only its explicitly identified whole execution-cell output, never an inferred
-per-command share. Missing or oversized observations show unavailable content.
+Operation and attachment dialogs offer the latest retained Mekugi-prepared content
+only when its readable content differs from the matching original request evidence.
+Text content parts use the original output's rendering, rather than their transport
+JSON wrappers; structured and non-text content remain explicit. This describes
+Mekugi transformations, without claiming provider consumption. A nested command
+or patch exposes only its explicitly identified whole execution-cell output, never
+an inferred per-command share or a comparison against that command's output.
+Missing original or prepared evidence does not establish a difference.
 Observations are bounded and invocation-local: switching preserves admitted
 content, while eviction and fresh resume may leave it unavailable until another
 real request supplies it. Captured-edit pages keep their frozen original source

@@ -302,6 +302,10 @@ Arrows/j/k, page keys, b/space, g/G and Home/End scroll; the wheel affects only 
 dialog. Page membership, output versions and selected content arrive as detached
 values from the application. The dialog requests content by its selection and page
 identity; it never opens retained output or refreshes a source model while laying out.
+Output dialogs default to Original. When altered prepared content is available,
+`o` toggles Original / Model-visible within the same page, with a footer hint.
+Each variant preserves its own navigation and copy content; frozen selections keep
+their selected document. Unavailable or equal content has no toggle or hint.
 Left/Right or clickable tabs choose pages. Tab paths retain nearby
 directories and filenames. Each page keeps independent scroll, search and follow
 state. Live pages follow until scrolled away; End or returning to bottom resumes.

@@ -3,14 +3,14 @@
 
 
 
-╭─ Model-visible ─────────────────────────────────────────────────── 2 / 2 [×] ─╮
-│ Latest Mekugi-prepared content                                                │
-│  1 Run                                 Model-visible                          │
+╭─ Ran · echo original ─────────────────────────────────────────────────── [×] ─╮
+│ 1 line · exit 0                                                               │
 ├───────────────────────────────────────────────────────────────────────────────┤
-│ Unavailable: no retained Mekugi-prepared content for this item.               │
+│ 1 ┆ original output                                                           │
 │                                                                               │
 │                                                                               │
-╰─ ↑↓ PgUp/PgDn g/G scroll · ←→ view · / find · y copy · esc ───────────────────╯
+╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ─────────────────────────────╯
+
 
 
 

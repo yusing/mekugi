@@ -1,0 +1,18 @@
+
+
+
+
+
+╭─ Ran · echo original · Original ──────────────────────────────────────── [×] ─╮
+│ 1 line · exit 0                                                               │
+├───────────────────────────────────────────────────────────────────────────────┤
+│ 1 ┆ original output                                                           │
+│                                                                               │
+│                                                                               │
+╰─ ↑↓ PgUp/PgDn g/G scroll · / find · o Model-visible · y copy · esc ───────────╯
+
+
+
+
+
+

@@ -15,25 +15,27 @@ import (
 // Retained content arrives as detached, identity-addressed publications.
 type ContentDialog struct {
 	Dialog
-	View      *activityui.View
-	ID        sessionpresentation.DetailID
-	Revision  uint64
-	Output    *sessionpresentation.DetailOutput
-	Pages     []sessionpresentation.DetailItem
-	Processes bool
-	File      *activitypresentation.DetailFile
-	laidKey   contentDialogKey
+	View         *activityui.View
+	ID           sessionpresentation.DetailID
+	Revision     uint64
+	Output       *sessionpresentation.DetailOutput
+	Pages        []sessionpresentation.DetailItem
+	Processes    bool
+	File         *activitypresentation.DetailFile
+	laidKey      contentDialogKey
+	modelVisible map[string]bool
 }
 
 type contentDialogKey struct {
-	id       string
-	revision uint64
-	frame    uint64
-	width    int
-	version  uint64
-	retained bool
-	theme    diffrender.Theme
-	file     *activitypresentation.DetailFile
+	id           string
+	revision     uint64
+	frame        uint64
+	width        int
+	version      uint64
+	retained     bool
+	modelVisible bool
+	theme        diffrender.Theme
+	file         *activitypresentation.DetailFile
 }
 
 // Update applies only detached membership and terminal tab navigation.
@@ -59,8 +61,11 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 			}
 			tab.Line = d.File.First
 		}
-		if detail.ModelVisible {
-			tab = DialogTab{ID: detail.ID, Name: "Model-visible", Exact: true}
+		if detail.Prepared == nil {
+			delete(d.modelVisible, detail.ID)
+		} else if d.modelVisible[detail.ID] {
+			tab.ID += "/model"
+			tab.Live = false
 		}
 		tabs[i] = tab
 	}
@@ -70,12 +75,6 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 	}
 	if d.File != nil {
 		d.Navigation = "view"
-	}
-	for _, page := range d.Pages {
-		if page.ModelVisible {
-			d.Navigation = "view"
-			break
-		}
 	}
 	d.ForceTabs = d.Processes && len(d.Pages) > 0 && d.Pages[0].Source != 0
 	d.SetPages(tabs)
@@ -87,7 +86,15 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 // Layout renders the current retained snapshot without owning output lifetime.
 func (d *ContentDialog) Layout(width int) {
 	page := d.Pages[d.Page]
-	key := contentDialogKey{id: page.ID, revision: page.Revision, width: width, version: page.OutputVersion, retained: page.Retained, theme: d.View.Painter.Theme, file: d.File}
+	page.ModelVisible = d.modelVisible[page.ID] && page.Prepared != nil
+	d.OutputToggle = ""
+	if page.Prepared != nil {
+		d.OutputToggle = "Model-visible"
+		if page.ModelVisible {
+			d.OutputToggle = "Original"
+		}
+	}
+	key := contentDialogKey{modelVisible: page.ModelVisible, id: page.ID, revision: page.Revision, width: width, version: page.OutputVersion, retained: page.Retained, theme: d.View.Painter.Theme, file: d.File}
 	var output *activitymodel.OutputView
 	if d.Output != nil {
 		output = &d.Output.View
@@ -101,6 +108,9 @@ func (d *ContentDialog) Layout(width int) {
 	if key == d.laidKey {
 		if !page.ModelVisible {
 			d.Document.Title = d.View.Painter.DialogPageTitle(activityui.Block{Value: page.Value, OutputSnapshot: output}, d.View.Now(), width)
+			if page.Prepared != nil {
+				d.Document.Title += " · Original"
+			}
 		}
 		return
 	}
@@ -124,3 +134,26 @@ func (d *ContentDialog) Paint(rows []string, width, height int) {
 
 // Invalidate discards geometry derived from replaced detached content.
 func (d *ContentDialog) Invalidate() { d.laidKey = contentDialogKey{} }
+
+// Key toggles the selected output without changing the application's page identity.
+func (d *ContentDialog) Key(key string) DialogIntent {
+	if key == "o" && !d.Typing {
+		if d.Selection == nil && len(d.Pages) > 0 {
+			page := d.Pages[d.Page]
+			if page.Prepared != nil {
+				if d.modelVisible == nil {
+					d.modelVisible = make(map[string]bool)
+				}
+				d.modelVisible[page.ID] = !d.modelVisible[page.ID]
+				d.Update(sessionpresentation.DetailView{ID: d.ID, Revision: d.Revision, Pages: d.Pages, Processes: d.Processes})
+				d.Invalidate()
+				// Copy and search immediately after toggling use the selected document.
+				if d.width > 0 {
+					d.Layout(d.width)
+				}
+			}
+		}
+		return DialogIntent{}
+	}
+	return d.Dialog.Key(key)
+}

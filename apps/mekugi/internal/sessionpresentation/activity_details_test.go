@@ -68,3 +68,31 @@ func TestDetailSelectionRetainsSourceAndRejectsStaleRequests(t *testing.T) {
 		t.Fatal("retirement revived detail selection")
 	}
 }
+
+func TestDetailPreparedRevisionsStayStableUntilContentChanges(t *testing.T) {
+	var attachment Attachment
+	content := activity.PreparedContent{ID: "call", Text: "first", Altered: true}
+	source := &ActivitySource{Model: &attachment.Activity().Main, Audience: MainAudience,
+		Prepared: func(_, _ string) (activity.PreparedContent, bool) { return content, true }}
+	source.Apply(ActivityEvent{Entries: []ActivityEntry{{Seq: 1, Kind: "tool", Text: "Run `echo original`", Native: &NativeItem{Thread: "thread", Item: "call"}}}})
+	id := attachment.OpenDetails(Version{Attachment: 1}, source, activity.DetailPages(source.Entries[0].Values), false)
+	var previous uint64
+	for _, text := range []string{"first", "second", "third"} {
+		content.Text = text
+		attachment.RefreshDetails(id, nil)
+		view, _ := attachment.DetailView(id)
+		if len(view.Pages) != 1 || view.Pages[0].Prepared.Text != text || view.Pages[0].Revision <= previous {
+			t.Fatalf("stale prepared publication: %+v", view)
+		}
+		previous = view.Pages[0].Revision
+		if revision, _ := attachment.RefreshDetails(id, nil); revision != view.Revision {
+			t.Fatal("unchanged prepared content revised the publication")
+		}
+	}
+	content.Altered = false
+	attachment.RefreshDetails(id, nil)
+	view, _ := attachment.DetailView(id)
+	if view.Pages[0].Prepared != nil {
+		t.Fatal("equal content kept the model-visible variant")
+	}
+}

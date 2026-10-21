@@ -5,6 +5,11 @@ completed Codex tool facts with the composed capture and retained-evidence owner
 Codex owns execution, permissions and continuation. Observation preserves exact
 host input and results, including failed, partial and caught tool outcomes.
 
+Prepared-output observations decode text transport parts and compare them with
+the same call or attachment in the original request. They preserve structured
+non-text content and whole-cell identity without rerunning projections. Missing
+evidence cannot establish altered content.
+
 The preparer borrows invocation owners. Each prepared response retains its own
 scope and dependencies through delivery and cleanup, independently of the
 preparer. Frontends supply preview timing; this workflow has no renderer.

@@ -49,8 +49,10 @@ these observations without optional Activity output retention or roster placemen
 Mekugi-prepared content is retained separately from host evidence in the same
 authenticated invocation audience. It is keyed by observed call or submitted
 attachment identity, bounded independently of diagnostics, and never regenerated
-by rerunning projections. Detail readers receive detached content; unavailable
-observations do not fall back to original output.
+by rerunning projections. Preparation compares readable content with matching
+original request evidence before publishing altered-content availability. Detail
+readers receive detached content; unavailable observations do not fall back to
+original output.
 Captured-edit supplements annotate their original host items through the same
 receipt reconciliation as retained review, including items loaded from history.
 An early receipt waits for its host identity instead of creating a second tool row.

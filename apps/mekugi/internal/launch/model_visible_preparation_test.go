@@ -71,7 +71,8 @@ func TestModelVisiblePreparedRequestThroughNativeDialogs(t *testing.T) {
 	trace.tool("thread", "runtime", "patch", "apply_patch", patch)
 	trace.result("thread", "patch", "completed", "Success")
 	trace.end("thread", "runtime")
-	input = append(input, continuationTestCall("exec", "cell", source), map[string]any{"type": "custom_tool_call_output", "call_id": "cell", "output": duplicateTestHeader + "actual combined output\n"})
+	input = append(input, duplicateTestInput("first", "earlier-cell", file)...)
+	input = append(input, continuationTestCall("exec", "cell", source), map[string]any{"type": "custom_tool_call_output", "call_id": "cell", "output": []any{map[string]string{"type": "input_text", "text": duplicateTestHeader + file}}})
 	request, err := codexresponses.ParseRequest(responses.MustMarshalJSON(map[string]any{"model": "gpt-test", "input": input, "tools": testExecResponsesTools()}))
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +97,13 @@ func TestModelVisiblePreparedRequestThroughNativeDialogs(t *testing.T) {
 	var preparedFile, preparedSkill, preparedCell string
 	for _, item := range items {
 		if responses.StringField(item, "call_id") == "cell" && responses.StringField(item, "type") == "custom_tool_call_output" {
-			preparedCell = responses.StringField(item, "output")
+			var parts []struct {
+				Text string `json:"text"`
+			}
+			if err := json.Unmarshal(item["output"], &parts); err != nil || len(parts) != 1 {
+				t.Fatal("missing output text part")
+			}
+			preparedCell = parts[0].Text
 		}
 		var parts []struct {
 			Text string `json:"text"`
@@ -135,12 +142,12 @@ func TestModelVisiblePreparedRequestThroughNativeDialogs(t *testing.T) {
 				t.Fatal("selected patch page shifted")
 			}
 			original := terminal.Dialog.Document.Text
-			terminal.outputKey("\x1b[C")
+			terminal.outputKey("o")
 			terminal.layoutOutput(80)
-			if terminal.Dialog.Document.Text != preparedCell || !strings.Contains(terminal.Dialog.Document.Detail, "whole execution cell cell") {
+			if terminal.Dialog.Document.Text != preparedCell || !strings.Contains(terminal.Dialog.Document.Detail, "Whole execution cell cell") {
 				t.Fatal("patch lost actual whole-cell content")
 			}
-			terminal.outputKey("\x1b[D")
+			terminal.outputKey("o")
 			terminal.layoutOutput(80)
 			if terminal.Dialog.Document.Text != original {
 				t.Fatal("patch source changed")
@@ -155,9 +162,6 @@ func TestModelVisiblePreparedRequestThroughNativeDialogs(t *testing.T) {
 			continue
 		}
 		for i, page := range terminal.Dialog.Pages {
-			if page.ModelVisible {
-				continue
-			}
 			want, original := "", ""
 			switch page.AttachmentID {
 			case second.ReceiptID(second.Frames[0]):
@@ -177,11 +181,12 @@ func TestModelVisiblePreparedRequestThroughNativeDialogs(t *testing.T) {
 			if terminal.Dialog.Document.Text != original {
 				t.Fatalf("original copy changed for %s: got length %d tail %q; want length %d tail %q", page.Verb, len(terminal.Dialog.Document.Text), terminal.Dialog.Document.Text[max(0, len(terminal.Dialog.Document.Text)-20):], len(original), original[max(0, len(original)-20):])
 			}
-			terminal.outputKey("\x1b[C")
+			terminal.outputKey("o")
 			terminal.layoutOutput(80)
 			if terminal.Dialog.Document.Text != want {
 				t.Fatalf("tab differs from actual prepared request: %q", terminal.Dialog.Document.Text)
 			}
+			terminal.outputKey("o")
 			checked++
 		}
 	}

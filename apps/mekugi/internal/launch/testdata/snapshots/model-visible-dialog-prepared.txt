@@ -3,14 +3,14 @@
 
 
 
-╭─ Model-visible ─────────────────────────────────────────────────── 2 / 2 [×] ─╮
-│ Latest Mekugi-prepared content · whole execution cell cell                    │
-│  1 Run                                 Model-visible                          │
+╭─ Model-visible ───────────────────────────────────────────────────────── [×] ─╮
+│ Whole execution cell cell                                                     │
 ├───────────────────────────────────────────────────────────────────────────────┤
-│ [same as O1]                                                                  │
+│ 1 ┆ [same as O1]                                                              │
+│ 2 ┆                                                                           │
 │                                                                               │
-│                                                                               │
-╰─ ↑↓ PgUp/PgDn g/G scroll · ←→ view · / find · y copy · esc ───────────────────╯
+╰─ ↑↓ PgUp/PgDn g/G scroll · / find · o Original · y copy · esc ────────────────╯
+
 
 
 

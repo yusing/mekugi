@@ -47,6 +47,7 @@ type Dialog struct {
 	Selection    *Selection
 	Navigation   string
 	ForceTabs    bool
+	OutputToggle string
 
 	states      map[string]dialogPageState
 	active      string
@@ -275,6 +276,9 @@ func (d *Dialog) footer(width int) string {
 	if d.query != "" {
 		keys[len(keys)-1] = "/ n N find"
 	}
+	if d.OutputToggle != "" {
+		keys = append(keys, "o "+d.OutputToggle)
+	}
 	keys = append(keys, "y copy", "esc")
 	if d.Document.Live && !d.follow {
 		keys = append([]string{"End follows"}, keys...)
@@ -287,6 +291,9 @@ func (d *Dialog) footer(width int) string {
 		footer = dim + "↑↓ scroll · / find · y copy · esc" + undim
 		if len(d.pages) > 1 {
 			footer = dim + navigation + " · ↑↓ scroll · y copy · esc" + undim
+		}
+		if d.OutputToggle != "" {
+			footer = dim + "↑↓ scroll · o " + d.OutputToggle + " · y copy · esc" + undim
 		}
 	}
 	return footer
