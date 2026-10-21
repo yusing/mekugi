@@ -91,14 +91,14 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false, nil
 	}
-	if intent.Operation == sessionpresentation.CancelComposer && (*editor).Text == "" && control.BTW != nil {
+	if intent.Operation == sessionpresentation.CancelComposer && (*editor).Text == "" && attached.presentation.View().BTW != nil {
 		return false, closeBTWQuestion(attached, control)
 	}
 	if attached.presentation.DisplayingSide() {
 		text := strings.TrimSpace((*editor).Text)
 		switch intent.Operation {
 		case sessionpresentation.SubmitComposer, sessionpresentation.QueueComposer:
-			if !strings.HasPrefix(text, "/") && !strings.HasPrefix(text, "!") || sideCommand(text) != "" {
+			if !strings.HasPrefix(text, "/") && !strings.HasPrefix(text, "!") {
 				return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}, *tiers, *title, *backend, *restoring != nil, side, *panel != nil || *resumePicker != nil, owned, environment, hook, observations)
 			}
 			if text != "/copy" {

@@ -301,7 +301,8 @@ Selecting Side displays its conversation through the shared Main-pane transcript
 and routes ordinary composer input to Side. Main and Side retain separate drafts;
 selecting a subagent remains read-only. Side settings are the effective model,
 reasoning effort and service tier captured from Main when its snapshot is created.
-Settings and Main-only commands require returning to Main.
+Settings and Main-only commands require returning to Main. `/side`, `/oneoff`,
+`/fork` and `/btw` are unavailable in Side and One-off, including command completion.
 
 Pending Main input settles before the snapshot; already-running Main work continues.
 Later Main activity does not enter follow-ups. Codex owns ephemeral history and
@@ -336,12 +337,12 @@ answers and drafts are invocation-local and are not restored on resume.
 
 `/btw QUESTION` owns a separate answer-only thread and temporary answer dock.
 It snapshots Main independently and never reuses, replaces, blocks or closes the
-Side/One-off slot. Repeated `/btw` requests follow up its own conversation, and
-Escape closes only its dock before affecting the displayed conversation. Main,
+Side/One-off slot. Repeated `/btw` requests follow up its own conversation.
+Its dock is mounted only on Main and stays alive when another thread is displayed.
+Escape on Main closes only its dock before affecting the displayed conversation. Main,
 Side and One-off input remain usable while the answer runs. Its bounded answer
 history, pending request, failure recovery and delayed cleanup have independent
-lifetimes. Rejected input returns to its originating composer, or Main if that
-side conversation has closed. Main replacement closes both transient conversations.
+lifetimes. Rejected BTW input returns to Main. Main replacement closes both transient conversations.
 
 ## Lifetime
 

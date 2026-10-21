@@ -139,7 +139,7 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 	v.History = m.HistoryView(in.History)
 	v.Side = nil
 	v.BTW, v.BTWRunning = nil, false
-	if body := in.Conversation.BTW; body != nil {
+	if body := in.Conversation.BTW; body != nil && v.Displayed == v.Main {
 		v.BTW = &conversationmodel.SideView{History: body.History, ID: body.ID, Question: body.Question, Status: body.Status, Answer: body.Answer, Alert: body.Alert, Truncated: body.Truncated, AttachmentNotice: body.AttachmentNotice, Started: body.Started}
 		v.BTWRunning = in.BTWRunning
 	}
@@ -177,7 +177,7 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 			v.Status.Composer.Elapsed = now.Sub(side.Started)
 			v.Status.Composer.ElapsedKnown = !side.Started.IsZero()
 		}
-		v.Status.Animating = in.SideRunning || in.BTWRunning
+		v.Status.Animating = in.SideRunning || v.BTWRunning
 		v.Status.FeedbackRevision = in.Feedback.Revision
 		v.Status.Feedback = Label{Text: in.Feedback.Text, Alert: in.Feedback.Alert}
 		return v
@@ -187,7 +187,7 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 	s.Session = Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,
 		Completion: state.completed, CompletionKnown: state.completionKnown}
 	s.State = s.Session
-	s.Animating = in.Processes > 0 || in.SideRunning || in.BTWRunning || !state.Alert && (turn != "" || pending)
+	s.Animating = in.Processes > 0 || in.SideRunning || v.BTWRunning || !state.Alert && (turn != "" || pending)
 	switch {
 	case archiving:
 		s.Session = Label{Text: "Archiving session…", Animation: Pulse}

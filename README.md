@@ -274,8 +274,10 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   available. Main stays usable and receives no one-off transcript; file edits and
   other external effects still affect the shared workspace. Replace or Cancel
   chooses what happens when Side or One-off is already open.
-- `/btw QUESTION` opens an independent temporary answer dock, leaving Main and
-  Side/One-off usable. Repeat `/btw` for a follow-up; Esc closes only that dock.
+- `/btw QUESTION` opens an independent temporary answer dock on Main. It stays
+  alive but hidden while viewing Side/One-off. Return to Main for `/side`,
+  `/oneoff`, `/fork` and `/btw`; repeat `/btw` for a follow-up. Esc on Main
+  closes only that dock.
 - `/model`, `/effort` (or `/reasoning`), and `/tier` open pickers or accept values.
   `/tier default` clears the tier. Changes reach upcoming steps without editing config.
 - `/compact` resets context: Enter interrupts then resets, Tab queues. `/clear` starts

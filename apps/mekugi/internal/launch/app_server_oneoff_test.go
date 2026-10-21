@@ -125,6 +125,7 @@ func TestOneoffReplacementCancelAndLateStart(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")
 	oneoffTestStart(t, u, wire)
+	selectSideThread(t, u, u.attached.presentation.View().Main)
 	appServerTestKeys(t, u, "/oneoff replacement\r")
 	if err := terminalTest(u).send("\x1b"); err != nil {
 		t.Fatal(err)
@@ -133,11 +134,11 @@ func TestOneoffReplacementCancelAndLateStart(t *testing.T) {
 		t.Fatal("dismissal retained clone or lost draft")
 	}
 	appServerTestKeys(t, u, "\r")
-	selectSideThread(t, u, u.attached.presentation.View().Main)
+	selectSideThread(t, u, u.attached.presentation.View().SideThread)
 	if u.picker.sideTask != nil {
 		t.Fatal("view switch retained replacement clone")
 	}
-	selectSideThread(t, u, u.attached.presentation.View().SideThread)
+	selectSideThread(t, u, u.attached.presentation.View().Main)
 	appServerTestKeys(t, u, "\r")
 	if wire.Len() != 0 {
 		t.Fatal("replacement ran before choice")

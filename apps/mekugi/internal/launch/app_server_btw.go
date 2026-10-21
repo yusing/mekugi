@@ -69,7 +69,9 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 		owner = &control.BTW
 	}
 	if question == "" {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Use /btw QUESTION · repeat /btw for a follow-up · Esc closes", false)
+		if command {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Use /btw QUESTION · repeat /btw for a follow-up · Esc closes", false)
+		}
 		return nil
 	}
 	if control.Thread == "" || restoring || control.Replacement.Pending() {

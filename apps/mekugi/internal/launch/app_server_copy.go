@@ -28,7 +28,10 @@ import (
 func showCopyPicker(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool) {
 	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
 	var response string
-	answerOwner := control.BTW
+	var answerOwner *sessioncontrol.Side
+	if attached.presentation.View().BTW != nil {
+		answerOwner = control.BTW
+	}
 	if answerOwner == nil && attached.presentation.DisplayingSide() && *side != nil && !(*side).OneOff {
 		answerOwner = *side
 	}

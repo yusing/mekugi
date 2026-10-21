@@ -373,6 +373,8 @@ func TestAppServerSideFreshReplacementAndDraftIsolation(t *testing.T) {
 	appServerTestKeys(t, u, "\r")
 	start := btwTestRequest(t, w, "turn/start", "first-side")
 	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	u.Editor.Take()
 	appServerTestKeys(t, u, "/side\r")
 	if w.Len() != 0 || u.picker.Kind != sessionpresentation.MenuSideReplace {
 		t.Fatal("replacement did not ask")
@@ -400,12 +402,12 @@ func TestAppServerSideFreshReplacementAndDraftIsolation(t *testing.T) {
 	btwTestReply(t, u, replacement, `{"thread":{"id":"second-side"}}`)
 	btwTestReply(t, u, interrupt, `{}`)
 	btwTestRequest(t, w, "thread/unsubscribe", "first-side")
-	if u.side.Thread != "second-side" || u.Thread != "main" || u.attached.conversation.Editor.Text != "main draft" {
+	if u.side.Thread != "second-side" || u.Thread != "main" || u.attached.conversation.Editor.Text != "" {
 		t.Fatal("late cleanup crossed identity")
 	}
 	selectSideThread(t, u, u.attached.presentation.View().Main)
-	if u.Text != "main draft" {
-		t.Fatal("Main draft not restored")
+	if u.Text != "" {
+		t.Fatal("Main command draft not consumed")
 	}
 }
 
@@ -433,7 +435,6 @@ func TestUISnapshotSideHeaderAndTranscript(t *testing.T) {
 	}
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	uisnapshot.Assert(t, "testdata/snapshots/side-header-main.txt", strings.Join(u.sideFrame(100, 24), "\n")+"\n")
-	selectSideThread(t, u, u.attached.presentation.View().SideThread)
 	appServerTestKeys(t, u, "/side\r")
 	uisnapshot.Assert(t, "testdata/snapshots/side-replace.txt", strings.Join(u.sideFrame(100, 24), "\n")+"\n")
 }
@@ -654,6 +655,7 @@ func TestSideMainForkReplacementCleanup(t *testing.T) {
 			u.reasoningEffort = "high"
 			appServerTestKeys(t, u, "/side\r")
 			sideFork := btwTestRequest(t, w, "thread/fork", "main")
+			selectSideThread(t, u, u.attached.presentation.View().Main)
 			appServerTestKeys(t, u, "/btw question\r")
 			questionFork := btwTestRequest(t, w, "thread/fork", "main")
 			selectSideThread(t, u, u.attached.presentation.View().Main)
@@ -698,10 +700,9 @@ func TestSideSwitchRetiresRewindPickerRead(t *testing.T) {
 	appServerTestKeys(t, u, "/rewind\r")
 	read := resumeTestOne(t, w, "thread/read")
 	selectSideThread(t, u, u.attached.presentation.View().SideThread)
-	appServerTestKeys(t, u, "/side\r")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","turns":[]}}}`, read.ID))
 	menu := u.attached.presentation.View().Menu
-	if menu == nil || menu.Kind != sessionpresentation.MenuSideReplace || menu.Title != "Replace Side?" || len(menu.Choices) != 2 || w.Len() != 0 {
+	if menu != nil || !u.attached.presentation.DisplayingSide() || w.Len() != 0 {
 		t.Fatal("late rewind read replaced the Side menu")
 	}
 }
@@ -720,11 +721,13 @@ func TestUISnapshotBTWAlongsideActiveSide(t *testing.T) {
 			start := btwTestRequest(t, w, "turn/start", "work-side")
 			btwTestReply(t, u, start, `{"turn":{"id":"work-turn"}}`)
 			owner := u.side
+			selectSideThread(t, u, u.attached.presentation.View().Main)
 			appServerTestKeys(t, u, "/btw explain independently\r")
 			fork = btwTestRequest(t, w, "thread/fork", "main")
 			btwTestReply(t, u, fork, `{"thread":{"id":"question"}}`)
 			start = btwTestRequest(t, w, "turn/start", "question")
 			btwTestReply(t, u, start, `{"turn":{"id":"question-turn"}}`)
+			selectSideThread(t, u, u.attached.presentation.View().SideThread)
 			if u.side != owner || owner.Turn != "work-turn" || u.BTW == owner || u.BTW.Thread != "question" || !u.attached.presentation.DisplayingSide() {
 				t.Fatal("BTW replaced or reused the active Side operation")
 			}
@@ -738,6 +741,7 @@ func TestUISnapshotBTWAlongsideActiveSide(t *testing.T) {
 				rows := terminalTest(u).Frame.Rows
 				uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/btw-alongside-%s-%d.txt", owner.Label(), width), rows, width)
 			}
+			selectSideThread(t, u, u.attached.presentation.View().Main)
 			appServerTestKeys(t, u, "kept side draft")
 			if err := terminalTest(u).send("\x1b"); err != nil {
 				t.Fatal(err)
@@ -767,56 +771,57 @@ func TestUISnapshotBTWAlongsideActiveSide(t *testing.T) {
 	}
 }
 
-func TestBTWFailureRestoresOriginatingSideDraft(t *testing.T) {
-	for _, closeOrigin := range []bool{false, true} {
-		t.Run(fmt.Sprint(closeOrigin), func(t *testing.T) {
+func TestSideCommandAndBTWDockIsolation(t *testing.T) {
+	for _, command := range []string{"/side", "/oneoff task"} {
+		t.Run(command, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			appServerTestKeys(t, u, "/side\r")
+			appServerTestKeys(t, u, command+"\r")
 			fork := btwTestRequest(t, w, "thread/fork", "main")
 			btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
-			appServerTestKeys(t, u, "/btw question\r")
-			fork = btwTestRequest(t, w, "thread/fork", "main")
-			appServerTestKeys(t, u, "new side draft")
+			if command != "/side" {
+				start := btwTestRequest(t, w, "turn/start", "work-side")
+				btwTestReply(t, u, start, `{"turn":{"id":"work-turn"}}`)
+			}
+			appServerTestKeys(t, u, "\r")
+			if w.Len() != 0 || strings.Contains(u.attached.feedback.Text, "/btw") {
+				t.Fatal("empty Side input suggested an unavailable command or submitted")
+			}
+			for _, blocked := range []string{"/side", "/fork", "/fork branch", "/oneoff task", "/btw question"} {
+				u.Editor.Take()
+				appServerTestKeys(t, u, blocked)
+				for _, choice := range u.picker.Choices {
+					if sideCommand(choice.Name) != "" || choice.Name == "/fork" {
+						t.Fatalf("unavailable completion: %s", choice.Name)
+					}
+				}
+				appServerTestKeys(t, u, "\r")
+				if w.Len() != 0 || u.Text != blocked {
+					t.Fatalf("blocked command submitted or consumed: %q %s", u.Text, w.String())
+				}
+				for _, choice := range u.picker.Choices {
+					if choice.Name == "/side" || choice.Name == "/fork" || choice.Name == "/oneoff" || choice.Name == "/btw" {
+						t.Fatalf("unavailable completion: %s", choice.Name)
+					}
+				}
+			}
+			u.Editor.Take()
 			selectSideThread(t, u, u.attached.presentation.View().Main)
-			appServerTestKeys(t, u, "main draft")
-			if closeOrigin {
-				if err := closeSide(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
-					t.Fatal(err)
-				}
-				btwTestRequest(t, w, "thread/unsubscribe", "work-side")
-			}
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"fork failed"}}`, fork.ID))
-			if closeOrigin {
-				if !strings.Contains(u.Text, "question") || !strings.HasSuffix(u.Text, "main draft") {
-					t.Fatalf("closed-origin input lost: %q", u.Text)
-				}
-				return
-			}
-			if u.Text != "main draft" || !strings.HasPrefix(strings.Join(strings.Fields(u.side.Drafts.Editor.Text), " "), "/btw question") || !strings.HasSuffix(u.side.Drafts.Editor.Text, "new side draft") {
-				t.Fatalf("restoration crossed draft owners: main=%q side=%q", u.Text, u.side.Drafts.Editor.Text)
-			}
-		})
-	}
-}
-
-func TestBTWOnlyAnimationAndEmptyMainDockGeometry(t *testing.T) {
-	for _, displaySide := range []bool{false, true} {
-		t.Run(fmt.Sprint(displaySide), func(t *testing.T) {
-			u, w := newAppServerTestUI()
-			if displaySide {
-				appServerTestKeys(t, u, "/side\r")
-				fork := btwTestRequest(t, w, "thread/fork", "main")
-				btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
-			}
 			btwTestStart(t, u, w)
+			question := u.BTW
 			u.sideFrame(120, 30)
-			v := u.attached.presentation.View()
-			if !v.BTWRunning || !v.Status.Animating {
-				t.Fatal("running BTW did not schedule animation independently of idle Main and Side")
+			if u.attached.presentation.View().BTW == nil || !u.shell.Main.BTW.Open() {
+				t.Fatal("Main lost BTW dock")
 			}
-			row := u.shell.Main.BTW.Rect.Y + u.shell.Shell.Layout.Main.Y
-			if !strings.Contains(ansi.Strip(terminalTest(u).Frame.Rows[row]), "/btw") {
-				t.Fatal("BTW hit rectangle does not start on its painted header")
+			selectSideThread(t, u, u.attached.presentation.View().SideThread)
+			u.sideFrame(120, 30)
+			if u.attached.presentation.View().BTW != nil || u.shell.Main.BTW.Open() || u.BTW != question {
+				t.Fatal("Side mounted or closed Main's BTW")
+			}
+			if err := terminalTest(u).key(3); err != nil {
+				t.Fatal(err)
+			}
+			if u.side != nil || u.BTW != question {
+				t.Fatal("Side cancellation affected hidden BTW")
 			}
 		})
 	}

@@ -150,7 +150,7 @@ func TestAppServerOneoffNativeCodexE2E(t *testing.T) {
 	if err != nil || string(contents) != "ONEOFF_ENV_INHERITED" {
 		t.Fatalf("one-off write/environment inheritance: contents=%q err=%v", contents, err)
 	}
-	terminal.send("/btw BTW_WHILE_ONEOFF\r")
+	terminal.send("\x021/btw BTW_WHILE_ONEOFF\r")
 	question := next()
 	questionMetadata, _ := codexresponses.DecodeTurnMetadata(question.headers)
 	if questionMetadata.ThreadID == "" || questionMetadata.ThreadID == forkMetadata.ThreadID || questionMetadata.ThreadID == mainMetadata.ThreadID || bytes.Contains(question.body, []byte("ONEOFF_TASK_ONLY")) {
@@ -160,7 +160,7 @@ func TestAppServerOneoffNativeCodexE2E(t *testing.T) {
 	terminal.await("/btw · completed")
 	terminal.send("\x1b")
 	terminal.awaitMatch("BTW closed while One-off remains", func(frame string) bool {
-		return !strings.Contains(frame, "/btw ·") && strings.Contains(frame, "┌ 1 One-off")
+		return !strings.Contains(frame, "/btw ·") && strings.Contains(frame, "┌ 1 Main") && strings.Contains(frame, "One-off")
 	})
 	terminal.send("\x021Main continuation\r")
 	after := next()

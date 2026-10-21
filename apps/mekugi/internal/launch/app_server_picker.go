@@ -116,6 +116,9 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal 
 	if target.Kind == '/' {
 		p.cancelScan()
 		p.filterCommands(target.Query)
+		if attached.presentation.DisplayingSide() {
+			p.Choices = slices.DeleteFunc(p.Choices, func(choice completion.Choice) bool { return sideCommand(choice.Name) != "" || choice.Name == "/fork" })
+		}
 		return
 	}
 	cwd := attached.cwd

@@ -402,7 +402,7 @@ completed result stays available while idle. The shared choice menu preserves th
 prior conversation and requested task on cancellation.
 Escape dismisses selection and menus before closing Side under
 [Conversation's cleanup contract](../../../../modules/conversation/SPEC.md#side-questions).
-An independent `/btw` answer dock appears above the composer without replacing
+An independent `/btw` answer dock appears only on Main above the composer, without replacing
 the displayed transcript. Escape closes that dock before Side; Page Up/Down
 scroll its answer, and `/copy` selects its latest completed response while open.
 
