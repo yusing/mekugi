@@ -1,5 +1,5 @@
 ┌ 1 Main ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│• Inspecting repaint timing for 2s                                                                                    │
+│• Thought for 2s • Inspecting repaint timing                                                                          │
 │├ Ran sleep 1; printf 'captured output'                                                                               │
 │└ Ran shell batch · 2s                                                                                                │
 │      ┆ captured output                                                                                               │

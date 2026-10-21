@@ -366,7 +366,9 @@ quiet period shared with successful command output across Main and children.
 Restored long summaries start folded. Collapsed sections share one row and one
 item duration; dialogs retain each section's full body as pages. Observed durations
 appear only from one second onward, on the final section rather than per section.
-No duration is invented when timing is absent.
+Completed timed headings and short summaries lead with `Thought for Ns`, followed
+by ` • ` and their title or short text when present. No duration is invented when
+timing is absent.
 
 For providers streaming untitled reasoning, an observed request start supplies
 Thinking progress until public text takes over. Other output or turn end removes

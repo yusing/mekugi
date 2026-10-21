@@ -45,31 +45,29 @@ func (p *Painter) thinkingHeader(block Block, width int) (string, bool) {
 	if label == "" {
 		label = presentation.ReasoningSections(block.Body)[0].Label
 	}
-	if label == "" && block.Live {
+	if !block.Live && block.Thought >= time.Second {
+		label = reasoningFor(p.Inline(label), FormatDuration(block.Thought))
+	} else if label == "" && block.Live {
 		label = "Thinking…"
 	} else if label == "" {
 		label = "Thought"
-	}
-	label = p.Inline(label)
-	if !block.Live && block.Thought >= time.Second {
-		elapsed := FormatDuration(block.Thought)
-		suffix := " for " + elapsed
-		label = strings.TrimSuffix(reasoningFor(label, elapsed), suffix)
-		if width > ansi.StringWidth(suffix) {
-			room := width - ansi.StringWidth(suffix)
-			return ansi.Truncate(label, room, "…") + suffix, ansi.StringWidth(label) > room
-		}
-		label += suffix
+	} else {
+		label = p.Inline(label)
 	}
 	return ansi.Truncate(label, max(1, width), "…"), ansi.StringWidth(label) > max(1, width)
 }
 
-// Strip the visible trailing period, preserving Markdown's terminal styles.
+// Lead with elapsed time and strip the visible trailing period, preserving
+// Markdown's terminal styles.
 func reasoningFor(text, elapsed string) string {
 	if dot := strings.LastIndexByte(text, '.'); dot >= 0 && ansi.Strip(text[dot+1:]) == "" {
 		text = text[:dot] + text[dot+1:]
 	}
-	return text + " for " + elapsed
+	prefix := "Thought for " + elapsed
+	if text == "" {
+		return prefix
+	}
+	return prefix + " • " + text
 }
 
 // reasoningRow keeps the whole row faint and italic, including text after

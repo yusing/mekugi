@@ -108,6 +108,7 @@ func TestUISnapshotReasoningShortSummary(t *testing.T) {
 		width      int
 	}{
 		{"subsecond", "Locating rendition file", 0, 40},
+		{"below_second", "Locating rendition file", 999 * time.Millisecond, 40},
 		{"timed", "Locating rendition file", 2 * time.Second, 40},
 		{"heading", "**Locating rendition file**\n\nThe complete body remains available in the dialog.", 2 * time.Second, 40},
 		{"long", "A long summary that needs shortening before its elapsed duration\nMore details.", 12 * time.Second, 32},

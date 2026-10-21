@@ -460,7 +460,7 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 		t.Fatalf("first delta did not take over the block: %d rows, %q", thinkingRows(u.testActivity(u.shell.Agents)), got)
 	}
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r1", "type": "reasoning", "summary": []string{"Planning."}}})
-	if got := feed(u.testActivity(u.shell.Agents)); thinkingRows(u.testActivity(u.shell.Agents)) != 1 || !strings.Contains(got, "• Planning for 3s") {
+	if got := feed(u.testActivity(u.shell.Agents)); thinkingRows(u.testActivity(u.shell.Agents)) != 1 || !strings.Contains(got, "• Thought for 3s • Planning") {
 		t.Fatalf("thinking not timed from the request start: %q", got)
 	}
 
@@ -630,7 +630,7 @@ func TestUISnapshotAppServerReasoningStartsBeforeSummary(t *testing.T) {
 			reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": "**Checking**\n\nPublic summary."})
 			at = at.Add(83 * time.Millisecond)
 			reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{"**Checking**\n\nPublic summary."}}})
-			if got := frame(); strings.Count(got, "Checking for 4s") != 1 {
+			if got := frame(); strings.Count(got, "Thought for 4s • Checking") != 1 {
 				t.Fatalf("summary burst lost observed item duration or duplicated header: %s", got)
 			}
 			uisnapshot.Assert(t, "testdata/snapshots/reasoning-late-summary-"+thread+".txt", frame())

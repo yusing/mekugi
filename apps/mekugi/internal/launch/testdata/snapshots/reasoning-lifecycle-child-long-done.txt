@@ -1,5 +1,5 @@
 ● worker                                                                08:00:00
-│ • Checking tests for 2s
+│ • Thought for 2s • Checking tests
 │   First checkpoint.
 │   
 │   Second checkpoint.

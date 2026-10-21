@@ -1,4 +1,4 @@
 ● worker                                                                08:00:02
-│ • Inspecting layout • Checking completion for 2s
+│ • Thought for 2s • Inspecting layout • Checking completion
 │ 
 │ • Next step

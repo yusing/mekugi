@@ -3,6 +3,6 @@
 │   First checkpoint.
 │   Second checkpoint.
 │ 
-│ • Checking completion for 2s
+│ • Thought for 2s • Checking completion
 │   Third checkpoint.
 │   Fourth checkpoint.

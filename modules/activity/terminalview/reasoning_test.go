@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -33,11 +34,15 @@ func TestUISnapshotThinkingBlock(t *testing.T) {
 		{"timed_bold_period", activityui.Block{Kind: "summary", Body: "**Checking tests.**", Thought: 2 * time.Second, Collapsed: true}},
 		{"empty_completed", activityui.Block{Kind: "summary", Collapsed: true}},
 		{"titled", activityui.Block{Kind: "summary", Body: "**Checking**\n\nPublic summary.", Live: true}},
+		{"titled_completed", activityui.Block{Kind: "summary", Body: "**Checking**\n\nPublic summary.", Thought: 2 * time.Second}},
 		{"partial_title", activityui.Block{Kind: "summary", Body: "**Check", Live: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := activityui.Painter{Theme: diffrender.DarkTheme}
 			rows := p.Block(tc.block, 40)
+			if !tc.block.Live && tc.block.Thought >= time.Second && (len(rows) == 0 || !strings.HasPrefix(ansi.Strip(rows[0]), "• Thought for ")) {
+				t.Fatalf("completed reasoning must lead with its duration: %q", rows)
+			}
 			uisnapshot.Assert(t, "testdata/snapshots/thinking_block_"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
 		})
 	}
