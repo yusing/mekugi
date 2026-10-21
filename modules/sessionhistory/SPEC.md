@@ -42,6 +42,9 @@ forks, and restarts. Inherited references gain another owner. Namespace bindings
 and allocation high-water marks outlive reclaimed payloads, so resuming does not
 recycle handles. Subagents share their root namespace; a fork freezes inherited
 allocation ranges and publishes its new scope after inherited records succeed.
+Fork catalog discovery checks namespace membership before validating complete
+scope records. Unrelated scopes may contain unsupported feature metadata without
+blocking a fork; matching scopes still require full identity and schema validation.
 
 Retention recognizes only contributed record kinds. An unregistered record,
 including an uncatalogued historical record, keeps its catalog and potentially

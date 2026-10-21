@@ -45,7 +45,38 @@ func (s *Store) ReadScope(thread string) (Scope, bool, error) {
 	if err != nil {
 		return scope, false, err
 	}
-	scope = Scope{}
+	return decodeScope(data, thread)
+}
+
+// ScopeInNamespace filters catalog discovery before full scope validation.
+// Unrelated feature metadata cannot affect this namespace's inherited records.
+func (s *Store) ScopeInNamespace(thread, namespace string) (bool, error) {
+	data, err := ReadRecord(filepath.Join(s.directory, ScopeName(thread)))
+	if errors.Is(err, os.ErrNotExist) {
+		return thread == namespace, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var identity struct {
+		Version           int
+		Thread, Namespace string
+	}
+	if err := json.Unmarshal(data, &identity); err != nil {
+		return false, fmt.Errorf("decode handle scope identity: %w", err)
+	}
+	if identity.Version != 1 || identity.Thread != thread || identity.Namespace == "" {
+		return false, errors.New("invalid handle scope identity")
+	}
+	if identity.Namespace != namespace {
+		return false, nil
+	}
+	_, _, err = decodeScope(data, thread)
+	return err == nil, err
+}
+
+func decodeScope(data []byte, thread string) (Scope, bool, error) {
+	var scope Scope
 	if err := json.Unmarshal(data, &scope, json.RejectUnknownMembers(true)); err != nil {
 		return scope, false, fmt.Errorf("decode handle scope: %w", err)
 	}

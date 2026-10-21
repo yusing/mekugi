@@ -128,6 +128,35 @@ func TestScopeRejectsInvalidRetainedIdentityAndRanges(t *testing.T) {
 	}
 }
 
+func TestScopeNamespaceDiscoveryPreservesValidation(t *testing.T) {
+	directory := t.TempDir()
+	store := scopeStore(directory)
+	for _, tc := range []struct {
+		name, wire, namespace string
+		belongs, invalid      bool
+	}{
+		{"unrelated feature", `{"Version":1,"Thread":"branch","Namespace":"branch","Coordinator":{"main":"branch"},"Next":0}`, "other", false, false},
+		{"matching feature", `{"Version":1,"Thread":"branch","Namespace":"branch","Coordinator":{"main":"branch"},"Next":0}`, "branch", false, true},
+		{"matching alias", `{"Version":1,"Thread":"branch","Namespace":"root","Parent":"root","Next":0}`, "root", true, false},
+		{"invalid alias", `{"Version":1,"Thread":"branch","Namespace":"root","Parent":"root","Next":1}`, "root", false, true},
+		{"wrong identity", `{"Version":1,"Thread":"other","Namespace":"other","Next":0}`, "root", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.WriteFile(filepath.Join(directory, history.ScopeName("branch")), []byte(tc.wire), 0600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := store.ScopeInNamespace("branch", tc.namespace)
+			if got != tc.belongs || (err != nil) != tc.invalid {
+				t.Fatalf("membership=%v err=%v", got, err)
+			}
+			data, err := os.ReadFile(filepath.Join(directory, history.ScopeName("branch")))
+			if err != nil || string(data) != tc.wire {
+				t.Fatal("discovery changed retained scope")
+			}
+		})
+	}
+}
+
 func TestScopeReservationsSurviveFailureAndReopen(t *testing.T) {
 	directory := t.TempDir()
 	failure := errors.New("dependent publication failed")

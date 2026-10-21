@@ -2,6 +2,8 @@ package executionobservation
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +88,13 @@ func TestRecordTransactionsInterruptedForkRetriesBeforeScopePublication(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Other retained namespaces can belong to features absent from this build.
+	_, _ = retentionTestSession(t, store, "legacy-coordinator", 0)
+	legacy := `{"Version":1,"Thread":"legacy-coordinator","Namespace":"legacy-coordinator","Coordinator":{"main":"legacy-coordinator","directory":"/legacy","workspace":"/other"},"Next":0}`
+	legacyPath := filepath.Join(store.directory, history.ScopeName("legacy-coordinator"))
+	if err := os.WriteFile(legacyPath, []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
 	parent, releaseParent := retentionTestSession(t, store, "parent", 0)
 	parent = bindTestHandleScope(t, store, parent, "", "")
 	id, err := store.changes.Reserve(parent, store.scoped(parent).changeScope(), "/w", "parent", "capture")
@@ -127,6 +136,9 @@ func TestRecordTransactionsInterruptedForkRetriesBeforeScopePublication(t *testi
 	}
 	if err := store.retainInput(fork, "/w", nil, nil, nil); err != nil {
 		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(legacyPath); err != nil || string(data) != legacy {
+		t.Fatal("fork rewrote unrelated coordinator authority")
 	}
 	releaseParent()
 	retentionTestAge(t, store, "parent", 30*24*time.Hour)

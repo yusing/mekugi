@@ -104,11 +104,11 @@ func RetainInput(ctx context.Context, selected changes.Scope, owner changes.Serv
 					if err != nil {
 						return err
 					}
-					identity, _, err := selected.Store.ReadScope(catalog.Thread)
+					belongs, err := selected.Store.ScopeInNamespace(catalog.Thread, source)
 					if err != nil {
 						return err
 					}
-					if identity.Namespace == source {
+					if belongs {
 						maps.Copy(inherited, catalog.Files)
 					}
 				}
