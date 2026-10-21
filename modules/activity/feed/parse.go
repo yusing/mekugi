@@ -78,7 +78,7 @@ func ParseOperation(paragraph string) Content {
 			block.Body = joined
 		}
 	}
-	if slices.Contains([]string{"Read", "View", "Inspect", "List", "Search", "Skill", "Create", "Edit", "Delete", "Move", "Write"}, block.Verb) && len(lines) == 1 && !(block.Verb == "Skill" && strings.HasPrefix(block.Label, "`run ")) {
+	if slices.Contains([]string{"Read", "View", "Inspect", "List", "Search", "Web Search", "Skill", "Create", "Edit", "Delete", "Move", "Write"}, block.Verb) && len(lines) == 1 && !(block.Verb == "Skill" && strings.HasPrefix(block.Label, "`run ")) {
 		if reads, ok := parseReads(block.Label); ok {
 			if block.Verb != "Read" {
 				for i := range reads {

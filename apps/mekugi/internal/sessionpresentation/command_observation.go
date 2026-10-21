@@ -130,7 +130,7 @@ func ToolText(item observation.Item, cwd string) string {
 			query = cmp.Or(strings.Join(action.Queries, " | "), action.Query, query)
 		}
 	}
-	return "Search " + markdownsyntax.QuoteCode(query)
+	return "Web Search " + markdownsyntax.QuoteCode(query)
 }
 
 // Count returned records only when host evidence is complete and attributable

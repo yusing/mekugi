@@ -102,7 +102,7 @@ func (b Value) MarkdownOutput() bool {
 // watching roll by.
 func (b Value) Instant() bool {
 	switch b.Verb {
-	case "Read", "Search", "Inspect", "List":
+	case "Read", "Search", "Web Search", "Inspect", "List":
 		return true
 	case "Skill":
 		return b.Kind == "reads" // skills-mgr run runs a program.

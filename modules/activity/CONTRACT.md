@@ -98,11 +98,13 @@ group with total elapsed time and individual dialog timing.
 
 Semantic symbol queries retain quoted source: definitions display Read,
 references display Search, malformed calls remain Run. Read spans use `L25–46`.
-Search patterns are literal patterns, with emphasized targets. Grouped path
-targets abbreviate a shared directory as `prefix/{first,second}` when they fit
-on one row. Ranges and per-target counts stay attached to their own operands;
-literal braces or commas keep separate targets. This is display-only: retained
-source, output, dialog pages, copies and navigation keep the original paths.
+Native web queries display Web Search; local searches remain Search. Opening a
+web page remains Open, and finding a pattern within a page remains Search.
+Search patterns and web queries stay literal, with emphasized local targets.
+Grouped path targets abbreviate a shared directory as `prefix/{first,second}`
+when they fit on one row. Ranges and per-target counts stay attached to their
+own operands; literal braces or commas keep separate targets. This is display-only:
+retained source, output, dialog pages, copies and navigation keep the original paths.
 One live invocation's multiple operations reveal at 80 ms intervals in Main, children and
 roster summaries; restored history appears immediately. A completed child
 compaction is an event and latest activity; attempts and failures do not imply it.

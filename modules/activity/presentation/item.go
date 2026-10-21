@@ -160,7 +160,7 @@ func (entry ItemContent) Values() (blocks []Value) {
 			return GroupOperations(command.SegmentValues(false))
 		}
 		blocks := FoldStages(Operations(text))
-		if len(blocks) == 1 && slices.Contains([]string{"Search", "List", "Inspect"}, blocks[0].Verb) && entry.Details != nil {
+		if len(blocks) == 1 && slices.Contains([]string{"Search", "Web Search", "List", "Inspect"}, blocks[0].Verb) && entry.Details != nil {
 			if entry.Details.SearchResults != nil {
 				blocks[0].Results = new(*entry.Details.SearchResults)
 			}

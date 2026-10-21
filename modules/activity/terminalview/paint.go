@@ -43,7 +43,7 @@ func VerbColor(verb string) string {
 		return "\x1b[38;5;75m"
 	case "Commit", "Committed", "Stage":
 		return Hash
-	case "Search", "Find", "Skill":
+	case "Search", "Web", "Find", "Skill":
 		return "\x1b[38;5;141m"
 	case "Run", "Running", "Send", "Sleep", "Wait", "Still", "Stop":
 		return terminalui.Amber
@@ -463,7 +463,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		color := VerbColor(block.Verb)
 		lead, count := block.lead(color, block.Verb), ResultCount(block.Results, block.Verb)+readLines(block)
 		indent := ansi.StringWidth(lead)
-		literal := block.Verb == "Search" || block.Verb == "Skill"
+		literal := block.Verb == "Search" || block.Verb == "Web Search" || block.Verb == "Skill"
 		// fit shortens a path that cannot share its row with its ranges, gap
 		// cells after it, and, on the last row, the count after them.
 		fit := func(read activitymodel.Read, gap int, last bool) string {
@@ -1253,7 +1253,7 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		var names []string
 		for _, read := range block.Reads {
 			name := read.Path
-			if block.Verb != "Search" {
+			if block.Verb != "Search" && block.Verb != "Web Search" {
 				name = name[strings.LastIndex(name, "/")+1:]
 			}
 			names = append(names, name)

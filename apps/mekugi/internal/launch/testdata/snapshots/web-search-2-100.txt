@@ -1,0 +1,8 @@
+"\x1b[38;5;141;1mWeb Search\x1b[m \x1b[38;2;86;212;221msite:example.test/a `Go` | regexp.*\x1b[39;2m (2 results)\x1b[m                                          "
+"           \x1b[38;2;86;212;221mfirst/path | second/path\x1b[39;2m (0 results)\x1b[m                                                     "
+"           \x1b[38;2;86;212;221mthird/path\x1b[39;2m (0 results)\x1b[m                                                                   "
+"\x1b[38;5;75;1mOpen\x1b[m   \x1b[38;2;86;212;221mhttps://example.test/a\x1b[m                                                                       "
+"\x1b[38;5;141;1mSearch\x1b[m \x1b[38;2;86;212;221mneedle.*\x1b[m \x1b[2min\x1b[m \x1b[2mhttps://example.test/\x1b[22;1ma\x1b[22;2m (0 results)\x1b[m                                               "
+"\x1b[38;5;141;1mSearch\x1b[m \x1b[38;2;86;212;221mneedle.*\x1b[m \x1b[2min\x1b[m \x1b[1msrc\x1b[22;2m (0 results)\x1b[m \x1b[2m· \x1b[38;5;203;22mexit 1\x1b[m                                                         "
+"\x1b[38;5;141;1mSearched\x1b[m 2 patterns\x1b[2m • \x1b[38;5;141;22;1mWeb Search\x1b[m ×3\x1b[2m • \x1b[38;5;75;22;1mOpen\x1b[39;22;2m • \x1b[38;5;203;22m1 failed command\x1b[m                                       "
+"plain following row                                                                                 "
