@@ -9,6 +9,10 @@ Mekugi has one interactive UI and one stock JavaScript execution interface. Pres
 identifiers without presenting extra user-facing modes. Direct mode is unsupported: do not design
 or implement it; report any such logic found during the task.
 
+Session resume is product-local: Mekugi resumes Mekugi sessions, and stock Codex
+resumes stock Codex sessions. Cross-product resume compatibility is unsupported
+in both directions; do not design or retain compatibility machinery for it.
+
 Do not create report/summary Markdown unless requested. Observed Mekugi friction may go in
 `FIXME.md` with impact and a concrete next step. Distinguish current failures from fixed history
 and do not equate investigation time with waste.
