@@ -12,6 +12,7 @@ import (
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -145,6 +146,9 @@ func TestUISnapshotMarkdownFileLinks(t *testing.T) {
 	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
 		view.Painter.Theme = diffrender.TerminalTheme
 		rows := view.Painter.Markdown(text, 72, false)
+		for i, row := range rows {
+			rows[i], _ = terminalui.ResolveFileLinks(row, map[string]bool{"sample.go": true, "sample.go:1": true, "sample.go:1-2": true, "missing.go": false, "speed/cost": false}, view.Painter.Theme.Accent())
+		}
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown-file-links.txt", append(rows, "plain after links"), 72)
 	}
 	u.attached.cwd = ""
@@ -229,6 +233,7 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	if drawOutputDialog(u) != markdownFrame {
 		t.Fatal("view switching lost navigation")
 	}
+	awaitMarkdownLinks(t, u)
 	x, y = outputSelectionPoint(t, u, "source")
 	u.outputMouse(0, x, y, false)
 	u.outputMouse(0, x, y, true)
@@ -273,6 +278,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	u := terminalTest(main)
 	u.Width, u.Height = 80, 18
 	u.openBlocks(main.shell.Transcript, []activityui.Block{{Body: "Open sample.go:1 or [remote](https://example.com)."}})
+	awaitMarkdownLinks(t, u)
 	drawOutputDialog(u)
 	before := u.Dialog
 	x, y := outputSelectionPoint(t, u, "remote")

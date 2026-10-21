@@ -29,6 +29,8 @@ type Painter struct {
 	CopyScope  uint64
 	// FileLink authorizes local destinations using the consumer's workspace.
 	FileLink func(target string) bool
+	// DeferFileLinks keeps local candidates private until visible-row admission.
+	DeferFileLinks bool
 }
 
 const (
@@ -230,6 +232,9 @@ func (p *Painter) linkAllowed(target string) bool {
 }
 
 func (p *Painter) inlineLink(label, target string) string {
+	if p.DeferFileLinks && !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+		return "\x1b]8;;" + fileLinkCandidate + url.QueryEscape(target) + "\x1b\\" + label + "\x1b]8;;\x1b\\"
+	}
 	if strings.HasPrefix(target, "/") {
 		path := url.URL{Scheme: "file", Path: target}
 		target = path.String()

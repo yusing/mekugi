@@ -1,0 +1,8 @@
+"\x1b[36;1;4m\x1b]8;;sample.go\aexisting heading\x1b[24m\x1b]8;;\a after\x1b[m"
+"\x1b[2m──────────────────────\x1b[m"
+"                      "
+"\x1b[2m▎\x1b[m \x1b[36;4m\x1b]8;;sample.go:2\aa long wrapped file\x1b[m\x1b]8;;\a "
+"\x1b[2m▎\x1b[m \x1b[36;4m\x1b]8;;sample.go:2\alabel\x1b[m\x1b]8;;\a after         "
+"                      "
+"missing.go and \x1b[36;4m\x1b]8;;https://example.com\aweb\x1b[m\x1b]8;;\a.   "
+"plain after links     "

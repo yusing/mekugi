@@ -37,7 +37,13 @@ func transcriptView(presentation *sessionpresentation.Model, terminal *terminals
 	return terminal.Transcript
 }
 
-func paintNative(u *terminalsession.Attachment, in terminalsession.FrameInput, transcript *activityui.View, source *sessionpresentation.ActivitySource, ctx context.Context, out io.Writer) error {
+func paintNative(files *detailFiles, u *terminalsession.Attachment, in terminalsession.FrameInput, transcript *activityui.View, source *sessionpresentation.ActivitySource, ctx context.Context, out io.Writer) error {
+	scope := in.SourceContext()
+	if in.Selection != nil && in.Dialog == nil && in.SelectionPane == u.Shell.Layout.Main {
+		scope = in.SelectionSource
+	}
+	files.links.selectAttachment(scope.Attachment)
+	in.FileLinks = files.links.known(scope)
 	for {
 		frame, err := u.Frame.Render(ctx, in)
 		if err != nil {
@@ -45,6 +51,12 @@ func paintNative(u *terminalsession.Attachment, in terminalsession.FrameInput, t
 		}
 		if len(frame.Demands) != 0 {
 			transcript.Hydrate(source.ResolveOutputDemands(frame.Demands))
+			continue
+		}
+		if !frame.SelectionRetained && scope != in.SourceContext() {
+			scope = in.SourceContext()
+			in.FileLinks = files.links.known(scope)
+			in.Selection, u.Selection = nil, nil
 			continue
 		}
 		if frame.DiffPainted {
@@ -56,6 +68,7 @@ func paintNative(u *terminalsession.Attachment, in terminalsession.FrameInput, t
 		if err := u.Frame.Write(out, frame, u.Width, u.Faint); err != nil {
 			return err
 		}
+		files.links.request(ctx, scope, frame.FileLinkDemands)
 		if frame.PromptVisible {
 			u.Prompts.Delivered(frame.Prompt)
 		}

@@ -272,6 +272,9 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 							return err
 						}
 						dirty = true
+					case result := <-files.links.results:
+						files.links.finish(result)
+						dirty = true
 					case result := <-files.fileReads:
 						dirty = files.loadedMarkdownFile(&attached.session, views, attached.cwd, shell, result) || dirty
 					case result := <-picker.scanResults:
@@ -1112,7 +1115,7 @@ func paintSession(attached *attachedPresentation, terminal *terminalsession.Atta
 		ctx = context.Background()
 	}
 	view := transcriptView(attached.presentation, terminal)
-	return paintNative(terminal, terminal.FrameInput(at, mekugiVersion()), view, activitySource(attached, terminal, view), ctx, out)
+	return paintNative(files, terminal, terminal.FrameInput(at, mekugiVersion()), view, activitySource(attached, terminal, view), ctx, out)
 }
 
 // Router-owned annotations and authenticated directed inputs supplement the

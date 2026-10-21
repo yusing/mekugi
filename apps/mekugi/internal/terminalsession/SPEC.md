@@ -315,8 +315,11 @@ output is absent. [Selection controls](#selection-and-source-copy) govern frozen
 content and Reference/Copy/Clear. Ctrl-B ! opens the newest displayed error;
 arrows page its retained errors.
 
-Recognized local paths are clickable without checking existence during painting.
-Lexical detection can also link slash-shaped prose; opening validates the target.
+Only existing local paths are highlighted and clickable. The composed visible
+rows request asynchronous existence checks; painting never accesses the filesystem.
+Results are retained for the attachment, displayed thread and workspace, including
+when scrolling away and back. Unchecked or missing paths remain ordinary text;
+opening still validates the current target.
 Opening reads current regular-file UTF-8 contents, up to 8 MiB. Relative
 paths require session workspace metadata; absolute paths and local file URLs are
 accepted. Workspace paths display relatively, external paths absolutely. A

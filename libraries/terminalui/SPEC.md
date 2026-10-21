@@ -53,7 +53,9 @@ plain or unrecognized spans; fenced code uses its language. Styling never change
 source, wrapping or copying. Recognized local links show their label as a terminal
 hyperlink; wrapping preserves the destination without underlining padding/gutters.
 Raw file-shaped text and inline code use caller-admitted destinations without
-filesystem probes. The [terminal consumer](../../apps/mekugi/internal/terminalsession/SPEC.md#content-dialogs)
+filesystem probes. Deferred local destinations retain private annotations through
+wrapping and composition. Only visible annotations request existence checks; the
+terminal resolves them against detached results before delivery. The [terminal consumer](../../apps/mekugi/internal/terminalsession/SPEC.md#content-dialogs)
 owns local-file admission and opening. Spaces may be enclosed in code or an explicit
 link. Fenced code stays literal. Backtick fences accept up to three leading
 spaces, including nested list content; indentation does not turn fence delimiters

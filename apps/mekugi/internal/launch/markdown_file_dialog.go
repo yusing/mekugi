@@ -26,8 +26,8 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-// markdownFileTarget admits local destinations lexically. Only opening touches
-// the filesystem, and relative paths require the selected workspace metadata.
+// markdownFileTarget resolves local destinations lexically. Relative paths
+// require the selected workspace metadata.
 func markdownFileTarget(workspace, target string) (path string, ok bool) {
 	path = target
 	if strings.HasPrefix(target, "file:") {
@@ -65,6 +65,7 @@ func markdownFileLinks(workspace string) func(string) bool {
 // detailFiles bounds asynchronous acquisition independently of live session control.
 // The physical slot survives attachment replacement until its read completes.
 type detailFiles struct {
+	links        markdownLinkChecks
 	fileReadSlot chan struct{}
 	fileReads    <-chan markdownFileResult
 }

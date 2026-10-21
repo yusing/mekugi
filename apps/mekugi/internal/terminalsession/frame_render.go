@@ -35,9 +35,11 @@ type FrameInput struct {
 	LiveHidden, DiffUnseen bool
 	Prefix, Playback       bool
 	PlaybackBar            string
+	FileLinks              map[string]bool
 }
 
 type RenderedFrame struct {
+	FileLinkDemands                []string
 	Notices                        NoticeReceipt
 	Source                         SourceContext
 	Rows                           []string
@@ -47,6 +49,12 @@ type RenderedFrame struct {
 	Prompt                         PromptReceipt
 	PromptVisible                  bool
 	composer                       composerDocument
+}
+
+// SourceContext identifies the selected publication without exposing its model.
+func (in FrameInput) SourceContext() SourceContext {
+	view := in.Main.session
+	return SourceContext{Attachment: view.Version.Attachment, Thread: view.Displayed.ID, Workspace: view.Info.Workspace}
 }
 
 func (in FrameInput) displayedTranscript() *activityui.View {
@@ -84,7 +92,7 @@ func (in FrameInput) Status() ShellStatus {
 func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, err error) {
 	out.SelectionRetained = true
 	view, shell := in.Main.session, in.Shell
-	out.Source = SourceContext{Attachment: view.Version.Attachment, Thread: view.Displayed.ID, Workspace: view.Info.Workspace}
+	out.Source = in.SourceContext()
 	in.Agents.HistoryHint = in.Main.historyHint()
 	out.Prompt = in.Prompts.Update(view)
 	in.Main.PromptRect, in.Main.ContentPainted = Rect{}, false
@@ -166,7 +174,10 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	content.Status = in.Status()
 	out.Rows = shell.Compose(plan, content)
 	if in.Dialog != nil {
+		in.Dialog.FileLinks = in.FileLinks
+		in.Dialog.FileLinkDemands = nil
 		in.Dialog.Paint(out.Rows[:height-1], width, height-1)
+		out.FileLinkDemands = append(out.FileLinkDemands, in.Dialog.FileLinkDemands...)
 	}
 	out.Copy = make([][]terminalui.CopySpan, len(out.Rows))
 	for y := range out.Rows {
@@ -185,6 +196,21 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	}
 	if in.Dialog != nil || in.Selection != nil && out.SelectionRetained {
 		out.Notices.Composer, out.Notices.Content = false, false
+	}
+	// Overlays use cursor-positioned painting. Resolve their final cells so
+	// covered transcript candidates cannot request filesystem work.
+	if in.Dialog != nil || in.Selection != nil && out.SelectionRetained {
+		for y, row := range out.Rows {
+			if strings.Contains(row, "\x1b]8;") {
+				visible, _ := Screen(width, 1, []string{row}, -1, -1)
+				out.Rows[y] = visible[0]
+			}
+		}
+	}
+	for y, row := range out.Rows {
+		var demands []string
+		out.Rows[y], demands = terminalui.ResolveFileLinks(row, in.FileLinks, shell.Theme.Accent())
+		out.FileLinkDemands = append(out.FileLinkDemands, demands...)
 	}
 	out.PromptVisible = shell.PromptVisible(in.Main.PromptRect, in.Dialog != nil, selected)
 	return out, nil

@@ -59,7 +59,7 @@ func (u *terminalUI) frameInput() terminalsession.FrameInput {
 }
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	view := transcriptView(u.main.attached.presentation, u.main.shell)
-	return paintNative(u.Attachment, u.frameInput(), view, activitySource(&u.main.attached, u.main.shell, view), ctx, out)
+	return paintNative(&u.main.detailFiles, u.Attachment, u.frameInput(), view, activitySource(&u.main.attached, u.main.shell, view), ctx, out)
 }
 func (u *terminalUI) openErrors() {
 	if u.Focus == 0 && u.main != nil {

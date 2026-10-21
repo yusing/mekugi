@@ -48,6 +48,9 @@ type Dialog struct {
 	Navigation   string
 	ForceTabs    bool
 	OutputToggle string
+	// FileLinks is detached local-path admission supplied by the application.
+	FileLinks       map[string]bool
+	FileLinkDemands []string
 
 	states      map[string]dialogPageState
 	active      string
@@ -527,6 +530,13 @@ func (d *Dialog) Paint(rows []string, width, height int, painter *terminalui.Pai
 			body[i] = selected.Row(selected.DocumentY(i), painter.Theme)
 		}
 	}
+	d.FileLinkDemands = nil
+	for i, row := range body {
+		var demands []string
+		body[i], demands = terminalui.ResolveFileLinks(row, d.FileLinks, painter.Theme.Accent())
+		d.FileLinkDemands = append(d.FileLinkDemands, demands...)
+	}
+	d.body = body
 	frame := terminalui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.Document, Paused: d.Document.Live && !d.follow, Rows: body, GutterStyles: gutterStyles, Top: d.top, Total: d.total(), Footer: d.footer(w)}
 	if d.Selection != nil {
 		frame.Footer = SelectionHints.Render()

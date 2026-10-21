@@ -74,6 +74,7 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 	for _, terminal := range []*activityui.View{terminal.Transcript, terminal.Agents} {
 		if terminal != nil {
 			terminal.Painter.FileLink = markdownFileLinks(view.Info.Workspace)
+			terminal.Painter.DeferFileLinks = true
 		}
 	}
 	return view

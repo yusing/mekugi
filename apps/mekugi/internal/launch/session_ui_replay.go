@@ -55,6 +55,7 @@ func newUIReplayPlayback(terminalViews terminalsession.Views, owners replayOwner
 func (p *uiReplayPlayback) close() {
 	p.ui.shell.Diff.Close()
 	p.ui.session.Retire()
+	p.ui.links.selectAttachment(0)
 }
 
 func (p *uiReplayPlayback) apply(e playback.Event) error {
@@ -255,6 +256,12 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 		select {
 		case <-p.ctx.Done():
 			return p.ctx.Err()
+		case result := <-p.ui.links.results:
+			p.ui.links.finish(result)
+			if err := paint(); err != nil {
+				return err
+			}
+			continue
 		case result := <-p.ui.fileReads:
 			if p.ui.detailFiles.loadedMarkdownFile(&p.ui.session, p.views, p.ui.cwd, p.ui.shell, result) {
 				if err := paint(); err != nil {

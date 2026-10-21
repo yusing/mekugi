@@ -159,6 +159,7 @@ func (p *uiReplayPlayback) reset() {
 	u.view.Clock, u.agents.Clock = func() time.Time { return p.At }, func() time.Time { return p.At }
 	if previous != nil {
 		u.fileReadSlot = previous.fileReadSlot
+		u.links = previous.links
 		u.shell.Focus, u.shell.DiffOpen = previous.shell.Focus, previous.shell.DiffOpen
 	}
 	u.shell.Shell.Clamp()
@@ -172,6 +173,7 @@ func (p *uiReplayPlayback) publish() {
 	u.shell.Main.Update(view)
 	u.shell.Prompts.Update(view)
 	u.view.Painter.FileLink, u.agents.Painter.FileLink = markdownFileLinks(u.cwd), markdownFileLinks(u.cwd)
+	u.view.Painter.DeferFileLinks, u.agents.Painter.DeferFileLinks = true, true
 	u.publishActivity()
 }
 
@@ -264,5 +266,5 @@ func (p *uiReplayPlayback) paintFrame(out io.Writer, width, height int) error {
 	u.shell.Main.ContentPainted = false
 	u.detailFiles.prepareOutput(&u.session, u.shell)
 	view := u.transcriptView()
-	return paintNative(u.shell, p.frameInput(), view, u.activitySource(view), p.ctx, out)
+	return paintNative(&u.detailFiles, u.shell, p.frameInput(), view, u.activitySource(view), p.ctx, out)
 }
