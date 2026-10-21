@@ -14,6 +14,7 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -245,5 +246,36 @@ func TestNativeMainRepliesQuoteTheirMessageOnce(t *testing.T) {
 	reply("third", "Continuing.")
 	if got := quotes(); got != 2 {
 		t.Fatalf("reply after another message quoted %d times; want 2\n%s", got, ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n")))
+	}
+}
+
+func TestUISnapshotNativeStartedAgentIdentity(t *testing.T) {
+	for _, prompt := range []string{"Review the fix.", ""} {
+		t.Run(fmt.Sprintf("assigned=%t", prompt != ""), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.clock = func() time.Time { return time.Date(2026, 10, 21, 12, 0, 0, 0, time.Local) }
+			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+				"id": "spawn", "type": "collabAgentToolCall", "status": "completed", "tool": "spawnAgent",
+				"senderThreadId": "main", "receiverThreadIds": []string{"child"}, "prompt": prompt, "model": "gpt-effective",
+			}})
+			var rows []string
+			for _, child := range []bool{false, true} {
+				view := u.testActivity(u.shell.Transcript)
+				if child {
+					view = u.testActivity(u.shell.Agents)
+					view.setDisplayFilter(true, "/root/worker")
+				}
+				view.Conversation = true
+				view.Painter.Theme = diffrender.DarkTheme
+				feed := view.RenderFeed(80, 20)
+				plain := ansi.Strip(strings.Join(feed.Lines, "\n"))
+				if !strings.Contains(plain, "▶ worker started · gpt-effective") {
+					t.Fatalf("child=%t: start lost recipient identity:\n%s", child, plain)
+				}
+				rows = append(rows, feed.Lines...)
+			}
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/started_agent_assigned_%t.txt", prompt != ""), append(rows, "plain after starts"), 80)
+		})
 	}
 }

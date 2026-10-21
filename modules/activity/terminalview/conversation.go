@@ -286,14 +286,14 @@ func (v *View) RenderConversation(width int) Feed {
 	return feed
 }
 
-// sentMessage reports a spawn, follow-up or Main message with an Activity
+// sentMessage reports a spawn, follow-up or non-incoming message with an Activity
 // entry, which becomes an excerpt once it has scrolled out of view.
 func (v *View) sentMessage(index int) bool {
 	entry, blocks := v.entries[index], v.entries[index].Values
 	if entry.Activity == 0 || len(blocks) == 0 {
 		return false
 	}
-	return blocks[0].Kind == "start" || entry.Kind == "assignment" || blocks[0].Kind == "message" && blocks[0].From == "/root"
+	return blocks[0].Kind == "start" || entry.Kind == "assignment" || blocks[0].Kind == "message" && blocks[0].To != v.conversationCaller()
 }
 
 // conversationLead reports Main reasoning or commentary, which heads the
@@ -344,21 +344,39 @@ const conversationSourceRows = 5
 // the item cannot join a thread.
 func (v *View) threadAgent(index int) string {
 	entry := v.entries[index]
-	if (entry.Agent == "You" || entry.Kind == "user") || entry.Agent == v.conversationSpeaker() && entry.Kind != "start" && entry.Kind != "assignment" || len(v.entries[index].Values) == 0 {
+	if (entry.Agent == "You" || entry.Kind == "user") || entry.Agent == v.conversationSpeaker() && entry.Kind != "start" && entry.Kind != "assignment" && entry.Kind != "reply" || len(v.entries[index].Values) == 0 {
 		return ""
 	}
-	return trafficAgent(entry, v.blocks(index)[0])
+	return v.trafficAgent(entry, v.blocks(index)[0])
 }
 
-// trafficAgent is the recipient of Main's assignments and messages, and
-// otherwise the agent that sent or finished the traffic.
-func trafficAgent(entry activitypresentation.Entry, block Block) string {
+// conversationCaller is the canonical endpoint of the displayed transcript.
+func (v *View) conversationCaller() string {
+	if speaker := v.conversationSpeaker(); speaker != "Main" {
+		return speaker
+	}
+	return "/root"
+}
+
+// trafficAgent names the started agent or the other peer of a local message.
+// Traffic between other agents must retain its own route, outside a local thread.
+func (v *View) trafficAgent(entry activitypresentation.Entry, block Block) string {
 	agent := ""
 	switch {
-	case block.Kind == "start" || block.Kind == "message" && block.From == "/root":
+	case block.Kind == "start":
+		if block.From != "" && block.To != "" && block.From != v.conversationCaller() && block.To != v.conversationCaller() {
+			return ""
+		}
 		agent = block.To
 	case block.Kind == "message":
-		agent = block.From
+		switch v.conversationCaller() {
+		case block.From:
+			agent = block.To
+		case block.To:
+			agent = block.From
+		default:
+			return ""
+		}
 	case block.Kind == "final" || block.Kind == "error":
 	default:
 		return ""
@@ -610,18 +628,19 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 	if len(blocks) > 0 {
 		block = blocks[0]
 	}
-	agent := trafficAgent(entry, block)
+	agent := v.trafficAgent(entry, block)
+	external := agent == "" && block.From != "" && block.To != "" && (block.Kind == "message" || block.Kind == "start")
 	if agent == "" {
 		agent = entry.Agent
 	}
-	reply := block.From != "/root" && block.Kind != "start" && entry.Kind != "assignment"
+	reply := block.Kind != "start" && entry.Kind != "assignment" && (block.Kind != "message" || block.To == v.conversationCaller())
 	switch {
 	case block.Kind == "start":
 		glyph, detail = terminalui.Green+"▶"+terminalui.Reset, "started"
 		if block.Label != "" {
 			detail += " · " + ansi.Strip(p.Inline(block.Label))
 		}
-	case block.Kind == "message" && block.From == "/root":
+	case block.Kind == "message" && block.From == v.conversationCaller():
 		glyph = terminalui.Dim + "→" + terminalui.Undim
 		if thread.Joined {
 			detail = "follow-up"
@@ -640,6 +659,12 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		}
 	}
 	name := p.Agent(agent)
+	if external {
+		name = p.Route(block)
+		if block.Kind == "message" {
+			glyph = terminalui.Dim + "✉" + terminalui.Undim
+		}
+	}
 	if !v.Conversation {
 		agent = entry.Agent
 		name = p.Agent(agent)
@@ -654,7 +679,7 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		detail = strings.TrimSpace(detail)
 	}
 	color := Gutter(agent, p.Theme)
-	if !v.Conversation && block.Kind == "message" {
+	if external || !v.Conversation && block.Kind == "message" {
 		color = Gutter(block.From, p.Theme)
 	}
 	if thread.Joined {
@@ -674,6 +699,8 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		out.hang(gutter, gutter, v.paintBlock(len(out.lines), 5, func() []string { return p.Event(block, body) }))
 	case block.Kind == "start" || block.Kind == "message":
 		switch {
+		case entry.Activity != 0 && external && block.Kind == "message" && entry.Kind != "assignment":
+			v.linkedExcerpt(out, entry, "message", p.Markdown(block.Body, body, false), gutter, tail, body, limit)
 		case entry.Activity != 0 && reply:
 			v.replyExcerpt(out, entry, block.Body, gutter, tail, body, limit)
 		case v.excerpt(v.Passed[entry.Seq]) && v.sentExcerpt(out, entry, block, gutter, tail, body, limit):

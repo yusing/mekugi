@@ -304,9 +304,12 @@ Activity view. Expanded all and original dialog pages retain the complete source
 
 ## Authored content
 
-Messages retain authored Markdown and sender-colored rails. Outgoing/incoming
-headings name the other peer, using main or the child display name, with two spaces
-after the envelope. Starts indent their assignment without an extra label.
+Messages retain authored Markdown and colored rails. Outgoing/incoming headings
+name the other peer relative to the displayed transcript. Traffic between other
+agents names both actual endpoints, sender first, using the shared colored route;
+it never appears as a reply to the displayed agent. Starts name the newly started
+agent, even without an assignment. They indent their assignment without an extra
+label and retain known sender/recipient routes outside that transcript's exchange.
 Assignments retain original host creation times; arrival time alone governs queue
 retention. Leading/trailing blank streaming lines add no rows. Main completion
 previews retain response and linked assignment excerpts, each up to two wrapped
@@ -349,7 +352,10 @@ without transport quotes. Successful receipts open the exact submitted content;
 failures name omissions and open no invented content. Rejected submissions claim
 no success. Transport envelopes remain hidden from transcripts and recalled input.
 
-Adjacent traffic with one agent forms a thread. Assignments/messages retain exact
+Adjacent traffic between the displayed agent and one peer forms a thread. Traffic
+between other agents keeps separate route headings and sender-colored rails, so
+changing recipients cannot inherit a previous exchange's reply direction.
+Assignments/messages retain exact
 entry links; off-screen old entries shrink to excerpts only when that shortens
 them. Omitted-row links open the retained entry, never nearby similar text. The
 latest exchange keeps the larger excerpt; narrative gaps do not consume excerpt

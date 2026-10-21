@@ -235,7 +235,7 @@ func TestAppServerCommunicationBothAudiences(t *testing.T) {
 			t.Fatalf("communication missing from one audience: %q", body)
 		}
 	}
-	if !strings.Contains(main, "→ reviewer") || !strings.Contains(main, "← reviewer") || strings.Contains(main, "Message sent") || strings.Contains(main, "not loaded") || !strings.Contains(agents, "main → reviewer") || !strings.Contains(agents, "reviewer → main") {
+	if !strings.Contains(main, "→ reviewer") || !strings.Contains(main, "├─← replied") || strings.Contains(main, "Message sent") || strings.Contains(main, "not loaded") || !strings.Contains(agents, "main → reviewer") || !strings.Contains(agents, "reviewer → main") {
 		t.Fatalf("wrong message direction or assignment link:\n%s\n%s", main, agents)
 	}
 }
