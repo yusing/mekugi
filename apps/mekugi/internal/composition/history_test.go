@@ -34,7 +34,7 @@ func TestFrontendsRetainedSegmentsWithoutTransport(t *testing.T) {
 				}
 			}
 			t.Setenv("TMPDIR", temp)
-			runtime, err := Frontends(t.Context(), live, "")
+			runtime, err := Frontends(t.Context(), live, true, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -103,7 +103,7 @@ func TestCompositionCollectsRecordKindsBeforeHostConstruction(t *testing.T) {
 }
 
 func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
-	runtime, err := Frontends(t.Context(), false, "")
+	runtime, err := Frontends(t.Context(), false, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 
 func TestFrontendsOwnsWorkspaceCapture(t *testing.T) {
 	directory := t.TempDir()
-	runtime, err := Frontends(t.Context(), false, directory)
+	runtime, err := Frontends(t.Context(), false, true, directory)
 	if err != nil {
 		t.Fatal(err)
 	}

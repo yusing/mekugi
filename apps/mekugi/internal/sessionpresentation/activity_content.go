@@ -7,7 +7,7 @@ import (
 // Source: apps/mekugi/internal/router/live_activity_blocks.go:19:43@45fbe279
 func ActivityContent(entry ActivityEntry) activitypresentation.ItemContent {
 	content := activitypresentation.ItemContent{
-		Seq: entry.Seq, Agent: entry.Agent, Kind: entry.Kind, Text: entry.Text,
+		Facts:   entry.ActivityFacts(),
 		Command: CommandPresentation(entry), ErrorDetail: entry.ErrorDetail,
 	}
 	if message := entry.Message; message != nil {

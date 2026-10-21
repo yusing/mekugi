@@ -23,6 +23,7 @@ type Settings struct {
 // Features contains optional file defaults for Mekugi-owned boolean flags.
 // Nil keeps the built-in default; explicit false remains distinct from absence.
 type Features struct {
+	ChildReplySummary *bool `toml:"child_reply_summary"`
 	ShellGuard        *bool `toml:"shell_guard"`
 	DeduplicateOutput *bool `toml:"deduplicate_output"`
 	Debug             *bool `toml:"debug"`
@@ -36,6 +37,9 @@ func (c Config) ResolveFeatures(features Features) Config {
 	}
 	if features.DeduplicateOutput != nil && !c.deduplicateOutputSet {
 		c.DeduplicateOutput = *features.DeduplicateOutput
+	}
+	if features.ChildReplySummary != nil && !c.childReplySummarySet {
+		c.ChildReplySummary = *features.ChildReplySummary
 	}
 	if features.Debug != nil && !c.debugSet {
 		c.Debug = *features.Debug

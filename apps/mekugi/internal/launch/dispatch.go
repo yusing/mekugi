@@ -49,7 +49,7 @@ func Run() (exitCode int) {
 		operation = os.Args[1]
 	}
 	if worker != nil || slices.Contains([]string{"inspect-sessions", "replay-session", "inspect-session", "inspect-storage"}, operation) {
-		runtime, err := composition.Frontends(ctx, false, "")
+		runtime, err := composition.Frontends(ctx, false, true, "")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "mekugi:", err)
 			return 1

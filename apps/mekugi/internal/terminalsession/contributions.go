@@ -12,12 +12,13 @@ import (
 
 // Views is the validated, statically selected terminal contribution set.
 type Views struct {
-	auxiliary *terminalui.PaneFactory[*scope.Store]
-	roster    *terminalui.RosterDefinition[*activityview.View]
+	ChildReplySummary bool
+	auxiliary         *terminalui.PaneFactory[*scope.Store]
+	roster            *terminalui.RosterDefinition[*activityview.View]
 }
 
 func NewViews(auxiliary []terminalui.PaneFactory[*scope.Store], roster []terminalui.RosterDefinition[*activityview.View]) (Views, error) {
-	var views Views
+	views := Views{ChildReplySummary: true}
 	if len(auxiliary) > 1 {
 		return Views{}, fmt.Errorf("terminal auxiliary placement has %d contributions; expected at most one", len(auxiliary))
 	}
@@ -51,10 +52,14 @@ func (v Views) RosterLabel() string {
 // NewThreadView keeps the shared child Conversation painter available when no
 // Activity roster is selected. This creates renderer state, never a source service.
 func (v Views) NewThreadView() *activityview.View {
+	var view *activityview.View
 	if v.roster == nil {
-		return activityview.NewView()
+		view = activityview.NewView()
+	} else {
+		view = v.roster.New()
 	}
-	return v.roster.New()
+	view.ChildReplySummary = v.ChildReplySummary
+	return view
 }
 
 // Attach returns separate application preparation and renderer interaction.
@@ -73,6 +78,7 @@ func (v Views) NewAttachment(theme diffrender.Theme) (*Attachment, func(*scope.S
 		Transcript: activityview.NewView(), Agents: v.NewThreadView(), Diff: new(DiffScreen),
 	}
 	u.Transcript.Conversation = true
+	u.Transcript.ChildReplySummary = v.ChildReplySummary
 	u.Agents.ChildrenOnly, u.Agents.Bare = true, true
 	u.RosterLabel, u.Theme = v.RosterLabel(), theme
 	label, attachment := v.Attach(theme)
@@ -87,6 +93,7 @@ func (v Views) ReplaceConversation(terminal *Attachment) {
 	painter := terminal.Transcript.Painter
 	terminal.Transcript = activityview.NewView()
 	terminal.Transcript.Painter, terminal.Transcript.Conversation = painter, true
+	terminal.Transcript.ChildReplySummary = v.ChildReplySummary
 	if terminal.Agents != nil {
 		painter = terminal.Agents.Painter
 		terminal.Agents = v.NewThreadView()

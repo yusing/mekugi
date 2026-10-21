@@ -42,7 +42,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	const assignment = "Inspect the child message and report one finding."
-	message := "Child finding: " + strings.Repeat("the native message must remain complete and attributable; ", 12)
+	message := "## Summary\nChild finding: native delivery preserves the complete reply.\n\n## Details\n" + strings.Repeat("the native message must remain complete and attributable; ", 12)
 	if len(message) <= 512 {
 		t.Fatal("message fixture must exceed the excerpt threshold")
 	}
@@ -66,6 +66,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 	defer client.Close()
 	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
 	setTestAppServerIntegration(u, proxy)
+	u.shell.Transcript.ChildReplySummary = true
 
 	defer terminalTest(u).Diff.Close()
 	if err := u.Request("initialize", nil); err != nil {
@@ -137,14 +138,16 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 					linked = true
 				}
 			}
-			if strings.Count(main, "the native message must remain complete") > 3 || !linked {
+			if strings.Contains(main, "the native message must remain complete") || !strings.Contains(main, "Child finding:") || !linked {
 				t.Fatalf("Main did not collapse/link the message: %s", main)
 			}
 			provider.mu.Lock()
 			seen := provider.messageSeen
+			guided := provider.summaryGuided
+			childRequests := provider.childRequests
 			provider.mu.Unlock()
-			if !seen {
-				t.Fatal("parent model did not receive the original full message")
+			if !seen || !guided || childRequests != 2 {
+				t.Fatalf("single-reply contract: original=%v guided=%v child requests=%d", seen, guided, childRequests)
 			}
 			return
 		}
@@ -152,13 +155,15 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 }
 
 type appServerDirectedMessageProvider struct {
-	mu          sync.Mutex
-	turns       map[string]int
-	assignment  string
-	message     string
-	rootDone    bool
-	messageSeen bool
-	inputShapes []string
+	mu            sync.Mutex
+	turns         map[string]int
+	assignment    string
+	message       string
+	rootDone      bool
+	messageSeen   bool
+	summaryGuided bool
+	childRequests int
+	inputShapes   []string
 }
 
 func (p *appServerDirectedMessageProvider) completed() bool {
@@ -177,7 +182,8 @@ func (p *appServerDirectedMessageProvider) ForwardExecution(_, _ context.Context
 	defer p.mu.Unlock()
 	p.turns[thread]++
 	turn := p.turns[thread]
-	if metadata.SubagentKind == "" && strings.Contains(string(body), p.message) {
+	encodedMessage := string(responses.MustMarshalJSON(p.message))
+	if metadata.SubagentKind == "" && strings.Contains(string(body), encodedMessage[1:len(encodedMessage)-1]) {
 		p.messageSeen = true
 	}
 	{
@@ -208,6 +214,13 @@ func (p *appServerDirectedMessageProvider) ForwardExecution(_, _ context.Context
 	}
 	var item map[string]any
 	if metadata.SubagentKind != "" {
+		p.childRequests++
+		guided := strings.Count(string(body), "For substantive child-to-parent") == 1
+		if p.childRequests == 1 {
+			p.summaryGuided = guided
+		} else {
+			p.summaryGuided = p.summaryGuided && guided
+		}
 		if turn == 1 {
 			item = call("send_message", map[string]any{"target": "/root", "message": p.message})
 		} else {

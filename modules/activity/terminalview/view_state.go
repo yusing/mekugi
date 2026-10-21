@@ -23,7 +23,7 @@ type DisplayIntent struct {
 }
 
 func NewView() *View {
-	v := &View{Following: true, StatusLabel: "CONNECTING", Painter: Painter{CopySource: true, Theme: diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))}}
+	v := &View{ChildReplySummary: true, Following: true, StatusLabel: "CONNECTING", Painter: Painter{CopySource: true, Theme: diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))}}
 	v.Painter.Clock = v.Now
 	return v
 }

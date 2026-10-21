@@ -38,7 +38,7 @@ import (
 
 // Frontends composes feature-owned commands and records for the authenticated
 // frontend host, including retained host facts and Activity snapshots.
-func Frontends(ctx context.Context, liveReports bool, captureDirectory string) (*Runtime, error) {
+func Frontends(ctx context.Context, liveReports, childReplySummary bool, captureDirectory string) (*Runtime, error) {
 	var c Composition
 	conversation := c.Add(conversation.Module, func() conversation.Deps { return conversation.Deps{} })
 	activity := c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
@@ -60,7 +60,7 @@ func Frontends(ctx context.Context, liveReports bool, captureDirectory string) (
 	c.Add(fileread.Module, func() fileread.Deps { return fileread.Deps{} })
 	c.Add(symbolquery.Module, func() symbolquery.Deps { return symbolquery.Deps{} })
 	c.Add(outputdeduplication.Module, func() outputdeduplication.Deps { return outputdeduplication.Deps{} })
-	c.Add(agentguidance.Module, func() agentguidance.Deps { return agentguidance.Deps{} })
+	c.Add(agentguidance.Module, func() agentguidance.Deps { return agentguidance.Deps{ChildReplySummary: childReplySummary} })
 	c.Add(sessionnaming.Module, func() sessionnaming.Deps { return sessionnaming.Deps{} })
 	c.Add(remotewriteapproval.Module, func() remotewriteapproval.Deps { return remotewriteapproval.Deps{} })
 	c.Add(sudoapproval.Module, func() sudoapproval.Deps { return sudoapproval.Deps{} })
@@ -73,6 +73,7 @@ func Frontends(ctx context.Context, liveReports bool, captureDirectory string) (
 	if err != nil {
 		return nil, err
 	}
+	runtime.Terminal.ChildReplySummary = childReplySummary
 	runtime.Replay = replay.Value()
 	runtime.Inspection = inspection.Value()
 	runtime.TransportDiagnostics = transport.Value()

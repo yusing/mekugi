@@ -35,6 +35,8 @@ const (
 // Main and child transcripts share this renderer. Entries carry
 // sequence numbers, so a reconnect snapshot merges without duplicating retained rows.
 type View struct {
+	ChildReplySummary bool // Invocation-selected default disclosure for linked child replies.
+
 	Clock           func() time.Time // Shared with the owning replay UI, nil for live time.
 	publication     *activitypresentation.Publication
 	entries         []activitypresentation.Entry

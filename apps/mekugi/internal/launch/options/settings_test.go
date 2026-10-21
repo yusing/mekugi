@@ -131,6 +131,7 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 	}{
 		{"shell_guard", "shell-guard", true, func(c Config) bool { return c.ShellGuard }},
 		{"deduplicate_output", "deduplicate-output", true, func(c Config) bool { return c.DeduplicateOutput }},
+		{"child_reply_summary", "child-reply-summary", true, func(c Config) bool { return c.ChildReplySummary }},
 		{"debug", "debug", false, func(c Config) bool { return c.Debug }},
 	} {
 		for _, file := range []string{"missing", "", "[features]\n", "false", "true"} {
@@ -195,6 +196,7 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 		"[features]\nshell_guard = 'private-secret'\n",
 		"[features]\ndeduplicate_output = 1\n",
 		"[features]\ndebug = []\n",
+		"[features]\nchild_reply_summary = 'private-secret'\n",
 		"[features]\nprivate_secret = true\n",
 		"[features]\ndebug = true\ndebug = false\n",
 		"[features]\ndebug = 'private-secret",

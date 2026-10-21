@@ -8,8 +8,9 @@ import (
 )
 
 type Service struct {
-	Sections  map[string]string
-	Conflicts func(string) string
+	ChildReplySummary bool
+	Sections          map[string]string
+	Conflicts         func(string) string
 }
 
 func New(sections []guidance.Section) (*Service, error) {

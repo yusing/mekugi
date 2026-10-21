@@ -17,7 +17,8 @@ output paths and resources belong to each run. Configuration errors identify the
 failure without quoting credential-bearing file contents.
 
 The existing Mekugi `config.toml` accepts optional `[features]` boolean defaults:
-`shell_guard = true`, `deduplicate_output = true`, and `debug = false`. Each feature
+`shell_guard = true`, `deduplicate_output = true`, `child_reply_summary = true`,
+and `debug = false`. Each feature
 resolves explicit CLI value, then file value, then built-in default independently.
 Bare flags mean true, `=false` explicitly disables, and the last repeated flag
 wins. Absent files, sections and keys preserve defaults; non-boolean values and

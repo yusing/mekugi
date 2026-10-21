@@ -18,3 +18,6 @@ for (let i = 0; i < results.length; i++) {
 ```
 
 An incomplete result does not establish full coverage; follow its next_call rather than rerunning the producer.
+
+<!-- child-reply-summary -->
+For substantive child-to-parent directed messages and final answers with supporting details, author one reply beginning with exact top-level headings `## Summary` then `## Details`, each with nonblank content. Summary normally uses one to three concise sentences stating the actual outcome, findings or blocker and material uncertainty; Details supplies the supporting evidence and references. Keep both sections in the same existing reply generation, without a separate summary message or formatting/repair turn. Brief acknowledgements and messages without supporting details may stay plain. Higher-priority exact-output requirements prevail. This rule does not apply to Main's ordinary answers or change agent dispatch and authorization.

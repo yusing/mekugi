@@ -3,6 +3,8 @@ package launch
 import (
 	"context"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -339,6 +341,7 @@ func RunSessionUIReplay(terminalViews terminalsession.Views, views *sessionprese
 	session := f.String("session", "", "Codex session ID (required; searches CODEX_HOME or ~/.codex)")
 	debug := f.String("debug-dir", "", "optional debug bundle with provider timing capture.jsonl")
 	speed := f.Float64("speed", 1, "playback speed, 0.1 to 100 (1 = original wall timing)")
+	childSummary := f.Bool("child-reply-summary", true, "show child-authored reply summaries")
 	seed := f.Uint64("seed", 1, "repeatable seed for simulated streaming cadence")
 	headless := f.Bool("headless", false, "render offline without a terminal; write timing summary JSON")
 	width := f.Int("width", 160, "headless terminal columns")
@@ -363,6 +366,21 @@ func RunSessionUIReplay(terminalViews terminalsession.Views, views *sessionprese
 	if !*headless && (!term.IsTerminal(int(stdin.Fd())) || !term.IsTerminal(int(stdout.Fd()))) {
 		return fail(errors.New("interactive playback requires a terminal; use --headless for profiling"))
 	}
+	settings, err := launchoptions.LoadSettings(false)
+	if err != nil {
+		return fail(err)
+	}
+	var featureArgs []string
+	f.Visit(func(item *flag.Flag) {
+		if item.Name == "child-reply-summary" {
+			featureArgs = append(featureArgs, "--child-reply-summary="+strconv.FormatBool(*childSummary))
+		}
+	})
+	options, err := launchoptions.Parse(featureArgs)
+	if err != nil {
+		return fail(err)
+	}
+	terminalViews.ChildReplySummary = options.ResolveFeatures(settings.Features).ChildReplySummary
 	fmt.Fprintln(stderr, "Loading recorded session and child items…")
 	rollouts, err := discoverDebugRollouts(ctx, []string{*session})
 	if err != nil {

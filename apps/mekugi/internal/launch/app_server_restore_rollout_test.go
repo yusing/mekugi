@@ -68,6 +68,7 @@ func rolloutFailedCell(at int, call, message string) []map[string]any {
 // inter-agent messages; the rollout retains both. Restoration shows them where
 // live Activity did, in both audiences, without the router having seen them.
 func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
+	const report = "\n## Summary\nI found a failure.\n\n## Details\nThe retained supporting evidence.\n\tLiteral code tab.\n"
 	workspace := t.TempDir()
 	u := newAppServerSessionTestUI(t, workspace)
 	u.shell.Agents = terminalTest(u).Agents
@@ -83,7 +84,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	rootRecords = append(rootRecords, rolloutFailedCell(3, "cell-root", "SyntaxError: Unexpected token '<<'")...)
 	rootRecords = append(rootRecords,
 		rolloutCompleted(4, "r1", "spawn"),
-		rolloutAgentMessage(20, "/root/reviewer", "/root", "MESSAGE", "I found a failure."),
+		rolloutAgentMessage(20, "/root/reviewer", "/root", "MESSAGE", report),
 		rolloutAgentMessage(40, "/root/reviewer", "/root", "FINAL_ANSWER", "Review complete."),
 		rolloutCompleted(41, "r1", "answer"),
 		rolloutRecord(50, "event_msg", map[string]any{"type": "task_started", "turn_id": "r2"}),
@@ -157,7 +158,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 		"Main|error|exec script failed: SyntaxError: Unexpected token '<<'",
 		"Main|start|`gpt-6-luna` `high`|Inspect the change.",
 		"Main|reply|/root->/root/reviewer|Keep going.",
-		"/root/reviewer|reply|/root/reviewer->/root|I found a failure.",
+		"/root/reviewer|reply|/root/reviewer->/root|" + report,
 		"/root/reviewer|final|Review complete.",
 		"Main|text|All reviewed.",
 		"Main|reply|/root->/root/reviewer|One more thing.",
@@ -172,6 +173,25 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 		}
 	}
 
+	mainFeed := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 80).Lines, "\n"))
+	if !strings.Contains(mainFeed, "I found a failure.") || strings.Contains(mainFeed, "retained supporting evidence") {
+		t.Fatalf("restored recipient summary: %s", mainFeed)
+	}
+	for _, record := range u.attached.source.Entries {
+		if record.Source.Message != nil && record.Source.Message.Text == report {
+			if record.Values[0].ReplySummary == "" || !terminalTest(u).openActivityReply(record.Source.Seq) {
+				t.Fatal("restored recipient reply lost summary or navigation")
+			}
+			if err := u.testPaint(&bytes.Buffer{}, 100, 28); err != nil {
+				t.Fatal(err)
+			}
+			if terminalTest(u).Dialog.Document.Text != report {
+				t.Fatal("restored reply dialog changed original")
+			}
+			terminalTest(u).outputKey("\x1b")
+		}
+	}
+
 	var pane []string
 	for _, entry := range u.attached.childSource.Entries {
 		if entry.Source.Agent == "/root/reviewer" {
@@ -183,7 +203,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 		"tool",
 		"error|exec script failed: ReferenceError: tools is not defined",
 		"reply|/root->/root/reviewer|Keep going.",
-		"reply|/root/reviewer->/root|I found a failure.",
+		"reply|/root/reviewer->/root|" + report,
 		"final|Review complete.",
 		"reply|/root->/root/reviewer|One more thing.",
 	}

@@ -141,7 +141,7 @@ func TestPublicOptionsExposeOneInterface(t *testing.T) {
 }
 
 func TestFeatureFlagsPreserveSyntaxAndHostArguments(t *testing.T) {
-	for _, name := range []string{"shell-guard", "deduplicate-output", "debug"} {
+	for _, name := range []string{"shell-guard", "deduplicate-output", "child-reply-summary", "debug"} {
 		if _, err := Parse([]string{"--" + name + "=invalid"}); err == nil {
 			t.Fatalf("accepted invalid %s", name)
 		}
@@ -157,8 +157,8 @@ func TestFeatureFlagsPreserveSyntaxAndHostArguments(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resolved := parsed.ResolveFeatures(Features{ShellGuard: new(true), DeduplicateOutput: new(true), Debug: new(true)})
-		if name == "shell-guard" && resolved.ShellGuard || name == "deduplicate-output" && resolved.DeduplicateOutput || name == "debug" && resolved.Debug {
+		resolved := parsed.ResolveFeatures(Features{ShellGuard: new(true), DeduplicateOutput: new(true), ChildReplySummary: new(true), Debug: new(true)})
+		if name == "shell-guard" && resolved.ShellGuard || name == "deduplicate-output" && resolved.DeduplicateOutput || name == "debug" && resolved.Debug || name == "child-reply-summary" && resolved.ChildReplySummary {
 			t.Fatal("delimiter lost explicit false")
 		}
 	}

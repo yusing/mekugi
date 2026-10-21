@@ -33,6 +33,7 @@ type Value struct {
 	Output int
 
 	feed.Content
+	ReplySummary                         string // Derived from the completed original body; never replaces Body.
 	Repeated                             string
 	AttachmentID                         string // Durable submitted snapshot and source, shared by its chunks.
 	Ended, Started                       time.Time

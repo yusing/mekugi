@@ -28,12 +28,16 @@ var workflowPreamble string
 
 var frontendFramingTag = regexp.MustCompile(`</?(?:tool|mekugi-frontends)[\t\r\n />]`)
 
-func frontendGuide(commands []command.Spec, sections map[string]string) (binding.FrontendGuidance, error) {
+func frontendGuide(commands []command.Spec, sections map[string]string, childReplySummary bool) (binding.FrontendGuidance, error) {
 	if len(commands) == 0 {
 		return binding.FrontendGuidance{}, nil
 	}
 	var output, workflow strings.Builder
-	workflow.WriteString(workflowStart + "\n" + workflowPreamble)
+	base, childRule, _ := strings.Cut(workflowPreamble, "<!-- child-reply-summary -->")
+	workflow.WriteString(workflowStart + "\n" + base)
+	if childReplySummary {
+		workflow.WriteString(childRule)
+	}
 	output.WriteString(preamble)
 	for _, spec := range commands {
 		if err := spec.Validate(); err != nil {

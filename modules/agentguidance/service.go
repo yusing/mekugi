@@ -5,8 +5,12 @@ import (
 	"github.com/yusing/mekugi/modules/agentguidance/internal/policy"
 )
 
-type Deps struct{}
+type Deps struct{ ChildReplySummary bool }
 
-func newService(_ Deps, slots module.Slots) (*policy.Service, error) {
-	return policy.New(slots.Guidance)
+func newService(deps Deps, slots module.Slots) (*policy.Service, error) {
+	service, err := policy.New(slots.Guidance)
+	if err == nil {
+		service.ChildReplySummary = deps.ChildReplySummary
+	}
+	return service, err
 }

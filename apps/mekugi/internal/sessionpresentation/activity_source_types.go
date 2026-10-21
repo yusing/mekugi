@@ -70,6 +70,9 @@ type ActivityEvent struct {
 // Source: apps/mekugi/internal/router/subagent_activity_pane.go:91:113@45fbe279
 func (entry ActivityEntry) ActivityFacts() activitypresentation.Facts {
 	facts := activitypresentation.Facts{Retained: entry.Side, Seq: entry.Seq, Agent: entry.Agent, Kind: entry.Kind, Text: entry.Text, Observed: entry.Observed, Activity: entry.ActivitySeq, Completed: entry.Completed, ContextBoundary: ContextBoundary(entry)}
+	// Restored recipient envelopes have no native item, but their body has
+	// already been delivered just like a live recipient-input supplement.
+	facts.ItemComplete = entry.Native == nil && entry.Kind == "reply" && entry.Message != nil
 	if entry.Assignment != nil {
 		facts.Assignment = true
 		facts.AssignmentTo, facts.AssignmentText = entry.Assignment.To, entry.Assignment.Text
@@ -79,7 +82,9 @@ func (entry ActivityEntry) ActivityFacts() activitypresentation.Facts {
 			facts.TextRef = observation.ItemRef{ThreadID: n.Thread, TurnID: n.Turn, ItemID: n.Item}
 		}
 		facts.Running, facts.Live, facts.Restored, facts.Unconfirmed = n.Running, n.Live, !n.Live, n.Unconfirmed()
-		facts.ItemComplete = n.Phase == "item/completed"
+		// Recipient-input supplements contain an already-delivered complete
+		// message, even when Codex emitted no public tool-completion item.
+		facts.ItemComplete = n.Phase == "item/completed" || n.Phase == "supplement" && entry.Kind == "reply" && entry.Message != nil
 		facts.Spans, facts.Question = n.Spans, n.Question
 		facts.Suppressed, facts.RosterOnly = n.Phase == "queued-summary", n.Wait != nil
 		facts.OutputComplete = n.Exit != nil && *n.Exit == 0 || !n.Live && len(n.Segments) > 0 ||

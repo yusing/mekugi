@@ -34,16 +34,23 @@ func TestSessionUIReplayRetainedCollaborationDelivery(t *testing.T) {
 			"model": "child-model", "reasoning_effort": "high",
 		}))
 	}
+	records = append(records, replayTestItem("root", "turn", replayTestEpoch+1, replayTestEpoch+1, map[string]any{
+		"type": "SubAgentActivity", "id": "child-start", "agent_thread_id": "child", "agent_path": "/root/child", "kind": "spawn",
+	}))
 	records = append(records, replayTestRecord("event_msg", replayTestEpoch+6000, map[string]any{"type": "task_complete", "turn_id": "turn"}))
 	path := replayTestWrite(t, dir, "rollout-root.jsonl", records...)
-	replayTestWrite(t, dir, "rollout-child.jsonl", replayTestMeta("child"))
+	replayTestWrite(t, dir, "rollout-2023-child.jsonl", replayTestMeta("child"),
+		replayTestItem("child", "child-turn", replayTestEpoch+4500, replayTestEpoch+5500, map[string]any{
+			"type": "CollabAgentToolCall", "id": "child-summary", "tool": "send_message", "status": "completed",
+			"sender_thread_id": "child", "receiver_thread_ids": []string{"root"}, "prompt": childReplySummaryBody,
+		}))
 	source, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
-	want := map[string]string{"0\x00child": "spawn_agent body", "1\x00child": "send_input body", "2\x00child": "followup_task body", "3\x00child": "send_message body"}
+	want := map[string]string{"0\x00child": "spawn_agent body", "1\x00child": "send_input body", "2\x00child": "followup_task body", "3\x00child": "send_message body", "child-summary\x00root": childReplySummaryBody}
 	for pass := range 2 {
 		if pass > 0 {
 			if err := p.seek(0); err != nil {
@@ -71,6 +78,10 @@ func TestSessionUIReplayRetainedCollaborationDelivery(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("pass %d collaboration delivery = %#v, want %#v", pass, got, want)
 		}
+		main := ansi.Strip(strings.Join(p.ui.testActivity(p.ui.view).RenderFeed(140, 80).Lines, "\n"))
+		if !strings.Contains(main, "Fixed exact reply navigation") || strings.Contains(main, "supporting explanation") {
+			t.Fatalf("replay summary changed: %s", main)
+		}
 		child := p.ui.session.Agent(p.ui.session.KnownCaller("child"))
 		if child == nil || child.Settings.Model != "child-model" || child.Settings.Effort != "high" {
 			t.Fatalf("spawn settings lost: %+v", child)
@@ -78,6 +89,9 @@ func TestSessionUIReplayRetainedCollaborationDelivery(t *testing.T) {
 		p.ui.testActivity(p.ui.agents).displayThread(child.Name)
 		frame := replayPlaybackTestPaint(t, p, 140, 45)
 		for _, text := range want {
+			if text == childReplySummaryBody {
+				text = "The supporting explanation stays in the retained reply."
+			}
 			if !strings.Contains(frame, text) {
 				t.Fatalf("pass %d rendered collaboration hides %q:\n%s", pass, text, frame)
 			}

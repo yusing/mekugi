@@ -56,7 +56,7 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			runtime, err := composition.Frontends(ctx, false, directory)
+			runtime, err := composition.Frontends(ctx, false, true, directory)
 			if err != nil {
 				t.Fatal(err)
 			}

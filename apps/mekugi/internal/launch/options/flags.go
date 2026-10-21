@@ -24,6 +24,7 @@ type Config struct {
 	ANSIFaint         string
 	ShellGuard        bool
 	DeduplicateOutput bool
+	ChildReplySummary bool
 	GrokAuthFile      string
 	CaptureOutput     string
 	Debug             bool
@@ -32,6 +33,7 @@ type Config struct {
 
 	shellGuardSet        bool
 	deduplicateOutputSet bool
+	childReplySummarySet bool
 	debugSet             bool
 }
 
@@ -51,6 +53,8 @@ func Parse(args []string) (Config, error) {
 			config.shellGuardSet = true
 		case "deduplicate-output":
 			config.deduplicateOutputSet = true
+		case "child-reply-summary":
+			config.childReplySummarySet = true
 		case "debug":
 			config.debugSet = true
 		}
@@ -90,6 +94,7 @@ func newFlags(stderr io.Writer, config *Config) *flag.FlagSet {
 	flags.BoolVar(&config.DeduplicateOutput, "deduplicate-output", true, "deduplicate output and attachments in model input")
 	flags.StringVar(&config.GrokAuthFile, "grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)")
 	flags.StringVar(&config.CaptureOutput, "capture-output", "", "optional sanitized capture JSONL path")
+	flags.BoolVar(&config.ChildReplySummary, "child-reply-summary", true, "show child-authored summaries in Main with full replies in the dialog")
 	flags.BoolVar(&config.Debug, "debug", false, "record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print session diagnosis command on exit")
 	return flags
 }

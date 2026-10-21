@@ -120,7 +120,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			return 1, fmt.Errorf("initialize replay storage: %w", err)
 		}
 	}
-	frontends, err := composition.Frontends(ctx, appUI && options.FrontendsEnabled(), captureDirectory)
+	frontends, err := composition.Frontends(ctx, appUI && options.FrontendsEnabled(), options.ChildReplySummary, captureDirectory)
 	if err != nil {
 		return 1, err
 	}

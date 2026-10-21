@@ -19,7 +19,7 @@ var Codex = Bindings{
 			},
 			AfterAttachments: afterAttachments,
 			Frontends: func(commands []command.Spec) (binding.FrontendGuidance, error) {
-				return frontendGuide(commands, service.Sections)
+				return frontendGuide(commands, service.Sections, service.ChildReplySummary)
 			},
 			ToolDescription:  toolDescription,
 			BaseInstructions: baseInstructions,

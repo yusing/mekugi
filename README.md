@@ -36,7 +36,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
 
 - **Native terminal UI.** [Main, Diff, and Agents](#ui)
   share one terminal without an external pane manager.
-- **Live subagent activity.** See model, effort, progress, and message excerpts
+- **Live subagent activity.** See model, effort, progress, and child-authored reply summaries
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
 - **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);
   click an Edit event to open its captured file and hunk.
@@ -365,6 +365,7 @@ rewritten:
 [features]
 shell_guard = true
 deduplicate_output = true
+child_reply_summary = true
 debug = false
 
 [service_tiers]
@@ -390,6 +391,13 @@ to that invocation and its child threads, never write the file or saved session
 settings, and are preserved in the printed resume command. A fresh launch or
 resume reads the current file again.
 
+Child replies normally include a short authored Summary and supporting Details in
+one response. Main shows the complete summary; **Open reply** opens the retained
+original. Plain or malformed replies keep the excerpt fallback. Set
+`child_reply_summary = false` or launch `mekugi --child-reply-summary=false codex`
+to use excerpts for all replies and omit the child-authoring rule. This adds no
+separate summarization request and leaves parent input and child transcripts intact.
+
 Exact model IDs select tiers: `auto`, `default`, `fast` (sent as `priority`),
 `priority`, or `flex`, subject to provider support. `/tier` choices override defaults
 for that thread/model during the invocation. The composer shows the effective tier;
@@ -402,6 +410,7 @@ for that thread/model during the invocation. The composer shows the effective ti
 | `--ansi-faint` | `auto` | Detect mosh; `on` uses ANSI faint, `off` fixed muted colors |
 | `--shell-guard` | `true` | Guard UI remote writes and sudo commands, even with `--yolo` |
 | `--deduplicate-output` | `true` | Reference duplicates in model input; full results/evidence stay intact |
+| `--child-reply-summary` | `true` | Show child-authored summaries in Main, with the original behind Open reply |
 | `--grok-auth-file` | `~/.grok/auth.json` | OAuth store |
 | `--timeout` | `10m` | Wait for response start |
 | `--stream-idle-timeout` | `4m` | Limit provider-message or HTTP-byte gaps |

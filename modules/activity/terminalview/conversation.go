@@ -702,7 +702,7 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		case entry.Activity != 0 && external && block.Kind == "message" && entry.Kind != "assignment":
 			v.linkedExcerpt(out, entry, "message", p.Markdown(block.Body, body, false), gutter, tail, body, limit)
 		case entry.Activity != 0 && reply:
-			v.replyExcerpt(out, entry, block.Body, gutter, tail, body, limit)
+			v.childReply(out, entry, block, gutter, tail, body, limit)
 		case v.excerpt(v.Passed[entry.Seq]) && v.sentExcerpt(out, entry, block, gutter, tail, body, limit):
 		case thread.Followed:
 			v.collapsedItem(out, entry, p.Markdown(block.Body, body, false), gutter, body)
@@ -727,7 +727,7 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 					}
 				}
 				if entry.Activity != 0 {
-					v.replyExcerpt(out, entry, block.Body, gutter, tail, body, limit)
+					v.childReply(out, entry, block, gutter, tail, body, limit)
 				} else {
 					out.hang(gutter, gutter, p.Markdown(block.Body, body, false))
 				}
@@ -801,6 +801,15 @@ func (v *View) replyContext(out *conversationLines, question activitypresentatio
 	for _, row := range rows {
 		out.add(question.Seq, gutter+row)
 	}
+}
+
+func (v *View) childReply(out *conversationLines, entry activitypresentation.Entry, block Block, gutter, tail string, width, limit int) {
+	if v.ChildReplySummary && v.Expansion == 0 && block.ReplySummary != "" {
+		out.hang(gutter, gutter, v.Painter.Markdown(block.ReplySummary, width, false))
+		out.add(entry.Seq, tail+ansi.Truncate(v.Painter.Theme.Accent()+"↩ Open reply"+terminalui.Reset, width, "…"))
+		return
+	}
+	v.replyExcerpt(out, entry, block.Body, gutter, tail, width, limit)
 }
 
 func (v *View) replyExcerpt(out *conversationLines, entry activitypresentation.Entry, text, gutter, tail string, width, limit int) {

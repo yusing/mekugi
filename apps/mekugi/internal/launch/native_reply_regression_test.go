@@ -79,12 +79,15 @@ func TestNativeChildAnswerPromotionRequiresMatchingSuccessfulTurn(t *testing.T) 
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn"}})
-			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{"id": "note", "type": "agentMessage", "text": "An interim note."}})
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{"id": "note", "type": "agentMessage", "text": childReplySummaryBody}})
 			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": tc.completionTurn, "status": tc.status}})
 			finals := 0
 			for _, entry := range u.attached.source.Entries {
 				if entry.Source.Agent == "/root/worker" && entry.Source.Kind == "final" {
 					finals++
+					if entry.Values[0].ReplySummary == "" {
+						t.Fatal("promoted answer lost its authored summary")
+					}
 				}
 			}
 			if (finals == 1) != tc.wantFinal {

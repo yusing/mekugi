@@ -61,6 +61,18 @@ Review handoffs include the requested scope and explicit IDs or same-agent inclu
 the recipient's own change listing cannot discover another agent's IDs. Historical edit evidence
 does not assert the current workspace state.
 
+The invocation's `child_reply_summary` feature conditionally contributes a rule
+inside the existing marked workflow section. Enabled children author substantive
+child-to-parent directed messages and final answers with a concise, meaningful
+`## Summary` and supporting `## Details` in the same existing reply generation.
+The summary states the actual result, findings or blocker and material uncertainty,
+normally in one to three sentences. Brief acknowledgements may remain plain;
+higher-priority exact-output requirements and root ordinary answers are unchanged.
+There is no separate summary message, repair turn or extra model request.
+Disabled invocations omit only this rule. Authenticated assembly applies the
+current invocation value once to fresh/no-history children, forks, switches and
+resumed requests, preserving caller text outside the owned workflow section.
+
 Before provider forwarding, the router strips blocks enclosed by the exact HTML comments
 `<!-- mekugi:omit -->` and `<!-- /mekugi:omit -->`, including both comments. This is an explicit
 caller-authored filtering contract, distinct from pinned conflict rewriting. It applies to top-level instructions,

@@ -13,7 +13,7 @@ import (
 
 func testComposition(t *testing.T) *composition.Runtime {
 	t.Helper()
-	runtime, err := composition.Frontends(t.Context(), false, "")
+	runtime, err := composition.Frontends(t.Context(), false, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}

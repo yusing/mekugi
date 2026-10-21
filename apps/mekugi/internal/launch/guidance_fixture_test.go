@@ -31,7 +31,7 @@ var testGuidance = sync.OnceValue(func() *binding.Guidance {
 	} {
 		sections = append(sections, group...)
 	}
-	service, err := agentguidance.Module.New(agentguidance.Deps{}, module.Slots{Guidance: sections})
+	service, err := agentguidance.Module.New(agentguidance.Deps{ChildReplySummary: true}, module.Slots{Guidance: sections})
 	if err != nil {
 		panic(err)
 	}

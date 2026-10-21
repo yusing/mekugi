@@ -311,10 +311,29 @@ it never appears as a reply to the displayed agent. Starts name the newly starte
 agent, even without an assignment. They indent their assignment without an extra
 label and retain known sender/recipient routes outside that transcript's exchange.
 Assignments retain original host creation times; arrival time alone governs queue
-retention. Leading/trailing blank streaming lines add no rows. Main completion
-previews retain response and linked assignment excerpts, each up to two wrapped
-rows with truncation indication; children retain full content. Only exact retained
+retention. Leading/trailing blank streaming lines add no rows. Only exact retained
 replacement provenance can combine enriched replies; text similarity is not proof.
+
+With invocation-level `child_reply_summary` enabled (the default), completed child
+replies can carry a child-authored summary and supporting details in one original
+message. A leading top-level `## Summary` after optional blank lines, nonblank
+summary content, then top-level `## Details` and nonblank details identify it.
+Labels are exact and case-sensitive. Quoted, indented and fenced lookalikes are
+ordinary content; another Summary before Details is ambiguous and falls back.
+Everything after the first valid Details delimiter is ordinary detail content.
+Activity derives the summary once at its shared presentation boundary, preserving
+source identity and original content without a second record or persistent store.
+
+Default Main disclosure shows the complete summary with normal Markdown wrapping
+and `↩ Open reply`, without an excerpt limit or omitted-detail line count. Explicit
+expanded disclosure and the child transcript retain the original body. Missing,
+malformed, empty and in-flight structures use the existing excerpt and dialog:
+four wrapped rows for the latest reply, two for earlier replies. Disabling the
+feature selects that fallback even for retained structured replies. Root ordinary
+answers remain unchanged. Opening selects the exact retained Activity entry and
+shows the original Summary and Details, subject to explicit retention limits.
+No parsing, display, reopening, restoration or replay generates a model request,
+repairs a reply, changes parent input or merges messages by text.
 
 Shared [Markdown, tables, links and Mermaid](../../libraries/terminalui/SPEC.md)
 preserve source-aware copy. Child text is sanitized before layout. Agent names
