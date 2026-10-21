@@ -436,7 +436,7 @@ func (v *View) ClickTarget(block *Block, snippet Snippet, width int) bool {
 // still running, carrying source a row may clip, or standing for several
 // reads. Edits open their captured change instead, and questions their dock.
 func OutputBlock(block Block) bool {
-	if block.Kind != "op" && block.Kind != "reads" || block.EditSource != "" || len(block.Questions) > 0 {
+	if block.Kind != "op" && block.Kind != "reads" || block.EditOperation() || len(block.Questions) > 0 {
 		return false
 	}
 	return block.Output != 0 || len(block.Tail)+block.TailOmitted > 0 || len(block.Changes) > 0 || block.Code != "" || len(block.Members) > 0
@@ -1457,7 +1457,7 @@ func (v *View) renderRun(first uint64, agent string, observed time.Time, blocks 
 			hint := Elision{Hidden: len(part) - limit + 1, Hovered: snippet == v.Snippet}
 			part = append(part[:limit-1:limit-1], hint.String())
 		}
-		if block.EditSource != "" {
+		if block.EditOperation() {
 			snippet = Snippet{Run: block.Source, Block: EditNavigationSnippet, Path: block.EditPath()}
 		}
 		switch {

@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
@@ -77,6 +78,13 @@ type ChangeRow struct {
 	Added, Removed          int
 	Note                    string
 	Footer                  bool
+}
+
+// EditOperation identifies edit rows independently of their optional writer
+// label. Stock exec captures can have no recognized writer; their effect,
+// grouping and retained-change navigation still belong to the invocation.
+func (b Value) EditOperation() bool {
+	return b.Kind == "op" && (b.EditSource != "" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, b.Verb))
 }
 
 // EditPath returns the unshortened target of an edit row, when known.

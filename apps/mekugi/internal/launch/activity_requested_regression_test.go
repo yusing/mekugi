@@ -176,7 +176,7 @@ func TestRequestedConsecutiveInspectGroupingBoundaries(t *testing.T) {
 	}})
 	feed := strings.Join(plainLines(view.RenderFeed(150, 28).Lines), "\n")
 	if strings.Count(feed, "Inspect ") != 3 || !strings.Contains(feed, "a.go · b.go · c.go") ||
-		!strings.Contains(feed, "Read ") || !strings.Contains(feed, "Edit ") ||
+		!strings.Contains(feed, "Read ") || !strings.Contains(feed, "Edited ") ||
 		!strings.Contains(feed, "f.go") || !strings.Contains(feed, "g.go") {
 		t.Fatalf("inspect grouping crossed action, detail, or agent boundary:\n%s", feed)
 	}

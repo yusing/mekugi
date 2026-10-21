@@ -517,7 +517,7 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 				block.SourceRows = conversationSourceRows
 			}
 			target := Snippet{}
-			if block.EditSource != "" {
+			if block.EditOperation() {
 				target = Snippet{Run: block.Source, Block: EditNavigationSnippet, Path: block.EditPath()}
 			} else if toggle {
 				target = snippet

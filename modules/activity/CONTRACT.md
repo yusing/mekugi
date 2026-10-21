@@ -82,7 +82,8 @@ below a readable width. Main combines repeated confirmed paths and sums their
 counts; Activity keeps invocation rows for exact cross-pane navigation.
 Large consecutive captured-file groups under `/tmp` show a bounded prefix and
 an omitted-file count. The count opens that invocation’s retained changes;
-expanded all restores every file row. Source, outcome and command-directory
+expanded all restores every file row. Captures without a recognized writer label
+keep the same grouping and retained-change navigation. Source, outcome and command-directory
 boundaries remain separate, and ordinary project paths stay visible.
 Tool-managed files remain rows in their source group. Output-not-returned notes
 align with command text and stay muted in either theme.

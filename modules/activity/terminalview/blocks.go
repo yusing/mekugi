@@ -78,7 +78,7 @@ func GroupOperations(blocks []Block) []Block {
 // their retained evidence. Each elision opens one invocation's complete capture.
 func collapseTemporaryEdits(blocks []Block) []Block {
 	temporary := func(b Block) bool {
-		return b.Kind == "op" && b.EditSource != "" && b.GroupHeader == "Edited" &&
+		return b.EditOperation() && b.GroupHeader == "Edited" &&
 			b.ExitCode == 0 && !b.Skipped && b.Approval == "" && b.Output == 0 &&
 			len(b.Tail)+b.TailOmitted == 0 && len(b.Changes) == 0 && b.Code == "" &&
 			len(b.Questions) == 0 && !b.DirectoryDeletion() && strings.HasPrefix(b.EditPath(), "/tmp/")
@@ -166,7 +166,7 @@ func RowVerb(b Block) string {
 		return "Ran"
 	case b.committed():
 		return "Committed"
-	case b.EditSource != "":
+	case b.EditOperation():
 		return EditVerb(b)
 	}
 	return b.Verb
@@ -211,7 +211,7 @@ func measureGroups(blocks []Block) {
 		}
 		starts[i] = -1
 		blocks[i].VerbAlign, blocks[i].PathAlign, blocks[i].StatAlign, blocks[i].StatScale = 0, 0, 0, 0
-		if start < 0 || b.Kind != "op" || b.EditSource == "" {
+		if start < 0 || !b.EditOperation() {
 			continue
 		}
 		starts[i] = start

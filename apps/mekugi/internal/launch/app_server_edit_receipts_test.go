@@ -22,18 +22,150 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	jsonv1 "encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
+
+func TestCapturedEditInvocationCountWithoutWriterLabel(t *testing.T) {
+	for _, writer := range []string{"", "apply_patch"} {
+		t.Run(writer, func(t *testing.T) {
+			v := newActivityAdapter()
+			v.Conversation = true
+			for i, path := range []string{"one.go", "two.go"} {
+				call := fmt.Sprint(i)
+				v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: "Main", Kind: "tool", CallID: call,
+					Native: &sessionpresentation.NativeItem{Thread: "main", Item: call, Phase: "item/completed", Live: true}}}})
+				history := legacycall.History{ToolName: "exec_command", Source: "exec_command", ExecutingThread: "main", CorrelationID: call + "\x00exec",
+					ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "old\n", "new\n")}), ExecOutcome: &legacycall.Outcome{}}
+				if writer != "" {
+					history.ExecOutcome.Labels = []string{writer}
+				}
+				v.ApplyCapturedEdits([]*presentation.Receipt{testCapturedEditActivity("/workspace", history)})
+			}
+			v.publishActivity()
+			feed := v.RenderConversation(100)
+			if text := ansi.Strip(strings.Join(feed.Lines, "\n")); !strings.Contains(text, "×2") {
+				t.Fatalf("two captures lost invocation count: %s", text)
+			}
+			for i, path := range []string{"one.go", "two.go"} {
+				if !slices.Contains(feed.Snippets, activityui.Snippet{Run: uint64(i + 1), Block: activityui.EditNavigationSnippet, Path: path}) {
+					t.Fatalf("capture lost exact source for %s", path)
+				}
+			}
+		})
+	}
+}
+
+func TestUISnapshotAppServerTemporaryCaptureWithoutWriterLabel(t *testing.T) {
+	const workspace = "/workspace"
+	files := []diffmodel.ReviewFile{diffmodel.RenderReviewFile("project.go", "project.go", "old\n", "new\n")}
+	for i := range 200 {
+		files = append(files, diffmodel.RenderReviewFile("", fmt.Sprintf("/tmp/worktree/file%03d.go", i), "", "created\n"))
+	}
+	files = append(files, diffmodel.RenderReviewFile("after.go", "after.go", "old\n", "new\n"),
+		diffmodel.RenderIncompleteReviewFile("", "/tmp/worktree/unknown.go", "capture budget exhausted"))
+	// Unclassified stock exec captures deliberately have no writer label.
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "main", "cmd\x00exec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := legacycall.History{ToolName: "exec_command", Source: "exec_command", ExecutingThread: "main", CorrelationID: "cmd\x00exec", ChangeID: id, Root: workspace, ReviewFiles: retainedReviewFiles(files),
+		ExecOutcome: &legacycall.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact}}
+	if err := store.put(t.Context(), workspace, map[string]legacycall.History{history.CorrelationID: history}); err != nil {
+		t.Fatal(err)
+	}
+	// Reload only durable capture evidence, without relying on a live producer.
+	store = testReplayStore(mekugiReplayStore{directory: store.directory})
+	snapshot, err := store.liveDiffSnapshot(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(snapshot.Receipts()[0].Text, " · exec_command") {
+		t.Fatal("stock execution acquired an invented writer label")
+	}
+	for _, state := range []string{"live", "settled", "restored"} {
+		t.Run(state, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, workspace)
+			v := u.shell.Transcript
+			v.Painter.Theme = diffrender.DarkTheme
+			v.Clock = func() time.Time { return time.Unix(1000, 0) }
+			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Cwd: workspace, Command: "git worktree add /tmp/worktree HEAD", Status: "completed", ExitCode: new(0), AggregatedOutput: new("Preparing worktree\n")}
+			u.review.Projection.Data = snapshot
+			publishFixtureReview(t, u)
+			if state == "restored" {
+				u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
+			} else {
+				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+				phase := "item/completed"
+				if state == "live" {
+					phase, item.Status, item.ExitCode = "item/started", "inProgress", nil
+				}
+				appServerTestNotify(t, u, phase, map[string]any{"threadId": "main", "turnId": "t", "item": item})
+				applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
+			}
+			v.RenderConversation(110)
+			v.Pace(time.Unix(1000, 0).Add(time.Hour))
+			for _, expansion := range []uint8{0, 1, 2} {
+				v.Expansion = expansion
+				feed := v.RenderConversation(110)
+				text := ansi.Strip(strings.Join(feed.Lines, "\n"))
+				if state == "restored" && expansion == 0 {
+					if !strings.Contains(text, "Created ×200") {
+						t.Fatalf("restored batch lost capture tally: %s", text)
+					}
+					continue
+				}
+				if expansion != 2 {
+					if !strings.Contains(text, "… +188 files") || strings.Contains(text, "file012.go") {
+						t.Fatalf("expansion %d left temporary capture unbounded (%d rows): %s", expansion, len(feed.Lines), text)
+					}
+					row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "… +188 files") })
+					target := feed.Snippets[row]
+					if target.Block != activityui.EditNavigationSnippet || target.Path != "" || target.Run == 0 {
+						t.Fatalf("omission lost retained capture navigation: %+v", target)
+					}
+					pages, selected := activityEditPages(&u.attached, u.shell, u.activity, v, target.Run, target.Path)
+					if len(pages) != len(files) || selected != pages[0].ID || pages[200].Path != "/tmp/worktree/file199.go" || !strings.Contains(pages[200].Code, "+created") {
+						t.Fatalf("omitted files lost durable pages: %d pages, selected %q", len(pages), selected)
+					}
+					if state == "settled" && expansion == 0 {
+						assertNativeUISnapshot(t, "temporary-capture-without-writer", feed.Lines)
+					}
+				} else {
+					for i := range 200 {
+						path := fmt.Sprintf("/tmp/worktree/file%03d.go", i)
+						if !slices.ContainsFunc(feed.Snippets, func(s activityui.Snippet) bool { return s.Block == activityui.EditNavigationSnippet && s.Path == path }) {
+							t.Fatalf("expanded capture lost %s", path)
+						}
+					}
+				}
+				if state != "live" && !strings.Contains(text, "Preparing worktree") {
+					t.Fatalf("capture lost command output: %s", text)
+				}
+				for _, want := range []string{"project.go", "after.go", "capture budget exhausted"} {
+					if !strings.Contains(text, want) {
+						t.Fatalf("capture lost %q: %s", want, text)
+					}
+				}
+			}
+		})
+	}
+}
 
 // These are retained host observations, not guesses from the shell text. The
 // command item can arrive on either side of the change publication.

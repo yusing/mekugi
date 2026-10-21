@@ -386,7 +386,7 @@ func segmentTrailer(block Block) string {
 	switch {
 	case block.Skipped && EditStatus(block) != "skipped":
 		return "· skipped"
-	case block.ExitCode == 0 || block.EditSource != "" || block.Kind != "op" && block.Kind != "reads" || block.VCS():
+	case block.ExitCode == 0 || block.EditOperation() || block.Kind != "op" && block.Kind != "reads" || block.VCS():
 		return ""
 	case block.Kind == "op" && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)):
 		return "" // The row already shows the exit.
@@ -395,7 +395,7 @@ func segmentTrailer(block Block) string {
 }
 
 func (p *Painter) blockRows(block Block, width int) []string {
-	if block.EditSource != "" && block.GroupHeader != "" && block.Kind == "op" {
+	if block.EditOperation() && block.GroupHeader != "" {
 		return p.editGroupRow(block, width)
 	}
 	switch block.Kind {
@@ -1199,7 +1199,7 @@ func (b Block) cell(verb string) int {
 
 // lead is a row's bold verb in color, padded to its column.
 func (b Block) lead(color, verb string) string {
-	if b.GroupHeader != "" && b.EditSource == "" && !b.GroupStart {
+	if b.GroupHeader != "" && !b.EditOperation() && !b.GroupStart {
 		return strings.Repeat(" ", b.cell(verb))
 	}
 	return color + "\x1b[1m" + verb + terminalui.Reset + strings.Repeat(" ", b.cell(verb)-ansi.StringWidth(verb))

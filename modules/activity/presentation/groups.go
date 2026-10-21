@@ -149,9 +149,9 @@ func GroupOperations(blocks []Value) []Value {
 			continue
 		}
 		heading := ""
-		if b.EditSource != "" {
+		if b.EditOperation() {
 			heading = b.EditHeading()
-		} else if sameAction(last, *b) && last.EditSource == "" {
+		} else if sameAction(last, *b) && !last.EditOperation() {
 			heading = b.Verb
 			if previous == "" {
 				blocks[lastIndex].GroupHeader, blocks[lastIndex].GroupStart = heading, true
@@ -164,13 +164,13 @@ func GroupOperations(blocks []Value) []Value {
 		b.GroupHeader = heading
 		b.GroupStart = heading != "" && (heading != previous || b.EditSource != previousSource || b.Workdir != last.Workdir)
 		previous, previousSource = heading, b.EditSource
-		last, lastIndex = *b, i
 		if b.GroupStart {
 			start = i
 		}
-		if b.EditSource != "" && (b.EditHeader || b.GroupStart) {
+		if b.EditOperation() && (b.EditHeader || b.GroupStart || b.Source != last.Source) {
 			blocks[start].GroupCount++
 		}
+		last, lastIndex = *b, i
 	}
 	return blocks
 }
