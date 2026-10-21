@@ -112,7 +112,7 @@ func TestAppServerForkRetainsEvidenceBeforeSwitch(t *testing.T) {
 			u.reasoningEffort = "high"
 			if command == "/rewind" {
 				rewindTestTurns(t, u, w)
-				appServerTestKeys(t, u, "\r")
+				appServerTestKeys(t, u, "\r\r")
 			} else {
 				appServerTestKeys(t, u, "/fork\r")
 			}

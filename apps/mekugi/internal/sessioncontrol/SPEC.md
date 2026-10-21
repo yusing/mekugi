@@ -133,9 +133,25 @@ input and host delivery responsive.
 user messages, including decoded question answers, and selects a turn to fork
 immediately before it, excluding that
 turn and all later conversation. It shares `/fork` admission, current settings,
-pending-input preservation and automatic switching. Workspace files remain as they
-are. Saved change and output evidence remains available in the new namespace,
-including evidence from excluded turns, because those effects have not been undone;
+pending-input preservation and automatic switching. After choosing a turn, a
+second dialog offers Keep edits (the default) or Revert captured edits when there
+are changes to choose between. If no captured changes fall at or after the selected
+turn, rewind skips that dialog and forks directly. Revert
+targets retained changes from that turn onward, including admitted descendant
+agents, using validated host call times. Unrelated edits remain subject to the
+ordinary mchanges merge behavior. Missing history or ambiguous change membership
+disables Revert with a reason; Keep remains available.
+Newly admitted changes or membership invalidate a prepared reversal; reopen the
+dialog to select against the updated evidence.
+
+Revert runs mchanges through the host's native shell before forking. The original
+session remains selected until successful execution completes. Conflicts,
+incomplete reversal or rejection leave that session usable, with the command's
+output and recovery instructions; no fork or archive follows failure. Cancellation
+before dispatch changes no files. Once dispatched, interruption follows native
+shell behavior and cannot promise to undo completed effects.
+Saved change and output evidence remains available in the new namespace,
+including excluded turns and any captured reversal;
 conversation restoration uses only the host's truncated branch. Inheritance restores
 no running resources or approval grants.
 

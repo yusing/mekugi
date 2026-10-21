@@ -56,13 +56,14 @@ type ToolItem struct {
 // Call groups one identity's call and outputs in first-observed order. Output-only
 // identities retain their first output's metadata until a call is observed.
 type Call struct {
-	Line      int
-	Timestamp string
-	Model     string
-	Item      ToolItem
-	Workspace string
-	HasCall   bool
-	Outputs   []ToolItem
+	Line               int
+	Timestamp          string
+	CompletedTimestamp string
+	Model              string
+	Item               ToolItem
+	Workspace          string
+	HasCall            bool
+	Outputs            []ToolItem
 }
 
 // InspectionEvent contains recorded host facts. The consumer validates metric
@@ -240,6 +241,7 @@ func Inspect(ctx context.Context, path string, observe func(InspectionEvent) err
 			call.Item, call.HasCall = item, true
 		} else {
 			call.Outputs = append(call.Outputs, item)
+			call.CompletedTimestamp = envelope.Timestamp
 		}
 	}
 	if err := scanner.Err(); err != nil {

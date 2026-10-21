@@ -6,6 +6,7 @@ package sessioncontrol
 type Live struct {
 	Thread, Turn             string
 	HasUserTurn              bool
+	Rewind                   *RewindOperation
 	Compaction               Compaction
 	Settings                 Settings
 	Replacement              Replacement
@@ -206,6 +207,7 @@ const (
 	replacementClear
 	replacementResume
 	replacementFork
+	replacementRewind
 	replacementArchive
 )
 
@@ -220,7 +222,9 @@ func (o *Replacement) Clear()          { *o = Replacement{phase: replacementClea
 func (o *Replacement) Resume(thread string) {
 	*o = Replacement{phase: replacementResume, Target: thread}
 }
-func (o *Replacement) Fork()         { *o = Replacement{phase: replacementFork} }
+func (o *Replacement) Fork() { *o = Replacement{phase: replacementFork} }
+
+func (o *Replacement) Rewind()       { *o = Replacement{phase: replacementRewind} }
 func (o *Replacement) Forking() bool { return o.phase == replacementFork }
 func (o *Replacement) Archive()      { *o = Replacement{phase: replacementArchive} }
 func (o *Replacement) Finish()       { *o = Replacement{} }

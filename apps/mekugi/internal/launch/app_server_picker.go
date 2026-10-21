@@ -44,6 +44,8 @@ type composerPicker struct {
 	toggleOwnsManager               bool
 	rewindThread, rewindProvider    string
 	rewindApprovals                 bool
+	rewind                          *rewindSelection
+	rewindSlots                     chan struct{}
 	archiveTarget                   string
 	sideTask                        *composer.Draft
 }
@@ -96,7 +98,7 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal 
 			p.Open = false
 		}
 	}()
-	if p.Kind == "menu" || p.Kind == "copy" || p.Kind == "settings" || p.Kind == "archive" || p.Kind == "rewind" || p.Kind == "side-replace" {
+	if p.Kind == "menu" || p.Kind == "copy" || p.Kind == "settings" || p.Kind == "archive" || p.Kind == "rewind" || p.Kind == "rewind-edits" || p.Kind == "side-replace" {
 		p.Open = true
 		return
 	}

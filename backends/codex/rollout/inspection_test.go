@@ -67,7 +67,7 @@ func TestInspectionOrderedCallsAndProvenance(t *testing.T) {
 		{Line: 5, Timestamp: "call-time", Model: "beta", Workspace: "/second", HasCall: true,
 			Item:    ToolItem{Type: "function_call", CallID: "later", Name: "exec", Namespace: "functions", Arguments: "{}"},
 			Outputs: []ToolItem{{Type: "function_call_output", CallID: "later", Output: []byte(`"early"`)}, {Type: "function_call_output", CallID: "later", Output: []byte(`"late"`)}}},
-		{Line: 3, Timestamp: "orphan-time", Model: "alpha", Workspace: "/first",
+		{Line: 3, Timestamp: "orphan-time", CompletedTimestamp: "orphan-time", Model: "alpha", Workspace: "/first",
 			Item:    ToolItem{Type: "custom_tool_call_output", CallID: "orphan", Output: []byte(`{"ok":true}`)},
 			Outputs: []ToolItem{{Type: "custom_tool_call_output", CallID: "orphan", Output: []byte(`{"ok":true}`)}}},
 	}

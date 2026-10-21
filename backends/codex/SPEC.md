@@ -276,7 +276,7 @@ conflicting or oversized input fails before a complete source is returned.
 Historical JSON decoding semantics remain compatible with retained rollouts.
 
 Calls and output-only identities retain first-observed order, original line and
-time, preceding workspace/model, tool identity and every recorded output.
+time, the last output's time, preceding workspace/model, tool identity and every recorded output.
 Identical repeated calls coalesce; conflicting inputs, call workspaces or thread
 identities fail. Missing call IDs are invalid. Unknown record kinds are ignored.
 Workspace canonicalization, retained-record matching and query results belong to

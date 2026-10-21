@@ -11,6 +11,7 @@ const (
 	MenuSettings     MenuKind = "settings"
 	MenuArchive      MenuKind = "archive"
 	MenuRewind       MenuKind = "rewind"
+	MenuRewindEdits  MenuKind = "rewind-edits"
 	MenuSideReplace  MenuKind = "side-replace"
 	MenuCopy         MenuKind = "copy"
 )

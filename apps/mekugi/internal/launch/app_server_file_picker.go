@@ -20,6 +20,8 @@ type pickerScanResult struct {
 	cwd     string
 	choices []completion.Choice
 	problem string
+	rewind  bool
+	command string
 }
 
 // Codex 0.157.1's fuzzyFileSearch always honors ignore files. @! explicitly
@@ -52,7 +54,7 @@ func (p *composerPicker) searchExcludedFiles(parent context.Context, target comp
 		case <-timer.C:
 		}
 		choices, problem := scanPickerFiles(ctx, cwd, strings.TrimPrefix(target.Query, "!"))
-		result := pickerScanResult{id, target, cwd, choices, problem}
+		result := pickerScanResult{id: id, target: target, cwd: cwd, choices: choices, problem: problem}
 		select {
 		case results <- result:
 		case <-ctx.Done():
@@ -141,6 +143,18 @@ func scanPickerFiles(ctx context.Context, cwd, query string) ([]completion.Choic
 }
 
 func (p *composerPicker) applyScan(workspace string, target completion.Target, result pickerScanResult) bool {
+	if result.rewind {
+		if result.id != p.scanID || !p.Open || p.Kind != "rewind-edits" {
+			return false
+		}
+		p.cancelScan()
+		p.rewind.command, p.rewind.problem, p.Loading = result.command, result.problem, false
+		p.Choices = []completion.Choice{{ID: 1, Name: "Keep edits"}}
+		if result.command != "" {
+			p.Choices = append(p.Choices, result.choices...)
+		}
+		return true
+	}
 	if result.id != p.scanID || result.cwd != workspace || result.target != target || !p.Open {
 		return false
 	}

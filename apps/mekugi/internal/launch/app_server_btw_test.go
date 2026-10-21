@@ -659,7 +659,7 @@ func TestSideMainForkReplacementCleanup(t *testing.T) {
 			selectSideThread(t, u, u.attached.presentation.View().Main)
 			if command == "/rewind" {
 				rewindTestTurns(t, u, w)
-				appServerTestKeys(t, u, "\r")
+				appServerTestKeys(t, u, "\r\r")
 			} else {
 				appServerTestKeys(t, u, command+"\r")
 			}

@@ -72,6 +72,7 @@ Cross-owner adapter entry points:
 - Input/frame delivery: `launch/{app_server_input,terminal_input,terminal_selection,native_shell}.go`.
 - Conversation forks, rewind and side input: `sessioncontrol/{startup,side_workflow}.go`;
   Launch `{app_server_rewind,app_server_btw}.go` integrates pickers and thread-scoped input.
+  `sessionreview/rewind.go` selects retained changes at the rewind boundary.
 - Dialog/file admission: `launch/{activity_details,markdown_file_dialog}.go`;
   editor/terminal restoration: `{native_file_editor,app_server_composer_editor,app_server_ui}.go`.
 - Guidance consumers: `executionobservation/instruction_cache_test.go`, Launch prewarm,

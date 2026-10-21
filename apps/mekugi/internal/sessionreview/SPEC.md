@@ -34,6 +34,14 @@ resynchronization. Retired results cannot update the current projection, and a
 retired read retains its physical capacity until storage actually returns.
 Loading does not block input, cancellation or independent preview delivery.
 
+Rewind selection joins the admitted immutable change snapshot with validated
+host rollouts. The selected turn's start bounds original call times across Main
+and admitted descendants. An entire change must lie on one side of that boundary;
+missing identities, timestamps or mixed membership make reversal unavailable.
+Selection returns explicit change IDs and owning workspaces, never a filesystem
+reset. The caller performs the read asynchronously and dispatches any chosen
+reversal through the existing host execution path.
+
 The serialized application consumer keeps the complete projection, admitted
 preview scope, retained-load failure and loader with this Review owner. Producer
 membership remains independently synchronized; retained reads never hold its

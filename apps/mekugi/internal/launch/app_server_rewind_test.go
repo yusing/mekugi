@@ -40,6 +40,9 @@ func TestUISnapshotNativeRewind(t *testing.T) {
 			rows, _ := u.testMainFrame(width, 18, 0)
 			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-rewind-picker-%d.txt", width), rows, width)
 			appServerTestKeys(t, u, "\x1b[B\r")
+			rows, _ = u.testMainFrame(width, 18, 0)
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-rewind-edits-unavailable-%d.txt", width), rows, width)
+			appServerTestKeys(t, u, "\r")
 			requests := appServerDrainRequests[struct {
 				ID     int            `json:"id"`
 				Method string         `json:"method"`
@@ -111,7 +114,7 @@ func TestAppServerRewindFailureAndArchiveChoice(t *testing.T) {
 				u.reasoningEffort = ""
 			}
 			rewindTestTurns(t, u, w)
-			appServerTestKeys(t, u, "\r")
+			appServerTestKeys(t, u, "\r\r")
 			fork := resumeTestOne(t, w, "thread/fork")
 			appServerTestKeys(t, u, "waiting")
 			if outcome == "fork-failure" {
@@ -195,7 +198,7 @@ func TestAppServerRewindQuestionAnswer(t *testing.T) {
 	if !strings.Contains(frame, "Autosquash, including descendant commits") || strings.Contains(frame, "send_user_message_question_reply") {
 		t.Fatalf("answer dialog = %s", frame)
 	}
-	appServerTestKeys(t, u, "\r")
+	appServerTestKeys(t, u, "\r\r")
 	if fork := resumeTestOne(t, w, "thread/fork"); fork.Params.BeforeTurnID != "answer" {
 		t.Fatalf("answer fork = %+v", fork)
 	}

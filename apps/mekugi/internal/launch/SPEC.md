@@ -55,9 +55,11 @@ There is one interactive UI. Public invocation options expose no response-mode
 selector; internal adapter identifiers do not select another client.
 
 The UI excludes PTY emulation or screen scraping for Main, settings clones,
-onboarding, cloud tasks, voice, Git-write or edit-rollback UI actions, browser
+onboarding, cloud tasks, voice, Git-write UI actions, browser
 frontends/remote hosting, and new authentication flows. These limits do not change
 Codex-owned execution or explicitly invoked change-history tools.
+Rewind's optional captured-edit reversal uses those tools through the host's
+native shell under the [session-control contract](../sessioncontrol/SPEC.md).
 
 `codex headless --yolo` selects the [headless client](../headless/SPEC.md).
 Launch rejects resume and unsupported CLI options; explicit

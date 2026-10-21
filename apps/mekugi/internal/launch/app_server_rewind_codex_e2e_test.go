@@ -84,6 +84,7 @@ func TestAppServerRewindBoundaryNativeCodex(t *testing.T) {
 	u.startSession(thread, workspace)
 	u.Thread, u.Startup.Thread = thread, thread
 	u.model, u.reasoningEffort = "gpt-6-astra", "high"
+	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":%q,"turnId":"turn-0","item":{"type":"userMessage","id":"user-0","content":[{"type":"text","text":"User request 0"}]}}}`, thread))
 	relay := func(method string) binding.ThreadInfo {
 		t.Helper()
 		requests := appServerDrainRequests[struct {
@@ -112,7 +113,7 @@ func TestAppServerRewindBoundaryNativeCodex(t *testing.T) {
 	if original := relay("thread/read"); len(original.Turns) != 3 || len(u.picker.Choices) != 3 {
 		t.Fatalf("fixture user turns unavailable: %+v", original)
 	}
-	appServerTestKeys(t, u, "\x1b[B\r")
+	appServerTestKeys(t, u, "\x1b[B\r\r")
 	branch := relay("thread/fork")
 	if branch.ID == thread || len(branch.Turns) != 1 || branch.Turns[0].ID != "turn-0" {
 		t.Fatalf("host did not exclude selected and later turns: %+v", branch)

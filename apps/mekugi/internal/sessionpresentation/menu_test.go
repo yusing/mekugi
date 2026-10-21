@@ -53,7 +53,7 @@ func TestCompletionChoiceHonorsOrdinaryInputAdmission(t *testing.T) {
 }
 
 func TestRewindAndArchiveMenusRejectReplay(t *testing.T) {
-	for _, kind := range []sessionpresentation.MenuKind{sessionpresentation.MenuRewind, sessionpresentation.MenuArchive} {
+	for _, kind := range []sessionpresentation.MenuKind{sessionpresentation.MenuRewind, sessionpresentation.MenuRewindEdits, sessionpresentation.MenuArchive} {
 		c := newStatusConsumer()
 		c.model().Attach(sessionpresentation.Thread{ID: "main", Caller: "/root"}, true)
 		source := &sessionpresentation.MenuView{ID: 1, Kind: kind, View: completion.View{Choices: []completion.Choice{{Name: "target"}}}}

@@ -40,7 +40,7 @@ var nativeCommands = []completion.Choice{
 	{Name: "/title", Description: "Rename this session"},
 	{Name: "/status", Description: "Show session settings and usage limits"},
 	{Name: "/copy", Description: "Copy the last response or part of it"},
-	{Name: "/rewind", Description: "Fork before a selected user turn; keep files unchanged"},
+	{Name: "/rewind", Description: "Fork before a user turn; keep or revert captured edits"},
 	{Name: "/fork", Description: "Fork this conversation and switch to the branch"},
 	{Name: "/resume", Description: "Resume a saved session"},
 	{Name: "/archive", Description: "Archive this session"},
@@ -73,7 +73,7 @@ func sessionCommand(attached *attachedPresentation, terminal *terminalsession.At
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "/rewind is disabled before the first user turn", false)
 			return nil
 		}
-		showRewindPicker(control, picker, provider, approvalMode)
+		showRewindPicker(control, picker, provider, approvalMode, reviewOwner)
 		(*editor).Take()
 		return nil
 	}
