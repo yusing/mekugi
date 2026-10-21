@@ -85,7 +85,7 @@ const (
 
 // runInvocation acquires independent owners, launches Codex and joins every lifetime.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func runInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, issues *requestexecution.Failures, executable string, args, environment []string, stdin, stdout *os.File, stderr io.Writer, appUI, headless bool, resumeThread string, resumeArgv []string, approvals bool, stopStartupInterrupts func(), interrupts <-chan os.Signal, artifacts func([]string)) (code int, runErr error) {
+func runInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stdin, stdout *os.File, stderr io.Writer, appUI, headless bool, resumeThread string, resumeArgv []string, approvals bool, stopStartupInterrupts func(), interrupts <-chan os.Signal, artifacts func([]string)) (code int, runErr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer func() {
@@ -104,10 +104,6 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	grokEnabled, standalone := options.Grok, options.ThirdParty
 	faint, err := terminalui.SupportsFaint(ctx, options.ANSIFaint)
-	if err != nil {
-		return 1, err
-	}
-	config, err := launchoptions.LoadSettings(standalone)
 	if err != nil {
 		return 1, err
 	}

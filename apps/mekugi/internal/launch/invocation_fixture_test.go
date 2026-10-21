@@ -89,6 +89,11 @@ func runInvocationFixtureChild() {
 }
 
 func runFixtureInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, issues *requestexecution.Failures, ready func(invocationFixture), artifacts func([]string)) error {
+	settings, err := launchoptions.LoadSettings(options.ThirdParty)
+	if err != nil {
+		return err
+	}
+	options = options.ResolveFeatures(settings.Features)
 	directory, err := os.MkdirTemp("", "mekugi-invocation-fixture-")
 	if err != nil {
 		return err
@@ -119,7 +124,7 @@ func runFixtureInvocation(terminalViews terminalsession.Views, views *sessionpre
 		}
 		observed <- err
 	}()
-	code, runErr := runInvocation(terminalViews, views, conversation, live, activity, service, prefs, recovered, segments, changes, usage, agentMetrics, diagnostics, diagnosis, ctx, commands, projections, guidance, naming, observations, guards, options, issues, executable, []string{"exec"}, os.Environ(), input, writer, io.Discard, false, false, "", nil, false, func() {}, nil, artifacts)
+	code, runErr := runInvocation(terminalViews, views, conversation, live, activity, service, prefs, recovered, segments, changes, usage, agentMetrics, diagnostics, diagnosis, ctx, commands, projections, guidance, naming, observations, guards, options, settings, issues, executable, []string{"exec"}, os.Environ(), input, writer, io.Discard, false, false, "", nil, false, func() {}, nil, artifacts)
 	writer.Close()
 	observeErr := <-observed
 	if observeErr != nil && !errors.Is(observeErr, io.EOF) {

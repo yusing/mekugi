@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +30,7 @@ import (
 func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
+		config          string
 		flags           []string
 		projected       bool
 		withoutGuidance bool
@@ -35,12 +38,17 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 	}{
 		{name: "default", projected: true},
 		{name: "launch opt-out", flags: []string{"--deduplicate-output=false"}},
+		{name: "file opt-out", config: "deduplicate_output = false"},
+		{name: "CLI overrides file", config: "deduplicate_output = false", flags: []string{"--deduplicate-output"}, projected: true},
 		{name: "guidance absent", projected: true, withoutGuidance: true},
 		{name: "preview absent", projected: true, withoutPreview: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, key := range []string{"XDG_STATE_HOME", "XDG_CONFIG_HOME", "CODEX_HOME", "MEKUGI_RUNTIME_DIR"} {
 				t.Setenv(key, t.TempDir())
+			}
+			if tc.config != "" {
+				writeFeatureConfig(t, tc.config)
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
@@ -223,4 +231,20 @@ func TestCompositionInputProjectionRemoval(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+func writeFeatureConfig(t *testing.T, features string) string {
+	t.Helper()
+	directory := os.Getenv("XDG_CONFIG_HOME")
+	if actual, _ := os.UserConfigDir(); actual != directory || directory == "" {
+		t.Skip("platform does not use XDG_CONFIG_HOME")
+	}
+	if err := os.MkdirAll(filepath.Join(directory, "mekugi"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "mekugi", "config.toml")
+	if err := os.WriteFile(path, []byte("[features]\n"+features+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

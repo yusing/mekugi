@@ -16,6 +16,21 @@ the command delimiter. Parsed values can be reused across invocations; generated
 output paths and resources belong to each run. Configuration errors identify the
 failure without quoting credential-bearing file contents.
 
+The existing Mekugi `config.toml` accepts optional `[features]` boolean defaults:
+`shell_guard = true`, `deduplicate_output = true`, and `debug = false`. Each feature
+resolves explicit CLI value, then file value, then built-in default independently.
+Bare flags mean true, `=false` explicitly disables, and the last repeated flag
+wins. Absent files, sections and keys preserve defaults; non-boolean values and
+unknown keys fail with content-free diagnostics. Provider and host-owned options
+retain their own contracts.
+
+Configuration is loaded once, independently of provider credential selection,
+before feature owners and host startup. Effective values belong to the invocation
+and apply to its children and thread switches. Overrides never rewrite configuration
+or saved session settings. Fresh launch/resume loads the current file; explicit
+CLI overrides remain in the continuation command. New Mekugi boolean flags extend
+the same options-owned feature resolution path, without a feature service.
+
 - `mekugi [flags] codex [arguments...]` uses Codex authentication and models.
   Third-party credentials do not add models or trigger catalog preparation.
 - `mekugi [flags] [arguments...]` uses authenticated Grok and configured OpenCode
@@ -130,7 +145,7 @@ when guarding is enabled, otherwise `Tracking shell segments`. With guarding off
 explicit caller `PreToolUse` conflicts preserve caller settings and leave sh
 untracked; Bash keeps its independent startup path.
 
-The `--deduplicate-output` flag defaults to true and controls only the
+The effective `deduplicate_output` setting controls only the
 [model-input projection](../../../../modules/outputdeduplication/SPEC.md).
 Runtime contracts belong to
 [Responses integration](../../../../docs/contracts/responses-transport.md),

@@ -29,6 +29,10 @@ type Config struct {
 	Debug             bool
 	Grok              bool
 	ThirdParty        bool
+
+	shellGuardSet        bool
+	deduplicateOutputSet bool
+	debugSet             bool
 }
 
 // FrontendsEnabled reports whether this parsed invocation exposes native helpers.
@@ -41,6 +45,16 @@ func Parse(args []string) (Config, error) {
 	if err := flags.Parse(args); err != nil {
 		return Config{}, fmt.Errorf("parse flags: %w", err)
 	}
+	flags.Visit(func(item *flag.Flag) {
+		switch item.Name {
+		case "shell-guard":
+			config.shellGuardSet = true
+		case "deduplicate-output":
+			config.deduplicateOutputSet = true
+		case "debug":
+			config.debugSet = true
+		}
+	})
 	config.Grok = flags.NArg() == 1 && flags.Arg(0) == "grok"
 	config.ThirdParty = flags.NArg() == 1 && flags.Arg(0) == "third-party"
 

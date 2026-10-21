@@ -362,6 +362,11 @@ Create `mekugi/config.toml` under `$XDG_CONFIG_HOME` (default `~/.config` on Lin
 rewritten:
 
 ```toml
+[features]
+shell_guard = true
+deduplicate_output = true
+debug = false
+
 [service_tiers]
 "gpt-6-astra" = "fast"
 [providers.opencode_go]
@@ -369,6 +374,21 @@ api_key = "your-go-key"
 [providers.opencode_zen]
 api_key = "your-zen-key"
 ```
+
+Feature keys set defaults for the matching hyphenated CLI flags in every launch,
+including `mekugi codex`, independently of provider credentials. Each feature uses
+an explicit CLI value first, then its file value, then the built-in default shown
+above. Missing files, sections, and keys keep built-in defaults. Unknown keys and
+non-boolean feature values fail startup without printing configuration contents.
+
+For example, set `deduplicate_output = false` to keep repeated model input by
+default, then run `mekugi --deduplicate-output codex` to enable it for one launch.
+Bare boolean flags mean true; use `--debug=false` or `--shell-guard=false` to
+explicitly disable a feature. Repeated flags use the last value. Flags must precede
+`codex` and `--`; arguments after the delimiter belong to Codex. Overrides apply
+to that invocation and its child threads, never write the file or saved session
+settings, and are preserved in the printed resume command. A fresh launch or
+resume reads the current file again.
 
 Exact model IDs select tiers: `auto`, `default`, `fast` (sent as `priority`),
 `priority`, or `flex`, subject to provider support. `/tier` choices override defaults
@@ -386,8 +406,9 @@ for that thread/model during the invocation. The composer shows the effective ti
 | `--timeout` | `10m` | Wait for response start |
 | `--stream-idle-timeout` | `4m` | Limit provider-message or HTTP-byte gaps |
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |
-| `--debug` | Disabled | Record private [diagnostic evidence](docs/contributing/development.md#diagnostics) |
+| `--debug` | `false` | Record private [diagnostic evidence](docs/contributing/development.md#diagnostics) |
 
+The boolean defaults above apply when no matching [feature setting](#mekugi-settings) exists.
 Use `--ansi-faint=off` if a multiplexer hides mosh.
 
 ### Context reset and recovery

@@ -73,6 +73,11 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if err != nil {
 		return 2, err
 	}
+	settings, err := launchoptions.LoadSettings(options.ThirdParty)
+	if err != nil {
+		return 1, err
+	}
+	options = options.ResolveFeatures(settings.Features)
 	appUI := !headless && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 	var resumeThread string
 	var resumeArgv []string
@@ -143,7 +148,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		directory := filepath.Dir(debugPaths[0])
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", commandargs.Quote(directory))
 	}()
-	return runInvocation(frontends.Terminal, frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, issues, executable, args, os.Environ(), os.Stdin, os.Stdout, os.Stderr, appUI, headless, resumeThread, resumeArgv, approvals, stopStartupInterrupts, interrupts, func(paths []string) { debugPaths = paths })
+	return runInvocation(frontends.Terminal, frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, settings, issues, executable, args, os.Environ(), os.Stdin, os.Stdout, os.Stderr, appUI, headless, resumeThread, resumeArgv, approvals, stopStartupInterrupts, interrupts, func(paths []string) { debugPaths = paths })
 }
 
 // Reasoning shortcuts are session-local Codex config overrides. Preserve option

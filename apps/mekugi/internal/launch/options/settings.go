@@ -15,8 +15,32 @@ import (
 
 // Settings contains validated invocation-local configuration.
 type Settings struct {
+	Features     Features          `toml:"features"`
 	Providers    opencode.Config   `toml:"providers"`
 	ServiceTiers map[string]string `toml:"service_tiers"`
+}
+
+// Features contains optional file defaults for Mekugi-owned boolean flags.
+// Nil keeps the built-in default; explicit false remains distinct from absence.
+type Features struct {
+	ShellGuard        *bool `toml:"shell_guard"`
+	DeduplicateOutput *bool `toml:"deduplicate_output"`
+	Debug             *bool `toml:"debug"`
+}
+
+// ResolveFeatures applies file defaults without replacing explicit CLI choices.
+// The parsed configuration remains reusable by independent invocations.
+func (c Config) ResolveFeatures(features Features) Config {
+	if features.ShellGuard != nil && !c.shellGuardSet {
+		c.ShellGuard = *features.ShellGuard
+	}
+	if features.DeduplicateOutput != nil && !c.deduplicateOutputSet {
+		c.DeduplicateOutput = *features.DeduplicateOutput
+	}
+	if features.Debug != nil && !c.debugSet {
+		c.Debug = *features.Debug
+	}
+	return c
 }
 
 // LoadSettings reads Mekugi configuration and optionally applies provider credentials.

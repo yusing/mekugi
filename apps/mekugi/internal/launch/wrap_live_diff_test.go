@@ -50,7 +50,11 @@ func TestAutoWrapProcess(t *testing.T) {
 			args = []string{"headless", "--yolo"}
 		}
 		var routerArgs []string
-		if os.Getenv("MEKUGI_AUTO_WRAP_GUARD") == "off" {
+		if value := os.Getenv("MEKUGI_AUTO_WRAP_GUARD_FLAG"); value != "" {
+			if value != "absent" {
+				routerArgs = []string{"--shell-guard=" + value}
+			}
+		} else if os.Getenv("MEKUGI_AUTO_WRAP_GUARD") == "off" {
 			routerArgs = []string{"--shell-guard=false"}
 		}
 		code, err := wrapCodex(t.Context(), routerArgs, args)
@@ -174,18 +178,33 @@ func TestAutoWrapProcess(t *testing.T) {
 
 func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 	for _, test := range []struct {
-		name     string
-		terminal bool
-		optOut   bool
-		failure  bool
-		guard    bool
-	}{{"terminal", true, false, false, false}, {"terminal-env-zero", true, true, false, false}, {"redirected", false, false, false, false}, {"terminal-failure", true, false, true, false}, {"terminal-default-guard", true, false, false, true}} {
+		name      string
+		terminal  bool
+		optOut    bool
+		failure   bool
+		guard     bool
+		config    string
+		guardFlag string
+	}{
+		{name: "terminal", terminal: true},
+		{name: "terminal-env-zero", terminal: true, optOut: true},
+		{name: "redirected"},
+		{name: "terminal-failure", terminal: true, failure: true},
+		{name: "terminal-default-guard", terminal: true, guard: true},
+		{name: "file-guard-off", terminal: true, config: "shell_guard = false", guardFlag: "absent"},
+		{name: "file-guard-on", terminal: true, guard: true, config: "shell_guard = true", guardFlag: "absent"},
+		{name: "CLI-guard-on", terminal: true, guard: true, config: "shell_guard = false", guardFlag: "true"},
+		{name: "CLI-guard-off", terminal: true, config: "shell_guard = true", guardFlag: "false"},
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
 			launcher := os.Args[0]
 			t.Setenv("MEKUGI_AUTO_WRAP_GUARD", "off")
+			t.Setenv("MEKUGI_AUTO_WRAP_GUARD_FLAG", test.guardFlag)
 			if test.guard {
 				t.Setenv("MEKUGI_AUTO_WRAP_GUARD", "default")
+			}
+			if test.guard || test.config != "" {
 				launcher = filepath.Join(dir, "mekugi")
 				if err := os.Link(os.Args[0], launcher); err != nil {
 					t.Fatal(err)
@@ -222,6 +241,9 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			t.Setenv("HERDR_ENV", "")
 			t.Setenv("CODEX_HOME", t.TempDir())
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			if test.config != "" {
+				writeFeatureConfig(t, test.config)
+			}
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
 			// Keep installed runtime tools such as Node.js available while placing

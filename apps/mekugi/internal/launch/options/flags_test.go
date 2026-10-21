@@ -139,3 +139,27 @@ func TestPublicOptionsExposeOneInterface(t *testing.T) {
 		t.Fatalf("help exposes an internal mode: %s", help.String())
 	}
 }
+
+func TestFeatureFlagsPreserveSyntaxAndHostArguments(t *testing.T) {
+	for _, name := range []string{"shell-guard", "deduplicate-output", "debug"} {
+		if _, err := Parse([]string{"--" + name + "=invalid"}); err == nil {
+			t.Fatalf("accepted invalid %s", name)
+		}
+		if _, _, err := SplitCommand([]string{"--" + name + "=invalid", "codex"}); err == nil {
+			t.Fatalf("split accepted invalid %s", name)
+		}
+		args := []string{"--" + name + "=false", "--", "--" + name, "--enable", "host-feature"}
+		prefix, command, err := SplitCommand(args)
+		if err != nil || !slices.Equal(prefix, args[:2]) || !slices.Equal(command, args[2:]) {
+			t.Fatalf("delimiter changed: %v %v %v", prefix, command, err)
+		}
+		parsed, err := Parse(prefix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resolved := parsed.ResolveFeatures(Features{ShellGuard: new(true), DeduplicateOutput: new(true), Debug: new(true)})
+		if name == "shell-guard" && resolved.ShellGuard || name == "deduplicate-output" && resolved.DeduplicateOutput || name == "debug" && resolved.Debug {
+			t.Fatal("delimiter lost explicit false")
+		}
+	}
+}
