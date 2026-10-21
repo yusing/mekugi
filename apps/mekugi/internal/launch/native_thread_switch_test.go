@@ -74,8 +74,15 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 		}
 		t.Fatalf("missing roster target %q", agent)
 	}
+	rosterHeight := terminalTest(u).Layout.Roster.H
 	click("/root/reader")
+	if terminalTest(u).Focus != 0 {
+		t.Fatal("clicking an agent focused the roster")
+	}
 	frame := paint("native-thread-child-full")
+	if terminalTest(u).Layout.Roster.H != rosterHeight {
+		t.Fatal("clicking an agent expanded the roster")
+	}
 	if !strings.Contains(frame, "child result") || !strings.Contains(frame, "eta") || strings.Contains(frame, "main result") || !strings.Contains(frame, "Read-only") || u.Thread != "main" {
 		t.Fatalf("child view or input identity: %s", frame)
 	}
@@ -86,6 +93,15 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	paint("native-thread-child-split")
 	if terminalTest(u).Layout.Diff.W == 0 || !u.testActivity(u.shell.Agents).displayingChild() {
 		t.Fatal("opening Diff lost the displayed child")
+	}
+	click("/root")
+	paint("native-thread-roster-from-diff")
+	if terminalTest(u).Focus != 1 || !terminalTest(u).DiffOpen || u.attached.presentation.DisplayingChild() || u.Text != "retained draft" {
+		t.Fatal("roster click lost Diff focus, visibility or Main's draft")
+	}
+	click("/root/reader")
+	if terminalTest(u).Focus != 1 || !terminalTest(u).DiffOpen || !u.attached.presentation.DisplayingChild() {
+		t.Fatal("child selection changed Diff focus or visibility")
 	}
 	keys("\x022")
 	paint("native-thread-child-unsplit")
@@ -111,6 +127,13 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	frame = paint("native-thread-return-main")
 	if u.testActivity(u.shell.Agents).displayingChild() || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.Text != "retained draft" {
 		t.Fatal("returning to Main lost its transcript or draft")
+	}
+	if terminalTest(u).Focus != 0 {
+		t.Fatal("clicking Main focused the roster")
+	}
+	keys("\x023")
+	if terminalTest(u).Focus != 3 {
+		t.Fatal("explicit Agents shortcut did not focus the roster")
 	}
 	keys("\x021\r")
 	request := appServerOneRequest(t, w, "turn/start", "retained draft")

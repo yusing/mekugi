@@ -256,7 +256,9 @@ unread state. Main's title uses the sanitized host name, truncated to available
 width without an unnamed placeholder. Child display hides and preserves Main's
 draft, disabling typing, paste, submission, settings and keyboard interruption;
 navigation and copying remain available. Reference returns to Main before insertion.
-Roster selection leaves an open Diff intact. A blank row separates the composer
+Clicking an agent name preserves pane focus and leaves an open Diff intact;
+the Agents selector or Ctrl-B then 3 explicitly focuses the roster.
+A blank row separates the composer
 from content when height permits. Uncolored border labels use the text foreground.
 
 The welcome is presentation only. Releases show `mekugi-v<version> • codex v<version>`;

@@ -488,7 +488,9 @@ into a comma-joined summary. The viewport moves only when selection leaves it.
 Hover emphasizes the name; selection shades the row. Returning to Main brings
 its roster row into view and clears the previous child highlight. Remembering a
 child for toggling does not present it as the displayed transcript.
-Clicking a subagent selects its read-only transcript; Main’s draft stays Main’s.
+Clicking a subagent selects its read-only transcript without focusing the roster;
+Main’s draft stays Main’s. [Terminal pane controls](../../apps/mekugi/internal/terminalsession/SPEC.md#panes)
+own explicit roster focus.
 The invocation-local Side destination remains available through thread navigation;
 its tab lives beside Main in the shared tab bar, outside the roster counts.
 Its editable destination follows

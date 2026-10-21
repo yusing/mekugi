@@ -167,7 +167,7 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 	if pane != 1 && shell.Auxiliary != nil {
 		shell.Auxiliary.ClearHover()
 	}
-	if button&^28 == 0 && !release {
+	if pane != 3 && button&^28 == 0 && !release {
 		shell.Focus = pane
 	}
 	if release {
