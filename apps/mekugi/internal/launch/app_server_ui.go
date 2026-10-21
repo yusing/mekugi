@@ -496,7 +496,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 	// Side control settles first; work-capable forks share native event consumers.
 	if update, err := control.Requests.ObserveSide(m, response, control.Thread, observations); update.Handled {
 		(*dirty) = true
-		applySideUpdate(attached, terminal, control, picker, questions, approvals, clock, update)
+		applySideUpdate(attached, terminal, control, clock, update)
 		if err != nil {
 			return err
 		}

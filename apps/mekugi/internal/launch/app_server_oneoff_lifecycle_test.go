@@ -29,38 +29,99 @@ func TestOneoffChildIsolation(t *testing.T) {
 }
 
 func TestOneoffClosedKnownChild(t *testing.T) {
+	for _, closeOrder := range []string{"unsubscribe-first", "closed-first", "unexpected"} {
+		t.Run(closeOrder, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.startSession("main", "/workspace")
+			oneoffTestStart(t, u, wire)
+			oneoffTestChild(t, u)
+			questionTestMessage(t, u, "child-question", "item/tool/requestUserInput", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "itemId": "ask", "questions": []any{map[string]any{"id": "scope", "header": "Scope", "question": "Child scope?", "options": []any{map[string]any{"label": "Small", "description": "One path"}}}}})
+			if u.attached.presentation.View().Questions.Count != 1 {
+				t.Fatal("descendant question unavailable from one-off view")
+			}
+			for _, entry := range u.attached.source.Entries {
+				if strings.Contains(entry.Source.Text, "Child scope?") {
+					t.Fatal("descendant question leaked into Main")
+				}
+			}
+			wire.Reset()
+			if closeOrder == "unexpected" {
+				appServerTestNotify(t, u, "thread/closed", map[string]any{"threadId": "oneoff"})
+				u.sideFrame(120, 24)
+				frame := u.attached.presentation.View().Status.State.Text
+				if !strings.Contains(frame, "return to Main") || strings.Contains(frame, "/btw starts") || wire.Len() != 0 {
+					t.Fatalf("closed side recovery: status=%q frame=\n%s", u.side.Status, frame)
+				}
+			}
+			if err := terminalTest(u).send("\x1b"); err != nil {
+				t.Fatal(err)
+			}
+			if u.side != nil {
+				t.Fatal("oneoff did not close")
+			}
+			if u.questions.Count("oneoff-child") != 0 {
+				t.Fatal("closed descendant prompt remained active")
+			}
+			if closeOrder != "unexpected" {
+				interrupt := btwTestRequest(t, wire, "turn/interrupt", "oneoff")
+				if closeOrder == "closed-first" {
+					appServerTestNotify(t, u, "thread/closed", map[string]any{"threadId": "oneoff"})
+				}
+				btwTestReply(t, u, interrupt, `{}`)
+				if closeOrder == "unsubscribe-first" {
+					unsubscribe := btwTestRequest(t, wire, "thread/unsubscribe", "oneoff")
+					btwTestReply(t, u, unsubscribe, `{}`)
+				} else if wire.Len() != 0 {
+					t.Fatal("closed host thread received another cleanup request")
+				}
+			}
+
+			if u.Requests.HasSides() {
+				t.Fatal("cleanup retained root or descendant operation mappings")
+			}
+			appServerTestNotify(t, u, "thread/closed", map[string]any{"threadId": "oneoff-child"})
+			questionTestMessage(t, u, "late-child-approval", "item/commandExecution/requestApproval", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "itemId": "command", "command": "printf late"})
+			if len(u.approvals.calls()) > 0 {
+				t.Errorf("approval from known closed oneoff descendant remains active: %+v", u.approvals.calls()[0])
+			}
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "item": map[string]any{"id": "late", "type": "agentMessage", "text": "LATE_CHILD_RESULT", "phase": "final_answer"}})
+			for _, e := range u.attached.source.Entries {
+				if strings.Contains(e.Source.Text, "LATE_CHILD_RESULT") {
+					t.Errorf("closed descendant result admitted to Main: %q", e.Source.Text)
+				}
+			}
+		})
+	}
+}
+
+func TestOneoffUnexpectedClosePreservesDraft(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")
 	oneoffTestStart(t, u, wire)
-	oneoffTestChild(t, u)
-	questionTestMessage(t, u, "child-question", "item/tool/requestUserInput", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "itemId": "ask", "questions": []any{map[string]any{"id": "scope", "header": "Scope", "question": "Child scope?", "options": []any{map[string]any{"label": "Small", "description": "One path"}}}}})
-	if u.attached.presentation.View().Questions.Count != 1 {
-		t.Fatal("descendant question unavailable from one-off view")
+	appServerTestNotify(t, u, "thread/closed", map[string]any{"threadId": "oneoff"})
+	draft := u.side.Drafts.Editor.Text
+	appServerTestKeys(t, u, "\r")
+	if wire.Len() != 0 || u.side.Drafts.Editor.Text != draft {
+		t.Fatal("closed One-off consumed or submitted its restored draft")
 	}
-	for _, entry := range u.attached.source.Entries {
-		if strings.Contains(entry.Source.Text, "Child scope?") {
-			t.Fatal("descendant question leaked into Main")
-		}
-	}
-	wire.Reset()
-	if err := terminalTest(u).send("\x1b"); err != nil {
+}
+
+func TestOneoffUnexpectedCloseRetiresRoot(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.startSession("main", "/workspace")
+	oneoffTestStart(t, u, wire)
+	questionTestMessage(t, u, "root-question", "item/tool/requestUserInput", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "itemId": "ask", "questions": []any{map[string]any{"id": "scope", "header": "Scope", "question": "Root question?", "options": []any{map[string]any{"label": "Yes", "description": "yes"}}}}})
+	approvalTestCommand(t, u, "root-approval", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "itemId": "command"})
+	appServerTestNotify(t, u, "thread/closed", map[string]any{"threadId": "oneoff"})
+	if err := closeSide(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
 		t.Fatal(err)
 	}
-	if u.side != nil {
-		t.Fatal("oneoff did not close")
+	if u.questions.Count("oneoff") != 0 || len(u.approvals.calls()) != 0 || !u.RetiredThread("oneoff", "") || u.Requests.HasSides() {
+		t.Fatal("closed root retained prompts or escaped retirement")
 	}
-	if u.questions.Count("oneoff-child") != 0 {
-		t.Fatal("closed descendant prompt remained active")
-	}
-	questionTestMessage(t, u, "late-child-approval", "item/commandExecution/requestApproval", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "itemId": "command", "command": "printf late"})
-	if len(u.approvals.calls()) > 0 {
-		t.Errorf("approval from known closed oneoff descendant remains active: %+v", u.approvals.calls()[0])
-	}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "item": map[string]any{"id": "late", "type": "agentMessage", "text": "LATE_CHILD_RESULT", "phase": "final_answer"}})
-	for _, e := range u.attached.source.Entries {
-		if strings.Contains(e.Source.Text, "LATE_CHILD_RESULT") {
-			t.Errorf("closed descendant result admitted to Main: %q", e.Source.Text)
-		}
+	approvalTestCommand(t, u, "late-root-approval", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "itemId": "command"})
+	if len(u.approvals.calls()) != 0 {
+		t.Fatal("retired root admitted a late approval")
 	}
 }
 

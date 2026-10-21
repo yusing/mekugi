@@ -172,7 +172,11 @@ Side-thread correlation outlives a closed side conversation or Main replacement 
 fork/start responses and cleanup settle. A later start acknowledgement cannot revive
 a completed turn. Interruption/unsubscription targets only that side thread;
 its notifications never become Main observations. Closing Side drops its
-visible exchange, not pending host correlation.
+visible exchange, not pending host correlation. Once explicit close cleanup
+completes, root and descendant notification mappings release their operation;
+outstanding requests retain only their own acknowledgement correlation.
+An unexpected host close stops submissions but retains root identity until the
+visible slot is dismissed, so its prompts and descendant activity retire together.
 The temporary `/btw` answer has a separate operation and exchange from the
 Side/One-off slot. Both can run concurrently, with independent follow-ups and
 cancellation. Main replacement closes both; closing either leaves the other intact.

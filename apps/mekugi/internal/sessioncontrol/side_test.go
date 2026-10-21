@@ -25,11 +25,18 @@ func TestSideCompletionAndDelayedCleanup(t *testing.T) {
 	}
 	ledger := new(Requests[*Side])
 	ledger.TrackSide("side", &side)
+	ledger.TrackSide("child", &side)
 	ledger.Retire("main")
 	if ledger.Side("side") != &side {
 		t.Fatal("Main replacement retired side correlation")
 	}
+	other := &Side{Thread: "other"}
+	ledger.TrackSide("other", other)
 	ledger.CloseSide("side")
+	if ledger.Side("side") != nil || ledger.Side("child") != nil || ledger.Side("other") != other {
+		t.Fatal("cleanup crossed operation ownership")
+	}
+	ledger.CloseSide("other")
 	if ledger.HasSides() {
 		t.Fatal("closed side correlation retained")
 	}

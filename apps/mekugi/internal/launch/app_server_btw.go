@@ -20,6 +20,10 @@ import (
 
 func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations) error {
 	text := strings.TrimSpace((*editor).Text)
+	if *side != nil && (*side).Unloaded && attached.presentation.DisplayingSide() {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Side conversation closed · return to Main to start a new conversation", true)
+		return nil
+	}
 	if b := *side; text == "" && b != nil && b.OneOff && attached.presentation.DisplayingSide() && len(b.Drafts.Queued) > 0 {
 		b.Drafts.Unsent = append(b.Drafts.Unsent, b.Drafts.Queued[0])
 		b.Drafts.Queued = b.Drafts.Queued[1:]
@@ -86,6 +90,10 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 		setNotice(&attached.feedback, terminal, presentationTime(clock), conversationmodel.SideCompactionRequired, true)
 		return nil
 	}
+	if (*owner) != nil && (*owner).Unloaded {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Side conversation closed · Esc closes", true)
+		return nil
+	}
 	if (*owner) == nil {
 		answer := new(conversationmodel.SideAnswer)
 		if command {
@@ -96,9 +104,6 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 		(*owner) = &sessioncontrol.Side{SideAnswer: answer}
 	}
 	b := (*owner)
-	if command {
-		b.RestoreTarget = attached.presentation.InputConversation(attached.conversation)
-	}
 	// Remove the command through the composer so attachment offsets stay valid.
 	prefix := 0
 	if command {
@@ -107,7 +112,6 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 	if prefix > 0 {
 		deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay, (*owned), 0, prefix)
 	}
-	b.FromSide = attached.presentation.DisplayingSide()
 	b.Begin(question, prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take()))
 	b.Busy = true
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
@@ -123,7 +127,7 @@ func flushBTW(attached *attachedPresentation, terminal *terminalsession.Attachme
 
 func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, side **sessioncontrol.Side, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations) error {
 	b := (*side)
-	if b != nil && b.OneOff && !b.Closed && !b.Starting {
+	if b != nil && b.OneOff && !b.Closed && !b.Unloaded && !b.Starting {
 		for len(b.Drafts.Unsent) > 0 {
 			input := b.Drafts.Unsent[0]
 			thread, turn := b.Thread, b.Turn
@@ -186,11 +190,11 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 			delete((*owned), image.Path)
 		}
 	}
-	applySideUpdate(attached, terminal, control, picker, questions, approvals, clock, update)
+	applySideUpdate(attached, terminal, control, clock, update)
 	return err
 }
 
-func applySideUpdate(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, update sessioncontrol.SideUpdate) {
+func applySideUpdate(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], clock func() time.Time, update sessioncontrol.SideUpdate) {
 	if update.ClosedThread != "" {
 		forgetSideActivity(attached, update.ClosedThread)
 	}
@@ -198,18 +202,15 @@ func applySideUpdate(attached *attachedPresentation, terminal *terminalsession.A
 		attached.session.Caller(update.ReplyThread)
 		attached.session.Activity().Agent(update.ReplyThread).Turn = update.ReplyTurn
 	}
-	if update.Restore.Text != "" && update.Side != nil && update.Side.RestoreTarget != nil {
-		update.Side.RestoreTarget.RestoreInput(conversationmodel.Join(conversationmodel.Input{Text: "/btw"}, update.Restore))
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "BTW input restored to its originating conversation", true)
-	} else if update.Restore.Text != "" && update.Side != nil && update.Side.FromSide {
+	if update.Restore.Text != "" && update.Side == control.BTW {
+		attached.conversation.RestoreInput(conversationmodel.Join(conversationmodel.Input{Text: "/btw"}, update.Restore))
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "BTW input restored to Main", true)
+	} else if update.Restore.Text != "" && update.Side != nil {
 		if update.Side.RestoreInput(update.Restore) {
 			update.Notice += " · Enter in an empty One-off composer retries the attachment delivery"
 		} else {
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Side input restored for retry", true)
 		}
-	} else if update.Restore.Text != "" {
-		restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, update.Restore)
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Side question restored ahead of draft · edit before resending", true)
 	}
 	if update.Notice != "" {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), update.Notice, true)
@@ -232,9 +233,6 @@ func closeSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 		return nil
 	}
 	(*side) = nil
-	if control.BTW != nil && control.BTW.RestoreTarget == &b.Drafts {
-		control.BTW.RestoreTarget = attached.conversation
-	}
 	b.Close()
 	if b.Thread != "" {
 		threads := control.Requests.SideThreads(b)
@@ -286,7 +284,7 @@ func openFreshSide(attached *attachedPresentation, terminal *terminalsession.Att
 	answer := &conversationmodel.SideAnswer{OneOff: oneoff}
 	answer.Begin(strings.TrimSpace(pending.Text), pending)
 	attached.conversation.Side = answer
-	*side = &sessioncontrol.Side{SideAnswer: answer, ForkPending: true, Busy: true, FromSide: oneoff}
+	*side = &sessioncontrol.Side{SideAnswer: answer, ForkPending: true, Busy: true}
 	target := sessionpresentation.Thread{ID: "side:" + answer.Key, Caller: answer.Caller()}
 	attached.presentation.SetSide(target)
 	if err := attached.presentation.Display(sessionpresentation.DisplayIntent{Version: attached.presentation.View().Version, Thread: target}); err != nil {

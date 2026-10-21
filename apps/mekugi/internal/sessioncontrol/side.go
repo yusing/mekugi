@@ -9,14 +9,14 @@ type Side struct {
 	*conversationmodel.SideAnswer
 	Thread, Turn                string
 	Source, Model, Effort, Tier string
-	ForkPending, FromSide       bool
+	ForkPending                 bool
 	Busy, Starting, Closed      bool
 	Interrupting, Unloading     bool
-	RestoreTarget               *conversationmodel.Session
+	Unloaded                    bool
 }
 
 func (s *Side) Ready(replacing bool) bool {
-	return s != nil && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !replacing
+	return s != nil && !s.Closed && !s.Unloaded && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !replacing
 }
 
 func (s *Side) Close() {
@@ -26,7 +26,7 @@ func (s *Side) Close() {
 }
 
 func (s *Side) Release() string {
-	if s.Thread == "" || s.Starting || s.Interrupting || s.Unloading {
+	if s.Thread == "" || s.Starting || s.Interrupting || s.Unloading || s.Unloaded {
 		return ""
 	}
 	if s.Turn != "" {
@@ -64,7 +64,18 @@ func (r *Requests[T]) TrackSide(thread string, owner *Side) {
 }
 func (r *Requests[T]) Side(thread string) *Side { return r.sides[thread] }
 func (r *Requests[T]) HasSides() bool           { return r != nil && len(r.sides) != 0 }
-func (r *Requests[T]) CloseSide(thread string)  { delete(r.sides, thread) }
+func (r *Requests[T]) CloseSide(thread string) {
+	owner := r.sides[thread]
+	if owner != nil && owner.Closed && owner.Thread == thread {
+		for id, side := range r.sides {
+			if side == owner {
+				delete(r.sides, id)
+			}
+		}
+	} else {
+		delete(r.sides, thread)
+	}
+}
 
 func (r *Requests[T]) WorkSide(thread string) bool {
 	s := r.Side(thread)

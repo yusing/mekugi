@@ -102,6 +102,12 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 }
 
 func (r *Requests[T]) ReleaseSide(s *Side) error {
+	if s.Unloaded {
+		if s.Closed {
+			r.CloseSide(s.Thread)
+		}
+		return nil
+	}
 	method := s.Release()
 	if method == "" {
 		return nil
@@ -134,8 +140,15 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 			if m.Error != nil {
 				update.Notice = "Could not unload side conversation: " + m.Error.Message
 			} else {
+				s.Unloaded = true
 				observations.SetSideThread(s.Thread, false)
+				if s.Closed {
+					r.CloseSide(s.Thread)
+				}
 			}
+			return update, nil
+		}
+		if s.Unloaded {
 			return update, nil
 		}
 		if input := response.SideInput; input != nil {
@@ -251,7 +264,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 	if s == nil {
 		return SideUpdate{}, nil
 	}
-	update := SideUpdate{Handled: true, Side: s, Forward: !s.Closed && (s.OneOff || m.Method == "thread/tokenUsage/updated" || m.Method == "thread/settings/updated")}
+	update := SideUpdate{Handled: true, Side: s, Forward: !s.Closed && !s.Unloaded && (s.OneOff || m.Method == "thread/tokenUsage/updated" || m.Method == "thread/settings/updated")}
 	if thread != s.Thread {
 		// Descendants share admission and cleanup, never their root's turn lifecycle.
 		return update, nil
@@ -259,11 +272,17 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 	if m.Method == "thread/closed" {
 		update.ClosedThread = thread
 		observations.SetSideThread(thread, false)
-		r.CloseSide(thread)
-		if !s.Closed {
-			s.Thread, s.Turn, s.Busy, s.Starting = "", "", false, false
-			s.Status, s.Alert = "Side conversation closed · /btw starts a new branch", true
+		s.Unloaded = true
+		if s.Closed {
+			r.CloseSide(thread)
+		} else {
+			s.Turn, s.Busy, s.Starting = "", false, false
+			s.ForkPending = false
+			update.Restore = s.SideAnswer.Fail("Side conversation closed · return to Main to start a new conversation", false)
 		}
+		return update, nil
+	}
+	if s.Unloaded {
 		return update, nil
 	}
 	if len(m.ID) != 0 {
@@ -317,7 +336,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 
 // ReplySide delivers question companion input through the same input request ledger.
 func (r *Requests[T]) ReplySide(s *Side, thread, turn string, input conversationmodel.Input) error {
-	if s == nil || !s.OneOff || s.Closed {
+	if s == nil || !s.OneOff || s.Closed || s.Unloaded {
 		return errors.New("one-off conversation is no longer available")
 	}
 	var owner T
