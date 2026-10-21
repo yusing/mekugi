@@ -176,7 +176,7 @@ func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []s
 			if label := strings.TrimSpace(row.label); label != "" {
 				_, spans := terminalui.ExtractCopy(text)
 				if len(spans) > 0 {
-					prefix = terminalui.AttachCopy(prefix, []terminalui.CopySpan{{CopyFragment: terminalui.CopyFragment{ID: spans[0].ID, Text: label + "  ", Offset: -len(label) - 2, Width: ansi.StringWidth(prefix)}}})
+					prefix = terminalui.AttachCopy(prefix, []terminalui.CopySpan{{ID: spans[0].ID, Text: label + "  ", Offset: -len(label) - 2, Width: ansi.StringWidth(prefix)}})
 				}
 			}
 			text = prefix + text

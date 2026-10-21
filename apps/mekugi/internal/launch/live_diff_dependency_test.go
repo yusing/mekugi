@@ -105,7 +105,7 @@ func TestLiveDiffDirectoryLifecycleAndCallerFilter(t *testing.T) {
 		var captures []presentation.Chunk
 		for i := range 2 {
 			captures = append(captures, presentation.Chunk{Key: fmt.Sprint(i), CaptureOrder: uint64(i + 1),
-				Origin: presentation.Origin{Caller: fmt.Sprintf("/root/agent%d", i)},
+				Caller: fmt.Sprintf("/root/agent%d", i),
 				Review: diffmodel.ReviewFile{BeforePath: paths[2*i], AfterPath: paths[2*i+1], Directory: true}})
 		}
 		view := changeview.View{}

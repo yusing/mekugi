@@ -13,8 +13,8 @@ import (
 
 func snapshotAttempt(call, thread, item string, chunks ...Chunk) Attempt {
 	return Attempt{
-		AttemptIdentity: AttemptIdentity{Key: AttemptKey{Workspace: "/w", Call: call}, Change: call, Correlation: item, Stream: 1},
-		Operation:       activitydetail.Operation{Thread: thread, Item: item}, Chunks: chunks,
+		Key: AttemptKey{Workspace: "/w", Call: call}, Change: call, Correlation: item, Stream: 1,
+		Operation: activitydetail.Operation{Thread: thread, Item: item}, Chunks: chunks,
 	}
 }
 
@@ -126,7 +126,7 @@ func TestSnapshotActivityDetailIdentityAndReceiptCalls(t *testing.T) {
 		{"wrapper", "wrapper", ""}, {"main", "first", ""}, {"other", "shared", ""}, {"", "", ""},
 	} {
 		t.Run(tt.thread+"/"+tt.item, func(t *testing.T) {
-			got := snapshot.ActivityDetail(activitydetail.Request{Operation: activitydetail.Operation{Thread: tt.thread, Item: tt.item}})
+			got := snapshot.ActivityDetail(activitydetail.Request{Thread: tt.thread, Item: tt.item})
 			if tt.page == "" {
 				if len(got.Pages) != 0 || got.Selected != "" {
 					t.Fatalf("unmatched identity returned detail: %+v", got)

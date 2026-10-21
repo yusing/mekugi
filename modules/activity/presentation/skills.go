@@ -96,7 +96,7 @@ func SkillLoads[S Source](record Record[S]) []string {
 		}
 		for _, read := range block.Reads {
 			if block.Verb == "Skill" {
-				for _, field := range strings.Fields(read.Path) {
+				for field := range strings.FieldsSeq(read.Path) {
 					if !strings.HasPrefix(field, "-") {
 						name, _, _ := strings.Cut(field, "/")
 						names = append(names, name)

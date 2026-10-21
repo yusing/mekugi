@@ -89,7 +89,7 @@ func TestBindingsRegister(t *testing.T) {
 				}
 				factories = append(factories, mechanism)
 			}
-			commands := []command.Definition[*int]{{Spec: command.Spec{Name: "reader", Description: "Read"}}, {Spec: command.Spec{Name: "writer", Description: "Write"}}}
+			commands := []command.Definition[*int]{{Name: "reader", Description: "Read"}, {Name: "writer", Description: "Write"}}
 			bindings := Bindings[*int]{
 				Frontends: true,
 				Rollout: func(got *int, source RolloutSource) error {

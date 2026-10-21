@@ -58,8 +58,8 @@ func TestLiveDiffNestedToolAttributionSurvivesStreamingCompletion(t *testing.T) 
 	t.Cleanup(worker.Stop)
 	command := "cat >target.txt <<'END'\nfirst\nsecond\nEND\n"
 	input := "text(await tools.exec_command(" + string(responses.MustMarshalJSON(map[string]string{"cmd": command})) + "));"
-	point := strings.Index(input, "second")
-	worker.Append(input[:point])
+	before, _, _ := strings.Cut(input, "second")
+	worker.Append(before)
 	live := waitLiveDiffWorkerPreview(t, broker, sub, func(p previewmodel.Preview) bool { return len(p.Files) == 1 })
 	if live.Tool != "cat" || live.Complete {
 		t.Fatalf("stream attributed to executor: %+v", live)

@@ -61,8 +61,8 @@ func TestValueHasNoRendererOrLiveState(t *testing.T) {
 			if typ.PkgPath() == "time" {
 				return
 			}
-			for i := 0; i < typ.NumField(); i++ {
-				visit(typ.Field(i).Type)
+			for field := range typ.Fields() {
+				visit(field.Type)
 			}
 		}
 	}

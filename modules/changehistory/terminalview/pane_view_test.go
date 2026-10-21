@@ -45,10 +45,10 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 
 func TestLiveDiffScrollAcrossFiles(t *testing.T) {
 	view := View{
-		View:   presentation.View{Files: []presentation.File{{Path: "first"}, {Path: "second"}}},
+		Files:  []presentation.File{{Path: "first"}, {Path: "second"}},
 		Scroll: make(map[string]int),
 	}
-	render := Render{Layout: diffrender.Layout{Lines: make([]string, 20)}, Starts: []int{0, 10}}
+	render := Render{Lines: make([]string, 20), Starts: []int{0, 10}}
 	for _, tc := range []struct {
 		offset, file, local int
 	}{

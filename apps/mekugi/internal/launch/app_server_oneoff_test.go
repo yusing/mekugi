@@ -149,7 +149,7 @@ func TestOneoffReplacementCancelAndLateStart(t *testing.T) {
 	}
 	appServerTestKeys(t, u, "\r\x1b[B\r")
 	var requests []btwTestRPC
-	for _, line := range bytes.Split(bytes.TrimSpace(wire.Bytes()), []byte{'\n'}) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(wire.Bytes()), []byte{'\n'}) {
 		var r btwTestRPC
 		if err := json.Unmarshal(line, &r); err != nil {
 			t.Fatal(err)

@@ -112,7 +112,7 @@ func Page(ctx context.Context, req ReadRequest, budget int) (ReadPage, error) {
 	arrayPage := func(i, offset, count int) string {
 		var v strings.Builder
 		v.WriteByte('[')
-		for j := 0; j < count; j++ {
+		for j := range count {
 			if j > 0 {
 				v.WriteByte(',')
 			}

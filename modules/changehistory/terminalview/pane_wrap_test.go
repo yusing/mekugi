@@ -40,7 +40,7 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	view := View{View: presentation.View{Files: files}, Scroll: map[string]int{"file.txt": wrapped.RowStarts[1] + 2}}
+	view := View{Files: files, Scroll: map[string]int{"file.txt": wrapped.RowStarts[1] + 2}}
 	view.Reflow(wrapped, wide)
 	if view.Scroll["file.txt"] != wide.RowStarts[1] {
 		t.Fatal("widening lost the logical source row")
@@ -90,7 +90,7 @@ func TestLiveDiffResizeReflowsSavedFiles(t *testing.T) {
 	if len(wide.RowStarts) != len(narrow.RowStarts) {
 		t.Fatal("wrapped headings or status changed logical row identities")
 	}
-	view := View{View: presentation.View{Files: files, Selected: 1}, Scroll: make(map[string]int)}
+	view := View{Files: files, Selected: 1, Scroll: make(map[string]int)}
 	for i, file := range files {
 		end := len(wide.Lines)
 		if i+1 < len(files) {

@@ -5,6 +5,7 @@ package inferencegateway
 import (
 	"context"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -98,14 +99,12 @@ func RegisterCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 func copyAuxiliaryResponseHeaders(destination, source http.Header) {
 	header := source.Clone()
 	for _, connection := range header.Values("Connection") {
-		for _, name := range strings.Split(connection, ",") {
+		for name := range strings.SplitSeq(connection, ",") {
 			header.Del(strings.TrimSpace(name))
 		}
 	}
 	for _, name := range []string{"Connection", "Proxy-Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer", "Transfer-Encoding", "Upgrade"} {
 		header.Del(name)
 	}
-	for name, values := range header {
-		destination[name] = values
-	}
+	maps.Copy(destination, header)
 }

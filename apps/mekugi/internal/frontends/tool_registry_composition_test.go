@@ -48,7 +48,7 @@ func TestComposedCatalogRejectsInvalidExposure(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			directory := t.TempDir()
 			runtime := filepath.Join(directory, "runtime")
-			registry, err := New(t.Context(), Config{Commands: []command.Contribution{{Spec: command.Spec{Name: name, Description: "unavailable frontend"}}}, Guidance: testGuidance(), RuntimeDirectory: runtime, ReplayDirectory: filepath.Join(directory, "replay")})
+			registry, err := New(t.Context(), Config{Commands: []command.Contribution{{Name: name, Description: "unavailable frontend"}}, Guidance: testGuidance(), RuntimeDirectory: runtime, ReplayDirectory: filepath.Join(directory, "replay")})
 			if err == nil {
 				_ = registry.Close()
 				t.Fatal("published invalid frontend")

@@ -232,15 +232,15 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 			model += " · " + presentation.Caption.Tier
 		}
 		model = strings.ReplaceAll(textsanitize.Safe(model, false), "\n", " ")
-		context := activityui.ContextWindowLabel(activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{
-			ContextKnown: presentation.Caption.ContextKnown, ContextTokens: presentation.Caption.ContextTokens, ContextWindow: presentation.Caption.ContextWindow,
-		}})
+		var context strings.Builder
+		context.WriteString(activityui.ContextWindowLabel(activitypresentation.Agent{
+			ContextKnown: presentation.Caption.ContextKnown, ContextTokens: presentation.Caption.ContextTokens, ContextWindow: presentation.Caption.ContextWindow}))
 		for _, item := range presentation.Caption.Items {
-			context += " • " + textsanitize.Safe(item.Text, false)
+			context.WriteString(" • " + textsanitize.Safe(item.Text, false))
 		}
-		caption := context
-		if room := width - 7 - ansi.StringWidth(context) - 3; model != "" && room > 0 {
-			caption = ansi.Truncate(model, room, "…") + " • " + context
+		caption := context.String()
+		if room := width - 7 - ansi.StringWidth(context.String()) - 3; model != "" && room > 0 {
+			caption = ansi.Truncate(model, room, "…") + " • " + context.String()
 		}
 		caption = terminalui.Dim + ansi.Truncate(caption, max(0, width-7), "…") + terminalui.Reset
 		frame = append(frame, composerBorder("╰", "╯", "", caption, width, border))
@@ -283,7 +283,7 @@ func (m *Main) noticeBorder(status sessionpresentation.MainStatus, now time.Time
 	room := max(1, width-13)
 	// In compact panes the error takes precedence over the session caption.
 	plain := ansi.Strip(label)
-	if mark := strings.Index(plain, "✗ "); mark >= 0 && ansi.StringWidth(plain[:mark])+4 > room {
+	if before, _, ok := strings.Cut(plain, "✗ "); ok && ansi.StringWidth(before)+4 > room {
 		label = terminalui.Red + "✗ " + activityui.ErrorPreview(full) + terminalui.Reset
 	}
 	details := activityui.ErrorHasDetails(activityui.Block{Body: full})

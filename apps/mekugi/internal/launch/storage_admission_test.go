@@ -89,8 +89,7 @@ func TestStorageAdmissionRefreshesAfterPeerPublicationAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = store.locked(t.Context(), func(store *mekugiReplayStore) error { return store.maintainStorage("", 0) })
-	var pressure *history.PressureError
-	if !errors.As(err, &pressure) {
+	if _, ok := errors.AsType[*history.PressureError](err); !ok {
 		t.Fatalf("peer growth did not enforce quota: %v", err)
 	}
 	assertStorageAdmission(t, store)

@@ -612,7 +612,8 @@ func vcsSVNStatus(args []string) (vcsCall, bool) {
 // history keep their own rows; revert and apply write files.
 func vcsMChanges(args []string) (vcsCall, bool) {
 	var ids, paths []string
-	source := "mchanges"
+	var source strings.Builder
+	source.WriteString("mchanges")
 	call := vcsCall{tool: "mchanges", kind: vcsDiff}
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; {
@@ -621,9 +622,9 @@ func vcsMChanges(args []string) (vcsCall, bool) {
 			i = len(args)
 		case arg == "--summary":
 			call.kind, call.format = vcsStat, "summary"
-			source += " --summary"
+			source.WriteString(" --summary")
 		case arg == "--net":
-			source += " --net"
+			source.WriteString(" --net")
 		case arg == "--mine":
 		case arg == "--workspace" || arg == "--max-tokens":
 			if i++; i >= len(args) {
@@ -636,7 +637,7 @@ func vcsMChanges(args []string) (vcsCall, bool) {
 			ids = append(ids, arg)
 		}
 	}
-	call.display = vcsDisplay("Diff", cmp.Or(strings.Join(ids, " "), "mine"), paths, source)
+	call.display = vcsDisplay("Diff", cmp.Or(strings.Join(ids, " "), "mine"), paths, source.String())
 	return call, true
 }
 

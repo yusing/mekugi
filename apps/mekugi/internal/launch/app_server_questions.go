@@ -333,10 +333,9 @@ func applyQuestionInput(attached *attachedPresentation, terminal *terminalsessio
 			terminal.Prompts.Secrets(c.ID).Answers[questions.Index] = answer.Answer
 		} else {
 			view := attached.presentation.View()
-			if !answerQuestion(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, sessionpresentation.AnswerIntent{Version: view.Version, AnswerInput: prompt.AnswerInput{
+			if !answerQuestion(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, sessionpresentation.AnswerIntent{Version: view.Version,
 				Call: c.ID, Question: view.Questions.Call.Questions[questions.Index].ID,
-				Choice: q.Selected, Draft: q.Editor.Snapshot.Draft, Skip: action == conversationui.PromptSkip,
-			}}) {
+				Choice: q.Selected, Draft: q.Editor.Snapshot.Draft, Skip: action == conversationui.PromptSkip}) {
 				return true, nil
 			}
 		}
@@ -458,8 +457,8 @@ func questionAnswerAttachments(c *prompt.Call, secrets map[int]composer.State, s
 			continue
 		}
 		text := d.Text
-		for j := len(d.Images) - 1; j >= 0; j-- {
-			image := d.Images[j]
+		for j, image := range slices.Backward(d.Images) {
+
 			text = text[:image.Start] + fmt.Sprintf("[Image %d]", len(paths)+j+1) + text[image.End:]
 		}
 		for _, image := range d.Images {

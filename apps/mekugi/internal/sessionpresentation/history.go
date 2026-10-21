@@ -149,10 +149,8 @@ type TurnPage struct {
 
 func (h *History) Turns(ids []string, cursor string) (TurnPage, error) {
 	var page TurnPage
-	for _, id := range ids {
-		if id == "" {
-			return page, errors.New("Turn page returned no turn identity.")
-		}
+	if slices.Contains(ids, "") {
+		return page, errors.New("Turn page returned no turn identity.")
 	}
 	if h.seenTurns == nil {
 		h.seenTurns = make(map[string]bool)

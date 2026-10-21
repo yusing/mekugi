@@ -8,7 +8,7 @@ import (
 )
 
 func TestMenuKeysReturnTargetedEffectsWithoutMutatingPublication(t *testing.T) {
-	v := sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Menu: &sessionpresentation.MenuView{ID: 1, View: completion.View{Target: completion.Target{Kind: '@'}}}}
+	v := sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Menu: &sessionpresentation.MenuView{ID: 1, Target: completion.Target{Kind: '@'}}}
 	var m Menu
 	m.Update(v)
 	if result := m.Key("x"); result.Handled || result.Action.Kind != sessionpresentation.MenuNoAction {
@@ -50,7 +50,7 @@ func TestMenuKeysReturnTargetedEffectsWithoutMutatingPublication(t *testing.T) {
 func TestRewindDialogInputIsolation(t *testing.T) {
 	main := &Main{}
 	main.Update(sessionpresentation.View{Menu: &sessionpresentation.MenuView{ID: 1, Kind: sessionpresentation.MenuRewind, Dialog: true,
-		View: completion.View{Choices: []completion.Choice{{Name: "first"}, {Name: "second"}}}}})
+		Choices: []completion.Choice{{Name: "first"}, {Name: "second"}}}})
 	main.Menu.Rect = Rect{5, 4, 60, 10}
 	main.Menu.RowStart, main.Menu.RowCount = 5, 2
 	in := FrameInput{Main: main, Shell: &Shell{}, Transcript: activityui.NewView()}

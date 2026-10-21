@@ -2,6 +2,7 @@ package projection
 
 import (
 	"context"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -277,9 +278,7 @@ func TestLiveDiffPythonExpansionRuntime(t *testing.T) {
 			previewDirectory, runtimeDirectory := t.TempDir(), t.TempDir()
 			before := map[string]string{"target.txt": tc.before, "untouched.txt": "sentinel é🙂\n"}
 			after := map[string]string{"target.txt": tc.after, "untouched.txt": before["untouched.txt"]}
-			for name, text := range tc.extra {
-				after[name] = text
-			}
+			maps.Copy(after, tc.extra)
 			for _, directory := range []string{previewDirectory, runtimeDirectory} {
 				for name, text := range before {
 					writeTestFile(t, filepath.Join(directory, name), text)

@@ -172,9 +172,9 @@ func TestSessionUIReplayTranscriptMessageDeltaRetiresProviderThinking(t *testing
 	t.Parallel()
 	start := time.Date(2026, 9, 30, 8, 0, 0, 0, time.UTC)
 	source := &playback.Source{Thread: "root", Start: start, End: start.Add(3 * time.Second), Threads: map[string]string{"root": "/root"}, Events: []playback.Event{
-		{Event: observation.Event{At: start, Kind: observation.TurnStarted, ThreadID: "root", TurnID: "turn"}},
-		{Event: observation.Event{At: start.Add(time.Second), Kind: observation.ProviderStarted, ThreadID: "root", TurnID: "turn"}},
-		{Event: observation.Event{At: start.Add(2 * time.Second), Kind: observation.AgentDelta, ThreadID: "root", TurnID: "turn", ItemID: "answer", Item: observation.Item{ID: "answer", Type: "agentMessage"}, Delta: "Arrived without an item start"}},
+		{At: start, Kind: observation.TurnStarted, ThreadID: "root", TurnID: "turn"},
+		{At: start.Add(time.Second), Kind: observation.ProviderStarted, ThreadID: "root", TurnID: "turn"},
+		{At: start.Add(2 * time.Second), Kind: observation.AgentDelta, ThreadID: "root", TurnID: "turn", ItemID: "answer", Item: observation.Item{ID: "answer", Type: "agentMessage"}, Delta: "Arrived without an item start"},
 	}}
 	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)

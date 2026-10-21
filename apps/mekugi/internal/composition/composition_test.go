@@ -41,7 +41,7 @@ func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
 }
 func emptyDeps() struct{} { return struct{}{} }
 func frontend(name string) command.Contribution {
-	return command.Contribution{Spec: command.Spec{Name: name, Description: "test frontend"}, Run: func(context.Context, command.Request) (command.Output, error) { return command.Output{}, nil }}
+	return command.Contribution{Name: name, Description: "test frontend", Run: func(context.Context, command.Request) (command.Output, error) { return command.Output{}, nil }}
 }
 
 func TestCompositionTypedDependenciesAndCollectedSlots(t *testing.T) {
@@ -110,7 +110,7 @@ func TestCompositionValidatesBeforeConstruction(t *testing.T) {
 		{"order", []testDescriptor{func() testDescriptor { d := descriptor("consumer"); d.Requires = []module.ID{"dependency"}; return d }(), descriptor("dependency")}, "requires dependency before it"},
 		{"duplicate module", []testDescriptor{descriptor("same"), descriptor("same")}, "duplicate module same"},
 		{"duplicate frontend", []testDescriptor{descriptor("first", frontend("same")), descriptor("second", frontend("same"))}, "duplicate frontend"},
-		{"invalid frontend", []testDescriptor{descriptor("invalid", command.Contribution{Spec: command.Spec{Name: "bad"}})}, "inconsistent executable contribution"},
+		{"invalid frontend", []testDescriptor{descriptor("invalid", command.Contribution{Name: "bad"})}, "inconsistent executable contribution"},
 		{"missing frontend connection", []testDescriptor{func() testDescriptor {
 			d := descriptor("missing-connection", frontend("read"))
 			d.Bindings.Frontends = false

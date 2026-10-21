@@ -67,7 +67,7 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 		totals = append(totals, strings.TrimSpace(diffrender.CountStats(*v.NetCounts, v.Painter.Theme)))
 	}
 	if input+output > 0 {
-		in, out := tokenParts(activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{InputTokens: input, OutputTokens: output, UsagePartial: tokensPartial}})
+		in, out := tokenParts(activitypresentation.Agent{InputTokens: input, OutputTokens: output, UsagePartial: tokensPartial})
 		totals = append(totals, "↑"+in+" ↓"+out)
 	}
 	if costKnown {

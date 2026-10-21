@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/activity/presentation"
 )
 
@@ -22,8 +21,8 @@ func TestRosterVisibleNamesDetermineWidth(t *testing.T) {
 					AgentFacts: presentation.AgentFacts{Name: "/root/" + name, Responding: true, Started: now,
 						WorkKnown: true, WorkElapsed: 5 * time.Second, TokensKnown: true, InputTokens: 1234, OutputTokens: 345,
 						CostKnown: true, Cost: 0.01, Turns: 1, Roundtrips: 1},
-					Status: "responding", Summary: []presentation.Entry{{Facts: presentation.Facts{Seq: uint64(i + 1)},
-						Values: []presentation.Value{{Content: feed.Content{Kind: "text", Body: "Checking visible work and retaining useful source details"}}}}},
+					Status: "responding", Summary: []presentation.Entry{{Seq: uint64(i + 1),
+						Values: []presentation.Value{{Kind: "text", Body: "Checking visible work and retaining useful source details"}}}},
 				}})
 			}
 			if mode == "unfocused" {

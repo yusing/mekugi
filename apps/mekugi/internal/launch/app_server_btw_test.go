@@ -566,7 +566,7 @@ func TestSideProjectionOrderingAfterFeedTrim(t *testing.T) {
 	start := btwTestRequest(t, w, "turn/start", "side")
 	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
 	addTraffic := func(n int) {
-		for i := 0; i < n; i++ {
+		for range n {
 			seq := u.attached.session.Activity().NextSequence()
 			u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: seq, Agent: "/root/child", Kind: "text", Text: fmt.Sprint(seq)}}})
 		}

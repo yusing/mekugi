@@ -19,7 +19,7 @@ func TestUISnapshotSavedDiffTemporaryEdits(t *testing.T) {
 				var captures []presentation.Chunk
 				for i, path := range []string{"/tmp/scratch", "/w/main.go", "/tmp/log", "/tmpfoo/kept.go"} {
 					captures = append(captures, presentation.Chunk{Key: path, Workspace: "/w", CaptureOrder: uint64(i + 1),
-						Origin: presentation.Origin{Change: fmt.Sprintf("amber%d", i+1), Caller: "/root"},
+						Change: fmt.Sprintf("amber%d", i+1), Caller: "/root",
 						Review: diffmodel.RenderReviewFile("", path, "", "new source\n")})
 				}
 				var publication presentation.Publication

@@ -126,8 +126,7 @@ func TestDiagnosticsFailurePublicationAndRestart(t *testing.T) {
 	rejected := late
 	rejected.Reference = "not-published"
 	err = service.RetainFailure(t.Context(), store, writes, history.Limits{Total: 1}, rejected)
-	var capacity *history.CapacityError
-	if !errors.As(err, &capacity) {
+	if _, ok := errors.AsType[*history.CapacityError](err); !ok {
 		t.Fatalf("quota publication error=%v", err)
 	}
 	if _, err := restarted.ReadFailures(t.Context(), directory, rejected.Reference); err == nil {

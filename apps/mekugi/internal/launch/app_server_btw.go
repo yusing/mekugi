@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -323,8 +324,8 @@ func forgetSideActivity(attached *attachedPresentation, thread string) {
 			delete(attached.session.Commands(), key)
 		}
 	}
-	for i := len(attached.childSource.Entries) - 1; i >= 0; i-- {
-		entry := attached.childSource.Entries[i].Source
+	for i, v := range slices.Backward(attached.childSource.Entries) {
+		entry := v.Source
 		if entry.Native != nil && entry.Native.Thread == thread {
 			attached.childSource.Model.Remove(i, i+1)
 		}

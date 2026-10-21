@@ -287,7 +287,7 @@ func (p *Painter) Block(block Block, width int) []string {
 			identity := terminalui.CopyID(strings.Join(block.Tail, "\n"), p.CopyScope)
 			for i, row := range tail {
 				if ansi.Strip(row) != block.Tail[i] {
-					tail[i] = terminalui.AttachCopy(row, []terminalui.CopySpan{{CopyFragment: terminalui.CopyFragment{ID: terminalui.CopyID(strconv.Itoa(i), identity), Prefix: block.Tail[i], Width: ansi.StringWidth(row)}}})
+					tail[i] = terminalui.AttachCopy(row, []terminalui.CopySpan{{ID: terminalui.CopyID(strconv.Itoa(i), identity), Prefix: block.Tail[i], Width: ansi.StringWidth(row)}})
 				}
 			}
 		}
@@ -1279,8 +1279,8 @@ func formatTimeout(value string) string {
 	if value == "" {
 		return value
 	}
-	if strings.HasSuffix(value, "d") {
-		value = strings.TrimSuffix(value, "d") + "h"
+	if before, ok := strings.CutSuffix(value, "d"); ok {
+		value = before + "h"
 		if duration, err := time.ParseDuration(value); err == nil && duration <= time.Duration(1<<63-1)/24 {
 			return FormatDuration(duration * 24)
 		}

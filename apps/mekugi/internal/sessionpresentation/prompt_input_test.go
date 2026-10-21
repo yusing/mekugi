@@ -24,7 +24,7 @@ func TestNonTerminalPromptInputAndDraftPublication(t *testing.T) {
 	if c.model().View().PromptDraft.Draft.Files[0].Path != "file" {
 		t.Fatal("editor publication aliases retained data")
 	}
-	intent := sessionpresentation.QuestionInputIntent{Version: v.Version, QuestionInput: prompt.QuestionInput{Call: call.ID, Question: "ask/0", Kind: prompt.InputNote, Enabled: true}}
+	intent := sessionpresentation.QuestionInputIntent{Version: v.Version, Call: call.ID, Question: "ask/0", Kind: prompt.InputNote, Enabled: true}
 	if err := c.model().QuestionInput(intent, questions); err != nil || !questions.Current().Note {
 		t.Fatalf("note input: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestNonTerminalPromptInputAndDraftPublication(t *testing.T) {
 	if v.PromptDraft.Request != "approval" || v.PromptDraft.Draft.Text != "answer" {
 		t.Fatal("approval editor target lost")
 	}
-	a := sessionpresentation.ApprovalInputIntent{Version: v.Version, ApprovalInput: prompt.ApprovalInput{Request: "approval", Select: true, Choice: 20}}
+	a := sessionpresentation.ApprovalInputIntent{Version: v.Version, Request: "approval", Select: true, Choice: 20}
 	if err := c.model().ApprovalInput(a, approvals); err != nil || approvals.Pending[0].Selected != 1 {
 		t.Fatalf("approval input: %v", err)
 	}

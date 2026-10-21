@@ -43,7 +43,7 @@ func TestVCSRowsShowTheirResult(t *testing.T) {
 		t.Fatalf("committed rows =\n%s\nwant\n%s", got, want)
 	}
 	// The subject gives way to keep the source in view.
-	if got := strings.Split(vcsRows(&p, commit, 40), "\n")[0]; got != "Committed amend! feat(router): pi… · git" {
+	if got, _, _ := strings.Cut(vcsRows(&p, commit, 40), "\n"); got != "Committed amend! feat(router): pi… · git" {
 		t.Fatalf("narrow heading = %q", got)
 	}
 	if got := ansi.Strip(p.Summary([]Block{commit}, 80)); got != "Committed amend! feat(router): pin latest reply +11 -1 · git" {

@@ -132,9 +132,9 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 		t.Fatalf("terminal retained requested/source/unknown file detail after receipt:\n%s", frame)
 	}
 	for y, row := range strings.Split(frame, "\n") {
-		if x := strings.Index(row, "b.go"); x >= 0 {
+		if before, _, ok := strings.Cut(row, "b.go"); ok {
 			for _, end := range []string{"M", "m"} {
-				if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", ansi.StringWidth(row[:x])+1, y+1, end)); err != nil {
+				if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", ansi.StringWidth(before)+1, y+1, end)); err != nil {
 					t.Fatal(err)
 				}
 			}

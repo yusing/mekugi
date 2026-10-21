@@ -106,7 +106,7 @@ func TestServiceActivityDetailProviderOrder(t *testing.T) {
 		t.Fatal("activity does not declare its detail host")
 	}
 	var store scope.Store
-	request := activitydetail.Request{Operation: activitydetail.Operation{Thread: "thread", Item: "item"}, Path: "src", Directory: true}
+	request := activitydetail.Request{Thread: "thread", Item: "item", Path: "src", Directory: true}
 	want := activitydetail.Result{Pages: []activitydetail.Page{{ID: "chosen", Code: "captured"}}, Selected: "chosen"}
 	var calls []string
 	var providers []activitydetail.Provider

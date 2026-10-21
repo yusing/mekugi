@@ -157,9 +157,9 @@ func TestHistoryRestorationPreservesRepeatedOccurrencesAndSources(t *testing.T) 
 	for _, sharedFirst := range []bool{false, true} {
 		e := Editor{}
 		persisted := []HistoryEntry{
-			{Draft: Draft{Text: "same"}, Source: "other"},
-			{Draft: Draft{Text: "same"}, Source: "session"},
-			{Draft: Draft{Text: "same"}, Source: "session"},
+			{Text: "same", Source: "other"},
+			{Text: "same", Source: "session"},
+			{Text: "same", Source: "session"},
 		}
 		if sharedFirst {
 			e.PrependHistory(persisted)
@@ -176,12 +176,12 @@ func TestHistoryRestorationPreservesRepeatedOccurrencesAndSources(t *testing.T) 
 }
 
 func TestHistoryMergeRebasesParkedAndUndoNavigation(t *testing.T) {
-	e := Editor{Draft: Draft{Text: "draft", CursorBack: 2}}
+	e := Editor{Text: "draft", CursorBack: 2}
 	e.RestoreHistory("main", Draft{Text: "old"})
 	e.Recall(true)
 	parked := e.Park()
 	e.Recall(false)
-	e.PrependHistory([]HistoryEntry{{Draft: Draft{Text: "old"}, Source: "main"}, {Draft: Draft{Text: "new"}, Source: "other"}}, &parked)
+	e.PrependHistory([]HistoryEntry{{Text: "old", Source: "main"}, {Text: "new", Source: "other"}}, &parked)
 	e.Undo(false)
 	if e.Text != "old" || e.HistoryBack != 2 {
 		t.Fatalf("undo=%+v", e)

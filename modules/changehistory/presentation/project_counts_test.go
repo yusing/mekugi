@@ -39,7 +39,7 @@ func TestLiveDiffNetCountsLargeSupersededRewrite(t *testing.T) {
 func liveDiffNetCapture(order uint64, caller, beforePath, afterPath, before, after string) Chunk {
 	return Chunk{
 		Key: fmt.Sprintf("net-%d", order), CaptureOrder: order, Workspace: "/w",
-		Origin: Origin{Change: fmt.Sprintf("change-%d", order), Caller: caller},
+		Change: fmt.Sprintf("change-%d", order), Caller: caller,
 		Review: diffmodel.RenderReviewFile(beforePath, afterPath, before, after),
 	}
 }

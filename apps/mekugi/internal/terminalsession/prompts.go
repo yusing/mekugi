@@ -47,10 +47,10 @@ func (m *Main) PrepareInput(ready bool) InputPreparation {
 		return out
 	}
 	if call := v.Questions.Call; call != nil {
-		out.Question = &sessionpresentation.QuestionInputIntent{Version: v.Version, QuestionInput: prompt.QuestionInput{Call: call.ID, Question: call.Questions[v.Questions.Index].ID}}
+		out.Question = &sessionpresentation.QuestionInputIntent{Version: v.Version, Call: call.ID, Question: call.Questions[v.Questions.Index].ID}
 	}
 	if v.Approvals.Open && v.Approvals.Count > 0 {
-		out.Approval = &sessionpresentation.ApprovalInputIntent{Version: v.Version, ApprovalInput: prompt.ApprovalInput{Request: v.Approvals.Approval.ID}}
+		out.Approval = &sessionpresentation.ApprovalInputIntent{Version: v.Version, Request: v.Approvals.Approval.ID}
 	}
 	return out
 }

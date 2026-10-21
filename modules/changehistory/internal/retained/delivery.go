@@ -48,7 +48,7 @@ func (p *changeMutationDelivery) Prepare(references []string) (command.PreparedD
 		return command.PreparedDelivery{}, errors.New("change report requires one recovery reference")
 	}
 	output := command.Output{Stdout: p.selected, ExitCode: 1}
-	prepared := command.PreparedDelivery{Referenced: output, Unreferenced: output, Recovery: []command.RecoveryOutput{{OmittedOutput: command.OmittedOutput{Stdout: p.report[len(p.selected):], StdoutKind: "rows"}, ExitCode: 1}}}
+	prepared := command.PreparedDelivery{Referenced: output, Unreferenced: output, Recovery: []command.RecoveryOutput{{Stdout: p.report[len(p.selected):], StdoutKind: "rows", ExitCode: 1}}}
 	prepared.Referenced.Stderr = "read: incomplete; next_call: mread " + references[0] + "\n"
 	return prepared, nil
 }

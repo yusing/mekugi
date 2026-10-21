@@ -10,7 +10,7 @@ import (
 
 func TestPrefixResizeRepeat(t *testing.T) {
 	var state Interaction
-	in := FrameInput{Main: &Main{}, Transcript: activityui.NewView(), Shell: &Shell{Panes: Panes{Split: 60}}, Width: 140, Now: time.Unix(100, 0)}
+	in := FrameInput{Main: &Main{}, Transcript: activityui.NewView(), Shell: &Shell{Split: 60}, Width: 140, Now: time.Unix(100, 0)}
 	// Feed the same fragmented escape sequences as live terminal input.
 	feed := func(keys string, wantSplit int, wantKeys string) {
 		t.Helper()
@@ -45,7 +45,7 @@ func TestPrefixResizeRepeatCancellation(t *testing.T) {
 	for _, stop := range []string{"paste", "pointer", "focus loss", "dialog", "escape", "pane"} {
 		t.Run(stop, func(t *testing.T) {
 			var state Interaction
-			in := FrameInput{Main: &Main{}, Prompts: &Prompts{}, Transcript: activityui.NewView(), Shell: &Shell{Panes: Panes{Split: 60}}, Width: 140, Now: time.Unix(100, 0)}
+			in := FrameInput{Main: &Main{}, Prompts: &Prompts{}, Transcript: activityui.NewView(), Shell: &Shell{Split: 60}, Width: 140, Now: time.Unix(100, 0)}
 			dispatch := func(event Input) {
 				for range in.Dispatch(&state, event) {
 				}

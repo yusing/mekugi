@@ -67,7 +67,7 @@ func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.
 				store.maxBytes = used + (64 << 10)
 				setTestProxyStore(proxy, store)
 				provider := &responseStoragePressureProvider{
-					serverFakeProvider: serverFakeProvider{results: []serverForwardResult{{response: upstream}}},
+					results: []serverForwardResult{{response: upstream}},
 					fill: func() {
 						// Fill the store after request preparation, while the upstream
 						// response is arriving, to exercise response translation itself.

@@ -250,11 +250,11 @@ func rawFilePath(path string) bool {
 	name := base[strings.LastIndexByte(base, '/')+1:]
 	file := strings.Contains(name, ".") && strings.Trim(name, ". ") != ""
 	if strings.HasPrefix(base, "/") {
-		first := strings.SplitN(base[1:], "/", 2)[0]
+		first, _, _ := strings.Cut(base[1:], "/")
 		_, ordinal := strconv.Atoi(first)
 		return name != "" && ordinal != nil && (first != "root" || file)
 	}
-	first := strings.SplitN(base, "/", 2)[0]
+	first, _, _ := strings.Cut(base, "/")
 	return !strings.Contains(base, ":") && !strings.ContainsAny(first, " \t") && name != "" && (strings.Contains(base, "/") || file)
 }
 

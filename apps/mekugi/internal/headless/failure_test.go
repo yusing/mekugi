@@ -128,7 +128,7 @@ func TestHeadlessAppServerStreamAndShutdown(t *testing.T) {
 			}
 			var methods []string
 			var ids []string
-			for _, row := range bytes.Split(bytes.TrimSpace(output.Bytes()), []byte("\n")) {
+			for row := range bytes.SplitSeq(bytes.TrimSpace(output.Bytes()), []byte("\n")) {
 				if len(row) == 0 {
 					continue
 				}

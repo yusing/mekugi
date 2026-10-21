@@ -98,7 +98,7 @@ func responseCopyChoices(source string) []copyChoice {
 				break
 			}
 		}
-		choices = append(choices, copyChoice{Choice: completion.Choice{ID: uint64(len(choices) + 1), Name: label, Description: preview}, copyText: value})
+		choices = append(choices, copyChoice{ID: uint64(len(choices) + 1), Name: label, Description: preview, copyText: value})
 	}
 	add("Whole response", source)
 	data := []byte(source)

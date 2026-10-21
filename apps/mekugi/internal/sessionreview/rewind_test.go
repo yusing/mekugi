@@ -48,7 +48,7 @@ func TestRewindChangesIncludesDescendantsAndRejectsGaps(t *testing.T) {
 			if mode == "overlapping-workspaces" && i == 3 {
 				workspace, path = filepath.Join(dir, "nested"), filepath.Join(dir, "main-selected")
 			}
-			a := presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: workspace, Call: item}, Change: id}, Operation: activitydetail.Operation{Thread: thread, Item: operation}, Chunks: []presentation.Chunk{{CaptureOrder: uint64(i + 1), Review: diffmodel.ReviewFile{AfterPath: path}}}}
+			a := presentation.Attempt{Key: presentation.AttemptKey{Workspace: workspace, Call: item}, Change: id, Operation: activitydetail.Operation{Thread: thread, Item: operation}, Chunks: []presentation.Chunk{{CaptureOrder: uint64(i + 1), Review: diffmodel.ReviewFile{AfterPath: path}}}}
 			if i == 0 && strings.HasPrefix(mode, "grouped-") {
 				other := "main-old-more"
 				if mode == "grouped-mixed" {

@@ -19,8 +19,8 @@ func TestMainFrameReturnsOutputDemands(t *testing.T) {
 	view := activityui.NewView()
 	view.Expansion = 2
 	view.Update(&activitypresentation.Publication{Entries: []activitypresentation.Entry{{
-		Facts:  activitypresentation.Facts{Seq: 7, Agent: "Main", Kind: "tool", Text: "command", Outputs: map[int]int{1: 3}},
-		Values: []activitypresentation.Value{{Content: feed.Content{Kind: "op", Verb: "Run", Label: "printf retained"}, Source: 7, Output: 1, Exited: true, Tail: []string{"tail"}, TailOmitted: 1}},
+		Seq: 7, Agent: "Main", Kind: "tool", Text: "command", Outputs: map[int]int{1: 3},
+		Values: []activitypresentation.Value{{Kind: "op", Verb: "Run", Label: "printf retained", Source: 7, Output: 1, Exited: true, Tail: []string{"tail"}, TailOmitted: 1}},
 	}}}, activityui.Display{Caller: "/root"})
 	options := MainOptions{Now: time.Unix(100, 0), Focused: true, Version: "dev"}
 	frame := main.Render(view, &view.Painter, &prompts, options, 100, 24, 0)

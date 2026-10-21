@@ -37,7 +37,7 @@ func activityEditPages(attached *attachedPresentation, terminal *terminalsession
 		if entry.Source.Seq != seq || native == nil {
 			continue
 		}
-		request := activitydetail.Request{Operation: activitydetail.Operation{Thread: native.Thread, Item: native.Item}, Path: path}
+		request := activitydetail.Request{Thread: native.Thread, Item: native.Item, Path: path}
 		for _, value := range entry.Values {
 			for _, original := range activitypresentation.Originals(value) {
 				request.Directory = request.Directory || original.DirectoryDeletion() && original.EditPath() == path

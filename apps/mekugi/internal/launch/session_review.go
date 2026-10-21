@@ -67,7 +67,7 @@ func applyPreview(attached *attachedPresentation, terminal *terminalsession.Atta
 		// so tiny receipts cannot grow without a bound. These are not durable
 		// changes or evidence of the whole command's success.
 		budget := 32 * (48 << 10)
-		for i := len(*pending) - 1; i >= 0; i-- {
+		for i := range slices.Backward(*pending) {
 			entry := (*pending)[i]
 			budget -= 1024 + len(entry.Thread) + len(entry.Text)
 			for _, call := range entry.Calls {

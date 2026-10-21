@@ -47,7 +47,7 @@ func Approvals(d prompt.ApprovalDockView, p *terminalui.Painter, layout *Approva
 		foot = promptWrap(accent+fmt.Sprintf("1–%d", len(v.Choices))+reset+dim+" choose · "+reset+accent+"type"+reset+dim+" deny with reason · "+reset+accent+"enter"+reset+dim+" confirm · "+reset+accent+"esc"+reset+dim+" hide"+reset, inner)
 	}
 	var text []string
-	for _, line := range strings.Split(v.Subject, "\n") {
+	for line := range strings.SplitSeq(v.Subject, "\n") {
 		text = append(text, promptWrap(textsanitize.Safe(line, false), inner)...)
 	}
 	for _, detail := range v.Details {

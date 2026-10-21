@@ -131,7 +131,7 @@ func (i *Invocation) ReportSnapshot(final bool) ReportSnapshot {
 	for index := range r.segments {
 		segment := &r.segments[index]
 		fact := segment.facts
-		shown := SegmentSnapshot{CommandSegment: CommandSegment{Source: fact.Source, Text: fact.Text, Started: fact.Started, Ended: fact.Ended, Duration: fact.Duration, ExitCode: fact.ExitCode}}
+		shown := SegmentSnapshot{Source: fact.Source, Text: fact.Text, Started: fact.Started, Ended: fact.Ended, Duration: fact.Duration, ExitCode: fact.ExitCode}
 		switch {
 		case fact.Began && !fact.Finished && final:
 			shown.ExitCode = r.exit

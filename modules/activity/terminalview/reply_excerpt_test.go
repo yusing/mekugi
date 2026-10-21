@@ -12,8 +12,8 @@ import (
 func TestNativeAssignmentExcerptWrapsAndRetainsTarget(t *testing.T) {
 	v := NewView()
 	var out conversationLines
-	v.replyContext(&out, presentation.Entry{Facts: presentation.Facts{Seq: 42, Kind: "assignment", Assignment: true, AssignmentText: "Review the response and verify the assignment excerpt wraps without losing its navigation target."}}, "│ ", 36)
-	v.replyExcerpt(&out, presentation.Entry{Facts: presentation.Facts{Seq: 43}}, "The response excerpt remains visible.", "│ ", "│ ", 36, conversationLatestRows)
+	v.replyContext(&out, presentation.Entry{Seq: 42, Kind: "assignment", Assignment: true, AssignmentText: "Review the response and verify the assignment excerpt wraps without losing its navigation target."}, "│ ", 36)
+	v.replyExcerpt(&out, presentation.Entry{Seq: 43}, "The response excerpt remains visible.", "│ ", "│ ", 36, conversationLatestRows)
 	if len(out.lines) < 5 || !strings.HasPrefix(ansi.Strip(out.lines[1]), "│ ▎ Review") || !strings.HasPrefix(ansi.Strip(out.lines[2]), "│ ▎ ") {
 		t.Fatalf("assignment was not separately quoted and wrapped: %q", out.lines)
 	}
@@ -36,7 +36,7 @@ func TestNativeAssignmentExcerptWrapsAndRetainsTarget(t *testing.T) {
 func TestNativeReplyExcerptEllipsisStaysInline(t *testing.T) {
 	v := NewView()
 	var out conversationLines
-	v.replyExcerpt(&out, presentation.Entry{Facts: presentation.Facts{Seq: 43}}, "First response line.\nSecond response line.\nThird response line.", "│ ", "│ ", 24, conversationEarlierRows)
+	v.replyExcerpt(&out, presentation.Entry{Seq: 43}, "First response line.\nSecond response line.\nThird response line.", "│ ", "│ ", 24, conversationEarlierRows)
 	if len(out.lines) != 3 || ansi.Strip(out.lines[1]) != "│ Second response line.…" {
 		t.Fatalf("response ellipsis did not stay inline: %q", out.lines)
 	}
@@ -50,8 +50,8 @@ func TestNativeReplyExcerptEllipsisStaysInline(t *testing.T) {
 func TestNativeExcerptEllipsisSkipsParagraphGaps(t *testing.T) {
 	v := NewView()
 	var out conversationLines
-	v.replyContext(&out, presentation.Entry{Facts: presentation.Facts{Seq: 42, Kind: "assignment", Assignment: true, AssignmentText: "Fix the finding.\n\nThen rerun the tests.\n\nReport back."}}, "", 40)
-	v.replyExcerpt(&out, presentation.Entry{Facts: presentation.Facts{Seq: 43}}, "APPROVE. No remaining actionable findings.\n\nVerified with make test.\n\nDone.", "", "", 60, conversationEarlierRows)
+	v.replyContext(&out, presentation.Entry{Seq: 42, Kind: "assignment", Assignment: true, AssignmentText: "Fix the finding.\n\nThen rerun the tests.\n\nReport back."}, "", 40)
+	v.replyExcerpt(&out, presentation.Entry{Seq: 43}, "APPROVE. No remaining actionable findings.\n\nVerified with make test.\n\nDone.", "", "", 60, conversationEarlierRows)
 	got := make([]string, len(out.lines))
 	for i, line := range out.lines {
 		got[i] = ansi.Strip(line)

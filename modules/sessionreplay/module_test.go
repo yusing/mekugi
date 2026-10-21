@@ -96,7 +96,7 @@ func TestPlaybackSemanticIntentsResetAndRecordedClock(t *testing.T) {
 	start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	source := &playback.Source{Start: start, End: start.Add(30 * time.Second)}
 	for _, second := range []int{0, 5, 15, 25} {
-		source.Events = append(source.Events, playback.Event{Event: observation.Event{At: start.Add(time.Duration(second) * time.Second), ThreadID: "main", ItemID: time.Duration(second).String()}})
+		source.Events = append(source.Events, playback.Event{At: start.Add(time.Duration(second) * time.Second), ThreadID: "main", ItemID: time.Duration(second).String()})
 	}
 	player := playback.NewPlayer(source, 1)
 	if err := player.Bounds(2*time.Second, 28*time.Second); err != nil {

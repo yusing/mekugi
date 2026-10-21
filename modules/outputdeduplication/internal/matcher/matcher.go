@@ -140,8 +140,8 @@ func isSeed(content string) bool {
 }
 
 func hashText(seed maphash.Seed, text string) uint64 {
-	if strings.HasSuffix(text, "\n") {
-		text = strings.TrimSuffix(strings.TrimSuffix(text, "\n"), "\r")
+	if before, ok := strings.CutSuffix(text, "\n"); ok {
+		text = strings.TrimSuffix(before, "\r")
 	}
 	return maphash.String(seed, text)
 }

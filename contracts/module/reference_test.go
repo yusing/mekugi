@@ -38,9 +38,9 @@ func TestDescriptorReference(t *testing.T) {
 				},
 			}},
 			Commands: []command.Definition[struct{}]{
-				{Spec: command.Spec{Name: "reader", Description: "Read source"},
+				{Name: "reader", Description: "Read source",
 					Run: func(struct{}, context.Context, command.Request) (command.Output, error) { panic("Run executed") }},
-				{Spec: command.Spec{Name: "writer", Description: "Write source"}},
+				{Name: "writer", Description: "Write source"},
 			},
 			Guidance: []guidance.Section{{Command: "reader", Text: "Private guidance prose"}},
 			RecordKinds: []recordkind.Spec{

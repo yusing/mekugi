@@ -140,8 +140,8 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 					t.Fatalf("resolve Go toolchain root: %v (%q)", err, goRoot)
 				}
 				for i, value := range cmd.Env {
-					if strings.HasPrefix(value, "PATH=") {
-						cmd.Env[i] = "PATH=" + filepath.Join(strings.TrimSpace(string(goRoot)), "bin") + string(os.PathListSeparator) + strings.TrimPrefix(value, "PATH=")
+					if after0, ok0 := strings.CutPrefix(value, "PATH="); ok0 {
+						cmd.Env[i] = "PATH=" + filepath.Join(strings.TrimSpace(string(goRoot)), "bin") + string(os.PathListSeparator) + after0
 					}
 				}
 			}

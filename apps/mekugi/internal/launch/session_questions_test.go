@@ -18,9 +18,8 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	questionTestSync(t, u, "first", false)
 	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	call := v.Questions.Call
-	answer := sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{
-		Call: call.ID, Question: call.Questions[0].ID, Choice: 0, Draft: composer.Draft{Text: "explicit note"},
-	}}
+	answer := sessionpresentation.AnswerIntent{Version: v.Version,
+		Call: call.ID, Question: call.Questions[0].ID, Choice: 0, Draft: composer.Draft{Text: "explicit note"}}
 	if !answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) {
 		t.Fatal(u.attached.feedback.Text)
 	}
@@ -67,7 +66,7 @@ func TestNonTerminalQuestionBatchUsesOrdinarySubmission(t *testing.T) {
 	call := v.Questions.Call
 	for i, q := range call.Questions {
 		v = u.attached.presentation.View()
-		if !answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{Call: call.ID, Question: q.ID, Choice: i}}) {
+		if !answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.AnswerIntent{Version: v.Version, Call: call.ID, Question: q.ID, Choice: i}) {
 			t.Fatal(u.attached.feedback.Text)
 		}
 	}
@@ -90,10 +89,9 @@ func TestNonTerminalQuestionRejectsSecretReplayAndRetiredView(t *testing.T) {
 	u.Turn = "turn"
 	questionTestSync(t, u, "secret", true)
 	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
-	answer := sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{
+	answer := sessionpresentation.AnswerIntent{Version: v.Version,
 		Call: v.Questions.Call.ID, Question: v.Questions.Call.Questions[0].ID,
-		Choice: 0, Draft: composer.Draft{Text: "ordinary input"},
-	}}
+		Choice: 0, Draft: composer.Draft{Text: "ordinary input"}}
 	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != prompt.ErrSecretAnswer.Error() || u.questions.Current().Done || u.questions.Current().Editor.Snapshot.Text != "" {
 		t.Fatal("ordinary intent entered secret state")
 	}

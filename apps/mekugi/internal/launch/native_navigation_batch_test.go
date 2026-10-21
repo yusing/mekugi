@@ -101,11 +101,11 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}})
 	screen := navigationBatchPaint(t, u, 120, 24)
 	footer := strings.Split(screen.String(), "\n")[23]
-	start := strings.Index(footer, "2 Diff ●")
-	if start < 0 {
+	before, _, ok := strings.Cut(footer, "2 Diff ●")
+	if !ok {
 		t.Fatalf("diff badge must follow its label with a space: %q", footer)
 	}
-	dot := ansi.StringWidth(footer[:start] + "2 Diff ")
+	dot := ansi.StringWidth(before + "2 Diff ")
 	if screen.CellAt(dot-1, 23).Content != " " || screen.CellAt(dot, 23).Content != "●" || screen.CellAt(dot+1, 23).Content != " " {
 		t.Fatal("diff badge does not occupy its own cell between spaces")
 	}
@@ -122,11 +122,11 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	if terminalTest(u).Focus != 1 {
 		t.Fatal("clicking the diff indicator did not open Diff")
 	}
-	agents := strings.Index(footer, "3 Agents¹")
-	if agents < 0 {
+	before0, _, ok0 := strings.Cut(footer, "3 Agents¹")
+	if !ok0 {
 		t.Fatalf("responding count is not attached to Agents: %q", footer)
 	}
-	count := ansi.StringWidth(footer[:agents] + "3 Agents")
+	count := ansi.StringWidth(before0 + "3 Agents")
 	navigationBatchMouse(t, terminalTest(u), 0, count, 23, false)
 	if terminalTest(u).Focus != 3 {
 		t.Fatal("clicking the responding count did not focus Agents")
@@ -253,8 +253,8 @@ func TestNativeNavigationBatchDialogPathTabs(t *testing.T) {
 			visible := 0
 			for page, block := range u.Dialog.Pages {
 				prefix := fmt.Sprintf(" %d Read", page+1)
-				index := strings.Index(row, prefix)
-				if index < 0 {
+				before, _, ok := strings.Cut(row, prefix)
+				if !ok {
 					continue
 				}
 				visible++
@@ -265,7 +265,7 @@ func TestNativeNavigationBatchDialogPathTabs(t *testing.T) {
 				if !strings.Contains(row, filepath.Base(path)) {
 					t.Fatalf("page %d lost its filename: %q", page, row)
 				}
-				x := ansi.StringWidth(row[:index]) + ansi.StringWidth(prefix)
+				x := ansi.StringWidth(before) + ansi.StringWidth(prefix)
 				navigationBatchMouse(t, u, 0, x, rect.Y+2, false)
 				if u.Dialog.Page != page {
 					t.Fatalf("rendered tab selected page %d, want %d", u.Dialog.Page, page)

@@ -226,7 +226,7 @@ func TestNonTerminalStatusPromptsAndDisplayedCaption(t *testing.T) {
 func TestNonTerminalPendingInputOrderAndDetachment(t *testing.T) {
 	c := newStatusConsumer()
 	input := func(text string) conversationmodel.Input {
-		return conversationmodel.Input{Draft: composer.Draft{Text: text}}
+		return conversationmodel.Input{Text: text}
 	}
 	c.conversation.Stage("first", conversationmodel.Submission{Parts: []conversationmodel.Input{input("acknowledged steer")}})
 	c.control.Submit("first", "turn")

@@ -13,6 +13,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 )
@@ -225,8 +226,8 @@ func (s Store) Append(ctx context.Context, thread, text string) error {
 		if _, err := f.ReadAt(block, start-n); err != nil {
 			return err
 		}
-		for i := len(block) - 1; i >= 0; i-- {
-			if block[i] == '\n' && start-n+int64(i)+1 < info.Size() {
+		for i, b := range slices.Backward(block) {
+			if b == '\n' && start-n+int64(i)+1 < info.Size() {
 				size := info.Size() - (start - n + int64(i) + 1)
 				if uint64(size) > target {
 					start = start - n + int64(i) + 1

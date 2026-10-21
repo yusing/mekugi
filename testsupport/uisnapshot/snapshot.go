@@ -50,7 +50,7 @@ func terminalFrame(t testing.TB, rows []string, width int) string {
 		}
 	}
 	var frame strings.Builder
-	for _, row := range strings.Split(screen.Render(), "\n") {
+	for row := range strings.SplitSeq(screen.Render(), "\n") {
 		fmt.Fprintf(&frame, "%q\n", row)
 	}
 	return frame.String()

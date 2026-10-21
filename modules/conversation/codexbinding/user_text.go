@@ -44,8 +44,8 @@ func UserText(content jsontext.Value) (string, []composer.Span, bool) {
 			spans = append(spans, composer.Span{Start: start, End: len(text), Kind: composer.Image})
 		}
 	}
-	draft := conversationmodel.Input{Text: text}
-	draft.Skills = SkillBindings(text, ContentSkills(contents), spans)
+	draft := conversationmodel.Input{Text: text,
+		Skills: SkillBindings(text, ContentSkills(contents), spans)}
 	for _, span := range draft.Spans() {
 		if !slices.ContainsFunc(spans, func(existing composer.Span) bool {
 			return span.Start < existing.End && span.End > existing.Start

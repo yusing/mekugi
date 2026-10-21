@@ -2,6 +2,7 @@ package launch
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
@@ -176,9 +177,7 @@ func TestLiveActivityViewportSyntaxDefersTokenization(t *testing.T) {
 				}
 			}
 			before := make(map[string]int, len(lexer.sources))
-			for source, count := range lexer.sources {
-				before[source] = count
-			}
+			maps.Copy(before, lexer.sources)
 			v.RenderFeed(70, 9)
 			if !reflect.DeepEqual(before, lexer.sources) {
 				t.Fatal("unchanged end viewport retokenized source")

@@ -67,8 +67,8 @@ func renderedDialogRows(rows []string, width int) []string {
 func dialogFramePoint(t *testing.T, rows []string, text string) (int, int) {
 	t.Helper()
 	for y, row := range rows {
-		if i := strings.Index(row, text); i >= 0 {
-			return ansi.StringWidth(row[:i]), y
+		if before, _, ok := strings.Cut(row, text); ok {
+			return ansi.StringWidth(before), y
 		}
 	}
 	t.Fatalf("text %q absent from rendered dialog: %q", text, rows)

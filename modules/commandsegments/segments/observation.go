@@ -69,8 +69,8 @@ func (r Report) Complete() bool { return r.Ended && r.Closed && r.Done }
 
 // LastStarted distinguishes short-circuited operands from future commands.
 func (r Report) LastStarted() int {
-	for i := len(r.Segments) - 1; i >= 0; i-- {
-		if r.Segments[i].Began || r.Segments[i].Ended {
+	for i, v := range slices.Backward(r.Segments) {
+		if v.Began || v.Ended {
 			return i
 		}
 	}
@@ -110,7 +110,7 @@ func (h *Observer) Start(key [3]string, script string) {
 	h.sequence++
 	h.started = append(h.started, command{key: key, script: script, serial: h.sequence})
 	for subscription := range h.subscriptions {
-		subscription.retain(key, &report{Report: Report{Script: script, HostOnly: true}, serial: h.sequence})
+		subscription.retain(key, &report{Script: script, HostOnly: true, serial: h.sequence})
 	}
 	h.signal()
 }
@@ -217,7 +217,7 @@ func (h *Observer) claim(ctx context.Context, hello transport.Message) transport
 		if index >= 0 {
 			command := h.started[index]
 			h.started = slices.Delete(h.started, index, index+1)
-			r := &report{Report: Report{Script: hello.Script, Terminal: hello.Terminal, Version: 1}, serial: command.serial, pending: make([][]byte, len(hello.Segments))}
+			r := &report{Script: hello.Script, Terminal: hello.Terminal, Version: 1, serial: command.serial, pending: make([][]byte, len(hello.Segments))}
 			for _, source := range hello.Segments {
 				r.Segments = append(r.Segments, Segment{Source: source})
 			}

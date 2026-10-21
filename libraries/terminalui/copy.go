@@ -328,8 +328,8 @@ func renderCopy(f CopyFragment, table bool) string {
 		tabs := slices.Clone(f.Tabs)
 		slices.Sort(tabs)
 		tabs = slices.Compact(tabs)
-		for i := len(tabs) - 1; i >= 0; i-- {
-			at := tabs[i]
+		for _, at := range slices.Backward(tabs) {
+
 			if at < 0 || at+4 > len(f.Text) {
 				continue
 			}
@@ -365,9 +365,9 @@ func renderCopy(f CopyFragment, table bool) string {
 	}
 	var out strings.Builder
 	for pos := 0; pos <= len(f.Text); pos++ {
-		for i := len(f.Styles) - 1; i >= 0; i-- {
-			if f.Styles[i].End == pos {
-				out.WriteString(f.Styles[i].Close)
+		for _, v := range slices.Backward(f.Styles) {
+			if v.End == pos {
+				out.WriteString(v.Close)
 			}
 		}
 		for _, style := range f.Styles {
@@ -478,8 +478,8 @@ func copyTable(parts []CopyFragment) string {
 // AttachCopy is used only while the router composes native panes. Public view
 // rendering stays clean ANSI; the visible annotations remain a separate value.
 func AttachCopy(row string, spans []CopySpan) string {
-	for i := len(spans) - 1; i >= 0; i-- {
-		s := spans[i]
+	for _, s := range slices.Backward(spans) {
+
 		row = ansi.Cut(row, 0, s.Column) + copyTag(s.CopyFragment) + ansi.Cut(row, s.Column, ansi.StringWidth(row))
 	}
 	return row

@@ -30,7 +30,7 @@ import (
 func replayPlaybackTestSource() *playback.Source {
 	start := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
 	event := func(second int, method string, item observation.Item, delta string) playback.Event {
-		return playback.Event{Event: observation.Event{At: start.Add(time.Duration(second) * time.Second), Kind: observation.Kind(method), ThreadID: "root", TurnID: "turn", ItemID: item.ID, Item: item, Delta: delta}}
+		return playback.Event{At: start.Add(time.Duration(second) * time.Second), Kind: observation.Kind(method), ThreadID: "root", TurnID: "turn", ItemID: item.ID, Item: item, Delta: delta}
 	}
 	command := observation.Item{ID: "command", Type: "commandExecution", Command: "sleep 1; printf 'captured output'", Cwd: "/workspace/replay", Status: "inProgress"}
 	completed := command
@@ -40,7 +40,7 @@ func replayPlaybackTestSource() *playback.Source {
 	answer := message
 	answer.Text = "Repaint diagnosis complete."
 	events := []playback.Event{
-		{Event: observation.Event{At: start, Kind: "turn/started", ThreadID: "root", TurnID: "turn", TurnStatus: "inProgress"}},
+		{At: start, Kind: "turn/started", ThreadID: "root", TurnID: "turn", TurnStatus: "inProgress"},
 		event(1, "replay/providerStarted", observation.Item{}, ""),
 		event(2, "item/reasoning/summaryTextDelta", observation.Item{ID: "reasoning", Type: "reasoning"}, "Inspecting repaint timing."),
 		event(3, "item/completed", observation.Item{ID: "reasoning", Type: "reasoning", Summary: []string{"Inspecting repaint timing."}}, ""),
@@ -51,7 +51,7 @@ func replayPlaybackTestSource() *playback.Source {
 		event(7, "item/started", message, ""),
 		event(8, "item/agentMessage/delta", message, "Repaint diagnosis "),
 		event(9, "item/completed", answer, ""),
-		{Event: observation.Event{At: start.Add(10 * time.Second), Kind: "turn/completed", ThreadID: "root", TurnID: "turn", TurnStatus: "completed"}},
+		{At: start.Add(10 * time.Second), Kind: "turn/completed", ThreadID: "root", TurnID: "turn", TurnStatus: "completed"},
 	}
 	return &playback.Source{Thread: "root", Cwd: "/workspace/replay", Start: start, End: start.Add(20 * time.Second), Threads: map[string]string{"root": "/root"}, Events: events, Items: 3, Providers: 1}
 }

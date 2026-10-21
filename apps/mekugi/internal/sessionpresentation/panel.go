@@ -54,7 +54,7 @@ type PanelState struct {
 
 func (m *Model) OpenPanel(debugDirectory string) *PanelState {
 	m.panelSequence++
-	m.panel = &PanelState{PanelView: PanelView{ID: m.panelSequence, DebugDirectory: debugDirectory}}
+	m.panel = &PanelState{ID: m.panelSequence, DebugDirectory: debugDirectory}
 	return m.panel
 }
 

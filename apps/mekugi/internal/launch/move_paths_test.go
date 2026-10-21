@@ -35,7 +35,7 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	uisnapshot.Assert(t, "testdata/snapshots/move-paths-activity.txt", strings.Join(rows, "\n")+"\n")
 	c := liveDiffChangesPane(t, 100, 24, nil)
 	c.SetWorkspace(workspace)
-	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: workspace, Call: "move"}, Correlation: "move\x000"}, Operation: activitydetail.Operation{Thread: "main", Item: "move"}, Chunks: []presentation.Chunk{{Workspace: workspace, Review: file}}})
+	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{Key: presentation.AttemptKey{Workspace: workspace, Call: "move"}, Correlation: "move\x000", Operation: activitydetail.Operation{Thread: "main", Item: "move"}, Chunks: []presentation.Chunk{{Workspace: workspace, Review: file}}})
 	publishFixtureReview(t, u)
 	terminalTest(u).Auxiliary = c
 	if !terminalTest(u).openActivityEdit(u.shell.Transcript, 1, pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)) {

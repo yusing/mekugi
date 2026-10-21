@@ -140,7 +140,7 @@ func (h *appServerInputHistory) loaded(conversation *conversationmodel.Session, 
 	var history []composer.HistoryEntry
 	for _, entry := range result.entries {
 		if len(binding.QuestionReplies(entry.Text)) == 0 {
-			history = append(history, composer.HistoryEntry{Draft: composer.Draft{Text: entry.Text}, Source: entry.SessionID})
+			history = append(history, composer.HistoryEntry{Text: entry.Text, Source: entry.SessionID})
 		}
 	}
 	conversation.Editor.PrependHistory(history, &conversation.PromptEditor.Parked)

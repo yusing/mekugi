@@ -14,8 +14,8 @@ func TestOutputContextDemandBoundsAndExpansion(t *testing.T) {
 	output := new(feed.Retention).New()
 	output.Finish(new(strings.Repeat("retained context\n", 20000)+"var answer = 42"), new(0))
 	v := NewView()
-	v.Update(&presentation.Publication{Entries: []presentation.Entry{{Facts: presentation.Facts{Seq: 7, Outputs: map[int]int{1: output.Version()}}}}}, Display{})
-	block := Block{Value: presentation.Value{Content: feed.Content{Kind: "op"}, Source: 7, Output: 1, Tail: []string{"var answer = 42"}, TailOmitted: 20000}}
+	v.Update(&presentation.Publication{Entries: []presentation.Entry{{Seq: 7, Outputs: map[int]int{1: output.Version()}}}}, Display{})
+	block := Block{Kind: "op", Source: 7, Output: 1, Tail: []string{"var answer = 42"}, TailOmitted: 20000}
 	for _, excluded := range []string{"layout", "collapsed", "empty", "changes"} {
 		candidate := block
 		v.Painter.LayoutOnly = excluded == "layout"
@@ -66,8 +66,8 @@ func TestOutputContextDemandBoundsAndExpansion(t *testing.T) {
 func TestOutputDemandCacheIdentityAndVersion(t *testing.T) {
 	v := NewView()
 	publication := presentation.Publication{Entries: []presentation.Entry{
-		{Facts: presentation.Facts{Seq: 7, Outputs: map[int]int{1: 1, 2: 3}}},
-		{Facts: presentation.Facts{Seq: 8, Outputs: map[int]int{1: 1}}},
+		{Seq: 7, Outputs: map[int]int{1: 1, 2: 3}},
+		{Seq: 8, Outputs: map[int]int{1: 1}},
 	}}
 	v.Update(new(publication), Display{})
 	keys := []presentation.OutputDemand{{Source: 7, Output: 1, Version: 1, Bytes: OutputContextBytes}, {Source: 7, Output: 2, Version: 3, Bytes: OutputContextBytes}, {Source: 8, Output: 1, Version: 1, Bytes: OutputContextBytes}}
@@ -75,7 +75,7 @@ func TestOutputDemandCacheIdentityAndVersion(t *testing.T) {
 		v.Hydrate([]presentation.OutputResult{{Demand: key, View: feed.OutputView{Lines: []string{string(rune('a' + i))}}}})
 	}
 	for i, key := range keys {
-		result, ok := v.output(Block{Value: presentation.Value{Source: key.Source, Output: key.Output}}, OutputContextBytes)
+		result, ok := v.output(Block{Source: key.Source, Output: key.Output}, OutputContextBytes)
 		if !ok || result.View.Lines[0] != string(rune('a'+i)) {
 			t.Fatalf("cache conflated source/output identity: %+v", key)
 		}
@@ -84,7 +84,7 @@ func TestOutputDemandCacheIdentityAndVersion(t *testing.T) {
 	publication.Entries[0].Outputs = map[int]int{1: 2, 2: 3}
 	v.Update(new(publication), Display{})
 	v.Hydrate([]presentation.OutputResult{{Demand: keys[0], View: feed.OutputView{Lines: []string{"stale"}}}})
-	block := Block{Value: presentation.Value{Source: 7, Output: 1}}
+	block := Block{Source: 7, Output: 1}
 	if _, ok := v.output(block, OutputContextBytes); ok {
 		t.Fatal("old version survived update or stale hydration")
 	}
@@ -98,7 +98,7 @@ func TestOutputDemandCacheIdentityAndVersion(t *testing.T) {
 		t.Fatal("full cached output did not satisfy context")
 	}
 	for _, key := range keys[1:] {
-		if _, ok := v.output(Block{Value: presentation.Value{Source: key.Source, Output: key.Output}}, OutputContextBytes); !ok {
+		if _, ok := v.output(Block{Source: key.Source, Output: key.Output}, OutputContextBytes); !ok {
 			t.Fatalf("version update discarded unrelated output: %+v", key)
 		}
 	}

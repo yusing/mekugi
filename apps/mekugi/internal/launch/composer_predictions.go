@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"math/rand/v2"
+	"slices"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -127,11 +128,8 @@ func (p *composerPredictions) sync(ctx context.Context, attached *attachedPresen
 			return p.clear(control, attached.conversation)
 		}
 		if request.settings != nil {
-			for _, metadata := range p.metadata {
-				if request.settings.Policy.Suppresses(metadata) {
-					p.suppressed = true
-					break
-				}
+			if slices.ContainsFunc(p.metadata, request.settings.Policy.Suppresses) {
+				p.suppressed = true
 			}
 			p.metadata = nil
 		}

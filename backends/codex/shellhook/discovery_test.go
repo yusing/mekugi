@@ -7,6 +7,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,9 +82,7 @@ func TestGuardDiscoveryChild(t *testing.T) {
 			} {
 				entry := guardHookTestEntry("caller")
 				entry["key"] = fmt.Sprintf("caller:%d", i)
-				for key, value := range change {
-					entry[key] = value
-				}
+				maps.Copy(entry, change)
 				if mode == "managed" && i == 0 {
 					entry["isManaged"] = true
 					entry["trustStatus"] = "managed"

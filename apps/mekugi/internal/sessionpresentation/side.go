@@ -93,8 +93,8 @@ func (a *Attachment) ProjectSide(source *ActivitySource, target Thread, side *co
 	for i, entry := range entries {
 		desired[[3]string{entry.Native.Thread, entry.Native.Turn, entry.Native.Item}] = i
 	}
-	for i := len(source.Entries) - 1; i >= 0; i-- {
-		old := source.Entries[i].Source
+	for i, v := range slices.Backward(source.Entries) {
+		old := v.Source
 		if !old.Side {
 			continue
 		}

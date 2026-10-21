@@ -236,7 +236,8 @@ func (d *Dialog) highlight(row string, indent int, current bool) string {
 	text := ansi.Cut(row, indent, ansi.StringWidth(row))
 	plain := strings.ToLower(ansi.Strip(text))
 	mark, unmark := "\x1b[4m", "\x1b[24m"
-	out := ansi.Cut(row, 0, indent)
+	var out strings.Builder
+	out.WriteString(ansi.Cut(row, 0, indent))
 	cell := 0 // Cells of text copied so far.
 	for offset := 0; ; {
 		i := strings.Index(plain[offset:], d.query)
@@ -251,13 +252,13 @@ func (d *Dialog) highlight(row string, indent int, current bool) string {
 		} else {
 			match = mark + strings.ReplaceAll(match, terminalui.Reset, terminalui.Reset+mark) + unmark
 		}
-		out += ansi.Cut(text, cell, from) + match
+		out.WriteString(ansi.Cut(text, cell, from) + match)
 		cell, offset = to, offset+i+len(d.query)
 	}
 	if cell == 0 {
 		return row
 	}
-	return out + ansi.Cut(text, cell, ansi.StringWidth(text))
+	return out.String() + ansi.Cut(text, cell, ansi.StringWidth(text))
 }
 
 func (d *Dialog) footer(width int) string {

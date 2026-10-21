@@ -4,7 +4,6 @@ import (
 	"strconv"
 
 	"github.com/yusing/mekugi/contracts/activitydetail"
-	"github.com/yusing/mekugi/modules/activity/feed"
 )
 
 // ContributedDetails preserves provider identities and frozen source separately
@@ -12,7 +11,7 @@ import (
 func ContributedDetails(pages []activitydetail.Page) []DetailPage {
 	result := make([]DetailPage, len(pages))
 	for i, page := range pages {
-		result[i] = DetailPage{ID: page.ID, Value: Value{Content: feed.Content{Kind: "op", Verb: page.Verb, Code: page.Code, Lang: page.Language, Fenced: true}, Path: page.Path}}
+		result[i] = DetailPage{ID: page.ID, Kind: "op", Verb: page.Verb, Code: page.Code, Lang: page.Language, Fenced: true, Path: page.Path}
 	}
 	return result
 }

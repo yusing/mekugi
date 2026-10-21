@@ -26,7 +26,7 @@ func TestMChangesRecoveryPublicationFailurePreservesOutput(t *testing.T) {
 			t.Setenv("CODEX_THREAD_ID", f.thread)
 			id := f.reserve(t, f.thread, "change")
 			var files []diffmodel.ReviewFile
-			for i := 0; i < 20; i++ {
+			for i := range 20 {
 				name := fmt.Sprintf("change-%02d.txt", i)
 				files = append(files, diffmodel.RenderReviewFile(name, name, "before\n", "after\n"))
 				if mode == "mutation" {

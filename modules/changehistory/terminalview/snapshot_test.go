@@ -36,7 +36,7 @@ func snapshotFiles() []presentation.File {
 		}
 		files = append(files, presentation.File{Path: path, Chunks: []presentation.Chunk{{
 			Key: path, CaptureOrder: uint64(i + 1), Review: review,
-			Origin: presentation.Origin{Change: change, Caller: caller, Source: "apply_patch"},
+			Change: change, Caller: caller, Source: "apply_patch",
 		}}})
 	}
 	return files

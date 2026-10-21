@@ -153,7 +153,7 @@ func (a *Attachment) RefreshDetails(id DetailID, requested []activity.DetailPage
 			if detail.AttachmentID != "" {
 				id = detail.AttachmentID
 			}
-			model := activity.DetailPage{ID: detail.ID + "/model", ModelVisible: true, Value: activity.Value{Source: source}}
+			model := activity.DetailPage{ID: detail.ID + "/model", ModelVisible: true, Source: source}
 			if content, available := d.source.Prepared(identity[0], id); available {
 				model.Prepared = &content
 			}

@@ -172,7 +172,7 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			r.Events = append(r.Events, Event{Event: observation.Event{At: hook.At, ThreadID: thread}, Hook: &hook})
+			r.Events = append(r.Events, Event{At: hook.At, ThreadID: thread, Hook: &hook})
 			if len(r.Events) > 500000 {
 				return nil, errors.New("replay exceeds 500000 events")
 			}
@@ -226,7 +226,7 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 				return err
 			}
 			r.Providers++
-			r.Events = append(r.Events, Event{Event: observation.Event{At: interval.Start, Kind: observation.ProviderStarted, ThreadID: interval.Thread}}, Event{Event: observation.Event{At: interval.End, Kind: observation.ProviderCompleted, ThreadID: interval.Thread}})
+			r.Events = append(r.Events, Event{At: interval.Start, Kind: observation.ProviderStarted, ThreadID: interval.Thread}, Event{At: interval.End, Kind: observation.ProviderCompleted, ThreadID: interval.Thread})
 			return nil
 		})
 		if err != nil {
@@ -285,7 +285,7 @@ func deltas(ctx context.Context, rng *rand.Rand, endEvent Event, start, end time
 		}
 		at += w
 		next := len(runes) * (j + 1) / n
-		e := Event{Event: observation.Event{At: start.Add(time.Duration(float64(end.Sub(start)) * 0.95 * float64(at) / float64(total))), Kind: kind, ThreadID: endEvent.ThreadID, TurnID: endEvent.TurnID, ItemID: i.ID, Delta: string(runes[pos:next])}}
+		e := Event{At: start.Add(time.Duration(float64(end.Sub(start)) * 0.95 * float64(at) / float64(total))), Kind: kind, ThreadID: endEvent.ThreadID, TurnID: endEvent.TurnID, ItemID: i.ID, Delta: string(runes[pos:next])}
 		// Agent message deltas share the same typed identity as live messages.
 		if i.Type == "agentMessage" {
 			e.Item = observation.Item{Type: i.Type, ID: i.ID}

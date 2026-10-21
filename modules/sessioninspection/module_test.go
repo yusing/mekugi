@@ -54,7 +54,7 @@ func writeRecord(t *testing.T, directory string, call binding.RolloutCall, recor
 func scripted(t *testing.T, calls []binding.RolloutCall, contributions ...inspection.Contribution) (*query.Service, *moduletest.Scripted) {
 	t.Helper()
 	script := &moduletest.Scripted{ReadRollout: func(context.Context, string, func(binding.RolloutEvent) error) (binding.Rollout, error) {
-		return binding.Rollout{InspectionMetadata: rollout.InspectionMetadata{ThreadID: "thread-original", Source: []byte(`"cli"`)}, Calls: calls}, nil
+		return binding.Rollout{ThreadID: "thread-original", Source: []byte(`"cli"`), Calls: calls}, nil
 	}}
 	service := moduletest.New(t, sessioninspection.Module, sessioninspection.Deps{}, module.Slots{Inspection: contributions}, script)
 	if script.RolloutRegistrations != 1 {
@@ -218,7 +218,7 @@ func TestDescriptorWholeRolloutAXIgnoresCallPage(t *testing.T) {
 				return binding.Rollout{}, err
 			}
 		}
-		return binding.Rollout{InspectionMetadata: rollout.InspectionMetadata{ThreadID: "thread-original"}, Calls: calls}, nil
+		return binding.Rollout{ThreadID: "thread-original", Calls: calls}, nil
 	}
 	request := options(t.TempDir())
 	request.AX, request.CallID = true, "second"

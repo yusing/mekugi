@@ -137,14 +137,14 @@ func (v *ActivitySource) Apply(event ActivityEvent) {
 			slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, blocks[0].Verb) {
 			// A confirmed receipt replaces the provisional Run or requested
 			// Edit row for this call. Only the capturer supplies saved counts.
-			for i := len(v.Entries) - 1; i >= 0; i-- {
-				prior := v.Entries[i].Source
+			for i, v0 := range slices.Backward(v.Entries) {
+				prior := v0.Source
 				if prior.Kind != "tool" || prior.Agent != entry.Agent || prior.CallID != entry.CallID ||
-					len(v.Entries[i].Values) == 0 || (v.Entries[i].Values[0].Verb != "Run" && v.Entries[i].Values[0].Verb != "Edit") {
+					len(v0.Values) == 0 || (v0.Values[0].Verb != "Run" && v0.Values[0].Verb != "Edit") {
 					continue
 				}
 				entry.Seq = prior.Seq
-				blocks[0].ExitCode, blocks[0].Exited = v.Entries[i].Values[0].ExitCode, v.Entries[i].Values[0].Exited
+				blocks[0].ExitCode, blocks[0].Exited = v0.Values[0].ExitCode, v0.Values[0].Exited
 				for _, annotation := range v.SourceValues(i)[1:] {
 					if annotation.BatchExit {
 						blocks = activitypresentation.RetainBatchResult(blocks, annotation)

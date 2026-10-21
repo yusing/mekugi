@@ -270,7 +270,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 				if receipts := snapshot.Receipts(); len(receipts) != 1 || !strings.Contains(receipts[0].Text, "-A\n+B") || scenario != "missing-boundary" && scenario != "no-continuation" && !strings.Contains(receipts[0].Text, "-C\n+D") {
 					t.Fatalf("writer receipt duplicated or lost an interval: %+v", receipts)
 				}
-				writerDetail := snapshot.ActivityDetail(activitydetail.Request{Operation: activitydetail.Operation{Thread: "thread-1", Item: "writer-command"}})
+				writerDetail := snapshot.ActivityDetail(activitydetail.Request{Thread: "thread-1", Item: "writer-command"})
 				wantPages := 2
 				if scenario == "no-continuation" {
 					wantPages = 1
@@ -285,7 +285,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 				if !strings.Contains(details.String(), "-A\n+B") || strings.Contains(details.String(), "-B\n+C") || scenario != "missing-boundary" && scenario != "no-continuation" && !strings.Contains(details.String(), "-C\n+D") {
 					t.Fatalf("writer detail includes another operation: %s", details.String())
 				}
-				patchDetail := snapshot.ActivityDetail(activitydetail.Request{Operation: activitydetail.Operation{Thread: "thread-1", Item: "patch"}})
+				patchDetail := snapshot.ActivityDetail(activitydetail.Request{Thread: "thread-1", Item: "patch"})
 				if len(patchDetail.Pages) != 1 || !strings.Contains(patchDetail.Pages[0].Code, "-B\n+C") {
 					t.Fatalf("patch detail: %+v", patchDetail)
 				}

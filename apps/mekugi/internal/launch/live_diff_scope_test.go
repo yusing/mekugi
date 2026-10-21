@@ -209,7 +209,7 @@ func reviewReceiptSnapshot(t *testing.T, receipts []*presentation.Receipt) *pres
 	t.Helper()
 	attempts := make([]presentation.Attempt, len(receipts))
 	for i, receipt := range receipts {
-		attempts[i] = presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/workspace", Call: fmt.Sprint(i)}}, Receipt: receipt}
+		attempts[i] = presentation.Attempt{Key: presentation.AttemptKey{Workspace: "/workspace", Call: fmt.Sprint(i)}, Receipt: receipt}
 	}
 	return reviewFixtureSnapshot(t, attempts...)
 }

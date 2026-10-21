@@ -3,6 +3,7 @@ package launch
 import (
 	"context"
 	"encoding/json/jsontext"
+	"maps"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -41,9 +42,7 @@ func approvalTestCommand(t *testing.T, u *appServerUI, id any, params map[string
 		u.controlObservations = new(sessioncontrol.Observations)
 	}
 	request := map[string]any{"threadId": "main", "turnId": "turn", "itemId": "cmd", "command": "git push origin main"}
-	for key, value := range params {
-		request[key] = value
-	}
+	maps.Copy(request, params)
 	questionTestMessage(t, u, id, "item/commandExecution/requestApproval", request)
 }
 

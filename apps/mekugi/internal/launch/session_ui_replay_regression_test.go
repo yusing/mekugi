@@ -346,9 +346,9 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 	completed.Status, completed.ExitCode, completed.DurationMS, completed.AggregatedOutput = "completed", new(0), new(int64(1000)), &output
 	end := start.Add(time.Second)
 	source := &playback.Source{Thread: "root", Cwd: "/workspace/replay", Start: start, End: end, Threads: map[string]string{"root": "/root"}, Events: []playback.Event{
-		{Event: observation.Event{At: start, Kind: "item/started", ThreadID: "root", TurnID: "turn", ItemID: command.ID, Item: command}},
-		{Event: observation.Event{At: start.Add(500 * time.Millisecond), Kind: "item/commandExecution/outputDelta", ThreadID: "root", TurnID: "turn", ItemID: command.ID, Delta: output}},
-		{Event: observation.Event{At: end, Kind: "item/completed", ThreadID: "root", TurnID: "turn", ItemID: command.ID, Item: completed}},
+		{At: start, Kind: "item/started", ThreadID: "root", TurnID: "turn", ItemID: command.ID, Item: command},
+		{At: start.Add(500 * time.Millisecond), Kind: "item/commandExecution/outputDelta", ThreadID: "root", TurnID: "turn", ItemID: command.ID, Delta: output},
+		{At: end, Kind: "item/completed", ThreadID: "root", TurnID: "turn", ItemID: command.ID, Item: completed},
 	}}
 	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)

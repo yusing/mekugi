@@ -226,7 +226,7 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 		{Name: "/root/b", Started: now.Add(-time.Minute)},
 	}})
 	chunk := func(caller, diff string, incomplete string) presentation.Chunk {
-		return presentation.Chunk{Origin: presentation.Origin{Caller: caller}, Review: diffmodel.ReviewFile{Diff: diff, Incomplete: incomplete}}
+		return presentation.Chunk{Caller: caller, Review: diffmodel.ReviewFile{Diff: diff, Incomplete: incomplete}}
 	}
 	v.Model.LineCounts = presentation.CallerCounts([]presentation.File{
 		{Chunks: []presentation.Chunk{chunk("/root", "@@ -1 +1,2 @@\n-a\n+b\n+c", ""), chunk("/root/a", "@@ -1 +1 @@\n-x\n+y", ""), chunk("/root/a", "", "tool-managed coverage")}},
@@ -262,7 +262,7 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 // Rewritten scratch files outside the workspace are not project edits.
 func TestLiveDiffCallerCountsSkipFilesOutsideWorkspace(t *testing.T) {
 	chunk := func(caller, workspace, before, after string) presentation.Chunk {
-		return presentation.Chunk{Workspace: workspace, Origin: presentation.Origin{Caller: caller},
+		return presentation.Chunk{Workspace: workspace, Caller: caller,
 			Review: diffmodel.ReviewFile{BeforePath: before, AfterPath: after, Diff: "@@ -1 +1 @@\n-x\n+y"}}
 	}
 	counts := presentation.CallerCounts([]presentation.File{{Chunks: []presentation.Chunk{

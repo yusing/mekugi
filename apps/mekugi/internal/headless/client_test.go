@@ -232,7 +232,7 @@ func requireHeadlessTestMethods(t *testing.T, wire *testInput, want ...string) [
 	t.Helper()
 	var got []string
 	var messages []appserver.Message
-	for _, row := range strings.Split(strings.TrimSpace(wire.String()), "\n") {
+	for row := range strings.SplitSeq(strings.TrimSpace(wire.String()), "\n") {
 		var message appserver.Message
 		if err := json.Unmarshal([]byte(row), &message); err != nil {
 			t.Fatal(err)

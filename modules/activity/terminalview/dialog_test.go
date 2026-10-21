@@ -198,8 +198,8 @@ func TestDialogSkillReadMarkdown(t *testing.T) {
 		for _, width := range []int{24, 80} {
 			for _, retained := range []bool{false, true} {
 				p := Painter{Theme: theme}
-				block := Block{Content: activitymodel.ParseOperation("Skill `example`")}
-				block.Tail = strings.Split(content, "\n")
+				block := Block{Content: activitymodel.ParseOperation("Skill `example`"),
+					Tail: strings.Split(content, "\n")}
 				if retained {
 					block.OutputSnapshot = new(completedOutput(content).View())
 					block.Tail = []string{"stale tail"}
@@ -267,8 +267,8 @@ func TestDialogSkillOutputStates(t *testing.T) {
 		})
 	}
 	var p Painter
-	block := Block{Content: activitymodel.ParseOperation("Skill `run example/script.sh`")}
-	block.Tail = []string{"# literal", "**output**"}
+	block := Block{Content: activitymodel.ParseOperation("Skill `run example/script.sh`"),
+		Tail: []string{"# literal", "**output**"}}
 	page := p.DialogPage(block, 80)
 	for i, line := range page.Lines {
 		if line.Number != i+1 || line.Gutter != "┆" || line.Text != block.Tail[i] {

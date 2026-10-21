@@ -54,7 +54,7 @@ func TestModuleHistoricalUsageV1Roundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := accounting.Report{
-		Usage: inference.Usage{InputTokens: 100, UncachedInputTokens: 70, CacheWriteTokens: 5, OutputTokens: 20, ReasoningTokens: 8},
+		InputTokens: 100, UncachedInputTokens: 70, CacheWriteTokens: 5, OutputTokens: 20, ReasoningTokens: 8,
 		Cost:  accounting.Cost{UncachedInput: 1.25, CachedInput: 0.5, Output: 2.75, Known: true},
 		Model: "historical-model", MissingUsage: 1, Roundtrips: 3, PriorUnknown: true,
 		RoundOutput: accounting.RoundOutput{StartedUnixNano: 123456789, Throughput: inference.OutputThroughput{OutputTokens: 20, DurationNanos: 2000000000, MeasuredRequests: 1}},

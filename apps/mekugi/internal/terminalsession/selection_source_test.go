@@ -45,11 +45,11 @@ func TestFrozenSelectionRequestsUpdatedOutput(t *testing.T) {
 	view := activityui.NewView()
 	view.Expansion = 2
 	publication := activitypresentation.Publication{Entries: []activitypresentation.Entry{{
-		Facts:  activitypresentation.Facts{Seq: 7, Agent: "Main", Kind: "tool", Text: "command", Outputs: map[int]int{1: 2}},
-		Values: []activitypresentation.Value{{Content: feed.Content{Kind: "op", Verb: "Run", Label: "printf retained"}, Source: 7, Output: 1, Exited: true, Tail: []string{"tail"}, TailOmitted: 1}},
+		Seq: 7, Agent: "Main", Kind: "tool", Text: "command", Outputs: map[int]int{1: 2},
+		Values: []activitypresentation.Value{{Kind: "op", Verb: "Run", Label: "printf retained", Source: 7, Output: 1, Exited: true, Tail: []string{"tail"}, TailOmitted: 1}},
 	}, {
-		Facts:  activitypresentation.Facts{Seq: 8, Agent: "Main", Kind: "text", Text: strings.Repeat("recent line\n", 12)},
-		Values: []activitypresentation.Value{{Content: feed.Content{Kind: "text", Body: strings.Repeat("recent line\n", 12)}, Source: 8}},
+		Seq: 8, Agent: "Main", Kind: "text", Text: strings.Repeat("recent line\n", 12),
+		Values: []activitypresentation.Value{{Kind: "text", Body: strings.Repeat("recent line\n", 12), Source: 8}},
 	}}}
 	view.Update(new(publication), activityui.Display{Caller: "/root"})
 	painted := main.Render(view, &view.Painter, &prompts, MainOptions{Now: time.Unix(100, 0)}, 60, 8, 0)

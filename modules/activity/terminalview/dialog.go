@@ -310,7 +310,7 @@ func (p *Painter) DetailDocument(detail presentation.DetailPage, output *activit
 				page.Detail += " · whole execution cell " + textsanitize.Safe(detail.Prepared.ID, false)
 			}
 		}
-		for _, line := range strings.Split(textsanitize.Safe(page.Text, false), "\n") {
+		for line := range strings.SplitSeq(textsanitize.Safe(page.Text, false), "\n") {
 			page.Add(terminalui.DialogLine{Text: line, Wrap: true})
 		}
 		return page

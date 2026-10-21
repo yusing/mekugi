@@ -31,7 +31,7 @@ func TestCompositionActivityDetails(t *testing.T) {
 				},
 			}, emptyDeps)
 			store := new(scope.Store)
-			request := activitydetail.Request{Operation: activitydetail.Operation{Thread: "thread", Item: "item"}, Path: "directory", Directory: true}
+			request := activitydetail.Request{Thread: "thread", Item: "item", Path: "directory", Directory: true}
 			var handles []*Handle[*service]
 			var want []activitydetail.Result
 			calls := 0

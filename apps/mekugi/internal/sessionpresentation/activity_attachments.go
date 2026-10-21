@@ -61,8 +61,8 @@ func AttachmentValues(cwd string, content jsontext.Value) []activitypresentation
 		for _, frame := range snapshot.Frames {
 			if name, source, rest := attachments.ParseSkillFrame(frame); name != "" {
 				verb, label := "Attached skill", name
-				if strings.HasPrefix(rest, ": CONTENT NOT ATTACHED (") {
-					reason, err := strconv.QuotedPrefix(strings.TrimPrefix(rest, ": CONTENT NOT ATTACHED ("))
+				if after, ok0 := strings.CutPrefix(rest, ": CONTENT NOT ATTACHED ("); ok0 {
+					reason, err := strconv.QuotedPrefix(after)
 					if err != nil {
 						continue
 					}

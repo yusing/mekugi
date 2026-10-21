@@ -30,8 +30,8 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 				}
 				c := liveDiffChangesPane(t, 120, 28, captures)
 				terminalTest(u).Auxiliary = c
-				wrong := presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "wrong"}, Correlation: "call\x000", Change: "amber1"}, Operation: activitydetail.Operation{Thread: "child", Item: "call"}, Chunks: captures[:1]}
-				attempt := presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "target"}, Correlation: "call\x000", Change: "amber20"}, Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[1:]}
+				wrong := presentation.Attempt{Key: presentation.AttemptKey{Workspace: "/w", Call: "wrong"}, Correlation: "call\x000", Change: "amber1", Operation: activitydetail.Operation{Thread: "child", Item: "call"}, Chunks: captures[:1]}
+				attempt := presentation.Attempt{Key: presentation.AttemptKey{Workspace: "/w", Call: "target"}, Correlation: "call\x000", Change: "amber20", Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[1:]}
 				if grouped {
 					attempt.Correlation = "exec-carrier"
 					attempt.Receipt = &presentation.Receipt{Thread: "main", Calls: []string{"call"}}
@@ -181,7 +181,7 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	}
 	c := liveDiffChangesPane(t, 120, 24, captures)
 	terminalTest(u).Auxiliary = c
-	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "clicked"}, Correlation: "call\x000", Change: "amber1"}, Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[:1]})
+	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{Key: presentation.AttemptKey{Workspace: "/w", Call: "clicked"}, Correlation: "call\x000", Change: "amber1", Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[:1]})
 	publishFixtureReview(t, u)
 
 	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
@@ -208,8 +208,8 @@ func TestNativeCapturedDetailIsAttachmentScoped(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	chunk := liveDiffCapture("edit", "scope.go", 1, "before\n", "after\n", presentation.Origin{})
 	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{
-		AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "edit"}},
-		Operation:       activitydetail.Operation{Thread: "main", Item: "edit"}, Chunks: []presentation.Chunk{chunk},
+		Key:       presentation.AttemptKey{Workspace: "/w", Call: "edit"},
+		Operation: activitydetail.Operation{Thread: "main", Item: "edit"}, Chunks: []presentation.Chunk{chunk},
 	})
 	publishFixtureReview(t, u)
 	u.attached.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "edit"}}}}

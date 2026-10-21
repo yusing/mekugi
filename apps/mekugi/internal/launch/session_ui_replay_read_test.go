@@ -75,8 +75,8 @@ func TestSessionUIReplayNormalizesItemsAndRecordedTiming(t *testing.T) {
 		// Retained line order must not replace actual item timing.
 		replayTestRecord("event_msg", replayTestEpoch+20000, map[string]any{"type": "task_complete", "turn_id": "turn"}),
 	}
-	for j := len(items) - 1; j >= 0; j-- {
-		records = append(records, replayTestItem("root", "turn", replayTestEpoch+int64(j+1)*1000, replayTestEpoch+int64(j+1)*1000+500, items[j]))
+	for j, item := range slices.Backward(items) {
+		records = append(records, replayTestItem("root", "turn", replayTestEpoch+int64(j+1)*1000, replayTestEpoch+int64(j+1)*1000+500, item))
 	}
 	records = append(records,
 		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),

@@ -45,9 +45,9 @@ func newTerminalScrollTestPane(offset int) *Pane {
 	lines := make([]string, 100)
 	pane.lines, pane.offset, pane.rows = lines, offset, 10
 	pane.lastWidth, pane.lastHeight = 80, 20
-	pane.rendering = Render{Layout: diffrender.Layout{Lines: lines}, Starts: []int{0}}
+	pane.rendering = Render{Lines: lines, Starts: []int{0}}
 	pane.view = View{
-		View:   presentation.View{Files: []presentation.File{{Path: "scroll.txt"}}},
+		Files:  []presentation.File{{Path: "scroll.txt"}},
 		Scroll: map[string]int{"scroll.txt": offset},
 	}
 	return pane
@@ -75,7 +75,7 @@ func TestScrollableDiffBeforePaintAndAfterFileChange(t *testing.T) {
 					t.Fatalf("%q used stale geometry: selection=%d scroll=%v", key, pane.view.Selected, pane.view.Scroll)
 				}
 				// Valid painted geometry restores ordinary scrolling immediately.
-				pane.rendering = Render{Layout: diffrender.Layout{Lines: make([]string, 100)}, Starts: []int{0}}
+				pane.rendering = Render{Lines: make([]string, 100), Starts: []int{0}}
 				pane.lines, pane.offset = pane.rendering.Lines, 50
 				pane.Key("k")
 				if pane.view.Scroll["scroll.txt"] != 49 {

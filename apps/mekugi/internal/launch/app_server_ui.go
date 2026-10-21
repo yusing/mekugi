@@ -384,11 +384,9 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					notifications.writeTerminalTitle(&attached.feedback, shell, clock, attached.cwd, control.Thread, questions.Questions, approvalDock.Approvals, control.Turn != "" || control.Starting(), presentationTime(clock))
 				}
 			})
-			var fileEditor *openFileEditor
-			var composerEditor *composerEditorRequest
-			if errors.As(err, &composerEditor) {
+			if composerEditor, ok := errors.AsType[*composerEditorRequest](err); ok {
 				openComposerEditor(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &side, &ownedImages, environment, ctx, composerEditor.intent, stdin, stdout)
-			} else if errors.As(err, &fileEditor) {
+			} else if fileEditor, ok := errors.AsType[*openFileEditor](err); ok {
 				openSelectedFileEditor(&attached, shell, clock, ctx, fileEditor.path, stdin, stdout)
 			} else {
 				break
@@ -585,8 +583,8 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			}
 			return nil
 		}
-		if strings.HasPrefix(method, "activity-skills/") {
-			return skillHistoryResponse(attached, control, childKey, restoring, parent, retained, dirty, activityService, segments, restoredSegments, strings.TrimPrefix(method, "activity-skills/"), m)
+		if after, ok := strings.CutPrefix(method, "activity-skills/"); ok {
+			return skillHistoryResponse(attached, control, childKey, restoring, parent, retained, dirty, activityService, segments, restoredSegments, after, m)
 		}
 		if strings.HasPrefix(method, "activity/") {
 			return childHistoryResponse(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, usage, segments, restoredSegments, dispatch, resumePending, method, m)

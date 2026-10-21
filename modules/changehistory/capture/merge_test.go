@@ -28,9 +28,9 @@ func TestMergedSiblingCheckpointUsesAdmissionOrder(t *testing.T) {
 	}
 	writeTestFile(t, path, "after\n")
 	merged := Merge([]Member{
-		{Observation: Observation{Commands: []commandanalysis.Command{{Command: "second"}}, Tree: second}, Sequence: 20},
-		{Observation: Observation{Commands: []commandanalysis.Command{{Command: "first"}}, Tree: first}, Sequence: 10},
-		{Observation: Observation{Commands: []commandanalysis.Command{{Command: "unwitnessed"}}}, Sequence: 1},
+		{Commands: []commandanalysis.Command{{Command: "second"}}, Tree: second, Sequence: 20},
+		{Commands: []commandanalysis.Command{{Command: "first"}}, Tree: first, Sequence: 10},
+		{Commands: []commandanalysis.Command{{Command: "unwitnessed"}}, Sequence: 1},
 	})
 	result := Reconcile(t.Context(), merged, Comparison{Workspace: workspace, Workspaces: snapshots})
 	if merged.Tree != first || !slices.Equal(merged.Commands, []commandanalysis.Command{{Command: "second"}, {Command: "first"}, {Command: "unwitnessed"}}) || result.SnapshotError != nil || len(result.Files) != 1 || !strings.Contains(result.Files[0].Diff, "-before") || !strings.Contains(result.Files[0].Diff, "+after") {
@@ -124,7 +124,7 @@ func TestMergedExecObservationReconcilesDuplicatePathsAndExcludesSameCellPatch(t
 	if err := os.WriteFile(path, []byte("after\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	members := []Member{{Observation: Observation{Files: []File{before}}}, {Observation: Observation{Files: []File{before}}}}
+	members := []Member{{Files: []File{before}}, {Files: []File{before}}}
 	merged := Merge(members)
 	result := Reconcile(t.Context(), merged, Comparison{})
 	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
@@ -132,7 +132,7 @@ func TestMergedExecObservationReconcilesDuplicatePathsAndExcludesSameCellPatch(t
 		t.Fatalf("duplicate-path reconciliation = %+v complete=%v coverage=%q", reviews, complete, coverage)
 	}
 
-	excludedMembers := []Member{{Observation: Observation{Files: []File{before}}}, {Observation: Observation{Excluded: []string{path}}}}
+	excludedMembers := []Member{{Files: []File{before}}, {Excluded: []string{path}}}
 	excluded := Merge(excludedMembers)
 	result = Reconcile(t.Context(), excluded, Comparison{})
 	reviews, complete, coverage = result.Files, result.Complete, result.Coverage
