@@ -1,0 +1,8 @@
+
+› /resume       Resume a saved session                                          
+  /reasoning    Choose the reasoning effort
+  /predictions  Enable or disable next-message suggestions: on|off
+
+
+
+  ↑/↓ navigate · enter select · tab complete · esc close

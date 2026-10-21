@@ -97,8 +97,9 @@ follow [composer controls](../../apps/mekugi/internal/terminalsession/SPEC.md#co
 The attached Conversation owner retains completion targets, admitted choices and
 full response-copy values. Application integration retains searches and pending
 skill writes. Completion publications retain query targets and choice identities.
-Highlight and viewport navigation belong to the renderer, including preserving a selected skill
-or command as results change. Accepting a choice names its identity and originating
+Highlight and viewport navigation belong to the renderer. Skill selection survives
+result changes; command selection survives refreshes of the same query, while editing
+the command query selects its best match. Accepting a choice names its identity and originating
 session/menu publication before applying the token edit or skill write. A delayed
 choice cannot target a replacement menu, workspace or draft.
 

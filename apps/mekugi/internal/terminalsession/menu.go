@@ -28,7 +28,8 @@ func (m *Menu) Update(v sessionpresentation.View) {
 	}
 	var previous completion.ChoiceID
 	fresh := m.body == nil || m.version.Attachment != v.Version.Attachment || m.body.ID != v.Menu.ID || m.body.Kind != v.Menu.Kind
-	if !fresh && m.Selected < len(m.body.Choices) {
+	commandQueryChanged := !fresh && v.Menu.Kind == sessionpresentation.MenuCompletion && v.Menu.Target.Kind == '/' && m.body.Target.Query != v.Menu.Target.Query
+	if !fresh && !commandQueryChanged && m.Selected < len(m.body.Choices) {
 		previous = m.body.Choices[m.Selected].Identity()
 	}
 	if fresh {

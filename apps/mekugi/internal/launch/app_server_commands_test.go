@@ -50,6 +50,47 @@ func TestComposerCommandEnterAndDismiss(t *testing.T) {
 	}
 }
 
+func TestComposerCommandQuerySelectsBestMatch(t *testing.T) {
+	for _, key := range []string{"\t", "\r"} {
+		t.Run(key, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			appServerTestKeys(t, u, "/res"+key)
+			if key == "\t" {
+				if u.Text != "/resume " || u.picker.Open || wire.Len() != 0 {
+					t.Fatalf("Tab completion: draft=%q open=%v requests=%s", u.Text, u.picker.Open, wire.String())
+				}
+			} else if u.resumePicker == nil || u.Text != "" {
+				t.Fatalf("Enter did not open resume: draft=%q picker=%+v", u.Text, u.picker)
+			}
+		})
+	}
+}
+
+func TestComposerCommandQueryEditingAndNavigation(t *testing.T) {
+	for _, tt := range []struct{ name, keys, want string }{
+		{"backspace", "/res\x7f", "/reasoning "},
+		{"edit after navigation", "/re\x1b[B" + "s", "/resume "},
+		{"navigate after edit", "/res\x1b[B", "/reasoning "},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			appServerTestKeys(t, u, tt.keys)
+			// Republishing the same query must not discard deliberate navigation.
+			u.renderPicker(80, 8)
+			appServerTestKeys(t, u, "\t")
+			if u.Text != tt.want {
+				t.Fatalf("completion after %q = %q, want %q", tt.keys, u.Text, tt.want)
+			}
+		})
+	}
+}
+
+func TestUISnapshotComposerCommandBestMatch(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	appServerTestKeys(t, u, "/res")
+	assertNativeUISnapshot(t, "composer-command-best-match", u.renderPicker(80, 8))
+}
+
 func TestComposerCommandBoundaries(t *testing.T) {
 	for _, draft := range []string{"hello /", "/model value", "/skills\ntext", "\x1b[200~/skills\x1b[201~"} {
 		t.Run(draft, func(t *testing.T) {

@@ -47,6 +47,24 @@ func TestMenuKeysReturnTargetedEffectsWithoutMutatingPublication(t *testing.T) {
 	}
 }
 
+func TestMenuCommandRefreshPreservesSelectedIdentity(t *testing.T) {
+	v := sessionpresentation.View{Menu: &sessionpresentation.MenuView{
+		ID: 1, Kind: sessionpresentation.MenuCompletion, Target: completion.Target{Kind: '/', Query: "res"},
+		Choices: []completion.Choice{{Name: "/resume"}, {Name: "/reasoning"}},
+	}}
+	var m Menu
+	m.Update(v)
+	m.Key("\x1b[B")
+	refreshed := *v.Menu
+	refreshed.Choices = []completion.Choice{{Name: "/reasoning"}, {Name: "/resume"}}
+	v.Menu = &refreshed
+	v.Version.Revision++
+	m.Update(v)
+	if result := m.Key("\r"); result.Action.Choice.Name != "/reasoning" || !result.Submit {
+		t.Fatalf("refresh changed the selected command: %+v", result)
+	}
+}
+
 func TestRewindDialogInputIsolation(t *testing.T) {
 	main := &Main{}
 	main.Update(sessionpresentation.View{Menu: &sessionpresentation.MenuView{ID: 1, Kind: sessionpresentation.MenuRewind, Dialog: true,
