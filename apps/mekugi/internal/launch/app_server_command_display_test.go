@@ -105,7 +105,7 @@ func TestAppServerOpaqueCommandWrappers(t *testing.T) {
 func TestUISnapshotWrappedCommands(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		u := newAppServerSessionTestUI(t, "/workspace")
-		u.clock = func() time.Time { return time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC) }
+		u.clock = func() time.Time { return time.Date(2026, 10, 12, 20, 0, 0, 0, time.Local) }
 		view := u.testActivity(u.shell.Transcript)
 		if thread == "child" {
 			view = u.testActivity(u.shell.Agents)
@@ -490,7 +490,7 @@ func TestAppServerWholeScriptTimeoutSuffix(t *testing.T) {
 func TestUISnapshotShellSetupTimeoutEvent(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		u := newAppServerSessionTestUI(t, "/workspace")
-		now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
+		now := time.Date(2026, 10, 12, 20, 0, 0, 0, time.Local)
 		u.clock = func() time.Time { return now }
 		view := u.testActivity(u.shell.Transcript)
 		if thread == "child" {
