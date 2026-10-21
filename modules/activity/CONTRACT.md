@@ -55,11 +55,16 @@ command directory.
 
 | Evidence | Presentation |
 | --- | --- |
-| Successful tracked writer, no observed differences | `Edit PATH via TOOL · ran` |
+| Successful tracked writer or completed patch without supplied differences | `Edit PATH via TOOL · ran` |
 | Running or untracked intent | Requested verb and `· requested` |
 | Patch started, including awaiting approval | `· pending` |
 | Failed or declined patch | Red verb and one group-level outcome |
 | Confirmed capture | `Edited`, `Created`, `Deleted` or `Moved`, with observed counts |
+
+Completed native updates without changed lines establish that the patch ran,
+not that the file changed. They retain their invocation row without counts;
+missing differences do not establish a no-op. Empty-file creation/deletion and
+path-only moves remain effects even without changed lines.
 
 Grouped captures appear once on the owning invocation. They replace successful
 sibling intent in live and restored feeds, including timed shell batches, while

@@ -170,6 +170,56 @@ func TestUISnapshotNativeCompletedHostEditDialog(t *testing.T) {
 	uisnapshot.Assert(t, "testdata/snapshots/native-completed-host-edit-dialog.txt", drawOutputDialog(terminalTest(u))+"\n")
 }
 
+func TestUISnapshotNativeContextOnlyPatchThenEdit(t *testing.T) {
+	// A context-only update completes with an empty native diff. The later
+	// invocation actually edits the same file and must keep its own evidence.
+	unchanged := binding.FileChange{Path: "modules/conversation/SPEC.md"}
+	unchanged.Kind.Type = "update"
+	changed := unchanged
+	changed.Diff = "@@ -1 +1,2 @@\n---old\n+new\n+line\n"
+	other := binding.FileChange{Path: "apps/mekugi/internal/launch/app_server_btw.go", Diff: "@@ -1 +1,4 @@\n context\n+++one\n+++two\n+++three\n"}
+	other.Kind.Type = "update"
+	items := []binding.ThreadItem{
+		{ID: "context-only", Type: "fileChange", Status: "completed", Changes: []binding.FileChange{unchanged}},
+		{ID: "read", Type: "commandExecution", Status: "completed", Command: "cat modules/conversation/SPEC.md", ExitCode: new(0)},
+		{ID: "edit", Type: "fileChange", Status: "completed", Changes: []binding.FileChange{changed, other}},
+	}
+	for _, restored := range []bool{false, true} {
+		t.Run(fmt.Sprint(restored), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			if restored {
+				u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: items}})
+			} else {
+				for _, item := range items {
+					for range 2 { // Host refreshes must replace, not duplicate, the invocation.
+						appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+					}
+				}
+			}
+			view := u.testActivity(u.shell.Transcript)
+			finishPacing(view)
+			view.Painter.Theme = diffrender.DarkTheme
+			if len(view.Entries) != 3 || view.blocks(0)[0].EditHeading() != "Edit ran" || view.blocks(2)[0].EditHeading() != "Edited" {
+				t.Fatalf("patch execution confused with changes: %+v", view.Entries)
+			}
+			rows := view.RenderFeed(120, 20).Lines
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/native-context-only-patch.txt", append(rows, "plain after edits"), 120)
+			if terminalTest(u).openActivityEdit(u.shell.Transcript, view.Entries[0].Source.Seq, unchanged.Path) {
+				t.Fatal("empty update exposed a changed-file diff")
+			}
+			if !terminalTest(u).openActivityEdit(u.shell.Transcript, view.Entries[2].Source.Seq, changed.Path) {
+				t.Fatal("later edit lost its own diff")
+			}
+			if err := u.testPaint(&bytes.Buffer{}, 120, 24); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(terminalTest(u).Dialog.Document.Text, "+line") {
+				t.Fatal("later edit opened the wrong diff")
+			}
+		})
+	}
+}
+
 func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	before := liveDiffLinesFile("target", 100)

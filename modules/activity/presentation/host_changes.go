@@ -27,13 +27,22 @@ func HostEditText(item observation.Item, cwd string) string {
 		if moved := change.Kind.MovePath; moved != "" {
 			verb, path = "Move", pathdisplay.Move(cwd, change.Path, moved)
 		}
-		text := verb + " " + markdownsyntax.QuoteCode(path) + fmt.Sprintf(" · +%d −%d", added, removed)
+		text := verb + " " + markdownsyntax.QuoteCode(path)
+		changed := verb != "Edit" || added != 0 || removed != 0
+		if changed {
+			text += fmt.Sprintf(" · +%d −%d", added, removed)
+		}
 		switch item.Status {
 		case "failed", "declined":
 			text += " · " + item.Status
 		case "inProgress":
 			// Started patches may still await approval; only completion confirms them.
 			text += " · pending"
+		case "", "completed":
+			if !changed {
+				// Completion proves execution, not an effect when no diff was supplied.
+				text += " · ran"
+			}
 		}
 		parts = append(parts, text+" · apply_patch")
 	}
@@ -89,9 +98,12 @@ func hostChangeCounts(change observation.FileChange) (added, removed int) {
 	case "delete":
 		return 0, len(lines)
 	}
+	inHunk := false
 	for _, line := range lines {
 		switch {
-		case strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---"):
+		case strings.HasPrefix(line, "@@"):
+			inHunk = true
+		case !inHunk && (strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---")):
 		case strings.HasPrefix(line, "+"):
 			added++
 		case strings.HasPrefix(line, "-"):

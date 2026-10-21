@@ -186,7 +186,7 @@ func (b Value) EditHeading() string {
 		return "Edit requested"
 	}
 	label := b.EditLabel()
-	for _, status := range []string{"failed", "declined", "pending"} {
+	for _, status := range []string{"failed", "declined", "pending", "ran"} {
 		if strings.HasSuffix(label, " · "+status) {
 			return "Edit " + status
 		}

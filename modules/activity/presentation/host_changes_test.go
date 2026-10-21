@@ -9,6 +9,9 @@ import (
 func TestHostEditProjection(t *testing.T) {
 	for _, tc := range []struct{ kind, diff, want string }{
 		{"update", "--- a/path\n+++ b/path\n@@\n-x\n+y\n", "Edit `path` · +1 −1"},
+		{"update", "--- a/path\n+++ b/path\n@@ -0,0 +1 @@\n+++i;\n", "Edit `path` · +1 −0"},
+		{"update", "@@ -1 +0,0 @@\n--- counter;\n", "Edit `path` · +0 −1"},
+		{"update", "@@ -1 +1 @@\n--- counter;\n+++i;\n", "Edit `path` · +1 −1"},
 		{"add", "a\nb\n", "Create `path` · +2 −0"},
 		{"delete", "a\nb\n", "Delete `path` · +0 −2"},
 	} {
@@ -33,6 +36,27 @@ func TestHostEditProjection(t *testing.T) {
 			if got := HostEditText(item, "/workspace"); got != tc.want+" · "+label+" · apply_patch" {
 				t.Fatalf("%s outcome: %q", status, got)
 			}
+		}
+	}
+}
+
+func TestHostEditWithoutChangedLines(t *testing.T) {
+	for _, tc := range []struct{ kind, diff, move, want, heading string }{
+		{"update", "", "", "Edit `path` · ran", "Edit ran"},
+		{"update", "@@ -1 +1 @@\n unchanged\n", "", "Edit `path` · ran", "Edit ran"},
+		{"add", "", "", "Create `path` · +0 −0", "Edited"},
+		{"delete", "", "", "Delete `path` · +0 −0", "Edited"},
+		{"update", "", "/workspace/moved", "Move `path => moved` · +0 −0", "Edited"},
+	} {
+		change := observation.FileChange{Path: "/workspace/path", Diff: tc.diff}
+		change.Kind.Type, change.Kind.MovePath = tc.kind, tc.move
+		item := observation.Item{Status: "completed", Changes: []observation.FileChange{change}}
+		text := HostEditText(item, "/workspace")
+		if text != tc.want+" · apply_patch" {
+			t.Fatalf("%s/%s: %q", tc.kind, tc.move, text)
+		}
+		if got := Operations(text)[0].EditHeading(); got != tc.heading {
+			t.Fatalf("%s/%s heading = %q, want %q", tc.kind, tc.move, got, tc.heading)
 		}
 	}
 }
