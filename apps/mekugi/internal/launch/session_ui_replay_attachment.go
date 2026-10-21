@@ -31,40 +31,8 @@ type replayOwners struct {
 	activity     *activitymodel.Service
 }
 
-// replayScope binds only recorded source owners for one attachment lifetime.
-// Renderers consume its detached publications; backward seeking retires it.
-type replayScope struct {
-	session             sessionpresentation.Attachment
-	presentation        *sessionpresentation.Model
-	conversation        *conversationmodel.Session
-	source, childSource *sessionpresentation.ActivitySource
-	transcript          observation.Transcript
-	waits               activitypresentation.Waits
-	feedback            noticepresentation.Model
-	cwd, Turn           string
-}
-
-// replayDelivery receives renderer reveal input for one applied observation.
-// publish reports that the feed changed outside renderer-paced streams.
-type replayDelivery func(deliveries []sessionpresentation.ActivityDelivery, publish bool)
-
-func (o replayOwners) scope(source *playback.Source) *replayScope {
-	s := &replayScope{cwd: source.Cwd}
-	s.session.Start(source.Thread)
-	s.presentation = o.views.Session(s.session.Scope())
-	s.presentation.Attach(sessionpresentation.Thread{ID: source.Thread, Caller: "/root"}, true)
-	s.presentation.Status.Set("Replay", false)
-	s.conversation = o.conversation.Session(s.session.Scope())
-	s.transcript = o.observations.NewTranscript(s.session.Scope())
-	state := s.session.Activity()
-	state.StartRoster(sessionpresentation.ActivityAgent{Thread: source.Thread, Name: "/root", Role: "main"})
-	s.source = &sessionpresentation.ActivitySource{Model: &state.Main, Audience: sessionpresentation.MainAudience, Coverage: "CONNECTING"}
-	s.childSource = &sessionpresentation.ActivitySource{Model: &state.Children, Audience: sessionpresentation.ChildAudience}
-	return s
-}
-
 // sessionView publishes the scope's detached session values at the recorded time.
-func (s *replayScope) sessionView(at time.Time) sessionpresentation.View {
+func (s *replayAttachment) sessionView(at time.Time) sessionpresentation.View {
 	processes := 0
 	for range s.session.RunningProcesses() {
 		processes++
@@ -77,7 +45,7 @@ func (s *replayScope) sessionView(at time.Time) sessionpresentation.View {
 
 // apply admits one recorded observation. Playback selects recorded turns
 // without creating or settling live control operations.
-func (s *replayScope) apply(o replayOwners, source *playback.Source, at time.Time, e playback.Event, deliver replayDelivery) {
+func (s *replayAttachment) apply(o replayOwners, source *playback.Source, at time.Time, e playback.Event) {
 	if id := e.ThreadID; id != "" && id != source.Thread && s.session.KnownCaller(id) == "" {
 		s.session.RegisterThread(observation.Thread{ID: id, Nickname: strings.TrimPrefix(source.Threads[id], "/root/")})
 	}
@@ -94,12 +62,13 @@ func (s *replayScope) apply(o replayOwners, source *playback.Source, at time.Tim
 		sessionpresentation.ApplyActivity(s.source, s.childSource, s.session.AdmitText(updates, source.Thread), nil)
 	case e.Kind == observation.ProviderCompleted:
 	default:
-		if s.message(source, at, e.Event, deliver) {
+		if s.message(source, at, e.Event) {
 			return
 		}
 		result := sessionpresentation.ReduceObservation(&s.session, s.presentation, s.source, s.childSource, s.transcript, &s.waits, o.activity.Outputs(s.session.Scope()), sessionpresentation.ObservationInput{Event: e.Event, Text: binding.RetainedTranscript(e.Event), Main: source.Thread, Selected: s.Turn, Workspace: s.cwd})
 		if result.Publish {
-			deliver(result.Deliveries, true)
+			s.streams.Deliver(result.Deliveries, s.view, s.agents)
+			s.publishActivity()
 		}
 		// Status uses the same admitted observation clock.
 		if e.ThreadID == source.Thread {
@@ -127,7 +96,7 @@ func (s *replayScope) apply(o replayOwners, source *playback.Source, at time.Tim
 
 // Recorded messages use Conversation's admission and source projection, without
 // binding response handles or opening an editable prompt.
-func (s *replayScope) message(source *playback.Source, at time.Time, e observation.Event, deliver replayDelivery) bool {
+func (s *replayAttachment) message(source *playback.Source, at time.Time, e observation.Event) bool {
 	if e.Kind != observation.ReasoningDelta && e.Kind != observation.ReasoningPart && e.Kind != observation.AgentDelta && e.Item.Type != "reasoning" && e.Item.Type != "agentMessage" && e.Item.Type != "userMessage" {
 		return false
 	}
@@ -147,14 +116,21 @@ func (s *replayScope) message(source *playback.Source, at time.Time, e observati
 		return true
 	}
 	deliveries := sessionpresentation.ProjectMessage(&s.session, s.source, s.childSource, s.transcript, e.ThreadID == source.Thread, sessionpresentation.ObservationInput{Event: e, Text: text, Main: source.Thread, Workspace: s.cwd})
-	deliver(deliveries, false)
+	s.streams.Deliver(deliveries, s.view, s.agents)
 	s.presentation.ObserveProgress(e, s.Turn, false)
 	return true
 }
 
-// replayAttachment adds the terminal consumer to one recorded scope.
+// replayAttachment owns the recorded presentation and its terminal consumer.
 type replayAttachment struct {
-	*replayScope
+	session             sessionpresentation.Attachment
+	presentation        *sessionpresentation.Model
+	conversation        *conversationmodel.Session
+	source, childSource *sessionpresentation.ActivitySource
+	transcript          observation.Transcript
+	waits               activitypresentation.Waits
+	feedback            noticepresentation.Model
+	cwd, Turn           string
 	detailFiles
 	view, agents *activityui.View
 	shell        *terminalsession.Attachment
@@ -167,7 +143,17 @@ func (p *uiReplayPlayback) reset() {
 		p.close()
 	}
 	p.paintedAt = time.Time{}
-	u := &replayAttachment{replayScope: p.scope(p.Source)}
+	u := &replayAttachment{cwd: p.Source.Cwd}
+	u.session.Start(p.Source.Thread)
+	u.presentation = p.views.Session(u.session.Scope())
+	u.presentation.Attach(sessionpresentation.Thread{ID: p.Source.Thread, Caller: "/root"}, true)
+	u.presentation.Status.Set("Replay", false)
+	u.conversation = p.conversation.Session(u.session.Scope())
+	u.transcript = p.observations.NewTranscript(u.session.Scope())
+	state := u.session.Activity()
+	state.StartRoster(sessionpresentation.ActivityAgent{Thread: p.Source.Thread, Name: "/root", Role: "main"})
+	u.source = &sessionpresentation.ActivitySource{Model: &state.Main, Audience: sessionpresentation.MainAudience, Coverage: "CONNECTING"}
+	u.childSource = &sessionpresentation.ActivitySource{Model: &state.Children, Audience: sessionpresentation.ChildAudience}
 	u.shell, _ = p.terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
 	u.view, u.agents = u.shell.Transcript, u.shell.Agents
 	u.view.Clock, u.agents.Clock = func() time.Time { return p.At }, func() time.Time { return p.At }

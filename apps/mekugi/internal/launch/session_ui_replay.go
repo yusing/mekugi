@@ -59,12 +59,7 @@ func (p *uiReplayPlayback) close() {
 
 func (p *uiReplayPlayback) apply(e playback.Event) error {
 	defer p.publish()
-	p.ui.apply(p.replayOwners, p.Source, p.At, e, func(deliveries []sessionpresentation.ActivityDelivery, publish bool) {
-		p.ui.streams.Deliver(deliveries, p.ui.view, p.ui.agents)
-		if publish {
-			p.ui.publishActivity()
-		}
-	})
+	p.ui.apply(p.replayOwners, p.Source, p.At, e)
 	return nil
 }
 func (p *uiReplayPlayback) advance(position time.Duration) error {
@@ -362,7 +357,22 @@ func RunSessionUIReplay(terminalViews terminalsession.Views, views *sessionprese
 		return fail(errors.New("interactive playback requires a terminal; use --headless for profiling"))
 	}
 	fmt.Fprintln(stderr, "Loading recorded session and child items…")
-	source, err := readReplaySource(ctx, service, *session, *debug, *seed)
+	rollouts, err := discoverDebugRollouts(ctx, []string{*session})
+	if err != nil {
+		return fail(err)
+	}
+	paths := rollouts[*session]
+	if len(paths) == 0 {
+		return fail(fmt.Errorf("session %q not found in Codex sessions or archived_sessions", *session))
+	}
+	if len(paths) != 1 {
+		return fail(fmt.Errorf("session %q has multiple rollouts in Codex sessions or archived_sessions", *session))
+	}
+	directory, err := history.ReplayDirectory()
+	if err != nil {
+		return fail(err)
+	}
+	source, err := service.Read(ctx, playback.ReadOptions{Path: paths[0], HistoryDirectory: directory, DebugDirectory: *debug, Seed: *seed})
 	if err != nil {
 		return fail(err)
 	}
@@ -442,24 +452,4 @@ func RunSessionUIReplay(terminalViews terminalsession.Views, views *sessionprese
 	}
 	fmt.Fprintln(stdout)
 	return 0
-}
-
-// readReplaySource admits exactly one recorded Main rollout by literal session ID.
-func readReplaySource(ctx context.Context, service *playback.Service, session, debug string, seed uint64) (*playback.Source, error) {
-	rollouts, err := discoverDebugRollouts(ctx, []string{session})
-	if err != nil {
-		return nil, err
-	}
-	paths := rollouts[session]
-	if len(paths) == 0 {
-		return nil, fmt.Errorf("session %q not found in Codex sessions or archived_sessions", session)
-	}
-	if len(paths) != 1 {
-		return nil, fmt.Errorf("session %q has multiple rollouts in Codex sessions or archived_sessions", session)
-	}
-	directory, err := history.ReplayDirectory()
-	if err != nil {
-		return nil, err
-	}
-	return service.Read(ctx, playback.ReadOptions{Path: paths[0], HistoryDirectory: directory, DebugDirectory: debug, Seed: seed})
 }
