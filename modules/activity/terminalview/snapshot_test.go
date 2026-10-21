@@ -1,11 +1,13 @@
 package terminalview
 
 import (
-	"github.com/charmbracelet/x/ansi"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -218,6 +220,121 @@ func TestUISnapshotActivityOutputDialog(t *testing.T) {
 			}
 			frame := terminalui.DialogFrame{Page: page, Position: tc.position, Paused: tc.paused, Top: tc.top, Total: len(body), Rows: body[tc.top:], Footer: "esc close · ↑↓ scroll · c copy"}
 			uisnapshot.Assert(t, "testdata/snapshots/activity_dialog_"+tc.name+".txt", strings.Join(p.Dialog(frame, tc.width, tc.height), "\n")+"\n")
+		})
+	}
+}
+
+func TestUISnapshotTemporaryCapturedChanges(t *testing.T) {
+	values := []presentation.Value{{Kind: "op", Verb: "Edit", Label: "`project.go` +2 -1", EditSource: "git worktree add", EditHeader: true}}
+	for i := range 200 {
+		values = append(values, presentation.Value{Kind: "op", Verb: "Create", Label: fmt.Sprintf("`/tmp/worktree/file%03d.go` +3 -0", i), EditSource: "git worktree add"})
+	}
+	values = append(values, presentation.Value{Kind: "op", Verb: "Edit", Label: "`after.go` +1 -1", EditSource: "git worktree add"})
+	v := NewView()
+	v.Conversation = true
+	v.Painter.Theme = diffrender.DarkTheme
+	v.Clock = func() time.Time { return time.Unix(1000, 0) }
+	v.Update(&presentation.Publication{Entries: []presentation.Entry{{Facts: presentation.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: "captured changes"}, Values: values}}}, Display{})
+	for _, expansion := range []uint8{0, 1, 2} {
+		v.Expansion = expansion
+		feed := v.RenderConversation(100)
+		text := ansi.Strip(strings.Join(feed.Lines, "\n"))
+		if expansion != 2 {
+			if !strings.Contains(text, "… +188 files") || strings.Contains(text, "file012.go") || !strings.Contains(text, "after.go") || !strings.Contains(text, "project.go") {
+				t.Fatalf("collapsed file rows: %s", text)
+			}
+			row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "… +188 files") })
+			if feed.Snippets[row] != (Snippet{Run: 1, Block: EditNavigationSnippet}) {
+				t.Fatalf("omitted files lost invocation navigation: %+v", feed.Snippets[row])
+			}
+			if expansion == 0 {
+				uisnapshot.AssertTerminal(t, "testdata/snapshots/temporary_captured_changes.txt", append(feed.Lines, "plain after changes"), 100)
+			}
+		} else {
+			for i := range 200 {
+				path := fmt.Sprintf("/tmp/worktree/file%03d.go", i)
+				if !slices.Contains(feed.Snippets, Snippet{Run: 1, Block: EditNavigationSnippet, Path: path}) {
+					t.Fatalf("expanded navigation lost %s", path)
+				}
+			}
+		}
+	}
+}
+
+func TestTemporaryCapturedChangesKeepGroupBoundaries(t *testing.T) {
+	var blocks []Block
+	for source := uint64(1); source <= 2; source++ {
+		for i := range presentation.ChangeRowsShown + 1 {
+			blocks = append(blocks, Block{Kind: "op", Source: source, Verb: "Create", Label: fmt.Sprintf("`/tmp/tree/file%d` +1 -0", i), EditSource: "cp"})
+		}
+	}
+	for _, boundary := range []string{"source", "directory", "outcome", "writer"} {
+		t.Run(boundary, func(t *testing.T) {
+			input := slices.Clone(blocks)
+			for i := presentation.ChangeRowsShown + 1; i < len(input); i++ {
+				switch boundary {
+				case "directory":
+					input[i].Source, input[i].Workdir = 1, "/other"
+				case "outcome":
+					input[i].Source, input[i].EditOutcome = 1, "failed"
+				case "writer":
+					input[i].Source, input[i].EditSource = 1, "python3"
+				}
+			}
+			shown := collapseTemporaryEdits(GroupOperations(input))
+			for _, b := range shown {
+				if b.HiddenEdits > 1 {
+					t.Fatalf("elision crossed %s boundary: %+v", boundary, b)
+				}
+				if b.EditOutcome == "failed" && b.HiddenEdits != 0 {
+					t.Fatal("failed outcome hidden")
+				}
+			}
+		})
+	}
+}
+
+func TestTemporaryCapturedChangesRetainBatchAndOutput(t *testing.T) {
+	var records []string
+	for i := range 200 {
+		records = append(records, fmt.Sprintf("Create `/tmp/worktree/file%03d.go` +3 -0 · git worktree add", i))
+	}
+	for _, state := range []string{"restored", "passed", "output", "expanded-output"} {
+		t.Run(state, func(t *testing.T) {
+			facts := presentation.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(records, "\n\n"), Restored: state == "restored"}
+			item := presentation.ItemContent{Facts: facts}
+			output := strings.Contains(state, "output")
+			if output {
+				item.Command.Tail = []string{"retained command output"}
+				item.Details = &presentation.ItemDetails{Output: 1}
+			}
+			v := NewView()
+			v.Conversation = true
+			v.Clock = func() time.Time { return time.Unix(1000, 0) }
+			v.Update(&presentation.Publication{Entries: []presentation.Entry{{Facts: facts, Values: item.Values()}}}, Display{})
+			if state == "passed" {
+				v.Passed = map[uint64]bool{1: true}
+				v.Following = false
+			}
+			if state == "expanded-output" {
+				v.Expansion = 1
+			}
+			feed := v.RenderConversation(100)
+			text := ansi.Strip(strings.Join(feed.Lines, "\n"))
+			if output {
+				if !strings.Contains(text, "retained command output") || !strings.Contains(text, "… +187 files") || !strings.Contains(text, "file199.go") {
+					t.Fatalf("output-bearing final capture lost: %s", text)
+				}
+			} else {
+				if !strings.Contains(text, "Created ×200") {
+					t.Fatalf("incorrect batch tally: %s", text)
+				}
+				for _, run := range v.Runs {
+					if len(run.Blocks) != 1 || len(run.Blocks[0].Members) != 200 {
+						t.Fatal("batch lost original file membership")
+					}
+				}
+			}
 		})
 	}
 }

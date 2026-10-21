@@ -28,7 +28,7 @@ type Block struct {
 // Annotation belongs only to terminal disclosure and layout, never feed records.
 type Annotation struct {
 	VerbAlign, VerbColumn, PathAlign, StatAlign, StatScale int
-	TailRows, SourceRows                                   int
+	TailRows, SourceRows, HiddenEdits                      int
 	Flash, Collapsed, Hovered, Expanded                    bool
 }
 
@@ -72,6 +72,39 @@ func GroupOperations(blocks []Block) []Block {
 	}
 	measureGroups(blocks)
 	return blocks
+}
+
+// collapseTemporaryEdits bounds captured temporary-file lists without changing
+// their retained evidence. Each elision opens one invocation's complete capture.
+func collapseTemporaryEdits(blocks []Block) []Block {
+	temporary := func(b Block) bool {
+		return b.Kind == "op" && b.EditSource != "" && b.GroupHeader == "Edited" &&
+			b.ExitCode == 0 && !b.Skipped && b.Approval == "" && b.Output == 0 &&
+			len(b.Tail)+b.TailOmitted == 0 && len(b.Changes) == 0 && b.Code == "" &&
+			len(b.Questions) == 0 && !b.DirectoryDeletion() && strings.HasPrefix(b.EditPath(), "/tmp/")
+	}
+	var shown []Block
+	for start := 0; start < len(blocks); {
+		end := start + 1
+		first := blocks[start]
+		if temporary(first) {
+			for end < len(blocks) && temporary(blocks[end]) && !blocks[end].GroupStart &&
+				blocks[end].Source == first.Source && blocks[end].Workdir == first.Workdir {
+				end++
+			}
+		}
+		keep := min(end-start, presentation.ChangeRowsShown)
+		shown = append(shown, blocks[start:start+keep]...)
+		if hidden := end - start - keep; hidden > 0 {
+			note := blocks[start+keep]
+			note.HiddenEdits = hidden
+			note.Label = "" // Empty edit path opens every retained file from this source.
+			shown = append(shown, note)
+		}
+		start = end
+	}
+	measureGroups(shown)
+	return shown
 }
 
 // widestAlignedVerb is the widest verb that pads to a shared column; wider

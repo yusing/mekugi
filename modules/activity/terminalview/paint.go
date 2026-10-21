@@ -647,6 +647,14 @@ func exitText(code int) string {
 // cell: the first row names the group's verb, source, and any unconfirmed
 // outcome, and later rows name only a verb that differs from Edit.
 func (p *Painter) editGroupRow(block Block, width int) []string {
+	if block.HiddenEdits > 0 {
+		unit := "files"
+		if block.HiddenEdits == 1 {
+			unit = "file"
+		}
+		return terminalui.Hang(strings.Repeat(" ", max(block.cell("Edit"), block.VerbAlign+1)),
+			Elision{Hidden: block.HiddenEdits, Unit: unit, Hovered: block.Hovered}.String(), width)
+	}
 	verb, status, start := EditVerb(block), EditStatus(block), block.GroupStart
 	color := terminalui.Green
 	switch status {

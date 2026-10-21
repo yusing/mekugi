@@ -476,7 +476,7 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 		if v.Expansion == 0 {
 			group = MergeTargets(group)
 		}
-		laid = AlignVerbs(GroupOperations(group))
+		laid = GroupOperations(group)
 		// A batch that has scrolled out of view keeps one row, which opens
 		// its operations in the output dialog. Failed exits stay visible in the
 		// summary; unconfirmed host items without an exit keep their rows.
@@ -485,7 +485,11 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 			laid = []Block{collapsed}
 		} else {
 			batch = ok && !unconfirmed
+			if v.Expansion != 2 {
+				laid = collapseTemporaryEdits(laid)
+			}
 		}
+		laid = AlignVerbs(laid)
 		for index, block := range laid {
 			block = v.discloseBlock(block)
 			snippet := Snippet{Run: entry.Seq, Block: index}

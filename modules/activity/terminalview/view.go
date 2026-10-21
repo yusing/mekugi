@@ -1387,7 +1387,11 @@ func (v *View) renderRun(first uint64, agent string, observed time.Time, blocks 
 	if v.Expansion == 0 {
 		blocks = CompactReasoning(blocks)
 	}
-	blocks = AlignVerbs(GroupOperations(blocks))
+	blocks = GroupOperations(blocks)
+	if v.Expansion != 2 {
+		blocks = collapseTemporaryEdits(blocks)
+	}
+	blocks = AlignVerbs(blocks)
 	run.Blocks = blocks
 	for index, block := range blocks {
 		block = v.discloseBlock(block)
