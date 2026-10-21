@@ -1,0 +1,2 @@
+"\x1b[38;5;141;1mSearch\x1b[m \x1b[38;2;86;212;221mneedle\x1b[m \x1b[2min\x1b[m \x1b[2m/home/yusing/projects/codex/codex-rs/{core/\x1b[22;1msrc\x1b[22;2m,tui/src/\x1b[22;1mbottom_pane\x1b[22;2m}\x1b[m                "
+"plain                                                                                               "

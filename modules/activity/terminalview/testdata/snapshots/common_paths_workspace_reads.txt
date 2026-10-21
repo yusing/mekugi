@@ -1,0 +1,2 @@
+"\x1b[38;5;75;1mRead\x1b[m   \x1b[2msrc/{\x1b[22;1mone.go\x1b[m \x1b[2mL1–2,\x1b[22;1mtwo.go\x1b[m \x1b[2mL3–4}\x1b[m                                                                "
+"plain                                                                                               "

@@ -104,6 +104,52 @@ func (p *Painter) code(verb, code string) string {
 	return p.Theme.Accent() + code + "\x1b[39m"
 }
 
+// compactSearchTargets only abbreviates the target spans after the query.
+// The retained label remains the source for dialogs and copying.
+func (p *Painter) compactSearchTargets(label string) string {
+	original := p.Label("Search", label)
+	_, end, ok := markdownsyntax.CodeSpan(label, 0)
+	if !ok || !strings.HasPrefix(label[end:], " in ") {
+		return original
+	}
+	start := end + len(" in ")
+	var paths []string
+	for i := start; i < len(label); {
+		path, end, ok := markdownsyntax.CodeSpan(label, i)
+		if !ok {
+			return original
+		}
+		paths = append(paths, path)
+		i = end
+		if i < len(label) {
+			if label[i] != ' ' {
+				return original
+			}
+			i++
+		}
+	}
+	prefix := pathdisplay.CommonDirectory(paths)
+	if prefix == "" {
+		return original
+	}
+	for i := range paths {
+		paths[i] = terminalui.StyledPath(strings.TrimPrefix(paths[i], prefix))
+	}
+	compact := p.Label("Search", label[:start]) + terminalui.Dim + prefix + "{" + terminalui.Undim + strings.Join(paths, terminalui.Dim+","+terminalui.Undim) + terminalui.Dim + "}" + terminalui.Undim
+	return compact
+}
+
+// A brace group is an atomic display abbreviation, like a clipped output row:
+// selecting it copies the unabbreviated operands, never a fictional brace path.
+func (p *Painter) copyPathGroup(compact, original string) string {
+	if !p.CopySource || p.LayoutOnly {
+		return compact
+	}
+	return terminalui.AttachCopy(compact, []terminalui.CopySpan{{CopyFragment: terminalui.CopyFragment{
+		ID: terminalui.CopyID(original, p.CopyScope), Prefix: ansi.Strip(original), Width: ansi.StringWidth(compact),
+	}}})
+}
+
 func (p *Painter) Label(verb, label string) string {
 	if slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, verb) {
 		if head, source, ok := strings.CutLast(label, " · "); ok && !strings.ContainsRune(source, '`') {
@@ -268,9 +314,24 @@ func (p *Painter) Block(block Block, width int) []string {
 			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(RowVerb(block))), terminalui.Dim+block.Repeated+terminalui.Undim, width)...)
 		}
 	}
+	// Row metadata is appended after compact path headings. Keep it selectable
+	// independently while joining it to the original heading in whole-row copies.
+	if p.CopySource && !p.LayoutOnly && len(lines) > 0 {
+		row, spans := terminalui.ExtractCopy(lines[0])
+		if len(spans) == 1 && spans[0].Text == "" && spans[0].Prefix != "" {
+			end := spans[0].Column + spans[0].Width
+			if width := ansi.StringWidth(row); end < width {
+				spans = append(spans, terminalui.CopySpan{Column: end, CopyFragment: terminalui.CopyFragment{
+					ID: spans[0].ID, Text: ansi.Strip(ansi.Cut(row, end, width)), Offset: 1, Width: width - end,
+				}})
+				lines[0] = terminalui.AttachCopy(row, spans)
+			}
+		}
+	}
 	if block.Skipped {
 		for i, line := range lines {
-			lines[i] = terminalui.Dim + ansi.Strip(line) + terminalui.Reset
+			row, spans := terminalui.ExtractCopy(line)
+			lines[i] = terminalui.AttachCopy(terminalui.Dim+ansi.Strip(row)+terminalui.Reset, spans)
 		}
 	}
 	if block.Expanded && block.MarkdownOutput() && len(block.Tail) > 0 {
@@ -429,8 +490,20 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			return item + lineSuffix(read.Lines, block.Hovered)
 		}
 		var items []string
+		var paths []string
 		for _, read := range block.Reads {
 			items = append(items, item(read.Path, read))
+			paths = append(paths, read.Path)
+		}
+		if prefix := pathdisplay.CommonDirectory(paths); prefix != "" && !literal {
+			var grouped []string
+			for _, read := range block.Reads {
+				grouped = append(grouped, item(strings.TrimPrefix(read.Path, prefix), read))
+			}
+			compact := terminalui.Dim + prefix + "{" + terminalui.Undim + strings.Join(grouped, terminalui.Dim+","+terminalui.Undim) + terminalui.Dim + "}" + terminalui.Undim + count
+			if indent+ansi.StringWidth(compact) <= width {
+				return []string{p.copyPathGroup(lead+compact, lead+strings.Join(items, " · ")+count)}
+			}
 		}
 		joined := strings.Join(items, terminalui.Dim+" · "+terminalui.Undim) + count
 		if indent+ansi.StringWidth(joined) <= width || indent > width/2 {
@@ -442,7 +515,6 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		// Items that do not fit on one row take one row each, rather than
 		// leaving separators dangling at wrapped row ends. Their ranges share
 		// a column when it fits.
-		paths := make([]string, len(block.Reads))
 		column := 0
 		for i, read := range block.Reads {
 			paths[i] = fit(read, 2, i == len(block.Reads)-1)
@@ -474,6 +546,14 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			return p.ranRow(block, width)
 		}
 		label := p.Label(block.Verb, block.Label) + ResultCount(block.Results)
+		copyLabel := ""
+		if block.Verb == "Search" && block.Path == "" && block.Code == "" {
+			compact := p.compactSearchTargets(block.Label) + ResultCount(block.Results)
+			if compact != label && ansi.StringWidth(block.lead(VerbColor(block.Verb), block.Verb)+compact) <= width {
+				copyLabel = label
+				label = compact
+			}
+		}
 		if block.Path != "" {
 			path := terminalui.StyledPath(textsanitize.Safe(block.Path, false))
 			if label != "" {
@@ -503,6 +583,9 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			label, code = strings.TrimSpace(label+" "+inline), ""
 		}
 		lines := terminalui.Hang(block.lead(VerbColor(block.Verb), block.Verb), label, width)
+		if copyLabel != "" {
+			lines[0] = p.copyPathGroup(lines[0], block.lead(VerbColor(block.Verb), block.Verb)+copyLabel)
+		}
 		if omittedSource > 0 {
 			lines = append(lines, "  "+Elision{Hidden: omittedSource, Hovered: block.Hovered}.String())
 		}

@@ -9,8 +9,61 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+func TestUISnapshotCommonPathTargets(t *testing.T) {
+	for _, tc := range []struct{ name, source, cwd, want string }{
+		{"external_search", "rg needle /home/yusing/projects/codex/codex-rs/core/src /home/yusing/projects/codex/codex-rs/tui/src/bottom_pane", "/workspace", "/home/yusing/projects/codex/codex-rs/{core/src,tui/src/bottom_pane}"},
+		{"workspace_reads", "mcat /workspace/src/one.go 1:2 /workspace/src/two.go 3:4", "/workspace", "src/{one.go L1–2,two.go L3–4}"},
+		{"inspect", "inspect_file src/one.go src/two.go", "/workspace", "src/{one.go,two.go}"},
+		{"literal_query", "rg -e src/a -e src/b src/one.go src/two.go", "/workspace", "src/a | src/b in src/{one.go,two.go}"},
+		{"list", "ls /workspace/src/one.go /workspace/src/two.go", "/workspace", "src/{one.go,two.go}"},
+		{"list_files", "rg --files src/one.go src/two.go", "/workspace", "src/{one.go,two.go}"},
+		{"quoted_list", "ls 'src/one file.go' 'src/two file.go'", "/workspace", "src/{one file.go,two file.go}"},
+		{"empty_list", "ls ''", "/workspace", "List   ''"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var blocks []Block
+			for _, content := range activitymodel.ParseOperations(presentation.ShellSource(tc.source, tc.cwd)) {
+				blocks = append(blocks, Block{Content: content})
+			}
+			blocks = MergeTargets(GroupOperations(blocks))
+			p := Painter{Theme: diffrender.DarkTheme}
+			var rows []string
+			for _, block := range blocks {
+				original := dialogTarget(&p, block)
+				rows = append(rows, p.Block(block, 100)...)
+				if got := dialogTarget(&p, block); got != original || strings.Contains(got, "{") {
+					t.Fatalf("dialog targets changed: %q", got)
+				}
+				for _, row := range p.Block(block, 30) {
+					if ansi.StringWidth(row) > 30 {
+						t.Fatalf("narrow row exceeds width: %q", row)
+					}
+				}
+			}
+			if got := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(got, tc.want) {
+				t.Fatalf("rendered targets = %q, want %q", got, tc.want)
+			}
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/common_paths_"+tc.name+".txt", append(rows, "plain"), 100)
+		})
+	}
+}
+
+func TestCompactSearchTargetsPreservesOperands(t *testing.T) {
+	p := Painter{}
+	for _, tc := range []struct{ label, want string }{
+		{"`a in b` in `src/two.go` `src/one.go` `src/two.go`", "a in b in src/{two.go,one.go,two.go}"},
+		{"`needle` in `src/a,b` `src/c`", "needle in src/a,b src/c"},
+		{"`needle` in `src/a` `/outside/b`", "needle in src/a /outside/b"},
+	} {
+		if got := ansi.Strip(p.compactSearchTargets(tc.label)); got != tc.want {
+			t.Errorf("compactSearchTargets(%q) = %q, want %q", tc.label, got, tc.want)
+		}
+	}
+}
 
 func TestUISnapshotTemporaryCreate(t *testing.T) {
 	code := strings.Repeat("temporary content\n", 8) + "last line"

@@ -65,14 +65,13 @@ func sourceSearch(argv []string, cwd string) (string, bool) {
 		paths = append(paths, arg)
 	}
 	if files {
-		target := "."
-		if len(paths) != 0 {
-			for i, path := range paths {
-				paths[i] = pathdisplay.ForWorkspace(cwd, path)
-			}
-			target = strings.Join(paths, " ")
+		if len(paths) == 0 {
+			paths = []string{"."}
 		}
-		return "List " + SourceCode(target), true
+		for i, path := range paths {
+			paths[i] = "List " + SourceCode(pathdisplay.ForWorkspace(cwd, path))
+		}
+		return strings.Join(paths, "\n\n"), true
 	}
 	if !explicit && len(paths) != 0 {
 		queries, paths = paths[:1], paths[1:]

@@ -232,7 +232,7 @@ func TestLiveActivityViewCollapsesReadsAcrossRun(t *testing.T) {
 		{Seq: 2, Agent: "/root/a", Kind: "tool", Text: "Read `../ab/prepare.ts 580:609`", Observed: now},
 	}})
 	feed := strings.Join(plainLines(view.Render(150, 20, now)), "\n")
-	if strings.Count(feed, "Read ") != 2 || !strings.Contains(feed, "Read ../ab/README.md L186–241 · ../ab/prepare.ts L440–485, L580–609") {
+	if strings.Count(feed, "Read ") != 2 || !strings.Contains(feed, "Read ../ab/{README.md L186–241,prepare.ts L440–485, L580–609}") {
 		t.Fatalf("feed = %s", feed)
 	}
 }
@@ -480,7 +480,7 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 	search = parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: toolActivityShell(`rg -n 'create(MCat|MSymbol|InspectFile|MRead|MRun)|description:|--max-tokens' plugins/mrun.ts plugins/msymbol.ts plugins/inspect_file.ts`)})[0]
 	colored = strings.Join(painter.Block(search, 130), "\n")
 	for _, name := range []string{"mrun.ts", "msymbol.ts", "inspect_file.ts"} {
-		if !strings.Contains(colored, terminalui.StyledPath("plugins/"+name)) {
+		if !strings.Contains(colored, terminalui.StyledPath(name)) {
 			t.Fatalf("search target %s is not styled as a path: %q", name, colored)
 		}
 	}

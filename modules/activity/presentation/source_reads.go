@@ -3,7 +3,6 @@ package presentation
 // Source: apps/mekugi/internal/router/subagent_tool_display_shell.go:615:853@0a356401.
 
 import (
-	"cmp"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -154,13 +153,19 @@ func sourceReadCommand(script string, call *syntax.CallExpr, cwd string) (string
 		if !ok {
 			return "", false
 		}
-		// Keep each operand's source quoting.
-		paths := make([]string, len(operands))
-		for i, operand := range operands {
-			arg := call.Args[operand]
-			paths[i] = script[int(arg.Pos().Offset()):int(arg.End().Offset())]
+		if len(operands) == 0 {
+			add("List", ".")
 		}
-		add("List", cmp.Or(strings.Join(paths, " "), "."))
+		for _, operand := range operands {
+			arg := call.Args[operand]
+			path, literal := shellsyntax.Literal(arg)
+			if literal && path != "" {
+				path = pathdisplay.ForWorkspace(cwd, path)
+			} else {
+				path = script[int(arg.Pos().Offset()):int(arg.End().Offset())]
+			}
+			add("List", path)
+		}
 	case "command":
 		if len(argv) != 3 || argv[1] != "-v" || argv[2] == "" || strings.HasPrefix(argv[2], "-") {
 			return "", false

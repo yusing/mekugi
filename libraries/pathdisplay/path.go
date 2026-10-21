@@ -17,6 +17,33 @@ func ForWorkspace(workspace, path string) string {
 	return path
 }
 
+// CommonDirectory returns the shared directory prefix of already formatted
+// paths, without cleaning or reordering them. Empty operands and literal brace
+// notation stay ungrouped so a display abbreviation cannot obscure boundaries.
+func CommonDirectory(paths []string) string {
+	if len(paths) < 2 {
+		return ""
+	}
+	prefix := paths[0]
+	for _, path := range paths {
+		if path == "" || strings.ContainsAny(path, "{},\r\n") {
+			return ""
+		}
+		i := 0
+		for i < min(len(prefix), len(path)) && prefix[i] == path[i] {
+			i++
+		}
+		prefix = prefix[:i]
+	}
+	prefix = prefix[:strings.LastIndexByte(prefix, filepath.Separator)+1]
+	for _, path := range paths {
+		if path == prefix {
+			return ""
+		}
+	}
+	return prefix
+}
+
 // Move shows both workspace-relative endpoints without repeating shared folders.
 func Move(workspace, before, after string) string {
 	before, after = ForWorkspace(workspace, before), ForWorkspace(workspace, after)

@@ -1,4 +1,4 @@
-├ Read   internal/router/app_server_ui.go L28–85 · internal/router/subagent_activity_pane.go
+├ Read   internal/router/{app_server_ui.go L28–85,subagent_activity_pane.go}
 ├ Search MCP|spawn_agent in internal/router/subagent_activity.go
 ├ Ran    shell batch · 500ms
 ├ Read   app.go L2–4 · other.go

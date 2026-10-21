@@ -7,12 +7,53 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
+
+func TestCommonPathSelectionCopiesOriginalOperands(t *testing.T) {
+	for _, command := range []string{"cat", "rg needle", "ls", "rg --files"} {
+		source := command + " src/one.go src/two.go"
+		var blocks []activityui.Block
+		for _, content := range feed.ParseOperations(activitypresentation.ShellSource(source, "/workspace")) {
+			blocks = append(blocks, activityui.Block{Content: content})
+		}
+		blocks = activityui.MergeTargets(activityui.GroupOperations(blocks))
+		blocks[0].Duration, blocks[0].Workdir, blocks[0].ShowWorkdir = time.Second, "/workspace", true
+		blocks[0].Approval, blocks[0].Repeated = "Approved", "again"
+		p := activityui.Painter{}
+		p.CopySource = true
+		rows := p.Block(blocks[0], 100)
+		copyRows := make([][]terminalui.CopySpan, len(rows))
+		for i := range rows {
+			rows[i], copyRows[i] = terminalui.ExtractCopy(rows[i])
+		}
+		selection := NewSelection(Surface{Rect: Rect{W: 100, H: len(rows)}, Rows: rows, CopySource: copyRows}, 0, 0)
+		selection.Move(99, len(rows)-1, true)
+		got := selection.Text()
+		if !strings.Contains(got, "src/one.go") || !strings.Contains(got, "src/two.go") || strings.ContainsAny(got, "{}") || command == "rg needle" && !strings.Contains(got, "needle") {
+			t.Errorf("%s copied %q", source, got)
+		}
+		for _, suffix := range []string{"/workspace", "1s", "Approved", "again"} {
+			if !strings.Contains(got, suffix) {
+				t.Errorf("%s copy lost %q: %q", source, suffix, got)
+			}
+			plain := ansi.Strip(rows[0])
+			column := ansi.StringWidth(plain[:strings.Index(plain, suffix)])
+			selection := NewSelection(Surface{Rect: Rect{W: 100, H: len(rows)}, Rows: rows, CopySource: copyRows}, column, 0)
+			selection.Move(column+len(suffix)-1, 0, true)
+			if got := selection.Text(); got != suffix {
+				t.Errorf("%s suffix copied %q, want %q", source, got, suffix)
+			}
+		}
+	}
+}
 
 func TestComposerSelectionOffscreenSecretRemainsMasked(t *testing.T) {
 	var main Main

@@ -31,7 +31,7 @@ func TestSearchDisplayQueryAndTarget(t *testing.T) {
 		{`rg --files src | head -n 50`, "List `src`"},
 		{`ls -l /tmp/x`, "List `/tmp/x`"},
 		{`ls -la`, "List `.`"},
-		{`ls -l --sort=time -I '*.o' -w 80 a 'b c' -- -d`, "List `a 'b c' -d`"},
+		{`ls -l --sort=time -I '*.o' -w 80 a 'b c' -- -d`, "List `a`\n\nList `b c`\n\nList `-d`"},
 		{`ls --hide '*.o' -Ifoo src`, "List `src`"},
 		{`ls plugins 2>/dev/null | head -50`, "List `plugins`"},
 		{`echo hello; ls -l /tmp/x; python3 --version`, "Run `echo hello`\n\nList `/tmp/x`\n\nRun `python3 --version`"},

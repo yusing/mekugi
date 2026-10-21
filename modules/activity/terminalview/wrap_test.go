@@ -59,7 +59,7 @@ func TestReadsTakeOneRowEachWhenWrapped(t *testing.T) {
 			t.Fatalf("row %d = %q", i, plain)
 		}
 	}
-	if fits := p.Block(block, 200); len(fits) != 1 || strings.Count(ansi.Strip(fits[0]), "·") != 2 {
+	if fits := p.Block(block, 200); len(fits) != 1 || !strings.Contains(ansi.Strip(fits[0]), "internal/router/{live_activity_view.go L1–100,app_server_ui.go,live_activity_conversation.go}") {
 		t.Fatalf("fitting reads = %q", fits)
 	}
 }

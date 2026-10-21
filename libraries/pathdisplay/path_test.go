@@ -40,3 +40,23 @@ func TestMove(t *testing.T) {
 		}
 	}
 }
+
+func TestCommonDirectory(t *testing.T) {
+	for _, tc := range []struct {
+		paths []string
+		want  string
+	}{
+		{[]string{"/home/yusing/projects/codex/codex-rs/core/src", "/home/yusing/projects/codex/codex-rs/tui/src/bottom_pane"}, "/home/yusing/projects/codex/codex-rs/"},
+		{[]string{"src/a.go", "src/b.go", "src/a.go"}, "src/"},
+		{[]string{"src/a", "src-other/b"}, ""},
+		{[]string{"src/a", "/outside/b"}, ""},
+		{[]string{"src/a", "src/b,c"}, ""},
+		{[]string{"src/{a,b}", "src/c"}, ""},
+		{[]string{"src/", "src/a"}, ""},
+		{[]string{"src/a"}, ""},
+	} {
+		if got := CommonDirectory(tc.paths); got != tc.want {
+			t.Errorf("CommonDirectory(%q) = %q, want %q", tc.paths, got, tc.want)
+		}
+	}
+}
