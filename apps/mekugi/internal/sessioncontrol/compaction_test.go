@@ -33,11 +33,11 @@ func TestCompactionPrerequisiteNeedsBothObservations(t *testing.T) {
 		operation.Started("compact-turn")
 		operation.Completed("main-turn", true)
 		operation.Acknowledge(false)
-		if !operation.Pending() || operation.Continue(false) != "" {
+		if !operation.Pending() || operation.Continue(false) {
 			t.Fatal("old prerequisite completion finished compaction")
 		}
 		operation.Completed("compact-turn", true)
-		if operation.Pending() || operation.Continue(false) == "" || operation.Continue(false) != "" {
+		if operation.Pending() || !operation.Continue(false) || operation.Continue(false) {
 			t.Fatal("successful compaction did not continue exactly once")
 		}
 	}
@@ -56,7 +56,7 @@ func TestCompactionCancellationOwnsOnlyItsTurn(t *testing.T) {
 	operation.Completed("compact-turn", true)
 	operation.Started("later-turn")
 	operation.Acknowledge(false)
-	if operation.InterruptTarget() != "" || operation.Pending() || operation.Continue(false) != "" {
+	if operation.InterruptTarget() != "" || operation.Pending() || operation.Continue(false) {
 		t.Fatal("completed cancellation affected a later turn or revived continuation")
 	}
 }
@@ -66,11 +66,11 @@ func TestCompactionWaitingInputConsumesContinuation(t *testing.T) {
 	operation.Begin(CompactIntent{Continue: true})
 	operation.Started("compact-turn")
 	operation.Completed("compact-turn", true)
-	if operation.Continue(true) != "" || !operation.ContinuationPending() {
+	if operation.Continue(true) || !operation.ContinuationPending() {
 		t.Fatal("waiting input consumed continuation before acknowledgement")
 	}
 	operation.Acknowledge(false)
-	if operation.Continue(true) != "" || operation.ContinuationPending() || operation.Continue(false) != "" {
+	if operation.Continue(true) || operation.ContinuationPending() || operation.Continue(false) {
 		t.Fatal("automatic continuation competed with waiting user input")
 	}
 }

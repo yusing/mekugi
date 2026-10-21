@@ -19,7 +19,6 @@ const (
 	InputWithdrawn
 	InputSettled
 	InputStale
-	InputCommitted
 )
 
 type SteerAction uint8
@@ -83,12 +82,8 @@ func (h *Live) AcknowledgeInput(failed, questionReply, waitingSteer bool) InputR
 	if failed && questionReply {
 		return h.withdraw(s, InputRejected)
 	}
-	if s.Turn == "" && s.Ended {
-		if !s.Committed {
-			return h.withdraw(s, InputWithdrawn)
-		}
-		r.Action = InputCommitted
-		return r
+	if s.Turn == "" && s.Ended && !s.Committed {
+		return h.withdraw(s, InputWithdrawn)
 	}
 	if s.Ended {
 		if !s.Committed {

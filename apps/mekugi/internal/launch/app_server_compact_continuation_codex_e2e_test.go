@@ -4,6 +4,7 @@ package launch
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"net/http/httptest"
 	"os/exec"
 	"strconv"
@@ -55,16 +56,30 @@ func TestAppServerQueuedCompactContinuesNativeCodex(t *testing.T) {
 	default:
 	}
 	close(provider.gates[0])
-	compaction := next("compaction")
-	if strings.Contains(compaction, compactContinuationText) {
-		t.Fatal("continuation overtook compaction")
-	}
+	next("compaction")
 	continued := next("automatic task continuation")
-	if strings.Count(continued, compactContinuationText) != 1 {
-		t.Fatalf("missing or repeated continuation input: %s", continued)
+	var request struct {
+		Input []struct {
+			Role    string `json:"role"`
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"input"`
+	}
+	if err := json.Unmarshal([]byte(continued), &request); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range request.Input {
+		if item.Role != "user" {
+			continue
+		}
+		for _, part := range item.Content {
+			if strings.Contains(part.Text, "Continue the task from where") {
+				t.Fatal("fabricated continuation user message")
+			}
+		}
 	}
 	terminal.await("Context compacted")
-	terminal.await("Continue the task from where")
 	terminal.await("╭─ Completed")
 	terminal.quit()
 	select {

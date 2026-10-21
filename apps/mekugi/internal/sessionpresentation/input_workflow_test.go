@@ -3,6 +3,7 @@ package sessionpresentation_test
 import (
 	"encoding/json/jsontext"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -107,5 +108,98 @@ func TestInputWorkflowWithoutRenderer(t *testing.T) {
 	}
 	if _, ok := requests.Take(requestID); ok {
 		t.Fatal("duplicate response can settle input twice")
+	}
+}
+
+func TestInputStartExpeditePreservesWaiting(t *testing.T) {
+	for _, empty := range []bool{true, false} {
+		name := "ordinary"
+		if empty {
+			name = "empty-continuation"
+		}
+		t.Run(name, func(t *testing.T) {
+			service := moduletest.New(t, conversation.Module, conversation.Deps{}, module.Slots{}, new(moduletest.Scripted))
+			var store scope.Store
+			c := service.Session(&store)
+			var presentation sessionpresentation.Service
+			m := presentation.Session(&store)
+			m.Attach(sessionpresentation.Thread{ID: "main", Caller: "/root"}, false)
+			control := sessioncontrol.Live{Thread: "main"}
+			var start conversationmodel.Submission
+			if !empty {
+				part := conversationmodel.Input{Text: "work"}
+				start = conversationmodel.Submission{Draft: part.Draft, Parts: []conversationmodel.Input{part}}
+			}
+			m.StageInput(&control, c, "start", start, false)
+			control.Started("continued")
+			if !empty {
+				m.CommitInput(&control, c, "start", "work")
+			}
+			// Empty continuation has no host userMessage commitment.
+			m.AcknowledgeInput(&control, c, "turn/start", "", false)
+			part := conversationmodel.Input{Text: "steered"}
+			m.StageInput(&control, c, "steer", conversationmodel.Submission{Draft: part.Draft, Parts: []conversationmodel.Input{part}}, true)
+			c.Unsent = []conversationmodel.Input{{Text: "waiting"}}
+			control.RequestInterrupt(sessioncontrol.ExpediteSteers, true)
+			control.Completed(false)
+			m.SettleInput(&control, c, "continued", true)
+			m.AcknowledgeInput(&control, c, "turn/steer", "interrupted", true)
+			if len(c.Unsent) != 2 || c.Unsent[0].Text != "steered" || c.Unsent[1].Text != "waiting" {
+				t.Fatalf("expedited waiting input was restored instead: unsent=%+v draft=%q pendingStart=%q", c.Unsent, c.Editor.Text, control.PendingStart())
+			}
+		})
+	}
+}
+
+func TestInputStartInterruptedBeforeAcknowledgement(t *testing.T) {
+	for _, name := range []string{"empty-restore", "empty-expedite", "ordinary-restore", "ordinary-expedite"} {
+		t.Run(name, func(t *testing.T) {
+			service := moduletest.New(t, conversation.Module, conversation.Deps{}, module.Slots{}, new(moduletest.Scripted))
+			var store scope.Store
+			c := service.Session(&store)
+			var presentation sessionpresentation.Service
+			m := presentation.Session(&store)
+			m.Attach(sessionpresentation.Thread{ID: "main", Caller: "/root"}, false)
+			control := sessioncontrol.Live{Thread: "main"}
+			empty := strings.HasPrefix(name, "empty-")
+			var start conversationmodel.Submission
+			if !empty {
+				part := conversationmodel.Input{Text: "work"}
+				start = conversationmodel.Submission{Draft: part.Draft, Parts: []conversationmodel.Input{part}}
+			}
+			m.StageInput(&control, c, "start", start, false)
+			control.Started("continued")
+			if !empty {
+				m.CommitInput(&control, c, "start", "work")
+			}
+			c.Unsent = []conversationmodel.Input{{Text: "waiting"}}
+			expedite := strings.HasSuffix(name, "-expedite")
+			mode := sessioncontrol.RestoreWaiting
+			if expedite {
+				mode = sessioncontrol.ExpediteSteers
+			}
+			control.RequestInterrupt(mode, true)
+			control.InterruptResponse("steer/interrupt", false)
+			control.Completed(false)
+			m.SettleInput(&control, c, "continued", true)
+			m.AcknowledgeInput(&control, c, "turn/start", "", false)
+			if !expedite {
+				if len(c.Unsent) != 0 || c.Editor.Text != "waiting" {
+					t.Fatalf("interrupted waiting input remains eligible: unsent=%+v draft=%q", c.Unsent, c.Editor.Text)
+				}
+				return
+			}
+			next := m.NextInput(&control, c, false)
+			if len(next.Batch.Parts) != 1 || next.Batch.Parts[0].Text != "waiting" {
+				t.Fatal("waiting input was not selected")
+			}
+			m.StageInput(&control, c, "next", conversationmodel.Submission{Draft: next.Batch.Parts[0].Draft, Parts: next.Batch.Parts}, false)
+			control.Started("next-turn")
+			m.CommitInput(&control, c, "next", "waiting")
+			m.AcknowledgeInput(&control, c, "turn/start", "", false)
+			if !control.PrepareEscape(true) {
+				t.Fatal("completed continuation left expedite state blocking Escape in next turn")
+			}
+		})
 	}
 }

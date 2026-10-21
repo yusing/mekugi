@@ -10,8 +10,6 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
-const compactContinuationText = "Continue the task from where you left off before compaction."
-
 func queueBusyCompact(t *testing.T, u *appServerUI, w *appServerTestInput) appServerTurnRequest {
 	t.Helper()
 	appServerTestTurn(t, u, "work")
@@ -44,7 +42,10 @@ func TestAppServerCompactQueuedContinuesOnceAfterAckAndTurn(t *testing.T) {
 				appServerTestTurnEnd(t, u, "compact-turn", "completed")
 				appServerTestMessage(t, u, ack)
 			}
-			start := appServerOneRequest(t, w, "turn/start", compactContinuationText)
+			start := appServerOneRequest(t, w, "turn/start", "")
+			if len(start.Params.Input) != 0 {
+				t.Fatal("continuation fabricated user input")
+			}
 			if start.Params.ServiceTier != "default" {
 				t.Fatalf("manual reset lost selected default tier: %+v", start)
 			}
@@ -98,7 +99,7 @@ func TestAppServerCompactQueuedConsecutiveCommandsContinueOnlyAfterLast(t *testi
 		appServerTestTurn(t, u, turn)
 		appServerTestTurnEnd(t, u, turn, "completed")
 	}
-	appServerOneRequest(t, w, "turn/start", compactContinuationText)
+	appServerOneRequest(t, w, "turn/start", "")
 }
 
 func TestAppServerCompactQueuedFailedOrInterruptedDoesNotContinue(t *testing.T) {
@@ -343,7 +344,7 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	appServerTestTurn(t, u, "compact-turn")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "compact-turn", "item": binding.ThreadItem{ID: "compaction", Type: "contextCompaction"}})
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
-	appServerOneRequest(t, w, "turn/start", compactContinuationText)
+	appServerOneRequest(t, w, "turn/start", "")
 	for i := range u.attached.source.Entries {
 		u.attached.source.Entries[i].Source.Observed = presentationTime(u.clock)
 	}
@@ -410,7 +411,7 @@ func TestAppServerCompactSteerRestoresHostOwnedSteer(t *testing.T) {
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, compact.ID))
 	appServerTestTurn(t, u, "compact")
 	appServerTestTurnEnd(t, u, "compact", "completed")
-	appServerOneRequest(t, w, "turn/start", compactContinuationText)
+	appServerOneRequest(t, w, "turn/start", "")
 }
 
 func TestAppServerCompactSteerWaitsForStartingTurn(t *testing.T) {

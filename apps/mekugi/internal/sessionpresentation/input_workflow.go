@@ -12,6 +12,7 @@ import (
 type InputSelection struct {
 	Batch            conversationmodel.InputBatch
 	Steer, Interrupt bool
+	Continue         bool
 }
 
 // NextInput runs after application restoration and guard admission. Acquisition
@@ -27,9 +28,7 @@ func (m *Model) NextInput(control *sessioncontrol.Live, conversation *conversati
 		return next
 	}
 	if control.Turn == "" {
-		if text := control.Compaction.Continue(len(conversation.Unsent)+len(conversation.Queued) != 0); text != "" {
-			conversation.Unsent = append(conversation.Unsent, conversationmodel.Input{Text: text})
-		}
+		next.Continue = control.Compaction.Continue(len(conversation.Unsent)+len(conversation.Queued) != 0)
 	}
 	next.Steer = control.Turn != ""
 	if len(conversation.Unsent) > 0 && next.Steer {
@@ -73,6 +72,10 @@ func (m *Model) AcknowledgeInput(control *sessioncontrol.Live, conversation *con
 	submission := conversation.Submitted[control.Submission().ID]
 	var remembered []string
 	if !failed {
+		// Empty continuation produces no userMessage notification to commit it.
+		if method == "turn/start" && len(submission.Parts) == 0 {
+			m.CommitInput(control, conversation, control.Submission().ID, "")
+		}
 		remembered = conversation.Acknowledged(control.Submission().ID)
 	}
 	result := control.AcknowledgeInput(failed, len(submission.Parts) == 1 && submission.Parts[0].Question != nil, len(conversation.Unsent) > 0)

@@ -24,17 +24,17 @@ func TestAppServerLifecycleCompactAdmission(t *testing.T) {
 			}
 			h.Completed(success)
 			if !ackFirst {
-				if h.AcceptsInput() || !h.Busy(false) || h.Compaction.Continue(false) != "" {
+				if h.AcceptsInput() || !h.Busy(false) || h.Compaction.Continue(false) {
 					t.Fatal("completion overtook the compact acknowledgement")
 				}
 				h.CompactResponse(false)
 			}
-			if !h.AcceptsInput() || h.Busy(false) || (h.Compaction.Continue(false) != "") != success {
+			if !h.AcceptsInput() || h.Busy(false) || h.Compaction.Continue(false) != success {
 				t.Fatalf("settled compact: ackFirst=%v success=%v state=%+v", ackFirst, success, h)
 			}
 			h.Completed(success)
 			h.CompactResponse(false)
-			if h.Compaction.Continue(false) != "" {
+			if h.Compaction.Continue(false) {
 				t.Fatal("duplicate observations revived continuation")
 			}
 		}
@@ -112,7 +112,7 @@ func TestAppServerLifecycleReplacementRetiresOperations(t *testing.T) {
 	h.Replacement.Resume("new")
 	h.Submit("old-input", "")
 	h.LeaveThread()
-	if h.Starting() || h.Compaction.Pending() || h.Compaction.Continue(false) != "" ||
+	if h.Starting() || h.Compaction.Pending() || h.Compaction.Continue(false) ||
 		h.Interruption.BeforeStart || h.Shell.BlocksInput("") ||
 		h.Settings.BlocksInput() || h.Replacement.Pending() || h.PendingStart() != "" {
 		t.Fatalf("replacement inherited a live operation: %+v", h)

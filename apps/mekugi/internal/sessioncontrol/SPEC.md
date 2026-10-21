@@ -67,7 +67,7 @@ Both prerequisite-interrupt acknowledgement and interrupted-turn completion prec
 compaction. Both compact acknowledgement and successful compact-turn completion
 precede continuation. The command separates text batches and never becomes model
 input. An intent admitted while busy continues with waiting input, otherwise one
-visible continuation message; idle compaction stays idle.
+native empty-input turn. Continuation adds no user message; idle compaction stays idle.
 
 With an empty draft, Ctrl-C restores queued compaction and waiting input without
 interrupting Main. Cancelling a prerequisite interrupt cannot undo its issued

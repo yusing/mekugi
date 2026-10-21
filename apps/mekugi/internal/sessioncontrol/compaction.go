@@ -114,14 +114,14 @@ func (c *Compaction) InterruptTarget() string {
 }
 
 // Continue consumes eligibility once. Waiting user input takes precedence over
-// the single visible continuation; idle or cancelled compaction stays idle.
-func (c *Compaction) Continue(waitingInput bool) string {
+// a native empty-input turn; idle or cancelled compaction stays idle.
+func (c *Compaction) Continue(waitingInput bool) bool {
 	if c.Pending() || !c.continueTask {
-		return ""
+		return false
 	}
 	c.continueTask = false
 	if waitingInput {
-		return ""
+		return false
 	}
-	return "Continue the task from where you left off before compaction."
+	return true
 }

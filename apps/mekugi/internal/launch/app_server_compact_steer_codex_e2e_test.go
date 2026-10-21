@@ -45,12 +45,12 @@ func TestAppServerCompactEnterInterruptsNativeCodex(t *testing.T) {
 			})
 			terminal.send("/compact\r")
 			compaction := next("compaction while initial inference remains blocked")
-			if strings.Contains(compaction, compactContinuationText) {
+			if strings.Contains(compaction, "Continue the task from where") {
 				t.Fatal("continuation overtook compaction")
 			}
 			continued := next("automatic task continuation")
-			if strings.Count(continued, compactContinuationText) != 1 {
-				t.Fatalf("missing or repeated continuation input: %s", continued)
+			if strings.Contains(continued, "Continue the task from where") {
+				t.Fatalf("fabricated continuation input: %s", continued)
 			}
 			select {
 			case <-provider.gates[0]:
@@ -58,7 +58,6 @@ func TestAppServerCompactEnterInterruptsNativeCodex(t *testing.T) {
 			default:
 			}
 			terminal.await("Context compacted")
-			terminal.await("Continue the task from where")
 			terminal.await("╭─ Completed")
 			terminal.quit()
 			select {
