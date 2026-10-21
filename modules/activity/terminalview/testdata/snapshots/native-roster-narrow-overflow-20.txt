@@ -1,0 +1,6 @@
+"\x1b[38;2;70;70;90m─ \x1b[39;2m3 +19 more\x1b[38;2;70;70;90;22m ───────\x1b[m"
+"\x1b[48;2;62;72;86m \x1b[38;5;133;1m◐\x1b[39;22m \x1b[38;5;133;1magent-0\x1b[39;22m  working \x1b[m"
+"plain after roster  "
+"\x1b[38;2;130;170;255m─ \x1b[1m3 +19 more\x1b[22m ───────\x1b[m"
+"\x1b[48;2;62;72;86m \x1b[38;5;133;1m◐\x1b[39;22m \x1b[38;5;133;1magent-0\x1b[39;22m  working \x1b[m"
+"plain after roster  "

@@ -69,3 +69,57 @@ func TestUISnapshotNativeRosterOneRow(t *testing.T) {
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/native-roster-one-row.txt", rows, 64)
 }
+
+func TestNativeRosterKeepsSelectedFinishedChild(t *testing.T) {
+	v := NewView()
+	publication := &presentation.Publication{}
+	for i, name := range []string{"/root", "/root/done-a", "/root/done-b", "/root/done-c", "/root/work-a", "/root/work-b", "/root/work-c", "/root/work-d"} {
+		agent := presentation.Agent{AgentFacts: presentation.AgentFacts{Name: name, Responding: i > 3}, Status: "responding"}
+		if i >= 1 && i <= 3 {
+			agent.Final, agent.Status = true, "answered"
+		}
+		publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: agent})
+	}
+	for _, caller := range []string{"/root/done-b", "/root"} {
+		v.Update(publication, Display{Caller: caller})
+		rows := v.NativeRoster(100, 20, time.Unix(100, 0), false)
+		found := false
+		for _, hit := range v.Hits {
+			found = found || hit.Agent == caller
+			if hit.Agent == "/root/done-a" {
+				t.Fatal("completed sibling displaced active work")
+			}
+		}
+		if !found || len(v.Hits) < 5 || !strings.Contains(strings.Join(rows, "\n"), "more") {
+			t.Fatalf("selected transcript or active work lost: hits=%+v rows=%q", v.Hits, rows)
+		}
+	}
+	for i, row := range v.Roster() {
+		if row.Agent.Name != publication.Roster[i].Agent.Name {
+			t.Fatal("display priority changed canonical navigation order")
+		}
+	}
+}
+
+func TestUISnapshotNativeRosterNarrowOverflow(t *testing.T) {
+	v := NewView()
+	publication := &presentation.Publication{}
+	for i := range 20 {
+		publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: presentation.Agent{
+			AgentFacts: presentation.AgentFacts{Name: fmt.Sprintf("/root/agent-%d", i), Responding: true}, Status: "responding",
+		}})
+	}
+	v.Update(publication, Display{Caller: "/root/agent-0"})
+	for _, width := range []int{20, 32} {
+		var frame []string
+		for _, focused := range []bool{false, true} {
+			rows := v.NativeRoster(width, 1, time.Unix(100, 0), focused)
+			if !strings.Contains(rows[0], "+19 more") {
+				t.Fatalf("overflow lost at width %d: %q", width, rows[0])
+			}
+			frame = append(frame, rows...)
+			frame = append(frame, "plain after roster")
+		}
+		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-roster-narrow-overflow-%d.txt", width), frame, width)
+	}
+}

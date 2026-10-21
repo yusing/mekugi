@@ -23,10 +23,10 @@ import (
 // tokens, cost and turns; turns drop first when narrow.
 func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []string {
 	rows := v.Roster()
-	if len(rows) == 0 || width < 20 {
+	v.Hits = v.Hits[:0]
+	if len(rows) == 0 || width < 20 || limit < 1 {
 		return nil
 	}
-	v.Hits = v.Hits[:0]
 	// The remembered child is only a toggle target, not the displayed selection.
 	selectedCaller := cmp.Or(v.displayedCaller(), "/root")
 	v.paceRosterMetrics(rows, now)
@@ -84,7 +84,6 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	heading := terminalui.PaneTitle(3, "Agents", detail, focused)
 	lines := []string{terminalui.PaneRule("─", "─", "─", heading, right, width, terminalui.PaneBorder(focused))}
 
-	limit = max(1, limit)
 	legend := ""
 	if focused && limit > 1 {
 		var roles []string
@@ -114,19 +113,28 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 		}
 	}
 	selected := max(0, slices.IndexFunc(rows, func(row activitypresentation.AgentRow) bool { return row.Agent.Name == selectedCaller }))
-	start := 0
-	if limit == 1 {
-		start = selected
-	} else if len(rows) > limit {
-		start = max(0, min(selected-limit+2, len(rows)-limit+1))
+	count := min(len(rows), limit)
+	if len(rows) > limit && limit > 1 {
+		count-- // Room for every hidden row, including those above selection.
 	}
-	end := min(len(rows), start+limit)
-	if end < len(rows) && limit > 1 {
-		end-- // Room for the hidden-count row.
+	start := max(0, min(selected-count+1, len(rows)-count))
+	end := start + count
+	visible := rows[start:end]
+	if !focused {
+		visible = v.collapsedRoster(rows, limit, selectedCaller)
+	}
+	hidden := len(rows) - len(visible)
+	if hidden > 0 && limit == 1 {
+		overflow := fmt.Sprintf("+%d more", hidden)
+		heading = terminalui.PaneTitle(3, "Agents", overflow+" · "+detail, focused)
+		if ansi.StringWidth(terminalui.PaneTitle(3, "Agents", overflow, focused))+4 > width {
+			heading = terminalui.PaneTitle(3, overflow, "", focused)
+		}
+		lines[0] = terminalui.PaneRule("─", "─", "─", heading, right, width, terminalui.PaneBorder(focused))
 	}
 	nameWidth := 4
-	for index := start; index < end; index++ {
-		name, _ := RosterTree(rows, index, 0)
+	for index := range visible {
+		name, _ := RosterTree(visible, index, 0)
 		nameWidth = max(nameWidth, ansi.StringWidth(name))
 	}
 	nameWidth = min(nameWidth, max(8, width/4))
@@ -139,9 +147,8 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	var laid []agentLine
 	var parts [][MetricParts]string
 	widest := 0
-	for index := start; index < end; index++ {
-		row := rows[index]
-		tree, _ := RosterTree(rows, index, 0)
+	for index, row := range visible {
+		tree, _ := RosterTree(visible, index, 0)
 		tree = strings.TrimRight(Middle(tree, nameWidth), " ")
 		split := strings.LastIndexAny(tree, " /") + 1
 		color := terminalui.AgentColor(row.Agent.Name)
@@ -195,14 +202,57 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 		lines = append(lines, line)
 		v.Hits = append(v.Hits, Hit{Row: len(lines), First: 1, Last: width, Agent: item.row.Agent.Name})
 	}
-	if hidden := len(rows) - end; hidden > 0 && limit > 1 {
-		lines = append(lines, ansi.Truncate(terminalui.Dim+fmt.Sprintf("   +%d more · ^B 3 shows all", hidden)+terminalui.Undim, width, "…"))
+	if hidden > 0 && limit > 1 {
+		lines = append(lines, ansi.Truncate(terminalui.Dim+fmt.Sprintf("   +%d more · ^B 3 to browse", hidden)+terminalui.Undim, width, "…"))
 	}
 	if legend != "" {
 		lines = append(lines, legend)
 	}
 	v.RosterOffset, v.rosterEnd = start, end
 	return lines
+}
+
+// collapsedRoster admits the displayed row and Main before other active rows,
+// then finished children. Keep canonical order and ancestry within the subset.
+func (v *View) collapsedRoster(rows []activitypresentation.AgentRow, limit int, selected string) []activitypresentation.AgentRow {
+	priority := func(row activitypresentation.AgentRow) int {
+		switch {
+		case row.Agent.Name == selected:
+			return 0
+		case row.Agent.Name == "/root":
+			return 1
+		case v.agentStatus(row.Agent) == '◐':
+			return 2
+		case v.agentStatus(row.Agent) != '✓':
+			return 3
+		default:
+			return 4
+		}
+	}
+	indices := make([]int, len(rows))
+	preferred := 0
+	for i, row := range rows {
+		indices[i] = i
+		if priority(row) < 4 {
+			preferred++
+		}
+	}
+	if preferred < len(rows) {
+		preferred++ // Overflow or one finished row when everyone fits.
+	}
+	limit = min(limit, max(4, preferred))
+	count := min(len(rows), limit)
+	if count < len(rows) && limit > 1 {
+		count--
+	}
+	slices.SortStableFunc(indices, func(a, b int) int { return cmp.Compare(priority(rows[a]), priority(rows[b])) })
+	indices = indices[:count]
+	slices.Sort(indices)
+	visible := make([]activitypresentation.AgentRow, 0, count)
+	for _, i := range indices {
+		visible = append(visible, rows[i])
+	}
+	return visible
 }
 
 // Metric parts, in column order: context used and percent, elapsed and last

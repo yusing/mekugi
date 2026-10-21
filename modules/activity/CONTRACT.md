@@ -461,7 +461,7 @@ Display/copy sanitize controls without changing retained host evidence.
 
 ## Agents roster and navigation
 
-Canonical-path trees follow observation order and stable identity. Each row has
+Canonical-path trees retain observation order and stable identity. Each row has
 status, name, latest activity and metrics; continuation guides show ancestry,
 or a relative path when parents are off-screen. Unknown parents do not hide their
 children. Responding, latest-error and answered states describe observations, not
@@ -507,8 +507,11 @@ responding and error agents, with overall header counts. The header includes the
 number of finished children and known aggregate token usage. Finished means an
 observed final answer without a newer open response or error, not verified task
 completion. Finished children retain separate selectable rows and their captured
-edit and usage metrics, even when the roster is unfocused; names never collapse
-into a comma-joined summary. The viewport moves only when selection leaves it.
+edit and usage metrics when visible; names never collapse into a comma-joined
+summary. The unfocused roster grows to show active agents within terminal bounds.
+The displayed child and Main take priority as capacity permits, and finished
+children are hidden first. Overflow counts include every omitted row, including
+rows before selection. The viewport moves only when selection leaves it.
 Hover emphasizes the name; selection shades the row. Returning to Main brings
 its roster row into view and clears the previous child highlight. Remembering a
 child for toggling does not present it as the displayed transcript.

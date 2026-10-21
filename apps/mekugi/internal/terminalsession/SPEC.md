@@ -240,10 +240,13 @@ indicator is separated from its label and retains the selected tab highlight.
 Geometry reserves the status row and a content-fitted roster before allocating
 Main and Diff. Wide terminals show both columns; narrower terminals show the
 focused content pane. A short terminal retains Main rows before roster or pane
-frames. The roster uses four rows unfocused and up to 40% of the height when
-focused. Its separator captures pointer gestures without storing a preferred
-roster height. Column-divider dragging and prefix Left/Right resizing share the
-retained split; saved Diff owns its file-navigator width.
+frames. The unfocused roster grows beyond four rows to retain active agents,
+hiding finished children first while keeping the displayed transcript selectable.
+Terminal height bounds growth and retains an accurate overflow count. The focused
+roster uses up to 40% of the height. Its separator captures pointer gestures
+without storing a preferred roster height. Growth retains both columns when an
+open Diff fits beside Main. Column-divider dragging and prefix Left/Right resizing
+share the retained split; saved Diff owns its file-navigator width.
 After Ctrl-B then Left/Right, further Left/Right presses resize without another
 prefix for 500 milliseconds after each resize. Other keys immediately resume
 their normal action. Paste, pointer input, dialogs and terminal focus loss end

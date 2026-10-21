@@ -101,7 +101,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	in.Agents.LivePreviews = nil
 	var roster []string
 	if shell.RosterLabel != "" {
-		roster = in.Agents.NativeRoster(width, shell.Panes.RosterLimit(height), in.Now, shell.Focus == 3)
+		roster = in.Agents.NativeRoster(width, shell.Panes.RosterLimit(width, height), in.Now, shell.Focus == 3)
 	} else {
 		in.Agents.Hits = nil
 	}

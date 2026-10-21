@@ -112,3 +112,15 @@ func TestPaneGeometryAndDividerIntent(t *testing.T) {
 		t.Fatalf("unpaintable geometry became a hit target: %+v", layout)
 	}
 }
+
+func TestRosterBudgetPreservesOpenSplit(t *testing.T) {
+	for _, focus := range []int{0, 1, 3} {
+		panes := Panes{Focus: focus, DiffOpen: true}
+		for _, height := range []int{18, 30} {
+			layout, _, _, _, _ := panes.Geometry(120, height, panes.RosterLimit(120, height)+1)
+			if layout.Main.W == 0 || layout.Diff.W == 0 {
+				t.Fatalf("focus %d height %d lost split: %+v", focus, height, layout)
+			}
+		}
+	}
+}

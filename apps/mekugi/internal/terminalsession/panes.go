@@ -89,11 +89,19 @@ func (p *Panes) Drag(m Mouse, layout Layout, navigatorWidth int) (handled bool, 
 	return false, 0
 }
 
-func (p *Panes) RosterLimit(height int) int {
-	if p.Focus == 3 {
-		return max(4, int(float64(height)*0.4))
+func (p *Panes) RosterLimit(width, height int) int {
+	// Reserve Main, the status row and the roster heading before painting.
+	// An open wide Diff needs twelve content-frame rows plus roster padding
+	// to retain both columns rather than switching to the focused pane.
+	mainRows := 8
+	if p.DiffOpen && width >= 100 {
+		mainRows = 13
 	}
-	return 4
+	available := max(0, height-mainRows-2)
+	if p.Focus == 3 {
+		return min(available, max(4, int(float64(height)*0.4)))
+	}
+	return available
 }
 
 // Geometry reserves the status row and roster, then fits Main and saved Diff.
