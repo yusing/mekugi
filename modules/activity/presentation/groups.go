@@ -24,6 +24,7 @@ func Group(value Value, members []Value) Value {
 			original.Reads = slices.Clone(original.Reads)
 			for i := range original.Reads {
 				original.Reads[i].Ranges = slices.Clone(original.Reads[i].Ranges)
+				original.Reads[i].RangeLines = slices.Clone(original.Reads[i].RangeLines)
 			}
 			value.Members = append(value.Members, original)
 		}
@@ -44,7 +45,7 @@ func TargetRun(values []Value, counts []int) (Value, int) {
 	joins := func(i int) bool {
 		b := values[i]
 		return b.Kind == "reads" && !b.Running && !b.Skipped && b.Approval == "" && b.Results == nil && b.ExitCode == 0 &&
-			b.Repeated == "" && (b.Verb == "Skill" || b.Started.IsZero() && b.Duration == 0) && count(i) >= 0
+			b.Repeated == "" && (b.Verb == "Skill" || b.Verb == "Read" && b.Exited || b.Started.IsZero() && b.Duration == 0) && count(i) >= 0
 	}
 	end := 1
 	for end < len(values) && sameAction(values[0], values[end]) && joins(0) && joins(end) {
@@ -78,22 +79,33 @@ func sameAction(a, b Value) bool {
 // reads. counts supplies each collapsed invocation's retained line count.
 func MergeReads(values []Value, counts []int) Value {
 	value := Group(values[0], values)
-	value.Reads = nil
+	value.Reads, value.Timeouts = nil, nil
 	value.Tail, value.TailOmitted = nil, 0
 	for i, member := range values {
+		for _, timeout := range member.Timeouts {
+			if !slices.Contains(value.Timeouts, timeout) {
+				value.Timeouts = append(value.Timeouts, timeout)
+			}
+		}
 		for _, read := range member.Reads {
 			lines := read.Lines
 			if len(member.Reads) == 1 && counts[i] > 0 {
 				lines = counts[i]
 			}
+			rangeLines := make([]int, len(read.Ranges))
+			copy(rangeLines, read.RangeLines)
+			if len(read.Ranges) == 1 {
+				rangeLines[0] = lines
+			}
 			if at := slices.IndexFunc(value.Reads, func(r feed.Read) bool { return r.Path == read.Path }); at >= 0 {
 				value.Reads[at].Ranges = append(value.Reads[at].Ranges, read.Ranges...)
 				value.Reads[at].Lines += lines
+				value.Reads[at].RangeLines = append(value.Reads[at].RangeLines, rangeLines...)
 			} else {
-				value.Reads = append(value.Reads, feed.Read{Path: read.Path, Ranges: slices.Clone(read.Ranges), Lines: lines})
+				value.Reads = append(value.Reads, feed.Read{Path: read.Path, Ranges: slices.Clone(read.Ranges), Lines: lines, RangeLines: rangeLines})
 			}
 		}
-		if i > 0 && value.Verb == "Skill" {
+		if i > 0 && (value.Verb == "Skill" || value.Verb == "Read") {
 			value.Duration += member.Duration
 			value.Ended = member.Ended
 		}

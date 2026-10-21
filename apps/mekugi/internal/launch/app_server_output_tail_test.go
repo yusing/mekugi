@@ -609,10 +609,10 @@ func TestAppServerCollapsedReadsMerge(t *testing.T) {
 			}
 			feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 60)
 			got := ansi.Strip(strings.Join(feed.Lines, "\n"))
-			if strings.Count(got, "Read") != 1 || !strings.Contains(got, "Read a.go L1–3, L5–6 (4 lines) · b.go L1–2 (2 lines)") || strings.Contains(got, "read-0") {
+			if strings.Count(got, "Read") != 1 || !strings.Contains(got, "Read a.go L1–3 (2 lines), L5–6 (2 lines) · b.go L1–2 (2 lines)") || strings.Contains(got, "read-0") {
 				t.Fatalf("collapsed reads did not merge:\n%s", got)
 			}
-			index := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "(4 lines)") })
+			index := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "(2 lines)") })
 			snippet := feed.Snippets[index]
 			if snippet == (activityui.Snippet{}) {
 				t.Fatal("merged read row has no toggle")

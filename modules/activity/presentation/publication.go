@@ -113,6 +113,7 @@ func CloneValues(values []Value) []Value {
 		v.Reads = slices.Clone(v.Reads)
 		for j := range v.Reads {
 			v.Reads[j].Ranges = slices.Clone(v.Reads[j].Ranges)
+			v.Reads[j].RangeLines = slices.Clone(v.Reads[j].RangeLines)
 		}
 		v.Questions = slices.Clone(v.Questions)
 		v.WaitTargets = slices.Clone(v.WaitTargets)

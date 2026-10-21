@@ -18,7 +18,8 @@ type Content struct {
 }
 
 type Read struct {
-	Path   string
-	Ranges []string
-	Lines  int // Collapsed content read from this target, once merged.
+	Path       string
+	Ranges     []string
+	Lines      int   // Collapsed content read from this target, once merged.
+	RangeLines []int // Observed counts aligned with Ranges; zero means unattributed.
 }

@@ -27,8 +27,13 @@ func TestCanonicalMembershipAcrossGroups(t *testing.T) {
 			t.Fatalf("member %d = %#v", i, member)
 		}
 	}
-	if len(merged.Reads) != 1 || merged.Reads[0].Lines != 6 || len(merged.Reads[0].Ranges) != 2 {
+	if len(merged.Reads) != 1 || merged.Reads[0].Lines != 6 || len(merged.Reads[0].Ranges) != 2 || !reflect.DeepEqual(merged.Reads[0].RangeLines, []int{3, 3}) {
 		t.Fatalf("read group = %#v", merged.Reads)
+	}
+	cloned := CloneValues([]Value{merged})
+	cloned[0].Reads[0].RangeLines[0] = 99
+	if merged.Reads[0].RangeLines[0] != 3 {
+		t.Fatal("publication borrowed range counts")
 	}
 	batch.Members[0].Reads[0].Ranges[0] = "changed"
 	if first.Reads[0].Ranges[0] != "1:3" || merged.Members[0].Reads[0].Ranges[0] != "1:3" {

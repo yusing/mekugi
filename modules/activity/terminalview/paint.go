@@ -472,12 +472,13 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			}
 			room := width - indent
 			if len(read.Ranges) > 0 {
-				room -= ansi.StringWidth(lineRanges(read.Ranges)) + gap
+				room -= gap
 			}
+			room -= ansi.StringWidth(readDetails(read, false))
 			if last {
 				room -= ansi.StringWidth(count)
 			}
-			return fitPath(read.Path, room-ansi.StringWidth(lineSuffix(read.Lines, false)))
+			return fitPath(read.Path, room)
 		}
 		item := func(path string, read activitymodel.Read) string {
 			item := terminalui.StyledPath(path)
@@ -485,9 +486,9 @@ func (p *Painter) blockRows(block Block, width int) []string {
 				item = p.code(block.Verb, path)
 			}
 			if len(read.Ranges) > 0 {
-				item += " " + terminalui.Dim + lineRanges(read.Ranges) + terminalui.Undim
+				item += " "
 			}
-			return item + lineSuffix(read.Lines, block.Hovered)
+			return item + readDetails(read, block.Hovered)
 		}
 		var items []string
 		var paths []string
@@ -522,8 +523,8 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			column = max(column, ansi.StringWidth(paths[i]))
 		}
 		for i, read := range block.Reads {
-			if len(read.Ranges) > 0 && !literal && indent+column+2+ansi.StringWidth(lineRanges(read.Ranges)+lineSuffix(read.Lines, false)) <= width {
-				items[i] = terminalui.StyledPath(paths[i]) + strings.Repeat(" ", column-ansi.StringWidth(paths[i])+2) + terminalui.Dim + lineRanges(read.Ranges) + terminalui.Undim + lineSuffix(read.Lines, block.Hovered)
+			if len(read.Ranges) > 0 && !literal && indent+column+2+ansi.StringWidth(readDetails(read, false)) <= width {
+				items[i] = terminalui.StyledPath(paths[i]) + strings.Repeat(" ", column-ansi.StringWidth(paths[i])+2) + readDetails(read, block.Hovered)
 			}
 		}
 		items[len(items)-1] += count
@@ -787,6 +788,23 @@ func fitPath(path string, width int) string {
 		return path
 	}
 	return terminalui.TruncatePath(path, width)
+}
+
+// readDetails uses observed per-range counts only when they account for the
+// target's entire count. Combined output from multiple ranges stays unattributed.
+func readDetails(read activitymodel.Read, hovered bool) string {
+	total := 0
+	for _, n := range read.RangeLines {
+		total += n
+	}
+	if total > 0 && total == read.Lines && len(read.RangeLines) == len(read.Ranges) {
+		parts := make([]string, len(read.Ranges))
+		for i, span := range read.Ranges {
+			parts[i] = terminalui.Dim + lineRanges([]string{span}) + terminalui.Undim + lineSuffix(read.RangeLines[i], hovered)
+		}
+		return strings.Join(parts, terminalui.Dim+", "+terminalui.Undim)
+	}
+	return terminalui.Dim + lineRanges(read.Ranges) + terminalui.Undim + lineSuffix(read.Lines, hovered)
 }
 
 // lineRanges shows read spans as line numbers: 25:46 reads as L25–46.

@@ -484,7 +484,7 @@ func TestMergedReadsCountContentPerTarget(t *testing.T) {
 	}
 	got := plainLines(p.Block(blocks[0], 80))
 	want := []string{
-		"Read   …/tests/tools.test.ts    L1147–1167, L1738–1788, L1–85 (69 lines)",
+		"Read   …/tools.test.ts L1147–1167 (19 lines), L1738–1788 (50 lines), L1–85",
 		"       plugins/inspect_file.ts  L135–185 (50 lines)",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
