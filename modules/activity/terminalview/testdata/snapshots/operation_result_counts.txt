@@ -1,0 +1,7 @@
+"\x1b[38;5;141;1mSearch\x1b[m \x1b[38;2;86;212;221mneedle\x1b[m \x1b[2min\x1b[m \x1b[1msrc\x1b[22;2m (2 results)\x1b[m                            "
+"\x1b[38;5;75;1mList\x1b[m   \x1b[1msrc\x1b[22;2m (2 results)\x1b[m                                      "
+"\x1b[38;5;75;1mInspect\x1b[m \x1b[1ma.go\x1b[22;2m (2 entries)\x1b[m                                    "
+"\x1b[38;5;75;1mList\x1b[m   \x1b[1mempty\x1b[22;2m (0 results)\x1b[m                                    "
+"\x1b[38;5;75;1mList\x1b[m   \x1b[1m*\x1b[m                                                    "
+"\x1b[38;5;141;1mSearch\x1b[m \x1b[38;2;86;212;221mneedle\x1b[m \x1b[2min\x1b[m \x1b[1msrc\x1b[m                                        "
+"\x1b[38;5;75;1mInspect\x1b[m \x1b[1ma.go\x1b[m                                                "

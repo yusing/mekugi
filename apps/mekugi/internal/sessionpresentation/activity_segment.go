@@ -15,6 +15,7 @@ type ActivitySegment struct {
 	Text    string                           `json:"-"` // Display operations for the segment's source.
 	Running bool                             `json:"-"`
 	Skipped bool                             `json:"-"` // The list short-circuited before it.
+	Results *int                             `json:"-"`
 	Exit    int                              `json:"-"`
 	Tail    []string                         `json:"-"`
 	Omit    int                              `json:"-"`

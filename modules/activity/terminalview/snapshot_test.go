@@ -338,3 +338,35 @@ func TestTemporaryCapturedChangesRetainBatchAndOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestUISnapshotOperationResultCounts(t *testing.T) {
+	p := Painter{Theme: diffrender.DarkTheme}
+	var rows []string
+	for _, tc := range []struct{ source, output string }{
+		{"rg needle src", "a.go:1:needle\nb.go:2:needle"},
+		{"ls src", "a.go\nb.go"},
+		{"inspect_file a.go", "1-2 import\n4-6 function main"},
+		{"ls empty", ""},
+		{"ls *", "a:\none\n\nb:\ntwo"},
+		{"rg -A 1 needle src", "a.go:1:needle\na.go-2-context"},
+		{"inspect_file a.go", "1-2 import\n[output truncated]"},
+	} {
+		entry := presentation.ItemContent{Facts: presentation.Facts{Kind: "tool", Text: presentation.ShellSource(tc.source, "")}, Details: &presentation.ItemDetails{SearchResults: presentation.OperationResultCount(tc.source, &tc.output, 0)}, Command: presentation.Command{Tail: strings.Split(tc.output, "\n"), Exited: true}}
+		value := entry.Values()[0]
+		block := Block{Value: value, Annotation: Annotation{Collapsed: true}}
+		painted := p.Block(block, 60)
+		if strings.Contains(ansi.Strip(strings.Join(painted, "\n")), "lines") {
+			t.Fatal("count retained hidden-line hint")
+		}
+		rows = append(rows, painted...)
+		// Disclosure changes only presentation; retained rows still open.
+		if tc.output != "" && len(p.DialogPage(block, 60).Lines) == 0 {
+			t.Fatal("collapsed operation lost its detail page")
+		}
+		block.Collapsed = false
+		if tc.output != "" && !strings.Contains(ansi.Strip(strings.Join(p.Block(block, 60), "\n")), strings.Split(tc.output, "\n")[0]) {
+			t.Fatal("expanded output missing")
+		}
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/operation_result_counts.txt", rows, 60)
+}

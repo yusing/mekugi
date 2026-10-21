@@ -92,3 +92,55 @@ func TestCommandReportReductionWithoutReveal(t *testing.T) {
 		t.Fatalf("bounded source summary requires retention or terminal reveal: %+v", segment)
 	}
 }
+
+func TestCommandReportResultCounts(t *testing.T) {
+	for _, lossy := range []bool{false, true} {
+		invocation := activity.NewInvocation(activity.CommandSource{}, time.Time{}, new(feed.Retention))
+		state := ObserveCommandReport(invocation, activity.SegmentReport{
+			Ended: true, Closed: true, Done: true, Lossy: lossy,
+			Segments: []activity.SegmentObservation{
+				{Source: "rg 'x|^$' matches.txt", Analysis: "rg 'x|^$' matches.txt", Text: "Search `x|^$` in `matches.txt`", Began: true, Finished: true, Output: "x\n\n"},
+				{Source: "inspect_file a.go", Analysis: "inspect_file a.go", Text: "Inspect `a.go`", Began: true, Finished: true, Output: "1-2 import\n4-6 function main\n"},
+			},
+		}, true)
+		// Repeated publication reads the same retained rows.
+		if again := invocation.ReportSnapshot(true); !lossy && (again.Segments[0].Results == nil || *again.Segments[0].Results != 2) {
+			t.Fatal("result count changed after publication")
+		}
+		entry := ActivityEntry{Kind: "tool", Native: &NativeItem{Segments: state.Segments}}
+		command := CommandPresentation(entry)
+		values := command.SegmentValues(false)
+		if len(values) != 2 {
+			t.Fatalf("values: %+v", values)
+		}
+		for _, value := range values {
+			if lossy {
+				if value.Results != nil {
+					t.Fatal("count from lost attribution")
+				}
+			} else if value.Results == nil || *value.Results != 2 {
+				t.Fatalf("missing segment count: %+v", value)
+			}
+		}
+	}
+}
+
+func TestCommandReportCountLimitsPreserveAttribution(t *testing.T) {
+	invocation := activity.NewInvocation(activity.CommandSource{}, time.Time{}, new(feed.Retention))
+	report := activity.SegmentReport{Segments: []activity.SegmentObservation{
+		{Source: "rg --files", Analysis: "rg --files", Text: "List `.`", Began: true, Output: strings.Repeat("a.go\n", 120000)},
+		{Source: "ls src", Analysis: "ls src", Text: "List `src`"},
+	}}
+	ObserveCommandReport(invocation, report, false)
+	report.Ended, report.Closed, report.Done = true, true, true
+	report.Segments[0].Finished = true
+	report.Segments[1].Began, report.Segments[1].Finished, report.Segments[1].Output = true, true, "one\ntwo\n"
+	state := ObserveCommandReport(invocation, report, true)
+	if state.Release || !state.Snapshot.SeparateOutput || state.Segments[0].Output == nil || state.Segments[1].Output == nil {
+		t.Fatalf("count limit lost segment attribution: %+v", state)
+	}
+	values := CommandPresentation(ActivityEntry{Kind: "tool", Native: &NativeItem{Segments: state.Segments}}).SegmentValues(false)
+	if len(values) != 2 || values[0].Results != nil || values[1].Results == nil || *values[1].Results != 2 {
+		t.Fatalf("count limit affected sibling results: %+v", values)
+	}
+}

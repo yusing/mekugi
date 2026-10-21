@@ -3,7 +3,9 @@ package presentation
 // Source: apps/mekugi/internal/router/subagent_tool_display_search.go:1:125@0a356401.
 
 import (
-	"path/filepath"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -130,10 +132,10 @@ func sourceSearchFlag(command, flag string) int {
 	return -1
 }
 
-// SearchResultCount interprets complete observed output for one literal search.
+// OperationResultCount interprets complete output for one search, listing or inspection.
 // The adapter establishes host completion and applies host-specific output caps;
 // unknown or incomplete output never becomes a zero count.
-func SearchResultCount(source string, output *string, exit int) *int {
+func OperationResultCount(source string, output *string, exit int) *int {
 	if exit < 0 || exit > 1 {
 		return nil
 	}
@@ -142,15 +144,95 @@ func SearchResultCount(source string, output *string, exit int) *int {
 		return nil
 	}
 	argv, ok := shellsyntax.PatternCall(source, program.Stmts[0])
-	if !ok || len(argv) < 2 {
+	if !ok || len(argv) < 1 {
 		return nil
 	}
-	argv[0] = filepath.Base(argv[0])
-	if argv[0] != "rg" && argv[0] != "grep" {
+	if output != nil && (len(*output) >= 1<<20 || strings.ContainsAny(*output, "\x00\x1b")) {
+		return nil
+	}
+	switch argv[0] {
+	case "ls":
+		if exit != 0 || output == nil || strings.Contains(strings.ToLower(*output), "omitted") || strings.Contains(strings.ToLower(*output), "truncat") {
+			return nil
+		}
+		// A syntactic operand can expand into several directory operands.
+		// Only literal arguments establish the listing's output shape.
+		if _, literal := shellsyntax.PatternCall("", program.Stmts[0]); !literal {
+			return nil
+		}
+		operands, ok := sourceListOperands(argv)
+		if !ok || len(operands) > 1 {
+			return nil // Multiple directories add ambiguous headings.
+		}
+		long, sized := false, false
+		for i, arg := range argv[1:] {
+			if slices.Contains(operands, i+1) || arg == "--" {
+				continue
+			}
+			if !strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "--") || strings.Trim(arg[1:], "1lngaAdoFhipqQrstuvX") != "" || strings.Contains(arg, "R") {
+				return nil
+			}
+			long = long || strings.ContainsAny(arg, "lnog")
+			sized = sized || strings.Contains(arg, "s")
+		}
+		rows := strings.Split(strings.TrimSuffix(*output, "\n"), "\n")
+		if *output == "" {
+			return new(0)
+		}
+		if !long && (strings.Contains(*output, "\t") || strings.Contains(*output, "  ")) {
+			return nil // A terminal listing can place several entries on one row.
+		}
+		if (long || sized) && strings.HasPrefix(rows[0], "total ") {
+			if _, err := strconv.ParseUint(strings.TrimPrefix(rows[0], "total "), 10, 64); err != nil {
+				return nil
+			}
+			rows = rows[1:]
+		}
+		for _, row := range rows {
+			if row == "" || strings.HasSuffix(row, ":") {
+				return nil // Expanded directory lists contain headers and separators.
+			}
+		}
+		return new(len(rows))
+	case "inspect_file":
+		if exit != 0 || output == nil {
+			return nil
+		}
+		count := 0
+		for row := range strings.SplitSeq(strings.TrimSuffix(*output, "\n"), "\n") {
+			if row == "" || row == "(no outline)" || strings.HasPrefix(row, "--- ") && strings.HasSuffix(row, " ---") {
+				continue
+			}
+			if strings.HasPrefix(row, "{") {
+				var envelope struct {
+					OK        bool `json:"ok"`
+					Truncated bool `json:"truncated"`
+					Data      struct {
+						Outline []jsontext.Value `json:"outline"`
+					} `json:"data"`
+				}
+				if json.Unmarshal([]byte(row), &envelope) != nil || !envelope.OK || envelope.Truncated || envelope.Data.Outline == nil {
+					return nil
+				}
+				count += len(envelope.Data.Outline)
+				continue
+			}
+			span, rest, ok := strings.Cut(row, " ")
+			start, end, ranged := strings.Cut(span, "-")
+			a, errA := strconv.Atoi(start)
+			b, errB := strconv.Atoi(end)
+			if !ok || !ranged || errA != nil || errB != nil || a < 1 || b < a || rest == "" {
+				return nil
+			}
+			count++
+		}
+		return new(count)
+	case "rg", "grep":
+	default:
 		return nil
 	}
 	display, ok := sourceSearch(argv, "")
-	if !ok || !strings.HasPrefix(display, "Search ") {
+	if !ok || (!strings.HasPrefix(display, "Search ") && !strings.HasPrefix(display, "List ")) {
 		return nil
 	}
 	counts, files := false, false
@@ -181,7 +263,7 @@ func SearchResultCount(source string, output *string, exit int) *int {
 			case "-c", "--count", "--count-matches":
 				counts = true
 			}
-			if sourceSearchFlag(argv[0], flag) > 0 {
+			if kind := sourceSearchFlag(argv[0], flag); kind == 1 || kind == 2 {
 				if !attached {
 					i++
 				}
@@ -207,7 +289,7 @@ func SearchResultCount(source string, output *string, exit int) *int {
 		return nil
 	}
 	if text == "" {
-		if exit == 1 {
+		if exit == 1 || strings.HasPrefix(display, "List ") {
 			return new(0)
 		}
 		return nil

@@ -316,8 +316,14 @@ Main and children share parsing, grouping and viewport behavior. User messages
 have a distinct band; assistant text, operations and final-answer cards retain
 their identities rather than becoming a second transcript. Image-view tools show
 View with their workspace path; attached user images claim no tool inspection.
-Completed attributable searches may show a result count; missing, truncated,
-failed or ambiguous output supplies none. Successful one-line command output
+Completed attributable searches and listings show `(N results)`, and structural
+inspections show `(N entries)`, when complete output establishes the count.
+Collapsed successful Search, List and Inspect output omits the hidden-line hint,
+including when its count is unknown; expanded output and dialogs retain the
+original rows. Headers and diagnostics are not results. Missing,
+truncated, failed or ambiguous output supplies no count; known empty output shows
+zero. Tracked commands use their own output, and restored commands use the same
+interpretation. Successful one-line command output
 stays visible rather than becoming a line-count toggle.
 
 Asked rows retain full questions and observed answers with shared Markdown and

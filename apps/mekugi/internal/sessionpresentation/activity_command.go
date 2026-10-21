@@ -54,7 +54,7 @@ func CommandPresentation(entry ActivityEntry) activitypresentation.Command {
 		value := activitypresentation.CommandSegment{
 			Source: segment.Source, Text: segment.Text, Running: segment.Running, Skipped: segment.Skipped, ExitCode: segment.Exit,
 			Started: segment.Timing.Started, Ended: segment.Timing.Ended, Duration: time.Duration(segment.Timing.ElapsedNS),
-			Tail: segment.Tail, TailOmitted: segment.Omit, Changes: segment.Changes,
+			Tail: segment.Tail, TailOmitted: segment.Omit, Changes: segment.Changes, Results: segment.Results,
 		}
 		if !segment.Running && !segment.Skipped && segment.Exit == 0 {
 			// One observed operation in one captured invocation needs no source

@@ -30,6 +30,7 @@ type Command struct {
 	OutputContent                    bool
 	Changes                          []ChangeRow
 	Segments                         []CommandSegment
+	Results                          *int
 	Captured                         bool
 	CaptureText                      string
 }
@@ -46,6 +47,7 @@ type CommandSegment struct {
 	OutputContent    bool
 	Changes          []ChangeRow
 	Writer           bool
+	Results          *int
 }
 
 // Operations parses one invocation, merging adjacent read targets without
@@ -189,6 +191,12 @@ func (c Command) SegmentValues(detail bool) []Value {
 		}
 		last.Tail, last.TailOmitted, last.Output = segment.Tail, segment.TailOmitted, outputID(segment.Output, segmentIndex+2)
 		last.Changes = segment.Changes
+		if len(operations) == 1 && !segment.Running && !segment.Skipped {
+			last.Results = segment.Results
+			if len(c.Segments) == 1 {
+				last.Results = c.Results
+			}
+		}
 		values = append(values, operations...)
 	}
 	combinedOutput := c.Output != nil && slices.ContainsFunc(c.Segments, func(segment CommandSegment) bool { return !segment.Skipped && segment.Output == nil })

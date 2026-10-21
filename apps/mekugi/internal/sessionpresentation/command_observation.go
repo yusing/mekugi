@@ -151,7 +151,7 @@ func SearchResults(item observation.Item) *int {
 	if item.AggregatedOutput != nil && len(*item.AggregatedOutput) >= 1<<20 {
 		return nil
 	}
-	return activitypresentation.SearchResultCount(DisplayCommand(item.Command), item.AggregatedOutput, *item.ExitCode)
+	return activitypresentation.OperationResultCount(DisplayCommand(item.Command), item.AggregatedOutput, *item.ExitCode)
 }
 
 func ItemDuration(item observation.Item) time.Duration {

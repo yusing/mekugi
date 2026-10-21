@@ -461,7 +461,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		return append([]string{terminalui.Green + "✓ Final answer" + terminalui.Reset}, liveActivityIndent(p.Markdown(block.Body, width-2, false), "  ")...)
 	case "reads":
 		color := VerbColor(block.Verb)
-		lead, count := block.lead(color, block.Verb), ResultCount(block.Results)+readLines(block)
+		lead, count := block.lead(color, block.Verb), ResultCount(block.Results, block.Verb)+readLines(block)
 		indent := ansi.StringWidth(lead)
 		literal := block.Verb == "Search" || block.Verb == "Skill"
 		// fit shortens a path that cannot share its row with its ranges, gap
@@ -545,10 +545,10 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if block.Verb == "Run" {
 			return p.ranRow(block, width)
 		}
-		label := p.Label(block.Verb, block.Label) + ResultCount(block.Results)
+		label := p.Label(block.Verb, block.Label) + ResultCount(block.Results, block.Verb)
 		copyLabel := ""
 		if block.Verb == "Search" && block.Path == "" && block.Code == "" {
-			compact := p.compactSearchTargets(block.Label) + ResultCount(block.Results)
+			compact := p.compactSearchTargets(block.Label) + ResultCount(block.Results, block.Verb)
 			if compact != label && ansi.StringWidth(block.lead(VerbColor(block.Verb), block.Verb)+compact) <= width {
 				copyLabel = label
 				label = compact
@@ -810,7 +810,7 @@ func lineRanges(ranges []string) string {
 // the verb, or a program beside its gutter, then any failure's exit and the
 // live or failed output tail.
 func (p *Painter) ranRow(block Block, width int) []string {
-	code, label := sourceTabs(block.Code), strings.TrimSpace(p.Label(block.Verb, block.Label)+ResultCount(block.Results))
+	code, label := sourceTabs(block.Code), strings.TrimSpace(p.Label(block.Verb, block.Label)+ResultCount(block.Results, block.Verb))
 	if code == "" {
 		if span, end, ok := markdownsyntax.CodeSpan(block.Label, 0); ok && end == len(block.Label) {
 			code, label = span, ""
@@ -934,6 +934,9 @@ func outputRows(block Block, lines []string, width int) []string {
 			*last += suffix
 			return lines
 		}
+	}
+	if block.Collapsed && !block.Running && !block.Skipped && block.ExitCode == 0 && (block.Exited || block.Results != nil) && slices.Contains([]string{"Search", "List", "Inspect"}, block.Verb) {
+		return lines
 	}
 	// Output uses a dashed gutter, distinct from the program gutter above it.
 	if block.Collapsed && len(tail) > 0 {
@@ -1342,11 +1345,15 @@ func (p Painter) messageDirection(block Block) string {
 	return terminalui.Dim + direction + terminalui.Undim + p.recipient(peer)
 }
 
-func ResultCount(count *int) string {
+func ResultCount(count *int, verb string) string {
 	if count == nil {
 		return ""
 	}
-	return terminalui.Dim + fmt.Sprintf(" (%d results)", *count) + terminalui.Undim
+	unit := "results"
+	if verb == "Inspect" {
+		unit = "entries"
+	}
+	return terminalui.Dim + fmt.Sprintf(" (%d %s)", *count, unit) + terminalui.Undim
 }
 
 func runDuration(block Block, now time.Time) time.Duration {

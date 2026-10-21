@@ -24,6 +24,25 @@ func TestAppServerSearchResultCounts(t *testing.T) {
 		exit            int
 		want            int
 	}{
+		{"ls", "a.go\nb.go\n", 0, 2},
+		{"ls -la src", "total 4\ndrwxr-xr-x 2 user group 0 Oct 1 .\n-rw-r--r-- 1 user group 1 Oct 1 a.go\n", 0, 2},
+		{"ls empty", "", 0, 0},
+		{"ls -s a", "total 0\n0 one\n", 0, 1},
+		{"ls *", "repro.go\n\na:\none\n\nb:\ntwo\n", 0, -1},
+		{"ls {a,b}", "a:\none\n\nb:\ntwo\n", 0, -1},
+		{`ls $paths`, "a:\none\n\nb:\ntwo\n", 0, -1},
+		{`rg 'x|^$' matches.txt`, "x\n\n", 0, 2},
+		{"rg --files src", "src/a.go\nsrc/b.go\n", 0, 2},
+		{"inspect_file a.go", "1-2 import\n4-6 function main\n", 0, 2},
+		{"inspect_file a.go b.go", "--- a.go ---\n1-2 import\n--- b.go ---\n(no outline)\n", 0, 1},
+		{"inspect_file --json a.go", `{"ok":true,"truncated":false,"data":{"outline":[{"kind":"function"}]}}`, 0, 1},
+		{"inspect_file a.go", "(no outline)\n", 0, 0},
+		{"inspect_file missing.go", "inspect_file: missing.go: path does not exist\n", 1, -1},
+		{"inspect_file a.go", "1-2 import\noutput truncated\n", 0, -1},
+		{"ls -C", "a.go  b.go\n", 0, -1},
+		{"ls a b", "a:\none\nb:\ntwo\n", 0, -1},
+		{"ls", "ls: no such file\n", 2, -1},
+		{"rg --files --null", "a.go\x00b.go\x00", 0, -1},
 		{"rg -n needle src", "a.go:1:needle\nb.go:2:needle\n", 0, 2},
 		{"grep -n needle a.go", "1:needle\n2:needle\n", 0, 2},
 		{"rg needle", "", 1, 0},
@@ -57,7 +76,7 @@ func TestAppServerSearchResultCounts(t *testing.T) {
 				t.Fatalf("lost count: %+v", u.attached.source.Entries)
 			}
 			painted := strings.Join(u.shell.Transcript.Painter.Block(u.testActivity(u.shell.Transcript).blocks(0)[0], 120), "\n")
-			if !strings.Contains(painted, activityui.ResultCount(count)) {
+			if !strings.Contains(painted, activityui.ResultCount(count, u.testActivity(u.shell.Transcript).blocks(0)[0].Verb)) {
 				t.Fatalf("not muted: %q", painted)
 			}
 			restored := newAppServerSessionTestUI(t, t.TempDir())

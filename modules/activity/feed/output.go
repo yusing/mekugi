@@ -196,6 +196,20 @@ func (o *Output) View() OutputView {
 	return *o.snapshot
 }
 
+// CompleteText returns complete retained logical rows, including trailing blank
+// rows omitted from display snapshots. Rows remain normalized and each ends in
+// a newline; the original presence of a final terminator is not retained.
+// Incomplete, truncated, dropped or released output supplies no complete text.
+func (o *Output) CompleteText() (string, bool) {
+	if !o.done || o.truncated || o.dropped > 0 || o.released {
+		return "", false
+	}
+	if len(o.lines) == 0 {
+		return "", true
+	}
+	return strings.Join(o.lines, "\n") + "\n", true
+}
+
 // Context returns a bounded, immutable prefix for feed syntax detection without
 // populating the full snapshot cache. The budget includes line slots, as retained
 // output accounting does. limited distinguishes a bounded prefix from complete

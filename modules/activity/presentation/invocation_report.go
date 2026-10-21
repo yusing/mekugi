@@ -1,7 +1,10 @@
 package presentation
 
 import (
+	"slices"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/yusing/mekugi/modules/activity/feed"
 )
@@ -37,12 +40,13 @@ type ReportSnapshot struct {
 }
 
 type invocationSegment struct {
-	facts      SegmentObservation
-	output     *feed.Output
-	summary    feed.SummaryTail
-	raw        []byte
-	unretained int
-	vcs        bool
+	facts       SegmentObservation
+	output      *feed.Output
+	summary     feed.SummaryTail
+	raw         []byte
+	unretained  int
+	vcs         bool
+	countUnsafe bool
 }
 
 type invocationReport struct {
@@ -75,6 +79,9 @@ func (i *Invocation) ObserveSegments(report SegmentReport) (changed, loss bool) 
 		changed = changed || segment.facts != facts
 		segment.facts = facts
 		segment.vcs = VCSOutputSource(observed.Analysis)
+		segment.countUnsafe = segment.countUnsafe || strings.ContainsFunc(observed.Output, func(r rune) bool {
+			return r != '\n' && unicode.IsControl(r)
+		})
 		if lossy {
 			continue
 		}
@@ -151,6 +158,15 @@ func (i *Invocation) ReportSnapshot(final bool) ReportSnapshot {
 			}
 			output, _ := segment.output.Context(0)
 			shown.Output, shown.OutputContent = &output, segment.output.HasContent()
+
+		}
+		if r.separate && segment.output != nil && !segment.countUnsafe && !shown.Running && !shown.Skipped {
+			operations := Operations(fact.Text)
+			if len(operations) == 1 && slices.Contains([]string{"Search", "List", "Inspect"}, operations[0].Verb) {
+				if text, complete := segment.output.CompleteText(); complete {
+					shown.Results = OperationResultCount(fact.Analysis, &text, shown.ExitCode)
+				}
+			}
 		}
 		if final && r.separate && !shown.Skipped && shown.ExitCode == 0 && segment.vcs {
 			shown.Raw = string(segment.raw)

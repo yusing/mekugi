@@ -776,7 +776,7 @@ func TestAppServerTrackedCommandShowsEachSegment(t *testing.T) {
 	report.conn.Close()
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 1, "/w\na\nb\ncat: b: No such file or directory\n"
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	want := "├ Ran  pwd\n│      ┆ /w\n├ List .\n│      ┆ a\n│      ┆ b\n└ Read a · b · exit 1\n       ┆ cat: b: No such file or directory"
+	want := "├ Ran  pwd\n│      ┆ /w\n├ List . (2 results)\n│      ┆ a\n│      ┆ b\n└ Read a · b · exit 1\n       ┆ cat: b: No such file or directory"
 	if main := awaitMain(t, u, "exit 1"); !strings.Contains(main, want) {
 		t.Fatalf("Main lacks per-segment results %q:\n%s", want, main)
 	}

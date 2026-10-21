@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -53,5 +54,16 @@ func TestInvocationHistoricalUnknownOutcome(t *testing.T) {
 	view := invocation.Snapshot()
 	if view.Running || view.Exited || !view.Started.IsZero() || !view.Ended.IsZero() || view.Duration != time.Second || !view.OutputContent || !view.Output.Done || view.Output.Exited {
 		t.Fatalf("history invented a live clock or known exit: %+v", view)
+	}
+}
+
+func TestInvocationSingleSegmentDoesNotRetainCountScratch(t *testing.T) {
+	invocation := NewInvocation(CommandSource{}, time.Time{}, new(feed.Retention))
+	invocation.ObserveSegments(SegmentReport{Ended: true, Closed: true, Done: true, Segments: []SegmentObservation{
+		{Source: "rg --files", Analysis: "rg --files", Text: "List `.`", Began: true, Finished: true, Output: strings.Repeat("a.go\n", 100000)},
+	}})
+	invocation.ReportSnapshot(true)
+	if len(invocation.report.segments[0].raw) != 0 {
+		t.Fatal("single segment retained unused count payload")
 	}
 }
