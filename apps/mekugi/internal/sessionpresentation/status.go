@@ -88,7 +88,7 @@ type MainInputs struct {
 }
 
 type Caption struct {
-	Model, Effort, Tier          string
+	Model, Effort, Tier, Role    string
 	ContextTokens, ContextWindow uint64
 	ContextKnown                 bool
 	Items                        []presentation.Item

@@ -231,6 +231,13 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 		if presentation.Caption.Tier != "" {
 			model += " · " + presentation.Caption.Tier
 		}
+		if role := presentation.Caption.Role; role != "" {
+			if model != "" {
+				model = role + " · " + model
+			} else {
+				model = role
+			}
+		}
 		model = strings.ReplaceAll(textsanitize.Safe(model, false), "\n", " ")
 		var context strings.Builder
 		context.WriteString(activityui.ContextWindowLabel(activitypresentation.Agent{

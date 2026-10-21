@@ -134,6 +134,7 @@ func sessionCaption(session *sessionpresentation.Attachment, m *sessionpresentat
 	if agent := session.Agent(view.Displayed.Caller); agent != nil {
 		if view.Displayed.ID != view.Main.ID {
 			caption.Model, caption.Effort = agent.Settings.Model, agent.Settings.Effort
+			caption.Role = agent.Role
 			if agent.Settings.TierKnown {
 				caption.Tier = cmp.Or(agent.Settings.Tier, "default")
 			}

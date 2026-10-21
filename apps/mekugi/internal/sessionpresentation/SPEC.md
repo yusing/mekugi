@@ -311,6 +311,10 @@ Side and One-off use that same caption projection. Their confirmed fork settings
 live settings updates, effective per-thread tier and usage stay scoped to their
 own identity; switching back to Main restores Main's metrics. Closing a side
 conversation retires its displayed metrics.
+Child captions additionally show the admitted role alongside that child's
+host-confirmed model and reasoning effort. Settings changes, follow-ups and resumed
+facts update the same caption; no parent setting or inferred default fills a missing
+child fact. Child read-only/input behavior remains unchanged.
 Known context uses the latest host last-turn total and context window independently
 of cumulative usage. Before usage arrives it shows 0% used; an absent window shows
 only the known count. Host reports, including compaction reductions, replace the

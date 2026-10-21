@@ -172,8 +172,9 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	}
 	info := resumeSettingsRollout(t, `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"saved-model","reasoning_effort":"medium","service_tier":"flex"}}}`, "")
 	info.AgentNickname = "reader"
+	info.AgentRole = "reviewer"
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": info})
-	if got := caption(); !strings.Contains(got, "saved-model (medium) · flex") {
+	if got := caption(); !strings.Contains(got, "reviewer · saved-model (medium) · flex") {
 		t.Fatalf("child metadata did not restore settings: %s", got)
 	}
 	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": info.ID, "threadSettings": map[string]any{"model": "live-model", "effort": "low", "serviceTier": nil}})
@@ -187,7 +188,7 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	}
 	u.serviceTiers.Confirm("live-model", info.ID, "flex")
 	publication := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
-	if publication.Caption.Model != "live-model" || publication.Caption.Tier != "flex" || publication.Status.Composer.Text != "Read-only" {
+	if publication.Caption.Model != "live-model" || publication.Caption.Tier != "flex" || publication.Caption.Role != "reviewer" || publication.Status.Composer.Text != "Read-only" {
 		t.Fatalf("detached child caption lost confirmed thread settings: %+v", publication)
 	}
 	if got := caption(); !strings.Contains(got, "live-model (low) · flex") {
@@ -200,6 +201,30 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	}
 	if publication.Caption.Model != "live-model" || publication.Caption.Tier != "flex" {
 		t.Fatal("switching threads mutated the retained caption")
+	}
+}
+
+func TestUISnapshotNativeChildComposerSettings(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	u.clock = func() time.Time { return now }
+	u.model, u.reasoningEffort = "parent-model", "high"
+	u.Text = "retained parent draft"
+	info := resumeSettingsRollout(t, `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"saved-child","reasoning_effort":"medium","service_tier":"flex"}}}`, "")
+	info.AgentNickname, info.AgentRole = "reader", "reviewer"
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": info})
+	u.testActivity(u.shell.Agents).displayThread(u.attached.session.KnownCaller(info.ID))
+	for _, state := range []string{"restored", "followup"} {
+		if state == "followup" {
+			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": info.ID, "threadSettings": map[string]any{"model": "actual-child", "effort": "low", "serviceTier": nil}})
+			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": info.ID, "turn": map[string]any{"id": "followup", "status": "inProgress"}})
+		}
+		frame, _ := u.testMainFrame(100, 8, 0)
+		assertNativeUISnapshot(t, "native-child-composer-"+state, frame)
+		view := u.attached.presentation.View()
+		if view.Caption.Role != "reviewer" || view.Caption.Model == "parent-model" || view.Status.Composer.Text != "Read-only" || u.Text != "retained parent draft" {
+			t.Fatalf("child caption changed input authority or used parent facts: %+v", view)
+		}
 	}
 }
 
