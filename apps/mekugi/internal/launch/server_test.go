@@ -903,6 +903,9 @@ func (f serverRoundTripper) RoundTrip(request *http.Request) (*http.Response, er
 
 func TestModelsHandlerForwardsCodexAuthenticationQueryAndResponse(t *testing.T) {
 	httpClient := &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
+		if request.Header.Get("X-Unrelated-Caller-Data") != "" {
+			t.Error("forwarded unrelated caller data")
+		}
 		if request.Method != http.MethodGet || request.URL.String() != testProviderBaseURL+"/models?client_version=0.146.0" {
 			t.Errorf("request = %s %s", request.Method, request.URL)
 		}
@@ -910,8 +913,8 @@ func TestModelsHandlerForwardsCodexAuthenticationQueryAndResponse(t *testing.T) 
 			"Authorization":      "Bearer caller-token",
 			"ChatGPT-Account-ID": "caller-account",
 			"Accept":             "application/json",
-			"Originator":         codexresponses.ClientIdentity,
-			"User-Agent":         codexresponses.ClientIdentity,
+			"Originator":         "catalog-originator",
+			"User-Agent":         "catalog-agent/1.0",
 		} {
 			if got := request.Header.Get(name); got != want {
 				t.Errorf("header %s = %q, want %q", name, got, want)
@@ -929,6 +932,9 @@ func TestModelsHandlerForwardsCodexAuthenticationQueryAndResponse(t *testing.T) 
 	})}
 	request := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.146.0", nil)
 	request.Header = codexAuthHeaders()
+	request.Header.Set("Originator", "catalog-originator")
+	request.Header.Set("User-Agent", "catalog-agent/1.0")
+	request.Header.Set("X-Unrelated-Caller-Data", "private")
 	recorder := httptest.NewRecorder()
 
 	inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), false, (*requestexecution.Failures)(nil).ReportCatalog)(recorder, request)
@@ -1195,20 +1201,20 @@ func TestProviderClientForwardsCodexAuthenticationAndRequestHeaders(t *testing.T
 	headers.Set(codexresponses.SubagentHeader, threadSpawnSubagent)
 	headers.Set(codexresponses.TurnMetadataHeader, "metadata")
 	headers.Set("x-codex-turn-state", "opaque-turn-state")
-	headers.Set(codexresponses.CaptureIDHeader, "capture")
+	headers.Set("X-Mekugi-Capture-Id", "must-not-forward")
 	httpClient := &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
 		trusted := map[string]string{
 			"Authorization":      "Bearer caller-token",
 			"ChatGPT-Account-ID": "caller-account",
-			"Originator":         codexresponses.ClientIdentity,
-			"User-Agent":         codexresponses.ClientIdentity,
+			"Originator":         "caller-originator",
+			"User-Agent":         "caller-agent",
 		}
 		for name, value := range trusted {
 			if got := request.Header.Get(name); got != value {
 				t.Errorf("header %s = %q, want %q", name, got, value)
 			}
 		}
-		for _, name := range []string{codexresponses.ThreadIDHeader, codexresponses.ClientRequestIDHeader, codexresponses.WindowIDHeader, codexresponses.BetaFeaturesHeader, codexresponses.ResponsesLiteHeader, codexresponses.SubagentHeader, codexresponses.TurnMetadataHeader, "x-codex-turn-state", codexresponses.CaptureIDHeader} {
+		for _, name := range []string{codexresponses.ThreadIDHeader, codexresponses.ClientRequestIDHeader, codexresponses.WindowIDHeader, codexresponses.BetaFeaturesHeader, codexresponses.ResponsesLiteHeader, codexresponses.SubagentHeader, codexresponses.TurnMetadataHeader, "x-codex-turn-state"} {
 			if got, want := request.Header.Values(name), headers.Values(name); !slices.Equal(got, want) {
 				t.Errorf("header %s = %q, want %q", name, got, want)
 			}
@@ -1221,6 +1227,9 @@ func TestProviderClientForwardsCodexAuthenticationAndRequestHeaders(t *testing.T
 		}
 		if got := request.Header.Values("X-Unrelated-Caller-Data"); len(got) != 0 {
 			t.Errorf("unrelated caller header was forwarded: %q", got)
+		}
+		if got := request.Header.Get("X-Mekugi-Capture-Id"); got != "" {
+			t.Error("forwarded private capture identity")
 		}
 		return serverHTTPResponse("{}"), nil
 	})}

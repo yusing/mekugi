@@ -141,6 +141,10 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 	}
 	provider := &btwPrewarmProvider{requests: make(chan btwPrewarmRequest, 32), release: make(chan struct{})}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Originator") != "mekugi" || !strings.HasPrefix(r.Header.Get("User-Agent"), "mekugi/") ||
+			!strings.Contains(r.Header.Get("User-Agent"), "app-server-preview") {
+			t.Error("provider request lost the installed host's client identity")
+		}
 		if fallback && r.Header.Get("Upgrade") != "" {
 			t.Error("HTTP fallback attempted another upstream WebSocket")
 			http.Error(w, "fixture requires HTTP", http.StatusUpgradeRequired)

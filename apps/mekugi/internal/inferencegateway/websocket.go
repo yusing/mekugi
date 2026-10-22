@@ -550,8 +550,6 @@ func openAIWebSocketRequest(body []byte, headers http.Header, cacheKey string) (
 	upstream := make(http.Header)
 	upstream.Set("Authorization", authorization)
 	upstream.Set(openai.AccountIDHeader, account)
-	upstream.Set("Originator", codexresponses.ClientIdentity)
-	upstream.Set("User-Agent", codexresponses.ClientIdentity)
 	codexresponses.ForwardHeaders(upstream, headers)
 	payload, handshake, _, err := codexresponses.WebSocketRequest(body, upstream, cacheKey)
 	return payload, handshake, err

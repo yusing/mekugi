@@ -29,6 +29,8 @@ func TestCodexAuxiliaryRoutesPreserveNativeOperations(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			body := []byte(" {\"opaque\": [1, null], \"input\": \"untouched\"}\n")
 			headers := codexAuthHeaders()
+			headers.Set("Originator", "aux-originator")
+			headers.Set("User-Agent", "aux-agent/1.0")
 			headers.Set("Content-Type", "application/json; charset=utf-8")
 			nativeHeaders := []string{codexresponses.ThreadIDHeader, codexresponses.ClientRequestIDHeader, codexresponses.WindowIDHeader, codexresponses.BetaFeaturesHeader, codexresponses.ResponsesLiteHeader, codexresponses.SubagentHeader, codexresponses.TurnMetadataHeader, "x-codex-turn-state", "x-codex-image-turn-id", "x-openai-encrypted-tool-arguments", "x-openai-tool-output-truncation-policy"}
 			for _, name := range nativeHeaders {
@@ -55,7 +57,7 @@ func TestCodexAuxiliaryRoutesPreserveNativeOperations(t *testing.T) {
 					}
 				}
 				for _, name := range []string{"Originator", "User-Agent"} {
-					if request.Header.Get(name) != codexresponses.ClientIdentity {
+					if !slices.Equal(request.Header.Values(name), headers.Values(name)) {
 						t.Errorf("%s = %q", name, request.Header.Get(name))
 					}
 				}

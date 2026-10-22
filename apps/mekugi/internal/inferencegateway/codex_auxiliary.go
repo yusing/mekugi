@@ -65,8 +65,6 @@ func RegisterCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 				upstream.Header.Set("Content-Encoding", encoding)
 			}
 			upstream.Header.Set("Accept", "application/json")
-			upstream.Header.Set("Originator", codexresponses.ClientIdentity)
-			upstream.Header.Set("User-Agent", codexresponses.ClientIdentity)
 			codexresponses.ForwardHeaders(upstream.Header, request.Header)
 			for _, name := range []string{"x-codex-image-turn-id", "x-openai-encrypted-tool-arguments", "x-openai-tool-output-truncation-policy"} {
 				for _, value := range request.Header.Values(name) {

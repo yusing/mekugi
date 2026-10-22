@@ -40,8 +40,7 @@ func (c *Client) ForwardModels(ctx context.Context, headers http.Header, rawQuer
 	upstream.Set("Authorization", authorization)
 	upstream.Set(openai.AccountIDHeader, account)
 	upstream.Set("Accept", "application/json")
-	upstream.Set("Originator", codexresponses.ClientIdentity)
-	upstream.Set("User-Agent", codexresponses.ClientIdentity)
+	codexresponses.ForwardIdentityHeaders(upstream, headers)
 	return c.OpenAI.Models(ctx, upstream, rawQuery)
 }
 
@@ -88,8 +87,6 @@ func (c *Client) ForwardExecution(startCtx, responseCtx context.Context, body []
 	upstream.Set(openai.AccountIDHeader, account)
 	upstream.Set("Content-Type", "application/json")
 	upstream.Set("Accept", "application/json, text/event-stream")
-	upstream.Set("Originator", codexresponses.ClientIdentity)
-	upstream.Set("User-Agent", codexresponses.ClientIdentity)
 	codexresponses.ForwardHeaders(upstream, headers)
 	if codexresponses.ValidCacheKey(cacheKey) {
 		upstream[codexresponses.SessionIDHeader] = []string{cacheKey}

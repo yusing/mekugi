@@ -101,6 +101,60 @@ func testResponsesSocket(t *testing.T, ctx context.Context, upstream http.Handle
 	return conn
 }
 
+func TestResponsesWebSocketPreservesClientIdentity(t *testing.T) {
+	for _, mode := range []string{"openai-only", "mixed-provider"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Originator") != "mekugi" || r.Header.Get("User-Agent") != "mekugi/0.163.0 (fixture)" {
+					t.Error("provider handshake lost host identity")
+				}
+				if r.Header.Get("X-Unrelated-Caller-Data") != "" || r.Header.Get("X-Mekugi-Capture-Id") != "" {
+					t.Error("provider handshake leaked unrelated headers")
+				}
+				conn, err := websocket.Accept(w, r, nil)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer conn.CloseNow()
+				if _, err := providerSocketRead(ctx, conn); err != nil {
+					t.Error(err)
+					return
+				}
+				if err := providerSocketWrite(ctx, conn, socketEvent("response.completed", "identity")); err != nil {
+					t.Error(err)
+				}
+				_, _, _ = conn.Read(ctx)
+			}))
+			defer provider.Close()
+			client := newTestProviderClient(provider.URL, provider.Client())
+			if mode == "mixed-provider" {
+				client.Grok = &inferencegateway.ThirdPartyClient{}
+			}
+			endpoint := testWebSocketEndpoint(ctx, time.Second, client, nil, nil)
+			defer endpoint.Close()
+			server := httptest.NewServer(endpoint)
+			defer server.Close()
+			headers := codexAuthHeaders()
+			headers.Set("Originator", "mekugi")
+			headers.Set("User-Agent", "mekugi/0.163.0 (fixture)")
+			headers.Set("X-Unrelated-Caller-Data", "private")
+			headers.Set("X-Mekugi-Capture-Id", "private")
+			conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: headers})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.CloseNow()
+			socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": "identity"})
+			if got := responses.StringField(socketRead(t, ctx, conn), "type"); got != "response.completed" {
+				t.Fatalf("response = %q", got)
+			}
+		})
+	}
+}
+
 func TestResponsesWebSocketSteeringAndAutomaticSuccessor(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()

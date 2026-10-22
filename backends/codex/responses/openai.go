@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	ClientIdentity         = "codex_cli_rs"
 	ThreadIDHeader         = "thread-id"
 	ClientRequestIDHeader  = "x-client-request-id"
 	WindowIDHeader         = "x-codex-window-id"
@@ -21,12 +20,21 @@ const (
 	BetaFeaturesHeader     = "x-codex-beta-features"
 	ResponsesLiteHeader    = "x-openai-internal-codex-responses-lite"
 	SubagentHeader         = "x-openai-subagent"
-	CaptureIDHeader        = "x-mekugi-capture-id"
 	SessionIDHeader        = "Session_id"
 	responsesWebSocketBeta = "responses_websockets=2026-02-06"
 )
 
+// ForwardIdentityHeaders preserves the host's client identity without adding defaults.
+func ForwardIdentityHeaders(destination, source http.Header) {
+	for _, name := range []string{"Originator", "User-Agent"} {
+		for _, value := range source.Values(name) {
+			destination.Add(name, value)
+		}
+	}
+}
+
 func ForwardHeaders(destination, source http.Header) {
+	ForwardIdentityHeaders(destination, source)
 	for _, name := range []string{
 		ThreadIDHeader,
 		ClientRequestIDHeader,
@@ -38,7 +46,6 @@ func ForwardHeaders(destination, source http.Header) {
 		// Codex owns this provider-issued, per-turn sticky-routing token. Relay
 		// it unchanged; never derive it from or retain it with the session key.
 		"x-codex-turn-state",
-		CaptureIDHeader,
 	} {
 		for _, value := range source.Values(name) {
 			destination.Add(name, value)
@@ -111,7 +118,6 @@ func WebSocketRequest(body []byte, headers http.Header, cacheKey string) ([]byte
 	if thread := headers.Get(ThreadIDHeader); thread != "" {
 		handshake.Set(ClientRequestIDHeader, thread)
 	}
-	handshake.Del(CaptureIDHeader)
 	handshake.Del("Content-Type")
 	handshake.Del("Accept")
 	handshake.Set("OpenAI-Beta", responsesWebSocketBeta)
