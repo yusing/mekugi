@@ -2,6 +2,7 @@ package composition
 
 import (
 	"context"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/modules/conversation"
 
@@ -39,6 +40,25 @@ import (
 // Frontends composes feature-owned commands and records for the authenticated
 // frontend host, including retained host facts and Activity snapshots.
 func Frontends(ctx context.Context, liveReports, childReplySummary bool, captureDirectory string) (*Runtime, error) {
+	c, bind := frontendDeclarations(liveReports, childReplySummary, captureDirectory)
+	runtime, err := c.Activate(ctx, new(binding.Registry))
+	if err != nil {
+		return nil, err
+	}
+	bind(runtime)
+	return runtime, nil
+}
+
+// NativeRenderer borrows only statically selected painters. It constructs no
+// history, capture, host, provider or guard owner.
+func NativeRenderer(childReplySummary bool) (terminalsession.Views, error) {
+	c, _ := frontendDeclarations(false, childReplySummary, "")
+	views, err := c.RendererViews()
+	views.ChildReplySummary = childReplySummary
+	return views, err
+}
+
+func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory string) (*Composition, func(*Runtime)) {
 	var c Composition
 	conversation := c.Add(conversation.Module, func() conversation.Deps { return conversation.Deps{} })
 	activity := c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
@@ -68,26 +88,22 @@ func Frontends(ctx context.Context, liveReports, childReplySummary bool, capture
 	diagnosis := c.Add(diagnostics.Module, func() diagnostics.Deps {
 		return diagnostics.Deps{History: history.Value(), Inspection: inspection.Value()}
 	})
-	binder := new(binding.Registry)
-	runtime, err := c.Activate(ctx, binder)
-	if err != nil {
-		return nil, err
+	return &c, func(runtime *Runtime) {
+		runtime.Terminal.ChildReplySummary = childReplySummary
+		runtime.Replay = replay.Value()
+		runtime.Inspection = inspection.Value()
+		runtime.TransportDiagnostics = transport.Value()
+		runtime.Diagnostics = diagnosis.Value()
+		runtime.AgentMetrics = metrics.Value()
+		runtime.Usage = usage.Value()
+		runtime.Changes = changes.Value()
+		runtime.History = history.Value()
+		runtime.Preferences = prefs.Value()
+		runtime.Notifications = notifications.Value()
+		runtime.Activity = activity.Value()
+		runtime.Conversation = conversation.Value()
+		runtime.LivePreview = live.Value()
+		runtime.Recovery = recovery.Value()
+		runtime.Segments = segments.Value()
 	}
-	runtime.Terminal.ChildReplySummary = childReplySummary
-	runtime.Replay = replay.Value()
-	runtime.Inspection = inspection.Value()
-	runtime.TransportDiagnostics = transport.Value()
-	runtime.Diagnostics = diagnosis.Value()
-	runtime.AgentMetrics = metrics.Value()
-	runtime.Usage = usage.Value()
-	runtime.Changes = changes.Value()
-	runtime.History = history.Value()
-	runtime.Preferences = prefs.Value()
-	runtime.Notifications = notifications.Value()
-	runtime.Activity = activity.Value()
-	runtime.Conversation = conversation.Value()
-	runtime.LivePreview = live.Value()
-	runtime.Recovery = recovery.Value()
-	runtime.Segments = segments.Value()
-	return runtime, nil
 }

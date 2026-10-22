@@ -15,6 +15,8 @@ import (
 	"syscall"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
@@ -41,13 +43,14 @@ func runWrap(routerArgs, args []string) int {
 	} else {
 		routerArgs = append(slices.Clone(routerArgs), "third-party")
 	}
-	if interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+	native := interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+	if native {
 		if err := exposeHerdrCodex(); err != nil {
 			fmt.Fprintln(os.Stderr, "mekugi: Herdr agent hint:", err)
 		}
 	}
 	signals := []os.Signal{syscall.SIGTERM}
-	if len(args) > 0 && args[0] == "headless" {
+	if native || len(args) > 0 && args[0] == "headless" {
 		signals = append(signals, os.Interrupt)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), signals...)
@@ -59,7 +62,39 @@ func runWrap(routerArgs, args []string) int {
 	return code
 }
 
-func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr error) {
+func wrapCodex(ctx context.Context, routerArgs, args []string) (int, error) {
+	if interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		if err := validateCodexArgs(args); err != nil {
+			return 2, err
+		}
+		err := runNativeClient(ctx, "", routerArgs, args, os.Stdin, os.Stdout)
+		if outcome, ok := errors.AsType[*sessionapi.NativeExit](err); ok {
+			return outcome.Code, err
+		}
+		if err != nil {
+			return 1, err
+		}
+		return 0, nil
+	}
+	return runOwnedInvocation(ctx, routerArgs, args, nil, "")
+}
+
+// runServerSession borrows an explicitly supplied API while owning execution until
+// ctx ends. Its host, stores and request ledger are the ordinary invocation owners.
+func runServerSession(ctx context.Context, routerArgs, args []string, api *sessionapi.Server, workspace string) (int, error) {
+	if api == nil {
+		return 2, errors.New("server session requires a control API")
+	}
+	if !filepath.IsAbs(workspace) {
+		return 2, errors.New("server sessions require an absolute workspace")
+	}
+	if !interactiveCodexArgs(args) {
+		return 2, errors.New("server sessions require interactive session arguments")
+	}
+	return runOwnedInvocation(ctx, routerArgs, args, api, workspace)
+}
+
+func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *sessionapi.Server, workspace string) (code int, runErr error) {
 	suppliedArgs := slices.Clone(args)
 	args = expandReasoningShortcuts(args)
 	headless := len(args) > 0 && args[0] == "headless"
@@ -78,7 +113,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		return 1, err
 	}
 	options = options.ResolveFeatures(settings.Features)
-	appUI := !headless && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+	appUI := api != nil
 	var resumeThread string
 	var resumeArgv []string
 	approvals := false
@@ -98,6 +133,11 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		approvals = appUI && !yolo
 		if appUI {
 			resumeArgv = appServerResumeArgv(os.Args[0], routerArgs, suppliedArgs)
+			if resumeThread != "" && resumeThread != "--last" && resumeThread != sessioncontrol.ResumePicker {
+				if err := api.ReserveThread(resumeThread); err != nil {
+					return 1, err
+				}
+			}
 		}
 	}
 	executable, err := exec.LookPath("codex")
@@ -107,12 +147,27 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	// Before handoff Ctrl-C cancels startup. Once started, Codex receives the
-	// foreground group's interrupt itself; never forward it or stop its
+	// foreground group's interrupt itself; never forward it or stop its services.
 	interrupts := make(chan os.Signal, 1)
-	signal.Notify(interrupts, os.Interrupt)
-	defer signal.Stop(interrupts)
-	stopStartupInterrupts := watchStartupInterrupts(ctx, cancel, interrupts)
-	defer stopStartupInterrupts()
+	stopStartupInterrupts := func() {}
+	if api == nil {
+		signal.Notify(interrupts, os.Interrupt)
+		defer signal.Stop(interrupts)
+		stopStartupInterrupts = watchStartupInterrupts(ctx, cancel, interrupts)
+		defer stopStartupInterrupts()
+	}
+	stdin, stdout := os.Stdin, os.Stdout
+	environment := os.Environ()
+	if api != nil {
+		// Shared startup APIs take files; this is an inert sink, never a hosted TTY.
+		streams, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+		if err != nil {
+			return 1, err
+		}
+		defer streams.Close()
+		stdin, stdout = streams, streams
+		environment = serverEnvironment(environment)
+	}
 	var captureDirectory string
 	if options.FrontendsEnabled() {
 		captureDirectory, err = history.ReplayDirectory()
@@ -148,7 +203,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		directory := filepath.Dir(debugPaths[0])
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", commandargs.Quote(directory))
 	}()
-	return runInvocation(frontends.Terminal, frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, settings, issues, executable, args, os.Environ(), os.Stdin, os.Stdout, os.Stderr, appUI, headless, resumeThread, resumeArgv, approvals, stopStartupInterrupts, interrupts, func(paths []string) { debugPaths = paths })
+	return runInvocation(frontends.Terminal, frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, settings, issues, executable, args, environment, stdin, stdout, os.Stderr, headless, resumeThread, resumeArgv, approvals, stopStartupInterrupts, interrupts, func(paths []string) { debugPaths = paths }, api, workspace)
 }
 
 // Reasoning shortcuts are session-local Codex config overrides. Preserve option

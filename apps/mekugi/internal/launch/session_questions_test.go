@@ -39,7 +39,7 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 		t.Fatal("submission replaced another prompt's editor")
 	}
 	wire.Reset()
-	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
+	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != prompt.ErrQuestionUnavailable.Error() {
 		t.Fatal("answered call accepted another answer")
 	}
 	if err := submitQuestions(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, submit); err != nil || wire.Len() != 0 {

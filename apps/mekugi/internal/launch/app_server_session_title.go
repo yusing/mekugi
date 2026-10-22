@@ -19,7 +19,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
-func titleCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, generator *sessionNaming, dirty *bool, text string) bool {
+func titleCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, generator *sessionNaming, text string) bool {
 	if fields := strings.Fields(text); len(fields) == 0 || fields[0] != "/title" {
 		return false
 	}
@@ -34,30 +34,29 @@ func titleCommand(attached *attachedPresentation, terminal *terminalsession.Atta
 	}
 	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay, (*owned), 0, len((*editor).Text))
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
-	renameSessionTitle(control, generator, &attached.feedback, terminal, clock, dirty, name)
+	renameSessionTitle(control, generator, &attached.feedback, terminal, clock, name)
 	return true
 }
 
-func renameSessionTitle(control *sessioncontrol.Client[appServerRequest], generator *sessionNaming, feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, dirty *bool, name string) {
-	(*dirty) = true
+func renameSessionTitle(control *sessioncontrol.Client[appServerRequest], generator *sessionNaming, feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, name string) {
 	control.Names.Manual(control.Thread, name)
 	if control.Thread == "" {
 		return
 	}
 	// Suppress generation before persistence, even if transport rejects the save.
 	generator.nameChanged(control.Thread, name)
-	requestSessionTitle(control, feedback, terminal, clock, dirty, control.Names.Next(control.Thread))
+	requestSessionTitle(control, feedback, terminal, clock, control.Names.Next(control.Thread))
 }
 
 // Automatic candidates become visible only after host confirmation.
-func persistSessionTitle(control *sessioncontrol.Client[appServerRequest], generator *sessionNaming, feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, dirty *bool, update sessionTitleUpdate) {
+func persistSessionTitle(control *sessioncontrol.Client[appServerRequest], generator *sessionNaming, feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, update sessionTitleUpdate) {
 	if !control.Names.AllowsGenerated(update.thread) || !generator.acceptCandidate(update.thread) {
 		return
 	}
-	requestSessionTitle(control, feedback, terminal, clock, dirty, control.Names.Generated(update.thread, update.name))
+	requestSessionTitle(control, feedback, terminal, clock, control.Names.Generated(update.thread, update.name))
 }
 
-func requestSessionTitle(control *sessioncontrol.Client[appServerRequest], feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, dirty *bool, save *sessioncontrol.NameSave) {
+func requestSessionTitle(control *sessioncontrol.Client[appServerRequest], feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, save *sessioncontrol.NameSave) {
 	if save == nil {
 		return
 	}
@@ -65,22 +64,20 @@ func requestSessionTitle(control *sessioncontrol.Client[appServerRequest], feedb
 	if err != nil {
 		control.Names.Complete(*save)
 		setNotice(feedback, terminal, presentationTime(clock), "Session title could not be saved", false)
-		(*dirty) = true
 	}
 }
 
-func sessionTitleMessage(control *sessioncontrol.Client[appServerRequest], generator *sessionNaming, feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, dirty *bool, title *string, m appserver.Message, update *sessioncontrol.NameSave) bool {
+func sessionTitleMessage(control *sessioncontrol.Client[appServerRequest], generator *sessionNaming, feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, title *string, m appserver.Message, update *sessioncontrol.NameSave) bool {
 	if update != nil {
 		latest := control.Names.Complete(*update)
 		if m.Error != nil {
 			if update.Thread == control.Thread && latest {
 				setNotice(feedback, terminal, presentationTime(clock), "Session title could not be saved: "+m.Error.Message, false)
-				(*dirty) = true
 			}
 		} else {
-			(*dirty) = confirmSessionTitle(generator, control.Thread, title, update.Thread, update.Name) || (*dirty)
+			confirmSessionTitle(generator, control.Thread, title, update.Thread, update.Name)
 		}
-		requestSessionTitle(control, feedback, terminal, clock, dirty, control.Names.Next(update.Thread))
+		requestSessionTitle(control, feedback, terminal, clock, control.Names.Next(update.Thread))
 		return true
 	}
 	if m.Method != "thread/name/updated" {
@@ -91,7 +88,7 @@ func sessionTitleMessage(control *sessioncontrol.Client[appServerRequest], gener
 		ThreadName string `json:"threadName"`
 	}
 	if json.Unmarshal(m.Params, &params) == nil {
-		(*dirty) = confirmSessionTitle(generator, control.Thread, title, params.ThreadID, params.ThreadName) || (*dirty)
+		confirmSessionTitle(generator, control.Thread, title, params.ThreadID, params.ThreadName)
 	}
 	return true
 }

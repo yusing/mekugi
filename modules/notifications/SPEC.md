@@ -67,6 +67,9 @@ The application supplies only eligible live events after host identity, completi
 question-priority and duplicate/history checks. Configuration and output failures
 remain auxiliary and never change host work. Lifecycle titles are independent of
 desktop enablement.
+While a native renderer is paused, eligible desktop signals coalesce to the latest
+wake-up notification. Acknowledged signals do not repeat on later snapshots; full
+notice and history content retains its independent delivery lifetime.
 
 ## Lifecycle
 

@@ -20,11 +20,16 @@ func interruptSession(attached *attachedPresentation, terminal *terminalsession.
 		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay)
 	}()
 	unsent := attached.conversation.Unsent
-	decision, err := attached.presentation.Interrupt(intent, &control.Live, len(unsent) > 0 && unsent[0].Text != "/compact")
+	active, err := attached.presentation.ResolveInterrupt(intent, &control.Live, &attached.session)
 	if err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
 	}
+	if !active {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Original work already ended.", false)
+		return nil
+	}
+	decision := control.RequestInterrupt(intent.Mode, len(unsent) > 0 && unsent[0].Text != "/compact")
 	err = applyInterruption(attached, terminal, control, picker, editor, questions, approvals, clock, reviewOwner, receipts, decision)
 	if err != nil && intent.Mode == sessioncontrol.ExpediteSteers {
 		control.SendSteersAfterInterrupt = false

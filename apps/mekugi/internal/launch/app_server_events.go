@@ -109,7 +109,7 @@ func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Atta
 	key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
 	event := p.Observation(method, presentationTime(clock))
 
-	facts := sessionpresentation.ObservationInput{Event: event, Text: binding.RetainedTranscript(event), Main: control.Thread, Selected: control.Turn, Workspace: attached.cwd, Tracked: tracker.Tracking(key), Wait: readWaitEvidence(attached, terminal, retainedSession, clock, event.Item, key)}
+	facts := sessionpresentation.ObservationInput{Event: event, Text: binding.RetainedTranscript(event), Main: control.Thread, Selected: control.Turn, Start: control.InterruptTarget().Start, Workspace: attached.cwd, Tracked: tracker.Tracking(key), Wait: readWaitEvidence(attached, terminal, retainedSession, clock, event.Item, key)}
 	if p.Item.Type == "commandExecution" && trace != nil {
 		if ms, known := trace.CommandTimeout(p.ThreadID, key[2]); known {
 			facts.CommandTimeout = strconv.FormatUint(ms/1000, 10)
@@ -148,6 +148,9 @@ func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Atta
 	}
 	if result.Publish {
 		streams.Deliver(result.Deliveries, terminal.Transcript, terminal.Agents)
+		if attached.deliverActivity != nil {
+			attached.deliverActivity(attached.executionPresentation, result.Deliveries)
+		}
 		applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, nil, nil)
 	}
 	return result.Handled, nil
@@ -156,17 +159,17 @@ func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Atta
 // flushStreamOutput advances terminal frames and admits changed segment facts.
 // Reveal-only updates never replace neutral command records. Late output cannot
 // reopen a completed invocation.
-func flushStreamOutput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], streams *terminalsession.Streams, tracker *commandsegments.Observer, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, clock func() time.Time, parent context.Context, retained changes.Scope, segments *reports.Service, writes *chan commandSegmentWrite, pending *int, issues *requestexecution.Failures, dirty *bool) {
-	(*dirty) = streams.AdvanceReasoning(presentationTime(clock), terminal.Transcript, terminal.Agents) || (*dirty)
+func flushStreamOutput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], streams *terminalsession.Streams, tracker *commandsegments.Observer, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, clock func() time.Time, parent context.Context, retained changes.Scope, segments *reports.Service, writes *chan commandSegmentWrite, pending *int, issues *requestexecution.Failures) {
+	streams.AdvanceReasoning(presentationTime(clock), terminal.Transcript, terminal.Agents)
 	s := &attached.session
 	var entries []sessionpresentation.ActivityEntry
 	handled := make(map[[3]string]bool)
 	for key, run := range attached.session.Commands() {
-		tracked, trackedCommand := flushTrackedCommand(attached, terminal, streams, tracker, clock, parent, retained, segments, writes, pending, issues, dirty, key, run)
+		tracked, trackedCommand := flushTrackedCommand(attached, terminal, streams, tracker, clock, parent, retained, segments, writes, pending, issues, key, run)
 		entries = append(entries, tracked...)
 		handled[key] = trackedCommand
 	}
-	(*dirty) = streams.AdvanceCommands(presentationTime(clock), handled, terminal.Transcript, terminal.Agents) || (*dirty)
+	streams.AdvanceCommands(presentationTime(clock), handled, terminal.Transcript, terminal.Agents)
 
 	if len(entries) == 0 {
 		return
@@ -176,7 +179,6 @@ func flushStreamOutput(attached *attachedPresentation, terminal *terminalsession
 		entries[i].Seq = s.Activity().NextSequence()
 	}
 	applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, entries, nil)
-	(*dirty) = true
 }
 
 // observeCost reads all consumption metrics from the same canonical owner.

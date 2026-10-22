@@ -12,9 +12,14 @@ func TestSideCloseTargetsPublishedExchange(t *testing.T) {
 	c.conversation.Side = new(conversationmodel.SideAnswer)
 	c.conversation.Side.Begin("same question", conversationmodel.Input{})
 	v := c.publish(sessionpresentation.Caption{})
-	action := sessionpresentation.CloseSideIntent{Version: v.Version, Exchange: v.Side.ID}
+	action := sessionpresentation.CloseSideIntent{Version: v.Version, Key: v.Side.Key, Exchange: v.Side.ID}
 	if err := c.model().AdmitCloseSide(action); err != nil {
 		t.Fatal(err)
+	}
+	c.model().Status.Set("Main progressed", false)
+	c.publish(sessionpresentation.Caption{})
+	if err := c.model().AdmitCloseSide(action); err != nil {
+		t.Fatalf("progress prevented closing Side: %v", err)
 	}
 	c.conversation.Side.Begin("same question", conversationmodel.Input{})
 	next := c.publish(sessionpresentation.Caption{})
@@ -27,5 +32,14 @@ func TestSideCloseTargetsPublishedExchange(t *testing.T) {
 	action.Version = next.Version
 	if !errors.Is(c.model().AdmitCloseSide(action), sessionpresentation.ErrStaleIntent) {
 		t.Fatal("wrong exchange admitted")
+	}
+	c.conversation.Side = new(conversationmodel.SideAnswer)
+	c.conversation.Side.Begin("replacement", conversationmodel.Input{})
+	next = c.publish(sessionpresentation.Caption{})
+	if next.Side.ID != action.Exchange || next.Side.Key == action.Key {
+		t.Fatal("fixture did not recreate Side with the same exchange number")
+	}
+	if !errors.Is(c.model().AdmitCloseSide(action), sessionpresentation.ErrStaleIntent) {
+		t.Fatal("old close dismissed a replacement Side owner")
 	}
 }

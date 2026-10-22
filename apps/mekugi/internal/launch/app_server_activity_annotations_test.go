@@ -140,7 +140,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 			// A repeated request carries the same output again; it is still one row.
 			for range 2 {
 				observeActivityRequest(t, proxy, thread, map[bool]string{false: "/root", true: "/root/worker"}[thread != "main"], request)
-				applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+				applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 			}
 			if len(view.Entries) != 1 || view.Entries[0].Source.Kind != "error" ||
 				view.Entries[0].Source.Text != "exec script failed: SyntaxError: Unexpected token '<<'" {
@@ -199,7 +199,7 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	request := &codexresponses.Request{Fields: map[string]json.RawMessage{"input": json.RawMessage("[" + strings.Join(input, ",") + "]")}}
 	for range 2 { // A repeated request notes each command once.
 		observeActivityRequest(t, proxy, "main", "/root", request)
-		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	}
 	got := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
 	under := "Ran git log\n      ┆ commit abc\n      " + "output not returned to the model" + "\n"

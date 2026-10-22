@@ -83,7 +83,12 @@ to retain failures and does not retain tool replay state.
 
 Cross-process leases cover active turns, host handoffs, workers and yielded calls.
 Session admission resolves the durable namespace before acquiring the thread lease,
-then enrolls the active owner under publication serialization. Failed enrollment
+then enrolls the active owner under publication serialization. Native interactive
+admission establishes its accepted durable identity before the first model turn;
+other callers publish identity after retaining inherited records. Resume membership
+uses this retained identity or an existing ownership catalog; payload reclamation
+does not erase membership. Missing membership excludes a saved session, and invalid
+retained evidence remains an error. Failed enrollment
 releases that lease. Native metadata and request observation share this admission.
 The selected session retains its store, thread, resolved namespace and lease as one
 handle. Replacement closes that handle; offline playback acquires none.

@@ -54,11 +54,15 @@ func (h *Live) Submit(id, turn string) {
 	h.submission = Submission{ID: id, Turn: turn}
 	if turn == "" {
 		h.pendingStart, h.AwaitingTurn = id, true
+		h.startOrigin = id
 	}
 }
 
 func (h *Live) withdraw(s Submission, action InputAction) InputResult {
 	if s.Turn == "" {
+		if h.startOrigin == s.ID {
+			h.startOrigin = ""
+		}
 		h.AwaitingTurn, h.pendingStart = false, ""
 		h.Interruption.BeforeStart = false
 	}

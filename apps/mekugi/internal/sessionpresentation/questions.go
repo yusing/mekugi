@@ -14,7 +14,7 @@ type QuestionSubmitIntent struct {
 }
 
 func (m *Model) AnswerQuestion(intent AnswerIntent, questions *prompt.Questions) (*prompt.Question, error) {
-	if intent.Version != m.view.Version {
+	if m.admitOwner(intent.Version) != nil {
 		return nil, ErrStaleIntent
 	}
 	if m.replay {
@@ -24,7 +24,7 @@ func (m *Model) AnswerQuestion(intent AnswerIntent, questions *prompt.Questions)
 }
 
 func (m *Model) SubmitQuestions(intent QuestionSubmitIntent, questions *prompt.Questions) (*prompt.Call, error) {
-	if intent.Version != m.view.Version {
+	if m.admitOwner(intent.Version) != nil {
 		return nil, ErrStaleIntent
 	}
 	if m.replay {

@@ -481,7 +481,7 @@ func (u *appServerUI) statusPanelKey(key string) bool {
 	if clear && terminalTest(u) != nil {
 		terminalTest(u).Selection = nil
 	}
-	applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, &u.dirty, u.sessionCapture, action)
+	applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, u.sessionCapture, action)
 	u.dirty = true
 	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return true

@@ -6,10 +6,10 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -20,6 +20,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
@@ -30,17 +31,14 @@ import (
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
-	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
@@ -50,11 +48,13 @@ import (
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 	"github.com/yusing/mekugi/providers/openai"
-	"golang.org/x/term"
 )
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startNativeSession(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, observationInputs *sessioncontrol.Observations, usage *accounting.Service, audience *sessioncontrol.Audience, reviewOwner *sessionreview.Review, windows *executionobservation.Windows, trace *nativetrace.Reader, retained changes.Scope, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), captureNotice func(string, string, string, string), guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, tracker *commandsegments.Observer, skillsManager bool, issues *requestexecution.Failures, resumeThread string, faint bool, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool, predictionProvider *openai.Client) (func() error, error) {
+func startNativeSession(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdout *os.File, observationInputs *sessioncontrol.Observations, usage *accounting.Service, audience *sessioncontrol.Audience, reviewOwner *sessionreview.Review, windows *executionobservation.Windows, trace *nativetrace.Reader, retained changes.Scope, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), captureNotice func(string, string, string, string), guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, tracker *commandsegments.Observer, skillsManager bool, issues *requestexecution.Failures, resumeThread string, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool, predictionProvider *openai.Client, api *sessionapi.Server, childSummary bool) (func() error, error) {
+	if api == nil {
+		return nil, errors.New("server session requires a control API")
+	}
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
@@ -88,9 +88,12 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	if err != nil {
 		return nil, err
 	}
+	// Temporary migration scaffolding: semantic adapters still borrow native
+	// presentation scratch state. Server execution never attaches or paints it.
 	shell, preparePane := terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
 	attached := newAttachedPresentation(views, conversation, observations)
 	processCwd, _ := filepath.Abs(cmd.Dir)
+	attached.cwd = processCwd
 	inputHistory := newInputHistory(cmd.Environ(), processCwd)
 	attached.inputHistory = inputHistory
 	var (
@@ -129,9 +132,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		restoring           *appServerActivityRestore
 		childKey            scope.Key[*appServerChildHistory]
 	)
-	dirty := true
+
+	ownedImages = make(map[string]bool)
 	c := control.Host
 	control.Startup.Thread = resumeThread
+	control.Startup.History = retained.Store
 	attachPresentation(&attached, shell, &picker, &editor, &questions, &approvalDock, control.Thread, &reviewOwner, &commits, ctx, retained, changeSource, activity != nil)
 	attached.presentation.Status.Set("Connecting…", false)
 	guardHook.hash = guardHash
@@ -146,7 +151,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	}
 	resumeArgv = slices.Clone(resumeArgv)
 	control.Startup.Config = appServerResumeConfig(cmd.Args, resumeArgv)
-	notifications = &nativeNotifications{out: stdout, focused: true}
+	notifications = new(nativeNotifications)
 	control.Startup.Workspace = resumeCwd
 	if prefs != nil {
 		panes = &nativePreferences{service: prefs}
@@ -158,23 +163,392 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		return nil, err
 	}
 
-	shell.Faint = faint
 	settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
 	predictions := composerPredictions{provider: predictionProvider, results: make(chan predictionConfiguration, 1)}
+	native := newNativeViews(ctx, api.Native(), views, terminalViews, activity, control.Requests)
+	native.diagnostics = &c.Diagnostics
 	syncPredictions := func() error {
 		predictions.supported = sessioncontrol.PredictionForkSupported(version)
-		before := attached.conversation.Prediction
-		err := predictions.sync(ctx, &attached, shell, &control, restoring != nil, notifications.focused)
-		dirty = dirty || before != attached.conversation.Prediction
-		return err
+		focused, disabled, available := native.predictionEligibility(&attached)
+		return predictions.sync(ctx, &attached, &control, restoring != nil || !available, focused, disabled)
 	}
+	adoptStartupChooser := func() {
+		if control.Thread != "" || control.Startup.Thread != sessioncontrol.ResumePicker || resumePicker == nil {
+			return
+		}
+		for id, view := range native.views {
+			if !view.startup || view.ctx.Err() != nil {
+				continue
+			}
+			attached.presentation.MoveResume(view.attached.presentation)
+			view.resume, resumePicker = resumePicker, nil
+			view.resume.view = id
+			if response, ok := control.Requests.Lookup(view.resume.request); ok {
+				response.Owner.view = id
+				control.Requests.Attribute(view.resume.request, viewRequestScope(id), response.Owner)
+			}
+			view.projected = time.Time{}
+			return
+		}
+	}
+	var startupView string
+	var latestResponse *appserver.Message
 	var dispatch func(appserver.Message) error
 	dispatch = func(m appserver.Message) error {
-		err := dispatchHostMessage(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, windows, audience, reviewSource, preparePane, approvals, generator, &dirty, activity, &streams, tracker, trace, usage, &exitUsage, segments, &restoredSegments, views, &files, &statusConfig, issues, &quit, dispatch, &resumePending, &commits, terminalViews, conversation, observations, service, panes, &models, &modelsLoading, &reasoningKey, &archived, m)
+		if m.Method == "" {
+			if response, ok := control.Requests.Lookup(string(m.ID)); ok && response.Method == "thread/list" && control.Startup.Thread == "--last" {
+				// The host can finish lookup before the initial native attach is
+				// admitted. Deliver through that actual view's retained effects.
+				if startupView == "" {
+					latestResponse = &m
+					return nil
+				}
+				control.Requests.Take(string(m.ID))
+				view := native.views[startupView]
+				if view == nil || view.ctx.Err() != nil {
+					quit = true
+					return nil
+				}
+				err := resumeLastResponse(&view.attached, &control, &view.picker, clock, &view.resume, approvals, m)
+				attached.presentation.BorrowExecutionStatus(view.attached.presentation)
+				view.projected = time.Time{}
+				return err
+			}
+			if response, ok := control.Requests.Lookup(string(m.ID)); ok && response.Owner.history && response.Owner.view != "" {
+				view := native.views[response.Owner.view]
+				if view == nil || view.ctx.Err() != nil {
+					native.retire(response.Owner.view)
+					control.Requests.Forget(string(m.ID))
+					return nil
+				}
+			}
+			if response, ok := control.Requests.Lookup(string(m.ID)); ok && response.Owner.view != "" && !response.Owner.history {
+				control.Requests.Take(string(m.ID))
+				view := native.views[response.Owner.view]
+				if view == nil || view.ctx.Err() != nil || view.attached.executionPresentation != attached.executionPresentation {
+					return nil
+				}
+				requestEditor := new(composer.Editor)
+				closed := false
+				replacing := control.Replacement.Pending()
+				_, err := dispatchViewResponse(&view.attached, view.shell, &control, &view.picker, &requestEditor, &questions, &approvalDock, clock, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, &view.panel, &view.resume, approvals, &closed, view.ctx, environment, response, m)
+				if !replacing && control.Replacement.Pending() {
+					native.replacing = response.Owner.view
+				}
+				view.projected = time.Time{}
+				if closed {
+					native.retire(response.Owner.view)
+				}
+				return err
+			}
+		}
+		if m.Method == "skills/changed" {
+			native.invalidateSkills(attached.executionPresentation)
+		}
+		err := dispatchHostMessage(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, windows, audience, reviewSource, preparePane, approvals, generator, activity, &streams, tracker, trace, usage, &exitUsage, segments, &restoredSegments, views, &files, &statusConfig, issues, &quit, dispatch, &resumePending, &commits, terminalViews, conversation, observations, service, panes, &models, &modelsLoading, &reasoningKey, &archived, m)
+		adoptStartupChooser()
 		predictions.observe(m, control.Thread)
 		return err
 	}
+	live := &apiLive{server: api, started: time.Now()}
+	attached.restoreInput = native.restore
+	attached.restoreShell = native.restoreShell
+	attached.restoreSide = native.restoreSide
+	attached.deliverActivity = native.deliverActivity
+	notifications.relay = func(event, message string) { native.notify(attached.executionPresentation, event, message) }
+	attached.activeThread = api.ActiveThread
+	attached.reserveThread = api.ReserveThread
+	attached.nativeImages = native.imageClaims
+	attached.rewindArchive = native.rewindArchive
+	nativeRequests, nativeClosed := api.Native().Requests(), native.closed
+	intents := api.Intents()
+	live.publish(&attached, shell, &control, restoring != nil, childSummary, presentationTime(clock))
+	native.retiring = func(view *nativeSessionView) error {
+		defer pruneDraftImages(ownedImages, editor, attached.conversation, &questions, &approvalDock, shell.Prompts, side, attached.nativeImages)
+		if view.startup && control.Thread == "" && (control.Startup.Thread == sessioncontrol.ResumePicker || control.Startup.Thread == "--last") {
+			quit = true
+		}
+		h := attached.loadingHistory
+		if h == nil || h.view != view.attached.view || view.attached.executionPresentation != attached.executionPresentation {
+			return nil
+		}
+		requestEditor := new(composer.Editor)
+		return cancelOlderActivity(&view.attached, view.shell, &control, &view.picker, &requestEditor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &view.panel, &view.resume, ctx, &reviewOwner, &receipts, notifications, retained, &retainedSession, activity, segments, &restoredSegments, dispatch, &resumePending, sessionpresentation.HistoryIntent{Version: view.attached.presentation.View().Version, Thread: h.info.ID})
+	}
+	applyNativeOperation := func(view *nativeSessionView, request sessionapi.NativeRequest) (refusal string, err error) {
+		operation := request.Operation
+		inputThread := view.attached.presentation.View().Input.ID
+		if operation.Menu != nil && operation.Menu.Thread != "" {
+			inputThread = operation.Menu.Thread
+		}
+		recovery := operation.Recovery
+		if recovery != nil {
+			effect := view.effects.recovery(recovery.Effect)
+			if effect == nil {
+				return "That retained submission is no longer available.", nil
+			}
+			if recovery.Action == sessionapi.RetryRecovery {
+				current := view.attached.presentation.View()
+				request.Version = current.Version
+				draft := effect.RecoveryDraft().Clone()
+				if effect.ShellRestore != nil && !strings.HasPrefix(strings.TrimSpace(draft.Text), "!") {
+					draft.Text = "!" + draft.Text
+				}
+				request.Prepared = sessionapi.NewPreparedInput(draft, nil)
+				request.Operation = sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{Thread: effect.Thread, Version: current.Version, Operation: sessionpresentation.SubmitComposer}}}
+				operation = request.Operation
+			} else if recovery.Action != sessionapi.DiscardRecovery {
+				return "Choose retry or discard for retained input.", nil
+			}
+			defer func() {
+				if refusal == "" && err == nil {
+					view.effects.discardRecovery(recovery.Effect)
+					pruneDraftImages(ownedImages, editor, attached.conversation, &questions, &approvalDock, shell.Prompts, side, attached.nativeImages)
+				}
+			}()
+			if recovery.Action == sessionapi.DiscardRecovery {
+				return "", nil
+			}
+		}
+		// Reserve before admission can consume input or dispatch a host effect.
+		// Interrupts and receipts use already-reserved restoration capacity.
+		capacity := 0
+		switch {
+		case operation.Composer != nil && operation.Composer.Intent.Operation == sessionpresentation.RestoreWaiting:
+			// Its originating inputs already own restoration capacity.
+		case operation.Command != nil || operation.Composer != nil:
+			capacity = 3 // input provenance, presentation, command deletion
+		case operation.Menu != nil:
+			capacity = 2 // menu consequence and editor replacement
+		case operation.Completion != nil || operation.Reference != nil || operation.Resume != nil:
+			capacity = 1
+		}
+		if capacity > 0 {
+			native.reconcileEffects(view)
+			reservation := view.effects.reserve(capacity)
+			if reservation == nil {
+				return "Waiting for earlier editor consequences to be received; input is preserved.", nil
+			}
+			view.effects.current = reservation
+			defer func() {
+				view.effects.current = nil
+				reservation.release()
+			}()
+		}
+		replacing := control.Replacement.Pending()
+		settings := preferences.Applied{Model: model, Effort: effort, Tier: tier}
+		requestEditor := new(composer.Editor)
+		if operation.Editor != nil {
+			requestEditor.Replace(operation.Editor.Draft)
+		}
+		closed := false
+		switch {
+		case operation.SaveDraft != nil:
+			attached.inputHistory.remember(*operation.SaveDraft)
+		case operation.Completion != nil:
+			view.complete(*operation.Completion, clock, control.Requests, environment)
+		case operation.Preferences != nil:
+			if err := panes.stageNative(operation.Preferences.Presentation, presentationTime(clock), operation.Preferences.Flush); err != nil {
+				return err.Error(), nil
+			}
+			layout, _ := terminalsession.ReadPreferences(operation.Preferences.Presentation)
+			view.shell.Main.InterruptLocked, view.shell.Main.PredictionsDisabled = layout.InterruptLocked, layout.PredictionsDisabled
+		case operation.Command != nil || operation.Composer != nil:
+			intent := sessionpresentation.ComposerIntent{Version: view.attached.presentation.View().Version, Thread: view.attached.presentation.View().Input.ID, Operation: sessionpresentation.SubmitComposer}
+			if operation.Composer != nil {
+				intent = operation.Composer.Intent
+				requestEditor.Replace(operation.Composer.Draft)
+				if request.Prepared != nil {
+					requestEditor.Replace(request.Prepared.Draft)
+					if intent.Version != request.Version {
+						return sessionpresentation.ErrStaleIntent.Error(), nil
+					}
+				}
+			} else {
+				requestEditor.Text = *operation.Command
+				if operation.Editor != nil {
+					intent.Target = operation.Editor.Target
+				}
+			}
+			before := requestEditor.Draft
+			if intent.Thread != "" {
+				inputThread = intent.Thread
+			}
+			if intent.Operation.ClientLocal() {
+				return "This operation belongs to the client editor.", nil
+			}
+			commandText := strings.TrimSpace(requestEditor.Text)
+			boundInput := (intent.Operation == sessionpresentation.SubmitComposer || intent.Operation == sessionpresentation.QueueComposer) && intent.Thread != "" && !strings.HasPrefix(commandText, "/") && !strings.HasPrefix(commandText, "!")
+			boundMainInput := boundInput && intent.Thread == control.Thread
+			if boundInput {
+				if err := view.attached.presentation.AdmitBoundInput(intent); err != nil {
+					return err.Error(), nil
+				}
+			} else {
+				if err := view.attached.presentation.AdmitClientComposer(intent); err != nil {
+					return err.Error(), nil
+				}
+			}
+			if intent.Operation == sessionpresentation.RestoreWaiting {
+				active, err := view.attached.presentation.ResolveInterrupt(sessionpresentation.InterruptIntent{Version: intent.Version, Target: *intent.Work, Mode: sessioncontrol.RestoreWaiting}, &control.Live, &attached.session)
+				if err != nil {
+					return err.Error(), nil
+				}
+				if !active {
+					setNotice(&view.attached.feedback, view.shell, presentationTime(clock), "Original work already ended.", false)
+					return "", nil
+				}
+			}
+			if boundInput && !boundMainInput {
+				if side == nil || intent.Thread != cmp.Or(side.Thread, "side:"+side.Key) {
+					return sessionpresentation.ErrStaleIntent.Error(), nil
+				}
+				err = submitBTW(&view.attached, view.shell, &control, &view.picker, &requestEditor, &questions, &approvalDock, clock, &childKey, settings, serviceTiers, title, version, restoring != nil, &side, view.panel != nil || view.resume != nil, &ownedImages, environment, &guardHook, observationInputs, &composerPreparation{ctx: request.Context, input: request.Prepared, side: true})
+				if requestEditor.Text != "" {
+					return view.attached.feedback.Text, err
+				}
+				return "", err
+			}
+			if intent.Operation == sessionpresentation.SubmitComposer || intent.Operation == sessionpresentation.QueueComposer {
+				text := strings.TrimSpace(requestEditor.Text)
+				if !strings.HasPrefix(text, "/") && (boundMainInput || !view.attached.presentation.DisplayingSide()) {
+					if control.Replacement.Pending() && native.replacing != view.attached.view {
+						return "This session is being replaced by another view; refresh before submitting.", nil
+					}
+					if request.Prepared == nil {
+						return "The input has no prepared attachment snapshot.", nil
+					}
+					plan, admissionErr := view.attached.presentation.ClientInput(intent, &control.Live, attached.conversation, restoring != nil)
+					if admissionErr != nil {
+						return admissionErr.Error(), nil
+					}
+					requestEditor.Replace(request.Prepared.Draft)
+					if strings.HasPrefix(text, "!") {
+						err = submitShell(&view.attached, view.shell, &control, &view.picker, &requestEditor, clock, restoring != nil, environment, ctx, reviewOwner, &shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)
+						if requestEditor.Text != "" {
+							return view.attached.feedback.Text, err
+						}
+					} else {
+						if text == "" && len(request.Prepared.Draft.Images) == 0 && len(request.Prepared.Draft.Attachments) == 0 {
+							return "Enter a message or attach content.", nil
+						}
+						if ownedImages == nil {
+							ownedImages = make(map[string]bool)
+						}
+						if !request.Prepared.Admit(request.Context, ownedImages) {
+							return "The prepared input was canceled before admission.", nil
+						}
+						input := conversationmodel.Input{Draft: request.Prepared.Draft, Origin: view.attached.view, Delivery: view.effects.input()}
+						attached.conversation.QueueInput(input, plan.Queued)
+						if input.AttachmentNotice != "" {
+							setNotice(&view.attached.feedback, view.shell, presentationTime(clock), input.AttachmentNotice, true)
+						}
+						if plan.Flush {
+							err = flushInput(&attached, shell, &control, &picker, &questions, &approvalDock, clock, model, serviceTiers, environment, ownedImages, &guardHook, &editor, ctx, restoring != nil, observationInputs, reviewOwner, &receipts)
+						}
+					}
+					return "", err
+				}
+			}
+			view.attached.presentation.BorrowExecutionStatus(attached.presentation)
+			closed, err = applyComposerCommand(&view.attached, view.shell, &control, &view.picker, &requestEditor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &view.panel, &view.resume, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, &shellEdits, retained, &retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvals, generator, &view.files, &statusConfig, capture, debugDirectory, panes, &models, &modelsLoading, &reasoningKey, intent, &composerPreparation{ctx: request.Context, input: request.Prepared, side: side != nil && inputThread == cmp.Or(side.Thread, "side:"+side.Key)})
+			if !strings.HasPrefix(strings.TrimSpace(before.Text), "/") && requestEditor.Text != "" {
+				return view.attached.feedback.Text, err
+			}
+			attached.presentation.BorrowExecutionStatus(view.attached.presentation)
+			if intent.Operation != sessionpresentation.RestoreWaiting {
+				view.effects.add(sessionapi.NativeEffect{Thread: control.Thread, Presentation: &sessionapi.NativePresentationEffect{LiveHidden: view.shell.LiveHidden, InterruptLocked: view.shell.Main.InterruptLocked, PredictionsDisabled: view.shell.Main.PredictionsDisabled}})
+			}
+			if strings.HasPrefix(strings.TrimSpace(before.Text), "/") {
+				if operation.Composer != nil && operation.Composer.Consumed {
+					if requestEditor.Text != "" && err == nil {
+						view.effects.add(sessionapi.NativeEffect{Thread: intent.Thread, Restore: new(requestEditor.Draft.Clone())})
+					}
+				} else if recovery == nil && requestEditor.Text == "" {
+					view.effects.add(sessionapi.NativeEffect{Thread: inputThread, Target: new(intent.Target), Action: &composer.Action{Kind: composer.DeleteAction, Start: 0, End: len(before.Text)}})
+				}
+			}
+		case operation.Menu != nil:
+			action, admissionErr := view.menuAction(request)
+			if admissionErr != nil {
+				return admissionErr.Error(), nil
+			}
+			before := requestEditor.Draft.Clone()
+			applyMenuResult(&view.attached, view.shell, &control, &view.picker, &requestEditor, &childKey, settings, &serviceTiers, title, version, restoring != nil, &side, clock, &questions, &approvalDock, view.panel != nil || view.resume != nil, ownedImages, panes, view.ctx, environment, terminalsession.MenuResult{Action: action, Handled: true})
+			dispatchRewind(&view.attached, view.shell, &control, &view.picker, clock, ctx, reviewOwner, &shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)
+			if operation.Editor != nil && !reflect.DeepEqual(before, requestEditor.Draft) {
+				draft := requestEditor.Draft.Clone()
+				view.effects.add(sessionapi.NativeEffect{Thread: inputThread, Target: new(operation.Editor.Target), Action: &composer.Action{Kind: composer.DeleteAction, Start: 0, End: len(before.Text)}, Restore: &draft})
+			}
+		case operation.Resume != nil:
+			err = applyResumeAction(&view.attached, view.shell, &control, &view.picker, &requestEditor, &questions, &approvalDock, clock, &childKey, settings, serviceTiers, title, version, &restoring, &side, &view.panel, &view.resume, approvals, &closed, *operation.Resume)
+		case operation.Notice != nil:
+			notice := operation.Notice
+			current := view.attached.presentation.View()
+			if !notice.Version.SameAttachment(current.Version) {
+				return sessionpresentation.ErrStaleIntent.Error(), nil
+			}
+			if !notice.Dismiss {
+				return view.openNoticeDetails(notice.Text), nil
+			}
+			if notice.Feedback != current.Status.FeedbackRevision {
+				return "", nil
+			}
+			setNotice(&view.attached.feedback, view.shell, presentationTime(clock), "", false)
+		case operation.History != nil:
+			err = loadOlderActivity(&view.attached, view.shell, &control, &view.picker, &requestEditor, &questions, &approvalDock, clock, &childKey, settings, serviceTiers, title, version, &restoring, &side, &view.panel, &view.resume, *operation.History)
+		case operation.CancelHistory != nil:
+			err = cancelOlderActivity(&view.attached, view.shell, &control, &view.picker, &requestEditor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &view.panel, &view.resume, ctx, &reviewOwner, &receipts, notifications, retained, &retainedSession, activity, segments, &restoredSegments, dispatch, &resumePending, *operation.CancelHistory)
+		case operation.Reference != nil:
+			referenceInput(&view.attached, view.shell, &control, &view.picker, &requestEditor, &questions, &approvalDock, clock, &childKey, settings, serviceTiers, title, version, &restoring, &side, &view.panel, &view.resume, &ownedImages, environment, view.ctx, *operation.Reference)
+		case operation.Side != nil:
+			if admissionErr := view.attached.presentation.AdmitCloseSide(*operation.Side); admissionErr != nil {
+				return admissionErr.Error(), nil
+			}
+			if side == nil || operation.Side.Key != side.Key || operation.Side.Exchange != side.ID {
+				return sessionpresentation.ErrStaleIntent.Error(), nil
+			}
+			err = closeSide(&attached, shell, &control, &editor, &questions, &approvalDock, &side, &ownedImages)
+		case operation.BTW != nil:
+			current := view.attached.presentation.View()
+			if !operation.BTW.Version.SameAttachment(current.Version) || current.BTW == nil || operation.BTW.Key == "" || operation.BTW.Key != current.BTW.Key || operation.BTW.Exchange != current.BTW.ID || control.BTW == nil || operation.BTW.Key != control.BTW.Key || operation.BTW.Exchange != control.BTW.ID {
+				return sessionpresentation.ErrStaleIntent.Error(), nil
+			}
+			err = closeBTWQuestion(&attached, &control)
+		case operation.Interrupt != nil:
+			active, admissionErr := view.attached.presentation.ResolveInterrupt(*operation.Interrupt, &control.Live, &attached.session)
+			if admissionErr != nil {
+				return admissionErr.Error(), nil
+			}
+			if !active {
+				setNotice(&view.attached.feedback, view.shell, presentationTime(clock), "Original work already ended.", false)
+				return "", nil
+			}
+			if operation.Interrupt.Mode == sessioncontrol.RestoreWaiting && cancelQueuedCompact(&attached, shell, &control, &picker, &questions, &approvalDock, clock) {
+				return "", nil
+			}
+			decision := control.RequestInterrupt(operation.Interrupt.Mode, len(attached.conversation.Unsent) > 0 && attached.conversation.Unsent[0].Text != "/compact")
+			err = applyInterruption(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, reviewOwner, &receipts, decision)
+		case operation.Panel != nil:
+			action, admissionErr := view.panelAction(request)
+			if admissionErr != nil {
+				return admissionErr.Error(), nil
+			}
+			applyPanelAction(&view.attached, view.shell, clock, &view.panel, capture, action)
+		default:
+			return view.applyView(operation), nil
+		}
+		pruneDraftImages(ownedImages, editor, attached.conversation, &questions, &approvalDock, shell.Prompts, side, attached.nativeImages)
+		if !replacing && control.Replacement.Pending() {
+			native.replacing = view.attached.view
+		}
+		if closed {
+			native.retire(view.attached.view)
+		}
+		return "", err
+	}
 	return func() error {
+		defer native.close()
 		defer func() { _ = predictions.clear(&control, attached.conversation) }()
 		reviewOwner.Loader = sessionreview.NewLoader(ctx, reviewOwner.Projection)
 		defer reviewOwner.Loader.Close()
@@ -192,222 +566,241 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		defer c.Output.Close()
 		exited := false
 		var err error
-		for {
-			err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1004;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1004;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
-				defer func() { notifications.clearTerminalTitle(&attached.feedback, shell, clock) }()
-				review := reviewOwner
-				review.Preview().Enable()
-				defer func() { review.Preview().Disable() }()
+		runLoop := func() error {
+			review := reviewOwner
+			review.Preview().Enable()
+			defer func() { review.Preview().Disable() }()
+			reviewOwner.Loader.AwaitResync()
+			sub := review.Subscribe()
+			defer func() { review.Unsubscribe(sub) }()
+			diffEvents, diffGap, diffReady, previewGap := sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
+			autoChanged := review.Changed()
+			resubscribe := func() {
+				review.Unsubscribe(sub)
 				reviewOwner.Loader.AwaitResync()
-				sub := review.Subscribe()
-				defer func() { review.Unsubscribe(sub) }()
-				diffEvents, diffGap, diffReady, previewGap := sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
-				autoChanged := review.Changed()
-				resubscribe := func() {
-					review.Unsubscribe(sub)
-					reviewOwner.Loader.AwaitResync()
-					sub = review.Subscribe()
-					diffEvents, diffGap, diffReady, previewGap = sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
-					dirty = true
+				sub = review.Subscribe()
+				diffEvents, diffGap, diffReady, previewGap = sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
+			}
+			tick := time.NewTicker(33 * time.Millisecond)
+			defer tick.Stop()
+			for {
+				if quit {
+					return nil
 				}
-				tick := time.NewTicker(33 * time.Millisecond)
-				defer tick.Stop()
-				width, height := 0, 0
-				agePaint := presentationTime(clock)
-				for {
-					select {
-					case retainedErr := <-control.Startup.ForkRetained():
-						pending := control.Startup.ForkRetention
-						pending.Err, pending.Complete = retainedErr, true
-						if err := dispatch(pending.Message); err != nil {
-							return err
-						}
-						dirty = true
-					case result := <-inputHistory.loads:
-						inputHistory.loaded(attached.conversation, result)
-						dirty = true
-					case historyErr := <-inputHistory.failures:
-						setNotice(&attached.feedback, shell, presentationTime(clock), "Input history unavailable: "+historyErr.Error(), true)
-						dirty = true
-					case <-ctx.Done():
-						return ctx.Err()
-					case result := <-predictions.results:
-						if err := syncPredictions(); err != nil {
-							return err
-						}
-						if err := predictions.configured(result, &control); err != nil {
-							return err
-						}
-						dirty = true
-					case <-autoChanged:
-						reviewOwner.Projection.Workspace = review.Workspace()
-						publishReview(&attached, shell, reviewOwner, reviewSource, preparePane)
-						dirty = true
-					case <-diffGap:
-						resubscribe()
-					case <-previewGap:
-						resubscribe()
-					case result := <-reviewOwner.Loader.Updates():
-						if sub.Invalidated() {
-							resubscribe()
-						}
-						loadedReview(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, result)
-						if err := finishRestoredContent(&attached, &control, &picker, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
-							return err
-						}
-						dirty = true
-					case <-diffReady:
-						if !admitReviewEvents(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, clock, ctx, sub, review.TakePreviews(sub)...) {
-							resubscribe()
-						}
-						if err := finishRestoredContent(&attached, &control, &picker, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
-							return err
-						}
-						dirty = true
-					case event := <-diffEvents:
-						if !admitReviewEvents(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, clock, ctx, sub, event) {
-							resubscribe()
-						}
-						if err := finishRestoredContent(&attached, &control, &picker, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
-							return err
-						}
-						dirty = true
-					case result := <-files.links.results:
-						files.links.finish(result)
-						dirty = true
-					case result := <-files.fileReads:
-						dirty = files.loadedMarkdownFile(&attached.session, views, attached.cwd, shell, result) || dirty
-					case result := <-picker.scanResults:
-						dirty = picker.applyScan(attached.cwd, picker.completionTarget(editor.Draft, attached.conversation.ShellMode()), result) || dirty
-					case <-commits.Updates():
-						dirty = startCommitReads(&attached, commits) || dirty
-					case err := <-writes:
-						commandSegmentRetained(&pendingWrites, issues, &dirty, err)
-					case update := <-titleUpdates:
-						persistSessionTitle(&control, generator, &attached.feedback, shell, clock, &dirty, update)
-					case request := <-guard.Requests():
-						addGuardApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, panel != nil || resumePicker != nil, notifications, reviewOwner, &receipts, request)
-						dirty = true
-					case message, ok := <-c.Messages:
-						if !ok {
-							exited = true
-							return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.Done)
-						}
-						if err := dispatch(message); err != nil || quit {
-							return err
-						}
-						dirty = true
-					case key, ok := <-keys:
-						if !ok {
-							return io.EOF
-						}
-						if event := shell.Decoder.Feed(key, time.Now()); event.Kind != terminalsession.NoInput {
-							if err := applyInput(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvals, generator, &dirty, activity, segments, &restoredSegments, &files, &statusConfig, capture, debugDirectory, &quit, dispatch, &resumePending, panes, &models, &modelsLoading, &reasoningKey, shell, shell.FrameInput(presentationTime(clock), mekugiVersion()).Dispatch(&shell.Interaction, event)); err != nil || quit {
-								return err
-							}
-						}
-						dirty = true
-					case <-tick.C:
-						if side != nil && len(side.Drafts.Unsent) > 0 {
-							if err := flushBTW(&attached, shell, &control, &picker, &questions, &approvalDock, clock, preferences.Applied{Model: model, Effort: effort, Tier: tier}, &side, &ownedImages, environment, &guardHook, observationInputs); err != nil {
-								return err
-							}
-						}
-						if len(attached.conversation.Unsent) > 0 && attached.conversation.Unsent[0].Question != nil && (observationInputs == nil || !observationInputs.EmittingToolInput(attached.cwd, control.Thread)) {
-							if err := flushInput(&attached, shell, &control, &picker, &questions, &approvalDock, clock, model, serviceTiers, environment, ownedImages, &guardHook, &editor, ctx, restoring != nil, observationInputs, reviewOwner, &receipts); err != nil {
-								return err
-							}
-						}
-						dirty = refreshSessionMetrics(panel, capture, presentationTime(clock), false) || dirty
-						startSkillHistory(&attached, &control, &childKey, &restoring)
-						applyObservedActivity(&attached, shell, &control, &streams, usage, reviewOwner, &approvalDock, &receipts, clock, &dirty, restoring, audience)
-						publishPresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, presentationTime(clock))
-						if err := applyResumeAction(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, &panel, &resumePicker, approvals, &quit, shell.Main.Resume.PageDemand()); err != nil {
-							return err
-						}
-						flushStreamOutput(&attached, shell, &control, &streams, tracker, reviewOwner, &approvalDock, &receipts, clock, ctx, retained, segments, &writes, &pendingWrites, issues, &dirty)
-						dirty = startCommitReads(&attached, commits) || dirty
-						dirty = paneError(attached.source, panes.save(shell.Shell.Preferences(shell.Main), presentationTime(clock), false)) || dirty
-						if expireNotice(&attached.feedback, shell, presentationTime(clock)) || expireApprovals(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, notifications, reviewOwner, &receipts) {
-							dirty = true
-						}
-						now := presentationTime(clock)
-						publishActivity(&attached, shell)
-						if activityui.Settle(now, shell.Transcript, shell.Agents) {
-							dirty = true
-						}
-						for _, view := range []*activityui.View{shell.Transcript, shell.Agents} {
-							if view.ExpireFlash(now) {
-								dirty = true
-							}
-							if view.Pace(now) {
-								dirty = true
-							}
-						}
-						settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
-						if attached.presentation.View().Status.Animating || shell.Agents.HasLiveStatus() {
-							dirty = true
-						}
-						if time.Since(agePaint) >= time.Second {
-							dirty = true
-							agePaint = presentationTime(clock)
-						}
-						if err := drainKeys(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvals, generator, &dirty, activity, segments, &restoredSegments, &files, &statusConfig, capture, debugDirectory, &quit, dispatch, &resumePending, panes, &models, &modelsLoading, &reasoningKey, keys); err != nil || quit {
-							return err
-						}
-						if err := syncPredictions(); err != nil {
-							return err
-						}
-						notices := applyCriticalNotices(&attached, shell, &control, &picker, &editor, clock, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, audience, &dirty, issues)
-						settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
-						if shell.Live.Tick(presentationTime(clock)) || shell.Agents.RosterEasing {
-							dirty = true
-						}
-						w, h, err := term.GetSize(int(stdout.Fd()))
-						if err != nil {
-							notices.finish(terminalsession.NoticeReceipt{})
-							return err
-						}
-						if dirty || w != width || h != height {
-							width, height = w, h
-							if err := paintSession(&attached, shell, &files, ctx, presentationTime(clock), stdout, w, h); err != nil {
-								notices.finish(terminalsession.NoticeReceipt{})
-								return err
-							}
-							notices.finish(shell.Frame.Notices)
-							dirty = false
-						}
-						notifications.writeTerminalTitle(&attached.feedback, shell, clock, attached.cwd, control.Thread, questions.Questions, approvalDock.Approvals, control.Turn != "" || control.Starting(), presentationTime(clock))
-						continue
+				if native.failure != nil {
+					return native.failure
+				}
+				select {
+				case retainedErr := <-control.Startup.ForkRetained():
+					pending := control.Startup.ForkRetention
+					pending.Err, pending.Complete = retainedErr, true
+					if err := dispatch(pending.Message); err != nil {
+						return err
 					}
+				case result := <-inputHistory.loads:
+					inputHistory.loaded(attached.conversation, result)
+				case historyErr := <-inputHistory.failures:
+					setNotice(&attached.feedback, shell, presentationTime(clock), "Input history unavailable: "+historyErr.Error(), true)
+				case <-ctx.Done():
+					return ctx.Err()
+				case result := <-predictions.results:
 					if err := syncPredictions(); err != nil {
 						return err
 					}
+					if err := predictions.configured(result, &control); err != nil {
+						return err
+					}
+				case <-autoChanged:
+					reviewOwner.Projection.Workspace = review.Workspace()
+					publishReview(&attached, shell, reviewOwner, reviewSource, preparePane)
+				case <-diffGap:
+					resubscribe()
+				case <-previewGap:
+					resubscribe()
+				case result := <-reviewOwner.Loader.Updates():
+					if sub.Invalidated() {
+						resubscribe()
+					}
+					loadedReview(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, result)
+					if err := finishRestoredContent(&attached, &control, &picker, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
+						return err
+					}
+				case <-diffReady:
+					if !admitReviewEvents(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, clock, ctx, sub, review.TakePreviews(sub)...) {
+						resubscribe()
+					}
+					if err := finishRestoredContent(&attached, &control, &picker, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
+						return err
+					}
+				case event := <-diffEvents:
+					if !admitReviewEvents(&attached, shell, reviewOwner, reviewSource, preparePane, &receipts, clock, ctx, sub, event) {
+						resubscribe()
+					}
+					if err := finishRestoredContent(&attached, &control, &picker, &restoring, &reviewOwner, dispatch, &resumePending); err != nil {
+						return err
+					}
+				case result := <-files.links.results:
+					files.links.finish(result)
+				case result := <-files.fileReads:
+					files.loadedMarkdownFile(&attached.session, attached.presentation, attached.cwd, shell, result)
+				case result := <-picker.scanResults:
+					picker.applyScan(attached.cwd, picker.completionTarget(editor.Draft, attached.conversation.ShellMode()), result)
+				case <-commits.Updates():
+					startCommitReads(&attached, commits)
+				case err := <-writes:
+					commandSegmentRetained(&pendingWrites, issues, err)
+				case update := <-titleUpdates:
+					persistSessionTitle(&control, generator, &attached.feedback, shell, clock, update)
+				case request := <-guard.Requests():
+					addGuardApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, panel != nil || resumePicker != nil, notifications, reviewOwner, &receipts, request)
+				case message, ok := <-c.Messages:
+					if !ok {
+						exited = true
+						return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.Done)
+					}
+					if err := dispatch(message); err != nil || quit {
+						return err
+					}
+				case id := <-nativeClosed:
+					native.retire(id)
+				case request := <-nativeRequests:
+					var refusal string
+					var operationErr error
+					if request.Attach {
+						refusal = native.attach(request, &attached, control.Thread)
+						if refusal == "" && request.Startup != "" && startupView == "" {
+							startupView = request.Attachment
+							if latestResponse != nil {
+								response := *latestResponse
+								latestResponse = nil
+								operationErr = dispatch(response)
+							}
+						}
+						adoptStartupChooser()
+					} else {
+						var view *nativeSessionView
+						view, refusal = native.admit(request, &attached, control.Thread)
+						if refusal == "" {
+							switch operation := request.Operation; {
+							case operation.Answers != nil:
+								refusal, operationErr = applyNativeAnswers(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil, environment, ownedImages, &guardHook, ctx, observationInputs, reviewOwner, &receipts, *operation.Answers, request.Prepared, request.Context, request.RemoteHuman())
+							case operation.Approval != nil:
+								record, choice, err := view.attached.presentation.Approval(*operation.Approval, approvalDock.Approvals)
+								if err != nil {
+									refusal = err.Error()
+								} else {
+									operationErr = applyApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, notifications, reviewOwner, &receipts, observationInputs, approvalDock.handles[record], choice, operation.Approval.Reason)
+								}
+							default:
+								refusal, operationErr = applyNativeOperation(view, request)
+							}
+							view.projected = time.Time{}
+						}
+					}
+					if request.Operation.Receipt != nil {
+						pruneDraftImages(ownedImages, editor, attached.conversation, &questions, &approvalDock, shell.Prompts, side, attached.nativeImages)
+					}
+					if operationErr != nil {
+						refusal = "The session failed: " + operationErr.Error()
+					}
+					// Mutation acknowledgement is a publication barrier for keyboard
+					// continuations. Publish before releasing the requesting client.
+					native.publish(&attached, &control, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, reviewOwner, reviewSource, nativePublicationFacts(&attached, panes, exitUsage, debugDirectory, archived, notifications, control.Thread, &predictions), presentationTime(clock))
+					if request.Reply != nil {
+						request.Reply <- refusal
+					}
+					if operationErr != nil {
+						return operationErr
+					}
+				case intent := <-intents:
+					refusal := apiIntentRefusal(&attached, &control, intent)
+					var intentErr error
+					if refusal == "" {
+						if intent.Action == sessionapi.RunShell {
+							refusal, intentErr = submitAPIShell(&attached, shell, &control, &picker, clock, restoring != nil, environment, ctx, reviewOwner, &shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, intent.Text)
+						} else {
+							refusal, intentErr = applyAPIIntent(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, &side, panel != nil || resumePicker != nil, &ownedImages, environment, &guardHook, observationInputs, ctx, reviewOwner, &receipts, notifications, intent)
+						}
+					}
+					if intentErr != nil {
+						refusal = "The session failed: " + intentErr.Error()
+					}
+					if intent.Reply != nil {
+						intent.Reply <- refusal
+					}
+					if intentErr != nil || quit {
+						return intentErr
+					}
+				case <-tick.C:
+					if side != nil && len(side.Drafts.Unsent) > 0 {
+						if err := flushBTW(&attached, shell, &control, &picker, &questions, &approvalDock, clock, preferences.Applied{Model: model, Effort: effort, Tier: tier}, &side, &ownedImages, environment, &guardHook, observationInputs); err != nil {
+							return err
+						}
+					}
+					if len(attached.conversation.Unsent) > 0 && attached.conversation.Unsent[0].Question != nil && (observationInputs == nil || !observationInputs.EmittingToolInput(attached.cwd, control.Thread)) {
+						if err := flushInput(&attached, shell, &control, &picker, &questions, &approvalDock, clock, model, serviceTiers, environment, ownedImages, &guardHook, &editor, ctx, restoring != nil, observationInputs, reviewOwner, &receipts); err != nil {
+							return err
+						}
+					}
+					refreshSessionMetrics(panel, capture, presentationTime(clock), false)
+					startSkillHistory(&attached, &control, &childKey, &restoring)
+					applyObservedActivity(&attached, shell, &control, &streams, usage, reviewOwner, &approvalDock, &receipts, clock, restoring, audience)
+					publishPresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, presentationTime(clock))
+					if err := applyResumeAction(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, &panel, &resumePicker, approvals, &quit, shell.Main.Resume.PageDemand()); err != nil {
+						return err
+					}
+					flushStreamOutput(&attached, shell, &control, &streams, tracker, reviewOwner, &approvalDock, &receipts, clock, ctx, retained, segments, &writes, &pendingWrites, issues)
+					startCommitReads(&attached, commits)
+					paneError(attached.source, panes.savePrepared(presentationTime(clock), false))
+					if !expireNotice(&attached.feedback, shell, presentationTime(clock)) {
+						expireApprovals(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, notifications, reviewOwner, &receipts)
+					}
+					for _, view := range native.views {
+						if view.ctx.Err() != nil || view.attached.executionPresentation != attached.executionPresentation {
+							continue
+						}
+						expireNotice(&view.attached.feedback, view.shell, presentationTime(clock))
+						refreshSessionMetrics(view.panel, capture, presentationTime(clock), false)
+						if view.notices == nil {
+							requestEditor := new(composer.Editor)
+							view.notices = applyCriticalNotices(&view.attached, view.shell, &control, &view.picker, &requestEditor, clock, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, audience, issues)
+						}
+					}
+					notices := applyCriticalNotices(&attached, shell, &control, &picker, &editor, clock, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, audience, issues)
 					settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
-					notifications.writeTerminalTitle(&attached.feedback, shell, clock, attached.cwd, control.Thread, questions.Questions, approvalDock.Approvals, control.Turn != "" || control.Starting(), presentationTime(clock))
+					live.publish(&attached, shell, &control, restoring != nil, childSummary, presentationTime(clock))
+					native.publish(&attached, &control, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, reviewOwner, reviewSource, nativePublicationFacts(&attached, panes, exitUsage, debugDirectory, archived, notifications, control.Thread, &predictions), presentationTime(clock))
+					// Publication is not a native paint receipt. Release claims without
+					// acknowledging notices that no terminal has displayed.
+					notices.finish(terminalsession.NoticeReceipt{})
+					continue
 				}
-			})
-			if composerEditor, ok := errors.AsType[*composerEditorRequest](err); ok {
-				openComposerEditor(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &side, &ownedImages, environment, ctx, composerEditor.intent, stdin, stdout)
-			} else if fileEditor, ok := errors.AsType[*openFileEditor](err); ok {
-				openSelectedFileEditor(&attached, shell, clock, ctx, fileEditor.path, stdin, stdout)
-			} else {
-				break
+				if err := syncPredictions(); err != nil {
+					return err
+				}
+				settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
+				live.publish(&attached, shell, &control, restoring != nil, childSummary, presentationTime(clock))
+				native.publish(&attached, &control, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, reviewOwner, reviewSource, nativePublicationFacts(&attached, panes, exitUsage, debugDirectory, archived, notifications, control.Thread, &predictions), presentationTime(clock))
 			}
-			dirty = true
 		}
-		if saveErr := panes.save(shell.Shell.Preferences(shell.Main), presentationTime(clock), true); saveErr != nil {
+		err = runLoop()
+		if saveErr := panes.savePrepared(presentationTime(clock), true); saveErr != nil {
 			fmt.Fprintln(stdout, "Pane layout or settings could not be saved:", textsanitize.Safe(saveErr.Error(), false))
 		}
-		if !exited {
-			if err == nil {
-				err = c.Shutdown()
-			} else {
-				c.Close()
-				<-c.Done
-			}
+		if panes != nil {
+			err = errors.Join(err, panes.writer.close(panes.attachment, presentationTime(clock)))
 		}
-		finishCommandSegments(&writes, &pendingWrites, issues, &dirty)
+		if !exited {
+			if ctx.Err() != nil {
+				_ = c.Cancel()
+			}
+			err = errors.Join(err, c.Shutdown())
+		}
+		finishCommandSegments(&writes, &pendingWrites, issues)
+		for _, view := range native.views {
+			view.projected = time.Time{}
+		}
+		native.publish(&attached, &control, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, reviewOwner, reviewSource, nativePublicationFacts(&attached, panes, exitUsage, debugDirectory, archived, notifications, control.Thread, &predictions), presentationTime(clock))
 		for key, run := range attached.session.Commands() {
 			if run.Entry.Native.Invocation.ReleaseSegmentOutputs() {
 				tracker.ReleaseOutput(key)
@@ -435,14 +828,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		}
 		attached.session.Retire()
 		if err != nil {
-			c.Diagnostics.Lock()
-			defer c.Diagnostics.Unlock()
-			if len(c.Diagnostics.Text) > 0 {
-				fmt.Fprintln(stdout, textsanitize.Safe(string(c.Diagnostics.Text), false))
+			if diagnostic := c.Diagnostics.Snapshot(); diagnostic != "" {
+				fmt.Fprintln(stdout, diagnostic)
 			}
 		}
-		color := term.IsTerminal(int(stdout.Fd())) && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
-		return errors.Join(err, writeExitSummary(exitUsage, archived, control.Thread, resumeArgv, debugDirectory, stdout, color))
+		return err
 	}, nil
 }
 
@@ -450,6 +840,8 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 // Main's lifecycle scope retires on confirmed replacement. Side conversations
 // and title saves retain their own completion and cleanup across that boundary.
 type appServerRequest struct {
+	view     string
+	history  bool
 	metadata string
 	menu     uint64
 	label    string
@@ -457,7 +849,7 @@ type appServerRequest struct {
 	status   *appServerStatusReport
 }
 
-func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, windows *executionobservation.Windows, audience *sessioncontrol.Audience, reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, dirty *bool, activityService *activitymodel.Service, streams *terminalsession.Streams, tracker *commandsegments.Observer, trace *nativetrace.Reader, usage *accounting.Service, exitUsage *binding.TokenUsage, segments *reports.Service, restoredSegments *map[string]*reports.Report, views *sessionpresentation.Service, files *detailFiles, statusConfig *appServerStatusConfig, issues *requestexecution.Failures, quit *bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, commits **activitypresentation.CommitReader, terminalViews terminalsession.Views, conversationState *conversationmodel.Service, bindings *binding.Observation, historyService *history.Service, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, reasoningKey **bool, archived *bool, m appserver.Message) (err error) {
+func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, windows *executionobservation.Windows, audience *sessioncontrol.Audience, reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, activityService *activitymodel.Service, streams *terminalsession.Streams, tracker *commandsegments.Observer, trace *nativetrace.Reader, usage *accounting.Service, exitUsage *binding.TokenUsage, segments *reports.Service, restoredSegments *map[string]*reports.Report, views *sessionpresentation.Service, files *detailFiles, statusConfig *appServerStatusConfig, issues *requestexecution.Failures, quit *bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, commits **activitypresentation.CommitReader, terminalViews terminalsession.Views, conversationState *conversationmodel.Service, bindings *binding.Observation, historyService *history.Service, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, reasoningKey **bool, archived *bool, m appserver.Message) (err error) {
 	defer func() {
 		if r := control.Rewind; r != nil && r.Completed && r.Failed && r.Item == "" && shellEdits.pending != nil && shellEdits.pending.Thread() == r.Thread {
 			shellEdits.pending.Discard()
@@ -485,10 +877,9 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		response, correlated = control.Requests.Take(string(m.ID))
 	}
 	if handled, err := control.ObservePrediction(m, response, observations); handled {
-		*dirty = true
 		return err
 	}
-	if sessionTitleMessage(control, generator, &attached.feedback, terminal, clock, dirty, title, m, response.Owner.title) {
+	if sessionTitleMessage(control, generator, &attached.feedback, terminal, clock, title, m, response.Owner.title) {
 		return nil
 	}
 	defer func() {
@@ -496,7 +887,6 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 	}()
 	// Side control settles first; work-capable forks share native event consumers.
 	if update, err := control.Requests.ObserveSide(m, response, control.Thread, observations); update.Handled {
-		(*dirty) = true
 		applySideUpdate(attached, terminal, control, clock, update)
 		if err != nil {
 			return err
@@ -523,14 +913,11 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		}
 	}()
 	if m.Method == "skills/changed" {
-		picker.toggleOwnsManager = false
-		picker.SkillsLoaded = false
-		picker.SkillsProblem = ""
-		picker.Resolved = completion.Target{}
+		picker.invalidateSkills()
 	}
 	// Input observations precede the output items that answer them. Drain
 	// before a completion, not just on the next paint tick, so links bind once.
-	applyObservedActivity(attached, terminal, control, streams, usage, (*reviewOwner), approvals, receipts, clock, dirty, (*restoring), audience)
+	applyObservedActivity(attached, terminal, control, streams, usage, (*reviewOwner), approvals, receipts, clock, (*restoring), audience)
 	if held, err := holdOlderHistoryEvent(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending, m); held || err != nil {
 		return err
 	}
@@ -561,13 +948,8 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		if response.Owner.label != "" {
 			method = response.Owner.label
 		}
-		if method == "rewind/turns" {
-			rewindTurnsResponse(control, picker, response.Owner, m)
-			return nil
-		}
-		if method == "rewind/source" {
-			rewindSourceResponse(control, picker, parent, response.Owner, m)
-			return nil
+		if handled, err := dispatchViewResponse(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}, *tiers, *title, *backend, restoring, side, panel, resumePicker, approvalMode, quit, parent, environment, response, m); handled || err != nil {
+			return err
 		}
 		if method == "rewind/archive" {
 			message := "Original thread " + response.Owner.metadata + " archived"
@@ -587,32 +969,23 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			return nil
 		}
 		if after, ok := strings.CutPrefix(method, "activity-skills/"); ok {
-			return skillHistoryResponse(attached, control, childKey, restoring, parent, retained, dirty, activityService, segments, restoredSegments, after, m)
+			return skillHistoryResponse(attached, control, childKey, restoring, parent, retained, activityService, segments, restoredSegments, after, m)
 		}
 		if strings.HasPrefix(method, "activity/") {
 			return childHistoryResponse(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, usage, segments, restoredSegments, dispatch, resumePending, method, m)
 		}
 		if method == "resume/settings" {
-			return resumeSettingsResponse(attached, terminal, control, picker, questions, approvals, clock, approvalMode, dirty, dispatch, resumePending, panes, m)
+			return resumeSettingsResponse(attached, terminal, control, picker, questions, approvals, clock, approvalMode, dispatch, resumePending, panes, m)
 		}
 		if method == "config/read" {
 			notifications.notificationConfig(&attached.feedback, terminal, clock, m)
 			attached.inputHistory.configure(m)
 			return nil
 		}
-		if method == resumePickerList {
-			return resumePickerResponse(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, approvalMode, quit, m)
-		}
-		if handled, err := statusMessage(control.Requests, dirty, (*panel), method, m, response.Owner.status); handled {
-			return err
-		}
-		if picker.pickerMessage(attached, terminal, clock, control.Requests, (*editor), parent, environment, method, m) {
-			return nil
-		}
 		if method == "thread/list" && control.Startup.Thread == "--last" {
 			return resumeLastResponse(attached, control, picker, clock, resumePicker, approvalMode, m)
 		}
-		if handled, err := settingsMessage(attached, terminal, control, picker, editor, childKey, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, model, effort, tier, models, modelsLoading, reasoningKey, statusConfig, method, m); handled || err != nil {
+		if handled, err := settingsMessage(attached, terminal, control, picker, editor, childKey, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, model, effort, tier, models, modelsLoading, reasoningKey, statusConfig, method, m); handled || err != nil {
 			return err
 		}
 		if method == "thread/read" && applyThreadMetadata(attached, terminal, control, (*reviewOwner), approvals, receipts, clock, m, response.Owner.metadata) {
@@ -722,13 +1095,13 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 					(*side) = nil
 					closing.Close()
 					attached.conversation.Side = nil
-					pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side))
+					pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side), attached.nativeImages)
 					if err := control.Requests.ReleaseSide(closing); err != nil {
 						return err
 					}
 				}
 				if panes != nil {
-					(*dirty) = paneError(attached.source, panes.save(terminal.Shell.Preferences(terminal.Main), time.Now(), true)) || (*dirty)
+					paneError(attached.source, panes.savePrepared(time.Now(), true))
 				}
 				picker.cancelScan()
 				roster := attached.session.Roster()
@@ -757,7 +1130,23 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				attached.session.Retire()
 				workspace := attached.cwd
 				inputHistory := attached.inputHistory
+				restoreInput := attached.restoreInput
+				restoreShell := attached.restoreShell
+				restoreSide := attached.restoreSide
+				deliverActivity := attached.deliverActivity
+				activeThread := attached.activeThread
+				reserveThread := attached.reserveThread
+				nativeImages := attached.nativeImages
+				rewindArchive := attached.rewindArchive
 				(*attached) = newAttachedPresentation(views, conversationState, bindings)
+				attached.restoreInput = restoreInput
+				attached.restoreShell = restoreShell
+				attached.restoreSide = restoreSide
+				attached.deliverActivity = deliverActivity
+				attached.activeThread = activeThread
+				attached.reserveThread = reserveThread
+				attached.nativeImages = nativeImages
+				attached.rewindArchive = rewindArchive
 				attached.cwd = workspace
 				attached.inputHistory = inputHistory
 				attached.conversation.CarryInput(waiting)
@@ -771,7 +1160,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				attached.presentation.Attach(sessionpresentation.Thread{ID: cmp.Or(control.Thread, "/root"), Caller: "/root"}, false)
 				if terminal != nil {
 					terminal.Selection = nil
-					files.closeOutput(&attached.session, terminal)
+					files.closeOutput(terminal)
 					terminal.Focus = 0
 					terminal.StopDrag()
 				}
@@ -805,7 +1194,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			generator.register(result.Thread)
 			if name := control.Names.Attach(control.Thread); name != "" {
 				generator.nameChanged(control.Thread, name)
-				requestSessionTitle(control, &attached.feedback, terminal, clock, dirty, control.Names.Next(control.Thread))
+				requestSessionTitle(control, &attached.feedback, terminal, clock, control.Names.Next(control.Thread))
 			}
 			(*model), (*effort), (*tier) = result.Model, result.ReasoningEffort, result.ServiceTier
 			if method == "thread/resume" || method == "thread/fork" {
@@ -859,7 +1248,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				}
 			}
 			if panes != nil {
-				(*dirty) = paneError(attached.source, panes.open(&terminal.Shell, terminal.Main, result.Thread.Cwd, control.Thread, method == "thread/resume")) || (*dirty)
+				paneError(attached.source, panes.open(&terminal.Shell, terminal.Main, result.Thread.Cwd, control.Thread, method == "thread/resume"))
 			}
 			if method == "thread/resume" || method == "thread/fork" {
 				repair, err := result.RepairDefaultEffort(&control.Live)
@@ -871,13 +1260,13 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 					// Preserve saved null intent before a corrective dispatch can fail.
 					if panes != nil && panes.attachment != nil && control.Startup.Evidence.Model != "" {
 						if err := panes.stage(terminal.Shell.Preferences(terminal.Main)); err != nil {
-							(*dirty) = paneError(attached.source, err) || (*dirty)
+							paneError(attached.source, err)
 						} else {
 							panes.attachment.Recover(control.Startup.Evidence, presentationTime(clock))
-							(*dirty) = paneError(attached.source, panes.attachment.Save(presentationTime(clock), true)) || (*dirty)
+							paneError(attached.source, panes.savePrepared(presentationTime(clock), true))
 						}
 					}
-					if _, err := updateSettings(attached, terminal, control, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, panes, dirty, (*restoring) != nil, clock, repair); err != nil {
+					if _, err := updateSettings(attached, terminal, control, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, panes, (*restoring) != nil, clock, repair); err != nil {
 						return err
 					}
 				}
@@ -885,10 +1274,10 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 					setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ResumeSettingsUnavailable, true)
 					control.Startup.MissingSettings = false
 				}
-				(*dirty) = paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)})) || (*dirty)
+				paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)}))
 				return restorePaneContent(attached, terminal, control, restoring, (*reviewOwner), reviewSource, preparePane, result.Thread)
 			}
-			(*dirty) = paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)})) || (*dirty)
+			paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)}))
 		}
 		return nil
 	}
@@ -915,7 +1304,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: attached.presentation.Status.Text, Observed: presentationTime(clock)}}})
 		return nil
 	}
-	if handled, err := settingsMessage(attached, terminal, control, picker, editor, childKey, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, model, effort, tier, models, modelsLoading, reasoningKey, statusConfig, "", m); handled || err != nil {
+	if handled, err := settingsMessage(attached, terminal, control, picker, editor, childKey, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, model, effort, tier, models, modelsLoading, reasoningKey, statusConfig, "", m); handled || err != nil {
 		return err
 	}
 	switch m.Method {
@@ -1030,57 +1419,6 @@ func observedEvent(attached *attachedPresentation, terminal *terminalsession.Att
 	return nil
 }
 
-// applyMainKey settles typed Main effects before resuming terminal interpretation.
-func applyMainKey(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, dirty *bool, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, reasoningKey **bool, next terminalsession.KeyContinuation) (bool, error) {
-	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
-	}()
-	if !prepareComposerInput(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals) {
-		return false, nil
-	}
-	// Acquisition stays application-owned; interpretation consumes its publication.
-	if picker.Open && picker.Kind == "" && picker.completionTarget((*editor).Draft, attached.conversation.ShellMode()) != picker.Target {
-		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
-	}
-	publishPresentation(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), presentationTime(clock))
-	refresh := false
-	defer func() {
-		if refresh {
-			picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
-		}
-	}()
-	focused := terminal == nil || terminal.Focus == 0
-	input := terminal.Main.ContinueKey(next, terminal.Prompts, transcriptView(attached.presentation, terminal), focused)
-	for {
-		refresh = refresh || input.Regular
-		switch {
-		case input.Prompt != nil:
-			if handled, err := applyPromptInput(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, notifications, *input.Prompt); handled || err != nil {
-				return false, err
-			}
-		case input.Panel != nil:
-			if input.ClearSelection && terminal != nil {
-				terminal.Selection = nil
-			}
-			applyPanelAction(attached, terminal, clock, panel, dirty, capture, *input.Panel)
-			(*dirty) = true
-		case input.Menu != nil:
-			handled := applyMenuResult(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, side, clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, parent, environment, *input.Menu)
-			dispatchRewind(attached, terminal, control, picker, clock, parent, (*reviewOwner), shellEdits, retained, (*retainedSession), changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)
-			if handled {
-				return false, nil
-			}
-		case input.Composer != nil:
-			return applyComposerInput(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, dirty, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, reasoningKey, *input.Composer)
-		}
-		if input.Next == nil {
-			return false, nil
-		}
-		publishPresentation(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), presentationTime(clock))
-		input = terminal.Main.ContinueKey(*input.Next, terminal.Prompts, transcriptView(attached.presentation, terminal), focused)
-	}
-}
-
 func applyActivity(attached *attachedPresentation, approvals *nativeApprovalDock, terminal *terminalsession.Attachment, review *sessionreview.Review, pending *[]*changepresentation.Receipt, main string, clock func() time.Time, entries []sessionpresentation.ActivityEntry, agents []sessionpresentation.ActivityAgent) {
 	sessionpresentation.ApplyActivity(attached.source, attached.childSource, entries, agents)
 	applyCapturedEdits(attached, review, pending)
@@ -1107,20 +1445,9 @@ func applyActivity(attached *attachedPresentation, approvals *nativeApprovalDock
 	publishActivity(attached, terminal)
 }
 
-func paintSession(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, ctx context.Context, at time.Time, out io.Writer, width, height int) error {
-	terminal.Width, terminal.Height = max(1, width), max(1, height)
-	terminal.Main.ContentPainted = false
-	files.prepareOutput(&attached.session, terminal)
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	view := transcriptView(attached.presentation, terminal)
-	return paintNative(files, terminal, terminal.FrameInput(at, mekugiVersion()), view, activitySource(attached, terminal, view), ctx, out)
-}
-
 // Router-owned annotations and authenticated directed inputs supplement the
 // native event stream without becoming assistant speech or execution events.
-func applyObservedActivity(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], streams *terminalsession.Streams, usage *accounting.Service, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, clock func() time.Time, dirty *bool, restoring *appServerActivityRestore, audience *sessioncontrol.Audience) {
+func applyObservedActivity(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], streams *terminalsession.Streams, usage *accounting.Service, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, clock func() time.Time, restoring *appServerActivityRestore, audience *sessioncontrol.Audience) {
 	if restoring != nil && !restoring.state.View().Rendered {
 		return
 	}
@@ -1136,7 +1463,6 @@ func applyObservedActivity(attached *attachedPresentation, terminal *terminalses
 	}
 	if usageChanged {
 		attached.childSource.Apply(sessionpresentation.ActivityEvent{Agents: attached.session.Roster()})
-		(*dirty) = true
 	}
 	if audience == nil {
 		return
@@ -1197,13 +1523,11 @@ func applyObservedActivity(attached *attachedPresentation, terminal *terminalses
 	}
 	if len(entries) != 0 || receivedReceipt || admitted {
 		applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, entries, attached.session.Roster())
-		(*dirty) = true
 	}
 	for _, root := range roots {
 		for _, ref := range audience.TakeUnreturned(root) {
-			if main, activity := attached.source.MarkUnreturned(ref.Thread, ref.Call), attached.childSource.MarkUnreturned(ref.Thread, ref.Call); main || activity {
-				(*dirty) = true
-			}
+			attached.source.MarkUnreturned(ref.Thread, ref.Call)
+			attached.childSource.MarkUnreturned(ref.Thread, ref.Call)
 		}
 	}
 }

@@ -67,7 +67,10 @@ type Value struct {
 	Thought                              time.Duration
 }
 
-type Question struct{ Text, Answer, Options, State string }
+type Question struct {
+	Text, Answer, Options, State string
+	Secret                       bool
+}
 type WaitTarget struct{ Name, Status string }
 type HookDetails struct {
 	HandlerType, ExecutionMode, Status string

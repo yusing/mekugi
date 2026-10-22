@@ -152,7 +152,7 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 			first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
 			first.Finish(new("one"), new(0))
 			second.Finish(new(""), new(1))
-			retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "parent", Turn: turn.ID, Item: item.ID}}, item.Observation(), execTrackView{complete: true, output: true, code: 1, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Exit: 1}}})
+			retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "parent", Turn: turn.ID, Item: item.ID}}, item.Observation(), execTrackView{complete: true, output: true, code: 1, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Exit: 1}}})
 			awaitCommandSegments(t, u)
 			if notices := u.issues.Notices.Pending(); len(notices) != 0 {
 				t.Fatal(notices)

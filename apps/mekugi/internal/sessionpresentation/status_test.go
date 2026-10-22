@@ -80,7 +80,7 @@ func TestNonTerminalSurfaceScopeLifetime(t *testing.T) {
 	m := c.model()
 	m.Menu().Begin(sessionpresentation.MenuCopy)
 	m.OpenPanel("").Fields = []sessionpresentation.StatusField{{Value: "retained panel"}}
-	m.OpenResume(false, "/work").Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next")
+	m.OpenResume(false, "/work").Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next", 1)
 	m.Attach(sessionpresentation.Thread{ID: "accepted", Caller: "/root"}, false)
 	v := c.publish(sessionpresentation.Caption{})
 	if v.Panel == nil || v.Panel.Fields[0].Value != "retained panel" || v.Resume == nil || v.Resume.Rows[0].ID != "saved" || m.Menu().Kind != sessionpresentation.MenuCopy {

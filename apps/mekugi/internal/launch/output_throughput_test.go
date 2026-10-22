@@ -182,13 +182,13 @@ func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 		first.Begin()
 		time.Sleep(time.Second)
 		first.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 30})
-		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 		if usagepresentation.OutputThroughputLabel(u.attached.session.Agent("/root").OutputThroughput) != "30.0 tok/s" {
 			t.Fatal("main did not refresh")
 		}
 		next := usage.Observation(u.Thread, u.Thread, "gpt-6-sol", "")
 		next.Begin()
-		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 		if got := usagepresentation.OutputThroughputLabel(u.attached.session.Agent("/root").OutputThroughput); got != "30.0 tok/s" {
 			t.Fatalf("previous rate disappeared: %s", got)
 		}
@@ -242,7 +242,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 						t.Fatal(err)
 					}
 					synctest.Wait()
-					applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+					applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 					if got := u.attached.session.Agent("/root").OutputThroughput; got != previous {
 						t.Fatalf("%s replaced measured rate: %+v, want %+v", kind, got, previous)
 					}
@@ -263,7 +263,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				}
 				_ = w.Close()
 				<-done
-				applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+				applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 				requireRoundThroughput(t, proxy.usage, u.Thread, 40, true)
 				if root.OutputThroughput.OutputTokens != 130 || out.Code != http.StatusOK {
 					t.Fatalf("terminal measurement or delivery changed: %+v, %d", root.OutputThroughput, out.Code)

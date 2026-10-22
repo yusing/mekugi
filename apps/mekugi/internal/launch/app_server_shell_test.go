@@ -199,7 +199,8 @@ func TestAppServerShellComposer(t *testing.T) {
 	if u.attached.conversation.ShellMode() {
 		t.Fatal("removing bang did not leave shell mode")
 	}
-	appServerTestKeys(t, u, "\x03\x1b[200~!printf '%s\\n' \"你好\n$HOME\"\n\x1b[201~")
+	nativeTestCancel(t, u)
+	appServerTestKeys(t, u, "\x1b[200~!printf '%s\\n' \"你好\n$HOME\"\n\x1b[201~")
 	appServerTestKeys(t, u, "\x1b[A\x1b[H")
 	frame, _ = u.testMainFrame(18, 20, 0)
 	if u.Cursor() != strings.Index(u.Text, "$HOME") || !strings.Contains(ansi.Strip(strings.Join(frame, "\n")), "$HOME") {

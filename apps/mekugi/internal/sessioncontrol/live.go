@@ -18,6 +18,7 @@ type Live struct {
 	ResumeEffort             bool
 	submission               Submission
 	pendingStart             string
+	startOrigin              string
 	steers                   []string
 }
 
@@ -26,6 +27,9 @@ func (h *Live) Starting() bool {
 }
 
 func (h *Live) Started(turn string) {
+	if h.Turn != "" && h.Turn != turn {
+		h.startOrigin = ""
+	}
 	h.Turn, h.AwaitingTurn = turn, false
 	h.Compaction.Started(turn)
 	h.Shell.started(turn)
@@ -34,6 +38,7 @@ func (h *Live) Started(turn string) {
 func (h *Live) Completed(success bool) {
 	h.Compaction.Completed(h.Turn, success)
 	h.Turn, h.AwaitingTurn = "", false
+	h.startOrigin = ""
 	h.Shell.phase = shellIdle
 	h.Interruption.Finish()
 }

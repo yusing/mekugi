@@ -44,6 +44,12 @@ func Run() (exitCode int) {
 		}
 		return 0
 	}
+	if worker == nil && len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "server":
+			return RunServer(ctx, os.Args[2:], os.Stderr)
+		}
+	}
 	operation := ""
 	if len(os.Args) > 1 {
 		operation = os.Args[1]

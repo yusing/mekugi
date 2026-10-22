@@ -199,7 +199,8 @@ func TestAppServerQueuedAttachmentsKeepFilesUntilSent(t *testing.T) {
 	if _, err := os.Stat(path); err != nil || !u.ownedImages[path] {
 		t.Fatalf("queued image reclaimed: %v", err)
 	}
-	appServerTestKeys(t, u, "\x03\x03") // Clear the draft, then interrupt: queued input returns.
+	nativeTestCancel(t, u)
+	nativeTestCancel(t, u) // Clear the draft, then interrupt: queued input returns.
 	appServerTestTurnEnd(t, u, "t", "interrupted")
 	if u.Text != "[Image 1] see" || len(u.Images) != 1 || u.Images[0].Path != path {
 		t.Fatalf("interrupt did not restore queued attachment: %q %+v", u.Text, u.Images)
@@ -218,7 +219,8 @@ func TestAppServerInterruptRestoresSteersAndQueuedInput(t *testing.T) {
 	appServerTestKeys(t, u, "accepted\r")
 	accepted := appServerOneRequest(t, w, "turn/steer", "accepted")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, accepted.ID))
-	appServerTestKeys(t, u, "later\t\x03")
+	appServerTestKeys(t, u, "later\t")
+	nativeTestCancel(t, u)
 	appServerOneRequest(t, w, "turn/interrupt", "")
 	appServerTestKeys(t, u, "typed while interrupting\r")
 	if requests := appServerTurnRequests(t, w); len(requests) != 0 {
@@ -247,7 +249,7 @@ func TestAppServerInterruptRestoresUnresolvedSteerOnce(t *testing.T) {
 			if tt.committed {
 				appServerTestUserMessage(t, u, "user-1", steer.Params.ClientUserMessageID, "unresolved")
 			}
-			appServerTestKeys(t, u, "\x03")
+			nativeTestCancel(t, u)
 			appServerOneRequest(t, w, "turn/interrupt", "")
 			appServerTestTurnEnd(t, u, "t", "interrupted")
 			if requests := appServerTurnRequests(t, w); len(requests) != 0 {
@@ -272,7 +274,8 @@ func TestAppServerInterruptRestoresUnresolvedSteerOnce(t *testing.T) {
 func TestAppServerPlainInterruptRestoresQueuedInput(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "t")
-	appServerTestKeys(t, u, "queued\t\x03")
+	appServerTestKeys(t, u, "queued\t")
+	nativeTestCancel(t, u)
 	appServerOneRequest(t, w, "turn/interrupt", "")
 	if u.attached.presentation.Status.Text != "Interrupting…" {
 		t.Fatalf("status = %q", u.attached.presentation.Status.Text)
@@ -350,7 +353,7 @@ func TestAppServerEndedTurnKeepsSteerOrder(t *testing.T) {
 			appServerTestKeys(t, u, "C\r")
 			status := "completed"
 			if tt.interrupt {
-				appServerTestKeys(t, u, "\x03")
+				nativeTestCancel(t, u)
 				appServerOneRequest(t, w, "turn/interrupt", "")
 				status = "interrupted"
 			}
@@ -416,7 +419,7 @@ func TestAppServerInterruptBeforeFirstCommitRestoresCleanComposer(t *testing.T) 
 			if responseFirst {
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, start.ID))
 			}
-			appServerTestKeys(t, u, "\x03")
+			nativeTestCancel(t, u)
 			if requests := appServerTurnRequests(t, w); len(requests) != 0 {
 				t.Fatalf("interrupted without a host turn: %+v", requests)
 			}
@@ -447,9 +450,9 @@ func TestAppServerInterruptLocallyStackedInputDoesNotQuit(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.Settings.Admit(sessioncontrol.SettingsPlan{Action: sessioncontrol.SettingsTurn})
 	appServerTestKeys(t, u, "not sent\r")
-	quit, err := u.key("\x03")
-	if quit || err != nil || u.Text != "not sent" || len(u.attached.conversation.Unsent) != 0 || w.Len() != 0 {
-		t.Fatalf("quit=%v err=%v draft=%q requests=%s", quit, err, u.Text, w.String())
+	c := nativeTestCancel(t, u)
+	if c.quit || u.Text != "not sent" || len(u.attached.conversation.Unsent) != 0 || w.Len() != 0 {
+		t.Fatalf("quit=%v draft=%q requests=%s", c.quit, u.Text, w.String())
 	}
 }
 

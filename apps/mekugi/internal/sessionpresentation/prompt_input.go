@@ -13,7 +13,7 @@ type ApprovalInputIntent struct {
 }
 
 func (m *Model) QuestionInput(in QuestionInputIntent, questions *prompt.Questions) error {
-	if in.Version != m.view.Version {
+	if m.admitOwner(in.Version) != nil {
 		return ErrStaleIntent
 	}
 	if m.replay {
@@ -26,7 +26,7 @@ func (m *Model) QuestionInput(in QuestionInputIntent, questions *prompt.Question
 }
 
 func (m *Model) ApprovalInput(in ApprovalInputIntent, approvals *prompt.Approvals) error {
-	if in.Version != m.view.Version {
+	if m.admitOwner(in.Version) != nil {
 		return ErrStaleIntent
 	}
 	if m.replay {

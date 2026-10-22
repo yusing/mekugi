@@ -75,10 +75,10 @@ func records() []recordkind.Spec { return []recordkind.Spec{{ID: %q + "-record",
 	}
 	writeWorkspaceSource(t, indexComposition, `package composition
 import feature "github.com/yusing/mekugi/modules/first"
-func Frontends() {
+func frontendDeclarations() (*Composition, func()) {
     var c Composition
     c.Add(feature.Module, func() int { panic("dependencies executed") })
-    c.Activate()
+    return &c, nil
 }`)
 	writeWorkspaceSource(t, indexTemplate, `{{.SelectedCount}}/{{len .Modules}}{{range .Modules}} {{.Descriptor.ID}}:{{.Selected}}:{{range .Descriptor.Records}}{{.}}{{end}}{{end}}`)
 	members, err := workspaceMembers()
@@ -133,12 +133,13 @@ func TestModuleIndexSelectionRejectsUnsupportedShapes(t *testing.T) {
 		{"unknown member", "c.Add(other.Module, deps)"},
 		{"shadowed import", "feature := alternate; c.Add(feature.Module, deps)"},
 		{"other method", "c.AddModules(feature.Module)"},
+		{"activation", "c.Add(feature.Module, deps); c.Activate()"},
 		{"replacement", "c = another"},
 		{"duplicate", "c.Add(feature.Module, deps); c.Add(feature.Module, deps)"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "modules.go")
-			writeWorkspaceSource(t, path, "package composition\nimport feature \""+prefix+"/modules/first\"\nfunc Frontends() { var c Composition; "+tt.body+"; c.Activate() }")
+			writeWorkspaceSource(t, path, "package composition\nimport feature \""+prefix+"/modules/first\"\nfunc frontendDeclarations() (*Composition, func()) { var c Composition; "+tt.body+"; return &c, nil }")
 			if _, err := applicationSelection(path, []member{{"modules/first", prefix + "/modules/first"}}); err == nil {
 				t.Fatal("unsupported composition accepted")
 			}

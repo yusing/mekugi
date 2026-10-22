@@ -5,8 +5,12 @@
 `mekugi` dispatches authenticated frontend calls and offline inspection before
 starting a live invocation. Live launch validates options, composes services,
 binds a private IPv4 loopback endpoint on an OS-assigned port, and starts Codex
-from PATH only after initialization succeeds. No daemon, fixed-listener option,
-standalone router command, or persistent configuration change is introduced.
+from PATH only after initialization succeeds. `mekugi server` owns long-lived
+interactive invocations behind a private, peer-admitted Unix WebSocket.
+Client disconnection leaves execution running; explicit end or server shutdown
+closes the owned runtime. The existing Session Control ledger remains the sole
+host dispatcher. Native renderer attachment and remote publication borrow the
+same running owners.
 
 ## Invocation selection
 
@@ -54,25 +58,29 @@ default as new launches. Stock exec's provider override skips saved-model mergin
 an explicit invocation model still wins. Interactive saved-model restoration
 retains its separate session contract.
 
-Interactive terminals use the native client. Redirected and noninteractive
+Interactive terminals use a renderer attached to the local server. The client
+starts that server when absent through one startup lock and readiness check;
+closing the client leaves the server and admitted work running. Redirected and noninteractive
 commands retain stock cwd, arguments, environment and streams, augmented with the
 private frontend PATH and invocation-owned integration settings. Native arguments
 are explicitly mapped; unsupported options fail rather than acquiring a different
 meaning. `--yolo` disables host approval and sandbox prompts only when supplied.
 Resume retains the selected host thread and is unavailable to headless runs.
 
-The interactive client connects only to Codex app-server, submitting intent and
-answering supported host requests; it never connects to the JavaScript execution
-host or adds model calls for UI plumbing. Explicit model/config/feature flags and
+The interactive client submits intent and answers supported host requests through
+the shared Session API. The server's Session Control owns the Codex app-server
+connection; the renderer never connects to the JavaScript execution host or adds
+model calls for UI plumbing. Explicit model/config/feature flags and
 resume selectors retain their meaning. Without `--yolo`, configured host approval
 and sandbox policy applies; with it, start/resume requests repeat `never` and
 `danger-full-access`. Independent remote-write/sudo guards retain their owners.
 There is one interactive UI. Public invocation options expose no response-mode
 selector; internal adapter identifiers do not select another client.
 
-The UI excludes PTY emulation or screen scraping for Main, settings clones,
-onboarding, cloud tasks, voice, Git-write UI actions, browser
-frontends/remote hosting, and new authentication flows. These limits do not change
+The native UI excludes PTY emulation or screen scraping for Main, settings clones,
+onboarding, cloud tasks, voice, Git-write UI actions and new provider authentication
+flows.
+These limits do not change
 Codex-owned execution or explicitly invoked change-history tools.
 Rewind's optional captured-edit reversal uses those tools through the host's
 native shell under the [session-control contract](../sessioncontrol/SPEC.md).
@@ -162,12 +170,21 @@ Launch constructs invocation resources and the native attachment from their actu
 owners, joins their lifetimes, and binds live and replay observations to the shared
 session presentation. Module state stays with its composed owner.
 
+Before terminal attachment, Ctrl-C cancels the client's startup wait. An already
+admitted server runtime remains independent of that wait. Attached input uses the
+existing semantic interrupt and exit controls; quitting or terminating the client
+releases its renderer without stopping execution. Native resume attaches to an
+already-active logical thread; saved-thread resume admits only durably enrolled
+Mekugi history through the
+existing startup owner. Server shutdown cancels and joins its runtimes, allowing
+Codex to clean up owned execution processes.
+
+Redirected and noninteractive launches retain their invocation-local lifetime.
 Before host handoff, Ctrl-C cancels startup and prevents launch, including an
 interrupt already consumed by the startup receiver. After handoff, Codex owns
-terminal Ctrl-C; the wrapper neither forwards it twice nor stops the invocation server.
-SIGTERM cancels the child and services with bounded process cleanup. Unexpected
-invocation-server termination also stops Codex. Ordinary child exit status is preserved;
-signal exits use `128 + signal`.
+terminal Ctrl-C. SIGTERM cancels the child and services with bounded cleanup.
+Unexpected invocation-server termination also stops Codex. Ordinary child exit
+status is preserved; signal exits use `128 + signal`.
 
 Startup errors, launch failure, cancellation and child exit release owned services
 and temporary files. Cleanup failures are reported. Undelivered critical notices
@@ -192,7 +209,8 @@ newest entry.
 
 ### Interactive exit
 
-After terminal restoration, the client prints unsent drafts/notices, Main's latest
+After terminal restoration, the client prints unsent drafts/notices, the latest
+delivered bounded, deduplicated host stderr, Main's latest
 cumulative host token usage and a shell-quoted continuation command for an established
 thread. Input/total exclude cached input; cached/reasoning counts appear separately
 when nonzero. Zero or unavailable usage omits the token line. Child usage and router

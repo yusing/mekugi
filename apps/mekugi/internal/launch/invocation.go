@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
@@ -66,9 +67,7 @@ import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/openai"
-	"github.com/yusing/mekugi/providers/opencode"
 
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
@@ -87,7 +86,8 @@ const (
 
 // runInvocation acquires independent owners, launches Codex and joins every lifetime.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func runInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stdin, stdout *os.File, stderr io.Writer, appUI, headless bool, resumeThread string, resumeArgv []string, approvals bool, stopStartupInterrupts func(), interrupts <-chan os.Signal, artifacts func([]string)) (code int, runErr error) {
+func runInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stdin, stdout *os.File, stderr io.Writer, headless bool, resumeThread string, resumeArgv []string, approvals bool, stopStartupInterrupts func(), interrupts <-chan os.Signal, artifacts func([]string), api *sessionapi.Server, workspace string) (code int, runErr error) {
+	appUI := api != nil
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer func() {
@@ -105,9 +105,10 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		guards = nil
 	}
 	grokEnabled, standalone := options.Grok, options.ThirdParty
-	faint, err := terminalui.SupportsFaint(ctx, options.ANSIFaint)
-	if err != nil {
-		return 1, err
+	if api == nil {
+		if _, err := terminalui.SupportsFaint(ctx, options.ANSIFaint); err != nil {
+			return 1, err
+		}
 	}
 	openCode := config.Providers
 	if agentMetrics != nil {
@@ -187,41 +188,21 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	provider := inferencegateway.NewClient(openai.BaseURL, openaiHTTP, requestexecution.ProviderDiagnostics())
 	provider.ThirdPartyOnly = grokEnabled || standalone
 	provider.OpenAI.StreamIdleTimeout = options.StreamIdleTimeout
-	if grokEnabled || standalone {
-		apiKey := strings.TrimSpace(os.Getenv("XAI_API_KEY"))
-		path := options.GrokAuthFile
-		if path == "" && apiKey == "" {
-			home, err := os.UserHomeDir()
-			if err != nil && !standalone {
-				return 1, fmt.Errorf("locate Grok credentials: %w", err)
-			}
-			if err == nil {
-				path = filepath.Join(home, ".grok", "auth.json")
-			}
+	// Source: apps/mekugi/internal/launch/invocation.go:188:203@[14a6d1f3] provider selection
+	auth, selectedOpenCode, err := launchProviders(ctx, options, openCode)
+	if err != nil {
+		return 1, err
+	}
+	openCode = selectedOpenCode
+	if auth != nil {
+		client := httptransport.Client(nil)
+		if capture != nil {
+			client.Transport = capture.Transport(client.Transport)
 		}
-		auth := grok.NewAuth(path, apiKey, httptransport.Client(nil))
-		if _, authErr := auth.Credentials(ctx); authErr == nil {
-			client := httptransport.Client(nil)
-			if capture != nil {
-				client.Transport = capture.Transport(client.Transport)
-			}
-			provider.Grok = &inferencegateway.ThirdPartyClient{HTTPClient: client, Auth: auth, Unprefixed: grokEnabled, StreamIdleTimeout: options.StreamIdleTimeout, Diagnostics: provider.Diagnostics}
-		} else if grokEnabled {
-			return 1, authErr
-		}
+		provider.Grok = &inferencegateway.ThirdPartyClient{HTTPClient: client, Auth: auth, Unprefixed: grokEnabled, StreamIdleTimeout: options.StreamIdleTimeout, Diagnostics: provider.Diagnostics}
 	}
 	if standalone && provider.Grok == nil && !openCode.Enabled() {
 		return 1, errors.New("no authenticated third-party providers; run grok login --oauth or set XAI_API_KEY, OPENCODE_GO_API_KEY, or OPENCODE_ZEN_API_KEY")
-	}
-	if openCode.Enabled() {
-		cachePath := ""
-		if directory, err := os.UserCacheDir(); err == nil {
-			cachePath = filepath.Join(directory, "mekugi", "opencode-models-v2.json")
-		}
-		openCode.Catalog = opencode.NewCatalog(cachePath, nil)
-		if err := openCode.Catalog.Refresh(ctx, false); err != nil {
-			log.Printf("OpenCode catalog: refresh/cache update unavailable; retaining last usable metadata")
-		}
 	}
 	serviceTiers := inferencegateway.NewTiers(config.ServiceTiers)
 	provider.OpenCode = make(map[string]*inferencegateway.ThirdPartyClient)
@@ -425,6 +406,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 
 	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, args, options.Mode == "mekugi", skillsManagerAvailable, !provider.ThirdPartyOnly)...)
+	cmd.Dir = workspace
 	cmd.Env = append(slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
 		return strings.HasPrefix(entry, shellhook.Environment+"=")
 	}), "MEKUGI_BASE_URL="+baseURL)
@@ -540,7 +522,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			waitCodex, err = startNativeSession(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, &control, usage, audience, review, windows, nativeTrace, retained, changeSource, checkpoints, recovered, review.Publish, issues.AddThreadNotice, guardServer, guards, reportObserver, skillsManagerAvailable, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals, provider.OpenAI)
+			waitCodex, err = startNativeSession(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdout, &control, usage, audience, review, windows, nativeTrace, retained, changeSource, checkpoints, recovered, review.Publish, issues.AddThreadNotice, guardServer, guards, reportObserver, skillsManagerAvailable, issues, resumeThread, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals, provider.OpenAI, api, options.ChildReplySummary)
 		} else {
 			err = cmd.Start()
 			waitCodex = cmd.Wait

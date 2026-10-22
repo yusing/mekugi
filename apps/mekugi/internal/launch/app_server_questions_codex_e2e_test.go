@@ -5,6 +5,7 @@ package launch
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
@@ -14,6 +15,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -207,6 +209,9 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 						want = "user_note: [Image 1] "
 					}
 					found = len(answers) == 1 && answers[0] == want
+					if !found {
+						t.Fatalf("sync answer = %q; want %q", answers, want)
+					}
 				}
 				if !found {
 					t.Fatal("sync answer was not delivered as the matching tool result")
@@ -229,6 +234,11 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 
 func assertQuestionProviderImage(t *testing.T, request []byte, path string) {
 	t.Helper()
+	image, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(image)
 	var body struct {
 		Input []struct {
 			Role    string `json:"role"`
@@ -252,11 +262,13 @@ func assertQuestionProviderImage(t *testing.T, request []byte, path string) {
 				continue
 			}
 			images++
-			if !strings.HasPrefix(part.URL, "data:image/png;base64,") {
-				t.Fatal("answer image bytes missing")
+			if part.URL != wantURL {
+				t.Fatal("answer image bytes changed or missing")
 			}
 			if i > 0 && i+1 < len(item.Content) {
-				framed = strings.HasPrefix(item.Content[i-1].Text, "<image") && strings.Contains(item.Content[i-1].Text, path) && item.Content[i+1].Text == "</image>"
+				// The server owns a copied image path, while its bytes and the
+				// host's surrounding frame must survive answer submission.
+				framed = strings.HasPrefix(item.Content[i-1].Text, "<image") && item.Content[i+1].Text == "</image>"
 			}
 		}
 	}

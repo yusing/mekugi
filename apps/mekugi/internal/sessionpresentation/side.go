@@ -10,16 +10,18 @@ import (
 
 type SideToken struct {
 	ID    uint64
+	Key   string
 	Label string
 }
 
 type CloseSideIntent struct {
 	Version  Version
+	Key      string
 	Exchange uint64
 }
 
 func (m *Model) AdmitCloseSide(in CloseSideIntent) error {
-	if in.Version != m.view.Version || m.view.Side == nil || in.Exchange != m.view.Side.ID {
+	if !in.Version.SameAttachment(m.view.Version) || m.view.Side == nil || in.Key == "" || in.Key != m.view.Side.Key || in.Exchange != m.view.Side.ID {
 		return ErrStaleIntent
 	}
 	if m.replay {
@@ -43,14 +45,21 @@ func (m *Model) SetSide(thread Thread) {
 		}
 	}
 	m.view.Version.Revision++
+	if selected && previous.ID != thread.ID {
+		m.destinationRevision = m.view.Version.Revision
+	}
 }
 func (m *Model) DisplayingSide() bool {
-	return m.view.SideThread.ID != "" && m.view.Displayed == m.view.SideThread
+	return m.view.SideThread.ID != "" && m.view.Displayed.ID == m.view.SideThread.ID
 }
 
 // InputConversation selects a present editor owner, independently of Main control.
 func (m *Model) InputConversation(main *conversationmodel.Session) *conversationmodel.Session {
-	if m.DisplayingSide() && main.Side != nil {
+	return m.inputConversation(m.view.Input.ID, main)
+}
+
+func (m *Model) inputConversation(thread string, main *conversationmodel.Session) *conversationmodel.Session {
+	if thread != "" && thread == m.view.SideThread.ID && main.Side != nil {
 		return &main.Side.Drafts
 	}
 	return main

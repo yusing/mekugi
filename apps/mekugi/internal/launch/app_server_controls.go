@@ -6,11 +6,8 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/scope"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -45,15 +42,4 @@ func controlsCommand(attached *attachedPresentation, terminal *terminalsession.A
 
 func lockNotice(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time) {
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "Locked · /unlock restores Esc and Ctrl-C · /quit exits when idle", false)
-}
-
-// Only keyboard cancellation is guarded. Host lifecycle and already-admitted
-// interrupts retain their authority, and contextual Escape/copy still work.
-func keyboardInterrupt(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt) error {
-	if terminal.Main.InterruptLocked {
-		lockNotice(attached, terminal, clock)
-		return nil
-	}
-	view := publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), presentationTime(clock))
-	return interruptSession(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, settings, tiers, title, backend, restoring, side, overlay, reviewOwner, receipts, sessionpresentation.InterruptIntent{Version: view.Version, Target: view.Interrupt, Mode: sessioncontrol.RestoreWaiting})
 }

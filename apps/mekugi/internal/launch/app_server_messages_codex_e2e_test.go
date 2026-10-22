@@ -84,7 +84,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 			if err := u.message(m); err != nil {
 				t.Fatalf("app-server %s: %v", m.Method, err)
 			}
-			applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+			applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 			if u.Thread != "" && !started {
 				started = true
 				if err := u.Request("turn/start", map[string]any{"threadId": u.Thread, "input": appserver.Input("Spawn the assigned child and wait for its report.")}); err != nil {
@@ -92,7 +92,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 				}
 			}
 		case <-tick.C:
-			applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+			applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 		case err := <-client.Done:
 			t.Fatalf("app-server exited before message and reply link: %v", err)
 		case <-ctx.Done():

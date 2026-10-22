@@ -37,7 +37,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	u.shell.Transcript.Conversation = true
 	u.testActivity(u.shell.Transcript).testAudience()
 
-	first := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+	first := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 	if first == nil || len(first.errors.Messages) != 3 {
 		t.Fatalf("native delivery = %v, want root, child, and router-wide", first)
 	}
@@ -78,7 +78,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	}
 	terminalTest(u).outputKey("q")
 	first.finish(terminalsession.NoticeReceipt{}) // Simulate an unpainted terminal frame.
-	retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+	retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 	if retry == nil || len(retry.errors.Messages) != 3 || len(u.attached.source.Entries) != 0 || u.attached.feedback.Text != before {
 		t.Fatalf("retry duplicated or lost entries: delivery=%v entries=%d", retry, len(u.attached.source.Entries))
 	}
@@ -86,7 +86,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 		t.Fatal(err)
 	}
 	retry.finish(terminalTest(u).Frame.Notices)
-	if len(issues.Notices.Pending()) != 1 || applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues) != nil {
+	if len(issues.Notices.Pending()) != 1 || applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues) != nil {
 		t.Fatalf("paint acknowledged unrelated root or queued duplicate: %v", issues.Notices.Pending())
 	}
 }
@@ -101,12 +101,12 @@ func TestNativeRequestNoticesWaitForHostTurnOutcome(t *testing.T) {
 					Phase: "inspect_response"}, fmt.Errorf("upstream closed: %s", cause))
 			}
 			record("StatusServiceRestart")
-			if delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues); delivery != nil || u.attached.feedback.Alert {
+			if delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues); delivery != nil || u.attached.feedback.Alert {
 				t.Fatal("request attempt interrupted a retrying turn")
 			}
 			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": status}})
 			record("late NormalClosure") // Finalization can follow the host notification.
-			delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+			delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 			if status != "failed" {
 				if delivery != nil || len(u.issues.Notices.Pending()) != 0 || u.attached.feedback.Alert {
 					t.Fatal("recovered or interrupted turn retained a failure notice")
@@ -136,14 +136,14 @@ func TestNativeRequestNoticeChildOutcomeKeepsOtherTurnsPending(t *testing.T) {
 			Phase: "inspect_response"}, fmt.Errorf("upstream closed for %s", thread))
 	}
 	queueCritical(u.issues, "main") // Auxiliary/unidentified failures stay immediate.
-	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 	if delivery == nil || len(delivery.errors.Messages) != 1 {
 		t.Fatal("retry gating hid an unrelated actionable notice")
 	}
 	delivery.errors.Finish(true)
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "turn", "status": "failed"}})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "completed"}})
-	delivery = applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+	delivery = applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 	if delivery == nil || len(delivery.errors.Messages) != 1 || !strings.Contains(u.attached.feedback.Text, "/root/worker: ") || strings.Contains(u.attached.feedback.Text, "upstream closed for main") {
 		t.Fatalf("child completion crossed turn scope: %s", u.attached.feedback.Text)
 	}
@@ -169,7 +169,7 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	other, _ := newAppServerTestUI()
 	other.Thread = "unrelated-root"
 	other.issues = issues
-	if delivery := applyCriticalNotices(&other.attached, other.shell, &other.Client, &other.picker, &other.Editor, other.clock, &other.childHistoryState, preferences.Applied{Model: other.model, Effort: other.reasoningEffort, Tier: other.serviceTier}, other.serviceTiers, other.title, other.backendVersion, &other.restoring, &other.side, other.audience, &other.dirty, other.issues); delivery != nil || len(other.attached.source.Entries) != 0 {
+	if delivery := applyCriticalNotices(&other.attached, other.shell, &other.Client, &other.picker, &other.Editor, other.clock, &other.childHistoryState, preferences.Applied{Model: other.model, Effort: other.reasoningEffort, Tier: other.serviceTier}, other.serviceTiers, other.title, other.backendVersion, &other.restoring, &other.side, other.audience, other.issues); delivery != nil || len(other.attached.source.Entries) != 0 {
 		t.Fatal("another root claimed the storage notice")
 	}
 
@@ -178,7 +178,7 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	owner.issues = issues
 	owner.shell.Transcript.Conversation = true
 	owner.testActivity(owner.shell.Transcript).testAudience()
-	delivery := applyCriticalNotices(&owner.attached, owner.shell, &owner.Client, &owner.picker, &owner.Editor, owner.clock, &owner.childHistoryState, preferences.Applied{Model: owner.model, Effort: owner.reasoningEffort, Tier: owner.serviceTier}, owner.serviceTiers, owner.title, owner.backendVersion, &owner.restoring, &owner.side, owner.audience, &owner.dirty, owner.issues)
+	delivery := applyCriticalNotices(&owner.attached, owner.shell, &owner.Client, &owner.picker, &owner.Editor, owner.clock, &owner.childHistoryState, preferences.Applied{Model: owner.model, Effort: owner.reasoningEffort, Tier: owner.serviceTier}, owner.serviceTiers, owner.title, owner.backendVersion, &owner.restoring, &owner.side, owner.audience, owner.issues)
 	if delivery == nil || len(delivery.errors.Messages) != 1 || len(owner.attached.source.Entries) != 0 || !owner.attached.feedback.Alert {
 		t.Fatalf("owning root did not receive the storage notice: delivery=%v entries=%d", delivery, len(owner.attached.source.Entries))
 	}
@@ -199,7 +199,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.issues = testCriticalErrors()
 			queueCritical(u.issues, u.Thread)
-			delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+			delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 			claimedText := u.attached.feedback.Text
 
 			defer terminalTest(u).Diff.Close()
@@ -228,7 +228,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			}
 			u.statusPanel = nil
 			u.attached.presentation.ClosePanel()
-			retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+			retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 			if retry == nil || u.attached.feedback.Text != claimedText {
 				t.Fatal("hidden batch could not retry")
 			}
@@ -237,7 +237,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			if len(u.issues.Notices.Pending()) != 0 {
 				t.Fatal("visible retry remained pending")
 			}
-			applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues).finish(terminalsession.NoticeReceipt{}) // Empty polls retain nil-safe acknowledgement.
+			applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues).finish(terminalsession.NoticeReceipt{}) // Empty polls retain nil-safe acknowledgement.
 		})
 	}
 }
@@ -247,7 +247,7 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 		t.Run(fmt.Sprintf("delivered=%t", delivered), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.issues.CleanupNotice("", "", "planning", "pending cleanup plan")
-			first := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+			first := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 
 			defer terminalTest(u).Diff.Close()
 			height := 3
@@ -261,7 +261,7 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 			}
 			replaceAppServerTestSession(t, u, "replacement")
 			u.Thread = "replacement"
-			retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+			retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 			if delivered {
 				if retry != nil || len(u.attached.source.Entries) != 0 {
 					t.Fatal("delivered progress returned in replacement transcript")
@@ -288,7 +288,7 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	u.issues = testCriticalErrors()
 	u.issues.AddNotice("", "capacity", "router error")
 	u.issues.CleanupNotice("", "", "planning", "cleanup progress")
-	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 
 	defer terminalTest(u).Diff.Close()
 	_, receipt := u.testDeliveredMainFrame(t, 80, 3, 0)
@@ -299,7 +299,7 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.shell.Main.NoticeDismiss.X+terminalTest(u).Layout.Main.X+1, u.shell.Main.NoticeDismiss.Y+terminalTest(u).Layout.Main.Y+1)); err != nil {
 		t.Fatal(err)
 	}
-	retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+	retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 	if u.attached.feedback.Text != "" || len(u.attached.source.Entries) != 1 {
 		t.Fatal("dismissed error returned or progress duplicated")
 	}
@@ -314,7 +314,7 @@ func TestNativeNoticeReceiptKeepsPaintedIdentity(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.issues = testCriticalErrors()
 	queueCritical(u.issues, u.Thread)
-	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 	_, receipt := u.testDeliveredMainFrame(t, 80, 12, 0)
 	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "later feedback", true)
 	u.statusPanel = newStatusReport(u.attached.presentation, u.replayDebugDirectory)
@@ -328,7 +328,7 @@ func TestNativeNoticeReceiptKeepsPaintedIdentity(t *testing.T) {
 func TestNativeNoticeChildFrameCannotAcknowledgeMainProgress(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.issues.CleanupNotice("", "", "planning", "Main cleanup progress")
-	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	view := u.attached.presentation.View()
 	if !displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.DisplayIntent{Version: view.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/worker"}}) {
@@ -345,7 +345,7 @@ func TestNativeNoticeChildFrameCannotAcknowledgeMainProgress(t *testing.T) {
 	if !displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main}) {
 		t.Fatal(u.attached.feedback.Text)
 	}
-	retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+	retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}

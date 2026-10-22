@@ -360,7 +360,8 @@ interpretation. Successful one-line command output
 stays visible rather than becoming a line-count toggle.
 
 Asked rows retain full questions and observed answers with shared Markdown and
-source copying. Adjacent question records share their Main heading. Approval facts
+source copying. Question facts retain their secret-input classification so browser
+projections can omit secret prompt content while terminal rows keep it. Adjacent question records share their Main heading. Approval facts
 decorate the associated host item, never a separate Approval/Session event:
 Pending Approval, Approved, Denied and Auto Denied remain distinct from execution
 success. External resolution and turn end say Resolved elsewhere or Turn ended

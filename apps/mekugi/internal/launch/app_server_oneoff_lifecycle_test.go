@@ -309,7 +309,7 @@ func TestOneoffSupplementDrain(t *testing.T) {
 	u.audience.Attach("main")
 	u.audience.Observe("oneoff", "", "/root", false)
 	u.audience.Collect(activitypresentation.Supplement{Thread: "oneoff", Source: "oneoff-script-failure", Kind: "error", Text: "ONEOFF_EXEC_SCRIPT_FAILED"})
-	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	for _, e := range u.attached.childSource.Entries {
 		if strings.Contains(e.Source.Text, "ONEOFF_EXEC_SCRIPT_FAILED") {
 			return

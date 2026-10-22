@@ -9,6 +9,7 @@ import (
 // InputRestoration identifies presentation changes without renderer state.
 type InputRestoration struct {
 	Rejected []string
+	Detached []Input
 	Parked   bool
 	Changed  bool
 }
@@ -23,6 +24,8 @@ func (m *Session) RestoreInput(parts ...Input) InputRestoration {
 			if call.Reject() {
 				result.Rejected = append(result.Rejected, call.ID)
 			}
+		} else if part.Origin != "" {
+			result.Detached = append(result.Detached, part)
 		} else {
 			ordinary = append(ordinary, part)
 		}

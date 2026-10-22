@@ -75,6 +75,19 @@ func (r *Requests[T]) Lookup(id string) (Request[T], bool) {
 	return request, ok
 }
 
+// Attribute transfers response routing when a startup presentation acquires its
+// first client. It preserves host identity and moves the observation lifetime.
+func (r *Requests[T]) Attribute(id, scope string, owner T) bool {
+	request, ok := r.pending[id]
+	if !ok {
+		return false
+	}
+	request.Owner = owner
+	request.Scope = scope
+	r.pending[id] = request
+	return true
+}
+
 // Take consumes a response identity once. Unknown or retired identities have no
 // owner and must not settle a newer operation with the same method.
 func (r *Requests[T]) Take(id string) (Request[T], bool) {
@@ -100,3 +113,15 @@ func (r *Requests[T]) Retire(scope string) {
 }
 
 func (r *Requests[T]) Pending() bool { return len(r.pending) != 0 }
+
+// PendingSideInputs borrows the input provenance still awaiting a host outcome.
+// Main submissions remain with Conversation's submitted-input owner.
+func (r *Requests[T]) PendingSideInputs() []conversationmodel.Input {
+	var inputs []conversationmodel.Input
+	for _, request := range r.pending {
+		if request.SideInput != nil {
+			inputs = append(inputs, *request.SideInput)
+		}
+	}
+	return inputs
+}

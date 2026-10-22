@@ -59,7 +59,7 @@ func effortChoices(models []appServerModel, selected string) []string {
 // Codex owns configuration_update history items. These RPCs submit settings
 // intent, never synthetic Responses items or writes to the user's config file.
 // Source: codex-rs/app-server-protocol/src/protocol/v2/{thread,turn}.rs
-func updateSettings(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, dirty *bool, restoring bool, clock func() time.Time, change map[string]any) (bool, error) {
+func updateSettings(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, restoring bool, clock func() time.Time, change map[string]any) (bool, error) {
 	decision := control.PrepareSettings(applied, change, restoring)
 	switch decision.Action {
 	case sessioncontrol.SettingsUnavailable:
@@ -74,7 +74,7 @@ func updateSettings(attached *attachedPresentation, terminal *terminalsession.At
 	}
 
 	if decision.RestoreDefault {
-		(*dirty) = paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: applied.Model, Effort: applied.Effort, Tier: applied.Tier, Observed: presentationTime(clock)})) || (*dirty)
+		paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: applied.Model, Effort: applied.Effort, Tier: applied.Tier, Observed: presentationTime(clock)}))
 	}
 	if decision.ChooseTier {
 		(*tiers) = chooseServiceTier((*tiers), applied.Model, control.Thread, applied.Tier)
@@ -93,7 +93,7 @@ func updateSettings(attached *attachedPresentation, terminal *terminalsession.At
 	return true, nil
 }
 
-func stepReasoning(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, dirty *bool, restoring bool, clock func() time.Time, models []appServerModel, loading bool, reasoningKey **bool, up bool) error {
+func stepReasoning(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, restoring bool, clock func() time.Time, models []appServerModel, loading bool, reasoningKey **bool, up bool) error {
 	if loading {
 		(*reasoningKey) = new(up)
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Loading model choices…", false)
@@ -118,12 +118,12 @@ func stepReasoning(attached *attachedPresentation, terminal *terminalsession.Att
 	if next < 0 || next >= len(choices) {
 		return nil
 	}
-	_, err := updateSettings(attached, terminal, control, applied, tiers, panes, dirty, restoring, clock, map[string]any{"effort": choices[next]})
+	_, err := updateSettings(attached, terminal, control, applied, tiers, panes, restoring, clock, map[string]any{"effort": choices[next]})
 	return err
 }
 
 // Slash controls work while a turn runs and do not submit conversation input.
-func settingsCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, dirty *bool, models []appServerModel, loading bool, text string) (bool, error) {
+func settingsCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, models []appServerModel, loading bool, text string) (bool, error) {
 	fields := strings.Fields(text)
 	if len(fields) == 0 {
 		return false, nil
@@ -151,7 +151,7 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 		recordDraft(attached, (*editor), terminal, clock, owned, questions, approvals, side)
 		(*editor).Text, (*editor).CursorBack, (*editor).Images = "", 0, nil
 		(*editor).Changed()
-		setLivePane(&attached.feedback, terminal, clock, dirty, value)
+		setLivePane(&attached.feedback, terminal, clock, value)
 		return true, nil
 	}
 	var choices []string
@@ -201,7 +201,7 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 		}
 	}
 	// The host validates explicit values, including custom models and tiers.
-	accepted, err := updateSettings(attached, terminal, control, applied, tiers, panes, dirty, restoring, clock, change)
+	accepted, err := updateSettings(attached, terminal, control, applied, tiers, panes, restoring, clock, change)
 	if accepted {
 		notice, alert := attached.feedback.Text, attached.feedback.Alert
 		recordDraft(attached, (*editor), terminal, clock, owned, questions, approvals, side)
@@ -212,7 +212,7 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 	return true, err
 }
 
-func settingsMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, dirty *bool, model *string, effort *string, tier *string, models *[]appServerModel, loading *bool, reasoningKey **bool, status *appServerStatusConfig, method string, m appserver.Message) (bool, error) {
+func settingsMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, model *string, effort *string, tier *string, models *[]appServerModel, loading *bool, reasoningKey **bool, status *appServerStatusConfig, method string, m appserver.Message) (bool, error) {
 	if method == "model/list" {
 		if m.Error != nil {
 			(*loading), (*reasoningKey) = false, nil
@@ -238,13 +238,13 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 		if picker.Setting != "" {
 			command := picker.Setting
 			if picker.Kind == "settings" {
-				_, _ = settingsCommand(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, panes, dirty, (*models), (*loading), command)
+				_, _ = settingsCommand(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, panes, (*models), (*loading), command)
 			}
 		}
 		if (*reasoningKey) != nil {
 			up := *(*reasoningKey)
 			(*reasoningKey) = nil
-			return true, stepReasoning(attached, terminal, control, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, panes, dirty, restoring, clock, (*models), (*loading), reasoningKey, up)
+			return true, stepReasoning(attached, terminal, control, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, panes, restoring, clock, (*models), (*loading), reasoningKey, up)
 		}
 		return true, nil
 	}
@@ -305,7 +305,7 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 	if confirmation.ChooseTier {
 		(*tiers) = chooseServiceTier((*tiers), (*model), control.Thread, (*tier))
 	}
-	(*dirty) = paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)})) || (*dirty)
+	paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)}))
 	if !confirmation.Requested {
 		return true, nil
 	}
@@ -368,7 +368,7 @@ func chooseServiceTier(tiers *inferencegateway.Tiers, model, thread, tier string
 	return tiers
 }
 
-func chooseSetting(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, dirty *bool, restoring bool, clock func() time.Time, picker *composerPicker, choice completion.Choice) {
+func chooseSetting(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, restoring bool, clock func() time.Time, picker *composerPicker, choice completion.Choice) {
 	p := picker
 	if p.Loading {
 		return
@@ -384,7 +384,7 @@ func chooseSetting(attached *attachedPresentation, terminal *terminalsession.Att
 	if field == "serviceTier" && value == "default" {
 		value = nil
 	}
-	accepted, err := updateSettings(attached, terminal, control, applied, tiers, panes, dirty, restoring, clock, map[string]any{field: value})
+	accepted, err := updateSettings(attached, terminal, control, applied, tiers, panes, restoring, clock, map[string]any{field: value})
 	if err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings update failed: "+err.Error(), true)
 	}
@@ -397,8 +397,8 @@ func chooseSetting(attached *attachedPresentation, terminal *terminalsession.Att
 }
 
 // setLivePane changes presentation without stopping preview or capture updates.
-func setLivePane(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, dirty *bool, value string) {
+func setLivePane(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, value string) {
 	terminal.LiveHidden = value == "off"
-	(*dirty) = true
+
 	setNotice(feedback, terminal, presentationTime(clock), "Live pane "+value+" for this session", false)
 }

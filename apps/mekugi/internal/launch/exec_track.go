@@ -39,7 +39,7 @@ type execTrackView struct {
 
 // commandReportView drains the observer once before Activity reduction and
 // terminal reveal. Attribution loss returns to the transport owner explicitly.
-func commandReportView(observer *commandsegments.Observer, streams *terminalsession.Streams, key [3]string, run *sessionpresentation.CommandOperation, final bool, directory string) (execTrackView, bool) {
+func commandReportView(attached *attachedPresentation, observer *commandsegments.Observer, streams *terminalsession.Streams, key [3]string, run *sessionpresentation.CommandOperation, final bool, directory string) (execTrackView, bool) {
 	track, ok := observer.Read(key)
 	if !ok {
 		return execTrackView{}, false
@@ -48,6 +48,18 @@ func commandReportView(observer *commandsegments.Observer, streams *terminalsess
 	stream := streams.Command(key, run.Entry.Text)
 	state := sessionpresentation.ObserveCommandReport(run.Entry.Native.Invocation, report, final)
 	snapshot := state.Snapshot
+	if attached.deliverActivity != nil {
+		output := slices.ContainsFunc(report.Segments, func(segment activitypresentation.SegmentObservation) bool { return segment.Output != "" })
+		if state.Changed || output || final {
+			detached := snapshot
+			detached.Segments = slices.Clone(snapshot.Segments)
+			for i := range detached.Segments {
+				detached.Segments[i].Raw = ""
+				detached.Segments[i].Output = nil
+			}
+			attached.deliverActivity(attached.executionPresentation, []sessionpresentation.ActivityDelivery{{Report: &sessionpresentation.CommandReportDelivery{Key: key, Text: run.Entry.Text, MainSequence: attached.source.EntrySeq(run.Entry), ChildSequence: attached.childSource.EntrySeq(run.Entry), Report: report, Snapshot: detached, Version: track.Version, Final: final}}})
+		}
+	}
 	frames, changed := stream.RevealSegments(report, snapshot, track.Version, final)
 	view := execTrackView{output: snapshot.SeparateOutput, ended: snapshot.Ended, complete: snapshot.Complete, code: snapshot.ExitCode, semantic: state.Changed, release: state.Release, segments: state.Segments}
 	for index, segment := range snapshot.Segments {
@@ -67,14 +79,14 @@ func commandReportView(observer *commandsegments.Observer, streams *terminalsess
 // flushTrackedCommand re-sends a tracked command whose segments changed, and
 // completes it once its report ends. It reports false for an untracked
 // command, which keeps the host's single output stream.
-func flushTrackedCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, streams *terminalsession.Streams, tracker *commandsegments.Observer, clock func() time.Time, parent context.Context, retained changes.Scope, segments *reports.Service, writes *chan commandSegmentWrite, pending *int, issues *requestexecution.Failures, dirty *bool, key [3]string, run *sessionpresentation.CommandOperation) ([]sessionpresentation.ActivityEntry, bool) {
+func flushTrackedCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, streams *terminalsession.Streams, tracker *commandsegments.Observer, clock func() time.Time, parent context.Context, retained changes.Scope, segments *reports.Service, writes *chan commandSegmentWrite, pending *int, issues *requestexecution.Failures, key [3]string, run *sessionpresentation.CommandOperation) ([]sessionpresentation.ActivityEntry, bool) {
 	s := &attached.session
 	if run.Completion != nil {
-		view, _ := commandReportView(tracker, streams, key, run, false, run.Entry.Native.CommandCwd)
+		view, _ := commandReportView(attached, tracker, streams, key, run, false, run.Entry.Native.CommandCwd)
 		if !view.ended && presentationTime(clock).Sub(run.CompletedAt) < execTrackCompletionWait {
 			return nil, true
 		}
-		enriched, valid := reconcileTrackedCommand(attached, streams, tracker, parent, retained, segments, writes, pending, issues, dirty, key, *run.Completion, run.Completed)
+		enriched, valid := reconcileTrackedCommand(attached, streams, tracker, parent, retained, segments, writes, pending, issues, key, *run.Completion, run.Completed)
 		for _, adapter := range []*sessionpresentation.ActivitySource{attached.source, attached.childSource} {
 			adapter.SettleCommandReport(enriched, valid)
 		}
@@ -82,10 +94,10 @@ func flushTrackedCommand(attached *attachedPresentation, terminal *terminalsessi
 		delete(attached.session.Commands(), key)
 		delete(streams.Commands, key)
 		tracker.Forget(key)
-		(*dirty) = true
+
 		return nil, true
 	}
-	view, changed := commandReportView(tracker, streams, key, run, false, run.Entry.Native.CommandCwd)
+	view, changed := commandReportView(attached, tracker, streams, key, run, false, run.Entry.Native.CommandCwd)
 	if !tracker.Tracking(key) {
 		return nil, false
 	}
@@ -116,7 +128,7 @@ func flushTrackedCommand(attached *attachedPresentation, terminal *terminalsessi
 	}
 	native.Segments = view.segments
 	holdCommand(attached, terminal, entry, activityui.CommandFrame{Output: frame, Segments: view.frames})
-	(*dirty) = true
+
 	if !view.semantic {
 		return nil, true
 	}
@@ -130,15 +142,15 @@ func flushTrackedCommand(attached *attachedPresentation, terminal *terminalsessi
 // reconcileTrackedCommand admits segment outcomes when the report ended with
 // the host's own exit status. Otherwise the report is incomplete, and the
 // already-published host aggregate remains authoritative.
-func reconcileTrackedCommand(attached *attachedPresentation, streams *terminalsession.Streams, tracker *commandsegments.Observer, parent context.Context, retained changes.Scope, segments *reports.Service, writes *chan commandSegmentWrite, pending *int, issues *requestexecution.Failures, dirty *bool, key [3]string, entry sessionpresentation.ActivityEntry, item observation.Item) (sessionpresentation.ActivityEntry, bool) {
+func reconcileTrackedCommand(attached *attachedPresentation, streams *terminalsession.Streams, tracker *commandsegments.Observer, parent context.Context, retained changes.Scope, segments *reports.Service, writes *chan commandSegmentWrite, pending *int, issues *requestexecution.Failures, key [3]string, entry sessionpresentation.ActivityEntry, item observation.Item) (sessionpresentation.ActivityEntry, bool) {
 	run := attached.session.Commands()[key]
-	view, _ := commandReportView(tracker, streams, key, run, true, sessionpresentation.CommandDirectory(item, attached.cwd))
+	view, _ := commandReportView(attached, tracker, streams, key, run, true, sessionpresentation.CommandDirectory(item, attached.cwd))
 	if !run.Entry.Native.Invocation.ReportMatchesHost() || len(view.segments) == 0 {
 		return entry, false
 	}
 	native := *entry.Native
 	native.Segments, native.SegmentsPending = view.segments, false
-	retainCommandSegments(parent, retained, segments, attached, writes, pending, issues, dirty, entry, item, view)
+	retainCommandSegments(parent, retained, segments, attached, writes, pending, issues, entry, item, view)
 	for i := range native.Segments {
 		// A commit reads its object from the directory the host ran it in.
 		if segment := &native.Segments[i]; segment.Raw != "" && segment.Changes == nil {

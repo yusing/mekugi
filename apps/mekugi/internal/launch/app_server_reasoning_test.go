@@ -78,7 +78,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	wait := binding.ThreadItem{ID: "old-wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
 	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "old", "item": wait})
 	activity.BeginResponse("child", true, at.Add(-3*time.Second))
-	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
 	oldEnd := map[string]any{"threadId": "child", "turn": map[string]any{"id": "old", "status": "completed"}}
 	reasoningTestNotify(t, u, "turn/completed", oldEnd)
@@ -107,7 +107,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	}
 	assertAgentWork(t, u, "child", *at, 2*time.Second, false)
 	activity.BeginResponse("child", true, time.Now())
-	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "without-start", "status": "interrupted"}})
 	if got := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n")); strings.Contains(got, "Thinking") {
 		t.Fatalf("completion without a start left provider thinking: %q", got)
@@ -153,7 +153,7 @@ func TestAppServerClosedCompletionKeepsCurrentTurnSelection(t *testing.T) {
 	activity.Observe("child", "main", "/root/worker", true)
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	activity.BeginResponse("child", true, presentationTime(u.clock))
-	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "current", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "Current answer"}})
 	for _, item := range []binding.ThreadItem{{ID: "late-summary", Type: "reasoning", Summary: []string{"Older summary"}}, {ID: "late-answer", Type: "agentMessage", Text: "Older answer"}} {
@@ -253,11 +253,13 @@ func TestAppServerWorkingShimmers(t *testing.T) {
 func TestAppServerCompletedElapsedTime(t *testing.T) {
 	for seconds, elapsed := range map[int]string{0: "0s", 12: "12s", 60: "1m", 75: "1m15s", 82: "1m22s", 3600: "1h", 3682: "1h1m22s"} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
+		at := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+		u.clock = func() time.Time { return at }
 		reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-		u.attached.presentation.Status.Started = time.Now().Add(-time.Duration(seconds) * time.Second)
+		at = at.Add(time.Duration(seconds) * time.Second)
 		reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
 		want := "Completed in " + elapsed
-		for _, now := range []time.Time{time.Now(), time.Now().Add(time.Minute)} {
+		for _, now := range []time.Time{at, at.Add(time.Minute)} {
 			if got := ansi.Strip(u.sessionLabel(now)); got != want {
 				t.Fatalf("completion label = %q, want %q", got, want)
 			}
@@ -434,7 +436,7 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	start := func(thread string, ago time.Duration) {
 		t.Helper()
 		activity.BeginResponse(thread, true, time.Now().Add(-ago))
-		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	}
 	thinkingRows := func(view *activityAdapter) int {
 		rows := 0
@@ -521,7 +523,7 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 				}
 				start := func() {
 					activity.BeginResponse(thread, true, *at)
-					applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
+					applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 				}
 				complete := func(id, text string) {
 					reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": binding.ThreadItem{ID: id, Type: "reasoning", Summary: []string{text}}})

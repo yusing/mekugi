@@ -66,7 +66,7 @@ func guardHookResponse(attached *attachedPresentation, terminal *terminalsession
 		if err != nil {
 			if thread == side.Thread && len(side.Drafts.Unsent) == 0 {
 				side.Busy, side.Starting = false, false
-				side.Drafts.RestoreInput(side.Fail("Shell guard: "+err.Error(), side.Closed))
+				restoreSideDraft(attached, side, side.Fail("Shell guard: "+err.Error(), side.Closed))
 			}
 			kept := side.Drafts.Unsent[:0]
 			for _, input := range side.Drafts.Unsent {
@@ -81,7 +81,7 @@ func guardHookResponse(attached *attachedPresentation, terminal *terminalsession
 				if input.Question != nil {
 					input.Question.Reject()
 				}
-				side.RestoreInput(input)
+				restoreSideDraft(attached, side, input)
 			}
 			side.Drafts.Unsent = kept
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Shell guard: "+err.Error(), true)

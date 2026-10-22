@@ -101,7 +101,7 @@ func TestNativeUIPreview(t *testing.T) {
 				settled = p.ui.testActivity(p.ui.shell.Agents).testPace(now) || settled
 				settled = p.ui.dirty || settled // Includes keys drained by this tick.
 				p.ui.dirty = false
-				flushStreamOutput(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.streams, p.ui.execTrack, p.ui.review, &p.ui.approvals, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, p.ui.retained, p.ui.segments, &p.ui.commandSegmentWrites, &p.ui.commandSegmentPending, p.ui.issues, &p.ui.dirty) // Rolls output bursts, as each real frame does.
+				flushStreamOutput(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.streams, p.ui.execTrack, p.ui.review, &p.ui.approvals, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, p.ui.retained, p.ui.segments, &p.ui.commandSegmentWrites, &p.ui.commandSegmentPending, p.ui.issues) // Rolls output bursts, as each real frame does.
 				settled = p.ui.dirty || settled
 				noticeExpired := expireNotice(&p.ui.attached.feedback, p.ui.shell, now)
 				if p.pump(0) {
@@ -320,10 +320,13 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	p := newNativePreview(t)
 	defer p.close()
+	var quit bool
 	keys := func(s string) {
 		t.Helper()
 		for _, key := range []byte(s) {
-			if err := terminalTest(p.ui).key(key); err != nil {
+			if key == 3 {
+				quit = nativeTestCancel(t, p.ui).quit
+			} else if err := terminalTest(p.ui).key(key); err != nil {
 				t.Fatal(err)
 			}
 			p.serve()
@@ -341,7 +344,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		t.Fatal("Tab did not queue during playback")
 	}
 	keys("scratch\x03")
-	if p.ui.Text != "" || p.ui.Turn == "" || p.ui.quitRequested {
+	if p.ui.Text != "" || p.ui.Turn == "" || quit {
 		t.Fatal("first Ctrl-C did not only clear the draft")
 	}
 	keys("\x03")
@@ -364,7 +367,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		t.Fatalf("new turn not answered: %q", p.ui.attached.presentation.Status.Text)
 	}
 	keys("\x03")
-	if !p.ui.quitRequested {
+	if !quit {
 		t.Fatal("idle Ctrl-C did not quit")
 	}
 }
@@ -754,7 +757,7 @@ func (p *nativePreview) pump(wait time.Duration) bool {
 		p.finishCommand(live.thread, live.item, *event.exit)
 		p.live = nil
 	}
-	flushStreamOutput(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.streams, p.ui.execTrack, p.ui.review, &p.ui.approvals, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, p.ui.retained, p.ui.segments, &p.ui.commandSegmentWrites, &p.ui.commandSegmentPending, p.ui.issues, &p.ui.dirty)
+	flushStreamOutput(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.streams, p.ui.execTrack, p.ui.review, &p.ui.approvals, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, p.ui.retained, p.ui.segments, &p.ui.commandSegmentWrites, &p.ui.commandSegmentPending, p.ui.issues)
 	return true
 }
 
@@ -797,7 +800,7 @@ func (p *nativePreview) receive(to, from, id, kind, body string) {
 	}
 	transform, _ := prepareActivityModelTest(p.t, p.proxy, cmp.Or(p.models[to], "gpt-test"), "preview-"+to, to, parent, path, []any{envelope})
 	transform.Close()
-	applyObservedActivity(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.streams, p.ui.usage, p.ui.review, &p.ui.approvals, &p.ui.pendingEditReceipts, p.ui.clock, &p.ui.dirty, p.ui.restoring, p.ui.audience)
+	applyObservedActivity(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.streams, p.ui.usage, p.ui.review, &p.ui.approvals, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.restoring, p.ui.audience)
 }
 
 func (p *nativePreview) say(thread, id, phase, text string) {

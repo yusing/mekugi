@@ -249,6 +249,8 @@ Output requests are renderer-neutral values naming source, output, version and a
 byte bound, or the complete retained snapshot. Application integration resolves
 them against the attached retention owner and returns detached snapshots; the
 renderer chooses its syntax-context bound and has no retained handle.
+Frozen selection capture keeps its transcript membership, disclosure, offset and
+output identities while asynchronous hydration and live publication proceed independently.
 
 ## Lifecycle and integration
 

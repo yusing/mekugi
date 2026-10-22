@@ -27,16 +27,6 @@ func openActivityReply(attached *attachedPresentation, terminal *terminalsession
 	return false
 }
 
-// transcriptView selects display state without changing the input or execution owner.
-func transcriptView(presentation *sessionpresentation.Model, terminal *terminalsession.Attachment) *activityui.View {
-	view := presentation.View()
-	if terminal.Agents != nil && view.Displayed.ID != view.Main.ID {
-		terminal.Agents.Conversation = true
-		return terminal.Agents
-	}
-	return terminal.Transcript
-}
-
 func paintNative(files *detailFiles, u *terminalsession.Attachment, in terminalsession.FrameInput, transcript *activityui.View, source *sessionpresentation.ActivitySource, ctx context.Context, out io.Writer) error {
 	scope := in.SourceContext()
 	if in.Selection != nil && in.Dialog == nil && in.SelectionPane == u.Shell.Layout.Main {

@@ -20,6 +20,7 @@ import (
 // Startup retains invocation overrides and pre-resume evidence independently of
 // the current attachment. Replacement owns an in-session target until acceptance.
 type Startup struct {
+	History           *history.Store
 	Thread, Workspace string
 	Config            map[string]any
 	Evidence          preferences.Evidence
@@ -67,7 +68,7 @@ func (r *Requests[T]) OpenSession(s *Startup, control *Live, approvals bool, res
 	case control.Replacement.Target == "" && target == ResumePicker:
 		return OpeningPicker, nil
 	case control.Replacement.Target == "" && target == "--last":
-		params := ResumableThreads(1)
+		params := ResumableThreads(25)
 		params["cwd"] = s.Workspace
 		_, err := r.Send("thread/list", params, "main", owner)
 		return OpeningLatest, err
@@ -75,6 +76,11 @@ func (r *Requests[T]) OpenSession(s *Startup, control *Live, approvals bool, res
 		_, err := r.Send("thread/start", ThreadPermissions(map[string]any{}, approvals), "main", owner)
 		return OpeningFresh, err
 	default:
+		if found, err := s.History.ContainsSession(target); err != nil {
+			return OpeningResume, err
+		} else if !found {
+			return OpeningResume, fmt.Errorf("session %s is not a retained Mekugi session", target)
+		}
 		_, err := r.Send("thread/read", map[string]any{"threadId": target, "includeTurns": false}, "main", resumeOwner)
 		return OpeningResume, err
 	}
@@ -89,21 +95,29 @@ func ResumableThreads(limit int) map[string]any {
 	}
 }
 
-func (s *Startup) Latest(result jsontext.Value) error {
+// Latest selects the first Mekugi member or returns the next host page cursor.
+func (s *Startup) Latest(result jsontext.Value) (string, error) {
 	var response struct {
-		Data []binding.ThreadInfo `json:"data"`
+		Data       []binding.ThreadInfo `json:"data"`
+		NextCursor string               `json:"nextCursor"`
 	}
 	if err := json.Unmarshal(result, &response); err != nil {
-		return fmt.Errorf("find latest thread: %w", err)
+		return "", fmt.Errorf("find latest thread: %w", err)
 	}
-	if len(response.Data) == 0 {
-		return fmt.Errorf("no resumable thread found for %s", s.Workspace)
+	for _, thread := range response.Data {
+		found, err := s.History.ContainsSession(thread.ID)
+		if err != nil {
+			return "", err
+		}
+		if found {
+			s.Thread = thread.ID
+			return "", nil
+		}
 	}
-	if response.Data[0].ID == "" {
-		return errors.New("thread/list returned no thread identity")
+	if response.NextCursor != "" {
+		return response.NextCursor, nil
 	}
-	s.Thread = response.Data[0].ID
-	return nil
+	return "", fmt.Errorf("no resumable Mekugi thread found for %s", s.Workspace)
 }
 
 // Resume uses evidence acquired before the host can checkpoint invocation

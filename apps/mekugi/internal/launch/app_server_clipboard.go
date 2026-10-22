@@ -16,51 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 )
-
-// attachImage takes ownership of a clipboard file for cleanup.
-func attachImage(attached *attachedPresentation, terminal *terminalsession.Attachment, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, owned *map[string]bool, side *sessioncontrol.Side, path string) {
-	insertImage(attached, terminal, editor, questions, approvals, clock, (*owned), side, path)
-	if (*owned) == nil {
-		(*owned) = make(map[string]bool)
-	}
-	(*owned)[path] = true
-}
-
-// insertImage is its own undoable edit.
-func insertImage(attached *attachedPresentation, terminal *terminalsession.Attachment, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, owned map[string]bool, side *sessioncontrol.Side, path string) {
-	(*editor).InsertImage(path)
-	terminal.Main.CursorColumn = nil
-	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
-	pruneDraftImages(owned, (*editor), attached.conversation, questions, approvals, terminal.Prompts, side)
-}
-
-// finishPaste inserts a bracketed paste as one edit. A lone path to an image
-// file, as terminals paste for copied or dropped files, attaches that file
-// instead, followed by a space as in Codex. The user's file is never removed.
-func finishPaste(attached *attachedPresentation, terminal *terminalsession.Attachment, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, side **sessioncontrol.Side, owned *map[string]bool, text string) {
-	if q := questions.Current(); q != nil && !attached.presentation.DisplayingSide() {
-		q.Edit(!q.Note)
-	}
-	path, ok := pastedImagePath(text)
-	if !ok {
-		if text != "" {
-			insertDraft(attached, (*editor), terminal, clock, (*owned), questions, approvals, (*side), text)
-			(*editor).Run = composer.NoRun
-		}
-		return
-	}
-	insertImage(attached, terminal, editor, questions, approvals, clock, (*owned), (*side), path)
-	(*editor).Run = composer.InsertRun // The separating space belongs to the attachment's edit.
-	insertDraft(attached, (*editor), terminal, clock, (*owned), questions, approvals, (*side), " ")
-	(*editor).Run = composer.NoRun
-}
 
 // Source: codex-rs/tui/src/clipboard_paste.rs:251:287 and
 // bottom_pane/chat_composer.rs:1187:1208@86be5320b068ef67b56348b02aa8c33706955da6.
@@ -135,27 +91,6 @@ func shellWord(text string) (string, bool) {
 	return word.String(), quote == 0 && word.Len() > 0
 }
 
-func pasteImage(attached *attachedPresentation, terminal *terminalsession.Attachment, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, owned *map[string]bool, side *sessioncontrol.Side, parent context.Context, intent sessionpresentation.ComposerIntent) {
-	ctx := parent
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	path, err := clipboardImage(ctx)
-	if err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Paste image: "+err.Error(), true)
-		return
-	}
-	if err := attached.presentation.AdmitAcquiredInput(intent, attached.conversation); err != nil {
-		_ = os.Remove(path)
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
-		return
-	}
-	// The highlighted placeholder is the feedback; it also clears any earlier notice.
-	attachImage(attached, terminal, editor, questions, approvals, clock, owned, side, path)
-}
-
 // The retained local file lets Codex own image processing and XML framing, and
 // remains available to resumed turns just like Codex's own pasted-image files.
 func clipboardImage(ctx context.Context) (string, error) {
@@ -198,31 +133,4 @@ func clipboardImage(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return file.Name(), nil
-}
-
-func applyPaste(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, side **sessioncontrol.Side, owned *map[string]bool, environment []string, parent context.Context, paste terminalsession.PasteResult) {
-	if err := attached.presentation.AdmitPaste(paste.Intent, attached.conversation); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
-		return
-	}
-	text := paste.Text
-	menu := sessionpresentation.MenuCompletion
-	if published := attached.presentation.View().Menu; published != nil {
-		menu = published.Kind
-	}
-	switch {
-	case approvals.Open && !attached.presentation.DisplayingSide():
-		if a := approvals.calls()[0]; a.DenialChoice() >= 0 && text != "" {
-			a.Selected = a.DenialChoice()
-			insertDraft(attached, (*editor), terminal, clock, (*owned), questions, approvals, (*side), text)
-			(*editor).Run = composer.NoRun
-		}
-	case menu == sessionpresentation.MenuManageSkills:
-		picker.Query += text
-	case menu == sessionpresentation.MenuSkills || menu == sessionpresentation.MenuCopy || menu == sessionpresentation.MenuSettings || menu == sessionpresentation.MenuArchive || menu == sessionpresentation.MenuRewind || menu == sessionpresentation.MenuSideReplace:
-	default:
-		finishPaste(attached, terminal, editor, questions, approvals, clock, side, owned, text)
-	}
-	picker.Dismissed, picker.Open = picker.completionTarget((*editor).Draft, attached.conversation.ShellMode()), false
-	picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 }

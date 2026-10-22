@@ -30,8 +30,8 @@ func TestNonTerminalPromptInputAndDraftPublication(t *testing.T) {
 	}
 	c.publish(sessionpresentation.Caption{})
 	intent.Enabled = false
-	if err := c.model().QuestionInput(intent, questions); !errors.Is(err, sessionpresentation.ErrStaleIntent) || !questions.Current().Note {
-		t.Fatal("stale input changed current question")
+	if err := c.model().QuestionInput(intent, questions); err != nil || questions.Current().Note {
+		t.Fatal("progress invalidated input for the same question")
 	}
 	intent.Version = c.model().View().Version
 	intent.Question = "retired"

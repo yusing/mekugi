@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/libraries/textsanitize"
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -120,9 +119,7 @@ func hostError(client *appserver.Client, err error) error {
 	if err == nil {
 		return nil
 	}
-	client.Diagnostics.Lock()
-	defer client.Diagnostics.Unlock()
-	if diagnostic := strings.TrimSpace(textsanitize.Safe(string(client.Diagnostics.Text), false)); diagnostic != "" {
+	if diagnostic := client.Diagnostics.Snapshot(); diagnostic != "" {
 		return fmt.Errorf("%w\nCodex: %s", err, diagnostic)
 	}
 	return err

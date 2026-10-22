@@ -36,7 +36,7 @@ func awaitCommandSegments(t *testing.T, u *appServerUI) {
 	for u.commandSegmentPending > 0 {
 		select {
 		case err := <-u.commandSegmentWrites:
-			commandSegmentRetained(&u.commandSegmentPending, u.issues, &u.dirty, err)
+			commandSegmentRetained(&u.commandSegmentPending, u.issues, err)
 		case <-timeout.C:
 			t.Fatal("command segment retention did not finish")
 		}
@@ -74,7 +74,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 			t.Fatalf("shared-store contention did not produce the diagnosed deadline error: %v", err)
 		}
 		started := time.Now()
-		retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item.Observation(), view)
+		retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, entry, item.Observation(), view)
 		if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
 			t.Fatalf("storage contention blocked command presentation for %s", elapsed)
 		}
@@ -86,14 +86,14 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		time.Sleep(1100 * time.Millisecond)
 		select {
 		case result := <-u.commandSegmentWrites:
-			commandSegmentRetained(&u.commandSegmentPending, u.issues, &u.dirty, result)
+			commandSegmentRetained(&u.commandSegmentPending, u.issues, result)
 			t.Fatalf("report abandoned a temporary storage lock: %v", result.err)
 		default:
 		}
 		if err := lock.Unlock(); err != nil {
 			t.Fatal(err)
 		}
-		finishCommandSegments(&u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+		finishCommandSegments(&u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
 		if notices := u.issues.Notices.Pending(); len(notices) != 0 {
 			t.Fatal(notices)
 		}
@@ -142,7 +142,7 @@ func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {
 	for i := range commandSegmentRetentionLimit + 1 {
 		item := binding.ThreadItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: "bash -lc 'true; true'", ExitCode: new(0), AggregatedOutput: new("")}
 		entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "turn", Item: item.ID}}
-		retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item.Observation(), execTrackView{complete: true, segments: []sessionpresentation.ActivitySegment{{}, {}}})
+		retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, entry, item.Observation(), execTrackView{complete: true, segments: []sessionpresentation.ActivitySegment{{}, {}}})
 	}
 	if notices := u.issues.Notices.Pending(); u.commandSegmentPending != commandSegmentRetentionLimit || len(notices) != 1 || !strings.Contains(notices[0], "reached the limit of 32") {
 		t.Fatalf("retention grew beyond its bound: %d, %v", u.commandSegmentPending, notices)
@@ -168,13 +168,13 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	second := errors.New("sync replay directory: no space left on device; different underlying cause")
 	for _, cause := range []error{first, second} {
 		u.commandSegmentPending++
-		commandSegmentRetained(&u.commandSegmentPending, u.issues, &u.dirty, commandSegmentWrite{key: [3]string{"main", "turn", "item"}, err: requestexecution.StorageIOError(cause)})
+		commandSegmentRetained(&u.commandSegmentPending, u.issues, commandSegmentWrite{key: [3]string{"main", "turn", "item"}, err: requestexecution.StorageIOError(cause)})
 	}
-	if delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues); delivery != nil || len(u.attached.source.Entries) != 0 {
+	if delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues); delivery != nil || len(u.attached.source.Entries) != 0 {
 		t.Fatal("switched thread borrowed another thread's retention errors")
 	}
 	u.Thread = "main"
-	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 
 	if delivery == nil || len(u.attached.source.Entries) != 0 || !u.attached.feedback.Alert {
 		t.Fatal("retention errors missed the composer")
@@ -186,7 +186,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	}
 	before := u.attached.feedback.Text
 	delivery.finish(terminalsession.NoticeReceipt{})
-	if retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues); retry == nil || u.attached.feedback.Text != before || len(u.attached.source.Entries) != 0 {
+	if retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues); retry == nil || u.attached.feedback.Text != before || len(u.attached.source.Entries) != 0 {
 		t.Fatal("unpainted error was lost or duplicated")
 	} else {
 		_, receipt := u.testDeliveredMainFrame(t, 100, 12, 0)
@@ -370,12 +370,12 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 				view.code = 0
 			}
 			if mode != "missing" {
-				retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item.Observation(), view)
+				retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, entry, item.Observation(), view)
 				awaitCommandSegments(t, u)
 			}
 			if mode == "storage-failure" {
 				notices := u.issues.Notices.Pending()
-				if len(notices) != 1 || !strings.Contains(notices[0], "limit is 1 bytes") || !u.dirty {
+				if len(notices) != 1 || !strings.Contains(notices[0], "limit is 1 bytes") {
 					t.Fatalf("storage failure omitted its actual cause: %v", notices)
 				}
 			}
@@ -438,7 +438,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
 	first.Finish(new("before"), new(0))
 	second.Finish(&listing, new(0))
-	retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second}}})
+	retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second}}})
 	awaitCommandSegments(t, u)
 	u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	// History starts collapsed; inspect the expanded retained command.

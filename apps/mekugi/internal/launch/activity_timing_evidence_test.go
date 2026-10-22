@@ -75,8 +75,8 @@ func TestActivitySingleCommandActualTime(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			setTestAppServerIntegration(u, testProxyWithStore(store))
 			item := binding.ThreadItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), ExitCode: new(got.code), AggregatedOutput: new(got.stdout + got.stderr)}
-			retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item.Observation(), view)
-			finishCommandSegments(&u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+			retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, entry, item.Observation(), view)
+			finishCommandSegments(&u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
 			entry.Native.Segments = nil
 			restoreCommandSegments(u.ctx, u.retained, u.segments, &u.attached, u.activity, u.restoredSegments, &entry, item, u.attached.cwd)
 			blocks = parseLiveActivity(entry)
@@ -127,7 +127,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 	item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(1), new("")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
 	awaitMain(t, u, "skipped")
-	finishCommandSegments(&u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty) // Normal shutdown drains asynchronous retained reports.
+	finishCommandSegments(&u.commandSegmentWrites, &u.commandSegmentPending, u.issues) // Normal shutdown drains asynchronous retained reports.
 	store, err = openMekugiReplayStore(directory)
 	if err != nil {
 		t.Fatal(err)

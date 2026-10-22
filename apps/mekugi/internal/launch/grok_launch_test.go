@@ -59,6 +59,7 @@ func TestThirdPartyAutomaticModelPreservesSavedResumeSettings(t *testing.T) {
 				}
 				cmdArgs := []string{"codex", "app-server", "-c", fmt.Sprintf("model=%q", chosen), "-c", `model_provider="mekugi_wrap"`}
 				u, input := newAppServerTestUI()
+				resumeTestMembers(t, u, "saved")
 				info := resumeSettingsRollout(t, fmt.Sprintf(`{"type":"turn_context","payload":{"model":%q,"effort":"high"}}`, model), "")
 				u.Thread, u.Startup.Thread = "", info.ID
 				u.Startup.Config = appServerResumeConfig(cmdArgs, argv)
@@ -95,6 +96,7 @@ func TestUISnapshotGrokLaunchModelPicker(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
+			resumeTestMembers(t, u, "saved")
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			body, err := modelcatalog.Build([]byte(`{"models":[{"slug":"gpt-6-sol","multi_agent_version":"v2"}]}`), modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: unprefixed})
 			if err != nil {

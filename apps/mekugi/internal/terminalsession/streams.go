@@ -6,6 +6,7 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -31,11 +32,18 @@ func (s *Streams) Command(key [3]string, text string) *CommandStream {
 type CommandStream struct {
 	*activityui.CommandStream
 	MainSequence, ChildSequence uint64
+	report                      *sessionpresentation.CommandReportDelivery
 }
 
 func (s *Streams) DeliverCommand(d sessionpresentation.CommandDelivery, main, child *activityui.View) {
 	stream := s.Commands[d.Key]
 	switch d.Kind {
+	case sessionpresentation.CommandRelease:
+		if stream != nil {
+			stream.MainSequence, stream.ChildSequence = d.MainSequence, d.ChildSequence
+			stream.Release(main, child, d.At)
+			delete(s.Commands, d.Key)
+		}
 	case sessionpresentation.CommandBegin:
 		stream = s.Command(d.Key, d.Text)
 		stream.MainSequence, stream.ChildSequence = d.MainSequence, d.ChildSequence
@@ -93,6 +101,19 @@ func (s *Streams) Deliver(deliveries []sessionpresentation.ActivityDelivery, mai
 			s.QueueText([]observation.TextUpdate{*delivery.Text}, main, child)
 		case delivery.Command != nil:
 			s.DeliverCommand(*delivery.Command, main, child)
+		case delivery.Report != nil:
+			d := delivery.Report
+			stream := s.Commands[d.Key]
+			// A view attached mid-command displays the retained publication. It
+			// has no earlier delta history and must not animate a partial replay.
+			if stream == nil {
+				continue
+			}
+			stream.MainSequence, stream.ChildSequence = d.MainSequence, d.ChildSequence
+			stream.report = new(*d)
+			stream.advanceReport(main, child)
+			// Output chunks are drained once; later ticks advance reveal only.
+			stream.report.Report.Segments = nil
 		case delivery.Rename != nil:
 			RenameSelection(delivery.Rename.Old, delivery.Rename.Name, main, child)
 		}
@@ -128,6 +149,10 @@ func (s *Streams) AdvanceCommands(at time.Time, handled map[[3]string]bool, main
 		if handled[key] {
 			continue
 		}
+		if stream.report != nil && stream.report.Snapshot.SeparateOutput {
+			changed = stream.advanceReport(main, child) || changed
+			continue
+		}
 		frame, advanced := stream.Output.Advance()
 		if !advanced {
 			continue
@@ -160,4 +185,19 @@ func RenameSelection(old, name string, views ...*activityui.View) {
 		}
 		view.Runs = nil
 	}
+}
+
+func (s *CommandStream) advanceReport(main, child *activityui.View) bool {
+	d := s.report
+	frames, changed := s.RevealSegments(d.Report, d.Snapshot, d.Version, d.Final)
+	if !d.Snapshot.SeparateOutput {
+		return changed
+	}
+	segments := make([]activity.CommandSegment, len(d.Snapshot.Segments))
+	for i, segment := range d.Snapshot.Segments {
+		segments[i] = segment.CommandSegment
+		segments[i].Tail, segments[i].TailOmitted = frames[i].Tail, frames[i].Omitted
+	}
+	s.Hold(main, child, activityui.CommandFrame{Segments: segments})
+	return changed
 }

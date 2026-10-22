@@ -91,11 +91,15 @@ prompts, menus and Main. It returns targeted effects to application integration;
 an effect settles and publishes before interpretation continues. Terminal-local
 navigation needs no application callback. Source hydration pauses only the current
 input operation and resumes against the same pointer target.
+Independent cancellation, navigation and editing continue while observation or
+attachment acquisition waits. Semantic continuations preserve ordering only for
+the editor or action whose result they require.
 
 The terminal buffers and sanitizes a completed paste against its original
 attachment, editor and menu. Unrelated publication updates do not discard it;
-replacing that input destination rejects it with feedback. Application integration
-admits the completed target before acquiring an image or changing input. Secret
+navigation and a newly opened ordinary prompt do not move it to another editor.
+Application integration admits the completed original target before acquiring an
+image or changing input; a genuinely replaced editor rejects it with feedback. Secret
 buffers and their revision checks remain terminal-local and never enter published
 views or retained records.
 
@@ -147,7 +151,7 @@ or a local file URL, attaches that user-owned file and a trailing space. Other
 pastes are text. External editing uses `$EDITOR`, then `$VISUAL`, then `vi`, with
 arguments supported. Terminal/input ownership is released during the editor and
 restored afterward. Failure preserves the original draft and names its recovery
-file. The handoff retains its admitted editor identity; a replaced editor cannot
+file. The handoff retains its admitted editor identity across navigation; a replaced editor cannot
 receive the returned file. Clipboard-image acquisition likewise applies only to
 its admitted destination and releases an acquired file that cannot be attached.
 Conversation owns binding reconciliation; adapter cleanup follows its
@@ -382,6 +386,9 @@ Clipboard availability is controlled by the user's terminal.
 Frozen source capture and pointer routing belong to the terminal. Capture returns
 identity-addressed output demands for application hydration before the frozen
 document is installed. It never reads a source reducer or retained output itself.
+Asynchronous capture yields to publication and cancellation while hydration is pending;
+the original visible rows and ordered drag gestures survive that wait. A changed
+attachment, display or geometry cancels the pending gesture instead of retargeting it.
 Pressed links and item targets retain their attachment, displayed thread and
 workspace from the delivered frame, including when publication advances before
 the press. Later source updates cannot redirect the click to another destination.

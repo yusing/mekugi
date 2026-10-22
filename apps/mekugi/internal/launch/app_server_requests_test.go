@@ -8,7 +8,7 @@ import (
 
 func TestAppServerReplacementRetiresOnlyMainRequests(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	persistSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, &u.dirty, sessionTitleUpdate{thread: "main", name: "Old title"})
+	persistSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, sessionTitleUpdate{thread: "main", name: "Old title"})
 	title := btwTestRequest(t, wire, "thread/name/set", "main")
 	appServerTestKeys(t, u, "/btw question\r")
 	side := btwTestRequest(t, wire, "thread/fork", "main")

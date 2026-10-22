@@ -2,13 +2,55 @@ package launch
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
+
+// nativeTestCancel exercises the local cancellation owner, then delivers its
+// captured interrupt to the execution owner. Server drafts seed this attachment
+// so queue/compaction tests can retain their host fixture.
+func nativeTestCancel(t *testing.T, u *appServerUI) *nativeClient {
+	t.Helper()
+	c := nativeTestPromptClient(u)
+	defer c.renderer.terminal.Diff.Close()
+	*c.editor("main") = *u.Editor
+	c.renderer.terminal.Main.InterruptLocked = u.shell.Main.InterruptLocked
+	c.refresh(time.Now())
+	nativeTestInput(c, "\x03")
+	if len(c.calls) == 0 {
+		*u.Editor = *c.editor("main")
+		return c
+	}
+	for _, call := range c.calls {
+		if call.operation.Interrupt == nil {
+			t.Fatalf("cancellation queued a non-interrupt operation: %+v", call.operation)
+		}
+		intent := *call.operation.Interrupt
+		active, err := u.attached.presentation.ResolveInterrupt(intent, &u.Live, &u.attached.session)
+		if err != nil || !active {
+			t.Fatalf("native interrupt admission: active=%v err=%v", active, err)
+		}
+		if intent.Mode == sessioncontrol.RestoreWaiting && cancelQueuedCompact(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock) {
+			u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			continue
+		}
+		if err := u.applyInput(u.shell, func(yield func(terminalsession.InputEffect) bool) {
+			yield(terminalsession.InputEffect{Interrupt: &intent})
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return c
+}
 
 func queueBusyCompact(t *testing.T, u *appServerUI, w *appServerTestInput) appServerTurnRequest {
 	t.Helper()
@@ -160,7 +202,14 @@ func TestAppServerCompactQueuedCancelBeforeRunPreservesMain(t *testing.T) {
 			appServerTestTurn(t, u, "work")
 			appServerTestKeys(t, u, "/compact\t")
 			appServerTestKeys(t, u, "after compact\r")
-			appServerTestKeys(t, u, "next turn\t\x03")
+			appServerTestKeys(t, u, "next turn\t")
+			c := nativeTestCancel(t, u)
+			if locked {
+				if len(c.calls) != 0 || w.Len() != 0 || u.Text != "" || len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) != 3 || !strings.Contains(c.feedback.Text, "/unlock") {
+					t.Fatalf("locked cancellation changed waiting input: calls=%d wire=%q unsent=%+v queued=%+v", len(c.calls), w.String(), u.attached.conversation.Unsent, u.attached.conversation.Queued)
+				}
+				return
+			}
 			if w.Len() != 0 || u.Turn != "work" || u.Interruption.Target != "" || u.Interruption.BeforeStart || u.Text != "/compact\nafter compact\nnext turn" || u.Compaction.ContinuationPending() || len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) != 0 {
 				t.Fatalf("queued cancellation touched Main or lost input: wire=%q draft=%q turn=%q", w.String(), u.Text, u.Turn)
 			}
@@ -176,7 +225,8 @@ func TestAppServerCompactQueuedCancelPreservesStartingMain(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "task\r")
 	start := appServerOneRequest(t, w, "turn/start", "task")
-	appServerTestKeys(t, u, "/compact\t\x03")
+	appServerTestKeys(t, u, "/compact\t")
+	nativeTestCancel(t, u)
 	if w.Len() != 0 || !u.Starting() || u.Interruption.BeforeStart || u.attached.conversation.Submitted[u.Submission().ID].Text != "task" || u.Text != "/compact" {
 		t.Fatalf("compact cancellation cancelled the pending Main start: wire=%q draft=%q", w.String(), u.Text)
 	}
@@ -192,7 +242,8 @@ func TestAppServerCompactQueuedCancelPreservesInFlightSteer(t *testing.T) {
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "steer\r")
 	steer := appServerOneRequest(t, w, "turn/steer", "steer")
-	appServerTestKeys(t, u, "waiting steer\r/compact\t\x03")
+	appServerTestKeys(t, u, "waiting steer\r/compact\t")
+	nativeTestCancel(t, u)
 	if w.Len() != 0 || u.Interruption.Target != "" || u.attached.conversation.Submitted[u.Submission().ID].Text != "steer" || u.Text != "waiting steer\n/compact" {
 		t.Fatalf("compact cancellation touched the in-flight steer: wire=%q draft=%q", w.String(), u.Text)
 	}
@@ -207,15 +258,16 @@ func TestAppServerCompactQueuedCancelPreservesInFlightSteer(t *testing.T) {
 func TestAppServerCompactCancelThenNormalMainInterrupt(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "work")
-	appServerTestKeys(t, u, "/compact\t\x03")
+	appServerTestKeys(t, u, "/compact\t")
+	nativeTestCancel(t, u)
 	if w.Len() != 0 {
 		t.Fatal("compact cancellation interrupted Main")
 	}
-	appServerTestKeys(t, u, "\x03") // Clear the restored command first.
+	nativeTestCancel(t, u) // Clear the restored command first.
 	if w.Len() != 0 || u.Text != "" {
 		t.Fatal("clearing restored command interrupted Main")
 	}
-	appServerTestKeys(t, u, "\x03")
+	nativeTestCancel(t, u)
 	appServerOneRequest(t, w, "turn/interrupt", "")
 	if u.Interruption.Target != "work" {
 		t.Fatal("normal Main interruption was not preserved")
@@ -227,7 +279,7 @@ func TestAppServerCompactCancelCompletionBeforeAckDoesNotQuitOrContinue(t *testi
 	r := queueBusyCompact(t, u, w)
 	appServerTestTurn(t, u, "compact-turn")
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
-	appServerTestKeys(t, u, "\x03")
+	nativeTestCancel(t, u)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 	if w.Len() != 0 || u.Compaction.ContinuationPending() || u.Interruption.BeforeStart {
 		t.Fatalf("completion racing cancellation continued task: %s", w.String())
@@ -250,7 +302,7 @@ func TestUISnapshotNativeCompactQueuedCancel(t *testing.T) {
 	appServerTestKeys(t, u, "/compact\t")
 	rows, _ := u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-queued", rows)
-	appServerTestKeys(t, u, "\x03")
+	nativeTestCancel(t, u)
 	rows, _ = u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-queued-cancel", rows)
 	if w.Len() != 0 {
@@ -261,7 +313,7 @@ func TestUISnapshotNativeCompactQueuedCancel(t *testing.T) {
 func TestAppServerCompactQueuedInterruptBeforeCompactStartsCancelsContinuation(t *testing.T) {
 	u, w := newAppServerTestUI()
 	r := queueBusyCompact(t, u, w)
-	appServerTestKeys(t, u, "\x03")
+	nativeTestCancel(t, u)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 	appServerTestTurn(t, u, "compact-turn")
 	interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
@@ -278,7 +330,7 @@ func TestAppServerCompactQueuedInterruptDuringCompactionCancelsContinuation(t *t
 	r := queueBusyCompact(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 	appServerTestTurn(t, u, "compact-turn")
-	appServerTestKeys(t, u, "\x03")
+	nativeTestCancel(t, u)
 	interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
@@ -302,7 +354,8 @@ func TestAppServerCompactCancelRestoresWaitingInputDespiteSuccessfulCompletion(t
 			if phase == "completed-before-ack" {
 				appServerTestTurnEnd(t, u, "compact-turn", "completed")
 			}
-			appServerTestKeys(t, u, "waiting enter\rwaiting tab\t\x03")
+			appServerTestKeys(t, u, "waiting enter\rwaiting tab\t")
+			nativeTestCancel(t, u)
 			if u.Text != "waiting enter\nwaiting tab" || len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) != 0 || u.Compaction.ContinuationPending() {
 				t.Fatalf("cancellation did not restore waiting input: draft=%q unsent=%+v queued=%+v", u.Text, u.attached.conversation.Unsent, u.attached.conversation.Queued)
 			}
@@ -460,7 +513,8 @@ func TestAppServerCompactSteerCancelDuringInterrupt(t *testing.T) {
 		t.Run(fmt.Sprint("completionBeforeAck=", beforeAck), func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			appServerTestTurn(t, u, "work")
-			appServerTestKeys(t, u, "/compact\rwaiting\r\x03")
+			appServerTestKeys(t, u, "/compact\rwaiting\r")
+			nativeTestCancel(t, u)
 			interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
 			if u.Text != "/compact\nwaiting" {
 				t.Fatalf("cancel did not restore input: %q", u.Text)
@@ -492,7 +546,7 @@ func TestUISnapshotNativeCompactSteerInterrupt(t *testing.T) {
 	appServerOneRequest(t, w, "turn/interrupt", "")
 	rows, _ := u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-steer-interrupt", rows)
-	appServerTestKeys(t, u, "\x03")
+	nativeTestCancel(t, u)
 	rows, _ = u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-steer-cancel", rows)
 }
@@ -531,5 +585,30 @@ func TestAppServerCompactSteerEditCancelsIntent(t *testing.T) {
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
 	if w.Len() != 0 || u.Text != "/compact" || u.Compaction.Pending() {
 		t.Fatalf("edited command dispatched or lost: wire=%q draft=%q", w.String(), u.Text)
+	}
+}
+
+func TestNativeCancelDraftUndoLockAndIdleQuit(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	c := nativeTestPromptClient(u)
+	defer c.renderer.terminal.Diff.Close()
+	nativeTestInput(c, "draft\x03")
+	if c.editor("main").Text != "" || c.quit || len(c.calls) != 0 {
+		t.Fatal("draft cancellation interrupted or quit")
+	}
+	nativeTestInput(c, "\x1a")
+	if c.editor("main").Text != "draft" {
+		t.Fatal("cancelled draft was not undoable")
+	}
+	nativeTestInput(c, "\x03")
+	c.renderer.terminal.Main.InterruptLocked = true
+	nativeTestInput(c, "\x03")
+	if c.quit || len(c.calls) != 0 {
+		t.Fatal("locked idle cancellation quit or interrupted")
+	}
+	c.renderer.terminal.Main.InterruptLocked = false
+	nativeTestInput(c, "\x03")
+	if !c.quit || len(c.calls) != 0 {
+		t.Fatal("idle cancellation did not quit locally")
 	}
 }

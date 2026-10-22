@@ -2,6 +2,7 @@ package terminalview
 
 import (
 	"cmp"
+	"maps"
 	"os"
 	"slices"
 	"time"
@@ -30,6 +31,27 @@ func NewView() *View {
 
 // Empty reports whether the current detached transcript has entries.
 func (v *View) Empty() bool { return len(v.entries) == 0 }
+
+// FreezeTranscript retains the current feed for source selection. Publications
+// and output values are immutable; mutable rendering caches are independent.
+func (v *View) FreezeTranscript() *View {
+	frozen := *v
+	now := v.Now()
+	frozen.Clock = func() time.Time { return now }
+	frozen.Painter.Clock = frozen.Clock
+	frozen.Painter.Syntax = diffrender.Renderer{}
+	frozen.Runs, frozen.QuestionRows, frozen.outputDemands = nil, nil, nil
+	frozen.syntaxWindow, frozen.commandFrames, frozen.reasoningFrames = nil, nil, nil
+	frozen.outputVersions, frozen.outputCache = maps.Clone(v.outputVersions), maps.Clone(v.outputCache)
+	frozen.completed, frozen.collapsed = maps.Clone(v.completed), maps.Clone(v.collapsed)
+	frozen.Paced, frozen.Passed, frozen.Events = maps.Clone(v.Paced), maps.Clone(v.Passed), maps.Clone(v.Events)
+	frozen.RoleColors, frozen.LivePreviews = maps.Clone(v.RoleColors), maps.Clone(v.LivePreviews)
+	frozen.Disclosure = maps.Clone(v.Disclosure)
+	for source, annotations := range frozen.Disclosure {
+		frozen.Disclosure[source] = maps.Clone(annotations)
+	}
+	return &frozen
+}
 
 func (v *View) Now() time.Time {
 	if v.Clock != nil {

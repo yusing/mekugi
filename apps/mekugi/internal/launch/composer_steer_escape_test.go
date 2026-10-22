@@ -176,7 +176,7 @@ func TestComposerCtrlCCancelsEscapeDelivery(t *testing.T) {
 			if completionFirst {
 				appServerTestTurnEnd(t, u, "t", "interrupted")
 			}
-			composerShellKeys(t, u, "\x03")
+			nativeTestCancel(t, u)
 			if !completionFirst {
 				appServerTestTurnEnd(t, u, "t", "interrupted")
 			}

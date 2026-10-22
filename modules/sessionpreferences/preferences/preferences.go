@@ -126,6 +126,14 @@ func (s *Service) Attach(scope Scope, renderer string, initial jsontext.Value) (
 
 func (a *Attachment) Scope() Scope { return a.scope }
 
+// Snapshot publishes the actual staged preference state without exposing mutable
+// presentation bytes or transferring the attached writer's authority.
+func (a *Attachment) Snapshot() Snapshot {
+	state := a.state
+	state.Presentation = bytes.Clone(state.Presentation)
+	return state
+}
+
 // Restore accepts a validated snapshot and establishes a no-write baseline.
 // The renderer supplies its normalized presentation after applying the record.
 func (a *Attachment) Restore(state Snapshot) {
@@ -149,20 +157,31 @@ func (a *Attachment) StagePresentation(presentation jsontext.Value) {
 	}
 }
 
-// Save coalesces layout bursts. Applied/recovery changes and exit use flush.
-// A failed save is reported once, rather than retried on every animation frame.
-func (a *Attachment) Save(now time.Time, flush bool) error {
+// Write is one immutable publication prepared by the selected preference owner.
+// Callers serialize publications; acquiring it does not perform storage I/O.
+type Write struct {
+	service *Service
+	path    string
+	data    []byte
+}
+
+func (w *Write) Publish() error { return w.service.history.PublishFile(w.path, w.data) }
+
+// PrepareSave coalesces layout bursts; applied/recovery changes and exit use flush.
+// Failed saves are reported once, rather than retried on every animation frame.
+// Callers prepare only when their writer is idle, retaining later stages here.
+func (a *Attachment) PrepareSave(now time.Time, flush bool) (*Write, error) {
 	if a.state.Settings != a.last.Settings || a.state.ResumeObserved != a.last.ResumeObserved || a.state.ResumeEvidence != a.last.ResumeEvidence || !bytes.Equal(a.state.Presentation, a.last.Presentation) {
 		a.last, a.pending, a.due = a.state, true, now.Add(250*time.Millisecond)
 	}
 	if !a.pending || !flush && now.Before(a.due) {
-		return nil
+		return nil, nil
 	}
 	a.pending = false
 	state := record{Version: 1, Snapshot: a.state}
 	data, err := json.Marshal(&state)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return a.service.history.PublishFile(a.path, data)
+	return &Write{service: a.service, path: a.path, data: data}, nil
 }

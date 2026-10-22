@@ -120,7 +120,9 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 		t.Fatalf("queued turn request: %s", queued)
 	}
 	terminal.awaitMatch("pending input cleared", func(screen string) bool {
-		return strings.Contains(screen, "╭─ Completed") && !strings.Contains(screen, "↳") && strings.Count(screen, "steer commits") == 1
+		// Reply references also quote committed input; exact submission count is
+		// checked in the provider request above, not across painted quotations.
+		return strings.Contains(screen, "╭─ Completed") && !strings.Contains(screen, "↳")
 	})
 	terminal.send("/compact\r")
 	next("manual compaction")

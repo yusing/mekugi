@@ -1,3 +1,4 @@
+// Source: modules/conversation/presentation/input.go:1:179@[14a6d1f3]
 // Source: apps/mekugi/internal/router/app_server_input_queue.go:35:430@[4ded0a4e] payload ordering and snapshots.
 package presentation
 
@@ -30,6 +31,12 @@ type CompactIntent struct{ WaitForIdle, Continue bool }
 // It contains no host request, callback, secret, or renderer state.
 type Input struct {
 	composer.Draft
+	// Origin identifies the requesting editor lifetime for detached restoration.
+	// Empty retains the in-process editor path. It confers no execution authority.
+	Origin string
+	// Delivery identifies reserved restoration capacity at the originating view.
+	// It is opaque provenance, not an execution capability or renderer owner.
+	Delivery   uint64
 	Compact    CompactIntent
 	Question   *prompt.Call
 	ReplyCount int
@@ -41,22 +48,29 @@ type Submission struct {
 }
 
 type Session struct {
-	Prediction     Prediction
-	Completion     completion.State
-	Editor         composer.Editor
-	PromptEditor   prompt.Editor
-	Questions      prompt.Questions
-	Approvals      prompt.Approvals
-	Unsent, Queued []Input
-	Submitted      map[string]Submission
-	Shell          Input
-	Side           *SideAnswer
-	BTW            *SideAnswer
+	Prediction      Prediction
+	Completion      completion.State
+	Editor          composer.Editor
+	PromptEditor    prompt.Editor
+	Questions       prompt.Questions
+	Approvals       prompt.Approvals
+	Unsent, Queued  []Input
+	Submitted       map[string]Submission
+	Shell           Input
+	ShellFromEditor bool // Only a consumed local draft may be restored after rejection.
+	Side            *SideAnswer
+	BTW             *SideAnswer
 }
 
 // Source: apps/mekugi/internal/router/app_server_shell.go:15:17@[cf6c7832]
 func (m *Session) ShellMode() bool {
-	return m.Questions.Current() == nil && !m.Approvals.Open && strings.HasPrefix(m.Editor.Text, "!")
+	return ShellDraftMode(m.Editor.Text, m.Questions.Current() != nil || m.Approvals.Open)
+}
+
+// ShellDraftMode applies the shared draft interpretation to a client-local
+// editor without constructing a session or sharing its prompt selection.
+func ShellDraftMode(text string, promptOpen bool) bool {
+	return !promptOpen && strings.HasPrefix(text, "!")
 }
 
 // CarryInput transfers locally editable state and still-live approvals during

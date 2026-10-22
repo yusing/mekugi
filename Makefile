@@ -46,9 +46,11 @@ build-binaries: build
 generate: workspace-check
 	$(WORKSPACE) run $(GO) generate @workspace
 	$(WORKSPACE) index-write
+	$(GO) run ./apps/mekugi/cmd/sessionapi-schema
 
 check-generated:
 	$(WORKSPACE) index-check
+	$(GO) run ./apps/mekugi/cmd/sessionapi-schema -check
 
 # Diagnostic build, with symbols and the same optimized code as production.
 mekugi-pprof:

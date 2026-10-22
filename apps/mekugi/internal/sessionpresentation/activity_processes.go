@@ -36,14 +36,14 @@ func (s *Attachment) RunningProcesses() iter.Seq[ActivityEntry] {
 // its display source and retained output, not a feed row's projection of it.
 // Live commands join in start order; a completed one keeps its page until the
 // dialog closes, as last seen if its row ages out.
-func (a *Attachment) processValues(source *ActivitySource, pages []activitypresentation.DetailPage) []activitypresentation.Value {
+func processValues(source *ActivitySource, pages []activitypresentation.DetailPage, running iter.Seq[ActivityEntry]) []activitypresentation.Value {
 	bySource := make(map[uint64]activitypresentation.Value)
 	for _, page := range pages {
 		if page.Source != 0 {
 			bySource[page.Source] = page.Value
 		}
 	}
-	for entry := range a.RunningProcesses() {
+	for entry := range running {
 		if seq := source.EntrySeq(entry); seq != 0 {
 			if _, known := bySource[seq]; !known {
 				bySource[seq] = activitypresentation.Value{Source: seq, Owner: entry.Agent}

@@ -21,7 +21,14 @@ type InputAdmission struct {
 }
 
 func (m *Model) inputAdmission(control *sessioncontrol.Live, ordinary, restoring bool) InputAdmission {
-	if m.readOnly() != Editable || control == nil {
+	if m.readOnly() != Editable {
+		return InputAdmission{Reason: ErrInputUnavailable.Error()}
+	}
+	return ordinaryInputAdmission(control, ordinary, restoring)
+}
+
+func ordinaryInputAdmission(control *sessioncontrol.Live, ordinary, restoring bool) InputAdmission {
+	if control == nil {
 		return InputAdmission{Reason: ErrInputUnavailable.Error()}
 	}
 	if !ordinary {
@@ -33,11 +40,29 @@ func (m *Model) inputAdmission(control *sessioncontrol.Live, ordinary, restoring
 	return InputAdmission{Edit: true, Submit: true}
 }
 
+// AdmitBoundInput validates the owner named by an already captured submission.
+// Navigation changes the visible editor, not ownership of its pending input.
+func (m *Model) AdmitBoundInput(intent ComposerIntent) error {
+	if intent.Thread == "" {
+		return m.AdmitClientComposer(intent)
+	}
+	if err := m.admitOwner(intent.Version); err != nil {
+		return err
+	}
+	if intent.Thread != m.view.Main.ID && intent.Thread != m.view.SideThread.ID {
+		return ErrStaleIntent
+	}
+	if m.replay || intent.Operation != SubmitComposer && intent.Operation != QueueComposer {
+		return ErrInputUnavailable
+	}
+	return nil
+}
+
 var ErrInputUnavailable = errors.New("Ordinary input is unavailable for this view.")
 
 func (m *Model) TakeInput(intent SubmitIntent, control *sessioncontrol.Live, conversation *conversationmodel.Session, restoring bool) (composer.Draft, sessioncontrol.QueuePlan, error) {
 	conversation = m.InputConversation(conversation)
-	if intent.Version != m.view.Version {
+	if m.AdmitDestination(intent.Version) != nil {
 		return composer.Draft{}, sessioncontrol.QueuePlan{}, ErrStaleIntent
 	}
 	if intent.Mode != sessioncontrol.SendInput && intent.Mode != sessioncontrol.QueueNextTurn {
@@ -85,7 +110,7 @@ func (m *Model) AdmitPaste(in PasteIntent, conversation *conversationmodel.Sessi
 		return ErrStaleIntent
 	}
 	conversation = m.InputConversation(conversation)
-	if in.Version != m.view.Version {
+	if !in.Version.SameAttachment(m.view.Version) {
 		return ErrStaleIntent
 	}
 	if m.readOnly() != Editable {
@@ -106,6 +131,8 @@ func (m *Model) AdmitPaste(in PasteIntent, conversation *conversationmodel.Sessi
 
 type ReferenceIntent struct {
 	Version                   Version
+	Thread                    string `json:",omitzero"`
+	Displayed                 Thread
 	Target                    conversationmodel.EditorTarget
 	Description, Text, Source string
 }
@@ -113,25 +140,45 @@ type ReferenceIntent struct {
 // Reference admits the input destination and its return to Main together. The
 // application then passes the source to Conversation's attachment pipeline.
 func (m *Model) Reference(in ReferenceIntent, conversation *conversationmodel.Session) error {
-	conversation = m.InputConversation(conversation)
-	if in.Version != m.view.Version {
+	thread := in.Thread
+	if thread == "" {
+		thread = m.view.Input.ID
+	}
+	conversation = m.inputConversation(thread, conversation)
+	if in.Target != conversation.EditorTarget() {
+		return conversationmodel.ErrDraftChanged
+	}
+	return m.ClientReference(in)
+}
+
+// ClientReference admits the destination using the captured session view. The
+// eventual insertion is guarded against the client's own editor revision.
+func (m *Model) ClientReference(in ReferenceIntent) error {
+	if m.admitOwner(in.Version) != nil {
 		return ErrStaleIntent
+	}
+	thread := in.Thread
+	if thread == "" {
+		if m.AdmitDestination(in.Version) != nil {
+			return ErrStaleIntent
+		}
+		thread = m.view.Input.ID
+	}
+	if thread != m.view.Main.ID && thread != m.view.SideThread.ID {
+		return ErrInputUnavailable
 	}
 	if m.replay {
 		return ErrReplayIntent
 	}
-	if in.Target != conversation.EditorTarget() {
-		return conversationmodel.ErrDraftChanged
-	}
-	if m.DisplayingSide() {
+	if thread == m.view.SideThread.ID || in.Displayed.ID != m.view.Displayed.ID {
 		return nil
 	}
-	return m.Display(DisplayIntent{Version: in.Version, Thread: m.view.Main})
+	return m.Display(DisplayIntent{Version: m.view.Version, Thread: m.view.Main})
 }
 
 func (m *Model) ApplyEditor(intent EditorIntent, conversation *conversationmodel.Session) (bool, error) {
 	conversation = m.InputConversation(conversation)
-	if intent.Version != m.view.Version {
+	if m.AdmitDestination(intent.Version) != nil {
 		return false, ErrStaleIntent
 	}
 	if m.readOnly() != Editable {
@@ -155,28 +202,84 @@ const (
 	AcceptPrediction
 )
 
+// ClientLocal identifies operations that acquire resources or edit on the native renderer.
+func (o ComposerOperation) ClientLocal() bool {
+	return o == CancelComposer || o == AcceptPrediction || o == EditExternally || o == AttachClipboard
+}
+
 type ComposerIntent struct {
 	Thread    string
 	Version   Version
 	Target    conversationmodel.EditorTarget
 	Operation ComposerOperation
+	Work      *sessioncontrol.InterruptTarget `json:",omitzero"`
 }
 
 func (m *Model) AdmitComposer(intent ComposerIntent, conversation *conversationmodel.Session) error {
-	if intent.Thread != "" && intent.Thread != m.view.Input.ID || intent.Thread == "" && m.DisplayingSide() {
-		return ErrStaleIntent
+	if err := m.AdmitClientComposer(intent); err != nil {
+		return err
 	}
-	conversation = m.InputConversation(conversation)
-	if intent.Version != m.view.Version {
-		return ErrStaleIntent
+	thread := intent.Thread
+	if thread == "" {
+		thread = m.view.Input.ID
 	}
-	if m.readOnly() != Editable || intent.Operation < SubmitComposer || intent.Operation > AcceptPrediction {
-		return ErrInputUnavailable
-	}
+	conversation = m.inputConversation(thread, conversation)
 	if intent.Target != conversation.EditorTarget() {
 		return conversationmodel.ErrDraftChanged
 	}
 	return nil
+}
+
+// AdmitClientComposer admits a detached client editor request. Its revision is
+// local to that client and must never be compared to another editor's revision.
+func (m *Model) AdmitClientComposer(intent ComposerIntent) error {
+	if intent.Thread != "" && intent.Thread != m.view.Main.ID && intent.Thread != m.view.SideThread.ID {
+		return ErrStaleIntent
+	}
+	if m.admitOwner(intent.Version) != nil {
+		return ErrStaleIntent
+	}
+	if intent.Thread == "" && m.AdmitDestination(intent.Version) != nil {
+		return ErrStaleIntent
+	}
+	// These aggregate in-process controls have no independent work/prediction
+	// identity. Native clients resolve them locally into identified actions.
+	if (intent.Operation == CancelComposer || intent.Operation == AcceptPrediction) && intent.Version != m.view.Version {
+		return ErrStaleIntent
+	}
+	if intent.Operation == RestoreWaiting && intent.Work == nil {
+		return ErrStaleIntent
+	}
+	if m.replay || intent.Thread == "" && m.readOnly() != Editable || intent.Operation < SubmitComposer || intent.Operation > AcceptPrediction {
+		return ErrInputUnavailable
+	}
+	return nil
+}
+
+// ClientInput plans submission without taking or retaining a client's editor.
+func (m *Model) ClientInput(intent ComposerIntent, control *sessioncontrol.Live, conversation *conversationmodel.Session, restoring bool) (sessioncontrol.QueuePlan, error) {
+	if err := m.AdmitBoundInput(intent); err != nil {
+		return sessioncontrol.QueuePlan{}, err
+	}
+	if intent.Operation != SubmitComposer && intent.Operation != QueueComposer {
+		return sessioncontrol.QueuePlan{}, ErrInputUnavailable
+	}
+	ordinary := intent.Target.Call == "" && intent.Target.Request == ""
+	admission := m.inputAdmission(control, ordinary, restoring)
+	if intent.Thread != "" && intent.Thread == m.view.Main.ID {
+		if control == nil || control.Thread != intent.Thread {
+			return sessioncontrol.QueuePlan{}, ErrStaleIntent
+		}
+		admission = ordinaryInputAdmission(control, ordinary, restoring)
+	}
+	if !admission.Submit {
+		return sessioncontrol.QueuePlan{}, errors.New(admission.Reason)
+	}
+	mode := sessioncontrol.SendInput
+	if intent.Operation == QueueComposer {
+		mode = sessioncontrol.QueueNextTurn
+	}
+	return control.PlanInput(mode, conversation.Questions.Waiting(control.Thread)), nil
 }
 
 // AdmitAcquiredInput preserves an already-admitted destination across terminal
@@ -185,9 +288,8 @@ func (m *Model) AdmitAcquiredInput(intent ComposerIntent, conversation *conversa
 	if intent.Operation != AttachClipboard && intent.Operation != EditExternally {
 		return ErrInputUnavailable
 	}
-	if intent.Version.Attachment != m.view.Version.Attachment {
+	if !intent.Version.SameAttachment(m.view.Version) {
 		return ErrStaleIntent
 	}
-	intent.Version = m.view.Version
 	return m.AdmitComposer(intent, conversation)
 }

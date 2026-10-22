@@ -31,7 +31,18 @@ func (u *terminalUI) selectNativePane(pane int) {
 	}
 }
 func (u *appServerUI) key(key string) (bool, error) {
-	return u.applyMainKey(terminalsession.KeyEvent(key))
+	return u.applyMainKey(mainKeyEvent(key))
+}
+
+// mainKeyEvent obtains a Main continuation without outer pane interception.
+func mainKeyEvent(key string) terminalsession.KeyContinuation {
+	frame := terminalsession.FrameInput{Shell: &terminalsession.Shell{}}
+	for effect := range frame.Send(&terminalsession.Interaction{}, key) {
+		if effect.Main != nil {
+			return *effect.Main
+		}
+	}
+	panic("key did not reach Main")
 }
 func (u *terminalUI) outputKey(key string) { u.outputIntent(u.Dialog.Key(key)) }
 func (u *terminalUI) outputMouse(button, x, y int, release bool) {

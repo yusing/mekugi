@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -29,33 +30,34 @@ type Error struct {
 }
 
 type Client struct {
-	cmd         *exec.Cmd
-	Input       io.WriteCloser
-	Output      io.ReadCloser
-	Messages    chan Message
-	readDone    chan error
-	stopRead    chan struct{}
-	stopOnce    sync.Once
-	Done        chan error
-	Diagnostics Diagnostics
-	next        int
+	cmd          *exec.Cmd
+	Input        io.WriteCloser
+	Output       io.ReadCloser
+	Messages     chan Message
+	readDone     chan error
+	stopRead     chan struct{}
+	stopOnce     sync.Once
+	shutdownOnce sync.Once
+	Done         chan error
+	Diagnostics  Diagnostics
+	next         int
 }
 
 // Diagnostics never share the RPC stream or write through the terminal painter.
 type Diagnostics struct {
-	sync.Mutex
-	Text []byte
+	mu      sync.Mutex
+	lines   []diagnosticLine
+	partial []byte
+	bytes   int
+	omitted bool
 }
 
-func (d *Diagnostics) Write(p []byte) (int, error) {
-	d.Lock()
-	defer d.Unlock()
-	d.Text = append(d.Text, p...)
-	if len(d.Text) > 64<<10 {
-		d.Text = append([]byte(nil), d.Text[len(d.Text)-(64<<10):]...)
-	}
-	return len(p), nil
+type diagnosticLine struct {
+	text  string
+	count uint64
 }
+
+const shutdownGrace = 3 * time.Second
 
 // observe receives decoded messages before they enter the presentation queue.
 // Observers must be bounded and must not modify the message or execute effects.
@@ -69,6 +71,10 @@ func Start(cmd *exec.Cmd, observe ...func(Message)) (*Client, error) {
 	if c.Output, err = cmd.StdoutPipe(); err != nil {
 		c.Input.Close()
 		return nil, err
+	}
+	if cmd.Cancel != nil {
+		cmd.Cancel = c.Cancel
+		cmd.WaitDelay = shutdownGrace
 	}
 	if err = cmd.Start(); err != nil {
 		c.Input.Close()
@@ -168,11 +174,19 @@ func (c *Client) Close() {
 	_ = c.Output.Close()
 }
 
-// EOF is Codex's graceful shutdown signal. Allow its thread/background-task
-// owners to drain before falling back to forced cleanup.
+// Cancel asks Codex to interrupt its active execution before shutting down.
+// A second signal could force host shutdown, so all callers share one request.
+func (c *Client) Cancel() (err error) {
+	c.shutdownOnce.Do(func() { err = c.cmd.Process.Signal(os.Interrupt) })
+	return err
+}
+
+// Normal exit uses EOF. Cancellation instead lets Codex's interrupt handlers
+// release their process groups before it exits; closing stdin immediately could
+// race that cleanup. Both paths have the same bounded join and forced fallback.
 func (c *Client) Shutdown() error {
-	_ = c.Input.Close()
-	timer := time.NewTimer(3 * time.Second)
+	c.shutdownOnce.Do(func() { _ = c.Input.Close() })
+	timer := time.NewTimer(shutdownGrace)
 	defer timer.Stop()
 	select {
 	case err := <-c.Done:

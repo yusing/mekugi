@@ -25,7 +25,7 @@ func (s *BTWDock) Update(v sessionpresentation.View) {
 		*s = BTWDock{}
 		return
 	}
-	if s.body == nil || s.version.Attachment != v.Version.Attachment || s.body.ID != v.BTW.ID {
+	if s.body == nil || s.version.Attachment != v.Version.Attachment || s.body.Key != v.BTW.Key || s.body.ID != v.BTW.ID {
 		*s = BTWDock{}
 	}
 	s.version, s.body, s.running = v.Version, v.BTW, v.BTWRunning
@@ -39,7 +39,7 @@ func (s *BTWDock) Key(key string) (handled bool, close *sessionpresentation.Clos
 	}
 	switch key {
 	case "\x1b":
-		return true, &sessionpresentation.CloseSideIntent{Version: s.version, Exchange: s.body.ID}
+		return true, &sessionpresentation.CloseSideIntent{Version: s.version, Key: s.body.Key, Exchange: s.body.ID}
 	case "\x1b[5~":
 		s.Scroll += max(1, s.Rows-1)
 		return true, nil

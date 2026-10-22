@@ -20,22 +20,46 @@ import (
 func appliedSettingsTestUI(t *testing.T, workspace, thread string) (*appServerUI, *appServerTestInput) {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, workspace)
+	u.Startup.History = u.retained.Store
 	u.Thread = thread
 	u.startSession(thread, workspace)
 	u.panes = testPanePreferences()
 	if err := u.panes.open(&terminalTest(u).Shell, u.shell.Main, workspace, thread, false); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { appliedSettingsTestDrain(t, u) })
 	return u, u.Host.Input.(*appServerTestInput)
+}
+
+// Join this fixture's actual writer before observing durable state or opening a
+// fresh owner. Cleanup also joins writes started by direct host-result fixtures.
+func appliedSettingsTestDrain(t *testing.T, u *appServerUI) {
+	t.Helper()
+	if err := u.panes.writer.close(u.panes.attachment, presentationTime(u.clock)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func appliedSettingsTestStageLayout(t *testing.T, u *appServerUI) {
+	t.Helper()
+	data, err := u.panes.encoding.Encode(terminalTest(u).Shell.Preferences(u.shell.Main))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := u.panes.stageNative(data, presentationTime(u.clock), false); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func appliedSettingsTestNotify(t *testing.T, u *appServerUI, model, effort, tier string) {
 	t.Helper()
 	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": u.Thread, "threadSettings": map[string]any{"model": model, "effort": effort, "serviceTier": tier}})
+	appliedSettingsTestDrain(t, u)
 }
 
 func appliedSettingsTestResume(t *testing.T, u *appServerUI, w *appServerTestInput, info binding.ThreadInfo) (map[string]any, int) {
 	t.Helper()
+	resumeTestMembers(t, u, info.ID)
 	u.Startup.Thread = info.ID
 	if err := openSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode); err != nil {
 		t.Fatal(err)
@@ -66,6 +90,7 @@ func TestAppServerAppliedSettingsFreshOwnerResumeBeforeFirstTurn(t *testing.T) {
 			appliedSettingsTestNotify(t, u, "saved-model", "high", "priority")
 			if defaults {
 				appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "saved", "threadSettings": map[string]any{"model": "saved-model", "effort": nil, "serviceTier": nil}})
+				appliedSettingsTestDrain(t, u)
 			}
 			if u.Turn != "" {
 				t.Fatal("test unexpectedly started a turn")
@@ -151,6 +176,7 @@ func TestAppServerAppliedSettingsPendingFailedAndForeignDoNotPersist(t *testing.
 			appServerTestKeys(t, u, "/tier priority\r")
 			w.Reset()
 			appServerTestMessage(t, u, message)
+			appliedSettingsTestDrain(t, u)
 			after, err := os.ReadFile(testPanePath(t, u.panes))
 			if err != nil || string(before) != string(after) {
 				t.Fatalf("non-authoritative event changed retained settings: %s %v", message, err)
@@ -168,26 +194,32 @@ func TestAppServerAppliedSettingsStartResultPersists(t *testing.T) {
 	u.Settings.RestoreEffort = true // A new thread must not inherit a failed resume gate.
 	appServerTestRequest(t, u, "1", "thread/start")
 	appServerTestMessage(t, u, `{"id":1,"result":{"model":"started","reasoningEffort":null,"serviceTier":null,"thread":{"id":"new","cwd":"/workspace"}}}`)
+	appliedSettingsTestDrain(t, u)
 	state, err := testPanePreferences().read("/workspace", "new")
 	if err != nil || state.Settings.Model != "started" || state.Settings.Effort != "" || state.Settings.Tier != "" || state.Settings.Observed.IsZero() {
 		t.Fatalf("host-confirmed initial defaults not retained: %+v %v", state, err)
 	}
 }
 
-func TestAppServerAppliedSettingsFlushesCurrentLayoutBeforeTick(t *testing.T) {
+func TestAppServerAppliedSettingsFlushesAdmittedLayoutBeforeTick(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u, _ := appliedSettingsTestUI(t, "/workspace", "saved")
 	terminalTest(u).Split = 63
+	appliedSettingsTestStageLayout(t, u)
+	terminalTest(u).Split = 91 // Unadmitted scratch state must not replace the client layout.
 	appliedSettingsTestNotify(t, u, "model", "high", "flex")
 	state, err := testPanePreferences().read("/workspace", "saved")
 	if err != nil || state.layout.Split != 63 || state.Settings.Model != "model" {
-		t.Fatal("immediate settings flush lost layout changed since the last tick", err)
+		t.Fatal("immediate settings flush lost the admitted client layout", err)
 	}
 	terminalTest(u).Split = 67
+	appliedSettingsTestStageLayout(t, u)
+	terminalTest(u).Split = 93
 	replaceAppServerTestSession(t, u, "replacement")
+	appliedSettingsTestDrain(t, u)
 	state, err = testPanePreferences().read("/workspace", "saved")
 	if err != nil || state.layout.Split != 67 || state.Settings.Model != "model" {
-		t.Fatal("replacement did not flush the old attachment's current layout", err)
+		t.Fatal("replacement did not flush the old attachment's admitted layout", err)
 	}
 }
 
@@ -199,14 +231,16 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 			observed := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 			u.clock = func() time.Time { return observed }
 			terminalTest(u).Focus = 2 // Resume normalizes hidden-Diff focus before checkpointing.
+			appliedSettingsTestStageLayout(t, u)
 			appliedSettingsTestNotify(t, u, "saved-model", "", "")
 			before, err := u.panes.read("/workspace", "saved")
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || before.layout.Focus != 2 {
+				t.Fatalf("hidden-Diff focus was not retained before resume: %+v %v", before.layout, err)
 			}
 			observed = observed.Add(time.Hour)
 			_, resumeID := appliedSettingsTestResume(t, u, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"saved-model","reasoningEffort":"high","serviceTier":null,"collaborationMode":{"mode":"default","settings":{"model":"saved-model","reasoning_effort":"high","developer_instructions":null}},"thread":{"id":"saved","cwd":"/workspace"}}}`, resumeID))
+			appliedSettingsTestDrain(t, u)
 			if !u.Settings.Pending() {
 				t.Fatal("did not wait for default restoration")
 			}
@@ -252,7 +286,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				if !fresh.ResumeEffort || !reflect.DeepEqual(params["config"], map[string]any{"model": "saved-model"}) {
 					t.Fatal("fresh retry promoted transient resume defaults over saved null intent")
 				}
-				if _, err := updateSettings(&u.attached, u.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.panes, &u.dirty, u.restoring != nil, u.clock, map[string]any{"effort": effort}); err != nil {
+				if _, err := updateSettings(&u.attached, u.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.panes, u.restoring != nil, u.clock, map[string]any{"effort": effort}); err != nil {
 					t.Fatal(err)
 				}
 				if effort == "medium" {
@@ -265,6 +299,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				appServerTestKeys(t, u, "\r")
 			}
 			appServerOneRequest(t, w, "turn/start", "held")
+			appliedSettingsTestDrain(t, u)
 			state, err := testPanePreferences().read("/workspace", "saved")
 			if err != nil || state.Settings.Model != "saved-model" || state.Settings.Effort != effort || state.Settings.Tier != "" || !state.ResumeObserved.IsZero() || state.ResumeEvidence.Model != "" || u.Settings.Pending() || u.Settings.RestoreEffort {
 				t.Fatalf("confirmed defaults not retained: %+v %v", state, err)
@@ -292,6 +327,7 @@ func TestAppServerAppliedSettingsRejectedRestoreRetainsSelectedEvidence(t *testi
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 13, 0, 0, 0, time.UTC) }
 			_, resumeID := appliedSettingsTestResume(t, u, w, info)
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"selected","reasoningEffort":"high","serviceTier":"flex","collaborationMode":{"mode":"default","settings":{"model":"selected","reasoning_effort":"high","developer_instructions":null}},"thread":{"id":"saved","cwd":"/workspace"}}}`, resumeID))
+			appliedSettingsTestDrain(t, u)
 			for _, request := range resumeTestRequests(t, w) {
 				if request.Method == "thread/settings/update" {
 					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
@@ -320,7 +356,14 @@ func TestAppServerAppliedSettingsStorageFailurePreservesHostResult(t *testing.T)
 	if err := os.WriteFile(filepath.Dir(testPanePath(t, u.panes)), []byte("not a directory"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	appliedSettingsTestNotify(t, u, "applied", "high", "priority")
+	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": u.Thread, "threadSettings": map[string]any{"model": "applied", "effort": "high", "serviceTier": "priority"}})
+	// The runtime observes publication failures on a later writer step and
+	// presents them without rolling back the authoritative host result.
+	if err := u.panes.writer.close(u.panes.attachment, presentationTime(u.clock)); err == nil {
+		t.Fatal("expected the asynchronous publication to fail")
+	} else {
+		u.dirty = paneError(u.attached.source, err) || u.dirty
+	}
 	if u.model != "applied" || u.reasoningEffort != "high" || u.serviceTier != "priority" || len(u.attached.source.Entries) == 0 {
 		t.Fatal("storage failure hid the applied host settings or its warning")
 	}
@@ -379,6 +422,7 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 
 func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 	u, _ := newAppServerTestUI()
+	resumeTestMembers(t, u, "saved")
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
@@ -391,6 +435,7 @@ func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 
 func TestUISnapshotNativeResumeReasoningRejected(t *testing.T) {
 	u, _ := newAppServerTestUI()
+	resumeTestMembers(t, u, "saved")
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "saved-model", "high"

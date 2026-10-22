@@ -71,7 +71,7 @@ type ComposerInput struct {
 }
 
 func (m *Main) Reference(description, text, source string) sessionpresentation.ReferenceIntent {
-	return sessionpresentation.ReferenceIntent{Version: m.session.Version, Target: m.session.EditorTarget(), Description: description, Text: text, Source: source}
+	return sessionpresentation.ReferenceIntent{Version: m.session.Version, Thread: m.session.Input.ID, Displayed: m.session.Displayed, Target: m.session.EditorTarget(), Description: description, Text: text, Source: source}
 }
 
 // ComposerKey interprets ordinary input after prompt and menu interception.
@@ -115,7 +115,11 @@ func (m *Main) ComposerKey(key string, prompts *Prompts, transcript *activityui.
 		}
 	}
 	if operation != sessionpresentation.NoComposerOperation {
-		return ComposerInput{Command: sessionpresentation.ComposerIntent{Thread: view.Input.ID, Version: view.Version, Target: target, Operation: operation}}
+		intent := sessionpresentation.ComposerIntent{Thread: view.Input.ID, Version: view.Version, Target: target, Operation: operation}
+		if operation == sessionpresentation.RestoreWaiting {
+			intent.Work = new(view.Interrupt)
+		}
+		return ComposerInput{Command: intent}
 	}
 	secret := view.Questions.Call != nil && view.Questions.Call.Questions[view.Questions.Index].Secret
 	if secret {

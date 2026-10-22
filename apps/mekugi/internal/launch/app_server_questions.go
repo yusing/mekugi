@@ -27,8 +27,6 @@ import (
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
-
-	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
 type nativeQuestionDock struct {
@@ -151,11 +149,6 @@ func (q *nativeQuestionDock) carryLocal(conversation *conversationmodel.Session,
 	}
 }
 
-func moveQuestion(questions *nativeQuestionDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, editor **composer.Editor, main string, step int) {
-	parkQuestion(questions, terminal, *editor, main, questions.Current())
-	questions.Move(step)
-	*editor = resumeQuestion(questions, conversation, terminal, main, questions.Current())
-}
 func addQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, c *sessioncontrol.Question, replay bool) {
 	if c.Thread != control.Thread && !c.Local && !control.Requests.WorkSide(c.Thread) || !questions.Add(c.Call, replay) {
 		return
@@ -291,62 +284,6 @@ func endSyncQuestions(attached *attachedPresentation, terminal *terminalsession.
 	}
 }
 
-func applyQuestionInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned *map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, input terminalsession.PromptInput) (bool, error) {
-	keyInput := input.PromptKey
-	if err := attached.presentation.QuestionInput(sessionpresentation.QuestionInputIntent{Version: input.Version, QuestionInput: keyInput.Question}, questions.Questions); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
-		return true, nil
-	}
-	q, c := questions.Current(), questions.activeCall()
-	action := keyInput.Action
-	switch action {
-	case conversationui.PromptPass:
-		return false, nil
-	case conversationui.PromptHide:
-		questions.AutoOpen = false
-		(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
-	case conversationui.PromptCursor:
-		return false, nil
-	case conversationui.PromptPrevious:
-		moveQuestion(questions, attached.conversation, terminal, editor, control.Thread, -1)
-	case conversationui.PromptNext:
-		moveQuestion(questions, attached.conversation, terminal, editor, control.Thread, 1)
-	case conversationui.PromptAttach:
-		view := publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, presentationTime(clock))
-		intent := sessionpresentation.ComposerIntent{Version: view.Version, Target: view.EditorTarget(), Operation: sessionpresentation.AttachClipboard}
-		if err := attached.presentation.AdmitComposer(intent, attached.conversation); err != nil {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
-			return true, nil
-		}
-		pasteImage(attached, terminal, editor, questions, approvals, clock, owned, side, parent, intent)
-		return true, nil
-	case conversationui.PromptSubmit:
-		return true, submitQuestions(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, environment, (*owned), hook, parent, observations, reviewOwner, receipts, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: c.ID, Incomplete: true})
-	case conversationui.PromptAnswer, conversationui.PromptSkip:
-		parkQuestion(questions, terminal, (*editor), control.Thread, q)
-		if q.IsSecret {
-			answer := *q
-			if !answer.Complete((*editor).Text, c.Sync, action == conversationui.PromptSkip) {
-				return true, nil
-			}
-			q.Done, q.Skipped = answer.Done, answer.Skipped
-			terminal.Prompts.Secrets(c.ID).Answers[questions.Index] = answer.Answer
-		} else {
-			view := attached.presentation.View()
-			if !answerQuestion(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, sessionpresentation.AnswerIntent{Version: view.Version,
-				Call: c.ID, Question: view.Questions.Call.Questions[questions.Index].ID,
-				Choice: q.Selected, Draft: q.Editor.Snapshot.Draft, Skip: action == conversationui.PromptSkip}) {
-				return true, nil
-			}
-		}
-		if step, submit := questions.Advance(); step != 0 {
-			moveQuestion(questions, attached.conversation, terminal, editor, control.Thread, step)
-		} else if submit {
-			return true, submitQuestions(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, environment, (*owned), hook, parent, observations, reviewOwner, receipts, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: c.ID})
-		}
-	}
-	return true, nil
-}
 func answerQuestion(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, intent sessionpresentation.AnswerIntent) bool {
 	defer func() {
 		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
@@ -372,25 +309,32 @@ func submitQuestions(attached *attachedPresentation, terminal *terminalsession.A
 		return nil
 	}
 	c := questions.handles[record]
+	secrets := terminal.Prompts.SecretState(c.ID)
+	return submitQuestionAnswers(attached, terminal, control, picker, editor, settings, tiers, restoring, side, clock, questions, approvals, overlay, environment, owned, hook, parent, observations, reviewOwner, receipts, c, secrets.Editors, secrets.Answers)
+}
+
+// submitQuestionAnswers delivers admitted final values through the existing host
+// authority. Secret inputs are transient arguments, never server editor state.
+func submitQuestionAnswers(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, c *sessioncontrol.Question, secretEditors map[int]composer.State, secretAnswers map[int][]string) error {
 	defer func() {
-		pruneDraftImages(owned, (*editor), attached.conversation, questions, approvals, terminal.Prompts, side)
+		pruneDraftImages(owned, (*editor), attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
 		questions.AutoOpen = true
 		autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
 	}()
 	if c.Sudo != nil {
-		return submitSudoPassword(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, owned, hook, editor, parent, restoring, observations, reviewOwner, receipts, c)
+		return submitSudoPassword(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, owned, hook, editor, parent, restoring, observations, reviewOwner, receipts, c, secretAnswers)
 	}
-	answerDraft := questionAnswerAttachments(c.Call, terminal.Prompts.SecretState(c.ID).Editors, terminal.Prompts.SecretState(c.ID).Answers)
+	answerDraft := questionAnswerAttachments(c.Call, secretEditors, secretAnswers)
 	if len(c.RequestID) > 0 {
-		if err := c.Answer(control.Requests, terminal.Prompts.SecretState(c.ID).Answers); err != nil {
+		if err := c.Answer(control.Requests, secretAnswers); err != nil {
 			return err
 		}
 		if questions.Active == c.Call {
 			(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
 		}
 		c.Submitted()
-		clear(terminal.Prompts.SecretState(c.ID).Editors)
-		clear(terminal.Prompts.SecretState(c.ID).Answers)
+		clear(secretEditors)
+		clear(secretAnswers)
 		renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
 		if len(answerDraft.AnswerImages) > 0 || len(answerDraft.Attachments) > 0 {
 			d := conversationmodel.Input{Draft: answerDraft}

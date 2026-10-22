@@ -71,7 +71,7 @@ func TestUISnapshotMarkdownFileLoading(t *testing.T) {
 }
 
 func TestMarkdownFileLateCompletion(t *testing.T) {
-	for _, boundary := range []string{"close", "replace", "thread", "attachment", "retirement"} {
+	for _, boundary := range []string{"close", "replace", "attachment", "retirement"} {
 		t.Run(boundary, func(t *testing.T) {
 			main, _ := newAppServerTestUI()
 
@@ -89,8 +89,6 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 				u.outputKey("q")
 			case "replace":
 				u.openBlocks(main.shell.Transcript, []activityui.Block{{Body: "replacement dialog"}})
-			case "thread":
-				main.testActivity(main.shell.Agents).displayThread("/root/child")
 			case "retirement":
 				main.attached.session.Retire()
 			case "attachment":
@@ -98,7 +96,7 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 			}
 			select {
 			case result := <-results:
-				u.main.detailFiles.loadedMarkdownFile(&u.main.attached.session, u.main.presentationState, u.main.attached.cwd, u.Attachment, result)
+				u.main.detailFiles.loadedMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.Attachment, result)
 			case <-time.After(5 * time.Second):
 				t.Fatal("file read did not finish")
 			}

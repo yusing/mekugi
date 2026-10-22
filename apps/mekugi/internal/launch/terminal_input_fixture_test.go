@@ -80,12 +80,12 @@ func applyEffect(attached *attachedPresentation, terminal *terminalsession.Attac
 			openQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread)
 		}
 	case effect.Panel != nil:
-		applyPanelAction(attached, terminal, clock, panel, dirty, capture, *effect.Panel)
+		applyPanelAction(attached, terminal, clock, panel, capture, *effect.Panel)
 		(*dirty) = true
 	case effect.Resume != nil:
 		return false, applyResumeAction(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, approvalMode, quit, *effect.Resume)
 	case effect.Menu != nil:
-		handled := applyMenuResult(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, side, clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, dirty, parent, environment, *effect.Menu)
+		handled := applyMenuResult(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, side, clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, parent, environment, *effect.Menu)
 		dispatchRewind(attached, terminal, control, picker, clock, parent, (*reviewOwner), shellEdits, retained, (*retainedSession), changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)
 		return !handled, nil
 	case effect.Side != nil:

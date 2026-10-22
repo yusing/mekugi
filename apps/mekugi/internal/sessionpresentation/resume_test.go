@@ -11,7 +11,7 @@ func TestResumePublicationRejectsStaleAndUnpublishedTargets(t *testing.T) {
 	c := newStatusConsumer()
 	m := c.model()
 	source := m.OpenResume(false, "/work")
-	source.Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next")
+	source.Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next", 1)
 	publish := func() sessionpresentation.View {
 		return m.Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation}, sessionpresentation.Caption{}, c.now)
 	}
@@ -41,14 +41,14 @@ func TestResumePublicationRejectsStaleAndUnpublishedTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 	source = m.OpenResume(false, "/work")
-	source.Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next")
+	source.Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next", 1)
 	publish()
 	if !errors.Is(m.AdmitResume(action), sessionpresentation.ErrStaleIntent) {
 		t.Fatal("old chooser action admitted")
 	}
 	m.Attach(sessionpresentation.Thread{ID: "main", Caller: "/root"}, true)
 	source = m.OpenResume(false, "/work")
-	source.Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next")
+	source.Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next", 1)
 	action.Version = publish().Version
 	action.Picker, action.Kind, action.Thread = source.ID, sessionpresentation.ResumeChoose, "saved"
 	if !errors.Is(m.AdmitResume(action), sessionpresentation.ErrReplayIntent) {

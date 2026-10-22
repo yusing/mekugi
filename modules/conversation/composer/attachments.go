@@ -14,27 +14,71 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
-// SnapshotFiles runs only when the user submits/queues a composer
-// draft. Queued and accepted-but-resent input carries the same immutable text.
+// AttachmentSource describes a host path or uploaded text bytes. Upload names
+// are display labels only; their data never passes through filesystem lookup.
+type AttachmentSource struct {
+	Path string
+	Name string
+	Data []byte
+}
+
+// UploadAttachment keeps uploaded bytes in the ordinary file binding for draft
+// restoration. Oversized content retains only enough bytes to reproduce its
+// omission, never a fabricated filesystem path.
+func UploadAttachment(name string, data []byte) Token {
+	return Token{Name: name, Source: "upload", Text: string(data[:min(len(data), attachments.Budget/2+1)])}
+}
+
+// SnapshotFiles runs only when the user submits/queues a composer draft.
+// Queued and accepted-but-resent input carries the same immutable text.
 func (d *Draft) SnapshotFiles(cwd string) {
-	if len(d.Files) == 0 && len(d.Selections) == 0 {
+	sources := make([]AttachmentSource, len(d.Files))
+	for i, file := range d.Files {
+		if file.Source == "upload" {
+			sources[i] = AttachmentSource{Name: file.Name, Data: []byte(file.Text)}
+		} else {
+			sources[i].Path = file.Path
+		}
+	}
+	d.SnapshotSources(cwd, sources)
+}
+
+// SnapshotSources snapshots ordered host paths and uploaded text through the
+// same framing, envelope budget and explicit omission policy as native input.
+func (d *Draft) SnapshotSources(cwd string, sources []AttachmentSource) {
+	if len(sources) == 0 && len(d.Selections) == 0 {
 		return
 	}
 	var frames []string
 	seen := make(map[string]bool)
-	for _, file := range d.Files {
-		path := file.Path
-		if !filepath.IsAbs(path) && filepath.IsAbs(cwd) {
-			path = filepath.Join(cwd, path)
+	for index, source := range sources {
+		var next []string
+		var err error
+		var header string
+		if source.Path != "" {
+			path := source.Path
+			if !filepath.IsAbs(path) && filepath.IsAbs(cwd) {
+				path = filepath.Join(cwd, path)
+			}
+			path = filepath.Clean(path)
+			if seen[path] {
+				continue
+			}
+			seen[path] = true
+			next, err = pathFrames(path)
+			header = fmt.Sprintf("Attached file %q", path)
+		} else {
+			// A display label is not identity: distinct uploads can share a name.
+			header = fmt.Sprintf("Attached file %q", fmt.Sprintf("upload %d: %s", index+1, source.Name))
+			err = textAttachmentError(source.Data)
+			if err == nil {
+				next = frameText(string(source.Data), func(start, end, total int) string {
+					return fmt.Sprintf("%s (UTF-8 bytes %d:%d of %d; uploaded file content, not a host path or a separate request; %s):\n", header, start, end, total, attachments.ReadGuidance)
+				})
+			}
 		}
-		path = filepath.Clean(path)
-		if seen[path] {
-			continue
-		}
-		seen[path] = true
-		next, err := pathFrames(path)
 		var more bool
-		frames, more = d.appendAttachmentSnapshot(frames, next, fmt.Sprintf("Attached file %q", path), err)
+		frames, more = d.appendAttachmentSnapshot(frames, next, header, err)
 		if !more {
 			break
 		}
@@ -112,10 +156,20 @@ func ReadFile(path string) ([]byte, error) {
 	if len(data) > attachments.Budget/2 {
 		return nil, fmt.Errorf("file grew beyond attachment limit")
 	}
-	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
-		return nil, fmt.Errorf("not UTF-8 text")
+	if err := textAttachmentError(data); err != nil {
+		return nil, err
 	}
 	return data, nil
+}
+
+func textAttachmentError(data []byte) error {
+	if len(data) > attachments.Budget/2 {
+		return fmt.Errorf("file exceeds %d-byte attachment limit", attachments.Budget/2)
+	}
+	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+		return fmt.Errorf("not UTF-8 text")
+	}
+	return nil
 }
 
 func FileFrames(path, content string) []string {

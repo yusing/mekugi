@@ -23,6 +23,20 @@ type heldCommandFrame struct {
 	released       time.Time
 }
 
+// ResetPacing catches up to the complete admitted publication after incremental
+// delivery compaction. Navigation, disclosure and output identity remain intact.
+func (v *View) ResetPacing() {
+	if v.publication != nil {
+		for _, entry := range v.publication.Entries {
+			if v.commandFrames[entry.Seq] != nil || v.reasoningFrames[entry.TextRef] != nil {
+				v.observe(entry, false)
+			}
+		}
+	}
+	v.commandFrames, v.reasoningFrames = nil, nil
+	v.publication, v.Runs = nil, nil
+}
+
 func (v *View) HoldCommand(seq uint64, snapshot CommandFrame) {
 	v.publication = nil
 	if v.commandFrames == nil {

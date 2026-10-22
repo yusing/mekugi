@@ -50,6 +50,14 @@ func TestCompletionChoiceHonorsOrdinaryInputAdmission(t *testing.T) {
 	if !errors.Is(c.model().AdmitMenu(action), sessionpresentation.ErrInputUnavailable) {
 		t.Fatal("child display admitted an ordinary draft completion")
 	}
+	action.Thread = v.Main.ID
+	if err := c.model().AdmitMenu(action); err != nil || c.model().View().Displayed.ID != "child" {
+		t.Fatalf("original Main completion did not survive navigation: %v", err)
+	}
+	action.Thread = "missing-side"
+	if !errors.Is(c.model().AdmitMenu(action), sessionpresentation.ErrInputUnavailable) {
+		t.Fatal("completion admitted a retired editor owner")
+	}
 }
 
 func TestRewindAndArchiveMenusRejectReplay(t *testing.T) {

@@ -135,6 +135,11 @@ func TestPublicOptionsExposeOneInterface(t *testing.T) {
 	var help bytes.Buffer
 	flags := newFlags(&help, new(Config))
 	flags.Usage()
+	for _, command := range []string{"mekugi server [--socket PATH]"} {
+		if !strings.Contains(help.String(), command) {
+			t.Fatalf("help omits control entrypoint %q: %s", command, help.String())
+		}
+	}
 	if strings.Contains(help.String(), "passthrough") || strings.Contains(help.String(), "-mode") {
 		t.Fatalf("help exposes an internal mode: %s", help.String())
 	}

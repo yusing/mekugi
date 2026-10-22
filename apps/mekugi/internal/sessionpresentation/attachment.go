@@ -15,8 +15,13 @@ import (
 type Attachment struct {
 	session *scope.Store
 	threads map[string]*scope.Store
-	turns   map[[2]string]*scope.Store
+	turns   map[[2]string]turnScope
 	retired bool
+}
+
+type turnScope struct {
+	store *scope.Store
+	start string
 }
 
 func (a *Attachment) Scope() *scope.Store {
@@ -63,15 +68,15 @@ func (a *Attachment) Transcript(thread, turn string) observation.TextScope {
 		return observation.TextScope{}
 	}
 	if a.turns == nil {
-		a.turns = make(map[[2]string]*scope.Store)
+		a.turns = make(map[[2]string]turnScope)
 	}
 	key := [2]string{thread, turn}
-	store, known := a.turns[key]
+	record, known := a.turns[key]
 	if !known {
-		store = new(scope.Store)
-		a.turns[key] = store
+		record.store = new(scope.Store)
+		a.turns[key] = record
 	}
-	return observation.TextScope{Thread: a.Thread(thread), Turn: store}
+	return observation.TextScope{Thread: a.Thread(thread), Turn: record.store}
 }
 
 func (a *Attachment) CloseTurn(thread, turn string) {
@@ -79,9 +84,12 @@ func (a *Attachment) CloseTurn(thread, turn string) {
 		return
 	}
 	if a.turns == nil {
-		a.turns = make(map[[2]string]*scope.Store)
+		a.turns = make(map[[2]string]turnScope)
 	}
-	a.turns[[2]string{thread, turn}] = nil
+	key := [2]string{thread, turn}
+	record := a.turns[key]
+	record.store = nil
+	a.turns[key] = record
 }
 
 func (a *Attachment) Retire() {

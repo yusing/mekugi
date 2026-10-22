@@ -17,10 +17,14 @@ func insertDraft(attached *attachedPresentation, editor *composer.Editor, termin
 	terminal.Main.CursorColumn = nil
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
 	editor.Insert(text)
-	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side)
+	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
 }
 
 func deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, start, end int) {
+	if attached.view != "" {
+		(*editor).Delete(start, end, composer.NoRun)
+		return
+	}
 	if start == end {
 		(*editor).Run = composer.NoRun
 		return
@@ -39,7 +43,7 @@ func deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.
 	}
 	terminal.Main.CursorColumn = nil
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
-	pruneDraftImages(owned, *editor, attached.conversation, questions, approvals, terminal.Prompts, side)
+	pruneDraftImages(owned, *editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
 }
 
 func removeDraft(attached *attachedPresentation, editor *composer.Editor, terminal *terminalsession.Attachment, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side, start, end int, run composer.Run) {
@@ -49,5 +53,5 @@ func removeDraft(attached *attachedPresentation, editor *composer.Editor, termin
 	}
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
 	terminal.Main.CursorColumn = nil
-	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side)
+	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
 }

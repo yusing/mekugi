@@ -36,7 +36,7 @@ type commandSegmentWrite struct {
 	err error
 }
 
-func retainCommandSegments(parent context.Context, retained changes.Scope, segments *reports.Service, attached *attachedPresentation, writes *chan commandSegmentWrite, count *int, issues *requestexecution.Failures, dirty *bool, entry sessionpresentation.ActivityEntry, item observation.Item, view execTrackView) {
+func retainCommandSegments(parent context.Context, retained changes.Scope, segments *reports.Service, attached *attachedPresentation, writes *chan commandSegmentWrite, count *int, issues *requestexecution.Failures, entry sessionpresentation.ActivityEntry, item observation.Item, view execTrackView) {
 	if segments == nil || retained.Store == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
 		return
 	}
@@ -46,7 +46,7 @@ func retainCommandSegments(parent context.Context, retained changes.Scope, segme
 		return
 	}
 	if (*count) == commandSegmentRetentionLimit {
-		(*dirty) = commandSegmentRetentionFailed(issues, [3]string{entry.Native.Thread, entry.Native.Turn, entry.Native.Item}, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit)) || (*dirty)
+		commandSegmentRetentionFailed(issues, [3]string{entry.Native.Thread, entry.Native.Turn, entry.Native.Item}, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit))
 		return
 	}
 	record := &reports.Report{Command: item.Command, Exit: *item.ExitCode, Output: sha256.Sum256([]byte(*item.AggregatedOutput))}
@@ -85,12 +85,12 @@ func retainCommandSegments(parent context.Context, retained changes.Scope, segme
 }
 
 // Only the UI event loop consumes results or changes presentation state.
-func commandSegmentRetained(count *int, issues *requestexecution.Failures, dirty *bool, result commandSegmentWrite) {
+func commandSegmentRetained(count *int, issues *requestexecution.Failures, result commandSegmentWrite) {
 	(*count)--
 	if result.err == nil {
 		return
 	}
-	(*dirty) = commandSegmentRetentionFailed(issues, result.key, result.err) || (*dirty)
+	commandSegmentRetentionFailed(issues, result.key, result.err)
 }
 
 func commandSegmentRetentionFailed(issues *requestexecution.Failures, key [3]string, err error) bool {
@@ -110,9 +110,9 @@ func commandSegmentRetentionFailed(issues *requestexecution.Failures, key [3]str
 
 // Normal exit drains accepted reports before releasing the session's resources.
 // Cancellation still reaches each bounded store operation through its parent context.
-func finishCommandSegments(writes *chan commandSegmentWrite, count *int, issues *requestexecution.Failures, dirty *bool) {
+func finishCommandSegments(writes *chan commandSegmentWrite, count *int, issues *requestexecution.Failures) {
 	for (*count) > 0 {
-		commandSegmentRetained(count, issues, dirty, <-(*writes))
+		commandSegmentRetained(count, issues, <-(*writes))
 	}
 }
 

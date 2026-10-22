@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"crypto/rand"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -35,6 +36,7 @@ func expireNotice(feedback *noticepresentation.Model, terminal *terminalsession.
 
 // Claims retain only the identity they published and their independent queues.
 type nativeCriticalNoticeDelivery struct {
+	id                   string
 	attachment, feedback uint64
 	errors, progress     notice.Batch
 }
@@ -48,7 +50,7 @@ func (d *nativeCriticalNoticeDelivery) finish(receipt terminalsession.NoticeRece
 	d.progress.Finish(attached && receipt.Content)
 }
 
-func applyCriticalNotices(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, audience *sessioncontrol.Audience, dirty *bool, issues *requestexecution.Failures) (delivery *nativeCriticalNoticeDelivery) {
+func applyCriticalNotices(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, audience *sessioncontrol.Audience, issues *requestexecution.Failures) (delivery *nativeCriticalNoticeDelivery) {
 	defer func() {
 		view := publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), presentationTime(clock))
 		if delivery != nil {
@@ -59,13 +61,13 @@ func applyCriticalNotices(attached *attachedPresentation, terminal *terminalsess
 	if claim == nil {
 		return nil
 	}
-	delivery = &nativeCriticalNoticeDelivery{errors: claim.Errors, progress: claim.Progress}
+	delivery = &nativeCriticalNoticeDelivery{id: rand.Text(), errors: claim.Errors, progress: claim.Progress}
 	for _, message := range attached.feedback.Receive(claim, presentationTime(clock)) {
 		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: presentationTime(clock)}}})
 	}
 	if len(claim.Errors.Messages) > 0 {
 		terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	}
-	(*dirty) = true
+
 	return delivery
 }

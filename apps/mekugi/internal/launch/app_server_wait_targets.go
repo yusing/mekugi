@@ -37,6 +37,14 @@ func openWaitStore(ctx context.Context, service *history.Service, retained *hist
 	if err != nil {
 		return err
 	}
+	// Native admission knows the accepted root identity before its first turn.
+	// Generic leases cannot infer it before fork/child inheritance is retained.
+	if err := store.Transaction(ctx, writes, func(tx *history.Transaction) error {
+		return tx.InitializeScope(history.Scope{Thread: thread, Namespace: selected.Namespace}, nil)
+	}); err != nil {
+		selected.Close()
+		return err
+	}
 	*retained = selected
 	return nil
 }

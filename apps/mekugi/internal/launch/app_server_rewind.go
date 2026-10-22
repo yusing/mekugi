@@ -4,20 +4,27 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/commandargs"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
@@ -31,7 +38,7 @@ func showRewindPicker(control *sessioncontrol.Client[appServerRequest], picker *
 		picker.rewind.snapshot, picker.rewind.problem = review.Projection.Data, ""
 		picker.rewind.scope = review.Projection.Scope
 	}
-	if _, err := control.Requests.Send("thread/read", map[string]any{"threadId": control.Thread, "includeTurns": true}, "main", appServerRequest{label: "rewind/turns", metadata: control.Thread, menu: picker.ID}); err != nil {
+	if _, err := control.Requests.Send("thread/read", map[string]any{"threadId": control.Thread, "includeTurns": true}, viewRequestScope(picker.view), appServerRequest{label: "rewind/turns", metadata: control.Thread, menu: picker.ID, view: picker.view}); err != nil {
 		picker.Loading, picker.Problem = false, "Could not load user turns: "+err.Error()
 	}
 }
@@ -141,7 +148,7 @@ type rewindSelection struct {
 func (p *composerPicker) readRewindSource(control *sessioncontrol.Client[appServerRequest], parent context.Context) {
 	if len(p.rewind.pending) > 0 {
 		thread := p.rewind.pending[0]
-		if _, err := control.Requests.Send("thread/read", map[string]any{"threadId": thread}, "main", appServerRequest{label: "rewind/source", metadata: thread, menu: p.ID}); err != nil {
+		if _, err := control.Requests.Send("thread/read", map[string]any{"threadId": thread}, viewRequestScope(p.view), appServerRequest{label: "rewind/source", metadata: thread, menu: p.ID, view: p.view}); err != nil {
 			p.rewind.problem = err.Error()
 			p.Loading = false
 		}
@@ -227,4 +234,32 @@ func finishRewindRevert(attached *attachedPresentation, terminal *terminalsessio
 		return
 	}
 	attached.presentation.Status.SetText("Forking before selected turn…")
+}
+
+func dispatchRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time, parent context.Context, reviewOwner *sessionreview.Review, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store)) {
+	r := control.Rewind
+	if r == nil || r.Sent {
+		return
+	}
+	selection := picker.rewind
+	if selection == nil || reviewOwner == nil || reviewOwner.Failure != "" || reviewOwner.Restoring() || reviewOwner.Projection.Data != selection.snapshot || !maps.EqualFunc(reviewOwner.Scope().Workspaces, selection.scope.Workspaces, maps.Equal[map[string]bool, map[string]bool]) {
+		control.Rewind = nil
+		picker.openMenu("rewind-edits")
+		picker.Loading = false
+		picker.Choices = []completion.Choice{{ID: 1, Name: "Keep edits"}}
+		if selection != nil {
+			selection.problem = "saved changes changed; reopen /rewind to refresh"
+		}
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Saved changes changed; reopen /rewind to refresh before reverting", true)
+		return
+	}
+	command := r.Command
+	if err := dispatchShell(attached, terminal, control, clock, parent, reviewOwner, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, command); err != nil {
+		control.Rewind = nil
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not revert edits: "+err.Error(), true)
+		return
+	}
+	r.Sent = true
+	control.Replacement.Rewind()
+	attached.presentation.Status.SetText("Reverting captured edits…")
 }

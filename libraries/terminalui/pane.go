@@ -53,7 +53,7 @@ type Definitions[S, C any] struct {
 
 type PaneDefinition[S, C any] struct {
 	Name, Label string
-	Attach      func(S, diffrender.Theme) PaneAttachment[C]
+	Attach      func(diffrender.Theme) PaneBinding[S, C]
 }
 
 type PaneFactory[C any] struct {
@@ -68,12 +68,19 @@ type PaneAttachment[C any] struct {
 	Prepare func(C)
 }
 
+// PaneBinding constructs a painter independently of the execution source.
+// The application supplies the actual service only when preparing local data.
+type PaneBinding[S, C any] struct {
+	Pane    Pane
+	Prepare func(S, C)
+}
+
 // BindPane checks the snapshot/view pairing before erasing its concrete types.
 // Snapshot reads admitted memory; neither it nor update performs I/O.
-func BindPane[S, C, P any, V Pane](snapshot func(S, C) P, create func(diffrender.Theme) V, update func(V, P)) func(S, diffrender.Theme) PaneAttachment[C] {
-	return func(service S, theme diffrender.Theme) PaneAttachment[C] {
+func BindPane[S, C, P any, V Pane](snapshot func(S, C) P, create func(diffrender.Theme) V, update func(V, P)) func(diffrender.Theme) PaneBinding[S, C] {
+	return func(theme diffrender.Theme) PaneBinding[S, C] {
 		pane := create(theme)
-		return PaneAttachment[C]{Pane: pane, Prepare: func(scope C) { update(pane, snapshot(service, scope)) }}
+		return PaneBinding[S, C]{Pane: pane, Prepare: func(service S, scope C) { update(pane, snapshot(service, scope)) }}
 	}
 }
 

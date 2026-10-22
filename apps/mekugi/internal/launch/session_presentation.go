@@ -27,6 +27,11 @@ import (
 // Reading Model.View does not run this projection or bind an attachment.
 func publishPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, now time.Time) sessionpresentation.View {
 	m := attached.presentation
+	if attached.view != "" {
+		view := publishSessionView(attached, control, picker, "", childKey, settings, tiers, title, backend, restoring, side, now, true)
+		terminal.Main.Update(view)
+		return view
+	}
 	if side != nil {
 		id := cmp.Or(side.Thread, "side:"+side.Key)
 		m.SetSide(sessionpresentation.Thread{ID: id, Caller: side.Caller()})
@@ -41,7 +46,6 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 	} else {
 		m.SetSide(sessionpresentation.Thread{})
 	}
-	view := m.View()
 	if m.DisplayingSide() {
 		*editor = &side.Drafts.Editor
 	} else if q := attached.conversation.Questions.Current(); q != nil && q.IsSecret {
@@ -49,6 +53,28 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 	} else {
 		*editor = &attached.conversation.Editor
 	}
+	view := publishSessionView(attached, control, picker, (*editor).Text, childKey, settings, tiers, title, backend, restoring, side, now, false)
+	terminal.Prompts.Update(view)
+	terminal.Main.Update(view)
+	for _, terminal := range []*activityui.View{terminal.Transcript, terminal.Agents} {
+		if terminal != nil {
+			terminal.Painter.FileLink = markdownFileLinks(view.Info.Workspace)
+			terminal.Painter.DeferFileLinks = true
+		}
+	}
+	return view
+}
+
+// publishSessionView projects semantic owner state without choosing an editor,
+// touching renderer geometry or acknowledging terminal delivery.
+func publishSessionView(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, draft string, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, now time.Time, clientEditors bool) sessionpresentation.View {
+	m := attached.presentation
+	if side != nil {
+		m.SetSide(sessionpresentation.Thread{ID: cmp.Or(side.Thread, "side:"+side.Key), Caller: side.Caller()})
+	} else {
+		m.SetSide(sessionpresentation.Thread{})
+	}
+	view := m.View()
 	var caption sessionpresentation.Caption
 	if view.Displayed.ID == view.Main.ID {
 		caption.Model, caption.Effort, caption.Tier = settings.Model, settings.Effort, tiers.Effective(settings.Model, settings.Tier, control.Thread)
@@ -63,21 +89,12 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 			info.ApprovalCaller = caller
 		}
 	}
-	view = m.Publish(sessionpresentation.MainInputs{
+	return m.Publish(sessionpresentation.MainInputs{
 		BTWRunning: control.BTW != nil && (control.BTW.Busy || control.BTW.Starting),
-		Info:       info,
-		Menu:       picker.menuView(attached.cwd, (*editor).Text, &control.Live), Control: &control.Live, Feedback: &attached.feedback, Conversation: attached.conversation, Restoring: restoring,
+		Info:       info, ClientEditors: clientEditors,
+		Menu: picker.menuView(attached.cwd, draft, &control.Live), Control: &control.Live, Feedback: &attached.feedback, Conversation: attached.conversation, Restoring: restoring,
 		SideThreads: control.Requests.SideThreads(side), SideRunning: side != nil && (side.Busy || side.Starting), Processes: runningProcessCount(&attached.session), History: historyViews(attached, childKey),
 	}, caption, now)
-	terminal.Prompts.Update(view)
-	terminal.Main.Update(view)
-	for _, terminal := range []*activityui.View{terminal.Transcript, terminal.Agents} {
-		if terminal != nil {
-			terminal.Painter.FileLink = markdownFileLinks(view.Info.Workspace)
-			terminal.Painter.DeferFileLinks = true
-		}
-	}
-	return view
 }
 
 func attachPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, review **sessionreview.Review, commits **activitypresentation.CommitReader, parent context.Context, retained changes.Scope, changeSource changes.Service, activityPresent bool) {
@@ -99,33 +116,12 @@ func settlePresentation(attached *attachedPresentation, terminal *terminalsessio
 	if picker.Open && picker.Kind == "rewind-edits" && !picker.Loading && picker.rewind.problem == "" && picker.rewind.command == "" && !restoring && !control.Replacement.Pending() && control.Thread == picker.rewindThread && !sessionBusy(&control.Live, attached.conversation) {
 		forkChosenRewind(attached, terminal, control, picker, settings, clock)
 	}
-	autoOpenApprovals(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
-	autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
+	if attached.view == "" {
+		autoOpenApprovals(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
+		autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
+	}
 	publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, presentationTime(clock))
 	publishActivity(attached, terminal)
-}
-
-// displaySession accepts detached targets without consulting terminal state.
-func displaySession(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, intent sessionpresentation.DisplayIntent) bool {
-	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
-	}()
-	m := attached.presentation
-	if intent.Thread != m.View().Main && intent.Thread != m.View().SideThread && attached.session.KnownCaller(intent.Thread.ID) != intent.Thread.Caller {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
-		return false
-	}
-	crossesSide := m.View().Displayed != intent.Thread && (m.DisplayingSide() || intent.Thread == m.View().SideThread)
-	if err := m.Display(intent); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
-		return false
-	}
-	if crossesSide {
-		picker.sideTask = nil
-		picker.Open, picker.Kind, picker.Choices = false, "", nil
-		picker.cancelScan()
-	}
-	return true
 }
 
 // sessionCaption borrows the selected source's facts; it retains no accounting state.

@@ -105,11 +105,10 @@ func (r *Requests[T]) AdmitSideChild(thread, parent string) {
 
 // RestoreInput keeps a rejected descendant companion scoped to its question.
 // Sync answers have already been committed, so retry only the companion payload.
-func (s *Side) RestoreInput(input conversationmodel.Input) bool {
+func (s *Side) RestoreInput(input conversationmodel.Input) (bool, conversationmodel.InputRestoration) {
 	if input.Question != nil && input.Question.Sync && input.Question.Thread != s.Thread {
 		s.Drafts.Queued = append(s.Drafts.Queued, input)
-		return true
+		return true, conversationmodel.InputRestoration{}
 	}
-	s.Drafts.RestoreInput(input)
-	return false
+	return false, s.Drafts.RestoreInput(input)
 }

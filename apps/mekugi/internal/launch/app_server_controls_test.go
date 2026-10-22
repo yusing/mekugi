@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -30,14 +31,13 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if !u.shell.Main.InterruptLocked || u.Text != "" {
 				t.Fatal("lock not applied locally")
 			}
-			quit, err := u.key("\x03")
-			if err != nil || quit {
-				t.Fatalf("locked Ctrl-C quit=%v err=%v", quit, err)
+			c := nativeTestCancel(t, u)
+			if c.quit || len(c.calls) != 0 {
+				t.Fatal("locked Ctrl-C quit or queued host work")
 			}
-			if err := terminalTest(u).send("\x1b"); err != nil {
-				t.Fatal(err)
-			}
-			if wire.Len() != 0 || u.Interruption.BeforeStart || u.Interruption.Target != "" || !strings.Contains(u.attached.feedback.Text, "/unlock") {
+			c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x1b"})
+			c.refresh(time.Now())
+			if wire.Len() != 0 || u.Interruption.BeforeStart || u.Interruption.Target != "" || !strings.Contains(c.feedback.Text, "/unlock") {
 				t.Fatalf("locked cancellation reached host: %s %+v", wire.Bytes(), u)
 			}
 			if state == "queued" && len(u.attached.conversation.Queued) != 1 {
@@ -47,8 +47,9 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 				t.Fatal("lock lacks persistent indicator")
 			}
 			appServerTestKeys(t, u, "/unlock\r")
-			quit, err = u.key("\x03")
-			if err != nil || u.shell.Main.InterruptLocked {
+			c = nativeTestCancel(t, u)
+			quit := c.quit
+			if u.shell.Main.InterruptLocked {
 				t.Fatal("unlock did not restore keyboard handling")
 			}
 			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.Interruption.BeforeStart || state == "idle" && !quit || state == "queued" && (len(u.attached.conversation.Queued) != 0 || u.Text != "next") {
@@ -62,12 +63,15 @@ func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 	u, wire := newAppServerTestUI()
 
 	u.Turn, u.shell.Main.InterruptLocked = "active", true
-	appServerTestKeys(t, u, "draft\x03")
-	if u.Text != "" {
+	c := nativeTestPromptClient(u)
+	defer c.renderer.terminal.Diff.Close()
+	c.renderer.terminal.Main.InterruptLocked = true
+	nativeTestInput(c, "draft\x03")
+	if c.editor("main").Text != "" || len(c.calls) != 0 {
 		t.Fatal("lock broke draft clearing")
 	}
-	appServerTestKeys(t, u, "\x1a")
-	if u.Text != "draft" {
+	nativeTestInput(c, "\x1a")
+	if c.editor("main").Text != "draft" {
 		t.Fatal("lock broke draft restoration")
 	}
 	u.Text = "/"
@@ -92,7 +96,7 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	terminalTest(u).Split = 60
-	if err := p.save(terminalTest(u).Shell.Preferences(u.shell.Main), time.Now(), true); err != nil {
+	if err := savePaneLayout(p, terminalTest(u).Shell.Preferences(u.shell.Main), time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
 	resumed := newAppServerSessionTestUI(t, "/workspace")

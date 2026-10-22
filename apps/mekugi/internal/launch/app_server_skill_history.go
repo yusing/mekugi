@@ -78,7 +78,7 @@ func failSkillHistory(attached *attachedPresentation, restoring *appServerActivi
 	return nil
 }
 
-func skillHistoryResponse(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], childKey *scope.Key[*appServerChildHistory], restoring **appServerActivityRestore, parent context.Context, retained changes.Scope, dirty *bool, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, thread string, m appserver.Message) error {
+func skillHistoryResponse(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], childKey *scope.Key[*appServerChildHistory], restoring **appServerActivityRestore, parent context.Context, retained changes.Scope, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, thread string, m appserver.Message) error {
 	h := childHistory(&attached.session, childKey, thread)
 	if h == nil || h.skills == nil || h.skills.request != string(m.ID) {
 		return nil
@@ -138,6 +138,6 @@ func skillHistoryResponse(attached *attachedPresentation, control *sessioncontro
 	// context wins, even if the reset's entry has already left the feed.
 	v.RestoreSkills(name, h.skills.names)
 	h.skills.names = nil
-	(*dirty) = true
+
 	return nil
 }

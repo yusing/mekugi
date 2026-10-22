@@ -33,6 +33,8 @@ import (
 // remain Codex-owned, through app-server rather than a second filesystem index.
 
 type composerPicker struct {
+	view           string
+	skillsRevision uint64
 	*completion.State
 	*sessionpresentation.MenuState
 	scanResults                     chan pickerScanResult
@@ -48,6 +50,18 @@ type composerPicker struct {
 	rewindSlots                     chan struct{}
 	archiveTarget                   string
 	sideTask                        *composer.Draft
+	sideTaskDelivery                uint64
+	sideTarget                      string
+}
+
+// invalidateSkills is shared by the local attachment and native views after the
+// host reports a catalog change. The next acquisition still uses the same owner.
+func (p *composerPicker) invalidateSkills() {
+	p.toggleOwnsManager = false
+	p.SkillsLoaded = false
+	p.SkillsProblem = ""
+	p.Resolved = completion.Target{}
+	p.skillsRevision++
 }
 
 func (p *composerPicker) completionTarget(draft composer.Draft, shellMode bool) completion.Target {
@@ -67,7 +81,7 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal 
 			}
 		}
 	}
-	if !attached.presentation.DisplayingSide() && (attached.conversation.Questions.Current() != nil || attached.conversation.Approvals.Open) {
+	if attached.view == "" && !attached.presentation.DisplayingSide() && (attached.conversation.Questions.Current() != nil || attached.conversation.Approvals.Open) {
 		p.Open = false
 		return
 	}
@@ -80,7 +94,11 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal 
 		editor.Skills = draft.Skills
 		editor.Changed()
 	}
-	target := p.completionTarget(editor.Draft, attached.conversation.ShellMode())
+	shellMode := attached.conversation.ShellMode()
+	if attached.view != "" {
+		shellMode = conversationmodel.ShellDraftMode(editor.Text, false)
+	}
+	target := p.completionTarget(editor.Draft, shellMode)
 	bindingOnly := false
 	if target.Kind == 0 && p.Kind == "" && (!p.SkillsLoaded || p.SkillsCwd != attached.cwd) {
 		query := p.skillBindingQuery(draft, false)
@@ -105,6 +123,11 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal 
 	if p.Kind == "manage" {
 		target = completion.Target{Kind: '$', Query: p.Query}
 	}
+	p.acquireTarget(attached, terminal, clock, requests, parent, target, bindingOnly)
+}
+
+// acquireTarget continues the existing acquisition without retaining a client draft.
+func (p *composerPicker) acquireTarget(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], parent context.Context, target completion.Target, bindingOnly bool) {
 	wasOpen := p.Open
 	if !p.Activate(target, bindingOnly) {
 		p.cancelScan()
@@ -160,7 +183,7 @@ func (p *composerPicker) requestPicker(attached *attachedPresentation, terminal 
 		method, params = "skills/list", map[string]any{"cwds": []string{cwd}, "forceReload": true}
 	}
 	p.Pending, p.PendingCwd = new(target), cwd
-	if _, err := requests.Send(method, params, "main", appServerRequest{}); err != nil {
+	if _, err := requests.Send(method, params, viewRequestScope(p.view), appServerRequest{view: p.view}); err != nil {
 		p.Pending, p.Loading = nil, false
 		p.Resolved, p.ResolvedCwd = target, cwd
 		p.Problem = "Search failed: " + err.Error()
@@ -287,6 +310,7 @@ func (p *composerPicker) pickerMessage(attached *attachedPresentation, terminal 
 		}
 		p.toggleOwnsManager = false
 		p.Catalog(choices, cwd, available, problem)
+		p.skillsRevision++
 		if p.Kind == "manage" && p.Initial == nil {
 			p.RememberSkills()
 		}
@@ -299,7 +323,11 @@ func (p *composerPicker) pickerMessage(attached *attachedPresentation, terminal 
 		}
 	}
 	p.Resolve(target, cwd, attached.cwd, choices, problem)
-	p.refreshPicker(attached, terminal, clock, requests, editor, parent, environment)
+	if attached.view == "" {
+		p.refreshPicker(attached, terminal, clock, requests, editor, parent, environment)
+	} else {
+		p.acquireTarget(attached, terminal, clock, requests, parent, p.Target, !p.Open)
+	}
 	return true
 }
 

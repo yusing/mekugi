@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -109,12 +108,11 @@ func (p *composerPredictions) clear(control *sessioncontrol.Client[appServerRequ
 	return control.Requests.ClosePrediction(request.operation)
 }
 
-func (p *composerPredictions) sync(ctx context.Context, attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], restoring bool, focused bool) error {
+func (p *composerPredictions) sync(ctx context.Context, attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], restoring, focused, disabled bool) error {
 	if p.provider == nil {
 		return nil
 	}
 	draft := attached.conversation.DraftView()
-	disabled := terminal.Main.PredictionsDisabled
 	if p.disabled != disabled {
 		p.disabled, p.attempted = disabled, false
 		if err := p.clear(control, attached.conversation); err != nil {

@@ -203,3 +203,34 @@ func TestCompositionRosterPlacement(t *testing.T) {
 		t.Fatal("reference omitted roster")
 	}
 }
+
+func TestRendererCompositionDoesNotAcquireExecutionOwners(t *testing.T) {
+	var c Composition
+	c.Add(module.Descriptor[struct{}, *testService, module.NoBindings, terminalui.Definitions[*testService, *scope.Store]]{
+		ID: "renderer-only", Lifetime: module.Stateless,
+		New: func(struct{}, module.Slots) (*testService, error) {
+			t.Fatal("renderer constructed an execution service")
+			return nil, nil
+		},
+		Views: terminalui.Definitions[*testService, *scope.Store]{Auxiliary: []terminalui.PaneDefinition[*testService, *scope.Store]{{
+			Name: "review", Label: "Diff",
+			Attach: terminalui.BindPane(func(*testService, *scope.Store) string { t.Fatal("renderer read an execution source"); return "" }, func(theme diffrender.Theme) *changeview.Pane { return changeview.NewPane("", theme) }, (*changeview.Pane).SetWorkspace),
+		}}},
+	}, emptyDeps)
+	views, err := c.RendererViews()
+	if err != nil {
+		t.Fatal(err)
+	}
+	label, pane := views.Attach(diffrender.TerminalTheme)
+	if label != "Diff" || pane.Pane == nil || pane.Prepare != nil {
+		t.Fatalf("renderer attachment=%+v label=%q", pane, label)
+	}
+	production, err := NativeRenderer(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	native, prepare := production.NewAttachment(diffrender.TerminalTheme)
+	if native.AuxiliaryLabel != "Diff" || native.Agents == nil || prepare != nil {
+		t.Fatal("descriptor-selected native renderer unavailable or source-capable")
+	}
+}

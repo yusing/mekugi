@@ -74,27 +74,28 @@ func (m *Model) HistoryView(entries []HistoryView) HistoryDock {
 // History stores pagination identities, never transcript or host payloads.
 // Source: apps/mekugi/internal/router/app_server_history_pages.go:14:329@db279442
 type History struct {
-	thread     string
-	turns      []string
-	turn       int
-	anchor     string
-	nextCursor string
-	turnPages  int
-	seenTurns  map[string]bool
-	seenItems  map[[2]string]bool
-	cursors    map[[2]string]bool
-	initial    bool
-	older      bool
-	live       bool
-	failure    string
-	requestID  string
-	last       PageRequest
+	thread      string
+	turns       []string
+	turn        int
+	anchor      string
+	nextCursor  string
+	turnPages   int
+	seenTurns   map[string]bool
+	seenItems   map[[2]string]bool
+	cursors     map[[2]string]bool
+	initial     bool
+	older       bool
+	live        bool
+	failure     string
+	requestID   string
+	loadVersion Version
+	last        PageRequest
 }
 
 func (h *History) View(loading string) HistoryView {
 	v := HistoryView{Thread: h.thread, Failure: h.failure, Initial: h.initial, TurnPages: h.turnPages, Live: h.live}
 	switch {
-	case loading == h.thread && h.thread != "":
+	case h.requestID != "" || loading == h.thread && h.thread != "":
 		v.Status = Loading
 	case h.failure != "":
 		v.Status = Failed

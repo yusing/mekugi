@@ -10,7 +10,7 @@ type ApprovalIntent struct {
 }
 
 func (m *Model) Approval(intent ApprovalIntent, approvals *prompt.Approvals) (*prompt.Approval, prompt.Choice, error) {
-	if intent.Version != m.view.Version {
+	if m.admitOwner(intent.Version) != nil {
 		return nil, prompt.Choice{}, ErrStaleIntent
 	}
 	if m.replay {

@@ -1,10 +1,10 @@
 package sessionpresentation
 
 import (
+	"iter"
 	"reflect"
 	"slices"
 
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/activity/feed"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 )
@@ -44,9 +44,9 @@ type detailPage struct {
 	live        bool
 }
 
-// The active selection owns the same retained references previously held by the
-// dialog. Closing drops those references without releasing another owner's output.
-type detailSelection struct {
+// Details owns one renderer attachment's semantic selection. It borrows actual
+// Activity/output references; closing never releases another owner's output.
+type Details struct {
 	id                 DetailID
 	sequence, revision uint64
 	source             *ActivitySource
@@ -55,26 +55,20 @@ type detailSelection struct {
 	identities         map[uint64][2]string
 }
 
-var detailSelections scope.Key[detailSelection]
-
-func (a *Attachment) OpenDetails(version Version, source *ActivitySource, pages []activity.DetailPage, processes bool) DetailID {
-	if a.retired {
-		return DetailID{}
-	}
-	d := detailSelections.Value(a.Scope())
+// OpenDetails accepts source-free static pages as well as identity-bound Activity
+// pages. Static selection cannot resolve retained output or process membership.
+func (d *Details) OpenDetails(version Version, source *ActivitySource, pages []activity.DetailPage, processes bool, running iter.Seq[ActivityEntry]) DetailID {
 	d.sequence++
 	d.id = DetailID{version.Attachment, d.sequence}
 	d.source, d.pages, d.processes = source, nil, processes
 	d.identities = make(map[uint64][2]string)
-	a.RefreshDetails(d.id, pages)
+	if _, ok := d.RefreshDetails(d.id, pages, running); !ok {
+		d.CloseDetails(d.id)
+	}
 	return d.id
 }
 
-func (a *Attachment) CloseDetails(id DetailID) {
-	if a.retired {
-		return
-	}
-	d := detailSelections.Value(a.Scope())
+func (d *Details) CloseDetails(id DetailID) {
 	if d.id == id {
 		d.id, d.source, d.pages = DetailID{}, nil, nil
 		d.identities = nil
@@ -84,12 +78,8 @@ func (a *Attachment) CloseDetails(id DetailID) {
 // RefreshDetails joins selected sources at an application transition. Missing
 // feed entries preserve the original page and retained output reference.
 // Source: apps/mekugi/internal/router/output_dialog.go:128:181@41b4b1af.
-func (a *Attachment) RefreshDetails(id DetailID, requested []activity.DetailPage) (uint64, bool) {
-	if a.retired {
-		return 0, false
-	}
-	d := detailSelections.Value(a.Scope())
-	if d.id != id || d.source == nil {
+func (d *Details) RefreshDetails(id DetailID, requested []activity.DetailPage, running iter.Seq[ActivityEntry]) (uint64, bool) {
+	if d.id != id || d.id.Selection == 0 {
 		return 0, false
 	}
 	previous := make(map[string]detailPage, len(d.pages))
@@ -101,8 +91,13 @@ func (a *Attachment) RefreshDetails(id DetailID, requested []activity.DetailPage
 	if requested != nil {
 		details = requested
 	}
+	if d.source == nil && (d.processes || slices.ContainsFunc(details, func(page activity.DetailPage) bool {
+		return page.Source != 0 || page.PreparedSource != 0 || page.Output != 0
+	})) {
+		return 0, false
+	}
 	if d.processes {
-		details = activity.DetailPages(a.processValues(d.source, details))
+		details = activity.DetailPages(processValues(d.source, details, running))
 	}
 	selected := make(map[uint64]bool)
 	for _, page := range details {
@@ -113,24 +108,26 @@ func (a *Attachment) RefreshDetails(id DetailID, requested []activity.DetailPage
 	}
 	sources := make(map[uint64]activity.DetailSource)
 	outputs := make(map[uint64]map[int]*feed.Output)
-	for _, entry := range d.source.Entries {
-		if !selected[entry.Source.Seq] {
-			continue
-		}
-		source := activity.DetailSource{Entry: entry.Publish()}
-		if n := entry.Source.Native; n != nil {
-			if entry.Source.Kind == "tool" || entry.Source.Kind == "attachments" {
-				d.identities[entry.Source.Seq] = [2]string{n.Thread, n.Item}
+	if d.source != nil {
+		for _, entry := range d.source.Entries {
+			if !selected[entry.Source.Seq] {
+				continue
 			}
-			source.Command = new(CommandPresentation(entry.Source))
-			source.Streaming = n.Phase == "summary" || n.Phase == "item/started" || n.Phase == "item/agentMessage/delta"
-			retained := map[int]*feed.Output{1: n.Output}
-			for i, segment := range n.Segments {
-				retained[i+2] = segment.Output
+			source := activity.DetailSource{Entry: entry.Publish()}
+			if n := entry.Source.Native; n != nil {
+				if entry.Source.Kind == "tool" || entry.Source.Kind == "attachments" {
+					d.identities[entry.Source.Seq] = [2]string{n.Thread, n.Item}
+				}
+				source.Command = new(CommandPresentation(entry.Source))
+				source.Streaming = n.Phase == "summary" || n.Phase == "item/started" || n.Phase == "item/agentMessage/delta"
+				retained := map[int]*feed.Output{1: n.Output}
+				for i, segment := range n.Segments {
+					retained[i+2] = segment.Output
+				}
+				outputs[entry.Source.Seq] = retained
 			}
-			outputs[entry.Source.Seq] = retained
+			sources[entry.Source.Seq] = source
 		}
-		sources[entry.Source.Seq] = source
 	}
 	if !d.processes {
 		details = activity.RefreshDetails(details, sources)
@@ -143,7 +140,7 @@ func (a *Attachment) RefreshDetails(id DetailID, requested []activity.DetailPage
 			source = detail.PreparedSource
 		}
 		identity, ok := d.identities[source]
-		if !ok || d.source.Prepared == nil {
+		if !ok || d.source == nil || d.source.Prepared == nil {
 			continue
 		}
 		id := identity[1]
@@ -188,12 +185,8 @@ func (a *Attachment) RefreshDetails(id DetailID, requested []activity.DetailPage
 	return d.revision, true
 }
 
-func (a *Attachment) DetailView(id DetailID) (DetailView, bool) {
-	if a.retired {
-		return DetailView{}, false
-	}
-	d := detailSelections.Value(a.Scope())
-	if d.id != id || d.source == nil {
+func (d *Details) DetailView(id DetailID) (DetailView, bool) {
+	if d.id != id || d.id.Selection == 0 {
 		return DetailView{}, false
 	}
 	view := DetailView{Revision: d.revision, ID: d.id, Processes: d.processes, Pages: make([]DetailItem, len(d.pages))}
@@ -211,11 +204,7 @@ func (a *Attachment) DetailView(id DetailID) (DetailView, bool) {
 	return view, true
 }
 
-func (a *Attachment) DetailOutput(request DetailOutputRequest) (DetailOutput, bool) {
-	if a.retired {
-		return DetailOutput{}, false
-	}
-	d := detailSelections.Value(a.Scope())
+func (d *Details) DetailOutput(request DetailOutputRequest) (DetailOutput, bool) {
 	if d.id != request.ID || d.source == nil {
 		return DetailOutput{}, false
 	}
@@ -229,3 +218,6 @@ func (a *Attachment) DetailOutput(request DetailOutputRequest) (DetailOutput, bo
 	}
 	return DetailOutput{}, false
 }
+
+// Clear retires references while keeping selection IDs monotonic for this view.
+func (d *Details) Clear() { *d = Details{sequence: d.sequence} }

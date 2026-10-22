@@ -268,15 +268,23 @@ func finishRestoredContent(attached *attachedPresentation, control *sessioncontr
 	}
 	if original := control.Startup.RewindOriginal; original != "" {
 		control.Startup.RewindOriginal = ""
-		picker.openMenu("archive")
-		picker.archiveTarget = original
-		picker.Target, picker.Problem, picker.Loading = completion.Target{}, "", false
-		picker.Choices = []completion.Choice{
-			{ID: 1, Name: "No, keep the original", Description: "Continue in the new branch"},
-			{ID: archiveConfirmChoice, Name: "Yes, archive the original", Description: "Keep the new branch and all workspace files"},
+		if attached.rewindArchive != nil {
+			attached.rewindArchive(original)
+		} else {
+			showRewindArchive(picker, original)
 		}
 	}
 	return nil
+}
+
+func showRewindArchive(picker *composerPicker, original string) {
+	picker.openMenu("archive")
+	picker.archiveTarget = original
+	picker.Target, picker.Problem, picker.Loading = completion.Target{}, "", false
+	picker.Choices = []completion.Choice{
+		{ID: 1, Name: "No, keep the original", Description: "Continue in the new branch"},
+		{ID: archiveConfirmChoice, Name: "Yes, archive the original", Description: "Keep the new branch and all workspace files"},
+	}
 }
 
 func historyTime(seconds int64) time.Time {

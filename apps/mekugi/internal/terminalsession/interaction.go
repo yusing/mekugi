@@ -273,8 +273,10 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 		return
 	}
 	if key == "\x1b" && main != nil && shell.Focus == 0 {
-		if input := main.PromptKey(key, in.Prompts); input != nil && !yield(InputEffect{Prompt: input}) {
-			return
+		if in.Prompts != nil && in.Prompts.Ready() {
+			if input := main.PromptKey(key, in.Prompts); input != nil && !yield(InputEffect{Prompt: input}) {
+				return
+			}
 		}
 		if main.Keybindings {
 			main.Keybindings = false
@@ -298,7 +300,7 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 			}
 		}
 		if key == "\x1b" && main.session.Side != nil {
-			yield(InputEffect{Side: &sessionpresentation.CloseSideIntent{Version: main.session.Version, Exchange: main.session.Side.ID}})
+			yield(InputEffect{Side: &sessionpresentation.CloseSideIntent{Version: main.session.Version, Key: main.session.Side.Key, Exchange: main.session.Side.ID}})
 			return
 		}
 	}

@@ -239,7 +239,7 @@ func testCompactReloadNativeCodex(t *testing.T, automatic bool, promptKind strin
 
 				return m
 			case <-ctx.Done():
-				t.Fatalf("host timeout: %v diagnostics=%s", ctx.Err(), client.Diagnostics.Text)
+				t.Fatalf("host timeout: %v diagnostics=%s", ctx.Err(), client.Diagnostics.Snapshot())
 			}
 		}
 	}

@@ -445,10 +445,15 @@ func TestSideTabClickAndAcquiredInputIsolation(t *testing.T) {
 	appServerTestKeys(t, u, "/side\r")
 	fork := btwTestRequest(t, w, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
-	intent := editorTestIntent(u)
+	u.testMainFrame(80, 24, 0)
+	v := u.attached.presentation.View()
+	intent := sessionpresentation.ComposerIntent{Thread: v.Input.ID, Version: v.Version, Target: v.EditorTarget(), Operation: sessionpresentation.EditExternally}
 	selectSideThread(t, u, u.attached.presentation.View().Main)
-	if err := u.attached.presentation.AdmitAcquiredInput(intent, u.attached.conversation); err == nil {
-		t.Fatal("side editor result admitted into Main")
+	if err := u.attached.presentation.AdmitAcquiredInput(intent, u.attached.conversation); err != nil {
+		t.Fatalf("navigation invalidated the retained Side editor: %v", err)
+	}
+	if intent.Thread != u.attached.presentation.View().SideThread.ID || u.attached.presentation.View().Input.ID != "main" {
+		t.Fatal("acquisition lost its original Side target or changed Main selection")
 	}
 	frame := strings.Join(u.sideFrame(80, 24), "\n")
 	if !strings.Contains(frame, "1 Main  Side") || strings.Contains(frame, "Agents · Side") {
@@ -628,7 +633,7 @@ func TestSideMainApprovalResolutionIsolation(t *testing.T) {
 	}
 }
 
-func TestStaleSideDisplayPreservesReplaceMenu(t *testing.T) {
+func TestForeignSideDisplayPreservesReplaceMenu(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.startSession("main", t.TempDir())
 	appServerTestKeys(t, u, "/side\r")
@@ -636,6 +641,7 @@ func TestStaleSideDisplayPreservesReplaceMenu(t *testing.T) {
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	stale := sessionpresentation.DisplayIntent{Version: u.attached.presentation.View().Version, Thread: u.attached.presentation.View().SideThread}
+	stale.Version.Attachment++
 	appServerTestKeys(t, u, "/side\r")
 	if u.picker.Kind != sessionpresentation.MenuSideReplace {
 		t.Fatal("fixture menu absent")
@@ -817,7 +823,16 @@ func TestSideCommandAndBTWDockIsolation(t *testing.T) {
 			if u.attached.presentation.View().BTW != nil || u.shell.Main.BTW.Open() || u.BTW != question {
 				t.Fatal("Side mounted or closed Main's BTW")
 			}
-			if err := terminalTest(u).key(3); err != nil {
+			c := nativeTestPromptClient(u)
+			defer c.renderer.terminal.Diff.Close()
+			nativeTestInput(c, "\x03")
+			if len(c.calls) != 1 || c.calls[0].operation.Side == nil {
+				t.Fatal("Side cancellation did not target its side exchange")
+			}
+			if err := u.attached.presentation.AdmitCloseSide(*c.calls[0].operation.Side); err != nil {
+				t.Fatal(err)
+			}
+			if err := closeSide(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
 				t.Fatal(err)
 			}
 			if u.side != nil || u.BTW != question {

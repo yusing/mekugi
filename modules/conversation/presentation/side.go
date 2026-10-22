@@ -35,6 +35,7 @@ type SideAnswer struct {
 }
 
 type SideView struct {
+	Key              string
 	History          []SideExchange
 	ID               uint64
 	Question, Status string

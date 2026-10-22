@@ -10,8 +10,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/yusing/mekugi/modules/conversation/prompt"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
@@ -26,6 +24,7 @@ type nativeNotifications struct {
 	out          io.Writer
 	focused      bool
 	ready        bool
+	relay        func(string, string)
 	lastTitle    string
 	titleWritten bool
 	blocked      map[string]nativeBlockedRequest
@@ -73,15 +72,12 @@ func (n *nativeNotifications) resolve(m appserver.Message) {
 	}
 }
 
-// Herdr's Codex detector consumes the same OSC 0 activity markers as Codex.
-// Source: codex-rs/tui/src/chatwidget/status_surfaces.rs:28:43@1cc7e236
-// TERMINAL_TITLE_SPINNER_FRAMES and TERMINAL_TITLE_ACTION_REQUIRED_TEXT.
-func (n *nativeNotifications) writeTerminalTitle(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, workspace, main string, questions *prompt.Questions, approvals *prompt.Approvals, busy bool, now time.Time) {
+func (n *nativeNotifications) writeTitle(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, workspace string, actionRequired, busy bool, now time.Time) {
 	if n == nil || n.out == nil {
 		return
 	}
 	parts := []string{"Mekugi"}
-	if questions.Count(main) > 0 || len(n.blocked) > 0 || len(approvals.Pending) > 0 {
+	if actionRequired {
 		parts = append(parts, "[ ! ] Action Required")
 	} else if busy {
 		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
@@ -153,6 +149,10 @@ func (n *nativeNotifications) allows(event string) bool {
 }
 
 func (n *nativeNotifications) notify(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, event, message string) {
+	if n != nil && n.relay != nil {
+		n.relay(event, message)
+		return
+	}
 	if !n.allows(event) {
 		return
 	}

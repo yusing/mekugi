@@ -123,9 +123,14 @@ func TestFrozenSelectionRequestsUpdatedOutput(t *testing.T) {
 		}
 		results[i] = activitypresentation.OutputResult{Demand: demand, View: feed.OutputView{Lines: []string{"retained first line", "tail"}}}
 	}
-	view.Hydrate(results)
-	result = frame.SelectionMouse(in, nil, mouse)
-	if len(result.Demands) != 0 || result.Selection == nil || !strings.Contains(strings.Join(result.Selection.Rows, "\n"), "retained first line") {
+	// Asynchronous acquisition retains the original feed even if the live
+	// publication advances and invalidates the demanded output in that view.
+	publication.Entries = slices.Clone(publication.Entries)
+	publication.Entries[0].Revision++
+	publication.Entries[0].Outputs = map[int]int{1: 4}
+	publication.Entries[1].Values = []activitypresentation.Value{{Kind: "text", Body: "replacement feed", Source: 8}}
+	view.Update(new(publication), activityui.Display{Caller: "/root"})
+	if !result.Selection.CompleteCapture(results) || !strings.Contains(strings.Join(result.Selection.Rows, "\n"), "retained first line") || strings.Contains(strings.Join(result.Selection.Rows, "\n"), "replacement feed") {
 		t.Fatalf("frozen capture lost hydrated content: %+v", result)
 	}
 }

@@ -54,8 +54,8 @@ without waiting for layout debounce. Unchanged state is not rewritten. A failed
 save is reported once rather than retried on every frame.
 
 The renderer stages an owned copy of its opaque presentation separately from
-settings and recovery changes. Application coordination samples current layout
-before an immediate flush, so changes since the last debounce tick are retained
+settings and recovery changes. Application coordination admits client layout
+updates before an immediate flush, retaining the latest admitted presentation
 with the authoritative settings. Saving already-staged state requires no renderer.
 
 ## Lifecycle

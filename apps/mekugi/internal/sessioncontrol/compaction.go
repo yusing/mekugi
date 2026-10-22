@@ -120,8 +120,5 @@ func (c *Compaction) Continue(waitingInput bool) bool {
 		return false
 	}
 	c.continueTask = false
-	if waitingInput {
-		return false
-	}
-	return true
+	return !waitingInput
 }

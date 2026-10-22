@@ -42,9 +42,18 @@ import (
 )
 
 func openSession(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time, resumePicker **appServerResumePicker, approvalMode bool) error {
+	thread := cmp.Or(control.Replacement.Target, control.Startup.Thread)
+	if attached.reserveThread != nil && thread != "" && thread != "--last" && thread != sessioncontrol.ResumePicker {
+		if err := attached.reserveThread(thread); err != nil {
+			return err
+		}
+	}
 	opening, err := control.Requests.OpenSession(&control.Startup, &control.Live, approvalMode, appServerRequest{label: "resume/settings"})
 	attached.presentation.BeginOpening(opening)
 	if err != nil {
+		if attached.reserveThread != nil {
+			_ = attached.reserveThread("")
+		}
 		return err
 	}
 	if opening == sessioncontrol.OpeningPicker {
@@ -53,7 +62,7 @@ func openSession(attached *attachedPresentation, control *sessioncontrol.Client[
 	return nil
 }
 
-func resumeSettingsResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, approvalMode bool, dirty *bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, panes *nativePreferences, m appserver.Message) error {
+func resumeSettingsResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, approvalMode bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, panes *nativePreferences, m appserver.Message) error {
 	fail := func(message string) error {
 		if control.Replacement.Target != "" {
 			return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, message)
@@ -75,7 +84,7 @@ func resumeSettingsResponse(attached *attachedPresentation, terminal *terminalse
 	if panes != nil {
 		state, err := panes.read(info.Cwd, thread)
 		if err != nil {
-			(*dirty) = paneError(attached.source, err) || (*dirty)
+			paneError(attached.source, err)
 		} else {
 			retained = state.Snapshot
 		}
@@ -129,8 +138,19 @@ func resumeLastResponse(attached *attachedPresentation, control *sessioncontrol.
 	if m.Error != nil {
 		return fmt.Errorf("find latest thread: %s", m.Error.Message)
 	}
-	if err := control.Startup.Latest(m.Result); err != nil {
+	if cursor, err := control.Startup.Latest(m.Result); err != nil {
 		return err
+	} else if cursor != "" {
+		params := sessioncontrol.ResumableThreads(25)
+		params["cwd"], params["cursor"] = control.Startup.Workspace, cursor
+		_, err := control.Requests.Send("thread/list", params, "main", appServerRequest{})
+		return err
+	}
+	if reattachSession(attached, control.Startup.Thread) {
+		// The lookup-only startup stays unconfirmed until its originating view
+		// closes after destination attachment, or the user cancels it.
+		control.Startup.Thread = "--last"
+		return nil
 	}
 	return openSession(attached, control, picker, clock, resumePicker, approvalMode)
 }

@@ -19,13 +19,17 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations) error {
+func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, preparation *composerPreparation) error {
 	text := strings.TrimSpace((*editor).Text)
-	if *side != nil && (*side).Unloaded && attached.presentation.DisplayingSide() {
+	displayingSide := attached.presentation.DisplayingSide()
+	if preparation != nil {
+		displayingSide = preparation.side
+	}
+	if *side != nil && (*side).Unloaded && displayingSide {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Side conversation closed · return to Main to start a new conversation", true)
 		return nil
 	}
-	if b := *side; text == "" && b != nil && b.OneOff && attached.presentation.DisplayingSide() && len(b.Drafts.Queued) > 0 {
+	if b := *side; text == "" && b != nil && b.OneOff && displayingSide && len(b.Drafts.Queued) > 0 {
 		b.Drafts.Unsent = append(b.Drafts.Unsent, b.Drafts.Queued[0])
 		b.Drafts.Queued = b.Drafts.Queued[1:]
 		return flushBTW(attached, terminal, control, picker, questions, approvals, clock, settings, side, owned, environment, hook, observations)
@@ -40,22 +44,30 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Use /oneoff TASK", false)
 			return nil
 		}
+		if oneoff && !preparation.admit((*editor).Draft, owned) {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "The prepared input was canceled or is unavailable.", true)
+			return nil
+		}
 		picker.sideTask = nil
 		if *side != nil {
 			if oneoff {
-				draft := (*editor).Draft.Clone()
+				draft := preparation.snapshot((*editor).Draft.Clone())
 				picker.sideTask = &draft
+				picker.sideTaskDelivery = attached.effects.input()
 			}
 			if !oneoff {
 				deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, *owned, 0, len((*editor).Text))
 			}
+			picker.sideTarget = (*side).Key
 			picker.openMenu("side-replace")
 			picker.Choices = []completion.Choice{{ID: 1, Name: "Cancel", Description: "Keep the current side conversation"}, {ID: 2, Name: "Replace", Description: "Close Side and create a fresh snapshot of Main"}}
 			return nil
 		}
-		draft := (*editor).Take()
+		draft := preparation.take(*editor)
 		if oneoff {
 			pending := prepareDraft(picker, terminal, attached.cwd, environment, sideTaskDraft(draft))
+			pending.Origin = attached.view
+			pending.Delivery = attached.effects.input()
 			if err := openFreshSide(attached, terminal, control, editor, side, settings, presentationTime(clock), true, pending); err != nil {
 				return err
 			}
@@ -95,6 +107,10 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Side conversation closed · Esc closes", true)
 		return nil
 	}
+	if !preparation.admit((*editor).Draft, owned) {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "The prepared input was canceled or is unavailable.", true)
+		return nil
+	}
 	if (*owner) == nil {
 		answer := new(conversationmodel.SideAnswer)
 		if command {
@@ -113,7 +129,10 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 	if prefix > 0 {
 		deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay, (*owned), 0, prefix)
 	}
-	b.Begin(question, prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take()))
+	pending := prepareDraft(picker, terminal, attached.cwd, environment, preparation.take(*editor))
+	pending.Origin = attached.view
+	pending.Delivery = attached.effects.input()
+	b.Begin(question, pending)
 	b.Busy = true
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
 	return flushBTW(attached, terminal, control, picker, questions, approvals, clock, settings, side, owned, environment, hook, observations)
@@ -204,10 +223,16 @@ func applySideUpdate(attached *attachedPresentation, terminal *terminalsession.A
 		attached.session.Activity().Agent(update.ReplyThread).Turn = update.ReplyTurn
 	}
 	if update.Restore.Text != "" && update.Side == control.BTW {
-		attached.conversation.RestoreInput(conversationmodel.Join(conversationmodel.Input{Text: "/btw"}, update.Restore))
+		input := conversationmodel.Join(conversationmodel.Input{Text: "/btw"}, update.Restore)
+		input.Origin = update.Restore.Origin
+		input.Delivery = update.Restore.Delivery
+		restored := attached.conversation.RestoreInput(input)
+		if attached.restoreInput != nil {
+			attached.restoreInput(attached.executionPresentation, restored.Detached)
+		}
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "BTW input restored to Main", true)
 	} else if update.Restore.Text != "" && update.Side != nil {
-		if update.Side.RestoreInput(update.Restore) {
+		if restoreSideDraft(attached, update.Side, update.Restore) {
 			update.Notice += " · Enter in an empty One-off composer retries the attachment delivery"
 		} else {
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Side input restored for retry", true)
@@ -216,6 +241,16 @@ func applySideUpdate(attached *attachedPresentation, terminal *terminalsession.A
 	if update.Notice != "" {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), update.Notice, true)
 	}
+}
+
+func restoreSideDraft(attached *attachedPresentation, side *sessioncontrol.Side, input conversationmodel.Input) bool {
+	queued, restored := side.RestoreInput(input)
+	if attached.restoreSide != nil {
+		for _, input := range restored.Detached {
+			attached.restoreSide(attached.executionPresentation, input, side.Thread)
+		}
+	}
+	return queued
 }
 
 func closeBTWQuestion(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest]) error {
@@ -265,20 +300,11 @@ func closeSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 
 	attached.conversation.Side = nil
 	attached.presentation.SetSide(sessionpresentation.Thread{})
-	*editor = &attached.conversation.Editor
-	pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side))
-	return control.Requests.ReleaseSide(b)
-}
-
-func applyCloseSide(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, in sessionpresentation.CloseSideIntent) error {
-	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay)
-	}()
-	if err := attached.presentation.AdmitCloseSide(in); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
-		return nil
+	if attached.view == "" {
+		*editor = &attached.conversation.Editor
 	}
-	return closeSide(attached, terminal, control, editor, questions, approvals, side, owned)
+	pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side), attached.nativeImages)
+	return control.Requests.ReleaseSide(b)
 }
 
 func openFreshSide(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, side **sessioncontrol.Side, settings preferences.Applied, now time.Time, oneoff bool, pending conversationmodel.Input) error {
@@ -291,7 +317,9 @@ func openFreshSide(attached *attachedPresentation, terminal *terminalsession.Att
 	if err := attached.presentation.Display(sessionpresentation.DisplayIntent{Version: attached.presentation.View().Version, Thread: target}); err != nil {
 		return err
 	}
-	*editor = &answer.Drafts.Editor
+	if attached.view == "" {
+		*editor = &answer.Drafts.Editor
+	}
 	terminal.Transcript.Follow()
 	_, err := control.Requests.StartSide(*side, sessioncontrol.SideMain{Thread: control.Thread, Model: settings.Model, Effort: settings.Effort, Tier: settings.Tier, Blocked: control.Starting() || control.InputPending() || control.Settings.Pending()}, now)
 	return err
@@ -313,7 +341,9 @@ func sideCommand(text string) string {
 func sideTaskDraft(draft composer.Draft) composer.Draft {
 	local := composer.Editor{Draft: draft}
 	local.Apply(composer.Action{Kind: composer.DeleteAction, Start: 0, End: strings.Index(local.Text, "/oneoff") + len("/oneoff")})
-	return local.Take()
+	result := local.Draft.Clone()
+	result.CursorBack = 0
+	return result
 }
 
 // forgetSideActivity retires presentation only, not processes or retained evidence.

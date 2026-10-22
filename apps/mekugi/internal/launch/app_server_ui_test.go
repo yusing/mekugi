@@ -135,33 +135,20 @@ func TestAppServerUIEscapeAndLongDraft(t *testing.T) {
 	}
 }
 
-func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
+func TestAppServerCtrlCInterruptsRunningAndStartingTurns(t *testing.T) {
 	u, w := newAppServerTestUI()
-	appServerTestKeys(t, u, "draft\x03")
-	if u.Text != "" || w.Len() != 0 || !strings.Contains(u.attached.feedback.Text, "Ctrl-C again quits") {
-		t.Fatalf("first Ctrl-C draft=%q notice=%q", u.Text, u.attached.feedback.Text)
-	}
-	appServerTestKeys(t, u, "\x1a")
-	if u.Text != "draft" || u.attached.feedback.Text != "" {
-		t.Fatalf("cleared draft not restorable: %q notice=%q", u.Text, u.attached.feedback.Text)
-	}
-	u.Text = ""
-	if quit, err := u.key("\x03"); !quit || err != nil {
-		t.Fatalf("idle Ctrl-C quit=%v err=%v", quit, err)
-	}
-	u, w = newAppServerTestUI()
 	u.Turn = "turn"
-	appServerTestKeys(t, u, "steer\x03")
-	if u.Text != "" || w.Len() != 0 || !strings.Contains(u.attached.feedback.Text, "Ctrl-C again interrupts") {
+	appServerTestKeys(t, u, "steer")
+	if c := nativeTestCancel(t, u); c.quit || u.Text != "" || w.Len() != 0 {
 		t.Fatalf("draft not cleared before interrupt: %q sent=%q", u.Text, w.String())
 	}
-	if quit, err := u.key("\x03"); quit || err != nil || !strings.Contains(w.String(), "turn/interrupt") {
-		t.Fatalf("active Ctrl-C quit=%v err=%v sent=%q", quit, err, w.String())
+	if c := nativeTestCancel(t, u); c.quit || !strings.Contains(w.String(), "turn/interrupt") {
+		t.Fatalf("active Ctrl-C quit=%v sent=%q", c.quit, w.String())
 	}
 	u, w = newAppServerTestUI()
 	u.AwaitingTurn = true
-	if quit, err := u.key("\x03"); quit || err != nil || w.Len() != 0 {
-		t.Fatalf("starting Ctrl-C quit=%v err=%v", quit, err)
+	if c := nativeTestCancel(t, u); c.quit || w.Len() != 0 || !u.Interruption.BeforeStart {
+		t.Fatalf("starting Ctrl-C quit=%v", c.quit)
 	}
 }
 
@@ -463,6 +450,9 @@ func appServerTestFeatures(u *appServerUI, views ...terminalsession.Views) *appS
 	u.conversationState = new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(u.conversationState)
 	u.observations = &observations
+	if u.attached.executionPresentation == nil {
+		u.attached.executionPresentation = new(executionPresentation)
+	}
 	source, child, workspace := u.attached.source, u.attached.childSource, u.attached.cwd
 	u.attached = newAttachedPresentation(u.presentationState, u.conversationState, &observations)
 	if source != nil {
@@ -492,7 +482,8 @@ func testPresentation() *sessionpresentation.Service {
 func testTerminalViews(source *changecapture.Service) terminalsession.Views {
 	definition := changeview.Views.Auxiliary[0]
 	views, err := terminalsession.NewViews([]terminalui.PaneFactory[*scope.Store]{{Name: definition.Name, Label: definition.Label, Attach: func(theme diffrender.Theme) terminalui.PaneAttachment[*scope.Store] {
-		return definition.Attach(source, theme)
+		binding := definition.Attach(theme)
+		return terminalui.PaneAttachment[*scope.Store]{Pane: binding.Pane, Prepare: func(store *scope.Store) { binding.Prepare(source, store) }}
 	}}}, []terminalui.RosterDefinition[*activityui.View]{activity.Module.Views})
 	if err != nil {
 		panic(err)

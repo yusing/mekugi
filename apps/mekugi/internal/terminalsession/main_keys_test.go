@@ -30,7 +30,7 @@ func TestMainKeyContinuationTargetsLatestPublication(t *testing.T) {
 				view.Menu = &sessionpresentation.MenuView{ID: 7, Kind: sessionpresentation.MenuSkills}
 			}
 			main.Update(view)
-			input := main.ContinueKey(KeyEvent(key), &prompts, transcript, true)
+			input := main.ContinueKey(KeyContinuation{key: key}, &prompts, transcript, true)
 			if input.Next == nil || dock == "question" && input.Prompt == nil || dock == "meta-menu" && (input.Menu == nil || input.Menu.Action.Kind != sessionpresentation.MenuDismiss || input.Menu.Handled) {
 				t.Fatalf("first effect did not retain its continuation: %+v", input)
 			}

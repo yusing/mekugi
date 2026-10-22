@@ -94,3 +94,18 @@ func (s *Store) TryPruneLease(name string) (bool, func(), error) {
 	ok, err := lease.TryLock()
 	return ok, func() { _ = lease.Unlock() }, err
 }
+
+// ContainsSession reads durable enrollment without creating or leasing a session.
+func (s *Store) ContainsSession(thread string) (bool, error) {
+	if s == nil || thread == "" {
+		return false, nil
+	}
+	if _, found, err := s.ReadScope(thread); err != nil || found {
+		return found, err
+	}
+	_, err := s.ReadCatalog(SessionName(thread))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return err == nil, err
+}

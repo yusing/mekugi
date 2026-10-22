@@ -47,7 +47,7 @@ func (u *appServerUI) testActivity(view *activityui.View) *activityAdapter {
 // bind supplies the actual application source boundary for standalone dialog tests.
 func (v *activityAdapter) bind(terminal *terminalUI) *activityui.View {
 	if terminal.main == nil {
-		terminal.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, attached: attachedPresentation{source: v.ActivitySource}})
+		terminal.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, attached: attachedPresentation{executionPresentation: &executionPresentation{source: v.ActivitySource}}})
 	} else if activitySource(&terminal.main.attached, terminal.main.shell, v.View) == nil {
 		terminal.main.shell.Transcript, terminal.main.attached.source = v.View, v.ActivitySource
 	}

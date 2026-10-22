@@ -45,7 +45,7 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 	u.testActivity(u.shell.Transcript).testAudience()
 	store.storageNotice = func(_, _ string, phase, message string) {
 		u.issues.CleanupNotice("", "", phase, message)
-		delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+		delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 		if delivery == nil {
 			t.Fatal("cleanup notice did not reach UI")
 		}

@@ -41,7 +41,7 @@ type ResumeAction struct {
 
 func (m *Model) AdmitResume(in ResumeAction) error {
 	p := m.view.Resume
-	if in.Version != m.view.Version || p == nil || in.Picker != p.ID {
+	if !in.Version.SameAttachment(m.view.Version) || p == nil || in.Picker != p.ID {
 		return ErrStaleIntent
 	}
 	if m.replay {
@@ -72,6 +72,7 @@ type ResumeChooser struct {
 	All       bool
 	Query     string
 	Rows      []ResumeRow
+	Scanned   int
 	seen      map[string]bool
 	Cursor    string
 	Loading   bool
@@ -104,8 +105,19 @@ func (m *Model) OpenResume(startup bool, workspace string) *ResumeChooser {
 
 func (m *Model) CloseResume() { m.resume = nil }
 
+// MoveResume transfers the actual startup chooser to its first attached view.
+// No rows, paging identity or acquisition are copied or restarted.
+func (m *Model) MoveResume(target *Model) {
+	if m.resume == nil || target == m {
+		return
+	}
+	target.resume, m.resume = m.resume, nil
+	target.resumeSequence = max(target.resumeSequence, target.resume.ID)
+}
+
 func (p *ResumeChooser) Reset(now time.Time) {
 	p.Rows, p.seen, p.Cursor = nil, make(map[string]bool), ""
+	p.Scanned = 0
 	p.LoadedAt = now
 }
 
@@ -115,7 +127,8 @@ func (p *ResumeChooser) Fail(problem string) {
 	p.Loading, p.Cursor, p.Problem = false, "", problem
 }
 
-func (p *ResumeChooser) Append(rows []ResumeRow, cursor string) {
+func (p *ResumeChooser) Append(rows []ResumeRow, cursor string, scanned int) {
+	p.Scanned += scanned
 	for _, row := range rows {
 		if row.ID == "" || p.seen[row.ID] {
 			continue
@@ -131,8 +144,8 @@ func (p *ResumeChooser) View() *ResumeView {
 		return nil
 	}
 	v := &ResumeView{ID: p.ID, Workspace: p.Workspace, Query: p.Query, Problem: p.Problem,
-		Startup: p.Startup, All: p.All, Loading: p.Loading, HasMore: p.Cursor != "", Rows: p.Matches(), Scanned: len(p.Rows), LoadedAt: p.LoadedAt}
-	v.CanPage = v.HasMore && !p.Loading && (p.Query == "" || len(p.Rows) < 1000)
+		Startup: p.Startup, All: p.All, Loading: p.Loading, HasMore: p.Cursor != "", Rows: p.Matches(), Scanned: p.Scanned, LoadedAt: p.LoadedAt}
+	v.CanPage = v.HasMore && !p.Loading && (p.Query == "" || p.Scanned < 1000)
 	if len(p.Rows) > 0 {
 		v.PageAfter = p.Rows[len(p.Rows)-1].ID
 	}

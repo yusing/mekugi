@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/modules/agentguidance"
 )
 
@@ -58,7 +59,33 @@ func TestAutoWrapProcess(t *testing.T) {
 		} else if os.Getenv("MEKUGI_AUTO_WRAP_GUARD") == "off" {
 			routerArgs = []string{"--shell-guard=false"}
 		}
+		// The wrapper borrows this fixture's server. Its lifetime is joined here,
+		// while detached process startup has separate subprocess acceptance.
+		var stopServer context.CancelFunc
+		var serverDone chan int
+		if os.Getenv("MEKUGI_AUTO_WRAP_TERMINAL") == "1" {
+			socket, err := sessionapi.ControlSocketPath()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var serverContext context.Context
+			serverContext, stopServer = context.WithCancel(t.Context())
+			serverDone = make(chan int, 1)
+			go func() { serverDone <- RunServer(serverContext, []string{"--socket", socket}, os.Stderr) }()
+			if err := sessionapi.EnsureControl(t.Context(), socket, func() error {
+				serverCLIAwait(t, func() bool { _, err := os.Stat(socket); return err == nil })
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
 		code, err := wrapCodex(t.Context(), routerArgs, args)
+		if stopServer != nil {
+			stopServer()
+			if serverCode := <-serverDone; serverCode != 0 {
+				t.Fatalf("server exit: %d", serverCode)
+			}
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}
@@ -211,6 +238,12 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
+			cache, err := os.MkdirTemp("", "mekugi-wrap-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(cache)
+			t.Setenv("XDG_CACHE_HOME", cache)
 			launcher := os.Args[0]
 			t.Setenv("MEKUGI_AUTO_WRAP_GUARD", "off")
 			t.Setenv("MEKUGI_AUTO_WRAP_GUARD_FLAG", test.guardFlag)
@@ -275,7 +308,6 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			defer cancel()
 			cmd := exec.CommandContext(ctx, launcher, "-test.run=^TestAutoWrapProcess$", "--", "router")
 			var output []byte
-			var err error
 			if test.terminal {
 				tty, startErr := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
 				if startErr != nil {

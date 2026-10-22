@@ -19,7 +19,9 @@ refreshes owner state nor advances its version. Repeated publication of unchange
 facts keeps the version; nested values returned to consumers are detached copies.
 Menu identity, active kind and preferred choice belong to this attachment;
 completion targets and choices remain Conversation values.
-The current side answer and its running state share this publication. Closing
+The current side answer and its running state share this publication. Side and BTW dismissal
+names its captured conversation and exchange, so unrelated progress cannot prevent
+closing it or redirect a delayed dismissal to a replacement conversation. Closing
 the side removes its visible exchange immediately while Control retains any
 pending host acknowledgement and cleanup. Scrolling and copy geometry remain
 renderer-local.
@@ -34,6 +36,10 @@ any host response; stale identities and replay produce feedback without answerin
 Ordinary question answers and call submissions use the same version and replay
 admission before resolving Conversation identities. Submission of a hidden call
 preserves an unrelated open editor. Secret editing remains renderer-local.
+Nonsecret answer text and approval reasons remain with their originating editor
+until admission is known. Resolution by another client preserves unadmitted input
+in local history. An uncertain answer submission retains its payload and unknown
+disposition without automatic retry; secret contents stay outside that recovery.
 Prompt choice, note and editing actions carry the same view version and stable
 target identities. Admission precedes changing the Conversation record; replay
 and stale targets leave it unchanged. Ordinary editor publications are detached
@@ -64,7 +70,8 @@ identity, so stale actions cannot affect a replacement session. History targets 
 loading state are published with the session view; consumers do not reconstruct
 eligible children from terminal roster state. Interruption names Main’s observed
 turn or pending start and explicitly chooses restoration or expedition of
-uncommitted steers. The same admission applies to every consumer, and replay
+uncommitted steers. Ctrl-C carries that captured identity and cancels queued
+compaction before interrupting Main. The same admission applies to every consumer, and replay
 rejects host operations. View values are
 detached data without terminal or backend types. A highlighted roster row is not
 the displayed thread. Metadata can rename a caller without changing its identity.
@@ -82,6 +89,42 @@ models, source feeds, transcript and feedback independently of the host connecti
 and terminal. Startup identity discovery keeps those scoped models and parked
 input; accepted replacement constructs new bindings. History leases, physical
 file reads, host request correlation and terminal delivery retain their own lifetimes.
+
+Native client views borrow one execution attachment and its authoritative queues,
+prompts, transcript and host ledger. Each view owns its display selection, menus,
+chooser, detail acquisition and delivery receipts. Client editors remain local.
+Input, prompt, dialog, display and history actions remain admissible across
+unrelated status, output and feedback publications. Their owners check the
+originating attachment and the bound destination, work, editor or overlay identity.
+Navigation does not retarget an action already bound to Main, Side or an Activity
+source. Pending acquisition and editor consequences remain with that original owner.
+Reference insertion retains its original input thread and editor; opening details
+uses the captured feed and source even after display navigation.
+Actions without an explicit destination bind to the uninterrupted displayed/input
+destination observed by their originating publication. Returning to an earlier
+destination does not revive those actions. Caller-label changes preserve identity.
+Future revisions and replaced targets remain invalid; unavailable targets produce
+feedback without asking the user to repeat selection or silently redirecting input.
+History cancellation belongs to its observed loading operation, not a later read
+of the same thread.
+Waiting-input restoration captures Main's turn or pending start, restores only
+locally waiting input to its originating editors, and leaves transmitted steers alone.
+Pending compaction acknowledgement and continuation remain cancellable after the
+compaction turn completes.
+An attached client keeps its source interaction alive while admitted input or editor
+consequences are outstanding, even after navigating to another session. Independent
+observation, attachment preparation and receipt work cannot block cancellation or
+navigation. Admitted execution and shared history outlive client disconnection.
+Activity catch-up uses complete source state and resets only transient reveal state;
+semantic editor and clipboard effects retain immutable identities until receipt.
+Capacity for those consequences is reserved before the originating action is admitted.
+Clients acknowledge applied effects independently
+of output hydration; notice receipts name the captured notice claim and acknowledge only frames actually delivered,
+even when unrelated publications have since advanced.
+Menu actions and panel controls likewise recheck their current surface identity
+after unrelated status or output progress. A replaced menu, changed completion
+editor or closed panel refuses the action. Confirmed replacement releases the view's old
+acquisitions while preserving its client editor and undelivered restorations.
 
 Turn observations join Conversation's transcript and Activity's wait and agent
 models through these same scopes. Completion settles its own turn's presentation;
@@ -172,14 +215,17 @@ owns the display contract.
 
 ## Resume and switching
 
-Startup `resume THREAD_ID` uses `thread/resume`; the returned identity must match.
+Startup `resume THREAD_ID` first attaches to that server-owned thread when active.
+Saved history must belong to a durably enrolled Mekugi session before any host
+resume request; the returned identity must match. Stock Codex sessions are excluded.
 Failure exits without creating a conversation. `resume --last` chooses the most
-recently updated non-archived thread in the launch workspace, across providers and
-CLI, VS Code and app-server sources, excluding exec and child sessions. Lookup
-failure or an empty result exits without a thread.
+recently updated non-archived Mekugi thread in the launch workspace, across
+providers, excluding exec and child sessions. Lookup
+failure or an empty result exits without a thread. The resolved thread uses the
+same existing-owner attachment path as an explicit ID before saved-thread resume.
 
 Bare startup `resume` and in-session `/resume` replace Main with a picker. It lists
-25-row pages, newest first, initially in the active workspace. Tab toggles all
+Mekugi sessions from 25-row host pages, newest first, initially in the active workspace. Tab toggles all
 workspaces and restarts loading. Rows show relative update time, branch and title
 or first-message preview, plus workspace-relative directories in the all-workspace
 view. Visible rows set widths. Search matches title, branch, directory and ID,
@@ -204,7 +250,17 @@ The old session stays live until host acceptance, buffering events and locally
 stacking input. Success unsubscribes it and replaces the attachment, then restores
 the selected workspace, Main, roster, children, preferences and retained Diff.
 Returning to a left thread readmits it. Failure replays buffered events into the
-preserved attachment and restores waiting input. Drafts are not stored per thread.
+preserved attachment and restores waiting input. Native clients retain their local
+editors by original thread while attached; drafts are not durably stored.
+
+For a native target already running in the server, the same idle admission instead
+attaches the renderer to that existing execution owner. The source view remains
+usable until the destination supplies its initial snapshot. Pending input and
+consequences keep that source interaction alive after the visible switch. An unavailable target
+reports failure without issuing a duplicate host resume. `/quit` detaches a native
+view; confirmed `/archive` retires the archived execution and its owned resources.
+Closing a startup resume chooser before a thread is selected ends that unconfirmed
+startup. Closing a view after startup selection leaves admitted execution running.
 
 `/fork` switches to the host-created branch through this same attachment and
 history restoration flow. It has no selection dialog and never submits a prompt.
@@ -260,8 +316,9 @@ the terminal after prompt admission.
 Completed paste admission checks the originating editor and menu before text or
 attachment acquisition. A changed destination cannot redirect a paste that began
 in another draft, prompt, menu or attachment.
-Referencing selected source admits its version and editor target as one operation,
-including return from a displayed child to Main. Replay rejects it. Rejected
+Referencing selected source admits its attachment, displayed thread and editor target
+as one operation, including return from a displayed child to Main. Unrelated status
+or output progress does not invalidate the reference. Replay rejects it. Rejected
 admission preserves both the displayed thread and input.
 Admission precedes taking the draft or reading attachment sources, so a stale
 intent cannot clear, capture or submit newer input. Main and the selected side own separate input destinations;
@@ -281,6 +338,14 @@ owns payload consequences; Session Control keeps the single host-request ledger.
 Effects returned to the renderer identify pending input and changed prompt records,
 without embedding cursor positions, painted sequences or host response handles.
 Acquisition and transport remain outside the serialized presentation transition.
+
+Prepared native input rechecks its captured thread, workspace, attachment and
+current operation gates after acquisition. Output or clock progress alone cannot
+invalidate the prepared snapshot. Delayed command cleanup and insertions validate
+their originating editor even when another editor has become selected.
+Rejected or withdrawn input returns only to its
+originating live editor. A disconnected editor receives no restoration, automatic
+retry or replacement server draft; existing history and failure facts remain.
 
 Draft token annotations are shared between submission projection and terminal
 editing. Session Presentation maps Conversation's existing atomic spans to source

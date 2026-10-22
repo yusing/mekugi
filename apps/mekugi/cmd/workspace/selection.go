@@ -11,7 +11,8 @@ import (
 )
 
 // applicationSelection reads the direct Composition.Add declarations used by
-// Frontends. Unsupported composition uses fail instead of yielding a partial list.
+// frontendDeclarations. Unsupported composition uses fail instead of yielding a
+// partial list. Execution and renderer-only consumers share this declaration owner.
 func applicationSelection(path string, members []member) (map[string]bool, error) {
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 	if err != nil {
@@ -34,23 +35,23 @@ func applicationSelection(path string, members []member) (map[string]bool, error
 			imports[alias] = directory
 		}
 	}
-	var frontends *ast.FuncDecl
+	var declarations *ast.FuncDecl
 	for _, declaration := range file.Decls {
-		if function, ok := declaration.(*ast.FuncDecl); ok && function.Name.Name == "Frontends" {
-			frontends = function
+		if function, ok := declaration.(*ast.FuncDecl); ok && function.Name.Name == "frontendDeclarations" {
+			declarations = function
 			break
 		}
 	}
 	unsupported := func() error {
-		return fmt.Errorf("%s: unsupported composition shape; expected direct c.Add(package.Module, dependencies) declarations in Frontends", path)
+		return fmt.Errorf("%s: unsupported composition shape; expected direct c.Add(package.Module, dependencies) declarations and return &c in frontendDeclarations", path)
 	}
-	if frontends == nil || frontends.Body == nil {
+	if declarations == nil || declarations.Body == nil {
 		return nil, unsupported()
 	}
 	allowed := make(map[*ast.Ident]bool)
 	shadowed := make(map[string]token.Pos)
 	var composition string
-	for _, statement := range frontends.Body.List {
+	for _, statement := range declarations.Body.List {
 		if assignment, ok := statement.(*ast.AssignStmt); ok && assignment.Tok == token.DEFINE {
 			for _, left := range assignment.Lhs {
 				if name, ok := left.(*ast.Ident); ok && imports[name.Name] != "" && shadowed[name.Name] == token.NoPos {
@@ -91,9 +92,18 @@ func applicationSelection(path string, members []member) (map[string]bool, error
 		return nil, unsupported()
 	}
 	selected := make(map[string]bool)
-	for _, statement := range frontends.Body.List {
+	returned := false
+	for _, statement := range declarations.Body.List {
 		var expression ast.Expr
 		switch statement := statement.(type) {
+		case *ast.ReturnStmt:
+			if len(statement.Results) > 0 {
+				if address, ok := statement.Results[0].(*ast.UnaryExpr); ok && address.Op == token.AND {
+					if value, ok := address.X.(*ast.Ident); ok && value.Name == composition {
+						allowed[value], returned = true, true
+					}
+				}
+			}
 		case *ast.AssignStmt:
 			if len(statement.Rhs) == 1 {
 				expression = statement.Rhs[0]
@@ -111,10 +121,6 @@ func applicationSelection(path string, members []member) (map[string]bool, error
 		}
 		receiver, ok := method.X.(*ast.Ident)
 		if !ok || receiver.Name != composition {
-			continue
-		}
-		if method.Sel.Name == "Activate" {
-			allowed[receiver] = true
 			continue
 		}
 		if method.Sel.Name != "Add" || len(call.Args) != 2 {
@@ -135,7 +141,10 @@ func applicationSelection(path string, members []member) (map[string]bool, error
 		selected[directory] = true
 		allowed[receiver] = true
 	}
-	ast.Inspect(frontends.Body, func(node ast.Node) bool {
+	if !returned {
+		return nil, unsupported()
+	}
+	ast.Inspect(declarations.Body, func(node ast.Node) bool {
 		if identifier, ok := node.(*ast.Ident); ok && identifier.Name == composition && !allowed[identifier] {
 			err = unsupported()
 		}

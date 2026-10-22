@@ -218,3 +218,23 @@ func TestRequestsRetireAndForgetOnlyRemoveCorrelation(t *testing.T) {
 		t.Fatalf("retirement changed host calls: initialize=%d, sends=%#v, responses=%#v", transport.initialized, transport.sends, transport.responses)
 	}
 }
+
+func TestRequestsAttributeMovesStartupViewLifetime(t *testing.T) {
+	transport := &requestTransport{id: "chooser"}
+	requests := NewRequests[string](transport)
+	if _, err := requests.Send("thread/list", nil, "main", "startup"); err != nil {
+		t.Fatal(err)
+	}
+	if !requests.Attribute("chooser", "view:first", "first") {
+		t.Fatal("startup chooser correlation disappeared")
+	}
+	requests.Retire("main")
+	request, ok := requests.Lookup("chooser")
+	if !ok || request.Scope != "view:first" || request.Owner != "first" || request.Method != "thread/list" {
+		t.Fatalf("attribution changed host identity: %+v", request)
+	}
+	requests.Retire("view:first")
+	if requests.Pending() || len(transport.sends) != 1 {
+		t.Fatal("view retirement retained correlation or changed host work")
+	}
+}

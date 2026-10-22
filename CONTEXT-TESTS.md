@@ -46,6 +46,7 @@ Feature contracts in `docs/index.md` own acceptance details.
 | Tools/guidance | Affected reader/command/output/guidance modules, `libraries/{commandargs,outputbudget,sourceanalysis}`, `frontends`; Launch authenticated dispatch, worker arguments, recovery/storage/fork, Activity interpretation and AX consumers. Instruction projection also uses `composition` and prepared requests; see focused commands below |
 | Diagnostics/accounting/replay | Affected `modules/{usage,transportdiagnostics,agentmetrics,diagnostics,sessioninspection,sessionreplay}`, `contracts/{inference,inspection}`, `backends/codex/rollout`, `inspectioncli`; Launch token/cost/throughput, naming, debug/failure/retention, corpus, logical-session and replay consumers, including optional contributors/transports |
 | Launch/headless/naming | Changed `launch/options`, `launch/modelcatalog`, `headless` or `modules/sessionnaming`; Launch dispatch/build, reused configuration, resume models, picker/startup, headless delivery/control/shutdown and title/name-save consumers |
+| Session API | `sessionapi`, `sessionpresentation` and `modules/activity/presentation`; cover detached projection, prompt redaction, request admission, stream recovery, socket peer checks and hosted-resource cleanup. Runtime consumers require their own integration checks |
 
 After API changes, compile affected tagged host fixtures using the compile-only command in
 `CONTEXT-AUTOMATED-TESTS.md`. Installed-host cases include native frontends/mrun/mchanges,

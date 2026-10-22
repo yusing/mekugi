@@ -1,3 +1,4 @@
+// Source: apps/mekugi/internal/sessionpresentation/status.go:1:310@[14a6d1f3]
 package sessionpresentation
 
 import (
@@ -71,6 +72,16 @@ type MainStatus struct {
 	Animating                          bool
 }
 
+// SetFeedback binds a feedback value and its detail surface together. A local
+// overlay uses revision zero so painting cannot acknowledge a covered source.
+func (s *MainStatus) SetFeedback(value Label, revision uint64) {
+	s.Feedback, s.FeedbackRevision = value, revision
+	s.Details[1] = Label{}
+	if value.Alert {
+		s.Details[1] = value
+	}
+}
+
 // MainInputs borrows current owner state only for publication. Nothing here is
 // retained, and the resulting view contains no owner pointers or capabilities.
 type MainInputs struct {
@@ -80,6 +91,7 @@ type MainInputs struct {
 	RecordedTurn           string // Playback selection, used only without live control.
 	Feedback               *noticepresentation.Model
 	Conversation           *conversationmodel.Session
+	ClientEditors          bool // Editor contents remain client-owned, outside this view's retained publication.
 	Restoring, SideRunning bool
 	BTWRunning             bool
 	SideThreads            []string
@@ -102,6 +114,10 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 	v = m.View()
 	v.Status = MainStatus{}
 	defer func() {
+		if in.ClientEditors {
+			v.Draft = conversationmodel.DraftView{Available: v.Draft.Available, Prediction: v.Draft.Prediction}
+			v.PromptDraft = conversationmodel.PromptDraftView{Call: v.PromptDraft.Call, Question: v.PromptDraft.Question, Request: v.PromptDraft.Request}
+		}
 		if !reflect.DeepEqual(v, m.view) {
 			v.Version.Revision++
 			m.view = cloneView(v)
@@ -124,7 +140,7 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 		archiving, shell = control.Replacement.Archiving(), control.Shell.Standalone()
 		v.Pending = pendingInput(control, in.Conversation)
 		v.Interrupt = control.InterruptTarget()
-		v.InterruptAvailable = turn != "" || control.Starting() || control.InputPending() || len(in.Conversation.Unsent)+len(in.Conversation.Queued) > 0
+		v.InterruptAvailable = MainInterruptible(control, in.Conversation)
 	}
 	v.Questions = in.Conversation.Questions.View(thread)
 	if side := in.Conversation.Side; side != nil && side.OneOff {
@@ -140,12 +156,16 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 	v.Side = nil
 	v.BTW, v.BTWRunning = nil, false
 	if body := in.Conversation.BTW; body != nil && v.Displayed == v.Main {
-		v.BTW = &conversationmodel.SideView{History: body.History, ID: body.ID, Question: body.Question, Status: body.Status, Answer: body.Answer, Alert: body.Alert, Truncated: body.Truncated, AttachmentNotice: body.AttachmentNotice, Started: body.Started}
+		v.BTW = &conversationmodel.SideView{Key: body.Key, History: body.History, ID: body.ID, Question: body.Question, Status: body.Status, Answer: body.Answer, Alert: body.Alert, Truncated: body.Truncated, AttachmentNotice: body.AttachmentNotice, Started: body.Started}
 		v.BTWRunning = in.BTWRunning
 	}
 	if in.Conversation.Side != nil {
-		v.Side = &SideToken{ID: in.Conversation.Side.ID, Label: in.Conversation.Side.Label()}
+		v.Side = &SideToken{ID: in.Conversation.Side.ID, Key: in.Conversation.Side.Key, Label: in.Conversation.Side.Label()}
 	}
+	state := m.Status
+	base := Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,
+		Completion: state.completed, CompletionKnown: state.completionKnown}
+	v.Status.Session = m.sessionLabel(base, turn, pending, archiving, shell, now)
 	if m.DisplayingSide() && in.Conversation.Side != nil {
 		side := in.Conversation.Side
 		v.Draft = side.Drafts.DraftView()
@@ -183,44 +203,32 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 		return v
 	}
 	s := &v.Status
-	state := m.Status
-	s.Session = Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,
-		Completion: state.completed, CompletionKnown: state.completionKnown}
-	s.State = s.Session
+	s.State = base
 	s.Animating = in.Processes > 0 || in.SideRunning || v.BTWRunning || !state.Alert && (turn != "" || pending)
-	switch {
-	case archiving:
-		s.Session = Label{Text: "Archiving session…", Animation: Pulse}
-	case state.Text == "" || state.Alert:
-	case turn != "":
-		s.Session.Running, s.Session.Animation = true, Pulse
-		s.Session.Elapsed, s.Session.ElapsedKnown = now.Sub(state.Started), !state.Started.IsZero()
-		if state.Text == "Working" {
-			s.Session.Animation = Working
-			switch {
-			case shell:
-				s.Session.Text = "Running shell"
-			case m.compacting != [2]string{}:
-				s.Session.Text = "Compacting context"
-			case m.polling != [2]string{}:
-				s.Session.Text = "Still running"
-			}
-		}
-	case pending:
-		s.Session.Animation = Pulse
-	}
-	s.Composer = s.Session
+	v.ProjectComposerStatus(in.Conversation.PromptEditor.Parked.Snapshot.Text != "")
 	if v.Displayed.ID != v.Main.ID {
-		s.Composer = Label{Text: "Read-only"}
-		s.ComposerOverride = true
 		return v
 	}
 	if state.Alert {
 		s.Details[0] = Label{Text: state.Text, Alert: true, Failure: state.failure, FailureKnown: state.failureKnown,
 			Completion: state.completed, CompletionKnown: state.completionKnown}
 	}
-	if in.Feedback.Alert {
-		s.Details[1] = Label{Text: in.Feedback.Text, Alert: true}
+	s.ShellMode, s.Processes = in.Conversation.ShellMode(), in.Processes
+	s.SetFeedback(Label{Text: in.Feedback.Text, Alert: in.Feedback.Alert}, in.Feedback.Revision)
+	return v
+}
+
+// ProjectComposerStatus selects the composer label from published session facts
+// and the current prompt/editor presentation, including client-local overlays.
+func (v *View) ProjectComposerStatus(draftKept bool) {
+	if v.SideThread.ID != "" && v.Displayed == v.SideThread {
+		return // The side conversation publishes its own status and timing.
+	}
+	s := &v.Status
+	s.Composer, s.ComposerOverride = s.Session, false
+	if v.Displayed.ID != v.Main.ID {
+		s.Composer, s.ComposerOverride = Label{Text: "Read-only"}, true
+		return
 	}
 	if v.Approvals.Open {
 		s.Composer = Label{Text: "approving · turn waiting"}
@@ -233,16 +241,12 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 		if call.Sync || call.Local {
 			text += " · turn waiting"
 		}
-		if in.Conversation.PromptEditor.Parked.Snapshot.Text != "" {
+		if draftKept {
 			text += " · draft kept"
 		}
 		s.Composer = Label{Text: text}
 		s.ComposerOverride = true
 	}
-	s.ShellMode, s.Processes = in.Conversation.ShellMode(), in.Processes
-	s.FeedbackRevision = in.Feedback.Revision
-	s.Feedback = Label{Text: in.Feedback.Text, Alert: in.Feedback.Alert}
-	return v
 }
 
 // ObserveProgress consumes decoded host identity, retaining only active Main's
@@ -294,4 +298,37 @@ func (m *Model) TerminalInteraction(thread, turn, activeTurn, process, stdin str
 	} else if m.polling == key {
 		m.polling = [2]string{}
 	}
+}
+
+// sessionLabel is Main's own status, whichever thread is displayed.
+func (m *Model) sessionLabel(l Label, turn string, pending, archiving, shell bool, now time.Time) Label {
+	state := m.Status
+	switch {
+	case archiving:
+		l = Label{Text: "Archiving session…", Animation: Pulse}
+	case state.Text == "" || state.Alert:
+	case turn != "":
+		l.Running, l.Animation = true, Pulse
+		l.Elapsed, l.ElapsedKnown = now.Sub(state.Started), !state.Started.IsZero()
+		if state.Text == "Working" {
+			l.Animation = Working
+			switch {
+			case shell:
+				l.Text = "Running shell"
+			case m.compacting != [2]string{}:
+				l.Text = "Compacting context"
+			case m.polling != [2]string{}:
+				l.Text = "Still running"
+			}
+		}
+	case pending:
+		l.Animation = Pulse
+	}
+	return l
+}
+
+// MainInterruptible reports whether Main has work an interruption stops,
+// whichever thread is displayed.
+func MainInterruptible(control *sessioncontrol.Live, conversation *conversationmodel.Session) bool {
+	return control.Turn != "" || control.Starting() || control.InputPending() || control.Compaction.Pending() || control.Compaction.ContinuationPending() || len(conversation.Unsent)+len(conversation.Queued) > 0
 }

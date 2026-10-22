@@ -2,10 +2,12 @@ package appserver_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +34,14 @@ func TestAppServerShutdownChild(t *testing.T) {
 		io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
 	}
-	io.Copy(io.Discard, os.Stdin)
+	if mode == "cancel" {
+		interrupt := make(chan os.Signal, 1)
+		signal.Notify(interrupt, os.Interrupt)
+		io.WriteString(os.Stdout, "{\"method\":\"test/ready\"}\n")
+		<-interrupt
+	} else {
+		io.Copy(io.Discard, os.Stdin)
+	}
 	fmtText := `{"method":"test/drained","params":{}}` + "\n"
 	io.WriteString(os.Stdout, fmtText)
 	os.Exit(0)
@@ -142,5 +151,40 @@ func TestAppServerShutdown(t *testing.T) {
 				t.Fatal("did not let backend drain on EOF")
 			}
 		})
+	}
+}
+
+func TestAppServerCancellationDrainsOwnedWork(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAppServerShutdownChild$")
+	cmd.Env = append(os.Environ(), "MEKUGI_APP_SERVER_SHUTDOWN_TEST=cancel")
+	c, err := appserver.Start(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	select {
+	case message := <-c.Messages:
+		if message.Method != "test/ready" {
+			t.Fatalf("unexpected fixture startup: %+v", message)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("host did not become ready for cancellation")
+	}
+	cancel()
+	select {
+	case message, open := <-c.Messages:
+		if !open || message.Method != "test/drained" {
+			t.Fatal("context cancellation preempted host interruption cleanup")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("context cancellation did not request host interruption")
+	}
+	if err := c.Shutdown(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("joined cancellation lost its cause: %v", err)
+	}
+	if cmd.ProcessState == nil || !cmd.ProcessState.Success() {
+		t.Fatal("host cleanup did not finish before the cancellation joined")
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -252,13 +253,13 @@ func TestComposerSkillPickerResumeAndEditorBindings(t *testing.T) {
 	if len(u.Skills) != 1 || u.Skills[0].Start != 4 {
 		t.Fatalf("restored skills = %+v", u.Skills)
 	}
-	if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, editorTestIntent(u), "now use $review please"); err != nil {
+	if err := u.Editor.ApplyExternal("now use $review please"); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.Skills) != 1 || u.Skills[0].Start != 8 {
 		t.Fatalf("editor skills = %+v", u.Skills)
 	}
-	if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, editorTestIntent(u), "$review-other"); err != nil {
+	if err := u.Editor.ApplyExternal("$review-other"); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.Skills) != 0 {
@@ -357,18 +358,43 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 		target := u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
 		u.attached.conversation.Completion = completion.State{Open: true, Target: target, Resolved: target, ResolvedCwd: "/work", Choices: []completion.Choice{{Name: "file.go", Path: "file.go"}}}
-		if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, editorTestIntent(u), "new"); err != nil {
+		c := nativeTestPromptClient(u)
+		c.ctx = t.Context()
+		defer c.renderer.terminal.Diff.Close()
+		editor, _ := c.selectedEditor()
+		editor.Replace(u.Editor.Draft.Clone())
+		_, c.event.Frame.CompletionTarget = c.selectedEditor()
+		c.refresh(time.Now())
+		if !c.renderer.terminal.Main.Menu.Open() {
+			t.Fatal("completion picker was not visible before editing")
+		}
+		c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x07"})
+		if c.handoff == nil {
+			t.Fatal("editor shortcut did not request handoff")
+		}
+		path := filepath.Join(t.TempDir(), "editor")
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf 'new' > \"$1\"\n"), 0700); err != nil {
 			t.Fatal(err)
 		}
-		if u.picker.Open {
+		t.Setenv("EDITOR", path)
+		nativeEditorTestRun(t, c, c.handoff, nil, nil)
+		if c.renderer.terminal.Main.Menu.Open() {
 			t.Fatal("editor left stale picker visible")
 		}
-		appServerTestKeys(t, u, key)
-		if len(u.Images) != 0 || len(u.Skills) != 0 || strings.Contains(u.Text, "file.go") {
+		c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: key})
+		if len(editor.Images) != 0 || len(editor.Skills) != 0 || len(editor.Files) != 0 || strings.Contains(editor.Text, "file.go") {
 			t.Fatal("stale selection changed edited draft")
 		}
-		if key == "\r" && u.attached.conversation.Submitted[u.Submission().ID].Text != "new" {
-			t.Fatalf("edited submission = %q", u.attached.conversation.Submitted[u.Submission().ID].Text)
+		if key == "\r" {
+			var submitted bool
+			for _, call := range c.calls {
+				if input := call.operation.Composer; input != nil {
+					submitted = input.Draft.Text == "new"
+				}
+			}
+			if !submitted {
+				t.Fatal("edited draft was not submitted")
+			}
 		}
 	}
 }
@@ -393,7 +419,7 @@ func TestComposerPickerDoesNotMarkCoveredTranscriptPainted(t *testing.T) {
 // These fixtures publish the source transition before consuming terminal state.
 func (u *appServerUI) pickerKey(key string) bool {
 	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-	return applyMenuResult(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, u.ctx, u.skillEnvironment, u.shell.Main.Menu.Key(key))
+	return applyMenuResult(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, u.ctx, u.skillEnvironment, u.shell.Main.Menu.Key(key))
 }
 func (u *appServerUI) pickerHeight(width int) int {
 	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)

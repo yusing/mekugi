@@ -113,7 +113,7 @@ func TestNativeQuestionResolvedAndInterrupt(t *testing.T) {
 	}
 	questionTestSync(t, u, "interrupt", false)
 	questionTestPaint(t, u, 60)
-	appServerTestKeys(t, u, "\x03")
+	nativeTestCancel(t, u)
 	if !strings.Contains(input.String(), "turn/interrupt") {
 		t.Fatal("Ctrl-C did not interrupt waiting turn")
 	}
@@ -158,7 +158,7 @@ func TestNativeChildQuestionUsesBlockedFallback(t *testing.T) {
 	}
 
 	wire.Reset()
-	appServerTestKeys(t, u, "\x03")
+	nativeTestCancel(t, u)
 	var interrupt struct {
 		Method string `json:"method"`
 		Params struct {

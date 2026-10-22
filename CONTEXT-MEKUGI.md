@@ -19,6 +19,8 @@ Application owners below are under `apps/mekugi/internal/`.
 | Execution observation | `executionobservation`: passive stock-tool observations, capture windows, completion and publication; `{exec_observation,exec_changes,exec_report_observation,shell_observation,native_apply_patch,final_answer_stream}.go`: focused seams |
 | Session control | `sessioncontrol/client.go`: sole host connection/request ledger; package owns submission, interruption, compaction, settings, startup/resume, prompts, approvals, side threads and authenticated audience |
 | Session presentation | `sessionpresentation`: scoped live/replay admission and detached publications; `{observation,turn,transcript_observation,input_workflow,control_response}.go`: turn/input reduction; `activity_*.go`: source binding, history, roster, processes, details and output demand; `{menu,panel,resume}.go`: overlays |
+| Session API | `sessionapi`: renderer-neutral session projection, control intents, discovery and bounded streams; `sessionapi/CONTRACT.md`: shared request and event interface |
+| Server | Launch `server.go`, `server_start.go`: in-process execution composition; `sessionapi/control_socket.go`: versioned peer-admitted Unix WebSocket; `sessionapi/control_start.go`: serialized startup readiness |
 | Terminal session | `terminalsession`: actual terminal attachment, input precedence, geometry, frozen selection, detached views and frame delivery; `{attachment,interaction,main_keys,selection_source,shell,frame_render}.go`: entry points; contributions attach through `Views` |
 | Session review | `sessionreview`: authorized retained membership, hydration and asynchronous immutable review projections; Launch `session_review.go` reconciles receipts, `native_shell.go` delivers panes |
 | Record transactions | `recordtransactions`: cross-owner publication, retained-input adoption and fork initialization; Execution Observation retains host-envelope conversion/request validation |
@@ -69,12 +71,13 @@ Cross-owner adapter entry points:
 - Live/replay observations: `launch/{attached_presentation,app_server_events,session_ui_replay_attachment}.go`.
 - Activity sources/painter/output: `launch/activity_terminal.go`; VCS facts: `activity_vcs.go`;
   enrichment resources: `activity_commit_reader.go`; child supplements: `subagent_activity_pane.go`.
-- Input/frame delivery: `launch/{app_server_input,terminal_input,terminal_selection,native_shell}.go`.
+- Native input/frame delivery: `launch/{native_client_loop,native_client_input,native_client_render}.go`;
+  shared pane painting: `launch/native_shell.go`.
 - Conversation forks, rewind and side input: `sessioncontrol/{startup,side_workflow}.go`;
   Launch `{app_server_rewind,app_server_btw}.go` integrates pickers and thread-scoped input.
   `sessionreview/rewind.go` selects retained changes at the rewind boundary.
 - Dialog/file admission: `launch/{activity_details,markdown_file_dialog}.go`;
-  editor/terminal restoration: `{native_file_editor,app_server_composer_editor,app_server_ui}.go`.
+  native editor/restoration: `launch/{native_client_editor,native_client_restoration}.go`.
 - Guidance consumers: `executionobservation/instruction_cache_test.go`, Launch prewarm,
   `stock_guidance_workflow_test.go` and `testdata/instruction-cleanup/`.
 

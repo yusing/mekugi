@@ -16,11 +16,9 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
-	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -37,7 +35,9 @@ func prepareDraft(picker *composerPicker, terminal *terminalsession.Attachment, 
 	d := conversationmodel.Input{Draft: draft}
 	d.ReplyCount = len(binding.QuestionReplies(d.Text))
 	picker.bindSkills(workspace, &d, true)
-	d.SnapshotFiles(workspace)
+	if len(d.Attachments) == 0 {
+		d.SnapshotFiles(workspace)
+	}
 	snapshotDraftSkills(workspace, environment, &d)
 	terminal.Main.CursorColumn = nil
 	return d
@@ -49,6 +49,9 @@ func restoreDrafts(attached *attachedPresentation, terminal *terminalsession.Att
 }
 
 func applyInputRestoration(attached *attachedPresentation, terminal *terminalsession.Attachment, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, restored conversationmodel.InputRestoration) {
+	if attached.restoreInput != nil && len(restored.Detached) > 0 {
+		attached.restoreInput(attached.executionPresentation, restored.Detached)
+	}
 	for _, id := range restored.Rejected {
 		for _, call := range questions.calls() {
 			if call.ID == id {
@@ -121,24 +124,14 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 	}
 	s := conversationmodel.Submission{Draft: composer.Join(conversationmodel.Drafts(parts)...), Parts: parts}
 	id := rand.Text()
-	if err := s.Draft.IdentifyAttachments(id); err != nil {
+	input, err := prepareSubmissionInput(&s.Draft, id)
+	if err != nil {
 		restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, parts...)
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
 	}
-	input := conversationbinding.Input(s.Draft)
 	if len(parts) == 0 {
 		input = []map[string]any{}
-	}
-	textBytes := 0
-	for _, part := range input {
-		text, _ := part["text"].(string)
-		textBytes += len(text)
-	}
-	if (len(s.Attachments) > 0 || len(s.Skills) > 0) && textBytes > codexresponses.UserTextLimit {
-		restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, parts...)
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
-		return nil
 	}
 	request := sessioncontrol.InputRequest{Thread: control.Thread, ID: id, Input: input}
 	if steer {

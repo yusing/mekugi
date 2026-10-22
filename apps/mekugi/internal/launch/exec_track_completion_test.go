@@ -88,7 +88,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 			}
 			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 			now = now.Add(execTrackCompletionWait - time.Nanosecond)
-			flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+			flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
 			frame := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 30).Lines, "\n"))
 			if u.attached.session.Commands()[key] == nil || !strings.Contains(frame, "Running") || strings.Contains(frame, "exit 2") || strings.Count(frame, "Repeated fixture output") != 1 {
 				t.Fatalf("report wait lost its held frame or annotation:\n%s", frame)
@@ -104,7 +104,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 				frame = awaitMain(t, u, "exit 2")
 			} else {
 				now = now.Add(time.Nanosecond)
-				flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+				flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
 				frame = ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 30).Lines, "\n"))
 			}
 			entry := u.attached.source.Entries[0]

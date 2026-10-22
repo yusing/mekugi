@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -50,7 +51,7 @@ func TestComposerPredictionRejectsStaleConfiguration(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			p := composerPredictions{supported: true, provider: provider, results: make(chan predictionConfiguration, 1)}
 			p.observe(appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"main","turn":{"id":"source","status":"completed"}}`)}, "main")
-			if err := p.sync(t.Context(), &u.attached, u.shell, &u.Client, false, true); err != nil {
+			if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
 				t.Fatal(err)
 			}
 			select {
@@ -69,7 +70,7 @@ func TestComposerPredictionRejectsStaleConfiguration(t *testing.T) {
 			case "switch":
 				u.Thread = "replacement"
 			}
-			if err := p.sync(t.Context(), &u.attached, u.shell, &u.Client, false, true); err != nil {
+			if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
 				t.Fatal(err)
 			}
 			if p.request != nil {
@@ -96,7 +97,7 @@ func TestComposerPredictionModerationAndResume(t *testing.T) {
 	_, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	p.request = &predictionRequest{thread: "main", turn: "source", revision: u.Editor.Revision(), cancel: cancel, operation: &sessioncontrol.Prediction{Completed: true, Text: "hidden"}, settings: &openai.PredictionSettings{Policy: openai.PredictionPolicy{AssistantLabels: []string{"blocked"}}}}
-	if err := p.sync(t.Context(), &u.attached, u.shell, &u.Client, false, true); err != nil {
+	if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
 		t.Fatal(err)
 	}
 	if u.attached.conversation.DraftView().Prediction != "" {
@@ -106,7 +107,7 @@ func TestComposerPredictionModerationAndResume(t *testing.T) {
 		t.Fatal("moderation evidence was retained after evaluation")
 	}
 	p.request.settings.Policy = openai.PredictionPolicy{}
-	if err := p.sync(t.Context(), &u.attached, u.shell, &u.Client, false, true); err != nil {
+	if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
 		t.Fatal(err)
 	}
 	if u.attached.conversation.DraftView().Prediction != "" {
@@ -117,18 +118,24 @@ func TestComposerPredictionModerationAndResume(t *testing.T) {
 func TestComposerPredictionAcceptEditAndSubmit(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.attached.conversation.Prediction = conversationmodel.Prediction{Text: "Show tests", Revision: u.Editor.Revision()}
-	appServerTestKeys(t, u, "\t")
-	if u.Text != "Show tests" || wire.Len() != 0 {
-		t.Fatalf("accept submitted or lost editable text: %q %s", u.Text, wire.String())
+	c := nativeTestPromptClient(u)
+	nativeTestInput(c, "\t")
+	if c.editor("main").Text != "Show tests" || len(c.calls) != 0 || wire.Len() != 0 {
+		t.Fatalf("accept submitted or lost editable text: %q", c.editor("main").Text)
 	}
-	appServerTestKeys(t, u, " please\r")
-	if !strings.Contains(wire.String(), "Show tests please") || !strings.Contains(wire.String(), "turn/start") {
-		t.Fatal("accepted prediction did not use normal submission")
+	nativeTestInput(c, " please\r")
+	if len(c.calls) != 1 || c.calls[0].operation.Composer == nil {
+		t.Fatal("accepted prediction did not queue ordinary composer input")
+	}
+	submitted := c.calls[0].operation.Composer
+	if submitted.Intent.Operation != sessionpresentation.SubmitComposer || submitted.Draft.Text != "Show tests please" || c.editor("main").Text != "" {
+		t.Fatalf("accepted prediction submission = %+v", submitted)
 	}
 	u, wire = newAppServerTestUI()
 	u.attached.conversation.Prediction = conversationmodel.Prediction{Text: "Show tests", Revision: u.Editor.Revision()}
-	appServerTestKeys(t, u, "x\x7f")
-	if u.attached.conversation.DraftView().Prediction != "" || wire.Len() != 0 {
+	c = nativeTestPromptClient(u)
+	nativeTestInput(c, "x\x7f")
+	if c.renderer.frame.View.Draft.Prediction != "" || len(c.calls) != 0 || wire.Len() != 0 {
 		t.Fatal("typing and clearing resurrected prediction")
 	}
 	appServerTestKeys(t, u, "/predictions off\r")
@@ -175,7 +182,7 @@ func TestComposerPredictionModerationBoundAndLateArrival(t *testing.T) {
 			_, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			p.request = &predictionRequest{thread: "main", turn: "source", revision: u.Editor.Revision(), cancel: cancel, operation: &sessioncontrol.Prediction{Completed: true, Text: "suggestion"}, settings: &openai.PredictionSettings{Policy: openai.PredictionPolicy{AssistantLabels: []string{"blocked"}}}}
-			if err := p.sync(t.Context(), &u.attached, u.shell, &u.Client, false, true); err != nil {
+			if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
 				t.Fatal(err)
 			}
 			if scenario == "late" {
@@ -183,7 +190,7 @@ func TestComposerPredictionModerationBoundAndLateArrival(t *testing.T) {
 					t.Fatal("eligible result not published")
 				}
 				moderate("blocked", "")
-				if err := p.sync(t.Context(), &u.attached, u.shell, &u.Client, false, true); err != nil {
+				if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
 					t.Fatal(err)
 				}
 			}

@@ -2,6 +2,7 @@ package launch
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/url"
@@ -65,6 +66,9 @@ func markdownFileLinks(workspace string) func(string) bool {
 // detailFiles bounds asynchronous acquisition independently of live session control.
 // The physical slot survives attachment replacement until its read completes.
 type detailFiles struct {
+	details      sessionpresentation.Details
+	context      context.Context
+	cancelRead   context.CancelFunc
 	links        markdownLinkChecks
 	fileReadSlot chan struct{}
 	fileReads    <-chan markdownFileResult
@@ -72,7 +76,6 @@ type detailFiles struct {
 
 type markdownFileResult struct {
 	id           sessionpresentation.DetailID
-	thread       string
 	workspace    string
 	path, source string
 	location     string
@@ -91,7 +94,7 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 	u.openDetailSelection(session, model.View().Version, source, terminal, view, activitypresentation.DetailPages([]activitypresentation.Value{{Kind: "reads", Verb: "Read", Path: display, Body: "Loading…"}}), false)
 	d := terminal.Dialog
 	d.File = &activitypresentation.DetailFile{Path: display}
-	result := markdownFileResult{id: d.ID, workspace: workspace, path: path, thread: model.View().Displayed.ID}
+	result := markdownFileResult{id: d.ID, workspace: workspace, path: path}
 	if u.fileReadSlot == nil {
 		u.fileReadSlot = make(chan struct{}, 1)
 	}
@@ -102,15 +105,21 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 		u.finishMarkdownFile(session, terminal, result)
 		return true
 	}
+	parent := u.context
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	u.cancelRead = cancel
 	results := make(chan markdownFileResult, 1)
 	u.fileReads = results
 	go func(slot chan struct{}) {
-		data, err := readMarkdownFile(path)
+		data, err := readMarkdownFile(ctx, path)
 		if os.IsNotExist(err) {
 			base, location, first, last := markdownFileLocation(path)
 			if first > 0 {
 				result.path, result.location, result.first, result.last = base, location, first, last
-				data, err = readMarkdownFile(base)
+				data, err = readMarkdownFile(ctx, base)
 			}
 		}
 		result.source, result.err = string(data), err
@@ -120,14 +129,14 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 	return true
 }
 
-func (u *detailFiles) loadedMarkdownFile(session *sessionpresentation.Attachment, presentations *sessionpresentation.Service, workspace string, terminal *terminalsession.Attachment, result markdownFileResult) bool {
+func (u *detailFiles) loadedMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, terminal *terminalsession.Attachment, result markdownFileResult) bool {
 	d := terminal.Dialog
 	if d == nil || d.ID != result.id {
 		return false
 	}
-	_, current := session.DetailView(result.id)
-	if !current || presentations.Session(session.Scope()).View().Displayed.ID != result.thread || workspace != result.workspace {
-		u.closeOutput(session, terminal)
+	_, current := u.details.DetailView(result.id)
+	if !current || session.Scope() == nil || model.View().Version.Attachment != result.id.Attachment || workspace != result.workspace {
+		u.closeOutput(terminal)
 		return true
 	}
 	return u.finishMarkdownFile(session, terminal, result)
@@ -150,7 +159,7 @@ func (u *detailFiles) finishMarkdownFile(session *sessionpresentation.Attachment
 		rendered.DetailLines = len(block.Tail)
 		pages = []activitypresentation.Value{rendered, block}
 	}
-	u.fileReads = nil
+	u.stopFileRead()
 	d.File = &activitypresentation.DetailFile{Path: display, Source: result.source, First: result.first, Last: result.last}
 	// Publish source now; layout applies tabs and the reveal after any frozen
 	// loading selection is cleared. Changing chrome here would dismiss it.
@@ -182,13 +191,18 @@ func markdownFileLocation(path string) (base, location string, first, last int) 
 
 // Keep this auxiliary read bounded without applying the composer's attachment
 // envelope budget. Larger or binary files show a copyable read error.
-func readMarkdownFile(path string) ([]byte, error) {
+func readMarkdownFile(ctx context.Context, path string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	const limit = 8 << 20
 	f, err := sourceparse.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	stop := context.AfterFunc(ctx, func() { _ = f.Close() })
+	defer stop()
 	// The selected path may have been replaced before it was opened.
 	info, err := f.Stat()
 	if err != nil {
@@ -207,5 +221,16 @@ func readMarkdownFile(path string) ([]byte, error) {
 	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 		return nil, fmt.Errorf("file is not UTF-8 text")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return data, nil
+}
+
+func (u *detailFiles) stopFileRead() {
+	if u.cancelRead != nil {
+		u.cancelRead()
+		u.cancelRead = nil
+	}
+	u.fileReads = nil
 }

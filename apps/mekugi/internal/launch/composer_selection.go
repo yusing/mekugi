@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/scope"
@@ -21,6 +22,25 @@ func referenceInput(attached *attachedPresentation, terminal *terminalsession.At
 	defer func() {
 		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
 	}()
+	if attached.effects != nil {
+		if err := attached.presentation.ClientReference(intent); err != nil {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			return false
+		}
+		pending := slices.Concat(attached.conversation.Submitted[control.Submission().ID].Parts, attached.conversation.Unsent, attached.conversation.Queued, attached.conversation.Parts(control.Steers()))
+		// Selection labels only depend on pending text, never its attachment
+		// snapshots. Keep those payloads with their actual input owners.
+		drafts := make([]composer.Draft, len(pending))
+		for i, input := range pending {
+			drafts[i].Text = input.Text
+		}
+		thread := intent.Thread
+		if thread == "" {
+			thread = attached.presentation.View().Input.ID
+		}
+		attached.effects.add(sessionapi.NativeEffect{Thread: thread, Target: new(intent.Target), Selection: &sessionapi.NativeSelection{Description: intent.Description, Text: intent.Text, Source: intent.Source, Pending: drafts}})
+		return true
+	}
 	if err := attached.presentation.Reference(intent, attached.conversation); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false
@@ -61,7 +81,7 @@ func insertSelection(attached *attachedPresentation, terminal *terminalsession.A
 	}
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
 	terminal.Main.CursorColumn = nil
-	pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side))
+	pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side), attached.nativeImages)
 	if q := questions.Current(); q != nil {
 		q.Edit(!q.Note)
 	}

@@ -107,7 +107,7 @@ func TestUISnapshotCreatedScriptCapture(t *testing.T) {
 				item := binding.ThreadItem{ID: host, Type: "commandExecution", Command: command, ExitCode: new(0)}
 				items = append(items, item)
 				appServerTestNotify(t, ui, "item/completed", map[string]any{"threadId": ui.Thread, "turnId": "turn", "item": item})
-				applyObservedActivity(&ui.attached, ui.shell, &ui.Client, &ui.streams, ui.usage, ui.review, &ui.approvals, &ui.pendingEditReceipts, ui.clock, &ui.dirty, ui.restoring, ui.audience)
+				applyObservedActivity(&ui.attached, ui.shell, &ui.Client, &ui.streams, ui.usage, ui.review, &ui.approvals, &ui.pendingEditReceipts, ui.clock, ui.restoring, ui.audience)
 			}
 			store, err := openMekugiReplayStore(testProxyStore(proxy).directory)
 			if err != nil {

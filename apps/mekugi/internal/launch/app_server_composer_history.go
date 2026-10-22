@@ -24,13 +24,16 @@ func draftSnapshot(editor *composer.Editor) conversationmodel.Input {
 func recordDraft(attached *attachedPresentation, editor *composer.Editor, terminal *terminalsession.Attachment, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side) {
 	editor.Record()
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
-	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side)
+	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
 }
 
 // Images referenced by undo/redo remain usable. Submission transfers file
 // lifetime to Codex; only this session's never-submitted files are reclaimed.
-func pruneDraftImages(owned map[string]bool, editor *composer.Editor, conversation *conversationmodel.Session, questions *nativeQuestionDock, approvals *nativeApprovalDock, prompts *terminalsession.Prompts, side *sessioncontrol.Side) {
+func pruneDraftImages(owned map[string]bool, editor *composer.Editor, conversation *conversationmodel.Session, questions *nativeQuestionDock, approvals *nativeApprovalDock, prompts *terminalsession.Prompts, side *sessioncontrol.Side, nativeImages func(func(string))) {
 	used := make(map[string]bool)
+	if nativeImages != nil {
+		nativeImages(func(path string) { used[path] = true })
+	}
 	if conversation.BTW != nil {
 		for _, image := range conversation.BTW.Pending.Images {
 			used[image.Path] = true

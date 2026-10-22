@@ -37,6 +37,7 @@ const (
 
 type MenuAction struct {
 	Version Version
+	Thread  string `json:",omitzero"`
 	Menu    uint64
 	Kind    MenuActionKind
 	Choice  completion.ChoiceID
@@ -45,15 +46,18 @@ type MenuAction struct {
 
 func (m *Model) AdmitMenu(in MenuAction) error {
 	p := m.view.Menu
-	if in.Version != m.view.Version || p == nil || in.Menu != p.ID {
+	if m.admitOwner(in.Version) != nil || p == nil || in.Menu != p.ID {
 		return ErrStaleIntent
+	}
+	if in.Thread != "" && in.Thread != m.view.Main.ID && in.Thread != m.view.SideThread.ID {
+		return ErrInputUnavailable
 	}
 	if m.replay && in.Kind != MenuDismiss && p.Kind != MenuCopy {
 		return ErrReplayIntent
 	}
 	switch in.Kind {
 	case MenuAccept:
-		if p.Kind == MenuCompletion && (m.readOnly() != Editable || !m.view.Draft.Available) {
+		if p.Kind == MenuCompletion && in.Thread == "" && (m.readOnly() != Editable || !m.view.Draft.Available) {
 			return ErrInputUnavailable
 		}
 		for _, choice := range p.Choices {

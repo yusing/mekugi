@@ -29,8 +29,8 @@ func TestUISnapshotCommandSegmentRetentionNotice(t *testing.T) {
 			u.shell.Transcript.Conversation = true
 			u.testActivity(u.shell.Transcript).testAudience()
 			u.commandSegmentPending = 1
-			commandSegmentRetained(&u.commandSegmentPending, u.issues, &u.dirty, commandSegmentWrite{key: [3]string{"main", "turn", "command"}, err: tc.err})
-			delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
+			commandSegmentRetained(&u.commandSegmentPending, u.issues, commandSegmentWrite{key: [3]string{"main", "turn", "command"}, err: tc.err})
+			delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 			if delivery == nil || !strings.Contains(u.attached.feedback.Text, tc.err.Error()) {
 				t.Fatal("composer omitted the underlying error")
 			}

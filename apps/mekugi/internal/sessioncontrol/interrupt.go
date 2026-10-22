@@ -1,7 +1,7 @@
 package sessioncontrol
 
 // InterruptTarget captures the host work observed by a consumer. Start keeps an
-// uncommitted start distinct from a later turn, even before a turn ID exists.
+// admitted start identifiable through acknowledgement, commitment and turn start.
 type InterruptTarget struct {
 	Thread, Turn, Start string
 }
@@ -14,7 +14,7 @@ const (
 )
 
 func (h *Live) InterruptTarget() InterruptTarget {
-	return InterruptTarget{Thread: h.Thread, Turn: h.Turn, Start: h.pendingStart}
+	return InterruptTarget{Thread: h.Thread, Turn: h.Turn, Start: h.startOrigin}
 }
 
 // RequestInterrupt admits the disposition before applying the existing control

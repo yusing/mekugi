@@ -6,7 +6,7 @@ blade.
 
 Mekugi adds compact, recoverable tools and live subagent activity to stock
 Codex. Codex keeps editing, execution, the sandbox, permissions, command
-sessions, and patch review. No fork, no config edits, no daemon.
+sessions, and patch review. Invocation overrides leave Codex configuration unchanged.
 
 [Features](#features) · [Install](#install) · [Usage](#usage) ·
 [UI](#ui) · [Metrics](#metrics) · [Configuration](#configuration) ·
@@ -36,6 +36,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
 
 - **Native terminal UI.** [Main, Diff, and Agents](#ui)
   share one terminal without an external pane manager.
+- **Server-owned threads.** [Create and control threads on an execution machine](#server-owned-threads)
+  through a private local socket. Continue the same thread from another native
+  terminal; closing a client leaves work running.
 - **Live subagent activity.** See model, effort, progress, and child-authored reply summaries
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
 - **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);
@@ -135,11 +138,32 @@ mekugi -m opencode-go:glm-5.3
 mekugi exec "Explain this repository"
 ```
 
-Interactive launches open the [UI](#ui); noninteractive commands retain Codex's
-arguments/output/exit status. Ctrl-C cancels startup; exit prints resume/replay commands.
-Mekugi mode needs JavaScript `exec`. There is no daemon, fixed/custom endpoint, or `--oss`.
+Interactive launches start the local server when absent and attach the [UI](#ui).
+Closing the UI leaves its thread running; exit prints resume/replay commands.
+Ctrl-C cancels the startup wait. Noninteractive commands retain Codex's
+arguments/output/exit status.
+Mekugi needs JavaScript `exec`. Custom inference endpoints and `--oss` are unsupported.
 See [launch limits](apps/mekugi/internal/launch/SPEC.md) and
 [request integration](docs/contracts/responses-transport.md); invocation overrides leave config unchanged.
+
+### Server-owned threads
+
+Native launches start the local server automatically. To start it without
+opening a terminal UI, run it explicitly:
+
+```sh
+mekugi server
+```
+
+It runs in the foreground and prints its private Unix socket path. By default,
+the socket is under the user cache at `mekugi/server/control.sock`; `--socket PATH`
+selects another private location. Local clients use the same-user socket and the
+versioned [Session API](apps/mekugi/internal/sessionapi/CONTRACT.md). Workspaces,
+models and host attachment paths belong to this execution machine.
+
+Closing a client leaves server-owned work running. Stopping the server ends its
+active work; saved threads remain resumable. Restart never automatically replays
+requests or restarts work.
 
 ### Grok models
 
@@ -163,7 +187,9 @@ Models/prices refresh hourly; the picker updates next launch. See
 
 ### Resume
 
-`resume THREAD_ID` or `resume --last` restores a session; bare `resume` opens the
+`resume THREAD_ID` attaches to that thread if it is still running on the local
+server, or restores its saved session otherwise. `resume --last` selects the latest
+saved session; bare `resume` opens the
 workspace picker. Type to search, Tab for all workspaces, Enter to resume. Inside an
 idle session, `/resume` opens the picker or `/resume THREAD_ID` switches directly. Saved
 model/effort/tier, layout, roster, child history, and retained Diff return; explicit

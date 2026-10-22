@@ -1,6 +1,10 @@
 package sessionpresentation
 
-import "github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+import (
+	"errors"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+)
 
 type InterruptIntent struct {
 	Version Version
@@ -8,15 +12,58 @@ type InterruptIntent struct {
 	Mode    sessioncontrol.InterruptMode
 }
 
-// Interrupt validates the retained view and exact work identity before any
-// control mutation. Displaying a child never changes Main's execution target.
-func (m *Model) Interrupt(intent InterruptIntent, control *sessioncontrol.Live, unsentSteer bool) (sessioncontrol.Interrupt, error) {
-	if intent.Version != m.view.Version || intent.Target != control.InterruptTarget() ||
-		intent.Mode != sessioncontrol.RestoreWaiting && intent.Mode != sessioncontrol.ExpediteSteers {
-		return sessioncontrol.Interrupt{}, ErrStaleIntent
+var ErrInterruptUnavailable = errors.New("Original work is unavailable.")
+
+// ResolveInterrupt settles a delayed action against its original work. Only a
+// retained closed turn proves completion; missing evidence cannot target a successor.
+func (m *Model) ResolveInterrupt(intent InterruptIntent, control *sessioncontrol.Live, attachment *Attachment) (active bool, err error) {
+	if err := m.admitInterruptOwner(intent, control); err != nil {
+		return false, err
+	}
+	if attachment == nil || attachment.retired {
+		return false, errors.New("The original session is unavailable.")
+	}
+	target := intent.Target
+	if target.Turn != "" {
+		if record, known := attachment.turns[[2]string{target.Thread, target.Turn}]; known && record.store == nil &&
+			(target.Start == "" || target.Start == record.start) {
+			return false, nil
+		}
+	} else if target.Start != "" {
+		for key, record := range attachment.turns {
+			if key[0] == target.Thread && record.start == target.Start && record.store == nil {
+				return false, nil
+			}
+		}
+	}
+	if sameInterruptWork(target, control.InterruptTarget()) {
+		return true, nil
+	}
+	return false, ErrInterruptUnavailable
+}
+
+func (m *Model) admitInterruptOwner(intent InterruptIntent, control *sessioncontrol.Live) error {
+	if m.admitOwner(intent.Version) != nil {
+		return errors.New("The original session is unavailable.")
 	}
 	if m.replay {
-		return sessioncontrol.Interrupt{}, ErrReplayIntent
+		return ErrReplayIntent
 	}
-	return control.RequestInterrupt(intent.Mode, unsentSteer), nil
+	if intent.Mode != sessioncontrol.RestoreWaiting && intent.Mode != sessioncontrol.ExpediteSteers {
+		return errors.New("Invalid interruption mode.")
+	}
+	if control == nil || intent.Target.Thread == "" || intent.Target.Thread != control.Thread || intent.Target.Thread != m.view.Main.ID {
+		return errors.New("The interruption target does not belong to this session.")
+	}
+	return nil
+}
+
+func sameInterruptWork(target, current sessioncontrol.InterruptTarget) bool {
+	if target.Thread != current.Thread || target.Start != "" && target.Start != current.Start {
+		return false
+	}
+	if target.Turn != "" {
+		return target.Turn == current.Turn
+	}
+	return target.Start != "" || current.Turn == "" && current.Start == ""
 }

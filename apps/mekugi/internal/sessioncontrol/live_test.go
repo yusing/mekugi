@@ -114,7 +114,7 @@ func TestAppServerLifecycleReplacementRetiresOperations(t *testing.T) {
 	h.LeaveThread()
 	if h.Starting() || h.Compaction.Pending() || h.Compaction.Continue(false) ||
 		h.Interruption.BeforeStart || h.Shell.BlocksInput("") ||
-		h.Settings.BlocksInput() || h.Replacement.Pending() || h.PendingStart() != "" {
+		h.Settings.BlocksInput() || h.Replacement.Pending() || h.PendingStart() != "" || h.InterruptTarget().Start != "" {
 		t.Fatalf("replacement inherited a live operation: %+v", h)
 	}
 	if !h.TakeResumeEffort() || h.TakeResumeEffort() {

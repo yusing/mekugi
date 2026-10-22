@@ -17,6 +17,7 @@ func TestReviewReceiptsWithoutTerminal(t *testing.T) {
 			r := sessionreview.New(t.Context(), nil, nil)
 			defer r.Close()
 			u := &appServerUI{review: r, reviewSource: new(changecapture.Service)}
+			u.attached.executionPresentation = new(executionPresentation)
 			for _, target := range []**sessionpresentation.ActivitySource{&u.attached.source, &u.attached.childSource} {
 				*target = &sessionpresentation.ActivitySource{Model: new(activity.Model[sessionpresentation.ActivityEntry, sessionpresentation.ActivityAgent])}
 				(*target).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{

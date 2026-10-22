@@ -28,6 +28,7 @@ func resumeSettingsRollout(t *testing.T, records ...string) binding.ThreadInfo {
 
 func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {
 	u, w := newAppServerTestUI()
+	resumeTestMembers(t, u, "saved")
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.Thread, u.Startup.Thread = "", "saved"
@@ -61,6 +62,7 @@ func TestAppServerResumeSettingsOverridesPerField(t *testing.T) {
 	for _, field := range []string{"", "model", "model_reasoning_effort", "service_tier"} {
 		t.Run("override="+field, func(t *testing.T) {
 			u, w := newAppServerTestUI()
+			resumeTestMembers(t, u, "saved")
 			u.Thread, u.Startup.Thread = "", info.ID
 			u.Startup.Config = map[string]any{"model_provider": "routed"}
 			if field != "" {
@@ -111,6 +113,7 @@ func TestAppServerResumeSettingsOverridesPerField(t *testing.T) {
 func TestAppServerResumeSettingsNullIntent(t *testing.T) {
 	info := resumeSettingsRollout(t, `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"saved-model"}}}`, "")
 	u, w := newAppServerTestUI()
+	resumeTestMembers(t, u, "saved")
 	u.Thread, u.Startup.Thread = "", info.ID
 	if err := openSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode); err != nil {
 		t.Fatal(err)
@@ -136,6 +139,7 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 	for _, effort := range []string{"", "high"} {
 		t.Run("launch="+effort, func(t *testing.T) {
 			u, w := newAppServerTestUI()
+			resumeTestMembers(t, u, "saved")
 			u.Thread, u.Startup.Thread, u.ResumeEffort = "", "saved", true
 
 			appServerTestRequest(t, u, "1", "thread/resume")
@@ -195,6 +199,7 @@ func TestAppServerResumeSettingsPreflightFailure(t *testing.T) {
 	for _, result := range []string{`"error":{"code":-1,"message":"missing thread"}`, `"result":{"thread":{"id":"foreign"}}`, `"result":{"thread":{}}`} {
 		for _, switching := range []bool{false, true} {
 			u, w := newAppServerTestUI()
+			resumeTestMembers(t, u, "saved")
 			if switching {
 				u.Replacement.Resume("saved")
 			} else {

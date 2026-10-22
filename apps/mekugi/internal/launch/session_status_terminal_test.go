@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"context"
 	"io"
 	"testing"
 	"time"
@@ -51,7 +52,7 @@ func (u *appServerUI) recallInput(backward bool) {
 	if u.Editor.Recall(backward) {
 		u.shell.Main.CursorColumn = nil
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
-		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
+		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, u.attached.nativeImages)
 	}
 }
 
@@ -113,4 +114,15 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		return false, nil
 	}
 	return applyQuestionInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, &u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, *input)
+}
+
+func paintSession(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, ctx context.Context, at time.Time, out io.Writer, width, height int) error {
+	terminal.Width, terminal.Height = max(1, width), max(1, height)
+	terminal.Main.ContentPainted = false
+	files.prepareOutput(&attached.session, terminal)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	view := transcriptView(attached.presentation, terminal)
+	return paintNative(files, terminal, terminal.FrameInput(at, mekugiVersion()), view, activitySource(attached, terminal, view), ctx, out)
 }

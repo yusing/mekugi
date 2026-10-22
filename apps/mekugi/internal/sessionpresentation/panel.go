@@ -38,7 +38,7 @@ type PanelAction struct {
 // AdmitPanel resolves the originating publication before any application effect.
 // These observational actions remain available during read-only playback.
 func (m *Model) AdmitPanel(in PanelAction) error {
-	if in.Version != m.view.Version || m.view.Panel == nil || in.Panel != m.view.Panel.ID {
+	if !in.Version.SameAttachment(m.view.Version) || m.view.Panel == nil || in.Panel != m.view.Panel.ID {
 		return ErrStaleIntent
 	}
 	return nil

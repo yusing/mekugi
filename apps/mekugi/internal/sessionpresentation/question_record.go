@@ -21,7 +21,7 @@ func RecordQuestion(c *prompt.Call, request, selected string, at time.Time, sour
 		if !slices.Contains(states, state) {
 			states = append(states, state)
 		}
-		record := activitypresentation.Question{Text: q.Text, State: state}
+		record := activitypresentation.Question{Text: q.Text, State: state, Secret: q.Secret}
 		line := q.Text
 		if len(q.Answer) > 0 {
 			answers := q.Answer

@@ -34,8 +34,6 @@ import (
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
-
-	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
 type nativeApprovalDock struct {
@@ -381,24 +379,4 @@ func hideApprovals(approvals *nativeApprovalDock, terminal *terminalsession.Atta
 		}
 	}
 	approvals.Hide()
-}
-
-func applyApprovalInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, observations *sessioncontrol.Observations, input terminalsession.PromptInput) (bool, error) {
-	keyInput := input.PromptKey
-	if err := attached.presentation.ApprovalInput(sessionpresentation.ApprovalInputIntent{Version: input.Version, ApprovalInput: keyInput.Approval}, approvals.Approvals); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
-		return true, nil
-	}
-	a := approvals.handles[approvals.Pending[0]]
-	switch keyInput.Action {
-	case conversationui.PromptPass:
-		return false, nil
-	case conversationui.PromptHide:
-		hideApprovals(approvals, terminal, &attached.conversation.PromptEditor, (*editor))
-		approvals.AutoOpen = false
-	case conversationui.PromptSubmit:
-		view := attached.presentation.View()
-		return true, decideApproval(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, notifications, reviewOwner, receipts, observations, sessionpresentation.ApprovalIntent{Version: view.Version, Request: a.ID, Choice: a.Choices[a.Selected].ID, Reason: (*editor).Text})
-	}
-	return true, nil
 }

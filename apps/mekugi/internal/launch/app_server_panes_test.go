@@ -3,6 +3,7 @@ package launch
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -27,7 +29,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	savedPane(terminalTest(u)).SetNavigatorColumns(22)
 	u.Text = "unsent private text"
 	u.shell.Transcript.Offset = 99
-	if err := p.save(terminalTest(u).Shell.Preferences(u.shell.Main), time.Now(), true); err != nil {
+	if err := savePaneLayout(p, terminalTest(u).Shell.Preferences(u.shell.Main), time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(testPanePath(t, p))
@@ -100,30 +102,30 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	}
 	now := time.Now()
 	terminalTest(u).Split = 60
-	if err := p.save(terminalTest(u).Shell.Preferences(u.shell.Main), now, false); err != nil {
+	if err := savePaneLayout(p, terminalTest(u).Shell.Preferences(u.shell.Main), now, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(testPanePath(t, p)); !os.IsNotExist(err) {
 		t.Fatalf("saved before debounce: %v", err)
 	}
 	terminalTest(u).Split = 63
-	if err := p.save(terminalTest(u).Shell.Preferences(u.shell.Main), now.Add(200*time.Millisecond), false); err != nil {
+	if err := savePaneLayout(p, terminalTest(u).Shell.Preferences(u.shell.Main), now.Add(200*time.Millisecond), false); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.save(terminalTest(u).Shell.Preferences(u.shell.Main), now.Add(300*time.Millisecond), false); err != nil {
+	if err := savePaneLayout(p, terminalTest(u).Shell.Preferences(u.shell.Main), now.Add(300*time.Millisecond), false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(testPanePath(t, p)); !os.IsNotExist(err) {
 		t.Fatalf("did not coalesce drag: %v", err)
 	}
-	if err := p.save(terminalTest(u).Shell.Preferences(u.shell.Main), now.Add(451*time.Millisecond), false); err != nil {
+	if err := savePaneLayout(p, terminalTest(u).Shell.Preferences(u.shell.Main), now.Add(451*time.Millisecond), false); err != nil {
 		t.Fatal(err)
 	}
 	before, err := os.Stat(testPanePath(t, p))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.save(terminalTest(u).Shell.Preferences(u.shell.Main), now.Add(time.Second), false); err != nil {
+	if err := savePaneLayout(p, terminalTest(u).Shell.Preferences(u.shell.Main), now.Add(time.Second), false); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.Stat(testPanePath(t, p))
@@ -131,7 +133,7 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 		t.Fatal("unchanged state rewritten")
 	}
 	terminalTest(u).Focus = 3
-	if err := p.save(terminalTest(u).Shell.Preferences(u.shell.Main), now.Add(time.Second), true); err != nil {
+	if err := savePaneLayout(p, terminalTest(u).Shell.Preferences(u.shell.Main), now.Add(time.Second), true); err != nil {
 		t.Fatal(err)
 	}
 	restored := newAppServerSessionTestUI(t, "/workspace")
@@ -157,6 +159,7 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 		if err := os.WriteFile(testPanePath(t, p), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
+		p = testPanePreferences()
 		err := p.open(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", true)
 		if err == nil || terminalTest(u).Focus != 0 || terminalTest(u).Split != 0 {
 			t.Fatalf("invalid state applied: %s %v", body, err)
@@ -174,14 +177,15 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_STATE_HOME", blocked)
+	p = testPanePreferences()
 	if err := p.open(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
 	terminalTest(u).Split = 60
-	if err := p.save(terminalTest(u).Shell.Preferences(u.shell.Main), time.Now(), true); err == nil {
+	if err := savePaneLayout(p, terminalTest(u).Shell.Preferences(u.shell.Main), time.Now(), true); err == nil {
 		t.Fatal("lost persistence failure")
 	}
-	if err := p.save(terminalTest(u).Shell.Preferences(u.shell.Main), time.Now().Add(time.Second), false); err != nil {
+	if err := savePaneLayout(p, terminalTest(u).Shell.Preferences(u.shell.Main), time.Now().Add(time.Second), false); err != nil {
 		t.Fatal("failed save retried every frame")
 	}
 }
@@ -213,4 +217,18 @@ func testPanePath(t *testing.T, p *nativePreferences) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// savePaneLayout stages a client layout and joins only the publication admitted
+// by this step. An unexpired debounce remains pending, as in the runtime loop.
+func savePaneLayout(p *nativePreferences, layout terminalsession.Preferences, now time.Time, flush bool) error {
+	if err := p.stage(layout); err != nil {
+		return err
+	}
+	err := p.savePrepared(now, flush)
+	if p.writer.active != nil {
+		err = errors.Join(err, <-p.writer.active)
+		p.writer.active, p.writer.activeOwner = nil, nil
+	}
+	return err
 }

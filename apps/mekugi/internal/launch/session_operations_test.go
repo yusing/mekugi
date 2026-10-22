@@ -23,8 +23,8 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, load); err != nil {
 		t.Fatal(err)
 	}
-	if len(restoreContentRequests(t, wire)) != 5 || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
-		t.Fatal("stale history intent issued a request or hid its rejection")
+	if len(restoreContentRequests(t, wire)) != 6 {
+		t.Fatal("navigation invalidated loading the captured history owner")
 	}
 	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
@@ -38,11 +38,8 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 	if err := u.cancelOlderActivity(cancel); err != nil {
 		t.Fatal(err)
 	}
-	if historyLoading(&u.attached, &u.childHistoryState) == nil || historyLoading(&u.attached, &u.childHistoryState).state.RequestID() == "" {
-		t.Fatal("stale cancellation retired an observation")
-	}
-	if err := u.cancelOlderActivity(historyCancelIntent(u)); err != nil {
-		t.Fatal(err)
+	if historyLoading(&u.attached, &u.childHistoryState) != nil {
+		t.Fatal("navigation prevented cancellation of the captured read")
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("late", "retired", 101000)}})
 	if historyLoading(&u.attached, &u.childHistoryState) != nil || len(entryTexts(u.testActivity(u.shell.Agents))) != 1 || len(restoreContentRequests(t, wire)) != 6 {
@@ -71,7 +68,7 @@ func TestNonTerminalInterruptionIdentityAndDisposition(t *testing.T) {
 		if err := interruptSession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.review, &u.pendingEditReceipts, intent); err != nil {
 			t.Fatal(err)
 		}
-		if wire.Len() != 0 || u.Interruption.Target != "" || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
+		if wire.Len() != 0 || u.Interruption.Target != "" || u.attached.feedback.Text != sessionpresentation.ErrInterruptUnavailable.Error() {
 			t.Fatal("retired turn intent interrupted newer work")
 		}
 		u.attached.conversation.Unsent = []conversationmodel.Input{{Text: "waiting"}}

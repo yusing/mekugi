@@ -26,8 +26,8 @@ func openSudoPassword(attached *attachedPresentation, terminal *terminalsession.
 	addQuestions(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, c, false)
 }
 
-func submitSudoPassword(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, editor **composer.Editor, parent context.Context, restoring bool, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, c *sessioncontrol.Question) error {
-	outcome, delivered, err := c.AnswerPassword(terminal.Prompts.SecretState(c.ID).Answers)
+func submitSudoPassword(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, editor **composer.Editor, parent context.Context, restoring bool, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, c *sessioncontrol.Question, answers map[int][]string) error {
+	outcome, delivered, err := c.AnswerPassword(answers)
 	if err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil

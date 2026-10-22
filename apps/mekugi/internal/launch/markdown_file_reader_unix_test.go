@@ -29,7 +29,7 @@ func TestReadMarkdownFileRejectsReplacedDevice(t *testing.T) {
 	if err := os.Symlink(os.DevNull, path); err != nil {
 		t.Fatal(err)
 	}
-	data, err := readMarkdownFile(selected)
+	data, err := readMarkdownFile(t.Context(), selected)
 	if err == nil || !strings.Contains(err.Error(), "regular file") || len(data) != 0 {
 		t.Fatalf("replacement device was not rejected: data=%q err=%v", data, err)
 	}
@@ -37,7 +37,7 @@ func TestReadMarkdownFileRejectsReplacedDevice(t *testing.T) {
 
 func TestReadMarkdownFileRejectsFIFOWithoutWriter(t *testing.T) {
 	if path := os.Getenv("MEKUGI_TEST_MARKDOWN_FIFO"); path != "" {
-		data, err := readMarkdownFile(path)
+		data, err := readMarkdownFile(t.Context(), path)
 		if err == nil || !strings.Contains(err.Error(), "regular file") || len(data) != 0 {
 			t.Fatalf("FIFO was not rejected: data=%q err=%v", data, err)
 		}

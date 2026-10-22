@@ -2,6 +2,7 @@ package sessioncontrol
 
 import (
 	"errors"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"maps"
 	"reflect"
 	"testing"
@@ -18,19 +19,19 @@ func TestStartupResumeUsesPreflightAndCapturedEvidence(t *testing.T) {
 	if len(transport.sends) != 2 || transport.sends[0].method != "initialized" || transport.sends[0].request || transport.sends[1].method != "environment/info" {
 		t.Fatalf("initialization ordering: %+v", transport.sends)
 	}
-	startup := Startup{Thread: "--last", Workspace: "/workspace", Config: map[string]any{"model_provider": "routed", "service_tier": "priority"}}
+	startup := Startup{History: startupHistory(t, "saved"), Thread: "--last", Workspace: "/workspace", Config: map[string]any{"model_provider": "routed", "service_tier": "priority"}}
 	control := Live{}
 	transport.id = "latest"
 	if opening, err := requests.OpenSession(&startup, &control, true, "preflight"); err != nil || opening != OpeningLatest {
 		t.Fatalf("latest: %v %v", opening, err)
 	}
-	if params := transport.sends[2].params.(map[string]any); params["cwd"] != "/workspace" || params["limit"] != 1 {
+	if params := transport.sends[2].params.(map[string]any); params["cwd"] != "/workspace" || params["limit"] != 25 {
 		t.Fatalf("latest scope: %+v", params)
 	}
-	if err := startup.Latest([]byte(`{"data":[]}`)); err == nil || startup.Thread != "--last" {
+	if _, err := startup.Latest([]byte(`{"data":[]}`)); err == nil || startup.Thread != "--last" {
 		t.Fatal("empty latest lookup silently started a fresh session")
 	}
-	if err := startup.Latest([]byte(`{"data":[{"id":"saved"}]}`)); err != nil {
+	if _, err := startup.Latest([]byte(`{"data":[{"id":"saved"}]}`)); err != nil {
 		t.Fatal(err)
 	}
 	transport.id = "read"
@@ -78,7 +79,7 @@ func TestStartupResumeUsesPreflightAndCapturedEvidence(t *testing.T) {
 func TestStartupPickerIsNotAnInSessionResumeFlag(t *testing.T) {
 	transport := &requestTransport{id: "read"}
 	requests := NewRequests[struct{}](transport)
-	startup := Startup{Thread: ResumePicker}
+	startup := Startup{History: startupHistory(t, "--last"), Thread: ResumePicker}
 	control := Live{Thread: "main"}
 	if opening, err := requests.OpenSession(&startup, &control, false, struct{}{}); err != nil || opening != OpeningPicker || len(transport.sends) != 0 {
 		t.Fatal("startup picker sent a host request")
@@ -115,5 +116,41 @@ func TestStartupForkUsesCurrentSettings(t *testing.T) {
 	startup, control := Startup{}, Live{Thread: "main"}
 	if err := requests.Fork(&startup, &control, preferences.Applied{}, "", true, ""); err == nil || control.Replacement.Pending() {
 		t.Fatal("transport failure left a replacement gate")
+	}
+}
+
+func startupHistory(t *testing.T, threads ...string) *history.Store {
+	t.Helper()
+	service, err := history.NewService(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := service.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, thread := range threads {
+		_, close, err := store.BeginSession(t.Context(), nil, history.Limits{}, thread)
+		if err != nil {
+			t.Fatal(err)
+		}
+		close()
+	}
+	return store
+}
+
+func TestStartupRejectsStockSessionAndPagesLatest(t *testing.T) {
+	transport := &requestTransport{id: "read"}
+	requests := NewRequests[struct{}](transport)
+	startup := Startup{History: startupHistory(t, "saved"), Thread: "stock"}
+	if _, err := requests.OpenSession(&startup, &Live{}, true, struct{}{}); err == nil || len(transport.sends) != 0 {
+		t.Fatal("stock-only session reached the host")
+	}
+	startup.Thread = "--last"
+	if cursor, err := startup.Latest([]byte(`{"data":[{"id":"stock"}],"nextCursor":"older"}`)); err != nil || cursor != "older" || startup.Thread != "--last" {
+		t.Fatalf("filtered page: %q %v", cursor, err)
+	}
+	if cursor, err := startup.Latest([]byte(`{"data":[{"id":"stock"},{"id":"saved"}]}`)); err != nil || cursor != "" || startup.Thread != "saved" {
+		t.Fatalf("eligible page: %q %v", cursor, err)
 	}
 }

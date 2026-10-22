@@ -3,6 +3,7 @@ package launch
 import (
 	"encoding/json/jsontext"
 	"fmt"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -101,6 +102,7 @@ func resumeTestKeys(t *testing.T, u *appServerUI, keys ...string) {
 func newResumeSessionTestUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
+	resumeTestMembers(t, u, "main", "saved", "missing")
 
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", "/work")
@@ -109,6 +111,7 @@ func newResumeSessionTestUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 
 func TestAppServerResumePickerStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
+	resumeTestMembers(t, u, "recent", "named")
 	u.Thread, u.Startup.Thread, u.Startup.Workspace = "", sessioncontrol.ResumePicker, "/work"
 
 	appServerTestRequest(t, u, "0", "initialize")
@@ -188,6 +191,10 @@ func TestAppServerResumePickerStartupEscapeAndQuit(t *testing.T) {
 
 func TestAppServerResumePickerSearchFilterAndPages(t *testing.T) {
 	u, w := newAppServerTestUI()
+	resumeTestMembers(t, u, "here", "there")
+	for i := range resumePickerPage {
+		resumeTestMembers(t, u, fmt.Sprintf("t%d", i))
+	}
 	u.startSession("main", "/work")
 	if err := openResumePicker(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, false); err != nil {
 		t.Fatal(err)
@@ -434,6 +441,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	}
 	liveDiffScopeCapture(t, store, workspace, "saved", "saved-call", filepath.Join(workspace, "saved.go"), "a", "b")
 	u, w := newAppServerTestUI()
+	resumeTestMembers(t, u, "saved")
 	u.ctx = t.Context()
 
 	auto := newLivePreview(t.Context())
@@ -482,6 +490,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 
 func TestAppServerResumePickerFailedPageStopsPaging(t *testing.T) {
 	u, w := newAppServerTestUI()
+	resumeTestMembers(t, u, "a")
 	u.startSession("main", "/work")
 	if err := openResumePicker(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, false); err != nil {
 		t.Fatal(err)
@@ -537,5 +546,56 @@ func TestAcceptedReplacementRefreshesCurrentComposer(t *testing.T) {
 	}
 	if !u.picker.Open || u.picker.Target.Kind != '/' || u.picker.Target.Query != "sta" {
 		t.Fatalf("replacement completion used the retired editor: open=%v target=%+v", u.picker.Open, u.picker.Target)
+	}
+}
+
+func resumeTestMembers(t *testing.T, u *appServerUI, threads ...string) {
+	t.Helper()
+	if u.Startup.History == nil {
+		service, err := history.NewService(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		store, err := service.Open(t.Context(), t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		u.Startup.History = store
+	}
+	for _, thread := range threads {
+		_, close, err := u.Startup.History.BeginSession(t.Context(), nil, history.Limits{}, thread)
+		if err != nil {
+			t.Fatal(err)
+		}
+		close()
+	}
+}
+
+func TestResumePickerFiltersStockPages(t *testing.T) {
+	for _, startup := range []bool{false, true} {
+		t.Run(fmt.Sprint(startup), func(t *testing.T) {
+			u, w := newResumeSessionTestUI(t)
+			if err := openResumePicker(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, startup); err != nil {
+				t.Fatal(err)
+			}
+			first := resumeTestOne(t, w, "thread/list")
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"stock"}],"nextCursor":"older"}}`, first.ID))
+			next := resumeTestOne(t, w, "thread/list")
+			if next.Params.Cursor != "older" || len(u.resumePicker.Rows) != 0 {
+				t.Fatal("filtered page did not continue")
+			}
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"stock"},{"id":"saved"}]}}`, next.ID))
+			if len(u.resumePicker.Rows) != 1 || u.resumePicker.Rows[0].ID != "saved" {
+				t.Fatalf("picker membership: %+v", u.resumePicker.Rows)
+			}
+		})
+	}
+}
+
+func TestResumeRejectsStockWithoutReplacingCurrentSession(t *testing.T) {
+	u, w := newResumeSessionTestUI(t)
+	appServerTestKeys(t, u, "/resume stock\r")
+	if w.Len() != 0 || u.Thread != "main" || u.Replacement.Pending() || !strings.Contains(u.attached.feedback.Text, "not a retained Mekugi session") {
+		t.Fatalf("stock resume: thread=%q wire=%s notice=%s", u.Thread, w.String(), u.attached.feedback.Text)
 	}
 }

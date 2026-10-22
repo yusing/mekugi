@@ -19,7 +19,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	report := dialExecTrackReportThread(t, hub, key[0], script)
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "first\n"})
 	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].Tail) != 0 })
-	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
 	before, _ := hub.view(key, false, execSegmentText)
 	if len(before.segments) != 1 || before.segments[0].Output == nil || !slices.Equal(before.segments[0].Output.View().Lines, []string{"first"}) {
 		t.Fatalf("child output was not retained before replacement: %+v", before)

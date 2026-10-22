@@ -202,7 +202,7 @@ func TestAppServerRewindTurnEndsBeforeItem(t *testing.T) {
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID))
 			appServerTestTurn(t, u, "shell")
 			if outcome == "interrupted" {
-				appServerTestKeys(t, u, "\x03")
+				nativeTestCancel(t, u)
 				interrupt := resumeTestOne(t, w, "turn/interrupt")
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
 			} else {

@@ -23,7 +23,7 @@ func awaitMarkdownFile(t *testing.T, u *terminalUI) {
 	t.Helper()
 	select {
 	case result := <-u.main.fileReads:
-		if !u.main.detailFiles.loadedMarkdownFile(&u.main.attached.session, u.main.presentationState, u.main.attached.cwd, u.Attachment, result) {
+		if !u.main.detailFiles.loadedMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.Attachment, result) {
 			t.Fatal("file result was not admitted")
 		}
 	case <-time.After(5 * time.Second):

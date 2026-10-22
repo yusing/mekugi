@@ -132,6 +132,14 @@ Plugin browsing is outside this picker.
 
 ### Attachment snapshots
 
+Uploaded text is snapshotted from supplied bytes through the same framing and
+omission budget as host files. Its name is a display label, not a filesystem path;
+no temporary text file or reloadable host source is invented. Ordered external
+input may combine borrowed paths and byte uploads before queue admission. The
+session adapter acquires image files and transfers only its own newly acquired
+files at admission; the composer's mutable editor and picker remain independent
+of asynchronous acquisition.
+
 Submission and queueing snapshot selected text files and directories from the
 active thread's absolute workspace. Repeated paths attach once per draft. Frames
 carry source paths and byte ranges, prefer line boundaries and split long lines
@@ -290,6 +298,12 @@ belong to this session owner. Restoring ordinary input while a prompt is open
 updates the parked Main draft, preserving the active answer or denial reason.
 Submitted payload identities are independent of renderer sequence numbers.
 
+Inputs from attached native clients retain their originating editor lifetime.
+Restoration returns those values as detached effects instead of editing the
+in-process composer or another client's draft. Closing a client retires its editor
+delivery, while already-admitted input, host history and failure evidence retain
+their execution lifetimes. Restoration never automatically resubmits input.
+
 ## Side questions
 
 `/side` opens a fresh ephemeral snapshot of Main in the shared tab bar. Only one
@@ -362,6 +376,12 @@ Clipboard image and managed-skill acquisition, plus image cleanup, remain with t
 session adapter. Cleanup accounts for active, parked, queued, undoable and
 side-question drafts before reclaiming unsubmitted files. User-owned files are
 never reclaimed; submitted image files remain available for host resume.
+Native pending replacement operations and unacknowledged restoration effects keep
+their existing image references alive. A native client copies restored images into
+its own files before applying and acknowledging the restoration. Receipt or view
+retirement releases the server's pending reference; only files acquired by that
+server owner may then be reclaimed. Detached editors never confer deletion
+authority over their supplied source paths.
 
 ## Acceptance
 

@@ -132,7 +132,7 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
 	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "retry quote", "")
 	appServerTestKeys(t, u, "\r")
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, u.attached.nativeImages)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal("parked answer image reclaimed", err)
 	}
@@ -173,7 +173,7 @@ func TestQuestionSecretDraftKeepsImageWithoutExposingModelState(t *testing.T) {
 	path := answerImageFixture(t)
 	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, u.attached.nativeImages)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal("parked secret image reclaimed", err)
 	}

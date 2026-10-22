@@ -61,12 +61,17 @@ order, rather than dropping bursts or terminating a slow consumer.
 
 Bounded observation callbacks run before presentation queuing. They observe the
 original decoded message without mutating it or executing effects. Diagnostic
-stderr remains separate from RPC and terminal painting. RPC replies preserve the
+stderr remains separate from RPC and terminal painting. Its bounded in-memory
+tail combines repeated lines with occurrence counts, retaining a final partial
+line. Native clients retain the latest delivered diagnostics for exit reporting;
+this is not a durable crash log. RPC replies preserve the
 original server request ID; acknowledgement does not establish operation completion.
 
-Explicit close releases a reader waiting on a paused consumer. Graceful shutdown
-closes input and allows Codex three seconds to drain before forced termination;
-the caller receives shutdown and process errors. A process and live RPC handle
+Explicit close releases a reader waiting on a paused consumer. Normal shutdown
+closes input. Cancellation instead signals Codex once to interrupt its active
+execution, allowing the host's process-group cleanup before transport closure.
+Both paths allow three seconds to drain before forced termination. The caller
+joins this bounded shutdown and receives shutdown and process errors. A process and live RPC handle
 are never restored from retained evidence.
 
 ## Transcript observations

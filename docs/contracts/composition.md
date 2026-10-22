@@ -52,6 +52,13 @@ detached identity/text values; terminal layout, styling and separators remain wi
 the renderer. Empty contributions or unavailable facts add no item. Publication
 does not read storage, query a provider or establish a second accounting cache.
 
+Native socket clients derive their renderer set from the same application
+composition declarations without constructing or starting execution services.
+Pane construction is source-independent; source preparation receives the actual
+selected service only in an execution-side attachment. Renderer-only composition
+removes preparation callbacks, so clients cannot open execution stores through a
+painter. Descriptor selection remains authoritative for both consumers.
+
 Descriptors select terminal views through typed definitions. Auxiliary-pane and
 agent-roster placements each accept zero or one contribution, with a nonempty
 name, label and constructor. Roster constructors supply terminal views; the
@@ -86,10 +93,11 @@ A feature's domain cannot import terminal views or backend APIs; only its
 import check compares these declarations against all production source,
 including platform-tagged files.
 
-Application session control, session presentation and headless code cannot
+Application session control, session presentation, session API, web UI and headless code cannot
 import terminal libraries, feature terminal views or the terminal adapter.
 Session presentation reaches the backend through session control; headless is
-independent of session presentation. Frontend hosting cannot depend on launch
+independent of session presentation. The session API cannot depend on the web UI.
+Frontend hosting cannot depend on launch
 or composition.
 
 ## Generated reference
@@ -97,7 +105,8 @@ or composition.
 The [feature module index](../reference/modules.md) derives identity, dependencies,
 lifetime, records, source and terminal contribution slots, and Codex connections from the declarations.
 Workspace membership comes from `go.work`; selection comes from the application's
-composition list. An unselected module appears without being activated.
+shared `frontendDeclarations` composition list. Both execution and renderer-only
+construction consume that list. An unselected module appears without being activated.
 
 Collection uses ordinary Go package initialization but never invokes module
 constructors, lifecycle functions, contribution callbacks or binding factories.

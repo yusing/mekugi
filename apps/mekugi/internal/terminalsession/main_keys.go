@@ -39,8 +39,6 @@ type KeyContinuation struct {
 	regular bool
 }
 
-func KeyEvent(key string) KeyContinuation { return KeyContinuation{key: key} }
-
 const (
 	mainKeyPrompt uint8 = iota
 	mainKeyPrelude

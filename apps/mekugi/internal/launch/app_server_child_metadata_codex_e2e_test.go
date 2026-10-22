@@ -69,7 +69,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 			if err := u.message(m); err != nil {
 				t.Fatalf("app-server %s: %v", m.Method, err)
 			}
-			flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
+			flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
 			if u.Thread != "" && !started {
 				started = true
 				if err := u.Request("turn/start", map[string]any{"threadId": u.Thread, "input": appserver.Input("Spawn the assigned child.")}); err != nil {

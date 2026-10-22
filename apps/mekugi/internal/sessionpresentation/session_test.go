@@ -26,8 +26,8 @@ func TestNonTerminalDisplayAdmissionAndAttachment(t *testing.T) {
 	if view.Input != main || view.Displayed != child || view.ReadOnly != sessionpresentation.ChildDisplayed || before.Displayed != main {
 		t.Fatalf("display changed input identity or mutated a detached view: %+v", view)
 	}
-	if err := m.Display(intent); !errors.Is(err, sessionpresentation.ErrStaleIntent) {
-		t.Fatalf("stale display: %v", err)
+	if err := m.Display(intent); err != nil {
+		t.Fatalf("same target was invalidated by display publication: %v", err)
 	}
 	m.RenameCaller(child.Caller, "/root/renamed")
 	if got := m.View().Displayed; got.ID != child.ID || got.Caller != "/root/renamed" {
@@ -98,13 +98,23 @@ func TestNonTerminalHistoryPagingRetryCancellation(t *testing.T) {
 		t.Fatal("live buffering decision")
 	}
 	h.BindRequest("cancelled")
-	id, err := m.CancelHistory(sessionpresentation.HistoryIntent{Version: m.View().Version, Thread: "child"}, h)
+	firstCancel := sessionpresentation.HistoryIntent{Version: m.View().Version, Thread: "child"}
+	id, err := m.CancelHistory(firstCancel, h)
 	if err != nil || id != "cancelled" || h.AcceptResponse(id) {
 		t.Fatalf("cancel: %q %v", id, err)
 	}
 	m.FinishHistory(h)
 	if retry := load(); retry != request {
 		t.Fatalf("cancel lost anchor: %+v", retry)
+	}
+	h.BindRequest("replacement-read")
+	if _, err := m.CancelHistory(firstCancel, h); !errors.Is(err, sessionpresentation.ErrStaleIntent) || h.RequestID() != "replacement-read" {
+		t.Fatal("old cancellation affected the next read")
+	}
+	currentCancel := sessionpresentation.HistoryIntent{Version: m.View().Version, Thread: "child"}
+	m.RenameCaller("/root", "/root/renamed")
+	if id, err := m.CancelHistory(currentCancel, h); err != nil || id != "replacement-read" {
+		t.Fatalf("metadata progress invalidated the current read cancellation: %q %v", id, err)
 	}
 	if _, err := h.Items([]sessionpresentation.ItemIdentity{{Turn: "foreign", Item: "leak"}}, ""); err == nil {
 		t.Fatal("foreign item admitted")

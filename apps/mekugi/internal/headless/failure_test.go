@@ -10,9 +10,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,6 +33,23 @@ func TestHeadlessFailureHostProcess(t *testing.T) {
 	marker, err := os.Create(os.Getenv("MEKUGI_HEADLESS_RPC_MARKER"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	cleanup := sync.OnceFunc(func() {
+		fmt.Fprintln(marker, "cleanup")
+		if err := marker.Close(); err != nil {
+			t.Fatal(err)
+		}
+		os.Exit(0)
+	})
+	interrupt := make(chan os.Signal, 1)
+	if scenario == "cancel" {
+		// Install before publishing a response that can trigger cancellation.
+		signal.Notify(interrupt, os.Interrupt)
+		defer signal.Stop(interrupt)
+		go func() {
+			<-interrupt
+			cleanup()
+		}()
 	}
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -62,11 +81,7 @@ func TestHeadlessFailureHostProcess(t *testing.T) {
 	if err := scanner.Err(); err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintln(marker, "eof")
-	if err := marker.Close(); err != nil {
-		t.Fatal(err)
-	}
-	os.Exit(0)
+	cleanup()
 }
 
 func TestHeadlessAppServerStartupDiagnosticStaysOutOfJSONL(t *testing.T) {
@@ -96,8 +111,6 @@ func TestHeadlessAppServerStreamAndShutdown(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestHeadlessFailureHostProcess$")
-			// Leave graceful shutdown to the client, including context cancellation.
-			cmd.Cancel = func() error { return nil }
 			var output bytes.Buffer
 			var writer io.Writer = &output
 			if scenario == "output" {
@@ -116,14 +129,14 @@ func TestHeadlessAppServerStreamAndShutdown(t *testing.T) {
 			if scenario == "output" && !errors.Is(err, outputFailure) || scenario == "cancel" && !errors.Is(err, context.Canceled) {
 				t.Fatalf("lost original failure: %v", err)
 			}
-			if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
+			if cmd.ProcessState == nil {
 				t.Fatal("run returned before host shutdown")
 			}
 			requests, readErr := os.ReadFile(marker)
-			if readErr != nil || !strings.HasSuffix(string(requests), "eof\n") {
-				t.Fatalf("missing graceful shutdown: %s (%v)", requests, readErr)
+			if readErr != nil || !strings.HasSuffix(string(requests), "cleanup\n") {
+				t.Fatalf("host cleanup incomplete after run returned: %s (%v)", requests, readErr)
 			}
-			if scenario == "output" && string(requests) != "initialize\neof\n" {
+			if scenario == "output" && string(requests) != "initialize\ncleanup\n" {
 				t.Fatalf("interpreted undelivered host message: %s", requests)
 			}
 			var methods []string

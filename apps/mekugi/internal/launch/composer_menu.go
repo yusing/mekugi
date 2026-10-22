@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -71,7 +72,7 @@ func (p *composerPicker) menuView(workspace, text string, control *sessioncontro
 }
 
 // Apply each menu effect and publish before a continuation can derive another intent.
-func applyMenuResult(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, dirty *bool, parent context.Context, environment []string, result terminalsession.MenuResult) bool {
+func applyMenuResult(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, parent context.Context, environment []string, result terminalsession.MenuResult) bool {
 	if result.Action.Kind == sessionpresentation.MenuNoAction {
 		return result.Handled
 	}
@@ -80,17 +81,25 @@ func applyMenuResult(attached *attachedPresentation, terminal *terminalsession.A
 			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 			return true
 		}
+		if result.Action.Choice.ID == 2 && (side == nil || *side == nil || (*side).Key != picker.sideTarget) {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
+			return true
+		}
 		picker.Open, picker.Kind, picker.Choices = false, "", nil
 		if result.Action.Choice.ID == 2 {
 			pending := conversationmodel.Input{}
 			oneoff := picker.sideTask != nil
+			sourceEditor := *editor
 			if oneoff {
 				pending = prepareDraft(picker, terminal, attached.cwd, environment, sideTaskDraft(*picker.sideTask))
-				(*editor).Take()
+				pending.Origin = attached.view
+				pending.Delivery = picker.sideTaskDelivery
 			}
-			picker.sideTask = nil
 			err := closeSide(attached, terminal, control, editor, questions, approvals, side, &owned)
 			if err == nil {
+				if oneoff {
+					sourceEditor.Take()
+				}
 				err = openFreshSide(attached, terminal, control, editor, side, applied, presentationTime(clock), oneoff, pending)
 			}
 			if err != nil {
@@ -101,12 +110,12 @@ func applyMenuResult(attached *attachedPresentation, terminal *terminalsession.A
 		settlePresentation(attached, terminal, control, picker, editor, childKey, applied, *tiers, title, backend, restoring, *side, clock, questions, approvals, overlay)
 		return true
 	}
-	accepted := applyMenuAction(attached, terminal, control, picker, editor, childKey, applied, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, owned, panes, dirty, parent, environment, result.Action)
+	accepted := applyMenuAction(attached, terminal, control, picker, editor, childKey, applied, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, owned, panes, parent, environment, result.Action)
 	picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 	settlePresentation(attached, terminal, control, picker, editor, childKey, applied, (*tiers), title, backend, restoring, *side, clock, questions, approvals, overlay)
 	return result.Handled && !(accepted && result.Submit)
 }
-func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, dirty *bool, parent context.Context, environment []string, action sessionpresentation.MenuAction) bool {
+func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, parent context.Context, environment []string, action sessionpresentation.MenuAction) bool {
 	if err := attached.presentation.AdmitMenu(action); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false
@@ -150,9 +159,11 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 		case "archive":
 			chooseArchive(picker, control, &attached.feedback, terminal, clock, choice.ID == archiveConfirmChoice)
 		case "settings":
-			chooseSetting(attached, terminal, control, applied, tiers, panes, dirty, restoring, clock, picker, choice)
+			chooseSetting(attached, terminal, control, applied, tiers, panes, restoring, clock, picker, choice)
 		case "copy":
-			if terminal == nil {
+			if attached.effects != nil {
+				attached.effects.add(sessionapi.NativeEffect{Thread: control.Thread, Clipboard: new(p.CopyTexts[index])})
+			} else if terminal == nil {
 				setNotice(&attached.feedback, terminal, presentationTime(clock), "Terminal clipboard unavailable", true)
 			} else {
 				copyText(&attached.feedback, terminal, clock, terminal, p.CopyTexts[index])

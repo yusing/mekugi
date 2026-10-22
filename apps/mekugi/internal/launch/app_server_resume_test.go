@@ -17,6 +17,7 @@ import (
 
 func TestAppServerResumeStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
+	resumeTestMembers(t, u, "saved")
 	u.Thread, u.Startup.Thread = "", "saved"
 	u.Startup.Config = map[string]any{"model": "override", "model_provider": "routed"}
 
@@ -76,6 +77,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 func TestAppServerResumeRejectsFailureAndWrongIdentity(t *testing.T) {
 	for _, wire := range []string{`{"id":1,"error":{"code":-1,"message":"missing thread"}}`, `{"id":1,"result":{"thread":{"id":"other"}}}`, `{"id":1,"result":{"thread":{}}}`} {
 		u, w := newAppServerTestUI()
+		resumeTestMembers(t, u, "saved")
 		u.Thread, u.Startup.Thread = "", "saved"
 		questions := u.questions.Questions
 		appServerTestRequest(t, u, "1", "thread/resume")
@@ -115,6 +117,7 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 
 func TestAppServerResumePendingBound(t *testing.T) {
 	u, _ := newAppServerTestUI()
+	resumeTestMembers(t, u, "saved")
 	u.Thread, u.Startup.Thread = "", "saved"
 	m := appserver.Message{Method: "thread/started", Params: jsontext.Value(`{}`)}
 	for range 256 {
@@ -136,6 +139,8 @@ func TestAppServerResumeConfig(t *testing.T) {
 
 func TestAppServerResumeLastStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
+	resumeTestMembers(t, u, "saved")
+	resumeTestMembers(t, u, "latest")
 	u.Thread, u.Startup.Thread, u.Startup.Workspace = "", "--last", "/workspace"
 	u.Startup.Config = map[string]any{"model": "override", "model_provider": "routed"}
 	appServerTestRequest(t, u, "0", "initialize")
@@ -151,7 +156,7 @@ func TestAppServerResumeLastStartup(t *testing.T) {
 	if err := json.Unmarshal(lines[1], &request); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]any{"cwd": "/workspace", "limit": float64(1), "sortKey": "updated_at", "archived": false, "modelProviders": []any{}, "sourceKinds": []any{"cli", "vscode", "appServer"}}
+	want := map[string]any{"cwd": "/workspace", "limit": float64(25), "sortKey": "updated_at", "archived": false, "modelProviders": []any{}, "sourceKinds": []any{"cli", "vscode", "appServer"}}
 	if request.Method != "thread/list" || !reflect.DeepEqual(request.Params, want) {
 		t.Fatalf("latest lookup: %+v", request)
 	}
@@ -183,6 +188,7 @@ func TestAppServerResumeLastFailure(t *testing.T) {
 		`{"id":1,"result":{"data":"invalid"}}`,
 	} {
 		u, w := newAppServerTestUI()
+		resumeTestMembers(t, u, "saved")
 		u.Thread, u.Startup.Thread, u.Startup.Workspace = "", "--last", "/workspace"
 		appServerTestRequest(t, u, "1", "thread/list")
 		var m appserver.Message

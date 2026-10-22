@@ -31,8 +31,8 @@ func TestNonTerminalDisplayPublishesWithoutActivityOrPaint(t *testing.T) {
 			if view.ReadOnly != sessionpresentation.ChildDisplayed || view.Status.Composer.Text != "Read-only" || view.Input != before.Input || view.Draft.Draft.Text != "Main draft" {
 				t.Fatalf("display did not publish a complete read-only view: %+v", view)
 			}
-			if displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.DisplayIntent{Version: before.Version, Thread: before.Main}) || u.attached.presentation.View().Displayed.ID != "child" {
-				t.Fatal("stale display changed the selected thread")
+			if !displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.DisplayIntent{Version: before.Version, Thread: before.Main}) || u.attached.presentation.View().Displayed.ID != before.Main.ID {
+				t.Fatal("publication invalidated navigation to the captured thread")
 			}
 			view = u.attached.presentation.View()
 			if !displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main}) || u.attached.presentation.View().ReadOnly != sessionpresentation.Editable || u.Text != "Main draft" {

@@ -37,7 +37,7 @@ func TestComposerPastePausedTranscriptThenReference(t *testing.T) {
 	if len(u.Images) != 2 || strings.Contains(u.Text, "[201~") || strings.Contains(u.Text, image) {
 		t.Fatalf("second paste leaked paths or markers: %q", u.Text)
 	}
-	composerShellKeys(t, u, "\x03")
+	nativeTestCancel(t, u)
 	if u.Text != "" || wire.Len() != 0 {
 		t.Fatalf("Ctrl-C did not clear draft: draft=%q wire=%q", u.Text, wire.String())
 	}

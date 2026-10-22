@@ -59,7 +59,7 @@ func toggleSkill(p *composerPicker, requests *sessioncontrol.Requests[appServerR
 	if p.toggleID != "" || p.Loading || len(p.Choices) == 0 {
 		return
 	}
-	id, err := requests.Send("skills/config/write", map[string]any{"path": choice.Path, "enabled": !choice.Enabled}, "main", appServerRequest{})
+	id, err := requests.Send("skills/config/write", map[string]any{"path": choice.Path, "enabled": !choice.Enabled}, viewRequestScope(p.view), appServerRequest{view: p.view})
 	if err != nil {
 		p.Problem = "Could not save skill: " + err.Error()
 		return

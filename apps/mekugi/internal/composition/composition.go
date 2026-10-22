@@ -123,7 +123,12 @@ func (c *Composition) Add[D, S any, B interface {
 		factory := terminalui.PaneFactory[*scope.Store]{Name: definition.Name, Label: definition.Label}
 		if definition.Attach != nil {
 			factory.Attach = func(theme diffrender.Theme) terminalui.PaneAttachment[*scope.Store] {
-				return definition.Attach(handle.Value(), theme)
+				bound := definition.Attach(theme)
+				result := terminalui.PaneAttachment[*scope.Store]{Pane: bound.Pane}
+				if bound.Prepare != nil {
+					result.Prepare = func(store *scope.Store) { bound.Prepare(handle.Value(), store) }
+				}
+				return result
 			}
 		}
 		node.auxiliary = append(node.auxiliary, factory)
@@ -394,4 +399,24 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 		}
 	}
 	return runtime, nil
+}
+
+// RendererViews collects descriptor-selected painters without activating a module
+// or exposing a source preparation callback to the socket client.
+func (c *Composition) RendererViews() (terminalsession.Views, error) {
+	var auxiliary []terminalui.PaneFactory[*scope.Store]
+	var roster []terminalui.RosterDefinition[*activityview.View]
+	for _, node := range c.entries {
+		for _, source := range node.auxiliary {
+			factory := source
+			if source.Attach != nil {
+				factory.Attach = func(theme diffrender.Theme) terminalui.PaneAttachment[*scope.Store] {
+					return terminalui.PaneAttachment[*scope.Store]{Pane: source.Attach(theme).Pane}
+				}
+			}
+			auxiliary = append(auxiliary, factory)
+		}
+		roster = append(roster, node.roster...)
+	}
+	return terminalsession.NewViews(auxiliary, roster)
 }

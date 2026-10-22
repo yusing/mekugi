@@ -366,7 +366,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
 		}
 	}
-	got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, attached: attachedPresentation{source: v.ActivitySource}}), 100)
+	got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, attached: attachedPresentation{executionPresentation: &executionPresentation{source: v.ActivitySource}}}), 100)
 	if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "git cherry-pick · exit 1") {
 		t.Fatalf("receipt changed rendered failure ownership:\n%s", got)
 	}
@@ -478,7 +478,7 @@ func TestUISnapshotCodeModeCellEditReceipt(t *testing.T) {
 	live.audience.Attach(live.Thread)
 	// Deliver the real producer's annotation before the host item, with no
 	// saved-review publication available to mask a dropped supplement.
-	applyObservedActivity(&live.attached, live.shell, &live.Client, &live.streams, live.usage, live.review, &live.approvals, &live.pendingEditReceipts, live.clock, &live.dirty, live.restoring, live.audience)
+	applyObservedActivity(&live.attached, live.shell, &live.Client, &live.streams, live.usage, live.review, &live.approvals, &live.pendingEditReceipts, live.clock, live.restoring, live.audience)
 	if len(live.pendingEditReceipts) != 1 || !slices.Equal(live.pendingEditReceipts[0].Calls, calls) {
 		t.Fatalf("receipt did not retain nested host identities: %+v", live.pendingEditReceipts)
 	}
@@ -512,7 +512,7 @@ func TestUISnapshotCodeModeCellEditReceipt(t *testing.T) {
 	event := activitypresentation.Supplement{Thread: restored.Thread, Source: "late-receipt", Kind: activitypresentation.SupplementEditReceipt, Text: observedReceipt.Text, Calls: observedReceipt.Calls}
 	for range 2 {
 		restored.audience.Collect(event)
-		applyObservedActivity(&restored.attached, restored.shell, &restored.Client, &restored.streams, restored.usage, restored.review, &restored.approvals, &restored.pendingEditReceipts, restored.clock, &restored.dirty, nil, restored.audience)
+		applyObservedActivity(&restored.attached, restored.shell, &restored.Client, &restored.streams, restored.usage, restored.review, &restored.approvals, &restored.pendingEditReceipts, restored.clock, nil, restored.audience)
 	}
 	assertCapturedCommand(t, restored.testActivity(restored.shell.Transcript), "thread-1", "edit-exec", "Edit", 0)
 	if len(restored.attached.source.Entries) != 1 {

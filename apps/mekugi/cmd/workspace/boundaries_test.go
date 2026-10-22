@@ -53,6 +53,13 @@ func TestWorkspaceImportBoundaries(t *testing.T) {
 		{"apps/mekugi", "internal/headless", "apps/mekugi/internal/sessionpresentation", false},
 		{"apps/mekugi", "internal/headless", "libraries/diffrender", false},
 		{"apps/mekugi", "internal/inspectioncli", "apps/mekugi/internal/launch", false},
+		{"apps/mekugi", "internal/webui", "apps/mekugi/internal/sessionapi", true},
+		{"apps/mekugi", "internal/sessionapi", "apps/mekugi/internal/sessionpresentation", true},
+		{"apps/mekugi", "internal/sessionapi", "apps/mekugi/internal/webui", false},
+		{"apps/mekugi", "internal/sessionapi", "apps/mekugi/internal/terminalsession", false},
+		{"apps/mekugi", "internal/sessionapi", "modules/activity/terminalview", false},
+		{"apps/mekugi", "internal/webui", "apps/mekugi/internal/terminalsession", false},
+		{"apps/mekugi", "internal/webui", "modules/activity/terminalview", false},
 		{"apps/mekugi", "internal/inspectioncli", "apps/mekugi/internal/inferencegateway", false},
 		{"apps/mekugi", "internal/inspectioncli", "libraries/terminalui", false},
 		{"apps/mekugi", "internal/inspectioncli", "modules/activity/terminalview", false},
@@ -96,7 +103,7 @@ var Module = module.Descriptor[Deps, int, int, int]{}
 }
 
 func TestRendererNeutralApplicationImports(t *testing.T) {
-	for _, pkg := range []string{"internal/sessioncontrol", "internal/sessionpresentation", "internal/headless"} {
+	for _, pkg := range []string{"internal/sessioncontrol", "internal/sessionpresentation", "internal/headless", "internal/webui", "internal/sessionapi"} {
 		for _, target := range []string{"github.com/charmbracelet/ultraviolet", "golang.org/x/term"} {
 			t.Run(pkg+"/"+target, func(t *testing.T) {
 				if err := allowedImport("apps/mekugi", pkg, target); err == nil {

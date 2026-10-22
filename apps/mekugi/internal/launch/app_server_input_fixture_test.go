@@ -89,7 +89,7 @@ func input(attached *attachedPresentation, terminal *terminalsession.Attachment,
 	}()
 	switch event.Kind {
 	case terminalsession.KeyInput:
-		return applyMainKey(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, notifications, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, dirty, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, reasoningKey, terminalsession.KeyEvent(event.Text))
+		return applyMainKey(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, notifications, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, dirty, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, reasoningKey, mainKeyEvent(event.Text))
 	case terminalsession.PasteStart, terminalsession.PasteInput, terminalsession.PasteEnd:
 		if event.Kind == terminalsession.PasteStart {
 			terminal.Main.CancelPaste()

@@ -35,6 +35,7 @@ import (
 type appServerStatusReport struct {
 	*sessionpresentation.PanelState
 	metrics *sessionMetricsPanel
+	view    string
 }
 
 func newStatusReport(presentation *sessionpresentation.Model, debugDirectory string) *appServerStatusReport {
@@ -54,7 +55,7 @@ type appServerStatusConfig struct {
 	Instructions []string `json:"instructionSources"`
 }
 
-func showStatus(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, dirty *bool, statusConfig appServerStatusConfig, debugDirectory string) error {
+func showStatus(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, statusConfig appServerStatusConfig, debugDirectory string) error {
 	var rows []sessionpresentation.StatusField
 	group := "Model"
 	add := func(label, value string) {
@@ -86,6 +87,7 @@ func showStatus(attached *attachedPresentation, terminal *terminalsession.Attach
 		add("Agents.md", strings.Join(statusConfig.Instructions, ", "))
 	}
 	report := newStatusReport(attached.presentation, debugDirectory)
+	report.view = attached.view
 	for _, agent := range attached.session.Roster() {
 		if agent.Name != "/root" {
 			continue
@@ -101,23 +103,23 @@ func showStatus(attached *attachedPresentation, terminal *terminalsession.Attach
 	report.Body = rows
 	(*panel) = report
 	report.Render(statusNotice("Loading account…"))
-	(*dirty) = true
+
 	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
-	return requestStatus(control.Requests, dirty, "account/read", map[string]any{"refreshToken": false}, report)
+	return requestStatus(control.Requests, "account/read", map[string]any{"refreshToken": false}, report)
 }
 
-func requestStatus(requests *sessioncontrol.Requests[appServerRequest], dirty *bool, method string, params any, report *appServerStatusReport) error {
-	_, err := requests.Send(method, params, "main", appServerRequest{status: report})
+func requestStatus(requests *sessioncontrol.Requests[appServerRequest], method string, params any, report *appServerStatusReport) error {
+	_, err := requests.Send(method, params, viewRequestScope(report.view), appServerRequest{status: report, view: report.view})
 	if err != nil {
 		report.Render([]sessionpresentation.StatusField{{Group: "Account", Value: "Status refresh failed: " + err.Error(), Alert: true}})
-		*dirty = true
+
 		return err
 	}
 	return nil
 }
 
 // Source: codex-rs/app-server-protocol/src/protocol/v2/account.rs.
-func statusMessage(requests *sessioncontrol.Requests[appServerRequest], dirty *bool, panel *appServerStatusReport, method string, m appserver.Message, report *appServerStatusReport) (bool, error) {
+func statusMessage(requests *sessioncontrol.Requests[appServerRequest], panel *appServerStatusReport, method string, m appserver.Message, report *appServerStatusReport) (bool, error) {
 	if report == nil {
 		return false, nil
 	}
@@ -126,7 +128,7 @@ func statusMessage(requests *sessioncontrol.Requests[appServerRequest], dirty *b
 	}
 	fail := func(message string) (bool, error) {
 		report.Render([]sessionpresentation.StatusField{{Group: "Account", Value: message, Alert: true}})
-		*dirty = true
+
 		return true, nil
 	}
 	if m.Error != nil {
@@ -145,7 +147,7 @@ func statusMessage(requests *sessioncontrol.Requests[appServerRequest], dirty *b
 		}
 		if result.Account == nil {
 			report.Render(report.Tokens)
-			*dirty = true
+
 			return true, nil
 		}
 		account := result.Account
@@ -159,15 +161,15 @@ func statusMessage(requests *sessioncontrol.Requests[appServerRequest], dirty *b
 				report.Account = append(report.Account, sessionpresentation.StatusField{Group: "Account", Label: "Plan", Value: account.Plan})
 			}
 			report.Render(statusNotice("Loading usage limits…"))
-			*dirty = true
-			return true, requestStatus(requests, dirty, "account/rateLimits/read", nil, report)
+
+			return true, requestStatus(requests, "account/rateLimits/read", nil, report)
 		case "apiKey":
 			report.Account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "API key"}}
 		case "amazonBedrock":
 			report.Account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "Amazon Bedrock"}}
 		}
 		report.Render(report.Tokens)
-		*dirty = true
+
 		return true, nil
 	}
 	var result struct {
@@ -189,7 +191,7 @@ func statusMessage(requests *sessioncontrol.Requests[appServerRequest], dirty *b
 	rows = append(rows, result.Resets.rows()...)
 	rows = append(rows, sessionpresentation.StatusField{Group: "Account", Label: "Usage details", Value: "https://chatgpt.com/codex/settings/usage"})
 	report.Render(rows)
-	*dirty = true
+
 	return true, nil
 }
 
@@ -279,7 +281,7 @@ func (limit appServerStatusLimit) rows(id string) []sessionpresentation.StatusFi
 	return rows
 }
 
-func applyPanelAction(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, panel **appServerStatusReport, dirty *bool, capture *transportcapture.Recorder, action sessionpresentation.PanelAction) {
+func applyPanelAction(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, panel **appServerStatusReport, capture *transportcapture.Recorder, action sessionpresentation.PanelAction) {
 	if action.Kind == sessionpresentation.PanelNoAction {
 		return
 	}
@@ -292,7 +294,6 @@ func applyPanelAction(attached *attachedPresentation, terminal *terminalsession.
 		(*panel) = nil
 		attached.presentation.ClosePanel()
 	case sessionpresentation.PanelRefresh:
-		(*dirty) = refreshSessionMetrics((*panel), capture, presentationTime(clock), true) || (*dirty)
+		refreshSessionMetrics((*panel), capture, presentationTime(clock), true)
 	}
-	(*dirty) = true
 }

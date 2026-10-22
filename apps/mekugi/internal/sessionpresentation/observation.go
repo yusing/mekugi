@@ -20,6 +20,7 @@ type ObservationInput struct {
 	Event                                     observation.Event
 	Text                                      observation.TextEvent
 	Main, Selected, Workspace, CommandTimeout string
+	Start                                     string // Main's admitted start origin, absent during replay.
 	Tracked                                   bool
 	Wait                                      WaitEvidence
 }
@@ -37,6 +38,7 @@ type ActivityDelivery struct {
 	Text    *observation.TextUpdate
 	Command *CommandDelivery
 	Rename  *CallerRename
+	Report  *CommandReportDelivery
 }
 type CallerRename struct{ Old, Name string }
 type CommandTransition uint8
@@ -45,6 +47,7 @@ const (
 	CommandBegin CommandTransition = iota + 1
 	CommandDelta
 	CommandComplete
+	CommandRelease
 )
 
 type CommandDelivery struct {
@@ -55,6 +58,18 @@ type CommandDelivery struct {
 	At                          time.Time
 	Tracked                     bool
 	Fallback                    activitypresentation.Command
+}
+
+// CommandReportDelivery carries newly drained segment evidence to local reveal
+// cursors. Snapshot contains admitted segment facts, never terminal-painted rows.
+type CommandReportDelivery struct {
+	Key                         [3]string
+	Text                        string
+	MainSequence, ChildSequence uint64
+	Report                      activitypresentation.SegmentReport
+	Snapshot                    activitypresentation.ReportSnapshot
+	Version                     uint64
+	Final                       bool
 }
 
 func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *ActivitySource, transcript observation.Transcript, waits *activitypresentation.Waits, outputs *feed.Retention, in ObservationInput) (result ObservationResult) {
@@ -127,12 +142,12 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 		agent.ContextWindow, agent.ContextKnown, agent.ContextTokens = p.Context.Window, p.Context.Known, p.Context.Tokens
 	case "turn/started", "turn/completed":
 		agent := s.Agent(s.Caller(p.ThreadID))
-		active := in.Selected
+		active, start := in.Selected, in.Start
 		if !main {
-			active = agent.Turn
+			active, start = agent.Turn, ""
 		}
 		updates := s.ObserveTurn(TurnModels{
-			Transcript: transcript, Waits: waits, Agent: s.Lifecycle(p.ThreadID), Selected: active,
+			Transcript: transcript, Waits: waits, Agent: s.Lifecycle(p.ThreadID), Selected: active, Start: start,
 		}, TurnObservation{
 			Kind: observation.Kind(method), Thread: p.ThreadID, Turn: p.TurnID,
 			Status: p.TurnStatus, At: now,

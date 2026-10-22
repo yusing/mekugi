@@ -66,7 +66,7 @@ func (s *replayAttachment) apply(o replayOwners, source *playback.Source, at tim
 			return
 		}
 		result := sessionpresentation.ReduceObservation(&s.session, s.presentation, s.source, s.childSource, s.transcript, &s.waits, o.activity.Outputs(s.session.Scope()), sessionpresentation.ObservationInput{Event: e.Event, Text: binding.RetainedTranscript(e.Event), Main: source.Thread, Selected: s.Turn, Workspace: s.cwd})
-		if result.Publish {
+		if result.Publish && s.shell != nil {
 			s.streams.Deliver(result.Deliveries, s.view, s.agents)
 			s.publishActivity()
 		}
@@ -116,7 +116,9 @@ func (s *replayAttachment) message(source *playback.Source, at time.Time, e obse
 		return true
 	}
 	deliveries := sessionpresentation.ProjectMessage(&s.session, s.source, s.childSource, s.transcript, e.ThreadID == source.Thread, sessionpresentation.ObservationInput{Event: e, Text: text, Main: source.Thread, Workspace: s.cwd})
-	s.streams.Deliver(deliveries, s.view, s.agents)
+	if s.shell != nil {
+		s.streams.Deliver(deliveries, s.view, s.agents)
+	}
 	s.presentation.ObserveProgress(e, s.Turn, false)
 	return true
 }
@@ -137,23 +139,28 @@ type replayAttachment struct {
 	streams      terminalsession.Streams
 }
 
+func (o replayOwners) attachment(source *playback.Source) *replayAttachment {
+	u := &replayAttachment{cwd: source.Cwd}
+	u.session.Start(source.Thread)
+	u.presentation = o.views.Session(u.session.Scope())
+	u.presentation.Attach(sessionpresentation.Thread{ID: source.Thread, Caller: "/root"}, true)
+	u.presentation.Status.Set("Replay", false)
+	u.conversation = o.conversation.Session(u.session.Scope())
+	u.transcript = o.observations.NewTranscript(u.session.Scope())
+	state := u.session.Activity()
+	state.StartRoster(sessionpresentation.ActivityAgent{Thread: source.Thread, Name: "/root", Role: "main"})
+	u.source = &sessionpresentation.ActivitySource{Model: &state.Main, Audience: sessionpresentation.MainAudience, Coverage: "CONNECTING"}
+	u.childSource = &sessionpresentation.ActivitySource{Model: &state.Children, Audience: sessionpresentation.ChildAudience}
+	return u
+}
+
 func (p *uiReplayPlayback) reset() {
 	previous := p.ui
 	if previous != nil {
 		p.close()
 	}
 	p.paintedAt = time.Time{}
-	u := &replayAttachment{cwd: p.Source.Cwd}
-	u.session.Start(p.Source.Thread)
-	u.presentation = p.views.Session(u.session.Scope())
-	u.presentation.Attach(sessionpresentation.Thread{ID: p.Source.Thread, Caller: "/root"}, true)
-	u.presentation.Status.Set("Replay", false)
-	u.conversation = p.conversation.Session(u.session.Scope())
-	u.transcript = p.observations.NewTranscript(u.session.Scope())
-	state := u.session.Activity()
-	state.StartRoster(sessionpresentation.ActivityAgent{Thread: p.Source.Thread, Name: "/root", Role: "main"})
-	u.source = &sessionpresentation.ActivitySource{Model: &state.Main, Audience: sessionpresentation.MainAudience, Coverage: "CONNECTING"}
-	u.childSource = &sessionpresentation.ActivitySource{Model: &state.Children, Audience: sessionpresentation.ChildAudience}
+	u := p.replayOwners.attachment(p.Source)
 	u.shell, _ = p.terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
 	u.view, u.agents = u.shell.Transcript, u.shell.Agents
 	u.view.Clock, u.agents.Clock = func() time.Time { return p.At }, func() time.Time { return p.At }
@@ -246,7 +253,7 @@ func (p *uiReplayPlayback) outputIntent(intent terminalsession.DialogIntent) {
 	u := p.ui
 	switch intent.Action {
 	case terminalsession.DialogClose:
-		u.detailFiles.closeOutput(&u.session, u.shell)
+		u.detailFiles.closeOutput(u.shell)
 	case terminalsession.DialogCopy:
 		text, alert := u.shell.Frame.CopyText(intent.Text)
 		u.feedback.Set(text, alert, p.At)

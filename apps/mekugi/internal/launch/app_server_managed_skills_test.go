@@ -84,7 +84,7 @@ func TestManagedSkillQueuedSnapshotAndNativeManagement(t *testing.T) {
 	testManagedSkills(t, u, managedCatalogScript)
 	appServerTestKeys(t, u, "$rev")
 	replyManagedCatalog(t, u, w, `[]`)
-	appServerTestKeys(t, u, "\x03")
+	nativeTestCancel(t, u)
 	u.Turn = "running"
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\t")
 	if len(u.attached.conversation.Queued) != 1 || len(u.attached.conversation.Queued[0].Attachments) != 1 {

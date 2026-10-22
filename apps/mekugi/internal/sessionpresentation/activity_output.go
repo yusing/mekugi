@@ -15,7 +15,7 @@ func RetainedOutputID(output *activitymodel.Output, id int) int {
 }
 
 func (v *ActivitySource) RetainedOutput(source uint64, output int) *activitymodel.Output {
-	if output == 0 {
+	if output <= 0 {
 		return nil
 	}
 	for _, entry := range v.Entries {

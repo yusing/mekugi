@@ -12,11 +12,12 @@ var Views = terminalui.Definitions[*capture.Service, *scope.Store]{
 	Auxiliary: []terminalui.PaneDefinition[*capture.Service, *scope.Store]{{
 		Name: "saved-review", Label: "Diff",
 		Attach: terminalui.BindPane((*capture.Service).ReviewView,
-			func(theme diffrender.Theme) *Pane { return NewPane("", theme) }, (*Pane).publishReview),
+			func(theme diffrender.Theme) *Pane { return NewPane("", theme) }, (*Pane).PublishReview),
 	}},
 }
 
-func (c *Pane) publishReview(view presentation.ReviewView) {
+// PublishReview applies the detached owner publication without opening its store.
+func (c *Pane) PublishReview(view presentation.ReviewView) {
 	if view.Revision == c.publicationRevision {
 		return
 	}

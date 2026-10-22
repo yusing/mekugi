@@ -10,22 +10,39 @@ import (
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 )
 
-// attachedPresentation borrows scoped feature models independently of the live
-// connection, terminal, invocation services and asynchronous resource lifetimes.
-type attachedPresentation struct {
+// executionPresentation owns one admitted execution attachment. Views borrow this
+// actual owner; its feature scopes, transcript and input queues are never copied.
+type executionPresentation struct {
 	inputHistory        *appServerInputHistory
 	session             sessionpresentation.Attachment
 	source, childSource *sessionpresentation.ActivitySource
 	transcript          observation.Transcript
 	waits               activitypresentation.Waits
-	feedback            noticepresentation.Model
 	cwd                 string
-	presentation        *sessionpresentation.Model
 	conversation        *conversationmodel.Session
+	restoreInput        func(*executionPresentation, []conversationmodel.Input)
+	restoreShell        func(*executionPresentation, conversationmodel.Input)
+	restoreSide         func(*executionPresentation, conversationmodel.Input, string)
+	loadingHistory      *appServerChildHistory
+	deliverActivity     func(*executionPresentation, []sessionpresentation.ActivityDelivery)
+	activeThread        func(string) bool
+	reserveThread       func(string) error
+	nativeImages        func(func(string))
+	rewindArchive       func(string)
+}
+
+// attachedPresentation combines a borrowed execution attachment with one view's
+// scoped presentation and feedback. Retiring a view does not retire execution.
+type attachedPresentation struct {
+	*executionPresentation
+	feedback     noticepresentation.Model
+	presentation *sessionpresentation.Model
+	view         string
+	effects      *nativeViewEffects
 }
 
 func newAttachedPresentation(views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation) attachedPresentation {
-	var a attachedPresentation
+	a := attachedPresentation{executionPresentation: new(executionPresentation)}
 	store := a.session.Scope()
 	a.presentation = views.Session(store)
 	a.conversation = conversation.Session(store)

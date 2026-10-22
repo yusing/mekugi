@@ -39,13 +39,15 @@ import (
 // Protocol payloads, deferred activity content and live event buffering stay in
 // the adapter. Pagination identity and transitions live in session presentation.
 type appServerChildHistory struct {
-	state      *sessionpresentation.History
-	info       binding.ThreadInfo
-	itemAt     map[string]time.Time
-	placements []*restoredPlacement
-	firstSeq   uint64
-	pending    []appserver.Message
-	skills     *appServerSkillHistory
+	presentation *sessionpresentation.Model
+	view         string
+	state        *sessionpresentation.History
+	info         binding.ThreadInfo
+	itemAt       map[string]time.Time
+	placements   []*restoredPlacement
+	firstSeq     uint64
+	pending      []appserver.Message
+	skills       *appServerSkillHistory
 }
 
 func childHistory(session *sessionpresentation.Attachment, key *scope.Key[*appServerChildHistory], thread string) *appServerChildHistory {
@@ -56,13 +58,16 @@ func childHistory(session *sessionpresentation.Attachment, key *scope.Key[*appSe
 }
 
 func historyLoading(attached *attachedPresentation, key *scope.Key[*appServerChildHistory]) *appServerChildHistory {
+	if attached.loadingHistory != nil {
+		return attached.loadingHistory
+	}
 	return childHistory(&attached.session, key, attached.presentation.View().Loading)
 }
 
 func startChildHistory(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], childKey *scope.Key[*appServerChildHistory], restoring **appServerActivityRestore, views *sessionpresentation.Service, info binding.ThreadInfo) error {
 	r := (*restoring)
 	store := attached.session.Thread(info.ID)
-	h := &appServerChildHistory{state: views.History(store), info: info,
+	h := &appServerChildHistory{state: views.History(store), info: info, presentation: attached.presentation,
 		itemAt: r.itemAt[info.ID], placements: r.pane[attached.session.Caller(info.ID)]}
 	if h.itemAt == nil {
 		h.itemAt = make(map[string]time.Time)
@@ -70,6 +75,7 @@ func startChildHistory(attached *attachedPresentation, control *sessioncontrol.C
 	delete(r.pane, attached.session.Caller(info.ID))
 	h.info.Turns = nil
 	*childKey.Value(store) = h
+	attached.loadingHistory = h
 	request := attached.presentation.StartHistory(h.state, info.ID)
 	attached.childSource.MarkSkillHistoryUnknown(attached.session.Caller(info.ID))
 	return requestChildHistory(attached, childKey, control.Requests, (*restoring), request)
@@ -90,7 +96,7 @@ func requestChildHistory(attached *attachedPresentation, key *scope.Key[*appServ
 	} else if request.Cursor != "" {
 		params["cursor"] = request.Cursor
 	}
-	id, err := requests.Send(method, params, "main", appServerRequest{label: "activity/" + method})
+	id, err := requests.Send(method, params, "main", appServerRequest{label: "activity/" + method, view: h.view, history: true})
 	if err != nil {
 		return err
 	}
@@ -198,7 +204,14 @@ func failChildHistory(attached *attachedPresentation, terminal *terminalsession.
 
 func finishChildHistory(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], restoring **appServerActivityRestore, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retained changes.Scope, retainedSession *history.Session, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, dispatch func(appserver.Message) error, resumePending *[]appserver.Message) error {
 	h := historyLoading(attached, childKey)
-	if attached.presentation.FinishHistory(h.state) {
+	model := h.presentation
+	if model == nil {
+		model = attached.presentation
+	}
+	attached.loadingHistory = nil
+	initial := model.FinishHistory(h.state)
+	h.presentation, h.view = nil, ""
+	if initial {
 		(*restoring).state.ReadComplete()
 		return readNextRestoredChild(attached, terminal, control, picker, editor, questions, approvals, clock, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending)
 	}
@@ -232,6 +245,10 @@ func loadOlderActivity(attached *attachedPresentation, terminal *terminalsession
 	if (*restoring) != nil {
 		return nil
 	}
+	if attached.loadingHistory != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the current history read to finish", false)
+		return nil
+	}
 	h := childHistory(&attached.session, childKey, intent.Thread)
 	if intent.Thread == "" {
 		return nil
@@ -249,6 +266,8 @@ func loadOlderActivity(attached *attachedPresentation, terminal *terminalsession
 	if request.Kind == sessionpresentation.NoPage {
 		return nil
 	}
+	h.presentation, h.view = model, attached.view
+	attached.loadingHistory = h
 	return requestChildHistory(attached, childKey, control.Requests, (*restoring), request)
 }
 
@@ -261,6 +280,10 @@ func cancelOlderActivity(attached *attachedPresentation, terminal *terminalsessi
 		return nil
 	}
 	viewModel := attached.presentation
+	if h != nil && h.view != attached.view {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "This history read belongs to another view", false)
+		return nil
+	}
 	var state *sessionpresentation.History
 	if h != nil {
 		state = h.state
@@ -295,6 +318,14 @@ func holdOlderHistoryEvent(attached *attachedPresentation, terminal *terminalses
 		h.pending = append(h.pending, m)
 		return true, nil
 	case sessionpresentation.CancelRead:
+		if h.view != attached.view && h.presentation != nil {
+			id, err := h.presentation.CancelHistory(sessionpresentation.HistoryIntent{Version: h.presentation.View().Version, Thread: h.info.ID}, h.state)
+			if err != nil {
+				return true, err
+			}
+			control.Requests.Forget(id)
+			return false, finishChildHistory(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending)
+		}
 		if err := cancelOlderActivity(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, dispatch, resumePending, sessionpresentation.HistoryIntent{Version: attached.presentation.View().Version, Thread: h.info.ID}); err != nil {
 			return true, err
 		}

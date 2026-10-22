@@ -27,6 +27,7 @@ type SourceSelection struct {
 	Mention      string
 	Diff         []diffrender.LineSource
 	Workspace    string
+	capture      *activityui.View
 }
 
 // SelectionTarget identifies an original press, independently of streaming rows.
@@ -148,7 +149,7 @@ func (f *Frame) SelectionMouse(in FrameInput, previous *SourceSelection, mouse M
 	}
 	rows, link := Screen(in.Width, in.Height, source, x, y)
 	in.Shell.Focus = 0
-	out.Selection = &SourceSelection{Selection: NewSelection(Surface{Rect: rect, Rows: rows, CopySource: copySource}, x, y), Link: link, View: view, Pane: pane, Attachment: sourceContext.Attachment, Thread: sourceContext.Thread, Workspace: sourceContext.Workspace, Questions: questions, Snippets: snippets, Mention: mention}
+	out.Selection = &SourceSelection{Selection: NewSelection(Surface{Rect: rect, Rows: rows, CopySource: copySource}, x, y), Link: link, View: view, Pane: pane, Attachment: sourceContext.Attachment, Thread: sourceContext.Thread, Workspace: sourceContext.Workspace, Questions: slices.Clone(questions), Snippets: slices.Clone(snippets), Mention: mention}
 	if previous != nil && previous.ScreenRows() != 0 && previous.View == view && previous.Rect == rect {
 		next := *previous
 		next.Selection, next.Link = previous.Restart(x, y), link
@@ -165,13 +166,16 @@ func (s *SourceSelection) captureDocument(main *Main, composer composerDocument)
 	case "text":
 		s.Document(composer.rows, composer.top, 0)
 	case "message", "activity":
-		if s.View.FeedLines > s.Rect.H {
-			feed := s.View.RenderFeed(s.Rect.W, s.View.FeedLines)
-			if demands := s.View.OutputDemands(); len(demands) > 0 {
+		if s.capture == nil && s.View.FeedLines > s.Rect.H {
+			s.capture = s.View.FreezeTranscript()
+		}
+		if view := s.capture; view != nil {
+			feed := view.RenderFeed(s.Rect.W, view.FeedLines)
+			if demands := view.OutputDemands(); len(demands) > 0 {
 				return demands
 			}
-			top, fixed := s.View.Offset, 0
-			if !s.View.Conversation && top+1 < len(feed.Heads) && feed.Heads[top] != top && feed.Heads[top+1] == feed.Heads[top] {
+			top, fixed := view.Offset, 0
+			if !view.Conversation && top+1 < len(feed.Heads) && feed.Heads[top] != top && feed.Heads[top+1] == feed.Heads[top] {
 				feed.Lines = append([]string{feed.Lines[feed.Heads[top]]}, feed.Lines...)
 				feed.Questions = append([]uint64{0}, feed.Questions...)
 				feed.Snippets = append([]activityui.Snippet{{}}, feed.Snippets...)
@@ -190,6 +194,7 @@ func (s *SourceSelection) captureDocument(main *Main, composer composerDocument)
 					s.Snippets[at] = snippets[row]
 				}
 			}
+			s.capture = nil
 		}
 
 	case "side answer":
@@ -197,6 +202,16 @@ func (s *SourceSelection) captureDocument(main *Main, composer composerDocument)
 		s.Document(b.CopyAnswer, max(0, len(b.CopyAnswer)-b.Rows-b.Scroll), 0)
 	}
 	return nil
+}
+
+// CompleteCapture supplies detached output to the original frozen feed, never
+// the live view. A false result leaves the capture incomplete and uninstalled.
+func (s *SourceSelection) CompleteCapture(results []activitypresentation.OutputResult) bool {
+	if s.capture == nil {
+		return true
+	}
+	s.capture.Hydrate(results)
+	return len(s.captureDocument(nil, composerDocument{})) == 0
 }
 
 // DiffSelection starts a selection right of the file navigator and its

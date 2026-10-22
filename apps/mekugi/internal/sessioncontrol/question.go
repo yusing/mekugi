@@ -28,13 +28,13 @@ func (q *Question) AnswerPassword(answers map[int][]string) (outcome string, del
 	if q.Sudo.Finished() {
 		return "", false, nil
 	}
+	if err := q.ValidatePassword(answers); err != nil {
+		return "", false, err
+	}
 	question := &q.Questions[0]
 	reply := shellapproval.Reply{Reason: "sudo authentication denied"}
 	if question.Done && !question.Skipped && len(answers[0]) == 1 {
 		password := answers[0][0]
-		if !sudo.ValidPassword(password) {
-			return "", false, errors.New("sudo password must be a single line")
-		}
 		reply.OK, reply.Password = true, password
 	}
 	q.Sent = true
@@ -51,4 +51,14 @@ func (q *Question) CancelPassword() bool {
 	}
 	q.Sudo.Reply <- shellapproval.Reply{Reason: "sudo authentication canceled"}
 	return true
+}
+
+// ValidatePassword shares authentication input policy with final batch admission.
+// It neither retains the secret nor answers the request.
+func (q *Question) ValidatePassword(answers map[int][]string) error {
+	question := &q.Questions[0]
+	if question.Done && !question.Skipped && len(answers[0]) == 1 && !sudo.ValidPassword(answers[0][0]) {
+		return errors.New("sudo password must be a single line")
+	}
+	return nil
 }

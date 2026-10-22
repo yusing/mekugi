@@ -28,6 +28,9 @@ retiring the scope clears both correlation and read admission.
 Semantic interruption validates the observed thread, turn and pending-start identity
 before changing control state. Restoration and expedition are explicit dispositions;
 keyboard locks and contextual dismissal stay with the renderer.
+The admitted start keeps its identity when the host assigns a turn and commits
+input. A delayed cancellation of conclusively completed original work settles
+without interrupting, restoring input from, or canceling compaction for a successor.
 
 Terminal keys and contextual dismissal belong to
 [terminal session](../terminalsession/SPEC.md#composer-controls).
@@ -240,7 +243,9 @@ owns the ephemeral prediction fork, inherited context and inference. Predictions
 use its prediction mode without configuration overrides or fresh-thread fallback.
 The host must support prediction forks (Codex 0.162.0-alpha.20 or newer).
 Their messages, prompts and cleanup stay separate from Main and side questions.
-New input, a new turn, disablement and replacement retire eligibility immediately;
+An attached, focused, enabled and empty Main editor permits acquisition. Losing
+focus alone preserves an existing suggestion request. New input, a new turn,
+disablement and replacement retire eligibility immediately;
 late host acknowledgements retain only the correlation needed to unload the fork.
 Remote moderation policy suppresses matching source-turn suggestions. Incomplete
 moderation evidence suppresses that source rather than treating omitted data as safe. Unavailable

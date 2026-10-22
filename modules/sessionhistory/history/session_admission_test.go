@@ -61,3 +61,38 @@ func TestBeginSessionFailedEnrollmentReleasesLease(t *testing.T) {
 	}
 	release()
 }
+
+func TestSessionMembershipSurvivesRestartAndRetention(t *testing.T) {
+	store := retentionFixtureStore(t, t.TempDir())
+	if found, err := store.ContainsSession("stock"); err != nil || found {
+		t.Fatalf("missing session membership: %v %v", found, err)
+	}
+	_, release, err := store.BeginSession(t.Context(), nil, Limits{}, "fresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if err := store.Transaction(t.Context(), nil, func(tx *Transaction) error {
+		return tx.InitializeScope(Scope{Thread: "fresh", Namespace: "fresh"}, nil)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store = retentionFixtureStore(t, store.Directory())
+	if found, err := store.ContainsSession("fresh"); err != nil || !found {
+		t.Fatalf("session before first turn lost enrollment: %v %v", found, err)
+	}
+	ageRetentionCatalog(t, store, "fresh")
+	if err := store.Cleanup(t.Context(), nil, Limits{}, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	requireRetentionFiles(t, store.Directory(), false, SessionName("fresh"))
+	if found, err := store.ContainsSession("fresh"); err != nil || !found {
+		t.Fatalf("retention erased membership: %v %v", found, err)
+	}
+	if err := os.WriteFile(filepath.Join(store.Directory(), ScopeName("fresh")), []byte("invalid"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ContainsSession("fresh"); err == nil {
+		t.Fatal("corrupt membership was ignored")
+	}
+}

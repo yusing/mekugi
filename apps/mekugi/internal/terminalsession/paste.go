@@ -50,10 +50,9 @@ func (m *Main) PasteInput(event Input, prompts *Prompts) (*PasteResult, error) {
 		if p == nil {
 			return nil, nil
 		}
-		if p.intent.Version.Attachment != m.session.Version.Attachment || p.prompt != prompts.receipt || p.secret && p.secretRevision != prompts.Secret.Revision() {
+		if !p.intent.Version.SameAttachment(m.session.Version) || p.secret && (p.prompt != prompts.receipt || p.secretRevision != prompts.Secret.Revision()) {
 			return nil, sessionpresentation.ErrStaleIntent
 		}
-		p.intent.Version = m.session.Version
 		return &PasteResult{Intent: p.intent, Text: string(pasteText(p.payload))}, nil
 	}
 	return nil, nil
