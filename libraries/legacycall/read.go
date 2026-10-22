@@ -66,14 +66,22 @@ func Read(directory, workspace, callID string, commentary bool, limit int) (Reco
 		return Record{}, false, errors.New("replay record exceeds size limit")
 	}
 	var r Record
-	// Older records contain a tool-success flag in History. Accept it only
-	// at the wire boundary; it is not part of the saved filesystem changes.
+	// Retired tool-success and journal metadata is accepted only at the wire
+	// boundary; it is not part of the saved filesystem changes.
 	wire := struct {
 		*Record
+		TaskPath    string
+		Replacement *struct {
+			Thread string
+			Turn   string
+			Items  []string
+		}
 		History struct {
 			*History
-			LegacyToolSuccess bool `json:"Applied"`
-			ExecObservation   *struct {
+			LegacyToolSuccess   bool `json:"Applied"`
+			JournalIDs          []string
+			JournalFinishTurnID string
+			ExecObservation     *struct {
 				Observation
 				LegacySweep bool `json:"Sweep"`
 			}
@@ -99,6 +107,17 @@ func Read(directory, workspace, callID string, commentary bool, limit int) (Reco
 	// Consumers and immutable comparisons use the expanded version-1 facts.
 	r.Version, r.Snapshots = 1, nil
 	return r, true, nil
+}
+
+// UnmarshalJSONFrom accepts the retired acquisition identity in both inline
+// reviews and snapshot manifests without granting authority to read that path.
+// Source: libraries/legacycall/schema.go@b0132274 ReviewFile.CreatedPath.
+func (file *ReviewFile) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	type reviewFile ReviewFile
+	return json.UnmarshalDecode(dec, &struct {
+		*reviewFile
+		CreatedPath string
+	}{reviewFile: (*reviewFile)(file)})
 }
 
 // Read only envelope references for ownership/cleanup, never decompress all

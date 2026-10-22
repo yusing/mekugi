@@ -24,9 +24,12 @@ const (
 // Sparse numeric arrays, folded names and repeated members all use v1 rules.
 const historicalWire = `{
 	"Version":1,"Workspace":"/retained/workspace","CallID":"legacy-call",
+	"TaskPath":"old/task","Replacement":{"Thread":"old-thread","Turn":"old-turn","Items":["old-answer"]},
 	"History":{"ToolName":"old","Report":"keep merged history"},
 	"history":{
 		"toolname":"exec","Applied":true,
+		"JournalIDs":["legacy-item"],"JournalFinishTurnID":"legacy-turn",
+		"ReviewFiles":[{"AfterPath":"a","CreatedPath":"/old/workspace/a","Diff":"saved diff"}],
 		"ExecObservation":{"Sweep":true,"Class":"write","Files":[{"Path":"a","Content":"before"}]},
 		"CommandSegments":{"Command":"old","command":"echo ok","Output":[7,8],
 			"Parts":[{"Source":"echo ok","Output":"ok"}]},
@@ -61,6 +64,9 @@ func TestReadHistoricalV1Semantics(t *testing.T) {
 	if h.ExecObservation == nil || h.ExecObservation.Class != "write" || len(h.ExecObservation.Files) != 1 || h.ExecObservation.Files[0].Content != "before" {
 		t.Fatalf("legacy Sweep obscured observation: %#v", h.ExecObservation)
 	}
+	if !reflect.DeepEqual(h.ReviewFiles, []legacycall.ReviewFile{{AfterPath: "a", Diff: "saved diff"}}) {
+		t.Fatalf("retired creation identity obscured review: %#v", h.ReviewFiles)
+	}
 	if string(h.UpstreamItem["extension"]) != `{"opaque":[1,"two"]}` {
 		t.Fatalf("lost opaque provider extension: %s", h.UpstreamItem["extension"])
 	}
@@ -72,6 +78,13 @@ func TestReadRejectsInvalidMixedRecord(t *testing.T) {
 		{"unknown-unrelated-file", `"Path":"a"`, `"Path":"a","Future":true`},
 		{"malformed-applied", `"Applied":true`, `"Applied":"true"`},
 		{"malformed-sweep", `"Sweep":true`, `"Sweep":[]`},
+		{"malformed-created-path", `"CreatedPath":"/old/workspace/a"`, `"CreatedPath":42`},
+		{"unknown-review", `"CreatedPath":"/old/workspace/a"`, `"Future":true`},
+		{"malformed-journal-ids", `"JournalIDs":["legacy-item"]`, `"JournalIDs":"legacy-item"`},
+		{"malformed-journal-turn", `"JournalFinishTurnID":"legacy-turn"`, `"JournalFinishTurnID":42`},
+		{"malformed-task-path", `"TaskPath":"old/task"`, `"TaskPath":42`},
+		{"malformed-replacement", `"Items":["old-answer"]`, `"Items":42`},
+		{"unknown-replacement", `"Items":["old-answer"]`, `"Future":true`},
 		{"malformed-unrelated-file", `"Content":"before"`, `"Content":42`},
 		{"trailing-value", "\n}", "\n} {}"},
 		{"trailing-malformed", "\n}", "\n} {"},
@@ -146,5 +159,34 @@ func TestReadMixedV2RequiresSnapshotDespiteValidSegments(t *testing.T) {
 				t.Fatalf("snapshot bytes: %q, exists %v, error %v", data, exists, err)
 			}
 		})
+	}
+}
+
+func TestReadRetiredCreatedPathInReviewSnapshot(t *testing.T) {
+	directory := t.TempDir()
+	manifest := []byte(`{"Review":[{"AfterPath":"a","CreatedPath":"/unavailable/old/a","Diff":"saved diff"}]}`)
+	name := legacycall.SnapshotName(manifest)
+	var compressed bytes.Buffer
+	z := gzip.NewWriter(&compressed)
+	if _, err := z.Write(manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, name), compressed.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeRecord(t, directory, fmt.Sprintf(`{"Version":2,"Workspace":%q,"CallID":%q,"History":{},"Snapshots":{"ReviewFiles":%q}}`, workspace, callID, name))
+	r, found, err := legacycall.Read(directory, workspace, callID, false, readLimit)
+	if err != nil || !found {
+		t.Fatalf("read historical review snapshot: found %v, error %v", found, err)
+	}
+	if !reflect.DeepEqual(r.History.ReviewFiles, []legacycall.ReviewFile{{AfterPath: "a", Diff: "saved diff"}}) {
+		t.Fatalf("retired acquisition metadata changed review: %#v", r.History.ReviewFiles)
+	}
+	retained, exists, err := legacycall.SnapshotData(directory, name, readLimit)
+	if err != nil || !exists || !bytes.Equal(retained, manifest) {
+		t.Fatalf("read changed retained snapshot: exists %v, error %v", exists, err)
 	}
 }

@@ -44,7 +44,7 @@ func TestCommandSegmentsHistoricalCompatMixedHistory(t *testing.T) {
 	}
 	item, _ := batchCommandSegmentsFixture("mixed")
 	id := reports.ID("turn", item.ID)
-	wire := strings.Replace(commandSegmentsCompatEnvelope(workspace, id), `"History":{`, `"History":{"Applied":true,"ToolName":"exec","Report":"retained report","UpstreamItem":{"provider_extension":{"opaque":[1,"two"]}},`, 1)
+	wire := strings.Replace(commandSegmentsCompatEnvelope(workspace, id), `"History":{`, `"TaskPath":"old/task","History":{"Applied":true,"JournalIDs":["old-item"],"ToolName":"exec","Report":"retained report","ReviewFiles":[{"AfterPath":"a","CreatedPath":"/old/a","Diff":"saved diff"}],"UpstreamItem":{"provider_extension":{"opaque":[1,"two"]}},`, 1)
 	writeCommandSegmentsCompatEnvelope(t, store, workspace, id, wire)
 	before, found, err := store.read(workspace, id, false)
 	if err != nil || !found {
@@ -52,6 +52,9 @@ func TestCommandSegmentsHistoricalCompatMixedHistory(t *testing.T) {
 	}
 	if before.History.ToolName != "exec" || before.History.Report != "retained report" || string(before.History.UpstreamItem["provider_extension"]) != `{"opaque":[1,"two"]}` {
 		t.Fatalf("lost unrelated mixed history: %#v", before.History)
+	}
+	if !reflect.DeepEqual(before.History.ReviewFiles, []legacycall.ReviewFile{{AfterPath: "a", Diff: "saved diff"}}) {
+		t.Fatalf("retired creation metadata changed review: %#v", before.History.ReviewFiles)
 	}
 	// Migrate a decoded mixed record through the writer without discarding its
 	// non-segment facts or the opaque provider extension.

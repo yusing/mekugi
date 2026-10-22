@@ -6,6 +6,9 @@
 // Atomic replacement may supply either complete published version.
 //
 // The schema preserves historical JSON semantics, including numeric byte arrays,
-// case-insensitive names and legacy Applied/Sweep fields. New feature formats
-// belong to their feature owners and must not extend this compatibility schema.
+// case-insensitive names and legacy Applied/Sweep fields. Retired journal
+// bookkeeping, commentary replacement and review CreatedPath metadata is
+// accepted with its historical types and discarded without restoring journal
+// behavior or read authority.
+// New feature formats belong to their owners, not this compatibility schema.
 package legacycall
