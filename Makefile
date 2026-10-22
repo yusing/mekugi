@@ -18,6 +18,7 @@ TEST_SUPPORT_PACKAGES :=
 endif
 TEST_RUN ?= .
 TEST_FLAGS ?=
+export MEKUGI_E2E_MODEL ?= gpt-6-luna
 # Process/PTY fixtures spend most of their time waiting, not using a CPU.
 TEST_PARALLEL ?= 32
 HOST_ACCEPTANCE_TESTS := TestNativeToolFrontendCodexE2E \

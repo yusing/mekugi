@@ -34,6 +34,10 @@ The replacement must have exactly one trailing newline and no blank line after t
 Do not merely describe the edits. Make them and verify the resulting files.`
 
 func TestCodexMekugiGrammarE2E(t *testing.T) {
+	model := strings.TrimSpace(os.Getenv("MEKUGI_E2E_MODEL"))
+	if model == "" {
+		t.Fatal("MEKUGI_E2E_MODEL must be set to run live Codex E2E tests")
+	}
 	codexPath := requireExecutable(t, "codex")
 	gitPath := requireExecutable(t, "git")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -53,7 +57,6 @@ func TestCodexMekugiGrammarE2E(t *testing.T) {
 	writeFixture(t, workspace, "anchor.go", "package sample\n\nfunc save(path string, b []byte) error {\n\t\treturn saveArtifactPayload(path, b)\n}\n")
 	writeFixture(t, workspace, "partial.go", "package sample\n\nvar expression = prefix + oldCall(\n\tfirstArgument,\n\tfinalArgument) + suffix\n")
 
-	model := environmentOrDefault("MEKUGI_E2E_MODEL", "gpt-5.6-luna")
 	providerName := "mekugi-e2e"
 	baseURL := server.URL + "/v1"
 	providerConfig := "model_providers." + providerName + "={ name = " + strconv.Quote(providerName) +
@@ -100,13 +103,6 @@ func requireExecutable(t *testing.T, name string) string {
 		t.Fatalf("%s is required for the E2E test: %v", name, err)
 	}
 	return path
-}
-
-func environmentOrDefault(name, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-		return value
-	}
-	return fallback
 }
 
 func runCommand(t *testing.T, directory, path string, args ...string) {

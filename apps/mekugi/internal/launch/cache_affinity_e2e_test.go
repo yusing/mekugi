@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -136,6 +137,10 @@ func (b *cacheAffinityE2EBody) finish() {
 }
 
 func TestCodexCacheAffinityE2E(t *testing.T) {
+	model := strings.TrimSpace(os.Getenv("MEKUGI_E2E_MODEL"))
+	if model == "" {
+		t.Fatal("MEKUGI_E2E_MODEL must be set to run live Codex E2E tests")
+	}
 	codexPath := requireExecutable(t, "codex")
 	gitPath := requireExecutable(t, "git")
 	upstreamTransport := http.DefaultTransport.(*http.Transport).Clone()
@@ -173,7 +178,6 @@ func TestCodexCacheAffinityE2E(t *testing.T) {
 		t.Fatalf("initialize probe repository: %v\n%s", err, output)
 	}
 
-	model := environmentOrDefault("MEKUGI_E2E_MODEL", "gpt-5.6-sol")
 	providerName := "cache-affinity-e2e"
 	providerConfig := "model_providers." + providerName + "={ name = " + strconv.Quote(providerName) +
 		", base_url = " + strconv.Quote(server.URL+"/v1") + ", wire_api = \"responses\", requires_openai_auth = true }"
