@@ -153,7 +153,7 @@ func (s *maintenance) planStoragePrune(ctx context.Context) (*storagePrunePlan, 
 	// Large reads and decoding are deliberately outside store.lock. Concurrent
 	// publishers remain free to start sessions; the revision validates this view.
 	plan.snapshot, err = s.storageSnapshotContext(ctx)
-	if err == nil && !plan.snapshot.unknown {
+	if err == nil && plan.snapshot.unknown == "" {
 		plan.retirement, err = s.retirementPlanners(ctx, slices.Sorted(maps.Keys(plan.snapshot.files)))
 	}
 	readErr := err
@@ -304,8 +304,11 @@ func (s *maintenance) cleanupSessions(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if plan == nil || plan.snapshot.unknown {
+	if plan == nil {
 		return nil
+	}
+	if plan.snapshot.unknown != "" {
+		return fmt.Errorf("session cleanup blocked by unrecognized retained record %q; restore its owning module or migrate the retained store before retrying cleanup. All retained history was preserved", plan.snapshot.unknown)
 	}
 	cutoff := time.Now().Add(-SessionRetention)
 	removed, legacy, freed := 0, 0, int64(0)

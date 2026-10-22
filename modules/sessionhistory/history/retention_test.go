@@ -89,8 +89,8 @@ func TestRetentionAbsentOwnerPreservesCatalogAndDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := withoutOwner.Cleanup(t.Context(), nil, Limits{}, "", nil); err != nil {
-		t.Fatal(err)
+	if err := withoutOwner.Cleanup(t.Context(), nil, Limits{}, "", nil); err == nil || !strings.Contains(err.Error(), `unrecognized retained record "entry-old"`) {
+		t.Fatalf("missing absent-owner diagnostic: %v", err)
 	}
 	requireRetentionFiles(t, directory, true, SessionName("old"), "entry-old", "payload-shared")
 	after, err := os.ReadFile(filepath.Join(directory, SessionName("old")))

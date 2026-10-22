@@ -24,7 +24,7 @@ type storageSnapshot struct {
 	sessions     []storageCandidate
 	files        map[string]int64
 	owners       map[string]int
-	unknown      bool
+	unknown      string
 	dependencies map[string][]string
 }
 
@@ -45,7 +45,9 @@ func (s *Store) storageSnapshotContext(ctx context.Context) (storageSnapshot, er
 			return snapshot, err
 		}
 		if !registered && !CatalogName(name) && !coordinationName(name) && !entry.IsDir() {
-			snapshot.unknown = true
+			if snapshot.unknown == "" || name < snapshot.unknown {
+				snapshot.unknown = name
+			}
 		}
 		if CatalogName(name) {
 			session, err := s.ReadCatalog(name)
@@ -58,7 +60,9 @@ func (s *Store) storageSnapshotContext(ctx context.Context) (storageSnapshot, er
 			for file := range session.Files {
 				snapshot.owners[file]++
 				if !s.registered(file) {
-					snapshot.unknown = true
+					if snapshot.unknown == "" || file < snapshot.unknown {
+						snapshot.unknown = file
+					}
 				}
 			}
 		}
@@ -76,7 +80,7 @@ func (s *Store) storageSnapshotContext(ctx context.Context) (storageSnapshot, er
 	}
 	// An absent owner cannot disclose its historical dependency graph. Preserve
 	// the entire potentially shared pool without opening its unregistered records.
-	if snapshot.unknown {
+	if snapshot.unknown != "" {
 		return snapshot, nil
 	}
 	all := make(map[string]bool, len(snapshot.files))

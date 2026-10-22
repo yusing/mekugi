@@ -25,6 +25,30 @@ func (s *mekugiReplayStore) runRetentionSweeps(ctx context.Context, notice func(
 	runStorageRetention(ctx, testDiagnostics(nil, nil), func() retentionScope { return s.retentionScope(ctx) }, notice)
 }
 
+func TestStorageRetentionReportsUnrecognizedRecords(t *testing.T) {
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(store.directory, "unregistered-record.json")
+	if err := os.WriteFile(path, []byte("private retained content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	var reported error
+	runStorageRetention(ctx, nil, func() retentionScope { return store.retentionScope(ctx) }, func(err error) {
+		reported = err
+		cancel()
+	})
+	if reported == nil || !strings.Contains(reported.Error(), `unrecognized retained record "unregistered-record.json"`) || strings.Contains(reported.Error(), "private retained content") {
+		t.Fatalf("cleanup failure notice: %v", reported)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "private retained content" {
+		t.Fatalf("unknown record changed: %q, %v", data, err)
+	}
+}
+
 func retentionTestSession(t *testing.T, store *mekugiReplayStore, thread string, age time.Duration) (context.Context, func()) {
 	t.Helper()
 	ctx, release, err := store.beginSession(t.Context(), thread, thread)

@@ -50,7 +50,9 @@ Retention recognizes only contributed record kinds. An unregistered record,
 including an uncatalogued historical record, keeps its catalog and potentially
 shared payloads intact. Because that owner's dependency graph is unavailable,
 cleanup conservatively preserves the store's payloads until the owner returns.
-Unknown files are never opened or removed by retention.
+Cleanup reports an unrecognized record name and the need to restore its owner or
+migrate the store instead of silently reporting success. Unknown files are never
+opened or removed by retention.
 Record owners declare separate budgets, aggregate limits, and records requiring
 semantic retirement instead of deletion. Admission requests background cleanup;
 it never reclaims data while publishing an operation.

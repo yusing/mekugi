@@ -32,8 +32,8 @@ func TestRetentionAbsentLegacyOwnerProtectsSharedPayload(t *testing.T) {
 		}
 	}
 	absent := retentionFixtureStore(t, directory, kinds[1])
-	if err := absent.Cleanup(t.Context(), nil, Limits{}, "", nil); err != nil {
-		t.Fatal(err)
+	if err := absent.Cleanup(t.Context(), nil, Limits{}, "", nil); err == nil || !strings.Contains(err.Error(), `unrecognized retained record "entry-legacy"`) {
+		t.Fatalf("missing absent-owner diagnostic: %v", err)
 	}
 	requireRetentionFiles(t, directory, true, "payload-shared", "entry-legacy")
 	if err := store.Cleanup(t.Context(), nil, Limits{}, "", nil); err != nil {
