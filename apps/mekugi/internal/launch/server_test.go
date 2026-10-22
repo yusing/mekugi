@@ -301,6 +301,30 @@ func TestExecuteRequestPassesThroughOriginalRequestAndRecordsUsage(t *testing.T)
 	}
 }
 
+func TestExecuteRequestPreservesReasoningHeader(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		for _, present := range []bool{false, true} {
+			response := serverHTTPResponse(`{"status":"completed","output":[]}`)
+			if stream {
+				response = serverHTTPResponse("data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[]}}\n\n")
+				response.Header.Set("Content-Type", "text/event-stream")
+			}
+			if present {
+				response.Header.Set("X-Reasoning-Included", "true")
+			}
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
+			output := httptest.NewRecorder()
+			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
+			if err := executeRequest(t.Context(), t.Context(), request, http.Header{}, "session", provider, output, nil, nil); err != nil {
+				t.Fatal(err)
+			}
+			if got := output.Header().Get("X-Reasoning-Included"); (got == "true") != present {
+				t.Fatalf("stream=%t present=%t: header=%q", stream, present, got)
+			}
+		}
+	}
+}
+
 //nolint:canonicalheader // Exact lowercase names match Codex's observed wire headers.
 
 type serverErrorWriter struct{ err error }

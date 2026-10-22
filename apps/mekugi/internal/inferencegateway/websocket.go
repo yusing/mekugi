@@ -34,10 +34,55 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 	lifecycle, cancel := context.WithCancel(lifecycle)
 	endpoint := &WebSocketEndpoint{cancel: cancel}
 	endpoint.handler = func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+		stop := context.AfterFunc(lifecycle, cancel)
+		defer stop()
+		s := &responsesWebSocket{
+			ctx: ctx, provider: provider, headers: r.Header.Clone(),
+			timeout: timeout, dispatch: execute,
+		}
+		defer func() {
+			if s.upstream != nil {
+				s.upstream.CloseNow()
+			}
+		}()
 		if provider.Grok == nil && len(provider.OpenCode) == 0 {
-			if _, _, err := openai.Credentials(r.Header); err != nil {
+			_, handshake, err := openAIWebSocketRequest([]byte(`{}`), r.Header, codexresponses.RoutingSessionID(r.Header, codexresponses.Request{}))
+			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
+			}
+			// Codex consumes x-reasoning-included only from the upgrade response,
+			// not response.metadata. Learn the provider's actual signal first.
+			startCtx, stopStart := context.WithTimeout(ctx, timeout)
+			defer stopStart()
+			upstream, response, err := provider.OpenAI.Dial(startCtx, handshake)
+			if response != nil && response.StatusCode != http.StatusSwitchingProtocols {
+				defer response.Body.Close()
+				attempt := transportcapture.BeginWebSocketRejection(startCtx, handshake, response.Header, response.StatusCode)
+				body := attempt.HTTPErrorBody(response.Body, response.StatusCode, response.Header.Get("Content-Type"), response.Header.Get("Content-Encoding"))
+				payload, _ := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes))
+				_ = body.Close()
+				for _, name := range []string{"Content-Type", "Content-Encoding", "Retry-After", "X-Request-Id"} {
+					for _, value := range response.Header.Values(name) {
+						w.Header().Add(name, value)
+					}
+				}
+				w.WriteHeader(response.StatusCode)
+				_, _ = w.Write(payload)
+				return
+			}
+			if err != nil {
+				http.Error(w, "connect provider WebSocket: "+err.Error(), http.StatusBadGateway)
+				return
+			}
+			stopStart()
+			s.upstream = upstream
+			upstream.SetReadLimit(codexresponses.MaxResponseBytes)
+			s.upstreamHandshake, s.upstreamResponseHeaders = handshake, response.Header.Clone()
+			for _, value := range response.Header.Values("x-reasoning-included") {
+				w.Header().Add("x-reasoning-included", value)
 			}
 		}
 		conn, err := websocket.Accept(w, r, nil)
@@ -46,20 +91,11 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 		}
 		defer conn.CloseNow()
 		conn.SetReadLimit(codexresponses.MaxRequestBytes)
-		ctx, cancel := context.WithCancel(r.Context())
-		defer cancel()
-		stop := context.AfterFunc(lifecycle, cancel)
-		defer stop()
-		s := &responsesWebSocket{
-			ctx: ctx, downstream: conn, provider: provider, headers: r.Header.Clone(),
-			timeout: timeout, dispatch: execute,
-			clientMessages: readResponsesWebSocket(ctx, conn, cancel),
+		s.downstream = conn
+		s.clientMessages = readResponsesWebSocket(ctx, conn, cancel)
+		if s.upstream != nil {
+			s.providerMessages = readResponsesWebSocket(ctx, s.upstream, nil)
 		}
-		defer func() {
-			if s.upstream != nil {
-				s.upstream.CloseNow()
-			}
-		}()
 		if err := s.run(); err != nil && ctx.Err() == nil && !s.errorDelivered {
 			_, _ = s.writeError(ctx, err)
 		}
@@ -209,18 +245,20 @@ func readResponsesWebSocket(ctx context.Context, conn *websocket.Conn, disconnec
 }
 
 type responsesWebSocket struct {
-	history          codexresponses.SessionHistory
-	ctx              context.Context
-	downstream       *websocket.Conn
-	upstream         *websocket.Conn
-	provider         *Client
-	headers          http.Header
-	clientMessages   <-chan webSocketMessage
-	providerMessages <-chan webSocketMessage
-	timeout          time.Duration
-	dispatch         Execute
-	queuedCreate     []byte
-	errorDelivered   bool
+	history                 codexresponses.SessionHistory
+	ctx                     context.Context
+	downstream              *websocket.Conn
+	upstream                *websocket.Conn
+	provider                *Client
+	headers                 http.Header
+	clientMessages          <-chan webSocketMessage
+	providerMessages        <-chan webSocketMessage
+	upstreamHandshake       http.Header
+	upstreamResponseHeaders http.Header
+	timeout                 time.Duration
+	dispatch                Execute
+	queuedCreate            []byte
+	errorDelivered          bool
 }
 
 func (s *responsesWebSocket) run() error {
@@ -399,17 +437,7 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 		}
 		return s.provider.ForwardExecution(startCtx, responseCtx, native, headers, cacheKey)
 	}
-	authorization, account, err := openai.Credentials(headers)
-	if err != nil {
-		return nil, err
-	}
-	upstreamHeaders := make(http.Header)
-	upstreamHeaders.Set("Authorization", authorization)
-	upstreamHeaders.Set(openai.AccountIDHeader, account)
-	upstreamHeaders.Set("Originator", codexresponses.ClientIdentity)
-	upstreamHeaders.Set("User-Agent", codexresponses.ClientIdentity)
-	codexresponses.ForwardHeaders(upstreamHeaders, headers)
-	payload, handshake, _, err := codexresponses.WebSocketRequest(native, upstreamHeaders, cacheKey)
+	payload, handshake, err := openAIWebSocketRequest(native, headers, cacheKey)
 	if err != nil {
 		return nil, err
 	}
@@ -419,7 +447,11 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 			return nil, err
 		}
 	}
-	var responseHeaders http.Header
+	responseHeaders := s.upstreamResponseHeaders
+	if s.upstreamHandshake != nil {
+		handshake = s.upstreamHandshake
+	}
+	s.upstreamHandshake, s.upstreamResponseHeaders = nil, nil
 	if s.upstream == nil {
 		conn, response, dialErr := s.provider.OpenAI.Dial(startCtx, handshake)
 
@@ -458,8 +490,7 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 			return nil, err
 		}
 	}
-	// The downstream upgrade precedes the provider connection, so its headers
-	// cannot carry the provider's sticky routing state. Deliver it through the
+	// Mixed-provider upgrades precede provider selection. Deliver sticky state through the
 	// metadata event Codex consumes, leaving subsequent replay and reset to Codex.
 	// Source: codex-rs/codex-api/src/sse/responses.rs:222:230 (turn_state).
 	if state := responseHeaders.Get("x-codex-turn-state"); state != "" {
@@ -509,6 +540,21 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 		}
 	}
 	return &Response{Response: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: e}, Transport: "websocket"}, nil
+}
+
+func openAIWebSocketRequest(body []byte, headers http.Header, cacheKey string) ([]byte, http.Header, error) {
+	authorization, account, err := openai.Credentials(headers)
+	if err != nil {
+		return nil, nil, err
+	}
+	upstream := make(http.Header)
+	upstream.Set("Authorization", authorization)
+	upstream.Set(openai.AccountIDHeader, account)
+	upstream.Set("Originator", codexresponses.ClientIdentity)
+	upstream.Set("User-Agent", codexresponses.ClientIdentity)
+	codexresponses.ForwardHeaders(upstream, headers)
+	payload, handshake, _, err := codexresponses.WebSocketRequest(body, upstream, cacheKey)
+	return payload, handshake, err
 }
 
 func (e *Exchange) Read(buffer []byte) (int, error) {

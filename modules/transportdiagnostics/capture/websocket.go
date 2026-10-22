@@ -39,10 +39,27 @@ const (
 type responsesWebSocketFactoryKey struct{}
 
 type responsesWebSocketCapture struct {
-	recorder *Recorder
-	headers  http.Header
+	recorder  *Recorder
+	headers   http.Header
+	rejection *requestState
 
 	controlCaptureID string
+}
+
+// BeginWebSocketRejection observes a terminal provider upgrade rejection before
+// response.create. Negotiation fallback and successful upgrades create no request.
+// Recorder.Handler records the actual downstream HTTP response on return.
+func BeginWebSocketRejection(ctx context.Context, headers, responseHeaders http.Header, status int) *WebSocketAttempt {
+	capture, _ := ctx.Value(responsesWebSocketFactoryKey{}).(*responsesWebSocketCapture)
+	if capture == nil || status < http.StatusBadRequest || status == http.StatusUpgradeRequired {
+		return nil
+	}
+	state := capture.recorder.beginRequest(capture.headers)
+	capture.rejection = state
+	ctx = context.WithValue(ctx, captureKey{}, state)
+	// No inference body exists at this boundary. Record its known absence.
+	ObserveProjectedRequest(ctx, nil)
+	return BeginWebSocketAttempt(ctx, nil, headers, responseHeaders)
 }
 
 // ResponsesWebSocket observes one logical response delivered over the

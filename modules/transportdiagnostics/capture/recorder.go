@@ -218,7 +218,16 @@ func (r *Recorder) Handler(next http.Handler) http.Handler {
 		if request.URL.Path == "/v1/responses" && request.Method == http.MethodGet {
 			capture := r.newResponsesWebSocketCapture(request.Header)
 			request = request.WithContext(context.WithValue(request.Context(), responsesWebSocketFactoryKey{}, capture))
-			next.ServeHTTP(writer, request)
+			response := &observedResponseWriter{ResponseWriter: writer}
+			started := time.Now()
+			defer func() {
+				if capture.rejection != nil {
+					r.recordExchange(capture.rejection, "codex", 0, started, nil,
+						response.content.snapshot(), response.statusCode(), response.Header().Get("Content-Type"),
+						response.Header().Get("Content-Encoding"), response.writeError, providerResponseEvidence{})
+				}
+			}()
+			next.ServeHTTP(response, request)
 			return
 		}
 		if request.Method != http.MethodPost || request.URL.Path != "/v1/responses" {

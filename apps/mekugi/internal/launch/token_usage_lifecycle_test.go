@@ -122,7 +122,21 @@ func TestTokenUsageWebSocketHandshakeRecovery(t *testing.T) {
 				fields["type"], fields["model"], fields["stream"], fields["service_tier"] = "response.create", "gpt-5.6-sol", true, "fast"
 			})
 			for attempt := range 2 {
-				conn, _, err := websocket.Dial(ctx, router.URL, &websocket.DialOptions{HTTPHeader: headers})
+				conn, response, err := websocket.Dial(ctx, router.URL, &websocket.DialOptions{HTTPHeader: headers})
+				if attempt == 0 {
+					if conn != nil {
+						conn.CloseNow()
+					}
+					if err == nil || response == nil || response.StatusCode != status {
+						t.Fatalf("handshake rejection: response=%v err=%v", response, err)
+					}
+					response.Body.Close()
+					got, valid := proxy.usage.Snapshot("thread-1")
+					if !valid || !got.Cost.Known || got.InputTokens != 100 {
+						t.Fatalf("handshake rejection poisoned retained totals: %+v valid=%t", got, valid)
+					}
+					continue
+				}
 				if err != nil {
 					t.Fatal(err)
 				}

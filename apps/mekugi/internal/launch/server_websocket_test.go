@@ -520,7 +520,15 @@ func TestResponsesWebSocketLocalErrorStatus(t *testing.T) {
 				headers.Set(codexresponses.TurnMetadataHeader, metadata.Get(codexresponses.TurnMetadataHeader))
 			}
 			conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				t.Error("invalid request reached provider")
+				upstream, err := websocket.Accept(w, r, nil)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer upstream.CloseNow()
+				if _, _, err := upstream.Read(ctx); err == nil {
+					t.Error("invalid request reached provider")
+				}
 			}), proxy, headers)
 			if err := conn.Write(ctx, websocket.MessageText, []byte(test.body)); err != nil {
 				t.Fatal(err)

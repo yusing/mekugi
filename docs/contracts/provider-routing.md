@@ -15,7 +15,16 @@ foreign history or substitutes its own transcript or registry.
 catalog assembly, preparation and invocation model namespaces. Routing consumes
 provider metadata independently of that startup projection. Disabled or wrong-mode
 routes fail locally before inference. Enabling a third-party route does not change ordinary OpenAI request
-handling. Third-party continuation sends complete history over HTTP; WebSocket
+projection. OpenAI-only WebSocket connections establish the provider handshake
+before accepting the host connection, preserving the provider's
+`x-reasoning-included` signal, including its absence. Failed upgrades retain the
+provider's HTTP status and bounded error body. Setup obeys cancellation and the
+configured response-start timeout and generates no inference.
+
+Mixed-provider connections retain deferred provider selection and cannot relay
+provider handshake-only signals through their already-accepted host socket.
+They never connect to OpenAI merely to serve a third-party request. HTTP responses
+preserve provider headers. Third-party continuation sends complete history over HTTP; WebSocket
 prewarm does not generate inference, and disconnect cancels provider work.
 
 ## Plaintext collaboration

@@ -3,6 +3,7 @@ package launch
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -136,20 +137,32 @@ func TestResponsesWebSocketCaptureSeparatesSteeringAndAutomaticRequest(t *testin
 func TestResponsesWebSocketPreservesUpgradeRejectionStatus(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Length", "10000") // Deliberately truncated error body.
+		w.Header().Set("Retry-After", "17")
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":{"type":"authentication_error","code":"invalid_api_key","message":"refresh authentication"}}`))
-	}), nil, codexAuthHeaders())
-	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": "task"})
-	event := socketRead(t, ctx, conn)
-	if string(event["status"]) != "401" || responses.StringField(event, "type") != "error" {
-		t.Fatalf("upgrade status lost: %s", responses.MustMarshalJSON(event))
+	}))
+	defer provider.Close()
+	endpoint := testWebSocketEndpoint(ctx, time.Second, newTestProviderClient(provider.URL, provider.Client()), nil, nil)
+	defer endpoint.Close()
+	server := httptest.NewServer(endpoint)
+	defer server.Close()
+	conn, response, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: codexAuthHeaders()})
+	if conn != nil {
+		conn.CloseNow()
 	}
+	if err == nil || response == nil || response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("upgrade status lost: response=%v err=%v", response, err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	var event map[string]json.RawMessage
+	_ = json.Unmarshal(body, &event)
 	var detail map[string]json.RawMessage
 	_ = json.Unmarshal(event["error"], &detail)
-	if responses.StringField(detail, "code") != "invalid_api_key" {
-		t.Fatalf("provider error lost: %s", event["error"])
+	if responses.StringField(detail, "code") != "invalid_api_key" || response.Header.Get("Retry-After") != "17" {
+		t.Fatalf("provider error/retry header lost: %s", body)
 	}
 }
