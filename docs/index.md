@@ -28,6 +28,7 @@ contracts stay with their owning modules.
 - [Session control](../apps/mekugi/internal/sessioncontrol/SPEC.md)
 - [Session presentation](../apps/mekugi/internal/sessionpresentation/SPEC.md)
 - [Session API](../apps/mekugi/internal/sessionapi/SPEC.md)
+- [Connector](../apps/mekugi/internal/connector/SPEC.md)
 - [Session review](../apps/mekugi/internal/sessionreview/SPEC.md)
 - [Terminal session](../apps/mekugi/internal/terminalsession/SPEC.md)
 

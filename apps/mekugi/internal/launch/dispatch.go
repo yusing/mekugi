@@ -48,6 +48,8 @@ func Run() (exitCode int) {
 		switch os.Args[1] {
 		case "server":
 			return RunServer(ctx, os.Args[2:], os.Stderr)
+		case "connector":
+			return RunConnector(ctx, os.Args[2:], os.Stderr)
 		}
 	}
 	operation := ""

@@ -79,7 +79,8 @@ selector; internal adapter identifiers do not select another client.
 
 The native UI excludes PTY emulation or screen scraping for Main, settings clones,
 onboarding, cloud tasks, voice, Git-write UI actions and new provider authentication
-flows.
+flows. Remote human control uses the same server-owned Session API through the
+connector; browser components and asset hosting have independent lifetimes.
 These limits do not change
 Codex-owned execution or explicitly invoked change-history tools.
 Rewind's optional captured-edit reversal uses those tools through the host's

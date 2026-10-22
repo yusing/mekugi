@@ -36,9 +36,9 @@ sessions, and patch review. Invocation overrides leave Codex configuration uncha
 
 - **Native terminal UI.** [Main, Diff, and Agents](#ui)
   share one terminal without an external pane manager.
-- **Server-owned threads.** [Create and control threads on an execution machine](#server-owned-threads)
-  through a private local socket. Continue the same thread from another native
-  terminal; closing a client leaves work running.
+- **Server-owned threads.** [Create and control threads on an execution machine](#server-and-remote-control)
+  through a private local socket or an authenticated connector. Continue the same
+  thread from a native terminal or remote client; closing either leaves work running.
 - **Live subagent activity.** See model, effort, progress, and child-authored reply summaries
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
 - **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);
@@ -146,10 +146,10 @@ Mekugi needs JavaScript `exec`. Custom inference endpoints and `--oss` are unsup
 See [launch limits](apps/mekugi/internal/launch/SPEC.md) and
 [request integration](docs/contracts/responses-transport.md); invocation overrides leave config unchanged.
 
-### Server-owned threads
+### Server and remote control
 
-Native launches start the local server automatically. To start it without
-opening a terminal UI, run it explicitly:
+Native launches start the local server automatically. To keep a machine available
+for remote clients without opening a terminal UI, start it explicitly:
 
 ```sh
 mekugi server
@@ -161,9 +161,34 @@ selects another private location. Local clients use the same-user socket and the
 versioned [Session API](apps/mekugi/internal/sessionapi/CONTRACT.md). Workspaces,
 models and host attachment paths belong to this execution machine.
 
-Closing a client leaves server-owned work running. Stopping the server ends its
-active work; saved threads remain resumable. Restart never automatically replays
-requests or restarts work.
+For remote clients, run a connector on that same machine:
+
+```sh
+mekugi connector --origin https://ui.example.com
+```
+
+The connector listens on `127.0.0.1:7778` and prints its token-file location,
+without printing the token. Its default token file is `connector/token` beside
+the server socket. Read it privately to configure the client's bearer credential;
+keep it out of URLs and logs. `--token-file PATH` selects a different private file,
+`--socket PATH` selects the server, and repeated `--origin` flags admit additional
+UI origins. Origin permission never replaces token authentication.
+
+Terminate WSS at a reverse proxy and keep its connection to the connector
+on loopback or a protected private network. Forward WebSocket upgrades and
+allow the API's
+[attachment request budget](apps/mekugi/internal/sessionapi/CONTRACT.md#attachment-input).
+Compatible browser clients connect directly to each connector; the UI host must
+receive neither machine credentials nor control requests. This backend provides
+the API, while browser UI assets are delivered separately.
+
+Clients authenticate in the first control message; credentials stay out of URLs
+and upgrade headers. Send SIGHUP to the connector process to rotate its token.
+Rotation closes connections using the old credential; clients need the new token. Closing the
+connector or a client leaves server-owned work running. Stopping the server ends
+its active work; saved threads remain resumable. Restart never automatically
+replays requests or restarts work. See the [connector contract](apps/mekugi/internal/connector/SPEC.md)
+for admission and deployment details.
 
 ### Grok models
 

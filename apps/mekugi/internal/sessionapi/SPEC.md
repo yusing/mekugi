@@ -33,7 +33,9 @@ and waits within the caller context. Cancellation stops that wait without
 killing a server already started; incompatible or ambiguous outcomes are not
 automatically relaunched.
 
-Session API projections omit secret content.
+The connector supplies first-message bearer authentication and origin admission
+for remote human connections. Those credentials never authenticate local agent identity or a
+native secret-answer path. Session API projections omit secret content.
 
 Subscribers receive a snapshot followed by patches. Queue pressure replaces pending
 patches with an authoritative snapshot. Reconnection obtains a fresh snapshot

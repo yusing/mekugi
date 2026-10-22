@@ -4,11 +4,12 @@
 
 Control uses JSON-RPC 2.0 text messages over WebSocket. Local native clients
 connect to `/api/native/control` over the private Unix socket; remote human
-clients use `/api/control`. Both select WebSocket
+clients use `/api/control` through the connector. Both select WebSocket
 subprotocol `mekugi.control.v2`. The socket retains kernel-confirmed same-user
 peer admission, private filesystem permissions and listener/startup locks.
 
-The first request is `initialize` with `{"version":"2"}`.
+The first request is `initialize` with `{"version":"2"}`. Remote clients also
+supply `token`, consumed by the connector and never forwarded to the server.
 Initialization succeeds before any session data or operation is available.
 The endpoint establishes authority; caller fields cannot select it. Remote
 connections cannot invoke native startup or native-only semantic operations.
@@ -16,7 +17,7 @@ connections cannot invoke native startup or native-only semantic operations.
 `GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 2` on
 request and response. Missing/incompatible versions receive 409. WebSocket
 upgrades on the private socket also carry this header. Browser clients use the
-subprotocol and initialization version.
+subprotocol and initialization version; the connector sets the private header.
 Version mismatch never authorizes a competing server or an automatic restart.
 
 ## Requests, subscriptions and logical identities
@@ -115,7 +116,7 @@ retry on a later readiness publication. Startup failure receives 502; losing
 that response is still an ambiguous outcome to the client.
 
 End returns a successful null result after canceling the selected runtime. Server shutdown cancels
-and joins every runtime it owns. Disconnecting a stream leaves
+and joins every runtime it owns. Disconnecting a stream or connector leaves
 execution running. Saved history remains with Session History; startup never
 implicitly resumes saved work or resubmits earlier requests.
 
@@ -177,8 +178,8 @@ other undelivered editor state; execution and retained history remain independen
 
 ### Native attachments
 
-The private socket also provides native renderer attachments.
-`native/start` accepts `workspace`,
+The private socket also provides native renderer attachments. This endpoint is
+excluded from the connector. `native/start` accepts `workspace`,
 `routerArgs` and `args`, and atomically establishes its initial subscription.
 The first snapshot identifies the admitted startup operation until the execution
 owner confirms a logical thread. Startup never invents a thread ID. Subsequent intents carry `startup` until an explicit originating-view switch
