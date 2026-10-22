@@ -58,7 +58,7 @@ func TestHeadlessWrapRedirectedEntryPoint(t *testing.T) {
 		t.Fatalf("missing terminal event: %s", output)
 	}
 	methods, err := os.ReadFile(filepath.Join(dir, "rpc"))
-	if err != nil || string(methods) != "initialize\ninitialized\nthread/start\nturn/start\n" {
+	if err != nil || string(methods) != "initialize\ninitialized\nconfig/read\ninitialize\ninitialized\nthread/start\nturn/start\n" {
 		t.Fatalf("RPC sequence: %s (%v)", methods, err)
 	}
 }

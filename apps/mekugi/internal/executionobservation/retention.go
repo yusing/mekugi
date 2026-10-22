@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"regexp"
 	"strings"
 	"time"
@@ -82,6 +83,10 @@ func retainObservationInput(ctx context.Context, selected changes.Scope, source 
 	var items []map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &items)
 	for _, item := range items {
+		kind, reference := responses.StringField(item, "type"), responses.StringField(item, "encrypted_content")
+		if (kind == "compaction" || kind == "compaction_summary") && strings.HasPrefix(reference, compact.Prefix) {
+			input.Files = append(input.Files, compact.Name(reference))
+		}
 		if responses.StringField(item, "type") == "message" {
 			input.OptionalFiles = append(input.OptionalFiles, legacycall.Name(workspace, responses.StringField(item, "id"), true))
 		}

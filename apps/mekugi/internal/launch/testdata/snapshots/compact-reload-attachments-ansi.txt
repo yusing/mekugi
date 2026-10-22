@@ -1,0 +1,3 @@
+"\x1b[2m├ \x1b[38;5;114;22;1mAttached\x1b[m \x1b[1mguide.txt\x1b[22;2m (auto reloaded)\x1b[m                                                                "
+"\x1b[2m└ \x1b[38;5;114;22;1mAttached skill\x1b[m \x1b[2mcommit (auto reloaded)\x1b[m                                                             "
+"plain after attachments                                                                             "

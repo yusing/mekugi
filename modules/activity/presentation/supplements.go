@@ -22,8 +22,16 @@ type SupplementAssignment struct {
 }
 type SupplementMessage struct{ From, To, Text string }
 type SupplementStart struct{ Model, Effort, Tier string }
+
+// ReloadSource is an orchestration-issued attachment intent. Host events own its lifecycle.
+type ReloadSource struct {
+	Command, Path, Skill string
+	ExitCode             *int // Present only after an authenticated per-source result.
+}
 type Supplement struct {
+	ReloadSources                      []ReloadSource
 	Thread, Source, Kind, Text, CallID string
+	Turn                               string
 	Calls                              []string // Ordered host identities for an edit receipt.
 	Observed                           time.Time
 	Assignment                         *SupplementAssignment
@@ -97,6 +105,8 @@ func (s *Supplements) Collect(thread *scope.Store, event Supplement, now time.Ti
 		return false
 	}
 	switch event.Kind {
+	case "compact_reload":
+		event.ReloadSources = slices.Clone(event.ReloadSources)
 	case SupplementEditReceipt:
 		if len(event.Calls) == 0 || slices.Contains(event.Calls, "") {
 			return false

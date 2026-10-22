@@ -85,7 +85,7 @@ func SkillLoads[S Source](record Record[S]) []string {
 	unconfirmed := facts.Unconfirmed || slices.ContainsFunc(record.Values, func(b Value) bool { return b.BatchExit && b.ExitCode != 0 })
 	var names []string
 	for _, block := range record.Values {
-		if block.Running || block.Skipped || block.ExitCode != 0 || unconfirmed && !block.Segment {
+		if block.AutoReload && !block.Exited || block.Running || block.Skipped || block.ExitCode != 0 || unconfirmed && !block.Segment {
 			continue
 		}
 		if block.Kind == "op" && block.Verb == "Attached skill" && block.Label != "" {

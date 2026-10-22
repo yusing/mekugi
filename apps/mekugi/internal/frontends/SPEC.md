@@ -3,7 +3,8 @@
 ## Purpose
 
 Own invocation-private executable exposure and authenticated worker dispatch for
-`mcat`, `inspect_file`, `msymbol`, `mread`, `mrun`, and `mchanges`. Command modules
+`mcat`, `inspect_file`, `msymbol`, `mread`, `mrun`, `mchanges`, and the compaction
+acquisition helper `mreload`. Command modules
 own reader parsing, output budgeting, resolver orchestration, and command semantics.
 Codex owns stock execution and its process lifecycle. Passthrough exposes no frontends.
 
@@ -112,7 +113,7 @@ or restoring processes, live grants, or continuation handles.
 
 ## Acceptance
 
-1. All six commands dispatch through the authenticated pinned executable;
+1. All contributed commands dispatch through the authenticated pinned executable;
    altered identities and incompatible snapshots fail closed.
 2. Installed-binary replacement and concurrent invocation cleanup cannot replace
    or remove an active invocation's workers.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"maps"
 	"slices"
 	"strings"
@@ -134,6 +135,16 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 	commentaryIDs := p.calls.CommentaryIDs(sessionID)
 	filtered := make([]map[string]json.RawMessage, 0, len(items))
 	for _, item := range items {
+		kind, reference := responses.StringField(item, "type"), responses.StringField(item, "encrypted_content")
+		if (kind == "compaction" || kind == "compaction_summary") && strings.HasPrefix(reference, compact.Prefix) {
+			record, err := p.readCompact(ctx, reference)
+			if err != nil {
+				return nil, err
+			}
+			filtered = append(filtered, map[string]json.RawMessage{"type": responses.MustMarshalJSON("message"), "role": responses.MustMarshalJSON("assistant"), "content": responses.MustMarshalJSON([]map[string]string{{"type": "output_text", "text": record.Summary}})})
+			changed = true
+			continue
+		}
 		if responses.StringField(item, "type") == "message" {
 			id := responses.StringField(item, "id")
 			_, generated := commentaryIDs[id]

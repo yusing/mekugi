@@ -14,6 +14,7 @@ import (
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/activity"
+	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/modules/changehistory"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -33,6 +34,7 @@ func testHistory() *history.Service {
 	service, err := history.NewService(slices.Concat(
 		sessionhistory.Module.Contributes.RecordKinds,
 		activity.Module.Contributes.RecordKinds,
+		agentguidance.Module.Contributes.RecordKinds,
 		[]recordkind.Spec{diagnostic.Failures},
 		accounting.RecordKinds(),
 		changehistory.Module.Contributes.RecordKinds,

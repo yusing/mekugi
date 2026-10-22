@@ -39,7 +39,9 @@ A unit is one host-produced text part of a `function_call_output` or
 user message through a complete durable envelope in an `input_text` part.
 A string output is one part. Execution and attachment headers remain
 verbatim. Durable attachment envelopes use their submitted bodies; files and skills
-are never reopened to infer equality. Frame byte ranges describe the original
+are never reopened to infer equality. Compaction reader results participate as
+native tool output before the application adds reload-context framing, so later
+ordinary reads can reference the supplied source text. Frame byte ranges describe the original
 snapshot, while reference rows address the earlier visible body. Ordinary user
 requests, base instructions, selection attachments, malformed envelopes, and media
 are excluded. String-content or non-`input_text` envelopes and bare frame text

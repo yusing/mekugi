@@ -62,7 +62,7 @@ func NamingCompletion(provider inferencegateway.Forwarder, totals *accounting.Se
 		if err != nil {
 			return "", err
 		}
-		collector := new(sessionTitleCollector)
+		collector := new(assistantTextCollector)
 		hooks := &ResponseHooks{Transport: response.Transport}
 		if usage != nil {
 			hooks.OnUsage = usage.Observe
@@ -78,9 +78,9 @@ func NamingCompletion(provider inferencegateway.Forwarder, totals *accounting.Se
 	}
 }
 
-type sessionTitleCollector struct{ text string }
+type assistantTextCollector struct{ text string }
 
-func (c *sessionTitleCollector) TransformJSON(payload []byte) ([]byte, error) {
+func (c *assistantTextCollector) TransformJSON(payload []byte) ([]byte, error) {
 	var response struct {
 		Output []struct {
 			Type    string `json:"type"`
@@ -110,7 +110,7 @@ func (c *sessionTitleCollector) TransformJSON(payload []byte) ([]byte, error) {
 	return payload, nil
 }
 
-func (c *sessionTitleCollector) TransformSSE(payload []byte) ([][]byte, error) {
+func (c *assistantTextCollector) TransformSSE(payload []byte) ([][]byte, error) {
 	var event struct {
 		Type     string         `json:"type"`
 		Delta    string         `json:"delta"`
@@ -130,4 +130,4 @@ func (c *sessionTitleCollector) TransformSSE(payload []byte) ([][]byte, error) {
 	return [][]byte{payload}, nil
 }
 
-func (*sessionTitleCollector) Finish(bool) error { return nil }
+func (*assistantTextCollector) Finish(bool) error { return nil }

@@ -12,15 +12,16 @@ import (
 
 // Source: apps/mekugi/internal/router/subagent_activity_pane.go:15:32@45fbe279
 type ActivityEntry struct {
-	Side        bool `json:"-"` // Invocation-local side projection, retired with its owner.
-	Seq         uint64
-	Agent       string
-	Kind        string
-	Text        string
-	ErrorDetail string `json:",omitempty"` // Full error evidence; Text is the bounded preview.
-	CallID      string `json:",omitempty"`
-	Observed    time.Time
-	Completed   time.Time `json:"-"` // Admitted completion; terminal reveal keeps its own clock.
+	ReloadSources []activitypresentation.ReloadSource
+	Side          bool `json:"-"` // Invocation-local side projection, retired with its owner.
+	Seq           uint64
+	Agent         string
+	Kind          string
+	Text          string
+	ErrorDetail   string `json:",omitempty"` // Full error evidence; Text is the bounded preview.
+	CallID        string `json:",omitempty"`
+	Observed      time.Time
+	Completed     time.Time `json:"-"` // Admitted completion; terminal reveal keeps its own clock.
 
 	Native      *NativeItem         `json:"-"` // In-process app-server lifecycle input, not a provider observation.
 	Assignment  *ActivityAssignment `json:"-"` // Validated native NEW_TASK, not an ordinary message.

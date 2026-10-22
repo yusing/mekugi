@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/modules/agentguidance"
 )
 
 func TestAutoWrapProcess(t *testing.T) {
@@ -107,7 +108,7 @@ func TestAutoWrapProcess(t *testing.T) {
 			case "initialize":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{}}`+"\n", request.ID)
 			case "config/read":
-				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"layers":[{"name":{"type":"sessionFlags"},"config":{"hooks":{"PreToolUse":[],"state":{}}}}]}}`+"\n", request.ID)
+				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"config":{"compact_prompt":"Fixture caller handover."},"layers":[{"name":{"type":"sessionFlags"},"config":{"hooks":{"PreToolUse":[],"state":{}}}}]}}`+"\n", request.ID)
 			case "hooks/list":
 				if len(request.Params.Cwds) != 1 {
 					t.Fatal("hook discovery did not select one absolute workspace")
@@ -126,6 +127,18 @@ func TestAutoWrapProcess(t *testing.T) {
 			case "environment/info":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"shell":{"name":"bash","path":"/bin/bash"}}}`+"\n", request.ID)
 			case "thread/start":
+				foundPrompt := false
+				for _, arg := range os.Args {
+					if strings.HasPrefix(arg, "experimental_compact_prompt_file=") {
+						t.Fatalf("launch generated a compaction prompt file: %s", arg)
+					}
+					if strings.HasPrefix(arg, "compact_prompt=") {
+						foundPrompt = arg == fmt.Sprintf("compact_prompt=%q", "Fixture caller handover."+agentguidance.CompactInstructions)
+					}
+				}
+				if !foundPrompt {
+					t.Fatal("launch did not append reload instructions through compact_prompt")
+				}
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"thread":{"id":"auto-wrap","cwd":%q},"model":"test-model"}}`+"\n", request.ID, os.Getenv("MEKUGI_AUTO_WRAP_WORKSPACE"))
 				if os.Getenv("MEKUGI_AUTO_WRAP_FAILURE") == "1" {
 					time.Sleep(100 * time.Millisecond)

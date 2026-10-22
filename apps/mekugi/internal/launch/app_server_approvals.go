@@ -300,7 +300,7 @@ func approvalRecord(attached *attachedPresentation, approvals *nativeApprovalDoc
 		outcome += "\nCommand: " + a.Subject
 	}
 	entry := sessionpresentation.ActivityEntry{Seq: attached.session.Activity().NextSequence(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: at,
-		Native: &sessionpresentation.NativeItem{Thread: a.Thread, Turn: a.Turn, Item: a.Item, Phase: "approval/updated", Approval: outcome}}
+		Native: &sessionpresentation.NativeItem{Thread: a.Thread, Turn: a.Turn, Item: a.Item, Command: a.Subject, Phase: "approval/updated", Approval: outcome}}
 	if attached.session.KnownCaller(main) != "" {
 		entry.Agent = attached.session.Caller(a.Thread)
 	} else {

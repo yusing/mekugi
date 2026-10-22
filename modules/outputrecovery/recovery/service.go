@@ -199,6 +199,27 @@ func (s *Session) read(ctx context.Context, id string) (record.Record, error) {
 	return value, err
 }
 
+// Snapshot returns the complete original payload under the caller's snapshot or
+// session lease. It validates namespace ownership without advancing a cursor.
+func (s *Session) Snapshot(id string) (command.Output, error) {
+	name, err := s.name(id)
+	if err != nil {
+		return command.Output{}, err
+	}
+	data, err := history.ReadRecord(filepath.Join(s.scope.Directory, name))
+	if err != nil {
+		return command.Output{}, err
+	}
+	value, err := s.decode(data, id, true)
+	if err != nil {
+		return command.Output{}, err
+	}
+	if value.Source != "" || len(value.Changes) != 0 {
+		return command.Output{}, errors.New("reload requires an original output snapshot")
+	}
+	return command.Output{Stdout: value.Stdout, Stderr: value.Stderr, ExitCode: value.ExitCode}, nil
+}
+
 func (s *Session) putCursor(ctx context.Context, source record.Record, position [2]int, stream string) (string, error) {
 	value := record.Record{Version: 1, Source: source.ID, Position: position, Stream: stream, Binding: record.Binding(source)}
 	value.CursorDigest = record.CursorDigest(value)

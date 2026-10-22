@@ -25,6 +25,7 @@ rg '^func Test' apps/mekugi/internal/launch/*_codex_e2e_test.go
 | Fixture | Coverage and limits |
 | --- | --- |
 | OpenAI | Local base-URL override: web-tool exposure, turn metadata, reasoning-effort updates and workspace routing over WebSockets and HTTP/SSE fallback; WebSocket prewarm and side-thread continuity. `TestCodeModeOnlyCatalogNativeCodex` covers account-catalog execution-mode enforcement with a stale shared cache and actual JavaScript tool execution |
+| Compaction | `TestCompactReloadNativeCodex`: built-in OpenAI manual/automatic compaction over HTTP/WebSockets, caller prompt precedence, thread-specific read permissions, immutable fresh-resume and fork results. Deterministic local summaries establish installed-host behavior, without live-model selection claims |
 | Frontends | Authenticated command through stock `tools.exec_command`: cwd, environment, argv/stdin separation and exit status |
 | mrun | Codex-owned PTY yield and `write_stdin` continuation |
 | mchanges | Nested stock patch/shell calls with unprinted results; durable receipts, net review, cross-thread explicit IDs, caught failures and cross-request yielded completion; traces removed before reads, replay store reopened |
@@ -60,12 +61,21 @@ These checks do not decrypt prior encrypted assignments.
 ## Live Codex requests
 
 The Makefile defines and exports `MEKUGI_E2E_MODEL`, the model for E2E tests making real
-Codex provider requests. Override it through the environment or a Make command-line assignment
+Codex provider requests and the compaction host fixture. Override it through the environment or a Make command-line assignment
 for a specific run. Direct test invocations require this variable; unset or blank values fail
 before starting Codex. The `e2e` build tag enables
 `TestCodexMekugiGrammarE2E` (file-edit acceptance) and `TestCodexCacheAffinityE2E`
 (request identity and cache-affinity observations). Both use the installed Codex and forward
 requests to the live OpenAI Codex endpoint using its authentication.
+
+`TestCompactReloadLiveOpenAI` requires both `codex_e2e` and `e2e`. It drives
+terminal `/compact` with the built-in OpenAI provider and real authentication,
+covering live summary selection after completed work and fresh instruction-file
+and skill reads before live continuation. Run it with:
+
+```sh
+make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestCompactReloadLiveOpenAI$' TEST_FLAGS='-tags=codex_e2e,e2e -count=1'
+```
 
 Compile these fixtures without making live requests:
 

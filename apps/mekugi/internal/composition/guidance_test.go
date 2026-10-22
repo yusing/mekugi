@@ -19,7 +19,11 @@ func TestCompositionGuidanceRemovalKeepsCommands(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if (runtime.Guidance != nil) != enabled || len(runtime.Commands) != 1 || runtime.Commands[0].Name != "mcat" || runtime.Commands[0].Run == nil {
+		count := 1
+		if enabled {
+			count++
+		}
+		if (runtime.Guidance != nil) != enabled || len(runtime.Commands) != count || runtime.Commands[0].Name != "mcat" || runtime.Commands[0].Run == nil {
 			t.Fatalf("guidance=%v commands=%+v", runtime.Guidance != nil, runtime.Commands)
 		}
 		if err := runtime.Close(t.Context()); err != nil {

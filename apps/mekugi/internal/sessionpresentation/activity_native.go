@@ -14,6 +14,7 @@ import (
 // Source: apps/mekugi/internal/router/live_activity_app_server.go:1:194@45fbe279
 
 type NativeItem struct {
+	Reload     []activitypresentation.ReloadSource
 	UserShell  bool                             `json:"-"` // Host command origin, independent of source classification.
 	Invocation *activitypresentation.Invocation `json:"-"` // Canonical host state, shared while terminal output settles.
 	// Admitted native phase and timing. Terminal holds use detached projections
@@ -104,6 +105,7 @@ func (v *ActivitySource) MergeNative(entry ActivityEntry) bool {
 			return true
 		}
 		entry.Native.Approval = previous.Source.Native.Approval
+		entry.Native.Reload = previous.Source.Native.Reload
 		if previous.Source.Native.CapturedEdit != nil {
 			entry.Native.CapturedEdit = previous.Source.Native.CapturedEdit
 			entry.Text = previous.Source.Text

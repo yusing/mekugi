@@ -1,10 +1,12 @@
 package sessionpresentation
 
 import (
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
@@ -12,6 +14,7 @@ import (
 // ActivitySource borrows one of Activity's attached feeds. It admits application
 // source facts and publishes detached values without a terminal dependency.
 type ActivitySource struct {
+	reloads map[string]reloadPlan
 	*activitypresentation.Model[ActivityEntry, ActivityAgent]
 	Audience    ActivityAudience
 	Coverage    string
@@ -31,12 +34,32 @@ const unreturnedOutputNote = "output not returned to the model"
 
 // Source: apps/mekugi/internal/router/live_activity_view.go:28:162@45fbe279
 func (v *ActivitySource) Apply(event ActivityEvent) {
+	if len(event.Entries) > 0 {
+		defer v.applyReloads()
+	}
+
 	if event.Agents != nil {
 		v.Agents = event.Agents
 	}
 	for _, entry := range event.Entries {
 		if !v.Model.Accept(entry.Seq) {
 			continue
+		}
+		if entry.Kind == "compact_reload" && entry.Native != nil {
+			if v.reloads == nil {
+				v.reloads = make(map[string]reloadPlan)
+			}
+			if len(entry.ReloadSources) == 0 {
+				delete(v.reloads, entry.Native.Thread)
+			} else {
+				v.reloads[entry.Native.Thread] = reloadPlan{entry.Native.Turn, slices.Clone(entry.ReloadSources)}
+			}
+			continue
+		}
+		if entry.Native != nil && ContextBoundary(entry) {
+			if plan, ok := v.reloads[entry.Native.Thread]; ok && plan.turn == "" {
+				delete(v.reloads, entry.Native.Thread)
+			}
 		}
 		if entry.Kind == "output_dedupe" {
 			for i, previous := range v.Entries {
@@ -226,4 +249,41 @@ func (v *ActivitySource) annotateRepetitions(entry ActivityEntry, values []activ
 	if label := v.Repetition(entry.Native.Thread, entry.Native.Item); label != "" {
 		values[len(values)-1].Repeated = label
 	}
+}
+
+// Reconcile explicit orchestration intents with the existing host rows. No shell
+// classification, rendered text, or printed output establishes attachment identity.
+func (v *ActivitySource) applyReloads() {
+	for thread, plan := range v.reloads {
+		start := 0
+		for i, record := range v.Entries {
+			if record.Source.Native != nil && record.Source.Native.Thread == thread && ContextBoundary(record.Source) {
+				start = i + 1
+			}
+		}
+		for i := start; i < len(v.Entries); i++ {
+			entry := v.Entries[i].Source
+			if entry.Kind != "tool" || entry.Native == nil || entry.Native.Thread != thread || plan.turn != "" && entry.Native.Turn != plan.turn {
+				continue
+			}
+			command := CommandSource(entry.Native.Command, entry.Native.CommandCwd).Script
+			if command != plan.sources[0].Command {
+				continue
+			}
+			native := *entry.Native
+			native.Reload = slices.Clone(plan.sources)
+			for i := range native.Reload {
+				native.Reload[i].Path = pathdisplay.ForWorkspace(native.CommandCwd, native.Reload[i].Path)
+			}
+			entry.Native = &native
+			v.Model.Replace(i, entry, ActivityContent(entry).Values())
+			delete(v.reloads, thread)
+			break
+		}
+	}
+}
+
+type reloadPlan struct {
+	turn    string
+	sources []activitypresentation.ReloadSource
 }

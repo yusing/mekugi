@@ -10,7 +10,8 @@ import (
 type Bindings = binding.Bindings[*policy.Service]
 
 var Codex = Bindings{
-	Requires: []capability.Requirement{{Mechanism: capability.GuidanceProjection, Required: true}},
+	Requires:  []capability.Requirement{{Mechanism: capability.GuidanceProjection, Required: true}, {Mechanism: capability.ExecutableFrontend, Required: true}},
+	Frontends: true,
 	Guidance: func(service *policy.Service) binding.Guidance {
 		return binding.Guidance{
 			BeforePreparation: beforePreparation,

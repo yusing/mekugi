@@ -4,6 +4,9 @@ package requestexecution
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -42,6 +45,8 @@ type Executor struct {
 	Observations  Preparer
 	Guidance      *binding.Guidance
 	SkillsManager bool
+	CompactPrompt func() string
+	CompactStore  func(context.Context, string, string, string) (string, error)
 	Control       *sessioncontrol.Observations
 	Usage         *accounting.Service
 }
@@ -139,6 +144,25 @@ func (a *requestAttempt) run() error {
 	if err := a.prepare(); err != nil {
 		return err
 	}
+	if local, ok := a.prepared.(interface{ CompactReload() jsontext.Value }); ok && len(local.CompactReload()) > 0 {
+		var body bytes.Buffer
+		item := local.CompactReload()
+		id := "resp_mekugi_reload_" + rand.Text()
+		for _, event := range []any{
+			map[string]any{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}},
+			map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item},
+			map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item},
+			map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": []any{item}}},
+		} {
+			if err := codexresponses.WriteEvent(&body, responses.MustMarshalJSON(event)); err != nil {
+				return err
+			}
+		}
+		a.response = &inferencegateway.Response{Response: &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(&body)}}
+		a.streamResponse, a.responseTransform = true, a.prepared
+		a.prepared.BindExecution(a.executionCtx)
+		return a.deliver()
+	}
 	if err := a.prepareWire(); err != nil {
 		return err
 	}
@@ -147,6 +171,9 @@ func (a *requestAttempt) run() error {
 	}
 	if err := a.prepareResponse(); err != nil {
 		return err
+	}
+	if a.metadataValid && a.metadata.RequestKind == responses.Compaction && a.executor.CompactPrompt != nil && a.response.StatusCode >= 200 && a.response.StatusCode < 300 {
+		return a.deliverCompactSummary()
 	}
 	return a.deliver()
 }
@@ -238,6 +265,32 @@ func (a *requestAttempt) prepareWire() error {
 	// Compaction keeps request-wide projections but never gains collaboration
 	// tools or their instructions.
 	compaction := a.metadataValid && a.metadata.RequestKind == responses.Compaction
+	if compaction && a.executor.CompactPrompt != nil {
+		err = codexresponses.PrepareCompactTurn(&a.request, a.executor.CompactPrompt())
+		if err != nil {
+			return err
+		}
+		metadata, err := responses.ReplaceField([]byte(a.headers.Get(codexresponses.TurnMetadataHeader)), "request_kind", []byte(`"turn"`))
+		if err != nil {
+			return err
+		}
+		metadata, err = responses.ReplaceField(metadata, "compaction", []byte(`null`))
+		if err != nil {
+			return err
+		}
+		a.headers = a.headers.Clone()
+		a.headers.Set(codexresponses.TurnMetadataHeader, string(metadata))
+		if raw := a.request.Fields["client_metadata"]; len(raw) != 0 && string(raw) != "null" {
+			value, err := json.Marshal(string(metadata))
+			if err != nil {
+				return err
+			}
+			a.request.Fields["client_metadata"], err = responses.ReplaceField(raw, codexresponses.TurnMetadataHeader, value)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	if !compaction && (a.prepared != nil || a.prewarm && a.executor.Observations != nil || providerGuidance) {
 		a.bridge, err = codexresponses.PrepareCollaboration(&a.request, guidance)
 		if err != nil {
@@ -281,6 +334,9 @@ func (a *requestAttempt) prepareWire() error {
 				"duration_us": time.Since(started).Microseconds(),
 			})
 		}
+	}
+	if compaction && a.executor.CompactPrompt != nil {
+		a.request.CachedInput, a.request.RebaseInput = 0, true
 	}
 	nativeWire, err := a.request.IncrementalBody(nativeBody, !inferencegateway.IsThirdPartyModel(a.request.Model()))
 	if err != nil {
@@ -510,7 +566,7 @@ func (a *requestAttempt) deliver() error {
 }
 
 func (a *requestAttempt) observeTitleSuccess() {
-	if a.executor.Naming != nil && a.metadataValid && a.metadata.RequestKind == responses.Turn && !a.prewarm &&
+	if a.finishUsage && a.executor.Naming != nil && a.metadataValid && a.metadata.RequestKind == responses.Turn && !a.prewarm &&
 		a.response.StatusCode >= 200 && a.response.StatusCode < 300 &&
 		a.finalization.upstreamTerminalState == responses.TerminalCompleted {
 		a.executor.Naming.Completed(a.threadID, a.headers)

@@ -373,7 +373,7 @@ func codexArgs(baseURL string, args []string, codeMode, skillsManagerAvailable, 
 		// Keep stock capabilities and runtime-only internal metadata.
 		overrides = append(overrides, "-c", `model_provider="openai"`, "-c", fmt.Sprintf(`openai_base_url=%q`, baseURL))
 	} else {
-		overrides = append(overrides, "-c", `model_provider="mekugi_wrap"`, "-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=false,supports_websockets=false}`, baseURL))
+		overrides = append(overrides, "-c", `model_provider="mekugi_wrap"`, "-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=false,supports_websockets=false,capabilities={remote_compaction="v2"}}`, baseURL))
 	}
 	overrides = append(overrides, "-c", `include_collaboration_mode_instructions=false`)
 	if skillsManagerAvailable {

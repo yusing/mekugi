@@ -25,9 +25,12 @@ Assemble agent guidance without changing caller authority
 
 - Composition: selected; lifetime: `stateless`.
 - Requires: none.
+- Contributes: `commands`, `record-kinds`.
 - Hosts: `guidance`.
-- Codex connections: `guidance-projection`.
-- Capabilities: `guidance-projection` (required).
+- Commands: `mreload`.
+- Records: `compact`.
+- Codex connections: `executable-frontend`, `guidance-projection`.
+- Capabilities: `guidance-projection` (required), `executable-frontend` (required).
 
 ## [agentmetrics](../../modules/agentmetrics/SPEC.md)
 

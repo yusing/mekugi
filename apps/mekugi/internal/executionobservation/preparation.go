@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	jsonv1 "encoding/json"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"strings"
 	"time"
 
@@ -114,6 +116,7 @@ type mekugiTranslationState struct {
 }
 
 type mekugiResponseTransform struct {
+	compactReload    jsonv1.RawMessage
 	activity         *sessioncontrol.Audience
 	nativeTrace      *nativetrace.Reader
 	generation       sessioncontrol.Generation
@@ -183,6 +186,40 @@ func (t *mekugiResponseTransform) ObserveUsage(counts inference.Usage) {
 // Prewarm shares model projection but cannot initialize execution, replay, or
 // agent lifecycle state. Only the non-generating WebSocket path selects it.
 func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexresponses.TurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
+	var reload jsonv1.RawMessage
+	var reloadCalls map[string]bool
+	if bytes.Contains(request.Fields["input"], []byte(compact.Prefix)) {
+		if !metadataValid {
+			return nil, errors.New("compaction recovery requires valid metadata")
+		}
+		var err error
+		reload, reloadCalls, err = p.prepareCompactInput(ctx, request, sessionID, threadID, metadata, prewarm)
+		if err != nil {
+			return nil, err
+		}
+	}
+	reloadOutputs, err := p.compactSnapshots(ctx, request.Fields["input"], reloadCalls, threadID, metadata, prewarm)
+	if err != nil {
+		return nil, err
+	}
+	projectReload := func() error {
+		if len(reloadCalls) == 0 {
+			return nil
+		}
+		var items []map[string]jsontext.Value
+		input, err := hydrateCompactSnapshots(request.Fields["input"], reloadOutputs)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(input, &items); err != nil {
+			return err
+		}
+		input, err = compactReaderInput(items, reloadCalls)
+		if err == nil {
+			request.Fields["input"] = input
+		}
+		return err
+	}
 	if err := validateProviderContext(request.Fields["input"]); err != nil {
 		return nil, err
 	}
@@ -196,7 +233,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			}
 			p.notice(sessionID, threadID, "compaction_observation", "Completed host results could not be retained during compaction. Provider compaction is unchanged; change evidence may be incomplete.")
 		}
-		return nil, nil
+		return nil, projectReload()
 	}
 	if p == nil {
 		return nil, errors.New("mekugi response proxy is unavailable")
@@ -213,12 +250,16 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		if !prewarm && strings.TrimSpace(threadID) == "" {
 			return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 		}
-		return nil, nil
+		return nil, projectReload()
+	}
+	projectionInput, err := hydrateCompactSnapshots(request.Fields["input"], reloadOutputs)
+	if err != nil {
+		return nil, err
 	}
 	var projections []binding.PreparedInputProjection
 	if !prewarm {
 		for _, registration := range p.inputProjections {
-			projections = append(projections, registration.Prepare(request.Fields["input"]))
+			projections = append(projections, registration.Prepare(projectionInput))
 		}
 	}
 	// Discover an execution owner before projecting tools: a native
@@ -230,7 +271,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			return nil, err
 		}
 		if execution == "" {
-			return nil, nil
+			return nil, projectReload()
 		}
 	}
 	if p.registry.Guidance != nil {
@@ -259,7 +300,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		return nil, err
 	}
 	if prewarm {
-		return nil, nil
+		return nil, projectReload()
 	}
 	if strings.TrimSpace(threadID) == "" {
 		return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
@@ -325,7 +366,8 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		p.activity.BeginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model), time.Now())
 	}
 	transform := &mekugiResponseTransform{
-		activity: p.activity, nativeTrace: p.nativeTrace,
+		compactReload: reload,
+		activity:      p.activity, nativeTrace: p.nativeTrace,
 		ctx:         ctx,
 		control:     p.control,
 		review:      p.review,
@@ -360,6 +402,12 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		transform.Close()
 		return nil, err
 	}
+	request.Fields["input"], err = hydrateCompactSnapshots(request.Fields["input"], reloadOutputs)
+	if err != nil {
+		transform.Close()
+		return nil, err
+	}
+	reloadOutputs = nil
 	for _, project := range projections {
 		before := request.Fields["input"]
 		result := project(before)
@@ -399,6 +447,10 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			}
 			p.activity.Collect(activitypresentation.Supplement{Thread: activityThreadID, Source: "output-dedupe\x00" + call, Kind: "output_dedupe", CallID: target, Text: label})
 		}
+	}
+	if err := projectReload(); err != nil {
+		transform.Close()
+		return nil, err
 	}
 	return transform, nil
 }

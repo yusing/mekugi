@@ -23,6 +23,7 @@ type ItemContent struct {
 type DirectedContent struct{ From, To, Text string }
 
 type ItemDetails struct {
+	Reload                                []ReloadSource
 	CommandText, Status, Timeout, Workdir string
 	ReasoningLive, WaitLive               bool
 	Output                                int
@@ -42,10 +43,10 @@ func (entry ItemContent) Values() (blocks []Value) {
 		// An unsupported batch has one host clock, not a clock per classified
 		// operation. Keep that total visible and its output on one explicit row.
 		if n := entry.Details; entry.Kind == "tool" && n != nil && n.CommandText != "" &&
-			(len(entry.Command.Segments) == 0 && (entry.Command.Running || entry.Command.Duration > 0) && command.Compound(blocks) || entry.Command.Approval != "" && len(blocks) > 1) &&
+			((len(entry.Command.Segments) == 0 || len(n.Reload) > 0) && (entry.Command.Running || entry.Command.Duration > 0) && command.Compound(blocks) || entry.Command.Approval != "" && len(blocks) > 1) &&
 			!slices.ContainsFunc(blocks, func(b Value) bool { return b.BatchExit }) {
 			batch := Value{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Running: entry.Command.Running, Output: n.Output, Tail: entry.Command.Tail, TailOmitted: entry.Command.TailOmitted}
-			if len(entry.Command.Segments) == 0 {
+			if len(entry.Command.Segments) == 0 || len(n.Reload) > 0 {
 				for i := range blocks {
 					blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = 0, nil, 0
 				}
@@ -63,6 +64,16 @@ func (entry ItemContent) Values() (blocks []Value) {
 		}
 		if entry.Details != nil {
 			command.ApplyFacts(blocks)
+			for i, source := range entry.Details.Reload {
+				blocks[i].Exited, blocks[i].ExitCode = source.ExitCode != nil, 0
+				blocks[i].Running = command.Running && source.ExitCode == nil
+				blocks[i].Segment = source.ExitCode != nil
+				if source.ExitCode != nil {
+					blocks[i].ExitCode = *source.ExitCode
+				} else if command.Exited && command.ExitCode != 0 {
+					blocks[i].Exited, blocks[i].ExitCode = true, command.ExitCode
+				}
+			}
 		}
 		if entry.Details != nil && len(blocks) > 0 {
 			ApplyApproval(blocks, entry.Command.Approval)
@@ -148,6 +159,18 @@ func (entry ItemContent) Values() (blocks []Value) {
 	case "compaction":
 		return []Value{{Kind: "compaction", Body: text}}
 	case "tool":
+		if n := entry.Details; n != nil && len(n.Reload) != 0 {
+			for _, source := range n.Reload {
+				block := Value{Kind: "op", Verb: "Attached", Path: source.Path, AutoReload: true}
+				if source.Skill != "" {
+					block.Verb, block.Label, block.Path = "Attached skill", textsanitize.Safe(source.Skill, false), ""
+				}
+				blocks = append(blocks, block)
+			}
+			last := &blocks[len(blocks)-1]
+			last.Output, last.Tail, last.TailOmitted = n.Output, command.Tail, command.TailOmitted
+			return blocks
+		}
 		if command.UserShell {
 			blocks := []Value{{Kind: "op", Verb: "Run", UserShell: true,
 				Code: textsanitize.Safe(command.Display, false), Lang: "bash", Fenced: true,

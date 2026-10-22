@@ -11,7 +11,7 @@ Mekugi preserves the caller's base `instructions` value and every system or deve
 except for complete explicit omission blocks, pinned inherited stock-prompt conflicts, and the
 marked Mekugi workflow section appended to base instructions.
 It does not detect stock prompt shapes, replace editing sections, select model-specific workflows,
-inspect `model_instructions_file`, or create or modify instruction files. It does not restore the
+inspect `model_instructions_file`, or create or modify caller instruction files. It does not restore the
 retired shell carrier, HPATCH, hash-target editing, or CTP instructions.
 
 Exact inherited stock progress conflicts are deleted, and the pinned wait conflict is
@@ -101,9 +101,59 @@ path; managed snapshots take precedence by name. Omission notices do not suppres
 Codex's available instructions. Unrelated messages and quoted
 examples remain unchanged; Codex still owns its selection and execution.
 
+## Compaction context
+
+Compaction makes one ordinary turn on the selected provider using the current
+conversation, the original compaction prompt and Mekugi's reload instructions.
+Caller inline prompts precede prompt-file contents; otherwise the stock prompt
+applies. Provider identity and authentication stay unchanged. The handover summarizes the task;
+reload metadata contains only file paths, skill names and optional line ranges.
+Selection has no fixed source-count limit.
+File contents and skill instructions come from fresh reads, not generated summary
+text. Applicable guidance references can remain selected when the task is complete
+or waiting for input. Task-source selection remains focused
+on unfinished work. An empty selection is valid only when neither kind of context
+is needed.
+
+Mekugi retains the model's summary and separate reload selection before returning
+its native compaction reference. Before provider continuation, independent selected
+readers run concurrently as stock Codex tools in the continuing thread with its exact
+current permissions. A denied or failed reader does not prevent the others from completing.
+Idle compaction waits for the next generating turn; automatic compaction uses the
+active turn. Prewarm and execution-free requests never start reads.
+
+The reference expands to the exact assistant summary. The authenticated reload
+frontend captures complete selected bodies under the stock process's permissions
+and publishes them through retained output delivery before returning a reference.
+Provider input expands that reference into one complete result per source, omitting
+synthetic reader and continuation calls. One introduction identifies the supplied
+bodies as reusable read context. Stock output windows carry only the reference,
+never the file bodies. Acquisition can yield internally; provider inference waits
+for terminal acquisition and never receives accumulated partial results.
+Denied reads and publication failures remain explicit.
+Reload text uses ordinary unnumbered
+source rows and participates in output deduplication before its context framing.
+Native history retains the complete calls
+and results; ordinary tool history is unchanged.
+Reload orchestration emits typed file/skill intents from retained selection metadata.
+The native acquisition command retains approval and execution ownership. Captured
+per-source outcomes, rather than selection or aggregate success, determine successful loads.
+Completed reads survive resume and fork without another acquisition. A fork made
+before acquisition reads in that branch when it continues. Cancellation and approval
+remain Codex-owned. Internal continuations finish the current acquisition without
+model involvement or retained-program compatibility paths; readers are never silently replayed.
+
+Session history owns publication, retention and inherited authorization; this
+module owns the summary and selection codec. Missing, corrupt or unauthorized
+references fail before provider access. Selection metadata never enters the summary
+or provider conversation. Failed generation cannot install partial summaries;
+provider usage and failures retain normal accounting.
+
 ## Lifecycle, Codex connection, records, and failure
 
-The module is stateless, with no records or background resources. Its binding
+The module has no background resources. Compaction summaries use its contributed
+record kind in the shared retained-session store; captured sources use output
+recovery records. Its binding
 registers early omission filtering, execution-only conflict projection, late
 selected-skill projection, frontend assembly, and marked-description and base-workflow replacement.
 Omissions run before preparation, including compaction and execution-free requests.
@@ -111,8 +161,8 @@ Execution conflicts retain their existing preparation position; unsupported prew
 handshakes bypass them. Attachment matching precedes selected-skill compaction.
 Projection errors stop forwarding. With zero guidance contributions, the module
 still handles its instruction policies and descriptions of selected commands.
-Removing the module removes all its projections and assembly; command execution
-remains available. Provider compatibility prose belongs to its backend consumers.
+Removing the module removes its reload helper, projections and assembly; other
+command execution remains available. Provider compatibility prose belongs to its backend consumers.
 
 ## Acceptance
 
@@ -136,4 +186,8 @@ remains available. Provider compatibility prose belongs to its backend consumers
 6. In Mekugi mode with `skills-mgr` in PATH, Codex launches disable stock skill-catalog instructions
    after caller overrides and selected skill wrappers reach the provider as `<skill name="…"/>`.
    In passthrough mode or without `skills-mgr`, neither projection occurs.
-7. Compaction uses the host/provider path without a recovery-injection hook.
+7. Compaction preserves prompt precedence and emits one ordinary provider request.
+   Built-in OpenAI manual/automatic continuation, fresh resume and fork recover
+   the exact summary and selected native reader results, without selection metadata.
+   Denied reads stay denied; failed publication exposes no reference. Recovery
+   survives process restart and rejects missing or foreign records.

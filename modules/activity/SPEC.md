@@ -299,7 +299,12 @@ the application admits thread/turn identities before applying transitions and
 retains host operation authority. Historical timing never resumes a live clock.
 Main and child identities stay distinct; Main's roster summary reads its existing
 feed rather than copying it. Loaded skills come from confirmed reads or submitted
-attachments. Failed/declined segments load nothing; independently successful
+attachments. Compaction emits typed source intents for the native acquisition command.
+Its retained snapshot supplies each source's independent outcome, regardless of
+metadata and host-event arrival order. Aggregate command approval, timing and output
+remain host-owned; aggregate success alone cannot confirm a source load. Successful
+source completion adds a muted ` (auto reloaded)` suffix.
+Failed/declined segments load nothing; independently successful
 segments still count after aggregate failure. Feed trimming retains context loads,
 compaction clears them, and bounded history restoration cannot overwrite a newer
 live reset. Unknown context is not an empty confirmed set.

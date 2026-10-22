@@ -261,6 +261,14 @@ func liveActivityIndent(lines []string, prefix string) []string {
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
 	lines := p.blockRows(block, width)
+	if block.AutoReload && block.Exited && block.ExitCode == 0 && !block.Running && len(lines) > 0 {
+		suffix := terminalui.Dim + " (auto reloaded)" + terminalui.Undim
+		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
+			lines[0] += suffix
+		} else {
+			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(RowVerb(block))), suffix, width)...)
+		}
+	}
 	if len(block.Timeouts) > 0 && !block.Skipped && runDuration(block, p.now()) >= 500*time.Millisecond && len(lines) > 0 {
 		var labels []string
 		for _, timeout := range block.Timeouts {
@@ -274,6 +282,9 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 	}
 	if outcome := approvalLabel(block.Approval); outcome != "" && len(lines) > 0 {
+		if block.AutoReload && strings.HasPrefix(block.Approval, "Pending Approval") {
+			outcome = terminalui.Amber + "Approving" + terminalui.Reset
+		}
 		suffix := terminalui.Dim + " · " + terminalui.Undim + outcome
 		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix

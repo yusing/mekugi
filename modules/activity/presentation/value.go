@@ -36,6 +36,7 @@ type Value struct {
 	feed.Content
 	ReplySummary                         string // Derived from the completed original body; never replaces Body.
 	Repeated                             string
+	AutoReload                           bool   // Native compaction reader, distinct from a submitted attachment.
 	AttachmentID                         string // Durable submitted snapshot and source, shared by its chunks.
 	Ended, Started                       time.Time
 	Duration                             time.Duration

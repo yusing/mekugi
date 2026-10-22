@@ -6,18 +6,21 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
-// Invocation is only the host-resolved sessionFlags layer. Copying merged
-// configuration would duplicate hooks that Codex discovers in their own layers.
+// Invocation retains the selected compaction prompt and only the host-resolved
+// sessionFlags hook layer. Copying merged hooks would duplicate other layers.
 type Invocation struct {
-	PreToolUse []jsontext.Value          `json:"PreToolUse"`
-	State      map[string]jsontext.Value `json:"state"`
+	CompactPrompt string                    `json:"-"`
+	PreToolUse    []jsontext.Value          `json:"PreToolUse"`
+	State         map[string]jsontext.Value `json:"state"`
 }
 
 type hook struct {
@@ -69,7 +72,14 @@ func (h hook) shellConflict() (bool, error) {
 
 // Discover starts no thread or turn. The process resolves caller configuration
 // and is joined before the caller starts its final, guarded invocation.
-func Discover(ctx context.Context, command *exec.Cmd) (prior Invocation, disabled []string, err error) {
+func Discover(ctx context.Context, command *exec.Cmd) (Invocation, []string, error) {
+	return discover(ctx, command, true)
+}
+func DiscoverCompact(ctx context.Context, command *exec.Cmd) (Invocation, error) {
+	prior, _, err := discover(ctx, command, false)
+	return prior, err
+}
+func discover(ctx context.Context, command *exec.Cmd, guard bool) (prior Invocation, disabled []string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cwd, err := filepath.Abs(command.Dir)
@@ -102,6 +112,10 @@ func Discover(ctx context.Context, command *exec.Cmd) (prior Invocation, disable
 		return prior, nil, err
 	}
 	var config struct {
+		Config struct {
+			Prompt string `json:"compact_prompt"`
+			File   string `json:"experimental_compact_prompt_file"`
+		} `json:"config"`
 		Layers *[]struct {
 			Name struct {
 				Type string `json:"type"`
@@ -121,6 +135,24 @@ func Discover(ctx context.Context, command *exec.Cmd) (prior Invocation, disable
 		if layer.Name.Type == "sessionFlags" {
 			prior = layer.Config.Hooks
 		}
+	}
+	prior.CompactPrompt = strings.TrimSpace(config.Config.Prompt)
+	if prior.CompactPrompt == "" && config.Config.File != "" {
+		path := config.Config.File
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(cwd, path)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return prior, nil, fmt.Errorf("read caller compaction prompt: %w", err)
+		}
+		prior.CompactPrompt = strings.TrimSpace(string(data))
+	}
+	if prior.CompactPrompt == "" {
+		prior.CompactPrompt = DefaultCompactPrompt
+	}
+	if !guard {
+		return prior, nil, nil
 	}
 	id, err = client.Send("hooks/list", map[string]any{"cwds": []string{cwd}}, true)
 	if err != nil {
@@ -149,6 +181,19 @@ func Discover(ctx context.Context, command *exec.Cmd) (prior Invocation, disable
 	}
 	return prior, disabled, nil
 }
+
+// Source: codex-rs/prompts/templates/compact/prompt.md:1:10@0df4aa677.
+// DefaultCompactPrompt is the stock plaintext handover prompt, pinned for launch.
+const DefaultCompactPrompt = `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
+
+Include:
+- Current progress and key decisions made
+- Important context, constraints, or user preferences
+- What remains to be done (clear next steps)
+- Any critical data, examples, or references needed to continue
+
+Be concise, structured, and focused on helping the next LLM seamlessly continue the work.
+`
 
 func reply(ctx context.Context, client *appserver.Client, id string) (jsontext.Value, error) {
 	for {

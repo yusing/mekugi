@@ -5,6 +5,34 @@ import (
 	"time"
 )
 
+func TestCompactReloadPreservesIndependentOutcomes(t *testing.T) {
+	for _, completed := range []bool{false, true} {
+		sources := []ReloadSource{{Path: "guide.txt"}, {Skill: "loaded"}, {Skill: "denied"}}
+		if completed {
+			sources[0].ExitCode, sources[1].ExitCode, sources[2].ExitCode = new(0), new(0), new(1)
+		}
+		item := ItemContent{Seq: 12, Kind: "tool", Command: Command{Script: "mreload selection", Running: !completed, Exited: completed, Approval: "Approved"}, Details: &ItemDetails{Reload: sources, CommandText: "mreload selection"}}
+		values := item.Values()
+		if len(values) != 4 {
+			t.Fatalf("source rows and aggregate approval: %+v", values)
+		}
+		for i, value := range values[:3] {
+			code := 0
+			if completed && i == 2 {
+				code = 1
+			}
+			if !value.AutoReload || value.Source != 12 || value.Operation != i+1 || value.Exited != completed || value.ExitCode != code || value.Running == completed {
+				t.Fatalf("source %d outcome: %+v", i, value)
+			}
+		}
+	}
+	// Successful acquisition-process exit cannot establish a source result.
+	value := (ItemContent{Kind: "tool", Command: Command{Exited: true}, Details: &ItemDetails{Reload: []ReloadSource{{Skill: "unknown"}}}}).Values()[0]
+	if value.Exited {
+		t.Fatal("aggregate exit invented source success")
+	}
+}
+
 func TestItemContentRetainsCompoundOutcomeAndSourceIdentity(t *testing.T) {
 	item := ItemContent{
 		Seq: 7, Kind: "tool", Agent: "/root", Text: "Run `false`\n\nRun `echo done`",

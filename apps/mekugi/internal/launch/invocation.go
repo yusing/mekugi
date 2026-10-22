@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -53,6 +54,7 @@ import (
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	"github.com/yusing/mekugi/modules/usage/accounting"
@@ -344,9 +346,17 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	inferencegateway.RegisterCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
 
 	executor := requestexecution.Executor{Provider: provider, Client: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
+	var compactPrompt atomic.Pointer[string]
 	if mekugiCalls != nil {
 		executor.Observations, executor.Guidance = mekugiCalls, registry.Guidance
 		executor.SkillsManager, executor.Control, executor.Usage = skillsManagerAvailable, &control, usage
+		executor.CompactStore = mekugiCalls.StoreCompact
+		executor.CompactPrompt = func() string {
+			if prompt := compactPrompt.Load(); prompt != nil {
+				return *prompt
+			}
+			return ""
+		}
 	}
 	webSocketEndpoint := inferencegateway.NewWebSocketEndpoint(ctx, options.Timeout, provider, executor.ExecuteWebSocket)
 	defer webSocketEndpoint.Close()
@@ -444,6 +454,23 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		if err != nil {
 			return stopFailedStartup(err)
 		}
+		// Resolve caller configuration once, using the final frontend environment.
+		var prior shellhook.Invocation
+		var disabled []string
+		compact := guidance != nil && (appUI || headless)
+		if guard {
+			prior, disabled, err = shellhook.Discover(ctx, cmd)
+		} else if compact {
+			prior, err = shellhook.DiscoverCompact(ctx, cmd)
+		}
+		if err != nil {
+			return stopFailedStartup(err)
+		}
+		if compact {
+			prompt := prior.CompactPrompt + agentguidance.CompactInstructions
+			compactPrompt.Store(new(prompt))
+			cmd.Args = append(cmd.Args, "-c", fmt.Sprintf("compact_prompt=%q", prompt))
+		}
 		if helper != "" {
 			guardDirectory := ""
 			for _, registration := range guards {
@@ -462,10 +489,6 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 			}
 			var hash string
 			if guard {
-				prior, disabled, discoverErr := shellhook.Discover(ctx, cmd)
-				if discoverErr != nil {
-					return stopFailedStartup(fmt.Errorf("prepare shell guard: %w", discoverErr))
-				}
 				var config, state string
 				config, state, hash, err = shellhook.Config(helper, guardDirectory, sudoDirectory, tracker, prior, disabled)
 				if err == nil {
