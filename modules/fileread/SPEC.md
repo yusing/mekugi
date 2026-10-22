@@ -109,7 +109,8 @@ empty, or continued input, reporting its input index, path, displayed and
 retained omitted inclusive line ranges or `none`, and completion state. One combined
 `next_call: mread A B ...` follows an incomplete bundle, with one retained source per read.
 A complete nonempty read has no row.
-Each body header names its input index, path, and displayed range. Source
+Each body header uses `--- INDEX "PATH" START:END ---`, retaining input identity
+and source coordinates without repeating manifest field labels. Source
 diagnostics appear on stderr with each line prefixed by the source path; redundant
 per-file token-limit lines are omitted because the manifest already reports incompleteness.
 Omitted rows are persisted before the manifest is exposed. Unrecoverable

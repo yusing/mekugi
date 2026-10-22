@@ -72,7 +72,7 @@ func TestMCatMixedPathsAndRanges(t *testing.T) {
 	} {
 		out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil, command, nil, newShellWorkerTestInvocation(directory))
 		if status != 0 || diagnostic != "" || strings.Contains(out, "first two") ||
-			!strings.Contains(out, "shown=1:1") || !strings.Contains(out, "shown=1:2") || !strings.Contains(out, "shown=2:2") {
+			!strings.Contains(out, " 1:1 ---") || !strings.Contains(out, " 1:2 ---") || !strings.Contains(out, " 2:2 ---") {
 			t.Fatalf("%s: %d %q %q", command, status, out, diagnostic)
 		}
 	}
@@ -171,7 +171,7 @@ func TestReadBundleOmitsCompleteRowsAndShowsDiagnostics(t *testing.T) {
 	}
 	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
 		"mcat first second 2:2", nil, newShellWorkerTestInvocation(directory))
-	want := "--- file 1 path=\"first\" shown=1:2 ---\nfirst one\nfirst two\n\n--- file 2 path=\"second\" shown=2:2 ---\nsecond two\n"
+	want := "--- 1 \"first\" 1:2 ---\nfirst one\nfirst two\n\n--- 2 \"second\" 2:2 ---\nsecond two\n"
 	if status != 0 || diagnostic != "" || out != want {
 		t.Fatalf("complete bundle: %d %q %q", status, out, diagnostic)
 	}
@@ -183,7 +183,7 @@ func TestReadBundleOmitsCompleteRowsAndShowsDiagnostics(t *testing.T) {
 	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,
 		"mcat first missing second 2:3", nil, newShellWorkerTestInvocation(directory))
 	want = "2 path=\"missing\" shown=none omitted=none status=failed\n" +
-		"\n--- file 1 path=\"first\" shown=1:2 ---\nfirst one\nfirst two\n\n--- file 3 path=\"second\" shown=2:2 ---\nsecond two\n"
+		"\n--- 1 \"first\" 1:2 ---\nfirst one\nfirst two\n\n--- 3 \"second\" 2:2 ---\nsecond two\n"
 	if status != 1 || out != want || strings.Contains(out, "next_call") ||
 		!regexp.MustCompile(`(?m)^mcat: "missing": ENOENT`).MatchString(diagnostic) ||
 		strings.Contains(diagnostic, "past EOF") {
@@ -210,8 +210,8 @@ func TestMCatMultiplePathsPreserveSingleFileMode(t *testing.T) {
 	}
 	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
 		"mcat first 1:1 'space name' 2:2", nil, newShellWorkerTestInvocation(directory))
-	if status != 0 || diagnostic != "" || !strings.Contains(out, `path="first" shown=1:1`) ||
-		!strings.Contains(out, `path="space name" shown=2:2`) {
+	if status != 0 || diagnostic != "" || !strings.Contains(out, `--- 1 "first" 1:1 ---`) ||
+		!strings.Contains(out, `--- 2 "space name" 2:2 ---`) {
 		t.Fatalf("%d %q %q", status, out, diagnostic)
 	}
 }

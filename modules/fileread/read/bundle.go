@@ -159,7 +159,7 @@ func renderReadBundle(entries []readBundleEntry) string {
 			manifest.WriteByte('\n')
 		}
 		if entry.shown != "" {
-			fmt.Fprintf(&bodies, "\n--- file %d path=%s shown=%s ---\n%s", i+1, path, shown, entry.shown)
+			fmt.Fprintf(&bodies, "\n--- %d %s %s ---\n%s", i+1, path, shown, entry.shown)
 		}
 	}
 	if manifest.Len() == 0 {

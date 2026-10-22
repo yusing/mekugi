@@ -33,7 +33,7 @@ func TestMCatDefaultBudgetFitsSixteenTinyFiles(t *testing.T) {
 	if status != 0 || stderr != "" {
 		t.Fatalf("16-file default bundle: status=%d stderr=%q", status, stderr)
 	}
-	if got := strings.Count(stdout, "--- file "); got != len(paths) {
+	if got := strings.Count(stdout, "--- "); got != len(paths) {
 		t.Fatalf("rendered %d file bodies, want %d: %s", got, len(paths), stdout)
 	}
 	for _, path := range paths {
@@ -42,6 +42,24 @@ func TestMCatDefaultBudgetFitsSixteenTinyFiles(t *testing.T) {
 		}
 	}
 	assertMCatOutputWithinBudget(t, 6000, stdout, stderr)
+	previous := stdout
+	for index, path := range paths {
+		previous = strings.Replace(previous, fmt.Sprintf("--- %d %q 1:1 ---", index+1, path),
+			fmt.Sprintf("--- file %d path=%q shown=1:1 ---", index+1, path), 1)
+	}
+	codec, err := tokenizer.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := codec.Count(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := codec.Count(stdout)
+	if err != nil || after >= before {
+		t.Fatalf("bundle framing did not shrink: before=%d after=%d err=%v", before, after, err)
+	}
+	t.Logf("16-file bundle: %d -> %d tokens (%d saved)", before, after, before-after)
 }
 
 func TestMCatBundleRedistributesUnusedShareAndKeepsOneContinuation(t *testing.T) {
@@ -312,7 +330,7 @@ func mcatBudgetTestDifference(got, want string) string {
 
 func mcatBudgetTestBody(t *testing.T, output string, fileIndex int, path string) string {
 	t.Helper()
-	marker := fmt.Sprintf("--- file %d path=%q shown=", fileIndex, path)
+	marker := fmt.Sprintf("--- %d %q ", fileIndex, path)
 	_, remaining, found := strings.Cut(output, marker)
 	if !found {
 		t.Fatalf("missing output body for %q: %s", path, output)
@@ -324,7 +342,7 @@ func mcatBudgetTestBody(t *testing.T, output string, fileIndex int, path string)
 	if footer, _, found := strings.Cut(body, "\nnext_call:"); found {
 		body = footer
 	}
-	if next, _, found := strings.Cut(body, "\n--- file "); found {
+	if next, _, found := strings.Cut(body, "\n--- "); found {
 		body = next
 	}
 	return body

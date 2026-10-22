@@ -108,14 +108,14 @@ func TestBundleDeliveryUsesActualReferencesAndCapturedRows(t *testing.T) {
 
 func bundleBody(t *testing.T, output string, index int) string {
 	t.Helper()
-	header := fmt.Sprintf("--- file %d path=", index)
+	header := fmt.Sprintf("--- %d ", index)
 	start := strings.Index(output, header)
 	if start < 0 {
 		return ""
 	}
 	start += strings.IndexByte(output[start:], '\n') + 1
 	body := output[start:]
-	if end := strings.Index(body, "\n--- file "); end >= 0 {
+	if end := strings.Index(body, "\n--- "); end >= 0 {
 		body = body[:end]
 	}
 	return body
