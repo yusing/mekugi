@@ -27,7 +27,7 @@ type Span struct {
 	Whole               bool
 }
 
-// Projection retains original text for Add. Callers must leave Spans unchanged.
+// Projection retains original text for Add. Callers may keep an ordered subset of Spans.
 // Render each span as one marker row, preserving its trailing LF when present.
 type Projection struct {
 	Spans []Span

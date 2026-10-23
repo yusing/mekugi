@@ -15,25 +15,28 @@ func (s *Savings) Add(before, after string) {
 	if before == after || s.failed {
 		return
 	}
+	original, projected := s.count(before), s.count(after)
+	s.saved += original - projected
+}
+
+func (s *Savings) count(text string) int64 {
+	if s.failed {
+		return 0
+	}
 	if s.codec == nil {
 		var err error
 		s.codec, err = tokenizer.New()
 		if err != nil {
 			s.failed = true
-			return
+			return 0
 		}
 	}
-	original, err := s.codec.Count(before)
+	count, err := s.codec.Count(text)
 	if err != nil {
 		s.failed = true
-		return
+		return 0
 	}
-	projected, err := s.codec.Count(after)
-	if err != nil {
-		s.failed = true
-		return
-	}
-	s.saved += int64(original) - int64(projected)
+	return int64(count)
 }
 
 // Result preserves projection when auxiliary measurement is unavailable.

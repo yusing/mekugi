@@ -3,6 +3,7 @@ package executionobservation
 import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -25,8 +26,8 @@ func TestPreparedContentRetainsActualDeduplicationAndWholeCell(t *testing.T) {
 	f.end("thread", "runtime")
 	audience := sessioncontrol.NewAudience(nil)
 	audience.Attach("thread")
-	body := strings.Repeat("distinctive repeated file content\n", 40)
-	frame := "Attached file \"file.txt\" (UTF-8 bytes 0:1280 of 1280; " + attachments.ReadGuidance + "):\n" + body
+	body := strings.Repeat("distinctive repeated file content with enough useful context for reference replacement\n", 40)
+	frame := fmt.Sprintf("Attached file %q (UTF-8 bytes 0:%d of %d; %s):\n%s", "file.txt", len(body), len(body), attachments.ReadGuidance, body)
 	first := attachments.Snapshot{ID: "first", Frames: []string{frame}}
 	second := attachments.Snapshot{ID: "second", Frames: []string{frame}}
 	input := []any{

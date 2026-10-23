@@ -19,7 +19,7 @@ func TestDuplicateOutputMeasuredReceiptReachesCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = recorder.Close() })
-	body := strings.Repeat("measured consuming output\n", 30)
+	body := strings.Repeat("measured consuming output with enough useful context for reference replacement\n", 30)
 	repeated := append(duplicateTestInput("first", "a", body), duplicateTestInput("second", "b", body)...)
 	var total int64
 	for i, input := range [][]any{repeated, repeated[:2], nil} {

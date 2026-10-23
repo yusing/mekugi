@@ -27,7 +27,7 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 	summary.RepeatedCalls = make(map[string]string)
 	var repeatedLines, bodyBytes, repeatedBytes int
 	var savings projection.Savings
-	pass := service.NewPass()
+	pass := service.NewPass(&savings)
 	defer pass.Close()
 	changed := false
 	projectBody := func(header, body string) string {

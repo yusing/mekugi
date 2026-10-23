@@ -88,7 +88,7 @@ func TestAcceptanceVisibleSourcesAndReceipts(t *testing.T) {
 
 func TestAcceptanceOriginalPartBounds(t *testing.T) {
 	p := registeredProjection(t)
-	body := block("host")
+	body := block("original host output")
 	header := "Chunk ID: xyz\nWall time: 0.2 seconds\nProcess exited with code 0\nFinal output:\n"
 	for _, originalOutput := range []any{header + body, []item{textPart(header + body)}} {
 		original := encode(t, []item{tool("source", body), {"type": "custom_tool_call_output", "call_id": "repeat", "output": originalOutput}})
@@ -128,6 +128,38 @@ func TestAcceptanceDurableAttachmentBodies(t *testing.T) {
 	if got[1]["output"] != "[same as O1]\n" || result.Receipt == nil || result.Receipt.OutputRepetitions != 2 ||
 		!reflect.DeepEqual(result.Receipt.RepeatedCalls, map[string]string{"tool-repeat": "repeated"}) || len(result.Receipt.RepeatedAttachments) != 0 {
 		t.Fatalf("tool = %+v, receipt = %+v", got[1], result.Receipt)
+	}
+}
+
+func TestAcceptanceTokenGateKeepsLiteralSources(t *testing.T) {
+	p := registeredProjection(t)
+	a, b := strings.Repeat("x", 192)+"\n", strings.Repeat("x", 192)+"y\n"
+	valuable := strings.Repeat("valuable output content ", 40) + "\n"
+	body := a + b + valuable
+	header := fmt.Sprintf("Attached file %q (UTF-8 bytes 0:%d of %d; %s):\n", "/never-open/gate.txt", len(body), len(body), attachments.ReadGuidance)
+	envelope := (attachments.Snapshot{ID: "gate", Frames: []string{header + body}}).Encode()
+	items := []item{tool("valuable", valuable), tool("a", a), tool("b", b),
+		{"role": "user", "content": []item{textPart(envelope)}}, tool("combined", a+b)}
+	input := encode(t, items)
+	original := bytes.Clone(input)
+	result := p.Prepare(input)(input)
+	got := decode(t, result.Input)
+	projected := got[3]["content"].([]any)[0].(map[string]any)["text"].(string)
+	frames, ok := attachments.Decode(projected)
+	if !ok || !reflect.DeepEqual(frames, []string{header + "[O4]\n" + a + b + "[same as O1]\n"}) ||
+		got[4]["output"] != "[same as O4 L1-2]\n" {
+		t.Fatalf("rejected runs lost literal rows or referenceability: frames=%q final=%q", frames, got[4]["output"])
+	}
+	if result.Receipt.OutputRepetitions != 2 || len(result.Receipt.RepeatedAttachments) != 1 ||
+		!reflect.DeepEqual(result.Receipt.RepeatedCalls, map[string]string{"combined": "repeated"}) {
+		t.Fatalf("receipt = %+v", result.Receipt)
+	}
+	prefix := encode(t, items[:4])
+	if earlier := decode(t, p.Prepare(prefix)(prefix).Input); !reflect.DeepEqual(earlier, got[:4]) {
+		t.Fatal("extending rejected runs changed an earlier projection")
+	}
+	if !bytes.Equal(original, input) {
+		t.Fatal("projection mutated original evidence")
 	}
 }
 

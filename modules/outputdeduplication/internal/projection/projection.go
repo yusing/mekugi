@@ -10,9 +10,12 @@ import (
 
 type Service struct{}
 
+const minimumTokenSavings = 32
+
 type Pass struct {
 	index   *matcher.Index
 	sources int
+	savings *Savings
 }
 
 type Result struct {
@@ -21,8 +24,10 @@ type Result struct {
 	RepeatedLines, BodyBytes, RepeatedBytes int
 }
 
-func (Service) NewPass() *Pass { return &Pass{index: matcher.New()} }
-func (p *Pass) Close()         { p.index.Close() }
+func (Service) NewPass(savings *Savings) *Pass {
+	return &Pass{index: matcher.New(), savings: savings}
+}
+func (p *Pass) Close() { p.index.Close() }
 
 // Source: internal/router/output_dedupe.go:33:76@b9a7b3fe.
 func (p *Pass) Text(header, body string) Result {
@@ -32,6 +37,30 @@ func (p *Pass) Text(header, body string) Result {
 		return result
 	}
 	projection := p.index.Project(body)
+	accepted := projection.Spans[:0]
+	markers := make([]string, 0, len(projection.Spans))
+	for _, span := range projection.Spans {
+		var marker strings.Builder
+		fmt.Fprintf(&marker, "[same as O%d", span.Source)
+		if !span.Whole {
+			if span.FirstLine == span.LastLine {
+				fmt.Fprintf(&marker, " L%d", span.FirstLine)
+			} else {
+				fmt.Fprintf(&marker, " L%d-%d", span.FirstLine, span.LastLine)
+			}
+		}
+		marker.WriteByte(']')
+		if body[span.End-1] == '\n' {
+			marker.WriteByte('\n')
+		}
+		reference := marker.String()
+		saved := p.savings.count(body[span.Start:span.End]) - p.savings.count(reference)
+		if !p.savings.failed && saved >= minimumTokenSavings {
+			accepted = append(accepted, span)
+			markers = append(markers, reference)
+		}
+	}
+	projection.Spans = accepted
 	if len(projection.Spans) > 0 {
 		result.Occurrences++
 	}
@@ -50,20 +79,9 @@ func (p *Pass) Text(header, body string) Result {
 		fmt.Fprintf(&text, "[O%d]\n", p.sources)
 	}
 	start := 0
-	for _, span := range projection.Spans {
+	for i, span := range projection.Spans {
 		text.WriteString(body[start:span.Start])
-		fmt.Fprintf(&text, "[same as O%d", span.Source)
-		if !span.Whole {
-			if span.FirstLine == span.LastLine {
-				fmt.Fprintf(&text, " L%d", span.FirstLine)
-			} else {
-				fmt.Fprintf(&text, " L%d-%d", span.FirstLine, span.LastLine)
-			}
-		}
-		text.WriteByte(']')
-		if body[span.End-1] == '\n' {
-			text.WriteByte('\n')
-		}
+		text.WriteString(markers[i])
 		start = span.End
 	}
 	text.WriteString(body[start:])

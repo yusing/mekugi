@@ -51,9 +51,15 @@ live-session JSON envelopes are excluded.
 
 Verbatim runs aligned to logical lines and covering at least 192 bytes may be
 replaced with a reference to earlier output still visible in the same request.
+Each replacement must save at least 32 estimated GPT-5 tokens after counting its
+complete reference, including source ID, row range and trailing newline. Smaller
+savings or an unavailable estimate leave that run verbatim and referenceable.
+The gate counts the matched run and complete reference independently. Surrounding
+BPE token boundaries can make the whole text part's savings differ from this
+standalone estimate; receipts measure the whole changed text part separately.
 Matching is content-based, without line-ending or line-number normalization.
 The bounded matching window covers the last 256 KiB of indexed verbatim text;
-below-threshold units are neither replaced nor indexed. The longest matching run
+units below the byte threshold are neither replaced nor indexed. The longest matching run
 wins, with ties resolved in favor of the most recent source.
 
 References have the form `[same as O3]` or `[same as O3 L40-112]`; a single row
@@ -88,9 +94,11 @@ Unchanged keys and scalar values cancel. Measurement counts complete changed
 text parts, including attachment envelopes, rather than their individual body fragments.
 These pinned GPT-5 estimates are never exact provider input or billed tokens.
 
-An unavailable estimate leaves projection and repetition receipts intact and is
-counted as unmeasured. Tokenization is initialized only when measuring changed
-input, not when composing a frontend worker. Unchanged input has zero savings.
+An unavailable estimate prevents further replacements in that pass and is
+counted as unmeasured; earlier replacements and their receipts remain intact.
+Tokenization is initialized only when evaluating a match or measuring changed
+input, not when composing a frontend worker. The gate and measurement share one
+request-local codec. Unchanged input has zero savings.
 The [metrics contract](../transportdiagnostics/SPEC.md) owns invocation aggregation and
 presentation of these receipts.
 
