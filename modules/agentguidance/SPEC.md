@@ -88,13 +88,13 @@ parts remain intact. Each text part is processed independently, including fenced
 multiple complete blocks are supported. Unmatched markers and bytes outside complete blocks are
 preserved. Filtering also applies to prewarm and execution-free requests.
 
-In Mekugi mode, when `skills-mgr` is executable in the wrapped Codex PATH, the wrapper enforces the
+When `skills-mgr` is executable in the wrapped Codex PATH, the wrapper enforces the
 invocation-local Codex setting `skills.include_instructions=false`, so the stock skill catalog is not
 duplicated alongside the skills-mgr catalog. The router replaces explicitly selected Codex skill
 instructions with the compact identity `<skill name="…"/>` before provider forwarding. This
 idempotent projection applies to ordinary, prewarm, execution-free, and replayed selected-skill
-messages without modifying Codex configuration files. In passthrough mode or when `skills-mgr` is
-unavailable, both stock catalog instructions and selected-skill messages remain unchanged.
+messages without modifying Codex configuration files. When `skills-mgr` is unavailable,
+both stock catalog instructions and selected-skill messages remain unchanged.
 
 Native-composer file and skill frames identify their supplied content as reusable
 read context, so agents need only read sources for edits or missing/newer content.
@@ -189,9 +189,9 @@ command execution remains available. Provider compatibility prose belongs to its
    descriptions exactly once and excludes absent command supplements. Changed valid
    descriptions render directly; the snapshot and projected bytes match.
 5. Omission filtering preserves unmatched markers and all bytes outside complete owned blocks.
-6. In Mekugi mode with `skills-mgr` in PATH, Codex launches disable stock skill-catalog instructions
+6. With `skills-mgr` in PATH, Codex launches disable stock skill-catalog instructions
    after caller overrides and selected skill wrappers reach the provider as `<skill name="…"/>`.
-   In passthrough mode or without `skills-mgr`, neither projection occurs.
+   Without `skills-mgr`, neither projection occurs.
 7. Compaction preserves prompt precedence and emits one ordinary provider request.
    Built-in OpenAI manual/automatic continuation, fresh resume and fork recover
    the exact summary and selected native reader results, without selection metadata.

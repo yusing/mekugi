@@ -86,8 +86,8 @@ retirement preserves the catalog until its final batch, so restart is retryable.
 Mekugi tool replay uses `$XDG_STATE_HOME/mekugi/replay`, defaulting to
 `~/.local/state/mekugi/replay`; a relative `XDG_STATE_HOME` is invalid. This private
 correctness state survives shutdown and restores model-visible tools on resume
-and fork. Initialization failure prevents launch. Passthrough opens storage only
-to retain failures and does not retain tool replay state.
+and fork. Initialization failure prevents launch. Failure reporting can lazily open
+a failure-only store when no retained-session store is supplied.
 
 Cross-process leases cover active turns, host handoffs, workers and yielded calls.
 Session admission resolves the durable namespace before acquiring the thread lease,
