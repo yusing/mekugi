@@ -20,6 +20,7 @@ const (
 	BetaFeaturesHeader     = "x-codex-beta-features"
 	ResponsesLiteHeader    = "x-openai-internal-codex-responses-lite"
 	SubagentHeader         = "x-openai-subagent"
+	GuardianHeader         = "x-codex-guardian"
 	SessionIDHeader        = "Session_id"
 	responsesWebSocketBeta = "responses_websockets=2026-02-06"
 )
@@ -42,6 +43,7 @@ func ForwardHeaders(destination, source http.Header) {
 		BetaFeaturesHeader,
 		ResponsesLiteHeader,
 		SubagentHeader,
+		GuardianHeader,
 		TurnMetadataHeader,
 		// Codex owns this provider-issued, per-turn sticky-routing token. Relay
 		// it unchanged; never derive it from or retain it with the session key.

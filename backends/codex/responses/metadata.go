@@ -25,6 +25,13 @@ type TurnMetadata struct {
 	Compaction              jsonv1.RawMessage            `json:"compaction"`
 }
 
+// ApprovalReview identifies Codex's internal reviewer, not a managed agent.
+// This selects request projection only; Codex retains approval authority.
+func ApprovalReview(headers http.Header, metadata TurnMetadata) bool {
+	return headers.Get(GuardianHeader) == "reviewer" ||
+		headers.Get(SubagentHeader) == "guardian" || metadata.SubagentKind == "guardian"
+}
+
 func DecodeTurnMetadata(headers http.Header) (TurnMetadata, bool) {
 	values := []string{}
 	for name, headerValues := range headers {

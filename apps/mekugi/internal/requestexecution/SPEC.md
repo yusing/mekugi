@@ -16,6 +16,11 @@ reload metadata and returns a native compaction reference only after publication
 the summary and source-snapshot contract. Provider usage and terminal failures
 retain ordinary accounting and delivery paths.
 
+Codex-owned automatic approval reviewers retain their native instructions, tools
+and output schema. They use ordinary provider delivery and accounting without
+entering the managed-agent tree or receiving Mekugi execution guidance. Codex
+continues to own review decisions, reviewer permissions and action execution.
+
 [Execution observation](../executionobservation/SPEC.md) supplies the prepared
 transformer, usage observation and cleanup lifetime. It admits review identity
 before forwarding and rebinds to the execution lifetime after provider admission

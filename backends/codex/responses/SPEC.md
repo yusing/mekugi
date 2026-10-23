@@ -95,6 +95,7 @@ The adapter selects the existing Codex identity, capability, and routing headers
 OpenAI Responses, WebSocket, model-catalog and auxiliary requests preserve the
 incoming `Originator` and `User-Agent` values rather than substituting a client
 identity. Missing values remain unspecified. Unrelated caller headers are excluded.
+The host's Guardian reviewer header is preserved with its other routing facts.
 Capture correlation remains local and adds no provider header.
 Full-input WebSocket requests omit HTTP's
 stream field and reject incremental previous-response dependencies. Existing

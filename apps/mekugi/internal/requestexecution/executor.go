@@ -68,10 +68,11 @@ type requestAttempt struct {
 	started      time.Time
 	trace        Trace
 
-	metadata      codexresponses.TurnMetadata
-	metadataValid bool
-	threadID      string
-	prewarm       bool
+	metadata       codexresponses.TurnMetadata
+	metadataValid  bool
+	approvalReview bool
+	threadID       string
+	prewarm        bool
 
 	prepared        Prepared
 	bridge          codexresponses.Transformer
@@ -177,7 +178,7 @@ func (a *requestAttempt) run() error {
 	if err := a.prepareResponse(); err != nil {
 		return err
 	}
-	if a.metadataValid && a.metadata.RequestKind == responses.Compaction && a.executor.CompactPrompt != nil && a.response.StatusCode >= 200 && a.response.StatusCode < 300 {
+	if !a.approvalReview && a.metadataValid && a.metadata.RequestKind == responses.Compaction && a.executor.CompactPrompt != nil && a.response.StatusCode >= 200 && a.response.StatusCode < 300 {
 		return a.deliverCompactSummary()
 	}
 	return a.deliver()
@@ -195,16 +196,17 @@ func (a *requestAttempt) prepare() error {
 		}
 	}
 	a.metadata, a.metadataValid = codexresponses.DecodeTurnMetadata(a.headers)
+	a.approvalReview = codexresponses.ApprovalReview(a.headers, a.metadata)
 	if a.metadataValid {
 		transportcapture.ObserveRequestKind(a.startCtx, string(a.metadata.RequestKind))
 	}
 	a.threadID = codexresponses.ThreadID(a.headers)
-	if a.executor.Naming != nil && a.metadataValid && a.metadata.RequestKind == responses.Turn {
+	if !a.approvalReview && a.executor.Naming != nil && a.metadataValid && a.metadata.RequestKind == responses.Turn {
 		a.executor.Naming.ObserveInput(a.threadID, a.request.Fields["input"])
 	}
 	a.finalization.threadID = a.threadID
 	a.finalization.turnID = a.metadata.TurnID
-	if a.executor.Observations != nil && a.metadataValid && a.metadata.RequestKind == responses.Compaction {
+	if !a.approvalReview && a.executor.Observations != nil && a.metadataValid && a.metadata.RequestKind == responses.Compaction {
 		if err := codexresponses.ValidateCompaction(&a.request, a.metadata); err != nil {
 			return err
 		}
@@ -225,7 +227,7 @@ func (a *requestAttempt) prepare() error {
 		a.request.Fields["service_tier"] = responses.MustMarshalJSON(tier)
 	}
 
-	if a.executor.Observations != nil {
+	if !a.approvalReview && a.executor.Observations != nil {
 		if guidance := a.executor.Guidance; guidance != nil {
 			if err := ProjectInstructions(&a.request, guidance.BeforePreparation); err != nil {
 				return err
@@ -238,7 +240,7 @@ func (a *requestAttempt) prepare() error {
 	webSocketRequest := a.executor.Exchange != nil
 	a.prewarm = webSocketRequest && a.metadataValid &&
 		a.metadata.RequestKind == responses.Prewarm && string(a.request.Fields["generate"]) == "false"
-	if a.executor.Observations != nil {
+	if !a.approvalReview && a.executor.Observations != nil {
 		automatic := a.executor.Exchange != nil && a.executor.Exchange.State != nil && a.executor.Exchange.State.Automatic()
 		var err error
 		a.prepared, err = a.executor.Observations.Prepare(a.startCtx, &a.request, Preparation{
@@ -269,7 +271,7 @@ func (a *requestAttempt) prepareWire() error {
 	}
 	// Compaction keeps request-wide projections but never gains collaboration
 	// tools or their instructions.
-	compaction := a.metadataValid && a.metadata.RequestKind == responses.Compaction
+	compaction := !a.approvalReview && a.metadataValid && a.metadata.RequestKind == responses.Compaction
 	if compaction && a.executor.CompactPrompt != nil {
 		err = codexresponses.PrepareCompactTurn(&a.request, a.executor.CompactPrompt())
 		if err != nil {
@@ -296,7 +298,7 @@ func (a *requestAttempt) prepareWire() error {
 			}
 		}
 	}
-	if !compaction && (a.prepared != nil || a.prewarm && a.executor.Observations != nil || providerGuidance) {
+	if !a.approvalReview && !compaction && (a.prepared != nil || a.prewarm && a.executor.Observations != nil || providerGuidance) {
 		a.bridge, err = codexresponses.PrepareCollaboration(&a.request, guidance)
 		if err != nil {
 			return fmt.Errorf("prepare collaboration bridge: %w", err)
@@ -304,7 +306,7 @@ func (a *requestAttempt) prepareWire() error {
 	}
 	attachmentsProjected, attachmentIDs := ProjectFileAttachments(&a.request)
 	// Match attachment sources before compact skill rewriting drops native paths.
-	if a.executor.Observations != nil {
+	if !a.approvalReview && a.executor.Observations != nil {
 		if guidance := a.executor.Guidance; guidance != nil {
 			if err := ProjectInstructions(&a.request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
 				return guidance.AfterAttachments(input, a.executor.SkillsManager)
@@ -571,7 +573,7 @@ func (a *requestAttempt) deliver() error {
 }
 
 func (a *requestAttempt) observeTitleSuccess() {
-	if a.finishUsage && a.executor.Naming != nil && a.metadataValid && a.metadata.RequestKind == responses.Turn && !a.prewarm &&
+	if !a.approvalReview && a.finishUsage && a.executor.Naming != nil && a.metadataValid && a.metadata.RequestKind == responses.Turn && !a.prewarm &&
 		a.response.StatusCode >= 200 && a.response.StatusCode < 300 &&
 		a.finalization.upstreamTerminalState == responses.TerminalCompleted {
 		a.executor.Naming.Completed(a.threadID, a.headers)
