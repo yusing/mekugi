@@ -109,6 +109,14 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		default:
 		}
 	}
+	reload := func(address string) {
+		t.Helper()
+		run("reload")
+		run("wait", "--fn", "document.querySelector('button[aria-label=Stop]')?.disabled === false")
+		if run("get", "url") != address {
+			t.Fatal("reload did not retain the selected machine and thread address")
+		}
+	}
 
 	run("--engine", "chrome", "open", page.URL)
 	run("snapshot", "-i")
@@ -121,8 +129,11 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if alphaAddress == betaAddress || !strings.Contains(alphaAddress, "same-thread") || !strings.Contains(betaAddress, "same-thread") {
 		t.Fatal("equal thread IDs did not retain distinct machine addresses")
 	}
+	reload(betaAddress)
+	interrupt(beta, alpha)
 
 	open("Alpha")
+	interrupt(alpha, beta)
 	if err := alpha.bridge.Load().Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +167,9 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	open("Alpha")
 	run("wait", "--text", "Alpha recovered")
 	interrupt(alpha, beta)
+	reload(alphaAddress)
+	run("wait", "--text", "Alpha recovered")
+	interrupt(alpha, beta)
 
 	button("Machines")
 	button("Remove Alpha")
@@ -164,10 +178,30 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	closeDialog()
 	open("Beta")
 	interrupt(beta, alpha)
+	reload(betaAddress)
+	button("Machines")
+	run("wait", "--fn", "!Array.from(document.querySelectorAll('dialog[open] li')).some(row => row.textContent.includes('Alpha'))")
+	closeDialog()
+	interrupt(beta, alpha)
 	add(alpha, "Alpha", strings.TrimSpace(string(token)))
 	run("wait", "--text", "Alpha recovered")
 	interrupt(alpha, beta)
-	t.Log("Built UI passed two-machine identity, routing, reconnect, token replacement, and disconnect acceptance")
+
+	run("eval", "Storage.prototype.setItem = Storage.prototype.removeItem = () => { throw new Error('fixture storage failure'); }")
+	button("Machines")
+	button("Replace token for Alpha")
+	run("find", "label", "Access token", "fill", strings.TrimSpace(string(token)))
+	button("Reconnect")
+	run("wait", "--fn", "document.querySelector('dialog[open] [role=alert]')?.textContent.includes('Reloading may restore older machines or tokens')")
+	run("wait", "--fn", "Array.from(document.querySelectorAll('dialog[open] li')).some(row => row.textContent.includes('Alpha') && row.textContent.includes('Connected'))")
+	button("Remove Alpha")
+	button("Remove")
+	run("wait", "--fn", "!Array.from(document.querySelectorAll('dialog[open] li')).some(row => row.textContent.includes('Alpha')) && document.querySelector('dialog[open] [role=alert]')?.textContent.includes('Reloading may restore older machines or tokens')")
+	closeDialog()
+	run("wait", "--fn", "document.querySelector('[role=alert]')?.textContent.includes('Reloading may restore older machines or tokens')")
+	open("Beta")
+	interrupt(beta, alpha)
+	t.Log("Built UI passed two-machine identity, routing, reconnect, reload persistence, token replacement, and disconnect acceptance")
 }
 
 type webUIBrowserMachine struct {

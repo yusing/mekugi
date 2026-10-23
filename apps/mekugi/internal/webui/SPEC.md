@@ -23,9 +23,13 @@ under their machine, each machine with its connection state, and opens a new
 thread on any of them; on phones it is a drawer. With no machine connected, the
 page asks for one. Machine settings, at the foot of the sidebar, add a machine by
 name, connector URL and access token, replace a refused token, or remove a
-machine. There is no implicit localhost connection. Tokens remain in memory, never
-in URLs, cookies, persistent storage or UI-host requests. Replacing an expired
-token reconnects only that machine.
+machine. There is no implicit localhost connection. Machines and access tokens are
+saved in this browser for the UI origin and reconnect after reload. Use a trusted
+browser; removing a machine deletes its saved credential, and clearing the site's
+browser data forgets all saved machines. Tokens never enter URLs, cookies or
+UI-host requests. Replacing an expired token updates its saved credential and
+reconnects only that machine. Storage failures are visible without preventing
+connections for the current page.
 
 Connections retain independent lists, subscriptions, errors and selected threads.
 The page address identifies connection, logical thread and selected agent. Equal
@@ -122,7 +126,7 @@ The transcript shows Main's activity until a viewer selects another agent in the
 roster; it then shows that agent's own activity under its name and state, with a
 way back to Main. Selection belongs to each viewer, while playback stays shared.
 The page address supports returning to a previous selection with browser history
-while the page stays open; reload clears connections and credentials. Seeking back
+and after reload using the saved machine identity. Seeking back
 to before the selected agent started returns to
 Main.
 Traffic between agents is headed by who sent it to whom: a task, a message, or
@@ -146,7 +150,8 @@ from the connector and does not start an execution server. Container setup and
 remote TLS requirements are documented in the root README's Docker deployment section.
 
 Acceptance covers two explicit machine connections, identical thread IDs, independent
-failure/token rotation, new/resumed threads, first/later uploads and host paths,
+failure/token rotation, machine restoration after reload, saved token replacement
+and removal, storage failures, new/resumed threads, first/later uploads and host paths,
 unknown admission outcomes, prompts and semantic dialogs, shared replay controls,
 server-owned lifetimes, and desktop, tablet and phone layouts in light and dark
 appearances, with primary actions on screen at touch-sized heights.

@@ -3,6 +3,7 @@
   import { tick, untrack } from "svelte";
   import { hub, type Machine } from "./hub.svelte";
   import MachineForm from "./MachineForm.svelte";
+  import Notice from "./ui/Notice.svelte";
   import Button from "./ui/Button.svelte";
   import Dialog from "./ui/Dialog.svelte";
   import Dot from "./ui/Dot.svelte";
@@ -38,6 +39,7 @@
 </script>
 
 <Dialog title="Machines" {onclose}>
+  {#if hub.storageError}<Notice role="alert" class="mb-3">{hub.storageError}</Notice>{/if}
   {#if hub.machines.length}
     <ul class="mb-4 grid">
       {#each hub.machines as machine (machine.id)}
@@ -81,8 +83,8 @@
           {:else if editing?.kind === "remove" && editing.id === machine.id}
             <div class={well} role="group" aria-label="Remove {machine.label}">
               <p>
-                Remove {machine.label} from this page? Its threads keep running on the machine, and you
-                can add it again with its token.
+                Remove {machine.label} and its saved token from this browser? Its threads keep running
+                on the machine, and you can add it again with its token.
               </p>
               <div class="flex justify-end gap-2">
                 <Button variant="quiet" data-first onclick={() => edit(undefined)}>Keep</Button>

@@ -15,7 +15,16 @@ intent types. Credentials are sent only in initialization on the selected connec
 Attachment-bearing submissions use a separately authenticated connection so large
 messages cannot block control; originating view, target and version stay captured.
 Connection identities, not just logical thread IDs, scope state and routing.
-Credentials are memory-only and are cleared on connection removal or page reload.
+The browser retains machine identities, labels, connector URLs and credentials in
+origin-scoped local storage. Reload restores connections with those identities;
+token replacement and machine removal update only the affected saved record, so
+changes in another open page do not overwrite unrelated machines or credentials. Runtime requests,
+subscriptions and session snapshots are acquired afresh, never restored from storage.
+Unreadable or invalid saved data produces a visible warning; valid records still
+restore. Failed writes leave current-page connections usable and report that saved
+machines or tokens may be stale, including inside machine settings. A successful
+write for another machine does not clear an outstanding failure. Credentials are
+cleared on connection removal.
 
 Publications and semantic view types mirror the shared API. Successful mutation
 responses acknowledge admission; subsequent events provide execution outcomes.

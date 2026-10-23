@@ -5,7 +5,7 @@
   import Field from "./ui/Field.svelte";
   import { input } from "./ui/styles";
 
-  // Connects a machine's connector. The token stays in this page's memory.
+  // Connects a machine and saves its credential in this browser.
   let { onadded, oncancel }: { onadded?: () => void; oncancel?: () => void } = $props();
   let label = $state("");
   let endpoint = $state("");
@@ -55,7 +55,8 @@
     On that machine, run <code class="text-ink wrap-anywhere"
       >mekugi connector --origin {location.origin}</code
     >. It listens on port 7778 and prints where its token file is. Beyond localhost, reach it over
-    HTTPS. Reloading this page forgets every machine and token.
+    HTTPS. Machines and tokens are saved in this browser and reconnect after reload. Use a trusted
+    browser; removing a machine deletes its saved token.
   </p>
   {#if error}<Alert>{error}</Alert>{/if}
   <div class="flex justify-end gap-2">

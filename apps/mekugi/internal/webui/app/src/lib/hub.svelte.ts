@@ -13,21 +13,31 @@ import {
 } from "./transport";
 import { select, view } from "./view.svelte";
 
+type SavedMachine = { id: string; label: string; endpoint: string; token: string };
+const storagePrefix = "mekugi.machine.v1:";
+
 export class Machine {
-  readonly id = newIdentity();
+  readonly id: string;
   readonly label: string;
   readonly endpoint: string;
   sessions = $state.raw<Listed[] | undefined>();
   connection = $state<Connection>("connecting");
   error = $state<string | undefined>();
   #connector: Connector;
+  #token: string;
   #stop?: () => void;
 
-  constructor(label: string, endpoint: string, token: string) {
+  constructor(label: string, endpoint: string, token: string, id = newIdentity()) {
+    this.id = id;
     this.label = label.trim();
     if (!this.label) throw new Error("Enter a machine label.");
     this.#connector = new Connector(endpoint, token);
     this.endpoint = this.#connector.endpoint;
+    this.#token = token.trim();
+  }
+
+  saved(): SavedMachine {
+    return { id: this.id, label: this.label, endpoint: this.endpoint, token: this.#token };
   }
 
   request<T>(method: RPCMethod, params?: RPCParams, options?: RequestOptions): Promise<T> {
@@ -79,6 +89,7 @@ export class Machine {
 
   authorize(token: string): void {
     this.#connector.authorize(token);
+    this.#token = token.trim();
     this.connection = "connecting";
     this.error = undefined;
   }
@@ -86,11 +97,61 @@ export class Machine {
   close(): void {
     this.#stop?.();
     this.#connector.close();
+    this.#token = "";
   }
 }
 
 class Hub {
   machines = $state.raw<Machine[]>([]);
+  storageError = $state<string>();
+  #restoreError?: string;
+  #failedWrites = new Set<string>();
+
+  constructor() {
+    try {
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (!key?.startsWith(storagePrefix)) continue;
+        try {
+          const saved = localStorage.getItem(key);
+          if (saved === null) continue;
+          const record = JSON.parse(saved);
+          if (
+            !record ||
+            typeof record.id !== "string" ||
+            !record.id.trim() ||
+            key !== storagePrefix + record.id ||
+            typeof record.label !== "string" ||
+            typeof record.endpoint !== "string" ||
+            typeof record.token !== "string"
+          )
+            throw new Error("Invalid saved machine");
+          this.machines.push(new Machine(record.label, record.endpoint, record.token, record.id));
+        } catch {
+          this.storageError =
+            "Some saved machines could not be restored. Add them again under Machines.";
+        }
+      }
+    } catch {
+      this.storageError =
+        "Saved machines could not be read. Check this site's browser storage settings.";
+    }
+    this.#restoreError = this.storageError;
+    for (const machine of this.machines) machine.start();
+  }
+
+  #save(id: string, machine?: Machine): void {
+    try {
+      if (machine) localStorage.setItem(storagePrefix + id, JSON.stringify(machine.saved()));
+      else localStorage.removeItem(storagePrefix + id);
+      this.#failedWrites.delete(id);
+    } catch {
+      this.#failedWrites.add(id);
+    }
+    this.storageError = this.#failedWrites.size
+      ? "Machine changes could not be saved. Reloading may restore older machines or tokens. Check this site's browser storage settings."
+      : this.#restoreError;
+  }
 
   get selected(): Machine | undefined {
     return this.machines.find((machine) => machine.id === view.machine);
@@ -100,6 +161,7 @@ class Hub {
     try {
       const machine = new Machine(label, endpoint, token);
       this.machines = [...this.machines, machine];
+      this.#save(machine.id, machine);
       machine.start();
       // Adding a machine from a thread leaves that thread on screen.
       if (!view.session) select(machine.id);
@@ -112,6 +174,7 @@ class Hub {
   remove(id: string): void {
     this.machines.find((machine) => machine.id === id)?.close();
     this.machines = this.machines.filter((machine) => machine.id !== id);
+    this.#save(id);
     if (view.machine === id) select(undefined);
   }
 
@@ -120,6 +183,7 @@ class Hub {
     if (!machine) return "This machine connection was removed.";
     try {
       machine.authorize(token);
+      this.#save(id, machine);
       return undefined;
     } catch (error) {
       return error instanceof Error

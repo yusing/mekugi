@@ -41,7 +41,7 @@ sessions, and patch review. Invocation overrides leave Codex configuration uncha
   thread from a native terminal or remote client; closing either leaves work running.
 - **Browser control across machines.** [Connect from a desktop or phone](#browser-ui)
   to create, follow and control threads, or replay saved sessions. Each connection
-  keeps its own machine identity and in-memory credential.
+  keeps its own machine identity and reconnects after page reload.
 - **Live subagent activity.** See model, effort, progress, and child-authored reply summaries
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
 - **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);
@@ -206,7 +206,11 @@ of the sidebar. There is no default connection.
 Configure the connector's allowed origin to match the page's exact origin, for
 example `mekugi connector --origin http://127.0.0.1:7777` for local use. For remote
 use, serve the page over HTTPS and the connector through a WSS reverse proxy.
-Tokens stay in browser memory; reload clears connections and credentials.
+Machines and access tokens are saved in this browser for the page's origin, so
+reload reconnects them and restores the thread selected in the page address. Use
+a trusted browser. Removing a machine under **Machines** deletes its saved token;
+clearing this site's browser data forgets all machines. Browser storage failures
+show a warning while connections remain usable for the current page.
 
 The sidebar lists each machine's threads. **New thread** starts one from its
 first message; the composer's **+** menu also resumes a saved thread or opens a

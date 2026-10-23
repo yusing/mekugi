@@ -114,6 +114,9 @@
     ]}
     inert={modal}
   >
+    {#if hub.storageError && !settings}<Notice role="alert" class="m-3 flex-none"
+        >{hub.storageError}</Notice
+      >{/if}
     {#if machine && thread}
       {#key `${machine.id}:${thread}`}
         <ThreadView
