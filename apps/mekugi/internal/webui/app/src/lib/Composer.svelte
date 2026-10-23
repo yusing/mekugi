@@ -429,7 +429,9 @@
       {:else if !shell && view?.Caption.Model}<span
           class="ml-1.5 min-w-0 truncate text-small text-muted max-sm:hidden"
           title="Model and reasoning effort"
-          >{view.Caption.Model}{view.Caption.Effort ? ` · ${view.Caption.Effort}` : ""}</span
+          >{view.Caption.Model}{#if view.Caption.Effort}<span class="ml-2"
+              >{view.Caption.Effort}</span
+            >{/if}</span
         >{/if}
       <span class="flex-1"></span>
       {#if pending}<Button variant="quiet" onclick={() => pending?.abort()}>Cancel</Button>

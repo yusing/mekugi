@@ -254,7 +254,7 @@
     <!-- One element throughout, so focus moved here stays as it loads. -->
     <h1
       bind:this={heading}
-      class="min-w-0 truncate text-base font-semibold focus:outline-none max-sm:pl-2"
+      class="max-w-[50%] min-w-0 flex-none truncate text-base font-semibold focus:outline-none max-sm:max-w-none max-sm:flex-1 max-sm:pl-2"
       title={session?.workspace}
       tabindex="-1"
     >
@@ -268,7 +268,13 @@
     {#if session}
       <Popover label="Session details" icon="info">
         {#snippet children(close)}
-          <SessionInfo {session} {playback} {root} status={statusLabel} />
+          <SessionInfo
+            {session}
+            {playback}
+            {root}
+            status={statusLabel}
+            alert={!ended && !!stream.status.alert}
+          />
           <div class="grid gap-2 px-4.5 pb-4">
             <p class="text-small text-muted">Continue in a terminal on {machine.label}</p>
             <div class="flex items-center gap-1 rounded-control bg-raised py-0.5 pr-0.5 pl-2.5">
@@ -296,11 +302,11 @@
       {#if playback}<Tag>Replay</Tag>{:else if live && !ended}<Tag tone="live">Live</Tag>{/if}
       <span class="flex-none text-small text-muted">{machine.label}</span>
     </span>
-    <div class="ml-auto flex flex-none items-center gap-0.5">
+    <div class="ml-auto flex min-w-0 items-center justify-end gap-0.5">
       {#if session && statusLabel}
         <span
           class={[
-            "mr-2 inline-flex items-center gap-2 whitespace-nowrap max-sm:mr-0.5",
+            "mr-2 inline-flex min-w-0 items-center gap-2 max-sm:mr-0.5",
             !ended && stream.status.alert
               ? "text-negative"
               : !ended && stream.status.running
@@ -314,7 +320,7 @@
               : !ended && stream.status.running
                 ? "running"
                 : "idle"}
-          /><span class="max-sm:hidden">{statusLabel}</span></span
+          /><span class="truncate max-sm:hidden">{statusLabel}</span></span
         >
       {/if}
       {#if session || !gone}

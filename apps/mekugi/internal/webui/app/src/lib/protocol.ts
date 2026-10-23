@@ -91,6 +91,8 @@ export interface Value {
   // A compound command's combined result; without code, its steps are listed before it.
   batchExit?: boolean;
   label?: string;
+  // Programs that made a file edit, outside its label.
+  sources?: string[];
   code?: string;
   lang?: string;
   fenced?: boolean;

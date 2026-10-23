@@ -89,7 +89,7 @@
             ]}
           >
             {state.text}{#if machine.connection === "required"}
-              · <button type="button" class="underline" onclick={() => onmachines(machine)}
+              <button type="button" class="ml-2 underline" onclick={() => onmachines(machine)}
                 >Replace token</button
               >{/if}
           </p>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { doing, since, stateLabel, worked } from "./agents";
-  import { cost, duration, tokens } from "./format";
+  import { atLeast, cost, duration, tokens } from "./format";
   import type { Agent, Entry, Roster } from "./protocol";
   import Dot, { type Tone } from "./ui/Dot.svelte";
   import { emptyBox, skeleton } from "./ui/styles";
@@ -26,7 +26,8 @@
 
   const agents = $derived(roster.agents);
   const lines = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const unit = (n: number, word: string) => (n === 1 ? word : `${word}s`);
+  const plural = (n: number, word: string) => `${n} ${unit(n, word)}`;
   // How many agents are working, done, or failed, for the heading.
   const tallies = $derived(
     (["working", "done", "error"] as const)
@@ -61,11 +62,10 @@
       }
       partial ||= !!a.usagePartial || !!a.costPartial;
     }
-    const lower = partial ? "≥" : "";
     return {
-      input: tokensKnown ? `${lower}${tokens(input)}` : undefined,
-      output: tokensKnown ? `${lower}${tokens(output)}` : undefined,
-      cost: costKnown ? `${lower}${cost(usd)}` : undefined,
+      input: tokensKnown ? atLeast(tokens(input), partial) : undefined,
+      output: tokensKnown ? atLeast(tokens(output), partial) : undefined,
+      cost: costKnown ? atLeast(cost(usd), partial) : undefined,
     };
   });
 
@@ -84,12 +84,17 @@
   const sub = "pl-4 text-small leading-[18px]";
 </script>
 
-{#snippet metric(label: string, value: string)}
-  <span class="flex min-w-0 items-baseline justify-between gap-2">
-    <span class="text-muted">{label}</span><span class="whitespace-nowrap text-ink tabular-nums"
-      >{value}</span
-    >
-  </span>
+<!-- A value with its unit in muted ink: 33.72M in, 7 turns. -->
+{#snippet metric(value: string, unit: string, title?: string)}
+  <span class="whitespace-nowrap" {title}
+    ><span class="text-ink">{value}</span> <span class="text-muted">{unit}</span></span
+  >
+{/snippet}
+{#snippet changed(added = 0, removed = 0, title?: string)}
+  <span class="whitespace-nowrap" {title}
+    ><span class="text-positive">+{added}</span>
+    <span class="text-negative">−{removed}</span></span
+  >
 {/snippet}
 
 <div class="mt-3.5 mb-0.5 flex items-baseline gap-2.5">
@@ -98,25 +103,24 @@
     <span class="text-small text-muted tabular-nums">
       {#if whole}<span class={tallyInk[tallies[0].state]}>{tallies[0].text}</span
         >{:else}{agents.length}{#each tallies as tally (tally.state)}<span
-            class={tallyInk[tally.state]}>{` · ${tally.text}`}</span
+            class="ml-2 {tallyInk[tally.state] ?? ''}">{tally.text}</span
           >{/each}{/if}
     </span>
   {/if}
 </div>
 {#if roster.added || roster.removed || totals.input || totals.cost}
-  <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-small tabular-nums">
-    {#if roster.added || roster.removed}<span
-        title="Net lines changed in the workspace ({lines(roster.added ?? 0)} added, {lines(
-          roster.removed ?? 0,
-        )} removed)"
-        ><span class="text-positive">+{roster.added ?? 0}</span>
-        <span class="text-negative">−{roster.removed ?? 0}</span></span
-      >{/if}
-    {#if totals.input}{@render metric("Input", totals.input)}{@render metric(
-        "Output",
-        totals.output!,
+  <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-small tabular-nums">
+    {#if roster.added || roster.removed}{@render changed(
+        roster.added,
+        roster.removed,
+        `Net lines changed in the workspace (${lines(roster.added ?? 0)} added, ${lines(roster.removed ?? 0)} removed)`,
       )}{/if}
-    {#if totals.cost}{@render metric("Cost", totals.cost)}{/if}
+    {#if totals.input}{@render metric(totals.input, "in", "Input tokens")}{@render metric(
+        totals.output!,
+        "out",
+        "Output tokens",
+      )}{/if}
+    {#if totals.cost}<span class="text-ink" title="Cost">{totals.cost}</span>{/if}
   </div>
 {/if}
 
@@ -141,7 +145,7 @@
         <button
           type="button"
           class={[
-            "grid w-full min-w-0 gap-1.5 rounded-card px-2.5 py-2.5 text-left pointer-coarse:py-[11px]",
+            "relative grid w-full min-w-0 gap-1 rounded-card px-2.5 pt-2 pb-3 text-left pointer-coarse:pt-[11px] pointer-coarse:pb-[13px]",
             agent.name === selected ? "bg-accent-tint" : "hover:bg-raised",
           ]}
           aria-current={agent.name === selected ? "true" : undefined}
@@ -163,52 +167,56 @@
               {#if what.html}<span>{@html what.html}</span>{/if}
             {:else}
               {stateLabel[agent.state]}{#if replied && agent.state !== "working"}<span
-                  class="text-muted">{` · replied ${replied}`}</span
+                  class="ml-2 text-muted">replied {replied}</span
                 >{/if}
             {/if}
           </span>
-          <span class="{sub} grid grid-cols-2 gap-x-4 gap-y-1 tabular-nums">
-            {#if agent.inputTokens !== undefined}
-              {@render metric(
-                "Input",
-                `${agent.usagePartial ? "≥" : ""}${tokens(agent.inputTokens)}`,
-              )}
-              {@render metric(
-                "Output",
-                `${agent.usagePartial ? "≥" : ""}${tokens(agent.outputTokens ?? 0)}`,
-              )}
-            {/if}
-            {#if agent.cost !== undefined}{@render metric(
-                "Cost",
-                `${agent.costPartial ? "≥" : ""}${cost(agent.cost)}`,
+          <span class="{sub} flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums empty:hidden">
+            {#if agent.added || agent.removed}{@render changed(
+                agent.added,
+                agent.removed,
+                "Lines this agent changed",
               )}{/if}
-            {#if agent.turns}{@render metric("Turns", String(agent.turns))}{/if}
-            {#if agent.skills?.length}<span title={agent.skills.join(", ")}
-                >{@render metric("Skills", String(agent.skills.length))}</span
+            {#if agent.inputTokens !== undefined}{@render metric(
+                atLeast(tokens(agent.inputTokens), agent.usagePartial),
+                "in",
+                "Input tokens",
+              )}{@render metric(
+                atLeast(tokens(agent.outputTokens ?? 0), agent.usagePartial),
+                "out",
+                "Output tokens",
+              )}{/if}
+            {#if agent.cost !== undefined}<span class="text-ink" title="Cost"
+                >{atLeast(cost(agent.cost), agent.costPartial)}</span
               >{/if}
-            {#if agent.added || agent.removed}<span class="flex justify-between gap-2 text-muted"
-                ><span>Changes</span><span class="whitespace-nowrap"
-                  ><span class="text-positive">+{agent.added ?? 0}</span>
-                  <span class="text-negative">−{agent.removed ?? 0}</span></span
+            {#if agent.turns}{@render metric(String(agent.turns), unit(agent.turns, "turn"))}{/if}
+            {#if agent.roundtrips}{@render metric(
+                String(agent.roundtrips),
+                unit(agent.roundtrips, "round trip"),
+              )}{/if}
+            {#if agent.skills?.length}{@render metric(
+                String(agent.skills.length),
+                unit(agent.skills.length, "skill"),
+                agent.skills.join(", "),
+              )}{/if}
+            {#each agent.items ?? [] as item, i (i)}<span class="text-muted">{item}</span>{/each}
+            {#if agent.context !== undefined}<span class="whitespace-nowrap" title="Context used"
+                ><span class="text-ink">{tokens(agent.context)}</span>
+                <span class="text-muted"
+                  >{agent.window ? `of ${tokens(agent.window)} context` : "context"}</span
                 ></span
               >{/if}
-            {#each agent.items ?? [] as item, i (i)}<span class="col-span-2 text-muted">{item}</span
-              >{/each}
           </span>
+          <!-- The context bar runs along the card's foot rather than taking a row. -->
           {#if agent.context !== undefined && agent.window}
-            {@const used = Math.min(100, (agent.context / agent.window) * 100)}
             <span
-              class="{sub} mt-0.5 grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-1 text-muted tabular-nums"
+              class="absolute inset-x-2.5 bottom-1 h-[3px] overflow-hidden rounded-full bg-active"
+              aria-hidden="true"
+              ><span
+                class="block h-full bg-accent"
+                style:width="{Math.min(100, (agent.context / agent.window) * 100)}%"
+              ></span></span
             >
-              <span>Context</span><span class="whitespace-nowrap"
-                >{tokens(agent.context)} / {tokens(agent.window)}</span
-              >
-              <span
-                class="col-span-2 h-1 w-full overflow-hidden rounded-full bg-active"
-                aria-hidden="true"
-                ><span class="block h-full bg-accent" style:width="{used}%"></span></span
-              >
-            </span>
           {/if}
         </button>
       </li>

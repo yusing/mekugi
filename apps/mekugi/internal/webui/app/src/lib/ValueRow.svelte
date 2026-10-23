@@ -160,6 +160,8 @@
           >{/if}</code
       >
     {/if}
+    {#each value.sources ?? [] as source, i (i)}<Tag mono class="ml-1.5 align-[1px]">{source}</Tag
+      >{/each}
     {#if value.autoReload}<span class="ml-2 inline-block whitespace-nowrap text-small text-muted"
         >(auto reloaded)</span
       >{/if}
@@ -175,7 +177,7 @@
         aria-expanded={outputOpen}
         aria-label={`Output: ${output}`}
         title={`Output: ${output}`}
-        class="inline-flex items-center gap-1 font-sans text-small text-muted hover:text-ink max-sm:min-h-9"
+        class="-my-1.5 inline-flex min-h-8 items-center gap-1 rounded-control px-2 font-sans text-small text-muted hover:bg-active hover:text-ink max-sm:min-h-11"
         onclick={() => (outputOpen = !outputOpen)}
       >
         <span class={outputOpen ? "rotate-0" : "-rotate-90"}><Icon name="chevron" size={12} /></span
@@ -255,7 +257,7 @@
               >{@html `${count("+", String(footer.added ?? 0))} ${count("−", String(footer.removed ?? 0))}`}</span
             >
           {/if}
-          {#if footer.note}<span>{footer.note}</span>{/if}
+          {#each footer.note?.split(" · ") ?? [] as note, i (i)}<span>{note}</span>{/each}
         </div>
       {/if}
     </div>

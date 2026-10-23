@@ -80,9 +80,12 @@ accepted admission does not permanently disable a prompt still awaiting resoluti
 While Main is displayed, the composer shows its model and reasoning effort as
 pickers. Each opens the thread's own `/model` or `/effort` menu above the composer;
 choosing applies the setting and leaves the draft unchanged.
-Beside reasoning effort, a flash toggle applies the thread's priority service tier
-or restores its default tier. Its yellow foreground reflects the confirmed fast
-setting; refusal leaves the setting unchanged and shows the server's error.
+Beside reasoning effort, a Fast toggle, labelled with a flash icon and its name,
+applies the thread's priority service tier or restores its default tier. Its
+yellow ink and tint reflect the confirmed fast setting; refusal leaves the
+setting unchanged and shows the server's error. Choosing or closing a picker
+hides its menu at once; a menu the server opens in response shows once the
+choice settles.
 Reopening a picker or
 revisiting a completion query shows cached choices while the current control view
 refreshes them. Choices become actionable after that refresh; cached menu identities
@@ -114,7 +117,9 @@ agent selection independently. Recorded model text is labelled as simulated.
 A thread shows a centered transcript with the composer for a live session, or
 the playback clock for a replay, docked below it. Session identifiers, timing,
 usage, the continuation command and End sit behind an information button. The
-agent roster is a collapsible right panel toggled from the thread header. Each
+agent roster is a collapsible right panel toggled from the thread header; a long
+status truncates there so the title and toggle stay visible, and the details
+show it in full. Each
 transcript row offers its details, which open in the same right panel; on narrow
 screens both panels open as sheets over the transcript. User turns sit on the right of the
 transcript and agent activity on the left. Bound image, file, skill and selection
@@ -124,7 +129,9 @@ cannot be read. Empty items have no expansion control. Attachment events show th
 names and auto-reload state, with columns sized to the visible verbs. Questions
 show identical heading and body text only once. Output counts share the
 event heading instead of occupying a separate collapsed row. Search patterns use accent ink, separate from their path operands. Compound
-labels use spaced segments and command chips instead of separator punctuation.
+labels use spaced segments and command chips instead of separator punctuation;
+the programs that made an edit show as chips after its path. Output toggles
+keep a control-sized target.
 Session details sit beside the thread title. Shell input is syntax-highlighted while editing. A compound command's combined result
 follows its classified steps as an outcome and output row, without repeating
 what the steps show; a result with no classified steps shows the command that
@@ -144,11 +151,12 @@ recording, Space or `p` restarts, as the play button does.
 The roster lists Main and its agents as a tree by display name, as the terminal
 roster does. Each agent shows its role, its state (working, idle, done or
 error), what a working agent is doing now or when a finished one last replied,
-its work time, the lines it changed, token usage, cost, turns, skills and
-context use. Usage that is only partly known is shown as a lower bound. The
-roster uses aligned, labelled usage rows rather than a run of metric symbols. The
-roster heading counts agents by state and totals the session's changed lines,
-usage and cost.
+its work time, the lines it changed, token usage, cost, turns, round trips,
+skills, output rate and context use. Usage that is only partly known is shown
+as a lower bound with a trailing plus. A card has a name row, a state row and a
+wrapping row of values with muted units, rather than a run of metric symbols;
+a context bar runs along its foot. The roster heading counts agents by state
+and totals the session's changed lines, usage and cost.
 
 The transcript shows Main's activity until a viewer selects another agent in the
 roster; it then shows that agent's own activity under its name and state, with a

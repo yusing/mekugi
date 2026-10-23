@@ -48,6 +48,11 @@ export function cost(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
+// Usage that is partly unknown is a lower bound, as 33.72M+.
+export function atLeast(text: string, partial?: boolean): string {
+  return partial ? `${text}+` : text;
+}
+
 export function bytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KiB`;

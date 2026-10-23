@@ -36,13 +36,13 @@
     },
   ];
 
+  // Choosing or closing hides the menu at once; a menu the server opens in
+  // response, such as effort after a model, shows once the choice settles.
   async function choose(kind: number, choice: ChoiceID = { ID: 0, Name: "", Path: "" }) {
     const attachment = semantic.event?.attachment;
     const setting = menu?.Setting;
-    if (kind === 1) {
-      dismissed = true;
-      await opening;
-    }
+    dismissed = true;
+    if (kind === 1) await opening;
     const view = semantic.frame?.view;
     const live = view?.Menu;
     if (
@@ -123,14 +123,15 @@
   {/each}
   <button
     type="button"
-    class="{chip} flex-none"
+    class={[chip, "flex-none", fast && "border-warning-edge bg-warning-tint"]}
     title={fast ? "Disable fast mode" : "Enable fast mode"}
-    aria-label="Fast mode"
     aria-pressed={fast}
     aria-busy={tierPending}
     disabled={disabled || tierPending || semantic.pending > 0}
     onclick={toggleFast}
-    ><span class={fast ? "text-warning-ink" : "text-muted"}><Icon name="hook" /></span></button
+    ><span class={["flex items-center gap-1.5", fast && "text-warning-ink"]}
+      ><Icon name="flash" size={14} /><span>Fast</span></span
+    ></button
   >
   {#if menu}
     <div
