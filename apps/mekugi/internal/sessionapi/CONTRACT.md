@@ -157,7 +157,8 @@ question content throughout prompts, Activity and details, using the shared
 public projection policy. They also omit terminal renderer state that remote
 clients read through `session/subscribe`: review, agent feeds, live previews,
 output windows and pacing. Main remains only while a side conversation is
-displayed. Attachment submissions retain the ordered descriptors, limits and
+displayed. A raw command sent without editor metadata leaves every draft
+unchanged. Attachment submissions retain the ordered descriptors, limits and
 preparation ownership defined below.
 
 A remote composer Submit/Queue operation carries `input` with the same `text`

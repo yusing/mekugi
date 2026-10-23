@@ -464,7 +464,8 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					if requestEditor.Text != "" && err == nil {
 						view.effects.add(sessionapi.NativeEffect{Thread: intent.Thread, Restore: new(requestEditor.Draft.Clone())})
 					}
-				} else if recovery == nil && requestEditor.Text == "" {
+				} else if recovery == nil && requestEditor.Text == "" && (operation.Composer != nil || operation.Editor != nil) {
+					// A raw command without editor metadata never occupied a draft.
 					view.effects.add(sessionapi.NativeEffect{Thread: inputThread, Target: new(intent.Target), Action: &composer.Action{Kind: composer.DeleteAction, Start: 0, End: len(before.Text)}})
 				}
 			}

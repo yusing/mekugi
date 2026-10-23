@@ -77,6 +77,12 @@ func TestNativeProgressAdmitsEffortAndReferenceAtOwner(t *testing.T) {
 		if event.Frame.View.Version == captured.Frame.View.Version {
 			t.Fatal("fixture did not advance publication")
 		}
+		// A raw command never occupied a draft, so none may be edited.
+		for _, effect := range event.Frame.Effects {
+			if effect.Action != nil {
+				t.Fatalf("raw command edited a draft: %+v", effect)
+			}
+		}
 		intent := sessionpresentation.ComposerIntent{Version: captured.Frame.View.Version, Thread: captured.Frame.View.Input.ID, Operation: step.operation}
 		send(captured.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: intent}})
 		await(func() bool { return event.Frame.View.Caption.Effort == step.want })
