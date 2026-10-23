@@ -92,7 +92,7 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	client := newTestProviderClient(upstream.URL, upstream.Client())
 	// Seed the shared host cache with the unsupported account metadata from a
 	// previous invocation. The new invocation's URL must prevent its reuse.
-	previous := httptest.NewServer(inferencegateway.ModelsHandler(client, false, nil))
+	previous := httptest.NewServer(inferencegateway.ModelsHandler(client, false, nil, nil))
 	defer previous.Close()
 	seed := exec.CommandContext(ctx, codex, "-c", "openai_base_url="+strconv.Quote(previous.URL+"/v1"), "debug", "models")
 	seed.Env = environment
@@ -100,7 +100,7 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	if err != nil || !bytes.Contains(seeded, []byte(`"tool_mode":"code_mode"`)) {
 		t.Fatalf("seed unsupported account catalog: %v", err)
 	}
-	models := inferencegateway.ModelsHandler(client, true, nil)
+	models := inferencegateway.ModelsHandler(client, true, nil, nil)
 	workspace := t.TempDir()
 	proxy := newManagedMekugiProxy(t)
 	fixture := &toolFrontendCodexProvider{

@@ -23,6 +23,11 @@ while preserving storage identity and turn leases. Invocation startup constructs
 and closes its actual owners; request cleanup closes only that response's
 observations.
 
+An admitted Thread Control wait can finish its host turn locally with an empty
+completed response. It sends no provider request, charges no provider usage and
+adds no user input. Logical waiting and subsequent attributed continuations stay
+with Thread Control rather than the request lifetime.
+
 Raw provider usage is observed before response projection. Definite provider
 rejections do not charge inferred execution; uncertain transport failures retain
 the existing accounting distinction. Pinned provider prices survive catalog

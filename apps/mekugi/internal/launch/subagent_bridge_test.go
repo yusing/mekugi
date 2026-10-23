@@ -44,7 +44,7 @@ func TestModelsHandlerPreservesNativeCatalogWithGrokEnabled(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	request.Header = codexAuthHeaders()
 	response := httptest.NewRecorder()
-	inferencegateway.ModelsHandler(provider, false, (*requestexecution.Failures)(nil).ReportCatalog)(response, request)
+	inferencegateway.ModelsHandler(provider, false, (*requestexecution.Failures)(nil).ReportCatalog, nil)(response, request)
 	if response.Code != http.StatusOK || response.Body.String() != body || response.Header().Get("ETag") != `"native-etag"` {
 		t.Fatalf("native catalog was rewritten: status=%d body=%s etag=%s", response.Code, response.Body.String(), response.Header().Get("ETag"))
 	}

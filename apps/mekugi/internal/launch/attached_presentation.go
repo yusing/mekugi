@@ -29,6 +29,8 @@ type executionPresentation struct {
 	reserveThread       func(string) error
 	nativeImages        func(func(string))
 	rewindArchive       func(string)
+	interruptWait       func(string, string)
+	threadInput         *threadInput
 }
 
 // attachedPresentation combines a borrowed execution attachment with one view's

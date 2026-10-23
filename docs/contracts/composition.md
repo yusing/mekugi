@@ -30,6 +30,10 @@ which connections a module declares. The executable-frontend connection exposes
 the descriptor's complete command contributions, without a second command list in
 the binding. A missing connection or a connection without commands fails activation.
 
+MCP bindings contribute their complete typed tool catalogs through the same descriptor
+registry. Invocation transports receive those registrations; neither transports
+nor application routing define another tool list.
+
 Typed dependency closures resolve earlier handles. Constructors assemble state
 without acquiring resources. Startup acquires invocation resources after
 construction and binding succeed; shutdown and failed startup drain in reverse

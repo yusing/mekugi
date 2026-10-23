@@ -10,6 +10,7 @@ import (
 )
 
 type Registrar interface {
+	MCP(MCPServer) error
 	Observation(Observation) error
 	Rollout(func(RolloutSource) error) error
 	Frontend(command.Spec) error
@@ -26,6 +27,7 @@ type Binder interface {
 
 // Registry validates and retains composition-ordered Codex connections.
 type Registry struct {
+	mcp          []MCPServer
 	observations *Observation
 	guards       []ShellApproval
 	commands     []command.Spec
@@ -35,6 +37,9 @@ type Registry struct {
 }
 
 func (r *Registry) Capability(mechanism capability.Mechanism) capability.Result {
+	if mechanism == capability.MCPTools {
+		return capability.Result{State: capability.Available, Reason: "composed invocation-local MCP tools"}
+	}
 	if mechanism == capability.Observation {
 		return capability.Result{State: capability.Available, Reason: "public transcript and reasoning observations"}
 	}

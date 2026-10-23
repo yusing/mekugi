@@ -19,9 +19,15 @@ type Bindings[S any] struct {
 	Guidance        func(S) Guidance
 	SessionNaming   func(S) SessionNaming
 	ShellApproval   func(S) ShellApproval
+	MCP             func(S) MCPServer
 }
 
 func (b Bindings[S]) Register(r Registrar, service S, commands []command.Definition[S]) error {
+	if b.MCP != nil {
+		if err := r.MCP(b.MCP(service)); err != nil {
+			return err
+		}
+	}
 	if b.Frontends {
 		for _, definition := range commands {
 			if err := r.Frontend(definition.Spec); err != nil {
@@ -75,6 +81,7 @@ func (b Bindings[S]) Reference() module.BindingReference {
 		{capability.ThreadNaming, b.SessionNaming != nil},
 		{capability.ShellApproval, b.ShellApproval != nil},
 		{capability.Observation, b.Observation != nil},
+		{capability.MCPTools, b.MCP != nil},
 	} {
 		if connection.declared {
 			r.Mechanisms = append(r.Mechanisms, connection.mechanism)

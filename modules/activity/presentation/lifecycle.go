@@ -10,6 +10,8 @@ import (
 type AgentLifecycle struct {
 	WorkTimer    WorkTimer `json:",omitzero"`
 	Responding   bool      `json:",omitzero"`
+	Waiting      bool      `json:",omitzero"`
+	Paused       bool      `json:",omitzero"`
 	Final        bool      `json:",omitzero"`
 	Started      time.Time `json:",omitzero"`
 	LastResponse time.Time `json:",omitzero"`
@@ -17,6 +19,9 @@ type AgentLifecycle struct {
 }
 
 func (a *AgentLifecycle) ObserveActive(active bool, at time.Time) {
+	if a.Waiting {
+		return
+	}
 	// Status alone cannot establish the first turn's start.
 	if active && a.Started.IsZero() {
 		return
@@ -29,6 +34,8 @@ func (a *AgentLifecycle) ObserveActive(active bool, at time.Time) {
 }
 
 func (a *AgentLifecycle) TurnStarted(at time.Time) {
+	a.Paused = false
+	a.Waiting = false
 	a.WorkTimer.update(true, at)
 	a.Responding, a.Final = true, false
 	if a.Started.IsZero() {
@@ -39,8 +46,21 @@ func (a *AgentLifecycle) TurnStarted(at time.Time) {
 
 // TurnCompleted receives only a completion admitted for the current turn.
 func (a *AgentLifecycle) TurnCompleted(completed bool, at time.Time) {
+	if a.Waiting && completed {
+		return
+	}
+	a.Waiting = false
 	a.WorkTimer.update(false, at)
 	a.Responding, a.LastResponse, a.Final = false, at, completed
+}
+
+// SetWaiting applies detached logical work without inventing a host turn.
+func (a *AgentLifecycle) SetWaiting(waiting bool, at time.Time) {
+	if a.Waiting == waiting {
+		return
+	}
+	a.Waiting, a.Responding, a.Final = waiting, false, false
+	a.WorkTimer.update(waiting, at)
 }
 
 // Response records provider response age independently of the active work clock.

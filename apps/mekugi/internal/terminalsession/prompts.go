@@ -42,7 +42,7 @@ type InputPreparation struct {
 // PrepareInput keeps an unseen dock from capturing input intended for the draft.
 func (m *Main) PrepareInput(ready bool) InputPreparation {
 	v := m.session
-	out := InputPreparation{Editable: v.ReadOnly == sessionpresentation.Editable}
+	out := InputPreparation{Editable: v.ReadOnly == sessionpresentation.Editable && (!v.Draft.Available || !v.Admission.ReadOnly)}
 	if !out.Editable || ready {
 		return out
 	}

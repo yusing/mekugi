@@ -24,6 +24,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -35,6 +36,7 @@ import (
 // Executor runs attempts using borrowed application services. Each invocation
 // keeps its original capture, usage, control and retained-publication owners.
 type Executor struct {
+	ThreadControl *control.Service
 	Naming        Naming
 	ServiceTiers  *inferencegateway.Tiers
 	Provider      inferencegateway.Forwarder
@@ -142,6 +144,9 @@ func newRequestAttempt(
 
 func (a *requestAttempt) run() error {
 	if err := a.prepare(); err != nil {
+		return err
+	}
+	if handled, err := a.completeLocalWait(); handled || err != nil {
 		return err
 	}
 	if local, ok := a.prepared.(interface{ CompactReload() jsontext.Value }); ok && len(local.CompactReload()) > 0 {

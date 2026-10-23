@@ -110,7 +110,7 @@ func (f NativeFrame) remote() NativeFrame {
 	// from session/subscribe, so terminal renderer state stays native: only a
 	// displayed side conversation, which has no shared publication, keeps Main.
 	var side *activity.Publication
-	if f.View.Displayed.ID != f.View.Main.ID {
+	if f.View.SideThread.ID != "" && f.View.Displayed.ID == f.View.SideThread.ID {
 		side = publicActivity(f.Main)
 	}
 	f.Main, f.Agents, f.Review, f.Live, f.FileLinks, f.Activity = side, nil, nil, nil, nil, nil

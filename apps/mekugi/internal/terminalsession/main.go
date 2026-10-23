@@ -89,7 +89,7 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 			break
 		}
 	}
-	if readOnly {
+	if readOnly || presentation.Draft.Available && presentation.Admission.ReadOnly {
 		draft = []string{""}
 		caret.Row, caret.Column = 0, 0
 	}

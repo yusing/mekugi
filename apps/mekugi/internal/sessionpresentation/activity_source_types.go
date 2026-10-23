@@ -104,7 +104,7 @@ func (entry ActivityEntry) ActivityFacts() activitypresentation.Facts {
 // Source: apps/mekugi/internal/router/subagent_activity_pane.go:114:124@45fbe279
 func (agent ActivityAgent) ActivityAgent() activitypresentation.AgentFacts {
 	return activitypresentation.AgentFacts{
-		Name: agent.Name, Role: agent.Role, Thread: agent.Thread, Responding: agent.Responding, Final: agent.Final,
+		Name: agent.Name, Role: agent.Role, Thread: agent.Thread, Responding: agent.Responding, Final: agent.Final, Waiting: agent.Waiting, Paused: agent.Paused,
 		Started: agent.Started, LastResponse: agent.LastResponse,
 		WorkElapsed: time.Duration(agent.WorkTimer.ElapsedNS), WorkSince: agent.WorkTimer.Since, WorkKnown: agent.WorkTimer.Known,
 		Turns: agent.Turns, Roundtrips: agent.Roundtrips, Cost: agent.Cost, CostKnown: agent.CostKnown, CostPartial: agent.CostPartial,

@@ -12,6 +12,17 @@ closes the owned runtime. The existing Session Control ledger remains the sole
 host dispatcher. Native renderer attachment and remote publication borrow the
 same running owners.
 
+[Thread Control](../../../../modules/threadcontrol/SPEC.md) creates independent
+native child runtimes through the Mekugi server. Launch reuses the captured
+provider/configuration selection and supplies each child’s actual scoped owners.
+Codex executes each thread through its own Session Control connection; logical
+coordination, admission and retained waits belong to Thread Control. Child startup
+retains prepared authority and assignment before executing work. No client-view
+subscription is needed for child execution.
+After server restart, retained children remain stopped. Explicit admitted input
+can resume the same child identity using its frozen preparation and latest
+host-confirmed settings; reconciliation reads history without starting a runtime.
+
 ## Invocation selection
 
 Launch owns option parsing and invocation-local settings. The same parser serves

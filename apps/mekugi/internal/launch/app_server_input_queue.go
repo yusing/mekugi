@@ -102,6 +102,18 @@ func flushInput(attached *attachedPresentation, terminal *terminalsession.Attach
 	if len(next.Batch.Parts) == 0 && !next.Continue {
 		return nil
 	}
+	if !next.Steer || control.LocalStop != "" {
+		ready, err := attached.threadInput.prepare(parent, control.Thread)
+		if err != nil {
+			restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, next.Batch.Parts...)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			return nil
+		}
+		if !ready {
+			attached.conversation.ReturnBatch(next.Batch)
+			return nil
+		}
+	}
 	if picker.waitForSkillBindings(attached, terminal, clock, control.Requests, next.Batch.Parts) {
 		attached.conversation.ReturnBatch(next.Batch)
 		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
@@ -111,6 +123,7 @@ func flushInput(attached *attachedPresentation, terminal *terminalsession.Attach
 }
 
 func sendConversationInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, parts []conversationmodel.Input, steer bool) error {
+	defer attached.threadInput.reset()
 	defer attached.presentation.PruneInput(&control.Live, attached.conversation)
 	if len(parts) == 1 && parts[0].Text == "/compact" {
 		control.Compaction.Begin(sessioncontrol.CompactIntent(parts[0].Compact))

@@ -1,0 +1,231 @@
+package sessioncontrol
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
+	"errors"
+	"fmt"
+	"reflect"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
+)
+
+func (r *Requests[T]) Thread(ctx context.Context, thread string) (control.ThreadInfo, error) {
+	raw, err := r.call(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": false})
+	var response struct {
+		Thread control.ThreadInfo `json:"thread"`
+	}
+	if err == nil {
+		err = json.Unmarshal(raw, &response)
+	}
+	if err == nil && (response.Thread.Thread != thread || response.Thread.Session == "" || response.Thread.Path == "") {
+		err = errors.New("host omitted the admitted thread identity or history source")
+	}
+	return response.Thread, err
+}
+
+func (r *Requests[T]) Configuration(ctx context.Context, thread, workspace string) (jsontext.Value, error) {
+	return r.call(ctx, thread, "config/read", map[string]any{"cwd": workspace, "includeLayers": true})
+}
+
+func (r *Requests[T]) Interrupt(ctx context.Context, thread, turn string) error {
+	_, err := r.call(ctx, thread, "turn/interrupt", map[string]any{"threadId": thread, "turnId": turn})
+	return err
+}
+
+// nativeContent preserves attribution and stable retained identity for both live
+// delivery and subsequent confirmation. No agent text acquires a human role.
+// Source: codex-rs/core/src/context/inter_agent_{message,completion_message}.rs
+// @0df4aa677.
+func nativeContent(input control.NativeInput) (item map[string]any, name, output string) {
+	metadata := "multi_agent.inter_agent_message"
+	if input.Kind == "FINAL_ANSWER" {
+		metadata = "multi_agent.inter_agent_completion_message"
+	}
+	output = fmt.Sprintf("Message Type: %s\nTask name: %s\nSender: %s\nPayload:\n%s", input.Kind, input.Recipient, input.Sender, input.Message)
+	item = map[string]any{
+		"type": "message", "id": fmt.Sprintf("threadcontrol_%x", sha256.Sum256([]byte(input.ID))),
+		"role": "assistant", "phase": "commentary",
+		"content": []any{map[string]any{"type": "output_text", "text": output}},
+		"internal_chat_message_metadata_passthrough": map[string]any{"content_item_kinds": []string{metadata}},
+	}
+	name = "followup_task"
+	if input.Run {
+		output = "Operation ID: " + input.ID + "\n" + output
+		if input.Settings != nil && input.Message == "" {
+			name, output = "spawn_agent", "Assignment retained. Operation ID: "+input.ID
+		}
+	}
+	if input.Wake != nil {
+		raw, _ := json.Marshal(input.Wake)
+		name, output = "wait_agent", string(raw)
+	}
+	return
+}
+
+func (r *Requests[T]) Input(ctx context.Context, input control.NativeInput) (string, error) {
+	if prepared := r.preparation.Load(); input.Run && prepared != nil {
+		info, err := r.Thread(ctx, input.Thread)
+		if err == nil {
+			_, err = prepared.Confirm(info)
+		}
+		if err == nil {
+			err = confirmNativeSettings(info.Thread, info.Path, prepared.Settings)
+		}
+		if err != nil {
+			return "", &binding.DispatchError{Outcome: binding.NotDispatched, Cause: err}
+		}
+		r.preparation.CompareAndSwap(prepared, nil)
+	}
+	item, name, output := nativeContent(input)
+	params := map[string]any{"threadId": input.Thread}
+	method := "thread/inject_items"
+	if input.Run {
+		method = "turn/start"
+		params["input"], params["parentTurnId"] = []any{}, input.ParentTurn
+		// Source: codex-rs/app-server/src/request_processors/turn_processor.rs:
+		// 599:619,663:694@0df4aa677. Retained output starts or steers work.
+		params["toolOutput"] = map[string]any{"namespace": "threadcontrol", "name": name, "output": output, "retain": true}
+		if s := input.Settings; s != nil {
+			params["cwd"], params["runtimeWorkspaceRoots"] = s.Workspace, s.RuntimeRoots
+			params["model"], params["effort"], params["summary"] = s.Model, s.Effort, s.Summary
+			params["approvalPolicy"], params["approvalsReviewer"] = s.ApprovalPolicy, s.ApprovalsReviewer
+			if s.PermissionID != "" {
+				params["permissions"] = s.PermissionID
+			}
+			if s.Tier != nil {
+				params["serviceTier"] = *s.Tier
+			}
+		}
+	} else {
+		params["items"] = []any{item}
+	}
+	raw, err := r.call(ctx, input.Thread, method, params)
+	var result struct {
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	if err == nil && input.Run {
+		err = json.Unmarshal(raw, &result)
+		if err != nil || result.Turn.ID == "" {
+			err = &binding.DispatchError{Outcome: binding.Uncertain, Method: method, Cause: errors.New("host accepted native input without a confirmed turn identity")}
+		}
+	}
+	return result.Turn.ID, err
+}
+
+func (r *Requests[T]) Confirm(ctx context.Context, input control.NativeInput) error {
+	info, err := r.Thread(ctx, input.Thread)
+	if err != nil {
+		return err
+	}
+	return ConfirmNativeInput(ctx, info.Path, input)
+}
+
+// ConfirmNativeInput reads retained host facts without starting a runtime or work.
+func ConfirmNativeInput(ctx context.Context, path string, input control.NativeInput) error {
+	if input.Kind == "INTERRUPT" {
+		return binding.ConfirmTerminalTurn(ctx, input.Thread, path, input.TargetTurn)
+	}
+	item, name, output := nativeContent(input)
+	if input.Run {
+		return binding.ConfirmRetainedOutput(ctx, input.Thread, path, "threadcontrol", name, output)
+	}
+	raw, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+	return binding.ConfirmHistoryInjection(ctx, input.Thread, path, raw)
+}
+
+func (p *PreparedThread) parameters() (map[string]any, error) {
+	s := p.Settings
+	var config map[string]jsontext.Value
+	if len(s.Config) != 0 {
+		if err := json.Unmarshal(s.Config, &config); err != nil {
+			return nil, err
+		}
+	}
+	if config == nil {
+		config = make(map[string]jsontext.Value)
+	}
+	for key, value := range map[string]*string{"model_reasoning_effort": s.Effort, "model_reasoning_summary": s.Summary} {
+		if value != nil {
+			config[key], _ = json.Marshal(*value)
+		}
+	}
+	params := map[string]any{
+		"model": s.Model, "modelProvider": s.Provider, "cwd": s.Workspace,
+		"runtimeWorkspaceRoots": s.RuntimeRoots, "approvalPolicy": s.ApprovalPolicy,
+		"approvalsReviewer": s.ApprovalsReviewer,
+		"baseInstructions":  s.BaseInstructions, "developerInstructions": s.DeveloperInstructions,
+		"config": config, "experimentalRawEvents": true,
+	}
+	if s.Tier != nil {
+		params["serviceTier"] = *s.Tier
+	}
+	if s.PermissionID != "" {
+		params["permissions"] = s.PermissionID
+	} else {
+		var policy struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(s.PermissionProfile, &policy); err != nil {
+			return nil, err
+		}
+		if policy.Type != "disabled" {
+			return nil, errors.New("captured permission profile has no host-selectable identity")
+		}
+		params["sandbox"] = "danger-full-access"
+	}
+	return params, nil
+}
+
+// Confirm requires independent identity. Retaining the assignment checkpoints
+// canonical authority, which Input confirms before starting execution.
+func (p *PreparedThread) Confirm(info control.ThreadInfo) (control.Receipt, error) {
+	receipt := control.Receipt{Thread: info.Thread, Session: info.Session, Path: info.Path, Uncertain: true}
+	if retained := p.Resume; retained != nil {
+		if info.Thread != retained.Thread || info.Session != retained.Session || info.Path != retained.Path || info.Parent != nil {
+			return receipt, errors.New("host did not confirm the retained independent thread identity")
+		}
+		receipt.Uncertain = false
+		return receipt, nil
+	}
+	lineage := info.Fork == nil
+	if p.Import != "" {
+		lineage = info.Fork != nil && *info.Fork == p.Parent
+	}
+	if info.Thread == "" || info.Session == "" || info.Path == "" || info.Thread == p.Parent || info.Parent != nil || !lineage {
+		return receipt, errors.New("host did not confirm a new independent thread identity")
+	}
+	receipt.Uncertain = false
+	return receipt, nil
+}
+
+func confirmNativeSettings(thread, path string, s control.Settings) error {
+	confirmed, err := binding.ReadAdmissionSettings(thread, path)
+	if err != nil {
+		return err
+	}
+	want := binding.AdmissionSettings{
+		Model: s.Model, Provider: s.Provider, Workspace: s.Workspace, RuntimeRoots: s.RuntimeRoots,
+		Effort: s.Effort, Summary: s.Summary, Tier: s.Tier,
+		PermissionProfile: s.PermissionProfile, ApprovalPolicy: s.ApprovalPolicy, ApprovalsReviewer: s.ApprovalsReviewer,
+	}
+	left, _ := json.Marshal(confirmed)
+	right, _ := json.Marshal(want)
+	if !sameNativeJSON(left, right) {
+		return errors.New("host canonical child authority conflicts with frozen preparation; execution has not started")
+	}
+	return nil
+}
+
+func sameNativeJSON(left, right jsontext.Value) bool {
+	var a, b any
+	return json.Unmarshal(left, &a) == nil && json.Unmarshal(right, &b) == nil && reflect.DeepEqual(a, b)
+}

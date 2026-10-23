@@ -14,6 +14,7 @@ var Codex = Bindings{
 	Frontends: true,
 	Guidance: func(service *policy.Service) binding.Guidance {
 		return binding.Guidance{
+			Threads:           projectThreadInstructions,
 			BeforePreparation: beforePreparation,
 			ForExecution: func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
 				return forExecution(input, service.Conflicts)

@@ -51,7 +51,7 @@ import (
 )
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startNativeSession(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdout *os.File, observationInputs *sessioncontrol.Observations, usage *accounting.Service, audience *sessioncontrol.Audience, reviewOwner *sessionreview.Review, windows *executionobservation.Windows, trace *nativetrace.Reader, retained changes.Scope, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), captureNotice func(string, string, string, string), guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, tracker *commandsegments.Observer, skillsManager bool, issues *requestexecution.Failures, resumeThread string, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool, predictionProvider *openai.Client, api *sessionapi.Server, childSummary bool) (func() error, error) {
+func startNativeSession(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdout *os.File, observationInputs *sessioncontrol.Observations, usage *accounting.Service, audience *sessioncontrol.Audience, reviewOwner *sessionreview.Review, windows *executionobservation.Windows, trace *nativetrace.Reader, retained changes.Scope, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), captureNotice func(string, string, string, string), guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, tracker *commandsegments.Observer, skillsManager bool, issues *requestexecution.Failures, resumeThread string, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool, predictionProvider *openai.Client, api *sessionapi.Server, childSummary bool, threads *threadExecution) (func() error, error) {
 	if api == nil {
 		return nil, errors.New("server session requires a control API")
 	}
@@ -151,6 +151,19 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	}
 	resumeArgv = slices.Clone(resumeArgv)
 	control.Startup.Config = appServerResumeConfig(cmd.Args, resumeArgv)
+	api.BindRequests(control.Requests)
+	var threadChanges <-chan struct{}
+	if threads != nil {
+		policy := binding.ThreadAdmissionPolicy{}
+		control.Requests.ThreadPolicy = &policy
+		control.Startup.Prepared = threads.start
+		if err := threads.driver.Connect(threads, audience); err != nil {
+			c.Close()
+			<-c.Done
+			return nil, err
+		}
+		threadChanges = threads.driver.Changed()
+	}
 	notifications = new(nativeNotifications)
 	control.Startup.Workspace = resumeCwd
 	if prefs != nil {
@@ -167,6 +180,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	predictions := composerPredictions{provider: predictionProvider, results: make(chan predictionConfiguration, 1)}
 	native := newNativeViews(ctx, api.Native(), views, terminalViews, activity, control.Requests)
 	native.diagnostics = &c.Diagnostics
+	native.threads = threads
 	syncPredictions := func() error {
 		predictions.supported = sessioncontrol.PredictionForkSupported(version)
 		focused, disabled, available := native.predictionEligibility(&attached)
@@ -193,8 +207,18 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	}
 	var startupView string
 	var latestResponse *appserver.Message
+	var restoredCoordination string
 	var dispatch func(appserver.Message) error
 	dispatch = func(m appserver.Message) error {
+		if control.Requests.CompleteCall(m) {
+			return nil
+		}
+		if threads != nil {
+			syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
+			if err := threads.driver.Observe(m.Method, m.Params); err != nil {
+				return err
+			}
+		}
 		if m.Method == "" {
 			if response, ok := control.Requests.Lookup(string(m.ID)); ok && response.Method == "thread/list" && control.Startup.Thread == "--last" {
 				// The host can finish lookup before the initial native attach is
@@ -247,6 +271,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		}
 		err := dispatchHostMessage(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &childKey, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, windows, audience, reviewSource, preparePane, approvals, generator, activity, &streams, tracker, trace, usage, &exitUsage, segments, &restoredSegments, views, &files, &statusConfig, issues, &quit, dispatch, &resumePending, &commits, terminalViews, conversation, observations, service, panes, &models, &modelsLoading, &reasoningKey, &archived, m)
 		adoptStartupChooser()
+		if err == nil && threads != nil && retainedSession.Thread != "" && retainedSession.Thread != restoredCoordination {
+			restoredCoordination = retainedSession.Thread
+			syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
+			attached.threadInput.restoration = threads.driver.Restore(retainedSession)
+		}
 		predictions.observe(m, control.Thread)
 		return err
 	}
@@ -549,6 +578,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		return "", err
 	}
 	return func() error {
+		defer control.Requests.Close()
 		defer native.close()
 		defer func() { _ = predictions.clear(&control, attached.conversation) }()
 		reviewOwner.Loader = sessionreview.NewLoader(ctx, reviewOwner.Projection)
@@ -654,6 +684,13 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					persistSessionTitle(&control, generator, &attached.feedback, shell, clock, update)
 				case request := <-guard.Requests():
 					addGuardApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, panel != nil || resumePicker != nil, notifications, reviewOwner, &receipts, request)
+				case call := <-control.Requests.Calls():
+					control.Requests.Dispatch(call)
+				case <-threadChanges:
+					syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
+					for _, failure := range threads.driver.Failures() {
+						issues.AddThreadNotice(control.Thread, control.Turn, "threadcontrol", failure.Error())
+					}
 				case message, ok := <-c.Messages:
 					if !ok {
 						exited = true
@@ -733,12 +770,16 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 						return intentErr
 					}
 				case <-tick.C:
+					if threads != nil {
+						syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
+						threads.driver.Tick(presentationTime(clock))
+					}
 					if side != nil && len(side.Drafts.Unsent) > 0 {
 						if err := flushBTW(&attached, shell, &control, &picker, &questions, &approvalDock, clock, preferences.Applied{Model: model, Effort: effort, Tier: tier}, &side, &ownedImages, environment, &guardHook, observationInputs); err != nil {
 							return err
 						}
 					}
-					if len(attached.conversation.Unsent) > 0 && attached.conversation.Unsent[0].Question != nil && (observationInputs == nil || !observationInputs.EmittingToolInput(attached.cwd, control.Thread)) {
+					if attached.threadInput.preparing() || len(attached.conversation.Unsent) > 0 && attached.conversation.Unsent[0].Question != nil && (observationInputs == nil || !observationInputs.EmittingToolInput(attached.cwd, control.Thread)) {
 						if err := flushInput(&attached, shell, &control, &picker, &questions, &approvalDock, clock, model, serviceTiers, environment, ownedImages, &guardHook, &editor, ctx, restoring != nil, observationInputs, reviewOwner, &receipts); err != nil {
 							return err
 						}
@@ -1221,7 +1262,18 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				}
 			}
 			if retained.Store != nil || panes != nil {
-				if err := openWaitStore(parent, historyService, retainedSession, control.Thread, retained.Store, retained.Writes, retained.Limits); err != nil {
+				err := openWaitStore(parent, historyService, retainedSession, control.Thread, retained.Store, retained.Writes, retained.Limits)
+				// Prepared children acquire their parent's namespace in logical admission.
+				// Only an ordinary root can enroll itself before its first turn.
+				if err == nil && control.Startup.Prepared == nil {
+					err = retainedSession.Store.Transaction(parent, retainedSession.Writes, func(tx *history.Transaction) error {
+						return tx.InitializeScope(history.Scope{Thread: control.Thread, Namespace: retainedSession.Namespace}, nil)
+					})
+					if err != nil {
+						retainedSession.Close()
+					}
+				}
+				if err != nil {
 					setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait targets could not be retained: "+err.Error(), true)
 				}
 			}
@@ -1325,6 +1377,10 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 // observedEvent retains application lifecycle and control handling for decoded
 // host facts. Offline transcript observations bypass it through their reducer.
 func observedEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], panel **appServerStatusReport, resumePicker **appServerResumePicker, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retainedSession history.Session, windows *executionobservation.Windows, activityService *activitymodel.Service, streams *terminalsession.Streams, tracker *commandsegments.Observer, trace *nativetrace.Reader, usage *accounting.Service, exitUsage *binding.TokenUsage, method string, p binding.Notification) error {
+	if method == "turn/completed" && p.ThreadID == control.Thread && p.Turn.Status != "completed" {
+		control.Waiting, control.LocalStop = "", ""
+		attached.session.Lifecycle(p.ThreadID).SetWaiting(false, presentationTime(clock))
+	}
 	if r := control.Rewind; r != nil && r.Sent && p.ThreadID == r.Thread && p.TurnID == r.Turn && p.Item.Type == "commandExecution" && p.Item.Source == "userShell" {
 		if method == "item/started" && r.Item == "" {
 			r.Item = p.Item.ID
@@ -1369,7 +1425,9 @@ func observedEvent(attached *attachedPresentation, terminal *terminalsession.Att
 				r.Turn = p.Turn.ID
 			}
 			control.Started(p.Turn.ID)
-			attached.presentation.Status.Started = presentationTime(clock)
+			if attached.presentation.Status.Text != "Waiting for agents" {
+				attached.presentation.Status.Started = presentationTime(clock)
+			}
 			attached.presentation.Status.Set("Working", false)
 			if control.Interruption.BeforeStart || control.Compaction.InterruptTarget() != "" {
 				return applyInterruption(attached, terminal, control, picker, editor, questions, approvals, clock, reviewOwner, receipts, control.Interrupt())
@@ -1393,9 +1451,14 @@ func observedEvent(attached *attachedPresentation, terminal *terminalsession.Att
 			if p.Turn.Error != nil {
 				failure = &p.Turn.Error.Message
 			}
-			attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(clock))
+			localStop := control.LocalStop == p.Turn.ID && p.Turn.Status == "completed"
+			if localStop {
+				attached.presentation.Status.Set("Waiting for agents", false)
+			} else {
+				attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(clock))
+			}
 			settleInput(attached, terminal, control, picker, questions, approvals, clock, p.Turn.ID, p.Turn.Status == "interrupted")
-			if p.Turn.Status == "completed" && questions.Count(control.Thread) == 0 {
+			if !localStop && p.Turn.Status == "completed" && questions.Count(control.Thread) == 0 {
 				notifications.notify(&attached.feedback, terminal, clock, "agent-turn-complete", "Agent turn complete")
 			}
 			for _, c := range questions.calls() {

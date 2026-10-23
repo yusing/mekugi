@@ -8,6 +8,8 @@ import (
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -42,6 +44,44 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 			assertNativeUISnapshot(t, fmt.Sprintf("native-main-%d", width), rows)
 		})
 	}
+}
+
+func TestUISnapshotPreparedChildReadOnly(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.clock = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC) }
+	u.Startup.Prepared = &sessioncontrol.PreparedThread{Parent: "parent"}
+	u.attached.presentation.Status.Text, u.model = "Ready", "child-model"
+	u.Text = "retained draft"
+	var rows []string
+	for _, thread := range []string{"", "child"} {
+		u.Thread = thread
+		u.attached.presentation.Attach(sessionpresentation.Thread{ID: thread, Caller: "/root"}, false)
+		rows, _ = u.testMainFrame(80, 8, 0)
+		view := u.attached.presentation.View()
+		if view.ReadOnly != sessionpresentation.Editable || view.Admission.Edit || view.Admission.Submit || view.Status.Composer.Text != "Read-only" {
+			t.Fatalf("prepared child exposed input for %q: %+v", thread, view)
+		}
+		intent := sessionpresentation.ComposerIntent{Version: view.Version, Thread: thread, Operation: sessionpresentation.SubmitComposer}
+		if err := u.attached.presentation.AdmitClientComposer(intent); err != sessionpresentation.ErrInputUnavailable {
+			t.Fatalf("native composer admitted prepared child %q: %v", thread, err)
+		}
+		if refusal := apiIntentRefusal(&u.attached, &u.Client, sessionapi.Intent{Thread: thread, Action: sessionapi.Send}); refusal == "" {
+			t.Fatalf("Session API admitted prepared child %q", thread)
+		}
+		for _, action := range []sessionapi.Action{sessionapi.AnswerQuestions, sessionapi.DecideApproval, sessionapi.Stop, sessionapi.Redraw} {
+			if refusal := apiIntentRefusal(&u.attached, &u.Client, sessionapi.Intent{Thread: thread, Action: action}); refusal != "" {
+				t.Fatalf("prepared child refused human control %v: %s", action, refusal)
+			}
+		}
+	}
+	assertNativeUISnapshot(t, "prepared-child-read-only", rows)
+	questionTestMessage(t, u, "child-question", "item/tool/requestUserInput", map[string]any{
+		"threadId": "child", "turnId": "turn", "itemId": "child-input",
+		"questions": []any{map[string]any{"id": "choice", "question": "Which implementation should the child use?", "isOther": true}},
+	})
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, "child")
+	rows, _ = u.testMainFrame(80, 12, 0)
+	assertNativeUISnapshot(t, "prepared-child-question", rows)
 }
 
 func TestUISnapshotShellComposer(t *testing.T) {

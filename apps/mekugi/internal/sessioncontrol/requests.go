@@ -4,6 +4,10 @@ package sessioncontrol
 
 import (
 	"encoding/json/jsontext"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"sync"
+	"sync/atomic"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
@@ -28,20 +32,26 @@ type Request[T any] struct {
 	Side       *Side
 	SideInput  *conversationmodel.Input
 	Prediction *Prediction
+	call       *HostCall
 }
 
 // Requests is the sole request ledger for one application client. Its event-loop
 // owner serializes issuance and response delivery; it does not execute host work.
 type Requests[T any] struct {
-	transport   Transport
-	pending     map[string]Request[T]
-	sides       map[string]*Side
-	predictions map[string]*Prediction
-	metadata    map[[2]string]bool
+	ThreadPolicy *binding.ThreadAdmissionPolicy
+	preparation  atomic.Pointer[PreparedThread]
+	transport    Transport
+	pending      map[string]Request[T]
+	sides        map[string]*Side
+	predictions  map[string]*Prediction
+	metadata     map[[2]string]bool
+	calls        chan *HostCall
+	closed       chan struct{}
+	closeOnce    sync.Once
 }
 
 func NewRequests[T any](transport Transport) *Requests[T] {
-	return &Requests[T]{transport: transport, pending: make(map[string]Request[T])}
+	return &Requests[T]{transport: transport, pending: make(map[string]Request[T]), calls: make(chan *HostCall), closed: make(chan struct{})}
 }
 
 func (r *Requests[T]) Initialize(owner T) (string, error) {
@@ -53,6 +63,13 @@ func (r *Requests[T]) Initialize(owner T) (string, error) {
 }
 
 func (r *Requests[T]) Send(method string, params any, scope string, owner T) (string, error) {
+	if r.ThreadPolicy != nil && (method == "thread/start" || method == "thread/resume" || method == "thread/fork") {
+		value, err := r.ThreadPolicy.Apply(params)
+		if err != nil {
+			return "", err
+		}
+		params = value
+	}
 	id, err := r.transport.Send(method, params, true)
 	if err == nil {
 		r.pending[id] = Request[T]{Method: method, Scope: scope, Owner: owner}
@@ -97,11 +114,15 @@ func (r *Requests[T]) Take(id string) (Request[T], bool) {
 }
 
 // Forget cancels observation, never the host operation.
-func (r *Requests[T]) Forget(id string) { delete(r.pending, id) }
+func (r *Requests[T]) Forget(id string) {
+	r.pending[id].retireCall()
+	delete(r.pending, id)
+}
 
 func (r *Requests[T]) Retire(scope string) {
 	for id, request := range r.pending {
 		if request.Scope == scope {
+			request.retireCall()
 			delete(r.pending, id)
 		}
 	}

@@ -30,6 +30,7 @@ Application owners below are under `apps/mekugi/internal/`.
 
 | Area | Owners and boundaries |
 | --- | --- |
+| Thread control | `modules/threadcontrol`: server-owned logical trees, admitted agent operations, prepared children and retained waits; Session API owns native runtime lifetime, Session Control owns each runtime’s host ledger |
 | Activity | `modules/activity/feed`: content/output retention and `contracts/activitydetail` host; `presentation`: lifecycle, grouping, source/segment interpretation, roster/waits, commit enrichment and detached publications; `terminalview`: layout, reveal/pacing, cursors, navigation and painting; `waittargets`: retained snapshots |
 | Conversation | `modules/conversation/{composer,presentation,prompt,completion}`: edits/attachments, drafts/queues/side values, prompts and completion; `transcript`/`codexbinding`: message correlation/history/native mapping; `terminalview`: keys/painting. Session Control owns live replies/dispatch; Launch owns scans, skill writes and image lifetime |
 | Composer predictions | `launch/composer_predictions.go`: asynchronous configuration and source/draft eligibility; `sessioncontrol/prediction.go`: host fork, turn and cleanup; `providers/openai/predictions.go`: authenticated remote configuration and moderation policy |

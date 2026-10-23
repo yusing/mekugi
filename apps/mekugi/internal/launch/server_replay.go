@@ -87,7 +87,7 @@ func runServerReplay(ctx context.Context, request sessionapi.ReplayStart, api *s
 		return err
 	}
 	summaries := options.ResolveFeatures(settings.Features).ChildReplySummary
-	runtime, err := composition.Frontends(ctx, false, summaries, "")
+	runtime, err := composition.Frontends(ctx, false, summaries, "", nil)
 	if err != nil {
 		return err
 	}

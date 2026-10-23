@@ -86,6 +86,25 @@ func TestEditorActionsTargetPromptAndExcludeSecrets(t *testing.T) {
 	}
 }
 
+func TestPreparedChildAllowsPromptEditing(t *testing.T) {
+	c := newStatusConsumer()
+	c.model().RestrictChildInput()
+	call := &prompt.Call{ID: "ask", Thread: "main", Sync: true, Questions: []prompt.Question{{ID: "question"}}}
+	c.conversation.Questions.Add(call, false)
+	c.conversation.Questions.Open(call)
+	v := c.publish(sessionpresentation.Caption{})
+	target := v.EditorTarget()
+	if err := c.model().AdmitPaste(sessionpresentation.PasteIntent{Version: v.Version, Target: target}, &c.conversation); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.model().AdmitClientComposer(sessionpresentation.ComposerIntent{Version: v.Version, Target: target, Operation: sessionpresentation.SubmitComposer}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.model().ApplyEditor(sessionpresentation.EditorIntent{Version: v.Version, Target: target, Action: composer.Action{Kind: composer.InsertAction, Text: "answer"}}, &c.conversation); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReferenceAdmitsReturnToMainAndOriginalEditorTogether(t *testing.T) {
 	c := newStatusConsumer()
 	v := c.publish(sessionpresentation.Caption{})
@@ -224,5 +243,18 @@ func TestInputDestinationLifetimeIgnoresProgressAndLabels(t *testing.T) {
 	}
 	if err := c.model().AdmitDestination(version); !errors.Is(err, sessionpresentation.ErrStaleIntent) {
 		t.Fatal("returning to Main revived an unqualified external action")
+	}
+}
+
+func TestPreparedChildRejectsBoundOrdinaryInput(t *testing.T) {
+	c := newStatusConsumer()
+	c.model().RestrictChildInput()
+	v := c.publish(sessionpresentation.Caption{})
+	intent := sessionpresentation.ComposerIntent{Version: v.Version, Thread: v.Main.ID, Target: v.EditorTarget(), Operation: sessionpresentation.SubmitComposer}
+	if err := c.model().AdmitBoundInput(intent); !errors.Is(err, sessionpresentation.ErrInputUnavailable) {
+		t.Fatalf("bound child input admitted: %v", err)
+	}
+	if _, err := c.model().ClientInput(intent, &c.control, &c.conversation, false); !errors.Is(err, sessionpresentation.ErrInputUnavailable) {
+		t.Fatalf("bound child submission planned: %v", err)
 	}
 }

@@ -43,6 +43,8 @@ type listedSession struct {
 	runtime *managedSession
 }
 type managedSession struct {
+	parent         *managedSession
+	run            func(context.Context, *Server) error
 	operation      string
 	resume         string
 	ctx            context.Context
@@ -252,12 +254,29 @@ func (h *Hub) run(ctx context.Context, m *managedSession, start Start) {
 		return nil
 	}
 	result := make(chan error, 1)
-	go func() { result <- h.launcher.Run(ctx, start, m.server) }()
+	go func() {
+		if m.run != nil {
+			result <- m.run(ctx, m.server)
+		} else {
+			result <- h.launcher.Run(ctx, start, m.server)
+		}
+	}()
 	defer func() {
 		if m.server.live {
 			m.server.Native().Finish(m.err)
 		}
 		m.cancel()
+		h.mu.Lock()
+		var children []<-chan struct{}
+		for child := range h.running {
+			if child.parent == m {
+				children = append(children, child.done)
+			}
+		}
+		h.mu.Unlock()
+		for _, done := range children {
+			<-done
+		}
 		h.mu.Lock()
 		for id, s := range h.sessions {
 			if s.runtime == m {

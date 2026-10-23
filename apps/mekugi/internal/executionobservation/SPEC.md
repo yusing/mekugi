@@ -14,6 +14,10 @@ The preparer borrows invocation owners. Each prepared response retains its own
 scope and dependencies through delivery and cleanup, independently of the
 preparer. Frontends supply preview timing; this workflow has no renderer.
 
+Independent-thread requests bind their authenticated host identity to Thread
+Control before inference. Only the confirmed successful result of a registered
+wait's enclosing execution can admit a local stop; nested MCP success alone cannot.
+
 One invocation window registry joins command reports and capture observations.
 Native shell operations use the same admission and completion workflow, retaining
 their original thread, namespace and workspace when the displayed session changes.

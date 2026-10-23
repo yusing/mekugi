@@ -169,6 +169,9 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 	editOutputs := make(map[string]map[string]json.RawMessage)
 	continuations := make(map[string]string)
 	for index, item := range items {
+		if codexresponses.StandaloneFunctionOutput(item) {
+			continue
+		}
 		itemType := responses.StringField(item, "type")
 		if itemType != "custom_tool_call" && itemType != "function_call" && itemType != "custom_tool_call_output" && itemType != "function_call_output" {
 			continue

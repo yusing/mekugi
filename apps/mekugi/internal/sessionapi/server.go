@@ -14,8 +14,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+
+	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -98,6 +102,7 @@ type Server struct {
 	reserveThread func(string) error
 
 	mu             sync.Mutex
+	requests       threadcontrol.Runtime
 	published      bool
 	attachment     uint64
 	session        Session
@@ -110,6 +115,7 @@ type Server struct {
 	roster         jsontext.Value
 	subscribers    map[chan publication]struct{}
 	identity       Summary
+	caption        sessionpresentation.Caption
 	summary        []byte // The latest summary event.
 	summaryChanged chan struct{}
 }
@@ -214,6 +220,7 @@ func (s *Server) Publish(f Frame) error {
 	defer s.mu.Unlock()
 	reset := !s.published || f.Attachment != s.attachment || f.Session.Thread != s.session.Thread
 	s.published, s.attachment = true, f.Attachment
+	s.caption = f.Caption
 	if reset {
 		s.input, s.status, s.main, s.agents, s.roster = nil, nil, feed{}, feed{}, nil
 		s.prompts = nil

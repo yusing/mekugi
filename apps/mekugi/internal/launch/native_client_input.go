@@ -22,6 +22,7 @@ type nativeSelectionCapture struct {
 	input     []terminalsession.Input
 	thread    sessionpresentation.Thread
 	displayed sessionpresentation.Thread
+	workspace string
 	target    conversation.EditorTarget
 	ready     bool
 }
@@ -259,7 +260,7 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 					return
 				}
 				_, target := c.selectedEditor()
-				pending := &nativeSelectionCapture{selection: selection.Selection, thread: c.event.Frame.View.Input, displayed: c.event.Frame.View.Displayed, target: target}
+				pending := &nativeSelectionCapture{workspace: c.event.Frame.View.Info.Workspace, selection: selection.Selection, thread: c.event.Frame.View.Input, displayed: c.event.Frame.View.Displayed, target: target}
 				c.selection = pending
 				c.enqueue(sessionapi.NativeOperation{Output: &sessionapi.NativeOutputDemand{Agent: selection.Selection.View == u.Agents, Demands: selection.Demands}}, nil, func(err error) {
 					if c.selection != pending {
@@ -271,7 +272,7 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 					if err != nil {
 						return
 					}
-					if view.Version.Attachment != s.Attachment || view.Info.Workspace != s.Workspace {
+					if view.Version.Attachment != s.Attachment || view.Info.Workspace != pending.workspace {
 						c.notice = sessionpresentation.ErrStaleIntent.Error()
 						return
 					}
@@ -295,7 +296,7 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 				})
 				return
 			} else if target := selection.Target; target.Link != "" || target.Entry != 0 || target.Snippet != (activityui.Snippet{}) {
-				if target.View != u.Transcript && target.View != u.Agents || target.Workspace != c.event.Frame.View.Info.Workspace {
+				if target.View != u.Transcript && target.View != u.Agents || target.Workspace != c.event.Frame.View.SourceWorkspace() {
 					c.notice = sessionpresentation.ErrStaleIntent.Error()
 					break
 				}
@@ -510,8 +511,12 @@ func (c *nativeClient) dialog(intent terminalsession.DialogIntent) {
 	case terminalsession.DialogCopy:
 		c.notice, _ = u.Frame.CopyText(intent.Text)
 	case terminalsession.DialogOpenLink:
+		var source sessionpresentation.Thread
+		if details := c.event.Frame.Details; details != nil && details.View.ID == u.Dialog.ID {
+			source = details.Source
+		}
 		c.closeLocalDetails()
-		c.details(c.event.Frame.View.Version, sessionapi.NativeDetailRequest{Kind: sessionapi.NativeFileDetails, Path: intent.Text})
+		c.details(c.event.Frame.View.Version, sessionapi.NativeDetailRequest{Displayed: source, Kind: sessionapi.NativeFileDetails, Path: intent.Text})
 	case terminalsession.DialogReference:
 		c.closeLocalDetails()
 		intent := u.Main.Reference("Selected output", intent.Text, "")

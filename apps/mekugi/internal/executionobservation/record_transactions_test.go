@@ -65,6 +65,33 @@ type interruptedForkChanges struct {
 	check func() error
 }
 
+func TestRecordTransactionsIndependentForkKeepsAdmittedChildScope(t *testing.T) {
+	t.Parallel()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, _ := retentionTestSession(t, store, "parent", 0)
+	bindTestHandleScope(t, store, parent, "", "")
+	if err := store.publication.Transaction(t.Context(), store.writes, func(tx *history.Transaction) error {
+		return tx.InitializeScope(history.Scope{Thread: "child", Namespace: "parent", Parent: "parent"}, nil)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	child, _ := retentionTestSession(t, store, "child", 0)
+	child, err = store.prepareHandleScope(child, codexresponses.TurnMetadata{ThreadID: "child", ForkedFromThreadID: "parent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.retainInput(child, "/child", nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	scope, found, err := store.publication.ReadScope("child")
+	if err != nil || !found || scope.Namespace != "parent" || scope.Parent != "parent" || scope.Fork != "" {
+		t.Fatalf("host fork changed admitted scope: %+v, found=%v, err=%v", scope, found, err)
+	}
+}
+
 func (s interruptedForkChanges) PrepareFork(selected changes.Scope, source, dest, fork string) (changes.ForkPlan, error) {
 	plan, err := s.Service.PrepareFork(selected, source, dest, fork)
 	return interruptedForkPlan{ForkPlan: plan, check: s.check}, err

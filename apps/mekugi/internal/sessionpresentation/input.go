@@ -17,19 +17,20 @@ type SubmitIntent struct {
 
 type InputAdmission struct {
 	Edit, Submit bool
+	ReadOnly     bool
 	Reason       string
 }
 
 func (m *Model) inputAdmission(control *sessioncontrol.Live, ordinary, restoring bool) InputAdmission {
-	if m.readOnly() != Editable {
-		return InputAdmission{Reason: ErrInputUnavailable.Error()}
+	if m.childRuntime || m.readOnly() != Editable {
+		return InputAdmission{ReadOnly: true, Reason: ErrInputUnavailable.Error()}
 	}
 	return ordinaryInputAdmission(control, ordinary, restoring)
 }
 
 func ordinaryInputAdmission(control *sessioncontrol.Live, ordinary, restoring bool) InputAdmission {
 	if control == nil {
-		return InputAdmission{Reason: ErrInputUnavailable.Error()}
+		return InputAdmission{ReadOnly: true, Reason: ErrInputUnavailable.Error()}
 	}
 	if !ordinary {
 		return InputAdmission{Reason: "Finish or hide the active prompt before ordinary input."}
@@ -52,7 +53,7 @@ func (m *Model) AdmitBoundInput(intent ComposerIntent) error {
 	if intent.Thread != m.view.Main.ID && intent.Thread != m.view.SideThread.ID {
 		return ErrStaleIntent
 	}
-	if m.replay || intent.Operation != SubmitComposer && intent.Operation != QueueComposer {
+	if m.childRuntime || m.replay || intent.Operation != SubmitComposer && intent.Operation != QueueComposer {
 		return ErrInputUnavailable
 	}
 	return nil
@@ -113,7 +114,7 @@ func (m *Model) AdmitPaste(in PasteIntent, conversation *conversationmodel.Sessi
 	if !in.Version.SameAttachment(m.view.Version) {
 		return ErrStaleIntent
 	}
-	if m.readOnly() != Editable {
+	if m.editorUnavailable(in.Target) {
 		return ErrInputUnavailable
 	}
 	if in.Target != conversation.EditorTarget() {
@@ -181,10 +182,14 @@ func (m *Model) ApplyEditor(intent EditorIntent, conversation *conversationmodel
 	if m.AdmitDestination(intent.Version) != nil {
 		return false, ErrStaleIntent
 	}
-	if m.readOnly() != Editable {
+	if m.editorUnavailable(intent.Target) {
 		return false, ErrInputUnavailable
 	}
 	return conversation.ApplyEditor(intent.Target, intent.Action)
+}
+
+func (m *Model) editorUnavailable(target conversationmodel.EditorTarget) bool {
+	return m.readOnly() != Editable || m.childRuntime && target.Call == "" && target.Request == ""
 }
 
 type ComposerOperation uint8
@@ -250,7 +255,7 @@ func (m *Model) AdmitClientComposer(intent ComposerIntent) error {
 	if intent.Operation == RestoreWaiting && intent.Work == nil {
 		return ErrStaleIntent
 	}
-	if m.replay || intent.Thread == "" && m.readOnly() != Editable || intent.Operation < SubmitComposer || intent.Operation > AcceptPrediction {
+	if m.replay || m.childRuntime && intent.Target.Call == "" && intent.Target.Request == "" || intent.Thread == "" && m.readOnly() != Editable || intent.Operation < SubmitComposer || intent.Operation > AcceptPrediction {
 		return ErrInputUnavailable
 	}
 	return nil

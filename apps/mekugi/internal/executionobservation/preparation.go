@@ -27,6 +27,8 @@ import (
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
+	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 	"github.com/yusing/mekugi/providers/grok"
@@ -37,6 +39,7 @@ const applyPatchToolName = "apply_patch"
 
 // Config supplies borrowed invocation owners. Startup owns their lifetimes.
 type Config struct {
+	ThreadControl    *threadbinding.Driver
 	Registry         *frontends.Registry
 	InputProjections []binding.InputProjection
 	Usage            *accounting.Service
@@ -58,6 +61,7 @@ type Config struct {
 // New binds request preparation to the composed owners without acquiring resources.
 func New(config Config) *Preparer {
 	return &Preparer{
+		threadControl:    config.ThreadControl,
 		registry:         config.Registry,
 		inputProjections: config.InputProjections,
 		usage:            config.Usage,
@@ -78,6 +82,7 @@ func New(config Config) *Preparer {
 }
 
 type Preparer struct {
+	threadControl    *threadbinding.Driver
 	registry         *frontends.Registry
 	inputProjections []binding.InputProjection
 	usage            *accounting.Service
@@ -116,6 +121,7 @@ type mekugiTranslationState struct {
 }
 
 type mekugiResponseTransform struct {
+	localWaitItem    string
 	compactReload    jsonv1.RawMessage
 	activity         *sessioncontrol.Audience
 	nativeTrace      *nativetrace.Reader
@@ -244,6 +250,11 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	if !metadataValid || (!prewarm && metadata.RequestKind != responseevents.Turn) {
 		return nil, errors.New("mekugi rewrite requires valid turn metadata")
 	}
+	if p.threadControl != nil {
+		if err := binding.ValidateIndependentThreadCatalog(request); err != nil {
+			return nil, err
+		}
+	}
 	p.execWindows.markBackground(threadID, metadata.TurnID)
 	// Execution-free requests retain their native instructions, tools, and schema.
 	if codexresponses.ExecutionFree(request) {
@@ -333,6 +344,33 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		retained.Finish(false)
 		return nil, err
 	}
+	var localWaitItem string
+	if p.threadControl != nil {
+		selected := observationScope(ctx, p.retained)
+		session := history.Session{Store: selected.Store, Thread: selected.Thread, Namespace: selected.Namespace, Limits: selected.Limits, Writes: selected.Writes, Context: ctx}
+		if err := p.threadControl.AdmitRequest(ctx, session, threadcontrol.Identity{Thread: threadID, Session: sessionID, Turn: metadata.TurnID}, metadata.SubagentKind == ""); err != nil {
+			retained.Finish(false)
+			return nil, err
+		}
+		instructions, err := p.threadControl.Instructions(ctx, threadID, request.Model())
+		if err == nil && (p.registry.Guidance == nil || p.registry.Guidance.Threads == nil) {
+			err = errors.New("independent thread instruction projection is unavailable")
+		}
+		if err == nil {
+			err = requestexecution.ProjectInstructions(request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+				return p.registry.Guidance.Threads(input, instructions)
+			})
+		}
+		if err != nil {
+			retained.Finish(false)
+			return nil, err
+		}
+		localWaitItem, err = p.observeThreadWait(ctx, threadID, metadata.TurnID, codeModeToolName, request, visible)
+		if err != nil {
+			retained.Finish(false)
+			return nil, err
+		}
+	}
 	// Only accepted requests may change retained ancestry or collect activity.
 	activityThreadID := ""
 	if metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != threadID {
@@ -366,6 +404,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		p.activity.BeginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model), time.Now())
 	}
 	transform := &mekugiResponseTransform{
+		localWaitItem: localWaitItem,
 		compactReload: reload,
 		activity:      p.activity, nativeTrace: p.nativeTrace,
 		ctx:         ctx,

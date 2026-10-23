@@ -54,7 +54,7 @@ func TestServerSessionNoTerminal(t *testing.T) {
 	}}
 	done := make(chan error, 1)
 	launcher.run = func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
-		_, err := runServerSession(ctx, []string{"--shell-guard=false"}, []string{"--yolo"}, api, start.Workspace)
+		_, err := runServerSession(ctx, []string{"--shell-guard=false"}, []string{"--yolo"}, api, start.Workspace, nil)
 		done <- err
 		return err
 	}

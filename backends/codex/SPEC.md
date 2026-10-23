@@ -3,7 +3,7 @@
 ## Purpose and ownership
 
 Own Codex process transport, native-trace observations and rollout decoding. Codex remains the
-execution, permission, agent, and session authority. The application chooses an
+execution, permission, process, and host-session authority. The application chooses an
 invocation, interprets lifecycle facts, and owns session presentation and intent.
 The [Responses adapter](responses/SPEC.md) owns model-path adaptation; executable
 frontend and input-projection registrations use the binding package.
@@ -15,6 +15,14 @@ sandboxing, processes, yielded sessions and `write_stdin` continuation. Mekugi
 preserves nested tool names, schemas, arguments and host results. Observation,
 presentation and replay never execute a call again, serialize independent
 `Promise.allSettled` calls, or impose a minimum wait duration.
+
+[Thread Control](../../modules/threadcontrol/SPEC.md) coordinates independent
+native runtimes through the Mekugi server. Its compatibility adapter captures
+actual invoking settings and complete permission policy, resolves bounded roles,
+and prepares inherited history. The backend supplies host identity and retained
+facts, while each runtime’s Session Control owns its sole request ledger.
+Native collaboration registration is disabled without disabling role/mode
+instructions. Historical native collaboration remains readable.
 
 The application admits the JavaScript execution interface before inference;
 catalogs exposing top-level `apply_patch` or `exec_command` instead are unsupported.
@@ -267,6 +275,19 @@ The application chooses whether restored facts may replace live state, applies
 invocation/preference precedence, and gates resumed input on host confirmation.
 It projects restored Activity with its own 64 MiB reading policy over the same
 identity-validated opener. Rollout reads cannot resume a thread or replay effects.
+
+### Prepared child evidence
+
+An active fork freezes the exact invoking thread, turn and execution item, not
+an earlier completed turn. The bounded reader materializes copied and referenced
+history through validated byte and ordinal boundaries, including compaction
+replacement history. The private import is self-contained; source rollouts and
+host databases remain unchanged. Missing or conflicting evidence fails preparation.
+
+Runtime settings and retained injection/continuation checks use the same
+identity-validated file opener. They establish retained facts, never permission
+to redispatch an uncertain operation. Native instruction content kinds bind
+projection to the original host envelope rather than matching arbitrary prose.
 
 ### Supplied offline rollouts
 

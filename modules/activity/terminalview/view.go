@@ -304,7 +304,7 @@ func (v *View) Glyph(agent activitypresentation.Agent) string {
 // agentStatus is the glyph's fact; counts use it so they agree with visible rows.
 func (v *View) agentStatus(agent activitypresentation.Agent) rune {
 	switch agent.Status {
-	case "responding":
+	case "responding", "waiting":
 		return '◐'
 	case "error":
 		return '!'

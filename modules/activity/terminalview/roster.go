@@ -480,6 +480,10 @@ func (v *View) NativeGlyph(agent activitypresentation.Agent) string {
 // activity summary while an agent is working.
 func (v *View) AgentState(agent activitypresentation.Agent, width int, now time.Time) string {
 	switch {
+	case agent.Paused:
+		return terminalui.Dim + "paused" + terminalui.Undim
+	case agent.Waiting:
+		return "waiting"
 	case agent.LatestKind == "error":
 		return terminalui.Red + "error" + terminalui.Reset
 	case !agent.Responding && agent.Final:

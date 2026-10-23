@@ -46,6 +46,7 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessioninspection/query"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
@@ -233,6 +234,8 @@ type Gap struct {
 }
 
 type Runtime struct {
+	Threads              *threadbinding.Driver
+	MCP                  []binding.MCPServer
 	Terminal             terminalsession.Views
 	Presentation         *sessionpresentation.Service
 	Conversation         *conversationmodel.Service
@@ -386,6 +389,7 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 	runtime.Naming = binder.RegisteredNaming()
 	runtime.Observation = binder.RegisteredObservation()
 	runtime.Guards = binder.RegisteredGuards()
+	runtime.MCP = binder.RegisteredMCP()
 	for _, node := range c.entries {
 		if err := ctx.Err(); err != nil {
 			return nil, errors.Join(err, runtime.Close(context.WithoutCancel(ctx)))

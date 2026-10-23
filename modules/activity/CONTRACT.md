@@ -562,8 +562,10 @@ existing output/navigation identities; [session presentation](../../apps/mekugi/
 owns page admission and evidence placement. Running headers scroll normally; the composer process count
 and `/ps` dialog follow [running processes](#running-processes).
 
-Statuses mean only observed open response, latest error, plaintext FINAL_ANSWER,
-or none. Final summaries do not repeat their marker, and no glyph asserts verified
+Statuses describe observed open response, latest error, plaintext FINAL_ANSWER,
+or admitted logical waiting/paused work. Logical waiting remains working across
+the local host stop; cold paused children stay visible without a running clock.
+Final summaries do not repeat their marker, and no glyph asserts verified
 task completion. Operations/source/output retain five-row bounds without clipping
 status. Hidden-line counts underline on hover; only retained extra detail makes
 content clickable. Full authored messages use the shared transcript renderer.

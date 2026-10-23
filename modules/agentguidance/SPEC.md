@@ -10,6 +10,11 @@ conflicts, and selected-skill identities without changing caller authority.
 Mekugi preserves the caller's base `instructions` value and every system or developer message,
 except for complete explicit omission blocks, pinned inherited stock-prompt conflicts, and the
 marked Mekugi workflow section appended to base instructions.
+Independent-thread role projection additionally consumes Thread Control's admitted
+content provenance and detached logical caller. It adapts only authenticated role
+parts to the replacement MCP interface and selected workspace. Effective mode
+parts and caller-authored lookalikes remain unchanged; missing or conflicting
+provenance never authorizes a text-based replacement.
 It does not detect stock prompt shapes, replace editing sections, select model-specific workflows,
 inspect `model_instructions_file`, or create or modify caller instruction files. It does not restore the
 retired shell carrier, HPATCH, hash-target editing, or CTP instructions.

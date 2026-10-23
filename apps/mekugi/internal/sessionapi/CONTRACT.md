@@ -137,6 +137,21 @@ be attached as a native live thread. Shared events and playback controls remain
 available; input, shell, answers, approvals and live semantic views are refused.
 Replay starts no backend/provider and opens no writable history store.
 
+## Internal agent coordination
+
+[Thread Control](../../../../modules/threadcontrol/SPEC.md) admits prepared native
+children through the server’s runtime owner, independently of renderer subscriptions.
+Preparation supplies frozen execution settings and an optional retained fork import.
+The server starts no assignment from ordinary creation text: confirmed creation,
+durable logical admission, attributed assignment retention and execution are distinct
+acknowledgements. Ordinary child input remains unavailable; prompt answers,
+approval decisions and cancellation retain their existing authority.
+
+Agent calls carry authenticated host-call identity through the invocation’s MCP
+connection. Native/remote JSON-RPC authority cannot impersonate that identity.
+Existing runtime registration, cancellation, joined shutdown and detached publication
+also apply to children. A lost response never authorizes repeated creation or input.
+
 ## Publications
 
 ### Remote-human control views

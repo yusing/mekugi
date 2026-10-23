@@ -32,7 +32,9 @@ func prepareHandleScope(ctx context.Context, store *history.Store, writes *persi
 			identity.Namespace, err = store.NamespaceForThread(identity.Parent)
 			return err
 		}
-		if metadata.SubagentKind == "" {
+		// Independent host forks can already be admitted logical children. Their
+		// shared namespace is authoritative; host lineage must not rebind it.
+		if metadata.SubagentKind == "" && identity.Namespace == identity.Thread {
 			identity.Fork = metadata.ForkedFromThreadID
 		}
 		return nil

@@ -147,3 +147,48 @@ func TestInterruptRejectsUnavailableOrForeignWork(t *testing.T) {
 		t.Fatal("rejected action changed successor interruption state")
 	}
 }
+
+func TestInterruptRetainsLogicalWorkAfterHostCompletion(t *testing.T) {
+	for _, next := range []string{"same-wait", "successor-wait", "successor-stop", "successor-start", "successor-turn"} {
+		t.Run(next, func(t *testing.T) {
+			c := newStatusConsumer()
+			c.control.Completed(true)
+			c.control.Submit("original-input", "")
+			c.control.Started("original-turn")
+			c.control.Waiting, c.control.LocalStop = "original-wait", "original-turn"
+			var attached sessionpresentation.Attachment
+			attached.Start(c.control.Thread)
+			var text transcript.State
+			var waits activity.Waits
+			var agent activity.AgentLifecycle
+			models := sessionpresentation.TurnModels{Transcript: &text, Waits: &waits, Agent: &agent, Selected: c.control.Turn, Start: c.control.InterruptTarget().Start}
+			attached.ObserveTurn(models, sessionpresentation.TurnObservation{Kind: observation.TurnStarted, Thread: c.control.Thread, Turn: c.control.Turn, At: c.now})
+			v := c.publish(sessionpresentation.Caption{})
+			intent := sessionpresentation.InterruptIntent{Version: v.Version, Target: v.Interrupt}
+			attached.ObserveTurn(models, sessionpresentation.TurnObservation{Kind: observation.TurnCompleted, Thread: c.control.Thread, Turn: c.control.Turn, Status: "completed", At: c.now})
+			c.control.Completed(true)
+			if next != "same-wait" {
+				v = c.publish(sessionpresentation.Caption{})
+				intent = sessionpresentation.InterruptIntent{Version: v.Version, Target: v.Interrupt}
+			}
+			switch next {
+			case "successor-wait":
+				c.control.Waiting = "new-wait"
+			case "successor-stop":
+				c.control.LocalStop = "new-stop"
+			case "successor-start":
+				c.control.Submit("new-input", "")
+			case "successor-turn":
+				c.control.Started("new-turn")
+			}
+			active, err := c.model().ResolveInterrupt(intent, &c.control, &attached)
+			if next == "same-wait" {
+				if !active || err != nil {
+					t.Fatalf("host completion settled logical work: active=%v err=%v", active, err)
+				}
+			} else if active || !errors.Is(err, sessionpresentation.ErrInterruptUnavailable) {
+				t.Fatalf("original cancellation reached successor: active=%v err=%v", active, err)
+			}
+		})
+	}
+}

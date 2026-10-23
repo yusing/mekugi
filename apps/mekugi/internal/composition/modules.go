@@ -33,14 +33,16 @@ import (
 	"github.com/yusing/mekugi/modules/sourceoutline"
 	"github.com/yusing/mekugi/modules/sudoapproval"
 	"github.com/yusing/mekugi/modules/symbolquery"
+	"github.com/yusing/mekugi/modules/threadcontrol"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/modules/transportdiagnostics"
 	"github.com/yusing/mekugi/modules/usage"
 )
 
 // Frontends composes feature-owned commands and records for the authenticated
 // frontend host, including retained host facts and Activity snapshots.
-func Frontends(ctx context.Context, liveReports, childReplySummary bool, captureDirectory string) (*Runtime, error) {
-	c, bind := frontendDeclarations(liveReports, childReplySummary, captureDirectory)
+func Frontends(ctx context.Context, liveReports, childReplySummary bool, captureDirectory string, threads *control.Service) (*Runtime, error) {
+	c, bind := frontendDeclarations(liveReports, childReplySummary, captureDirectory, threads)
 	runtime, err := c.Activate(ctx, new(binding.Registry))
 	if err != nil {
 		return nil, err
@@ -52,13 +54,13 @@ func Frontends(ctx context.Context, liveReports, childReplySummary bool, capture
 // NativeRenderer borrows only statically selected painters. It constructs no
 // history, capture, host, provider or guard owner.
 func NativeRenderer(childReplySummary bool) (terminalsession.Views, error) {
-	c, _ := frontendDeclarations(false, childReplySummary, "")
+	c, _ := frontendDeclarations(false, childReplySummary, "", nil)
 	views, err := c.RendererViews()
 	views.ChildReplySummary = childReplySummary
 	return views, err
 }
 
-func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory string) (*Composition, func(*Runtime)) {
+func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory string, threads *control.Service) (*Composition, func(*Runtime)) {
 	var c Composition
 	conversation := c.Add(conversation.Module, func() conversation.Deps { return conversation.Deps{} })
 	activity := c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
@@ -66,6 +68,7 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 	transport := c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
 	metrics := c.Add(agentmetrics.Module, func() agentmetrics.Deps { return agentmetrics.Deps{} })
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
+	thread := c.Add(threadcontrol.Module, func() threadcontrol.Deps { return threadcontrol.Deps{History: history.Value(), Shared: threads} })
 	replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps { return sessionreplay.Deps{History: history.Value()} })
 	prefs := c.Add(sessionpreferences.Module, func() sessionpreferences.Deps { return sessionpreferences.Deps{History: history.Value()} })
 	usage := c.Add(usage.Module, func() usage.Deps { return usage.Deps{History: history.Value()} })
@@ -89,6 +92,7 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 		return diagnostics.Deps{History: history.Value(), Inspection: inspection.Value()}
 	})
 	return &c, func(runtime *Runtime) {
+		runtime.Threads = thread.Value()
 		runtime.Terminal.ChildReplySummary = childReplySummary
 		runtime.Replay = replay.Value()
 		runtime.Inspection = inspection.Value()

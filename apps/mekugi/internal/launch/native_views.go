@@ -28,6 +28,7 @@ import (
 // It borrows execution owners and never constructs another host request ledger.
 type nativeViews struct {
 	diagnostics *appserver.Diagnostics
+	threads     *threadExecution
 	activity    *activitymodel.Service
 	api         *sessionapi.Native
 	requests    *sessioncontrol.Requests[appServerRequest]
@@ -44,6 +45,11 @@ type nativeViews struct {
 }
 
 type nativeSessionView struct {
+	childProjection       nativeChildProjection
+	children              *sessionapi.Hub
+	childDetails          *nativeChildDetails
+	child                 *sessionapi.Observation
+	childThread           string
 	remoteHuman           bool
 	focused               bool
 	predictionDraftEmpty  bool
@@ -102,6 +108,8 @@ func (n *nativeViews) retire(id string) {
 // joined runtime outcome. Only an ordinary view retirement closes its stream.
 func (n *nativeViews) dispose(id string) {
 	if view := n.views[id]; view != nil {
+		view.child.Close()
+		view.closeChildDetails()
 		// Drop its image claims before the existing retirement cleanup prunes
 		// unsubmitted files. The view's model remains alive for history cleanup.
 		delete(n.views, id)
@@ -131,6 +139,9 @@ func (n *nativeViews) attach(request sessionapi.NativeRequest, execution *attach
 		return "The requested session attachment is unavailable."
 	}
 	v := &nativeSessionView{remoteHuman: request.RemoteHuman(), thread: request.Thread, startup: request.Startup != "", initial: true, ctx: request.ViewContext}
+	if n.threads != nil {
+		v.children = n.threads.hub
+	}
 	v.attached = attachedPresentation{executionPresentation: execution.executionPresentation, presentation: n.models.Session(v.scope.Scope()), view: request.Attachment, effects: &v.effects}
 	// Transitional semantic adapters borrow independent renderer scratch. No
 	// physical terminal, editor, key decoder or painting lifetime is attached.
@@ -178,18 +189,46 @@ func (n *nativeViews) admit(request sessionapi.NativeRequest, execution *attache
 // applyView accepts only presentation operations. Host operations retain their
 // existing handlers and need explicit view attribution before they can enter here.
 func (v *nativeSessionView) applyView(operation sessionapi.NativeOperation) string {
+	if v.child != nil && operation.Output != nil && operation.Output.Agent {
+		output := *operation.Output
+		output.Agent = false
+		operation.Output = &output
+		if err := v.child.Read(operation); err != nil {
+			return err.Error()
+		}
+		return ""
+	}
 	switch {
 	case operation.Focused != nil:
 		v.focused = *operation.Focused
 	case operation.Details != nil:
 		return v.openDetails(*operation.Details)
 	case operation.CloseDetails != nil:
+		if details := v.childDetails; details != nil {
+			if *operation.CloseDetails != details.id {
+				return sessionpresentation.ErrStaleIntent.Error()
+			}
+			v.closeChildDetails()
+			return ""
+		}
 		if v.shell.Dialog == nil || v.shell.Dialog.ID != *operation.CloseDetails {
 			return sessionpresentation.ErrStaleIntent.Error()
 		}
 		v.files.closeOutput(v.shell)
 		v.detailDemand = nil
 	case operation.DetailOutput != nil:
+		if details := v.childDetails; details != nil {
+			event, err := details.observation.Snapshot()
+			if err != nil || event.Frame.Details == nil || operation.DetailOutput.ID != details.id {
+				return sessionpresentation.ErrStaleIntent.Error()
+			}
+			request := *operation.DetailOutput
+			request.ID = event.Frame.Details.View.ID
+			if err := details.observation.Read(sessionapi.NativeOperation{DetailOutput: &request}); err != nil {
+				return err.Error()
+			}
+			return ""
+		}
 		if _, ok := v.files.details.DetailOutput(*operation.DetailOutput); !ok {
 			return sessionpresentation.ErrStaleIntent.Error()
 		}
@@ -227,6 +266,10 @@ func (v *nativeSessionView) applyView(operation sessionapi.NativeOperation) stri
 		}
 		if err := model.Display(intent); err != nil {
 			return err.Error()
+		}
+		if v.childThread != intent.Thread.ID {
+			v.child.Close()
+			v.child, v.childThread = nil, ""
 		}
 	case operation.Output != nil:
 		demand := operation.Output
@@ -276,7 +319,7 @@ func (n *nativeViews) predictionEligibility(execution *attachedPresentation) (fo
 }
 
 func (n *nativeViews) publish(execution *attachedPresentation, control *sessioncontrol.Client[appServerRequest], childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, review *sessionreview.Review, reviewSource *changecapture.Service, facts sessionapi.NativeSessionFacts, now time.Time) {
-	facts.Busy = control.Turn != "" || control.Starting()
+	children := n.descendants(execution, control.Thread)
 	for id, v := range n.views {
 		if v.ctx.Err() != nil || v.attached.executionPresentation != execution.executionPresentation && id != n.replacing {
 			n.retire(id)
@@ -326,6 +369,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 		}
 		v.attached.presentation.BorrowExecutionStatus(execution.presentation)
 		view := publishSessionView(&v.attached, control, &v.picker, "", childKey, settings, tiers, title, backend, restoring, side, now, true)
+		facts.Busy = view.Status.Session.Running || control.Turn != "" || control.Starting()
 		frame := sessionapi.NativeFrame{View: view, Facts: facts, CompletionTarget: v.completionTarget, CompletionCatalog: v.picker.skillsRevision,
 			Effects:  v.effects.publication(),
 			Activity: v.effects.activityPublication(), Notification: v.notification,
@@ -347,6 +391,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			}
 		}
 		v.publishDetails(&frame)
+		n.publishChild(v, &frame, children)
 		if err := n.api.Publish(id, frame); err != nil {
 			n.retire(id)
 			continue
@@ -374,6 +419,9 @@ func (n *nativeViews) rewindArchive(original string) {
 // Confirmed replacement retires only this view's old acquisitions. Effects stay
 // with the same client editor lifetime; execution owners are borrowed afresh.
 func (n *nativeViews) replacePresentation(v *nativeSessionView, execution *attachedPresentation) {
+	v.closeChildDetails()
+	v.child.Close()
+	v.child, v.childThread = nil, ""
 	n.requests.Retire(viewRequestScope(v.attached.view))
 	v.files.closeOutput(v.shell)
 	v.picker.cancelScan()

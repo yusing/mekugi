@@ -5,6 +5,7 @@ package sessioncontrol
 // Source: apps/mekugi/internal/router/app_server_lifecycle.go@dd97276b.
 type Live struct {
 	Thread, Turn             string
+	Waiting, LocalStop       string // Detached logical wait and stopped host-turn identities.
 	HasUserTurn              bool
 	Rewind                   *RewindOperation
 	Compaction               Compaction
@@ -71,7 +72,7 @@ func (h *Live) AcceptsSettings() bool {
 }
 
 func (h *Live) Busy(waitingInput bool) bool {
-	return h.Turn != "" || h.Starting() || h.Compaction.Pending() ||
+	return h.Turn != "" || h.LocalStop != "" || h.Starting() || h.Compaction.Pending() ||
 		h.InputPending() || h.Settings.Pending() || h.Shell.Pending || waitingInput
 }
 
@@ -98,6 +99,7 @@ func (o *Interruption) Finish() { *o = Interruption{} }
 // An empty Turn issues no host request. Pending retains deferred cancellation.
 type Interrupt struct {
 	Turn, Label             string
+	Wait, Stop              string
 	RestoreWaiting, Pending bool
 }
 
@@ -113,7 +115,7 @@ func (h *Live) PrepareEscape(hasUnsentSteer bool) bool {
 }
 
 func (h *Live) Interrupt() Interrupt {
-	r := Interrupt{Turn: h.Turn}
+	r := Interrupt{Turn: h.Turn, Wait: h.Waiting, Stop: h.LocalStop}
 	if h.Compaction.Cancel() {
 		r.RestoreWaiting = true
 		r.Turn = h.Compaction.InterruptTarget()

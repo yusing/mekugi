@@ -17,9 +17,12 @@ import (
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/backends/codex/rollout"
+	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 type serverLauncher struct {
+	threads  *threadcontrol.Service
+	hub      *sessionapi.Hub
 	mu       sync.Mutex
 	selected *modelcatalog.Selection
 	catalog  *sessionapi.StartOptions
@@ -161,8 +164,12 @@ func (l *serverLauncher) Run(ctx context.Context, start sessionapi.Start, api *s
 	if start.Replay != nil {
 		return runServerReplay(ctx, *start.Replay, api)
 	}
+	var execution *threadExecution
+	if l.hub != nil {
+		execution = &threadExecution{hub: l.hub, shared: l.threads}
+	}
 	if start.Native != nil {
-		code, err := runServerSession(ctx, start.Native.RouterArgs, start.Native.Args, api, start.Workspace)
+		code, err := runServerSession(ctx, start.Native.RouterArgs, start.Native.Args, api, start.Workspace, execution)
 		outcome := &sessionapi.NativeExit{Code: code}
 		if err != nil {
 			outcome.Message = err.Error()
@@ -186,7 +193,7 @@ func (l *serverLauncher) Run(ctx context.Context, start sessionapi.Start, api *s
 	if start.Resume != "" {
 		args = append(args, "resume", start.Resume)
 	}
-	code, err := runServerSession(ctx, routerArgs, args, api, start.Workspace)
+	code, err := runServerSession(ctx, routerArgs, args, api, start.Workspace, execution)
 	if err == nil && code != 0 {
 		return fmt.Errorf("session exited with status %d", code)
 	}

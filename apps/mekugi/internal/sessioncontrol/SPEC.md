@@ -14,6 +14,15 @@ observations. Unknown, duplicate or retired responses cannot settle a newer
 operation. Notifications and answers to host requests preserve their original
 method, payload and identity. Transport failures are returned without retry.
 
+Server-owned thread coordination submits asynchronous host calls to that same
+event loop and ledger. Cancellation before dispatch prevents execution; after
+dispatch it releases observation with an uncertain outcome. Shutdown releases
+waiting callers without replaying their operations.
+Prepared-child resume preserves retained host identity and checks canonical
+authority before execution. History confirmation can read the retained source
+without a live host connection. Ordinary child input remains restricted; prompt
+answers, approval decisions and cancellation keep their existing authority.
+
 [Conversation](../../../../modules/conversation/SPEC.md) owns composer payloads,
 queues and provisional transcript rows; control decides which submissions settle,
 return to the composer or requeue. [Session presentation](../sessionpresentation/SPEC.md)
@@ -31,6 +40,12 @@ keyboard locks and contextual dismissal stay with the renderer.
 The admitted start keeps its identity when the host assigns a turn and commits
 input. A delayed cancellation of conclusively completed original work settles
 without interrupting, restoring input from, or canceling compaction for a successor.
+Logical waits retain their own observed identity after the host turn ends. They
+remain busy for replacement/exit admission and cancellable through Thread Control;
+no host turn identity is fabricated for cancellation. Human input reconciles and
+supersedes unsent logical continuations before dispatch. Host-turn completion does
+not settle logical work; cancellation retains its captured wait and stop identity,
+including after cancellation of the wait subscription.
 
 Terminal keys and contextual dismissal belong to
 [terminal session](../terminalsession/SPEC.md#composer-controls).

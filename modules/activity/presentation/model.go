@@ -34,7 +34,7 @@ type Facts struct {
 type AgentSource interface{ ActivityAgent() AgentFacts }
 type AgentFacts struct {
 	Name, Role, Thread                           string
-	Responding, Final                            bool
+	Responding, Final, Waiting, Paused           bool
 	Started, LastResponse                        time.Time
 	WorkElapsed                                  time.Duration
 	WorkSince                                    time.Time
@@ -142,6 +142,12 @@ func (m *Model[S, A]) Latest(name string) int {
 // Status reports only observed activity, not host task completion.
 func (m *Model[S, A]) Status(agent A) string {
 	facts := agent.ActivityAgent()
+	if facts.Paused {
+		return "paused"
+	}
+	if facts.Waiting {
+		return "waiting"
+	}
 	if facts.Responding {
 		return "responding"
 	}

@@ -23,7 +23,7 @@ func TestModelsHandlerValidatesAndProjectsEachCatalog(t *testing.T) {
 		response.Header.Set("ETag", "account-version")
 		return response, nil
 	})})
-	handler := inferencegateway.ModelsHandler(provider, true, nil)
+	handler := inferencegateway.ModelsHandler(provider, true, nil, nil)
 	for request := range 3 {
 		recorder := httptest.NewRecorder()
 		handler(recorder, catalogRequest())

@@ -1,6 +1,7 @@
 package composition
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,12 +35,12 @@ func TestFrontendsRetainedSegmentsWithoutTransport(t *testing.T) {
 				}
 			}
 			t.Setenv("TMPDIR", temp)
-			runtime, err := Frontends(t.Context(), live, true, "")
+			runtime, err := Frontends(t.Context(), live, true, "", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() {
-				if err := runtime.Close(t.Context()); err != nil {
+				if err := runtime.Close(context.WithoutCancel(t.Context())); err != nil {
 					t.Error(err)
 				}
 			})
@@ -92,7 +93,7 @@ func TestCompositionCollectsRecordKindsBeforeHostConstruction(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := runtime.Close(t.Context()); err != nil {
+		if err := runtime.Close(context.WithoutCancel(t.Context())); err != nil {
 			t.Error(err)
 		}
 	})
@@ -103,12 +104,12 @@ func TestCompositionCollectsRecordKindsBeforeHostConstruction(t *testing.T) {
 }
 
 func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
-	runtime, err := Frontends(t.Context(), false, true, "")
+	runtime, err := Frontends(t.Context(), false, true, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := runtime.Close(t.Context()); err != nil {
+		if err := runtime.Close(context.WithoutCancel(t.Context())); err != nil {
 			t.Error(err)
 		}
 	})
@@ -158,12 +159,12 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 
 func TestFrontendsOwnsWorkspaceCapture(t *testing.T) {
 	directory := t.TempDir()
-	runtime, err := Frontends(t.Context(), false, true, directory)
+	runtime, err := Frontends(t.Context(), false, true, directory, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := runtime.Close(t.Context()); err != nil {
+		if err := runtime.Close(context.WithoutCancel(t.Context())); err != nil {
 			t.Error(err)
 		}
 	}()
@@ -187,7 +188,7 @@ func TestFrontendsOwnsWorkspaceCapture(t *testing.T) {
 	if result.SnapshotError != nil || len(result.Files) != 1 || !strings.Contains(result.Files[0].Diff, "+after") {
 		t.Fatalf("composed result: %+v", result)
 	}
-	if err := runtime.Close(t.Context()); err != nil {
+	if err := runtime.Close(context.WithoutCancel(t.Context())); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.Changes.Checkpoints(directory); err == nil {

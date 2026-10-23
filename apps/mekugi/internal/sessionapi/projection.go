@@ -19,6 +19,7 @@ type Frame struct {
 	Prompts    *Prompts  // Absent for a replay.
 	Attachment uint64    // A change restarts entry sequences.
 	Status     sessionpresentation.Label
+	Caption    sessionpresentation.Caption // Runtime facts for admitted descendant viewers.
 	Main       *activitypresentation.Publication
 	// Agents is the child feed: each agent's own activity, and the roster.
 	Agents *activitypresentation.Publication

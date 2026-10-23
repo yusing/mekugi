@@ -166,6 +166,13 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 	base := Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,
 		Completion: state.completed, CompletionKnown: state.completionKnown}
 	v.Status.Session = m.sessionLabel(base, turn, pending, archiving, shell, now)
+	if in.Control != nil && in.Control.LocalStop != "" && turn == "" {
+		text := "Working"
+		if in.Control.Waiting != "" {
+			text = "Waiting for agents"
+		}
+		v.Status.Session = Label{Text: text, Running: true, Animation: Pulse, Elapsed: now.Sub(state.Started), ElapsedKnown: !state.Started.IsZero()}
+	}
 	if m.DisplayingSide() && in.Conversation.Side != nil {
 		side := in.Conversation.Side
 		v.Draft = side.Drafts.DraftView()
@@ -204,7 +211,7 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 	}
 	s := &v.Status
 	s.State = base
-	s.Animating = in.Processes > 0 || in.SideRunning || v.BTWRunning || !state.Alert && (turn != "" || pending)
+	s.Animating = in.Processes > 0 || in.SideRunning || v.BTWRunning || !state.Alert && (turn != "" || pending || s.Session.Running)
 	v.ProjectComposerStatus(in.Conversation.PromptEditor.Parked.Snapshot.Text != "")
 	if v.Displayed.ID != v.Main.ID {
 		return v
@@ -226,7 +233,7 @@ func (v *View) ProjectComposerStatus(draftKept bool) {
 	}
 	s := &v.Status
 	s.Composer, s.ComposerOverride = s.Session, false
-	if v.Displayed.ID != v.Main.ID {
+	if v.ReadOnly == ChildDisplayed || v.Displayed.ID != v.Main.ID {
 		s.Composer, s.ComposerOverride = Label{Text: "Read-only"}, true
 		return
 	}
@@ -246,6 +253,8 @@ func (v *View) ProjectComposerStatus(draftKept bool) {
 		}
 		s.Composer = Label{Text: text}
 		s.ComposerOverride = true
+	} else if v.Admission.ReadOnly && v.ReadOnly != Replay {
+		s.Composer, s.ComposerOverride = Label{Text: "Read-only"}, true
 	}
 }
 
@@ -330,5 +339,5 @@ func (m *Model) sessionLabel(l Label, turn string, pending, archiving, shell boo
 // MainInterruptible reports whether Main has work an interruption stops,
 // whichever thread is displayed.
 func MainInterruptible(control *sessioncontrol.Live, conversation *conversationmodel.Session) bool {
-	return control.Turn != "" || control.Starting() || control.InputPending() || control.Compaction.Pending() || control.Compaction.ContinuationPending() || len(conversation.Unsent)+len(conversation.Queued) > 0
+	return control.Turn != "" || control.LocalStop != "" || control.Starting() || control.InputPending() || control.Compaction.Pending() || control.Compaction.ContinuationPending() || len(conversation.Unsent)+len(conversation.Queued) > 0
 }

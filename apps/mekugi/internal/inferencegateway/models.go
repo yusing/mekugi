@@ -21,7 +21,7 @@ type CatalogFailure struct {
 	UpstreamStatus, DownstreamStatus int
 }
 
-func ModelsHandler(provider *Client, codeModeOnly bool, report func(*http.Request, CatalogFailure)) http.HandlerFunc {
+func ModelsHandler(provider *Client, codeModeOnly bool, report func(*http.Request, CatalogFailure), observe func([]byte)) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		tracked := &ResponseWriter{ResponseWriter: writer}
 		writer = tracked
@@ -63,6 +63,9 @@ func ModelsHandler(provider *Client, codeModeOnly bool, report func(*http.Reques
 				cause += ": " + string(body)
 			}
 			failure = CatalogFailure{Err: errors.New(cause), Code: fmt.Sprintf("models_http_%d", response.StatusCode), Summary: fmt.Sprintf("the upstream model catalog returned HTTP %d", response.StatusCode)}
+		}
+		if observe != nil && response.StatusCode == http.StatusOK {
+			observe(body)
 		}
 		if codeModeOnly && response.StatusCode == http.StatusOK {
 			body, err = binding.CodeModeOnlyModelCatalog(body)

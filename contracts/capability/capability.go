@@ -10,6 +10,7 @@ const (
 	GuidanceProjection Mechanism = "guidance-projection"
 	ShellApproval      Mechanism = "shell-approval"
 	ThreadNaming       Mechanism = "thread-naming"
+	MCPTools           Mechanism = "mcp-tools"
 )
 
 type State uint8

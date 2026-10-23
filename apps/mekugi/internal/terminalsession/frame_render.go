@@ -54,7 +54,7 @@ type RenderedFrame struct {
 // SourceContext identifies the selected publication without exposing its model.
 func (in FrameInput) SourceContext() SourceContext {
 	view := in.Main.session
-	return SourceContext{Attachment: view.Version.Attachment, Thread: view.Displayed.ID, Workspace: view.Info.Workspace}
+	return SourceContext{Attachment: view.Version.Attachment, Thread: view.Displayed.ID, Workspace: view.SourceWorkspace()}
 }
 
 func (in FrameInput) displayedTranscript() *activityui.View {

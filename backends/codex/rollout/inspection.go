@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"context"
 	jsonv1 "encoding/json"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"io"
 	"os"
 	"slices"
@@ -214,6 +216,10 @@ func Inspect(ctx context.Context, path string, observe func(InspectionEvent) err
 			continue
 		}
 		if item.CallID == "" {
+			var raw map[string]jsontext.Value
+			if json.Unmarshal(envelope.Payload, &raw) == nil && codexresponses.StandaloneFunctionOutput(raw) {
+				continue
+			}
 			return Inspection{}, fmt.Errorf("session line %d: tool item has no call_id", line)
 		}
 		index, exists := indices[item.CallID]

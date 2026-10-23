@@ -50,6 +50,7 @@ func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsess
 			Prompts:    apiPrompts(attached, control),
 			Attachment: view.Version.Attachment,
 			Status:     view.Status.Session,
+			Caption:    view.Caption,
 			Main:       w.main.publication(attached.source, attached.source.Publication(attached.presentation, nil)),
 			Agents:     w.agents.publication(attached.childSource, attached.childSource.Publication(attached.presentation, attached.source)),
 
@@ -162,6 +163,9 @@ func apiIntentRefusal(attached *attachedPresentation, control *sessioncontrol.Cl
 	}
 	if intent.Thread != "" && intent.Thread != control.Thread || intent.Workspace != "" && intent.Workspace != attached.cwd {
 		return "The requested session destination is unavailable."
+	}
+	if (intent.Action == sessionapi.Send || intent.Action == sessionapi.RunShell) && (control.Startup.Prepared != nil || attached.presentation.View().ReadOnly != sessionpresentation.Editable) {
+		return sessionpresentation.ErrInputUnavailable.Error()
 	}
 	return ""
 }

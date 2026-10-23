@@ -79,7 +79,7 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 				defer streams.Close()
 				conversation := new(conversationmodel.Service)
 				observations := conversationbinding.Codex.Observation(conversation)
-				wait, err := startNativeSession(u.terminalViews, u.reviewSource, testPresentation(), conversation, u.activity, testHistory(), testPreferences(), testReports(), runtimeContext, cmd, streams, u.controlObservations, u.usage, u.audience, u.review, u.execWindows, u.nativeTrace, u.review.Projection.Retained, u.review.Projection.Changes, u.snapshots, u.recovered, u.publishChanges, u.captureNotice, nil, nil, u.execTrack, false, nil, "", nil, nil, nil, "", nil, &observations, false, nil, api, false)
+				wait, err := startNativeSession(u.terminalViews, u.reviewSource, testPresentation(), conversation, u.activity, testHistory(), testPreferences(), testReports(), runtimeContext, cmd, streams, u.controlObservations, u.usage, u.audience, u.review, u.execWindows, u.nativeTrace, u.review.Projection.Retained, u.review.Projection.Changes, u.snapshots, u.recovered, u.publishChanges, u.captureNotice, nil, nil, u.execTrack, false, nil, "", nil, nil, nil, "", nil, &observations, false, nil, api, false, nil)
 				if err != nil {
 					return err
 				}

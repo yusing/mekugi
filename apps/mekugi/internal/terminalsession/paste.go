@@ -28,7 +28,7 @@ func (m *Main) PasteInput(event Input, prompts *Prompts) (*PasteResult, error) {
 	switch event.Kind {
 	case PasteStart:
 		m.paste = nil
-		if m.session.ReadOnly != sessionpresentation.Editable {
+		if !m.PrepareInput(true).Editable {
 			return nil, nil
 		}
 		m.Keybindings = false

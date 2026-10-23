@@ -14,6 +14,13 @@ owns runtime contexts independently of client connections. Ending a thread or st
 the server cancels and joins its runtime. Disconnected viewers release only their
 subscriptions. Restart restores no active runtime or pending request implicitly.
 
+An admitted parent can observe its server-owned descendants through the same
+detached publications and native presentation subscriptions. These subscriptions
+accept only output and detail reads, never execution or input operations. Their
+closure releases the view without stopping the child. Detail dialogs retain their
+captured child source across display navigation until closed or replaced. Publication uses the child's
+confirmed workspace and settings, with no parent defaults for missing facts.
+
 Creation and resume use the existing startup policy and retained history. Model
 and workspace choices describe the execution machine. Acknowledgement means
 admission; host outcomes arrive through publications. Ambiguous transport failure

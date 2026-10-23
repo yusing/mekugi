@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/contracts/guidance"
 )
 
 type InstructionInput struct {
@@ -28,6 +29,7 @@ type FrontendGuidance struct {
 // Guidance registers the distinct existing request phases. Callbacks are
 // invocation-immutable; the application owns request copies and catalog indexing.
 type Guidance struct {
+	Threads           func(InstructionInput, []guidance.Replacement) (InstructionUpdate, error)
 	BeforePreparation func(InstructionInput) (InstructionUpdate, error)
 	ForExecution      func(InstructionInput) (InstructionUpdate, error)
 	AfterAttachments  func(InstructionInput, bool) (InstructionUpdate, error)

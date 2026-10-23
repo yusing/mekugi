@@ -35,6 +35,20 @@ func TestInspectionCancellationAtSourceBoundaries(t *testing.T) {
 	})
 }
 
+func TestInspectionStandaloneOutputIsNotACall(t *testing.T) {
+	for _, call := range []string{"", `,"call_id":null`} {
+		path := inspectionSource(t, `{"type":"response_item","payload":{"type":"function_call_output","name":"wait_agent","namespace":"threadcontrol","output":"wake"`+call+`}}`)
+		result, err := Inspect(t.Context(), path, nil)
+		if err != nil || len(result.Calls) != 0 {
+			t.Fatalf("standalone output inspection: %+v, %v", result.Calls, err)
+		}
+	}
+	path := inspectionSource(t, `{"type":"response_item","payload":{"type":"function_call_output","call_id":"","name":"wait_agent","output":"wake"}}`)
+	if _, err := Inspect(t.Context(), path, nil); err == nil {
+		t.Fatal("explicit empty host identity accepted")
+	}
+}
+
 func inspectionSource(t *testing.T, records ...string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "selected.jsonl")

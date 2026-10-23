@@ -85,7 +85,7 @@ func (c *nativeClientRenderer) update(frame sessionapi.NativeFrame, draft conver
 	u.Transcript.Hydrate(frame.MainOutput)
 	u.Agents.Hydrate(frame.AgentOutput)
 	for _, painter := range []*activityui.View{u.Transcript, u.Agents} {
-		painter.Painter.FileLink = markdownFileLinks(view.Info.Workspace)
+		painter.Painter.FileLink = markdownFileLinks(view.SourceWorkspace())
 		painter.Painter.DeferFileLinks = true
 	}
 	if pane, ok := u.Auxiliary.(*changeui.Pane); ok && frame.Review != nil {

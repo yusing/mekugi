@@ -73,7 +73,7 @@ func TestAPIShellServerOwnedNativeCodex(t *testing.T) {
 	launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
 		cmd = exec.CommandContext(ctx, codex, commandArgs...)
 		cmd.Dir, cmd.Env = start.Workspace, environment
-		wait, err := startNativeSession(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, streams, integration.controlObservations, integration.usage, integration.audience, integration.review, integration.execWindows, integration.nativeTrace, integration.retained, integration.changeSource, integration.snapshots, integration.recovered, integration.publishChanges, integration.captureNotice, integration.guard, integration.guards, integration.execTrack, integration.skillsManager, nil, "", nil, nil, nil, "", nil, &observations, false, nil, api, false)
+		wait, err := startNativeSession(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, streams, integration.controlObservations, integration.usage, integration.audience, integration.review, integration.execWindows, integration.nativeTrace, integration.retained, integration.changeSource, integration.snapshots, integration.recovered, integration.publishChanges, integration.captureNotice, integration.guard, integration.guards, integration.execTrack, integration.skillsManager, nil, "", nil, nil, nil, "", nil, &observations, false, nil, api, false, nil)
 		if err == nil {
 			err = wait()
 		}

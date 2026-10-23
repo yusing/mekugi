@@ -87,7 +87,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		defer listener.Close()
 		serverContext, stopServer := context.WithCancel(ctx)
 		launcher := nativeFixtureLauncher{run: func(runtimeContext context.Context, api *sessionapi.Server) error {
-			wait, err := startNativeSession(terminalViews, reviewSource, views, conversation, activity, service, prefs, segments, runtimeContext, cmd, stdout, integration.controlObservations, integration.usage, integration.audience, integration.review, integration.execWindows, integration.nativeTrace, integration.retained, integration.changeSource, integration.snapshots, integration.recovered, integration.publishChanges, integration.captureNotice, integration.guard, integration.guards, integration.execTrack, integration.skillsManager, issues, resumeThread, serviceTiers, capture, resumeArgv, debugDirectory, generator, observations, approvals, nil, api, false)
+			wait, err := startNativeSession(terminalViews, reviewSource, views, conversation, activity, service, prefs, segments, runtimeContext, cmd, stdout, integration.controlObservations, integration.usage, integration.audience, integration.review, integration.execWindows, integration.nativeTrace, integration.retained, integration.changeSource, integration.snapshots, integration.recovered, integration.publishChanges, integration.captureNotice, integration.guard, integration.guards, integration.execTrack, integration.skillsManager, issues, resumeThread, serviceTiers, capture, resumeArgv, debugDirectory, generator, observations, approvals, nil, api, false, nil)
 			if err != nil {
 				return err
 			}

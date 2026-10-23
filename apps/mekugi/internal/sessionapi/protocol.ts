@@ -429,6 +429,7 @@ export type ApprovalView = {
 };
 
 export type View = {
+  "DisplayedWorkspace": string;
   "Info": MainInfo;
   "Menu": (MenuView | null);
   "Resume": (ResumeView | null);
@@ -496,6 +497,7 @@ export type Scope = {
 };
 
 export type NativeDetails = {
+  "source": Thread;
   "selected"?: string;
   "view": DetailView;
   "output": (DetailOutput | null);
@@ -587,6 +589,8 @@ export type InterruptTarget = {
   "Thread": string;
   "Turn": string;
   "Start": string;
+  "Wait": string;
+  "Stop": string;
 };
 
 export type NativeQuestionAnswer = {
@@ -729,6 +733,7 @@ export type PromptDraftView = {
 export type InputAdmission = {
   "Edit": boolean;
   "Submit": boolean;
+  "ReadOnly": boolean;
   "Reason": string;
 };
 
@@ -1356,6 +1361,8 @@ export type AgentFacts = {
   "Thread": string;
   "Responding": boolean;
   "Final": boolean;
+  "Waiting": boolean;
+  "Paused": boolean;
   "Started": string;
   "LastResponse": string;
   "WorkElapsed": number;

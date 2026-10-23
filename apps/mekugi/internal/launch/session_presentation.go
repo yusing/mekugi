@@ -69,6 +69,9 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 // touching renderer geometry or acknowledging terminal delivery.
 func publishSessionView(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, draft string, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, now time.Time, clientEditors bool) sessionpresentation.View {
 	m := attached.presentation
+	if control.Startup.Prepared != nil {
+		m.RestrictChildInput()
+	}
 	if side != nil {
 		m.SetSide(sessionpresentation.Thread{ID: cmp.Or(side.Thread, "side:"+side.Key), Caller: side.Caller()})
 	} else {

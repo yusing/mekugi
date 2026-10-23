@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +12,9 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
@@ -95,6 +98,9 @@ func TestNativeDetailsSelectAndCloseIndependently(t *testing.T) {
 		}
 	}
 	a, b := nativeDetailFrame(first), nativeDetailFrame(second)
+	if a.Details.Source != first.attached.presentation.View().Main || b.Details.Source != second.attached.presentation.View().Main {
+		t.Fatal("detail publication lost its source runtime")
+	}
 	if a.Details == nil || b.Details == nil || a.Details.View.ID == b.Details.View.ID || a.Details.Output == nil || b.Details.Output == nil {
 		t.Fatal("views shared or lost the selected detail/output")
 	}
@@ -222,5 +228,222 @@ func TestNativeDetailInitialPageDoesNotOverrideClientNavigation(t *testing.T) {
 	renderer.update(frame, conversation.DraftView{Available: true}, conversation.PromptDraftView{}, time.Now())
 	if renderer.terminal.Dialog.Page != 0 {
 		t.Fatal("publication overrode renderer-local page navigation")
+	}
+}
+
+func TestNativeChildDetailsKeepCapturedSourceAcrossNavigation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	u, _ := newAppServerTestUI()
+	workspace := t.TempDir()
+	u.startSession("main", workspace)
+	launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+		if err := api.SetSummary(sessionapi.Summary{Thread: "main", Workspace: workspace, Ready: true}); err != nil {
+			return err
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	hub := sessionapi.NewHub(ctx, launcher)
+	defer hub.Close()
+	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
+	defer server.Close()
+	rpc, err := sessionapi.OpenRPC(ctx, server.Client(), server.URL+sessionapi.RPCPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rpc.Close()
+	serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: workspace, Model: "fixture"})
+	reads := make(chan sessionapi.NativeRequest, 8)
+	for _, thread := range []string{"child-a", "child-b"} {
+		u.attached.session.RegisterThread(observation.Thread{ID: thread, Path: "/root/" + thread})
+		_, err := hub.StartPrepared(ctx, "main", "", workspace, func(ctx context.Context, api *sessionapi.Server) error {
+			if err := api.Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: thread, Workspace: workspace}, Main: &activity.Publication{}}); err != nil {
+				return err
+			}
+			if err := api.SetSummary(sessionapi.Summary{Thread: thread, Workspace: workspace, Ready: true}); err != nil {
+				return err
+			}
+			frames := make(map[string]sessionapi.NativeFrame)
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case request := <-api.Native().Requests():
+					frame := frames[request.Attachment]
+					if request.Attach {
+						frame.View = sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Main: sessionpresentation.Thread{ID: thread}, Displayed: sessionpresentation.Thread{ID: thread}}
+						frame.View.Info.Workspace = workspace
+					}
+					if details := request.Operation.Details; details != nil {
+						if details.Displayed.ID != thread {
+							t.Errorf("detail source %q reached %q", details.Displayed.ID, thread)
+						}
+						frame.Details = &sessionapi.NativeDetails{Source: frame.View.Main, View: sessionpresentation.DetailView{ID: sessionpresentation.DetailID{Attachment: 1, Selection: 1}, Pages: []sessionpresentation.DetailItem{{DetailPage: activity.DetailPage{ID: thread}}}}}
+						reads <- request
+					}
+					if request.Operation.DetailOutput != nil {
+						reads <- request
+					}
+					frames[request.Attachment] = frame
+					request.Reply <- ""
+					if err := api.Native().Publish(request.Attachment, frame); err != nil {
+						return err
+					}
+				}
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, view, _ := nativeDetailTestViews(t, u)
+	view.children = hub
+	view.child, err = hub.Observe(ctx, "main", "child-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view.childThread = "child-b"
+	if err := view.attached.presentation.Display(sessionpresentation.DisplayIntent{Version: view.attached.presentation.View().Version, Thread: sessionpresentation.Thread{ID: "child-b", Caller: "/root/child-b"}}); err != nil {
+		t.Fatal(err)
+	}
+	// A main-source file remains local even while a live child is displayed.
+	path := filepath.Join(workspace, "main.md")
+	if err := os.WriteFile(path, []byte("main source"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if refusal := view.applyView(sessionapi.NativeOperation{Details: &sessionapi.NativeDetailRequest{Displayed: sessionpresentation.Thread{ID: "main"}, Kind: sessionapi.NativeFileDetails, Path: path}}); refusal != "" {
+		t.Fatal(refusal)
+	}
+	if view.childDetails != nil || view.shell.Dialog == nil {
+		t.Fatal("main details followed the displayed child")
+	}
+	open := func(thread string) sessionapi.NativeDetails {
+		t.Helper()
+		operation := sessionapi.NativeOperation{Details: &sessionapi.NativeDetailRequest{Displayed: sessionpresentation.Thread{ID: thread}, Kind: sessionapi.NativeEntryDetails, Source: 7, Agent: true}}
+		request := sessionapi.NativeRequest{Context: ctx, Attachment: view.attached.view, Version: view.attached.presentation.View().Version, Thread: "main", Workspace: workspace, Operation: operation}
+		admitted, refusal := n.admit(request, &u.attached, "main")
+		if refusal != "" {
+			t.Fatal(refusal)
+		}
+		if refusal := admitted.applyView(operation); refusal != "" {
+			t.Fatal(refusal)
+		}
+		select {
+		case read := <-reads:
+			if read.Thread != thread {
+				t.Fatalf("captured %s reached %s", thread, read.Thread)
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		for {
+			frame := nativeDetailFrame(view)
+			if frame.Details != nil {
+				return *frame.Details
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}
+	first := open("child-a")
+	observer := view.childDetails.observation
+	if refusal := view.applyView(sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: view.attached.presentation.View().Version, Thread: sessionpresentation.Thread{ID: "main"}}}); refusal != "" {
+		t.Fatal(refusal)
+	}
+	if frame := nativeDetailFrame(view); frame.Details == nil || frame.Details.View.ID != first.View.ID {
+		t.Fatal("navigation closed the captured child dialog")
+	}
+	if refusal := view.applyView(sessionapi.NativeOperation{DetailOutput: &sessionpresentation.DetailOutputRequest{ID: first.View.ID, Page: "child-a", Version: 1}}); refusal != "" {
+		t.Fatal(refusal)
+	}
+	select {
+	case read := <-reads:
+		if read.Thread != "child-a" || read.Operation.DetailOutput.ID.Selection != 1 {
+			t.Fatal("hydration lost its child owner")
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	second := open("child-b")
+	if second.View.ID == first.View.ID {
+		t.Fatal("replacement reused the parent's detail identity")
+	}
+	if err := observer.Read(sessionapi.NativeOperation{Details: &sessionapi.NativeDetailRequest{}}); err == nil {
+		t.Fatal("replaced observation remained open")
+	}
+	if refusal := view.applyView(sessionapi.NativeOperation{CloseDetails: &first.View.ID}); refusal == "" {
+		t.Fatal("stale close reached the replacement dialog")
+	}
+	if refusal := view.applyView(sessionapi.NativeOperation{CloseDetails: &second.View.ID}); refusal != "" {
+		t.Fatal(refusal)
+	}
+	if nativeDetailFrame(view).Details != nil {
+		t.Fatal("closed child details remained published")
+	}
+}
+
+func TestNativeChildDialogLinkKeepsSourceAcrossNavigation(t *testing.T) {
+	for _, destination := range []string{"main", "child-b"} {
+		t.Run(destination, func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.startSession("main", "/parent-workspace")
+			terminal, _ := u.terminalViews.NewAttachment(diffrender.DarkTheme)
+			t.Cleanup(func() { _ = terminal.Diff.Close() })
+			c := nativeClient{renderer: nativeClientRenderer{terminal: terminal, views: u.terminalViews}}
+			view := u.attached.presentation.View()
+			view.Displayed = sessionpresentation.Thread{ID: "child-a", Caller: "/root/child-a"}
+			view.DisplayedWorkspace = "/child-workspace"
+			detail := &sessionapi.NativeDetails{Source: view.Displayed, Agent: true, View: sessionpresentation.DetailView{
+				ID:    sessionpresentation.DetailID{Attachment: view.Version.Attachment, Selection: 1},
+				Pages: []sessionpresentation.DetailItem{{DetailPage: activity.DetailPage{ID: "child-page"}}},
+			}}
+			event := sessionapi.NativeEvent{Attachment: "view", Frame: sessionapi.NativeFrame{View: view, Details: detail}}
+			c.accept(event)
+			event.Frame.View.Displayed = sessionpresentation.Thread{ID: destination}
+			event.Frame.View.DisplayedWorkspace = "/other-workspace"
+			c.accept(event)
+			c.dialog(terminalsession.DialogIntent{Action: terminalsession.DialogOpenLink, Text: "source.go"})
+			if len(c.calls) != 1 || c.calls[0].operation.Details == nil {
+				t.Fatalf("missing file detail request: %+v", c.calls)
+			}
+			request := c.calls[0].operation.Details
+			if request.Displayed != detail.Source || request.Path != "source.go" {
+				t.Fatalf("retained dialog link changed source: %+v", request)
+			}
+		})
+	}
+}
+
+func TestNativeChildProjectionRetainsImmutableSnapshots(t *testing.T) {
+	n := &nativeViews{threads: &threadExecution{}}
+	v := &nativeSessionView{}
+	base := &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{Thread: "child", Name: "/root/worker", Role: "worker"}}}}
+	project := func(children map[string]sessionapi.Descendant) *activity.Publication {
+		frame := sessionapi.NativeFrame{Agents: base, View: sessionpresentation.View{Main: sessionpresentation.Thread{ID: "main"}, Displayed: sessionpresentation.Thread{ID: "main"}}}
+		n.publishChild(v, &frame, children)
+		return frame.Agents
+	}
+	if got := project(nil); got != base {
+		t.Fatal("a view without child publications copied its immutable feed")
+	}
+	own := &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{Thread: "child", Name: "/root", Status: "working", Summary: []activity.Entry{{Agent: "Main", Text: "retained"}}}}}}
+	first := project(map[string]sessionapi.Descendant{"child": {Agents: own}})
+	if first == base || first.Roster[0].Agent.Status != "working" || first.Roster[0].Agent.Name != "/root/worker" || first.Roster[0].Agent.Summary[0].Agent != "/root/worker" {
+		t.Fatal("child roster projection lost owner facts or caller labels")
+	}
+	if got := project(map[string]sessionapi.Descendant{"child": {Agents: own, Caption: sessionpresentation.Caption{Model: "changed"}}}); got != first {
+		t.Fatal("unchanged Activity snapshots replaced the projected feed")
+	}
+	next := &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{Thread: "child", Name: "/root", Status: "idle"}}}}
+	second := project(map[string]sessionapi.Descendant{"child": {Agents: next}})
+	if second == first || second.Roster[0].Agent.Status != "idle" || first.Roster[0].Agent.Status != "working" || base.Roster[0].Agent.Status != "" {
+		t.Fatal("changed child snapshot mutated or reused its predecessor")
+	}
+	if got := project(nil); got != base {
+		t.Fatal("retired child retained a stale projected feed")
 	}
 }

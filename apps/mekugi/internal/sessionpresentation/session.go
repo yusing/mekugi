@@ -44,6 +44,7 @@ type MainInfo struct {
 }
 
 type View struct {
+	DisplayedWorkspace string
 	Info               MainInfo
 	Menu               *MenuView
 	Resume             *ResumeView
@@ -69,6 +70,14 @@ type View struct {
 	BTWRunning         bool
 	SideThread         Thread
 	Panel              *PanelView
+}
+
+// SourceWorkspace names displayed content without changing Main's input authority.
+func (v View) SourceWorkspace() string {
+	if v.DisplayedWorkspace != "" {
+		return v.DisplayedWorkspace
+	}
+	return v.Info.Workspace
 }
 
 type DisplayIntent struct {
@@ -118,6 +127,7 @@ type Model struct {
 	destinationRevision uint64
 	ownerRevision       uint64
 	replay              bool
+	childRuntime        bool
 }
 
 func (m *Model) Attach(main Thread, replay bool) {
@@ -138,7 +148,8 @@ func (m *Model) Attach(main Thread, replay bool) {
 	*m = Model{
 		status: m.status, menu: m.menu, destinationRevision: destination, ownerRevision: owner,
 		panel: m.panel, panelSequence: m.panelSequence,
-		resume: m.resume, resumeSequence: m.resumeSequence,
+		childRuntime: m.childRuntime,
+		resume:       m.resume, resumeSequence: m.resumeSequence,
 		view: View{Version: version, Main: main, Displayed: main, Input: main}, replay: replay,
 	}
 }
@@ -182,6 +193,15 @@ func (m *Model) readOnly() ReadOnly {
 		return ChildDisplayed
 	}
 	return Editable
+}
+
+// RestrictChildInput keeps an independently executing child observational for
+// human views, including the interval before its logical admission completes.
+func (m *Model) RestrictChildInput() {
+	if !m.childRuntime {
+		m.childRuntime = true
+		m.view.Version.Revision++
+	}
 }
 
 // cloneView keeps both retained publications and subsequent readers isolated

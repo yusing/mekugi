@@ -62,7 +62,11 @@ Displaying a child changes no execution identity and cancels no host work. Main
 remains the input, question and approval destination. Child display makes the
 composer read-only; returning to Main restores its existing draft. The single side
 conversation is a separately admitted editable destination with its own draft and
-captured settings. Its header target uses the same display intent and transcript
+captured settings. Independent native children use their runtime's detached feed,
+caption, roster lifecycle and output/detail owner. Displayed paths resolve in that
+child's workspace; Main's workspace remains the authority for parent input.
+Closing or changing the child view releases observation without ending execution.
+The side header target uses the same display intent and transcript
 as Main and subagents; closing returns display to Main without changing Main work.
 [Replay](../../../../modules/sessionreplay/SPEC.md) is read-only even while Main is
 displayed. Display and pagination intents name their view version and target
@@ -395,9 +399,12 @@ Public reasoning stays in Activity rather than replacing composer status. Live
 progress animates; restored/completed progress does not restart. Completion freezes
 elapsed time, using Activity's shared compact duration grammar.
 
-Agent waits update only the caller's latest roster status, never transcript or Main
-composer progress. [Activity](../../../../modules/activity/SPEC.md#records-and-codex-connection)
-owns the immutable target snapshots used for live display and restoration.
+Native tool waits update the caller's roster through
+[Activity](../../../../modules/activity/SPEC.md#records-and-codex-connection).
+Server-coordinated logical waits also keep Main busy and interruptible after the
+host turn stops. The composer shows waiting, elapsed work continues across the
+continuation, and the local stop emits no task-completion notice. Cold restoration
+shows paused work without restarting its clock or subscription.
 
 Router errors remain composer feedback, not transcript or provider-response edits.
 Editing/dismissal clears actionable feedback. Elided feedback opens complete retained

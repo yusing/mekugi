@@ -40,7 +40,13 @@ func interruptSession(attached *attachedPresentation, terminal *terminalsession.
 // applyInterruption applies the owner's composer consequence and issues at most
 // one native interruption. Host execution remains independent of presentation.
 func applyInterruption(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessioncontrol.Interrupt) error {
+	attached.threadInput.reset()
 	applyInputRestoration(attached, terminal, questions, approvals, picker, control.Turn, clock, attached.presentation.RestoreInterruptedInput(attached.conversation, intent))
+	if intent.Stop != "" && attached.interruptWait != nil {
+		attached.interruptWait(control.Thread, intent.Wait)
+		attached.presentation.Status.SetText("Interrupting…")
+		return nil
+	}
 	if intent.Turn == "" {
 		return nil
 	}

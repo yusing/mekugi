@@ -126,7 +126,12 @@ func TestRemoteFrameOmitsTerminalRendererState(t *testing.T) {
 	if frame.Main == nil || frame.Review == nil || frame.Activity == nil {
 		t.Fatal("remote projection mutated the native frame")
 	}
-	frame.View.Displayed = sessionpresentation.Thread{ID: "side", Caller: "/root"}
+	frame.View.Displayed = sessionpresentation.Thread{ID: "child", Caller: "/root/worker"}
+	if remote := frame.remote(); remote.Main != nil || remote.Agents != nil {
+		t.Fatal("displayed child repeated the parent's terminal feeds")
+	}
+	frame.View.SideThread = sessionpresentation.Thread{ID: "side", Caller: "/root"}
+	frame.View.Displayed = frame.View.SideThread
 	if frame.remote().Main == nil {
 		t.Fatal("a displayed side conversation lost its only publication")
 	}

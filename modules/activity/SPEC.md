@@ -299,6 +299,9 @@ Activity also owns admitted agent lifecycle transitions and active-work timing.
 Live observations, offline replay and restored history use that same policy;
 the application admits thread/turn identities before applying transitions and
 retains host operation authority. Historical timing never resumes a live clock.
+An admitted logical agent wait keeps active-work timing and waiting status across
+its local host-turn stop. Host idle observations cannot turn it into an answered
+task; explicit continuation, cancellation or paused restoration settles that state.
 Main and child identities stay distinct; Main's roster summary reads its existing
 feed rather than copying it. Loaded skills come from confirmed reads or submitted
 attachments. Compaction emits typed source intents for the native acquisition command.

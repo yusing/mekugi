@@ -24,6 +24,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -86,7 +87,7 @@ const (
 
 // runInvocation acquires independent owners, launches Codex and joins every lifetime.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func runInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stdin, stdout *os.File, stderr io.Writer, headless bool, resumeThread string, resumeArgv []string, approvals bool, stopStartupInterrupts func(), interrupts <-chan os.Signal, artifacts func([]string), api *sessionapi.Server, workspace string) (code int, runErr error) {
+func runInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stdin, stdout *os.File, stderr io.Writer, headless bool, resumeThread string, resumeArgv []string, approvals bool, stopStartupInterrupts func(), interrupts <-chan os.Signal, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
 	appUI := api != nil
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -268,7 +269,11 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}
 		review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
 		defer review.Close()
-		mekugiCalls = executionobservation.New(executionobservation.Config{Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
+		var driver *threadbinding.Driver
+		if threads != nil {
+			driver = threads.driver
+		}
+		mekugiCalls = executionobservation.New(executionobservation.Config{ThreadControl: driver, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
 		usage.Configure(retained.Store, retained.Writes, retained.Limits, func(thread string, err error) {
 			issues.AddThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
 		})
@@ -326,10 +331,17 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if capture != nil {
 		mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	}
-	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, options.Mode == "mekugi", issues.ReportCatalog))
+	var observeCatalog func([]byte)
+	if threads != nil {
+		observeCatalog = threads.driver.CaptureCatalog
+	}
+	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, options.Mode == "mekugi", issues.ReportCatalog, observeCatalog))
 	inferencegateway.RegisterCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
 
 	executor := requestexecution.Executor{Provider: provider, Client: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
+	if threads != nil {
+		executor.ThreadControl = threads.shared
+	}
 	var compactPrompt atomic.Pointer[string]
 	if mekugiCalls != nil {
 		executor.Observations, executor.Guidance = mekugiCalls, registry.Guidance
@@ -406,9 +418,29 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		if err != nil {
 			return stopFailedStartup(err)
 		}
+		if threads != nil {
+			catalog, err := os.ReadFile(catalogPath)
+			if err != nil {
+				return stopFailedStartup(err)
+			}
+			threads.driver.CaptureCatalog(catalog)
+		}
 	}
 
 	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, args, options.Mode == "mekugi", skillsManagerAvailable, !provider.ThirdPartyOnly)...)
+	if threads != nil {
+		self, err := os.Executable()
+		if err != nil {
+			return stopFailedStartup(err)
+		}
+		overrides, closeMCP, err := openInvocationMCP(ctx, threads.tools, self)
+		defer func() { runErr = errors.Join(runErr, closeMCP()) }()
+		if err != nil {
+			return stopFailedStartup(err)
+		}
+		cmd.Args = append(cmd.Args, overrides...)
+		cmd.Args = append(cmd.Args, "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=true")
+	}
 	cmd.Dir = workspace
 	cmd.Env = append(slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
 		return strings.HasPrefix(entry, shellhook.Environment+"=")
@@ -525,7 +557,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			waitCodex, err = startNativeSession(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdout, &control, usage, audience, review, windows, nativeTrace, retained, changeSource, checkpoints, recovered, review.Publish, issues.AddThreadNotice, guardServer, guards, reportObserver, skillsManagerAvailable, issues, resumeThread, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals, provider.OpenAI, api, options.ChildReplySummary)
+			waitCodex, err = startNativeSession(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdout, &control, usage, audience, review, windows, nativeTrace, retained, changeSource, checkpoints, recovered, review.Publish, issues.AddThreadNotice, guardServer, guards, reportObserver, skillsManagerAvailable, issues, resumeThread, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals, provider.OpenAI, api, options.ChildReplySummary, threads)
 		} else {
 			err = cmd.Start()
 			waitCodex = cmd.Wait
