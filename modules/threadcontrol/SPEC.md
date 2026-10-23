@@ -39,7 +39,8 @@ without becoming human composer input.
   identity and canonical logical task path.
 - `followup_task` controls an admitted non-root target: start when idle, steer its
   actual running turn, or supersede an unsent wait/wake before reconciling host
-  state. Original caller attribution remains attached.
+  state. Original caller attribution remains attached. Action results identify
+  the resolved target thread and canonical task, including when input used an alias.
 - `send_message` queues attributed input without starting an idle thread. A
   matching message can satisfy an existing selected wait.
 - `interrupt_agent` interrupts the actual running turn. A waiting task without

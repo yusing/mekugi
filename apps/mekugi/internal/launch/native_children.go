@@ -154,10 +154,15 @@ func childEntries(entries []activity.Entry, caller string) []activity.Entry {
 		relabel = func(values []activity.Value) {
 			for j := range values {
 				value := &values[j]
-				for _, label := range []*string{&value.Owner, &value.From, &value.To} {
+				for _, label := range []*string{&value.Owner, &value.From} {
 					if *label == "Main" || *label == "/root" {
 						*label = caller
 					}
+				}
+				// Recipients are global logical task paths. Only the renderer's
+				// explicit Main alias denotes this independently hosted child.
+				if value.To == "Main" {
+					value.To = caller
 				}
 				relabel(value.Members)
 				relabel(value.RequestedOperations)

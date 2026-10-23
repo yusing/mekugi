@@ -316,6 +316,12 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 		return
 	}
 	switch item.Type {
+	case "mcpToolCall":
+		entry := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: attached.session.Caller(control.Thread), CallID: item.ID, Observed: presentationTime(clock),
+			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Status: item.Status, Duration: sessionpresentation.ItemDuration(facts)}}
+		if entry, visible := sessionpresentation.MainActivityEntry(attached.session.CoordinationEntry(entry, facts)); visible {
+			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
+		}
 	case "imageView":
 		entry := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(attached.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
 			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Images: []string{item.Path}, SearchResults: sessionpresentation.SearchResults(facts)}}

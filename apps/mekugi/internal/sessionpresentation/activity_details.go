@@ -115,7 +115,7 @@ func (d *Details) RefreshDetails(id DetailID, requested []activity.DetailPage, r
 			}
 			source := activity.DetailSource{Entry: entry.Publish()}
 			if n := entry.Source.Native; n != nil {
-				if entry.Source.Kind == "tool" || entry.Source.Kind == "attachments" {
+				if entry.Source.Kind == "tool" || entry.Source.Kind == "attachments" || n.ToolDetail != "" {
 					d.identities[entry.Source.Seq] = [2]string{n.Thread, n.Item}
 				}
 				source.Command = new(CommandPresentation(entry.Source))

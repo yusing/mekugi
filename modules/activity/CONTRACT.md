@@ -503,6 +503,13 @@ observation or a newer directed message, otherwise a dim dash. Explicit labels
 for wait/start/resume/interrupt/input/MCP describe observed requests, never inferred
 completion. Wait previews name only supplied targets; batches name their latest
 operation and remaining count. Agent colors derive solely from canonical paths.
+Thread-control operations share the existing started, follow-up and directed-message
+traffic rows. Only confirmed outcomes establish a child or delivered content.
+Pending, queued, failed and unconfirmed attempts retain explicit progress or error
+rows. Waits publish their supplied targets and distinguish registration, completion,
+timeout and cancellation. Interrupt acknowledgement reports the request, not task
+completion. Agent listing reports its observed count alongside the existing roster.
+Raw arguments and outcomes remain in details rather than the transcript.
 
 Active-work timers start on the first turn, not registration, accumulate observed
 work intervals and exclude idle gaps. Stopped/error/interrupted/unloaded agents

@@ -435,7 +435,9 @@ func restoreActivityItem(attached *attachedPresentation, terminal *terminalsessi
 		entry.Native.Images = []string{item.Path}
 		entry.Kind, entry.Text = "tool", "View "+markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(info.Cwd, item.Path))
 		*entries = append(*entries, entry)
-	case "commandExecution", "fileChange", "webSearch", "mcpToolCall":
+	case "mcpToolCall":
+		*entries = append(*entries, s.CoordinationEntry(entry, facts))
+	case "commandExecution", "fileChange", "webSearch":
 		entry.Kind, entry.Text = "tool", sessionpresentation.ToolText(facts, info.Cwd)
 		entry.Native.Command, entry.Native.Duration = item.Command, sessionpresentation.ItemDuration(facts)
 		entry.Native.CommandCwd = sessionpresentation.CommandDirectory(facts, info.Cwd)

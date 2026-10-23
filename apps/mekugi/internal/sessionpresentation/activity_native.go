@@ -14,6 +14,7 @@ import (
 // Source: apps/mekugi/internal/router/live_activity_app_server.go:1:194@45fbe279
 
 type NativeItem struct {
+	ToolDetail string   `json:"-"` // Original tool envelope behind a semantic row.
 	Images     []string `json:"-"` // Bound user or viewed image sources, never inferred from labels.
 	Reload     []activitypresentation.ReloadSource
 	UserShell  bool                             `json:"-"` // Host command origin, independent of source classification.

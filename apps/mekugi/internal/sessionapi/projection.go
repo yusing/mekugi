@@ -169,6 +169,7 @@ type value struct {
 	AutoReload  bool       `json:"autoReload,omitzero"`
 	Approval    string     `json:"approval,omitzero"`
 	Code        string     `json:"code,omitzero"`
+	DetailCode  string     `json:"detailCode,omitzero"`
 	Lang        string     `json:"lang,omitzero"`
 	Fenced      bool       `json:"fenced,omitzero"`
 	Body        string     `json:"body,omitzero"`
@@ -310,7 +311,8 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 	out := make([]value, len(values))
 	for i, v := range values {
 		p := value{
-			Path: v.Path, AutoReload: v.AutoReload, Approval: v.Approval,
+			DetailCode: v.DetailCode,
+			Path:       v.Path, AutoReload: v.AutoReload, Approval: v.Approval,
 			Kind: v.Kind, Verb: v.Verb, BatchExit: v.BatchExit, Label: v.Label, Code: v.Code, Lang: v.Lang, Fenced: v.Fenced, Body: v.Body,
 			Subsumed: v.Subsumed, Duration: v.Duration.Milliseconds(), Thought: v.Thought.Milliseconds(), From: v.From, To: v.To,
 			EditOutcome: v.EditOutcome, Running: v.Running, Live: v.Live, Tail: v.Tail, TailOmitted: v.TailOmitted,

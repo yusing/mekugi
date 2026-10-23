@@ -191,7 +191,7 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 		return nil, err
 	}
 	action = *tree.Effect(caller.Thread, action.ID)
-	result := map[string]any{"id": action.ID, "state": action.State}
+	result := map[string]any{"id": action.ID, "state": action.State, "thread_id": target.Thread, "task_name": target.Task}
 	if kind == "interrupt" {
 		result["previous_status"] = action.PreviousStatus
 	}

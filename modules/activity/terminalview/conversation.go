@@ -554,7 +554,7 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 		out.hang(gutter, gutter, p.Markdown(entry.Text, width-2, false))
 	default:
 		v.agentItem(&out, entry, blocks, first, width, thread)
-		if entry.Kind == "error" && len(blocks) > 0 && ErrorHasDetails(blocks[0]) {
+		if len(blocks) > 0 && (blocks[0].DetailCode != "" || entry.Kind == "error" && ErrorHasDetails(blocks[0])) {
 			laid = blocks
 			for row := range out.snippets {
 				out.snippets[row] = Snippet{Run: entry.Seq, Block: 0}

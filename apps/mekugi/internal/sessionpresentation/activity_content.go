@@ -21,7 +21,8 @@ func ActivityContent(entry ActivityEntry) activitypresentation.ItemContent {
 	}
 	if n := entry.Native; n != nil {
 		content.Details = &activitypresentation.ItemDetails{
-			Reload: n.Reload, CommandText: n.Command, Status: n.Status, Timeout: n.CommandTimeout,
+			ToolDetail: n.ToolDetail,
+			Reload:     n.Reload, CommandText: n.Command, Status: n.Status, Timeout: n.CommandTimeout,
 			ReasoningLive: n.Phase == "summary" || n.Phase == "item/started", WaitLive: n.Live && n.Phase == "item/started",
 			Workdir: n.Workdir, Output: RetainedOutputID(n.Output, 1),
 			SearchResults: n.SearchResults, Questions: n.Questions, Attachments: n.Attachments,

@@ -1042,6 +1042,7 @@ export type Value = {
   "Subsumed": boolean;
   "Output": number;
   "ReplySummary": string;
+  "DetailCode"?: string;
   "Repeated": string;
   "AutoReload": boolean;
   "AttachmentID": string;
@@ -1080,7 +1081,7 @@ export type Value = {
   "DetailLines": number;
   "Live": boolean;
   "Thought": number;
-} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Output" | "ReplySummary" | "Repeated" | "AutoReload" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Tail" | "TailOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought">;
+} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Output" | "ReplySummary" | "DetailCode" | "Repeated" | "AutoReload" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Tail" | "TailOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought">;
 
 export type ItemContent = {
   "Command": Command;
@@ -1340,6 +1341,7 @@ export type Command = {
 };
 
 export type ItemDetails = {
+  "ToolDetail"?: string;
   "Reload": Array<ReloadSource>;
   "CommandText": string;
   "Status": string;

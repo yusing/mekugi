@@ -60,3 +60,20 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		t.Fatalf("missing identity: result=%+v err=%v", result, err)
 	}
 }
+
+func TestControlActionReturnsCanonicalTargetForAlias(t *testing.T) {
+	for _, tool := range []string{"send_message", "followup_task"} {
+		t.Run(tool, func(t *testing.T) {
+			driver, _, _, caller := reconciliationFixture(t)
+			caller.Call = tool
+			result, err := driver.controlAction(t.Context(), caller, []byte(`{"target":"child","message":"next assignment"}`), tool)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, ok := result.(map[string]any)
+			if !ok || got["id"] != caller.Call || got["state"] != "confirmed" || got["thread_id"] != "child" || got["task_name"] != "/root/child" {
+				t.Fatalf("action acknowledgement = %#v; want confirmed action identifying child and /root/child", result)
+			}
+		})
+	}
+}

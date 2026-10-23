@@ -23,6 +23,7 @@ type ItemContent struct {
 type DirectedContent struct{ From, To, Text string }
 
 type ItemDetails struct {
+	ToolDetail                            string `json:",omitempty"`
 	Reload                                []ReloadSource
 	CommandText, Status, Timeout, Workdir string
 	ReasoningLive, WaitLive               bool
@@ -77,6 +78,7 @@ func (entry ItemContent) Values() (blocks []Value) {
 		}
 		if entry.Details != nil && len(blocks) > 0 {
 			ApplyApproval(blocks, entry.Command.Approval)
+			blocks[0].DetailCode = textsanitize.Safe(entry.Details.ToolDetail, false)
 		}
 		if entry.Kind == "tool" && entry.Details != nil && entry.Details.Workdir != "" && len(blocks) > 0 {
 			// Every row keeps the directory for merging; one label per invocation.

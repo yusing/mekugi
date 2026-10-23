@@ -416,6 +416,10 @@ func (v *View) PointSnippet(action byte, row, column int) bool {
 // they do: operations, compact reasoning and collapsed narrative text open the shared dialog.
 // Under the pointer, the block underlines its count.
 func (v *View) ClickTarget(block *Block, snippet Snippet, width int) bool {
+	if block.DetailCode != "" {
+		block.Hovered = v.Snippet == snippet
+		return true
+	}
 	if block.Kind == "summary" || block.Kind == "error" {
 		details := block.Kind == "summary" && v.Painter.ReasoningElided(*block, width) || block.Kind == "error" && ErrorHasDetails(*block)
 		block.Hovered = details && v.Snippet == snippet
@@ -436,6 +440,9 @@ func (v *View) ClickTarget(block *Block, snippet Snippet, width int) bool {
 // still running, carrying source a row may clip, or standing for several
 // reads. Edits open their captured change instead, and questions their dock.
 func OutputBlock(block Block) bool {
+	if block.DetailCode != "" {
+		return true
+	}
 	if block.Kind != "op" && block.Kind != "reads" || block.EditOperation() || len(block.Questions) > 0 {
 		return false
 	}

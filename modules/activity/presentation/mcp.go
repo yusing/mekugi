@@ -14,6 +14,14 @@ func MCPText(item observation.Item) string {
 	if item.Status == "failed" {
 		label += " · failed"
 	}
+	if detail := MCPDetail(item); detail != "" {
+		label += "\n" + markdownsyntax.SourceFence("json", detail)
+	}
+	return label
+}
+
+// MCPDetail preserves the host envelope independently of its transcript label.
+func MCPDetail(item observation.Item) string {
 	var fields []string
 	for _, field := range []struct{ name, raw string }{
 		{"arguments", string(item.Arguments)}, {"result", string(item.Result)}, {"error", string(item.Error)},
@@ -23,7 +31,7 @@ func MCPText(item observation.Item) string {
 		}
 	}
 	if len(fields) > 0 {
-		label += "\n" + markdownsyntax.SourceFence("json", "{\n"+strings.Join(fields, ",\n")+"\n}")
+		return "{\n" + strings.Join(fields, ",\n") + "\n}"
 	}
-	return label
+	return ""
 }

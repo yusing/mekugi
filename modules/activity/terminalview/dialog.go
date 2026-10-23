@@ -84,6 +84,10 @@ func (p *Painter) DialogPage(block Block, width int) terminalui.DialogPage {
 	}
 
 	code := textsanitize.Safe(block.Code, false)
+	if block.DetailCode != "" {
+		code = textsanitize.Safe(block.DetailCode, false)
+		block.Lang = "json"
+	}
 	page.Text = code
 	if code != "" && (block.Path != "" || strings.Contains(code, "\n") || ansi.StringWidth(code) > width/2) {
 		colored := strings.Split(code, "\n")
@@ -96,13 +100,16 @@ func (p *Painter) DialogPage(block Block, width int) terminalui.DialogPage {
 		page.Text = code
 	}
 	if block.Body != "" {
-		page.Text = block.Body
+		body := block.Body
 		if block.Kind == "error" {
-			page.Text = textsanitize.Safe(block.Body, false)
+			body = textsanitize.Safe(body, false)
+		}
+		if block.DetailCode == "" {
+			page.Text = body
 		}
 		gap()
 		if block.Kind == "error" {
-			for line := range strings.SplitSeq(page.Text, "\n") {
+			for line := range strings.SplitSeq(body, "\n") {
 				add(terminalui.DialogLine{Text: terminalui.Red + line + terminalui.Reset, Wrap: true})
 			}
 		} else {

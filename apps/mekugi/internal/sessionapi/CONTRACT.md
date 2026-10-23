@@ -360,8 +360,10 @@ output `tail` with `tailOmitted` earlier lines, `changes` with their counts and
 `footer`, and `hook` status. A child's reply that carries its own summary has
 it in `summary`, alongside the whole reply in `body`, while the invocation's
 `child_reply_summary` feature is on. Labels, bodies and `text` are display-sanitized
-Markdown; `code` is literal text in the language `lang` names. `batchExit` marks
-a compound command's combined result; it carries the command that ran as `code`
+Markdown; `code` is literal text in the language `lang` names.
+`detailCode` preserves original JSON tool evidence for a semantic operation's
+content dialog, separately from its compact transcript presentation.
+`batchExit` marks a compound command's combined result; it carries the command that ran as `code`
 only when its entry has no other value, and otherwise no label.
 
 ## Attachment input
