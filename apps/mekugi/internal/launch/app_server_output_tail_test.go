@@ -136,7 +136,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "child", "turnId": "c", "itemId": "cmd", "delta": "linting\n"})
 	// A rename after the start must not move the running row back.
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child",
-		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/linter"}}}}})
+		"agentNickname": strings.TrimPrefix("/root/linter", "/root/")}})
 	rollCommandOutput(u)
 	agents := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 60).Lines, "\n"))
 	if !strings.Contains(agents, "linter") || !strings.Contains(agents, "Running make lint") || !strings.Contains(agents, "┆ linting") || strings.Contains(agents, "ok 7") {

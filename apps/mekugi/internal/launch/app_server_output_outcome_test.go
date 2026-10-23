@@ -3,8 +3,6 @@ package launch
 import (
 	"testing"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-
 	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
@@ -20,9 +18,7 @@ func TestAppServerUnknownExitKeepsOutput(t *testing.T) {
 			u.testActivity(u.shell.Transcript).testAudience()
 			item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted output\n")}
 			if restored {
-				var entries []sessionpresentation.ActivityEntry
-				restoreActivityItem(&u.attached, u.shell, u.clock, u.ctx, u.retained, u.retainedSession, u.activity, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}, binding.HistoryTurn{ID: "turn"}, item, "/root", presentationTime(u.clock), &entries, nil)
-				applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, entries, nil)
+				u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
 			} else {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 			}

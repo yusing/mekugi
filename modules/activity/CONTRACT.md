@@ -313,8 +313,8 @@ agents names both actual endpoints, sender first, using the shared colored route
 it never appears as a reply to the displayed agent. Starts name the newly started
 agent, even without an assignment. They indent their assignment without an extra
 label and retain known sender/recipient routes outside that transcript's exchange.
-Assignments retain original host creation times; arrival time alone governs queue
-retention. Leading/trailing blank streaming lines add no rows. Only exact retained
+Assignments use their host observation times. Leading/trailing blank streaming
+lines add no rows. Only exact retained
 replacement provenance can combine enriched replies; text similarity is not proof.
 
 With invocation-level `child_reply_summary` enabled (the default), completed child

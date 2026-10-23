@@ -1,60 +1,12 @@
 package launch
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
-
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
-
-func TestAppServerInterruptedWaitEndsBeforeContinue(t *testing.T) {
-	for _, thread := range []string{"main", "child"} {
-		t.Run(thread, func(t *testing.T) {
-			u := newAppServerSessionTestUI(t, t.TempDir())
-			registerThread(&u.attached.session, binding.ThreadInfo{ID: "child"})
-			wait := binding.ThreadItem{ID: "wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress", ReceiverThreadIDs: []string{"target"}}
-			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn"}})
-			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "turn", "item": wait})
-			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn", "status": "interrupted"}})
-			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "target", "turn": map[string]any{"id": "child-turn", "status": "completed"}})
-			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "continue"}})
-			view := u.testActivity(u.shell.Transcript)
-			if thread != "main" {
-				view = u.testActivity(u.shell.Agents)
-			}
-			if len(view.Entries) != 1 || view.Entries[0].Source.Text != "Wait ended · target" || view.Entries[0].Source.Native.Phase != "turn/completed" {
-				t.Fatalf("interrupted wait survived continue: %+v", view.Entries)
-			}
-			// A late real item result replaces the display-only turn closure.
-			wait.Status = "completed"
-			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "turn", "item": wait})
-			if !strings.HasPrefix(view.Entries[0].Source.Text, "Finished waiting") {
-				t.Fatal("late host result was lost")
-			}
-		})
-	}
-}
-
-func TestAppServerRestoredStoppedWait(t *testing.T) {
-	for _, status := range []string{"completed", "interrupted", "failed"} {
-		t.Run(status, func(t *testing.T) {
-			u := newAppServerSessionTestUI(t, t.TempDir())
-			history := []binding.HistoryTurn{{ID: "old", Status: status, Items: []binding.ThreadItem{{ID: "wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}}}}
-			u.restoreHistory(history)
-			registerThread(&u.attached.session, binding.ThreadInfo{ID: "child"})
-			restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "child", Turns: history}, false)
-			for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
-				if view.Entries[0].Source.Text != "Wait ended" || view.Entries[0].Source.Native.Phase != "turn/completed" {
-					t.Fatalf("stopped history revived waiting: %+v", view.Entries[0])
-				}
-			}
-		})
-	}
-}
 
 func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())

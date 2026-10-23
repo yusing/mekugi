@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/contracts/observation"
 )
 
 func TestNativeControlsTerminalFrames(t *testing.T) {
@@ -59,8 +60,7 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 	if frame := paint(); !strings.Contains(frame, "1 Main") {
 		t.Fatalf("initial frame lacks Main:\n%s", frame)
 	}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
-		"id": "spawn", "type": "subAgentActivity", "agentThreadId": "child", "agentPath": "/root/worker", "kind": "started"}})
+	u.attached.session.RegisterThread(observation.Thread{ID: "child", Path: "/root/worker"})
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn"}})
 	if frame := paint(); !strings.Contains(frame, "1 Main") {
 		t.Fatalf("spawn hid Main:\n%s", frame)
@@ -74,7 +74,9 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 		t.Fatalf("lock is not visible:\n%s", frame)
 	}
 	wire := u.Host.Input.(*appServerTestInput)
-	appServerOneRequest(t, wire, "thread/read", "") // Child metadata from the earlier spawn.
+	if len(restoreContentRequests(t, wire)) != 0 {
+		t.Fatal("view requested native child metadata")
+	}
 	appServerTestKeys(t, u, "/unlock\r")
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\t")

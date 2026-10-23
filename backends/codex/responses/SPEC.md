@@ -2,15 +2,14 @@
 
 ## Purpose and scope
 
-Own Codex Responses request adaptation, native collaboration projection and
+Own Codex Responses request adaptation and
 response framing. Endpoint translation supports Chat Completions, Messages and
 Responses. The caller selects eligible turns and supplies resolved provider policy,
-spawn guidance and diagnostics. Provider authentication, model selection, HTTP
+diagnostics. Provider authentication, model selection, HTTP
 transport and native tool execution remain with their existing owners.
 
-The [native-agent continuity contract](../../../docs/contracts/provider-routing.md#plaintext-collaboration)
-defines plaintext collaboration, history preservation and native-call restoration
-for both ordinary OpenAI and third-party requests.
+The [provider-routing contract](../../../docs/contracts/provider-routing.md)
+defines selected translation policy and history preservation.
 
 ## Request envelopes and catalogs
 
@@ -180,7 +179,7 @@ selected effort, reasoning, output-budget and usage policies. Credentials,
 metadata and upstream exchange remain with [Grok](../../../providers/grok/SPEC.md)
 and [OpenCode](../../../providers/opencode/SPEC.md).
 
-Package tests cover native collaboration and tool identity, custom input, wait
+Package tests cover tool identity, custom input, wait
 aliases, fragmented and parallel calls, terminal integrity, reasoning replay,
 endpoint settings and caller diagnostics. Router acceptance covers selected policy,
 actual transport, provider errors, cancellation and capture. Installed-Codex checks establish the

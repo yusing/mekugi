@@ -75,8 +75,6 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	activity.Observe("child", "main", "/root/worker", true)
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
-	wait := binding.ThreadItem{ID: "old-wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
-	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "old", "item": wait})
 	activity.BeginResponse("child", true, at.Add(-3*time.Second))
 	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
@@ -85,9 +83,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	if got := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") {
 		t.Fatalf("old completion removed current provider placeholder: %q", got)
 	}
-	if old := u.attached.childSource.Entries[0].Source; old.Text != "Wait ended" || old.Native.Phase != "turn/completed" {
-		t.Fatalf("old completion did not settle its wait: %+v", old)
-	}
+
 	*at = at.Add(2 * time.Second)
 	assertAgentWork(t, u, "child", *at, 2*time.Second, true)
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "current", "itemId": "summary", "delta": "First"})
@@ -184,10 +180,7 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.restoreHistory(turns)
-	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
-	restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "child", Turns: turns}, false)
-	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
-	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
+	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript)} {
 		feed := view.RenderFeed(90, 40)
 		got := ansi.Strip(strings.Join(feed.Lines, "\n"))
 		if !strings.Contains(got, "• Public restored summary.") || strings.Count(got, "Public restored summary.") != 1 || strings.Contains(got, "PRIVATE") {
@@ -199,10 +192,10 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 		}
 	}
 	// A new turn must not restart the restored summary animation.
-	agent := *u.attached.session.Agent("/root/worker")
+	agent := *u.attached.session.Agent("/root")
 	agent.Responding = true
-	first, _ := u.testActivity(u.shell.Agents).testCurrent(agent, time.Unix(0, 0))
-	second, _ := u.testActivity(u.shell.Agents).testCurrent(agent, time.Unix(1, 0))
+	first, _ := u.testActivity(u.shell.Transcript).testCurrent(agent, time.Unix(0, 0))
+	second, _ := u.testActivity(u.shell.Transcript).testCurrent(agent, time.Unix(1, 0))
 	if first != second {
 		t.Fatal("restored reasoning animated in a later turn")
 	}
@@ -295,7 +288,7 @@ func TestAppServerWorkingSurvivesDockComposition(t *testing.T) {
 }
 
 func TestAppServerPendingStatusPulses(t *testing.T) {
-	for _, status := range []string{"Connecting…", "Starting thread…", "Resuming thread…", "Sending…", "Interrupting…", "Restoring roster and Activity…"} {
+	for _, status := range []string{"Connecting…", "Starting thread…", "Resuming thread…", "Sending…", "Interrupting…", "Restoring saved Diff…"} {
 		t.Run(status, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.Thread = ""
@@ -308,25 +301,23 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 			}
 			if strings.HasPrefix(status, "Restoring") {
 				u.Thread = "main"
-				if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main"}); err != nil {
-					t.Fatal(err)
-				}
+				u.restoring = &appServerActivityRestore{rendered: true}
 			}
 			u.attached.presentation.Status.Set(status, false)
 			start := time.Unix(0, 0)
 			dim, bright, dimAgain := u.sessionLabel(start), u.sessionLabel(start.Add(time.Second)), u.sessionLabel(start.Add(2*time.Second))
-			if !publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Status.Animating || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
+			if !publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Status.Animating || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
 				t.Fatalf("pending status does not pulse: %q %q %q", dim, bright, dimAgain)
 			}
 			u.attached.presentation.Status.Alert = true
-			if publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+			if publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("alert animates")
 			}
 			u.restoring = nil
 			u.LeaveThread()
 			u.Thread = "main"
 			u.attached.presentation.Status.Set("Ready", false)
-			if publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+			if publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("idle animates")
 			}
 		})

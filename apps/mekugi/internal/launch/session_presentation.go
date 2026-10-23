@@ -9,7 +9,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/observation"
-	"github.com/yusing/mekugi/contracts/scope"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -25,10 +24,10 @@ import (
 
 // publishPresentation settles detached facts at a semantic transition boundary.
 // Reading Model.View does not run this projection or bind an attachment.
-func publishPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, now time.Time) sessionpresentation.View {
+func publishPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, now time.Time) sessionpresentation.View {
 	m := attached.presentation
 	if attached.view != "" {
-		view := publishSessionView(attached, control, picker, "", childKey, settings, tiers, title, backend, restoring, side, now, true)
+		view := publishSessionView(attached, control, picker, "", settings, tiers, title, backend, restoring, side, now, true)
 		terminal.Main.Update(view)
 		return view
 	}
@@ -53,7 +52,7 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 	} else {
 		*editor = &attached.conversation.Editor
 	}
-	view := publishSessionView(attached, control, picker, (*editor).Text, childKey, settings, tiers, title, backend, restoring, side, now, false)
+	view := publishSessionView(attached, control, picker, (*editor).Text, settings, tiers, title, backend, restoring, side, now, false)
 	terminal.Prompts.Update(view)
 	terminal.Main.Update(view)
 	for _, terminal := range []*activityui.View{terminal.Transcript, terminal.Agents} {
@@ -67,7 +66,7 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 
 // publishSessionView projects semantic owner state without choosing an editor,
 // touching renderer geometry or acknowledging terminal delivery.
-func publishSessionView(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, draft string, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, now time.Time, clientEditors bool) sessionpresentation.View {
+func publishSessionView(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, draft string, settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, now time.Time, clientEditors bool) sessionpresentation.View {
 	m := attached.presentation
 	if control.Startup.Prepared != nil {
 		m.RestrictChildInput()
@@ -96,7 +95,7 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 		BTWRunning: control.BTW != nil && (control.BTW.Busy || control.BTW.Starting),
 		Info:       info, ClientEditors: clientEditors,
 		Menu: picker.menuView(attached.cwd, draft, &control.Live), Control: &control.Live, Feedback: &attached.feedback, Conversation: attached.conversation, Restoring: restoring,
-		SideThreads: control.Requests.SideThreads(side), SideRunning: side != nil && (side.Busy || side.Starting), Processes: runningProcessCount(&attached.session), History: historyViews(attached, childKey),
+		SideThreads: control.Requests.SideThreads(side), SideRunning: side != nil && (side.Busy || side.Starting), Processes: runningProcessCount(&attached.session),
 	}, caption, now)
 }
 
@@ -115,7 +114,7 @@ func attachPresentation(attached *attachedPresentation, terminal *terminalsessio
 
 // settlePresentation runs before another intent can observe this session.
 // Opening a prompt does not mark it painted or acknowledge a notice.
-func settlePresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool) {
+func settlePresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool) {
 	if picker.Open && picker.Kind == "rewind-edits" && !picker.Loading && picker.rewind.problem == "" && picker.rewind.command == "" && !restoring && !control.Replacement.Pending() && control.Thread == picker.rewindThread && !sessionBusy(&control.Live, attached.conversation) {
 		forkChosenRewind(attached, terminal, control, picker, settings, clock)
 	}
@@ -123,7 +122,7 @@ func settlePresentation(attached *attachedPresentation, terminal *terminalsessio
 		autoOpenApprovals(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
 		autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
 	}
-	publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, presentationTime(clock))
+	publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, presentationTime(clock))
 	publishActivity(attached, terminal)
 }
 

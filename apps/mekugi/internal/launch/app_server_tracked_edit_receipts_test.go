@@ -240,40 +240,31 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, thread := range []string{"main", "child"} {
-		t.Run(thread, func(t *testing.T) {
-			u := newAppServerSessionTestUI(t, workspace)
-			setTestAppServerIntegration(u, testProxyWithStore(store))
-			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'cat > a.go; cat > b.go; go test ./...'", ExitCode: new(2), AggregatedOutput: new("test failed")}
-			output := u.activity.Outputs(u.attached.session.Scope()).New()
-			output.Finish(new("test failed"), new(2))
-			retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: thread, Turn: "turn", Item: item.ID}}, item.Observation(),
-				execTrackView{complete: true, output: true, code: 2, segments: []sessionpresentation.ActivitySegment{{}, {}, {Exit: 2, Output: output}}})
-			awaitCommandSegments(t, u)
-			restored := newAppServerSessionTestUI(t, workspace)
-			setTestAppServerIntegration(restored, testProxyWithStore(testReplayStore(mekugiReplayStore{directory: store.directory})))
-			restored.review.Projection.Data = reviewReceiptSnapshot(t, trackedEditReceiptData(thread, item.ID))
-			turns := []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}}
-			view := restored.testActivity(restored.shell.Transcript)
-			if thread == "main" {
-				restored.restoreHistory(turns)
-			} else {
-				restored.attached.session.Caller(thread)
-				restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
-				view = restored.testActivity(restored.shell.Agents)
-			}
-			if len(view.Entries) != 1 || view.Entries[0].Source.Native == nil || len(view.Entries[0].Source.Native.Segments) != 3 {
-				t.Fatalf("tracked history missing: %+v", view.Entries)
-			}
-			for range 2 {
-				applyCapturedEdits(&restored.attached, restored.review, &restored.pendingEditReceipts)
-				assertTrackedReceiptStats(t, view, 0)
-				last := view.blocks(0)[len(view.blocks(0))-1]
-				if last.Verb != "Run" || last.ExitCode != 2 || last.Output == 0 || strings.Join(view.RetainedOutput(last.Source, last.Output).View().Lines, "\n") != "test failed" {
-					t.Fatalf("restored neighbor lost retained failure/output: %+v", last)
-				}
-			}
-		})
+	const thread = "main"
+	u := newAppServerSessionTestUI(t, workspace)
+	setTestAppServerIntegration(u, testProxyWithStore(store))
+	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'cat > a.go; cat > b.go; go test ./...'", ExitCode: new(2), AggregatedOutput: new("test failed")}
+	output := u.activity.Outputs(u.attached.session.Scope()).New()
+	output.Finish(new("test failed"), new(2))
+	retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: thread, Turn: "turn", Item: item.ID}}, item.Observation(),
+		execTrackView{complete: true, output: true, code: 2, segments: []sessionpresentation.ActivitySegment{{}, {}, {Exit: 2, Output: output}}})
+	awaitCommandSegments(t, u)
+	restored := newAppServerSessionTestUI(t, workspace)
+	setTestAppServerIntegration(restored, testProxyWithStore(testReplayStore(mekugiReplayStore{directory: store.directory})))
+	restored.review.Projection.Data = reviewReceiptSnapshot(t, trackedEditReceiptData(thread, item.ID))
+	turns := []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}}
+	view := restored.testActivity(restored.shell.Transcript)
+	restored.restoreHistory(turns)
+	if len(view.Entries) != 1 || view.Entries[0].Source.Native == nil || len(view.Entries[0].Source.Native.Segments) != 3 {
+		t.Fatalf("tracked history missing: %+v", view.Entries)
+	}
+	for range 2 {
+		applyCapturedEdits(&restored.attached, restored.review, &restored.pendingEditReceipts)
+		assertTrackedReceiptStats(t, view, 0)
+		last := view.blocks(0)[len(view.blocks(0))-1]
+		if last.Verb != "Run" || last.ExitCode != 2 || last.Output == 0 || strings.Join(view.RetainedOutput(last.Source, last.Output).View().Lines, "\n") != "test failed" {
+			t.Fatalf("restored neighbor lost retained failure/output: %+v", last)
+		}
 	}
 }
 

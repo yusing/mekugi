@@ -4,9 +4,10 @@ package sessioncontrol
 
 import (
 	"encoding/json/jsontext"
-	"github.com/yusing/mekugi/backends/codex/binding"
 	"sync"
 	"sync/atomic"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
@@ -44,7 +45,6 @@ type Requests[T any] struct {
 	pending      map[string]Request[T]
 	sides        map[string]*Side
 	predictions  map[string]*Prediction
-	metadata     map[[2]string]bool
 	calls        chan *HostCall
 	closed       chan struct{}
 	closeOnce    sync.Once
@@ -124,11 +124,6 @@ func (r *Requests[T]) Retire(scope string) {
 		if request.Scope == scope {
 			request.retireCall()
 			delete(r.pending, id)
-		}
-	}
-	for key := range r.metadata {
-		if key[0] == scope {
-			delete(r.metadata, key)
 		}
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json/jsontext"
 	"time"
 
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
@@ -123,7 +122,7 @@ func stepReasoning(attached *attachedPresentation, terminal *terminalsession.Att
 }
 
 // Slash controls work while a turn runs and do not submit conversation input.
-func settingsCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, models []appServerModel, loading bool, text string) (bool, error) {
+func settingsCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, models []appServerModel, loading bool, text string) (bool, error) {
 	fields := strings.Fields(text)
 	if len(fields) == 0 {
 		return false, nil
@@ -176,7 +175,7 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 		}
 	}
 	if len(fields) == 1 {
-		deleteDraftRange(attached, terminal, control, picker, editor, childKey, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay, owned, 0, len((*editor).Text))
+		deleteDraftRange(attached, terminal, control, picker, editor, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay, owned, 0, len((*editor).Text))
 		picker.showSettingsPicker(loading, command, choices, current)
 		return true, nil
 	}
@@ -212,7 +211,7 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 	return true, err
 }
 
-func settingsMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, model *string, effort *string, tier *string, models *[]appServerModel, loading *bool, reasoningKey **bool, status *appServerStatusConfig, method string, m appserver.Message) (bool, error) {
+func settingsMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, model *string, effort *string, tier *string, models *[]appServerModel, loading *bool, reasoningKey **bool, status *appServerStatusConfig, method string, m appserver.Message) (bool, error) {
 	if method == "model/list" {
 		if m.Error != nil {
 			(*loading), (*reasoningKey) = false, nil
@@ -238,7 +237,7 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 		if picker.Setting != "" {
 			command := picker.Setting
 			if picker.Kind == "settings" {
-				_, _ = settingsCommand(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, panes, (*models), (*loading), command)
+				_, _ = settingsCommand(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, panes, (*models), (*loading), command)
 			}
 		}
 		if (*reasoningKey) != nil {

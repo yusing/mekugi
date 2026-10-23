@@ -71,7 +71,7 @@ func testTranslateFormat(body []byte, format string) (*testRequest, error) {
 
 func grokTestRequest(t *testing.T, stream bool) []byte {
 	t.Helper()
-	return mustTestJSON(t, map[string]any{"stream": stream, "instructions": "test instructions", "reasoning": map[string]string{"effort": "low"}, "tools": []any{map[string]any{"type": "custom", "name": "exec", "description": "Run exact input"}}, "input": []any{map[string]any{"type": "agent_message", "content": []any{map[string]string{"type": "input_text", "text": "Run the probe"}}}}})
+	return mustTestJSON(t, map[string]any{"stream": stream, "instructions": "test instructions", "reasoning": map[string]string{"effort": "low"}, "tools": []any{map[string]any{"type": "custom", "name": "exec", "description": "Run exact input"}}, "input": []any{map[string]any{"type": "message", "role": "user", "content": []any{map[string]string{"type": "input_text", "text": "Run the probe"}}}}})
 }
 
 func grokTestSSE(chunks ...any) string {

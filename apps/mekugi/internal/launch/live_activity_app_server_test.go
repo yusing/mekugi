@@ -16,8 +16,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -311,12 +309,9 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
 	assignment := "Check the original question link."
-	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": []any{nativeAssignmentTestMessage("/root/reviewer", "NEW_TASK", assignment)}}))
-	if err != nil {
-		t.Fatal(err)
-	}
+
 	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{
-		{Seq: 1, Agent: "/root/reviewer", Kind: "start", Start: testActivityStart(t, &request),
+		{Seq: 1, Agent: "/root/reviewer", Kind: "start", Start: &sessionpresentation.ActivityStart{Model: "gpt-6-astra"},
 			Assignment: &sessionpresentation.ActivityAssignment{ID: "task-1", From: "/root", To: "/root/reviewer", Text: assignment}},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "final", Text: "The question link is correct."},
 	}, nil)

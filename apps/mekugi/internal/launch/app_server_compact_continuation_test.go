@@ -40,7 +40,7 @@ func nativeTestCancel(t *testing.T, u *appServerUI) *nativeClient {
 		}
 		if intent.Mode == sessioncontrol.RestoreWaiting && cancelQueuedCompact(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock) {
 			u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			continue
 		}
 		if err := u.applyInput(u.shell, func(yield func(terminalsession.InputEffect) bool) {

@@ -318,7 +318,7 @@ func (n *nativeViews) predictionEligibility(execution *attachedPresentation) (fo
 	return focused, disabled, available
 }
 
-func (n *nativeViews) publish(execution *attachedPresentation, control *sessioncontrol.Client[appServerRequest], childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, review *sessionreview.Review, reviewSource *changecapture.Service, facts sessionapi.NativeSessionFacts, now time.Time) {
+func (n *nativeViews) publish(execution *attachedPresentation, control *sessioncontrol.Client[appServerRequest], settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, review *sessionreview.Review, reviewSource *changecapture.Service, facts sessionapi.NativeSessionFacts, now time.Time) {
 	children := n.descendants(execution, control.Thread)
 	for id, v := range n.views {
 		if v.ctx.Err() != nil || v.attached.executionPresentation != execution.executionPresentation && id != n.replacing {
@@ -368,7 +368,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			}
 		}
 		v.attached.presentation.BorrowExecutionStatus(execution.presentation)
-		view := publishSessionView(&v.attached, control, &v.picker, "", childKey, settings, tiers, title, backend, restoring, side, now, true)
+		view := publishSessionView(&v.attached, control, &v.picker, "", settings, tiers, title, backend, restoring, side, now, true)
 		facts.Busy = view.Status.Session.Running || control.Turn != "" || control.Starting()
 		frame := sessionapi.NativeFrame{View: view, Facts: facts, CompletionTarget: v.completionTarget, CompletionCatalog: v.picker.skillsRevision,
 			Effects:  v.effects.publication(),

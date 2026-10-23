@@ -29,7 +29,7 @@ func TestNativeViewMenuRechecksTargetAfterStatusProgress(t *testing.T) {
 	v.completionTarget = conversation.EditorTarget{Revision: editor.Revision()}
 	v.picker.refreshPicker(&v.attached, v.shell, u.clock, u.Requests, editor, t.Context(), nil)
 	publish := func() sessionpresentation.View {
-		return publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
+		return publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
 	}
 	before := publish()
 	if before.Menu == nil || len(before.Menu.Choices) != 1 {
@@ -48,7 +48,7 @@ func TestNativeViewMenuRechecksTargetAfterStatusProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	applyMenuResult(&v.attached, v.shell, &u.Client, &v.picker, &editor, &u.childHistoryState, preferences.Applied{}, &u.serviceTiers, "", "", false, &u.side, u.clock, &u.questions, &u.approvals, false, nil, nil, t.Context(), nil, terminalsession.MenuResult{Action: action, Handled: true})
+	applyMenuResult(&v.attached, v.shell, &u.Client, &v.picker, &editor, preferences.Applied{}, &u.serviceTiers, "", "", false, &u.side, u.clock, &u.questions, &u.approvals, false, nil, nil, t.Context(), nil, terminalsession.MenuResult{Action: action, Handled: true})
 	if strings.TrimSpace(editor.Text) != "/status" {
 		t.Fatal("admitted menu did not use existing command completion")
 	}
@@ -117,10 +117,7 @@ func TestNativeViewReplacementRetiresAcquisitions(t *testing.T) {
 	n.replacing = "origin"
 	u.attached.rewindArchive = n.rewindArchive
 	u.Startup.RewindOriginal = "main"
-	state := sessionpresentation.NewRestoration("branch")
-	state.EndDiscovery()
-	state.ContentRendered()
-	u.restoring = &appServerActivityRestore{state: state}
+	u.restoring = &appServerActivityRestore{rendered: true}
 	if err := u.finishRestoredContent(); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +136,7 @@ func TestNativeViewReplacementRetiresAcquisitions(t *testing.T) {
 		t.Fatal("replacement copied execution or discarded the local pending input")
 	}
 	showRewindArchive(&v.picker, v.archiveOriginal)
-	publication := publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
+	publication := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
 	if publication.Menu == nil || publication.Menu.Kind != sessionpresentation.MenuArchive || v.picker.archiveTarget != "main" || other.picker.Open {
 		t.Fatal("post-rewind confirmation was not published by its own view")
 	}
@@ -196,7 +193,7 @@ func TestNativeViewCommandBorrowsExecutionWithoutSharedDraft(t *testing.T) {
 	root.conversation.Editor.Text = "unrelated editor"
 	u.attached, u.shell, u.picker = v.attached, v.shell, v.picker
 	u.Editor = &composer.Editor{Text: "/status"}
-	view := publishSessionView(&u.attached, &u.Client, &u.picker, "", &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+	view := publishSessionView(&u.attached, &u.Client, &u.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
 	_, err := u.applyComposerInput(terminalsession.ComposerInput{Command: sessionpresentation.ComposerIntent{Version: view.Version, Thread: "main", Target: conversation.EditorTarget{Revision: 99}, Operation: sessionpresentation.SubmitComposer}})
 	if err != nil {
 		t.Fatal(err)
@@ -209,10 +206,10 @@ func TestNativeViewCommandBorrowsExecutionWithoutSharedDraft(t *testing.T) {
 		t.Fatalf("status acquisition has no originating view: %+v", request)
 	}
 	v.panel = u.statusPanel
-	current := publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
+	current := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
 	close := sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), Version: current.Version, Operation: sessionapi.NativeOperation{Panel: &sessionpresentation.PanelAction{Version: current.Version, Panel: current.Panel.ID, Kind: sessionpresentation.PanelClose}}}
 	v.attached.feedback.Set("account status advanced", false, time.Now())
-	publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
+	publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
 	if _, refusal := n.admit(close, &u.attached, "main"); refusal != "" {
 		t.Fatal(refusal)
 	}
@@ -221,14 +218,14 @@ func TestNativeViewCommandBorrowsExecutionWithoutSharedDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	applyPanelAction(&v.attached, v.shell, u.clock, &v.panel, nil, action)
-	after := publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
+	after := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
 	if after.Panel != nil || v.panel != nil {
 		t.Fatal("status progress prevented identified panel close")
 	}
 	if _, err := v.panelAction(close); err == nil {
 		t.Fatal("closed panel admitted a late action")
 	}
-	other, err := u.Requests.Send("thread/read", nil, "main", appServerRequest{history: true})
+	other, err := u.Requests.Send("thread/read", nil, "main", appServerRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +234,7 @@ func TestNativeViewCommandBorrowsExecutionWithoutSharedDraft(t *testing.T) {
 		t.Fatal("retired view retained its status acquisition")
 	}
 	if _, ok := u.Requests.Lookup(other); !ok {
-		t.Fatal("view retirement removed execution/history correlation")
+		t.Fatal("view retirement removed execution correlation")
 	}
 }
 
@@ -251,9 +248,9 @@ func TestNativeViewObservedReceiptKeepsCapturedIdentity(t *testing.T) {
 		t.Fatal(refusal)
 	}
 	v := n.views["view"]
-	before := publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+	before := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
 	v.attached.feedback.Set("new progress", false, time.Now())
-	after := publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+	after := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
 	if before.Version == after.Version {
 		t.Fatal("fixture did not advance its publication")
 	}
@@ -291,7 +288,7 @@ func TestNativePreparedViewAdmissionKeepsAttachmentIdentity(t *testing.T) {
 			}
 			v := n.views["view"]
 			publish := func() sessionpresentation.View {
-				return publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+				return publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
 			}
 			request.Version = publish().Version
 			request.Prepared = sessionapi.NewPreparedInput(composer.Draft{Text: "acquired snapshot"}, nil)
@@ -335,7 +332,7 @@ func TestNativeViewResumeUsesExistingExecutionOwner(t *testing.T) {
 	u.attached, u.shell, u.picker = v.attached, v.shell, v.picker
 	u.attached.activeThread = func(id string) bool { return id == "other" }
 	u.Editor = &composer.Editor{Text: "/resume other"}
-	view := publishSessionView(&u.attached, &u.Client, &u.picker, "", &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+	view := publishSessionView(&u.attached, &u.Client, &u.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
 	if _, err := u.applyComposerInput(terminalsession.ComposerInput{Command: sessionpresentation.ComposerIntent{Version: view.Version, Thread: "main", Operation: sessionpresentation.SubmitComposer}}); err != nil {
 		t.Fatal(err)
 	}
@@ -346,9 +343,9 @@ func TestNativeViewResumeUsesExistingExecutionOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.resumePicker.Append([]sessionpresentation.ResumeRow{{ID: "other", Workspace: "/other"}}, "", 1)
-	view = publishSessionView(&u.attached, &u.Client, &u.picker, "", &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+	view = publishSessionView(&u.attached, &u.Client, &u.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
 	before, picker := wire.Len(), u.resumePicker
-	if err := applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, false, &u.quitRequested, sessionpresentation.ResumeAction{Version: view.Version, Picker: view.Resume.ID, Kind: sessionpresentation.ResumeChoose, Thread: "other"}); err != nil {
+	if err := applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{}, u.serviceTiers, "", "", &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, false, &u.quitRequested, sessionpresentation.ResumeAction{Version: view.Version, Picker: view.Resume.ID, Kind: sessionpresentation.ResumeChoose, Thread: "other"}); err != nil {
 		t.Fatal(err)
 	}
 	if wire.Len() != before || u.Replacement.Pending() || u.resumePicker != picker || len(v.effects.pending) != 2 || *v.effects.pending[1].Reattach != "other" {

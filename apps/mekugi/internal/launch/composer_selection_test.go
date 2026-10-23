@@ -248,7 +248,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 		questionTestAsync(t, u, "parked", "Which scope?")
 		openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-		deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
+		deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
 		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "replacement quote", "")
 		if u.Text != "[Selected message] " {
 			t.Fatalf("inactive parked editor reserved a label: %q", u.Text)

@@ -9,7 +9,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -19,7 +18,7 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, preparation *composerPreparation) error {
+func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, preparation *composerPreparation) error {
 	text := strings.TrimSpace((*editor).Text)
 	displayingSide := attached.presentation.DisplayingSide()
 	if preparation != nil {
@@ -56,7 +55,7 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 				picker.sideTaskDelivery = attached.effects.input()
 			}
 			if !oneoff {
-				deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, *owned, 0, len((*editor).Text))
+				deleteDraftRange(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, *owned, 0, len((*editor).Text))
 			}
 			picker.sideTarget = (*side).Key
 			picker.openMenu("side-replace")
@@ -127,7 +126,7 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 		prefix = strings.Index((*editor).Text, "/btw") + len("/btw")
 	}
 	if prefix > 0 {
-		deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay, (*owned), 0, prefix)
+		deleteDraftRange(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay, (*owned), 0, prefix)
 	}
 	pending := prepareDraft(picker, terminal, attached.cwd, environment, preparation.take(*editor))
 	pending.Origin = attached.view

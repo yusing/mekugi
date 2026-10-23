@@ -29,12 +29,12 @@ and verified metadata; missing or ambiguous children are disclosed. Copied ances
 items and turn lifecycles retain their original ownership.
 
 Supported facts include messages, public reasoning summaries, command output,
-file changes, MCP calls, agent lifecycle and collaboration, compaction and image-view activity.
+file changes, MCP calls, agent lifecycle, compaction and image-view activity.
 MCP arguments remain available at the recorded start; results and errors appear
 only at completion.
-Collaboration preserves recorded assignment/message bodies and supplied child model
-settings. Only successful completed calls claim delivered assignments or messages;
-missing facts remain unknown.
+Thread Control preserves recorded assignment/message bodies. Activity's shared
+coordination decoder supplies confirmed child identities for corpus discovery.
+Only confirmed completed calls claim delivery; missing facts remain unknown.
 Unsupported item kinds are counted. Retained hooks use each loaded workspace and
 thread; unavailable or dropped history is disclosed. Unfinished hook observations
 show an unknown outcome without becoming running work. Private/raw reasoning,

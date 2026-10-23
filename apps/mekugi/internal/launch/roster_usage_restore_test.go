@@ -29,7 +29,10 @@ func restoredUsageRosterFixture(t *testing.T) *appServerUI {
 	for _, thread := range []string{"child", "gap", "historical"} {
 		info := binding.ThreadInfo{ID: thread, AgentNickname: thread, Turns: []binding.HistoryTurn{{ID: "old", Status: "completed"}}}
 		registerThread(&u.attached.session, info)
-		restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, info, false)
+		restoreUsage(u.usage, info)
+		observeCost(u.usage, thread, u.attached.session.Agent(u.attached.session.KnownCaller(thread)))
+		u.attached.session.Lifecycle(thread).Restore(restoredAgentIntervals(info.Turns), uint64(len(info.Turns)), false)
+		u.attached.session.Lifecycle(thread).RestoreFinal(true)
 	}
 	return u
 }

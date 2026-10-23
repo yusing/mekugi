@@ -14,7 +14,6 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -65,7 +64,7 @@ func (s *replayAttachment) apply(o replayOwners, source *playback.Source, at tim
 		if s.message(source, at, e.Event) {
 			return
 		}
-		result := sessionpresentation.ReduceObservation(&s.session, s.presentation, s.source, s.childSource, s.transcript, &s.waits, o.activity.Outputs(s.session.Scope()), sessionpresentation.ObservationInput{Event: e.Event, Text: binding.RetainedTranscript(e.Event), Main: source.Thread, Selected: s.Turn, Workspace: s.cwd})
+		result := sessionpresentation.ReduceObservation(&s.session, s.presentation, s.source, s.childSource, s.transcript, o.activity.Outputs(s.session.Scope()), sessionpresentation.ObservationInput{Event: e.Event, Text: binding.RetainedTranscript(e.Event), Main: source.Thread, Selected: s.Turn, Workspace: s.cwd})
 		if result.Publish && s.shell != nil {
 			s.streams.Deliver(result.Deliveries, s.view, s.agents)
 			s.publishActivity()
@@ -130,7 +129,6 @@ type replayAttachment struct {
 	conversation        *conversationmodel.Session
 	source, childSource *sessionpresentation.ActivitySource
 	transcript          observation.Transcript
-	waits               activitypresentation.Waits
 	feedback            noticepresentation.Model
 	cwd, Turn           string
 	detailFiles

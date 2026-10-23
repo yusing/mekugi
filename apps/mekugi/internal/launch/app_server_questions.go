@@ -10,7 +10,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/contracts/scope"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -284,9 +283,9 @@ func endSyncQuestions(attached *attachedPresentation, terminal *terminalsession.
 	}
 }
 
-func answerQuestion(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, intent sessionpresentation.AnswerIntent) bool {
+func answerQuestion(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, intent sessionpresentation.AnswerIntent) bool {
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
 	}()
 	q, err := attached.presentation.AnswerQuestion(intent, questions.Questions)
 	if err != nil {
@@ -299,9 +298,9 @@ func answerQuestion(attached *attachedPresentation, terminal *terminalsession.At
 	return true
 }
 
-func submitQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessionpresentation.QuestionSubmitIntent) error {
+func submitQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessionpresentation.QuestionSubmitIntent) error {
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
 	}()
 	record, err := attached.presentation.SubmitQuestions(intent, questions.Questions)
 	if err != nil {

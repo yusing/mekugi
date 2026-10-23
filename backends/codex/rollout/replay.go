@@ -161,28 +161,20 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 
 func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 	var p struct {
-		Source                                                   string `json:"source"`
-		Type, ID, Status, Text, Delivery, Phase, Cwd, Kind, Path string
-		Content                                                  jsontext.Value `json:"content"`
-		Command                                                  jsontext.Value `json:"command"`
-		Summary                                                  []string       `json:"summary_text"`
-		Output                                                   *string        `json:"aggregated_output"`
-		Exit                                                     *int           `json:"exit_code"`
-		Process                                                  string         `json:"process_id"`
-		Client                                                   string         `json:"client_id"`
-		AgentThread                                              string         `json:"agent_thread_id"`
-		AgentPath                                                string         `json:"agent_path"`
-		Sender                                                   string         `json:"sender_thread_id"`
-		Receivers                                                []string       `json:"receiver_thread_ids"`
-		Tool                                                     string         `json:"tool"`
-		Server                                                   string         `json:"server"`
-		Arguments, Result, Error                                 jsontext.Value
-		Prompt                                                   string                    `json:"prompt"`
-		Model                                                    string                    `json:"model"`
-		ReasoningEffort                                          string                    `json:"reasoning_effort"`
-		States                                                   map[string]jsontext.Value `json:"agents_states"`
-		Questions                                                []observation.Question    `json:"questions"`
-		Changes                                                  map[string]struct {
+		Source                                             string `json:"source"`
+		Type, ID, Status, Text, Delivery, Phase, Cwd, Path string
+		Content                                            jsontext.Value `json:"content"`
+		Command                                            jsontext.Value `json:"command"`
+		Summary                                            []string       `json:"summary_text"`
+		Output                                             *string        `json:"aggregated_output"`
+		Exit                                               *int           `json:"exit_code"`
+		Process                                            string         `json:"process_id"`
+		Client                                             string         `json:"client_id"`
+		Tool                                               string         `json:"tool"`
+		Server                                             string         `json:"server"`
+		Arguments, Result, Error                           jsontext.Value
+		Questions                                          []observation.Question `json:"questions"`
+		Changes                                            map[string]struct {
 			Type string `json:"type"`
 			Diff string `json:"unified_diff"`
 			Move string `json:"move_path"`
@@ -191,65 +183,14 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 	if err := json.Unmarshal(raw, &p, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return observation.Item{}, false, err
 	}
-	i := observation.Item{ID: p.ID, Type: p.Type, Status: p.Status, Cwd: p.Cwd, Text: p.Text, Summary: p.Summary, Content: p.Content, AggregatedOutput: p.Output, ExitCode: p.Exit, ProcessID: p.Process, ClientID: p.Client, AgentThreadID: p.AgentThread, AgentPath: p.AgentPath, Kind: p.Kind, Path: p.Path, Delivery: p.Delivery, Phase: p.Phase, Questions: p.Questions, Tool: p.Tool, SenderThreadID: p.Sender, ReceiverThreadIDs: p.Receivers}
-	i.Prompt, i.Model, i.ReasoningEffort = p.Prompt, p.Model, p.ReasoningEffort
-	i.AgentsStates = make(map[string]observation.AgentState, len(p.States))
-	for id, raw := range p.States {
-		var status string
-		if len(raw) > 0 && raw[0] == '"' {
-			if err := json.Unmarshal(raw, &status); err != nil {
-				return i, false, err
-			}
-		} else {
-			var tagged map[string]jsontext.Value
-			if err := json.Unmarshal(raw, &tagged); err != nil {
-				return i, false, err
-			}
-			if len(tagged) != 1 {
-				return i, false, errors.New("invalid retained agent status")
-			}
-			for tag := range tagged {
-				status = tag
-			}
-		}
-		switch status {
-		case "pending_init":
-			status = "pendingInit"
-		case "not_found":
-			status = "notFound"
-		case "running", "interrupted", "completed", "errored", "shutdown":
-		default:
-			return i, false, fmt.Errorf("unsupported retained agent status %q", status)
-		}
-		i.AgentsStates[id] = observation.AgentState{Status: status}
-	}
+	i := observation.Item{ID: p.ID, Type: p.Type, Status: p.Status, Cwd: p.Cwd, Text: p.Text, Summary: p.Summary, Content: p.Content, AggregatedOutput: p.Output, ExitCode: p.Exit, ProcessID: p.Process, ClientID: p.Client, Path: p.Path, Delivery: p.Delivery, Phase: p.Phase, Questions: p.Questions, Tool: p.Tool}
 	if i.Type != "" {
 		i.Type = strings.ToLower(i.Type[:1]) + i.Type[1:]
 	}
 	switch i.Type {
 	case "mcpToolCall":
 		i.Server, i.Arguments, i.Result, i.Error = p.Server, p.Arguments, p.Result, p.Error
-	case "userMessage", "reasoning", "subAgentActivity", "contextCompaction", "imageView":
-	case "collabAgentToolCall":
-		// Retained Rust enum spelling differs from app-server observation names.
-		switch i.Tool {
-		case "spawn_agent":
-			i.Tool = "spawnAgent"
-		case "send_input":
-			i.Tool = "sendInput"
-		case "resume_agent":
-			i.Tool = "resumeAgent"
-		case "close_agent":
-			i.Tool = "closeAgent"
-		case "send_message":
-			i.Tool = "sendMessage"
-		case "followup_task":
-			i.Tool = "followupTask"
-		case "interrupt_agent":
-			i.Tool = "interruptAgent"
-		case "list_agents":
-			i.Tool = "listAgents"
-		}
+	case "userMessage", "reasoning", "contextCompaction", "imageView":
 	case "agentMessage":
 		var content []struct {
 			Text string `json:"text"`

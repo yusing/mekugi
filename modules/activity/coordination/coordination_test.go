@@ -1,4 +1,4 @@
-package presentation
+package coordination
 
 import (
 	"encoding/json/jsontext"
@@ -31,7 +31,7 @@ func TestProjectCoordinationRoutes(t *testing.T) {
 		{"interrupt_agent", `{"target":"child"}`, `{"id":"op-3","state":"confirmed","thread_id":"thread-1","task_name":"/root/child"}`,
 			Coordination{Action: "Interrupt", Kind: "progress", Target: "/root/child", Thread: "thread-1", State: "confirmed", Confirmed: true}},
 		{"wait_agent", `{"target":["/root/a","/root/b"]}`, `{"id":"wait-1","state":"registered"}`,
-			Coordination{Action: "Wait", Kind: "progress", State: "registered", Confirmed: true, Targets: []WaitTarget{{Name: "/root/a"}, {Name: "/root/b"}}}},
+			Coordination{Action: "Wait", Kind: "progress", State: "registered", Confirmed: true, Targets: []Target{{Name: "/root/a"}, {Name: "/root/b"}}}},
 		{"list_agents", `{}`, `{"agents":[{"task_name":"/root/a"},{"task_name":"/root/b"}]}`,
 			Coordination{Action: "List agents", Kind: "progress", State: "completed", Confirmed: true, Count: 2}},
 		{"list_agents", `{}`, `{"agents":[]}`,
@@ -107,14 +107,14 @@ func TestProjectCoordinationAcknowledgementGuards(t *testing.T) {
 func TestProjectCoordinationWaitDispositions(t *testing.T) {
 	for _, tt := range []struct {
 		name, args, result, state string
-		targets                   []WaitTarget
+		targets                   []Target
 	}{
-		{"implicit all", `{}`, `{"id":"w","state":"registered"}`, "registered", []WaitTarget{{Name: "All descendants"}}},
-		{"explicit all", `{"target":"all"}`, `{"id":"w","state":"registered"}`, "registered", []WaitTarget{{Name: "All descendants"}}},
-		{"completed event", `{"target":["child"]}`, `{"id":"w","state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", []WaitTarget{{Name: "/root/child", Status: "completed"}}},
-		{"timeout", `{"target":["child"]}`, `{"id":"w","state":"timeout"}`, "timeout", []WaitTarget{{Name: "child"}}},
+		{"implicit all", `{}`, `{"id":"w","state":"registered"}`, "registered", []Target{{Name: "All descendants"}}},
+		{"explicit all", `{"target":"all"}`, `{"id":"w","state":"registered"}`, "registered", []Target{{Name: "All descendants"}}},
+		{"completed event", `{"target":["child"]}`, `{"id":"w","state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", []Target{{Name: "/root/child", Status: "completed"}}},
+		{"timeout", `{"target":["child"]}`, `{"id":"w","state":"timeout"}`, "timeout", []Target{{Name: "child"}}},
 		{"canceled", `{"cancel_id":"w"}`, `{"id":"w","state":"canceled"}`, "canceled", nil},
-		{"paused", `{"target":["child"]}`, `{"id":"w","state":"paused"}`, "paused", []WaitTarget{{Name: "child"}}},
+		{"paused", `{"target":["child"]}`, `{"id":"w","state":"paused"}`, "paused", []Target{{Name: "child"}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got, ok := ProjectCoordination(coordinationItem("wait_agent", tt.args, tt.result))

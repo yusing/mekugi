@@ -13,7 +13,7 @@ func TestSupplementRetentionUsesQueueTime(t *testing.T) {
 	owner.Attach("main")
 	original := time.Unix(1700000000, 0)
 	queued := original.Add(24 * time.Hour)
-	event := Supplement{Thread: "child", Source: "old-assignment", Kind: "assignment", Text: "Historical task", Observed: original}
+	event := Supplement{Thread: "child", Source: "old-error", Kind: "error", Text: "Historical failure", Observed: original}
 	if owner.Collect(&thread, event, queued) {
 		t.Fatal("event omitted")
 	}
@@ -34,26 +34,6 @@ func TestSupplementRetentionUsesQueueTime(t *testing.T) {
 	owner.Collect(&thread, event, queued)
 	if got := owner.Take(audience, queued.Add(time.Hour)); len(got) != 0 {
 		t.Fatal("queue did not expire")
-	}
-}
-
-func TestSupplementStartDeduplicatesAssignmentAcrossAttachment(t *testing.T) {
-	var invocation, thread scope.Store
-	owner := RequestSupplements(&invocation)
-	owner.Attach("main")
-	now := time.Unix(1700000000, 0)
-	assignment := &SupplementAssignment{ID: "task", From: "/root", To: "/root/child", Text: "Work"}
-	owner.Collect(&thread, Supplement{Thread: "child", Source: "start", Kind: "start", Assignment: assignment, Start: &SupplementStart{Model: "model"}}, now)
-	owner.Collect(&thread, Supplement{Thread: "child", Source: "task", Kind: "assignment", Assignment: assignment, Text: "Work"}, now)
-	audience := Audience{Root: "main", Threads: map[string]string{"child": "/root/child"}}
-	if got := owner.Take(audience, now); len(got) != 1 || got[0].Kind != "start" {
-		t.Fatalf("spawn and first assignment split: %+v", got)
-	}
-	owner.Detach()
-	owner.Attach("main")
-	owner.Collect(&thread, Supplement{Thread: "child", Source: "task", Kind: "assignment", Assignment: assignment, Text: "Work"}, now)
-	if got := owner.Take(audience, now); len(got) != 0 {
-		t.Fatal("reattachment lost source deduplication")
 	}
 }
 

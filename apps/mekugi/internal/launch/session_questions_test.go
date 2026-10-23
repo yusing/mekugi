@@ -16,11 +16,11 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.Turn = "turn"
 	questionTestSync(t, u, "first", false)
-	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	call := v.Questions.Call
 	answer := sessionpresentation.AnswerIntent{Version: v.Version,
 		Call: call.ID, Question: call.Questions[0].ID, Choice: 0, Draft: composer.Draft{Text: "explicit note"}}
-	if !answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) {
+	if !answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) {
 		t.Fatal(u.attached.feedback.Text)
 	}
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
@@ -28,8 +28,8 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	openQuestionCall(&u.questions, &u.approvals, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread, u.questions.calls()[1])
 	u.Text = "another answer draft"
-	submit := sessionpresentation.QuestionSubmitIntent{Version: publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Version, Call: call.ID}
-	if err := submitQuestions(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, submit); err != nil {
+	submit := sessionpresentation.QuestionSubmitIntent{Version: publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Version, Call: call.ID}
+	if err := submitQuestions(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, submit); err != nil {
 		t.Fatal(err)
 	}
 	if got := wire.String(); !strings.Contains(got, `"id":"first"`) || !strings.Contains(got, `"answers":["Narrow","user_note: explicit note"]`) {
@@ -39,20 +39,20 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 		t.Fatal("submission replaced another prompt's editor")
 	}
 	wire.Reset()
-	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != prompt.ErrQuestionUnavailable.Error() {
+	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != prompt.ErrQuestionUnavailable.Error() {
 		t.Fatal("answered call accepted another answer")
 	}
-	if err := submitQuestions(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, submit); err != nil || wire.Len() != 0 {
+	if err := submitQuestions(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, submit); err != nil || wire.Len() != 0 {
 		t.Fatal("answered call responded again")
 	}
-	v = publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+	v = publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	submit = sessionpresentation.QuestionSubmitIntent{Version: v.Version, Call: v.Questions.Call.ID}
-	if err := submitQuestions(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, submit); err != nil || wire.Len() != 0 || u.attached.feedback.Text != prompt.ErrIncompleteAnswers.Error() {
+	if err := submitQuestions(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, submit); err != nil || wire.Len() != 0 || u.attached.feedback.Text != prompt.ErrIncompleteAnswers.Error() {
 		t.Fatal("incomplete submission skipped confirmation")
 	}
 	submit.Incomplete = true
 	submit.Version = u.attached.presentation.View().Version
-	if err := submitQuestions(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, submit); err != nil || !strings.Contains(wire.String(), `"id":"second","result":{"answers":{}}`) {
+	if err := submitQuestions(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, submit); err != nil || !strings.Contains(wire.String(), `"id":"second","result":{"answers":{}}`) {
 		t.Fatal("confirmed incomplete call lost the host's empty-answer semantics")
 	}
 }
@@ -62,16 +62,16 @@ func TestNonTerminalQuestionBatchUsesOrdinarySubmission(t *testing.T) {
 	u.startSession("main", t.TempDir())
 	u.Turn = "turn"
 	questionTestAsync(t, u, "batch", "Who receives it?", "Who approves it?")
-	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	call := v.Questions.Call
 	for i, q := range call.Questions {
 		v = u.attached.presentation.View()
-		if !answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.AnswerIntent{Version: v.Version, Call: call.ID, Question: q.ID, Choice: i}) {
+		if !answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.AnswerIntent{Version: v.Version, Call: call.ID, Question: q.ID, Choice: i}) {
 			t.Fatal(u.attached.feedback.Text)
 		}
 	}
 	v = u.attached.presentation.View()
-	if err := submitQuestions(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, sessionpresentation.QuestionSubmitIntent{Version: v.Version, Call: call.ID}); err != nil {
+	if err := submitQuestions(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, sessionpresentation.QuestionSubmitIntent{Version: v.Version, Call: call.ID}); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, wire)
@@ -88,21 +88,21 @@ func TestNonTerminalQuestionRejectsSecretReplayAndRetiredView(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.Turn = "turn"
 	questionTestSync(t, u, "secret", true)
-	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	answer := sessionpresentation.AnswerIntent{Version: v.Version,
 		Call: v.Questions.Call.ID, Question: v.Questions.Call.Questions[0].ID,
 		Choice: 0, Draft: composer.Draft{Text: "ordinary input"}}
-	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != prompt.ErrSecretAnswer.Error() || u.questions.Current().Done || u.questions.Current().Editor.Snapshot.Text != "" {
+	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != prompt.ErrSecretAnswer.Error() || u.questions.Current().Done || u.questions.Current().Editor.Snapshot.Text != "" {
 		t.Fatal("ordinary intent entered secret state")
 	}
 	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
-	answer.Version = publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Version
-	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
+	answer.Version = publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Version
+	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay accepted an answer")
 	}
 	u.Thread = "replacement"
 	attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
-	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() || wire.Len() != 0 {
+	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() || wire.Len() != 0 {
 		t.Fatal("retired view answered a replacement prompt")
 	}
 }

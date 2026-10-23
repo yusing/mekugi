@@ -23,6 +23,6 @@ type thread struct{ *naming.State }
 
 func (t thread) ObserveInput(input []byte) {
 	if t.NeedsPrompt() {
-		t.RetainPrompt(binding.SubmittedUserText(input, "/root", true))
+		t.RetainPrompt(binding.SubmittedUserText(input, true))
 	}
 }

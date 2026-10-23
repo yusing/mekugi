@@ -105,7 +105,7 @@ func remoteOwnerView(t *testing.T, u *appServerUI) *remoteViewHarness {
 
 func (h *remoteViewHarness) publish() {
 	u, v := h.u, h.view
-	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, u.side, time.Now(), true)
+	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, time.Now(), true)
 	frame := sessionapi.NativeFrame{View: view, Questions: nativePendingQuestions(u.attached.conversation), Main: v.attached.source.Publication(v.attached.presentation, nil)}
 	v.publishDetails(&frame)
 	if err := h.api.Native().Publish(h.event.Attachment, frame); err != nil {
@@ -177,7 +177,7 @@ func TestRemoteViewAnswersUsePendingPromptOwner(t *testing.T) {
 			h := remoteOwnerView(t, u)
 			answer := sessionapi.Answer{Call: call.ID, Answers: []sessionapi.QuestionAnswer{{Question: call.Questions[0].ID, Choice: tc.choice, Text: tc.text, Skip: tc.skip}}}
 			code, body := h.send(map[string]any{"answers": answer}, func(request sessionapi.NativeRequest) string {
-				refusal, err := applyNativeAnswers(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, u.side, u.clock, &u.questions, &u.approvals, false, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, *request.Operation.Answers, request.Prepared, request.Context, request.RemoteHuman())
+				refusal, err := applyNativeAnswers(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{}, u.serviceTiers, "", "", false, u.side, u.clock, &u.questions, &u.approvals, false, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, *request.Operation.Answers, request.Prepared, request.Context, request.RemoteHuman())
 				if err != nil {
 					t.Fatal(err)
 				}

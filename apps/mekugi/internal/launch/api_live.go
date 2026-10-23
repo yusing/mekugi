@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/scope"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -89,7 +88,7 @@ func apiInputRefusal(attached *attachedPresentation, control *sessioncontrol.Cli
 
 // applyAPIIntent applies an admitted request through the existing session owners.
 // An error ends the runtime, matching the local control path.
-func applyAPIIntent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, intent sessionapi.Intent) (string, error) {
+func applyAPIIntent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, intent sessionapi.Intent) (string, error) {
 	if reason := apiIntentRefusal(attached, control, intent); reason != "" {
 		return reason, nil
 	}
@@ -100,11 +99,11 @@ func applyAPIIntent(attached *attachedPresentation, terminal *terminalsession.At
 			return refusal, nil
 		}
 		for _, answer := range answers {
-			if !answerQuestion(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, sessionpresentation.AnswerIntent{Version: attached.presentation.View().Version, AnswerInput: answer}) {
+			if !answerQuestion(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, sessionpresentation.AnswerIntent{Version: attached.presentation.View().Version, AnswerInput: answer}) {
 				return "This prompt was already answered.", nil
 			}
 		}
-		return "", submitQuestions(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, environment, *owned, hook, parent, observations, reviewOwner, receipts, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: intent.Answer.Call, Incomplete: incomplete})
+		return "", submitQuestions(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, environment, *owned, hook, parent, observations, reviewOwner, receipts, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: intent.Answer.Call, Incomplete: incomplete})
 	case sessionapi.DecideApproval:
 		_, choice, ok := attached.conversation.Approvals.Decision(intent.Decide.Approval, intent.Decide.Choice)
 		if !ok {
@@ -113,7 +112,7 @@ func applyAPIIntent(attached *attachedPresentation, terminal *terminalsession.At
 		if intent.Decide.Reason != "" && !choice.Deny {
 			return "A reason can only accompany a denial.", nil
 		}
-		return "", decideApproval(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, notifications, reviewOwner, receipts, observations, sessionpresentation.ApprovalIntent{Version: attached.presentation.View().Version, Request: intent.Decide.Approval, Choice: intent.Decide.Choice, Reason: intent.Decide.Reason})
+		return "", decideApproval(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, notifications, reviewOwner, receipts, observations, sessionpresentation.ApprovalIntent{Version: attached.presentation.View().Version, Request: intent.Decide.Approval, Choice: intent.Decide.Choice, Reason: intent.Decide.Reason})
 	case sessionapi.Send:
 		// Enter semantics: steer the active turn, or start one while idle.
 		if reason := apiInputRefusal(attached, control, restoring); reason != "" {
@@ -126,7 +125,7 @@ func applyAPIIntent(attached *attachedPresentation, terminal *terminalsession.At
 		}
 		// Unlike Enter in the terminal, this leaves the terminal's notice and
 		// scroll position alone.
-		defer settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay)
+		defer settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay)
 		plan := control.PlanInput(sessioncontrol.SendInput, attached.conversation.Questions.Waiting(control.Thread))
 		var input conversationmodel.Input
 		if intent.Prepared != nil {
@@ -154,11 +153,11 @@ func applyAPIIntent(attached *attachedPresentation, terminal *terminalsession.At
 	case sessionapi.Stop:
 		// Ctrl-C semantics for Main, even while the terminal displays a side
 		// conversation; the terminal's lock guards only its keyboard.
-		view := publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), presentationTime(clock))
+		view := publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, (*side), presentationTime(clock))
 		if !sessionpresentation.MainInterruptible(&control.Live, attached.conversation) {
 			return "Nothing is running.", nil
 		}
-		return "", interruptSession(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, settings, tiers, title, backend, restoring, side, overlay, reviewOwner, receipts, sessionpresentation.InterruptIntent{Version: view.Version, Target: control.InterruptTarget(), Mode: sessioncontrol.RestoreWaiting})
+		return "", interruptSession(attached, terminal, control, picker, editor, questions, approvals, clock, settings, tiers, title, backend, restoring, side, overlay, reviewOwner, receipts, sessionpresentation.InterruptIntent{Version: view.Version, Target: control.InterruptTarget(), Mode: sessioncontrol.RestoreWaiting})
 	}
 	return "This session does not offer that request.", nil
 }

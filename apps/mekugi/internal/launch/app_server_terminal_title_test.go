@@ -116,7 +116,7 @@ func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testin
 	if rows := testQuestionRows(u, 80, 10); len(rows) != 0 {
 		t.Fatalf("answered question still has a dock: %q", rows)
 	}
-	if preview := strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Pending, 80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {
+	if preview := strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Pending, 80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {
 		t.Fatalf("uncommitted answer has no pending preview: %q", preview)
 	}
 	out.Reset()

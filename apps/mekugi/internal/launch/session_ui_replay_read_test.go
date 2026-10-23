@@ -66,9 +66,7 @@ func TestSessionUIReplayNormalizesItemsAndRecordedTiming(t *testing.T) {
 		{"type": "Reasoning", "id": "reasoning", "summary_text": []string{"first", "second"}},
 		{"type": "CommandExecution", "id": "command", "command": []string{"sh", "-c", command}, "aggregated_output": "retained output", "exit_code": 0, "status": "completed", "cwd": "/workspace/replay"},
 		{"type": "FileChange", "id": "files", "changes": map[string]any{"z.go": map[string]any{"type": "update", "unified_diff": "z diff"}, "a.go": map[string]any{"type": "add", "unified_diff": "a diff"}}},
-		{"type": "SubAgentActivity", "id": "activity", "kind": "message"},
 		{"type": "ContextCompaction", "id": "compact"},
-		{"type": "CollabAgentToolCall", "id": "collab", "tool": "wait", "sender_thread_id": "root", "receiver_thread_ids": []string{"root"}, "agents_states": map[string]any{"root": map[string]any{"completed": "retained answer"}}},
 	}
 	records := []map[string]any{
 		replayTestMeta("root"),
@@ -161,8 +159,8 @@ func TestSessionUIReplayDiscoversSiblingThreadsAndFiltersProviders(t *testing.T)
 	t.Parallel()
 	dir := t.TempDir()
 	root := replayTestWrite(t, dir, "rollout-2023-root.jsonl", replayTestMeta("root"),
-		replayTestItem("root", "turn", replayTestEpoch+1000, replayTestEpoch+2000, map[string]any{"type": "SubAgentActivity", "id": "spawn", "agent_thread_id": "child", "agent_path": "/root/worker", "kind": "spawn"}),
-		replayTestItem("root", "turn", replayTestEpoch+2000, replayTestEpoch+3000, map[string]any{"type": "SubAgentActivity", "id": "missing", "agent_thread_id": "absent", "agent_path": "/root/absent", "kind": "spawn"}),
+		replayTestItem("root", "turn", replayTestEpoch+1000, replayTestEpoch+2000, replayCoordinationCall(t, "spawn", "child", "/root/worker")),
+		replayTestItem("root", "turn", replayTestEpoch+2000, replayTestEpoch+3000, replayCoordinationCall(t, "missing", "absent", "/root/absent")),
 	)
 	replayTestWrite(t, dir, "rollout-2023-child.jsonl", replayTestMeta("child"), replayTestItem("child", "child-turn", replayTestEpoch+2200, replayTestEpoch+2800, map[string]any{"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "child response"}}}))
 	// An unrelated sibling must not be discovered just because it exists.
@@ -208,7 +206,7 @@ func TestSessionUIReplayVerifiesChildMetadata(t *testing.T) {
 			dir := t.TempDir()
 			root := replayTestWrite(t, dir, "root.jsonl", replayTestMeta("root"),
 				replayTestItem("root", "turn", replayTestEpoch+1000, replayTestEpoch+2000,
-					map[string]any{"type": "SubAgentActivity", "id": "spawn", "agent_thread_id": "child", "kind": "spawn"}))
+					replayCoordinationCall(t, "spawn", "child", "/root/child")))
 			for i, id := range ids {
 				replayTestWrite(t, dir, fmt.Sprintf("rollout-%d-child.jsonl", i), replayTestMeta(id),
 					replayTestItem(id, "child-turn", replayTestEpoch+2200, replayTestEpoch+2800,
@@ -350,7 +348,7 @@ func TestSessionUIReplayChildInheritedHistoryDoesNotDuplicateAncestor(t *testing
 	dir := t.TempDir()
 	rootStart := replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "root-turn"})
 	rootComplete := replayTestRecord("event_msg", replayTestEpoch+3000, map[string]any{"type": "task_complete", "turn_id": "root-turn"})
-	spawn := replayTestItem("root", "root-turn", replayTestEpoch+1000, replayTestEpoch+2000, map[string]any{"type": "SubAgentActivity", "id": "spawn", "agent_thread_id": "child", "agent_path": "/root/worker", "kind": "spawn"})
+	spawn := replayTestItem("root", "root-turn", replayTestEpoch+1000, replayTestEpoch+2000, replayCoordinationCall(t, "spawn", "child", "/root/worker"))
 	root := replayTestWrite(t, dir, "rollout-2023-root.jsonl", replayTestMeta("root"), rootStart, spawn, rootComplete)
 	replayTestWrite(t, dir, "rollout-2023-child.jsonl",
 		replayTestMeta("child"),
@@ -380,4 +378,10 @@ func TestSessionUIReplayChildInheritedHistoryDoesNotDuplicateAncestor(t *testing
 	if !reflect.DeepEqual(counts, want) {
 		t.Fatalf("inherited history acquired child identity or duplicated events: %v", counts)
 	}
+}
+
+func replayCoordinationCall(t *testing.T, id, thread, task string) map[string]any {
+	t.Helper()
+	item := coordinationTestCall(t, id, "spawn_agent", thread, task, "")
+	return map[string]any{"id": item.ID, "type": item.Type, "server": item.Server, "tool": item.Tool, "status": item.Status, "arguments": item.Arguments, "result": item.Result}
 }

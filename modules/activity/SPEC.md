@@ -16,7 +16,7 @@ Conversation transcripts remain available through their shared painter.
 
 ### Observation authority
 
-Main and child feeds consume typed host command, edit, collaboration, web, image,
+Main and child feeds consume typed host command, edit, web, image,
 MCP and other tool observations. Host items and turn events establish execution
 state; source recognition for previews and capture does not. Unknown tools retain
 their host identity and available arguments, including MCP server/tool identity.
@@ -33,16 +33,16 @@ and delivered messages show sender and recipient. Wait registration and results,
 interruption requests and agent listing use structured progress; registration is
 not wait completion, and interruption acknowledgement is not task completion.
 Failed, queued and uncertain operations never invent delivery. Original tool
-evidence remains in the content dialog. Live, resumed history and replay share
+evidence remains in detached details; authored traffic dialogs show and copy the
+delivered message. Live, resumed history and replay share
 this interpretation; unrelated MCP calls retain ordinary MCP presentation.
 
 Attribution requires validated stable thread relationships and canonical agent
 identity, never routing-session IDs or message text. Request preparation precedes
 identity admission. Deferred observations keep their originating thread.
 Ambiguous ancestry suppresses attribution, not execution
-or substantive child output. Authenticated recipient-input observations supplement
-assignment and directed-message bodies as display data, without waiting for a root
-provider response. Source identity deduplicates live and restored observations.
+or substantive child output. Thread Control outcomes supply assignment and
+directed-message bodies; host item identity deduplicates their observations.
 
 Supplemental observations use invocation-scoped queues and thread-scoped source
 deduplication, independent of attached feed replacement. The application supplies
@@ -65,13 +65,6 @@ Captured-edit supplements annotate their original host items through the same
 receipt reconciliation as retained review, including items loaded from history.
 An early receipt waits for its host identity instead of creating a second tool row.
 
-Activity projects admitted collaboration completions into ordered spawn,
-assignment and directed-message facts. Live and replay completions with a completed
-or unspecified outcome retain delivery; restored history requires an explicit
-completed outcome and otherwise shows unconfirmed delivery. Blank assignments produce no message;
-a successful spawn still records its supplied settings. Adapters resolve caller
-labels, allocate feed sequence numbers and retain host-side effects.
-
 An `exec` cell has no host activity item of its own. A newly observed host
 `Script failed` result supplies one error row, including failures before any nested
 tool runs. Its first-line preview is bounded; the full error remains available to
@@ -83,14 +76,6 @@ Yielded cells and cells that printed content receive no note. These notes remain
 for the live router session and are not reconstructed on resume. Reclassifying
 an operation or replacing/withdrawing its capture receipt preserves its existing
 repetition and unreturned-output notes without duplicating them.
-
-Wait/input observations retain typed host command/item identity; an uncorrelated
-poll cannot name a guessed command. A turn ending before its wait item completes
-shows `Wait ended`, without claiming any child finished. A later host wait result
-replaces it; restoring a stopped turn applies the same rule without reviving waits.
-Activity owns active waits in the admitted turn scope. Turn completion closes
-them in observation order without consulting rendered feeds. Publications remain
-detached from active state, including their target names and statuses.
 
 ### Source interpretation
 
@@ -282,20 +267,6 @@ consumer-owned.
 
 ## Records and Codex connection
 
-Activity owns immutable start-time wait-target snapshots and their retained codec.
-The application binds proven workspace, caller, turn and item identity;
-[session history](../sessionhistory/SPEC.md) supplies publication, ordinary retention
-and active leases.
-
-Explicit wait targets and reported states remain authoritative. When receivers
-are absent at start, Activity snapshots the supplied running descendants and
-retains those names through completion; absent state never claims success or
-continued work. Resume may restore recorded names but cannot infer old targets
-from today's roster or revive waits. Storage failures report a notice without
-blocking live display. Offline replay supplies the roster at the recorded start
-instant, freezes the same targets through completion and rebuilds them on seek;
-it neither opens the live wait store nor consults today's roster.
-
 Feeds retain the newest 2,000 records while protecting live invocations.
 Reordering preserves source identity independently of publication order.
 Bounded side-conversation projections remain until their source owner retires them.
@@ -340,8 +311,7 @@ access to completed evidence.
 Output bounds disclose truncation or release. Omitting the composition entry stops
 attached output retention; host execution, command outcomes and bounded display
 tails continue. Retention does not introduce a second transcript or execution path.
-Admitted lifecycle observations still supply native wait-target selection and
-Conversation integration when the optional roster and retention are absent.
+Admitted lifecycle observations still supply Conversation integration when the optional roster and retention are absent.
 
 ## Acceptance
 
@@ -352,8 +322,8 @@ and source-copy behavior. Output cases cover chunked CRLF, bounds, shared retent
 aggregate replacement, unknown exits and snapshot stability. Real stream/segment
 and dialog consumers cover paced completion, release fallback and source numbering.
 Application checks cover unchanged host inputs/results and parallel execution,
-authenticated attribution, repeated script errors, live-only output notes, waits
-ending without completion and intent replaced by observed evidence. Source parsing
+authenticated attribution, repeated script errors, live-only output notes, logical waits
+and intent replaced by observed evidence. Source parsing
 and renderer checks alone do not establish execution or capture coverage.
 VCS checks exercise literal classification, output parsing and rendered rows through
 live/restored consumers, plus directory/hash isolation, bounded reads, cancellation,

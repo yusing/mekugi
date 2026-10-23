@@ -17,13 +17,11 @@ type executionPresentation struct {
 	session             sessionpresentation.Attachment
 	source, childSource *sessionpresentation.ActivitySource
 	transcript          observation.Transcript
-	waits               activitypresentation.Waits
 	cwd                 string
 	conversation        *conversationmodel.Session
 	restoreInput        func(*executionPresentation, []conversationmodel.Input)
 	restoreShell        func(*executionPresentation, conversationmodel.Input)
 	restoreSide         func(*executionPresentation, conversationmodel.Input, string)
-	loadingHistory      *appServerChildHistory
 	deliverActivity     func(*executionPresentation, []sessionpresentation.ActivityDelivery)
 	activeThread        func(string) bool
 	reserveThread       func(string) error

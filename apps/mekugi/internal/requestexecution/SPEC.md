@@ -8,7 +8,7 @@ without retaining a second transcript, agent registry or accounting ledger.
 Preparation applies authenticated guidance around execution admission and file
 attachment projection. Non-generating WebSocket prewarm cannot initialize live
 execution, retained history or agent lifecycle. Compaction keeps its existing
-request-wide projections and gains no collaboration tools. The executor replaces
+request-wide projections. The executor replaces
 the compaction operation with one ordinary provider turn using the selected prompt
 plus reload instructions. It collects the completed assistant summary, separates
 reload metadata and returns a native compaction reference only after publication.

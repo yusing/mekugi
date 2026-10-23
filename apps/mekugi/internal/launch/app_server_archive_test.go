@@ -26,7 +26,7 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 				u.Turn = "turn"
 			}
 			appServerTestKeys(t, u, "/arch\r")
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			if u.picker.Kind != "archive" || u.shell.Main.Menu.Selected != 0 || wire.Len() != 0 {
 				t.Fatal("archive must first ask for confirmation, defaulting to No")
 			}

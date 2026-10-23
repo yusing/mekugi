@@ -33,7 +33,7 @@ func (u *terminalUI) openEntry(view *activityui.View, seq uint64) bool {
 	return openEntry(&u.main.attached, u.main.shell, &u.main.detailFiles, u.Attachment, view, seq)
 }
 func (u *terminalUI) outputIntent(intent terminalsession.DialogIntent) {
-	outputIntent(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.questions, &u.main.approvals, u.main.clock, &u.main.childHistoryState, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, &u.main.restoring, &u.main.side, &u.main.statusPanel, &u.main.resumePicker, &u.main.ownedImages, u.main.skillEnvironment, u.main.ctx, &u.main.detailFiles, u.Attachment, intent)
+	outputIntent(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.questions, &u.main.approvals, u.main.clock, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, &u.main.restoring, &u.main.side, &u.main.statusPanel, &u.main.resumePicker, &u.main.ownedImages, u.main.skillEnvironment, u.main.ctx, &u.main.detailFiles, u.Attachment, intent)
 }
 func (u *terminalUI) openActivityEdit(view *activityui.View, seq uint64, path string) bool {
 	return openActivityEdit(&u.main.attached, u.main.shell, &u.main.detailFiles, u.main.activity, u.Attachment, view, seq, path)

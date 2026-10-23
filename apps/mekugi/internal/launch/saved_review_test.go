@@ -71,8 +71,8 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 		slices.Sort(result)
 		return result
 	}
-	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: workspace}, true)
-	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "child", Cwd: workspace}, false)
+	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: workspace})
+	u.review.IncludeThread(workspace, "child", false)
 	apply()
 	if got := paths(); !slices.Equal(got, []string{"child.go", "root.go"}) {
 		t.Fatalf("restored saved Diff: %v", got)
@@ -119,7 +119,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	default:
 		t.Fatal("root switch retained old mailbox")
 	}
-	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "next", Cwd: workspace}, true)
+	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "next", Cwd: workspace})
 	review.Observe(workspace, "old-child", "main", false)
 	review.Observe(workspace, "new-child", "next", false)
 	sub = review.Subscribe()

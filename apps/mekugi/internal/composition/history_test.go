@@ -12,7 +12,6 @@ import (
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/legacycall"
-	"github.com/yusing/mekugi/modules/activity/waittargets"
 	"github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory"
@@ -120,7 +119,6 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 		{legacycall.Name("/workspace", "call", false), "call"},
 		{legacycall.Name("/workspace", "commentary", true), "commentary"},
 		{legacycall.SnapshotName([]byte("snapshot")), "snapshot"},
-		{waittargets.Name("/workspace", "thread", "turn", "item"), "wait"},
 	} {
 		kind, found, err := runtime.History.Kind(tc.name)
 		if err != nil || !found || kind.ID != tc.id {

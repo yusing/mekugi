@@ -8,7 +8,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/scope"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -48,19 +47,11 @@ func hookOutput(run appserver.HookRun) (string, bool) {
 	return text, hasError
 }
 
-func hookEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], childKey *scope.Key[*appServerChildHistory], activity *activitymodel.Service, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, retainedSession history.Session, clock func() time.Time, method string, event binding.Notification) error {
+func hookEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], activity *activitymodel.Service, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, retainedSession history.Session, clock func() time.Time, method string, event binding.Notification) error {
 	if event.ThreadID == "" || event.Run == nil || event.Run.ID == "" {
 		return fmt.Errorf("%s: missing hook thread or run identity", method)
 	}
 	s := &attached.session
-	if event.ThreadID != control.Thread {
-		if err := requestThreadMetadata(control.Requests, &attached.session, event.ThreadID); err != nil {
-			return err
-		}
-	}
-	if h := childHistory(&attached.session, childKey, event.ThreadID); h != nil {
-		h.state.ObserveLive()
-	}
 	run := *event.Run
 	completed := method == "hook/completed"
 	var previousOutput *activitymodel.Output

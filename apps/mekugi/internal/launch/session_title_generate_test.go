@@ -56,7 +56,7 @@ func TestSessionTitleGenerationRequest(t *testing.T) {
 				if parsed.Model() != "gpt-6-luna" || parsed.ReasoningEffort() != "medium" || !parsed.Stream {
 					t.Errorf("naming settings: %s", body)
 				}
-				if strings.Contains(string(body), "tools") || binding.SubmittedUserText(parsed.Fields["input"], "/root", true) != "First request" {
+				if strings.Contains(string(body), "tools") || binding.SubmittedUserText(parsed.Fields["input"], true) != "First request" {
 					t.Errorf("naming input: %s", body)
 				}
 				if headers.Get("Authorization") != "Bearer test" || headers.Get(openai.AccountIDHeader) != "account" || headers.Get(codexresponses.TurnMetadataHeader) != "" || headers.Get(codexresponses.ThreadIDHeader) != "" || cacheKey != "" {
@@ -282,7 +282,7 @@ func TestSessionTitlePromptKeepsRequestLocal(t *testing.T) {
 		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_image", "image_url": "image"}}},
 	})
 	raw := string(request.Fields["input"])
-	if got := binding.SubmittedUserText(request.Fields["input"], "/root", true); got != "" {
+	if got := binding.SubmittedUserText(request.Fields["input"], true); got != "" {
 		t.Fatalf("media-only request selected old attachment: %q", got)
 	}
 	if string(request.Fields["input"]) != raw {

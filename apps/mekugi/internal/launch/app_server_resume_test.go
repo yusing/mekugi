@@ -96,9 +96,9 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{
 		{ID: "cmd", Type: "commandExecution", Command: "false", ExitCode: new(2)},
 		{ID: "edit", Type: "fileChange", Changes: []binding.FileChange{{Path: "a.go", Diff: "+changed"}}},
-		{ID: "spawn", Type: "collabAgentToolCall", Tool: "spawnAgent", ReceiverThreadIDs: []string{"child"}},
+		coordinationTestCall(t, "spawn", "spawn_agent", "child", "/root/child", ""),
 	}}})
-	if u.Turn != "" || len(u.attached.session.Roster()) != 1 || u.attached.session.Roster()[0].Responding || len(u.attached.source.Entries) != 2 || u.testActivity(u.shell.Transcript).blocks(0)[0].ExitCode != 2 {
+	if u.Turn != "" || len(u.attached.session.Roster()) != 1 || u.attached.session.Roster()[0].Responding || len(u.attached.source.Entries) != 3 || u.testActivity(u.shell.Transcript).blocks(0)[0].ExitCode != 2 {
 		t.Fatalf("history revived lifecycle or lost tools: %+v", u.attached.session)
 	}
 	if !terminalTest(u).openActivityEdit(u.shell.Transcript, u.attached.source.Entries[1].Source.Seq, "a.go") {

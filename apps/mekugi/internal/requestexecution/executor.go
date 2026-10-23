@@ -75,7 +75,6 @@ type requestAttempt struct {
 	prewarm        bool
 
 	prepared        Prepared
-	bridge          codexresponses.Transformer
 	forwardBody     []byte
 	usageTracker    *accounting.Observation
 	providerStarted time.Time
@@ -273,13 +272,6 @@ func (a *requestAttempt) prepareWire() error {
 		}
 		a.request.Fields["access_programs"] = programs
 	}
-	var guidance codexresponses.CollaborationGuidance
-	var providerGuidance bool
-	if a.executor.Client != nil {
-		guidance, providerGuidance = a.executor.Client.CollaborationGuidance()
-	}
-	// Compaction keeps request-wide projections but never gains collaboration
-	// tools or their instructions.
 	compaction := !a.approvalReview && a.metadataValid && a.metadata.RequestKind == responses.Compaction
 	if compaction && a.executor.CompactPrompt != nil {
 		err = codexresponses.PrepareCompactTurn(&a.request, a.executor.CompactPrompt())
@@ -305,12 +297,6 @@ func (a *requestAttempt) prepareWire() error {
 			if err != nil {
 				return err
 			}
-		}
-	}
-	if !a.approvalReview && !compaction && (a.prepared != nil || a.prewarm && a.executor.Observations != nil || providerGuidance) {
-		a.bridge, err = codexresponses.PrepareCollaboration(&a.request, guidance)
-		if err != nil {
-			return fmt.Errorf("prepare collaboration bridge: %w", err)
 		}
 	}
 	attachmentsProjected, attachmentIDs := ProjectFileAttachments(&a.request)
@@ -448,9 +434,6 @@ func (a *requestAttempt) forward() error {
 func (a *requestAttempt) prepareResponse() error {
 	a.hooks.upstreamStatus = a.response.StatusCode
 	if a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices {
-		if a.bridge != nil {
-			a.responseTransform = codexresponses.Compose(a.responseTransform, a.bridge)
-		}
 		if a.prepared != nil {
 			a.responseTransform = codexresponses.Compose(a.responseTransform, a.prepared)
 		}

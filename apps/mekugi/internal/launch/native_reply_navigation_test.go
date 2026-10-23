@@ -27,9 +27,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	message := "The requested reply.\n\n" + strings.Repeat("More detail about this reply.\n", 16) + "End of requested reply."
 	send := func(id, body string) {
-		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{
-			"id": id, "type": "collabAgentToolCall", "tool": "sendMessage", "status": "completed", "senderThreadId": "child", "receiverThreadIds": []string{"main"}, "prompt": body,
-		}})
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": coordinationTestCall(t, id, "send_message", "main", u.attached.session.Caller("main"), body)})
 	}
 	send("earlier", "An earlier unrelated reply.")
 	send("target", message)
@@ -49,7 +47,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	}
 	var seq, activity uint64
 	for _, entry := range u.attached.source.Entries {
-		if entry.Source.Native != nil && entry.Source.Native.Item == "target\x00main" {
+		if entry.Source.Native != nil && entry.Source.Native.Item == "target" {
 			seq, activity = entry.Source.Seq, entry.Source.ActivitySeq
 		}
 	}

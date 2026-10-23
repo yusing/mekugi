@@ -26,9 +26,9 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
-func submitInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessionpresentation.SubmitIntent) error {
+func submitInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessionpresentation.SubmitIntent) error {
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay)
 	}()
 	draft, plan, err := attached.presentation.TakeInput(intent, &control.Live, attached.conversation, restoring)
 	if err != nil {
@@ -46,7 +46,7 @@ func submitInput(attached *attachedPresentation, terminal *terminalsession.Attac
 	return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, (*owned), hook, editor, parent, restoring, observations, reviewOwner, receipts)
 }
 
-func applyComposerCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, reasoningKey **bool, intent sessionpresentation.ComposerIntent, preparation *composerPreparation) (bool, error) {
+func applyComposerCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, reasoningKey **bool, intent sessionpresentation.ComposerIntent, preparation *composerPreparation) (bool, error) {
 	if err := attached.presentation.AdmitClientComposer(intent); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false, nil
@@ -60,7 +60,7 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		switch intent.Operation {
 		case sessionpresentation.SubmitComposer, sessionpresentation.QueueComposer:
 			if !strings.HasPrefix(text, "/") && !strings.HasPrefix(text, "!") {
-				return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}, *tiers, *title, *backend, *restoring != nil, side, *panel != nil || *resumePicker != nil, owned, environment, hook, observations, preparation)
+				return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}, *tiers, *title, *backend, *restoring != nil, side, *panel != nil || *resumePicker != nil, owned, environment, hook, observations, preparation)
 			}
 			if text != "/copy" {
 				setNotice(&attached.feedback, terminal, presentationTime(clock), "Return to Main to use this command; Side retains its captured settings", false)
@@ -92,17 +92,17 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		}
 		text := strings.TrimSpace((*editor).Text)
 		if text == "/archive" {
-			showArchivePicker(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned))
+			showArchivePicker(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned))
 			return false, nil
 		}
-		if handled, err := controlsCommand(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, text); handled {
+		if handled, err := controlsCommand(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, text); handled {
 			return false, err
 		}
-		if titleCommand(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, generator, text) {
+		if titleCommand(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, generator, text) {
 			return false, nil
 		}
 		if sideCommand(text) != "" {
-			return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, preparation)
+			return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, preparation)
 		}
 		if attached.conversation.ShellMode() {
 			return false, submitShell(attached, terminal, control, picker, editor, clock, (*restoring) != nil, environment, parent, (*reviewOwner), shellEdits, retained, (*retainedSession), changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)
@@ -118,22 +118,22 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 			return false, resumeCommand(attached, terminal, control, picker, editor, clock, restoring, resumePicker, environment, approvalMode, text)
 		}
 		if text == "/ps" {
-			showRunningProcesses(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, files)
+			showRunningProcesses(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, files)
 			return false, nil
 		}
 		if text == "/session" {
-			showSessionMetrics(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, capture, debugDirectory)
+			showSessionMetrics(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, capture, debugDirectory)
 			return false, nil
 		}
 		if text == "/status" {
-			return false, showStatus(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, (*statusConfig), debugDirectory)
+			return false, showStatus(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, (*statusConfig), debugDirectory)
 		}
 		if text == "/copy" {
-			showCopyPicker(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned)
+			showCopyPicker(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned)
 			return false, nil
 		}
 		if text == "/skills" {
-			deleteDraftRange(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
+			deleteDraftRange(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
 			picker.openMenu("menu")
 			picker.Choices = []completion.Choice{{Name: "list"}, {Name: "manage"}}
 			return false, nil
@@ -147,7 +147,7 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Interrupt the active turn before quitting", false)
 			return false, nil
 		}
-		if handled, err := settingsCommand(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, (*models), (*modelsLoading), text); handled {
+		if handled, err := settingsCommand(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, (*models), (*modelsLoading), text); handled {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
@@ -158,7 +158,7 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 			return false, nil
 		}
 		view := attached.presentation.View()
-		return false, submitInput(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.SendInput})
+		return false, submitInput(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.SendInput})
 	case sessionpresentation.QueueComposer:
 		// Tab queues busy input for the next turn; otherwise it sends like Enter.
 		text := strings.TrimSpace((*editor).Text)
@@ -167,10 +167,10 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		}
 		if attached.conversation.ShellMode() || text == "" || strings.HasPrefix(text, "/") || control.Turn == "" && !control.Starting() && !control.InputPending() {
 			intent.Operation = sessionpresentation.SubmitComposer
-			return applyComposerCommand(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, reasoningKey, intent, preparation)
+			return applyComposerCommand(attached, terminal, control, picker, editor, questions, approvals, clock, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, reasoningKey, intent, preparation)
 		}
 		view := attached.presentation.View()
-		return false, submitInput(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.QueueNextTurn})
+		return false, submitInput(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.QueueNextTurn})
 	}
 	return false, nil
 }

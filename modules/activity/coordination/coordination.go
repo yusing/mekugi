@@ -1,4 +1,4 @@
-package presentation
+package coordination
 
 import (
 	"cmp"
@@ -15,9 +15,11 @@ import (
 type Coordination struct {
 	Action, Kind, Target, Thread, Message, State, Failure string
 	Confirmed                                             bool
-	Targets                                               []WaitTarget
+	Targets                                               []Target
 	Count                                                 int
 }
+
+type Target struct{ Name, Status string }
 
 func ProjectCoordination(item observation.Item) (Coordination, bool) {
 	if item.Type != "mcpToolCall" || item.Server != "threadcontrol" {
@@ -57,7 +59,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 			targets = []string{"All descendants"}
 		}
 		for _, target := range targets {
-			c.Targets = append(c.Targets, WaitTarget{Name: target})
+			c.Targets = append(c.Targets, Target{Name: target})
 		}
 	} else if len(args.Target) != 0 {
 		_ = json.Unmarshal(args.Target, &c.Target)
@@ -129,7 +131,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 	case "wait_agent":
 		c.Confirmed = result.ID != "" && slices.Contains([]string{"registered", "completed", "timeout", "canceled", "paused"}, result.State)
 		if c.Confirmed && result.Event != nil {
-			c.Targets = []WaitTarget{{Name: result.Event.Task, Status: result.Event.Status}}
+			c.Targets = []Target{{Name: result.Event.Task, Status: result.Event.Status}}
 		}
 	}
 	if c.Confirmed {

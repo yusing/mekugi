@@ -7,8 +7,6 @@ import (
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
@@ -131,7 +129,7 @@ func TestUISnapshotNativeTierPicker(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%d", tc.name, width), func(t *testing.T) {
 				u, input := newServiceTierPickerTestUI(t, tc.model, tc.hostTier, tc.overrides)
 				appServerTestKeys(t, u, "/tier\r")
-				settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+				settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 				if !u.picker.Open || u.picker.Setting != "/tier" || u.shell.Main.Menu.Selected != tc.selected {
 					t.Fatalf("picker did not select effective tier: %+v", u.picker)
 				}
@@ -150,7 +148,7 @@ func TestUISnapshotNativeTierPickerModelSwitch(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b")
 	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": "unconfigured", "effort": "high", "serviceTier": "priority"}})
 	appServerTestKeys(t, u, "/tier\r")
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	if u.picker.Problem != "" || u.shell.Main.Menu.Selected != 1 || u.serviceTier != "priority" || u.model != "unconfigured" {
 		t.Fatalf("model switch retained override or lost host settings: picker=%+v model=%s tier=%s", u.picker, u.model, u.serviceTier)
 	}
@@ -328,32 +326,14 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantTier, wantModel := "flex", model
+			wantTier := "flex"
 			if got := responses.StringField(forwarded.Fields, "service_tier"); got != wantTier {
 				t.Fatalf("tier=%s want=%s", got, wantTier)
 			}
-			start := observedSubagentStart(t, &forwarded)
-			if start == nil || start.Model != wantModel || start.Tier != strings.ReplaceAll(wantTier, "priority", "fast") {
-				t.Fatalf("start=%+v", start)
+			if forwarded.Model() != model {
+				t.Fatalf("model=%s want=%s", forwarded.Model(), model)
 			}
 		})
-	}
-}
-
-func TestSubagentStartServiceTier(t *testing.T) {
-	for _, tc := range []struct{ tier, want string }{
-		{"priority", "fast"}, {"fast", "fast"}, {"default", "default"}, {"", ""},
-	} {
-		request := serverRequest(t, func(fields map[string]any) {
-			fields["model"] = "gpt-6-astra"
-			if tc.tier != "" {
-				fields["service_tier"] = tc.tier
-			}
-		})
-		got := observedSubagentStart(t, &request)
-		if got == nil || *got != (binding.SubagentSettings{Model: "gpt-6-astra", Effort: "high", Tier: tc.want}) {
-			t.Fatalf("tier=%s start=%+v", tc.tier, got)
-		}
 	}
 }
 
@@ -388,10 +368,7 @@ func TestServiceTierChildRequestAndRootNotice(t *testing.T) {
 	if got := responses.StringField(forwarded.Fields, "service_tier"); got != "priority" {
 		t.Fatalf("provider tier=%s want=priority", got)
 	}
-	entries := takeNativeActivity(proxy.activity, "root")
-	if len(entries) != 1 || entries[0].Kind != "start" || entries[0].Start == nil || entries[0].Start.Tier != "fast" {
-		t.Fatalf("native start did not retain effective tier: %+v", entries)
-	}
+
 }
 
 func TestServiceTierRequestAliases(t *testing.T) {

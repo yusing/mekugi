@@ -39,6 +39,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -122,7 +123,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || publishPresentation(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.picker, &p.ui.Editor, &p.ui.childHistoryState, preferences.Applied{Model: p.ui.model, Effort: p.ui.reasoningEffort, Tier: p.ui.serviceTier}, p.ui.serviceTiers, p.ui.title, p.ui.backendVersion, p.ui.restoring != nil, p.ui.side, presentationTime(p.ui.clock)).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || publishPresentation(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.picker, &p.ui.Editor, preferences.Applied{Model: p.ui.model, Effort: p.ui.reasoningEffort, Tier: p.ui.serviceTier}, p.ui.serviceTiers, p.ui.title, p.ui.backendVersion, p.ui.restoring != nil, p.ui.side, presentationTime(p.ui.clock)).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -768,17 +769,14 @@ func (p *nativePreview) finishCommand(thread string, item map[string]any, exit i
 
 func (p *nativePreview) spawn(id, thread, path, role, prompt string) {
 	p.assignments[thread] = prompt
-	p.notify("thread/started", map[string]any{"thread": map[string]any{"id": thread, "parentThreadId": "main", "agentRole": role, "cwd": p.workspace,
-		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"parent_thread_id": "main", "depth": 1, "agent_path": path, "agent_role": role}}}}})
-	p.notify("item/completed", map[string]any{"threadId": "main", "turnId": p.active["main"], "item": map[string]any{"id": id, "type": "subAgentActivity", "agentThreadId": thread, "agentPath": path, "kind": "spawned"}})
+	p.ui.attached.session.RegisterThread(observation.Thread{ID: thread, Path: path, Role: role})
+	p.ui.attached.session.Agent(path).Settings.Model = cmp.Or(p.models[thread], "gpt-test")
 	p.receive(thread, "main", id, "NEW_TASK", prompt)
 	p.notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn-" + thread}})
 }
 
-// V2 collaboration emits only a body-free activity item. The prompt becomes
-// visible when the router observes the authenticated recipient request.
+// Confirmed coordination outcomes use the shared agent-traffic presentation.
 func (p *nativePreview) collab(id, tool, from, to, prompt string) {
-	p.notify("item/completed", map[string]any{"threadId": from, "turnId": p.active[from], "item": map[string]any{"id": id, "type": "subAgentActivity", "agentThreadId": to, "agentPath": p.ui.attached.session.Caller(to), "kind": "interacted"}})
 	kind := "MESSAGE"
 	if tool == "followupTask" {
 		p.assignments[to] = prompt
@@ -791,16 +789,14 @@ func (p *nativePreview) collab(id, tool, from, to, prompt string) {
 }
 
 func (p *nativePreview) receive(to, from, id, kind, body string) {
-	path, sender := p.ui.attached.session.Caller(to), p.ui.attached.session.Caller(from)
-	envelope := map[string]any{"type": "agent_message", "id": id, "author": sender, "recipient": path,
-		"content": []any{map[string]any{"type": "input_text", "text": "Message Type: " + kind + "\nTask name: " + path + "\nSender: " + sender + "\nPayload:\n" + body}}}
-	parent := "main"
-	if to == "main" {
-		parent = ""
+	tool := "send_message"
+	if kind == "NEW_TASK" {
+		tool = "followup_task"
+		if p.active[to] == "" {
+			tool = "spawn_agent"
+		}
 	}
-	transform, _ := prepareActivityModelTest(p.t, p.proxy, cmp.Or(p.models[to], "gpt-test"), "preview-"+to, to, parent, path, []any{envelope})
-	transform.Close()
-	applyObservedActivity(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.streams, p.ui.usage, p.ui.review, &p.ui.approvals, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.restoring, p.ui.audience)
+	p.notify("item/completed", map[string]any{"threadId": from, "turnId": p.active[from], "item": coordinationTestCall(p.t, id, tool, to, p.ui.attached.session.Caller(to), body)})
 }
 
 func (p *nativePreview) say(thread, id, phase, text string) {

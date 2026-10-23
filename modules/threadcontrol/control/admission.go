@@ -30,7 +30,7 @@ func (s *Service) ReserveSpawn(ctx context.Context, caller Identity, request Spa
 	if err != nil {
 		return
 	}
-	err = s.update(ctx, caller.Thread, func(tree *Tree, member *Member) error {
+	err = s.update(ctx, caller.Thread, func(tree *Tree, _ *Member) error {
 		name, settings, limits := request.Name, request.Settings, request.Limits
 		member, e := admitted(tree, caller)
 		if e != nil {

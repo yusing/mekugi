@@ -17,15 +17,6 @@ func takeNativeActivity(a *sessioncontrol.Audience, root string) []sessionpresen
 		if event.Kind == "error" {
 			entry.ErrorDetail, entry.Text = event.Text, activityui.ErrorPreview(event.Text)
 		}
-		if a := event.Assignment; a != nil {
-			entry.Assignment = &sessionpresentation.ActivityAssignment{ID: a.ID, From: a.From, To: a.To, Text: a.Text, Created: a.Created}
-		}
-		if m := event.Message; m != nil {
-			entry.Message = &sessionpresentation.ActivityMessage{From: m.From, To: m.To, Text: m.Text}
-		}
-		if s := event.Start; s != nil {
-			entry.Start = &sessionpresentation.ActivityStart{Model: s.Model, Effort: s.Effort, Tier: s.Tier}
-		}
 		if event.Kind == activitypresentation.SupplementEditReceipt {
 			entry.Native.CapturedEdit = &changepresentation.Receipt{Thread: event.Thread, Calls: event.Calls, Text: event.Text}
 		}

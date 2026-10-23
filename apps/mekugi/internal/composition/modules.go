@@ -2,6 +2,7 @@ package composition
 
 import (
 	"context"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/modules/conversation"
@@ -69,7 +70,9 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 	metrics := c.Add(agentmetrics.Module, func() agentmetrics.Deps { return agentmetrics.Deps{} })
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
 	thread := c.Add(threadcontrol.Module, func() threadcontrol.Deps { return threadcontrol.Deps{History: history.Value(), Shared: threads} })
-	replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps { return sessionreplay.Deps{History: history.Value()} })
+	replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps {
+		return sessionreplay.Deps{History: history.Value(), Activity: activity.Value()}
+	})
 	prefs := c.Add(sessionpreferences.Module, func() sessionpreferences.Deps { return sessionpreferences.Deps{History: history.Value()} })
 	usage := c.Add(usage.Module, func() usage.Deps { return usage.Deps{History: history.Value()} })
 	changes := c.Add(changehistory.Module, func() changehistory.Deps {

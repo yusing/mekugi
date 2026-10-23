@@ -22,7 +22,7 @@ actual invoking settings and complete permission policy, resolves bounded roles,
 and prepares inherited history. The backend supplies host identity and retained
 facts, while each runtime’s Session Control owns its sole request ledger.
 Native collaboration registration is disabled without disabling role/mode
-instructions. Historical native collaboration remains readable.
+instructions. Coordination history belongs to Thread Control.
 
 The application admits the JavaScript execution interface before inference;
 catalogs exposing top-level `apply_patch` or `exec_command` instead are unsupported.
@@ -96,30 +96,23 @@ The consuming owner decides historical admission and presentation; projection do
 not settle input, notify the desktop or issue host requests.
 
 Native notification envelopes and command normalization belong to the binding.
-The binding also decodes native inter-agent replies and observed child settings
-for both live requests and rollout restoration. Opaque content remains opaque;
-stable supplement identities preserve deduplication across those consumers.
+Opaque content remains opaque.
 The caller supplies observation time and retains the original RPC message for
 control correlation and prompt handling. Decoding performs no effects or dispatch.
 
 Item projection also retains observed command classifications, optional outcomes,
-web-search facts, file changes and collaboration identities. Native field aliases
+web-search facts and file changes. Native field aliases
 normalize at this boundary. Presentation consumes these decoded facts directly;
 playback does not reconstruct a native notification to reach the same consumer.
 
 ## History observations
 
-The history binding decodes thread lineage, turns and item pages while preserving
+The history binding decodes a runtime’s thread, turns and items while preserving
 host identity, status, failure and timing. Returned thread identities must match
 the requested scope. Payload fields do not acquire presentation state or filesystem
 authority. [Session presentation](../../apps/mekugi/internal/sessionpresentation/SPEC.md#history)
-owns discovery bounds, page admission, placement and restoration completion;
-session control owns request correlation and retirement.
-
-Paginated history uses turn and item lists. Legacy children require full-history
-reads because the item-list API does not support their rollouts. Errors never
-trigger an unbounded fallback. Decoding neither resumes a thread nor restores a
-live operation.
+owns placement and restoration completion; session control owns request correlation
+and retirement. Decoding neither resumes a thread nor restores a live operation.
 
 ## Composer history
 

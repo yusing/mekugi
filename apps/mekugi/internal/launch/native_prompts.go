@@ -10,7 +10,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/scope"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -134,7 +133,7 @@ func prepareNativeAnswers(questions *nativeQuestionDock, control *sessioncontrol
 // Only accepted ordinary answer values enter the authoritative Call. Secret
 // answers are borrowed solely for the existing response/password authority and
 // discarded before the next event or publication.
-func applyNativeAnswers(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, input sessionapi.NativeAnswers, prepared *sessionapi.PreparedInput, requestContext context.Context, remoteHuman bool) (string, error) {
+func applyNativeAnswers(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, input sessionapi.NativeAnswers, prepared *sessionapi.PreparedInput, requestContext context.Context, remoteHuman bool) (string, error) {
 	handle, trial, secrets, refusal := prepareNativeAnswers(questions, control, input, remoteHuman)
 	if refusal != "" {
 		return refusal, nil
@@ -159,7 +158,7 @@ func applyNativeAnswers(attached *attachedPresentation, terminal *terminalsessio
 		secretEditors[index] = composer.State{Snapshot: composer.Undo{Draft: draft}}
 	}
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
 	}()
 	err := submitQuestionAnswers(attached, terminal, control, picker, editor, settings, tiers, restoring, side, clock, questions, approvals, overlay, environment, owned, hook, parent, observations, reviewOwner, receipts, handle, secretEditors, secrets)
 	if !handle.Sent && !handle.Resolved {

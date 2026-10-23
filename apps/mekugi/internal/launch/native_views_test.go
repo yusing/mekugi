@@ -29,7 +29,7 @@ func TestNativeViewsBorrowExecutionAndDisposeIndependently(t *testing.T) {
 		}
 		view := n.views[id]
 		view.attached.presentation.BorrowExecutionStatus(u.attached.presentation)
-		publishSessionView(&view.attached, &u.Client, &view.picker, "", &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+		publishSessionView(&view.attached, &u.Client, &view.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
 	}
 	first, second := n.views["first"], n.views["second"]
 	if first.attached.presentation.View().Draft.Draft.Text != "" || second.attached.presentation.View().Draft.Draft.Text != "" || u.Text != "private local draft" {
@@ -103,7 +103,7 @@ func TestNativeStartupViewHasNoFabricatedThread(t *testing.T) {
 		t.Fatal(refusal)
 	}
 	v := n.views["startup"]
-	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
 	if view.Main.ID != "" || view.Info.Workspace != "/workspace" || view.Version.Attachment == 0 {
 		t.Fatalf("startup publication fabricated a confirmed thread: %+v", view)
 	}

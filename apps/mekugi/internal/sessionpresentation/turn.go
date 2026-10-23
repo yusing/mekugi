@@ -11,7 +11,6 @@ import (
 // control-owned Main turn or the child roster's selection, never a second ledger.
 type TurnModels struct {
 	Transcript observation.Transcript
-	Waits      *activity.Waits
 	Agent      *activity.AgentLifecycle
 	Selected   string
 	Start      string // Admitted start origin for this thread, when supplied by live control.
@@ -27,7 +26,6 @@ type TurnObservation struct {
 type TurnUpdates struct {
 	Admitted, Current bool
 	Text              []observation.TextUpdate
-	Waits             []activity.WaitProgress
 }
 
 // ObserveTurn joins scoped presentation without issuing control or storage
@@ -52,7 +50,6 @@ func (a *Attachment) ObserveTurn(models TurnModels, e TurnObservation) TurnUpdat
 	case observation.TurnCompleted:
 		result.Current = result.Admitted && (models.Selected == "" || models.Selected == e.Turn)
 		if result.Admitted {
-			result.Waits = models.Waits.EndTurn(stores.Turn)
 			result.Text = models.Transcript.TurnCompleted(e.Thread, e.Turn, e.Status, e.At, result.Current, stores)
 			a.CloseTurn(e.Thread, e.Turn)
 		}

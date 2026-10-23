@@ -118,25 +118,17 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 			u.shell.Agents = terminalTest(u).Agents
 			detail := "CreateProcess: " + strings.Repeat("command ", 9000) + "\nrejected: forced cleanup is not permitted\n    at cell:17"
 			records := append([]map[string]any{rolloutRecord(1, "event_msg", map[string]any{"type": "task_started", "turn_id": "t"})}, rolloutFailedCell(2, "rejected", detail)...)
-			info := binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "failed"}}}
-			if !child {
-				info.Path = writeTestRollout(t, "main", records...)
+			thread := "main"
+			if child {
+				thread = "child"
+				u.Thread = thread
+				u.startSession(thread, u.attached.cwd)
 			}
-			if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, info); err != nil {
+			info := binding.ThreadInfo{ID: thread, Cwd: u.attached.cwd, Path: writeTestRollout(t, thread, records...), Turns: []binding.HistoryTurn{{ID: "t", Status: "failed"}}}
+			if err := u.restoreContent(info); err != nil {
 				t.Fatal(err)
 			}
-			var data []any
-			if child {
-				data = []any{map[string]any{"id": "child", "cwd": u.attached.cwd, "path": writeTestRollout(t, "child", records...), "parentThreadId": "main",
-					"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/worker"}}}}}
-			}
-			restoreContentReply(t, u, 0, map[string]any{"data": data, "nextCursor": nil})
-			restoreContentReply(t, u, 1, map[string]any{"data": []any{}, "nextCursor": nil})
 			view := u.testActivity(u.shell.Transcript)
-			if child {
-				restoreContentReply(t, u, 2, map[string]any{"thread": map[string]any{"id": "child", "turns": []any{map[string]any{"id": "t", "status": "failed", "items": []any{}}}}})
-				view = u.testActivity(u.shell.Agents)
-			}
 			full := "exec script failed: " + detail
 			index := slices.IndexFunc(view.Entries, func(e sessionpresentation.ActivityRecord) bool {
 				return e.Source.Kind == "error" && e.Source.CallID == "rejected"

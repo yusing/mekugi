@@ -45,26 +45,23 @@ type Context struct {
 // question options preserve opaque user-content blocks for their own consumer;
 // raw/private reasoning is never included.
 type Item struct {
-	UserShell                                                bool // Host-identified command entered by the user.
-	ID, Type, Status, Text, Delivery, Phase, Cwd, Kind, Path string
-	Command, ProcessID, ClientID, AgentThreadID, AgentPath   string
-	Tool, SenderThreadID                                     string
-	Server                                                   string         // MCP server identity.
-	Arguments, Result, Error                                 jsontext.Value // Opaque MCP input and outcome.
-	Prompt, Model, ReasoningEffort                           string
-	ReceiverThreadIDs                                        []string
-	DurationMS                                               *int64
-	Summary                                                  []string
-	Content                                                  jsontext.Value
-	AggregatedOutput                                         *string
-	ExitCode                                                 *int
-	AgentsStates                                             map[string]AgentState
-	Questions                                                []Question
-	Changes                                                  []FileChange
-	CommandActions                                           []CommandAction
-	Query                                                    string
-	Action                                                   *WebSearchAction
-	Results                                                  *int
+	UserShell                                          bool // Host-identified command entered by the user.
+	ID, Type, Status, Text, Delivery, Phase, Cwd, Path string
+	Command, ProcessID, ClientID                       string
+	Tool                                               string
+	Server                                             string         // MCP server identity.
+	Arguments, Result, Error                           jsontext.Value // Opaque MCP input and outcome.
+	DurationMS                                         *int64
+	Summary                                            []string
+	Content                                            jsontext.Value
+	AggregatedOutput                                   *string
+	ExitCode                                           *int
+	Questions                                          []Question
+	Changes                                            []FileChange
+	CommandActions                                     []CommandAction
+	Query                                              string
+	Action                                             *WebSearchAction
+	Results                                            *int
 }
 
 type CommandAction struct{ Type, Command, Path, Query string }
@@ -73,7 +70,6 @@ type WebSearchAction struct {
 	Queries                   []string
 }
 
-type AgentState struct{ Status string }
 type Question struct {
 	ID, Header, Question, Title string
 	IsSecret                    bool

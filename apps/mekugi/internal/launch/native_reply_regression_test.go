@@ -2,11 +2,9 @@ package launch
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -46,7 +44,7 @@ func TestNativeActivityKeepsAttachedRootFamilyIsolated(t *testing.T) {
 	a.Observe("grandchild", "child", "/root/worker/helper", true)
 	a.Observe("other", "", "/root", false)
 	for _, thread := range []string{"main", "child", "grandchild", "other"} {
-		a.Collect(activitypresentation.Supplement{Thread: thread, Source: "reply-" + thread, Kind: "reply", Text: "Native reply from " + thread})
+		a.Collect(activitypresentation.Supplement{Thread: thread, Source: "reply-" + thread, Kind: "error", Text: "Observed failure from " + thread})
 	}
 	entries := takeNativeActivity(a, "main")
 	if len(entries) != 3 {
@@ -60,7 +58,7 @@ func TestNativeActivityKeepsAttachedRootFamilyIsolated(t *testing.T) {
 	a.Detach()
 	a.Attach("other")
 	entries = takeNativeActivity(a, "other")
-	if len(entries) != 1 || entries[0].Text != "Native reply from other" {
+	if len(entries) != 1 || entries[0].Text != "Observed failure from other" {
 		t.Fatalf("other root lost its activity: %+v", entries)
 	}
 }
@@ -94,35 +92,6 @@ func TestNativeChildAnswerPromotionRequiresMatchingSuccessfulTurn(t *testing.T) 
 				t.Fatalf("final promotion for status %q and turn %q: %d", tc.status, tc.completionTurn, finals)
 			}
 		})
-	}
-}
-
-func TestNativeFailedCollaborationDoesNotClaimDelivery(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
-		"id": "send", "type": "collabAgentToolCall", "status": "failed", "tool": "sendMessage",
-		"senderThreadId": "main", "receiverThreadIds": []string{"child"}, "prompt": "Undelivered message.",
-	}})
-	for _, entry := range u.attached.source.Entries {
-		if entry.Source.Kind == "reply" || strings.Contains(entry.Source.Text, "Message sent") {
-			t.Fatalf("failed send claimed successful delivery: %+v", entry)
-		}
-	}
-}
-
-func TestNativeEmptyCollaborationRetainsParticipantOrder(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
-		"id": "send", "type": "collabAgentToolCall", "status": "completed", "tool": "sendMessage",
-		"senderThreadId": "sender", "receiverThreadIds": []string{"second", "first"}, "prompt": " \n",
-	}})
-	var threads []string
-	for _, agent := range u.attached.session.Roster() {
-		threads = append(threads, agent.Thread)
-	}
-	if !slices.Equal(threads, []string{"main", "sender", "second", "first"}) {
-		t.Fatalf("participant admission order changed: %v", threads)
 	}
 }
 
@@ -174,55 +143,6 @@ func TestNativeMainAnswerBindsOwnTurnPromptAcrossUpdates(t *testing.T) {
 	}
 }
 
-func TestNativeDirectedMessagesDoNotInjectLegacyEnvelopes(t *testing.T) {
-	p := newManagedMekugiProxy(t)
-	prepareActivityTest(t, p, "root", "r", "", "/root", nil)
-	p.activity.Attach("r")
-	envelope := map[string]any{"type": "agent_message", "id": "parent-message", "author": "/root", "recipient": "/root/reviewer", "content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root/reviewer\nSender: /root\nPayload:\nPlease finish."}}}
-	child, request := prepareActivityTest(t, p, "child", "reviewer", "r", "/root/reviewer", []any{envelope})
-	if !strings.Contains(string(request.Fields["input"]), "Please finish.") {
-		t.Fatal("native display changed model input")
-	}
-	output, err := child.TransformJSON([]byte(`{"status":"completed","output":[]}`))
-	if err != nil || strings.Contains(string(output), "Message received") {
-		t.Fatalf("legacy envelope leaked into child: %s, %v", output, err)
-	}
-}
-
-func TestNativeDirectedMessageDisplayBudget(t *testing.T) {
-	for _, size := range []int{17 << 10, 70 << 10} {
-		t.Run(fmt.Sprint(size), func(t *testing.T) {
-			p := newManagedMekugiProxy(t)
-			prepareActivityTest(t, p, "root", "r", "", "/root", nil)
-			p.activity.Attach("r")
-			prepareActivityTest(t, p, "child", "child", "r", "/root/worker", nil)
-			text := strings.Repeat("界", size/3)
-			envelope := map[string]any{"type": "agent_message", "id": "large-message", "author": "/root/worker", "recipient": "/root", "content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root\nSender: /root/worker\nPayload:\n" + text}}}
-			transform, request := prepareActivityTest(t, p, "root-next", "r", "", "/root", []any{envelope})
-			defer transform.Close()
-			if !strings.Contains(string(request.Fields["input"]), text) {
-				t.Fatal("display limit altered model input")
-			}
-			var reply sessionpresentation.ActivityEntry
-			for _, entry := range takeNativeActivity(p.activity, "r") {
-				if entry.Kind == "reply" {
-					reply = entry
-				}
-			}
-			if reply.Text == "" || !utf8.ValidString(reply.Text) {
-				t.Fatal("native body was dropped or corrupted")
-			}
-			if size < activitypresentation.SupplementMessageBytes {
-				if !strings.Contains(reply.Text, text) {
-					t.Fatal("inline publication limit truncated native message")
-				}
-			} else if len(reply.Text) > activitypresentation.SupplementMessageBytes || !strings.Contains(reply.Text, "message clipped at the native Activity") {
-				t.Fatal("native display bound is unmarked or exceeded")
-			}
-		})
-	}
-}
-
 func TestNativeMainRepliesQuoteTheirMessageOnce(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.shell.Transcript.Conversation = true
@@ -258,10 +178,8 @@ func TestUISnapshotNativeStartedAgentIdentity(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.clock = func() time.Time { return time.Date(2026, 10, 21, 12, 0, 0, 0, time.Local) }
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
-				"id": "spawn", "type": "collabAgentToolCall", "status": "completed", "tool": "spawnAgent",
-				"senderThreadId": "main", "receiverThreadIds": []string{"child"}, "prompt": prompt, "model": "gpt-effective",
-			}})
+			u.attached.session.Agent("/root/worker").Settings.Model = "gpt-effective"
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": coordinationTestCall(t, "spawn", "spawn_agent", "child", u.attached.session.Caller("child"), prompt)})
 			var rows []string
 			for _, child := range []bool{false, true} {
 				view := u.testActivity(u.shell.Transcript)

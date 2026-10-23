@@ -106,7 +106,7 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 
 func apiTestIntent(t *testing.T, u *appServerUI, intent sessionapi.Intent) string {
 	t.Helper()
-	refusal, err := applyAPIIntent(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, u.notifications, intent)
+	refusal, err := applyAPIIntent(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, u.notifications, intent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestAPIIntentsActOnMain(t *testing.T) {
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"main-turn"}}`, steer.ID))
 
-	view := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+	view := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	if !u.attached.presentation.DisplayingSide() || !view.Status.Session.Running || !sessionpresentation.MainInterruptible(&u.Live, u.attached.conversation) {
 		t.Fatalf("Main's status while the side conversation shows = %+v", view.Status.Session)
 	}

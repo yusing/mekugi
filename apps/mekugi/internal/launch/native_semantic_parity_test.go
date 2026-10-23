@@ -49,7 +49,7 @@ func TestNativePredictionProducerEligibility(t *testing.T) {
 		t.Fatal(refusal)
 	}
 	v := n.views["view"]
-	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
+	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
 	terminal, _ := u.terminalViews.NewAttachment(u.shell.Transcript.Painter.Theme)
 	defer terminal.Diff.Close()
 	c := &nativeClient{renderer: nativeClientRenderer{terminal: terminal, views: u.terminalViews}}

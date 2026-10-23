@@ -45,6 +45,21 @@ func TestDialogPageNumberingAndGutters(t *testing.T) {
 	}
 }
 
+func TestMessageDialogKeepsAuthoredBodyWithToolEvidence(t *testing.T) {
+	var p Painter
+	const body = "## Summary\nThe result.\n\n## Details\nOriginal **evidence**."
+	block := Block{Kind: "message", Body: body, DetailCode: `{"arguments":{"message":"tool evidence"}}`}
+	page := p.DialogPage(block, 80)
+	if page.Text != body || block.DetailCode == "" {
+		t.Fatalf("message copy or source evidence changed: %q, %+v", page.Text, block)
+	}
+	for _, line := range page.Lines {
+		if strings.Contains(ansi.Strip(line.Text), "tool evidence") {
+			t.Fatal("tool envelope replaced the authored message")
+		}
+	}
+}
+
 func TestDialogPageNotes(t *testing.T) {
 	var p Painter
 	for _, tc := range []struct {

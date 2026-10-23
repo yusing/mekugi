@@ -185,37 +185,11 @@ layout and navigation retain no source or output handle.
 
 ## History
 
-Child history opens at the newest turn's recent items. Older pages continue from
-the last retained item. Pages deduplicate turn and item identities and reject
-repeated cursors or foreign items.
-Deferred evidence joins its original item when that page arrives, preserving
-entry, output and navigation identities. Older pages cannot replace newer live
-metadata or promote old commentary to a final answer. Archived children use the
-same observation flow.
-
-Only one child-history read is active at a time. Other threads continue normally.
-Cancellation retires that observation and releases buffered live events without
-interrupting the child. Saturated buffering gives live observations precedence.
-Late responses cannot revive a cancelled read or cross an attachment boundary.
-History distinguishes intentionally unloaded content, loading, failure and
-exhaustion. Failed reads preserve loaded content and remain retryable. Reading
-history never resumes a child or revives commands, previews or delivery receipts.
-
-### Codex history binding
-
-The [Codex binding](../../../../backends/codex/SPEC.md#history-observations) supplies
-lineage and decoded history, including inherited fork items and archived descendants.
-Fresh resume rediscovers history instead of reviving continuation handles. Child
-discovery is bounded to 128 descendants and eight list pages, with a partial-history
-notice at the limit. Paginated children read at most eight pages of 100 turns,
-then at most 100 items from one turn per page. These limits bound item counts rather
-than bytes, so one large item can still require a large frame.
-
-Active skills reconstruct from event history independently of lazy transcript
-pages, including inherited history since the latest completed compaction.
-Incomplete or failed scans leave counts unknown with a notice. Live resets take
-precedence over history. [Activity's loaded-skill presentation](../../../../modules/activity/CONTRACT.md#agents-roster-and-navigation)
-owns the display contract.
+Each independent runtime restores its own retained host history. Root restoration
+preserves original item identity, timing, retained output and saved-review scope.
+Thread Control restores logical member identities without starting child runtimes.
+A cold child remains paused in the roster; its transcript is published when its
+runtime is available. Reading a publication never resumes work.
 
 ## Resume and switching
 
@@ -271,30 +245,24 @@ history restoration flow. It has no selection dialog and never submits a prompt.
 
 ### Restoration
 
-Main hydrates host messages and command/edit items after child histories, retaining
+Each runtime hydrates its host messages and command/edit items, retaining
 their original placement and reconciling buffered items by identity. Failed turns
 retain a visible error; an active snapshot retains its steer/interrupt target.
-Main reads full host resume history before trimming to its retained transcript
-window. Descendant streaming deltas are omitted during restoration; completed
-items provide their content.
+Each runtime reads full host resume history before trimming to its retained
+transcript window.
 
 Roster restoration never treats historical unfinished turns as live work. Only
-completed collaboration items claim delivered assignments/messages. The
-host-selected rollout supplements missing cell failures and received task/message
-bodies, after identity validation,
+confirmed Thread Control outcomes claim delivered assignments/messages. The
+host-selected rollout supplements missing cell failures, after identity validation,
 within its last 64 MiB. Evidence joins its recorded item anchor, or its recorded
-time when no anchor is available, without reordering existing entries. Unloaded
-anchors defer insertion until their page arrives or history is exhausted. Later
+time when no anchor is available, without reordering existing entries. Later
 live requests deduplicate under the [history contract](#history).
 
 Restoration reports progress and preserves typed input as an unsent draft;
-`/quit` or Ctrl-C on an empty draft can exit. Missing
-child history remains incomplete without blocking the parent. Ctrl-B o loads one
-older page for the selected child, or the first eligible child while Main is shown.
-Escape cancels that observational read without interrupting the child.
+`/quit` or Ctrl-C on an empty draft can exit. Child runtime availability does not block root restoration.
 
 Restoration releases new input only after retained review has consumed the admitted
-root/descendant lineage in its own workspaces. Missing evidence follows
+runtime identity in its own workspace. Missing evidence follows
 [saved-review loading](../terminalsession/SPEC.md#boundary); it cannot become successful
 recapture. Later observations join only the admitted lineage.
 Applied [settings](../../../../modules/sessionpreferences/SPEC.md) and
@@ -400,9 +368,9 @@ Public reasoning stays in Activity rather than replacing composer status. Live
 progress animates; restored/completed progress does not restart. Completion freezes
 elapsed time, using Activity's shared compact duration grammar.
 
-Native tool waits update the caller's roster through
-[Activity](../../../../modules/activity/SPEC.md#records-and-codex-connection).
-Server-coordinated logical waits also keep Main busy and interruptible after the
+Server-coordinated logical waits update the caller's roster through
+[Activity](../../../../modules/activity/SPEC.md#records-and-codex-connection)
+and keep Main busy and interruptible after the
 host turn stops. The composer shows waiting, elapsed work continues across the
 continuation, and the local stop emits no task-completion notice. Cold restoration
 shows paused work without restarting its clock or subscription.

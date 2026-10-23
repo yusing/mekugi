@@ -121,16 +121,12 @@ func TestUISnapshotNativeBatchElapsed(t *testing.T) {
 }
 
 func TestNativeBatchElapsedFailureAndResume(t *testing.T) {
-	for _, mode := range []string{"live", "resume", "child"} {
+	for _, mode := range []string{"live", "resume"} {
 		t.Run(mode, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			item := binding.ThreadItem{ID: "batch", Type: "commandExecution", Command: "sleep 1; false", Status: "failed", ExitCode: new(1), DurationMS: new(int64(191129)), AggregatedOutput: new("failed\n")}
 			view := u.testActivity(u.shell.Transcript)
-			if mode == "child" {
-				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-				restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-				view = u.testActivity(u.shell.Agents)
-			} else if mode == "resume" {
+			if mode == "resume" {
 				u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
 			} else {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})

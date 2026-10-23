@@ -170,11 +170,11 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 		u.commandSegmentPending++
 		commandSegmentRetained(&u.commandSegmentPending, u.issues, commandSegmentWrite{key: [3]string{"main", "turn", "item"}, err: requestexecution.StorageIOError(cause)})
 	}
-	if delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues); delivery != nil || len(u.attached.source.Entries) != 0 {
+	if delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues); delivery != nil || len(u.attached.source.Entries) != 0 {
 		t.Fatal("switched thread borrowed another thread's retention errors")
 	}
 	u.Thread = "main"
-	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
+	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 
 	if delivery == nil || len(u.attached.source.Entries) != 0 || !u.attached.feedback.Alert {
 		t.Fatal("retention errors missed the composer")
@@ -186,7 +186,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	}
 	before := u.attached.feedback.Text
 	delivery.finish(terminalsession.NoticeReceipt{})
-	if retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues); retry == nil || u.attached.feedback.Text != before || len(u.attached.source.Entries) != 0 {
+	if retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues); retry == nil || u.attached.feedback.Text != before || len(u.attached.source.Entries) != 0 {
 		t.Fatal("unpainted error was lost or duplicated")
 	} else {
 		_, receipt := u.testDeliveredMainFrame(t, 100, 12, 0)
@@ -237,26 +237,17 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	if shell.hub.Tracking(key) {
 		t.Fatal("test still has a live report")
 	}
-	for _, target := range []string{"main", "fork", "child", "child-other-workspace", "child-missing-workspace"} {
+	for _, target := range []string{"main", "fork", "missing-workspace"} {
 		t.Run(target, func(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
 			setTestAppServerIntegration(restored, testProxyWithStore(store))
 			turns := []binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}}
 			view := restored.testActivity(restored.shell.Transcript)
-			if strings.HasPrefix(target, "child") {
-				childWorkspace := workspace
-				if target == "child-other-workspace" {
-					restored.attached.cwd = t.TempDir()
-				} else if target == "child-missing-workspace" {
-					childWorkspace = ""
-				}
-				restored.attached.session.Caller(target)
-				restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: target, Cwd: childWorkspace, Turns: turns}, false)
-				view = restored.testActivity(restored.shell.Agents)
-			} else {
-				restored.Thread = target
-				restored.restoreHistory(turns)
+			if target == "missing-workspace" {
+				restored.attached.cwd = ""
 			}
+			restored.Thread = target
+			restored.restoreHistory(turns)
 			var entry sessionpresentation.ActivityEntry
 			for _, candidate := range view.Entries {
 				if candidate.Source.CallID == item.ID && candidate.Source.Native != nil {
@@ -267,7 +258,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			if entry.Native == nil {
 				t.Fatal("missing restored command")
 			}
-			if target == "child-missing-workspace" {
+			if target == "missing-workspace" {
 				pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry).DetailValues())
 				if len(entry.Native.Segments) != 0 || len(pages) != 1 || pages[0].Label != "combined output" || strings.Join(view.RetainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "first\nsecond" {
 					t.Fatalf("missing workspace borrowed a report or lost combined output: %+v", entry)

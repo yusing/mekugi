@@ -7,9 +7,10 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -291,18 +292,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		}
 	}
 
-	recipient := metadata.AgentName
-	if metadata.SubagentKind == "" {
-		recipient = "/root"
-	}
-	if metadata.SubagentKind != "" && metadata.ActivityIdentityInvalid {
-		recipient = ""
-	}
-
-	// Projection deduplication needs the original visible messages. Keep this
-	// request-local result until replay validation succeeds and strips known copies.
-	envelopes := prepareSubagentInputEnvelopes(request.Fields, recipient)
-
 	tools := codexresponses.DecodeToolCatalog(request.Fields)
 	directory, _ := usableRoutingDirectory(metadata.Directories)
 	responseContract := codexresponses.CaptureResponseContract(request.Fields)
@@ -383,21 +372,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		if p.activity.Observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "") {
 			activityThreadID = threadID
 		}
-	}
-	for _, reply := range envelopes.replies {
-		thread := activityThreadID
-		if recipient == "/root" {
-			// Display directed replies under the proven sender when available.
-			if child := p.activity.ChildThread(activityThreadID, reply.message.From); child != "" {
-				thread = child
-			}
-		}
-		p.activity.Collect(activitypresentation.Supplement{Thread: thread, Source: reply.source, Kind: "reply", Text: reply.message.Text, Message: &reply.message})
-	}
-	if metadata.SubagentKind == "thread_spawn" {
-		// The collector deduplicates this source by stable child thread, including
-		// across routing-session changes, and forwards it only to the observed root.
-		collectSubagentStart(p.activity, activityThreadID, request, metadata.AgentName)
 	}
 	if activityThreadID != "" {
 		model := request.Model()

@@ -16,13 +16,6 @@ const SupplementMessageBytes = 64 << 10
 // Calls identifies the original host items whose captured effects Text describes.
 const SupplementEditReceipt = "edit_receipt"
 
-type SupplementAssignment struct {
-	ID, From, To, Text string
-	Created            time.Time
-}
-type SupplementMessage struct{ From, To, Text string }
-type SupplementStart struct{ Model, Effort, Tier string }
-
 // ReloadSource is an orchestration-issued attachment intent. Host events own its lifecycle.
 type ReloadSource struct {
 	Command, Path, Skill string
@@ -34,9 +27,6 @@ type Supplement struct {
 	Turn                               string
 	Calls                              []string // Ordered host identities for an edit receipt.
 	Observed                           time.Time
-	Assignment                         *SupplementAssignment
-	Message                            *SupplementMessage
-	Start                              *SupplementStart
 }
 type RequestStart struct {
 	Thread string
@@ -69,7 +59,6 @@ type Supplements struct {
 	events     []queuedSupplement
 	starts     []RequestStart
 	unreturned []Unreturned
-	restored   map[string]int
 }
 
 var invocationSupplements scope.Key[Supplements]
@@ -89,7 +78,7 @@ func (s *Supplements) Attach(root string) { s.root = root }
 func (s *Supplements) Detach()            { s.root = "" }
 func (s *Supplements) Clear() {
 	s.root, s.borrowed = "", ""
-	s.events, s.starts, s.unreturned, s.restored = nil, nil, nil, nil
+	s.events, s.starts, s.unreturned = nil, nil, nil
 }
 
 func supplementID(source string) string {
@@ -101,7 +90,7 @@ func supplementID(source string) string {
 // Callers admit native identity before supplying its scope. Source recognition
 // never grants execution or filesystem authority.
 func (s *Supplements) Collect(thread *scope.Store, event Supplement, now time.Time) bool {
-	if event.Source == "" || len(event.Source) > 16<<10 || strings.TrimSpace(event.Text) == "" && event.Message == nil && event.Start == nil {
+	if event.Source == "" || len(event.Source) > 16<<10 || strings.TrimSpace(event.Text) == "" {
 		return false
 	}
 	switch event.Kind {
@@ -112,7 +101,7 @@ func (s *Supplements) Collect(thread *scope.Store, event Supplement, now time.Ti
 			return false
 		}
 		event.Calls = slices.Clone(event.Calls)
-	case "output_dedupe", "error", "reply", "start", "assignment":
+	case "output_dedupe", "error":
 	default:
 		return false
 	}
@@ -124,18 +113,8 @@ func (s *Supplements) Collect(thread *scope.Store, event Supplement, now time.Ti
 	if _, exists := state.seen[event.Source]; exists {
 		return false
 	}
-	if key := restoredSupplementKey(event); key != "" && s.restored[key] > 0 {
-		s.restored[key]--
-		state.seen[event.Source] = struct{}{}
-		return false
-	}
 	if event.Kind != "error" {
 		event.Text = ClipSupplementMessage(event.Text)
-	}
-	if event.Message != nil {
-		message := *event.Message
-		message.Text = ClipSupplementMessage(message.Text)
-		event.Message = &message
 	}
 	s.expire(now)
 	count := 0
@@ -154,9 +133,6 @@ func (s *Supplements) Collect(thread *scope.Store, event Supplement, now time.Ti
 		}
 		state.repetitions[event.CallID] = event.Text
 	}
-	if event.Kind == "start" && event.Assignment != nil && event.Assignment.ID != "" {
-		state.seen[supplementID(event.Assignment.ID)] = struct{}{}
-	}
 	if event.Observed.IsZero() {
 		event.Observed = now
 	}
@@ -164,38 +140,13 @@ func (s *Supplements) Collect(thread *scope.Store, event Supplement, now time.Ti
 	return false
 }
 
-// ClipSupplementMessage shares the live and restored annotation display bound.
+// ClipSupplementMessage bounds non-error auxiliary display text.
 func ClipSupplementMessage(text string) string {
 	if len(text) <= SupplementMessageBytes {
 		return text
 	}
 	const clipped = "\n… (message clipped at the native Activity 64 KiB display limit)"
 	return strings.ToValidUTF8(text[:SupplementMessageBytes-len(clipped)], "") + clipped
-}
-
-func restoredSupplementKey(event Supplement) string {
-	switch {
-	case event.Kind == "start":
-		return "start\x00" + event.Thread
-	case event.Kind == "assignment" && event.Assignment != nil:
-		return "assignment\x00" + event.Assignment.From + "\x00" + event.Assignment.To + "\x00" + event.Assignment.Text
-	case event.Kind == "reply" && event.Message != nil:
-		return "reply\x00" + event.Message.From + "\x00" + event.Message.To + "\x00" + event.Message.Text
-	}
-	return ""
-}
-
-func (s *Supplements) Restore(event Supplement) {
-	if s.restored == nil {
-		s.restored = make(map[string]int)
-	}
-	if event.Kind == "start" {
-		s.restored[restoredSupplementKey(event)]++
-		event.Kind = "assignment"
-	}
-	if key := restoredSupplementKey(event); key != "" {
-		s.restored[key]++
-	}
 }
 
 func (s *Supplements) expire(now time.Time) {

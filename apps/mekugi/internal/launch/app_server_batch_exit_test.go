@@ -16,7 +16,7 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 	const script = "git show --stat --oneline 3333fb1c; skills-mgr get mekugi-owners; git cherry-pick 3333fb1c"
 	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script),
 		Status: "failed", ExitCode: new(1), AggregatedOutput: new("git output\nskill output\nconflict\n")}
-	for _, mode := range []string{"live", "resume", "child history"} {
+	for _, mode := range []string{"live", "resume"} {
 		t.Run(mode, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			view := u.testActivity(u.shell.Transcript)
@@ -28,10 +28,6 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 			case "resume":
 				u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-			case "child history":
-				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-				restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-				view = u.testActivity(u.shell.Agents)
 			}
 			finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
 			got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: view.View}, attached: attachedPresentation{executionPresentation: &executionPresentation{source: view.ActivitySource}}}), 140)

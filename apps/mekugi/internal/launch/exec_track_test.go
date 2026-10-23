@@ -832,11 +832,12 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	}
 	// Child history can omit command cwd while retaining its own workspace.
 	item.Cwd = ""
-	child := newAppServerSessionTestUI(t, u.attached.cwd)
+	child := newAppServerSessionTestUI(t, cwd)
 	setTestAppServerIntegration(child, testProxyWithStore(store))
-	child.attached.session.Caller("child")
-	restoreActivityThread(&child.attached, child.shell, child.clock, &child.restoring, child.ctx, child.review, &child.pendingEditReceipts, child.retained, child.retainedSession, child.activity, child.usage, child.segments, &child.restoredSegments, binding.ThreadInfo{ID: "child", Cwd: cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-	parts := child.attached.childSource.Entries[0].Source.Native.Segments
+	child.Thread = "child"
+	child.startSession("child", cwd)
+	child.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
+	parts := child.attached.source.Entries[0].Source.Native.Segments
 	if len(parts) != 2 || parts[0].Text != "Read `a.go`" || parts[1].Text != "Search `needle` in `src`" {
 		t.Fatalf("restored child paths used main workspace: %+v", parts)
 	}

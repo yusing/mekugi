@@ -2,7 +2,7 @@
 
 Fixtures use the installed Codex with deterministic local providers, fake credentials,
 and isolated home/configuration directories. They require `codex_e2e` and exercise stock
-execution and native collaboration without live model usage or personal shell startup files.
+execution and independent thread coordination without live model usage or personal shell startup files.
 
 ## Focused host acceptance
 

@@ -347,7 +347,7 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 func selectSideThread(t *testing.T, u *appServerUI, thread sessionpresentation.Thread) {
 	t.Helper()
 	v := u.attached.presentation.View()
-	if !displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, false, u.side, u.clock, &u.questions, &u.approvals, false, sessionpresentation.DisplayIntent{Version: v.Version, Thread: thread}) {
+	if !displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, false, u.side, u.clock, &u.questions, &u.approvals, false, sessionpresentation.DisplayIntent{Version: v.Version, Thread: thread}) {
 		t.Fatal("display rejected")
 	}
 }
@@ -646,7 +646,7 @@ func TestForeignSideDisplayPreservesReplaceMenu(t *testing.T) {
 	if u.picker.Kind != sessionpresentation.MenuSideReplace {
 		t.Fatal("fixture menu absent")
 	}
-	if displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, false, u.side, u.clock, &u.questions, &u.approvals, false, stale) {
+	if displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, false, u.side, u.clock, &u.questions, &u.approvals, false, stale) {
 		t.Fatal("stale display accepted")
 	}
 	if !u.picker.Open || u.picker.Kind != sessionpresentation.MenuSideReplace {

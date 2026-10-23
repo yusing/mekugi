@@ -23,13 +23,12 @@ func TestObservationReductionWithoutTerminal(t *testing.T) {
 			model := new(Model)
 			model.Attach(Thread{ID: "main", Caller: "/root"}, false)
 			var text transcript.State
-			var waits activity.Waits
 			var outputs feed.Retention
 			at := time.Unix(100, 0)
 			reduce := func(kind observation.Kind, item observation.Item, delta string) ObservationResult {
 				in := ObservationInput{Main: "main", Workspace: "/workspace", Event: observation.Event{Kind: kind, ThreadID: thread, TurnID: "turn", ItemID: item.ID, Item: item, Delta: delta, At: at}}
 				in.Text = observation.TextEvent{Kind: kind, Delta: delta, At: at, Item: observation.TextItem{Ref: observation.ItemRef{ThreadID: thread, TurnID: "turn", ItemID: item.ID}, Type: item.Type, Summary: item.Summary}}
-				return ReduceObservation(&attachment, model, main, child, &text, &waits, &outputs, in)
+				return ReduceObservation(&attachment, model, main, child, &text, &outputs, in)
 			}
 			item := observation.Item{ID: "cmd", Type: "commandExecution", Command: "go test ./...", Status: "inProgress"}
 			started := reduce(observation.ItemStarted, item, "")

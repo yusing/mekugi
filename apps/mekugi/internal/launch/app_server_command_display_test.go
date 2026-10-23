@@ -77,11 +77,6 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 				if len(restored.attached.source.Entries) != 1 || restored.attached.source.Entries[0].Source.Text != tc.want {
 					t.Fatalf("classified restored entries: %+v", restored.attached.source.Entries)
 				}
-				restored.attached.session.Caller("child")
-				restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: "child", Cwd: restored.attached.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-				if len(restored.attached.childSource.Entries) != 1 || restored.attached.childSource.Entries[0].Source.Text != tc.want {
-					t.Fatalf("classified restored child text: %q; want %q", restored.attached.childSource.Entries[len(restored.attached.childSource.Entries)-1].Source.Text, tc.want)
-				}
 			})
 		}
 	}
@@ -189,42 +184,31 @@ func TestAppServerShellDisplayHighlight(t *testing.T) {
 func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 	workspace := t.TempDir()
 	item := binding.ThreadItem{ID: "image", Type: "imageView", Path: workspace + "/images/a.png"}
-	for _, child := range []bool{false, true} {
-		u := newAppServerSessionTestUI(t, workspace)
-		thread := "main"
-		view := u.testActivity(u.shell.Transcript)
-		if child {
-			thread = "child"
-			view = u.testActivity(u.shell.Agents)
+	u := newAppServerSessionTestUI(t, workspace)
+	thread := "main"
+	view := u.testActivity(u.shell.Transcript)
+
+	for _, method := range []string{"item/started", "item/completed"} {
+		appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
+	}
+	check := func(v *activityAdapter) {
+		t.Helper()
+		if len(v.Entries) != 1 || v.Entries[0].Source.Text != "View `images/a.png`" {
+			t.Fatalf("image activity: %+v", v.Entries)
 		}
-		for _, method := range []string{"item/started", "item/completed"} {
-			appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
+		if images := v.Entries[0].Source.ActivityFacts().Images; len(images) != 1 || images[0] != item.Path {
+			t.Fatalf("image binding: %v", images)
 		}
-		check := func(v *activityAdapter) {
-			t.Helper()
-			if len(v.Entries) != 1 || v.Entries[0].Source.Text != "View `images/a.png`" {
-				t.Fatalf("image activity: %+v", v.Entries)
-			}
-			if images := v.Entries[0].Source.ActivityFacts().Images; len(images) != 1 || images[0] != item.Path {
-				t.Fatalf("image binding: %v", images)
-			}
-			blocks := parseLiveActivity(v.Entries[0].Source)
-			if len(blocks) != 1 || blocks[0].Verb != "View" || len(blocks[0].Reads) != 1 || blocks[0].Reads[0].Path != "images/a.png" {
-				t.Fatalf("image blocks: %+v", blocks)
-			}
-		}
-		check(view)
-		restored := newAppServerSessionTestUI(t, workspace)
-		turns := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}
-		if child {
-			restored.attached.session.Caller(thread)
-			restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
-			check(restored.testActivity(restored.shell.Agents))
-		} else {
-			restored.restoreHistory(turns)
-			check(restored.testActivity(restored.shell.Transcript))
+		blocks := parseLiveActivity(v.Entries[0].Source)
+		if len(blocks) != 1 || blocks[0].Verb != "View" || len(blocks[0].Reads) != 1 || blocks[0].Reads[0].Path != "images/a.png" {
+			t.Fatalf("image blocks: %+v", blocks)
 		}
 	}
+	check(view)
+	restored := newAppServerSessionTestUI(t, workspace)
+	turns := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}
+	restored.restoreHistory(turns)
+	check(restored.testActivity(restored.shell.Transcript))
 }
 
 func TestAppServerCommandTimeoutInput(t *testing.T) {

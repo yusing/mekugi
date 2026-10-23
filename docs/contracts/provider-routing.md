@@ -1,10 +1,10 @@
-# Provider routing and native-agent continuity
+# Provider routing and thread continuity
 
 ## Authority and ownership
 
-Third-party models serve Main and native child agents without requiring child-only
-headers. Codex owns agents, messages, tools, permissions, sandboxing, interruption
-and continuation. The application inference gateway selects and pins provider
+Third-party models serve Main and independent child runtimes without requiring
+child-only headers. Thread Control owns logical coordination; Codex owns native
+thread execution, tools, permissions, sandboxing, interruption and continuation. The application inference gateway selects and pins provider
 policy, binds HTTP and dedicated WebSocket exchanges, and owns downstream socket lifetime. Provider
 implementations own credentials, metadata and upstream transport. The
 [Codex adapter](../../backends/codex/responses/SPEC.md) owns wire translation and
@@ -26,29 +26,6 @@ provider handshake-only signals through their already-accepted host socket.
 They never connect to OpenAI merely to serve a third-party request. HTTP responses
 preserve provider headers. Third-party continuation sends complete history over HTTP; WebSocket
 prewarm does not generate inference, and disconnect cancels provider work.
-
-## Plaintext collaboration
-
-Ordinary Mekugi turns expose native collaboration as `mekugi_collaboration`, with
-no OpenAI encryption annotation. Response calls recover the original native
-`collaboration` identity. Spawn, send-message and follow-up calls carry the explicit
-empty `encrypted_function_args` marker required for plaintext host delivery.
-Replay maps bridge-produced calls back to their provider-visible identity;
-historical calls with nonempty encryption markers retain their native namespace
-and metadata. Ordinary and additional-tool catalogs follow the same rule.
-
-Guidance in the projected namespace names its dispatch surface. Top-level
-instructions, developer content and user messages remain unchanged, including
-multipart content and fenced examples. The reserved OpenAI schema is not
-modified in place. Readable new assignments support native Activity display;
-encrypted message bodies remain unavailable. Passthrough, prewarm and auxiliary
-turns without a third-party provider retain their existing behavior.
-
-Spawn descriptions expose configured models and their fresh-context requirements
-beside existing model, context and reasoning arguments. They preserve native
-role restrictions, descriptions, required fields, validation and defaults, add no
-missing arguments, and never rewrite submitted arguments. Callers explicitly
-select fresh context and supply a self-contained assignment.
 
 ## Selected adaptation policy
 

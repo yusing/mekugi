@@ -88,12 +88,9 @@ func TestAppServerGuardCommandDisplay(t *testing.T) {
 				turns := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}
 				if thread == "main" {
 					restored.restoreHistory(turns)
-				} else {
-					info := binding.ThreadInfo{ID: thread, AgentNickname: "worker", Turns: turns}
-					registerThread(&restored.attached.session, info)
-					restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, info, false)
+
+					check(restored)
 				}
-				check(restored)
 			})
 		}
 	}

@@ -4,9 +4,6 @@ import (
 	"maps"
 	"testing"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/backends/codex/binding"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -61,17 +58,4 @@ func observeActivityRequest(t *testing.T, p *observationFixture, thread, recipie
 		t.Fatal(err)
 	}
 	prepared.Close()
-}
-func observedSubagentStart(t *testing.T, request *codexresponses.Request) *binding.SubagentSettings {
-	t.Helper()
-	a := sessioncontrol.NewAudience(nil)
-	a.Attach("main")
-	observeActivityRequest(t, &observationFixture{activity: a}, "child", "/root/child", request)
-	_, events := a.Take("main")
-	for _, event := range events {
-		if event.Start != nil {
-			return &binding.SubagentSettings{Model: event.Start.Model, Effort: event.Start.Effort, Tier: event.Start.Tier}
-		}
-	}
-	return nil
 }

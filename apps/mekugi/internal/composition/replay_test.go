@@ -21,7 +21,10 @@ func TestCompositionReplayRolloutAndOptionalTiming(t *testing.T) {
 		t.Run(map[bool]string{false: "without timing", true: "with timing"}[timing], func(t *testing.T) {
 			var c Composition
 			history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
-			replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps { return sessionreplay.Deps{History: history.Value()} })
+			activity := c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
+			replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps {
+				return sessionreplay.Deps{History: history.Value(), Activity: activity.Value()}
+			})
 			// The contribution is collected even when its owner follows its host.
 			if timing {
 				c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })

@@ -11,8 +11,6 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -171,17 +169,12 @@ func TestParseLiveActivityBlocks(t *testing.T) {
 }
 
 func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
-	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
-		"model": "gpt-effective", "input": []any{nativeAssignmentTestMessage("/root/explorer", "NEW_TASK", "Inspect parser.\n\n- Preserve behavior.")},
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
+
 	now := time.Now()
 	view := newActivityAdapter()
 	view.Coverage = ""
 	view.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/explorer"}}, Entries: []sessionpresentation.ActivityEntry{{
-		Seq: 1, Agent: "/root/explorer", Kind: "start", Start: testActivityStart(t, &request), Observed: now,
+		Seq: 1, Agent: "/root/explorer", Kind: "start", Start: &sessionpresentation.ActivityStart{Model: "gpt-effective"}, Observed: now,
 		Assignment: &sessionpresentation.ActivityAssignment{ID: "task-1", From: "/root", To: "/root/explorer", Text: "Inspect parser.\n\n- Preserve behavior."},
 	}}})
 	view.setDisplayFilter(true, "/root/explorer")

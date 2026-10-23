@@ -2,17 +2,14 @@ package sessionpresentation
 
 import (
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"strings"
-	"time"
 )
 
 // Source: apps/mekugi/internal/router/native_activity_assignments.go:1:47@45fbe279
 
 type ActivityAssignment struct {
-	ID, From, To, Text string    `json:"-"`
-	Created            time.Time `json:"-"`
+	ID, From, To, Text string `json:"-"`
 }
 
 // ActivityMessage is a message one agent delivered to another. Its text is
@@ -35,17 +32,4 @@ func (s *ActivityStart) Label() string {
 		}
 	}
 	return strings.Join(parts, " ")
-}
-
-func SupplementAssignment(a *ActivityAssignment) *activitypresentation.SupplementAssignment {
-	if a == nil {
-		return nil
-	}
-	return &activitypresentation.SupplementAssignment{ID: a.ID, From: a.From, To: a.To, Text: a.Text, Created: a.Created}
-}
-func SupplementMessage(m *ActivityMessage) *activitypresentation.SupplementMessage {
-	if m == nil {
-		return nil
-	}
-	return &activitypresentation.SupplementMessage{From: m.From, To: m.To, Text: m.Text}
 }

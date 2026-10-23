@@ -97,7 +97,6 @@ var ErrReplayIntent = errors.New("Replay is read-only.")
 type Service struct {
 	status     []presentation.Status
 	session    scope.Key[Model]
-	history    scope.Key[History]
 	attachment uint64
 }
 
@@ -110,7 +109,6 @@ func (s *Service) Session(store *scope.Store) *Model {
 	}
 	return m
 }
-func (s *Service) History(store *scope.Store) *History { return s.history.Value(store) }
 
 // Source: apps/mekugi/internal/router/native_shell.go:265:283@db279442
 type Model struct {
@@ -317,57 +315,4 @@ func (m *Model) PreferredHistory() string {
 		return m.view.Displayed.ID
 	}
 	return m.lastChild
-}
-
-func (m *Model) StartHistory(h *History, thread string) PageRequest {
-	*h = History{thread: thread, initial: true, turn: -2}
-	m.view.Loading = thread
-	m.view.Version.Revision++
-	h.loadVersion = m.view.Version
-	return h.request(TurnMetadata, "", "", "")
-}
-
-func (m *Model) LoadHistory(intent HistoryIntent, h *History) (PageRequest, error) {
-	if !intent.Version.SameAttachment(m.view.Version) || h == nil || intent.Thread != h.thread {
-		return PageRequest{}, ErrStaleIntent
-	}
-	if m.replay {
-		return PageRequest{}, ErrReplayIntent
-	}
-	if m.view.Loading != "" || !h.Available() {
-		return PageRequest{}, nil
-	}
-	m.view.Loading = h.thread
-	m.view.Version.Revision++
-	h.loadVersion = m.view.Version
-	return h.next(), nil
-}
-
-func (m *Model) FinishHistory(h *History) bool {
-	if m.view.Loading != h.thread {
-		return false
-	}
-	initial := h.initial
-	h.initial, h.requestID = false, ""
-	m.view.Loading = ""
-	m.view.Version.Revision++
-	return initial
-}
-
-func (m *Model) CancelHistory(intent HistoryIntent, h *History) (string, error) {
-	if !intent.Version.SameAttachment(m.view.Version) || h == nil || intent.Thread != h.thread {
-		return "", ErrStaleIntent
-	}
-	if m.replay {
-		return "", ErrReplayIntent
-	}
-	if m.view.Loading != h.thread || h.initial {
-		return "", nil
-	}
-	if intent.Version.Attachment != h.loadVersion.Attachment || intent.Version.Revision < h.loadVersion.Revision {
-		return "", ErrStaleIntent
-	}
-	id := h.requestID
-	h.requestID = ""
-	return id, nil
 }

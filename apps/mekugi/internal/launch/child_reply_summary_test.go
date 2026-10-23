@@ -9,10 +9,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 const childReplySummaryBody = "## Summary\nFixed exact reply navigation and kept the original evidence available. Focused checks pass, while live model compliance remains unverified.\n\n## Details\n" + "The supporting explanation stays in the retained reply.\n" + "Second detail with **emphasis**.\nThird detail.\nFourth detail.\nFifth detail.\nEnd of evidence."
@@ -25,9 +23,9 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			send := func(id, body string) {
-				item := map[string]any{"id": id, "type": "agentMessage", "phase": "final_answer", "text": body}
+				var item any = map[string]any{"id": id, "type": "agentMessage", "phase": "final_answer", "text": body}
 				if kind == "directed" {
-					item = map[string]any{"id": id, "type": "collabAgentToolCall", "tool": "sendMessage", "status": "completed", "senderThreadId": "child", "receiverThreadIds": []string{"main"}, "prompt": body}
+					item = coordinationTestCall(t, id, "send_message", "main", u.attached.session.Caller("main"), body)
 				}
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": item})
 			}
@@ -119,25 +117,4 @@ func TestUISnapshotChildReplySummaryFallback(t *testing.T) {
 		})
 	}
 	assertNativeUISnapshot(t, "child-reply-summary-fallback", u.testActivity(u.shell.Transcript).RenderFeed(60, 40).Lines)
-}
-
-func TestChildReplySummaryDeliveredSupplement(t *testing.T) {
-	audience := sessioncontrol.NewAudience(nil)
-	audience.Attach("main")
-	audience.Observe("child", "main", "/root/worker", true)
-	audience.Collect(activitypresentation.Supplement{Thread: "child", Source: "delivered", Kind: "reply", Text: childReplySummaryBody,
-		Message: &activitypresentation.SupplementMessage{From: "/root/worker", To: "/root", Text: childReplySummaryBody}})
-	entries := takeNativeActivity(audience, "main")
-	if len(entries) != 1 {
-		t.Fatalf("delivered entries = %d", len(entries))
-	}
-	entry := entries[0]
-	values := sessionpresentation.ActivityContent(entry).Values()
-	if len(values) != 1 || values[0].ReplySummary == "" || values[0].Body != childReplySummaryBody {
-		t.Fatalf("completed recipient input lost summary/original: %+v", values)
-	}
-	entry.Native.Phase = "item/started"
-	if sessionpresentation.ActivityContent(entry).Values()[0].ReplySummary != "" {
-		t.Fatal("in-flight body interpreted as complete")
-	}
 }

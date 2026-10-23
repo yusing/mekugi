@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/contracts/scope"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -307,9 +306,9 @@ func approvalRecord(attached *attachedPresentation, approvals *nativeApprovalDoc
 	return entry, true
 }
 
-func decideApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, observations *sessioncontrol.Observations, intent sessionpresentation.ApprovalIntent) error {
+func decideApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, observations *sessioncontrol.Observations, intent sessionpresentation.ApprovalIntent) error {
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
 	}()
 	record, choice, err := attached.presentation.Approval(intent, approvals.Approvals)
 	if err != nil {

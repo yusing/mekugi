@@ -76,20 +76,3 @@ func (t TurnPosition) Slots(placements []Placement) [][]int {
 	}
 	return slots
 }
-
-// InPage leaves unloaded anchors deferred until their item arrives or the page
-// exhausts that turn. Time-placed evidence is admitted from the oldest page item.
-// Source: apps/mekugi/internal/router/app_server_history_pages.go:305:321@eaad597b.
-func (p Placement) InPage(turns []TurnPosition, page TurnPosition, index int, exhausted bool) bool {
-	if p.Turn != "" {
-		return p.Turn == page.ID && (exhausted || slices.ContainsFunc(page.Items, func(i ItemPosition) bool { return i.ID == p.Anchor }))
-	}
-	if p.TurnFor(turns) != index {
-		return false
-	}
-	oldest := page.Started
-	if len(page.Items) > 0 && !page.Items[0].At.IsZero() {
-		oldest = page.Items[0].At
-	}
-	return exhausted || !oldest.IsZero() && !p.At.Before(oldest)
-}

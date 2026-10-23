@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -19,7 +18,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
-func titleCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, generator *sessionNaming, text string) bool {
+func titleCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, generator *sessionNaming, text string) bool {
 	if fields := strings.Fields(text); len(fields) == 0 || fields[0] != "/title" {
 		return false
 	}
@@ -32,7 +31,7 @@ func titleCommand(attached *attachedPresentation, terminal *terminalsession.Atta
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be ready", false)
 		return true
 	}
-	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay, (*owned), 0, len((*editor).Text))
+	deleteDraftRange(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay, (*owned), 0, len((*editor).Text))
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
 	renameSessionTitle(control, generator, &attached.feedback, terminal, clock, name)
 	return true

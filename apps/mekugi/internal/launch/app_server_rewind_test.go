@@ -53,9 +53,6 @@ func TestUISnapshotNativeRewind(t *testing.T) {
 			}
 			appServerTestKeys(t, u, "preserved draft")
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","reasoningEffort":"high","serviceTier":"priority","thread":{"id":"branch","cwd":"/work","turns":[{"id":"first","status":"completed","items":[{"type":"agentMessage","id":"answer","text":"Parser implemented"}]}]}}}`, requests[0].ID))
-			if u.picker.Kind == "archive" {
-				t.Fatal("archive offered before restoration completed")
-			}
 			for _, method := range resumeTestSettle(t, u, w) {
 				if method == "turn/start" || method == "thread/archive" {
 					t.Fatalf("rewind unexpectedly dispatched %s", method)

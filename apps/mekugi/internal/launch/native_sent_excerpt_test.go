@@ -24,14 +24,13 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 	u.Turn = "main-turn"
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	collab := func(id, tool, prompt string) {
-		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": u.Turn, "item": map[string]any{"id": id, "type": "collabAgentToolCall",
-			"tool": tool, "status": "completed", "senderThreadId": "main", "receiverThreadIds": []string{"child"}, "prompt": prompt}})
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": u.Turn, "item": coordinationTestCall(t, id, tool, "child", u.attached.session.Caller("child"), prompt)})
 	}
 	long := func(label string) string {
 		return label + " first line.\n\n" + strings.Repeat(label+" detail.\n", 8) + label + " last line."
 	}
-	collab("spawn", "spawnAgent", long("Spawn"))
-	collab("follow", "followupTask", long("Follow"))
+	collab("spawn", "spawn_agent", long("Spawn"))
+	collab("follow", "followup_task", long("Follow"))
 	paint := func() string {
 		t.Helper()
 		if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {

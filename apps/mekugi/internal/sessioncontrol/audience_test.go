@@ -15,8 +15,8 @@ func TestNativeActivityIsolatedByAncestryAndIdentity(t *testing.T) {
 		!a.Observe("child-a", "root-a", "/root/a", true) || !a.Observe("child-b", "root-b", "/root/b", true) {
 		t.Fatal("valid activity identity rejected")
 	}
-	a.Collect(activitypresentation.Supplement{Thread: "child-a", Source: "reply-a", Kind: "reply", Text: "Message from A"})
-	a.Collect(activitypresentation.Supplement{Thread: "child-b", Source: "reply-b", Kind: "reply", Text: "Message from B"})
+	a.Collect(activitypresentation.Supplement{Thread: "child-a", Source: "reply-a", Kind: "error", Text: "Message from A"})
+	a.Collect(activitypresentation.Supplement{Thread: "child-b", Source: "reply-b", Kind: "error", Text: "Message from B"})
 	audience, entries := a.Take("root-a")
 	if len(entries) != 1 || audience.Threads[entries[0].Thread] != "/root/a" || !strings.Contains(entries[0].Text, "Message from A") {
 		t.Fatalf("cross-root activity leakage: %+v", entries)
@@ -24,24 +24,9 @@ func TestNativeActivityIsolatedByAncestryAndIdentity(t *testing.T) {
 	if a.Observe("child-a", "root-b", "/root/a", true) {
 		t.Fatal("conflicted identity accepted")
 	}
-	a.Collect(activitypresentation.Supplement{Thread: "child-a", Source: "later", Kind: "reply", Text: "Must not appear"})
+	a.Collect(activitypresentation.Supplement{Thread: "child-a", Source: "later", Kind: "error", Text: "Must not appear"})
 	if _, got := a.Take("root-a"); len(got) != 0 {
 		t.Fatalf("conflicted activity retained: %+v", got)
-	}
-}
-
-func TestNativeActivityDeduplicatesRepliesAndRetainsAssignments(t *testing.T) {
-	a := NewAudience(nil)
-	a.Attach("root")
-	a.Observe("root", "", "/root", false)
-	a.Observe("child", "root", "/root/reviewer", true)
-	a.Collect(activitypresentation.Supplement{Thread: "child", Source: "same-reply", Kind: "reply", Text: "Full directed reply"})
-	a.Collect(activitypresentation.Supplement{Thread: "child", Source: "same-reply", Kind: "reply", Text: "Full directed reply"})
-	assignment := &activitypresentation.SupplementAssignment{ID: "task-1", From: "/root", To: "/root/reviewer", Text: "Review complete behavior."}
-	a.Collect(activitypresentation.Supplement{Thread: "child", Source: "start-1", Kind: "start", Text: "Started", Assignment: assignment})
-	_, got := a.Take("root")
-	if len(got) != 2 || got[0].Kind != "reply" || got[1].Assignment == nil || got[1].Assignment.Text != assignment.Text {
-		t.Fatalf("native reply or assignment lost: %+v", got)
 	}
 }
 

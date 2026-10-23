@@ -19,7 +19,7 @@ Each runtime exposes one authenticated MCP server, `threadcontrol`, through stoc
 JavaScript execution. Coordination calls the Mekugi server's typed native-thread
 API for creation, attributed input, interruption and retained-outcome confirmation.
 Session Control translates those semantic operations into backend requests. Its six operations replace native collaboration; no native alias or
-fallback remains callable. Historical native records remain readable. The Codex
+fallback remains callable. Only Thread Control records supply coordination history. The Codex
 binding supplies the final invocation and thread-admission policy:
 `features.multi_agent_v2.enabled=true` and
 `features.multi_agent_v2.disable_native_tools=true`. Root, child and mode hints
@@ -198,8 +198,7 @@ Exit stops owned live work through Codex and retains known outcomes, pending del
 wait selections and dispatch facts. Fresh resume restores paused state without child
 restart, wait rearming, deadline expiry delivery or message redispatch. Explicit work
 or a new wait may proceed after reconciliation. Forks inherit authorized history,
-not live subscriptions, foreign-root authority or dispatch eligibility. Historical
-native children are never silently adopted as managed independent threads.
+not live subscriptions, foreign-root authority or dispatch eligibility.
 Resume remains product-local: Mekugi checkpoints are consumed by Mekugi, with no
 cross-product session-resume compatibility requirement for stock Codex.
 

@@ -35,8 +35,8 @@ func TestDecodeHistoryThreadPreservesWireFields(t *testing.T) {
 	change.Kind.Type, change.Kind.MovePath, change.Kind.MovePath2 = "update", "snake", "camel"
 	want := ThreadInfo{
 		Name: "Saved session", ID: "child", ParentThreadID: "parent", AgentNickname: "Reader", AgentRole: "worker",
-		Cwd: "/workspace", Path: "/rollouts/child.jsonl", Source: jsontext.Value(`{"subAgent":{"parentThreadId":"parent","depth":2}}`),
-		CreatedAt: 1700000001, UpdatedAt: 1700000009, HistoryMode: "full",
+		Cwd: "/workspace", Path: "/rollouts/child.jsonl",
+		CreatedAt: 1700000001, UpdatedAt: 1700000009,
 		Turns: []HistoryTurn{{
 			ID: "turn", Status: "failed", StartedAt: 1700000002, CompletedAt: 1700000008,
 			Error: &struct {
@@ -46,16 +46,15 @@ func TestDecodeHistoryThreadPreservesWireFields(t *testing.T) {
 				DurationMS: new(int64(123)), Delivery: "async", ID: "item", ClientID: "submission", Type: "commandExecution",
 				Questions: []Question{{ID: "question", Header: "Choice", Question: "Which one?", Title: "Pick one", IsSecret: true,
 					Options: jsontext.Value(`[{"label":"A","description":"First"}]`)}},
-				Text: "Exact text\n", Summary: []string{"Public summary"}, AgentThreadID: "agent", AgentPath: "/root/reader",
-				Kind: "completed", Command: "printf 'a  b\\n'", Cwd: "/workspace/subdir", Source: "agent",
+				Text: "Exact text\n", Summary: []string{"Public summary"},
+				Command: "printf 'a  b\\n'", Cwd: "/workspace/subdir", Source: "agent",
 				ProcessID: "process", Path: "relative/file", Status: "failed", AggregatedOutput: new("Exact output\n"),
 				Query: "search term", Action: &WebSearchAction{Type: "search", Query: "query", Queries: []string{"one", "two"}, URL: "https://example.test", Pattern: "needle"},
 				Results: []jsontext.Value{jsontext.Value(`{"opaque":9007199254740993}`), jsontext.Value(`"verbatim"`), jsontext.Value(`null`)},
 				Content: jsontext.Value(`[{"type":"text","text":"User content","unknown":9007199254740993}]`),
 				Phase:   "final_answer", ExitCode: new(7),
 				CommandActions: []CommandAction{{Type: "read", Command: "cat file", Path: "file", Query: "needle"}}, Changes: []FileChange{change},
-				Tool: "wait", SenderThreadID: "parent", ReceiverThreadIDs: []string{"agent"}, AgentsStates: map[string]AgentState{"agent": {Status: "completed"}},
-				Prompt: "Assignment", Model: "model-id", ReasoningEffort: "high",
+				Tool: "wait",
 			}},
 		}},
 	}
@@ -107,38 +106,5 @@ func TestHistoryItemOptionalOutcomeAndOpaqueContent(t *testing.T) {
 				t.Fatalf("optional or opaque fields changed: %#v, want %#v", got, test.want)
 			}
 		})
-	}
-}
-
-func TestHistoryPagesPreserveIdentityTimingAndCursor(t *testing.T) {
-	var threads ThreadPage
-	if err := json.Unmarshal([]byte(`{"data":[{"id":"child","parentThreadId":"parent","turns":[{"id":"turn"}]}],"nextCursor":"threads-next"}`), &threads); err != nil {
-		t.Fatal(err)
-	}
-	wantThreads := ThreadPage{Data: []ThreadInfo{{ID: "child", ParentThreadID: "parent", Turns: []HistoryTurn{{ID: "turn"}}}}, NextCursor: "threads-next"}
-	if !reflect.DeepEqual(threads, wantThreads) {
-		t.Fatalf("thread page = %#v, want %#v", threads, wantThreads)
-	}
-	var turns TurnPage
-	if err := json.Unmarshal([]byte(`{"data":[{"id":"turn","status":"interrupted","startedAt":1700000001,"completedAt":1700000002,"items":[{"id":"item","type":"agentMessage","text":"Retained"}]}],"nextCursor":"turns-next"}`), &turns); err != nil {
-		t.Fatal(err)
-	}
-	wantTurns := TurnPage{Data: []HistoryTurn{{ID: "turn", Status: "interrupted", StartedAt: 1700000001, CompletedAt: 1700000002, Items: []ThreadItem{{ID: "item", Type: "agentMessage", Text: "Retained"}}}}, NextCursor: "turns-next"}
-	if !reflect.DeepEqual(turns, wantTurns) {
-		t.Fatalf("turn page = %#v, want %#v", turns, wantTurns)
-	}
-	var items ItemPage
-	if err := json.Unmarshal([]byte(`{"data":[{"turnId":"turn","item":{"id":"item","type":"agentMessage","text":"Retained"},"startedAtMs":1700000001123,"completedAtMs":1700000002456}],"nextCursor":"items-next"}`), &items); err != nil {
-		t.Fatal(err)
-	}
-	wantItems := ItemPage{Data: []HistoryItem{{TurnID: "turn", Item: ThreadItem{ID: "item", Type: "agentMessage", Text: "Retained"}, StartedAtMs: 1700000001123, CompletedAtMs: 1700000002456}}, NextCursor: "items-next"}
-	if !reflect.DeepEqual(items, wantItems) {
-		t.Fatalf("item page = %#v, want %#v", items, wantItems)
-	}
-	if err := json.Unmarshal([]byte(`{"data":[],"nextCursor":null}`), &items); err != nil {
-		t.Fatal(err)
-	}
-	if items.NextCursor != "" || len(items.Data) != 0 {
-		t.Fatalf("terminal item page retained prior values: %#v", items)
 	}
 }

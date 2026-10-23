@@ -15,9 +15,6 @@ func prepareActivityModelTest(t *testing.T, proxy *Preparer, model, session, thr
 	t.Helper()
 	tools := []any{
 		map[string]any{"type": "function", "name": "lookup", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}},
-		map[string]any{"type": "namespace", "name": "collaboration", "tools": []any{
-			map[string]any{"type": "function", "name": "send_message"}, map[string]any{"type": "function", "name": "followup_task"},
-		}},
 	}
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": model, "input": append([]any{testCodeModeAdditionalTools(testCodeModeDescription)}, input...), "tools": tools}))
 	if err != nil {

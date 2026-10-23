@@ -87,7 +87,9 @@ func TestNativeUIFaintOutputPolicy(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 			waitTargetTestAgent(t, u, "a", "/root/agent1", true)
-			waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
+			item := coordinationActivityItems(t)[3]
+			item.Arguments = []byte(`{"target":["/root/agent1"]}`)
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 
 			terminalTest(u).Focus = 3 // Inspect the roster, the sole wait-status surface.
 			terminalTest(u).Faint = faint
@@ -104,7 +106,7 @@ func TestNativeUIFaintOutputPolicy(t *testing.T) {
 					row.WriteString(screen.CellAt(x, y).Content)
 				}
 				text := row.String()
-				if !strings.Contains(text, "Waiting for agent") {
+				if !strings.Contains(text, "Wait registered") {
 					continue
 				}
 				before, _, ok := strings.Cut(text, "agent1")

@@ -52,7 +52,7 @@ func TestProviderErrorEventIsFailedNotMissingTerminal(t *testing.T) {
 func TestGrokEncryptedHistoryCompatibility(t *testing.T) {
 	for _, input := range []string{
 		`[{"type":"reasoning","encrypted_content":"private"}]`,
-		`[{"type":"agent_message","content":[{"type":"encrypted_content","encrypted_content":"private"}]}]`,
+		`[{"type":"message","role":"user","content":[{"type":"encrypted_content","encrypted_content":"private"}]}]`,
 	} {
 		t.Run(input, func(t *testing.T) {
 			body := []byte(`{"model":"grok:grok-4.6","input":` + input + `}`)

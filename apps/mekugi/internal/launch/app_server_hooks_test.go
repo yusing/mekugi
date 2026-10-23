@@ -1,7 +1,6 @@
 package launch
 
 import (
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -74,7 +73,6 @@ func TestAppServerHookOutcomesInChildFeed(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
 			registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
-			_ = u.Requests.ReadThreadMetadata("main", "child", true, appServerRequest{})
 			run := hookTestRun(u.attached.cwd, status)
 			run["entries"] = []map[string]any{{"kind": "error", "text": "cannot execute\npermission denied\x1b]0;unsafe\a"}}
 			// Completion alone must be visible, independently of Main's same run ID.
@@ -140,19 +138,6 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 	}
 }
 
-func TestAppServerHookPagedChildWithoutTurns(t *testing.T) {
-	u, _ := newPagedHistoryUI(t)
-	h := historyLoading(&u.attached, &u.childHistoryState)
-	observation := history.HookObservation{Run: history.HookRun{ID: "session-start-hook", EventName: "sessionStart", Status: "completed"},
-		At: time.Unix(100, 0), Completed: true, Output: "feedback: session ready"}
-	entry := hookEntry(&u.attached.session, u.activity, u.attached.cwd, "child", observation, false)
-	h.placements = append(h.placements, &restoredPlacement{entry: entry, at: observation.At})
-	restoreContentReply(t, u, 3, map[string]any{"data": []any{}})
-	if len(u.attached.childSource.Entries) != 1 || u.attached.childSource.Entries[0].Source.Kind != "hook" || len(h.placements) != 0 || historyLoadIntent(u).Thread != "" {
-		t.Fatalf("empty paginated history lost a hook or left false older history: entries=%d placements=%d", len(u.attached.childSource.Entries), len(h.placements))
-	}
-}
-
 func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	directory, err := history.ReplayDirectory()
@@ -180,9 +165,9 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	}
 	waitTargetTestStore(t, fresh, reopened)
 	root := binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}
-	fresh.restoring = &appServerActivityRestore{root: root, state: sessionpresentation.NewRestoration(root.ID)}
-	readRestoredRollouts(&fresh.attached, &fresh.restoring, fresh.retainedSession, fresh.audience, fresh.activity)
-	restoreMainHistory(&fresh.attached, fresh.shell, &fresh.Client, &fresh.picker, &fresh.Editor, &fresh.questions, &fresh.approvals, fresh.clock, &fresh.statusPanel, &fresh.resumePicker, fresh.ctx, fresh.review, &fresh.pendingEditReceipts, fresh.notifications, fresh.retained, fresh.retainedSession, fresh.activity, fresh.segments, &fresh.restoredSegments, nil, fresh.restoring.main, nil)
+	if err := fresh.restoreContent(root); err != nil {
+		t.Fatal(err)
+	}
 	if len(fresh.attached.source.Entries) != 2 {
 		t.Fatalf("resume lost hooks outside turns: %d", len(fresh.attached.source.Entries))
 	}

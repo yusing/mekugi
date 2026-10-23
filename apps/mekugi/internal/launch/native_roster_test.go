@@ -1,7 +1,6 @@
 package launch
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -18,49 +17,6 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
-
-func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	const child = "0123456789-child"
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": child, "turn": map[string]any{"id": "t"}})
-	request := resumeTestOne(t, u.Host.Input.(*appServerTestInput), "thread/read")
-	id := fmt.Sprint(request.ID)
-	if id == "" {
-		t.Fatal("child observation did not request metadata")
-	}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": child, "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "go test ./...", "exitCode": 2}})
-	u.shell.Agents.Selected = sessionpresentation.Placeholder(child)
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
-		"id": "spawn", "type": "subAgentActivity", "kind": "started", "agentThreadId": child, "agentPath": "/root/checker"}})
-	if !u.Requests.Pending() || u.attached.session.KnownCaller(child) != "/root/checker" || u.shell.Agents.Selected != "/root/checker" {
-		t.Fatal("activity identity or in-flight metadata request lost")
-	}
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"thread":{"id":%q,"agentNickname":"random-nickname","agentRole":"review","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"main","agent_path":"/root/checker","agent_role":"review"}}}}}}`, id, child))
-	row := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(140, 6, time.Now(), true), "\n"))
-	if !strings.Contains(row, "checker") || !strings.Contains(row, "● review") || !strings.Contains(row, "go test ./...") || strings.Contains(row, "01234567") {
-		t.Fatalf("metadata roster: %s", row)
-	}
-	u.testActivity(u.shell.Agents).setDisplayFilter(true, u.shell.Agents.Selected)
-	feed := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(120, 30).Lines, "\n"))
-	if !strings.Contains(feed, "exit 2") || strings.Contains(feed, "01234567") {
-		t.Fatalf("late rename lost retained activity: %s", feed)
-	}
-	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": child, "turn": map[string]any{"id": "t", "status": "completed"}})
-	if u.Requests.Pending() {
-		t.Fatalf("metadata read repeated: %+v", u.Requests)
-	}
-}
-
-func TestAppServerChildMetadataFailureKeepsActivity(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
-	id := fmt.Sprint(resumeTestOne(t, u.Host.Input.(*appServerTestInput), "thread/read").ID)
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"error":{"code":-1,"message":"not available"}}`, id))
-	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat child.go"}})
-	if u.Requests.Pending() || u.attached.presentation.Status.Alert || !strings.Contains(ansi.Strip(u.shell.Agents.AgentState(u.testActivity(u.shell.Agents).testAgent(*u.attached.session.Agent("/root/child")), 80, presentationTime(u.clock))), "child.go") {
-		t.Fatal("metadata failure blocked activity or caused repeated reads")
-	}
-}
 
 func TestNativeRosterShowsActivityDetails(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())

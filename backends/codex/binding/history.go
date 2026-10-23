@@ -17,9 +17,6 @@ type ThreadItem struct {
 	Type             string           `json:"type"`
 	Text             string           `json:"text"`
 	Summary          []string         `json:"summary"`
-	AgentThreadID    string           `json:"agentThreadId"`
-	AgentPath        string           `json:"agentPath"`
-	Kind             string           `json:"kind"` // subAgentActivity lifecycle.
 	Command          string           `json:"command"`
 	Cwd              string           `json:"cwd"` // commandExecution: the directory the host ran it in.
 	Source           string           `json:"source"`
@@ -32,22 +29,16 @@ type ThreadItem struct {
 	Results          []jsontext.Value `json:"results"`
 	// Content is variant-specific: user input blocks or raw reasoning strings.
 	// Decode only userMessage content; reasoning presentation uses Summary.
-	Content           jsontext.Value        `json:"content"`
-	Phase             string                `json:"phase"`
-	ExitCode          *int                  `json:"exitCode"`
-	CommandActions    []CommandAction       `json:"commandActions"`
-	Changes           []FileChange          `json:"changes"`
-	Tool              string                `json:"tool"`
-	Server            string                `json:"server"`
-	Arguments         jsontext.Value        `json:"arguments"`
-	Result            jsontext.Value        `json:"result"`
-	Error             jsontext.Value        `json:"error"`
-	SenderThreadID    string                `json:"senderThreadId"`
-	ReceiverThreadIDs []string              `json:"receiverThreadIds"`
-	AgentsStates      map[string]AgentState `json:"agentsStates"`
-	Prompt            string                `json:"prompt"`
-	Model             string                `json:"model"`
-	ReasoningEffort   string                `json:"reasoningEffort"`
+	Content        jsontext.Value  `json:"content"`
+	Phase          string          `json:"phase"`
+	ExitCode       *int            `json:"exitCode"`
+	CommandActions []CommandAction `json:"commandActions"`
+	Changes        []FileChange    `json:"changes"`
+	Tool           string          `json:"tool"`
+	Server         string          `json:"server"`
+	Arguments      jsontext.Value  `json:"arguments"`
+	Result         jsontext.Value  `json:"result"`
+	Error          jsontext.Value  `json:"error"`
 }
 
 // Source: apps/mekugi/internal/router/app_server_events.go:74:82@[eaad597b] appServerFileChange.
@@ -78,25 +69,18 @@ type WebSearchAction struct {
 	Pattern string   `json:"pattern"`
 }
 
-// Source: apps/mekugi/internal/router/app_server_progress.go:10:12@[eaad597b] appServerAgentState.
-type AgentState struct {
-	Status string `json:"status"`
-}
-
 // Source: apps/mekugi/internal/router/app_server_events.go:91:104@[eaad597b] appServerThreadInfo.
 type ThreadInfo struct {
-	Name           string         `json:"name"`
-	ID             string         `json:"id"`
-	ParentThreadID string         `json:"parentThreadId"`
-	AgentNickname  string         `json:"agentNickname"`
-	AgentRole      string         `json:"agentRole"`
-	Cwd            string         `json:"cwd"`
-	Path           string         `json:"path"`
-	Source         jsontext.Value `json:"source"`
-	CreatedAt      int64          `json:"createdAt"`
-	UpdatedAt      int64          `json:"updatedAt"`
-	HistoryMode    string         `json:"historyMode"`
-	Turns          []HistoryTurn  `json:"turns"`
+	Name           string        `json:"name"`
+	ID             string        `json:"id"`
+	ParentThreadID string        `json:"parentThreadId"`
+	AgentNickname  string        `json:"agentNickname"`
+	AgentRole      string        `json:"agentRole"`
+	Cwd            string        `json:"cwd"`
+	Path           string        `json:"path"`
+	CreatedAt      int64         `json:"createdAt"`
+	UpdatedAt      int64         `json:"updatedAt"`
+	Turns          []HistoryTurn `json:"turns"`
 }
 
 // Source: apps/mekugi/internal/router/app_server_resume.go:203:213@[eaad597b] appServerHistoryTurn.
@@ -109,32 +93,6 @@ type HistoryTurn struct {
 	Error       *struct {
 		Message string `json:"message"`
 	} `json:"error"`
-}
-
-// Source: apps/mekugi/internal/router/app_server_restore_content.go:112:115@[eaad597b] thread list response.
-type ThreadPage struct {
-	Data       []ThreadInfo `json:"data"`
-	NextCursor string       `json:"nextCursor"`
-}
-
-// Source: apps/mekugi/internal/router/app_server_history_pages.go:99:102@[eaad597b] turn list response.
-type TurnPage struct {
-	Data       []HistoryTurn `json:"data"`
-	NextCursor string        `json:"nextCursor"`
-}
-
-// Source: apps/mekugi/internal/router/app_server_history_pages.go:141:149@[eaad597b] item list response.
-type ItemPage struct {
-	Data       []HistoryItem `json:"data"`
-	NextCursor string        `json:"nextCursor"`
-}
-
-// Source: apps/mekugi/internal/router/app_server_history_pages.go:142:147@[eaad597b] history item.
-type HistoryItem struct {
-	TurnID        string     `json:"turnId"`
-	Item          ThreadItem `json:"item"`
-	StartedAtMs   int64      `json:"startedAtMs"`
-	CompletedAtMs int64      `json:"completedAtMs"`
 }
 
 // DecodeHistoryThread admits a thread/read or thread/resume response only for

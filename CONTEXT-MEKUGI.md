@@ -18,7 +18,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Request execution | `requestexecution`: shared HTTP/WebSocket attempt, preparation, delivery, cancellation and failure; `{request_guidance,response_delivery,stream_diagnostics,naming_inference}.go`: integration seams |
 | Execution observation | `executionobservation`: passive stock-tool observations, capture windows, completion and publication; `{exec_observation,exec_changes,exec_report_observation,shell_observation,native_apply_patch,final_answer_stream}.go`: focused seams |
 | Session control | `sessioncontrol/client.go`: sole host connection/request ledger; package owns submission, interruption, compaction, settings, startup/resume, prompts, approvals, side threads and authenticated audience |
-| Session presentation | `sessionpresentation`: scoped live/replay admission and detached publications; `{observation,turn,transcript_observation,input_workflow,control_response}.go`: turn/input reduction; `collaboration.go`: shared coordination traffic; `activity_*.go`: source binding, history, roster, processes, details and output demand; `{menu,panel,resume}.go`: overlays |
+| Session presentation | `sessionpresentation`: scoped live/replay admission and detached publications; `{observation,turn,transcript_observation,input_workflow,control_response}.go`: turn/input reduction; `coordination.go`: shared coordination traffic; `activity_*.go`: source binding, history, roster, processes, details and output demand; `{menu,panel,resume}.go`: overlays |
 | Session API | `sessionapi`: renderer-neutral session projection, control intents, discovery and bounded streams; `sessionapi/review.go`: shared saved-review projection; `sessionapi/CONTRACT.md`: shared request and event interface |
 | Browser UI | `webui`: embedded assets-only host and Svelte browser binding; `webui/SPEC.md`: explicit machine selection, shared controls and replay |
 | Server / Connector | Launch `server.go`, `server_start.go`: in-process execution composition; `sessionapi/control_socket.go`: versioned peer-admitted Unix WebSocket; `sessionapi/control_start.go`: serialized startup readiness; `connector`: token/origin admission and WebSocket forwarding; Launch `connector.go`: listener and token-rotation lifetime |
@@ -32,7 +32,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Area | Owners and boundaries |
 | --- | --- |
 | Thread control | `modules/threadcontrol`: server-owned logical trees, admitted agent operations, prepared children and retained waits; Session API owns native runtime lifetime, Session Control owns each runtime’s host ledger |
-| Activity | `modules/activity/feed`: content/output retention and `contracts/activitydetail` host; `presentation`: lifecycle, grouping, source/segment interpretation, roster/waits, commit enrichment and detached publications; `terminalview`: layout, reveal/pacing, cursors, navigation and painting; `waittargets`: retained snapshots |
+| Activity | `modules/activity/feed`: content/output retention and `contracts/activitydetail` host; `coordination`: shared thread-control observation decoding; `presentation`: lifecycle, grouping, source/segment interpretation, roster, commit enrichment and detached publications; `terminalview`: layout, reveal/pacing, cursors, navigation and painting |
 | Conversation | `modules/conversation/{composer,presentation,prompt,completion}`: edits/attachments, drafts/queues/side values, prompts and completion; `transcript`/`codexbinding`: message correlation/history/native mapping; `terminalview`: keys/painting. Session Control owns live replies/dispatch; Launch owns scans, skill writes and image lifetime |
 | Composer predictions | `launch/composer_predictions.go`: asynchronous configuration and source/draft eligibility; `sessioncontrol/prediction.go`: host fork, turn and cleanup; `providers/openai/predictions.go`: authenticated remote configuration and moderation policy |
 | Saved changes | `modules/changehistory`: identities, review, frozen selections, apply/revert and retirement; `capture`: bounded acquisition/checkpoints/scope merging/completion; `presentation`: immutable review/counts/details; `terminalview`: pane interaction/painting |
@@ -60,7 +60,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Native facts | `backends/codex/binding`: notifications/items, tool results, history identity, submitted text, execution source/results, catalogs and continuation evidence; `backends/codex/nativetrace`: bounded trace correlation |
 | Rollouts | `backends/codex/rollout`: selected identity/context/resume evidence; `{inspection,replay}.go`: logical calls/endpoints and replay observations |
 | Composer recall | `backends/codex/messagehistory`: shared Codex input-history format, locking and retention; Launch `app_server_persistent_history.go`: asynchronous reads/writes; Conversation composer: recall and restored-entry reconciliation |
-| Responses | `backends/codex/responses`: envelopes/catalogs, byte-preserving projection, streams/lifecycle and Codex framing; `collaboration.go`: native-agent projection/restoration; `compact_plaintext.go`: ordinary-turn compaction request adaptation; `{session,session_provider}.go`: connection ancestry/steering/prefix confirmation; `libraries/modelprotocol`: wire facts/exact JSON |
+| Responses | `backends/codex/responses`: envelopes/catalogs, byte-preserving projection, streams/lifecycle and Codex framing; `compact_plaintext.go`: ordinary-turn compaction request adaptation; `{session,session_provider}.go`: connection ancestry/steering/prefix confirmation; `libraries/modelprotocol`: wire facts/exact JSON |
 | Shell hooks | `backends/codex/shellhook`: registration/protocol; `backends/codex/shellapproval`: shared approval wire/resource names; Launch installs composed resources |
 | Providers | `providers/openai`: credentials/model exchange/HTTP/WebSockets; `providers/grok`: authentication/OAuth retry; `providers/opencode`: configuration/catalog/pinned prices/endpoints/affinity |
 | Transports | `libraries/httptransport`: defaults, response admission, idle-read lifetime and body replay; `libraries/mcptransport`: reserved endpoint/stdio bridge, explicitly dispatched by Launch, absent from normal startup |
@@ -72,7 +72,7 @@ Cross-owner adapter entry points:
 
 - Live/replay observations: `launch/{attached_presentation,app_server_events,session_ui_replay_attachment}.go`.
 - Activity sources/painter/output: `launch/activity_terminal.go`; VCS facts: `activity_vcs.go`;
-  enrichment resources: `activity_commit_reader.go`; child supplements: `subagent_activity_pane.go`.
+  enrichment resources: `activity_commit_reader.go`; auxiliary observations: `activity_supplements.go`.
 - Native input/frame delivery: `launch/{native_client_loop,native_client_input,native_client_render}.go`;
   shared pane painting: `launch/native_shell.go`.
 - Conversation forks, rewind and side input: `sessioncontrol/{startup,side_workflow}.go`;

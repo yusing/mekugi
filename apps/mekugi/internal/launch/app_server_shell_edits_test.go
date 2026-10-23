@@ -24,7 +24,7 @@ func newShellEditTestUI(t *testing.T) *appServerUI {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	setTestAppServerIntegration(u, proxy)
-	if err := openWaitStore(u.ctx, u.history, &u.retainedSession, u.Thread, u.retained.Store, u.retained.Writes, u.retained.Limits); err != nil {
+	if err := openRetainedSession(u.ctx, u.history, &u.retainedSession, u.Thread, u.retained.Store, u.retained.Writes, u.retained.Limits); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(u.retainedSession.Close)
@@ -177,7 +177,7 @@ func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
 	setTestUIStore(u, other)
 	u.Thread = "other-thread"
 	u.startSession(u.Thread, t.TempDir())
-	if err := openWaitStore(u.ctx, u.history, &u.retainedSession, u.Thread, other.publication, other.writes, other.retentionLimits()); err != nil {
+	if err := openRetainedSession(u.ctx, u.history, &u.retainedSession, u.Thread, other.publication, other.writes, other.retentionLimits()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(u.retainedSession.Close)

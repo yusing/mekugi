@@ -6,17 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
 func TestUISnapshotNativeThreadSwitch(t *testing.T) {
@@ -108,9 +106,11 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	if terminalTest(u).Layout.Main.W != 138 || terminalTest(u).Layout.Diff.W != 0 || terminalTest(u).Focus != 0 {
 		t.Fatal("closing Diff did not reclaim its width")
 	}
-	// Metadata discovery is independent of the composer destination.
+	// Viewing a published child does not request native graph metadata.
 	w := u.Host.Input.(*appServerTestInput)
-	appServerOneRequest(t, w, "thread/read", "")
+	if len(restoreContentRequests(t, w)) != 0 {
+		t.Fatal("view issued host metadata request")
+	}
 	u.Turn = "active"
 	keys("/skills\r\t\x03\x07\x16\x7f\x1b[1;2A\x1b[200~pasted\x03\r\x1b[201~")
 	if err := terminalTest(u).send("\x1b"); err != nil {
@@ -148,7 +148,7 @@ func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u.main.shell.Agents = u.Agents
 	u.main.Text = "draft "
 	u.main.testActivity(u.main.shell.Agents).setDisplayFilter(true, "/root/reader")
-	publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.childHistoryState, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
+	publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
 	u.main.shell.Agents.FeedLeft, u.main.shell.Agents.FeedTop = 1, 1
 	u.main.shell.Agents.FeedRight, u.main.shell.Agents.FeedRows = 40, 1
 	selectionTestDrag(t, u, 0, 0, 4, 0)
@@ -187,14 +187,15 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 		t.Fatalf("child tier ignored model routing: %s", got)
 	}
 	u.serviceTiers.Confirm("live-model", info.ID, "flex")
-	publication := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+	publication := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	if publication.Caption.Model != "live-model" || publication.Caption.Tier != "flex" || publication.Caption.Role != "reviewer" || publication.Status.Composer.Text != "Read-only" {
 		t.Fatalf("detached child caption lost confirmed thread settings: %+v", publication)
 	}
 	if got := caption(); !strings.Contains(got, "live-model (low) · flex") {
 		t.Fatalf("child caption ignored its confirmed thread tier: %s", got)
 	}
-	u.attached.session.Collaboration((binding.ThreadItem{Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"spawned"}, Model: "spawn-model", ReasoningEffort: "high"}).Observation(), "spawn", presentationTime(u.clock), activitypresentation.ObservedCollaboration)
+	u.attached.session.RegisterThread(observation.Thread{ID: "spawned", Path: "/root/spawned"})
+	u.attached.session.Agent("/root/spawned").Settings = preferences.Evidence{Model: "spawn-model", Effort: "high"}
 	u.testActivity(u.shell.Agents).displayThread(u.attached.session.KnownCaller("spawned"))
 	if got := caption(); !strings.Contains(got, "spawn-model (high)") || strings.Contains(got, "priority") {
 		t.Fatalf("spawn metadata was not scoped to the selected child: %s", got)

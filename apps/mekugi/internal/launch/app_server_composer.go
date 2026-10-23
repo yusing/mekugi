@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -20,7 +19,7 @@ func insertDraft(attached *attachedPresentation, editor *composer.Editor, termin
 	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
 }
 
-func deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, start, end int) {
+func deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, start, end int) {
 	if attached.view != "" {
 		(*editor).Delete(start, end, composer.NoRun)
 		return
@@ -33,9 +32,9 @@ func deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.
 		removeDraft(attached, (*editor), terminal, clock, owned, questions, approvals, side, start, end, composer.NoRun)
 		return
 	}
-	view := publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, presentationTime(clock))
+	view := publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, presentationTime(clock))
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
 	}()
 	if _, err := attached.presentation.ApplyEditor(sessionpresentation.EditorIntent{Version: view.Version, Target: view.EditorTarget(), Action: composer.Action{Kind: composer.DeleteAction, Start: start, End: end}}, attached.conversation); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)

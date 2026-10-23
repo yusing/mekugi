@@ -6,7 +6,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
@@ -55,7 +54,7 @@ type appServerStatusConfig struct {
 	Instructions []string `json:"instructionSources"`
 }
 
-func showStatus(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, statusConfig appServerStatusConfig, debugDirectory string) error {
+func showStatus(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, statusConfig appServerStatusConfig, debugDirectory string) error {
 	var rows []sessionpresentation.StatusField
 	group := "Model"
 	add := func(label, value string) {
@@ -104,7 +103,7 @@ func showStatus(attached *attachedPresentation, terminal *terminalsession.Attach
 	(*panel) = report
 	report.Render(statusNotice("Loading account…"))
 
-	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
+	deleteDraftRange(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
 	return requestStatus(control.Requests, "account/read", map[string]any{"refreshToken": false}, report)
 }
 

@@ -71,12 +71,11 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 			u.review.Projection, u.review.Loader = loader.Projection(), loader
 			sub := u.review.Subscribe()
 			defer func() { u.review.Unsubscribe(sub) }()
-			if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
+			if err := u.restoreContent(binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
 				t.Fatal(err)
 			}
 			u.review.IncludeThread(workspace, "blocked-child", false)
-			restoreContentReply(t, u, 0, map[string]any{"data": []any{}})
-			restoreContentReply(t, u, 1, map[string]any{"data": []any{}})
+
 			for _, event := range u.review.TakePreviews(sub) {
 				applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
 			}
@@ -103,7 +102,7 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 			u.Text = "next turn"
 			appServerTestKeys(t, u, "\r")
 			w := u.Host.Input.(*appServerTestInput)
-			if u.restoring == nil || len(restoreContentRequests(t, w)) != 2 {
+			if u.restoring == nil || len(restoreContentRequests(t, w)) != 0 {
 				t.Fatal("restored input became available before retained read settled")
 			}
 			release()
@@ -140,7 +139,7 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 			}
 			appServerTestKeys(t, u, "\r")
 			requests := restoreContentRequests(t, w)
-			if len(requests) != 3 || requests[2].Method != "turn/start" {
+			if len(requests) != 1 || requests[0].Method != "turn/start" {
 				t.Fatal("settled hydration left restored input unavailable")
 			}
 		})

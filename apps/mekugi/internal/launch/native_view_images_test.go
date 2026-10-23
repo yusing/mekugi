@@ -96,7 +96,7 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 		t.Helper()
 		editor := new(composer.Editor)
 		editor.Replace(prepared.Draft)
-		if err := submitBTW(&v.attached, v.shell, &u.Client, &v.picker, &editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, &u.side, false, &u.ownedImages, nil, &u.guardHookCheck, u.controlObservations, &composerPreparation{ctx: t.Context(), input: prepared}); err != nil {
+		if err := submitBTW(&v.attached, v.shell, &u.Client, &v.picker, &editor, &u.questions, &u.approvals, u.clock, preferences.Applied{}, u.serviceTiers, "", "", false, &u.side, false, &u.ownedImages, nil, &u.guardHookCheck, u.controlObservations, &composerPreparation{ctx: t.Context(), input: prepared}); err != nil {
 			t.Fatal(err)
 		}
 		return editor
@@ -129,9 +129,9 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 	if _, err := os.Stat(copy); err != nil {
 		t.Fatal("pending replacement image was reclaimed:", err)
 	}
-	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, u.side, time.Now(), true)
+	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, time.Now(), true)
 	action := sessionpresentation.MenuAction{Version: view.Version, Menu: view.Menu.ID, Kind: sessionpresentation.MenuAccept, Choice: view.Menu.Choices[0].Identity()}
-	applyMenuResult(&v.attached, v.shell, &u.Client, &v.picker, &editor, &u.childHistoryState, preferences.Applied{}, &u.serviceTiers, "", "", false, &u.side, u.clock, &u.questions, &u.approvals, false, u.ownedImages, u.panes, t.Context(), nil, terminalsession.MenuResult{Action: action, Handled: true})
+	applyMenuResult(&v.attached, v.shell, &u.Client, &v.picker, &editor, preferences.Applied{}, &u.serviceTiers, "", "", false, &u.side, u.clock, &u.questions, &u.approvals, false, u.ownedImages, u.panes, t.Context(), nil, terminalsession.MenuResult{Action: action, Handled: true})
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, n.imageClaims)
 	if v.picker.sideTask != nil {
 		t.Fatal("cancel kept pending replacement state")
@@ -148,9 +148,9 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 	}
 	editor = submit(confirmed)
 	previous := u.side
-	view = publishSessionView(&v.attached, &u.Client, &v.picker, "", &u.childHistoryState, preferences.Applied{}, u.serviceTiers, "", "", false, u.side, time.Now(), true)
+	view = publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, time.Now(), true)
 	action = sessionpresentation.MenuAction{Version: view.Version, Menu: view.Menu.ID, Kind: sessionpresentation.MenuAccept, Choice: view.Menu.Choices[1].Identity()}
-	applyMenuResult(&v.attached, v.shell, &u.Client, &v.picker, &editor, &u.childHistoryState, preferences.Applied{}, &u.serviceTiers, "", "", false, &u.side, u.clock, &u.questions, &u.approvals, false, u.ownedImages, u.panes, t.Context(), nil, terminalsession.MenuResult{Action: action, Handled: true})
+	applyMenuResult(&v.attached, v.shell, &u.Client, &v.picker, &editor, preferences.Applied{}, &u.serviceTiers, "", "", false, &u.side, u.clock, &u.questions, &u.approvals, false, u.ownedImages, u.panes, t.Context(), nil, terminalsession.MenuResult{Action: action, Handled: true})
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, n.imageClaims)
 	if u.side == previous || u.side.Pending.Origin != "view" || v.picker.sideTask != nil || strings.Contains(strings.Join(u.side.Pending.Attachments, ""), "changed after replacement preparation") {
 		t.Fatal("confirmed replacement lost origin or re-acquired its snapshot")

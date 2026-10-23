@@ -34,12 +34,12 @@ func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 	u.picker.closeSkillsModal(&u.attached, u.shell, u.clock, u.Editor)
 	appServerTestKeys(t, u, "/skills\r")
 	u.pickerKey("\x1b[B")
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	if u.shell.Main.Menu.Selected != 1 {
 		t.Fatalf("down selected = %d", u.shell.Main.Menu.Selected)
 	}
 	u.pickerKey("\x1b[A")
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	if u.shell.Main.Menu.Selected != 0 {
 		t.Fatalf("up selected = %d", u.shell.Main.Menu.Selected)
 	}
@@ -72,7 +72,7 @@ func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 	}
 	u.picker.Query = ""
 	u.picker.FilterSkills("", u.picker.Kind == "manage")
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	u.shell.Main.Menu.Selected = 1
 	u.pickerKey(" ")
 	if !strings.Contains(w.String(), `"method":"skills/config/write"`) || !strings.Contains(w.String(), `"path":"/tmp/skills/changelog_writer.toml"`) || !strings.Contains(w.String(), `"enabled":true`) {
@@ -101,7 +101,7 @@ func TestUISnapshotSkillsManagerViewportAndPaste(t *testing.T) {
 		u.picker.Skills = append(u.picker.Skills, completion.Choice{Name: fmt.Sprintf("skill-%02d", i), Path: fmt.Sprintf("/work/%d/SKILL.md", i), Enabled: true})
 	}
 	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	u.shell.Main.Menu.Selected = 14
 	rows := u.renderPicker(60, u.pickerHeight(60))
 	t.Run("viewport", func(t *testing.T) {
@@ -150,10 +150,10 @@ func TestUISnapshotSkillsColumnsMeasureOnlyVisibleRows(t *testing.T) {
 			if after := strings.Join(u.renderPicker(48, height), "\n"); after != before {
 				t.Fatalf("off-screen name changed visible alignment:\nbefore:\n%s\nafter:\n%s", ansi.Strip(before), ansi.Strip(after))
 			}
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			u.shell.Main.Menu.Selected = 8
 			u.renderPicker(48, height)
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			u.shell.Main.Menu.Selected = 0
 			if after := strings.Join(u.renderPicker(48, height), "\n"); after != before {
 				t.Fatal("scrolling back retained off-screen column width")

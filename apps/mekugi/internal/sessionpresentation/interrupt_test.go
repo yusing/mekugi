@@ -22,12 +22,11 @@ func TestInterruptResolvesOriginalWorkThroughLifecycle(t *testing.T) {
 			var attached sessionpresentation.Attachment
 			attached.Start(c.control.Thread)
 			var text transcript.State
-			var waits activity.Waits
 			var agent activity.AgentLifecycle
 			observe := func(kind observation.Kind, turn string) {
 				t.Helper()
 				result := attached.ObserveTurn(sessionpresentation.TurnModels{
-					Transcript: &text, Waits: &waits, Agent: &agent,
+					Transcript: &text, Agent: &agent,
 					Selected: c.control.Turn, Start: c.control.InterruptTarget().Start,
 				}, sessionpresentation.TurnObservation{Kind: kind, Thread: c.control.Thread, Turn: turn, Status: "completed", At: c.now})
 				if !result.Admitted {
@@ -159,9 +158,8 @@ func TestInterruptRetainsLogicalWorkAfterHostCompletion(t *testing.T) {
 			var attached sessionpresentation.Attachment
 			attached.Start(c.control.Thread)
 			var text transcript.State
-			var waits activity.Waits
 			var agent activity.AgentLifecycle
-			models := sessionpresentation.TurnModels{Transcript: &text, Waits: &waits, Agent: &agent, Selected: c.control.Turn, Start: c.control.InterruptTarget().Start}
+			models := sessionpresentation.TurnModels{Transcript: &text, Agent: &agent, Selected: c.control.Turn, Start: c.control.InterruptTarget().Start}
 			attached.ObserveTurn(models, sessionpresentation.TurnObservation{Kind: observation.TurnStarted, Thread: c.control.Thread, Turn: c.control.Turn, At: c.now})
 			v := c.publish(sessionpresentation.Caption{})
 			intent := sessionpresentation.InterruptIntent{Version: v.Version, Target: v.Interrupt}

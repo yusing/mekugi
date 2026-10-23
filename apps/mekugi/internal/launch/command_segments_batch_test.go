@@ -136,70 +136,60 @@ func TestCommandSegmentsBatchRejectsUnretainedRecords(t *testing.T) {
 }
 
 func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
-	for _, consumer := range []string{"main", "activity"} {
-		t.Run(consumer, func(t *testing.T) {
-			workspace, directory := t.TempDir(), t.TempDir()
-			store, err := openMekugiReplayStore(directory)
-			if err != nil {
-				t.Fatal(err)
-			}
-			parent, release := retentionTestSession(t, store, "parent", 0)
-			item, _ := batchCommandSegmentsFixture("item")
-			turn := binding.HistoryTurn{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}
-			u := newAppServerSessionTestUI(t, workspace)
-			u.ctx = parent
-			setTestAppServerIntegration(u, testProxyWithStore(store))
-			first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
-			first.Finish(new("one"), new(0))
-			second.Finish(new(""), new(1))
-			retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "parent", Turn: turn.ID, Item: item.ID}}, item.Observation(), execTrackView{complete: true, output: true, code: 1, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Exit: 1}}})
-			awaitCommandSegments(t, u)
-			if notices := u.issues.Notices.Pending(); len(notices) != 0 {
-				t.Fatal(notices)
-			}
-			if _, err := os.Stat(filepath.Join(directory, reports.Name(workspace, reports.ID(turn.ID, item.ID)))); err != nil {
-				t.Fatal(err)
-			}
-			release()
-			u.ctx = t.Context()
-			view := u.testActivity(u.shell.Transcript)
-			if consumer == "main" {
-				u.Thread = "fork"
-				u.restoreHistory([]binding.HistoryTurn{turn})
-			} else {
-				u.attached.session.Caller("fork")
-				restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "fork", Cwd: workspace, Turns: []binding.HistoryTurn{turn}}, false)
-				view = u.testActivity(u.shell.Agents)
-			}
-			var restored *sessionpresentation.NativeItem
-			for _, entry := range view.Entries {
-				if entry.Source.CallID == item.ID {
-					restored = entry.Source.Native
-				}
-			}
-			if restored == nil || len(restored.Segments) != 2 || strings.Join(restored.Segments[0].Output.View().Lines, "\n") != "one" {
-				t.Fatal("consumer did not restore per-command evidence")
-			}
-			if u.restoredSegments != nil {
-				t.Fatal("turn-local prepared records leaked beyond history restoration")
-			}
-			retentionTestAge(t, store, "parent", 30*24*time.Hour)
-			store, err = openMekugiReplayStore(directory)
-			if err != nil {
-				t.Fatal(err)
-			}
-			current, _ := retentionTestSession(t, store, "current", 0)
-			if err := store.cleanupSessions(current); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := os.Stat(filepath.Join(directory, history.SessionName("parent"))); !os.IsNotExist(err) {
-				t.Fatalf("parent did not expire: %v", err)
-			}
-			setTestUIStore(u, store)
-			if got := prepareCommandSegments(u.ctx, u.retained, u.segments, "fork", workspace, turn); got[item.ID] == nil {
-				t.Fatal("fork lost its inherited report after reopen and parent expiry")
-			}
-		})
+	workspace, directory := t.TempDir(), t.TempDir()
+	store, err := openMekugiReplayStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, release := retentionTestSession(t, store, "parent", 0)
+	item, _ := batchCommandSegmentsFixture("item")
+	turn := binding.HistoryTurn{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}
+	u := newAppServerSessionTestUI(t, workspace)
+	u.ctx = parent
+	setTestAppServerIntegration(u, testProxyWithStore(store))
+	first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
+	first.Finish(new("one"), new(0))
+	second.Finish(new(""), new(1))
+	retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "parent", Turn: turn.ID, Item: item.ID}}, item.Observation(), execTrackView{complete: true, output: true, code: 1, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Exit: 1}}})
+	awaitCommandSegments(t, u)
+	if notices := u.issues.Notices.Pending(); len(notices) != 0 {
+		t.Fatal(notices)
+	}
+	if _, err := os.Stat(filepath.Join(directory, reports.Name(workspace, reports.ID(turn.ID, item.ID)))); err != nil {
+		t.Fatal(err)
+	}
+	release()
+	u.ctx = t.Context()
+	view := u.testActivity(u.shell.Transcript)
+	u.Thread = "fork"
+	u.restoreHistory([]binding.HistoryTurn{turn})
+	var restored *sessionpresentation.NativeItem
+	for _, entry := range view.Entries {
+		if entry.Source.CallID == item.ID {
+			restored = entry.Source.Native
+		}
+	}
+	if restored == nil || len(restored.Segments) != 2 || strings.Join(restored.Segments[0].Output.View().Lines, "\n") != "one" {
+		t.Fatal("consumer did not restore per-command evidence")
+	}
+	if u.restoredSegments != nil {
+		t.Fatal("turn-local prepared records leaked beyond history restoration")
+	}
+	retentionTestAge(t, store, "parent", 30*24*time.Hour)
+	store, err = openMekugiReplayStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, _ := retentionTestSession(t, store, "current", 0)
+	if err := store.cleanupSessions(current); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(directory, history.SessionName("parent"))); !os.IsNotExist(err) {
+		t.Fatalf("parent did not expire: %v", err)
+	}
+	setTestUIStore(u, store)
+	if got := prepareCommandSegments(u.ctx, u.retained, u.segments, "fork", workspace, turn); got[item.ID] == nil {
+		t.Fatal("fork lost its inherited report after reopen and parent expiry")
 	}
 }
 

@@ -318,7 +318,10 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 		for _, thread := range []string{"child", "interrupted", "legacy"} {
 			info := binding.ThreadInfo{ID: thread, AgentNickname: thread, Turns: []binding.HistoryTurn{{ID: "old", Status: "completed"}}}
 			registerThread(&u.attached.session, info)
-			restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, info, false)
+			restoreUsage(u.usage, info)
+			observeCost(u.usage, thread, u.attached.session.Agent(u.attached.session.KnownCaller(thread)))
+			u.attached.session.Lifecycle(thread).Restore(restoredAgentIntervals(info.Turns), uint64(len(info.Turns)), false)
+			u.attached.session.Lifecycle(thread).RestoreFinal(true)
 		}
 		u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: u.attached.session.Roster()})
 		u.shell.Agents.Painter.Theme = diffrender.DarkTheme
@@ -343,7 +346,7 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			u.model = "main-model"
 			rate := inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
 			u.attached.session.Agent("/root").OutputThroughput = rate
-			before := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+			before := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 			frame, _ := u.testMainFrame(120, 12, 0)
 			if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "main-model") || strings.Contains(text, "40.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("Main contribution: %s", text)

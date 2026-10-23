@@ -252,9 +252,6 @@ func restoreMainHistory(attached *attachedPresentation, terminal *terminalsessio
 func applyRestoredMain(source *sessionpresentation.ActivitySource, placements []*restoredPlacement) {
 	for _, p := range placements {
 		entry := p.entry
-		if p.link != nil && sessionpresentation.MainActivityLinked(entry) {
-			entry.ActivitySeq = *p.link
-		}
 		if entry.Observed.IsZero() {
 			entry.Observed = p.at
 		}
@@ -305,17 +302,14 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 	if turn.Status == "inProgress" && (item.Type == "agentMessage" || item.Status == "inProgress") {
 		method = "item/started"
 	}
-	progressPhase := appServerHistoryProgressPhase(facts, turn.Status)
-	if text, wait, progress := itemProgress(attached, terminal, retainedSession, clock, facts, control.Thread, turn.ID, item.ID, progressPhase, false); progress {
-		if text != "" {
+	switch item.Type {
+	case "contextCompaction":
+		if item.Status != "inProgress" {
 			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
-				Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
-				Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: progressPhase, Wait: wait},
+				Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: "Context compacted", Observed: presentationTime(clock),
+				Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: "item/completed"},
 			}}})
 		}
-		return
-	}
-	switch item.Type {
 	case "mcpToolCall":
 		entry := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: attached.session.Caller(control.Thread), CallID: item.ID, Observed: presentationTime(clock),
 			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Status: item.Status, Duration: sessionpresentation.ItemDuration(facts)}}

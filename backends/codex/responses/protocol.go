@@ -217,12 +217,6 @@ func Translate(fields map[string]json.RawMessage, model, format string, policy P
 				continue
 			}
 			messages = append(messages, providerMessage{role: role, content: content})
-		case "agent_message":
-			content, err := providerContent(item["content"], d)
-			if err != nil {
-				return nil, nil, err
-			}
-			messages = append(messages, providerMessage{role: "user", content: content})
 		case "function_call", "custom_tool_call":
 			name := providerToolName(responses.StringField(item, "namespace"), responses.StringField(item, "name"))
 			arguments := responses.StringField(item, "arguments")
@@ -337,7 +331,7 @@ func providerContent(raw json.RawMessage, d Diagnostics) (any, error) {
 		case "refusal":
 			content = append(content, map[string]any{"type": "refusal", "refusal": responses.StringField(part, "refusal")})
 		case "encrypted_content":
-			return nil, d.Incompatible(d.Prefix+"_encrypted_history", fmt.Sprintf("%s cannot read encrypted agent messages; start a fresh thread with the %s collaboration bridge enabled.", d.Name, d.Name))
+			return nil, d.Incompatible(d.Prefix+"_encrypted_history", fmt.Sprintf("%s cannot read encrypted message content; start a fresh thread.", d.Name))
 		default:
 			return nil, fmt.Errorf("unsupported %s content type %q", d.Name, responses.StringField(part, "type"))
 		}

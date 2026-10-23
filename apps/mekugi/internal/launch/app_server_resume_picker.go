@@ -8,7 +8,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -90,7 +89,7 @@ func loadResumePage(control *sessioncontrol.Client[appServerRequest], clock func
 	return nil
 }
 
-func resumePickerResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, approvalMode bool, quit *bool, m appserver.Message) error {
+func resumePickerResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, approvalMode bool, quit *bool, m appserver.Message) error {
 	p := (*resumePicker)
 	if p == nil || string(m.ID) != p.request {
 		return nil
@@ -143,8 +142,8 @@ func resumePickerResponse(attached *attachedPresentation, terminal *terminalsess
 	if attached.view != "" {
 		return nil
 	}
-	publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), presentationTime(clock))
-	return applyResumeAction(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, settings, tiers, title, backend, restoring, side, panel, resumePicker, approvalMode, quit, terminal.Main.Resume.PageDemand())
+	publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side), presentationTime(clock))
+	return applyResumeAction(attached, terminal, control, picker, editor, questions, approvals, clock, settings, tiers, title, backend, restoring, side, panel, resumePicker, approvalMode, quit, terminal.Main.Resume.PageDemand())
 }
 
 // A failed page stops automatic paging, so the failure stays visible rather
@@ -220,12 +219,12 @@ func resumeSessionFailed(attached *attachedPresentation, terminal *terminalsessi
 	return replayResumePending(dispatch, resumePending)
 }
 
-func applyResumeAction(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, approvalMode bool, quit *bool, action sessionpresentation.ResumeAction) error {
+func applyResumeAction(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, approvalMode bool, quit *bool, action sessionpresentation.ResumeAction) error {
 	if action.Kind == sessionpresentation.ResumeNoAction {
 		return nil
 	}
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
+		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
 	}()
 	if err := attached.presentation.AdmitResume(action); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
@@ -238,8 +237,8 @@ func applyResumeAction(attached *attachedPresentation, terminal *terminalsession
 		if attached.view != "" {
 			return nil
 		}
-		publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), presentationTime(clock))
-		return applyResumeAction(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, settings, tiers, title, backend, restoring, side, panel, resumePicker, approvalMode, quit, terminal.Main.Resume.PageDemand())
+		publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side), presentationTime(clock))
+		return applyResumeAction(attached, terminal, control, picker, editor, questions, approvals, clock, settings, tiers, title, backend, restoring, side, panel, resumePicker, approvalMode, quit, terminal.Main.Resume.PageDemand())
 	case sessionpresentation.ResumeToggleWorkspace:
 		if p.Workspace != "" {
 			p.All = !p.All

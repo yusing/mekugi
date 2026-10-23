@@ -6,7 +6,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
@@ -18,12 +17,12 @@ const archiveConfirmChoice uint64 = 2
 // Source: codex-rs/tui/src/chatwidget/slash_dispatch.rs:240:278 and
 // codex-rs/tui/src/app/event_dispatch.rs:3705:3771@ddb33e34b.
 // Codex owns stopping the turn and archiving the thread and its descendants.
-func showArchivePicker(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool) {
+func showArchivePicker(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool) {
 	if control.Thread == "" || restoring || control.Replacement.Pending() {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be ready", false)
 		return
 	}
-	deleteDraftRange(attached, terminal, control, picker, editor, childKey, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay, owned, 0, len((*editor).Text))
+	deleteDraftRange(attached, terminal, control, picker, editor, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay, owned, 0, len((*editor).Text))
 	picker.cancelScan()
 	p := picker
 	picker.openMenu("archive")

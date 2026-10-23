@@ -2,7 +2,6 @@ package binding
 
 import (
 	"cmp"
-	json "encoding/json/v2"
 	"slices"
 
 	"github.com/yusing/mekugi/contracts/observation"
@@ -14,10 +13,9 @@ func (i ThreadItem) Observation() observation.Item {
 	out := observation.Item{
 		UserShell: i.Type == "commandExecution" && i.Source == "userShell",
 		ID:        i.ID, Type: i.Type, Status: i.Status, Delivery: i.Delivery, Phase: i.Phase,
-		Cwd: i.Cwd, Kind: i.Kind, Path: i.Path, Command: i.Command, ProcessID: i.ProcessID,
-		ClientID: i.ClientID, AgentThreadID: i.AgentThreadID, AgentPath: i.AgentPath,
-		Tool: i.Tool, SenderThreadID: i.SenderThreadID, ReceiverThreadIDs: slices.Clone(i.ReceiverThreadIDs),
-		Prompt: i.Prompt, Model: i.Model, ReasoningEffort: i.ReasoningEffort,
+		Cwd: i.Cwd, Path: i.Path, Command: i.Command, ProcessID: i.ProcessID,
+		ClientID:   i.ClientID,
+		Tool:       i.Tool,
 		DurationMS: i.DurationMS, AggregatedOutput: i.AggregatedOutput, ExitCode: i.ExitCode,
 		Summary: slices.Clone(i.Summary), Query: i.Query,
 	}
@@ -46,12 +44,6 @@ func (i ThreadItem) Observation() observation.Item {
 	if i.Results != nil {
 		out.Results = new(len(i.Results))
 	}
-	if i.AgentsStates != nil {
-		out.AgentsStates = make(map[string]observation.AgentState, len(i.AgentsStates))
-		for id, state := range i.AgentsStates {
-			out.AgentsStates[id] = observation.AgentState{Status: state.Status}
-		}
-	}
 	return out
 }
 
@@ -64,14 +56,5 @@ func (c FileChange) Observation() observation.FileChange {
 // Observation admits supplied lineage labels without opening a rollout.
 // Source: apps/mekugi/internal/router/app_server_events.go:125:152@[439670ce].
 func (t ThreadInfo) Observation() observation.Thread {
-	var source struct {
-		SubAgent struct {
-			ThreadSpawn struct {
-				AgentPath string `json:"agent_path"`
-				AgentRole string `json:"agent_role"`
-			} `json:"thread_spawn"`
-		} `json:"subAgent"`
-	}
-	_ = json.Unmarshal(t.Source, &source)
-	return observation.Thread{ID: t.ID, Nickname: t.AgentNickname, Path: source.SubAgent.ThreadSpawn.AgentPath, Role: cmp.Or(t.AgentRole, source.SubAgent.ThreadSpawn.AgentRole)}
+	return observation.Thread{ID: t.ID, Nickname: t.AgentNickname, Role: t.AgentRole}
 }

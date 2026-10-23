@@ -1,14 +1,14 @@
 package launch
 
 import (
-	"encoding/json/jsontext"
 	"fmt"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -414,8 +414,7 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 
 func TestAppServerResumeSwitchKeepsCurrentSessionLive(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", ParentThreadID: "main", AgentNickname: "worker", AgentRole: "worker",
-		Source: jsontext.Value(`{"subAgent":{"thread_spawn":{"agent_path":"/root/worker","agent_role":"worker"}}}`)})
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", ParentThreadID: "main", AgentNickname: "worker", AgentRole: "worker"})
 	appServerTestKeys(t, u, "/resume saved\r")
 	resume := resumeTestPrepared(t, u, w)
 	for range 300 {
@@ -512,15 +511,15 @@ func TestAppServerResumePickerFailedPageStopsPaging(t *testing.T) {
 }
 
 func (u *appServerUI) resumePickerKey(key string) error {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-	return applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, u.shell.Main.Resume.Key(key))
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	return applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, u.shell.Main.Resume.Key(key))
 }
 func (u *appServerUI) fillResumePicker() error {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-	return applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, u.shell.Main.Resume.PageDemand())
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	return applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, u.shell.Main.Resume.PageDemand())
 }
 func (u *appServerUI) resumePickerFrame(width, height int) []string {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u.shell.Main.Resume.Render(&u.shell.Transcript.Painter.Painter, width, height, terminalsession.SelectionStyle(&u.shell.Transcript.Painter.Painter))
 }
 

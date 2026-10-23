@@ -63,13 +63,6 @@ func newSubagentCommentaryTestTransformWithMetadata(
 ) (*mekugiResponseTransform, *Preparer, *codexresponses.Request) {
 	t.Helper()
 	additional := testCodeModeAdditionalTools(testCodeModeDescription)
-	namespaces := additional["tools"].([]any)
-	collaboration := namespaces[1].(map[string]any)
-	collaboration["tools"] = []any{
-		map[string]any{"type": "function", "name": "spawn_agent"},
-		map[string]any{"type": "function", "name": "followup_task"},
-		map[string]any{"type": "function", "name": "send_message"},
-	}
 	input := append([]any{additional, map[string]any{"role": "user", "content": "task"}}, conversation...)
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-parent", "reasoning": map[string]any{"effort": "medium"}, "input": input,

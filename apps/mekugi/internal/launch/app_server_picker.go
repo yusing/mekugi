@@ -12,7 +12,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -331,7 +330,7 @@ func (p *composerPicker) pickerMessage(attached *attachedPresentation, terminal 
 	return true
 }
 
-func acceptCompletion(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, parent context.Context, environment []string, choice completion.Choice) bool {
+func acceptCompletion(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, parent context.Context, environment []string, choice completion.Choice) bool {
 	p := picker
 	target := p.Target
 	if picker.completionTarget((*editor).Draft, attached.conversation.ShellMode()) != target {
@@ -340,7 +339,7 @@ func acceptCompletion(attached *attachedPresentation, terminal *terminalsession.
 		return false
 	}
 	if target.Kind == '/' {
-		deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, target.Start, target.End)
+		deleteDraftRange(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, target.Start, target.End)
 		(*editor).InsertText(choice.Name + " ")
 		(*editor).Run, p.Open = composer.NoRun, false
 		// Enter continues through the existing local command dispatcher.
@@ -367,7 +366,7 @@ func acceptCompletion(attached *attachedPresentation, terminal *terminalsession.
 		}
 	}
 	// One undo step restores the original token, not a half-completed edit.
-	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, target.Start, target.End)
+	deleteDraftRange(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, target.Start, target.End)
 	(*editor).InsertText(text)
 	if imagePath != "" {
 		(*editor).Images = append((*editor).Images, composer.Token{Start: target.Start, End: target.Start + len(text), Path: imagePath})

@@ -44,7 +44,7 @@ func captureShellEdit(attached *attachedPresentation, terminal *terminalsession.
 	if edit == nil {
 		return nil
 	}
-	restoreDiffThread(attached, terminal, reviewOwner, reviewSource, preparePane, binding.ThreadInfo{ID: control.Thread, Cwd: attached.cwd}, true)
+	restoreDiffThread(attached, terminal, reviewOwner, reviewSource, preparePane, binding.ThreadInfo{ID: control.Thread, Cwd: attached.cwd})
 	edit.Begin(reviewOwner)
 	return edit
 }

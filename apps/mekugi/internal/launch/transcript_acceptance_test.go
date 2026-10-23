@@ -15,7 +15,6 @@ import (
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
@@ -104,67 +103,6 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 	}
 	if receipts != 1 || replies != 1 {
 		t.Fatalf("replay duplicated receipts/replies or constructed live transport: receipts=%d replies=%d", receipts, replies)
-	}
-}
-
-func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
-	u, _ := newPagedHistoryUI(t)
-	historyTurnsReply(t, u)
-	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("latest", "Latest historical answer", 109000)}, "nextCursor": "older"})
-	at := time.Unix(200, 0)
-	u.clock = func() time.Time { return at }
-	u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
-	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
-	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "live", "status": "inProgress"}})
-	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "live", "itemId": "shared", "delta": "Live prefix "})
-	var liveSeq uint64
-	for _, entry := range u.attached.childSource.Entries {
-		if n := entry.Source.Native; n != nil && n.Thread == "child" && n.Turn == "live" && n.Item == "shared" {
-			liveSeq = entry.Source.Seq
-		}
-	}
-	if liveSeq == 0 {
-		t.Fatal("live reasoning was not presented")
-	}
-	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
-		t.Fatal(err)
-	}
-	restoreContentReply(t, u, 5, map[string]any{"data": []any{map[string]any{
-		"turnId": "t", "completedAtMs": 101000, "item": map[string]any{"id": "shared", "type": "reasoning", "summary": []string{"Older public summary"}, "content": []string{"PRIVATE"}},
-	}}})
-	if !u.attached.session.Agent("/root/worker").Responding {
-		t.Fatal("historical page reset the active child lifecycle")
-	}
-	at = at.Add(2 * time.Second)
-	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "live", "itemId": "shared", "delta": "continues after paging"})
-	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "live", "item": map[string]any{"id": "shared", "type": "reasoning", "summary": []string{}}})
-	older, latest, live := -1, -1, -1
-	for i, entry := range u.attached.childSource.Entries {
-		n := entry.Source.Native
-		if n == nil || n.Thread != "child" {
-			continue
-		}
-		switch {
-		case n.Turn == "t" && n.Item == "shared":
-			older = i
-			if entry.Source.Text != "Older public summary" || entry.Source.Observed.UnixMilli() != 101000 || n.Live {
-				t.Fatalf("historical identity/time was not retained: %+v", entry.Source)
-			}
-		case n.Item == "latest":
-			latest = i
-		case n.Turn == "live" && n.Item == "shared":
-			live = i
-			if entry.Source.Seq != liveSeq || entry.Source.Text != "Live prefix continues after paging" || !n.Live || n.Phase != "item/completed" || n.Thought != 2*time.Second || !entry.Source.Completed.Equal(at) {
-				t.Fatalf("paging mutated live reasoning correlation: %+v", entry.Source)
-			}
-		}
-	}
-	if older < 0 || latest <= older || live <= latest {
-		t.Fatalf("history/live placement changed: older=%d latest=%d live=%d", older, latest, live)
-	}
-	frame := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(100, 60).Lines, "\n"))
-	if !strings.Contains(frame, "Older public summary") || !strings.Contains(frame, "Live prefix continues after paging") || strings.Contains(frame, "PRIVATE") {
-		t.Fatalf("rendered transcript lost history/live separation:\n%s", frame)
 	}
 }
 

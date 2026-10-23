@@ -67,7 +67,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	}
 	providerParts := []map[string]any{{"type": "input_text", "text": input[0].Text}, {"type": "input_image", "image_url": "data:image/png;base64,test"}, {"type": "input_text", "text": input[1].Text}}
 	raw := responses.MustMarshalJSON([]any{map[string]any{"type": "message", "role": "user", "content": providerParts}})
-	if question := binding.SubmittedUserText(raw, "/root", false); question != draft.Text {
+	if question := binding.SubmittedUserText(raw, false); question != draft.Text {
 		t.Fatalf("attachment became naming text: %q", question)
 	}
 	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}

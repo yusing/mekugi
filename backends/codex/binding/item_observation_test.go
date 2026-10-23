@@ -10,7 +10,7 @@ import (
 
 func TestHistoryItemObservationPreservesPublicFacts(t *testing.T) {
 	thread, err := DecodeHistoryThread([]byte(`{"thread":{"id":"child","agentNickname":"Reader",
-		"source":{"subAgent":{"thread_spawn":{"agent_path":"/root/reader","agent_role":"worker"}}},
+		"agentRole":"worker",
 		"turns":[{"id":"turn","items":[
 			{"id":"command","type":"commandExecution","source":"userShell","command":"cat file","cwd":"/workspace","status":"completed",
 			 "commandActions":[{"type":"read","command":"cat file","path":"file"}],"durationMs":0,"exitCode":0,"aggregatedOutput":""},
@@ -24,7 +24,7 @@ func TestHistoryItemObservationPreservesPublicFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := thread.Observation(); got != (observation.Thread{ID: "child", Nickname: "Reader", Path: "/root/reader", Role: "worker"}) {
+	if got := thread.Observation(); got != (observation.Thread{ID: "child", Nickname: "Reader", Role: "worker"}) {
 		t.Fatalf("thread metadata = %#v", got)
 	}
 	items := thread.Turns[0].Items

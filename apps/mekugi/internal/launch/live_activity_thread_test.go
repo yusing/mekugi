@@ -101,7 +101,7 @@ func TestConversationThreadEndsAtOtherTraffic(t *testing.T) {
 }
 
 func TestConversationAsidesFollowThread(t *testing.T) {
-	for _, kind := range []string{"reasoning", "Waiting for agent", "Finished waiting", "Wait failed"} {
+	for _, kind := range []string{"reasoning"} {
 		t.Run(kind, func(t *testing.T) {
 			const width = 60
 			v := threadTestView()

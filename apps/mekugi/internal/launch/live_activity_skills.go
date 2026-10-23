@@ -6,12 +6,8 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
-
-type activeSkillSet = activitypresentation.SkillSet
 
 func openSkills(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, surface *terminalsession.Attachment, view *activityui.View, agent string) {
 	names := slices.Clone(activitySource(attached, terminal, view).ActiveSkills()[agent])

@@ -203,7 +203,14 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 			if text["instructions"].Text != responses.StringField(request, "instructions") || len(developers) == 0 || !responses.SameJSONValue(responses.MustMarshalJSON(developers), responses.MustMarshalJSON(firstDevelopers)) {
 				t.Error("dump lost exact final or inherited instructions")
 			}
-			if record.WireBytes != len(request["input"]) || record.ProjectedBytes < record.WireBytes || (id == "second" && record.ProjectedBytes == record.WireBytes) {
+			// The diagnostic measures native incremental input before WebSocket
+			// shaping applies JSON V1 HTML escaping. Compare the same encoding.
+			var wireInput any
+			if err := json.Unmarshal(request["input"], &wireInput); err != nil {
+				t.Error(err)
+				return
+			}
+			if record.WireBytes != len(responses.MustMarshalJSON(wireInput)) || record.ProjectedBytes < record.WireBytes || id == "second" && record.ProjectedBytes == record.WireBytes {
 				t.Errorf("incorrect projected/wire byte evidence: %d/%d", record.ProjectedBytes, record.WireBytes)
 			}
 			if id == "second" && record.Cached == 0 {

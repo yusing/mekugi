@@ -280,10 +280,14 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 		ID: "cat-call", Type: "commandExecution", Command: "cat > direct.go", ExitCode: new(2),
 	}}}})
 	assertCapturedCommand(t, restored.testActivity(restored.shell.Transcript), "main", "cat-call", "Edit", 2)
-	restored.attached.session.Caller("child")
-	restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: "child", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "c", Status: "completed", Items: []binding.ThreadItem{sibling}}}}, false)
-	assertCapturedCommand(t, restored.testActivity(restored.shell.Agents), "child", sibling.ID, "Search", 0)
-	for _, view := range []*activityAdapter{u.testActivity(u.shell.Agents), restored.testActivity(restored.shell.Agents)} {
+	siblingRuntime := newAppServerSessionTestUI(t, workspace)
+	siblingRuntime.Thread = "child"
+	siblingRuntime.startSession("child", workspace)
+	siblingRuntime.review.Projection.Data = snapshot
+	publishFixtureReview(t, siblingRuntime)
+	siblingRuntime.restoreHistory([]binding.HistoryTurn{{ID: "c", Status: "completed", Items: []binding.ThreadItem{sibling}}})
+	assertCapturedCommand(t, siblingRuntime.testActivity(siblingRuntime.shell.Transcript), "child", sibling.ID, "Search", 0)
+	for _, view := range []*activityAdapter{u.testActivity(u.shell.Agents), siblingRuntime.testActivity(siblingRuntime.shell.Transcript)} {
 		for _, entry := range view.Entries {
 			if entry.Source.Native == nil || entry.Source.Native.Item != sibling.ID {
 				continue

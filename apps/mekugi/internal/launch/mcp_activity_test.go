@@ -70,9 +70,11 @@ func TestMCPActivityLiveAndRestored(t *testing.T) {
 				}
 				item.Status = status
 				restored := newAppServerSessionTestUI(t, t.TempDir())
-				var entries []sessionpresentation.ActivityEntry
-				restoreActivityItem(&restored.attached, restored.shell, restored.clock, restored.ctx, restored.retained, restored.retainedSession, restored.activity, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: thread, Cwd: restored.attached.cwd}, binding.HistoryTurn{ID: "turn"}, item, entry.Source.Agent, time.Unix(100, 0), &entries, nil)
-				if len(entries) != 1 || entries[0].Native.Live || entries[0].Native.Running || entries[0].Text != entry.Source.Text {
+				restored.Thread = thread
+				restored.startSession(thread, restored.attached.cwd)
+				restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
+				entries := restored.attached.source.Entries
+				if len(entries) != 1 || entries[0].Source.Native.Live || entries[0].Source.Native.Running || entries[0].Source.Text != entry.Source.Text {
 					t.Fatalf("restoration lost MCP evidence: %+v", entries)
 				}
 			})
@@ -172,15 +174,10 @@ func TestThreadControlSpawnActivityLiveAndRestored(t *testing.T) {
 				}
 				restored := newAppServerSessionTestUI(t, t.TempDir())
 				turns := []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{completed}}}
-				if thread == "main" {
-					restored.restoreHistory(turns)
-					check(restored.attached.source)
-				} else {
-					var entries []sessionpresentation.ActivityEntry
-					restoreActivityItem(&restored.attached, restored.shell, restored.clock, restored.ctx, restored.retained, restored.retainedSession, restored.activity, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: thread, Cwd: restored.attached.cwd}, turns[0], completed, "/root/child", time.Unix(100, 0), &entries, nil)
-					restored.attached.childSource.Apply(sessionpresentation.ActivityEvent{Entries: entries})
-					check(restored.attached.childSource)
-				}
+				restored.Thread = thread
+				restored.startSession(thread, restored.attached.cwd)
+				restored.restoreHistory(turns)
+				check(restored.attached.source)
 			})
 		}
 	}
@@ -420,4 +417,22 @@ func TestUISnapshotMCPActivity(t *testing.T) {
 			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/mcp-%s-%d.txt", thread, width), append(rows, "plain after MCP"), width)
 		}
 	}
+}
+
+// coordinationTestCall supplies the retained shape produced by threadcontrol.
+func coordinationTestCall(t *testing.T, id, tool, thread, task, message string) binding.ThreadItem {
+	t.Helper()
+	args, err := json.Marshal(map[string]string{"task_name": task, "target": task, "message": message})
+	if err != nil {
+		t.Fatal(err)
+	}
+	acknowledgement, err := json.Marshal(map[string]string{"id": id, "state": "confirmed", "thread_id": thread, "task_name": task})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": string(acknowledgement)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return binding.ThreadItem{ID: id, Type: "mcpToolCall", Server: "threadcontrol", Tool: tool, Status: "completed", Arguments: args, Result: result}
 }

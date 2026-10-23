@@ -22,12 +22,9 @@ type ObservationInput struct {
 	Main, Selected, Workspace, CommandTimeout string
 	Start                                     string // Main's admitted start origin, absent during replay.
 	Tracked                                   bool
-	Wait                                      WaitEvidence
 }
 
 type ObservationResult struct {
-	Wait                      *activitypresentation.WaitProgress
-	Spawned                   []string
 	Handled, Publish, Started bool
 	Deliveries                []ActivityDelivery
 }
@@ -72,11 +69,11 @@ type CommandReportDelivery struct {
 	Final                       bool
 }
 
-func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *ActivitySource, transcript observation.Transcript, waits *activitypresentation.Waits, outputs *feed.Retention, in ObservationInput) (result ObservationResult) {
+func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *ActivitySource, transcript observation.Transcript, outputs *feed.Retention, in ObservationInput) (result ObservationResult) {
 	if s.retired {
 		return
 	}
-	p, facts := in.Event, in
+	p := in.Event
 	sources := []*ActivitySource{mainSource, childSource}
 	method := string(p.Kind)
 	text := in.Text
@@ -147,7 +144,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 			active, start = agent.Turn, ""
 		}
 		updates := s.ObserveTurn(TurnModels{
-			Transcript: transcript, Waits: waits, Agent: s.Lifecycle(p.ThreadID), Selected: active, Start: start,
+			Transcript: transcript, Agent: s.Lifecycle(p.ThreadID), Selected: active, Start: start,
 		}, TurnObservation{
 			Kind: observation.Kind(method), Thread: p.ThreadID, Turn: p.TurnID,
 			Status: p.TurnStatus, At: now,
@@ -162,14 +159,6 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 				agent.Turn = p.TurnID
 			}
 		} else {
-			for _, progress := range updates.Waits {
-				value := progress.Value
-				entries = append(entries, ActivityEntry{
-					Seq: s.Activity().NextSequence(), Agent: s.Caller(p.ThreadID), Kind: "progress",
-					Text: value.ProgressText(), Observed: now,
-					Native: &NativeItem{Thread: p.ThreadID, Turn: p.TurnID, Item: progress.ID, Phase: method, Wait: &value, Live: value.Live},
-				})
-			}
 			entries = append(entries, textEntries(updates.Text, true)...)
 			if updates.Current {
 				agent.Turn = ""
@@ -197,22 +186,10 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 			}
 		}
 
-		if text, wait, handled, progress := s.ProjectProgress(waits, item, p.ThreadID, p.TurnID, id, method, true, facts.Wait); handled {
-			result.Wait = progress
-			if text != "" {
-				native.Wait = wait
-				entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "progress", Text: text, Observed: now, Native: native})
-			}
-			break
-		}
 		switch item.Type {
-		case "subAgentActivity":
-			if item.AgentThreadID != "" && item.AgentThreadID != in.Main {
-				old := s.Caller(item.AgentThreadID)
-				if item.AgentPath != "" {
-					s.Agent(old).Name = item.AgentPath
-					rename(old, item.AgentPath)
-				}
+		case "contextCompaction":
+			if method == "item/completed" {
+				entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "progress", Text: "Context compacted", Observed: now, Native: native})
 			}
 		case "reasoning":
 			entries = append(entries, textEntries(s.ObserveText(transcript, text, main), true)...)
@@ -234,7 +211,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 					break
 				}
 			}
-			native.CommandTimeout = facts.CommandTimeout
+			native.CommandTimeout = in.CommandTimeout
 			native.UserShell = item.UserShell
 			native.CommandCwd = CommandDirectory(item, in.Workspace)
 			native.SearchResults = SearchResults(item)
@@ -267,7 +244,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 			}
 			s.CompleteCommand(native, item, outputs)
 			delivery := &CommandDelivery{Kind: CommandComplete, Key: key, At: now}
-			if run := s.Commands()[key]; run != nil && facts.Tracked {
+			if run := s.Commands()[key]; run != nil && in.Tracked {
 				run.Completion, run.Completed, run.CompletedAt = &entry, item, now
 				delivery.Tracked = true
 				for _, source := range sources {
@@ -294,16 +271,6 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 			if len(item.Changes) > 0 {
 				native.EditPages = activitypresentation.HostEditPages(item, in.Workspace, method)
 				entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "tool", Text: activitypresentation.HostEditText(item, in.Workspace), CallID: id, Observed: now, Native: native})
-			}
-		case "collabAgentToolCall":
-			if method == "item/completed" {
-				deliveries := s.Collaboration(item, id, now, activitypresentation.ObservedCollaboration)
-				entries = append(entries, deliveries...)
-				for _, entry := range deliveries {
-					if entry.Start != nil {
-						result.Spawned = append(result.Spawned, s.Agent(entry.Agent).Thread)
-					}
-				}
 			}
 		case "agentMessage":
 			if main {

@@ -338,7 +338,7 @@ func TestNativeAppliedEffectsAcknowledgedBeforePaint(t *testing.T) {
 				c.calls = nil // The original paint receipt has already been sent.
 			}
 			u.issues.CleanupNotice("", "", "planning", "new unseen cleanup progress")
-			delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
+			delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 			if delivery == nil || len(u.issues.Notices.Pending()) != 1 {
 				t.Fatal("pending progress fixture unavailable")
 			}

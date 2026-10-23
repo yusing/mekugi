@@ -108,10 +108,8 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	if child.ContextKnown {
 		t.Fatal("child context arrived without evidence")
 	}
-	// thread/list may omit the rollout path; thread/read can supply it later.
-	u.restoring = &appServerActivityRestore{state: restoredDiscoveryTestState("main", "child")}
-	appServerTestRequest(t, u, "2", "thread/read")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":2,"result":{"thread":{"id":"child","path":%q,"turns":[]}}}`, path))
+	restoreContextUsage(child, binding.ThreadInfo{ID: "child", Path: path})
+	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, nil, u.attached.session.Roster())
 	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "20K/400K • 5%" {
 		t.Fatal(got)
 	}

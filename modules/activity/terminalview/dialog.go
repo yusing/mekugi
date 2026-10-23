@@ -83,6 +83,11 @@ func (p *Painter) DialogPage(block Block, width int) terminalui.DialogPage {
 		}
 	}
 
+	// Agent traffic opens the authored message. Its detached tool evidence
+	// remains available on the source value rather than replacing message copy.
+	if block.Kind == "message" {
+		block.DetailCode = ""
+	}
 	code := textsanitize.Safe(block.Code, false)
 	if block.DetailCode != "" {
 		code = textsanitize.Safe(block.DetailCode, false)

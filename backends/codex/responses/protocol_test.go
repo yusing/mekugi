@@ -13,7 +13,7 @@ func TestGrokTranslationPreservesToolsHistoryAndImages(t *testing.T) {
 	_ = json.Unmarshal(body, &request)
 	request["input"] = []any{
 		map[string]any{"type": "message", "role": "developer", "content": "rules"},
-		map[string]any{"type": "agent_message", "content": []any{map[string]string{"type": "input_text", "text": "task"}}},
+		map[string]any{"type": "message", "role": "user", "content": []any{map[string]string{"type": "input_text", "text": "task"}}},
 		map[string]any{"type": "custom_tool_call", "call_id": "c1", "name": "exec", "input": "text(1)"},
 		map[string]any{"type": "function_call", "call_id": "c2", "namespace": "other", "name": "lookup", "arguments": "{}"},
 		map[string]any{"type": "custom_tool_call_output", "call_id": "c1", "output": []any{map[string]string{"type": "input_text", "text": "image"}, map[string]string{"type": "input_image", "image_url": "data:image/png;base64,AA=="}}},
@@ -34,7 +34,7 @@ func TestGrokTranslationPreservesToolsHistoryAndImages(t *testing.T) {
 		t.Fatal("reasoning lost")
 	}
 	for _, kind := range []string{"encrypted_content", "input_file"} {
-		request["input"] = []any{map[string]any{"type": "agent_message", "content": []any{map[string]string{"type": kind, "encrypted_content": "opaque"}}}}
+		request["input"] = []any{map[string]any{"type": "message", "role": "assistant", "content": []any{map[string]string{"type": kind, "encrypted_content": "opaque"}}}}
 		if _, err := testTranslate(mustTestJSON(t, request)); err == nil {
 			t.Fatalf("accepted %s", kind)
 		}
@@ -212,7 +212,6 @@ func TestGrokRejectsNonStringHistory(t *testing.T) {
 	for _, value := range []any{nil, 42, true, map[string]any{}} {
 		for _, item := range []map[string]any{
 			{"type": "message", "role": "user", "content": value},
-			{"type": "agent_message", "content": value},
 			{"type": "function_call_output", "call_id": "c1", "output": value},
 			{"type": "custom_tool_call_output", "call_id": "c1", "output": value},
 			{"type": "custom_tool_call", "call_id": "c1", "name": "exec", "input": value},

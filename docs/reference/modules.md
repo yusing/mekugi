@@ -14,9 +14,8 @@ Own host-operation feeds, roster derivation and retained output
 
 - Composition: selected; lifetime: `attached-session`.
 - Requires: none.
-- Contributes: `record-kinds`, `terminal-roster`.
+- Contributes: `terminal-roster`.
 - Hosts: `activity-details`.
-- Records: `wait`.
 - Codex connections: none.
 
 ## [agentguidance](../../modules/agentguidance/SPEC.md)
@@ -198,7 +197,7 @@ Retain applied settings and renderer preferences for a workspace and thread
 Schedule retained observations with synthetic streaming and read-only playback controls
 
 - Composition: selected; lifetime: `stateless`.
-- Requires: `sessionhistory`.
+- Requires: `activity`, `sessionhistory`.
 - Hosts: `replay-timing`.
 - Codex connections: `rollout`.
 - Capabilities: `rollout` (required).

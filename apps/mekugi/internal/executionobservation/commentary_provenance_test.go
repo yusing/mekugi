@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
-
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -17,8 +15,8 @@ func TestCommentaryReplayFilteringRequiresExactRetainedID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	known := binding.SubagentMessageID("known")
-	unknown := binding.SubagentMessageID("unknown")
+	known := "retained-commentary"
+	unknown := "unrelated-commentary"
 	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
 		return store.write(replayRecord{Version: 1, Workspace: "workspace", CallID: known, Commentary: true})
 	}); err != nil {

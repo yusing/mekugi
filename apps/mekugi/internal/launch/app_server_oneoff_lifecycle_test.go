@@ -2,16 +2,17 @@ package launch
 
 import (
 	"fmt"
+	"strings"
+	"testing"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-	"strings"
-	"testing"
 )
 
 func oneoffTestChild(t *testing.T, u *appServerUI) {
-	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "oneoff-child", "parentThreadId": "oneoff", "agentNickname": "worker", "source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/worker"}}}}})
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "oneoff-child", "parentThreadId": "oneoff", "agentNickname": "worker"}})
 }
 
 func TestOneoffChildIsolation(t *testing.T) {
@@ -19,7 +20,7 @@ func TestOneoffChildIsolation(t *testing.T) {
 	u.startSession("main", "/workspace")
 	oneoffTestStart(t, u, wire)
 	oneoffTestChild(t, u)
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "spawn", "type": "collabAgentToolCall", "tool": "spawnAgent", "senderThreadId": "oneoff", "receiverThreadIds": []string{"oneoff-child"}, "prompt": "ONEOFF_CHILD_TASK"}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": coordinationTestCall(t, "spawn", "spawn_agent", "oneoff-child", u.attached.session.Caller("oneoff-child"), "ONEOFF_CHILD_TASK")})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "ONEOFF_CHILD_RESULT", "phase": "final_answer"}})
 	for _, e := range u.attached.source.Entries {
 		if strings.Contains(e.Source.Text, "ONEOFF_CHILD") || (e.Source.Native != nil && e.Source.Native.Thread == "oneoff") {
@@ -252,54 +253,6 @@ func oneoffTestAnswer(t *testing.T, u *appServerUI) {
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
 }
-func TestOneoffNoStartedChild(t *testing.T) {
-	for _, tc := range []struct {
-		parent string
-		close  bool
-	}{{"oneoff", false}, {"main", false}, {"oneoff", true}} {
-		t.Run(fmt.Sprintf("%s/closed=%v", tc.parent, tc.close), func(t *testing.T) {
-			u, wire := newAppServerTestUI()
-			u.startSession("main", "/workspace")
-			oneoffTestStart(t, u, wire)
-			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "silent-child", "turnId": "ct", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "METADATA_CHILD_RESULT", "phase": "final_answer"}})
-			request := appServerOneRequest(t, wire, "thread/read", "")
-			for _, e := range u.attached.source.Entries {
-				if strings.Contains(e.Source.Text, "METADATA_CHILD_RESULT") {
-					t.Fatal("unknown ancestry entered Main")
-				}
-			}
-			if tc.close {
-				if err := terminalTest(u).send("\x1b"); err != nil {
-					t.Fatal(err)
-				}
-				_ = btwTestRequest(t, wire, "turn/interrupt", "oneoff")
-			}
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"silent-child","parentThreadId":%q,"agentNickname":"worker","turns":[]}}}`, request.ID, tc.parent))
-			if !tc.close && tc.parent == "oneoff" && !u.Requests.WorkSide("silent-child") {
-				t.Fatal("metadata did not admit descendant")
-			}
-			found := false
-			for _, e := range u.attached.source.Entries {
-				found = found || strings.Contains(e.Source.Text, "METADATA_CHILD_RESULT")
-			}
-			if found != (tc.parent == "main") {
-				t.Fatal("settled ancestry projected wrong Main audience")
-			}
-			if tc.close {
-				for _, e := range u.attached.childSource.Entries {
-					if strings.Contains(e.Source.Text, "METADATA_CHILD_RESULT") {
-						t.Fatal("late metadata revived closed Activity")
-					}
-				}
-				questionTestMessage(t, u, "late-approval", "item/commandExecution/requestApproval", map[string]any{"threadId": "silent-child", "turnId": "ct", "itemId": "command", "command": "printf late"})
-				if len(u.approvals.calls()) != 0 {
-					t.Fatal("closed metadata descendant admitted approval")
-				}
-			}
-		})
-	}
-}
-
 func TestOneoffSupplementDrain(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")

@@ -226,9 +226,6 @@ func TestAppServerSessionTitleBeforeSessionStart(t *testing.T) {
 			appServerTestMessage(t, u, `{"id":100,"result":{"thread":{"id":"saved","name":""}}}`)
 			requests := appServerDrainRequests[sessionTitleTestRequest](t, wire)
 			wantRequests := 2
-			if method == "thread/resume" {
-				wantRequests = 3 // Resume also loads the agent roster.
-			}
 			if len(requests) != wantRequests || requests[0].Method != "thread/name/set" || requests[0].Params.ThreadID != "saved" || requests[0].Params.Name != "Final name" || requests[1].Method != "model/list" {
 				t.Fatalf("start title persistence: %+v", requests)
 			}
@@ -252,7 +249,7 @@ func TestAppServerSessionTitleEmptyAndCommandBoundaries(t *testing.T) {
 	if u.attached.feedback.Text != "Usage: /title <title>" || u.Text != "/title " || wire.Len() != 0 {
 		t.Fatalf("empty title: draft=%q notice=%q wire=%q", u.Text, u.attached.feedback.Text, wire.String())
 	}
-	if titleCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.titleGenerator, "/titles wrong") || titleCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.titleGenerator, "prompt /title wrong") {
+	if titleCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.titleGenerator, "/titles wrong") || titleCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.titleGenerator, "prompt /title wrong") {
 		t.Fatal("non-command interpreted as a rename")
 	}
 	nativeTestCancel(t, u)

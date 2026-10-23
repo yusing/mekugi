@@ -2,6 +2,7 @@ package sessionreplay_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +38,9 @@ func TestDescriptorCorruptHooksCountAgainstCorpus(t *testing.T) {
 				}
 				item := observation.Item{ID: thread, Type: "agentMessage"}
 				if i+1 < len(threads) {
-					item.AgentThreadID = threads[i+1]
+					item.Type, item.Server, item.Tool, item.Status = "mcpToolCall", "threadcontrol", "spawn_agent", "completed"
+					item.Arguments = []byte(`{"task_name":"child"}`)
+					item.Result = []byte(fmt.Sprintf(`{"content":[{"type":"text","text":%q}]}`, fmt.Sprintf(`{"state":"confirmed","thread_id":%q,"task_name":%q}`, threads[i+1], "/root/"+threads[i+1])))
 				}
 				at := time.Date(2026, 10, 1, 0, 0, i, 0, time.UTC)
 				sources[path] = observation.Source{Thread: thread, Cwd: workspace, Events: []observation.Event{{

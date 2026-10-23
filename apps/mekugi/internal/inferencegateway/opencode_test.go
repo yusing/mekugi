@@ -69,7 +69,7 @@ func TestOpenCodeRejectsUnsupportedHistoryAndModels(t *testing.T) {
 	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	for _, input := range []string{
 		`[{"type":"reasoning","encrypted_content":"private"}]`,
-		`[{"type":"agent_message","content":[{"type":"encrypted_content","encrypted_content":"private"}]}]`,
+		`[{"type":"message","role":"user","content":[{"type":"encrypted_content","encrypted_content":"private"}]}]`,
 	} {
 		_, err := testTranslateProviderRequest([]byte(`{"model":"`+service.Prefix+`:`+openCodeTestModel(service)+`","input":`+input+`}`), &service)
 		diagnostic, ok := errors.AsType[*CompatibilityError](err)

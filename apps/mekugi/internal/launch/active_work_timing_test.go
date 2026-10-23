@@ -99,39 +99,34 @@ func TestAppServerActiveWorkTurnEndsAndLateUsage(t *testing.T) {
 }
 
 func TestAppServerActiveWorkRestoresClosedSpans(t *testing.T) {
-	for _, thread := range []string{"main", "child"} {
-		for _, timed := range []bool{false, true} {
-			name := thread + "/missing"
-			if timed {
-				name = thread + "/closed"
-			}
-			t.Run(name, func(t *testing.T) {
-				u, at := newActiveWorkTestUI(t)
-				turns := []binding.HistoryTurn{
-					{ID: "missing", Status: "completed"},
-					{ID: "open", Status: "inProgress", StartedAt: 900},
-					{ID: "reversed", Status: "interrupted", StartedAt: 800, CompletedAt: 700},
-				}
-				want := time.Duration(0)
-				if timed {
-					turns = append(turns,
-						binding.HistoryTurn{ID: "completed", Status: "completed", StartedAt: 100, CompletedAt: 120},
-						binding.HistoryTurn{ID: "interrupted", Status: "interrupted", StartedAt: 300, CompletedAt: 315})
-					want = 35 * time.Second
-				}
-				if thread == "main" {
-					restoreMainHistory(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, u.review, &u.pendingEditReceipts, u.notifications, u.retained, u.retainedSession, u.activity, u.segments, &u.restoredSegments, turns, nil, nil)
-				} else {
-					restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: thread, Turns: turns}, false)
-				}
-				assertAgentWork(t, u, thread, *at, want, false)
-				*at = at.Add(24 * time.Hour)
-				assertAgentWork(t, u, thread, *at, want, false)
-				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "live"}})
-				*at = at.Add(5 * time.Second)
-				assertAgentWork(t, u, thread, *at, want+5*time.Second, true)
-			})
+	const thread = "main"
+	for _, timed := range []bool{false, true} {
+		name := thread + "/missing"
+		if timed {
+			name = thread + "/closed"
 		}
+		t.Run(name, func(t *testing.T) {
+			u, at := newActiveWorkTestUI(t)
+			turns := []binding.HistoryTurn{
+				{ID: "missing", Status: "completed"},
+				{ID: "open", Status: "inProgress", StartedAt: 900},
+				{ID: "reversed", Status: "interrupted", StartedAt: 800, CompletedAt: 700},
+			}
+			want := time.Duration(0)
+			if timed {
+				turns = append(turns,
+					binding.HistoryTurn{ID: "completed", Status: "completed", StartedAt: 100, CompletedAt: 120},
+					binding.HistoryTurn{ID: "interrupted", Status: "interrupted", StartedAt: 300, CompletedAt: 315})
+				want = 35 * time.Second
+			}
+			u.restoreHistory(turns)
+			assertAgentWork(t, u, thread, *at, want, false)
+			*at = at.Add(24 * time.Hour)
+			assertAgentWork(t, u, thread, *at, want, false)
+			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "live"}})
+			*at = at.Add(5 * time.Second)
+			assertAgentWork(t, u, thread, *at, want+5*time.Second, true)
+		})
 	}
 }
 

@@ -86,13 +86,7 @@ func TestAppServerRestoredAgentTimerUsesTurns(t *testing.T) {
 	if !agent.Started.Equal(historyTime(200)) || !agent.LastResponse.Equal(historyTime(350)) {
 		t.Fatalf("restored timer used metadata instead of turns: %+v", agent)
 	}
-	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
-	info.ID = "child"
-	restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, info, false)
-	child := u.attached.session.Agent("/root/worker")
-	if !child.Started.Equal(agent.Started) || !child.LastResponse.Equal(agent.LastResponse) {
-		t.Fatalf("child restored timer differs from Main: %+v", child)
-	}
+
 }
 
 func TestAppServerSessionProjectsChildThreads(t *testing.T) {
@@ -100,9 +94,9 @@ func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 	setTestAppServerIntegration(u, &observationFixture{usage: newTestUsage(t)})
 	u.usage.Observation("child", "child", "gpt-6-luna", "").Observe(inference.Usage{InputTokens: 1200, UncachedInputTokens: 1200, OutputTokens: 30})
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentRole": "explore",
-		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/worker"}}}}})
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "spawn", "type": "collabAgentToolCall",
-		"tool": "spawnAgent", "senderThreadId": "main", "receiverThreadIds": []string{"child"}, "prompt": "Inspect the pane.", "model": "gpt-6-luna"}})
+		"agentNickname": strings.TrimPrefix("/root/worker", "/root/")}})
+	u.attached.session.Agent("/root/worker").Settings.Model = "gpt-6-luna"
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": coordinationTestCall(t, "spawn", "spawn_agent", "child", u.attached.session.Caller("child"), "Inspect the pane.")})
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "c1"}})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c1", "item": map[string]any{"id": "cmd", "type": "commandExecution",
 		"command": "go test ./...", "exitCode": 2, "commandActions": []map[string]any{{"type": "unknown", "command": "go test ./..."}}}})

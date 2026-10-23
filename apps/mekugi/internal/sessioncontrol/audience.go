@@ -117,15 +117,6 @@ func (a *Audience) Collect(events ...activitypresentation.Supplement) {
 	}
 }
 
-func (a *Audience) Restore(event activitypresentation.Supplement) {
-	if a == nil {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.supplements.Restore(event)
-}
-
 // audienceLocked preserves unknown versus invalid ancestry for notice admission.
 func (a *Audience) audienceLocked(root string) (activitypresentation.Audience, bool) {
 	audience := activitypresentation.Audience{Root: root, Threads: make(map[string]string)}
@@ -217,33 +208,11 @@ func (a *Audience) TakeUnreturned(root string) []activitypresentation.Unreturned
 	return a.supplements.TakeUnreturned(audience)
 }
 
-func (a *Audience) ChildThread(root, name string) string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for thread, node := range a.threads {
-		if node.child && !node.conflicted && node.name == name && a.rootLocked(thread) == root {
-			return thread
-		}
-	}
-	return ""
-}
-
 // Snapshot resolves the current audience without exposing its mutable registry.
 func (a *Audience) Snapshot(root string) (activitypresentation.Audience, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.audienceLocked(root)
-}
-
-func (a *Audience) ParentName(thread string) string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if node := a.threads[thread]; node != nil {
-		if parent := a.threads[node.parent]; parent != nil {
-			return parent.name
-		}
-	}
-	return ""
 }
 
 func (a *Audience) Take(root string) (activitypresentation.Audience, []activitypresentation.Supplement) {

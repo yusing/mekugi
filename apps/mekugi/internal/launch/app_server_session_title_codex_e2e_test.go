@@ -86,7 +86,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 				w.WriteHeader(400)
 				return
 			}
-			if request.ReasoningEffort() != "medium" || binding.SubmittedUserText(request.Fields["input"], "/root", true) != "Explain native session naming" {
+			if request.ReasoningEffort() != "medium" || binding.SubmittedUserText(request.Fields["input"], true) != "Explain native session naming" {
 				t.Error("naming request lost medium effort or first prompt")
 			}
 			close(namingStarted)

@@ -2,7 +2,6 @@
 package playback
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/replaytiming"
+	"github.com/yusing/mekugi/modules/activity/coordination"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -126,10 +126,9 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 			e := Event{Event: observed}
 			if e.Kind == observation.ItemCompleted {
 				r.Items++
-				item := e.Item
-				if item.AgentThreadID != "" && r.Threads[item.AgentThreadID] == "" {
-					r.Threads[item.AgentThreadID] = cmp.Or(item.AgentPath, "/root/"+item.AgentThreadID[:min(8, len(item.AgentThreadID))])
-					children = append(children, item.AgentThreadID)
+				if c, ok := coordination.ProjectCoordination(e.Item); ok && c.Kind == "start" && c.Confirmed && r.Threads[c.Thread] == "" {
+					r.Threads[c.Thread] = c.Target
+					children = append(children, c.Thread)
 				}
 				if e.At.After(e.Started) {
 					begin := e
