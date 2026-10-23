@@ -720,3 +720,21 @@ test("queued Edit withdraws captured work before opening new retained editors", 
   assert.ok(owner.requests.some((r) => r.params.body.operation.recovery?.action === "edit"));
   assert.ok(!owner.requests.some((r) => r.params.body.operation.recovery?.action === "retry"));
 });
+
+test("Steer names captured work and leaves the editor untouched", async () => {
+  const owner = machine();
+  const frame = semantic.frame.view;
+  frame.Interrupt = { Thread: "thread-one", Turn: "active", Start: "", Wait: "", Stop: "" };
+  const editor = semantic.editor("thread-one");
+  editor.text = "unsent draft";
+  const steering = semantic.steerWaiting();
+  await tick();
+  const operation = owner.requests[0].params.body.operation;
+  assert.equal(operation.composer.Intent.Operation, 10);
+  assert.deepEqual(operation.composer.Intent.Work, frame.Interrupt);
+  assert.equal(operation.composer.Consumed, false);
+  assert.equal(operation.composer.Draft.Text, "");
+  owner.requests[0].resolve({ version: frame.Version });
+  await steering;
+  assert.equal(editor.text, "unsent draft");
+});

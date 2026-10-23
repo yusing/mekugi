@@ -69,6 +69,7 @@
         <p class="text-small text-muted">
           {[
             recovery.attachments && "Original attachments are retained.",
+            recovery.queued && "Retry keeps this message queued for the next turn.",
             "Leaving this thread or disconnecting discards it.",
             effect.Thread !== view?.Input.ID && "Return to the thread it was written in to retry.",
           ]
@@ -117,6 +118,13 @@
         label="Edit queued messages"
         disabled={disabled || view?.Input.ID !== view?.Main.ID}
         onclick={() => semantic.editWaiting()}>Edit</Button
+      >
+      <Button
+        variant="quiet"
+        class="my-0.5"
+        label="Steer queued messages"
+        disabled={disabled || view?.Input.ID !== view?.Main.ID || !view?.Pending.CanSteer}
+        onclick={() => semantic.steerWaiting()}>Steer</Button
       >
     </div>
   {/if}

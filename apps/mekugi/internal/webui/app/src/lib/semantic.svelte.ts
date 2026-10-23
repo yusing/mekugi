@@ -505,6 +505,23 @@ class Semantic {
       else check();
     });
   }
+  async steerWaiting(): Promise<void> {
+    const event = this.event;
+    if (!event) return;
+    await this.send({
+      composer: {
+        Intent: {
+          Thread: event.frame.view.Main.ID,
+          Version: event.frame.view.Version,
+          Target: this.target(),
+          Operation: 10,
+          Work: event.frame.view.Interrupt,
+        },
+        Draft: textDraft(),
+        Consumed: false,
+      },
+    });
+  }
   async editWaiting(): Promise<void> {
     const event = this.event;
     if (!event) return;

@@ -57,10 +57,13 @@ reconnection. After asynchronous rejection, an intact retained submission offers
 Retry, Edit or Discard, without editing individual attachments or rereading their sources.
 The pending recovery belongs to that control view; leaving it releases unsent input.
 
-The waiting-message bar offers Edit on its right. It withdraws locally queued
-input to its originating view for editing without interrupting the active turn.
+The waiting-message bar offers Edit on its right. It withdraws locally waiting
+input into the requesting view for editing without interrupting the active turn.
+The queue bar also offers Steer to send queued messages into the active turn
+without changing the composer draft.
 Editable text stays separate from retained attachment labels and snapshots; Send
-explicitly resubmits the edited input, while Discard releases it. Already transmitted
+explicitly resubmits ordinary input; queued input returns to the next-turn queue.
+Retry intact also preserves the original delivery mode. Discard releases it. Already transmitted
 input remains host-owned. The composer's Send and Stop controls share one alignment;
 Tab queues input without a separate Queue button.
 

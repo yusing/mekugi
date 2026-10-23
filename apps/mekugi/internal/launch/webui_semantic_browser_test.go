@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
@@ -331,16 +332,98 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		run("press", "Tab")
 		run("wait", "--text", "1 message waits")
 		capture("queued")
+		// Native Alt-Up takes the browser queue into the requesting TUI view.
+		transport := sessionapi.ControlTransport(socket)
+		defer transport.CloseIdleConnections()
+		rpc, err := sessionapi.OpenRPC(ctx, &http.Client{Transport: transport}, "http://mekugi"+sessionapi.NativeRPCPath, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rpc.Close()
+		subscription, err := rpc.Subscribe(ctx, "view/attach", sessionapi.RPCParams{Thread: "main"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer subscription.Close()
+		next := func() sessionapi.NativeEvent {
+			t.Helper()
+			event, err := subscription.Next(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var frame sessionapi.NativeEvent
+			if err := json.Unmarshal(event.Data, &frame, jsonv1.FormatDurationAsNano(true)); err != nil {
+				t.Fatal(err)
+			}
+			return frame
+		}
+		native := next()
+		mutation := sessionapi.NativeMutation{Attachment: native.Attachment, Version: native.Frame.View.Version,
+			Operation: sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{
+				Thread: "main", Version: native.Frame.View.Version, Operation: sessionpresentation.RestoreWaiting, Work: new(native.Frame.View.Interrupt)}}}}
+		body, _ := json.Marshal(mutation, jsonv1.FormatDurationAsNano(true))
+		if err := rpc.Call(ctx, "view/intent", sessionapi.RPCParams{Thread: "main", Body: body}, nil); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			native = next()
+			if len(native.Frame.Effects) == 0 {
+				continue
+			}
+			found := false
+			for _, effect := range native.Frame.Effects {
+				if effect.Restore != nil && strings.Contains(effect.Restore.Text, "queued original") {
+					if len(effect.Restore.Attachments) == 0 {
+						t.Fatal("TUI lost retained file contents")
+					}
+					found = true
+				}
+			}
+			if found {
+				break
+			}
+		}
+		run("wait", "--fn", `!document.querySelector('button[aria-label="Edit queued messages"]') && !document.querySelector('section[aria-label="Unsent submission"]')`)
+		run("find", "label", "Message", "fill", "queued original")
+		run("upload", "input[type=file]", laterUpload)
+		run("find", "label", "Message", "fill", "queued original")
+		run("press", "Tab")
+		run("wait", "--text", "1 message waits")
 		button("Edit queued messages")
 		run("wait", "--fn", "!!document.querySelector('textarea[aria-label=\"Message text 1\"]')")
 		run("find", "label", "Message text 1", "fill", "edited queued text ")
 		capture("queue-editor")
 		run("click", "section[aria-label=\"Unsent submission\"] button:last-child")
 		waitRecovered()
-		body, err := os.ReadFile(ledger)
-		if err != nil || !strings.Contains(string(body), "edited queued text") {
-			t.Fatalf("edited input was not sent: %v", err)
+		run("wait", "--text", "1 message waits")
+		body, err = os.ReadFile(ledger)
+		if err != nil || strings.Contains(string(body), "edited queued text") {
+			t.Fatalf("editing unexpectedly steered: %v", err)
 		}
+		run("find", "label", "Message", "fill", "draft stays untouched")
+		button("Steer queued messages")
+		run("wait", "--fn", `!document.querySelector('button[aria-label="Steer queued messages"]') && document.querySelector('#composer-text').value === 'draft stays untouched'`)
+		body, err = os.ReadFile(ledger)
+		if err != nil || !strings.Contains(string(body), "edited queued text") {
+			t.Fatalf("explicit steer did not send: %v", err)
+		}
+		run("find", "label", "Message", "fill", "retry remains queued")
+		run("press", "Tab")
+		run("wait", "--text", "1 message waits")
+		button("Stop")
+		run("wait", "--fn", "!document.querySelector('button[aria-label=Stop]')")
+		run("wait", "--text", "Retry keeps this message queued for the next turn.")
+		message("hold queued editing again")
+		run("wait", "--fn", "!!document.querySelector('button[aria-label=Stop]')")
+		button("Retry intact")
+		waitRecovered()
+		run("wait", "--text", "1 message waits")
+		body, err = os.ReadFile(ledger)
+		if err != nil || strings.Contains(string(body), "retry remains queued") {
+			t.Fatalf("retry unexpectedly steered: %v", err)
+		}
+		button("Steer queued messages")
+		run("wait", "--fn", `!document.querySelector('button[aria-label="Steer queued messages"]')`)
 		button("Stop")
 		run("wait", "--fn", "!document.querySelector('button[aria-label=Stop]')")
 	})
@@ -591,6 +674,7 @@ func serveWebUISemanticHost(t *testing.T) {
 		if turn != nil {
 			write(map[string]any{"method": "turn/started", "params": map[string]any{"threadId": params.Thread, "turn": map[string]any{"id": turn.ID}}})
 			if strings.Contains(string(turn.Items[0].Content), "hold queued editing") {
+				write(map[string]any{"method": "item/completed", "params": map[string]any{"threadId": params.Thread, "turnId": turn.ID, "item": turn.Items[0]}})
 				continue
 			}
 			for _, item := range turn.Items {

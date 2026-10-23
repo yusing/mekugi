@@ -37,7 +37,7 @@
     <Button
       disabled={disabled || effect.Thread !== semantic.frame?.view.Input.ID}
       onclick={() => semantic.send({ recovery: { effect: effect.ID, action: "retry", text } })}
-      >Send</Button
+      >{effect.Recovery?.queued ? "Save to queue" : "Send"}</Button
     >
   </div>
 </div>
