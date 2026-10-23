@@ -1,81 +1,45 @@
-// Source: capturer/content_tokens.go:17:84@91f6a320, request-only estimation.
 package projection
 
-import (
-	"bytes"
-	jsonv1 "encoding/json"
+import "github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
-)
-
-// EstimateSavings measures request-local content, never provider billing usage.
-// Failure cannot prevent projection; the caller publishes an unmeasured receipt.
-func EstimateSavings(before, after []byte) (saved int64, measured bool) {
-	if bytes.Equal(before, after) {
-		return 0, true
-	}
-	codec, err := tokenizer.New()
-	if err != nil {
-		return 0, false
-	}
-	original, err := contentTokens(before, codec)
-	if err != nil {
-		return 0, false
-	}
-	projected, err := contentTokens(after, codec)
-	if err != nil {
-		return 0, false
-	}
-	return int64(original - projected), true
+// Savings measures changed decoded string leaves. Projection preserves all
+// other keys and scalars, so their independent token counts cancel exactly.
+// The codec and accumulated estimate belong only to this request.
+type Savings struct {
+	codec  *tokenizer.Codec
+	saved  int64
+	failed bool
 }
 
-// Decoded keys/scalars exclude wire framing; embedded JSON/code stays literal.
-func contentTokens(payload []byte, codec *tokenizer.Codec) (int, error) {
-	value, err := responses.DecodeJSONValue(payload)
-	if err != nil {
-		return codec.Count(string(payload))
+func (s *Savings) Add(before, after string) {
+	if before == after || s.failed {
+		return
 	}
-	return decodedTokens(value, codec)
+	if s.codec == nil {
+		var err error
+		s.codec, err = tokenizer.New()
+		if err != nil {
+			s.failed = true
+			return
+		}
+	}
+	original, err := s.codec.Count(before)
+	if err != nil {
+		s.failed = true
+		return
+	}
+	projected, err := s.codec.Count(after)
+	if err != nil {
+		s.failed = true
+		return
+	}
+	s.saved += int64(original) - int64(projected)
 }
 
-func decodedTokens(value any, codec *tokenizer.Codec) (int, error) {
-	switch value := value.(type) {
-	case map[string]any:
-		total := 0
-		for key, child := range value {
-			n, err := codec.Count(key)
-			if err != nil {
-				return 0, err
-			}
-			total += n
-			n, err = decodedTokens(child, codec)
-			if err != nil {
-				return 0, err
-			}
-			total += n
-		}
-		return total, nil
-	case []any:
-		total := 0
-		for _, child := range value {
-			n, err := decodedTokens(child, codec)
-			if err != nil {
-				return 0, err
-			}
-			total += n
-		}
-		return total, nil
-	case string:
-		return codec.Count(value)
-	case jsonv1.Number:
-		return codec.Count(responses.CanonicalNumber(string(value)))
-	case bool:
-		if value {
-			return codec.Count("true")
-		}
-		return codec.Count("false")
-	default:
-		return codec.Count("null")
+// Result preserves projection when auxiliary measurement is unavailable.
+func (s *Savings) Result() (saved int64, measured bool) {
+	if s.failed {
+		return 0, false
 	}
+	return s.saved, true
 }

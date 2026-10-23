@@ -22,7 +22,7 @@ func testHistory() *history.Service {
 }
 func newTestUsage(t *testing.T) *Service {
 	t.Helper()
-	u := New(testHistory())
+	u := New()
 	if err := u.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}

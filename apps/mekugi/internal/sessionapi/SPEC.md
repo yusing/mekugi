@@ -44,6 +44,10 @@ Native server and client queues replace superseded complete-frame updates so res
 and ordinary progress do not accumulate copies of the same history. Attachment
 transitions, acquired output and runtime exit remain ordered, and unacknowledged
 effects remain available in the newer frame.
+Unchanged native publications reuse immutable Activity snapshots and revisioned
+saved-review content before encoding history. Other frame facts still participate
+in change detection independently of the presentation revision; output and semantic
+consequence budgets remain unchanged.
 The [contract](CONTRACT.md) defines payloads. Consumers own rendering, drafts,
 selection and request-result presentation, never execution lifetime.
 

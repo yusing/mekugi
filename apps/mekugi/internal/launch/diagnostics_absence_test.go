@@ -93,7 +93,7 @@ func runDiagnosticsAbsentSession(t *testing.T, ctx context.Context, args []strin
 		t.Fatal(err)
 	}
 	history := testHistory()
-	usage := accounting.New(history)
+	usage := accounting.New()
 	if err := usage.Start(ctx); err != nil {
 		t.Fatal(err)
 	}

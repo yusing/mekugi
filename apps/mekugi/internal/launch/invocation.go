@@ -269,7 +269,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
 		defer review.Close()
 		mekugiCalls = executionobservation.New(executionobservation.Config{Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
-		usage.Configure(retained.Store.Directory(), retained.Writes, retained.Limits, func(thread string, err error) {
+		usage.Configure(retained.Store, retained.Writes, retained.Limits, func(thread string, err error) {
 			issues.AddThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
 		})
 		if issues != nil {

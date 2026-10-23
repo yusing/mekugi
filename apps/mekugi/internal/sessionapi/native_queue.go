@@ -124,6 +124,12 @@ func normalizeNativeOutput(event publication) publication {
 	if event.Kind != "snapshot" && event.Kind != "patch" {
 		return event
 	}
+	// Each output array fits inside the complete publication. Below the
+	// per-feed budget neither trimming loop can remove anything, so avoid
+	// parsing the entire transcript on both the server and the client.
+	if len(event.Data) <= nativeOutputBacklogBytes {
+		return event
+	}
 	var decoded nativeQueueEvent
 	if json.Unmarshal(event.Data, &decoded) != nil || decoded.Frame == nil {
 		return event

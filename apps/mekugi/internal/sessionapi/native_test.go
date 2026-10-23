@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
@@ -291,5 +294,79 @@ func TestNativePublicationSuppressesOnlyIdenticalFrames(t *testing.T) {
 	}
 	if data, _ := v.queue.pop(); data.Kind != "snapshot" {
 		t.Fatalf("replacement publication: %+v", data)
+	}
+	// Feed identity is independent of the session view revision. New immutable
+	// publications and in-place changes to non-feed caller values both publish.
+	frame.Main = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: "new history"}}}}
+	frame.View.Info.Skills = []string{"first"}
+	for _, mutate := range []func(){func() {}, func() { frame.View.Info.Skills[0] = "second" }} {
+		mutate()
+		if err := n.Publish("idle", frame); err != nil {
+			t.Fatal(err)
+		}
+		if data, _ := v.queue.pop(); data.Kind != "patch" {
+			t.Fatal("lost a feed or non-feed update without a view revision")
+		}
+	}
+	frame.Review = &changes.ReviewView{Revision: 1, Coverage: "loading"}
+	for _, mutate := range []func(){
+		func() {},
+		func() { frame.Review.Coverage = "complete" },
+		func() {
+			frame.Review = &changes.ReviewView{Revision: 2, Coverage: "complete", Publication: changes.Publication{
+				Files: []changes.File{{Path: "changed.go"}},
+			}}
+		},
+		func() { frame.Review = nil },
+	} {
+		mutate()
+		if err := n.Publish("idle", frame); err != nil {
+			t.Fatal(err)
+		}
+		if data, _ := v.queue.pop(); data.Kind != "patch" {
+			t.Fatal("lost saved-review replacement or coverage update")
+		}
+	}
+}
+
+func TestNativeUnchangedPublicationDoesNotReencodeHistory(t *testing.T) {
+	allocatedBytes := func(entries int, authority viewAuthority) uint64 {
+		n := NewLive().Native()
+		source, request, failure := n.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", authority)
+		if failure != nil {
+			t.Fatal(failure)
+		}
+		defer source.close()
+		frame := nativeTestFrame("thread", 1)
+		frame.Main = &activity.Publication{Entries: make([]activity.Entry, entries)}
+		for i := range frame.Main.Entries {
+			frame.Main.Entries[i].Text = strings.Repeat("history ", 32)
+		}
+		frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{
+			Files: []changes.File{{Path: "large.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{
+				Diff: strings.Repeat("+saved diff\n", entries*1024),
+			}}}}},
+		}}
+		if err := n.Publish(request.Attachment, frame); err != nil {
+			t.Fatal(err)
+		}
+		source.native.pop()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		for range 5 {
+			// The owner returns a new wrapper over the same immutable content.
+			frame.Review = new(*frame.Review)
+			if err := n.Publish(request.Attachment, frame); err != nil {
+				t.Fatal(err)
+			}
+		}
+		runtime.ReadMemStats(&after)
+		return (after.TotalAlloc - before.TotalAlloc) / 5
+	}
+	for _, authority := range []viewAuthority{localNativeView, remoteHumanView} {
+		small, large := allocatedBytes(1, authority), allocatedBytes(1000, authority)
+		if large > small+128<<10 {
+			t.Fatalf("unchanged publication bytes scale with history for authority %d: small=%d large=%d", authority, small, large)
+		}
 	}
 }

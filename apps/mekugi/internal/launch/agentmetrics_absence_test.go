@@ -44,7 +44,7 @@ func TestAgentMetricsAbsentDebugSession(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	history := testHistory()
-	usage := accounting.New(history)
+	usage := accounting.New()
 	if err := usage.Start(ctx); err != nil {
 		t.Fatal(err)
 	}

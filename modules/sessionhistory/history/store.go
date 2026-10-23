@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/libraries/persistence"
 )
 
@@ -23,7 +24,33 @@ type Store struct {
 	service   *Service
 	mu        sync.Mutex
 	revision  string
-	files     map[string]int64
+	files     *storageFiles
+}
+
+// Sizes and their derived totals are one revision-validated publication view.
+type storageFiles struct {
+	sizes  map[string]int64
+	kinds  map[string]int64
+	shared int64
+}
+
+func (f *storageFiles) set(name string, kind recordkind.Spec, size int64) {
+	delta := size - f.sizes[name]
+	f.sizes[name] = size
+	if !kind.SeparateBudget {
+		f.shared += delta
+	}
+	if kind.ID != "" {
+		f.kinds[kind.ID] += delta
+	}
+}
+
+func (f *storageFiles) usage(kind recordkind.Spec) storageUsage {
+	usage := storageUsage{kind: kind, total: f.shared, own: f.kinds[kind.ID]}
+	if kind.SeparateBudget {
+		usage.total = usage.own
+	}
+	return usage
 }
 
 // Directory is the selected retained path shared by this publication handle.
@@ -126,7 +153,7 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 		return errors.New("invalid managed publication name")
 	}
 	s := tx.store
-	_, managed, kindErr := s.service.Kind(name)
+	kind, managed, kindErr := s.service.Kind(name)
 	if kindErr != nil {
 		return kindErr
 	}
@@ -157,7 +184,7 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	var files map[string]int64
+	var files *storageFiles
 	if revision == s.revision {
 		files = s.files
 	}
@@ -169,7 +196,7 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 	}
 	if files != nil {
 		if managed || CatalogName(name) {
-			files[name] = int64(len(data))
+			files.set(name, kind, int64(len(data)))
 		}
 		s.files = files
 	}
@@ -189,15 +216,15 @@ func (tx *Transaction) FileSizes() (map[string]int64, error) {
 		return nil, err
 	}
 	if s.files != nil && s.revision == revision {
-		return s.files, nil
+		return s.files.sizes, nil
 	}
 	entries, err := os.ReadDir(s.directory)
 	if err != nil {
 		return nil, err
 	}
-	files := make(map[string]int64)
+	files := &storageFiles{sizes: make(map[string]int64), kinds: make(map[string]int64)}
 	for _, entry := range entries {
-		_, managed, err := s.service.Kind(entry.Name())
+		kind, managed, err := s.service.Kind(entry.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -211,8 +238,8 @@ func (tx *Transaction) FileSizes() (map[string]int64, error) {
 		if !info.Mode().IsRegular() {
 			return nil, errors.New("session storage contains a non-regular managed record; cleanup refused")
 		}
-		files[entry.Name()] = info.Size()
+		files.set(entry.Name(), kind, info.Size())
 	}
 	s.revision, s.files = revision, files
-	return files, nil
+	return files.sizes, nil
 }

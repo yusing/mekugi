@@ -108,7 +108,8 @@ Renderer placement belongs to the activity and native UI contracts.
 ## Lifecycle
 
 One invocation owner accumulates observations and coalesces pending publication
-by thread. Its background writer waits for shared publication independently of
+by thread. It borrows the invocation's selected session-history store, including
+its revision-validated publication view. Its background writer waits for shared publication independently of
 response delivery and roster reads. Shutdown stops admission, attempts to drain
 pending observations within five seconds, then cancels and joins the writer.
 

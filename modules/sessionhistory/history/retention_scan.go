@@ -28,7 +28,7 @@ type storageSnapshot struct {
 	dependencies map[string][]string
 }
 
-func (s *Store) storageSnapshotContext(ctx context.Context) (storageSnapshot, error) {
+func (s *Store) storageSnapshotContext(ctx context.Context, limits Limits, pressure *storagePressureRequest, expire bool) (storageSnapshot, error) {
 	snapshot := storageSnapshot{files: make(map[string]int64), owners: make(map[string]int), dependencies: make(map[string][]string)}
 	entries, err := os.ReadDir(s.directory)
 	if err != nil {
@@ -81,6 +81,31 @@ func (s *Store) storageSnapshotContext(ctx context.Context) (storageSnapshot, er
 	// An absent owner cannot disclose its historical dependency graph. Preserve
 	// the entire potentially shared pool without opening its unregistered records.
 	if snapshot.unknown != "" {
+		return snapshot, nil
+	}
+	// Metadata can prove there is nothing to reclaim without opening every
+	// dependency-bearing record. Any possible removal still needs the full graph.
+	name, growth := "", int64(0)
+	if pressure != nil {
+		name, growth = pressure.Name, pressure.Growth
+	}
+	required, limit := s.Usage(limits, snapshot.files, name, snapshot.files[name]+growth)
+	needed := required > limit
+	if expire && !needed {
+		cutoff := time.Now().Add(-SessionRetention)
+		for _, candidate := range snapshot.sessions {
+			needed = needed || candidate.used.Before(cutoff)
+		}
+		for name, modified := range times {
+			if snapshot.owners[name] != 0 || !modified.Before(cutoff) {
+				continue
+			}
+			kind, registered, _ := s.service.Kind(name)
+			needed = needed || registered && !kind.Keep
+		}
+	}
+	if !needed {
+		snapshot.sessions = nil
 		return snapshot, nil
 	}
 	all := make(map[string]bool, len(snapshot.files))

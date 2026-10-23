@@ -26,6 +26,7 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 	}
 	summary.RepeatedCalls = make(map[string]string)
 	var repeatedLines, bodyBytes, repeatedBytes int
+	var savings projection.Savings
 	pass := service.NewPass()
 	defer pass.Close()
 	changed := false
@@ -70,7 +71,9 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 			}
 		}
 		if changed {
-			return snapshot.Encode()
+			projected := snapshot.Encode()
+			savings.Add(text, projected)
+			return projected
 		}
 		return text
 	}
@@ -107,7 +110,9 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 			if binding.NativeJSONSession(body) != 0 {
 				return text
 			}
-			return projectBody(header, body)
+			projected := projectBody(header, body)
+			savings.Add(text, projected)
+			return projected
 		}
 		if output, ok := projectDuplicateTextParts(item["output"], count, false, nil, projectText); ok {
 			item["output"] = output
@@ -120,7 +125,7 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 	}
 	if changed {
 		result.Input = responses.MustMarshalJSON(items)
-		summary.SavedTokens, summary.TokensMeasured = projection.EstimateSavings(input, result.Input)
+		summary.SavedTokens, summary.TokensMeasured = savings.Result()
 	}
 	return result
 }

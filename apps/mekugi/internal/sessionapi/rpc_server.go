@@ -353,7 +353,7 @@ func (c *rpcConnection) reply(id jsontext.Value, value any, failure *RPCError, s
 	}
 }
 
-func (c *rpcConnection) write(message RPCMessage) bool {
+func (c *rpcConnection) write(message any) bool {
 	data, err := json.Marshal(message, nativeEncoding)
 	if err != nil {
 		return false
@@ -463,8 +463,13 @@ func (c *rpcConnection) writer() {
 		if !current {
 			continue
 		}
-		params, _ := json.Marshal(RPCEvent{Subscription: subscription.id, Kind: event.Kind, Data: event.Data}, encoding)
-		if !c.write(RPCMessage{JSONRPC: "2.0", Method: "subscription/event", Params: params}) {
+		// Encode the envelope and its typed parameters together, rather than
+		// copying and validating the complete publication in two JSON passes.
+		if !c.write(struct {
+			JSONRPC string   `json:"jsonrpc"`
+			Method  string   `json:"method"`
+			Params  RPCEvent `json:"params"`
+		}{"2.0", "subscription/event", RPCEvent{Subscription: subscription.id, Kind: event.Kind, Data: event.Data}}) {
 			return
 		}
 		if event.Kind == "exit" {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/textsanitize"
+	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -65,6 +66,9 @@ type nativeView struct {
 	queue     *nativePublications
 	started   bool
 	frame     []byte
+	main      *activity.Publication
+	agents    *activity.Publication
+	state     []byte
 }
 
 // nativePublications retains ordered deliveries while coalescing superseded
@@ -200,7 +204,36 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 	if frame.Switch != nil {
 		startup = ""
 	}
+	// Activity publications are immutable and reused by their owner. Compare
+	// their identity, plus encoded non-feed facts, before serializing history.
+	// Keep mutable caller values detached through bytes, not retained aliases.
+	main, agents := frame.Main, frame.Agents
 	frame = frame.withoutEditors()
+	var state []byte
+	if len(frame.Effects) == 0 && len(frame.MainOutput) == 0 && len(frame.AgentOutput) == 0 {
+		// Consequence suffixes and hydration must go through bounded prefix
+		// selection without first encoding their unbounded aggregate.
+		metadata := frame
+		metadata.Main, metadata.Agents = nil, nil
+		// Saved reviews are immutable source replacements. Their revision and
+		// coverage describe changes without re-encoding every retained diff.
+		if frame.Review != nil && frame.Review.Revision != 0 {
+			review := *frame.Review
+			review.Files, review.Unfiltered, review.Counts.Callers, review.Counts.Net = nil, nil, nil, nil
+			metadata.Review = &review
+		}
+		if v.authority == remoteHumanView {
+			metadata = metadata.remote()
+		}
+		var err error
+		state, err = json.Marshal(NativeEvent{Attachment: id, Startup: startup, Frame: metadata}, nativeEncoding)
+		if err != nil {
+			return err
+		}
+		if v.started && v.main == main && v.agents == agents && bytes.Equal(v.state, state) {
+			return nil
+		}
+	}
 	if v.authority == remoteHumanView {
 		frame = frame.remote()
 	}
@@ -212,6 +245,7 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		return err
 	}
 	if v.started && bytes.Equal(v.frame, data) {
+		v.main, v.agents, v.state = main, agents, state
 		return nil
 	}
 	event := "patch"
@@ -221,6 +255,7 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 	notification := publication{Kind: event, Data: data}
 	if v.queue.push(notification) {
 		v.frame = data
+		v.main, v.agents, v.state = main, agents, state
 		v.started, v.version = true, frame.View.Version
 		if frame.Switch != nil {
 			v.target = requestTarget{thread, frame.View.Info.Workspace}

@@ -41,7 +41,7 @@ func composedUsage(t *testing.T, directory string) (*accounting.Service, *histor
 	t.Helper()
 	owner := moduletest.New(t, sessionhistory.Module, sessionhistory.Deps{}, module.Slots{RecordKinds: usage.Module.Contributes.RecordKinds}, nil)
 	service := moduletest.New(t, usage.Module, usage.Deps{History: owner}, module.Slots{}, nil)
-	service.Configure(directory, nil, history.Limits{}, func(thread string, err error) {
+	service.Configure(owner.Attach(directory), nil, history.Limits{}, func(thread string, err error) {
 		t.Errorf("retaining %q: %v", thread, err)
 	})
 	return service, owner

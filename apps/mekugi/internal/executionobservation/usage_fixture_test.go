@@ -8,7 +8,7 @@ import (
 
 func newTestUsage(t *testing.T) *accounting.Service {
 	t.Helper()
-	u := accounting.New(testHistory())
+	u := accounting.New()
 	if err := u.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}

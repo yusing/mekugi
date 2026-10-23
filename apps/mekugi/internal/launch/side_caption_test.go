@@ -21,7 +21,7 @@ func TestUISnapshotSideComposerMetrics(t *testing.T) {
 				u, w := newAppServerTestUI()
 				u.startSession("main", "/workspace")
 				u.model, u.reasoningEffort, u.serviceTier = "main-model", "high", "priority"
-				u.usage = accounting.New(u.history)
+				u.usage = accounting.New()
 				t.Cleanup(u.usage.Close)
 				u.clock = func() time.Time { return time.Date(2026, 10, 21, 12, 0, 0, 0, time.Local) }
 				appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "main", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 3000}, "modelContextWindow": 10000}})

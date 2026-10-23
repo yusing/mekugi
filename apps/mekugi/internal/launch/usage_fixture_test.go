@@ -8,7 +8,7 @@ import (
 
 func newTestUsage(t *testing.T) *accounting.Service {
 	t.Helper()
-	u := accounting.New(testHistory())
+	u := accounting.New()
 	if err := u.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -27,6 +27,6 @@ func usageStoreFixture(t *testing.T, directory string) *mekugiReplayStore {
 func storedUsageFixture(t *testing.T, store *mekugiReplayStore) *accounting.Service {
 	t.Helper()
 	u := newTestUsage(t)
-	u.Configure(store.directory, store.writes, store.retentionLimits(), nil)
+	u.Configure(store.publication, store.writes, store.retentionLimits(), nil)
 	return u
 }

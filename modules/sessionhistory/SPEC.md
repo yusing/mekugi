@@ -29,6 +29,9 @@ The default shared budget is 4 GiB, including ownership catalogs. Encoded record
 are bounded to 32 MiB. Owners contribute additional budgets; commentary uses a
 separate 16 MiB budget and retained output is bounded to 256 MiB. Admission
 reports required bytes, the limiting budget, and an actionable error.
+Admission reuses the store's revision-validated sizes and budget totals. Successful
+local publications update that view; peer revisions and incomplete effects
+invalidate it before further admission.
 
 Inactive session data expires after 14 days. Budget pressure selects the least
 recently active eligible sessions. Active process leases and shared dependencies
@@ -69,8 +72,13 @@ writable store establishes its private directory; attaching an offline view does
 not create storage. Operation-scoped transactions cannot be reused after their
 callback returns. No transaction spans terminal or network delivery. One maintenance worker per
 store prepares plans outside serialization, validates revisions and leases before
-bounded removal batches, and releases serialization between batches. Referring
-records retire before their dependencies regardless of filename order. Interrupted
+bounded removal batches, and releases serialization between batches.
+Budget accounting scans the validated plan once and tracks committed size changes,
+so candidate selection does not repeatedly traverse unrelated retained records.
+When recognized metadata establishes that no expiry or budget reclamation is
+needed, cleanup skips decoding the dependency graph. Potential reclamation still
+validates the complete dependency view before effects.
+Referring records retire before their dependencies regardless of filename order. Interrupted
 retirement preserves the catalog until its final batch, so restart is retryable.
 
 ### Application integration

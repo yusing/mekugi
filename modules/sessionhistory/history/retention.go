@@ -123,6 +123,7 @@ type storagePrunePlan struct {
 	retirement map[string]recordkind.RetirementPlanner
 	pressure   *storagePressureRequest
 	expire     bool
+	usage      storageUsage
 }
 
 func (s *maintenance) planStoragePrune(ctx context.Context) (*storagePrunePlan, error) {
@@ -152,9 +153,14 @@ func (s *maintenance) planStoragePrune(ctx context.Context) (*storagePrunePlan, 
 	}
 	// Large reads and decoding are deliberately outside store.lock. Concurrent
 	// publishers remain free to start sessions; the revision validates this view.
-	plan.snapshot, err = s.storageSnapshotContext(ctx)
-	if err == nil && plan.snapshot.unknown == "" {
+	plan.snapshot, err = s.storageSnapshotContext(ctx, s.limits, plan.pressure, plan.expire)
+	if err == nil && plan.snapshot.unknown == "" && len(plan.snapshot.sessions) > 0 {
 		plan.retirement, err = s.retirementPlanners(ctx, slices.Sorted(maps.Keys(plan.snapshot.files)))
+		name := ""
+		if plan.pressure != nil {
+			name = plan.pressure.Name
+		}
+		plan.usage = s.storageUsage(plan.snapshot.files, name)
 	}
 	readErr := err
 	err = s.Store.Transaction(ctx, s.writes, func(tx *Transaction) error {
@@ -171,13 +177,20 @@ func (s *maintenance) planStoragePrune(ctx context.Context) (*storagePrunePlan, 
 }
 
 func (s *maintenance) pruneRequired(plan *storagePrunePlan) bool {
-	name, size := "", int64(0)
+	usage, size := plan.usage, int64(0)
 	if plan.pressure != nil {
-		name = plan.pressure.Name
-		size = plan.snapshot.files[name] + plan.pressure.Growth
+		size = plan.snapshot.files[plan.pressure.Name] + plan.pressure.Growth
+		usage.total += plan.pressure.Growth
+		usage.own += plan.pressure.Growth
 	}
-	required, limit := s.Usage(s.limits, plan.snapshot.files, name, size)
+	required, limit := usage.required(s.limits, size)
 	return required > limit
+}
+
+func (s *maintenance) resizePruneRecord(plan *storagePrunePlan, name string, size int64) {
+	kind, _, _ := s.service.Kind(name)
+	plan.usage.add(kind, size-plan.snapshot.files[name])
+	plan.snapshot.files[name] = size
 }
 
 // One commit has a bounded file batch. All decoding, composition and encoding
@@ -253,6 +266,7 @@ func (s *maintenance) commitStoragePrune(ctx context.Context, plan *storagePrune
 				return err
 			}
 			freed += plan.snapshot.files[name]
+			s.resizePruneRecord(plan, name, 0)
 			delete(plan.snapshot.files, name)
 		}
 		for _, name := range slices.Sorted(maps.Keys(updates)) {
@@ -260,7 +274,7 @@ func (s *maintenance) commitStoragePrune(ctx context.Context, plan *storagePrune
 				return err
 			}
 			freed += plan.snapshot.files[name] - int64(len(updates[name].Data))
-			plan.snapshot.files[name] = int64(len(updates[name].Data))
+			s.resizePruneRecord(plan, name, int64(len(updates[name].Data)))
 			plan.retirement[name] = updates[name].Next
 		}
 		// Keep the original ownership catalog until its last batch completes.
@@ -272,6 +286,7 @@ func (s *maintenance) commitStoragePrune(ctx context.Context, plan *storagePrune
 				return err
 			}
 			freed += plan.snapshot.files[candidate.name]
+			s.resizePruneRecord(plan, candidate.name, 0)
 			delete(plan.snapshot.files, candidate.name)
 		}
 		for _, name := range names {
@@ -319,9 +334,12 @@ func (s *maintenance) cleanupSessions(ctx context.Context) error {
 		}
 	}()
 	for i := range plan.snapshot.sessions {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		candidate := &plan.snapshot.sessions[i]
 		old := plan.expire && candidate.used.Before(cutoff)
-		if !old && !s.pruneRequired(plan) || candidate.thread != "" && candidate.thread == s.activeThread || candidate.legacy && candidate.thread == "" && !candidate.used.Before(cutoff) {
+		if candidate.thread != "" && candidate.thread == s.activeThread || candidate.legacy && candidate.thread == "" && !candidate.used.Before(cutoff) || !old && !s.pruneRequired(plan) {
 			continue
 		}
 		if s.notice != nil && !announced {

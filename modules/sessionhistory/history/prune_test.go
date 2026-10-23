@@ -91,7 +91,7 @@ func TestPruneBoundedBatchesPreserveDependenciesAndCatalogUntilRestart(t *testin
 func TestPruneCatalogHasNoPerBatchWriteAmplification(t *testing.T) {
 	const records = 1024
 	store, _ := pruneFixture(t, 1, records, 1)
-	m := &maintenance{Store: store}
+	m := &maintenance{Store: store, limits: Limits{Total: 1}}
 	plan, err := m.planStoragePrune(t.Context())
 	if err != nil || plan == nil || len(plan.snapshot.sessions) != 1 {
 		t.Fatalf("plan=%v err=%v", plan, err)
@@ -129,7 +129,7 @@ func TestPruneCatalogHasNoPerBatchWriteAmplification(t *testing.T) {
 
 func TestPruneScanDecodesSharedRecordsOnceAndRejectsStaleRevision(t *testing.T) {
 	store, decoded := pruneFixture(t, 4, 8, 1<<20)
-	m := &maintenance{Store: store}
+	m := &maintenance{Store: store, limits: Limits{Total: 1}}
 	runtime.GC()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
@@ -168,7 +168,7 @@ func BenchmarkPruneScanProgress(b *testing.B) {
 	for _, owners := range []int{1, 4} {
 		b.Run(fmt.Sprint("owners=", owners), func(b *testing.B) {
 			store, _ := pruneFixture(b, owners, 8, 1<<20)
-			m := &maintenance{Store: store}
+			m := &maintenance{Store: store, limits: Limits{Total: 1}}
 			b.ReportAllocs()
 			for b.Loop() {
 				if plan, err := m.planStoragePrune(b.Context()); err != nil || plan == nil {
@@ -186,12 +186,13 @@ func countRetirementPlanner(count int) recordkind.RetirementPlanner {
 	}
 }
 
-func retirementPlanFixture(t *testing.T) (*maintenance, *storagePrunePlan, *storageCandidate) {
+func retirementPlanFixture(t *testing.T, extraKinds ...recordkind.Spec) (*maintenance, *storagePrunePlan, *storageCandidate) {
 	t.Helper()
-	store, _ := pruneFixture(t, 1, 17, 1, recordkind.Spec{ID: "index", Match: func(name string) bool { return strings.HasPrefix(name, "index-") }, Keep: true, Retirement: func(_ context.Context, record recordkind.Record) (recordkind.RetirementPlanner, error) {
+	kinds := append([]recordkind.Spec{{ID: "index", Match: func(name string) bool { return strings.HasPrefix(name, "index-") }, Keep: true, Retirement: func(_ context.Context, record recordkind.Record) (recordkind.RetirementPlanner, error) {
 		count, err := strconv.Atoi(string(record.Data))
 		return countRetirementPlanner(count), err
-	}})
+	}}}, extraKinds...)
+	store, _ := pruneFixture(t, 1, 17, 1, kinds...)
 	if err := store.Transaction(t.Context(), nil, func(tx *Transaction) error {
 		for _, name := range []string{"index-a", "index-z"} {
 			if err := tx.Write(name, "index-pending-", []byte("0")); err != nil {
@@ -202,7 +203,7 @@ func retirementPlanFixture(t *testing.T) (*maintenance, *storagePrunePlan, *stor
 	}); err != nil {
 		t.Fatal(err)
 	}
-	m := &maintenance{Store: store}
+	m := &maintenance{Store: store, limits: Limits{Total: 1}}
 	plan, err := m.planStoragePrune(t.Context())
 	if err != nil || plan == nil || len(plan.snapshot.sessions) != 1 {
 		t.Fatalf("plan=%v err=%v", plan, err)

@@ -84,6 +84,8 @@ not provider billing savings. Estimates count decoded JSON keys and scalar value
 independently, excluding punctuation, ordering, whitespace and string-escape
 spelling. Equivalent numbers normalize without losing precision; arrays retain
 every element. Literal code and JSON strings keep their internal escapes.
+Unchanged keys and scalar values cancel. Measurement counts complete changed
+text parts, including attachment envelopes, rather than their individual body fragments.
 These pinned GPT-5 estimates are never exact provider input or billed tokens.
 
 An unavailable estimate leaves projection and repetition receipts intact and is

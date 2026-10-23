@@ -22,7 +22,6 @@ type Service struct {
 	mu            sync.Mutex
 	threads       map[string]*threadUsageTotal
 	closed        bool
-	history       *history.Service
 	store         *history.Store
 	writes        *persistence.Counter
 	limits        history.Limits
@@ -62,8 +61,8 @@ type Observation struct {
 	thread      string
 }
 
-func New(service *history.Service) *Service {
-	return &Service{history: service, threads: make(map[string]*threadUsageTotal), changed: make(chan struct{})}
+func New() *Service {
+	return &Service{threads: make(map[string]*threadUsageTotal), changed: make(chan struct{})}
 }
 
 // Transport identity owns usage accounting, not auxiliary author or ancestry
@@ -200,13 +199,13 @@ func (u *Service) Start(ctx context.Context) error {
 }
 
 // Configure attaches the selected publication boundary before observations arrive.
-func (u *Service) Configure(directory string, writes *persistence.Counter, limits history.Limits, notice func(string, error)) {
+func (u *Service) Configure(store *history.Store, writes *persistence.Counter, limits history.Limits, notice func(string, error)) {
 	if u == nil {
 		return
 	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	u.store = u.history.Attach(directory)
+	u.store = store
 	u.writes, u.limits, u.notice = writes, limits, notice
 }
 

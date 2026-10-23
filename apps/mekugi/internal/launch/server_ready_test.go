@@ -164,7 +164,7 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 	if err != nil {
 		return err
 	}
-	usage := accounting.New(service)
+	usage := accounting.New()
 	if err := usage.Start(ctx); err != nil {
 		return err
 	}
