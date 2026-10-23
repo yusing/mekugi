@@ -137,6 +137,10 @@ successors inherit the parent's translation context and send no new request.
 Their projected input must match all already-admitted provider input. Explicit
 continuations use their own settings.
 
+Reconstructed input is always an array, including empty startup prewarm and
+continuations without new items. Empty history remains empty rather than becoming
+a null value or a synthetic message.
+
 The confirmed prefix fingerprints complete projected provider input and raw
 completed output. Only successful, steered or interrupted provider terminals
 confirm it; fingerprints grant no filesystem authority. A matching prefix sends

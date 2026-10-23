@@ -53,6 +53,22 @@ func sessionObserve(t *testing.T, exchange *responses.SessionExchange, event str
 	}
 }
 
+func TestSessionAcceptanceEmptyInput(t *testing.T) {
+	for _, input := range []string{``, `,"input":null`, `,"input":[]`} {
+		t.Run(input, func(t *testing.T) {
+			var history responses.SessionHistory
+			parent, request := sessionPrepare(t, &history, `{"type":"response.create","model":"test","generate":false`+input+`}`, "")
+			sessionWantJSON(t, request.Fields["input"], `[]`)
+			if err := parent.BeginProvider(request.Fields); err != nil {
+				t.Fatal(err)
+			}
+			sessionObserve(t, parent, `{"type":"response.completed","response":{"id":"warm","output":[]}}`)
+			_, next := sessionPrepare(t, &history, `{"type":"response.create","model":"test","previous_response_id":"warm"`+input+`}`, "")
+			sessionWantJSON(t, next.Fields["input"], `[]`)
+		})
+	}
+}
+
 func TestSessionAcceptanceReconstruction(t *testing.T) {
 	var history responses.SessionHistory
 	parent, request := sessionPrepare(t, &history, `{"type":"response.create","model":"client-model","reasoning":{"effort":"low"},"instructions":"rules","tools":[],"generate":false,"input":"first"}`, "")

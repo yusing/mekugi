@@ -441,77 +441,84 @@ func TestResponsesWebSocketEndpointCloseWaitsAndRejectsNewAdmission(t *testing.T
 }
 
 func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-	defer cancel()
-	proxy := newManagedMekugiProxy(t)
+	for _, warmInput := range []any{[]any{}, []any{map[string]string{"role": "user", "content": "warmup context"}}} {
+		t.Run(string(responses.MustMarshalJSON(warmInput)), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+			defer cancel()
+			proxy := newManagedMekugiProxy(t)
 
-	headers := codexAuthHeaders()
-	headers.Set(codexresponses.RoutingSessionHeader, "prewarm-session")
-	// Startup metadata need not contain a thread identity yet.
-	conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		upstream, err := websocket.Accept(w, r, nil)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		defer upstream.CloseNow()
-		for i, id := range []string{"warm", "turn", "continuation"} {
-			request, err := providerSocketRead(ctx, upstream)
-			if err != nil {
-				t.Error(err)
-				return
+			headers := codexAuthHeaders()
+			headers.Set(codexresponses.RoutingSessionHeader, "prewarm-session")
+			// Startup metadata need not contain a thread identity yet.
+			conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				upstream, err := websocket.Accept(w, r, nil)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer upstream.CloseNow()
+				for i, id := range []string{"warm", "turn", "continuation"} {
+					request, err := providerSocketRead(ctx, upstream)
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					if i == 0 {
+						if string(request["input"]) != string(responses.MustMarshalJSON(warmInput)) {
+							t.Errorf("warmup input = %s, want %s", request["input"], responses.MustMarshalJSON(warmInput))
+						}
+						if string(request["generate"]) != "false" {
+							t.Errorf("warmup may generate: %s", responses.MustMarshalJSON(request))
+						}
+					} else {
+						if len(request["generate"]) != 0 {
+							t.Error("warmup generate setting inherited")
+						}
+						if !strings.Contains(string(request["tools"]), "apply_patch") ||
+							!strings.Contains(string(request["tools"]), "exec_command") ||
+							strings.Contains(string(request["tools"]), `"shell"`) {
+							t.Errorf("ordinary turn tools were not preserved: %s", request["tools"])
+						}
+						wantParent := "warm"
+						wantInput := "task"
+						if i == 2 {
+							wantParent = "turn"
+							wantInput = "next"
+						}
+						if responses.StringField(request, "previous_response_id") != wantParent {
+							t.Errorf("parent = %s", request["previous_response_id"])
+						}
+						var input []map[string]json.RawMessage
+						if err := json.Unmarshal(request["input"], &input); err != nil || len(input) != 1 || responses.StringField(input[0], "content") != wantInput {
+							t.Errorf("incremental history = %s", request["input"])
+						}
+					}
+					if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", id)); err != nil {
+						t.Error(err)
+						return
+					}
+				}
+				_, _, _ = upstream.Read(ctx)
+			}), proxy, headers)
+			metadata := func(value any) map[string]string {
+				return map[string]string{codexresponses.TurnMetadataHeader: string(responses.MustMarshalJSON(value)), codexresponses.ThreadIDHeader: "prewarm-thread"}
 			}
-			if i == 0 {
-				if string(request["generate"]) != "false" {
-					t.Errorf("warmup may generate: %s", responses.MustMarshalJSON(request))
+			socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": warmInput, "generate": false, "client_metadata": map[string]string{codexresponses.TurnMetadataHeader: `{"request_kind":"prewarm"}`}})
+			if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.completed" {
+				t.Fatalf("warmup produced a warning: %s", responses.MustMarshalJSON(got))
+			}
+			turnMetadata := metadata(codexresponses.TurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{t.TempDir(): nil}})
+			for i, parent := range []string{"warm", "turn"} {
+				input := "task"
+				if i == 1 {
+					input = "next"
 				}
-			} else {
-				if len(request["generate"]) != 0 {
-					t.Error("warmup generate setting inherited")
-				}
-				if !strings.Contains(string(request["tools"]), "apply_patch") ||
-					!strings.Contains(string(request["tools"]), "exec_command") ||
-					strings.Contains(string(request["tools"]), `"shell"`) {
-					t.Errorf("ordinary turn tools were not preserved: %s", request["tools"])
-				}
-				wantParent := "warm"
-				wantInput := "task"
-				if i == 2 {
-					wantParent = "turn"
-					wantInput = "next"
-				}
-				if responses.StringField(request, "previous_response_id") != wantParent {
-					t.Errorf("parent = %s", request["previous_response_id"])
-				}
-				var input []map[string]json.RawMessage
-				if err := json.Unmarshal(request["input"], &input); err != nil || len(input) != 1 || responses.StringField(input[0], "content") != wantInput {
-					t.Errorf("incremental history = %s", request["input"])
+				socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": input}}, "previous_response_id": parent, "tools": testExecResponsesTools(), "client_metadata": turnMetadata})
+				if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.completed" {
+					t.Fatalf("turn produced a warning: %s", responses.MustMarshalJSON(got))
 				}
 			}
-			if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", id)); err != nil {
-				t.Error(err)
-				return
-			}
-		}
-		_, _, _ = upstream.Read(ctx)
-	}), proxy, headers)
-	metadata := func(value any) map[string]string {
-		return map[string]string{codexresponses.TurnMetadataHeader: string(responses.MustMarshalJSON(value)), codexresponses.ThreadIDHeader: "prewarm-thread"}
-	}
-	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": "warmup context"}}, "generate": false, "client_metadata": map[string]string{codexresponses.TurnMetadataHeader: `{"request_kind":"prewarm"}`}})
-	if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.completed" {
-		t.Fatalf("warmup produced a warning: %s", responses.MustMarshalJSON(got))
-	}
-	turnMetadata := metadata(codexresponses.TurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{t.TempDir(): nil}})
-	for i, parent := range []string{"warm", "turn"} {
-		input := "task"
-		if i == 1 {
-			input = "next"
-		}
-		socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": input}}, "previous_response_id": parent, "tools": testExecResponsesTools(), "client_metadata": turnMetadata})
-		if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.completed" {
-			t.Fatalf("turn produced a warning: %s", responses.MustMarshalJSON(got))
-		}
+		})
 	}
 }
 

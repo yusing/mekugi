@@ -157,6 +157,10 @@ func (s *SessionHistory) Prepare(command, firstEvent []byte) (*SessionExchange, 
 	}
 	fullInput = append(fullInput, steering...)
 	fullInput = append(fullInput, input...)
+	// The provider expects an input array even when prewarm has no history.
+	if fullInput == nil {
+		fullInput = []jsontext.Value{}
+	}
 	requestFields["input"] = responseevents.MustMarshalJSON(fullInput)
 	requestFields["stream"] = jsontext.Value("true")
 	if parentID != "" {
