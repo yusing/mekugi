@@ -60,10 +60,12 @@ Task labels and tool arguments confer no authority. Members communicate with
 admitted peers/ancestors and control non-root targets in their tree. Human/session
 control retains root authority. Foreign, retired or conflicting callers reject.
 
-Effective configuration supplies concurrency/depth limits and timeout bounds.
-Absent overrides use four slots, depth one, and explicit waits from ten seconds
-to one hour. Admission reserves before dispatch, releases only on confirmed logical
-settlement, and reacquires before restarting idle work. Stop-wait retains its
+Effective Codex V2 configuration supplies total concurrency and timeout bounds.
+Absent overrides use four slots and explicit waits from ten seconds to one hour.
+Delegation depth is unrestricted, matching V2; the legacy `agents.max_depth`
+setting does not constrain its logical tree. Admission reserves before dispatch,
+releases only on confirmed logical settlement, and reacquires before restarting
+idle work. Stop-wait retains its
 reservation. Unknown role/settings and unavailable authority fail explicitly.
 
 ## Prepared children and guidance
@@ -71,10 +73,13 @@ reservation. Unknown role/settings and unavailable authority fail explicitly.
 The Codex binding captures configuration provenance plus actual invoking
 thread/turn settings, permissions, runtime roots, model/provider, effort/summary,
 tier, base/developer instructions and cwd. `config/read` alone is not live state.
-Configured roles precede built-ins; role files and their resolved values are frozen
-before dispatch. Fresh children apply the default role; full-history children apply
-an explicitly selected role or preserve stock inheritance. Full-history model/effort
-restrictions and stock tier precedence remain unchanged. Roles may reduce supported
+Configured subagent model and effort defaults apply to fresh and full-history
+children before role overrides. Without those defaults, children inherit the
+invoking turn's model and effort. Configured roles precede built-ins; role files
+and their resolved values are frozen before dispatch. Fresh children apply the
+default role; full-history children apply an explicitly selected role or preserve
+stock inheritance. Explicit model/effort arguments still require a fresh child.
+Stock tier precedence remains unchanged. Roles may reduce supported
 capabilities, not widen authority or replace provider credentials.
 
 Permission profiles remain complete, including filesystem deny rules and network

@@ -65,9 +65,6 @@ func (s *Service) ReserveSpawn(ctx context.Context, caller Identity, request Spa
 		if member.Limits.Concurrency <= 0 || activeCount(tree) >= member.Limits.Concurrency {
 			return errors.New("captured host concurrency limit reached")
 		}
-		if strings.Count(member.Task, "/") > member.Limits.Depth {
-			return errors.New("captured host delegation depth limit reached")
-		}
 		result = Effect{ID: caller.Call, Caller: caller.Thread, CallerTurn: caller.Turn, CallerGeneration: member.Generation, Kind: "create", Phase: "create", State: "pending", Message: request.Message, Generation: 1, Child: &Child{Task: task, Settings: settings, Limits: limits, Arguments: request.Arguments, Import: request.Import}}
 		tree.Effects = append(tree.Effects, result)
 		return nil

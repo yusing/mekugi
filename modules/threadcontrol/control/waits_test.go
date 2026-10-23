@@ -2,7 +2,9 @@ package control
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -25,7 +27,7 @@ func fixture(t *testing.T) (*Service, history.Session) {
 	}
 	t.Cleanup(session.Close)
 	service := New()
-	root := Member{Thread: "root", Session: "root-session", Task: "/root", Generation: 1, Status: Working, AudienceAdmitted: true, Settings: Settings{Workspace: t.TempDir(), RuntimeRoots: []string{"/admitted"}}, Limits: Limits{Concurrency: 8, Depth: 5, MinWaitMS: 5, MaxWaitMS: 100}}
+	root := Member{Thread: "root", Session: "root-session", Task: "/root", Generation: 1, Status: Working, AudienceAdmitted: true, Settings: Settings{Workspace: t.TempDir(), RuntimeRoots: []string{"/admitted"}}, Limits: Limits{Concurrency: 8, MinWaitMS: 5, MaxWaitMS: 100}}
 	must(t, service.AdmitRoot(t.Context(), session, &root))
 	hostStarted(t, service, "root", "rt")
 	return service, session
@@ -52,6 +54,28 @@ func TestRestoreBeforeAnyRequestLeavesChildrenCold(t *testing.T) {
 		t.Fatal("restore invented a fresh root's execution authority")
 	}
 }
+
+func TestRestoreIgnoresLegacyDelegationDepth(t *testing.T) {
+	_, session := fixture(t)
+	name := recordName("root")
+	data, err := history.ReadRecord(filepath.Join(session.Store.Directory(), name))
+	must(t, err)
+	var checkpoint map[string]any
+	must(t, json.Unmarshal(data, &checkpoint))
+	root := checkpoint["Members"].(map[string]any)["root"].(map[string]any)
+	root["Limits"].(map[string]any)["Depth"] = 0
+	data, err = json.Marshal(checkpoint)
+	must(t, err)
+	must(t, session.Store.Transaction(t.Context(), session.Writes, func(tx *history.Transaction) error {
+		return tx.Write(name, "legacy-depth-", data)
+	}))
+	restored := New()
+	must(t, restored.Restore(t.Context(), session))
+	hostStarted(t, restored, "root", "resumed")
+	child(t, restored, "root", "worker", "/root/worker", "wt")
+	child(t, restored, "worker", "nested", "/root/worker/nested", "nt")
+}
+
 func message(t *testing.T, s *Service, caller Identity, text string) {
 	t.Helper()
 	action, err := s.PrepareAction(t.Context(), caller, "/root", "message", text)
@@ -73,7 +97,7 @@ func child(t *testing.T, s *Service, parent, id, task, turn string) {
 	must(t, err)
 	caller := identity(parent, state.Members[parent].Turn)
 	caller.Call = "spawn-" + id
-	reservation, err := s.ReserveSpawn(t.Context(), caller, SpawnRequest{Name: path.Base(task), Settings: Settings{Workspace: t.TempDir(), RuntimeRoots: []string{"/admitted"}}, Limits: Limits{Concurrency: 8, Depth: 5, MinWaitMS: 5, MaxWaitMS: 100}, Message: "Work."})
+	reservation, err := s.ReserveSpawn(t.Context(), caller, SpawnRequest{Name: path.Base(task), Settings: Settings{Workspace: t.TempDir(), RuntimeRoots: []string{"/admitted"}}, Limits: Limits{Concurrency: 8, MinWaitMS: 5, MaxWaitMS: 100}, Message: "Work."})
 	must(t, err)
 	for _, stage := range []string{"create", "assignment_input", "admit", "initial"} {
 		receipt := Receipt{}

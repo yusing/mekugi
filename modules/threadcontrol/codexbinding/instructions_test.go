@@ -160,7 +160,7 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 				settings.Config = jsontext.Value(`{"features.multi_agent_v2.root_agent_usage_hint_text":"CUSTOM_HINT"}`)
 			}
 			service := control.New()
-			limits := control.Limits{Concurrency: 4, Depth: 1}
+			limits := control.Limits{Concurrency: 4}
 			if err := service.AdmitRoot(t.Context(), session, &control.Member{Thread: "root", Session: "session", Task: "/root", Path: path, AudienceAdmitted: true, Settings: settings, Limits: limits}); err != nil {
 				t.Fatal(err)
 			}

@@ -20,17 +20,18 @@ func TestPrepareChildModelEffortAndContext(t *testing.T) {
 		full, fail          bool
 	}{
 		{name: "full history inherits", model: "parent", effort: "high", full: true},
-		{name: "full history ignores fresh defaults", model: "parent", effort: "high", full: true, defaults: [3]*string{new("other"), new("low"), nil}},
+		{name: "full history configured defaults", model: "other", effort: "low", full: true, defaults: [3]*string{new("other"), new("low"), nil}},
 		{name: "fresh inherits", model: "parent", effort: "high", options: SpawnOptions{ForkTurns: new("none")}},
 		{name: "fresh defaults", model: "other", effort: "low", options: SpawnOptions{ForkTurns: new("none")}, defaults: [3]*string{new("other"), new("low"), nil}},
 		{name: "fresh explicit model default effort", model: "other", effort: "medium", options: SpawnOptions{ForkTurns: new("none"), Model: new("other")}},
+		{name: "explicit settings precede configured defaults", model: "other", effort: "medium", options: SpawnOptions{ForkTurns: new("none"), Model: new("other"), ReasoningEffort: new("medium")}, defaults: [3]*string{new("parent"), new("low"), nil}},
 		{name: "full model override refused", options: SpawnOptions{Model: new("other")}, fail: true},
 		{name: "full effort override refused", options: SpawnOptions{ReasoningEffort: new("low")}, fail: true},
 		{name: "unsupported effort refused", options: SpawnOptions{ForkTurns: new("none"), Model: new("other"), ReasoningEffort: new("high")}, fail: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.options.Message = "assignment"
-			child, err := prepareChild(parent, control.Limits{Depth: 3}, tc.options, models, nil, tc.defaults)
+			child, err := prepareChild(parent, control.Limits{Concurrency: 3}, tc.options, models, nil, tc.defaults)
 			if tc.fail {
 				if err == nil {
 					t.Fatal("invalid override admitted")
@@ -40,7 +41,7 @@ func TestPrepareChildModelEffortAndContext(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if child.FullHistory != tc.full || child.Settings.Model != tc.model || child.Settings.Effort == nil || *child.Settings.Effort != tc.effort || child.Limits.Depth != 3 {
+			if child.FullHistory != tc.full || child.Settings.Model != tc.model || child.Settings.Effort == nil || *child.Settings.Effort != tc.effort || child.Limits.Concurrency != 3 {
 				t.Fatalf("preparation = %+v", child)
 			}
 			if child.Settings.Provider != parent.Provider || !reflect.DeepEqual(child.Settings.PermissionProfile, parent.PermissionProfile) || !reflect.DeepEqual(child.Settings.ApprovalPolicy, parent.ApprovalPolicy) {

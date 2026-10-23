@@ -39,7 +39,7 @@ type Settings struct {
 
 type RoleSelection struct{ Name, Description, Path, Digest, Contents string }
 type Limits struct {
-	Concurrency, Depth   int
+	Concurrency          int
 	MinWaitMS, MaxWaitMS int64
 }
 

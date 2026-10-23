@@ -59,13 +59,13 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		return result, errors.New("full-history forks inherit model and effort; use fork_turns=none for overrides")
 	}
 	model, effort := options.Model, options.ReasoningEffort
-	if !result.FullHistory {
-		if model == nil {
-			model = defaults[0]
-		}
-		if effort == nil {
-			effort = defaults[1]
-		}
+	// Source: codex-rs/core/src/agent/child_config.rs:52:76,204:244@0df4aa677.
+	// Configured subagent defaults precede roles, including full-history forks.
+	if model == nil {
+		model = defaults[0]
+	}
+	if effort == nil {
+		effort = defaults[1]
 	}
 	if model != nil {
 		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == *model })

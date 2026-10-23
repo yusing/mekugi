@@ -29,10 +29,10 @@ func logicalWaitUI(t *testing.T, cancelSubscription bool) (*appServerUI, *thread
 	check(err)
 	t.Cleanup(session.Close)
 	service := control.New()
-	check(service.AdmitRoot(t.Context(), session, &control.Member{Thread: "main", Session: "session", Task: "/root", Generation: 1, Status: control.Working, AudienceAdmitted: true, Limits: control.Limits{Concurrency: 4, Depth: 3, MaxWaitMS: 1000}}))
+	check(service.AdmitRoot(t.Context(), session, &control.Member{Thread: "main", Session: "session", Task: "/root", Generation: 1, Status: control.Working, AudienceAdmitted: true, Limits: control.Limits{Concurrency: 4, MaxWaitMS: 1000}}))
 	caller := control.Identity{Thread: "main", Session: "session", Turn: "first", Call: "spawn", Item: "exec"}
 	check(service.RequestStarted(t.Context(), caller, true))
-	spawn, err := service.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: "worker", Message: "Work", Settings: control.Settings{Workspace: t.TempDir()}, Limits: control.Limits{Concurrency: 4, Depth: 3}})
+	spawn, err := service.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: "worker", Message: "Work", Settings: control.Settings{Workspace: t.TempDir()}, Limits: control.Limits{Concurrency: 4}})
 	check(err)
 	for _, phase := range []string{"create", "assignment_input", "admit", "initial"} {
 		effect, err := service.ClaimEffect(t.Context(), "main", spawn.ID)

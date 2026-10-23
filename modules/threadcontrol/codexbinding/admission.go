@@ -23,7 +23,6 @@ type effectiveConfig struct {
 		Agents      struct {
 			Model       *string `json:"default_subagent_model"`
 			Effort      *string `json:"default_subagent_reasoning_effort"`
-			Depth       *int    `json:"max_depth"`
 			Concurrency *int    `json:"max_concurrent_threads_per_session"`
 		} `json:"agents"`
 		Features struct {
@@ -122,15 +121,15 @@ func (d *Driver) AdmitRequest(ctx context.Context, session history.Session, iden
 	if err != nil {
 		return err
 	}
-	limits := control.Limits{Concurrency: 4, Depth: 1, MinWaitMS: 10_000, MaxWaitMS: 3_600_000}
+	// config/read exposes configured values, not the resolved V2 defaults.
+	// Source: codex-rs/core/src/config/mod.rs:256:259,2818:2844@0df4aa677.
+	// V2 ignores agents.max_depth; its concurrency includes the root.
+	limits := control.Limits{Concurrency: 4, MinWaitMS: 10_000, MaxWaitMS: 3_600_000}
 	if value := config.Config.Agents.Concurrency; value != nil {
 		limits.Concurrency = *value + 1
 	}
 	if value := config.Config.Features.MultiAgent.Concurrency; value != nil {
 		limits.Concurrency = *value
-	}
-	if value := config.Config.Agents.Depth; value != nil {
-		limits.Depth = *value
 	}
 	if value := config.Config.Features.MultiAgent.Min; value != nil {
 		limits.MinWaitMS = *value
@@ -138,7 +137,7 @@ func (d *Driver) AdmitRequest(ctx context.Context, session history.Session, iden
 	if value := config.Config.Features.MultiAgent.Max; value != nil {
 		limits.MaxWaitMS = *value
 	}
-	if limits.Concurrency < 1 || limits.Depth < 0 || limits.MinWaitMS < 0 || limits.MaxWaitMS < limits.MinWaitMS {
+	if limits.Concurrency < 1 || limits.MinWaitMS < 0 || limits.MaxWaitMS < limits.MinWaitMS {
 		return errors.New("invalid effective host thread limits")
 	}
 	member := control.Member{Thread: identity.Thread, Session: identity.Session, Path: path, Task: "/root", Generation: 1, Status: control.Working, Turn: identity.Turn, HostRunning: true, AudienceAdmitted: true, Settings: settings, Limits: limits}

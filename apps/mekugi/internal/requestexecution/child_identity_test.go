@@ -32,7 +32,7 @@ func TestPreparedChildObservationIdentity(t *testing.T) {
 	check(err)
 	t.Cleanup(session.Close)
 	service := control.New()
-	limits := control.Limits{Concurrency: 4, Depth: 1}
+	limits := control.Limits{Concurrency: 4}
 	check(service.AdmitRoot(t.Context(), session, &control.Member{Thread: "root", Session: "root-session", Task: "/root", Turn: "root-turn", Generation: 1, Status: control.Working, HostRunning: true, AudienceAdmitted: true, Limits: limits}))
 	caller := control.Identity{Thread: "root", Session: "root-session", Turn: "root-turn", Call: "spawn", Item: "exec"}
 	spawn, err := service.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: "worker", Message: "Work.", Settings: control.Settings{Workspace: t.TempDir()}, Limits: limits})
