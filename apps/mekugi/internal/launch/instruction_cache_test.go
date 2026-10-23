@@ -60,7 +60,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				if responses.StringField(request, "instructions") != proxy.registry.FrontendGuidance.Workflow {
 					t.Error("prewarm did not deliver workflow in base instructions")
 				}
-				if bytes.Contains(request["input"], []byte("On macOS, pass")) {
+				if bytes.Contains(request["input"], []byte("Keep command output in tool results")) {
 					t.Error("workflow remains in tool description")
 				}
 				if string(request["generate"]) != "false" ||

@@ -52,7 +52,7 @@ The base workflow section explains when the tools reduce work:
 structural outlines for navigation, semantic references for caller-impacting edits, bounded
 command windows and retained-output recovery, and explicit captured-change ranges for reviewers.
 Capability descriptions include support for ordinary shell pipes.
-On macOS, the execution guidance directs agents to select Bash explicitly unless
+Only macOS hosts include execution guidance to select Bash explicitly unless
 the task requires another shell. This leaves Codex's account-shell detection and
 user shell commands unchanged.
 CLI help includes concrete invocation examples and consequential option interactions, including
@@ -67,12 +67,13 @@ the recipient's own change listing cannot discover another agent's IDs. Historic
 does not assert the current workspace state.
 
 The invocation's `child_reply_summary` feature conditionally contributes a rule
-inside the existing marked workflow section. Enabled children author substantive
-child-to-parent directed messages and final answers with a concise, meaningful
+inside the existing marked workflow section. Enabled children author child-to-parent
+directed messages and final answers long enough to benefit from structure with a concise, meaningful
 `## Summary` and supporting `## Details` in the same existing reply generation.
 The summary states the actual result, findings or blocker and material uncertainty,
-normally in one to three sentences. Brief acknowledgements may remain plain;
-higher-priority exact-output requirements and root ordinary answers are unchanged.
+normally in one to three sentences. Short replies may remain plain, including substantive
+replies with supporting details; they need no padding or duplicate summary.
+Higher-priority exact-output requirements and root ordinary answers are unchanged.
 There is no separate summary message, repair turn or extra model request.
 Disabled invocations omit only this rule. Authenticated assembly applies the
 current invocation value once to fresh/no-history children, forks, switches and

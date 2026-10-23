@@ -215,7 +215,7 @@ func (p *appServerDirectedMessageProvider) ForwardExecution(_, _ context.Context
 	var item map[string]any
 	if metadata.SubagentKind != "" {
 		p.childRequests++
-		guided := strings.Count(string(body), "For substantive child-to-parent") == 1
+		guided := strings.Count(string(body), "For child-to-parent") == 1
 		if p.childRequests == 1 {
 			p.summaryGuided = guided
 		} else {

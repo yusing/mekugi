@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -26,6 +27,9 @@ const workflowEnd = "<!-- mekugi-workflow:end -->"
 //go:embed workflow.md
 var workflowPreamble string
 
+//go:embed workflow_macos.md
+var macOSWorkflow string
+
 var frontendFramingTag = regexp.MustCompile(`</?(?:tool|mekugi-frontends)[\t\r\n />]`)
 
 func frontendGuide(commands []command.Spec, sections map[string]string, childReplySummary bool) (binding.FrontendGuidance, error) {
@@ -34,7 +38,11 @@ func frontendGuide(commands []command.Spec, sections map[string]string, childRep
 	}
 	var output, workflow strings.Builder
 	base, childRule, _ := strings.Cut(workflowPreamble, "<!-- child-reply-summary -->")
-	workflow.WriteString(workflowStart + "\n" + base)
+	workflow.WriteString(workflowStart + "\n")
+	if runtime.GOOS == "darwin" {
+		workflow.WriteString(macOSWorkflow)
+	}
+	workflow.WriteString(base)
 	if childReplySummary {
 		workflow.WriteString(childRule)
 	}

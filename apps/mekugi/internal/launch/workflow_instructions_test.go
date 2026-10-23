@@ -52,7 +52,7 @@ func TestWorkflowInstructionsProviderDelivery(t *testing.T) {
 			}
 			catalog := codexresponses.DecodeToolCatalog(got.Fields)
 			description := catalog.Additional[0].Tools.Tools[0].Description()
-			if !strings.Contains(description, guide.Descriptions) || strings.Contains(description, start) || strings.Contains(description, "On macOS, pass") {
+			if !strings.Contains(description, guide.Descriptions) || strings.Contains(description, start) || strings.Contains(description, "Keep command output in tool results") {
 				t.Fatal("provider tool description did not separate capabilities from workflow")
 			}
 			if bytes.Contains(got.Fields["input"], []byte(start)) {

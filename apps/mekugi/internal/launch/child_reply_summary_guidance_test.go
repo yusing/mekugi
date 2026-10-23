@@ -52,8 +52,11 @@ func TestChildReplySummaryGuidanceInvocation(t *testing.T) {
 			if enabled {
 				want = 1
 			}
-			if strings.Count(got, "For substantive child-to-parent") != want || !strings.Contains(got, "Preserve caller exact-output policy.") || !strings.Contains(got, "Codex owns stock editing") {
+			if strings.Count(got, "For child-to-parent") != want || !strings.Contains(got, "Preserve caller exact-output policy.") || !strings.Contains(got, "Keep command output in tool results") {
 				t.Fatalf("enabled=%v history=%q guidance=%s", enabled, history, got)
+			}
+			if enabled && (!strings.Contains(got, "long enough to benefit from structure") || !strings.Contains(got, "Short replies may stay plain, including substantive replies with supporting details.")) {
+				t.Fatal("child authoring guidance lost length condition or short-reply exemption")
 			}
 			if runtime.Terminal.ChildReplySummary != enabled {
 				t.Fatal("guidance and presentation diverged")

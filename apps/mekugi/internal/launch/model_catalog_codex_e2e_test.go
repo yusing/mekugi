@@ -117,7 +117,7 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 				return fmt.Errorf("native request lost separated base workflow")
 			}
 			for _, field := range []string{"input", "tools"} {
-				if bytes.Contains(request.Fields[field], []byte("On macOS, pass")) {
+				if bytes.Contains(request.Fields[field], []byte("Keep command output in tool results")) {
 					return fmt.Errorf("native request retained workflow in %s", field)
 				}
 			}
