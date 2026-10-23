@@ -93,10 +93,13 @@ normal command. Launch arguments, worker dispatch and hooks retain their behavio
 The normal build starts no profiling listener.
 
 Launch or [replay](../../modules/sessionreplay/SPEC.md) with `bin/mekugi-pprof`.
-Each invocation binds its own OS-assigned IPv4 loopback port and prints
+Each owning process binds its own OS-assigned IPv4 loopback port and prints
 `mekugi-pprof: http://127.0.0.1:PORT/debug/pprof/` to stderr before UI handoff.
-Use that URL with `go tool pprof`. Workers and hooks start no listener; completion
-cancels active captures and closes only the invocation's listener.
+The standalone server opens its listener before accepting sessions. Start a CPU
+capture before connecting a client to include session startup and resume costs;
+all server-owned sessions share that listener. Use its URL with `go tool pprof`.
+Workers and hooks start no listener; process completion cancels active captures
+and closes the profiling listener.
 
 Standard routes expose CPU, heap, allocs, goroutine, block, mutex and execution
 trace data. CPU and trace collection start only on request. Block sampling uses

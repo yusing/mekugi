@@ -34,6 +34,16 @@ func RunServer(ctx context.Context, args []string, stderr io.Writer) int {
 		}
 		*socket = path
 	}
+	stopProfiling, err := startProfiling(ctx, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, "mekugi server:", err)
+		return 1
+	}
+	defer func() {
+		if err := stopProfiling(); err != nil {
+			fmt.Fprintln(stderr, "mekugi server profiling:", err)
+		}
+	}()
 	listener, err := sessionapi.ListenControl(*socket)
 	if err != nil {
 		fmt.Fprintln(stderr, "mekugi server:", err)

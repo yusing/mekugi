@@ -314,11 +314,14 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}()
 	}
 
-	stopProfiling, err := startProfiling(ctx, os.Stderr)
-	if err != nil {
-		return 1, err
+	// Hosted sessions borrow their server's process-wide profiling lifetime.
+	if api == nil {
+		stopProfiling, err := startProfiling(ctx, os.Stderr)
+		if err != nil {
+			return 1, err
+		}
+		defer func() { runErr = errors.Join(runErr, stopProfiling()) }()
 	}
-	defer func() { runErr = errors.Join(runErr, stopProfiling()) }()
 	mux := http.NewServeMux()
 	if capture != nil {
 		mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
