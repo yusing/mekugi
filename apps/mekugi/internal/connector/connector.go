@@ -319,7 +319,7 @@ func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	stopInitialize()
 	downstream.SetReadLimit(sessionapi.RPCMessageLimit)
-	upstream.SetReadLimit(sessionapi.RPCMessageLimit)
+	upstream.SetReadLimit(sessionapi.RPCPublicationLimit)
 	// Each direction has one reader and writer. Cancellation releases blocked
 	// reads/writes, and both loops are joined before this connection retires.
 	done := make(chan struct{}, 2)
@@ -347,25 +347,12 @@ func refuse(ctx context.Context, conn *websocket.Conn, request sessionapi.RPCMes
 }
 
 func relay(ctx context.Context, source, destination *websocket.Conn) {
-	ctx, cancelRelay := context.WithCancel(ctx)
-	defer cancelRelay()
 	for {
 		typ, reader, err := source.Reader(ctx)
 		if err != nil || typ != websocket.MessageText {
 			return
 		}
-		writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
-		stop := context.AfterFunc(writeCtx, cancelRelay)
-		writer, err := destination.Writer(writeCtx, typ)
-		if err == nil {
-			_, err = io.Copy(writer, reader)
-			if err == nil {
-				err = writer.Close()
-			}
-		}
-		stop()
-		cancel()
-		if err != nil {
+		if sessionapi.WriteMessage(ctx, destination, typ, reader, writeTimeout) != nil {
 			return
 		}
 	}

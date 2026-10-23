@@ -64,7 +64,7 @@ func OpenRPC(ctx context.Context, client *http.Client, endpoint, token string) (
 		conn.CloseNow()
 		return nil, errors.New("incompatible control WebSocket protocol")
 	}
-	conn.SetReadLimit(64 << 20)
+	conn.SetReadLimit(RPCPublicationLimit)
 	lifetime, cancel := context.WithCancel(ctx)
 	c := &RPCClient{conn: conn, ctx: lifetime, cancel: cancel, done: make(chan struct{}), write: make(chan struct{}, 1), pending: make(map[string]chan RPCMessage), subscriptions: make(map[string]*RPCSubscription)}
 	go c.read()

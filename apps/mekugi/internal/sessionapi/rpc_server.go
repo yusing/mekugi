@@ -1,6 +1,7 @@
 package sessionapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
@@ -358,9 +359,7 @@ func (c *rpcConnection) write(message any) bool {
 	if err != nil {
 		return false
 	}
-	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
-	defer cancel()
-	return c.wire.Write(ctx, websocket.MessageText, data) == nil
+	return WriteMessage(c.ctx, c.wire, websocket.MessageText, bytes.NewReader(data), 5*time.Second) == nil
 }
 
 // beginDrain lets the single writer flush already-admitted replies and terminal

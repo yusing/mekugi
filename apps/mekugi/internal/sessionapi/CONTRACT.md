@@ -79,8 +79,11 @@ admission/dispatch where applicable; execution outcomes arrive in publications.
 After transport loss, unresolved mutations remain unknown and are never retried
 automatically. Reconnect creates fresh subscriptions and snapshots only.
 
-Each subscription and connection has bounded queues. Replaceable progress catches
-up to complete state without retiring the interaction. Native frames preserve
+Each subscription and connection has bounded queues. A server-to-client message,
+envelope included, is at most 64 MiB, and relays admit that limit. Writes fail
+when a peer stops accepting data for the write timeout, not when a slow link takes
+longer. Replaceable progress catches up to complete state without retiring the
+interaction. Native frames preserve
 unacknowledged semantic effects and ordered attachment switches. Reacquirable
 output windows have a separate backlog budget; `reacquireOutput` identifies
 catch-up frames that discarded older windows. The requester retains unresolved

@@ -1,6 +1,14 @@
 package sessionapi
 
-import "encoding/json/jsontext"
+import (
+	"context"
+	"encoding/json/jsontext"
+	"io"
+	"time"
+
+	"github.com/coder/websocket"
+	"github.com/yusing/goutils/synk"
+)
 
 // Control RPC is independent of the Codex host protocol. Both local and remote
 // clients use these envelopes; the admitted endpoint establishes authority.
@@ -9,6 +17,9 @@ const (
 	NativeRPCPath   = "/api/native/control"
 	RPCSubprotocol  = "mekugi.control.v2"
 	RPCMessageLimit = InputBodyLimit + (64 << 10)
+	// RPCPublicationLimit bounds one server-to-client message, including its
+	// envelope. Relays must admit it so a large publication reaches its client.
+	RPCPublicationLimit = 64 << 20
 )
 
 type RPCMessage struct {
@@ -62,4 +73,36 @@ type RPCEvent struct {
 type RPCClosed struct {
 	Subscription string    `json:"subscription"`
 	Error        *RPCError `json:"error,omitempty"`
+}
+
+// WriteMessage copies one message to conn and fails only after stall passes
+// without the peer accepting more of it. A slow link that keeps receiving a
+// large publication is not a stalled one; a whole-message deadline would retire it.
+func WriteMessage(ctx context.Context, conn *websocket.Conn, typ websocket.MessageType, source io.Reader, stall time.Duration) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	timer := time.AfterFunc(stall, cancel)
+	defer timer.Stop()
+	writer, err := conn.Writer(ctx, typ)
+	if err != nil {
+		return err
+	}
+	pool := synk.GetSizedBytesPool()
+	buffer := pool.GetSized(32 << 10)
+	defer pool.Put(buffer)
+	for {
+		n, err := source.Read(buffer)
+		if n > 0 {
+			if _, err := writer.Write(buffer[:n]); err != nil {
+				return err
+			}
+			timer.Reset(stall)
+		}
+		if err == io.EOF {
+			return writer.Close()
+		}
+		if err != nil {
+			return err
+		}
+	}
 }

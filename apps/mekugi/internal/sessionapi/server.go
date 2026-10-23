@@ -78,7 +78,7 @@ type Decide struct {
 // catch up with a snapshot. Ordered deliveries retain their own capacity limit.
 const subscriberBuffer = 64
 
-const subscriptionBytes = 64 << 20
+const subscriptionBytes = RPCPublicationLimit
 
 // inputLimit bounds one input request's body.
 const inputLimit = 1 << 20
