@@ -299,6 +299,18 @@ func TestNativeChildDetailsKeepCapturedSourceAcrossNavigation(t *testing.T) {
 	}
 	n, view, _ := nativeDetailTestViews(t, u)
 	view.children = hub
+	if refusal := view.openDetails(sessionapi.NativeDetailRequest{Kind: sessionapi.NativeSkillDetails, Agent: true, Caller: "/root/child-a"}); refusal != "" {
+		t.Fatal(refusal)
+	}
+	select {
+	case read := <-reads:
+		if read.Thread != "child-a" || read.Operation.Details.Caller != "Main" || read.Operation.Details.Agent {
+			t.Fatalf("roster skill click lost its runtime identity: %+v", read)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	view.closeChildDetails()
 	view.child, err = hub.Observe(ctx, "main", "child-b")
 	if err != nil {
 		t.Fatal(err)

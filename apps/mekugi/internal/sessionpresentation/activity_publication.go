@@ -58,6 +58,7 @@ func (v *ActivitySource) Publication(session *Model, main *ActivitySource) *acti
 				continue
 			}
 			agent.Summary = mainSummary
+			agent.Skills = slices.Clone(main.ActiveSkills()["Main"])
 			if latest := main.Model.Latest("Main"); latest >= 0 {
 				agent.LatestKind = main.Entries[latest].Source.Kind
 			}
@@ -85,7 +86,9 @@ func (v *ActivitySource) publicationCurrent(session *Model, main *activitypresen
 	}
 	for i, row := range roster {
 		facts, prior := row.Agent.ActivityAgent(), published.Roster[i]
-		if row.Depth != prior.Depth || facts != prior.Agent.AgentFacts || !slices.Equal(skills[facts.Name], prior.Agent.Skills) ||
+		// Main owns the root row's skills; its publication identity was checked above.
+		sameSkills := main != nil && facts.Name == "/root" || slices.Equal(skills[facts.Name], prior.Agent.Skills)
+		if row.Depth != prior.Depth || facts != prior.Agent.AgentFacts || !sameSkills ||
 			!slices.Equal(session.StatusItems(presentationcontract.Thread{ID: facts.Thread, OutputThroughput: facts.OutputThroughput}, presentationcontract.AgentMetric), prior.Agent.StatusItems) {
 			return false
 		}

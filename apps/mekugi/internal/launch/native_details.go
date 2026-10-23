@@ -35,6 +35,22 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 	if thread == (sessionpresentation.Thread{}) {
 		thread = view.Displayed
 	}
+	if request.Kind == sessionapi.NativeSkillDetails && request.Agent {
+		found := false
+		for _, agent := range v.attached.session.Roster() {
+			if agent.Name == request.Caller {
+				thread = sessionpresentation.Thread{ID: agent.Thread, Caller: agent.Name}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return sessionpresentation.ErrStaleIntent.Error()
+		}
+		if thread.ID == v.thread {
+			request.Agent, request.Caller = false, "Main"
+		}
+	}
 	if v.children != nil {
 		if _, live := v.children.Descendants(v.thread)[thread.ID]; live {
 			observer, err := v.children.Observe(v.ctx, v.thread, thread.ID)
@@ -42,6 +58,9 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 				return err.Error()
 			}
 			request.Displayed, request.Agent = thread, false
+			if request.Kind == sessionapi.NativeSkillDetails {
+				request.Caller = "Main"
+			}
 			if err := observer.Read(sessionapi.NativeOperation{Details: &request}); err != nil {
 				observer.Close()
 				return err.Error()

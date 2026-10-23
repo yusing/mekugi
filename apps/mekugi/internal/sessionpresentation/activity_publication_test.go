@@ -1,6 +1,7 @@
 package sessionpresentation
 
 import (
+	"slices"
 	"testing"
 
 	presentationcontract "github.com/yusing/mekugi/contracts/presentation"
@@ -8,6 +9,26 @@ import (
 	"github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
+
+func TestActivityPublicationKeepsMainSkillsImmutable(t *testing.T) {
+	source := &ActivitySource{Model: new(activitypresentation.Model[ActivityEntry, ActivityAgent])}
+	main := &ActivitySource{Model: new(activitypresentation.Model[ActivityEntry, ActivityAgent])}
+	session := new(Model)
+	source.Apply(ActivityEvent{Agents: []ActivityAgent{{Name: "/root", Thread: "child"}}})
+	main.RestoreSkills("Main", activitypresentation.SkillSet{"commit"})
+	first := source.Publication(session, main)
+	if !slices.Equal(first.Roster[0].Agent.Skills, activitypresentation.SkillSet{"commit"}) {
+		t.Fatalf("root roster lost Main skills: %v", first.Roster[0].Agent.Skills)
+	}
+	if source.Publication(session, main) != first {
+		t.Fatal("unchanged Main skills replaced the publication")
+	}
+	main.Apply(ActivityEvent{Entries: []ActivityEntry{{Seq: 1, Agent: "Main", Kind: "progress", Text: "Context compacted"}}})
+	next := source.Publication(session, main)
+	if next == first || len(next.Roster[0].Agent.Skills) != 0 || !slices.Equal(first.Roster[0].Agent.Skills, activitypresentation.SkillSet{"commit"}) {
+		t.Fatal("skill reset mutated or reused the old publication")
+	}
+}
 
 func TestActivityPublicationReusesUnchangedInputs(t *testing.T) {
 	source := &ActivitySource{Model: new(activitypresentation.Model[ActivityEntry, ActivityAgent])}
