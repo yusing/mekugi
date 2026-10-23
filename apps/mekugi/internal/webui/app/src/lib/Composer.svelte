@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Code from "./Code.svelte";
   import Alert from "./ui/Alert.svelte";
   import { onDestroy, tick, untrack } from "svelte";
   import type { ChoiceID } from "../../../../sessionapi/protocol";
@@ -40,6 +41,7 @@
   let progress = $state("");
   let pathing = $state(false);
   let field = $state<HTMLTextAreaElement>();
+  let syntax = $state<HTMLElement>();
   let tray = $state<ReturnType<typeof Attachments>>();
   const touch = matchMedia("(pointer: coarse)").matches;
   const running = $derived(!!input?.stoppable);
@@ -53,15 +55,13 @@
   onDestroy(() => pending?.abort());
 
   // Completions belong to the draft revision they were computed for.
-  const completion = $derived.by(() => {
-    const frame = semantic.frame;
-    const menu = frame?.view.Menu;
-    if (!frame || !menu || menu.Kind !== "" || menu.Dialog) return undefined;
-    const target = frame.completionTarget;
-    if (target.Call || target.Question || target.Request || target.Revision !== editor.revision)
-      return undefined;
-    return menu;
-  });
+  let dismissed = $state<string>();
+  const completionIdentity = $derived(
+    JSON.stringify([semantic.event?.attachment, view?.Input.ID, editor.revision]),
+  );
+  const completion = $derived(
+    dismissed === completionIdentity ? undefined : semantic.completionMenu,
+  );
   let active = $state(0);
   $effect(() => {
     const menu = completion;
@@ -76,8 +76,9 @@
       document.getElementById(`completion-${active}`)?.scrollIntoView({ block: "nearest" });
   });
   function choose(kind: number, choice: ChoiceID = { ID: 0, Name: "", Path: "" }) {
-    const menu = completion;
-    if (!view || !menu) return;
+    if (kind === 1) dismissed = completionIdentity;
+    const menu = semantic.liveCompletion;
+    if (!view || !menu || menu.Loading) return;
     void semantic.send({
       menu: { Version: view.Version, Menu: menu.ID, Kind: kind, Choice: choice, Query: "" },
       editor: semantic.metadata(),
@@ -94,7 +95,7 @@
     const frame = semantic.frame;
     if (asking || !frame || semantic.connection !== "open") return;
     const current = semantic.editor();
-    const key = `${frame.view.Input.ID}:${current.revision}`;
+    const key = `${semantic.event?.attachment}:${frame.view.Input.ID}:${current.revision}`;
     if (key === asked || !(/[/@$]/.test(current.text) || frame.view.Menu?.Kind === "")) return;
     asked = key;
     asking = true;
@@ -106,6 +107,7 @@
   $effect(() => {
     void editor.revision;
     void semantic.frame?.view.Input.ID;
+    void semantic.event?.attachment;
     untrack(refresh);
   });
 
@@ -276,7 +278,7 @@
 <div class="relative mx-auto w-full max-w-column px-4 pb-2.5 max-sm:px-2 max-sm:pb-safe-1.5">
   {#if completion}
     <div
-      class="absolute inset-x-4 bottom-[calc(100%-4px)] z-5 max-h-[min(320px,45dvh)] overflow-y-auto p-1 {floating} max-sm:inset-x-2"
+      class="menu-enter absolute inset-x-4 bottom-[calc(100%-4px)] z-5 max-h-[min(320px,45dvh)] overflow-y-auto p-1 {floating} max-sm:inset-x-2"
     >
       {#if completion.Problem}<Alert class="px-2.5 py-2">
           {completion.Problem}
@@ -300,6 +302,7 @@
               id="completion-{i}"
               role="option"
               aria-selected={i === active}
+              aria-disabled={!semantic.liveCompletion || completion.Loading}
               class="flex min-h-[34px] cursor-pointer items-baseline gap-3 rounded-control px-2.5 py-[7px] aria-selected:bg-active max-sm:min-h-11 max-sm:items-center"
               onpointerdown={(event) => event.preventDefault()}
               onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
@@ -332,35 +335,56 @@
       disabled={!!pending || shell}
     />
     <label class="sr-only" for="composer-text">{shell ? "Shell command" : "Message"}</label>
-    <textarea
-      id="composer-text"
-      class={[composerText, "min-h-12 pt-3 pb-1", shell && "font-mono"]}
-      role="combobox"
-      aria-expanded={!!completion?.Choices.length}
-      aria-controls={completion?.Choices.length ? "completions" : undefined}
-      aria-activedescendant={completion?.Choices.length ? `completion-${active}` : undefined}
-      aria-autocomplete="list"
-      bind:this={field}
-      bind:value={editor.text}
-      {onkeydown}
-      {onpaste}
-      oninput={edited}
-      onselect={() => {
-        const at = caret();
-        if (at !== editor.cursorBack) {
-          editor.cursorBack = at;
-          editor.revision++;
-        }
-      }}
-      readonly={!!pending || !!initial}
-      rows="1"
-      placeholder={shell
-        ? `Shell command on ${machine}`
-        : running
-          ? "Steer main's turn"
-          : "Message main"}
-      aria-describedby="composer-hint"
-      aria-invalid={error ? "true" : undefined}></textarea>
+    <div class="relative">
+      {#if shell}<div
+          class="pointer-events-none absolute inset-0 overflow-hidden"
+          aria-hidden="true"
+          bind:this={syntax}
+        >
+          <pre
+            class="{composerText} min-h-12 pt-3 pb-1 font-mono whitespace-pre-wrap wrap-break-word"><Code
+              code={editor.text + (editor.text.endsWith("\n") ? " " : "")}
+              lang="bash"
+            /></pre>
+        </div>{/if}
+      <textarea
+        id="composer-text"
+        class={[composerText, "min-h-12 pt-3 pb-1", shell && "font-mono"]}
+        role="combobox"
+        aria-expanded={!!completion?.Choices.length}
+        aria-controls={completion?.Choices.length ? "completions" : undefined}
+        aria-activedescendant={completion?.Choices.length ? `completion-${active}` : undefined}
+        aria-autocomplete="list"
+        bind:this={field}
+        bind:value={editor.text}
+        style:color={shell ? "transparent" : undefined}
+        style:caret-color="var(--text)"
+        onscroll={() => {
+          if (syntax && field) {
+            syntax.scrollTop = field.scrollTop;
+            syntax.scrollLeft = field.scrollLeft;
+          }
+        }}
+        {onkeydown}
+        {onpaste}
+        oninput={edited}
+        onselect={() => {
+          const at = caret();
+          if (at !== editor.cursorBack) {
+            editor.cursorBack = at;
+            editor.revision++;
+          }
+        }}
+        readonly={!!pending || !!initial}
+        rows="1"
+        placeholder={shell
+          ? `Shell command on ${machine}`
+          : running
+            ? "Steer main's turn"
+            : "Message main"}
+        aria-describedby="composer-hint"
+        aria-invalid={error ? "true" : undefined}></textarea>
+    </div>
     <div class="{composerTools} gap-0.5">
       <Menu label="Add files or paths" icon="plus" disabled={!!pending || shell}>
         {#snippet children(close)}
@@ -409,30 +433,26 @@
         >{/if}
       <span class="flex-1"></span>
       {#if pending}<Button variant="quiet" onclick={() => pending?.abort()}>Cancel</Button>
-      {:else if running && !shell}<Button
-          variant="quiet"
-          disabled={empty || !!refusal}
-          title="Queue for the next turn (Tab)"
-          onclick={() => send(true)}>Queue</Button
-        >{/if}
-      {#if input?.stoppable}<Button
+      {/if}
+      <div class="flex flex-none items-center gap-2">
+        {#if input?.stoppable}<Button
+            shape="round"
+            icon="stop"
+            label="Stop"
+            title="Stop main's turn"
+            onclick={stop}
+            disabled={stopping || !!unavailable}
+          />{/if}
+        <Button
+          type="submit"
+          variant="primary"
           shape="round"
-          icon="stop"
-          label="Stop"
-          title="Stop main's turn"
-          class="mr-1"
-          onclick={stop}
-          disabled={stopping || !!unavailable}
-        />{/if}
-      <Button
-        type="submit"
-        variant="primary"
-        shape="round"
-        icon="send"
-        label="Send"
-        title={running ? "Steer (Enter)" : "Send (Enter)"}
-        disabled={!!pending || !!refusal || empty}
-      />
+          icon="send"
+          label="Send"
+          title={running ? "Steer (Enter)" : "Send (Enter)"}
+          disabled={!!pending || !!refusal || empty}
+        />
+      </div>
     </div>
   </ComposerCard>
   <p

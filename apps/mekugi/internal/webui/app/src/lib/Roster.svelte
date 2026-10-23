@@ -63,7 +63,8 @@
     }
     const lower = partial ? "≥" : "";
     return {
-      tokens: tokensKnown ? `↑${lower}${tokens(input)} ↓${lower}${tokens(output)}` : undefined,
+      input: tokensKnown ? `${lower}${tokens(input)}` : undefined,
+      output: tokensKnown ? `${lower}${tokens(output)}` : undefined,
       cost: costKnown ? `${lower}${cost(usd)}` : undefined,
     };
   });
@@ -83,6 +84,14 @@
   const sub = "pl-4 text-small leading-[18px]";
 </script>
 
+{#snippet metric(label: string, value: string)}
+  <span class="flex min-w-0 items-baseline justify-between gap-2">
+    <span class="text-muted">{label}</span><span class="whitespace-nowrap text-ink tabular-nums"
+      >{value}</span
+    >
+  </span>
+{/snippet}
+
 <div class="mt-3.5 mb-0.5 flex items-baseline gap-2.5">
   <h2 class="font-semibold">Agents</h2>
   {#if !loading}
@@ -94,8 +103,8 @@
     </span>
   {/if}
 </div>
-{#if roster.added || roster.removed || totals.tokens || totals.cost}
-  <div class="flex flex-wrap gap-x-3 font-mono text-small text-muted tabular-nums">
+{#if roster.added || roster.removed || totals.input || totals.cost}
+  <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-small tabular-nums">
     {#if roster.added || roster.removed}<span
         title="Net lines changed in the workspace ({lines(roster.added ?? 0)} added, {lines(
           roster.removed ?? 0,
@@ -103,8 +112,11 @@
         ><span class="text-positive">+{roster.added ?? 0}</span>
         <span class="text-negative">−{roster.removed ?? 0}</span></span
       >{/if}
-    {#if totals.tokens}<span title="Tokens sent and received">{totals.tokens}</span>{/if}
-    {#if totals.cost}<span title="Cost">{totals.cost}</span>{/if}
+    {#if totals.input}{@render metric("Input", totals.input)}{@render metric(
+        "Output",
+        totals.output!,
+      )}{/if}
+    {#if totals.cost}{@render metric("Cost", totals.cost)}{/if}
   </div>
 {/if}
 
@@ -129,7 +141,7 @@
         <button
           type="button"
           class={[
-            "grid w-full gap-0.5 rounded-card px-2.5 py-2 text-left pointer-coarse:py-[11px]",
+            "grid w-full min-w-0 gap-1.5 rounded-card px-2.5 py-2.5 text-left pointer-coarse:py-[11px]",
             agent.name === selected ? "bg-accent-tint" : "hover:bg-raised",
           ]}
           aria-current={agent.name === selected ? "true" : undefined}
@@ -140,7 +152,7 @@
             <span class="min-w-0 truncate font-semibold">{name(agent)}</span>
             {#if agent.role}<Tag>{agent.role}</Tag>{/if}
             {#if time !== undefined}<span
-                class="ml-auto pl-2 font-mono text-small text-muted tabular-nums"
+                class="ml-auto pl-2 text-small text-muted tabular-nums"
                 title="Time spent working">{duration(time)}</span
               >{/if}
           </span>
@@ -155,38 +167,47 @@
                 >{/if}
             {/if}
           </span>
-          <span
-            class="{sub} flex flex-wrap gap-x-2.5 font-mono text-muted tabular-nums empty:hidden"
-          >
-            {#if agent.added || agent.removed}<span title="Lines this agent changed"
-                ><span class="text-positive">+{agent.added ?? 0}</span>
-                <span class="text-negative">−{agent.removed ?? 0}</span></span
-              >{/if}
-            {#if agent.inputTokens !== undefined}<span title="Tokens sent and received"
-                >↑{agent.usagePartial ? "≥" : ""}{tokens(agent.inputTokens)} ↓{agent.usagePartial
-                  ? "≥"
-                  : ""}{tokens(agent.outputTokens ?? 0)}</span
-              >{/if}
-            {#if agent.cost !== undefined}<span title="Cost"
-                >{agent.costPartial ? "≥" : ""}{cost(agent.cost)}</span
-              >{/if}
-            {#if agent.turns}<span>{plural(agent.turns, "turn")}</span>{/if}
+          <span class="{sub} grid grid-cols-2 gap-x-4 gap-y-1 tabular-nums">
+            {#if agent.inputTokens !== undefined}
+              {@render metric(
+                "Input",
+                `${agent.usagePartial ? "≥" : ""}${tokens(agent.inputTokens)}`,
+              )}
+              {@render metric(
+                "Output",
+                `${agent.usagePartial ? "≥" : ""}${tokens(agent.outputTokens ?? 0)}`,
+              )}
+            {/if}
+            {#if agent.cost !== undefined}{@render metric(
+                "Cost",
+                `${agent.costPartial ? "≥" : ""}${cost(agent.cost)}`,
+              )}{/if}
+            {#if agent.turns}{@render metric("Turns", String(agent.turns))}{/if}
             {#if agent.skills?.length}<span title={agent.skills.join(", ")}
-                >{plural(agent.skills.length, "skill")}</span
+                >{@render metric("Skills", String(agent.skills.length))}</span
               >{/if}
-            {#each agent.items ?? [] as item, i (i)}<span>{item}</span>{/each}
+            {#if agent.added || agent.removed}<span class="flex justify-between gap-2 text-muted"
+                ><span>Changes</span><span class="whitespace-nowrap"
+                  ><span class="text-positive">+{agent.added ?? 0}</span>
+                  <span class="text-negative">−{agent.removed ?? 0}</span></span
+                ></span
+              >{/if}
+            {#each agent.items ?? [] as item, i (i)}<span class="col-span-2 text-muted">{item}</span
+              >{/each}
           </span>
           {#if agent.context !== undefined && agent.window}
             {@const used = Math.min(100, (agent.context / agent.window) * 100)}
-            <span class="{sub} flex items-center gap-2 font-mono text-muted tabular-nums">
-              <!-- A control's content is presentational, so the text carries the value. -->
+            <span
+              class="{sub} mt-0.5 grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-1 text-muted tabular-nums"
+            >
+              <span>Context</span><span class="whitespace-nowrap"
+                >{tokens(agent.context)} / {tokens(agent.window)}</span
+              >
               <span
-                class="h-1 max-w-[120px] flex-1 overflow-hidden rounded-full bg-active"
+                class="col-span-2 h-1 w-full overflow-hidden rounded-full bg-active"
                 aria-hidden="true"
                 ><span class="block h-full bg-accent" style:width="{used}%"></span></span
               >
-              <span class="sr-only">Context</span>
-              {tokens(agent.context)} / {tokens(agent.window)}
             </span>
           {/if}
         </button>

@@ -52,6 +52,9 @@ class Semantic {
   copied = $state<string>();
   editors = $state<Record<string, Editor>>({});
   emptyEditor = $state<Editor>({ text: "", cursorBack: 0, revision: 0, items: [] });
+  #settings = new Map<string, NonNullable<NativeEvent["frame"]["view"]["Menu"]>>();
+  #completions = new Map<string, NonNullable<NativeEvent["frame"]["view"]["Menu"]>>();
+  openingSetting = $state<string>();
   #source?: ControlView;
   #destination?: ControlView;
   #work = 0;
@@ -65,13 +68,65 @@ class Semantic {
   get frame() {
     return this.event?.frame;
   }
-  // Main's model and effort menus open from the composer rather than as dialogs.
+  // Cached menus are presentation only. Actions always use the live frame.
   get settingsMenu() {
     const shown = this.frame?.view;
-    const menu = shown?.Menu;
-    if (!shown || !menu || menu.Kind !== "settings" || shown.Displayed.ID !== shown.Main.ID)
+    if (!shown || shown.Displayed?.ID !== shown.Main.ID) return undefined;
+    const menu = shown.Menu;
+    if (menu?.Kind === "settings" && ["/model", "/effort", "/reasoning"].includes(menu.Setting))
+      return menu.Loading && !menu.Choices.length
+        ? { ...menu, Choices: this.#settings.get(this.settingKey(menu.Setting))?.Choices ?? [] }
+        : menu;
+    if (!this.openingSetting) return undefined;
+    const cached = this.#settings.get(this.settingKey(this.openingSetting));
+    return cached ? { ...cached, Loading: true } : undefined;
+  }
+  private settingKey(command: string): string {
+    return `${this.frame?.view.Input.ID}:${this.frame?.view.Caption?.Model}:${command}`;
+  }
+  async openSetting(command: string): Promise<void> {
+    const source = this.#source;
+    this.openingSetting = command;
+    await this.send({ command });
+    if (this.#source === source && this.openingSetting === command) this.openingSetting = undefined;
+  }
+  private completionKey(): string {
+    const editor = this.editor();
+    return JSON.stringify([this.frame?.view.Input.ID, editor.text, editor.cursorBack]);
+  }
+  get liveCompletion() {
+    const frame = this.frame;
+    const menu = frame?.view.Menu;
+    const target = frame?.completionTarget;
+    if (
+      !menu ||
+      menu.Kind !== "" ||
+      menu.Dialog ||
+      !target ||
+      target.Call ||
+      target.Question ||
+      target.Request ||
+      target.Revision !== this.editor().revision
+    )
       return undefined;
-    return ["/model", "/effort", "/reasoning"].includes(menu.Setting) ? menu : undefined;
+    return menu;
+  }
+  get completionMenu() {
+    if (this.liveCompletion) {
+      const menu = this.liveCompletion;
+      return menu.Loading && !menu.Choices.length
+        ? { ...menu, Choices: this.#completions.get(this.completionKey())?.Choices ?? [] }
+        : menu;
+    }
+    // A current response with no menu also represents an intentional dismissal.
+    if (this.frame?.completionTarget?.Revision === this.editor().revision) return undefined;
+    const cached = this.#completions.get(this.completionKey());
+    return cached ? { ...cached, Loading: true } : undefined;
+  }
+  private clearMenus(): void {
+    this.#settings.clear();
+    this.#completions.clear();
+    this.openingSetting = undefined;
   }
   editor(): Editor {
     const id = this.frame?.view.Input.ID || this.#source?.thread || "";
@@ -141,7 +196,10 @@ class Semantic {
         if (connection !== "open") source.event = undefined;
         if (source === this.#source) {
           this.connection = connection;
-          if (connection !== "open") this.event = undefined;
+          if (connection !== "open") {
+            this.clearMenus();
+            this.event = undefined;
+          }
           this.connectionError = failure?.message;
         } else if (source === this.#destination && failure) this.failResume(failure.message);
       },
@@ -151,8 +209,11 @@ class Semantic {
   private receive(next: NativeEvent): void {
     const source = this.#source;
     if (!source) return;
-    if (next.attachment !== this.event?.attachment)
+    if (next.frame.view.Input.ID !== this.frame?.view.Input.ID) this.clearMenus();
+    if (next.attachment !== this.event?.attachment) {
+      this.clearMenus();
       this.#effect = this.#receipt = this.#acknowledged = 0;
+    }
     const switched = next.frame.switch;
     if (switched?.To && switched.Origin === next.attachment && switched.From === source.thread) {
       const selected = view.machine === source.machine.id && view.session === source.thread;
@@ -168,6 +229,20 @@ class Semantic {
       items: [],
     };
     this.event = next;
+    const menu = next.frame.view.Menu;
+    if (menu && !menu.Loading && !menu.Problem) {
+      if (menu.Kind === "settings" && ["/model", "/effort", "/reasoning"].includes(menu.Setting)) {
+        this.#settings.set(this.settingKey(menu.Setting), menu);
+        if (this.#settings.size > 24) this.#settings.delete(this.#settings.keys().next().value!);
+      }
+      if (this.liveCompletion) {
+        const key = this.completionKey();
+        this.#completions.delete(key);
+        this.#completions.set(key, menu);
+        if (this.#completions.size > 24)
+          this.#completions.delete(this.#completions.keys().next().value!);
+      }
+    }
     for (const settle of this.#settle) settle();
     for (const effect of next.frame.effects ?? []) {
       if (effect.ID <= this.#effect) continue;
@@ -320,6 +395,7 @@ class Semantic {
   }
 
   close(): void {
+    this.clearMenus();
     this.cancelResume();
     this.#source?.lifetime.abort();
     this.#source?.stop?.();
@@ -428,6 +504,29 @@ class Semantic {
       if (signal.aborted) abort();
       else check();
     });
+  }
+  async editWaiting(): Promise<void> {
+    const event = this.event;
+    if (!event) return;
+    const known = new Set(event.frame.effects.map((effect) => effect.ID));
+    const error = await this.send({
+      composer: {
+        Intent: {
+          Thread: event.frame.view.Main.ID,
+          Version: event.frame.view.Version,
+          Target: this.target(),
+          Operation: 6,
+          Work: event.frame.view.Interrupt,
+        },
+        Draft: textDraft(),
+        Consumed: false,
+      },
+    });
+    if (error || this.event?.attachment !== event.attachment) return;
+    for (const effect of this.frame?.effects ?? []) {
+      if (effect.Recovery && !known.has(effect.ID))
+        await this.send({ recovery: { effect: effect.ID, action: "edit" } });
+    }
   }
   // Typing refreshes completions quietly.
   complete(): Promise<string | undefined> {

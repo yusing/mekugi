@@ -48,3 +48,25 @@ export function failed(value: Value): boolean {
 export function isUser(entry: Entry): boolean {
   return entry.agent === "You" || !!entry.agent?.endsWith(" · user");
 }
+
+export function reasoningBody(body = "", title?: string): string {
+  const lead = title && `**${title}**`;
+  return (lead && body.startsWith(lead) ? body.slice(lead.length) : body).trim();
+}
+
+export function hasDetails(entry: Entry): boolean {
+  if (entry.kind === "reasoning")
+    return !!entry.values?.some((value) => reasoningBody(value.body, value.label));
+  return (
+    !!entry.text?.trim() ||
+    !!entry.assignmentText?.trim() ||
+    !!entry.values?.some(
+      (value) =>
+        value.body?.trim() ||
+        value.code?.trim() ||
+        value.tail?.some((line) => line.trim()) ||
+        value.changes?.length ||
+        value.questions?.length,
+    )
+  );
+}

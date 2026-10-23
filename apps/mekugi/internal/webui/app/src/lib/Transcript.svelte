@@ -2,7 +2,7 @@
   import { tick, type Snippet } from "svelte";
   import EntryView from "./EntryView.svelte";
   import { date, offset } from "./format";
-  import { isUser } from "./kinds";
+  import { hasDetails, isUser } from "./kinds";
   import type { Entry } from "./protocol";
   import Icon from "./ui/Icon.svelte";
   import { emptyBox } from "./ui/styles";
@@ -154,7 +154,7 @@
           {owner}
         />
         <!-- Shown on hover or focus, and always on touch. -->
-        {#if ondetails}<button
+        {#if ondetails && hasDetails(row.entry)}<button
             type="button"
             class="absolute top-1 -right-9 flex size-7 items-center justify-center rounded-control border border-transparent text-muted opacity-0 group-hover/row:opacity-100 hover:border-border hover:bg-surface hover:text-ink focus-visible:opacity-100 touch:opacity-100 max-sm:-right-10 max-sm:size-9"
             aria-label="Details"

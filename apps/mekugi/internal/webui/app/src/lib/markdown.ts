@@ -37,3 +37,71 @@ md.renderer.rules.image = (tokens, i) => {
 
 export const block = (text: string) => md.render(text);
 export const inline = (text: string) => md.renderInline(text);
+
+// Classified labels already quote operands as Markdown code spans. Keep their
+// boundaries rather than splitting punctuation inside commands or search patterns.
+export function toolLabel(text: string, verb: string): string {
+  const tokens = md.parseInline(text, {});
+  for (const token of tokens) {
+    const children = token.children ?? [];
+    let operand = 0;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      if (child.type === "code_inline") {
+        child.attrSet("class", verb === "Search" && operand === 0 ? "text-accent" : "tool-operand");
+        operand++;
+      } else if (
+        child.type === "text" &&
+        child.content === ", " &&
+        children[i - 1]?.type === "code_inline" &&
+        children[i + 1]?.type === "code_inline"
+      )
+        child.content = " ";
+    }
+  }
+  return md.renderer.render(tokens, md.options, {});
+}
+
+// Only published byte spans are markers. Identical unbound text stays ordinary.
+export function markedBlock(
+  text: string,
+  spans: NonNullable<import("./protocol").Entry["spans"]>,
+): string {
+  const bytes = new TextEncoder().encode(text);
+  const decoder = new TextDecoder();
+  let prefix = "[mekugi-bound:";
+  while (text.includes(prefix)) prefix += ":";
+  const markers: { key: string; html: string }[] = [];
+  const colours = ["text-marker-image", "text-positive", "text-kind-write", "text-accent"];
+  let at = 0,
+    source = "";
+  for (const span of spans) {
+    if (
+      span.Start < at ||
+      span.End <= span.Start ||
+      span.End > bytes.length ||
+      (bytes[span.Start] & 0xc0) === 0x80 ||
+      (span.End < bytes.length && (bytes[span.End] & 0xc0) === 0x80)
+    )
+      continue;
+    const colour = colours[span.Kind];
+    if (!colour) continue;
+    const key = `${prefix}${markers.length}]`;
+    markers.push({
+      key,
+      html: `<span class="font-semibold whitespace-nowrap ${colour}">${md.utils.escapeHtml(decoder.decode(bytes.slice(span.Start, span.End)))}</span>`,
+    });
+    source += decoder.decode(bytes.slice(at, span.Start)) + key;
+    at = span.End;
+  }
+  source += decoder.decode(bytes.slice(at));
+  return md
+    .render(source)
+    .split(/(<[^>]*>)/)
+    .map((part, i) => {
+      if (i % 2) return part;
+      for (const marker of markers) part = part.replaceAll(marker.key, marker.html);
+      return part;
+    })
+    .join("");
+}

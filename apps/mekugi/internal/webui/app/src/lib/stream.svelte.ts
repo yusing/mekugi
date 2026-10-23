@@ -141,6 +141,19 @@ class Stream {
     return this.#request("session/decide", body);
   }
 
+  async image(entry: Entry, index: number, image: string, signal: AbortSignal): Promise<Blob> {
+    const machine = this.#machine,
+      id = this.#id;
+    if (!machine || !id) throw new Error("The image's machine is disconnected.");
+    const result = await machine.request<{ mime: string; data: string }>(
+      "session/image",
+      { thread: id, body: { seq: entry.seq, agent: entry.agent ?? "", index, image } },
+      { signal: AbortSignal.any([signal, this.#requests.signal]) },
+    );
+    const bytes = Uint8Array.from(atob(result.data), (c) => c.charCodeAt(0));
+    return new Blob([bytes], { type: result.mime });
+  }
+
   async #request(method: RPCMethod, body: unknown): Promise<string | undefined> {
     const machine = this.#machine;
     const id = this.#id;

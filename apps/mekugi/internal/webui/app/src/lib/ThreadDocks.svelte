@@ -1,5 +1,6 @@
 <script lang="ts">
   import Alert from "./ui/Alert.svelte";
+  import RecoveryEditor from "./RecoveryEditor.svelte";
   import Markdown from "./Markdown.svelte";
   import { semantic } from "./semantic.svelte";
   import { stream } from "./stream.svelte";
@@ -59,45 +60,65 @@
           {recovery.shell ? "Unsent shell command" : "Unsent submission"}
         </h2>
       </header>
-      <p class={["my-1 whitespace-pre-wrap wrap-anywhere", recovery.shell && "font-mono"]}>
-        {recovery.preview}
-      </p>
-      <p class="text-small text-muted">
-        {[
-          recovery.attachments && "Original attachments are retained.",
-          "Leaving this thread or disconnecting discards it.",
-          effect.Thread !== view?.Input.ID && "Return to the thread it was written in to retry.",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      </p>
-      <div class="mt-2 flex gap-2">
-        <Button
-          disabled={disabled || effect.Thread !== view?.Input.ID}
-          onclick={() => semantic.send({ recovery: { effect: effect.ID, action: "retry" } })}
-          >Retry intact</Button
-        >
-        <Button
-          variant="quiet"
-          {disabled}
-          onclick={() => semantic.send({ recovery: { effect: effect.ID, action: "discard" } })}
-          >Discard</Button
-        >
-      </div>
+      {#if recovery.editing}
+        <RecoveryEditor {effect} {disabled} />
+      {:else}
+        <p class={["my-1 whitespace-pre-wrap wrap-anywhere", recovery.shell && "font-mono"]}>
+          {recovery.preview}
+        </p>
+        <p class="text-small text-muted">
+          {[
+            recovery.attachments && "Original attachments are retained.",
+            "Leaving this thread or disconnecting discards it.",
+            effect.Thread !== view?.Input.ID && "Return to the thread it was written in to retry.",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        </p>
+        <div class="mt-2 flex gap-2">
+          <Button
+            {disabled}
+            onclick={() => semantic.send({ recovery: { effect: effect.ID, action: "edit" } })}
+            >Edit</Button
+          >
+          <Button
+            disabled={disabled || effect.Thread !== view?.Input.ID}
+            onclick={() => semantic.send({ recovery: { effect: effect.ID, action: "retry" } })}
+            >Retry intact</Button
+          >
+          <Button
+            variant="quiet"
+            {disabled}
+            onclick={() => semantic.send({ recovery: { effect: effect.ID, action: "discard" } })}
+            >Discard</Button
+          >
+        </div>
+      {/if}
     </section>
   {/each}
 
   {#if waiting.length}
-    <details class="rounded-float border bg-raised">
-      <summary class="flex min-h-9 items-center gap-2 px-3.5 text-small text-muted max-sm:min-h-11">
-        <Icon name="history" size={14} />
-        {waiting.length === 1 ? "1 message waits" : `${waiting.length} messages wait`} for main's next
-        turn
-      </summary>
-      <ol class="list-decimal pr-3.5 pb-2.5 pl-9">
-        {#each waiting as item, i (i)}<li class="wrap-anywhere">{item.Text}</li>{/each}
-      </ol>
-    </details>
+    <div class="flex items-start gap-2 rounded-float border bg-raised pr-1">
+      <details class="min-w-0 flex-1">
+        <summary
+          class="flex min-h-9 items-center gap-2 px-3.5 text-small text-muted max-sm:min-h-11"
+        >
+          <Icon name="history" size={14} />
+          {waiting.length === 1 ? "1 message waits" : `${waiting.length} messages wait`} for main's next
+          turn
+        </summary>
+        <ol class="list-decimal pr-3.5 pb-2.5 pl-9">
+          {#each waiting as item, i (i)}<li class="wrap-anywhere">{item.Text}</li>{/each}
+        </ol>
+      </details>
+      <Button
+        variant="quiet"
+        class="my-0.5"
+        label="Edit queued messages"
+        disabled={disabled || view?.Input.ID !== view?.Main.ID}
+        onclick={() => semantic.editWaiting()}>Edit</Button
+      >
+    </div>
   {/if}
 
   <!-- A lost machine connection is announced above the transcript. -->

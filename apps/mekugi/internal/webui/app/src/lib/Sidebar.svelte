@@ -109,13 +109,18 @@
                 {@const current = view.machine === machine.id && view.session === s.id}
                 <li>
                   <a
-                    class="{row} min-h-[34px] gap-2 pr-2.5 pl-7 no-underline aria-[current=page]:font-medium"
+                    class="{row} min-h-[52px] gap-2 py-1.5 pr-2.5 pl-7 no-underline aria-[current=page]:font-medium"
                     href={selectionHash({ machine: machine.id, session: s.id })}
                     aria-current={current ? "page" : undefined}
                     title={[name(s), s.workspace, status].filter(Boolean).join("\n")}
                     onclick={onnavigate}
                   >
-                    <span class="min-w-0 flex-1 truncate">{name(s)}</span>
+                    <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span class="truncate">{name(s)}</span>
+                      {#if s.workspace}<span class="truncate text-small font-normal text-muted"
+                          >{basename(s.workspace)}</span
+                        >{/if}
+                    </span>
                     {#if s.replay}<Tag>Replay</Tag>{/if}
                     {#if s.waiting}<span
                         class="min-w-[18px] flex-none rounded-full bg-warning-tint px-[5px] text-center text-tiny text-warning-ink tabular-nums ring-1 ring-warning-edge ring-inset"

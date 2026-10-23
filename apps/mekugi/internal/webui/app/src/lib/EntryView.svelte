@@ -1,9 +1,10 @@
 <script lang="ts">
   import AgentName from "./AgentName.svelte";
+  import UserImage from "./UserImage.svelte";
   import Excerpt from "./Excerpt.svelte";
   import { duration } from "./format";
   import { outputLanguage } from "./highlight";
-  import { failed, isUser } from "./kinds";
+  import { failed, isUser, reasoningBody } from "./kinds";
   import Markdown from "./Markdown.svelte";
   import { inline } from "./markdown";
   import type { Entry, Value } from "./protocol";
@@ -32,12 +33,6 @@
     !value.duration &&
     !value.running;
   const first = $derived(entry.values?.[0]);
-  // Reasoning bodies open with their title in bold; the summary already shows it.
-  function withoutTitle(body: string, title?: string): string {
-    if (!title) return body;
-    const lead = `**${title}**`;
-    return body.startsWith(lead) ? body.slice(lead.length).trimStart() : body;
-  }
   const hookFailed = $derived(first !== undefined && failed(first));
 
   // Traffic between agents: a task, a message, or a child's answer. Like the
@@ -123,7 +118,14 @@
             title={stamp}>{at}</time
           >{/if}
       </div>
-      <Markdown text={entry.text ?? ""} />
+      {#if entry.images?.length}<div class="mb-3 flex flex-wrap gap-2">
+          {#each entry.images as image, index (`${image}:${index}`)}<UserImage
+              {entry}
+              {image}
+              {index}
+            />{/each}
+        </div>{/if}
+      <Markdown text={entry.text ?? ""} spans={entry.spans} />
     </div>
   {:else}
     <time
@@ -167,18 +169,24 @@
         <Markdown text={entry.text ?? ""} />
       {:else if entry.kind === "reasoning"}
         {#each entry.values ?? [] as value, i (i)}
-          <details>
-            <summary class="{summary} group/summary min-h-[26px] text-muted">
-              <Icon name="thought" size={14} />
-              <span class="group-hover/summary:text-ink"
-                >{value.live ? "Thinking" : thought(value.thought)}</span
+          {@const content = reasoningBody(value.body, value.label)}
+          {#snippet thoughtHeading()}
+            <Icon name="thought" size={14} />
+            <span>{value.live ? "Thinking" : thought(value.thought)}</span>
+            {#if value.label}<span class="min-w-0 truncate text-ink">{value.label}</span>{/if}
+          {/snippet}
+          {#if content}
+            <details>
+              <summary class="{summary} min-h-[26px] text-muted hover:text-ink"
+                >{@render thoughtHeading()}</summary
               >
-              {#if value.label}<span class="min-w-0 truncate text-ink">{value.label}</span>{/if}
-            </summary>
-            <div class="mt-1 mb-2 ml-1.5 border-l-2 border-rule pl-[15px]">
-              <Markdown text={withoutTitle(value.body ?? "", value.label)} quiet />
-            </div>
-          </details>
+              <div class="mt-1 mb-2 ml-1.5 border-l-2 border-rule pl-[15px]">
+                <Markdown text={content} quiet />
+              </div>
+            </details>
+          {:else}
+            <div class="{summary} min-h-[26px] text-muted">{@render thoughtHeading()}</div>
+          {/if}
         {/each}
       {:else if entry.kind === "hook"}
         <div class="flex min-h-[26px] items-center gap-2 text-small text-muted">
@@ -202,13 +210,13 @@
       {:else if entry.values?.length}
         <div
           class={[
-            "divide-y divide-rule rounded-card border px-3.5 py-1 max-sm:px-3",
+            "grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 divide-y divide-rule rounded-card border px-3.5 py-1 max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:px-3",
             entry.running && "border-[color-mix(in_srgb,var(--accent)_45%,var(--border))]",
           ]}
         >
           {#each entry.values as value, i (i)}
             {#if value.kind === "progress"}
-              <p class="py-[5px] text-muted">{value.body}</p>
+              <p class="col-span-full py-[5px] text-muted">{value.body}</p>
             {:else if !pending(value)}
               <ValueRow {value} outputLang={outputLanguage(entry.values, i)} />
             {/if}

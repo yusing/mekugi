@@ -3,11 +3,12 @@
   import { duration } from "./format";
   import { breakable, highlightWithin } from "./highlight";
   import { failed, family } from "./kinds";
-  import { inline } from "./markdown";
+  import { toolLabel } from "./markdown";
   import Path from "./Path.svelte";
   import type { Value } from "./protocol";
   import { stream } from "./stream.svelte";
   import Dot from "./ui/Dot.svelte";
+  import Icon from "./ui/Icon.svelte";
   import { caret, codeBlock } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
 
@@ -27,13 +28,12 @@
   const changes = $derived((value.changes ?? []).filter((c) => !c.footer));
   const footer = $derived(value.changes?.find((c) => c.footer));
   // Labels join their parts with " · " and state diff counts as "+5 −3".
-  // Each later part keeps its separator, so a wrap never strands a "·", and
-  // counts take the diff colours. Code spans are the command's own text and
-  // stay as they are.
+  // Render segments with space instead of punctuation; diff counts keep their
+  // colours, while punctuation within code spans remains authored text.
   const label = $derived(
     parts(value.label ?? "")
       .map((part) =>
-        breakable(inline(part))
+        breakable(toolLabel(part, verb))
           .split(/(<code>[\s\S]*?<\/code>)/)
           .map((text, i) =>
             i % 2
@@ -45,7 +45,7 @@
           )
           .join(""),
       )
-      .map((part, i) => (i === 0 ? part : `<span class="whitespace-nowrap">· ${part}</span>`))
+      .map((part, i) => (i === 0 ? part : `<span class="ml-2 inline-block">${part}</span>`))
       .join(" "),
   );
 
@@ -70,6 +70,7 @@
     return out.filter(Boolean);
   }
 
+  const hasOutput = $derived(value.tail?.some((line) => line.trim()));
   const code = $derived(value.code?.replace(/\n$/, ""));
   const multiline = $derived(code !== undefined && code.includes("\n"));
   // A command with no label is its own subject: its first line takes the label.
@@ -128,7 +129,7 @@
 
 <div
   class={[
-    "grid grid-cols-[60px_minmax(0,1fr)_auto] items-baseline gap-x-3 py-[5px] max-sm:grid-cols-[minmax(0,1fr)_auto]",
+    "col-span-full grid grid-cols-subgrid items-baseline py-[5px]",
     value.subsumed && "opacity-70",
     value.effect && "ml-3 border-l border-rule pl-3",
   ]}
@@ -148,6 +149,8 @@
             >{/if}</span
         >
       {/each}
+    {:else if value.path}
+      <span class="font-mono text-code"><Path path={value.path} /></span>
     {:else if value.label}
       {@html label}
     {:else if headline !== undefined}
@@ -157,12 +160,30 @@
           >{/if}</code
       >
     {/if}
-    {#if result && value.tail?.length}{@render outputDisclosure()}{/if}
+    {#if value.autoReload}<span class="ml-2 inline-block whitespace-nowrap text-small text-muted"
+        >(auto reloaded)</span
+      >{/if}
     {#if value.workdir}<span class="text-muted"
         >{` in `}<span class="font-mono"><Path path={value.workdir} /></span></span
       >{/if}
   </div>
-  <span class="flex items-baseline gap-2 font-mono text-small whitespace-nowrap tabular-nums">
+  <span
+    class="flex items-center justify-end gap-2 font-mono text-small whitespace-nowrap tabular-nums"
+  >
+    {#if hasOutput}<button
+        type="button"
+        aria-expanded={outputOpen}
+        aria-label={`Output: ${output}`}
+        title={`Output: ${output}`}
+        class="inline-flex items-center gap-1 font-sans text-small text-muted hover:text-ink max-sm:min-h-9"
+        onclick={() => (outputOpen = !outputOpen)}
+      >
+        <span class={outputOpen ? "rotate-0" : "-rotate-90"}><Icon name="chevron" size={12} /></span
+        >
+        <span class="max-sm:hidden">Output <span class="text-tiny">{output}</span></span><span
+          class="hidden max-sm:inline">{lines(value.tail?.length ?? 0)}</span
+        >
+      </button>{/if}
     {#if value.running}
       <span class="inline-flex items-center gap-1.5 text-accent"
         ><Dot tone="running" size={6} />running</span
@@ -183,7 +204,8 @@
       {#if json !== undefined}
         <details class="group/disclosure mt-0.5" bind:open={scriptOpen}>
           <summary class={disclosure}
-            >Arguments and result · {lines(json.split("\n").length)}</summary
+            >Arguments and result <span class="ml-2">{lines(json.split("\n").length)}</span
+            ></summary
           >
           {#if scriptOpen}<pre class="{scroll} whitespace-pre-wrap wrap-anywhere"><Code
                 code={json}
@@ -192,7 +214,9 @@
         </details>
       {:else if multiline}
         <details class="group/disclosure mt-0.5" bind:open={scriptOpen}>
-          <summary class={disclosure}>Script · {lines(code.split("\n").length)}</summary>
+          <summary class={disclosure}
+            >Script <span class="ml-2">{lines(code.split("\n").length)}</span></summary
+          >
           {#if scriptOpen}<pre class="{scroll} whitespace-pre"><Code
                 {code}
                 lang={value.lang}
@@ -243,32 +267,29 @@
         <ul class="mt-1 text-code leading-5">
           {#each value.questions as q, i (i)}
             <li>
-              {q.text}{#if q.answer}<span class="text-muted">{` · ${q.answer}`}</span>{/if}
+              {q.text}{#if q.answer}<span class="ml-2 text-muted">{q.answer}</span>{/if}
             </li>
           {/each}
         </ul>
       {/if}
       {#if value.waits?.length}
-        <div class="text-muted">
-          Waiting on {value.waits
-            .map((w) => stream.label(w.name) + (w.status ? ` (${w.status})` : ""))
-            .join(", ")}
+        <div class="flex flex-wrap items-center gap-2 text-muted">
+          <span>Waiting on</span>
+          {#each value.waits as wait}<Tag
+              >{stream.label(wait.name)}{#if wait.status}<span class="ml-1">({wait.status})</span
+                >{/if}</Tag
+            >{/each}
         </div>
       {/if}
     </div>
   {/if}
 
-  {#if value.tail?.length && !result}
-    <div class={extra}>{@render outputDisclosure()}</div>
-  {/if}
-</div>
-
-{#snippet outputDisclosure()}
-  <details class="group/disclosure mt-0.5" bind:open={outputOpen}>
-    <summary class={disclosure}>Output · {output}</summary>
-    {#if outputOpen}<pre class="{scroll} whitespace-pre"><Code
+  {#if hasOutput && outputOpen}
+    <div class={extra}>
+      <pre class="{scroll} whitespace-pre"><Code
           code={value.tail?.join("\n") ?? ""}
           lang={outputLang}
-        /></pre>{/if}
-  </details>
-{/snippet}
+        /></pre>
+    </div>
+  {/if}
+</div>

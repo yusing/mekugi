@@ -239,6 +239,20 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("find", "text", "Browser host answer 1", "text", "--exact")
 	run("snapshot", "-i")
 	t.Log("created through the empty-state composer with uploaded text and image")
+	run("wait", "--fn", `document.querySelector('img[alt="Attached image 1"]')?.naturalWidth > 0`)
+	run("wait", "--fn", `document.querySelector('.text-marker-image')?.textContent === '[Image 1]'`)
+	run("wait", "--fn", `document.querySelector('h1')?.nextElementSibling?.getAttribute('aria-label') === 'Session details'`)
+	run("find", "label", "Message", "fill", "draft survives fast mode")
+	button("Fast mode")
+	run("wait", "--fn", `document.querySelector('button[aria-label="Fast mode"]')?.getAttribute('aria-pressed') === 'true'`)
+	button("Fast mode")
+	run("wait", "--fn", `document.querySelector('button[aria-label="Fast mode"]')?.getAttribute('aria-pressed') === 'false' && document.querySelector('#composer-text')?.value === 'draft survives fast mode'`)
+	run("find", "label", "Message", "fill", `!printf '%s\n' "$PATH"`)
+	run("wait", "--fn", `document.querySelector('#composer-text')?.previousElementSibling?.querySelectorAll('span[style]').length > 1`)
+	capture("shell-highlight")
+	run("find", "label", "Shell command", "fill", "")
+	t.Log("images, bound markers, fast toggle and shell highlighting passed")
+
 	message("/status")
 	run("wait", "--text", "Session status")
 	run("wait", "--fn", "document.querySelector('#composer-text')?.value === '' && !document.querySelector('[role=alert]')")
@@ -309,6 +323,27 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	capture("details")
 	button("Close details")
 	run("wait", "--fn", "!document.querySelector('#details-heading')")
+	t.Run("queued input editing", func(t *testing.T) {
+		message("hold queued editing")
+		run("wait", "--fn", "!!document.querySelector('button[aria-label=Stop]')")
+		run("upload", "input[type=file]", laterUpload)
+		run("find", "label", "Message", "fill", "queued original")
+		run("press", "Tab")
+		run("wait", "--text", "1 message waits")
+		capture("queued")
+		button("Edit queued messages")
+		run("wait", "--fn", "!!document.querySelector('textarea[aria-label=\"Message text 1\"]')")
+		run("find", "label", "Message text 1", "fill", "edited queued text ")
+		capture("queue-editor")
+		run("click", "section[aria-label=\"Unsent submission\"] button:last-child")
+		waitRecovered()
+		body, err := os.ReadFile(ledger)
+		if err != nil || !strings.Contains(string(body), "edited queued text") {
+			t.Fatalf("edited input was not sent: %v", err)
+		}
+		button("Stop")
+		run("wait", "--fn", "!document.querySelector('button[aria-label=Stop]')")
+	})
 	message("/resume")
 	run("wait", "--text", "Resume saved thread")
 	run("find", "text", "Saved fixture", "click", "--exact")
@@ -473,9 +508,11 @@ func serveWebUISemanticHost(t *testing.T) {
 		fmt.Fprintf(log, "%s %s\n", request.Method, request.Params)
 		var params struct {
 			Thread string         `json:"threadId"`
+			Turn   string         `json:"turnId"`
 			Input  jsontext.Value `json:"input"`
 			Model  string         `json:"model"`
 			Effort string         `json:"effort"`
+			Tier   jsontext.Value `json:"serviceTier"`
 		}
 		if len(request.Params) != 0 {
 			if err := json.Unmarshal(request.Params, &params); err != nil {
@@ -497,6 +534,9 @@ func serveWebUISemanticHost(t *testing.T) {
 					settings[field] = value
 				}
 			}
+			if len(params.Tier) > 0 {
+				settings["serviceTier"] = params.Tier
+			}
 			// Codex confirms with the thread's authoritative settings.
 			confirmed = map[string]any{"method": "thread/settings/updated", "params": map[string]any{"threadId": params.Thread, "threadSettings": maps.Clone(settings)}}
 		case "model/list":
@@ -515,6 +555,11 @@ func serveWebUISemanticHost(t *testing.T) {
 			thread.ID = fmt.Sprintf("fork-%d", forks)
 			threads[thread.ID] = thread
 			result["thread"] = thread
+		case "turn/interrupt":
+			confirmed = map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": params.Thread, "turn": map[string]any{"id": params.Turn, "status": "interrupted"}}}
+		case "turn/steer":
+			result["turnId"] = params.Turn
+			confirmed = map[string]any{"method": "item/completed", "params": map[string]any{"threadId": params.Thread, "turnId": params.Turn, "item": map[string]any{"id": "queued-edit", "type": "userMessage", "content": params.Input}}}
 		case "turn/start":
 			limit := 0
 			key := ""
@@ -545,6 +590,9 @@ func serveWebUISemanticHost(t *testing.T) {
 		}
 		if turn != nil {
 			write(map[string]any{"method": "turn/started", "params": map[string]any{"threadId": params.Thread, "turn": map[string]any{"id": turn.ID}}})
+			if strings.Contains(string(turn.Items[0].Content), "hold queued editing") {
+				continue
+			}
 			for _, item := range turn.Items {
 				write(map[string]any{"method": "item/completed", "params": map[string]any{"threadId": params.Thread, "turnId": turn.ID, "item": item}})
 			}

@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+  import { tick } from "svelte";
   import { newIdentity } from "../transport";
   import Icon, { type IconName } from "./Icon.svelte";
   import { beside } from "./place";
@@ -77,15 +78,14 @@
   function position(width: number) {
     if (button) place = `min-width:${button.offsetWidth}px;${beside(button, width)}`;
   }
-  function onbeforetoggle(event: ToggleEvent) {
+  async function onbeforetoggle(event: ToggleEvent) {
     open = event.newState === "open";
     if (!open) return;
     draft = value;
     query = undefined;
     position(360);
-  }
-  function ontoggle(event: ToggleEvent) {
-    if (event.newState !== "open" || !panel) return;
+    await tick();
+    if (!open || !panel) return;
     position(panel.offsetWidth);
     if (field) field.select();
     else
@@ -131,8 +131,7 @@
   class="fixed inset-auto m-0 hidden max-h-[min(440px,var(--room))] w-max max-w-[min(360px,calc(100vw-16px))] flex-col p-1 open:flex {floating}"
   style={place}
   popover="auto"
-  onbeforetoggle={onbeforetoggle as (event: Event) => void}
-  ontoggle={ontoggle as (event: Event) => void}
+  onbeforetoggle={(event) => void onbeforetoggle(event as ToggleEvent)}
   {onkeydown}
 >
   {#if entry}

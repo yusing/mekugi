@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import { tick, type Snippet } from "svelte";
   import { newIdentity } from "../transport";
   import Button from "./Button.svelte";
   import type { IconName } from "./Icon.svelte";
@@ -33,11 +33,15 @@
   function items(): HTMLElement[] {
     return Array.from(panel?.querySelectorAll<HTMLElement>("[role=menuitem]:not(:disabled)") ?? []);
   }
-  function ontoggle(event: ToggleEvent) {
+  async function onbeforetoggle(event: ToggleEvent) {
     open = event.newState === "open";
     if (!open || !button) return;
     place = beside(button, 280);
-    queueMicrotask(() => items()[0]?.focus());
+    await tick();
+    if (open && panel) {
+      place = beside(button, panel.offsetWidth);
+      items()[0]?.focus();
+    }
   }
   function onkeydown(event: KeyboardEvent) {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -70,8 +74,8 @@
   aria-label={label}
   popover="auto"
   style={place}
-  ontoggle={ontoggle as (event: Event) => void}
+  onbeforetoggle={(event) => void onbeforetoggle(event as ToggleEvent)}
   {onkeydown}
 >
-  {#if open}{@render children(close)}{/if}
+  {@render children(close)}
 </div>

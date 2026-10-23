@@ -122,6 +122,8 @@ export interface Value {
 }
 
 export interface Entry {
+  spans?: { Start: number; End: number; Kind: number }[];
+  images?: string[];
   seq: number;
   agent?: string;
   kind?: string;

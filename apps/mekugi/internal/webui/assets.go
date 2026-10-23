@@ -23,7 +23,7 @@ type assetHandler struct{ assets fs.FS }
 
 // Explicit machines may use any HTTP(S)/WebSocket origin. Other resources stay
 // bundled, so recorded Markdown cannot make requests to the hosts it names.
-const contentPolicy = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src http: https: ws: wss:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+const contentPolicy = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src http: https: ws: wss:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 // Source: apps/mekugi/internal/webui/hub.go:116:128@[14a6d1f3] Hub.static
 func (h assetHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

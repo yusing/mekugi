@@ -20,7 +20,8 @@ Secret prompts and native filesystem/editor integration remain native-only.
 
 The page is laid out like a chat application. A sidebar lists threads grouped
 under their machine, each machine with its connection state, and opens a new
-thread on any of them; on phones it is a drawer. With no machine connected, the
+thread on any of them; on phones it is a drawer. Thread rows show the title,
+workspace basename on separate lines. The full workspace remains available on the row. With no machine connected, the
 page asks for one. Machine settings, at the foot of the sidebar, add a machine by
 name, connector URL and access token, replace a refused token, or remove a
 machine. There is no implicit localhost connection. Machines and access tokens are
@@ -53,8 +54,15 @@ first message through the same composer path as later input. Upload bytes are
 read once. If that first submission is refused, the opened thread stays available
 and the editor retains the input. An unknown outcome is never resubmitted on
 reconnection. After asynchronous rejection, an intact retained submission offers
-Retry or Discard, without editing individual attachments or rereading their sources.
+Retry, Edit or Discard, without editing individual attachments or rereading their sources.
 The pending recovery belongs to that control view; leaving it releases unsent input.
+
+The waiting-message bar offers Edit on its right. It withdraws locally queued
+input to its originating view for editing without interrupting the active turn.
+Editable text stays separate from retained attachment labels and snapshots; Send
+explicitly resubmits the edited input, while Discard releases it. Already transmitted
+input remains host-owned. The composer's Send and Stop controls share one alignment;
+Tab queues input without a separate Queue button.
 
 The composer follows the terminal's: `/`, `@` and `$` show the server's
 completions for keyboard or pointer selection; a chosen file or image also becomes
@@ -69,6 +77,14 @@ accepted admission does not permanently disable a prompt still awaiting resoluti
 While Main is displayed, the composer shows its model and reasoning effort as
 pickers. Each opens the thread's own `/model` or `/effort` menu above the composer;
 choosing applies the setting and leaves the draft unchanged.
+Beside reasoning effort, a flash toggle applies the thread's priority service tier
+or restores its default tier. Its yellow foreground reflects the confirmed fast
+setting; refusal leaves the setting unchanged and shows the server's error.
+Reopening a picker or
+revisiting a completion query shows cached choices while the current control view
+refreshes them. Choices become actionable after that refresh; cached menu identities
+are never submitted. Caches belong to the attached view and are discarded on
+disconnection or thread changes. Menu motion respects reduced-motion preferences.
 
 Stopping interrupts Main. Explicit End names the thread and confirms that active
 work stops. A continuation command uses `mekugi resume ID` on the selected machine;
@@ -98,7 +114,15 @@ usage, the continuation command and End sit behind an information button. The
 agent roster is a collapsible right panel toggled from the thread header. Each
 transcript row offers its details, which open in the same right panel; on narrow
 screens both panels open as sheets over the transcript. User turns sit on the right of the
-transcript and agent activity on the left. A compound command's combined result
+transcript and agent activity on the left. Bound image, file, skill and selection
+markers use their terminal colours; literal lookalikes remain ordinary text. Attached
+images appear above the message, with a visible unavailable state if their source
+cannot be read. Empty items have no expansion control. Attachment events show their paths or skill
+names and auto-reload state, with columns sized to the visible verbs. Questions
+show identical heading and body text only once. Output counts share the
+event heading instead of occupying a separate collapsed row. Search patterns use accent ink, separate from their path operands. Compound
+labels use spaced segments and command chips instead of separator punctuation.
+Session details sit beside the thread title. Shell input is syntax-highlighted while editing. A compound command's combined result
 follows its classified steps as an outcome and output row, without repeating
 what the steps show; a result with no classified steps shows the command that
 ran, where the terminal labels it as a shell batch. The page follows the system's light or dark
@@ -119,6 +143,7 @@ roster does. Each agent shows its role, its state (working, idle, done or
 error), what a working agent is doing now or when a finished one last replied,
 its work time, the lines it changed, token usage, cost, turns, skills and
 context use. Usage that is only partly known is shown as a lower bound. The
+roster uses aligned, labelled usage rows rather than a run of metric symbols. The
 roster heading counts agents by state and totals the session's changed lines,
 usage and cost.
 

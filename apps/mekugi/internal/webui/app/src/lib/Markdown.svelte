@@ -1,11 +1,15 @@
 <script lang="ts">
   import { highlightWithin } from "./highlight";
-  import { block } from "./markdown";
+  import { block, markedBlock } from "./markdown";
 
   // Rendered Markdown from recorded messages, styled by the prose component
   // class since no template declares its elements.
-  let { text, quiet = false }: { text: string; quiet?: boolean } = $props();
-  const html = $derived(block(text));
+  let {
+    text,
+    quiet = false,
+    spans,
+  }: { text: string; quiet?: boolean; spans?: import("./protocol").Entry["spans"] } = $props();
+  const html = $derived(spans?.length ? markedBlock(text, spans) : block(text));
   // Fenced code names its language as a language-NAME class.
   const fences = (rendered: string) => (node: HTMLElement) => {
     if (rendered.includes("<pre>"))

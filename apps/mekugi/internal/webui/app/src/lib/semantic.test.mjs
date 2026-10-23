@@ -626,3 +626,97 @@ test("saved resume reconnects through the connector to the switched thread", asy
   assert.equal(semantic.connection, "open");
   assert.equal(semantic.frame.view.Main.ID, "saved");
 });
+
+function menuFrame(owner, menu, revision, target = semantic.editor().revision, model = "model-a") {
+  owner.views[0].snapshot(revision, [], {
+    view: {
+      Input: { ID: "thread-one" },
+      Main: { ID: "thread-one" },
+      Displayed: { ID: "thread-one" },
+      Caption: { Model: model },
+      Version: { Attachment: 1, Revision: revision },
+      Menu: menu,
+    },
+    completionTarget: { Call: "", Question: "", Request: "", Revision: target },
+  });
+}
+const cachedMenu = (kind, setting = "") => ({
+  ID: 7,
+  Kind: kind,
+  Setting: setting,
+  Loading: false,
+  Problem: "",
+  Dialog: false,
+  Choices: [{ ID: 1, Name: "choice", Path: "" }],
+  Preferred: { ID: 1, Name: "choice" },
+});
+
+test("settings reopen from cache, refresh identity, and isolate model and connection", async () => {
+  const owner = machine();
+  const menu = cachedMenu("settings", "/effort");
+  menuFrame(owner, menu, 2);
+  menuFrame(owner, undefined, 3);
+  const opening = semantic.openSetting("/effort");
+  assert.deepEqual(semantic.settingsMenu.Choices, menu.Choices);
+  assert.equal(semantic.settingsMenu.Loading, true);
+  await tick();
+  menuFrame(owner, { ...menu, ID: 8 }, 4);
+  owner.requests[0].resolve({ version: { Attachment: 1, Revision: 4 } });
+  await opening;
+  assert.equal(semantic.settingsMenu.ID, 8);
+  menuFrame(owner, undefined, 5, 0, "model-b");
+  semantic.openingSetting = "/effort";
+  assert.equal(semantic.settingsMenu, undefined);
+  owner.state("lost");
+  owner.state("open");
+  menuFrame(owner, undefined, 6);
+  semantic.openingSetting = "/effort";
+  assert.equal(semantic.settingsMenu, undefined);
+});
+
+test("completion cache matches text and caret without reusing actionable identities", () => {
+  const owner = machine();
+  const editor = semantic.editor();
+  editor.text = "/";
+  const menu = cachedMenu("");
+  menuFrame(owner, menu, 2);
+  editor.text = "/m";
+  editor.revision++;
+  assert.equal(semantic.completionMenu, undefined);
+  editor.text = "/";
+  editor.revision++;
+  assert.deepEqual(semantic.completionMenu.Choices, menu.Choices);
+  assert.equal(semantic.completionMenu.Loading, true);
+  assert.equal(semantic.liveCompletion, undefined);
+  editor.cursorBack = 1;
+  assert.equal(semantic.completionMenu, undefined);
+  editor.cursorBack = 0;
+  menuFrame(owner, undefined, 3);
+  assert.equal(semantic.completionMenu, undefined, "a current dismissal wins over cached choices");
+  owner.state("lost");
+  assert.equal(semantic.completionMenu, undefined);
+});
+
+test("queued Edit withdraws captured work before opening new retained editors", async () => {
+  const owner = machine();
+  const original = semantic.frame.view;
+  original.Interrupt = { Thread: "thread-one", Turn: "turn-one", Wait: 0, Stop: 0, Start: "" };
+  const editing = semantic.editWaiting();
+  await tick();
+  assert.equal(owner.requests[0].params.body.operation.composer.Intent.Operation, 6);
+  assert.deepEqual(
+    owner.requests[0].params.body.operation.composer.Intent.Work,
+    original.Interrupt,
+  );
+  owner.snapshot(2, [
+    { ID: 1, Thread: "thread-one", Recovery: { preview: "queued", attachments: true } },
+  ]);
+  owner.requests[0].resolve({ version: { Attachment: 1, Revision: 2 } });
+  for (let i = 1; i <= 2; i++) {
+    await tick();
+    owner.requests[i].resolve({ version: { Attachment: 1, Revision: 2 } });
+  }
+  await editing;
+  assert.ok(owner.requests.some((r) => r.params.body.operation.recovery?.action === "edit"));
+  assert.ok(!owner.requests.some((r) => r.params.body.operation.recovery?.action === "retry"));
+});

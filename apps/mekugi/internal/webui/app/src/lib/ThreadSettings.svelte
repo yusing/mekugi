@@ -10,7 +10,22 @@
   let { caption, disabled = false }: { caption: Caption; disabled?: boolean } = $props();
   let root = $state<HTMLElement>();
   let list = $state<HTMLElement>();
-  const menu = $derived(semantic.settingsMenu);
+  let opening: Promise<void> | undefined;
+  let changing = false;
+  let tierPending = $state(false);
+  const fast = $derived(caption.Tier === "fast" || caption.Tier === "priority");
+  async function toggleFast() {
+    if (tierPending) return;
+    tierPending = true;
+    try {
+      if (menu) await choose(1);
+      await semantic.send({ command: `/tier ${fast ? "default" : "priority"}` });
+    } finally {
+      tierPending = false;
+    }
+  }
+  let dismissed = $state(false);
+  const menu = $derived(dismissed ? undefined : semantic.settingsMenu);
   const effort = $derived(!!menu && menu.Setting !== "/model");
   const settings = [
     { command: "/model", label: "Model", value: () => caption.Model || "Default model" },
@@ -21,26 +36,47 @@
     },
   ];
 
-  function choose(kind: number, choice: ChoiceID = { ID: 0, Name: "", Path: "" }) {
+  async function choose(kind: number, choice: ChoiceID = { ID: 0, Name: "", Path: "" }) {
+    const attachment = semantic.event?.attachment;
+    const setting = menu?.Setting;
+    if (kind === 1) {
+      dismissed = true;
+      await opening;
+    }
     const view = semantic.frame?.view;
-    if (!view || !menu) return;
-    void semantic.send({
-      menu: { Version: view.Version, Menu: menu.ID, Kind: kind, Choice: choice, Query: "" },
-      editor: semantic.metadata(),
-    });
+    const live = view?.Menu;
+    if (
+      semantic.event?.attachment === attachment &&
+      view &&
+      live?.Kind === "settings" &&
+      live.Setting === setting
+    )
+      await semantic.send({
+        menu: { Version: view.Version, Menu: live.ID, Kind: kind, Choice: choice, Query: "" },
+        editor: semantic.metadata(),
+      });
+    dismissed = false;
   }
-  // A chip closes its own menu, or replaces the other chip's.
-  function toggle(command: string) {
+  // Closing during acquisition hides the preview immediately and dismisses
+  // only the fresh server menu once its identity arrives.
+  async function toggle(command: string) {
+    if (changing) return;
+    changing = true;
     const other = !menu || effort === (command === "/model");
-    if (menu) choose(1);
-    if (other) void semantic.send({ command });
+    if (menu) await choose(1);
+    if (other) {
+      opening = semantic.openSetting(command);
+      await opening;
+      opening = undefined;
+    }
+    changing = false;
   }
   function options(): HTMLElement[] {
     return Array.from(list?.querySelectorAll<HTMLElement>("[role=option]") ?? []);
   }
   // The current choice takes focus once the menu's choices arrive.
   $effect(() => {
-    if (!menu?.Choices.length) return;
+    if (!menu?.Choices.length || menu.Loading || semantic.pending) return;
     void tick().then(() =>
       (
         options().find((option) => option.getAttribute("aria-selected") === "true") ?? options()[0]
@@ -85,11 +121,25 @@
       <span class="flex flex-none max-sm:hidden"><Icon name="chevron" size={14} /></span>
     </button>
   {/each}
+  <button
+    type="button"
+    class="{chip} flex-none"
+    title={fast ? "Disable fast mode" : "Enable fast mode"}
+    aria-label="Fast mode"
+    aria-pressed={fast}
+    aria-busy={tierPending}
+    disabled={disabled || tierPending || semantic.pending > 0}
+    onclick={toggleFast}
+    ><span class={fast ? "text-warning-ink" : "text-muted"}><Icon name="hook" /></span></button
+  >
   {#if menu}
     <div
-      class="absolute bottom-[calc(100%+6px)] left-0 z-5 flex max-h-[min(360px,45dvh)] w-max max-w-[min(360px,calc(100vw-32px))] min-w-56 flex-col p-1 {floating}"
+      class="menu-enter absolute bottom-[calc(100%+6px)] left-0 z-5 flex max-h-[min(360px,45dvh)] w-max max-w-[min(360px,calc(100vw-32px))] min-w-56 flex-col p-1 {floating}"
     >
-      {#if menu.Loading}<p class="px-2.5 py-1.5 text-small text-muted" role="status">
+      {#if menu.Loading && !menu.Choices.length}<p
+          class="px-2.5 py-1.5 text-small text-muted"
+          role="status"
+        >
           Loading choices…
         </p>
       {:else if menu.Problem}<p class="px-2.5 py-1.5 text-small text-muted">
@@ -109,7 +159,7 @@
             tabindex="-1"
             aria-selected={current}
             class="grid min-h-[34px] w-full grid-cols-[16px_minmax(0,1fr)] items-center gap-x-2 rounded-control py-1.5 pr-3 pl-2 text-left text-ink hover:bg-active focus-visible:bg-active focus-visible:outline-none disabled:opacity-45 max-sm:min-h-11"
-            disabled={menu.Saving || semantic.pending > 0}
+            disabled={menu.Loading || menu.Saving || semantic.pending > 0}
             onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
           >
             <span class="flex text-muted"

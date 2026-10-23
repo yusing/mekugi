@@ -172,7 +172,9 @@
         {:else if drafts[question.id]}
           <fieldset class="mb-4 min-w-0" {disabled}>
             <legend class="font-semibold">{question.header || "Question"}</legend>
-            <p class={text}>{question.text}</p>
+            {#if question.text && question.text.trim() !== question.header?.trim()}<p class={text}>
+                {question.text}
+              </p>{/if}
             {#each question.options ?? [] as option_, index}
               <label class={option}>
                 <input

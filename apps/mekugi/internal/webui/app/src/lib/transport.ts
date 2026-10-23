@@ -362,6 +362,7 @@ function waitFor<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
 }
 
 function attachmentBearing(method: RPCMethod, params: RPCParams): boolean {
+  if (method === "session/image") return true;
   if (method === "session/start" || method === "session/input")
     return !!(params.body as InputRequest | undefined)?.attachments?.length;
   if (method === "view/intent")

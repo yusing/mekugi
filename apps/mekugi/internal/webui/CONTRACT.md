@@ -8,7 +8,9 @@ Without built assets, page requests receive 503 naming `make webui`. The index i
 revalidated; hashed assets may be cached indefinitely. Responses forbid framing,
 plugins and base-URL changes, restrict scripts/styles to bundled assets (plus inline
 styles), and allow connections to explicitly selected WS(S) connectors. Markdown
-images remain links rather than loading untrusted remote resources.
+images remain links rather than loading untrusted remote resources. Bound user
+images load through the authenticated Session API and display as browser-owned
+blob URLs.
 
 Browser control uses the shared JSON-RPC WebSocket protocol and generated remote
 intent types. Credentials are sent only in initialization on the selected connector.

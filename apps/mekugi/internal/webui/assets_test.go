@@ -58,7 +58,7 @@ func TestAssetsOnlyHost(t *testing.T) {
 				t.Fatal("asset host added credentials or API cross-origin admission")
 			}
 			policy := response.Header.Get("Content-Security-Policy")
-			for _, directive := range []string{"script-src 'self'", "style-src 'self' 'unsafe-inline'", "connect-src http: https: ws: wss:", "frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'"} {
+			for _, directive := range []string{"img-src 'self' data: blob:", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "connect-src http: https: ws: wss:", "frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'"} {
 				if !strings.Contains(policy, directive) {
 					t.Errorf("CSP omits %q: %s", directive, policy)
 				}

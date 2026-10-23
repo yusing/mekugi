@@ -265,6 +265,33 @@
           aria-hidden="true">&nbsp;</span
         >{/if}
     </h1>
+    {#if session}
+      <Popover label="Session details" icon="info">
+        {#snippet children(close)}
+          <SessionInfo {session} {playback} {root} status={statusLabel} />
+          <div class="grid gap-2 px-4.5 pb-4">
+            <p class="text-small text-muted">Continue in a terminal on {machine.label}</p>
+            <div class="flex items-center gap-1 rounded-control bg-raised py-0.5 pr-0.5 pl-2.5">
+              <code class="min-w-0 flex-1 text-small wrap-anywhere">mekugi resume {id}</code>
+              <Button
+                variant="quiet"
+                icon={copied ? "check" : "copy"}
+                label="Copy resume command"
+                title={copied ? "Copied" : "Copy"}
+                onclick={copyResume}
+              />
+            </div>
+            {#if !ended}<Button
+                variant="danger"
+                onclick={() => {
+                  close();
+                  onend({ machine, id, title, replay: !!playback });
+                }}>{playback ? "End replay" : "End thread"}</Button
+              >{/if}
+          </div>
+        {/snippet}
+      </Popover>
+    {/if}
     <span class="contents max-sm:hidden">
       {#if playback}<Tag>Replay</Tag>{:else if live && !ended}<Tag tone="live">Live</Tag>{/if}
       <span class="flex-none text-small text-muted">{machine.label}</span>
@@ -300,33 +327,6 @@
           onclick={() => (details ? closeDetails() : (agentsOpen = !agentsOpen))}
           ><span class="tabular-nums">{stream.roster.agents.length}</span></Button
         >
-      {/if}
-      {#if session}
-        <Popover label="Session details" icon="info">
-          {#snippet children(close)}
-            <SessionInfo {session} {playback} {root} status={statusLabel} />
-            <div class="grid gap-2 px-4.5 pb-4">
-              <p class="text-small text-muted">Continue in a terminal on {machine.label}</p>
-              <div class="flex items-center gap-1 rounded-control bg-raised py-0.5 pr-0.5 pl-2.5">
-                <code class="min-w-0 flex-1 text-small wrap-anywhere">mekugi resume {id}</code>
-                <Button
-                  variant="quiet"
-                  icon={copied ? "check" : "copy"}
-                  label="Copy resume command"
-                  title={copied ? "Copied" : "Copy"}
-                  onclick={copyResume}
-                />
-              </div>
-              {#if !ended}<Button
-                  variant="danger"
-                  onclick={() => {
-                    close();
-                    onend({ machine, id, title, replay: !!playback });
-                  }}>{playback ? "End replay" : "End thread"}</Button
-                >{/if}
-            </div>
-          {/snippet}
-        </Popover>
       {/if}
     </div>
   </header>
