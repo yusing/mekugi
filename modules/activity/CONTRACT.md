@@ -209,9 +209,11 @@ the visible feed tail is still rolling.
 Elapsed time appears only above 3 ms, truncated to milliseconds below one second
 and whole seconds thereafter, omitting trailing zero units (`4ms`, `1m10s`, `1h`).
 Negative duration displays zero. Live elapsed starts at the observed command
-boundary and freezes at measured completion. Supported single commands and
-pipelines use the tracking helper's duration, including an EXIT boundary after
-`exit` or `errexit`; an untracked invocation uses host duration. Missing older
+boundary and freezes at measured completion. Each feed frame uses one elapsed
+timestamp for layout and painting; timer rollovers take effect on the next frame.
+Supported single commands and pipelines use the tracking helper's duration,
+including an EXIT boundary after `exit` or `errexit`; an untracked invocation
+uses host duration. Missing older
 segment timing stays absent. A disconnected report invents no end, and skipped
 commands have no timing. Resume/fork retain completed evidence. A batch total
 appears once on its batch row and combined-output dialog, never on every command.

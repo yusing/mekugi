@@ -1175,6 +1175,12 @@ func (feed *Feed) appendRows(run Run) {
 // colored gutter. Adjacent reads collapse into one row. In the interleaved
 // view each block is clipped to five rows; full content opens in a dialog.
 func (v *View) RenderFeed(width, rows int) Feed {
+	// Elapsed labels can shrink at unit boundaries. Layout and deferred paint
+	// must measure them at the same instant so their row counts stay aligned.
+	now, clock := v.Painter.now(), v.Painter.Clock
+	v.Painter.Clock = func() time.Time { return now }
+	defer func() { v.Painter.Clock = clock }()
+
 	v.Painter.LayoutOnly = true
 	feed := v.LayoutFeed(width)
 	v.Painter.LayoutOnly = false
