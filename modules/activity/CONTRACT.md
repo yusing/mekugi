@@ -348,7 +348,8 @@ source in dialog pages. Fully shown short content has no redundant detail target
 Main and children share parsing, grouping and viewport behavior. User messages
 have a distinct band; assistant text, operations and final-answer cards retain
 their identities rather than becoming a second transcript. Image-view tools show
-View with their workspace path; attached user images claim no tool inspection.
+View with their workspace path; attached user images claim no tool inspection. User publications retain their bound
+image sources for authenticated image reads; sources stay out of public wire values.
 Completed attributable searches and listings show `(N results)`, and structural
 inspections show `(N entries)`, when complete output establishes the count.
 Collapsed successful Search, List and Inspect output omits the hidden-line hint,

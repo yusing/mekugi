@@ -72,6 +72,7 @@ func TestRemoteRecoveryTransportAdmission(t *testing.T) {
 	event, _, _ := openRemoteTest(t, s, handler, nativeTestFrame("thread", 1))
 	for _, operation := range []NativeOperation{
 		{Recovery: &NativeRecoveryInput{Effect: 1, Action: "unknown"}},
+		{Recovery: &NativeRecoveryInput{Effect: 1, Action: EditRecovery, Text: new([]string{"invalid"})}},
 		{Recovery: &NativeRecoveryInput{Effect: 1, Action: RetryRecovery}, Command: new("/status")},
 	} {
 		if got := (<-remotePost(t, handler, false, event, operation)).Code; got != 400 {
@@ -95,7 +96,7 @@ func TestRemoteRecoveryTransportAdmission(t *testing.T) {
 	if err := s.Native().Publish(event.Attachment, next); err != nil {
 		t.Fatal(err)
 	}
-	for _, action := range []RecoveryAction{RetryRecovery, DiscardRecovery} {
+	for _, action := range []RecoveryAction{RetryRecovery, EditRecovery, DiscardRecovery} {
 		operation.Recovery.Action = action
 		done := remotePost(t, handler, false, event, operation)
 		request := <-s.Native().Requests()
@@ -134,5 +135,25 @@ func TestRemoteFrameOmitsTerminalRendererState(t *testing.T) {
 	frame.View.Displayed = frame.View.SideThread
 	if frame.remote().Main == nil {
 		t.Fatal("a displayed side conversation lost its only publication")
+	}
+}
+
+func TestRemoteRecoveryEditingExposesTextAndLabelsOnly(t *testing.T) {
+	draft := composer.Draft{Text: "edit @file", Files: []composer.Token{{Start: 5, End: 10, Path: "/private/file"}}, Attachments: []string{"private snapshot"}}
+	frame := nativeTestFrame("thread", 1)
+	frame.Effects = []NativeEffect{{ID: 1, Restore: &draft, Recovery: &NativeRecoveryView{Editing: true}}}
+	remote := frame.remote()
+	if !reflect.DeepEqual(remote.Effects[0].Recovery.Parts, []string{"edit ", "@file", ""}) {
+		t.Fatal(remote.Effects[0].Recovery)
+	}
+	data, err := json.Marshal(remote, nativeEncoding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte("private")) {
+		t.Fatal("editor exposed retained attachment contents or paths")
+	}
+	if frame.Effects[0].Recovery.Parts != nil {
+		t.Fatal("projection mutated retained state")
 	}
 }

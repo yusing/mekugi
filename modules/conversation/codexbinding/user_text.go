@@ -56,3 +56,21 @@ func UserText(content jsontext.Value) (string, []composer.Span, bool) {
 	slices.SortFunc(spans, func(a, b composer.Span) int { return a.Start - b.Start })
 	return text, spans, true
 }
+
+// UserImages retains only sources explicitly carried by host user-image items.
+func UserImages(content jsontext.Value) []string {
+	var contents []UserContent
+	if json.Unmarshal(content, &contents) != nil {
+		return nil
+	}
+	var images []string
+	for _, item := range contents {
+		switch item.Type {
+		case "localImage":
+			images = append(images, item.Path)
+		case "image":
+			images = append(images, item.URL)
+		}
+	}
+	return images
+}

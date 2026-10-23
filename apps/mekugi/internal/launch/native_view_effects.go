@@ -129,7 +129,7 @@ func (n *nativeViews) restore(execution *executionPresentation, parts []conversa
 		}
 		if view.remoteHuman {
 			// Remote recovery retains one joined submission at its server owner;
-			// only its bounded preview crosses the publication transport.
+			// its bounded preview crosses transport until the user opens text editing.
 			draft := composer.Join(conversation.Drafts(inputs)...)
 			view.effects.restore(inputs, sessionapi.NativeEffect{Thread: view.thread, Restore: &draft})
 			continue

@@ -232,19 +232,23 @@ type NativeDesktopNotification struct{ Event, Message string }
 type NativeRecoveryInput struct {
 	Effect uint64         `json:"effect"`
 	Action RecoveryAction `json:"action"`
+	Text   *[]string      `json:"text,omitzero"`
 }
 
 type RecoveryAction string
 
 const (
 	RetryRecovery   RecoveryAction = "retry"
+	EditRecovery    RecoveryAction = "edit"
 	DiscardRecovery RecoveryAction = "discard"
 )
 
 type NativeRecoveryView struct {
-	Preview     string `json:"preview"`
-	Attachments bool   `json:"attachments"`
-	Shell       bool   `json:"shell"`
+	Editing     bool     `json:"editing,omitzero"`
+	Parts       []string `json:"parts,omitzero"`
+	Preview     string   `json:"preview"`
+	Attachments bool     `json:"attachments"`
+	Shell       bool     `json:"shell"`
 }
 
 // RecoveryDraft distinguishes unsent submissions from targeted editor changes.

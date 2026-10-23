@@ -38,6 +38,7 @@ among that connection's active subscriptions. An acknowledgement containing
 | --- | --- |
 | `session/options` | Execution-machine workspaces and offered models |
 | `session/list` | Current session-list value |
+| `session/image` | Read one image bound to a published user entry |
 | `session/read` | One confirmed thread's list entry |
 | `session/start` | Create/resume using the creation body |
 | `session/end` | End the selected owned runtime |
@@ -190,7 +191,9 @@ resolves choices through the actual pending question owner at admission.
 
 Unsent submissions remain intact with their originating live view. Remote effects
 publish a bounded recovery preview instead of attachment snapshots. The
-`recovery` operation takes `{effect, action}`, where action is `retry` or `discard`.
+`recovery` operation takes `{effect, action}`, where action is `retry`, `edit` or `discard`. Edit exposes ordinary text
+segments separated by immutable attachment labels. Retry may supply replacement
+text segments after Edit; retained bindings and attachment snapshots remain unchanged.
 Retry uses the retained snapshot through ordinary admission for its original
 destination; refusal keeps it available. Discard releases that retained input.
 Missing or consumed effects refuse, and ambiguous responses never trigger retries.
@@ -425,3 +428,15 @@ unknown action. Refused requests leave playback unchanged.
 catalog. Run `go run ./apps/mekugi/cmd/sessionapi-schema` to refresh these types and `make check-generated`
 to check drift. Native-only fields remain subject to endpoint and operation
 admission; TypeScript types do not establish authority.
+
+
+### Published user images
+
+User entries carry bound token spans and opaque image identities. `session/image`
+takes `{seq, agent, index, image}` in its body on the selected thread. It resolves
+only an image in that current published entry, never a caller-supplied path or URL,
+and returns `{mime, data}` with base64 raster bytes. Reads use the admitted source
+and selected workspace, run outside publication locks, and share attachment-transfer
+capacity. Missing, oversized or non-raster sources fail explicitly. Local
+files and inline image data are supported up to the upload limit; remote URLs are
+not fetched. Browser image transfers use an independent authenticated connection.

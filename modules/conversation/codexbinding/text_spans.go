@@ -34,6 +34,7 @@ func ContentSkills(content []UserContent) []composer.Token {
 
 type UserContent struct {
 	Type     string                     `json:"type"`
+	URL      string                     `json:"url"`
 	Text     string                     `json:"text"`
 	Name     string                     `json:"name"`
 	Path     string                     `json:"path"`

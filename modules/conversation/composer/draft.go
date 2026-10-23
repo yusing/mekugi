@@ -57,6 +57,40 @@ func (d Draft) Clone() Draft {
 	return d
 }
 
+// TextParts separates editable text from bound attachment labels. Even entries
+// are editable; odd entries are the original labels, never source contents.
+func (d Draft) TextParts() []string {
+	parts := make([]string, 0, 2*len(d.Spans())+1)
+	at := 0
+	for _, span := range d.Spans() {
+		parts = append(parts, d.Text[at:span.Start], d.Text[span.Start:span.End])
+		at = span.End
+	}
+	return append(parts, d.Text[at:])
+}
+
+// WithTextParts replaces only ordinary text, retaining all prepared attachments.
+func (d Draft) WithTextParts(parts []string) (Draft, error) {
+	spans := d.Spans()
+	if len(parts) != len(spans)+1 {
+		return Draft{}, fmt.Errorf("The retained input changed; reopen its editor")
+	}
+	d = d.Clone()
+	for i := len(spans); i >= 0; i-- {
+		start, end := 0, len(d.Text)
+		if i > 0 {
+			start = spans[i-1].End
+		}
+		if i < len(spans) {
+			end = spans[i].Start
+		}
+		d.Remove(start, end)
+		d.InsertText(parts[i])
+	}
+	d.CursorBack = 0
+	return d, nil
+}
+
 // Editable discards submission snapshots so recalling input takes fresh contents.
 func (d Draft) Editable() Draft {
 	return Draft{Text: d.Text, CursorBack: d.CursorBack,

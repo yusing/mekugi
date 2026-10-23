@@ -94,8 +94,12 @@ func (f NativeFrame) remote() NativeFrame {
 			if len(draft.Text) > 512 {
 				preview += "…"
 			}
-			effect.Recovery = &NativeRecoveryView{Preview: preview, Shell: effect.ShellRestore != nil,
+			editing := effect.Recovery != nil && effect.Recovery.Editing
+			effect.Recovery = &NativeRecoveryView{Editing: editing, Preview: preview, Shell: effect.ShellRestore != nil,
 				Attachments: len(draft.Files)+len(draft.Images)+len(draft.Skills)+len(draft.Selections)+len(draft.Attachments)+len(draft.AnswerImages) > 0}
+			if editing {
+				effect.Recovery.Parts = draft.TextParts()
+			}
 			effect.Restore, effect.ShellRestore = nil, nil
 		}
 	}

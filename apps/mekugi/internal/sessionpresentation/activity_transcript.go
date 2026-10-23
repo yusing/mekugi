@@ -53,6 +53,7 @@ func (v *ActivitySource) ApplyTranscript(update observation.TextUpdate, content 
 			v.Apply(ActivityEvent{Entries: []ActivityEntry{entry}})
 			return
 		}
+		entry.Native.Images = conversationbinding.UserImages(content)
 		if ref.ThreadID == main {
 			entry.Agent = "You"
 		} else {

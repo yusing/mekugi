@@ -316,10 +316,23 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 			if effect == nil {
 				return "That retained submission is no longer available.", nil
 			}
+			if recovery.Action == sessionapi.EditRecovery {
+				effect.Recovery = &sessionapi.NativeRecoveryView{Editing: true}
+				return "", nil
+			}
 			if recovery.Action == sessionapi.RetryRecovery {
 				current := view.attached.presentation.View()
 				request.Version = current.Version
 				draft := effect.RecoveryDraft().Clone()
+				if recovery.Text != nil {
+					if effect.Recovery == nil || !effect.Recovery.Editing {
+						return "Open the retained input editor before editing.", nil
+					}
+					draft, err = draft.WithTextParts(*recovery.Text)
+					if err != nil {
+						return err.Error(), nil
+					}
+				}
 				if effect.ShellRestore != nil && !strings.HasPrefix(strings.TrimSpace(draft.Text), "!") {
 					draft.Text = "!" + draft.Text
 				}

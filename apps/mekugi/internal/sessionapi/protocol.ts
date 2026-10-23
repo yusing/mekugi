@@ -3,7 +3,7 @@
 
 export const protocolVersion = "2" as const;
 export const subprotocol = "mekugi.control.v2" as const;
-export type RPCMethod = "initialize" | "native/start" | "request/cancel" | "session/answer" | "session/control" | "session/decide" | "session/end" | "session/input" | "session/interrupt" | "session/list" | "session/options" | "session/read" | "session/redraw" | "session/shell" | "session/start" | "session/subscribe" | "subscription/cancel" | "view/attach" | "view/intent";
+export type RPCMethod = "initialize" | "native/start" | "request/cancel" | "session/answer" | "session/control" | "session/decide" | "session/end" | "session/image" | "session/input" | "session/interrupt" | "session/list" | "session/options" | "session/read" | "session/redraw" | "session/shell" | "session/start" | "session/subscribe" | "subscription/cancel" | "view/attach" | "view/intent";
 
 export type RPCMessage = {
   "jsonrpc": string;
@@ -384,6 +384,7 @@ export type NativeReceipt = {
 export type NativeRecoveryInput = {
   "effect": number;
   "action": string;
+  "text"?: (Array<string> | null);
 };
 
 export type ReferenceIntent = {
@@ -862,6 +863,8 @@ export type Token = {
 };
 
 export type NativeRecoveryView = {
+  "editing"?: boolean;
+  "parts"?: Array<string>;
   "preview": string;
   "attachments": boolean;
   "shell": boolean;

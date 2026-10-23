@@ -57,6 +57,7 @@ type Publication struct {
 func (r Record[S]) Publish() Entry {
 	facts := r.Source.ActivityFacts()
 	facts.Spans = slices.Clone(facts.Spans)
+	facts.Images = slices.Clone(facts.Images)
 	facts.Outputs = maps.Clone(facts.Outputs)
 	return Entry{Facts: facts, Revision: r.Revision, Values: r.Values}
 }

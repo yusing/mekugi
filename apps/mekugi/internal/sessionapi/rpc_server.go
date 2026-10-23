@@ -30,6 +30,7 @@ type rpcMethod struct {
 }
 
 var rpcMethods = map[string]rpcMethod{
+	"session/image":       {limit: 1024},
 	"session/options":     {limit: 1024},
 	"session/list":        {limit: 1024},
 	"session/read":        {limit: 1024},
@@ -593,6 +594,15 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 		return nil, rpcFailure(405, "Recorded playback has no live control view."), nil
 	}
 	switch method {
+	case "session/image":
+		select {
+		case c.endpoint.preparations <- struct{}{}:
+		default:
+			return nil, rpcFailure(503, "Image transfer capacity is busy."), nil
+		}
+		defer func() { <-c.endpoint.preparations }()
+		value, err := selected.server.readImage(ctx, target, params.Body)
+		return value, err, nil
 	case "session/read":
 		return selected.entry, nil, nil
 	case "session/end":

@@ -140,16 +140,18 @@ func projectStatus(label sessionpresentation.Label) status {
 }
 
 type entry struct {
-	Seq            uint64  `json:"seq"`
-	Agent          string  `json:"agent,omitzero"`
-	Kind           string  `json:"kind,omitzero"`
-	Text           string  `json:"text,omitzero"`
-	Observed       int64   `json:"observed,omitzero"`
-	Running        bool    `json:"running,omitzero"`
-	Assignment     bool    `json:"assignment,omitzero"`
-	AssignmentTo   string  `json:"assignmentTo,omitzero"`
-	AssignmentText string  `json:"assignmentText,omitzero"`
-	Values         []value `json:"values,omitzero"`
+	Spans          []activitypresentation.TextSpan `json:"spans,omitzero"`
+	Images         []string                        `json:"images,omitzero"`
+	Seq            uint64                          `json:"seq"`
+	Agent          string                          `json:"agent,omitzero"`
+	Kind           string                          `json:"kind,omitzero"`
+	Text           string                          `json:"text,omitzero"`
+	Observed       int64                           `json:"observed,omitzero"`
+	Running        bool                            `json:"running,omitzero"`
+	Assignment     bool                            `json:"assignment,omitzero"`
+	AssignmentTo   string                          `json:"assignmentTo,omitzero"`
+	AssignmentText string                          `json:"assignmentText,omitzero"`
+	Values         []value                         `json:"values,omitzero"`
 }
 
 type value struct {
@@ -257,7 +259,10 @@ func projectEntry(e activitypresentation.Entry, summaries bool) entry {
 	p := entry{
 		Seq: e.Seq, Agent: e.Agent, Kind: e.Kind, Text: e.Text, Observed: millis(e.Observed), Running: e.Running,
 		Assignment: e.Assignment, AssignmentTo: e.AssignmentTo, AssignmentText: e.AssignmentText,
-		Values: projectValues(e.Values, summaries),
+		Values: projectValues(e.Values, summaries), Spans: e.Spans,
+	}
+	for _, source := range e.Images {
+		p.Images = append(p.Images, imageIdentity(source))
 	}
 	// A compound invocation ends in one result row for its exit and output,
 	// which the terminal labels generically. Under the classified steps the

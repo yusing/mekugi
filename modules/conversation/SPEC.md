@@ -293,6 +293,9 @@ settles submission. That owner also defines interruption, rejection, native-shel
 recovery and session replacement. A rejected or withdrawn payload remains editable
 and returns before newer drafts; committed input is never restored or resent.
 
+Retained input can expose editable text segments around immutable attachment tokens.
+Replacing those segments preserves token identity and prepared attachment snapshots.
+
 Queue batches, submitted-payload matching, acknowledgement history and restoration
 belong to this session owner. Restoring ordinary input while a prompt is open
 updates the parked Main draft, preserving the active answer or denial reason.

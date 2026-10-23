@@ -44,8 +44,11 @@ func textOnlyDraft(d composer.Draft) bool {
 }
 
 func (o NativeOperation) routeRefusal(authority viewAuthority) string {
-	if o.Recovery != nil && o.Recovery.Action != RetryRecovery && o.Recovery.Action != DiscardRecovery {
-		return "Choose retry or discard for retained input."
+	if o.Recovery != nil && o.Recovery.Action != RetryRecovery && o.Recovery.Action != DiscardRecovery && o.Recovery.Action != EditRecovery {
+		return "Choose retry, edit or discard for retained input."
+	}
+	if o.Recovery != nil && o.Recovery.Text != nil && o.Recovery.Action != RetryRecovery {
+		return "Edited text is accepted only when sending retained input."
 	}
 	if authority == localNativeView {
 		if o.Composer != nil && o.Composer.Input != nil {
