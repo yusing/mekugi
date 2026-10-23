@@ -19,12 +19,73 @@ import (
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/activity/feed"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"golang.org/x/term"
 )
+
+func TestNativeClientQueuedEscapeContinuation(t *testing.T) {
+	for _, tc := range []struct {
+		name, suffix string
+		age          time.Duration
+		want         []terminalsession.Input
+	}{
+		{"reports", "[O\x1b[<35;1;32M\x1b[<65;40;8M\x1b[I\x1b[<35;10;34M\x1b[<32;7;35M", time.Second, []terminalsession.Input{
+			{Kind: terminalsession.FocusInput, Text: "\x1b[O"},
+			{Kind: terminalsession.MouseInput, Text: "\x1b[<35;1;32M"},
+			{Kind: terminalsession.MouseInput, Text: "\x1b[<65;40;8M"},
+			{Kind: terminalsession.FocusInput, Text: "\x1b[I"},
+			{Kind: terminalsession.MouseInput, Text: "\x1b[<35;10;34M"},
+			{Kind: terminalsession.MouseInput, Text: "\x1b[<32;7;35M"},
+		}},
+		{"paste", "[200~x\x1b[201~", time.Second, []terminalsession.Input{{Kind: terminalsession.PasteStart}, {Kind: terminalsession.PasteInput, Text: "x"}, {Kind: terminalsession.PasteEnd}}},
+		{"arrow", "[D", time.Second, []terminalsession.Input{{Kind: terminalsession.KeyInput, Text: "\x1b[D"}}},
+		{"waiting", "", 39 * time.Millisecond, nil},
+		{"standalone", "", 40 * time.Millisecond, []terminalsession.Input{{Kind: terminalsession.KeyInput, Text: "\x1b"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			c := nativeTestPromptClient(u)
+			r := nativeClientRuntime{active: c}
+			now := time.Now()
+			r.decode(27, now.Add(-tc.age))
+			keys := make(chan byte, len(tc.suffix))
+			for _, key := range []byte(tc.suffix) {
+				keys <- key
+			}
+			r.drainKeys(keys, now)
+			var got []terminalsession.Input
+			for _, input := range c.input {
+				got = append(got, input.event)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("decoded input = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNativeClientInputDrainBoundAndEOF(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	c := nativeTestPromptClient(u)
+	r := nativeClientRuntime{active: c}
+	keys := make(chan byte, 300)
+	for range cap(keys) {
+		keys <- 'x'
+	}
+	r.drainKeys(keys, time.Now())
+	if len(keys) != 44 || len(c.input) != 256 {
+		t.Fatalf("input drain did not yield: remaining=%d decoded=%d", len(keys), len(c.input))
+	}
+	close(keys)
+	r.drainKeys(keys, time.Now())
+	if len(c.input) != cap(keys) {
+		t.Fatalf("closed input was not drained to EOF: decoded=%d", len(c.input))
+	}
+}
 
 func TestNativeClientPTYDraftAndDetach(t *testing.T) {
 	u, _ := newAppServerTestUI()

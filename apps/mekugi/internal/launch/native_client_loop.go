@@ -360,6 +360,7 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 					}
 					runtime.decode(key, time.Now())
 				case now := <-tick.C:
+					runtime.drainKeys(keys, now)
 					if c.advancePresentation(now) {
 						c.dirty = true
 					}
@@ -368,9 +369,6 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 					}
 					c.stagePreferences(false)
 					c.notifications.writeTitle(&c.feedback, c.renderer.terminal, nil, c.event.Frame.View.Info.Workspace, c.event.Frame.Facts.ActionRequired, c.event.Frame.Facts.Busy, now)
-					if c.renderer.terminal.Decoder.Escape(now) {
-						c.queueInput(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x1b"})
-					}
 					width, height, err := term.GetSize(int(stdout.Fd()))
 					if err != nil {
 						return err

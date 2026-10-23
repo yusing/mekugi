@@ -68,6 +68,28 @@ func (r *nativeClientRuntime) decode(key byte, now time.Time) {
 	}
 }
 
+// drainKeys settles queued continuations before expiring a lone Escape. Bound
+// the drain so sustained input cannot starve rendering or host events; reaching
+// the budget defers expiry until a later tick observes an empty input queue.
+func (r *nativeClientRuntime) drainKeys(keys <-chan byte, now time.Time) {
+	for range 256 {
+		select {
+		case key, ok := <-keys:
+			if !ok {
+				// Let the loop dispatch drained input before observing EOF.
+				return
+			}
+			r.decode(key, time.Now())
+		default:
+			c := r.active
+			if c.renderer.terminal.Decoder.Escape(now) {
+				c.queueInput(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x1b"})
+			}
+			return
+		}
+	}
+}
+
 func nativeCallLane(operation sessionapi.NativeOperation) int {
 	switch {
 	case operation.Answers != nil || operation.Composer != nil && !strings.HasPrefix(strings.TrimSpace(operation.Composer.Draft.Text), "/"):
