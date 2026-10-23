@@ -2,6 +2,7 @@ package sessionapi
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -159,6 +160,7 @@ type value struct {
 	Verb        string     `json:"verb,omitzero"`
 	BatchExit   bool       `json:"batchExit,omitzero"` // A compound command's combined result.
 	Label       string     `json:"label,omitzero"`
+	Sources     []string   `json:"sources,omitzero"` // Programs that made a file edit, outside its label.
 	Path        string     `json:"path,omitzero"`
 	AutoReload  bool       `json:"autoReload,omitzero"`
 	Approval    string     `json:"approval,omitzero"`
@@ -311,6 +313,9 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 		}
 		if summaries {
 			p.Summary = v.ReplySummary
+		}
+		if v.EditSource != "" {
+			p.Label, p.Sources = v.EditLabel(), strings.Split(v.EditSource, ", ")
 		}
 		if v.ShowWorkdir {
 			p.Workdir = v.Workdir

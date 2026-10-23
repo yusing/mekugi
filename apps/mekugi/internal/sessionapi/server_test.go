@@ -51,6 +51,15 @@ func TestBatchResultRow(t *testing.T) {
 	}
 }
 
+// The programs that made an edit leave its label as a separate list.
+func TestEditSources(t *testing.T) {
+	t.Parallel()
+	edit := activitypresentation.Value{Content: activityfeed.Content{Kind: "op", Verb: "Edit", Label: "`a.go` +2 −1 · python3, gofmt", EditSource: "python3, gofmt"}}
+	if v := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{edit}}, false).Values[0]; v.Label != "`a.go` +2 −1" || strings.Join(v.Sources, "|") != "python3|gofmt" {
+		t.Fatalf("edit = %+v", v)
+	}
+}
+
 // A live session's title changes by patch, so viewers keep their place; an
 // entry is sent again only when its revision advances; and another thread
 // replaces every viewer's state.
