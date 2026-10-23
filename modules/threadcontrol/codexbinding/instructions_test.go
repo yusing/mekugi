@@ -211,6 +211,13 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 			if len(replacements) != 1 || !strings.HasPrefix(replacements[0].Text, tc.want+"\n\n") {
 				t.Fatalf("current model guidance = %+v, want baseline %q", replacements, tc.want)
 			}
+			identity := "You are the root agent."
+			if tc.child {
+				identity = "You are a child agent. Your parent logical task is /root."
+			}
+			if !strings.Contains(replacements[0].Text, identity) {
+				t.Fatalf("missing logical identity: %s", replacements[0].Text)
+			}
 			member, _ = service.Member(thread)
 			if member.Settings.Model != "old-model" {
 				t.Fatal("instruction projection changed frozen preparation")

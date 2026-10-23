@@ -44,6 +44,7 @@ type listedSession struct {
 }
 type managedSession struct {
 	parent         *managedSession
+	parentThread   string
 	run            func(context.Context, *Server) error
 	operation      string
 	resume         string
@@ -75,7 +76,9 @@ func (h *Hub) activeThread(id string) bool {
 func (h *Hub) publishList() {
 	entries := make([]listed, 0, len(h.sessions))
 	for _, s := range h.sessions {
-		entries = append(entries, s.entry)
+		if s.entry.ParentThread == "" {
+			entries = append(entries, s.entry)
+		}
 	}
 	slices.SortFunc(entries, func(a, b listed) int { return cmp.Or(cmp.Compare(b.Started, a.Started), strings.Compare(a.ID, b.ID)) })
 	data, err := json.Marshal(struct {
@@ -380,6 +383,7 @@ func (h *Hub) run(ctx context.Context, m *managedSession, start Start) {
 				m.resume = ""
 			}
 			entry := projectSummary(summary)
+			entry.ParentThread = m.parentThread
 			entry.ID = m.id
 			entry.Starting = !ready
 			h.sessions[m.id] = &listedSession{entry: entry, server: m.server, runtime: m}

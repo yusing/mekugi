@@ -99,15 +99,16 @@ type Summary struct {
 
 // listed is a detached thread-list entry addressed by logical identity.
 type listed struct {
-	ID        string `json:"id,omitzero"`
-	Starting  bool   `json:"starting,omitzero"`
-	Replay    bool   `json:"replay,omitzero"`
-	Thread    string `json:"thread,omitzero"`
-	Title     string `json:"title,omitzero"`
-	Workspace string `json:"workspace,omitzero"`
-	Started   int64  `json:"started,omitzero"`
-	Status    status `json:"status"`
-	Waiting   int    `json:"waiting,omitzero"`
+	ParentThread string `json:"parentThread,omitzero"`
+	ID           string `json:"id,omitzero"`
+	Starting     bool   `json:"starting,omitzero"`
+	Replay       bool   `json:"replay,omitzero"`
+	Thread       string `json:"thread,omitzero"`
+	Title        string `json:"title,omitzero"`
+	Workspace    string `json:"workspace,omitzero"`
+	Started      int64  `json:"started,omitzero"`
+	Status       status `json:"status"`
+	Waiting      int    `json:"waiting,omitzero"`
 }
 
 func projectSummary(s Summary) listed {

@@ -201,6 +201,15 @@ func (a *requestAttempt) prepare() error {
 		transportcapture.ObserveRequestKind(a.startCtx, string(a.metadata.RequestKind))
 	}
 	a.threadID = codexresponses.ThreadID(a.headers)
+	// Independent runtimes have root-shaped host metadata. Logical membership
+	// supplies their observation identity without rewriting host wire facts.
+	if !a.approvalReview && a.metadataValid && !a.metadata.ActivityIdentityInvalid &&
+		(a.metadata.ThreadID == "" || a.metadata.ThreadID == a.threadID) && a.executor.ThreadControl != nil {
+		if member, ok := a.executor.ThreadControl.Member(a.threadID); ok && member.Parent != "" && a.metadata.SubagentKind == "" {
+			a.metadata.ParentThreadID, a.metadata.AgentName = member.Parent, member.Task
+			a.metadata.SubagentKind = "thread_spawn"
+		}
+	}
 	if !a.approvalReview && a.executor.Naming != nil && a.metadataValid && a.metadata.RequestKind == responses.Turn {
 		a.executor.Naming.ObserveInput(a.threadID, a.request.Fields["input"])
 	}

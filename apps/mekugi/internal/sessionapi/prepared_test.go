@@ -2,10 +2,12 @@ package sessionapi
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -63,6 +65,33 @@ func TestHubPreparedIdentityAndRequestOwner(t *testing.T) {
 	})
 	if err != nil || id != "confirmed-child" {
 		t.Fatalf("prepared identity: %q, %v", id, err)
+	}
+	conn := rawControl(t, hub.Handler(), false)
+	controlWrite(t, conn, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"version":"2"}}`)
+	if message := controlRead(t, conn); message.Error != nil {
+		t.Fatal(message.Error)
+	}
+	controlWrite(t, conn, `{"jsonrpc":"2.0","id":2,"method":"session/list","params":{}}`)
+	var list struct {
+		Sessions []listed `json:"sessions"`
+	}
+	if message := controlRead(t, conn); message.Error != nil {
+		t.Fatal(message.Error)
+	} else if err := json.Unmarshal(message.Result, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Sessions) != 1 || list.Sessions[0].Thread != "parent" {
+		t.Fatalf("top-level list includes child: %+v", list)
+	}
+	controlWrite(t, conn, `{"jsonrpc":"2.0","id":3,"method":"session/read","params":{"thread":"confirmed-child"}}`)
+	var child listed
+	if message := controlRead(t, conn); message.Error != nil {
+		t.Fatal(message.Error)
+	} else if err := json.Unmarshal(message.Result, &child); err != nil {
+		t.Fatal(err)
+	}
+	if child.Thread != id || child.ParentThread != "parent" {
+		t.Fatalf("child identity lost: %+v", child)
 	}
 	disconnect()
 	if runtimeContext.Err() != nil || calls.Load() != 1 || launcher.count.Load() != 1 {
@@ -135,6 +164,44 @@ func TestHubPreparedParentCancellationJoinsChild(t *testing.T) {
 	if hub.activeThread(id) {
 		t.Fatal("joined child remained active")
 	}
+}
+
+func TestPreparedChildParentIdentitySurvivesRuntimeSwitch(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		hub, _, workspace := preparedParent(t)
+		var child *Server
+		_, err := hub.StartPrepared(t.Context(), "parent", "", workspace, func(ctx context.Context, server *Server) error {
+			child = server
+			if err := server.SetSummary(Summary{Thread: "child", Workspace: workspace, Ready: true}); err != nil {
+				return err
+			}
+			<-ctx.Done()
+			return ctx.Err()
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		hub.mu.Lock()
+		parent := hub.sessions["parent"].server
+		hub.mu.Unlock()
+		if err := parent.SetSummary(Summary{Thread: "switched", Workspace: workspace, Ready: true}); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if !hub.activeThread("switched") {
+			t.Fatal("parent runtime did not switch threads")
+		}
+		if err := child.SetSummary(Summary{Thread: "child", Title: "updated", Workspace: workspace, Ready: true}); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		hub.mu.Lock()
+		entry := hub.sessions["child"].entry
+		hub.mu.Unlock()
+		if entry.Title != "updated" || entry.ParentThread != "parent" {
+			t.Fatalf("child identity changed with parent runtime: %+v", entry)
+		}
+	})
 }
 
 func TestHubPreparedRejectsUnavailableParent(t *testing.T) {

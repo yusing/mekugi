@@ -102,6 +102,7 @@ export type NativeExit = {
 };
 
 export type listed = {
+  "parentThread"?: string;
   "id"?: string;
   "starting"?: boolean;
   "replay"?: boolean;

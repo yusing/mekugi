@@ -99,6 +99,10 @@ apply to both each submission and aggregate concurrent preparation.
 Session-list data is `{"sessions":[...]}`. Entries expose `id`, `thread`,
 `workspace`, title/start/status and waiting facts when known. `starting` marks a
 thread whose initial input is pending. The latest list replaces its predecessor.
+The list contains top-level sessions only. Prepared children remain addressable
+by confirmed thread ID; `session/read` exposes their `parentThread` identity.
+This is the parent thread at admission, unchanged by runtime thread switching.
+Child discovery and presentation remain with the parent's descendant views.
 
 ## Creation, resume and end
 

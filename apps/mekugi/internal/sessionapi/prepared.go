@@ -62,7 +62,7 @@ func (h *Hub) StartPrepared(request context.Context, parent, resume, workspace s
 		}
 	}
 	ctx, cancel := context.WithCancel(s.runtime.ctx)
-	m := &managedSession{parent: s.runtime, resume: resume, run: run, operation: rand.Text(), ctx: ctx, server: NewPreparedLive(h.launcher.PrepareInput), inputContext: ctx, inputWorkspace: workspace, cancel: cancel, done: make(chan struct{}), ready: make(chan string, 1)}
+	m := &managedSession{parent: s.runtime, parentThread: parent, resume: resume, run: run, operation: rand.Text(), ctx: ctx, server: NewPreparedLive(h.launcher.PrepareInput), inputContext: ctx, inputWorkspace: workspace, cancel: cancel, done: make(chan struct{}), ready: make(chan string, 1)}
 	m.server.activeThread = h.activeThread
 	h.running[m] = struct{}{}
 	h.wg.Add(1)

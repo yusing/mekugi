@@ -31,6 +31,10 @@ Independent runtime admission is established by authenticated Mekugi membership
 and host-confirmed settings. It does not require a native Codex agent-graph edge.
 Agent assignments, messages and continuations retain their source attribution
 without becoming human composer input.
+Projected agent instructions explicitly identify root versus child membership
+and a child's parent logical task, including for independent root-shaped runtimes.
+Observation uses that admitted membership for child ancestry and attribution;
+native request metadata remains unchanged on the provider wire.
 
 ## Operations and admission
 
