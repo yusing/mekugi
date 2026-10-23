@@ -2,10 +2,12 @@ package composition
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/module"
@@ -15,6 +17,7 @@ import (
 	"github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func TestFrontendsRetainedSegmentsWithoutTransport(t *testing.T) {
@@ -119,6 +122,7 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 		{legacycall.Name("/workspace", "call", false), "call"},
 		{legacycall.Name("/workspace", "commentary", true), "commentary"},
 		{legacycall.SnapshotName([]byte("snapshot")), "snapshot"},
+		{"wait-0002a56ee5625e517b301ff9722d588a16f1cd41c9f8a8599cd1ba8793cd44d6.json", "wait"},
 	} {
 		kind, found, err := runtime.History.Kind(tc.name)
 		if err != nil || !found || kind.ID != tc.id {
@@ -153,6 +157,67 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 		t.Fatalf("command segment contribution: kind=%+v found=%v err=%v", kind, found, err)
 	}
 
+}
+
+func TestFrontendsRetainsHistoricalWaitSnapshots(t *testing.T) {
+	runtime, err := Frontends(t.Context(), false, true, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := runtime.Close(context.WithoutCancel(t.Context())); err != nil {
+			t.Error(err)
+		}
+	})
+	for _, catalogued := range []bool{false, true} {
+		name := "uncatalogued"
+		if catalogued {
+			name = "catalogued"
+		}
+		t.Run(name, func(t *testing.T) {
+			directory := t.TempDir()
+			store := runtime.History.Attach(directory)
+			name := "wait-0002a56ee5625e517b301ff9722d588a16f1cd41c9f8a8599cd1ba8793cd44d6.json"
+			path := filepath.Join(directory, name)
+			data := []byte(`[{"thread":"child","name":"retained name"}]`)
+			if err := os.WriteFile(path, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for _, expired := range []bool{false, true} {
+				used := time.Now()
+				if expired {
+					used = used.Add(-history.SessionRetention - time.Hour)
+					if err := os.Chtimes(filepath.Join(directory, "retention-sweep"), used, used); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := os.Chtimes(path, used, used); err != nil {
+					t.Fatal(err)
+				}
+				if catalogued {
+					catalog := history.Catalog{Version: 1, Thread: "retained", LastUsed: used, Files: map[string]bool{name: true}}
+					encoded, err := json.Marshal(&catalog)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(directory, history.SessionName(catalog.Thread)), encoded, 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := store.Cleanup(t.Context(), nil, history.Limits{}, "", nil); err != nil {
+					t.Fatal(err)
+				}
+				got, err := os.ReadFile(path)
+				if expired {
+					if !os.IsNotExist(err) {
+						t.Fatalf("expired snapshot retained: %v", err)
+					}
+				} else if err != nil || string(got) != string(data) {
+					t.Fatalf("recent snapshot changed: %q, %v", got, err)
+				}
+			}
+		})
+	}
 }
 
 func TestFrontendsOwnsWorkspaceCapture(t *testing.T) {

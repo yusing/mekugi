@@ -267,6 +267,11 @@ consumer-owned.
 
 ## Records and Codex connection
 
+Activity retains ownership of historical wait-target snapshots for ordinary
+[session retention](../sessionhistory/SPEC.md). These presentation-only records
+have no shared payload dependencies and never restore native coordination or
+live waits.
+
 Feeds retain the newest 2,000 records while protecting live invocations.
 Reordering preserves source identity independently of publication order.
 Bounded side-conversation projections remain until their source owner retires them.

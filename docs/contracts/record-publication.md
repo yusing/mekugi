@@ -50,7 +50,7 @@ the consumer confirms it.
 [Session history](../../modules/sessionhistory/SPEC.md) owns namespaces, catalogs,
 allocation, leases, retention and retained host-fact registration, using contributed
 record dependencies and retirement policy. [Activity](../../modules/activity/SPEC.md#records-and-codex-connection)
-owns immutable wait-target snapshots. [Change history](../../modules/changehistory/SPEC.md),
+owns retention of historical wait-target snapshots. [Change history](../../modules/changehistory/SPEC.md),
 [output recovery](../../modules/outputrecovery/SPEC.md) and
 [command segments](../../modules/commandsegments/SPEC.md) own their records and
 recovery meanings. The frozen [historical codec](../../libraries/legacycall)

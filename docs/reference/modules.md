@@ -14,8 +14,9 @@ Own host-operation feeds, roster derivation and retained output
 
 - Composition: selected; lifetime: `attached-session`.
 - Requires: none.
-- Contributes: `terminal-roster`.
+- Contributes: `record-kinds`, `terminal-roster`.
 - Hosts: `activity-details`.
+- Records: `wait`.
 - Codex connections: none.
 
 ## [agentguidance](../../modules/agentguidance/SPEC.md)
