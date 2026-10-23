@@ -122,3 +122,20 @@ func TestProgramClipWideCommentAtNarrowWidth(t *testing.T) {
 		}
 	}
 }
+
+func TestCommandMarkdownBodyAtNarrowWidth(t *testing.T) {
+	block := Block{Kind: "op", Verb: "Run", Code: "pwd", Body: "# A\n\nB\n-"}
+	var want string
+	for _, layout := range []bool{true, false} {
+		p := Painter{Theme: diffrender.DarkTheme, LayoutOnly: layout}
+		got := ansi.Strip(strings.Join(p.Block(block, 8), "\n"))
+		if layout {
+			want = got
+		} else if got != want {
+			t.Fatalf("painting changed narrow layout: %q != %q", got, want)
+		}
+		if !strings.Contains(got, "A") || !strings.Contains(got, "B") {
+			t.Fatalf("command body lost headings: %q", got)
+		}
+	}
+}

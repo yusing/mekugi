@@ -47,6 +47,31 @@ func TestUISnapshotMarkdownStyles(t *testing.T) {
 
 const markdownSyntaxSource = "Run `git commit -m 'amend: parser'` then `echo \"$HOME\"`.\n\n```go\nfunc main() { println(42) }\n```\n\n```bash\nGIT_SEQUENCE_EDITOR=: git rebase -i --autosquash HEAD~2\n```"
 
+func TestUISnapshotMarkdownExhaustedWidth(t *testing.T) {
+	const source = "# A\n\nB\n-\n\ntext"
+	p := Painter{Theme: diffrender.DarkTheme, CopySource: true}
+	want := strings.Join(p.Markdown(source, 1, false), "\n")
+	for _, width := range []int{-2, 0, 1} {
+		rows := p.Markdown(source, width, false)
+		if got := strings.Join(rows, "\n"); got != want {
+			t.Fatalf("width %d changed minimum-column rendering: %q", width, got)
+		}
+		var parts []CopyFragment
+		for _, row := range rows {
+			_, spans := ExtractCopy(row)
+			for _, span := range spans {
+				if part, ok := span.Clip(0, 1); ok {
+					parts = append(parts, part)
+				}
+			}
+		}
+		if got := CopyText(parts); got != source {
+			t.Fatalf("width %d changed source copy: %q", width, got)
+		}
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/markdown_exhausted_width.txt", want+"\n")
+}
+
 func TestUISnapshotMarkdownClosingFences(t *testing.T) {
 	p := Painter{Theme: diffrender.DarkTheme}
 	var rows []string

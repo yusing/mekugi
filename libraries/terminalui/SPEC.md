@@ -29,9 +29,10 @@ Faint-support detection reports terminal capability. Consumers choose fallback
 colors and meaning. Markdown shares bounded syntax decoration with `diffrender`
 and lexical source boundaries with `sourceanalysis`.
 Headings, quotes, code and responsive tables retain their source geometry through
-wrapping. Subdued rendering preserves paragraph indentation and omits heading
-colors and rules. File-shaped destinations become clickable only when the caller
-authorizes them; ordinary web links need no filesystem authority.
+wrapping. Markdown reserves at least one content column when nested gutters
+exhaust the supplied width. Subdued rendering preserves paragraph indentation
+and omits heading colors and rules. File-shaped destinations become clickable
+only when the caller authorizes them; ordinary web links need no filesystem authority.
 
 Copy fragments reconstruct selected source, excluding generated gutters and fills.
 They preserve code tabs, trailing whitespace, blank lines and hard breaks, balance

@@ -316,6 +316,7 @@ func markdownLink(s string) (label, target string, end int, ok bool) {
 // Markdown paints authored text. Subdued presentation preserves paragraph
 // indentation on soft wraps and omits heading colors and generated heading rules.
 func (p *Painter) Markdown(text string, width int, subdued bool) []string {
+	width = max(1, width)
 	copying := p.CopySource && !p.LayoutOnly
 	identity := uint64(0)
 	if copying {
