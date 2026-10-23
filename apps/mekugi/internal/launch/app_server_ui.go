@@ -317,7 +317,10 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 				return "That retained submission is no longer available.", nil
 			}
 			if recovery.Action == sessionapi.EditRecovery {
-				effect.Recovery = &sessionapi.NativeRecoveryView{Editing: true}
+				if effect.Recovery == nil {
+					effect.Recovery = &sessionapi.NativeRecoveryView{}
+				}
+				effect.Recovery.Editing = true
 				return "", nil
 			}
 			if recovery.Action == sessionapi.RetryRecovery {
@@ -337,7 +340,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					draft.Text = "!" + draft.Text
 				}
 				request.Prepared = sessionapi.NewPreparedInput(draft, nil)
-				request.Operation = sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{Thread: effect.Thread, Version: current.Version, Operation: sessionpresentation.SubmitComposer}}}
+				mode := sessionpresentation.SubmitComposer
+				if effect.Recovery != nil && effect.Recovery.Queued {
+					mode = sessionpresentation.QueueComposer
+				}
+				request.Operation = sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{Thread: effect.Thread, Version: current.Version, Operation: mode}}}
 				operation = request.Operation
 			} else if recovery.Action != sessionapi.DiscardRecovery {
 				return "Choose retry or discard for retained input.", nil
@@ -357,7 +364,17 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		capacity := 0
 		switch {
 		case operation.Composer != nil && operation.Composer.Intent.Operation == sessionpresentation.RestoreWaiting:
-			// Its originating inputs already own restoration capacity.
+			// Same-view inputs already own capacity; cross-view edits acquire it
+			// before moving any input or releasing its previous owner's slot.
+			for _, stack := range [][]conversationmodel.Input{attached.conversation.Unsent, attached.conversation.Queued} {
+				for _, input := range stack {
+					if input.Question == nil && input.Origin != view.attached.view {
+						capacity++
+					}
+				}
+			}
+		case operation.Composer != nil && operation.Composer.Intent.Operation == sessionpresentation.SteerWaiting:
+			// Promotion retains the existing input reservations.
 		case operation.Command != nil || operation.Composer != nil:
 			capacity = 3 // input provenance, presentation, command deletion
 		case operation.Menu != nil:
@@ -431,7 +448,10 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					return err.Error(), nil
 				}
 			}
-			if intent.Operation == sessionpresentation.RestoreWaiting {
+			if intent.Operation == sessionpresentation.RestoreWaiting || intent.Operation == sessionpresentation.SteerWaiting {
+				if view.attached.presentation.DisplayingSide() || inputThread != control.Thread {
+					return "Return to Main to use this control.", nil
+				}
 				active, err := view.attached.presentation.ResolveInterrupt(sessionpresentation.InterruptIntent{Version: intent.Version, Target: *intent.Work, Mode: sessioncontrol.RestoreWaiting}, &control.Live, &attached.session)
 				if err != nil {
 					return err.Error(), nil
@@ -440,6 +460,22 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					setNotice(&view.attached.feedback, view.shell, presentationTime(clock), "Original work already ended.", false)
 					return "", nil
 				}
+				if intent.Operation == sessionpresentation.SteerWaiting {
+					admission := intent
+					admission.Operation = sessionpresentation.SubmitComposer
+					plan, failure := view.attached.presentation.ClientInput(admission, &control.Live, attached.conversation, restoring != nil)
+					if failure != nil {
+						return failure.Error(), nil
+					}
+					if !attached.conversation.SteerQueued() {
+						return "No queued messages can be steered.", nil
+					}
+					if plan.Flush {
+						return "", flushInput(&attached, shell, &control, &picker, &questions, &approvalDock, clock, model, serviceTiers, environment, ownedImages, &guardHook, &editor, ctx, restoring != nil, observationInputs, reviewOwner, &receipts)
+					}
+					return "", nil
+				}
+				native.claimWaiting(view)
 			}
 			if boundInput && !boundMainInput {
 				if side == nil || intent.Thread != cmp.Or(side.Thread, "side:"+side.Key) {

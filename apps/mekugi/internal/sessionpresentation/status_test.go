@@ -237,9 +237,10 @@ func TestNonTerminalPendingInputOrderAndDetachment(t *testing.T) {
 	c.conversation.Queued = []conversationmodel.Input{input("next turn")}
 	v := c.publish(sessionpresentation.Caption{})
 	want := conversationmodel.PendingView{
-		Reason:  conversationmodel.Steering,
-		Waiting: []conversationmodel.PendingText{{Text: "acknowledged steer"}, {Text: "awaiting acknowledgement"}, {Text: "unsent"}},
-		Queued:  []conversationmodel.PendingText{{Text: "next turn"}},
+		CanSteer: true,
+		Reason:   conversationmodel.Steering,
+		Waiting:  []conversationmodel.PendingText{{Text: "acknowledged steer"}, {Text: "awaiting acknowledgement"}, {Text: "unsent"}},
+		Queued:   []conversationmodel.PendingText{{Text: "next turn"}},
 	}
 	if !reflect.DeepEqual(v.Pending, want) || !v.Status.ShellMode {
 		t.Fatalf("pending publication: %+v", v)

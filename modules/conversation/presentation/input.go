@@ -34,6 +34,8 @@ type Input struct {
 	// Origin identifies the requesting editor lifetime for detached restoration.
 	// Empty retains the in-process editor path. It confers no execution authority.
 	Origin string
+	// NextTurn retains queue disposition through asynchronous recovery.
+	NextTurn bool
 	// Delivery identifies reserved restoration capacity at the originating view.
 	// It is opaque provenance, not an execution capability or renderer owner.
 	Delivery   uint64
@@ -172,6 +174,7 @@ const (
 )
 
 type PendingView struct {
+	CanSteer        bool
 	Reason          WaitingReason
 	Waiting, Queued []PendingText
 }
@@ -188,5 +191,5 @@ func (m *Session) Pending(ids []string, reason WaitingReason) PendingView {
 		}
 		return out
 	}
-	return PendingView{Reason: reason, Waiting: values(slices.Concat(m.Parts(ids), m.Unsent)), Queued: values(m.Queued)}
+	return PendingView{CanSteer: slices.ContainsFunc(m.Queued, steerable), Reason: reason, Waiting: values(slices.Concat(m.Parts(ids), m.Unsent)), Queued: values(m.Queued)}
 }

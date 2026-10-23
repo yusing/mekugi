@@ -244,6 +244,7 @@ const (
 )
 
 type NativeRecoveryView struct {
+	Queued      bool     `json:"queued,omitzero"`
 	Editing     bool     `json:"editing,omitzero"`
 	Parts       []string `json:"parts,omitzero"`
 	Preview     string   `json:"preview"`

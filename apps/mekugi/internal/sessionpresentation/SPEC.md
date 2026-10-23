@@ -347,8 +347,9 @@ Prepared native input rechecks its captured thread, workspace, attachment and
 current operation gates after acquisition. Output or clock progress alone cannot
 invalidate the prepared snapshot. Delayed command cleanup and insertions validate
 their originating editor even when another editor has become selected.
-Rejected or withdrawn input returns only to its
-originating live editor. A disconnected editor receives no restoration, automatic
+Rejected input returns only to its originating live editor. Explicit withdrawal
+for editing transfers locally waiting input to the requesting editor; submitted
+input remains host-owned. A disconnected editor receives no restoration, automatic
 retry or replacement server draft; existing history and failure facts remain.
 
 Draft token annotations are shared between submission projection and terminal

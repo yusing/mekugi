@@ -75,7 +75,9 @@ restoration; attachment bindings and answer drafts remain process-local.
 Joining drafts preserves send order, separates nonempty entries with newlines,
 retains immutable attachment snapshots and keeps the last entry's caret. Rejected
 or withdrawn input can return before newly typed text without losing attachment
-identity. Application-only payload metadata stays outside draft state.
+identity. Application-only payload metadata stays outside draft state. Queued input retains
+its next-turn delivery mode through recovery; explicit steering promotes only
+ordinary queued messages, leaving question replies and compaction commands alone.
 
 External editing preserves exact image and selection placeholders when moved or
 removed. Invalid UTF-8 or ambiguous image/selection placeholders, including
@@ -301,9 +303,10 @@ belong to this session owner. Restoring ordinary input while a prompt is open
 updates the parked Main draft, preserving the active answer or denial reason.
 Submitted payload identities are independent of renderer sequence numbers.
 
-Inputs from attached native clients retain their originating editor lifetime.
-Restoration returns those values as detached effects instead of editing the
-in-process composer or another client's draft. Closing a client retires its editor
+Inputs from attached clients retain their originating editor lifetime.
+Automatic restoration returns those values as detached effects instead of editing
+the in-process composer or another client's draft. An explicit waiting-input edit
+transfers delivery ownership to the requesting live view before withdrawal. Closing a client retires its editor
 delivery, while already-admitted input, host history and failure evidence retain
 their execution lifetimes. Restoration never automatically resubmits input.
 

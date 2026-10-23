@@ -205,6 +205,7 @@ const (
 	IncreaseEffort
 	DecreaseEffort
 	AcceptPrediction
+	SteerWaiting
 )
 
 // ClientLocal identifies operations that acquire resources or edit on the native renderer.
@@ -252,10 +253,10 @@ func (m *Model) AdmitClientComposer(intent ComposerIntent) error {
 	if (intent.Operation == CancelComposer || intent.Operation == AcceptPrediction) && intent.Version != m.view.Version {
 		return ErrStaleIntent
 	}
-	if intent.Operation == RestoreWaiting && intent.Work == nil {
+	if (intent.Operation == RestoreWaiting || intent.Operation == SteerWaiting) && intent.Work == nil {
 		return ErrStaleIntent
 	}
-	if m.replay || m.childRuntime && intent.Target.Call == "" && intent.Target.Request == "" || intent.Thread == "" && m.readOnly() != Editable || intent.Operation < SubmitComposer || intent.Operation > AcceptPrediction {
+	if m.replay || m.childRuntime && intent.Target.Call == "" && intent.Target.Request == "" || intent.Thread == "" && m.readOnly() != Editable || intent.Operation < SubmitComposer || intent.Operation > SteerWaiting {
 		return ErrInputUnavailable
 	}
 	return nil

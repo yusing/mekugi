@@ -128,10 +128,19 @@ func (n *nativeViews) restore(execution *executionPresentation, parts []conversa
 			continue
 		}
 		if view.remoteHuman {
-			// Remote recovery retains one joined submission at its server owner;
-			// its bounded preview crosses transport until the user opens text editing.
-			draft := composer.Join(conversation.Drafts(inputs)...)
-			view.effects.restore(inputs, sessionapi.NativeEffect{Thread: view.thread, Restore: &draft})
+			// Remote recovery joins consecutive inputs with the same delivery mode.
+			// Only a preview crosses transport until the user opens text editing.
+			for len(inputs) > 0 {
+				end := 1
+				for end < len(inputs) && inputs[end].NextTurn == inputs[0].NextTurn {
+					end++
+				}
+				batch := inputs[:end]
+				draft := composer.Join(conversation.Drafts(batch)...)
+				view.effects.restore(batch, sessionapi.NativeEffect{Thread: view.thread, Restore: &draft,
+					Recovery: &sessionapi.NativeRecoveryView{Queued: batch[0].NextTurn}})
+				inputs = inputs[end:]
+			}
 			continue
 		}
 		// Restore prepends. Deliver inputs in reverse order so the editor keeps
@@ -180,6 +189,24 @@ func (n *nativeViews) notify(execution *executionPresentation, event, message st
 			// Desktop attention is replaceable; full notices/history remain owned
 			// independently of the latest wake-up signal.
 			view.notification = &sessionapi.NativeEffect{ID: view.effects.next, Notification: &sessionapi.NativeDesktopNotification{Event: event, Message: message}}
+		}
+	}
+}
+
+// Explicit queue editing transfers delivery ownership to the requesting view.
+// Automatic rejection still uses restore and the admitted input's origin.
+func (n *nativeViews) claimWaiting(view *nativeSessionView) {
+	for _, stack := range [][]conversation.Input{view.attached.conversation.Unsent, view.attached.conversation.Queued} {
+		for i := range stack {
+			part := &stack[i]
+			if part.Question != nil || part.Origin == view.attached.view {
+				continue
+			}
+			if previous := n.views[part.Origin]; previous != nil && previous.effects.inputs[part.Delivery] {
+				delete(previous.effects.inputs, part.Delivery)
+				previous.effects.reserved--
+			}
+			part.Origin, part.Delivery = view.attached.view, view.effects.input()
 		}
 	}
 }

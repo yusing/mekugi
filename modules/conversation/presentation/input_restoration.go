@@ -50,6 +50,7 @@ func (m *Session) RestoreInput(parts ...Input) InputRestoration {
 }
 
 func (m *Session) QueueInput(input Input, nextTurn bool) {
+	input.NextTurn = nextTurn
 	if nextTurn {
 		m.Queued = append(m.Queued, input)
 	} else {
@@ -113,3 +114,21 @@ func (m *Session) MatchSubmitted(text, start, sending string, steers []string) [
 	}
 	return ids
 }
+
+// SteerQueued promotes ordinary queued input without replaying submitted input
+// or turning a compaction command or question answer into a message.
+func (m *Session) SteerQueued() bool {
+	promoted := false
+	m.Queued = slices.DeleteFunc(m.Queued, func(input Input) bool {
+		if !steerable(input) {
+			return false
+		}
+		input.NextTurn = false
+		m.Unsent = append(m.Unsent, input)
+		promoted = true
+		return true
+	})
+	return promoted
+}
+
+func steerable(input Input) bool { return input.Question == nil && input.Text != "/compact" }

@@ -195,7 +195,11 @@ publish a bounded recovery preview instead of attachment snapshots. The
 segments separated by immutable attachment labels. Retry may supply replacement
 text segments after Edit; retained bindings and attachment snapshots remain unchanged.
 Retry uses the retained snapshot through ordinary admission for its original
-destination; refusal keeps it available. Discard releases that retained input.
+destination and delivery mode. Queued recovery publishes `queued: true` and
+returns to the next-turn queue; only an explicit Steer action promotes it.
+An explicit waiting-input edit transfers restoration to the requesting view;
+automatic failure recovery stays with the originating view. Refusal keeps the
+retained input available. Discard releases it.
 Missing or consumed effects refuse, and ambiguous responses never trigger retries.
 Delivery receipts preserve remote recoveries until this explicit resolution.
 Detaching the originating view releases its unsent recovery, as it releases its

@@ -54,8 +54,10 @@ Terminal keys and contextual dismissal belong to
 
 For conversation input, Enter steers an active turn; Tab queues for the next turn
 and submits while idle. Shell commands use their immediate-submission behavior below.
-Alt-Up/Shift-Left restores only locally waiting input; transmitted steers remain
-host-owned. Starting input appears provisionally and reconciles with the host echo
+Alt-Up/Shift-Left restores only locally waiting input into the requesting editor,
+including input queued in another attached view; transmitted steers remain
+host-owned. Explicit queue steering promotes ordinary queued messages through
+the existing steer admission path without interrupting the turn. Starting input appears provisionally and reconciles with the host echo
 without duplication. Conversation matches text only when the host omits client
 identity. Acknowledgement/completion races retain submission order. Rejection
 restores input before later drafts, preserving attachments. An interrupted,

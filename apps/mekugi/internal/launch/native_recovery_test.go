@@ -95,3 +95,56 @@ func TestNativeRecoveryJoinedSnapshotsAndExactConsumption(t *testing.T) {
 		t.Fatal("native receipt retained delivered restoration", refusal)
 	}
 }
+
+func TestExplicitWaitingEditMovesToRequestingView(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.startSession("main", t.TempDir())
+	h := remoteOwnerView(t, u)
+	if refusal := h.views.attach(sessionapi.NativeRequest{Attachment: "terminal", Thread: "main", Workspace: u.attached.cwd, Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
+		t.Fatal(refusal)
+	}
+	target := h.views.views["terminal"]
+	file := composer.UploadAttachment("file", []byte("snapshot"))
+	file.Start, file.End = 7, 12
+	draft := composer.Draft{Text: "queued @file", Files: []composer.Token{file}}
+	draft.SnapshotFiles("")
+	u.attached.conversation.QueueInput(conversation.Input{Draft: draft, Origin: h.event.Attachment, Delivery: h.view.effects.input()}, true)
+	r := target.effects.reserve(1)
+	target.effects.current = r
+	h.views.claimWaiting(target)
+	target.effects.current = nil
+	r.release()
+	h.views.restore(u.attached.executionPresentation, u.attached.conversation.TakeWaiting())
+	if len(h.view.effects.pending) != 0 || h.view.effects.reserved != 0 || len(h.view.effects.inputs) != 0 {
+		t.Fatal("previous view retained recovery or capacity")
+	}
+	if len(target.effects.pending) != 1 || !reflect.DeepEqual(*target.effects.pending[0].Restore, draft) {
+		t.Fatal("requesting view lost prepared input")
+	}
+	client := nativeTestPromptClient(u)
+	client.editor("main").InsertText("new draft")
+	frame := client.event
+	frame.Frame.Effects = target.effects.publication()
+	client.accept(frame)
+	if got := client.editor("main").Draft; got.Text != "queued @file\nnew draft" || len(got.Files) != 1 || got.Files[0].Text != "snapshot" {
+		t.Fatalf("native editor lost restored input: %+v", got)
+	}
+}
+
+func TestRemoteRecoveryKeepsQueueDisposition(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.startSession("main", t.TempDir())
+	h := remoteOwnerView(t, u)
+	for _, queued := range []bool{false, true} {
+		u.attached.conversation.QueueInput(conversation.Input{Draft: composer.Draft{Text: "message"}, Origin: h.event.Attachment, Delivery: h.view.effects.input()}, queued)
+	}
+	h.views.restore(u.attached.executionPresentation, u.attached.conversation.TakeWaiting())
+	if len(h.view.effects.pending) != 2 {
+		t.Fatal("mixed delivery modes were joined")
+	}
+	for i, effect := range h.view.effects.pending {
+		if effect.Recovery == nil || effect.Recovery.Queued != (i == 1) {
+			t.Fatalf("lost delivery mode: %+v", effect)
+		}
+	}
+}

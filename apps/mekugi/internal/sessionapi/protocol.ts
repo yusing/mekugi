@@ -711,6 +711,7 @@ export type ApprovalDockView = {
 };
 
 export type PendingView = {
+  "CanSteer": boolean;
   "Reason": number;
   "Waiting": Array<PendingText>;
   "Queued": Array<PendingText>;
@@ -863,6 +864,7 @@ export type Token = {
 };
 
 export type NativeRecoveryView = {
+  "queued"?: boolean;
   "editing"?: boolean;
   "parts"?: Array<string>;
   "preview": string;
