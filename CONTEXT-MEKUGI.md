@@ -82,29 +82,43 @@ Cross-owner adapter entry points:
 - Guidance consumers: `executionobservation/instruction_cache_test.go`, Launch prewarm,
   `stock_guidance_workflow_test.go` and `testdata/instruction-cleanup/`.
 
+## Boundary contracts
+
+Load contracts for boundaries the change crosses. They own details and acceptance cases;
+they do not expand the requested scope.
+
+- **Host execution and logical coordination:** [Codex execution](backends/codex/SPEC.md#execution-authority),
+  [thread coordination](modules/threadcontrol/SPEC.md),
+  [frontends](apps/mekugi/internal/frontends/SPEC.md), [MCP](libraries/mcptransport/SPEC.md),
+  [headless](apps/mekugi/internal/headless/SPEC.md), and [launch](apps/mekugi/internal/launch/SPEC.md).
+- **Change evidence:** [capture](docs/contracts/change-evidence.md),
+  [changes](modules/changehistory/SPEC.md), and [publication](docs/contracts/record-publication.md).
+- **Scope/isolation:** [authority and publication](docs/contracts/record-publication.md) and
+  [activity identity](modules/activity/SPEC.md#observation-authority).
+- **Forks, side threads, switching, and resume:** [replay](apps/mekugi/internal/frontends/SPEC.md),
+  [changes](modules/changehistory/SPEC.md), and [guide](modules/agentguidance/SPEC.md).
+- **Independent reads and apply/revert dependencies:** [changes](modules/changehistory/SPEC.md).
+- **Presentation:** [terminal interaction](apps/mekugi/internal/terminalsession/SPEC.md),
+  [session behavior](apps/mekugi/internal/sessionpresentation/SPEC.md),
+  [activity display](modules/activity/CONTRACT.md), and [session control](apps/mekugi/internal/sessioncontrol/SPEC.md).
+- **Frontend/guidance ownership:**
+  [plugin boundary](apps/mekugi/internal/frontends/SPEC.md) and [guide](modules/agentguidance/SPEC.md).
+- **Responsiveness:** [presentation boundary](apps/mekugi/internal/terminalsession/SPEC.md#boundary).
+- **Progress, capture, diagnostics, and providers:** [activity](modules/activity/SPEC.md),
+  [notices](modules/notifications/SPEC.md), [metrics](modules/transportdiagnostics/SPEC.md), and [providers](docs/contracts/provider-routing.md).
+
 ## Session evidence and profiling
 
-For historical behavior, start with recorded calls/results; current code explains intended behavior.
-Codex rollouts live under `$CODEX_HOME/sessions` (default `~/.codex/sessions`). Locate an exact ID
-with `rg --files --hidden --no-ignore` and a filename glob, then verify `session_meta` identity/workspace.
-Child sessions and inherited fork history are not independent user sessions.
+Load the section matching the investigation:
 
-- `mekugi inspect-session --session /absolute/path/to/rollout.jsonl`: logical evidence without
-  executing recorded operations. Select private text only when needed.
-- Debug bundles: `mekugi inspect-session --debug-dir /absolute/path/to/debug --field diagnostic
-  --limit 5 --text-bytes 512`; narrow by `--request-id`, paginate with `--offset`. Select JSON
-  fields rather than line-limiting minified output.
-- Replay: `bin/mekugi-pprof replay-session --session ID --headless --width 160 --height 48` takes
-  a literal session ID, not a path. Build with `make mekugi-pprof`; use its profiling URL with
-  `go tool pprof`. Fix inputs/speed/dimensions for comparisons. Replay measures rendering, not
-  terminal backpressure or live host/provider latency.
-- For an older running installation, identify its binary/storage locations first. Sample the
-  actual process for live CPU/heap faults and resume that session; replay/fresh sessions can miss
-  retained process state.
+- Recorded behavior or debug bundles: [Inspect a session](docs/contributing/development.md#inspect-a-session).
+- Retained-session replay: [Replay a session](docs/contributing/development.md#replay-a-session).
+- Live CPU/RAM faults or profiling: [Profile live sessions and replay](docs/contributing/development.md#profile-live-sessions-and-replay).
 
 Contracts: `modules/{sessioninspection,diagnostics,sessionreplay}/SPEC.md`.
-Profiling build/sampling/privacy: `docs/contributing/development.md#profile-live-sessions-and-replay`;
-implementation: `launch/{profiling,profiling_disabled}.go`.
+Profiling implementation: `launch/{profiling,profiling_disabled}.go`.
+Controlled model comparisons live in [codex-setup-ab](https://github.com/yusing/codex-setup-ab);
+select them only for a comparison task.
 
 ## Workspace and generation
 

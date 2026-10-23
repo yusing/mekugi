@@ -1,5 +1,17 @@
 # Test procedures
 
+Load only the procedures selected by the operation; routine focused checks use the runner and
+applicable coverage below.
+
+| Operation | Procedure |
+| --- | --- |
+| Terminal appearance, snapshot fixtures, or baseline checks/updates | [Terminal snapshots](docs/contributing/testing-snapshots.md) |
+| Opt-in browser-control fixture or browser wire-type generation | [Browser control](docs/contributing/testing-browser-control.md) |
+| Frontend/symbol benchmarks or test CPU/block profiles | [Performance measurements](docs/contributing/testing-performance.md) |
+| Compile/run installed-Codex fixtures with local providers | [Installed-Codex acceptance](CONTEXT-AUTOMATED-TESTS.md) |
+| Compile/run real-provider fixtures | [Live Codex requests](docs/contributing/testing-live-codex.md) |
+| Verify an introduced or changed cost invariant | [Cost checks](CONTEXT-PERFORMANCE.md#cost-checks) |
+
 ## Runner
 
 Use `make test`; the root has no Go module. Default `TEST_PACKAGES=@workspace` expands
@@ -23,6 +35,14 @@ make test TEST_PACKAGES='./backends/codex/appserver ./apps/mekugi/internal/launc
 - Linux amd64 release CI runs the fresh offline suite; other platforms retain command and
   welcome/version checks. Installed-Codex checks are separate in `CONTEXT-AUTOMATED-TESTS.md`.
   A focused pass covers only selected tests.
+
+### Suite budget
+
+Target 30 seconds for a fresh offline suite with warm build caches, without making it a completion
+gate. Measure wall time when a full suite is warranted; report slower validation and continue.
+Report cold build/race/live checks separately. Do not repeat passing tests or warm caches just to
+meet the target. Investigate timing only for requested optimization or an evidenced task-related
+regression. Local passes/model prose do not replace host results or missing runtime coverage.
 
 ## Select coverage
 
@@ -48,32 +68,19 @@ Feature contracts in `docs/index.md` own acceptance details.
 | Launch/headless/naming | Changed `launch/options`, `launch/modelcatalog`, `headless` or `modules/sessionnaming`; Launch dispatch/build, reused configuration, resume models, picker/startup, headless delivery/control/shutdown and title/name-save consumers |
 | Session API | `sessionapi`, `sessionpresentation` and `modules/activity/presentation`; cover detached projection, prompt redaction, request admission, stream recovery, socket peer checks and hosted-resource cleanup. Runtime consumers require their own integration checks |
 
-After API changes, compile affected tagged host fixtures using the compile-only command in
-`CONTEXT-AUTOMATED-TESTS.md`. Installed-host cases include native frontends/mrun/mchanges,
+After API changes, compile affected tagged fixtures using the compile-only command in the
+matching installed-host or live-provider procedure above. Installed-host cases include native frontends/mrun/mchanges,
 guards and sandbox reporting; compaction uses `TestAppServerCompactEnterInterruptsNativeCodex`
 and `TestAppServerQueuedCompactContinuesNativeCodex`; naming persistence/resume lives in
 `launch/app_server_session_title_codex_e2e_test.go`.
 
-## Focused tools and measurements
-
-Native-reader latency covers a fresh authenticated worker, 3,000-row read, three-document
-architecture batch and eight-file Go inspection at the default shared budget:
-
-```sh
-make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeFrontends -benchtime=3x -count=1'
-```
-
-The inspection batch exercises incomplete-output recovery. These benchmarks clear thread identity
-and exclude active-session lease/retention costs. `BenchmarkSelectRows` in
-`libraries/outputbudget/tokenizer` isolates row admission from startup/source I/O.
+## Focused checks
 
 Go symbol acceptance needs an existing `gopls` and installs nothing. Opt in to cross-package/test
-references and source freshness; resolver/frontend benchmarks use normal caches and exclude
-frontend registry creation/active-session leases:
+references and source freshness:
 
 ```sh
 env MEKUGI_TEST_REAL_GOPLS=1 make test TEST_PACKAGES=./modules/symbolquery/query TEST_RUN='^TestNativeSymbolRealGoplsReferences$'
-make test TEST_PACKAGES='./modules/symbolquery/query ./apps/mekugi/internal/launch' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
 ```
 
 Frontend descriptions and supplementary `guidance.md` belong to command modules;
@@ -84,60 +91,11 @@ After changing frontend guidance, check authenticated snapshots and prepared req
 make test TEST_PACKAGES='./modules/agentguidance/... ./apps/mekugi/internal/frontends ./apps/mekugi/internal/launch ./apps/mekugi/internal/composition' TEST_RUN='Guidance|Instruction|ConflictRewrite|Prewarm|ComposedFrontendCatalog'
 ```
 
-For router profiles, pass temporary `-cpuprofile`, `-blockprofile` and `-o` paths through
-`TEST_FLAGS`. Inspect CPU and block profiles with `go tool pprof`; summed blocked time is not wall time.
-
-## Browser control transport
-
-The opt-in browser fixture uses `agent-browser` against the actual connector and
-Unix-socket server with disposable credentials and no Codex/model invocation:
-
-```sh
-MEKUGI_TEST_CONTROL_BROWSER=1 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestControlBrowser$'
-```
-
-`MEKUGI_TEST_AGENT_BROWSER` can select an absolute executable when a tool-manager
-shim cannot run under isolated test configuration. The fixture owns and closes a
-named browser session. It covers initialization, publication, mutation, native
-method denial, reconnection and token rotation; TLS deployment remains separate.
-`make check-generated` checks generated browser wire types as well as the module
-index. Regenerate only browser types with
-`go run ./apps/mekugi/cmd/sessionapi-schema`; full `make generate` also refreshes
-other workspace-generated assets.
-
 ## Static checks
 
 `make lint` requires `golangci-lint` and `deadcode` on PATH. It uses `.golangci.yml`, checks production
 and test reachability separately (including the snapshot harness), and fails on tool errors/findings.
 Linux amd64 CI installs versions pinned in the release workflow.
-
-## Terminal snapshots
-
-Use actual-renderer `TestUISnapshot` tests with fixed time, theme, dimensions and other
-nondeterministic inputs. Owners retain fixtures in `testdata/snapshots/`. The staged-tree snapshot
-commit gate is documented in `docs/contributing/development.md#build-and-test`.
-
-```sh
-make test-ui-snapshots SNAPSHOT_PACKAGES=./apps/mekugi/internal/launch SNAPSHOT='^TestUISnapshotNativeSessionShortcuts$'
-```
-
-Checks are offline, include the snapshot harness, and need neither Codex nor model requests.
-Omit `SNAPSHOT_PACKAGES` for the workspace or `SNAPSHOT` for all snapshot cases. The same selections
-apply to `make update-ui-snapshots`.
-
-- `testsupport/uisnapshot.Assert` strips ANSI only: spacing, blank lines, wrapping and borders
-  remain exact. Text comparisons do not prove color/style correctness.
-- `AssertTerminal` paints into a fixed-width VT emulator and retains canonical ANSI as quoted rows,
-  covering colors, emphasis, links, padding and style restoration independently of equivalent escape
-  sequences. Include a following plain row to detect style leaks. Theme-sensitive cases cover
-  terminal/dark/light; code fills also cover a reported background.
-- A missing/changed fixture fails and writes a sibling `.txt.new` candidate plus a unified diff;
-  the baseline stays unchanged. Review the candidate, then move it over the fixture or run the
-  selected update recipe. Omitting `SNAPSHOT` updates all matching cases.
-- Updates require `MEKUGI_UPDATE_UI_SNAPSHOTS=1`; check recipes clear it. A pass or explicit update
-  removes stale candidates. Rerun checks after accepting a baseline.
-- Keep copy/state/bounds/interaction/PTY checks separate. Git attributes exempt only snapshot text
-  from trailing-space/final-blank-row warnings; ordinary sources still use `git diff --check`.
 
 ## Boundary acceptance
 

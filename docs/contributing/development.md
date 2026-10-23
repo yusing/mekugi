@@ -34,7 +34,7 @@ paths are needed.
 Use `make test-host` for the focused installed-Codex checks with local mock providers;
 see [host acceptance](../../CONTEXT-AUTOMATED-TESTS.md).
 Built-in frontends are Go. `make preview-native-ui` uses no models.
-`make test-ui-snapshots` checks fixtures; review before updating. See [test procedures](../../CONTEXT-TESTS.md).
+`make test-ui-snapshots` checks fixtures; review before updating. See [snapshot procedures](testing-snapshots.md).
 Enable the repository's commit gate once per clone:
 
 ```sh
@@ -59,6 +59,11 @@ evidence](../../modules/diagnostics/SPEC.md#private-debug-bundles).
 
 ### Inspect a session
 
+For historical behavior, start with recorded calls/results; current code explains intended behavior.
+Codex rollouts live under `$CODEX_HOME/sessions` (default `~/.codex/sessions`). Locate an exact ID
+with `rg --files --hidden --no-ignore` and a filename glob, then verify `session_meta` identity/workspace.
+Child sessions and inherited fork history are not independent user sessions.
+
 Inspection runs no recorded operations. Rollout and debug-bundle reports omit private
 text unless `--field` selects it. `--request-id ID --field all` drills into one request.
 Failure lookup with `--failures [REF]` always includes complete private error text,
@@ -66,8 +71,11 @@ which may contain request content or credentials.
 
 ```sh
 mekugi inspect-session --session /path/to/rollout.jsonl
-mekugi inspect-session --debug-dir /path/to/debug --field diagnostic
+mekugi inspect-session --debug-dir /path/to/debug --field diagnostic --limit 5 --text-bytes 512
 ```
+
+Narrow debug reports by `--request-id` and paginate with `--offset`. Select JSON fields rather
+than line-limiting minified output.
 
 See [session inspection](../../modules/sessioninspection/SPEC.md) and [AX evidence](../../modules/agentmetrics/SPEC.md).
 
@@ -77,22 +85,29 @@ See [session inspection](../../modules/sessioninspection/SPEC.md) and [AX eviden
 mekugi replay-session --session SESSION_ID
 ```
 
-Use the full ID from `CODEX_HOME` sessions/archives. Replay makes no provider, command,
+Use the literal full session ID from `CODEX_HOME` sessions/archives, not a path. Replay makes no provider, command,
 or approval calls; it simulates retained text/timing, not original inputs or live
 previews. Missing evidence is reported; private content may appear on screen. `p`
 pauses, `+`/`-` changes speed, `[`/`]` seeks, `r` restarts, `q` quits. Use `--from 5m
 --until 6m` for intervals or `--headless --width 160 --height 48 --seed 1 --speed 1` for
-repeatable timing; headless excludes terminal backpressure. See
+repeatable timing. Fix inputs, speed, and dimensions for comparisons. Replay measures rendering,
+not terminal backpressure or live host/provider latency. See
 [replay](../../modules/sessionreplay/SPEC.md).
 
 ## Profile live sessions and replay
+
+For reported live CPU/RAM faults, identify the affected binary, retained history/store scale,
+and lifecycle phase. Sample the actual process within the authorized isolation boundary, or
+reproduce those dimensions in an isolated process. Fresh sessions and replay cannot establish
+coverage of missing retained process state.
 
 `make mekugi-pprof` builds a separate optimized executable with symbols and the
 `pprof` build tag, plus its sibling executor, without installing or replacing the
 normal command. Launch arguments, worker dispatch and hooks retain their behavior.
 The normal build starts no profiling listener.
 
-Launch or [replay](../../modules/sessionreplay/SPEC.md) with `bin/mekugi-pprof`.
+Launch or [replay](../../modules/sessionreplay/SPEC.md) with `bin/mekugi-pprof`. For rendering profiles,
+use `bin/mekugi-pprof replay-session --session ID --headless --width 160 --height 48`.
 Each owning process binds its own OS-assigned IPv4 loopback port and prints
 `mekugi-pprof: http://127.0.0.1:PORT/debug/pprof/` to stderr before UI handoff.
 The standalone server opens its listener before accepting sessions. Start a CPU
