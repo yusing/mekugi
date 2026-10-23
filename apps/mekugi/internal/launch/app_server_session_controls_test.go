@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/charmbracelet/x/ansi"
@@ -99,6 +102,13 @@ func TestAppServerClearWaitsForCompactAcknowledgement(t *testing.T) {
 
 func TestAppServerClearStartsFreshThreadAndRetiresOldEvents(t *testing.T) {
 	u, w := newAppServerTestUI()
+	u.startSession("main", "/tmp")
+	u.review.IncludeThread(u.attached.cwd, u.Thread, true)
+	file := diffmodel.RenderReviewFile("/project/source.go", "/project/source.go", "old\n", "new\n")
+	saved := (changepresentation.Publication{}).With(changepresentation.GroupCaptures([]changepresentation.Chunk{{Key: "old-change", Review: file}}))
+	u.review.Projection.Data = &changepresentation.Snapshot{Publication: saved}
+	u.review.Projection.Workspace = u.attached.cwd
+	publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
 	u.model, u.reasoningEffort, u.serviceTier = "chosen", "high", "priority"
 	appServerTestUserMessage(t, u, "old-user", "", "old transcript")
 	appServerTestKeys(t, u, "/clear\r")
@@ -128,6 +138,9 @@ func TestAppServerClearStartsFreshThreadAndRetiresOldEvents(t *testing.T) {
 	}
 	if u.Thread != "fresh" || u.Replacement.Pending() || len(u.attached.source.Entries) != 0 {
 		t.Fatalf("old presentation retained: thread=%q entries=%+v", u.Thread, u.attached.source.Entries)
+	}
+	if review := u.reviewSource.ReviewView(u.attached.session.Scope()); len(review.Files) != 0 || u.review.Scope().Workspaces[u.attached.cwd]["main"] {
+		t.Fatalf("clear retained old review or scope: %+v, %+v", review, u.review.Scope())
 	}
 	appServerTestUserMessage(t, u, "late-old", "", "late old transcript")
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"late-turn"}}}`)

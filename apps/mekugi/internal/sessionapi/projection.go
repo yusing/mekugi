@@ -9,6 +9,8 @@ import (
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 // Frame is one detached renderer input. Launch builds it from admitted owners;
@@ -24,6 +26,8 @@ type Frame struct {
 	Main       *activitypresentation.Publication
 	// Agents is the child feed: each agent's own activity, and the roster.
 	Agents *activitypresentation.Publication
+	Review *changepresentation.ReviewView
+	Live   []preview.Preview
 	// ChildReplySummary is the invocation's child_reply_summary feature.
 	ChildReplySummary bool
 }

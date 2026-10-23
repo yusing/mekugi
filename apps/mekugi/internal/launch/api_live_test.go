@@ -3,15 +3,106 @@ package launch
 
 import (
 	"context"
+	"encoding/base64"
+	json "encoding/json/v2"
 	"fmt"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
+
+func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
+	workspace := t.TempDir()
+	u := newAppServerSessionTestUI(t, workspace)
+	const raster = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
+	data, err := base64.StdEncoding.DecodeString(raster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imagePath := filepath.Join(workspace, "image.png")
+	if err := os.WriteFile(imagePath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "image", Type: "imageView", Path: imagePath}})
+	file := diffmodel.RenderReviewFile("/project/source.go", "/project/source.go", "old\n", "new\n")
+	saved := (changepresentation.Publication{}).With(changepresentation.GroupCaptures([]changepresentation.Chunk{{Key: "change1", Workspace: workspace, Review: file, Origin: changepresentation.Origin{Change: "change1", Caller: "/root", Source: "apply_patch"}}}))
+	u.reviewSource.PublishReview(u.attached.session.Scope(), &changepresentation.Snapshot{Publication: saved}, workspace, "complete", "")
+	live := newLivePreview(t.Context())
+	defer testReview(live).Close()
+	setLiveScope(live, preview.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+	live.Update(preview.Preview{ID: "edit", Thread: "main", Workspace: workspace, Caller: "/root", Status: "streaming", Files: []diffmodel.ReviewFile{file}}, false)
+	launcher := &nativeReattachLauncher{run: func(ctx context.Context, _ sessionapi.Start, api *sessionapi.Server) error {
+		publisher := apiLive{server: api, started: time.Now()}
+		publisher.publish(&u.attached, u.shell, &u.Client, testReview(live), u.reviewSource, false, false, time.Now())
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	hub := sessionapi.NewHub(t.Context(), launcher)
+	defer hub.Close()
+	endpoint := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
+	defer endpoint.Close()
+	rpc, err := sessionapi.OpenRPC(t.Context(), endpoint.Client(), endpoint.URL+sessionapi.RPCPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rpc.Close()
+	serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: workspace, Model: "fixture"})
+	events := serverRPCSubscribe(t, rpc, "main")
+	defer events.Close()
+	wait, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	event, err := events.Next(wait)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state struct {
+		Review struct {
+			Files []struct {
+				Chunks []changepresentation.Chunk `json:"chunks"`
+			} `json:"files"`
+		} `json:"review"`
+		Live []preview.Preview `json:"live"`
+		Main struct {
+			Entries []struct {
+				Seq    uint64   `json:"seq"`
+				Agent  string   `json:"agent"`
+				Images []string `json:"images"`
+			} `json:"entries"`
+		} `json:"main"`
+	}
+	if err := json.Unmarshal(event.Data, &state); err != nil {
+		t.Fatal(err)
+	}
+	if event.Kind != "snapshot" || len(state.Review.Files) != 1 || len(state.Review.Files[0].Chunks) != 1 || state.Review.Files[0].Chunks[0].Review.Diff != file.Diff || len(state.Live) != 1 || state.Live[0].ID != "edit" || state.Live[0].Files[0].Diff != file.Diff {
+		t.Fatalf("missing review or preview: %s", event.Data)
+	}
+	for _, entry := range state.Main.Entries {
+		if len(entry.Images) == 1 {
+			body := serverRPCCall(t, rpc, "session/image", "main", map[string]any{"seq": entry.Seq, "agent": entry.Agent, "index": 0, "image": entry.Images[0]})
+			var image struct {
+				MIME string `json:"mime"`
+				Data string `json:"data"`
+			}
+			if err := json.Unmarshal(body, &image); err != nil || image.MIME != "image/png" || image.Data != raster {
+				t.Fatalf("viewed image response: %s, %v", body, err)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing viewed-image binding: %s", event.Data)
+}
 
 func apiTestIntent(t *testing.T, u *appServerUI, intent sessionapi.Intent) string {
 	t.Helper()

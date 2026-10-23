@@ -47,6 +47,11 @@ native secret-answer path. Session API projections omit secret content.
 Subscribers receive a snapshot followed by patches. Queue pressure replaces pending
 patches with an authoritative snapshot. Reconnection obtains a fresh snapshot
 without replaying effects.
+Live shared publications include revisioned saved review and current provisional
+edit previews from the existing owners. Saved review uses the terminal Diff
+pane's temporary-file policy and composed evidence; unchanged revisions reuse
+their projection and encoding. Published user and View images share bound-image
+read admission, including restored history.
 Native server and client queues replace superseded complete-frame updates so restoration
 and ordinary progress do not accumulate copies of the same history. Attachment
 transitions, acquired output and runtime exit remain ordered, and unacknowledged

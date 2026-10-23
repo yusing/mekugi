@@ -1,5 +1,7 @@
 package preview
 
+import "slices"
+
 type rootTurn struct{ workspace, thread, id string }
 
 func (b *Session) Enable() {
@@ -20,6 +22,14 @@ func (b *Session) SetScope(scope Scope) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.scope = cloneScope(scope)
+	withdrawn := func(p Preview) bool { return !b.scope.Workspaces[p.Workspace][p.Thread] }
+	b.previews = slices.DeleteFunc(b.previews, withdrawn)
+	b.completedPreviews = slices.DeleteFunc(b.completedPreviews, withdrawn)
+	if b.subscriber != nil {
+		b.subscriber.previews = slices.DeleteFunc(b.subscriber.previews, func(event Event) bool {
+			return event.Preview != nil && event.Preview.Workspace != "" && withdrawn(*event.Preview)
+		})
+	}
 }
 
 // BeginTurn starts provisional state only for an admitted root host turn.

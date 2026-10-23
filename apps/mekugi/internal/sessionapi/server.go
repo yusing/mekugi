@@ -113,6 +113,9 @@ type Server struct {
 	main           feed
 	agents         feed
 	roster         jsontext.Value
+	review         jsontext.Value
+	reviewRevision uint64
+	livePreviews   jsontext.Value
 	subscribers    map[chan publication]struct{}
 	identity       Summary
 	caption        sessionpresentation.Caption
@@ -165,6 +168,8 @@ type message struct {
 	Main     *feedPatch     `json:"main,omitzero"`
 	Agents   *feedPatch     `json:"agents,omitzero"`
 	Roster   jsontext.Value `json:"roster,omitzero"`
+	Review   jsontext.Value `json:"review,omitzero"`
+	Live     jsontext.Value `json:"live,omitzero"`
 }
 
 // New serves a replay, whose viewers request playback.
@@ -224,6 +229,7 @@ func (s *Server) Publish(f Frame) error {
 	if reset {
 		s.input, s.status, s.main, s.agents, s.roster = nil, nil, feed{}, feed{}, nil
 		s.prompts = nil
+		s.review, s.livePreviews = nil, nil
 	}
 	var patch message
 	f.Session.Title = textsanitize.Safe(f.Session.Title, false)
@@ -256,6 +262,25 @@ func (s *Server) Publish(f Frame) error {
 	if !bytes.Equal(data, s.status) {
 		s.status, patch.Status = data, data
 	}
+	if f.Review != nil && (s.review == nil || f.Review.Revision != s.reviewRevision) {
+		review := projectReview(f.Review)
+		data, err := json.Marshal(&review, encoding)
+		if err != nil {
+			return err
+		}
+		s.review, patch.Review, s.reviewRevision = data, data, f.Review.Revision
+	} else if f.Review == nil && s.review != nil {
+		s.review, patch.Review = nil, jsontext.Value("null")
+	}
+	if s.live || f.Live != nil || s.livePreviews != nil {
+		data, err := json.Marshal(f.Live, encoding)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(data, s.livePreviews) {
+			s.livePreviews, patch.Live = data, data
+		}
+	}
 	if patch.Main, err = s.main.update(f.Main, nil, f.ChildReplySummary); err != nil {
 		return err
 	}
@@ -280,7 +305,7 @@ func (s *Server) Publish(f Frame) error {
 		}
 		return s.broadcast(data, true)
 	}
-	if patch.Session == nil && patch.Playback == nil && patch.Input == nil && patch.Prompts == nil && patch.Status == nil && patch.Main == nil && patch.Agents == nil && patch.Roster == nil {
+	if patch.Session == nil && patch.Playback == nil && patch.Input == nil && patch.Prompts == nil && patch.Status == nil && patch.Main == nil && patch.Agents == nil && patch.Roster == nil && patch.Review == nil && patch.Live == nil {
 		return nil
 	}
 	event, err := encodeEvent("patch", &patch)
@@ -355,7 +380,7 @@ type publication struct {
 }
 
 func (s *Server) snapshot() (publication, error) {
-	m := message{Session: &s.session, Playback: s.playback, Input: s.input, Prompts: s.prompts, Status: s.status, Main: s.main.snapshot(), Agents: s.agents.snapshot(), Roster: s.roster}
+	m := message{Session: &s.session, Playback: s.playback, Input: s.input, Prompts: s.prompts, Status: s.status, Main: s.main.snapshot(), Agents: s.agents.snapshot(), Roster: s.roster, Review: s.review, Live: s.livePreviews}
 	return encodeEvent("snapshot", &m)
 }
 

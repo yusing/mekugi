@@ -22,10 +22,23 @@ func TestPublishedImageRead(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "image.png"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, source := range []string{"image.png", "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)} {
+	for _, tc := range []struct {
+		source, agent, kind string
+		child               bool
+	}{
+		{"image.png", "You", "text", false},
+		{"data:image/png;base64," + base64.StdEncoding.EncodeToString(data), "You", "text", false},
+		{"image.png", "Main", "tool", false},
+		{filepath.Join(workspace, "image.png"), "/root/images", "tool", true},
+	} {
+		source := tc.source
 		s := New()
-		entry := activity.Entry{Facts: activity.Facts{Seq: 1, Agent: "You", Kind: "text", Text: "[Image 1]", Images: []string{source}}}
-		if err := s.Publish(Frame{Session: Session{Thread: "main", Workspace: workspace}, Main: &activity.Publication{Entries: []activity.Entry{entry}}}); err != nil {
+		entry := activity.Entry{Facts: activity.Facts{Seq: 1, Agent: tc.agent, Kind: tc.kind, Text: "[Image 1]", Images: []string{source}}}
+		frame := Frame{Session: Session{Thread: "main", Workspace: workspace}, Main: &activity.Publication{Entries: []activity.Entry{entry}}}
+		if tc.child {
+			frame.Main, frame.Agents = nil, frame.Main
+		}
+		if err := s.Publish(frame); err != nil {
 			t.Fatal(err)
 		}
 		snapshot, err := s.snapshot()
@@ -35,7 +48,7 @@ func TestPublishedImageRead(t *testing.T) {
 		if strings.Contains(string(snapshot.Data), source) {
 			t.Fatal("image source leaked into publication")
 		}
-		request := map[string]any{"seq": 1, "agent": "You", "index": 0, "image": imageIdentity(source)}
+		request := map[string]any{"seq": 1, "agent": tc.agent, "index": 0, "image": imageIdentity(source)}
 		body, _ := json.Marshal(request)
 		got, failure := s.readImage(t.Context(), requestTarget{"main", workspace}, body)
 		if failure != nil {
@@ -46,7 +59,7 @@ func TestPublishedImageRead(t *testing.T) {
 			t.Fatalf("unexpected image: %s", encoded)
 		}
 		for _, field := range []string{"seq", "agent", "index", "image"} {
-			bad := map[string]any{"seq": 1, "agent": "You", "index": 0, "image": imageIdentity(source)}
+			bad := map[string]any{"seq": 1, "agent": tc.agent, "index": 0, "image": imageIdentity(source)}
 			switch field {
 			case "seq":
 				bad[field] = 2

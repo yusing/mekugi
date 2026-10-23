@@ -318,7 +318,7 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 	switch item.Type {
 	case "imageView":
 		entry := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(attached.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
-			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, SearchResults: sessionpresentation.SearchResults(facts)}}
+			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Images: []string{item.Path}, SearchResults: sessionpresentation.SearchResults(facts)}}
 		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
 		text := sessionpresentation.ToolText(facts, attached.cwd)

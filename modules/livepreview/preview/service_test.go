@@ -119,6 +119,34 @@ func TestAdmittedScopeIsImmutable(t *testing.T) {
 	}
 }
 
+func TestScopeWithdrawalRetiresOnlyExcludedPreviews(t *testing.T) {
+	service := newSession(t.Context())
+	defer service.Close()
+	both := Scope{Workspaces: map[string]map[string]bool{"/workspace": {"thread": true, "child": true}}}
+	setScope(service, both)
+	sub, _ := service.Subscribe()
+	service.Update(previewViewFixture("kept", 1), false)
+	removed := previewViewFixture("removed", 1)
+	removed.Thread = "child"
+	service.Update(removed, false)
+	removed.ID, removed.Complete, removed.Evaluated = "completed", true, true
+	service.Update(removed, false)
+	service.SetScope(Scope{Workspaces: map[string]map[string]bool{"/workspace": {"thread": true}}})
+	service.SetScope(both)
+	if got := service.Current(); len(got) != 1 || got[0].ID != "kept" {
+		t.Fatalf("scope withdrawal retained wrong active previews: %+v", got)
+	}
+	for _, event := range service.TakePreviews(sub) {
+		if event.Preview != nil && event.Preview.ID != "kept" {
+			t.Fatalf("scope withdrawal retained queued preview: %+v", event)
+		}
+	}
+	_, ids := service.Subscribe()
+	if len(ids) != 1 || ids[0] != "kept" {
+		t.Fatalf("scope readmission revived completed preview: %v", ids)
+	}
+}
+
 func newSession(ctx context.Context) *Session {
 	return New(changecapture.ReadFile).Attach(ctx, new(scope.Store))
 }

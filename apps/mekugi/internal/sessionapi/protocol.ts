@@ -122,6 +122,8 @@ export type message = {
   "main"?: (feedPatch | null);
   "agents"?: (feedPatch | null);
   "roster"?: unknown;
+  "review"?: unknown;
+  "live"?: unknown;
 };
 
 export type RPCError = {

@@ -99,7 +99,9 @@ func TestLiveDiffPreviewMailboxPreservesExpandedScopeBarrier(t *testing.T) {
 }
 
 func TestScopeCapacity(t *testing.T) {
-	b := New(t.Context(), nil, nil)
+	b := New(t.Context(), previewmodel.New(changecapture.ReadFile), nil)
+	defer b.Close()
+	b.Preview().Enable()
 	for _, workspace := range []string{"/tmp/a", "/tmp/with\"quote"} {
 		for _, thread := range []string{"root", "child\nwith\\escape"} {
 			b.Observe(workspace, thread, "", true)
@@ -109,9 +111,22 @@ func TestScopeCapacity(t *testing.T) {
 			}
 		}
 	}
+	sub := b.Subscribe()
+	b.Preview().Update(previewmodel.Preview{ID: "edit", Workspace: "/tmp/a", Thread: "root", Input: "source", Status: "streaming"}, false)
+	if len(b.Preview().Current()) != 1 {
+		t.Fatal("preview was not admitted before scope exhaustion")
+	}
 	b.Observe("/tmp/oversized", strings.Repeat("x", maxReviewScopeBytes), "", true)
 	if !b.exhausted || b.scope.Workspaces != nil {
 		t.Fatal("scope exhaustion retained auxiliary collection")
+	}
+	if b.Preview().Enabled() || len(b.Preview().Current()) != 0 {
+		t.Fatal("withdrawn scope retained publishable previews")
+	}
+	for _, event := range b.TakePreviews(sub) {
+		if event.Preview != nil {
+			t.Fatal("withdrawn scope retained a queued preview")
+		}
 	}
 	b.Observe("/tmp/after", "new", "", true)
 	if b.scope.Workspaces != nil {

@@ -289,6 +289,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 			native.Running = method == "item/started" && item.Status == "inProgress"
 			entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "tool", Text: ToolText(item, in.Workspace), CallID: id, Observed: now, Native: native})
 		case "imageView":
+			native.Images = []string{item.Path}
 			entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(in.Workspace, item.Path)), CallID: id, Observed: now, Native: native})
 		case "fileChange":
 			if len(item.Changes) > 0 {

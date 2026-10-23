@@ -291,7 +291,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	attached.rewindArchive = native.rewindArchive
 	nativeRequests, nativeClosed := api.Native().Requests(), native.closed
 	intents := api.Intents()
-	live.publish(&attached, shell, &control, restoring != nil, childSummary, presentationTime(clock))
+	live.publish(&attached, shell, &control, reviewOwner, reviewSource, restoring != nil, childSummary, presentationTime(clock))
 	native.retiring = func(view *nativeSessionView) error {
 		defer pruneDraftImages(ownedImages, editor, attached.conversation, &questions, &approvalDock, shell.Prompts, side, attached.nativeImages)
 		if view.startup && control.Thread == "" && (control.Startup.Thread == sessioncontrol.ResumePicker || control.Startup.Thread == "--last") {
@@ -859,7 +859,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					}
 					notices := applyCriticalNotices(&attached, shell, &control, &picker, &editor, clock, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, audience, issues)
 					settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
-					live.publish(&attached, shell, &control, restoring != nil, childSummary, presentationTime(clock))
+					live.publish(&attached, shell, &control, reviewOwner, reviewSource, restoring != nil, childSummary, presentationTime(clock))
 					native.publish(&attached, &control, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, reviewOwner, reviewSource, nativePublicationFacts(&attached, panes, exitUsage, debugDirectory, archived, notifications, control.Thread, &predictions), presentationTime(clock))
 					// Publication is not a native paint receipt. Release claims without
 					// acknowledging notices that no terminal has displayed.
@@ -870,7 +870,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					return err
 				}
 				settlePresentation(&attached, shell, &control, &picker, &editor, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
-				live.publish(&attached, shell, &control, restoring != nil, childSummary, presentationTime(clock))
+				live.publish(&attached, shell, &control, reviewOwner, reviewSource, restoring != nil, childSummary, presentationTime(clock))
 				native.publish(&attached, &control, &childKey, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, reviewOwner, reviewSource, nativePublicationFacts(&attached, panes, exitUsage, debugDirectory, archived, notifications, control.Thread, &predictions), presentationTime(clock))
 			}
 		}
@@ -1258,10 +1258,10 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				control.LeaveThread()
 				control.Startup.Thread, control.Startup.Workspace = "", ""
 				control.Readmit(result.Thread.ID)
+				resetDiffScope(attached, terminal, (*reviewOwner), reviewSource, preparePane, parent)
 				if method == "thread/resume" || method == "thread/fork" {
 					// Restoration below replays events buffered during the switch.
 					control.Startup.Thread = result.Thread.ID
-					resetDiffScope(attached, terminal, (*reviewOwner), reviewSource, preparePane, parent)
 				} else {
 					// Seed the Diff's lineage; after a switch, requests alone cannot.
 					restoreDiffThread(attached, terminal, (*reviewOwner), reviewSource, preparePane, result.Thread, true)

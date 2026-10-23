@@ -38,7 +38,7 @@ among that connection's active subscriptions. An acknowledgement containing
 | --- | --- |
 | `session/options` | Execution-machine workspaces and offered models |
 | `session/list` | Current session-list value |
-| `session/image` | Read one image bound to a published user entry |
+| `session/image` | Read one image bound to a published user or View entry |
 | `session/read` | One confirmed thread's list entry |
 | `session/start` | Create/resume using the creation body |
 | `session/end` | End the selected owned runtime |
@@ -267,6 +267,8 @@ known rejection restores that source rather than deleting text from a newer edit
 | `status` | Always | When it changed |
 | `main`, `agents` | The complete feed | The feed's changes, when it changed |
 | `roster` | The complete roster | The complete roster, when it changed |
+| `review` | Saved review for a live session | The whole value when its revision changes |
+| `live` | Current previews for a live session | The whole list when it changes, including `[]` to clear it |
 
 A feed is an object with `entries` and `order`. In a snapshot, `entries` holds
 every entry and `order` every entry's `seq` in display order. In a patch,
@@ -311,6 +313,20 @@ field is zero, false or empty, except facts that may be unknown: a step's
   `title`, `subject`, `details`, and `choices` (`id`, `label`, `deny`).
 - `status`: Main's [session status](../sessionpresentation/SPEC.md) as `text`,
   with `failure`, `alert`, `running` and `completed`, the turn's duration.
+- `review`: `revision`, `workspace`, `coverage`, optional `failure`, `files` and
+  `counts`. Each file has `key`, `path`, composed `chunks`, `origins` and `counts`.
+  Chunks and origins retain the Change History wire shapes, including each
+  chunk's `Review.Diff` and `Change`, `Caller`, `Source` provenance. File counts
+  use `Added` and `Removed`; negative counts mean unavailable. Review counts
+  contain `Net` (null when no project evidence exists) and `Callers`. This is the
+  unfiltered saved composition with the same temporary-only exclusion as the
+  terminal Diff pane. Loading and failure remain explicit. An unavailable review
+  clears the previous value with `null`; attachment replacement resets it.
+- `live`: the ordered current Live Preview snapshots, with `ID`, `Caller`,
+  `Status`, `Files` (including `Diff` text), `Truncated` and `Complete`, plus the
+  preview owner's remaining metadata. Live sessions sample these at the shared
+  frame interval. They are provisional, separate from saved review, and absent
+  from recorded playback.
 - `main`: Main's transcript, including other agents' answers and failures as
   Main received them. `agents`: every other agent's own activity, including the
   tasks and messages it received. Entries the terminal does not show as rows are
@@ -434,9 +450,11 @@ to check drift. Native-only fields remain subject to endpoint and operation
 admission; TypeScript types do not establish authority.
 
 
-### Published user images
+### Published images
 
-User entries carry bound token spans and opaque image identities. `session/image`
+User entries carry bound token spans and opaque image identities; View entries
+carry the viewed image identity, including live, restored and resumed history.
+`session/image`
 takes `{seq, agent, index, image}` in its body on the selected thread. It resolves
 only an image in that current published entry, never a caller-supplied path or URL,
 and returns `{mime, data}` with base64 raster bytes. Reads use the admitted source

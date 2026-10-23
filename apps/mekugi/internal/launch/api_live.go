@@ -15,6 +15,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/scope"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -35,7 +36,7 @@ type apiLive struct {
 const apiFrameInterval = 100 * time.Millisecond
 
 // publish is called only by the session owner loop.
-func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], restoring, childSummary bool, now time.Time) {
+func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], review *sessionreview.Review, reviewSource *changecapture.Service, restoring, childSummary bool, now time.Time) {
 	view := attached.presentation.View()
 	waiting := apiWaiting(attached, control)
 	err := w.server.SetSummary(sessionapi.Summary{Thread: control.Thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started, Status: view.Status.Session, Waiting: waiting, Ready: apiInputRefusal(attached, control, restoring) == ""})
@@ -44,7 +45,7 @@ func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsess
 		if view.Version.Attachment != w.attachment {
 			w.main, w.agents, w.attachment = commandFeed{}, commandFeed{}, view.Version.Attachment
 		}
-		err = w.server.Publish(sessionapi.Frame{
+		frame := sessionapi.Frame{
 			Session:    sessionapi.Session{Thread: control.Thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started.UnixMilli()},
 			Input:      &sessionapi.Input{Reason: apiInputRefusal(attached, control, restoring), Stoppable: sessionpresentation.MainInterruptible(&control.Live, attached.conversation), Waiting: waiting},
 			Prompts:    apiPrompts(attached, control),
@@ -53,9 +54,16 @@ func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsess
 			Caption:    view.Caption,
 			Main:       w.main.publication(attached.source, attached.source.Publication(attached.presentation, nil)),
 			Agents:     w.agents.publication(attached.childSource, attached.childSource.Publication(attached.presentation, attached.source)),
+			Review:     new(reviewSource.ReviewView(attached.session.Scope())),
 
 			ChildReplySummary: childSummary,
-		})
+		}
+		if review != nil {
+			if previews := review.Preview(); previews != nil {
+				frame.Live = previews.Current()
+			}
+		}
+		err = w.server.Publish(frame)
 	}
 	if err != nil && !w.failed {
 		w.failed = true

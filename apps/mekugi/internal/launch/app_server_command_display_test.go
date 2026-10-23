@@ -205,6 +205,9 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 			if len(v.Entries) != 1 || v.Entries[0].Source.Text != "View `images/a.png`" {
 				t.Fatalf("image activity: %+v", v.Entries)
 			}
+			if images := v.Entries[0].Source.ActivityFacts().Images; len(images) != 1 || images[0] != item.Path {
+				t.Fatalf("image binding: %v", images)
+			}
 			blocks := parseLiveActivity(v.Entries[0].Source)
 			if len(blocks) != 1 || blocks[0].Verb != "View" || len(blocks[0].Reads) != 1 || blocks[0].Reads[0].Path != "images/a.png" {
 				t.Fatalf("image blocks: %+v", blocks)
