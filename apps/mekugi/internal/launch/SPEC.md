@@ -10,7 +10,8 @@ interactive invocations behind a private, peer-admitted Unix WebSocket.
 Client disconnection leaves execution running; explicit end or server shutdown
 closes the owned runtime. The existing Session Control ledger remains the sole
 host dispatcher. Native renderer attachment and remote publication borrow the
-same running owners.
+same running owners. `mekugi web` serves only the embedded browser application;
+it starts no execution runtime and owns no connector credentials.
 
 [Thread Control](../../../../modules/threadcontrol/SPEC.md) creates independent
 native child runtimes through the Mekugi server. Launch reuses the captured

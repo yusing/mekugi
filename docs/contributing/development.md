@@ -13,6 +13,25 @@ make test
 make lint
 ```
 
+`make webui` builds the pinned Svelte application for embedding; `make build-binaries`
+and release recipes include it. Plain `make build` checks the Go workspace. `make webui-check` runs browser binding tests plus type, lint and formatting
+checks. Focused tests use `node --test` with the selected test file under
+`apps/mekugi/internal/webui/app/src/lib/`.
+`make webui-fmt` formats
+the browser sources. The assets host returns 503 until assets are built.
+
+After building assets, the opt-in browser fixtures exercise the actual UI,
+connector and server with controlled execution hosts:
+
+```sh
+MEKUGI_TEST_WEBUI_BROWSER=1 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestWebUI(BrowserMachines|SemanticBrowser)$'
+```
+
+They require Chrome and `agent-browser`; `MEKUGI_TEST_AGENT_BROWSER` may select an
+absolute executable. They cover machine isolation, reconnection, semantic controls,
+attached-input recovery, native continuation and replay. Live-provider behavior and
+deployed TLS require separate checks.
+
 The build, test, lint, generation, and snapshot recipes enumerate the explicit
 `go.work` members. The repository root has no Go module; use these recipes or
 explicit member package paths for root-level Go commands. `make build-binaries`

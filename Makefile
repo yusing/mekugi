@@ -5,7 +5,7 @@ RTK := $(shell rtk --version >/dev/null 2>&1 && printf rtk)
 GO_OUTPUT = $(if $(filter-out go,$(GO)),,$(RTK)) $(GO)
 # Reuse compiled packages across implementation, review, and staged checkouts.
 GO_BUILD_FLAGS ?= -trimpath
-.PHONY: build build-binaries generate check-generated workspace-check install uninstall mekugi-pprof preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
+.PHONY: build build-binaries webui webui-check webui-fmt generate check-generated workspace-check install uninstall mekugi-pprof preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
 
 WORKSPACE = $(GO) run $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/workspace
 BUILD_OUTPUT ?= bin
@@ -28,7 +28,7 @@ HOST_ACCEPTANCE_TESTS := TestNativeToolFrontendCodexE2E \
 SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= @snapshots
 
-install: workspace-check
+install: workspace-check webui
 	$(GO) install $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
 
 uninstall:
@@ -40,8 +40,28 @@ workspace-check:
 build: workspace-check
 	$(WORKSPACE) run $(GO_OUTPUT) build $(GO_BUILD_FLAGS) @workspace
 
-build-binaries: build
+build-binaries: webui
+	$(MAKE) --no-print-directory build
 	$(GO_OUTPUT) build $(GO_BUILD_FLAGS) -ldflags='$(BUILD_LDFLAGS)' -o '$(BUILD_OUTPUT)/' ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
+
+# Browser assets embedded by `mekugi web`. Go tests and plain Go builds work
+# without Node.js; an unbundled UI host reports how to build its assets.
+WEBUI := apps/mekugi/internal/webui/app
+
+$(WEBUI)/node_modules/.package-lock.json: $(WEBUI)/package-lock.json $(WEBUI)/package.json
+	npm --prefix $(WEBUI) ci
+
+webui: $(WEBUI)/node_modules/.package-lock.json
+	npm --prefix $(WEBUI) run build
+
+webui-check: $(WEBUI)/node_modules/.package-lock.json
+	npm --prefix $(WEBUI) run test
+	npm --prefix $(WEBUI) run check
+	npm --prefix $(WEBUI) run lint
+	npm --prefix $(WEBUI) run format:check
+
+webui-fmt: $(WEBUI)/node_modules/.package-lock.json
+	npm --prefix $(WEBUI) run format
 
 generate: workspace-check
 	$(WORKSPACE) run $(GO) generate @workspace

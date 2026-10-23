@@ -1,0 +1,298 @@
+@import "tailwindcss";
+
+/* Framed sheet: one tinted frame holds the sidebar; the thread sits on a
+   sheet with a hairline edge and soft corners. Colour goes on the data: tool
+   kinds, diff counts, failures and the recorded clock. The palettes below are
+   the only colours; the theme maps them to utilities. */
+:root {
+  color-scheme: light;
+  --ground: #f3f6f8;
+  --surface: #ffffff;
+  --raised: #f4f6f8;
+  --active: #ebedee;
+  --border: #e3e6e9;
+  --rule: #eef0f2;
+  --control: #cdced1;
+  --text: #131416;
+  --muted: #5d5f60;
+  --primary: #1d1f20;
+  --on-primary: #ffffff;
+  --accent: #1b6c80;
+  --accent-tint: #e8f2f5;
+  --kind-run: #1b6c80;
+  --kind-read: #2f70bb;
+  --kind-write: #8a5a06;
+  --positive: #1e7b4f;
+  --negative: #c4242a;
+  --pill-negative-bg: #ffedea;
+  --pill-negative-ink: #831c1e;
+  --pill-warning-bg: #fffbeb;
+  --pill-warning-ink: #92400e;
+  --pill-warning-edge: #fde68a;
+  --pill-neutral-bg: #ebedee;
+  --pill-neutral-ink: #353736;
+  --float-shadow: 0 8px 28px rgba(16, 24, 32, 0.12), 0 1px 3px rgba(16, 24, 32, 0.08);
+  --topbar: 48px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ground: #0f1012;
+    --surface: #17181a;
+    --raised: #1f2023;
+    --active: #2a2b2e;
+    --border: #2a2c2f;
+    --rule: #222326;
+    --control: #45474b;
+    --text: #ededee;
+    --muted: #a1a4a8;
+    --primary: #ededee;
+    --on-primary: #111214;
+    --accent: #5bb3c9;
+    --accent-tint: #1a2a2f;
+    --kind-run: #5bb3c9;
+    --kind-read: #7aaeef;
+    --kind-write: #d9a54c;
+    --positive: #4cc38a;
+    --negative: #ee6b7e;
+    --pill-negative-bg: #2c1a20;
+    --pill-negative-ink: #ee6b7e;
+    --pill-warning-bg: #2a2416;
+    --pill-warning-ink: #d9a54c;
+    --pill-warning-edge: #4a3d1f;
+    --pill-neutral-bg: #2a2b2e;
+    --pill-neutral-ink: #c9cbce;
+    --float-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px #2a2c2f;
+  }
+}
+
+@theme {
+  /* The right panel becomes a sheet below lg, as ThreadView's media query
+     also says. */
+  --breakpoint-lg: 68.75rem;
+
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-*: initial;
+  --text-tiny: 11px;
+  --text-tiny--line-height: 18px;
+  --text-small: 12px;
+  --text-small--line-height: 16px;
+  --text-code: 13px;
+  --text-code--line-height: 20px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  /* Titles, and text inputs on phones, which zoom on anything smaller. */
+  --text-base: 16px;
+  --text-base--line-height: 22px;
+  --text-heading: 22px;
+  --text-heading--line-height: 28px;
+
+  --radius-chip: 4px;
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-float: 12px;
+  --radius-composer: 14px;
+  --radius-sheet: 16px;
+
+  --container-column: 760px;
+  --container-sidebar: 272px;
+  --container-side: 320px;
+
+  --animate-blink: blink 1.2s ease-in-out infinite;
+  @keyframes blink {
+    50% {
+      opacity: 0.25;
+    }
+  }
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-active: var(--active);
+  --color-border: var(--border);
+  --color-rule: var(--rule);
+  --color-control: var(--control);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-accent: var(--accent);
+  --color-accent-tint: var(--accent-tint);
+  --color-kind-run: var(--kind-run);
+  --color-kind-read: var(--kind-read);
+  --color-kind-write: var(--kind-write);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-negative-tint: var(--pill-negative-bg);
+  --color-negative-ink: var(--pill-negative-ink);
+  --color-warning-tint: var(--pill-warning-bg);
+  --color-warning-ink: var(--pill-warning-ink);
+  --color-warning-edge: var(--pill-warning-edge);
+  --color-neutral-tint: var(--pill-neutral-bg);
+  --color-neutral-ink: var(--pill-neutral-ink);
+  --color-scrim: rgb(0 0 0 / 38%);
+  --shadow-float: var(--float-shadow);
+}
+
+/* Without hover, actions that hover reveals stay visible. */
+@custom-variant touch (@media (hover: none));
+
+/* Safe-area insets, alone or added to a spacing step: pb-safe-2 is 8px above
+   the home indicator. */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@utility pb-safe-* {
+  padding-bottom: calc(--value(number) * var(--spacing) + env(safe-area-inset-bottom, 0px));
+}
+@utility h-bar {
+  height: calc(var(--topbar) + env(safe-area-inset-top, 0px));
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
+  }
+  /* The root keeps the browser's font size, so spacing and breakpoints in rem
+     follow the reader's setting; the body sets the interface's own size. */
+  html,
+  body {
+    height: 100%;
+  }
+  body {
+    background: var(--ground);
+    color: var(--text);
+    font: 400 14px / 20px var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+  }
+  #app {
+    height: 100%;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  button:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+  summary {
+    list-style: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  pre {
+    tab-size: 4;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Highlighted code: Shiki gives each token both appearances' colours. */
+  [style*="--shiki-light"] {
+    color: var(--shiki-light);
+  }
+  @media (prefers-color-scheme: dark) {
+    [style*="--shiki-dark"] {
+      color: var(--shiki-dark);
+    }
+  }
+
+  /* Rendered Markdown from recorded messages, whose elements no template
+     declares. */
+  .prose {
+    overflow-wrap: break-word;
+    line-height: 22px;
+    & > :first-child {
+      margin-top: 0;
+    }
+    & > :last-child {
+      margin-bottom: 0;
+    }
+    & :is(p, ul, ol, pre, blockquote, table) {
+      margin: 0 0 12px;
+    }
+    & :is(h1, h2, h3, h4) {
+      @apply mt-5 mb-2 text-body font-semibold;
+    }
+    & :is(h1, h2) {
+      font-size: 15px;
+    }
+    & ul {
+      @apply list-disc pl-5;
+    }
+    & ol {
+      @apply list-decimal pl-5;
+    }
+    & li + li {
+      @apply mt-1;
+    }
+    & strong {
+      @apply font-semibold;
+    }
+    & code {
+      @apply rounded-chip border border-rule bg-raised px-[3px] py-px text-code;
+      box-decoration-break: clone;
+    }
+    /* Workspace links cannot open in a browser, so they read as plain paths
+       rather than as links. */
+    & .file-link {
+      @apply font-mono text-code;
+    }
+    & pre {
+      @apply overflow-x-auto rounded-card bg-raised px-3.5 py-3 text-code leading-[19px];
+    }
+    & pre code {
+      @apply border-0 bg-transparent p-0;
+    }
+    & a {
+      @apply text-accent underline decoration-accent/40 underline-offset-3;
+    }
+    & blockquote {
+      @apply border-l-2 border-control pl-3 text-muted;
+    }
+    & table {
+      @apply block overflow-x-auto border-collapse;
+    }
+    & :is(th, td) {
+      @apply border-b border-rule py-1.5 pr-3 text-left;
+    }
+    & th {
+      @apply font-normal text-muted;
+    }
+  }
+}

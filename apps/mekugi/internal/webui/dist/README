@@ -1,0 +1,1 @@
+Vite writes the browser bundle to app/; `make webui` builds it.

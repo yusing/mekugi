@@ -50,6 +50,8 @@ func Run() (exitCode int) {
 			return RunServer(ctx, os.Args[2:], os.Stderr)
 		case "connector":
 			return RunConnector(ctx, os.Args[2:], os.Stderr)
+		case "web":
+			return RunWeb(ctx, os.Args[2:], os.Stderr)
 		}
 	}
 	operation := ""

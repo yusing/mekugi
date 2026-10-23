@@ -39,6 +39,9 @@ sessions, and patch review. Invocation overrides leave Codex configuration uncha
 - **Server-owned threads.** [Create and control threads on an execution machine](#server-and-remote-control)
   through a private local socket or an authenticated connector. Continue the same
   thread from a native terminal or remote client; closing either leaves work running.
+- **Browser control across machines.** [Connect from a desktop or phone](#browser-ui)
+  to create, follow and control threads, or replay saved sessions. Each connection
+  keeps its own machine identity and in-memory credential.
 - **Live subagent activity.** See model, effort, progress, and child-authored reply summaries
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
 - **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);
@@ -97,7 +100,7 @@ run on stock Alpine Linux; use a source build for other environments.
 
 ### Build from source
 
-Source installs require **Go 1.27+**, CGO enabled, a C toolchain, and **Make**.
+Source installs require **Go 1.27+**, CGO enabled, a C toolchain, **Make**, and **Node.js 24.21+** for browser assets.
 Build the coordinated workspace from a checkout:
 
 ```sh
@@ -178,9 +181,8 @@ Terminate WSS at a reverse proxy and keep its connection to the connector
 on loopback or a protected private network. Forward WebSocket upgrades and
 allow the API's
 [attachment request budget](apps/mekugi/internal/sessionapi/CONTRACT.md#attachment-input).
-Compatible browser clients connect directly to each connector; the UI host must
-receive neither machine credentials nor control requests. This backend provides
-the API, while browser UI assets are delivered separately.
+Browser clients connect directly to each connector; the UI host receives neither
+machine credentials nor control requests.
 
 Clients authenticate in the first control message; credentials stay out of URLs
 and upgrade headers. Send SIGHUP to the connector process to rotate its token.
@@ -189,6 +191,47 @@ connector or a client leaves server-owned work running. Stopping the server ends
 its active work; saved threads remain resumable. Restart never automatically
 replays requests or restarts work. See the [connector contract](apps/mekugi/internal/connector/SPEC.md)
 for admission and deployment details.
+
+### Browser UI
+
+Run the assets host on any machine:
+
+```sh
+mekugi web --listen 127.0.0.1:7777
+```
+
+Open that address and connect the execution machine with a name, its connector
+URL and its access token; later machines are added under **Machines** at the foot
+of the sidebar. There is no default connection.
+Configure the connector's allowed origin to match the page's exact origin, for
+example `mekugi connector --origin http://127.0.0.1:7777` for local use. For remote
+use, serve the page over HTTPS and the connector through a WSS reverse proxy.
+Tokens stay in browser memory; reload clears connections and credentials.
+
+The sidebar lists each machine's threads. **New thread** starts one from its
+first message; the composer's **+** menu also resumes a saved thread or opens a
+replay. Workspaces, models and attachment paths refer to the chosen machine.
+Upload files from the browser or attach host paths in order, up to 32 MiB of
+decoded uploads per message. As in the terminal, `/`, `@` and `$` complete
+commands, files and skills, and a leading `!` runs shell input; Enter sends or
+steers, and Tab queues while Main works. Answer secret prompts in the native
+terminal.
+
+Submissions rejected after admission offer **Retry intact** or **Discard**. Retry reuses the original
+attachment snapshots. Resolve unsent input before leaving the thread or reconnecting;
+its recovery belongs to that control view. A refused first message leaves the opened
+thread available with its draft.
+
+Closing the page or disconnecting a machine leaves its work running. **End thread**,
+in the thread's session details, explicitly stops that thread. On its execution machine, `mekugi resume THREAD_ID`
+continues it from a native terminal. Replay is read-only, shares playback controls
+between viewers, and requires the live thread to be ended first. Completed playback
+stays open until ended. If a request loses its acknowledgement, check that machine's
+state before resubmitting; the browser does not retry mutations automatically.
+
+Source checkouts need `make webui` before embedding browser assets. See
+[development checks](docs/contributing/development.md#build-and-test) and the
+[browser specification](apps/mekugi/internal/webui/SPEC.md).
 
 ### Grok models
 
