@@ -151,8 +151,11 @@ answer a secret question, including with an empty or skipped answer. Native
 preference/history persistence and local editor/acquisition operations stay
 native-only. Remote publications omit native integration facts and redact secret
 question content throughout prompts, Activity and details, using the shared
-public projection policy. Attachment submissions retain the ordered descriptors,
-limits and preparation ownership defined below.
+public projection policy. They also omit terminal renderer state that remote
+clients read through `session/subscribe`: review, agent feeds, live previews,
+output windows and pacing. Main remains only while a side conversation is
+displayed. Attachment submissions retain the ordered descriptors, limits and
+preparation ownership defined below.
 
 A remote composer Submit/Queue operation carries `input` with the same `text`
 and ordered `attachments` as ordinary input. Raw native `Draft` content is refused;

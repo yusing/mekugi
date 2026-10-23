@@ -8,8 +8,12 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func TestRemoteRecoveryProjectionBoundsAndDetachment(t *testing.T) {
@@ -102,5 +106,28 @@ func TestRemoteRecoveryTransportAdmission(t *testing.T) {
 		if got := (<-done).Code; got != 202 {
 			t.Fatalf("identity-addressed recovery rejected older publication: %d", got)
 		}
+	}
+}
+
+func TestRemoteFrameOmitsTerminalRendererState(t *testing.T) {
+	t.Parallel()
+	frame := nativeTestFrame("thread", 1)
+	frame.View.Displayed = frame.View.Main
+	frame.Main, frame.Agents = &activity.Publication{}, &activity.Publication{}
+	frame.Review = &changes.ReviewView{Workspace: "/workspace"}
+	frame.Live, frame.FileLinks = []preview.Preview{{}}, map[string]bool{"/workspace/a": true}
+	frame.MainOutput, frame.AgentOutput, frame.ReacquireOutput = []activity.OutputResult{{}}, []activity.OutputResult{{}}, true
+	frame.Activity = &NativeActivityFrame{Reset: 1}
+	remote := frame.remote()
+	if remote.Main != nil || remote.Agents != nil || remote.Review != nil || remote.Live != nil || remote.FileLinks != nil ||
+		remote.MainOutput != nil || remote.AgentOutput != nil || remote.ReacquireOutput || remote.Activity != nil {
+		t.Fatalf("remote frame repeats terminal renderer state: %+v", remote)
+	}
+	if frame.Main == nil || frame.Review == nil || frame.Activity == nil {
+		t.Fatal("remote projection mutated the native frame")
+	}
+	frame.View.Displayed = sessionpresentation.Thread{ID: "side", Caller: "/root"}
+	if frame.remote().Main == nil {
+		t.Fatal("a displayed side conversation lost its only publication")
 	}
 }

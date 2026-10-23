@@ -106,7 +106,15 @@ func (f NativeFrame) remote() NativeFrame {
 	if call := f.View.Questions.Call; call != nil {
 		f.View.Questions.Call = new(publicCall(*call))
 	}
-	f.Main, f.Agents = publicActivity(f.Main), publicActivity(f.Agents)
+	// Every revision repeats the complete frame. Remote views take transcripts
+	// from session/subscribe, so terminal renderer state stays native: only a
+	// displayed side conversation, which has no shared publication, keeps Main.
+	var side *activity.Publication
+	if f.View.Displayed.ID != f.View.Main.ID {
+		side = publicActivity(f.Main)
+	}
+	f.Main, f.Agents, f.Review, f.Live, f.FileLinks, f.Activity = side, nil, nil, nil, nil, nil
+	f.MainOutput, f.AgentOutput, f.ReacquireOutput = nil, nil, false
 	if f.Details != nil {
 		details := *f.Details
 		details.View.Pages = slices.Clone(details.View.Pages)
