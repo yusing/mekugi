@@ -233,6 +233,46 @@ Source checkouts need `make webui` before embedding browser assets. See
 [development checks](docs/contributing/development.md#build-and-test) and the
 [browser specification](apps/mekugi/internal/webui/SPEC.md).
 
+#### Docker deployment
+
+The root `Dockerfile` builds browser assets with Bun and embeds them in a CGO-enabled
+Go binary. `compose.yaml` runs separate web UI and connector containers. The
+execution server, Codex, credentials and workspaces stay on the execution machine.
+
+For a Docker Engine on that machine with Tailscale connected, start `mekugi server`, then:
+
+```sh
+cp .env.example .env
+# Edit .env: set MEKUGI_SERVER_DIR to the printed socket's parent directory,
+# and MEKUGI_UID / MEKUGI_GID to the server user's numeric id -u / id -g.
+# Set TAILNET_IP from tailscale ip -4 and WEBUI_ORIGIN to http://TAILNET_IP:7777.
+install -d -m 700 .docker/connector
+docker compose up --build -d
+```
+
+The socket directory must be private (0700). The connector must run with the
+same host UID as the server; container user-namespace mappings must preserve that
+identity. Host Unix-socket sharing requires a compatible Docker host; Docker
+Desktop's VM cannot generally use a native macOS/Windows server socket.
+The directory mount follows socket replacement when the server restarts.
+
+From a permitted tailnet device, open `http://TAILNET_IP:7777` and add
+`http://TAILNET_IP:7778` as a machine, substituting the configured IP.
+Read `.docker/connector/token` privately for the access token. It is generated at
+first startup and persists across container replacement. Keep `.env` and
+`.docker/` private and out of version control. If changing `CONNECTOR_STATE_DIR`,
+create that directory with the same ownership and permissions first.
+
+Published ports bind only to the configured Tailscale IPv4 address. Tailnet access
+rules must permit the browser device to reach both ports. Tailscale encrypts this
+traffic; the listeners themselves use HTTP and WebSocket. For HTTPS/WSS, terminate
+TLS at a reverse proxy, set `WEBUI_ORIGIN` to the exact page origin and use its
+connector URL. Forward WebSocket upgrades and the attachment budget described
+above. Changing the UI address or port also requires updating `WEBUI_ORIGIN`.
+Rotate credentials with `docker compose kill -s SIGHUP connector`; enter the new
+token in the browser. `docker compose down` stops these two services and retains
+the token directory and server-owned work.
+
 ### Grok models
 
 Use `grok login --oauth` or `XAI_API_KEY` (takes precedence); Codex credentials stay separate.

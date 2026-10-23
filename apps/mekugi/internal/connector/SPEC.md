@@ -35,6 +35,9 @@ message metadata, without maintaining a separate media store.
 
 Closing the connector closes its own connections and leaves server-owned work
 running. Each browser machine connection has an independent transport lifetime.
+The Compose deployment borrows the execution machine's private socket directory
+read-only and persists its own token directory separately. Its effective host UID
+must match the server's user, preserving same-user socket admission.
 
 Acceptance covers token persistence and permissions, failed/successful rotation,
 active stream invalidation, origin and initialization behavior, version rejection,
