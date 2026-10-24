@@ -14,6 +14,7 @@ type ActivitySegment struct {
 	Timing  segmenttransport.Timing          `json:"-"`
 	Text    string                           `json:"-"` // Display operations for the segment's source.
 	Running bool                             `json:"-"`
+	Pending bool                             `json:"-"` // No observed start yet.
 	Skipped bool                             `json:"-"` // The list short-circuited before it.
 	Results *int                             `json:"-"`
 	Exit    int                              `json:"-"`

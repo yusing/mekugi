@@ -67,9 +67,13 @@ missing differences do not establish a no-op. Empty-file creation/deletion and
 path-only moves remain effects even without changed lines.
 
 Grouped captures appear once on the owning invocation. They replace successful
-sibling intent in live and restored feeds, including timed shell batches, while
-preserving command output, duration, skipped work and failures. Successful edit
-command output belongs beneath its edited paths; its source remains in the dialog.
+sibling intent in live and restored feeds. When command source, output, timing or
+failure requires retaining the action, captured effects nest beneath that action
+rather than appearing as independent operations. Multi-segment captures belong to
+the aggregate shell action, without guessing which segment caused each change.
+Command output and timing stay with their action; effects retain their own counts
+and change navigation without borrowing the action's exit. Skipped work and sibling
+failures remain visible. Original command source stays available in the dialog.
 Whole-directory deletion uses one directory row and known deleted-file count,
 including files with unavailable contents. Separate capture warnings disclose
 those gaps. Opening the row selects retained changes within that directory.
@@ -92,6 +96,7 @@ Consecutive same-action operations by one agent share a verb cell and branch
 within and across calls. Each operation retains its source, output, timing and
 outcome. Running, skipped, requested, unknown and approval states remain distinct
 groups; failures keep their own exit status. Aggregate batch outcomes stay separate.
+Tracked segments retain individual verb rows through their lifecycle.
 Different command directories start separate groups. Consecutive settled target-only
 operations also merge targets. Read ranges join by file, with comma-separated spans
 and an observed line count for each attributable span; unassigned output keeps its
@@ -192,8 +197,12 @@ host completion still replaces that fallback immediately.
 
 An unsegmented invocation has one combined stream after its final operation,
 without guessed command attribution. [Tracked commands](../commandsegments/SPEC.md)
-have individual operations, starts, output and outcomes. Unreached commands say
-`skipped`; terminal completion also retains the combined host tail. Whole setup
+have individual operations, starts, output and outcomes. Unstarted tracked commands
+say `Pending`; only the segment with an observed start runs. An observed end settles
+that segment without completing the invocation. Unreached commands say `Skipped`
+after a later segment starts or the shell finishes, following the actual shell
+branching rather than assuming every failure stops the list. Pending and skipped
+commands have no exit or timing. Terminal completion also retains the combined host tail. Whole setup
 scripts remain one Run event, while recognized edit scripts retain classified
 rows. Missing segment boundaries produce one explicit shell-batch outcome and
 combined output rather than failures assigned to individual operations.

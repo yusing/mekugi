@@ -260,6 +260,10 @@ func liveActivityIndent(lines []string, prefix string) []string {
 // Block renders one parsed block within width columns.
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
+	if block.Effect {
+		block.Effect = false
+		return liveActivityIndent(p.Block(block, width-2), "  ")
+	}
 	lines := p.blockRows(block, width)
 	if block.AutoReload && block.Exited && block.ExitCode == 0 && !block.Running && len(lines) > 0 {
 		suffix := terminalui.Dim + " (auto reloaded)" + terminalui.Undim
@@ -395,7 +399,7 @@ func workdirLabel(workdir string) string {
 // no exit, such as a failed read.
 func segmentTrailer(block Block) string {
 	switch {
-	case block.Skipped && EditStatus(block) != "skipped":
+	case block.Skipped && RowVerb(block) != "Skipped" && EditStatus(block) != "skipped":
 		return "· skipped"
 	case block.ExitCode == 0 || block.EditOperation() || block.Kind != "op" && block.Kind != "reads" || block.VCS():
 		return ""

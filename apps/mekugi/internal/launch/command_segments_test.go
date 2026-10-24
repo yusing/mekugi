@@ -224,7 +224,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	setTestAppServerIntegration(u, testProxyWithStore(store))
 	item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(1), new(result.stdout+result.stderr)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
-	awaitMain(t, u, "skipped")
+	awaitMain(t, u, "Skipped")
 	awaitCommandSegments(t, u)
 	if names := u.attached.source.ActiveSkills()["Main"]; len(names) != 1 || names[0] != filepath.Base(filepath.Dir(path)) {
 		t.Fatalf("successful skill segment lost after a failed command: %v", names)

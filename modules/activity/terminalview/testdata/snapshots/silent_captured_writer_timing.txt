@@ -1,0 +1,5 @@
+"\x1b[38;5;214;1mRan\x1b[m    \x1b[38;2;210;168;255mcat\x1b[m > file \x1b[2m· 2s\x1b[m                                                "
+"\x1b[38;5;214;1mRan\x1b[m    \x1b[38;2;210;168;255mgo\x1b[m \x1b[38;2;242;192;120mtest\x1b[m ./... \x1b[2m· 1s\x1b[m                                             "
+"\x1b[38;5;214;1mRan\x1b[m    \x1b[2mshell\x1b[m \x1b[2mbatch\x1b[m \x1b[2m· 3s\x1b[m                                               "
+"  \x1b[38;5;114;1mEdited\x1b[m \x1b[1mfile\x1b[m \x1b[38;5;114m+1\x1b[m \x1b[2mvia \x1b[38;2;210;168;255;22mcat\x1b[m                                              "
+"plain                                                                 "

@@ -54,7 +54,7 @@ func (b Block) Collapsible() bool {
 		return !b.Live
 	case "op", "reads":
 		lines := len(b.Tail) + b.TailOmitted
-		return !b.Running && !b.Skipped && b.ExitCode == 0 && lines > 1
+		return !b.Running && !b.Skipped && !b.Pending && b.ExitCode == 0 && lines > 1
 	}
 	return false
 }
@@ -156,6 +156,10 @@ func RowVerb(b Block) string {
 		return "Hook Run"
 	}
 	switch {
+	case b.Pending:
+		return "Pending"
+	case b.Skipped && b.Verb == "Run":
+		return "Skipped"
 	case b.Kind == "op" && b.Verb == "Run" && b.Requested:
 		return "Run"
 	case b.Kind == "op" && b.Verb == "Run" && !b.Running && strings.HasPrefix(b.Approval, "Pending Approval"):

@@ -69,7 +69,7 @@ func ObserveCommandReport(invocation *activitypresentation.Invocation, report ac
 	state := CommandReportState{Snapshot: snapshot, Changed: changed, Release: release}
 	for index, segment := range snapshot.Segments {
 		shown := ActivitySegment{Timing: segmenttransport.Timing{Started: segment.Started, Ended: segment.Ended, ElapsedNS: int64(segment.Duration)},
-			Text: segment.Text, Source: segment.Source, Running: segment.Running, Skipped: segment.Skipped, Exit: segment.ExitCode, Raw: segment.Raw,
+			Text: segment.Text, Source: segment.Source, Running: segment.Running, Skipped: segment.Skipped, Pending: segment.Pending, Exit: segment.ExitCode, Raw: segment.Raw,
 			Output: invocation.SegmentOutput(index), Results: segment.Results}
 		if snapshot.SeparateOutput {
 			shown.Tail, shown.Omit = segment.Tail, segment.TailOmitted

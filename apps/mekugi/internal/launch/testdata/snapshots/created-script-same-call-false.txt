@@ -1,2 +1,4 @@
-├ Created kernel.py +3 via cat
-└ Edited  target.txt +1 via python3
+├ Ran     cat >kernel.py <<'PY'
+│   Created kernel.py +3 via cat
+└ Ran     python3 kernel.py
+    Edited  target.txt +1 via python3

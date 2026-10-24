@@ -28,44 +28,46 @@ type Value struct {
 	GroupCount  int
 	// Subsumed marks original work represented by a later operation, such as staging before its commit.
 	Subsumed bool
+	// Effect rows belong beneath the preceding action in the same invocation.
+	Effect bool
 
 	// Output identifies the invocation aggregate (1), or a tracked segment (2+index).
 	// Zero has no retained output. The attached owner resolves it within Source.
 	Output int
 
 	feed.Content
-	ReplySummary                         string // Derived from the completed original body; never replaces Body.
-	DetailCode                           string `json:",omitempty"` // Original tool evidence, displayed only in details.
-	Repeated                             string
-	AutoReload                           bool   // Native compaction reader, distinct from a submitted attachment.
-	AttachmentID                         string // Durable submitted snapshot and source, shared by its chunks.
-	Ended, Started                       time.Time
-	Duration                             time.Duration
-	NotificationTiming                   bool
-	Questions                            []Question
-	Source                               uint64
-	Operation                            int
-	Section                              int
-	Path, SyntaxPath, Workdir            string
-	ShowWorkdir                          bool
-	From, To, Owner                      string
-	WaitTargets                          []WaitTarget
-	Results                              *int
-	Exited                               bool
-	ExitCode                             int
-	Approval                             string
-	BatchExit                            bool
-	EditOutcome                          string
-	Running, Requested, Segment, Skipped bool
-	Tail                                 []string
-	TailOmitted                          int
-	Changes                              []ChangeRow
-	Hook                                 *HookDetails
-	Members                              []Value
-	RequestedOperations                  []Value
-	DetailLines                          int
-	Live                                 bool
-	Thought                              time.Duration
+	ReplySummary                                  string // Derived from the completed original body; never replaces Body.
+	DetailCode                                    string `json:",omitempty"` // Original tool evidence, displayed only in details.
+	Repeated                                      string
+	AutoReload                                    bool   // Native compaction reader, distinct from a submitted attachment.
+	AttachmentID                                  string // Durable submitted snapshot and source, shared by its chunks.
+	Ended, Started                                time.Time
+	Duration                                      time.Duration
+	NotificationTiming                            bool
+	Questions                                     []Question
+	Source                                        uint64
+	Operation                                     int
+	Section                                       int
+	Path, SyntaxPath, Workdir                     string
+	ShowWorkdir                                   bool
+	From, To, Owner                               string
+	WaitTargets                                   []WaitTarget
+	Results                                       *int
+	Exited                                        bool
+	ExitCode                                      int
+	Approval                                      string
+	BatchExit                                     bool
+	EditOutcome                                   string
+	Running, Requested, Segment, Skipped, Pending bool
+	Tail                                          []string
+	TailOmitted                                   int
+	Changes                                       []ChangeRow
+	Hook                                          *HookDetails
+	Members                                       []Value
+	RequestedOperations                           []Value
+	DetailLines                                   int
+	Live                                          bool
+	Thought                                       time.Duration
 }
 
 type Question struct {

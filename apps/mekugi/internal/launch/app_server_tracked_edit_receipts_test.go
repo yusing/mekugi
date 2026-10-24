@@ -126,10 +126,8 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 				var outputKept, testKept, failedKept, skippedKept bool
 				for _, block := range view.blocks(0) {
 					switch {
-					case block.Code == sources[0]:
-						t.Fatalf("successful edit source leaked into Activity: %+v", block)
-					case block.Verb == "Edited" && view.RetainedOutput(block.Source, block.Output) == output:
-						outputKept = block.ExitCode == 0 && block.Segment && block.Label == "`a.go`" && block.EditSource == ""
+					case block.Verb == "Run" && block.Code == sources[0] && view.RetainedOutput(block.Source, block.Output) == output:
+						outputKept = block.ExitCode == 0 && block.Segment && block.EditSource == ""
 					case block.Verb == "Run" && block.Code == sources[2]:
 						testKept = block.ExitCode == 2 && strings.Join(block.Tail, "") == "test failed"
 					case block.Verb == "Move" && strings.Contains(block.Label, "failed.go"):
@@ -140,7 +138,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 						t.Fatalf("successful intent survived receipt: %+v", block)
 					}
 				}
-				if !outputKept || !testKept || !failedKept || !skippedKept || len(view.blocks(0)) != 6 {
+				if !outputKept || !testKept || !failedKept || !skippedKept || len(view.blocks(0)) != 7 {
 					t.Fatalf("receipt lost segment output/state: %+v", view.blocks(0))
 				}
 			}
@@ -148,9 +146,9 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 	}
 }
 
-// Each successful edit command's output and timing follow its own Edited row;
-// its source appears only in the output dialog, which the output row opens.
-func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
+// Retained writer actions keep their own output and timing; invocation-wide
+// captured effects nest beneath their aggregate action.
+func TestUISnapshotTrackedEditReceiptActionAndEffects(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	started := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	var segments []sessionpresentation.ActivitySegment
@@ -173,12 +171,12 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 		if block.Output == 0 {
 			continue
 		}
-		if block.Code == "cat > a.go" || block.Code == "cat > b.go" || block.EditSource != "" {
+		if block.EditSource != "" || block.Effect {
 			t.Fatalf("edit output row leaked source or edit navigation: %+v", block)
 		}
-		outputs = append(outputs, block.Verb+" "+block.Label+" "+block.Duration.String())
+		outputs = append(outputs, block.Verb+" "+block.Duration.String())
 	}
-	if want := []string{"Edited `a.go` 1s", "Run  2s", "Edited `b.go` 3s"}; !slices.Equal(outputs, want) {
+	if want := []string{"Run 1s", "Run 2s", "Run 3s"}; !slices.Equal(outputs, want) {
 		t.Fatalf("output placement = %q, want %q", outputs, want)
 	}
 	pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(u.attached.childSource.Entries[0].Source).DetailValues())
@@ -261,7 +259,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 	for range 2 {
 		applyCapturedEdits(&restored.attached, restored.review, &restored.pendingEditReceipts)
 		assertTrackedReceiptStats(t, view, 0)
-		last := view.blocks(0)[len(view.blocks(0))-1]
+		last := view.blocks(0)[slices.IndexFunc(view.blocks(0), func(b activityui.Block) bool { return b.Segment && b.ExitCode == 2 })]
 		if last.Verb != "Run" || last.ExitCode != 2 || last.Output == 0 || strings.Join(view.RetainedOutput(last.Source, last.Output).View().Lines, "\n") != "test failed" {
 			t.Fatalf("restored neighbor lost retained failure/output: %+v", last)
 		}
@@ -285,7 +283,7 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 		for range 2 {
 			u.attached.source.ApplyCapturedEdits(data)
 			blocks := u.testActivity(u.shell.Transcript).blocks(0)
-			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || u.attached.source.RetainedOutput(blocks[0].Source, blocks[0].Output) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
+			if len(blocks) != 1 || blocks[0].Verb != "Run" || blocks[0].Code != command || u.attached.source.RetainedOutput(blocks[0].Source, blocks[0].Output) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
 				t.Fatalf("grouped sibling lost combined host output: %+v", blocks)
 			}
 			if page := u.shell.Transcript.Painter.DialogPage(snapshotOutput(blocks[0], u.attached.source.RetainedOutput(blocks[0].Source, blocks[0].Output)), 100); page.Text != "host diagnostic" {

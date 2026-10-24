@@ -124,12 +124,6 @@ func TestUISnapshotAppServerTemporaryCaptureWithoutWriterLabel(t *testing.T) {
 				v.Expansion = expansion
 				feed := v.RenderConversation(110)
 				text := ansi.Strip(strings.Join(feed.Lines, "\n"))
-				if state == "restored" && expansion == 0 {
-					if !strings.Contains(text, "Created ×200") {
-						t.Fatalf("restored batch lost capture tally: %s", text)
-					}
-					continue
-				}
 				if expansion != 2 {
 					if !strings.Contains(text, "… +188 files") || strings.Contains(text, "file012.go") {
 						t.Fatalf("expansion %d left temporary capture unbounded (%d rows): %s", expansion, len(feed.Lines), text)
@@ -255,18 +249,19 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 			if entry.Source.Native == nil || entry.Source.Native.Thread != tc.thread || entry.Source.Native.Item != tc.item {
 				continue
 			}
-			if !strings.Contains(entry.Source.Text, "Edit `"+tc.path+"` +1 -1 · "+tc.program) ||
-				len(tc.view.blocks(i)) == 0 || tc.view.blocks(i)[0].Verb != "Edit" {
+			blocks := tc.view.blocks(i)
+			effect := slices.IndexFunc(blocks, func(b activityui.Block) bool { return b.EditPath() == tc.path && strings.Contains(b.Label, "+1 -1") })
+			if !strings.Contains(entry.Source.Text, "Edit `"+tc.path+"` +1 -1 · "+tc.program) || effect < 0 {
 				t.Fatalf("receipt for %s: %+v, blocks %+v", tc.item, entry, tc.view.blocks(i))
 			}
 			for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
-				painted := strings.Join((&activityui.Painter{Theme: theme}).Block(tc.view.blocks(i)[0], 120), "\n")
+				painted := strings.Join((&activityui.Painter{Theme: theme}).Block(blocks[effect], 120), "\n")
 				// The file row names its outcome and source.
 				heading := "Edited " + tc.path + " +1 -1 via " + tc.program
 				if tc.program == "apply_patch" {
 					heading = "Edited " + tc.path + " +1 -1"
 				}
-				if !strings.HasPrefix(ansi.Strip(painted), heading) || strings.Contains(ansi.Strip(painted), " · "+tc.program) {
+				if !strings.HasPrefix(strings.TrimSpace(ansi.Strip(painted)), heading) || strings.Contains(ansi.Strip(painted), " · "+tc.program) {
 					t.Fatalf("source was not a shared edit header: %q", painted)
 				}
 			}
@@ -310,7 +305,9 @@ func assertCapturedCommand(t *testing.T, view *activityAdapter, thread, item, ve
 		if entry.Source.Native == nil || entry.Source.Native.Thread != thread || entry.Source.Native.Item != item || entry.Source.Kind != "tool" {
 			continue
 		}
-		if len(view.blocks(i)) == 0 || view.blocks(i)[0].Verb != verb || view.blocks(i)[0].ExitCode != exit {
+		blocks := view.blocks(i)
+		at := slices.IndexFunc(blocks, func(b activityui.Block) bool { return b.Verb == verb })
+		if at < 0 || blocks[0].ExitCode != exit || blocks[at].Effect && blocks[at].ExitCode != 0 {
 			t.Fatalf("%s: text %q, blocks %+v, want %s exit %d", item, entry.Source.Text, view.blocks(i), verb, exit)
 		}
 		return
@@ -366,7 +363,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 	for range 2 {
 		v.ApplyCapturedEdits(data)
 		blocks := v.blocks(0)
-		if len(blocks) != 4 || blocks[0].Verb != "Edit" || blocks[0].ExitCode != 0 || blocks[1].ExitCode != 0 || blocks[2].ExitCode != 0 || blocks[3].ExitCode != 1 {
+		if len(blocks) != 5 || blocks[2].ExitCode != 1 || !blocks[4].Effect || blocks[4].Verb != "Edit" || blocks[4].ExitCode != 0 {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
 		}
 	}
@@ -546,14 +543,11 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 						if len(blocks) != 2 {
 							t.Fatalf("lost neighbor: %+v", blocks)
 						}
-						run, edit := 1, 0
-						if strings.HasPrefix(source, "make") {
-							run, edit = 0, 1
-						}
+						run, edit := 0, 1
 						if blocks[run].Verb != "Run" || !strings.Contains(blocks[run].Label+blocks[run].Code, "make check") || blocks[edit].Verb != "Delete" {
 							t.Fatalf("incorrect operations: %+v", blocks)
 						}
-						if !strings.Contains(strings.Join(blocks[1].Tail, "\n"), "tracked.go") {
+						if !strings.Contains(strings.Join(blocks[run].Tail, "\n"), "tracked.go") {
 							t.Fatalf("lost aggregate output: %+v", blocks)
 						}
 					}

@@ -178,11 +178,18 @@ func (entry ItemContent) Values() (blocks []Value) {
 				Code: textsanitize.Safe(command.Display, false), Lang: "bash", Fenced: true,
 				Running: command.Running, Output: outputID(command.Output, 1),
 				Tail: command.Tail, TailOmitted: command.TailOmitted}}
-			return append(blocks, Operations(textsanitize.Safe(command.CaptureText, false))...)
+			return append(blocks, command.Effects()...)
 		}
 		if entry.Details != nil && len(entry.Command.Segments) > 0 {
 			command.Results = entry.Details.SearchResults
 			return GroupOperations(command.SegmentValues(false))
+		}
+		if command.CaptureText != "" && command.Display != "" &&
+			(command.Running || command.Duration > 0 || command.ExitCode != 0 || len(command.Tail) > 0 || hasOutput(command.Output, command.OutputContent)) {
+			source, _, _ := strings.Cut(command.Display, "\n")
+			blocks := []Value{{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true, BatchExit: command.Compound(Operations(text)),
+				Running: command.Running, Output: outputID(command.Output, 1), Tail: command.Tail, TailOmitted: command.TailOmitted, Changes: command.Changes}}
+			return GroupOperations(append(blocks, command.Effects()...))
 		}
 		blocks := FoldStages(Operations(text))
 		if len(blocks) == 1 && slices.Contains([]string{"Search", "Web Search", "List", "Inspect"}, blocks[0].Verb) && entry.Details != nil {
@@ -215,6 +222,9 @@ func (entry ItemContent) Values() (blocks []Value) {
 // replacing a synthesized timing row rather than duplicating the invocation.
 func RetainBatchResult(blocks []Value, batch Value) []Value {
 	if at := slices.IndexFunc(blocks, func(b Value) bool { return b.BatchExit }); at >= 0 {
+		if blocks[at].Code != "" {
+			batch.Code, batch.Lang, batch.Fenced, batch.Label = blocks[at].Code, blocks[at].Lang, blocks[at].Fenced, blocks[at].Label
+		}
 		blocks[at] = batch
 		return blocks
 	}
@@ -242,6 +252,9 @@ func CommandExit(blocks []Value, code int, tail []string, omitted int) []Value {
 	last, count, batch := -1, 0, -1
 	var output int
 	for i, block := range blocks {
+		if block.Effect {
+			continue
+		}
 		if block.UserShell {
 			blocks[i].ExitCode, blocks[i].Exited = code, true
 			blocks[i].Tail, blocks[i].TailOmitted = tail, omitted
@@ -257,7 +270,7 @@ func CommandExit(blocks []Value, code int, tail []string, omitted int) []Value {
 			last, count = i, count+1
 		}
 	}
-	if last < 0 {
+	if last < 0 && batch < 0 {
 		return blocks
 	}
 	if count > 1 || batch >= 0 {

@@ -61,7 +61,7 @@ func TestInvocationSegmentDetailLifecycle(t *testing.T) {
 	if !invocation.ReportMatchesHost() || !final.SeparateOutput || len(final.Segments) != 3 {
 		t.Fatalf("completed attribution: %+v", final)
 	}
-	if len(before.Segments) != 1 || !before.Segments[0].Running || before.Segments[0].Output.Done {
+	if len(before.Segments) != 3 || !before.Segments[0].Running || before.Segments[0].Output.Done || !before.Segments[1].Pending || !before.Segments[2].Pending {
 		t.Fatalf("later completion mutated earlier publication: %+v", before)
 	}
 	command := invocation.Snapshot()

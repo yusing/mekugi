@@ -526,7 +526,7 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 			if len(block.Questions) > 0 {
 				entryRows[block.Source] = len(toggles)
 			}
-			if len(parts) > 0 && (block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart) {
+			if len(parts) > 0 && (block.Effect || block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart) {
 				parts[len(parts)-1] = append(parts[len(parts)-1], rows...)
 			} else {
 				parts = append(parts, rows)

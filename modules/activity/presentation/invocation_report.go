@@ -147,20 +147,20 @@ func (i *Invocation) ReportSnapshot(final bool) ReportSnapshot {
 		case !fact.Began && (final || index < last):
 			shown.Skipped = true
 		case !fact.Began:
-			continue
+			shown.Pending = true
 		}
 		if r.separate {
 			shown.Tail, shown.TailOmitted = segment.summary.Lines()
 		}
 		if segment.output != nil {
-			if !shown.Running {
+			if !shown.Running && !shown.Pending {
 				segment.output.Finish(nil, &shown.ExitCode)
 			}
 			output, _ := segment.output.Context(0)
 			shown.Output, shown.OutputContent = &output, segment.output.HasContent()
 
 		}
-		if r.separate && segment.output != nil && !segment.countUnsafe && !shown.Running && !shown.Skipped {
+		if r.separate && segment.output != nil && !segment.countUnsafe && !shown.Running && !shown.Skipped && !shown.Pending {
 			operations := Operations(fact.Text)
 			if len(operations) == 1 && slices.Contains([]string{"Search", "List", "Inspect"}, operations[0].Verb) {
 				if text, complete := segment.output.CompleteText(); complete {

@@ -148,11 +148,10 @@ func TestUISnapshotCreatedScriptCapture(t *testing.T) {
 			view := ui.testActivity(ui.shell.Transcript)
 			view.testPace(now.Add(time.Hour))
 			lines := view.RenderFeed(100, 30).Lines
-			if rendered := strings.Join(lines, "\n"); !strings.Contains(rendered, "target.txt") || strings.Contains(rendered, "Ran") || strings.Contains(rendered, "requested") {
+			if rendered := strings.Join(lines, "\n"); !strings.Contains(rendered, "target.txt") || strings.Contains(rendered, "requested") {
 				t.Fatalf("confirmed target did not replace intent: %s", rendered)
 			}
 			// Late segment reports enrich the exact completed host identity.
-			// They must not restore a successful script's stale Run row.
 			for _, entry := range slices.Clone(view.Entries) {
 				native := *entry.Source.Native
 				parts, ok := shellinstrumentation.Split(native.Command)
@@ -174,7 +173,7 @@ func TestUISnapshotCreatedScriptCapture(t *testing.T) {
 			}
 			view.testPace(now.Add(time.Hour))
 			lines = view.RenderFeed(100, 30).Lines
-			if rendered := strings.Join(lines, "\n"); !strings.Contains(rendered, "target.txt") || strings.Contains(rendered, "Ran") || strings.Contains(rendered, "requested") {
+			if rendered := strings.Join(lines, "\n"); !strings.Contains(rendered, "target.txt") || strings.Contains(rendered, "requested") {
 				t.Fatalf("segment refresh restored stale intent: %s", rendered)
 			}
 			assertNativeUISnapshot(t, fmt.Sprintf("created-script-same-call-%v", together), lines)
@@ -191,7 +190,7 @@ func TestUISnapshotCreatedScriptCapture(t *testing.T) {
 			restoredView := restored.testActivity(restored.shell.Transcript)
 			restoredView.Expansion = 1
 			restoredView.testPace(now.Add(time.Hour))
-			if rendered := strings.Join(restoredView.RenderFeed(100, 30).Lines, "\n"); !strings.Contains(rendered, "target.txt") || strings.Contains(rendered, "Ran") || strings.Contains(rendered, "requested") || len(restored.attached.source.Entries) != len(items) {
+			if rendered := strings.Join(restoredView.RenderFeed(100, 30).Lines, "\n"); !strings.Contains(rendered, "target.txt") || strings.Contains(rendered, "requested") || len(restored.attached.source.Entries) != len(items) {
 				t.Fatalf("restored receipt lost exact host edits: %s", rendered)
 			}
 		})

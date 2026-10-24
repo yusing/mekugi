@@ -28,7 +28,8 @@ and report statuses rather than redirecting output through pipes.
 
 The helper relays nonterminal list output unchanged to Codex's original
 descriptors. Acknowledged begin/end boundaries prevent output preceding its
-segment identity or spilling across a completed boundary. A skipped branch has
+segment identity or spilling across a completed boundary. Unstarted segments remain
+pending until an observed start or evidence that the shell passed them. A skipped branch has
 no exit or timing and becomes visibly skipped when a later segment starts or the
 shell finishes. EXIT closes an active segment whose ordinary end was bypassed.
 Background descendant output belongs to the segment running when it arrives.

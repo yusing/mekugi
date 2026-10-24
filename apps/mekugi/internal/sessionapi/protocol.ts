@@ -1022,6 +1022,7 @@ export type Value = {
   "GroupStart": boolean;
   "GroupCount": number;
   "Subsumed": boolean;
+  "Effect": boolean;
   "Output": number;
   "ReplySummary": string;
   "DetailCode"?: string;
@@ -1054,6 +1055,7 @@ export type Value = {
   "Requested": boolean;
   "Segment": boolean;
   "Skipped": boolean;
+  "Pending": boolean;
   "Tail": Array<string>;
   "TailOmitted": number;
   "Changes": Array<ChangeRow>;
@@ -1063,7 +1065,7 @@ export type Value = {
   "DetailLines": number;
   "Live": boolean;
   "Thought": number;
-} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Output" | "ReplySummary" | "DetailCode" | "Repeated" | "AutoReload" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Tail" | "TailOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought">;
+} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Effect" | "Output" | "ReplySummary" | "DetailCode" | "Repeated" | "AutoReload" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Pending" | "Tail" | "TailOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought">;
 
 export type ItemContent = {
   "Command": Command;
@@ -1483,6 +1485,7 @@ export type CommandSegment = {
   "Text": string;
   "Running": boolean;
   "Skipped": boolean;
+  "Pending": boolean;
   "ExitCode": number;
   "Started": string;
   "Ended": string;

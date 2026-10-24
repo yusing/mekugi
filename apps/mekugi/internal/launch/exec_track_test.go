@@ -763,6 +763,9 @@ func TestAppServerTrackedCommandShowsEachSegment(t *testing.T) {
 		segmenttransport.Message{Type: segmenttransport.Output, Index: 1, Data: "a\n"},
 	)
 	awaitMain(t, u, "┆ a")
+	if main := awaitMain(t, u, "Pending"); !strings.Contains(main, "Pending cat a b") {
+		t.Fatalf("unstarted segment was not pending:\n%s", main)
+	}
 
 	report.send(
 		segmenttransport.Message{Type: segmenttransport.Output, Index: 1, Data: "b\n"},
@@ -796,7 +799,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	report := dialExecTrackReport(t, hub, script)
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0})
-	if rows := awaitMain(t, u, "Read a.go"); strings.Contains(rows, cwd+"/a.go") {
+	if rows := awaitMain(t, u, "Read    a.go"); strings.Contains(rows, cwd+"/a.go") {
 		t.Fatal("live read path stayed absolute")
 	}
 	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1}, segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Closed})
@@ -859,7 +862,7 @@ func TestAppServerTrackedCommandShowsSkippedSegments(t *testing.T) {
 	report.conn.Close()
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 1, ""
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	if main := awaitMain(t, u, "skipped"); !strings.Contains(main, "├ Ran false · exit 1\n└ Run echo never · skipped") {
+	if main := awaitMain(t, u, "Skipped"); !strings.Contains(main, "├ Ran     false · exit 1\n└ Skipped echo never") {
 		t.Fatalf("Main lacks the skipped segment:\n%s", main)
 	}
 }

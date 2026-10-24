@@ -1,0 +1,6 @@
+"\x1b[38;5;214;1mRunning\x1b[m \x1b[38;2;210;168;255ma\x1b[m                                                   "
+"        \x1b[2m┆\x1b[m observed output                                   "
+"\x1b[38;5;214;1mPending\x1b[m \x1b[38;2;210;168;255mb\x1b[m                                                   "
+"\x1b[38;5;214;1mPending\x1b[m \x1b[38;2;210;168;255mc\x1b[m                                                   "
+"\x1b[38;5;214;1mPending\x1b[m \x1b[38;2;210;168;255md\x1b[m                                                   "
+"plain                                                       "

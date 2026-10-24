@@ -116,7 +116,9 @@ func (v *ActivitySource) ApplyCapturedEdits(receipts []*changepresentation.Recei
 				// A receipt must not spread one failure to successful siblings.
 				if len(v.Entries[i].Values) > 0 && len(entry.Native.Segments) == 0 && !native.UserShell {
 					for j := range blocks {
-						blocks[j].ExitCode = exit
+						if !blocks[j].Effect {
+							blocks[j].ExitCode = exit
+						}
 					}
 				}
 				if batch != nil {

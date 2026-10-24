@@ -1405,7 +1405,7 @@ func (v *View) renderRun(first uint64, agent string, observed time.Time, blocks 
 	operation := func(block Block) bool { return block.Kind == "op" || block.Kind == "reads" }
 	// An operation group's later rows and output notes continue the branch above.
 	continued := func(block Block) bool {
-		return block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart
+		return block.Effect || block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart
 	}
 	rail := ""
 	if v.Expansion == 0 {

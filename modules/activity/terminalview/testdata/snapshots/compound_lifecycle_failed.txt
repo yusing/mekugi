@@ -1,0 +1,6 @@
+"\x1b[38;5;214;1mRan\x1b[m    \x1b[38;2;210;168;255ma\x1b[m                                                    "
+"       \x1b[2m┆\x1b[m observed output                                    "
+"\x1b[38;5;203;1mRan\x1b[m    \x1b[38;2;210;168;255mb\x1b[m \x1b[2m· \x1b[38;5;203;22mexit 2\x1b[m                                           "
+"\x1b[2mSkipped c\x1b[m                                                   "
+"\x1b[2mSkipped d\x1b[m                                                   "
+"plain                                                       "

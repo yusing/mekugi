@@ -44,7 +44,7 @@ func TargetRun(values []Value, counts []int) (Value, int) {
 	}
 	joins := func(i int) bool {
 		b := values[i]
-		return b.Kind == "reads" && !b.Running && !b.Skipped && b.Approval == "" && b.Results == nil && b.ExitCode == 0 &&
+		return b.Kind == "reads" && !b.Running && !b.Skipped && !b.Pending && b.Approval == "" && b.Results == nil && b.ExitCode == 0 &&
 			b.Repeated == "" && (b.Verb == "Skill" || b.Verb == "Read" && b.Exited || b.Started.IsZero() && b.Duration == 0) && count(i) >= 0
 	}
 	end := 1
@@ -62,7 +62,7 @@ func TargetRun(values []Value, counts []int) (Value, int) {
 
 // sameAction is shared by target compaction and verb-cell grouping.
 func sameAction(a, b Value) bool {
-	if a.UserShell || b.UserShell {
+	if a.UserShell || b.UserShell || a.Pending || b.Pending || a.Segment && b.Segment && a.Source == b.Source {
 		return false
 	}
 	if (a.Hook == nil) != (b.Hook == nil) || a.Hook != nil && *a.Hook != *b.Hook {
@@ -70,7 +70,7 @@ func sameAction(a, b Value) bool {
 	}
 	return (a.Kind == "op" || a.Kind == "reads") && (b.Kind == "op" || b.Kind == "reads") &&
 		a.Verb != "" && a.Verb == b.Verb && a.Workdir == b.Workdir && a.Owner == b.Owner &&
-		a.Running == b.Running && a.Skipped == b.Skipped && a.Exited == b.Exited && a.BatchExit == b.BatchExit &&
+		a.Running == b.Running && a.Skipped == b.Skipped && a.Pending == b.Pending && a.Effect == b.Effect && a.Exited == b.Exited && a.BatchExit == b.BatchExit &&
 		a.Requested == b.Requested && a.Approval == b.Approval
 }
 
@@ -162,7 +162,7 @@ func GroupOperations(blocks []Value) []Value {
 			}
 		}
 		b.GroupHeader = heading
-		b.GroupStart = heading != "" && (heading != previous || b.EditSource != previousSource || b.Workdir != last.Workdir)
+		b.GroupStart = heading != "" && (heading != previous || b.EditSource != previousSource || b.Workdir != last.Workdir || b.Effect != last.Effect || b.Effect && b.Source != last.Source)
 		previous, previousSource = heading, b.EditSource
 		if b.GroupStart {
 			start = i

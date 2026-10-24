@@ -1,18 +1,19 @@
-├ Edited  project.go                +1 -1 ━━━━━━━━
-│ Created /tmp/worktree/file000.go  +1    ━━━━━━━━
-│ Created /tmp/worktree/file001.go  +1    ━━━━━━━━
-│ Created /tmp/worktree/file002.go  +1    ━━━━━━━━
-│ Created /tmp/worktree/file003.go  +1    ━━━━━━━━
-│ Created /tmp/worktree/file004.go  +1    ━━━━━━━━
-│ Created /tmp/worktree/file005.go  +1    ━━━━━━━━
-│ Created /tmp/worktree/file006.go  +1    ━━━━━━━━
-│ Created /tmp/worktree/file007.go  +1    ━━━━━━━━
-│ Created /tmp/worktree/file008.go  +1    ━━━━━━━━
-│ Created /tmp/worktree/file009.go  +1    ━━━━━━━━
-│ Created /tmp/worktree/file010.go  +1    ━━━━━━━━
-│ Created /tmp/worktree/file011.go  +1    ━━━━━━━━
-│         … +188 files
-│         after.go                  +1 -1 ━━━━━━━━
-└ Capture · incomplete evidence for 1 path (not confirmed edits): 1 × "capture budget exhausted" · mchanges
-          amber1 --summary
+└ Ran     git worktree add /tmp/worktree HEAD
           ┆ Preparing worktree
+    Edited  project.go                +1 -1 ━━━━━━━━
+    Created /tmp/worktree/file000.go  +1    ━━━━━━━━
+    Created /tmp/worktree/file001.go  +1    ━━━━━━━━
+    Created /tmp/worktree/file002.go  +1    ━━━━━━━━
+    Created /tmp/worktree/file003.go  +1    ━━━━━━━━
+    Created /tmp/worktree/file004.go  +1    ━━━━━━━━
+    Created /tmp/worktree/file005.go  +1    ━━━━━━━━
+    Created /tmp/worktree/file006.go  +1    ━━━━━━━━
+    Created /tmp/worktree/file007.go  +1    ━━━━━━━━
+    Created /tmp/worktree/file008.go  +1    ━━━━━━━━
+    Created /tmp/worktree/file009.go  +1    ━━━━━━━━
+    Created /tmp/worktree/file010.go  +1    ━━━━━━━━
+    Created /tmp/worktree/file011.go  +1    ━━━━━━━━
+            … +188 files
+            after.go                  +1 -1 ━━━━━━━━
+    Capture · incomplete evidence for 1 path (not confirmed edits): 1 × "capture budget exhausted" · mchanges
+            amber1 --summary

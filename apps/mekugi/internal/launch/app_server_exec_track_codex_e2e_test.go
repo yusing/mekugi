@@ -223,7 +223,7 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 		if _, err := io.WriteString(outer, "\x023"); err != nil {
 			t.Fatal(err)
 		}
-		await("echo SEG_NEVER · skipped")
+		await("Skipped echo SEG_NEVER")
 		for _, want := range []string{"echo SEG_ONE", "false · exit 1"} {
 			if !strings.Contains(screen.String(), want) {
 				t.Fatalf("missing %q:\n%s", want, screen.String())

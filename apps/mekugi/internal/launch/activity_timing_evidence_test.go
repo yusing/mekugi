@@ -238,7 +238,7 @@ func TestActivityTimingLiveEvidenceDoesNotInheritHostTotal(t *testing.T) {
 		segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0), Timing: segmenttransport.Timing{Started: start, Ended: start.Add(12 * time.Millisecond), ElapsedNS: int64(12 * time.Millisecond)}},
 		segmenttransport.Message{Type: segmenttransport.Begin, Index: 1, Timing: segmenttransport.Timing{Started: start.Add(13 * time.Millisecond)}},
 	)
-	view := hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 2 })
+	view := hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 2 && view.segments[1].Running })
 	entry := sessionpresentation.ActivityEntry{Kind: "tool", Observed: start.Add(-5 * time.Second), Native: &sessionpresentation.NativeItem{Command: "sleep .01; sleep .02", Running: true, Duration: 5 * time.Second, Segments: view.segments}}
 	blocks := parseLiveActivity(entry)
 	if len(blocks) != 2 || blocks[0].Duration != 12*time.Millisecond || blocks[0].Started != start || blocks[1].Duration != 0 || blocks[1].Started != start.Add(13*time.Millisecond) || !blocks[1].Ended.IsZero() {

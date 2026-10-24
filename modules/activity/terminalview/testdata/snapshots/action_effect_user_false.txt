@@ -1,0 +1,4 @@
+"\x1b[2m└ \x1b[38;5;203;22;1mRan\x1b[m     \x1b[38;2;210;168;255mrm\x1b[m old.go\x1b[38;2;230;237;243m;\x1b[m \x1b[38;2;210;168;255mfalse\x1b[m \x1b[2m· \x1b[38;5;203;22mexit 1\x1b[m \x1b[2m· 1s\x1b[m                              "
+"\x1b[2m  \x1b[m        \x1b[2m┆\x1b[m failure detail                                            "
+"\x1b[2m  \x1b[m  \x1b[38;5;114;1mDeleted\x1b[m \x1b[1mold.go\x1b[m \x1b[38;5;203m-3\x1b[m \x1b[2mvia \x1b[38;2;210;168;255;22mrm\x1b[m                                          "
+"plain                                                                 "

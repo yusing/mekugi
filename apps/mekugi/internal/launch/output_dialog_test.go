@@ -124,7 +124,7 @@ func TestOutputDialogTrackedEditSource(t *testing.T) {
 				if page.ID != fmt.Sprintf("1/o%d", i+2) || page.Code != native.Segments[i].Source || page.ExitCode != i || page.Skipped != (i == 2) {
 					t.Fatalf("segment %d lost source, identity or outcome: %+v", i, page)
 				}
-				if i == 0 && captured && page.Verb != "Edited" {
+				if i == 0 && captured && page.Verb != "Run" {
 					t.Fatalf("silent captured edit lost its source page: %+v", page)
 				}
 			}
@@ -450,7 +450,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 	report := hub.begin(t, key, "echo one; echo two")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "initial\n"})
-	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].Tail) != 0 })
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 2 && len(view.segments[0].Tail) != 0 })
 	view, _ := hub.view(key, false, execSegmentText)
 	retained := view.segments[0].Output
 	if !view.output || retained == nil {
@@ -466,7 +466,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	other := [3]string{"main", "t", "overflow"}
 	overflowReport := hub.begin(t, other, "echo huge; echo done")
 	overflowReport.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "prior\n"})
-	hub.await(t, other, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].Tail) != 0 })
+	hub.await(t, other, func(view execTrackView) bool { return len(view.segments) == 2 && len(view.segments[0].Tail) != 0 })
 	first, _ := hub.view(other, false, execSegmentText)
 	previous := first.segments[0].Output
 	if previous == nil {
@@ -484,7 +484,7 @@ func TestOutputDialogLossyMessageReleasesLiveSegment(t *testing.T) {
 	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 	report := hub.begin(t, key, "echo text; echo done")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "partial"})
-	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].Tail) != 0 })
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 2 && len(view.segments[0].Tail) != 0 })
 	view, _ := hub.view(key, false, execSegmentText)
 	output := view.segments[0].Output
 	report.send(segmenttransport.Message{Type: segmenttransport.Lossy})
@@ -527,14 +527,14 @@ func TestOutputDialogTrackedViewDrainsRetainedOutput(t *testing.T) {
 	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 	report := hub.begin(t, key, "echo text; sleep 1")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "first\n"})
-	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].Tail) != 0 })
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 2 && len(view.segments[0].Tail) != 0 })
 	view, _ := hub.view(key, false, execSegmentText)
 	output := view.segments[0].Output
 	if output == nil || output.View().Done || strings.Join(output.View().Lines, "\n") != "first" {
 		t.Fatal("live segment output missing")
 	}
 	report.send(segmenttransport.Message{Type: segmenttransport.Output, Data: "second\n"}, segmenttransport.Message{Type: segmenttransport.End, Code: new(3)})
-	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && !view.segments[0].Running })
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 2 && !view.segments[0].Running })
 	view, _ = hub.view(key, true, execSegmentText)
 	if view.segments[0].Output != output || !output.View().Done || output.View().Exit != 3 || strings.Join(output.View().Lines, "\n") != "first\nsecond" {
 		t.Fatalf("settled segment: %+v", output.View())
