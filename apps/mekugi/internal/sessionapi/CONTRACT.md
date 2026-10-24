@@ -322,10 +322,14 @@ field is zero, false or empty, except facts that may be unknown: a step's
   Chunks and origins retain the Change History wire shapes, including each
   chunk's `Review.Diff` and `Change`, `Caller`, `Source` provenance. File counts
   use `Added` and `Removed`; negative counts mean unavailable. Review counts
-  contain `Net` (null when no project evidence exists) and `Callers`. This is the
-  unfiltered saved composition with the same temporary-only exclusion as the
-  terminal Diff pane. Loading and failure remain explicit. An unavailable review
-  clears the previous value with `null`; attachment replacement resets it.
+  contain `Net` (null when no project evidence exists) and `Callers`. `files` is
+  the unfiltered saved composition with the same temporary-only exclusion as the
+  terminal Diff pane. `callers` lists each caller with captures, Main first, as
+  `caller` (its canonical path, or `?` when unknown) and the `files` it changed,
+  composed as the terminal's caller filter shows them: other callers' captures
+  are baseline, and origins name only that caller's changes. Loading and
+  failure remain explicit. An unavailable review clears the previous value with
+  `null`; attachment replacement resets it.
 - `live`: the ordered current Live Preview snapshots, with `ID`, `Caller`,
   `Status`, `Files` (including `Diff` text), `Truncated` and `Complete`, plus the
   preview owner's remaining metadata. Live sessions sample these at the shared

@@ -94,6 +94,21 @@ func TestPublishReviewComposition(t *testing.T) {
 	if got.Counts.Net == nil || *got.Counts.Net != (diffmodel.Counts{Added: 2, Removed: 2}) || got.Counts.Callers["/root/worker"] != (diffmodel.Counts{Added: 1, Removed: 2}) {
 		t.Fatalf("counts = %+v", got.Counts)
 	}
+	if len(got.Callers) != 2 || got.Callers[0].Caller != "/root" || got.Callers[1].Caller != "/root/worker" {
+		t.Fatalf("callers = %+v", got.Callers)
+	}
+	if root := got.Callers[0].Files; len(root) != 2 || root[0].Key != a.Key || root[1].Key != move.Key {
+		t.Fatalf("main's files = %+v", root)
+	}
+	// As in the terminal's caller filter, a region the worker touched shows
+	// its net outcome, and only the worker's change is its origin.
+	worker := got.Callers[1].Files
+	if len(worker) != 1 || worker[0].Key != a.Key || !reflect.DeepEqual(worker[0].Chunks, a.Chunks) || worker[0].Counts != a.Counts {
+		t.Fatalf("worker's files = %+v", worker)
+	}
+	if !reflect.DeepEqual(worker[0].Origins, []changes.Origin{captures[1].Origin}) {
+		t.Fatalf("worker's origins = %+v", worker[0].Origins)
+	}
 	if len(view.Publication.Files) != 3 {
 		t.Fatal("saved-pane filtering mutated retained evidence")
 	}
