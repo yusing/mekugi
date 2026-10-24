@@ -12,7 +12,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/observation"
-	"github.com/yusing/mekugi/modules/activity"
 	"github.com/yusing/mekugi/modules/sessionhistory"
 	"github.com/yusing/mekugi/modules/sessionreplay"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
@@ -23,6 +22,7 @@ func TestReplayDiscoversIndependentChildFromConfirmedMCPSpawn(t *testing.T) {
 	for _, state := range []string{"confirmed", "uncertain"} {
 		t.Run(state, func(t *testing.T) {
 			directory := t.TempDir()
+			childDirectory := t.TempDir()
 			marker := filepath.Join(directory, "command-ran")
 			rootPath := filepath.Join(directory, "rollout-retained-root-thread.jsonl")
 			childPath := filepath.Join(directory, "rollout-retained-child-thread-17.jsonl")
@@ -35,7 +35,7 @@ func TestReplayDiscoversIndependentChildFromConfirmedMCPSpawn(t *testing.T) {
 			child := fmt.Sprintf(`{"type":"session_meta","payload":{"id":"child-thread-17","cwd":%q}}
 {"timestamp":"2026-10-01T00:00:02Z","type":"event_msg","payload":{"type":"item_completed","thread_id":"child-thread-17","turn_id":"child-turn-original","started_at_ms":1790812801000,"completed_at_ms":1790812802000,"item":{"id":"child-command-original","type":"commandExecution","status":"completed","command":["touch",%q],"exit_code":0}}}
 {"timestamp":"2026-10-01T00:00:03Z","type":"event_msg","payload":{"type":"item_completed","thread_id":"child-thread-17","turn_id":"child-turn-original","started_at_ms":1790812802000,"completed_at_ms":1790812803000,"item":{"id":"child-answer-original","type":"agentMessage","text":"Independent retained answer."}}}
-`, directory, marker)
+`, childDirectory, marker)
 			for path, content := range map[string]string{rootPath: root, childPath: child} {
 				if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 					t.Fatal(err)
@@ -45,8 +45,7 @@ func TestReplayDiscoversIndependentChildFromConfirmedMCPSpawn(t *testing.T) {
 			// without constructing any native runtime or execution owner.
 			script := &moduletest.Scripted{ReplaySource: binding.RolloutSource{Replay: rollout.Replay, Identity: rollout.HeaderIdentity}}
 			history := moduletest.New(t, sessionhistory.Module, sessionhistory.Deps{}, module.Slots{}, script)
-			activityService := moduletest.New(t, activity.Module, activity.Deps{}, module.Slots{}, script)
-			service := moduletest.New(t, sessionreplay.Module, sessionreplay.Deps{History: history, Activity: activityService}, module.Slots{}, script)
+			service := moduletest.New(t, sessionreplay.Module, sessionreplay.Deps{History: history}, module.Slots{}, script)
 			source, err := service.Read(t.Context(), playback.ReadOptions{Path: rootPath, HistoryDirectory: filepath.Join(directory, "absent-history"), Seed: 17})
 			if err != nil {
 				t.Fatal(err)
@@ -56,6 +55,9 @@ func TestReplayDiscoversIndependentChildFromConfirmedMCPSpawn(t *testing.T) {
 			if state == "confirmed" {
 				wantThreads["child-thread-17"] = "/root/check[exact]"
 				wantItems = 3
+				if source.Workspaces["child-thread-17"] != childDirectory {
+					t.Fatalf("child workspace lost: %v", source.Workspaces)
+				}
 			}
 			if !reflect.DeepEqual(source.Threads, wantThreads) || len(source.Missing) != 0 || source.Items != wantItems {
 				t.Fatalf("threads=%v missing=%v items=%d; want threads=%v items=%d", source.Threads, source.Missing, source.Items, wantThreads, wantItems)

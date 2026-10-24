@@ -129,3 +129,21 @@ func (e *threadExecution) Create(ctx context.Context, parent, importPath string,
 	}
 	return receipt, nil
 }
+
+// AttachChild resumes only an admitted descendant's prepared runtime. Selection
+// does not reserve a work generation, dispatch input, or wake a retained wait.
+func (e *threadExecution) AttachChild(ctx context.Context, parent, thread string) error {
+	admitted := false
+	for _, child := range e.shared.Descendants(parent) {
+		if child.Thread == thread {
+			admitted = true
+			break
+		}
+	}
+	member, ok := e.shared.Member(thread)
+	if !admitted || !ok || !member.AudienceAdmitted {
+		return errors.New("the selected child has no admitted resumable runtime")
+	}
+	_, err := e.Resume(ctx, thread)
+	return err
+}

@@ -7,6 +7,33 @@ import (
 	"errors"
 )
 
+// ConfirmUserInput admits only the stable composer identity retained by Codex.
+// Source: codex-rs/protocol/src/protocol.rs:2669:2674@0df4aa677.
+func ConfirmUserInput(ctx context.Context, thread, path, id string) error {
+	if thread == "" || id == "" {
+		return errors.New("human input reconciliation requires thread and client identity")
+	}
+	for line := range reverseRecords(thread, path) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var record struct {
+			Type    string `json:"type"`
+			Payload struct {
+				Type string `json:"type"`
+				ID   string `json:"client_id"`
+			} `json:"payload"`
+		}
+		if err := json.Unmarshal(line, &record); err != nil {
+			return err
+		}
+		if record.Type == "event_msg" && record.Payload.Type == "user_message" && record.Payload.ID == id {
+			return nil
+		}
+	}
+	return errors.New("human input remains uncertain: exact retained client identity is unavailable")
+}
+
 // ConfirmTerminalTurn settles only an interruption of this exact host turn.
 // A different turn's completion cannot acknowledge the requested interruption.
 func ConfirmTerminalTurn(ctx context.Context, thread, path, turn string) error {

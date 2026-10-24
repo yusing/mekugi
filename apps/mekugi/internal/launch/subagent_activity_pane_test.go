@@ -47,7 +47,7 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 	for _, row := range view.testRoster() {
 		order = append(order, strings.Repeat(">", row.Depth)+row.Agent.Name)
 	}
-	if got := strings.Join(order, " "); got != "/root/a >/root/a/x >/root/a/y /root/b /root/c /root/d /root/e" {
+	if got := strings.Join(order, " "); got != "/root/a >/root/a/x >/root/a/y /root/c /root/d /root/e /root/b" {
 		t.Fatalf("roster order = %s", got)
 	}
 	lines := plainLines(view.Render(60, 20, time.Now()))

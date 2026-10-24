@@ -20,8 +20,12 @@ dispatch it releases observation with an uncertain outcome. Shutdown releases
 waiting callers without replaying their operations.
 Prepared-child resume preserves retained host identity and checks canonical
 authority before execution. History confirmation can read the retained source
-without a live host connection. Ordinary child input remains restricted; prompt
-answers, approval decisions and cancellation keep their existing authority.
+without a live host connection. Ordinary child input waits for logical admission
+and uses the same prepared-authority checks as agent assignments. Human starts
+reserve child capacity through Thread Control; human steers name the actual
+running child turn. The existing request ledger reports acceptance, rejection or
+uncertainty without changing the human input's role. Prompt answers, approval
+decisions and cancellation keep their existing authority.
 
 [Conversation](../../../../modules/conversation/SPEC.md) owns composer payloads,
 queues and provisional transcript rows; control decides which submissions settle,

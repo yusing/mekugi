@@ -188,7 +188,7 @@ func (s *Shell) Status(in ShellStatus, width, height int) string {
 		if s.Auxiliary != nil {
 			hints = append(hints, terminalui.Hint{"2", "toggle " + strings.ToLower(s.AuxiliaryLabel), 0})
 		}
-		hints = append(hints, terminalui.Hints{{"o", "older child history", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}...)
+		hints = append(hints, terminalui.Hints{{"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}...)
 		return tabs.String() + "  " + hints.Render()
 	case s.Focus == 1:
 		hints = s.Auxiliary.Hints()

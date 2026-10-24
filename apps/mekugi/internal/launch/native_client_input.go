@@ -212,24 +212,22 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 		case effect.Menu != nil:
 			c.menu(*effect.Menu, nil)
 		case effect.Display != nil:
-			c.enqueue(sessionapi.NativeOperation{Display: effect.Display}, nil, nil)
+			thread := effect.Display.Thread
+			if c.displayParent != nil && thread.ID == c.event.Frame.View.Main.ID {
+				thread = c.displayParent.event.Frame.View.Main
+			}
+			c.displayThread(thread)
 		case effect.Roster != nil:
-			if agents := c.event.Frame.Agents; agents != nil {
+			if agents := c.renderer.frame.Agents; agents != nil {
 				for _, row := range agents.Roster {
 					if row.Agent.Name == effect.Roster.Caller {
-						c.enqueue(sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: c.event.Frame.View.Version, Thread: sessionpresentation.Thread{ID: row.Agent.Thread, Caller: effect.Roster.Caller}}}, nil, nil)
+						c.displayThread(sessionpresentation.Thread{ID: row.Agent.Thread, Caller: effect.Roster.Caller})
 						break
 					}
 				}
 			}
 		case effect.Interrupt != nil:
 			c.enqueue(sessionapi.NativeOperation{Interrupt: effect.Interrupt}, nil, nil)
-		case effect.History != nil:
-			if effect.CancelHistory {
-				c.enqueue(sessionapi.NativeOperation{CancelHistory: effect.History}, nil, nil)
-			} else {
-				c.enqueue(sessionapi.NativeOperation{History: effect.History}, nil, nil)
-			}
 		case effect.Side != nil:
 			c.enqueue(sessionapi.NativeOperation{Side: effect.Side}, nil, nil)
 		case effect.BTW != nil:

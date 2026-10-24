@@ -248,9 +248,16 @@ func TestPreparedNativeFollowupCannotBypassRejectedAuthority(t *testing.T) {
 		requests := NewRequests[struct{}](transport)
 		requests.preparation.Store(&PreparedThread{Parent: "parent", Settings: settings})
 		thread, _ := json.Marshal(map[string]any{"thread": control.ThreadInfo{Thread: "child", Session: "session", Path: path}})
-		for _, input := range []control.NativeInput{{Thread: "child", Run: true, Settings: &settings}, {Thread: "child", Run: true, Kind: "NEW_TASK", Message: "followup"}} {
+		for _, input := range []control.NativeInput{{Thread: "child", Run: true, Settings: &settings}, {Thread: "child", Run: true, Kind: "NEW_TASK", Message: "followup"}, {Thread: "child", Kind: "HUMAN_INPUT"}} {
 			done := make(chan error, 1)
-			go func() { _, err := requests.Input(t.Context(), input); done <- err }()
+			go func() {
+				if input.Kind == "HUMAN_INPUT" {
+					done <- requests.ConfirmPreparedInput(t.Context(), input.Thread)
+				} else {
+					_, err := requests.Input(t.Context(), input)
+					done <- err
+				}
+			}()
 			requests.Dispatch(<-requests.Calls())
 			requests.CompleteCall(appserver.Message{ID: jsontext.Value(`native-read`), Result: thread})
 			failure, ok := errors.AsType[*binding.DispatchError](<-done)

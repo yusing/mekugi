@@ -93,8 +93,9 @@ cannot import test harnesses.
 
 A feature's domain cannot import terminal views or backend APIs; only its
 `codexbinding` imports the public Codex binding package. Its descriptor declares
-`Module`, literal `Requires` identities and typed public APIs in `Deps`. The
-import check compares these declarations against all production source,
+`Module`, literal `Requires` identities and typed runtime APIs in `Deps`. Pure module
+functions need no injected service. The import check requires `Requires` to match
+production module imports and every injected module API to be declared,
 including platform-tagged files.
 
 Application session control, session presentation, session API, web UI and headless code cannot

@@ -16,7 +16,7 @@ import (
 func TestPreparedChildHumanControls(t *testing.T) {
 	var model sessionpresentation.Model
 	model.Attach(sessionpresentation.Thread{ID: "child", Caller: "/root/worker"}, false)
-	model.RestrictChildInput()
+	model.RestrictChildInput(true)
 	var conv conversation.Session
 	call := &prompt.Call{ID: "ask", Thread: "child", Sync: true, Questions: []prompt.Question{{ID: "q", Question: "VISIBLE_CHILD_QUESTION"}}}
 	conv.Questions.Add(call, false)

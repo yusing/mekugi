@@ -18,21 +18,20 @@ type modelAgent struct{ AgentFacts }
 
 func (a modelAgent) ActivityAgent() AgentFacts { return a.AgentFacts }
 
-func TestModelRecordsRetentionAndOrder(t *testing.T) {
+func TestModelRecordsRetention(t *testing.T) {
 	var model Model[modelSource, modelAgent]
 	for seq := uint64(1); seq <= 4; seq++ {
 		model.Append(modelSource{Seq: seq, Agent: "/root/a", Running: seq == 1, Body: "original"}, []Value{{Kind: "op", Verb: "Run"}})
 	}
+	revision := model.Entries[2].Revision
 	model.Mutate(2, func(record *Record[modelSource]) {
 		record.Source.Body = "updated"
 		record.Values[0].Repeated = "not returned"
 	})
-	revision := model.Entries[2].Revision
-	model.Reorder([]int{2, 0, 1, 3})
-	if moved := model.Entries[0]; moved.Source.Seq != 3 || moved.Revision != revision || moved.Values[0].Repeated != "not returned" || moved.Source.Body != "updated" {
-		t.Fatalf("reorder detached a source or revision: %+v", moved)
+	if changed := model.Entries[2]; changed.Revision <= revision || changed.Source.Seq != 3 || changed.Source.Body != "updated" || changed.Values[0].Repeated != "not returned" {
+		t.Fatalf("mutation detached a source or its values: %+v", changed)
 	}
-	if retired := model.Trim(2); !slices.Equal(retired, []uint64{3, 2}) {
+	if retired := model.Trim(2); !slices.Equal(retired, []uint64{2, 3}) {
 		t.Fatalf("retired source identities = %v", retired)
 	}
 	if model.Entries[0].Source.Seq != 1 || model.Entries[0].Values[0].Source != 1 || model.Entries[1].Source.Seq != 4 {
@@ -110,5 +109,23 @@ func TestModelSkillsAndAttachmentLifetime(t *testing.T) {
 	}
 	if other := Attached[modelSource, modelAgent](&second); other == same || len(other.Children.Entries) != 0 {
 		t.Fatal("separate attachment reused feed state")
+	}
+}
+
+func TestRosterPromotesResumedWorkBeforeCompletedSiblings(t *testing.T) {
+	model := Model[modelSource, modelAgent]{Agents: []modelAgent{
+		{Name: "/root"}, {Name: "/root/done", Final: true}, {Name: "/root/idle"},
+		{Name: "/root/working", Responding: true}, {Name: "/root/waiting", Waiting: true},
+		{Name: "/root/working/nested", Final: true},
+	}}
+	rows := model.Roster()
+	want := []string{"/root", "/root/working", "/root/working/nested", "/root/waiting", "/root/idle", "/root/done"}
+	for i, row := range rows {
+		if row.Agent.Name != want[i] {
+			t.Fatalf("row %d = %s, want %s", i, row.Agent.Name, want[i])
+		}
+	}
+	if model.Agents[1].Name != "/root/done" {
+		t.Fatal("display sorting mutated admitted observation order")
 	}
 }

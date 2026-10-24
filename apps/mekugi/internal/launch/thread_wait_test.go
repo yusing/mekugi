@@ -8,6 +8,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -157,8 +158,8 @@ func TestUISnapshotLogicalPausedChildren(t *testing.T) {
 	threads.hub = sessionapi.NewHub(t.Context(), nil)
 	defer threads.hub.Close()
 	views := nativeViews{threads: threads}
-	if children := views.descendants(&u.attached, "main"); len(children) != 0 {
-		t.Fatal("paused projection started a child runtime")
+	if children := views.descendants(&u.attached, "main"); len(children) != 1 || children["child"].Main != nil {
+		t.Fatal("paused child was not retained as a cold runtime destination")
 	}
 	syncLogicalWork(&u.attached, &u.Live, threads, *at)
 	child := u.attached.session.Agent("/root/worker")
@@ -194,5 +195,36 @@ func TestRecoveryInputRetriesWithoutAnotherHostMessage(t *testing.T) {
 			synctest.Wait()
 		}
 		appServerOneRequest(t, wire, "turn/start", "queued during recovery")
+	})
+}
+
+func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		u, threads, _ := logicalWaitUI(t, false)
+		if err := threads.shared.HostCompleted(t.Context(), "child", "child-turn", control.Completed, ""); err != nil {
+			t.Fatal(err)
+		}
+		before, err := threads.shared.Snapshot("child")
+		if err != nil {
+			t.Fatal(err)
+		}
+		u.Thread, u.Turn, u.LocalStop, u.Waiting = "child", "", "", ""
+		u.attached.threadInput = &threadInput{driver: threads.driver, caller: "/root/worker", admitted: true}
+		u.attached.conversation.Unsent = []conversationmodel.Input{{Text: "/compact"}}
+		for range 2 {
+			if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, t.Context(), false, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+				t.Fatal(err)
+			}
+			synctest.Wait()
+		}
+		after, err := threads.shared.Snapshot("child")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(after.Effects) != len(before.Effects) || after.Members["child"].Generation != before.Members["child"].Generation || after.Members["child"].Status != control.Completed {
+			t.Fatal("native compaction acquired a human assignment or changed its outcome")
+		}
+		wire := u.Host.Input.(*appServerTestInput)
+		appServerOneRequest(t, wire, "thread/compact/start", "")
 	})
 }

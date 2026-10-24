@@ -198,8 +198,12 @@ Activity and Session Presentation consume detached owner state and reuse existin
 terminal painting. View switches do not transfer or stop coordination.
 The child composer shows its admitted role, actual model and reasoning effort;
 follow-ups, settings changes and resumed facts remain scoped to that child. Missing
-facts never borrow parent settings or model defaults. Existing child input/read-only
-behavior is unchanged.
+facts never borrow parent settings or model defaults. Human input to an admitted
+idle child starts a tracked assignment with the same concurrency reservation and
+parent-result delivery as a follow-up; running child input steers its actual turn.
+Human input keeps its native user role and serializes with agent follow-ups.
+Known refusal releases a new reservation; uncertain dispatch remains retained
+until the host's exact input identity confirms it.
 
 Exit stops owned live work through Codex and retains known outcomes, pending delivery,
 wait selections and dispatch facts. Fresh resume restores paused state without child
@@ -227,7 +231,9 @@ request. Prepared child startup is an internal typed server operation, not a new
 human-control method. Children borrow the captured provider selection and use
 their own control, approval and observation owners.
 
-Parent child-display remains read-only and consumes detached publications. A
+Child display borrows its actual runtime attachment. Explicit selection of a
+retained admitted child can resume its prepared runtime without starting a work
+turn; historical and replay-only children remain read-only. A
 child’s native runtime identity is distinct from its logical task path. The
 logical tree shares an admitted retained namespace, while changes keep their
 actual author and selected workspace. Child admission establishes that namespace

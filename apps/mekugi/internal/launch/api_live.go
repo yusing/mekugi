@@ -171,7 +171,9 @@ func apiIntentRefusal(attached *attachedPresentation, control *sessioncontrol.Cl
 	if intent.Thread != "" && intent.Thread != control.Thread || intent.Workspace != "" && intent.Workspace != attached.cwd {
 		return "The requested session destination is unavailable."
 	}
-	if (intent.Action == sessionapi.Send || intent.Action == sessionapi.RunShell) && (control.Startup.Prepared != nil || attached.presentation.View().ReadOnly != sessionpresentation.Editable) {
+	view := attached.presentation.View()
+	prepared := control.Startup.Prepared != nil && (attached.threadInput == nil || !attached.threadInput.admitted)
+	if (intent.Action == sessionapi.Send || intent.Action == sessionapi.RunShell) && (prepared || view.Admission.ReadOnly || view.ReadOnly != sessionpresentation.Editable) {
 		return sessionpresentation.ErrInputUnavailable.Error()
 	}
 	return ""

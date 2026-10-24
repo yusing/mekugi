@@ -67,8 +67,6 @@ type View struct {
 	SkillsRequest   string // Agent whose active skills a roster click asked to open.
 	Unseen          int
 	StatusLabel     string
-	HistoryHint     string // Intentionally unloaded child history, separate from missing evidence.
-	HistoryOrder    bool   // Stable IDs need not follow presentation order after older-page insertion.
 	RoleColors      map[string]string
 	LivePreviews    map[string][]string // Temporary caller-local transcript replacements.
 	FeedOnly        bool

@@ -77,3 +77,34 @@ func (h *Hub) StartPrepared(request context.Context, parent, resume, workspace s
 		return "", errors.Join(errors.New("prepared runtime creation outcome is unknown"), request.Err())
 	}
 }
+
+// BindChildAttachment supplies the prepared runtime owner used by explicit
+// native navigation. It never supplies or dispatches a work assignment.
+func (s *Server) BindChildAttachment(attach func(context.Context, string, string) error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.childAttachment = attach
+}
+
+func (h *Hub) attachChild(ctx context.Context, parent, thread string, authority viewAuthority) *RPCError {
+	selected, failure := h.lookup(parent, "", authority)
+	if failure != nil {
+		return failure
+	}
+	s := selected.server
+	s.childAttach.Lock()
+	defer s.childAttach.Unlock()
+	if _, failure := h.lookup(thread, "", authority); failure == nil {
+		return nil
+	}
+	s.mu.Lock()
+	attach := s.childAttachment
+	s.mu.Unlock()
+	if attach == nil {
+		return rpcFailure(404, "The selected session has no resumable child runtime.")
+	}
+	if err := attach(ctx, parent, thread); err != nil {
+		return rpcFailure(409, err.Error())
+	}
+	return nil
+}

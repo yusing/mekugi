@@ -53,32 +53,3 @@ func (v *activityAdapter) bind(terminal *terminalUI) *activityui.View {
 	}
 	return v.View
 }
-
-func (v *activityAdapter) insertHistory(before uint64, belongs func(sessionpresentation.ActivityEntry) bool) {
-	terminal := &terminalUI{Attachment: &terminalsession.Attachment{}}
-	v.bind(terminal)
-	insertActivityHistory(&terminal.main.attached, terminal.main.shell, v.ActivitySource, v.View, before, belongs)
-}
-
-func insertActivityHistory(attached *attachedPresentation, terminal *terminalsession.Attachment, source *sessionpresentation.ActivitySource, view *activityui.View, before uint64, belongs func(sessionpresentation.ActivityEntry) bool) {
-	publishActivity(attached, terminal)
-	anchor := view.AnchorHistory(before)
-	for {
-		demands := view.OutputDemands()
-		if len(demands) == 0 {
-			break
-		}
-		view.Hydrate(source.ResolveOutputDemands(demands))
-		anchor = view.AnchorHistory(before)
-	}
-	source.InsertHistoryPage(before, belongs)
-	publishActivity(attached, terminal)
-	for {
-		view.HistoryInserted(anchor)
-		demands := view.OutputDemands()
-		if len(demands) == 0 {
-			break
-		}
-		view.Hydrate(source.ResolveOutputDemands(demands))
-	}
-}

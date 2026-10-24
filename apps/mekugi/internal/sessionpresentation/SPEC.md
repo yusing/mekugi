@@ -58,9 +58,12 @@ no storage and keeps no second accounting state. Zero contributions preserve the
 remaining caption and roster values; replacement and backward replay use the
 new attachment's facts.
 
-Displaying a child changes no execution identity and cancels no host work. Main
-remains the input, question and approval destination. Child display makes the
-composer read-only; returning to Main restores its existing draft. The single side
+Displaying a live admitted child attaches its actual runtime without starting or
+canceling work. Its composer, questions, approvals and settings belong to that
+child. Main and child drafts remain isolated; returning to either restores its
+existing draft. Explicit selection can resume an admitted cold child runtime without starting
+work; historical and replay-only views remain read-only.
+The single side
 conversation is a separately admitted editable destination with its own draft and
 captured settings. Independent native children use their runtime's detached feed,
 caption, roster lifecycle and output/detail owner. Displayed paths resolve in that
@@ -69,10 +72,8 @@ Closing or changing the child view releases observation without ending execution
 The side header target uses the same display intent and transcript
 as Main and subagents; closing returns display to Main without changing Main work.
 [Replay](../../../../modules/sessionreplay/SPEC.md) is read-only even while Main is
-displayed. Display and pagination intents name their view version and target
-identity, so stale actions cannot affect a replacement session. History targets and
-loading state are published with the session view; consumers do not reconstruct
-eligible children from terminal roster state. Interruption names Main’s observed
+displayed. Display intents name their view version and target identity, so stale actions
+cannot affect a replacement session. Interruption names Main’s observed
 turn or pending start and explicitly chooses restoration or expedition of
 uncommitted steers. Ctrl-C carries that captured identity and cancels queued
 compaction before interrupting Main. The same admission applies to every consumer, and replay
@@ -293,8 +294,9 @@ as one operation, including return from a displayed child to Main. Unrelated sta
 or output progress does not invalidate the reference. Replay rejects it. Rejected
 admission preserves both the displayed thread and input.
 Admission precedes taking the draft or reading attachment sources, so a stale
-intent cannot clear, capture or submit newer input. Main and the selected side own separate input destinations;
-a displayed subagent, replay or a prompt-owned editor cannot admit ordinary input.
+intent cannot clear, capture or submit newer input. Main, live admitted children
+and the selected side own separate input destinations. Observational child views,
+replay and prompt-owned editors cannot admit ordinary input.
 Restoration and archival preserve the editable draft until submission is admitted.
 Pending session replacement accepts locally stacked input without sending it to the
 old thread; successful replacement carries that input into the new attachment.
@@ -342,8 +344,8 @@ to the confirmed name on failure. Confirmed names survive resume/fork.
 [Session naming](../../../../modules/sessionnaming/SPEC.md) owns automatic eligibility
 and generation; candidates remain hidden until host confirmation.
 
-Main's composer shows its turn state and user-only feedback, or a read-only label
-for a displayed child. Its caption uses the displayed thread's model, effort,
+The live composer's runtime supplies its turn state and user-only feedback;
+observational child views retain a read-only label. Its caption uses the displayed thread's model, effort,
 effective tier, context and output rate; missing child settings never borrow Main's.
 Side and One-off use that same caption projection. Their confirmed fork settings,
 live settings updates, effective per-thread tier and usage stay scoped to their
@@ -352,7 +354,7 @@ conversation retires its displayed metrics.
 Child captions additionally show the admitted role alongside that child's
 host-confirmed model and reasoning effort. Settings changes, follow-ups and resumed
 facts update the same caption; no parent setting or inferred default fills a missing
-child fact. Child read-only/input behavior remains unchanged.
+child fact.
 Known context uses the latest host last-turn total and context window independently
 of cumulative usage. Before usage arrives it shows 0% used; an absent window shows
 only the known count. Host reports, including compaction reductions, replace the
@@ -431,7 +433,7 @@ remains independent; there is no HTML dashboard or startup dashboard announcemen
 
 ## Acceptance
 
-Display, read-only admission and history controls remain usable without a terminal
+Display and read-only admission remain usable without a terminal
 consumer. Acceptance includes retry, cancellation, replacement and replay isolation,
 live history reconciliation and retained terminal presentation. Offline replay
 does not establish live host coverage.

@@ -153,6 +153,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	api.BindRequests(control.Requests)
 	var threadChanges <-chan struct{}
 	if threads != nil {
+		api.BindChildAttachment(threads.AttachChild)
 		policy := binding.ThreadAdmissionPolicy{}
 		control.Requests.ThreadPolicy = &policy
 		control.Startup.Prepared = threads.start
@@ -1299,7 +1300,11 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				attached.childSource.Apply(sessionpresentation.ActivityEvent{Agents: attached.session.Roster()})
 			}
 			if audience != nil {
-				audience.Attach(control.Thread)
+				if control.Startup.Prepared != nil {
+					audience.AttachRuntime(control.Thread)
+				} else {
+					audience.Attach(control.Thread)
+				}
 				attached.bindRepetitions(audience, control.Thread)
 			}
 			// Resumed history is applied once the roster is read, so Main can

@@ -265,7 +265,7 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 			}
 			continue
 		case result := <-p.ui.fileReads:
-			if p.ui.detailFiles.loadedMarkdownFile(&p.ui.session, p.ui.presentation, p.ui.cwd, p.ui.shell, result) {
+			if p.ui.detailFiles.loadedMarkdownFile(&p.ui.session, p.ui.presentation, p.ui.presentation.View().SourceWorkspace(), p.ui.shell, result) {
 				if err := paint(); err != nil {
 					return err
 				}

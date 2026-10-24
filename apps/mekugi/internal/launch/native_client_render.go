@@ -81,7 +81,11 @@ func (c *nativeClientRenderer) update(frame sessionapi.NativeFrame, draft conver
 		u.Agents.MainSummary = u.Transcript.SummaryBlocks(frame.Agents.MainSummary)
 	}
 	u.Agents.MainStatus = u.Transcript.StatusLabel
-	u.Agents.Update(agents, display)
+	agentDisplay := display
+	if view.Displayed.ID == view.Main.ID && view.Info.Caller != "" {
+		agentDisplay.Caller = view.Info.Caller
+	}
+	u.Agents.Update(agents, agentDisplay)
 	u.Transcript.Hydrate(frame.MainOutput)
 	u.Agents.Hydrate(frame.AgentOutput)
 	for _, painter := range []*activityui.View{u.Transcript, u.Agents} {

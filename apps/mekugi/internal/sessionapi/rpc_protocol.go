@@ -55,6 +55,7 @@ type RPCInitialize struct {
 // the client before dispatch so early publications can be correlated safely.
 type RPCParams struct {
 	Thread       string         `json:"thread,omitempty"`
+	Parent       string         `json:"parent,omitempty"`
 	Startup      string         `json:"startup,omitempty"`
 	Subscription string         `json:"subscription,omitempty"`
 	Body         jsontext.Value `json:"body,omitempty"`

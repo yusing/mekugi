@@ -72,7 +72,6 @@ func TestActivityPublicationReusesUnchangedInputs(t *testing.T) {
 				record.Values = ActivityContent(record.Source).Values()
 			})
 		}},
-		{"reorder", func() { source.Reorder([]int{1, 0}) }},
 		{"remove", func() { source.Remove(0, 1) }},
 		{"replacement", func() { source.Model = new(activitypresentation.Model[ActivityEntry, ActivityAgent]) }},
 	} {

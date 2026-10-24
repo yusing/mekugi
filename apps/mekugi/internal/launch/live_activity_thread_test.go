@@ -111,7 +111,7 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 				reasoning.Native = &sessionpresentation.NativeItem{Wait: &activitypresentation.Value{Kind: "progress", Body: reasoning.Text}}
 			}
 			v.appendEntry(reasoning, parseLiveActivity(reasoning))
-			v.Model.Reorder([]int{0, 2, 1})
+			v.Entries = []sessionpresentation.ActivityRecord{v.Entries[0], v.Entries[2], v.Entries[1]}
 			v.Runs = nil
 			feed := v.RenderFeed(width, 40)
 			plain := threadPlain(feed)

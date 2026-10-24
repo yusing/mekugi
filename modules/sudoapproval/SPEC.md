@@ -40,7 +40,7 @@ The shared `--shell-guard` toggle controls this support and remote-write approva
 Codex's approval policy remains independent. It does
 not grant sandbox permissions or change sudo policy. It requires the interactive
 UI, the installed `mekugi-exec` helper and access to its local approval channel;
-headless and passthrough commands retain their existing behavior. Direct sudo
+headless and noninteractive commands retain their existing behavior. Direct sudo
 names and executable paths through supported command wrappers are instrumented
 by the native command hook. Shell functions keep their existing lookup.
 Supported nested shell command strings retain sudo guarding through environment-

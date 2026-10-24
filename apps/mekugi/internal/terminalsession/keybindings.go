@@ -51,7 +51,6 @@ func Keybindings(width, height int) []string {
 			{"ctrl+e", "Default / events / all"},
 			{"pgup / pgdn", "Scroll"},
 			{"esc", "Back to bottom"},
-			{"ctrl+b o", "Older child history"},
 		}},
 	}
 	lines := []string{"", "  " + bold + "Keyboard shortcuts" + terminalui.Reset, ""}

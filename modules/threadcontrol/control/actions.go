@@ -57,6 +57,13 @@ func (s *Service) PrepareAction(ctx context.Context, caller Identity, target, ki
 			result = *old
 			return unchanged
 		}
+		if kind == "followup" {
+			for _, effect := range tree.Effects {
+				if effect.Target == receiver.Thread && effect.Kind == "human" && hostOwned(effect.State) {
+					return errors.New("human input requires host settlement before follow-up")
+				}
+			}
+		}
 		if kind == "followup" && receiver.Status == Paused {
 			for i := range tree.Effects {
 				creation := &tree.Effects[i]
@@ -103,87 +110,95 @@ func (s *Service) PrepareAction(ctx context.Context, caller Identity, target, ki
 // another durable action; successful injection alone never starts a receiver.
 func (s *Service) ClaimEffect(ctx context.Context, caller, id string) (result *Effect, err error) {
 	err = s.update(ctx, caller, func(tree *Tree, _ *Member) error {
-		effect := tree.Effect(caller, id)
-		if effect == nil {
-			return errors.New("unknown control intent")
-		}
-		if effect.State != "pending" && effect.State != "queued" {
-			return unchanged
-		}
-		member := tree.edit(effect.Target)
-		effect = tree.Effect(caller, id)
-		if effect.Kind == "interrupt" {
-			for i := range tree.Effects {
-				queued := &tree.Effects[i]
-				if queued.Target != effect.Target || queued.Generation != member.Generation || queued.State != "pending" {
-					continue
-				}
-				if queued.Kind == "create" {
-					queued.Outcome = Interrupted
-				}
-				if effectStep(*queued) == "initial" || queued.Kind == "followup" {
-					queued.State = "canceled"
-				}
-			}
-		}
-		if member != nil && member.Wait != nil && effect.Kind != "wake" && hostOwned(member.Wait.State) {
-			return nil
-		}
-		before := true
-		for _, other := range tree.Effects {
-			if other.Caller == caller && other.ID == id {
-				before = false
-				continue
-			}
-			if effect.Target == "" || other.Target != effect.Target {
-				continue
-			}
-			if effect.Kind == "interrupt" && member.HostRunning && effectStep(other) == "initial" {
-				continue
-			}
-			if hostOwned(other.State) || before && other.State == "pending" {
-				return nil
-			}
-		}
-		switch effectStep(*effect) {
-		case "create", "assignment_input", "admit", "message", "final":
-		case "wake":
-			if member.Status != Waiting || member.HostRunning || member.Generation != effect.Generation {
-				effect.State = "canceled"
-				return nil
-			}
-		case "initial", "followup":
-			if !member.AudienceAdmitted || !member.Reserved() || member.Generation != effect.Generation {
-				return errors.New("execution has no active logical audience reservation")
-			}
-			if member.HostRunning && member.Stop != nil && member.Stop.Turn == member.Turn {
-				return unchanged
-			}
-		case "interrupt":
-			if !member.HostRunning {
-				effect.State = "confirmed"
-				if member.Reserved() {
-					tree.finish(member, Interrupted, "")
-				}
-				return nil
-			}
-		default:
-			return errors.New("unknown effect kind")
-		}
-		effect.State = "dispatching"
-		if member != nil {
-			effect.Turn = member.Turn
-		}
-		result = new(*effect)
-		if effect.Kind == "wake" {
-			result.Wake = tree.wakeResult(member.Wait)
-		}
-		return nil
+		result, err = tree.claimEffect(caller, id)
+		return err
 	})
 	if err == nil && result != nil && result.Child != nil {
 		result.Child, err = detach(result.Child)
 	}
 	return
+}
+
+func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
+	effect := tree.Effect(caller, id)
+	if effect == nil {
+		return nil, errors.New("unknown control intent")
+	}
+	if effect.State != "pending" && effect.State != "queued" {
+		return nil, unchanged
+	}
+	member := tree.edit(effect.Target)
+	effect = tree.Effect(caller, id)
+	if effect.Kind == "interrupt" {
+		for i := range tree.Effects {
+			queued := &tree.Effects[i]
+			if queued.Target != effect.Target || queued.Generation != member.Generation || queued.State != "pending" {
+				continue
+			}
+			if queued.Kind == "create" {
+				queued.Outcome = Interrupted
+			}
+			if effectStep(*queued) == "initial" || queued.Kind == "followup" {
+				queued.State = "canceled"
+			}
+		}
+	}
+	if member != nil && member.Wait != nil && effect.Kind != "wake" && hostOwned(member.Wait.State) {
+		return nil, nil
+	}
+	before := true
+	for _, other := range tree.Effects {
+		if other.Caller == caller && other.ID == id {
+			before = false
+			continue
+		}
+		if effect.Target == "" || other.Target != effect.Target {
+			continue
+		}
+		if effect.Kind == "interrupt" && member.HostRunning && effectStep(other) == "initial" {
+			continue
+		}
+		if hostOwned(other.State) || before && other.State == "pending" {
+			return nil, nil
+		}
+	}
+	switch effectStep(*effect) {
+	case "create", "assignment_input", "admit", "message", "final":
+	case "wake":
+		if member.Status != Waiting || member.HostRunning || member.Generation != effect.Generation {
+			effect.State = "canceled"
+			return nil, nil
+		}
+	case "initial", "followup", "human":
+		if !member.AudienceAdmitted || !member.Reserved() || member.Generation != effect.Generation {
+			return nil, errors.New("execution has no active logical audience reservation")
+		}
+		if member.HostRunning && member.Stop != nil && member.Stop.Turn == member.Turn {
+			return nil, unchanged
+		}
+	case "interrupt":
+		if !member.HostRunning {
+			effect.State = "confirmed"
+			if member.Reserved() {
+				tree.finish(member, Interrupted, "")
+			}
+			return nil, nil
+		}
+	default:
+		return nil, errors.New("unknown effect kind")
+	}
+	effect.State = "dispatching"
+	if member != nil {
+		effect.Turn = member.Turn
+		if effect.Kind == "human" && !member.HostRunning {
+			effect.Turn = ""
+		}
+	}
+	result := new(*effect)
+	if effect.Kind == "wake" {
+		result.Wake = tree.wakeResult(member.Wait)
+	}
+	return result, nil
 }
 
 func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, receipt Receipt) error {
@@ -224,6 +239,13 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 					}
 				}
 			}
+			if (effect.Kind == "human" || effect.Kind == "followup") && member != nil && member.Generation == effect.Generation && !member.HostRunning && member.Reserved() {
+				if receipt.Uncertain {
+					member.Status = Uncertain
+				} else {
+					tree.finish(member, Failed, receipt.Error)
+				}
+			}
 			return nil
 		}
 		effect.State = "confirmed"
@@ -244,7 +266,7 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 			if effect.Outcome == Interrupted {
 				effect.State = "canceled"
 			}
-		case "initial", "followup", "wake":
+		case "initial", "followup", "wake", "human":
 			if effect.Kind == "wake" {
 				effect.State = "completed"
 			}

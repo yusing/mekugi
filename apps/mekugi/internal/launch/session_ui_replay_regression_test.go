@@ -2,11 +2,14 @@ package launch
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 
@@ -202,5 +205,36 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 	second := ansi.Strip(replayPlaybackTestPaint(t, p, 120, 28))
 	if first != second || !p.At.Equal(end) || p.Position != p.Until {
 		t.Fatal("paused final frame continues rolling output or changes recorded clock")
+	}
+}
+
+func TestReplayChildFileLinksUseSelectedWorkspace(t *testing.T) {
+	p := replayPlaybackTestNew(t)
+	childWorkspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(childWorkspace, "relative.md"), []byte("child document"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p.Source.Workspaces = map[string]string{"root": "/main", "child": childWorkspace}
+	p.reset()
+	p.ui.session.RegisterThread(observation.Thread{ID: "child", Path: "/root/worker"})
+	if err := p.ui.presentation.Display(sessionpresentation.DisplayIntent{Version: p.ui.presentation.View().Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/worker"}}); err != nil {
+		t.Fatal(err)
+	}
+	p.publish()
+	view := p.ui.presentation.View()
+	if view.SourceWorkspace() != childWorkspace || view.Info.Workspace != p.Source.Cwd || view.ReadOnly != sessionpresentation.Replay {
+		t.Fatalf("child replay source or input boundary: %+v", view)
+	}
+	u := p.ui
+	if !u.detailFiles.openMarkdownFile(&u.session, u.presentation, view.SourceWorkspace(), u.childSource, u.shell, u.agents, "relative.md") {
+		t.Fatal("child link was not admitted")
+	}
+	select {
+	case result := <-u.fileReads:
+		if !u.loadedMarkdownFile(&u.session, u.presentation, view.SourceWorkspace(), u.shell, result) || u.shell.Dialog.File.Source != "child document" {
+			t.Fatal("selected child link opened another workspace")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("child file read did not finish")
 	}
 }

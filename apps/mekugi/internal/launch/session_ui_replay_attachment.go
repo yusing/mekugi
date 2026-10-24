@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"cmp"
 	"io"
 	"iter"
 	"os"
@@ -30,6 +31,15 @@ type replayOwners struct {
 	activity     *activitymodel.Service
 }
 
+// workspace preserves the selected root's admitted workspace while child
+// observations use the independently retained runtime directory.
+func (s *replayAttachment) workspace(thread string) string {
+	if thread == s.presentation.View().Main.ID {
+		return s.cwd
+	}
+	return cmp.Or(s.workspaces[thread], s.cwd)
+}
+
 // sessionView publishes the scope's detached session values at the recorded time.
 func (s *replayAttachment) sessionView(at time.Time) sessionpresentation.View {
 	processes := 0
@@ -37,8 +47,9 @@ func (s *replayAttachment) sessionView(at time.Time) sessionpresentation.View {
 		processes++
 	}
 	return s.presentation.Publish(sessionpresentation.MainInputs{
-		Info:         sessionpresentation.MainInfo{Workspace: s.cwd, Skills: s.source.ActiveSkills()["Main"]},
-		RecordedTurn: s.Turn, Conversation: s.conversation, Feedback: &s.feedback, Processes: processes,
+		Info:               sessionpresentation.MainInfo{Workspace: s.cwd, Skills: s.source.ActiveSkills()["Main"]},
+		DisplayedWorkspace: s.workspace(s.presentation.View().Displayed.ID),
+		RecordedTurn:       s.Turn, Conversation: s.conversation, Feedback: &s.feedback, Processes: processes,
 	}, sessionCaption(&s.session, s.presentation, sessionpresentation.Caption{}, nil), at)
 }
 
@@ -50,7 +61,7 @@ func (s *replayAttachment) apply(o replayOwners, source *playback.Source, at tim
 	}
 	switch {
 	case e.Hook != nil:
-		entry := hookEntry(&s.session, o.activity, s.cwd, e.ThreadID, *e.Hook, false)
+		entry := hookEntry(&s.session, o.activity, s.workspace(e.ThreadID), e.ThreadID, *e.Hook, false)
 		entry.Seq = s.session.Activity().NextSequence()
 		sessionpresentation.ApplyActivity(s.source, s.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 	case e.Kind == observation.ProviderStarted:
@@ -64,7 +75,7 @@ func (s *replayAttachment) apply(o replayOwners, source *playback.Source, at tim
 		if s.message(source, at, e.Event) {
 			return
 		}
-		result := sessionpresentation.ReduceObservation(&s.session, s.presentation, s.source, s.childSource, s.transcript, o.activity.Outputs(s.session.Scope()), sessionpresentation.ObservationInput{Event: e.Event, Text: binding.RetainedTranscript(e.Event), Main: source.Thread, Selected: s.Turn, Workspace: s.cwd})
+		result := sessionpresentation.ReduceObservation(&s.session, s.presentation, s.source, s.childSource, s.transcript, o.activity.Outputs(s.session.Scope()), sessionpresentation.ObservationInput{Event: e.Event, Text: binding.RetainedTranscript(e.Event), Main: source.Thread, Selected: s.Turn, Workspace: s.workspace(e.ThreadID)})
 		if result.Publish && s.shell != nil {
 			s.streams.Deliver(result.Deliveries, s.view, s.agents)
 			s.publishActivity()
@@ -114,7 +125,7 @@ func (s *replayAttachment) message(source *playback.Source, at time.Time, e obse
 	if changes.Suppress {
 		return true
 	}
-	deliveries := sessionpresentation.ProjectMessage(&s.session, s.source, s.childSource, s.transcript, e.ThreadID == source.Thread, sessionpresentation.ObservationInput{Event: e, Text: text, Main: source.Thread, Workspace: s.cwd})
+	deliveries := sessionpresentation.ProjectMessage(&s.session, s.source, s.childSource, s.transcript, e.ThreadID == source.Thread, sessionpresentation.ObservationInput{Event: e, Text: text, Main: source.Thread, Workspace: s.workspace(e.ThreadID)})
 	if s.shell != nil {
 		s.streams.Deliver(deliveries, s.view, s.agents)
 	}
@@ -131,6 +142,7 @@ type replayAttachment struct {
 	transcript          observation.Transcript
 	feedback            noticepresentation.Model
 	cwd, Turn           string
+	workspaces          map[string]string
 	detailFiles
 	view, agents *activityui.View
 	shell        *terminalsession.Attachment
@@ -138,7 +150,7 @@ type replayAttachment struct {
 }
 
 func (o replayOwners) attachment(source *playback.Source) *replayAttachment {
-	u := &replayAttachment{cwd: source.Cwd}
+	u := &replayAttachment{cwd: source.Cwd, workspaces: source.Workspaces}
 	u.session.Start(source.Thread)
 	u.presentation = o.views.Session(u.session.Scope())
 	u.presentation.Attach(sessionpresentation.Thread{ID: source.Thread, Caller: "/root"}, true)
@@ -177,7 +189,7 @@ func (p *uiReplayPlayback) publish() {
 	view := u.sessionView(p.At)
 	u.shell.Main.Update(view)
 	u.shell.Prompts.Update(view)
-	u.view.Painter.FileLink, u.agents.Painter.FileLink = markdownFileLinks(u.cwd), markdownFileLinks(u.cwd)
+	u.view.Painter.FileLink, u.agents.Painter.FileLink = markdownFileLinks(view.SourceWorkspace()), markdownFileLinks(view.SourceWorkspace())
 	u.view.Painter.DeferFileLinks, u.agents.Painter.DeferFileLinks = true, true
 	u.publishActivity()
 }
@@ -260,7 +272,7 @@ func (p *uiReplayPlayback) outputIntent(intent terminalsession.DialogIntent) {
 			u.feedback.Set(err.Error(), true, p.At)
 		}
 	case terminalsession.DialogOpenLink:
-		u.detailFiles.openMarkdownFile(&u.session, u.presentation, u.cwd, u.activitySource(u.shell.Dialog.View), u.shell, u.shell.Dialog.View, intent.Text)
+		u.detailFiles.openMarkdownFile(&u.session, u.presentation, u.presentation.View().SourceWorkspace(), u.activitySource(u.shell.Dialog.View), u.shell, u.shell.Dialog.View, intent.Text)
 	}
 	p.publish()
 }

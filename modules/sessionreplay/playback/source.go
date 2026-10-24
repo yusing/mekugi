@@ -61,6 +61,7 @@ type Source struct {
 	Start, End       time.Time
 	Events           []Event
 	Threads          map[string]string
+	Workspaces       map[string]string
 	Missing          []string
 	Unsupported      map[string]int
 	Items, Providers int
@@ -80,7 +81,7 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 	if s.decoder.Read == nil {
 		return nil, errors.New("replay source is unavailable")
 	}
-	r := &Source{Threads: make(map[string]string), Unsupported: make(map[string]int)}
+	r := &Source{Threads: make(map[string]string), Workspaces: make(map[string]string), Unsupported: make(map[string]int)}
 	store := s.history.Attach(options.HistoryDirectory)
 	rng := rand.New(rand.NewPCG(options.Seed, options.Seed^0xa0761d6478bd642f))
 	queue := []string{options.Path}
@@ -108,6 +109,7 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 			return nil, errors.New("duplicate thread rollout")
 		}
 		loaded[thread] = true
+		r.Workspaces[thread] = decoded.Cwd
 		if r.Thread == "" {
 			r.Thread, r.Cwd = thread, decoded.Cwd
 			r.Threads[thread] = "/root"

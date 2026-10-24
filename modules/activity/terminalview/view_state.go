@@ -233,10 +233,6 @@ func (v *View) forget(seq uint64) {
 }
 
 func (v *View) InvalidateRuns(seq uint64) {
-	if v.HistoryOrder {
-		v.Runs = nil
-		return
-	}
 	for key := range v.Runs {
 		if seq <= key.Last && (v.Conversation || key.First <= seq) {
 			delete(v.Runs, key)

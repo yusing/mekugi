@@ -195,7 +195,7 @@ for admission and deployment details.
 Use `grok login --oauth` or `XAI_API_KEY` (takes precedence); Codex credentials stay separate.
 The default follows `[models].default` in `~/.grok/config.toml`, then the latest standard model (currently `grok-4.7`);
 `-m`/`-c model=...` overrides it. Standalone IDs need `grok:`; `mekugi grok` uses plain IDs.
-Subagents use fresh context (`fork_turns="none"`). Build Fast needs OAuth;
+Subagents inherit full history by default; `fork_turns="none"` starts fresh. Build Fast needs OAuth;
 encrypted OpenAI history cannot switch to Grok. See [Grok requirements](providers/grok/SPEC.md).
 
 ### OpenCode Go and Zen
@@ -285,8 +285,8 @@ diagnostics go to stderr. Run/shutdown failure exits nonzero. `codex exec` is un
 
 Main starts at full width, with Agents below. Toggle Diff to split the view;
 close it to restore full width. Click a child to switch the displayed transcript.
-Subagent transcripts are read-only. Selecting Side uses its separate composer;
-returning to Main restores Main’s draft. Narrow terminals show one pane.
+Live subagents use their own composer, prompts and settings. Main, children and
+Side retain separate drafts; historical views remain read-only. Narrow terminals show one pane.
 
 | Action | Shortcut |
 | --- | --- |
@@ -357,10 +357,12 @@ See [saved-review controls](modules/changehistory/SPEC.md#terminal-review) and
 
 ### Agents pane
 
-Click a child to read its full transcript; click Main to return. Input stays with
-Main for subagents; the Side tab selects a separate editable conversation.
+Click a child to attach its runtime and read its full transcript; click Main to return.
+Each runtime keeps its own composer draft, prompts and settings. The child composer
+shows its role, model, reasoning effort and service tier. Historical views remain
+read-only. The Side tab selects a separate editable conversation.
 In Agents, arrows navigate threads and `a` returns to Main. In the transcript,
-Esc resumes following; `Ctrl-B o` loads older child history. The roster shows active time, round trips,
+Esc resumes following. The roster shows active time, round trips,
 throughput, usage, estimated API cost, and composed captured edits. Usage/rates survive
 resume while retained; `≥` marks lower bounds, `?` uncertain edits, unavailable metrics stay blank.
 Main's throughput appears beside composer context. Herdr is optional; redirected

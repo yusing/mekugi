@@ -486,7 +486,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 	}
 
 	// A new server and host process recover only retained identities. Attaching a
-	// resumed parent must leave its child cold until explicit follow-up admission.
+	// resumed parent leaves its child cold until explicit selection or input.
 	childView.Close()
 	connection.Close()
 	if err := cmd.Process.Signal(os.Interrupt); err != nil {
@@ -533,10 +533,27 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 			break
 		}
 	}
-	if attached, err := connection.Attach(ctx, child); err == nil {
+	if attached, err := sessionapi.OpenNative(ctx, client, "http://mekugi", child); err == nil {
 		attached.Close()
 		t.Fatal("cold recovery automatically restarted a child")
 	}
+	attachedChild, err := connection.Attach(ctx, child)
+	if err != nil {
+		t.Fatal("explicit cold child selection:", err)
+	}
+	coldChild, err := attachedChild.Next()
+	if err != nil {
+		t.Fatal("cold child publication:", err)
+	}
+	if coldChild.Frame.View.Main.ID != child || coldChild.Frame.View.Caption.Model != "gpt-6-sol" || coldChild.Frame.View.Caption.Effort != "low" || !fullHistory && coldChild.Frame.View.Caption.Role == "" {
+		t.Fatalf("cold child identity=%q settings=%+v", coldChild.Frame.View.Main.ID, coldChild.Frame.View.Caption)
+	}
+	fixture.mu.Lock()
+	if fixture.calls[parent] != counts[parent] || fixture.calls[child] != counts[child] {
+		t.Errorf("child selection started inference: %v", fixture.calls)
+	}
+	fixture.mu.Unlock()
+	attachedChild.Close()
 	_, err = connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
 		Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: root, Operation: sessionpresentation.SubmitComposer},
 		Draft:  composer.Draft{Text: "Resume the retained worker with new work."},

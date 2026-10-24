@@ -25,6 +25,7 @@ type NativeFrame struct {
 	View              sessionpresentation.View  `json:"view"`
 	Main              *activity.Publication     `json:"main"`
 	Agents            *activity.Publication     `json:"agents"`
+	ChildThreads      []string                  `json:"childThreads,omitzero"`
 	Review            *changes.ReviewView       `json:"review"`
 	Live              []preview.Preview         `json:"live"`
 	LiveScope         preview.Scope             `json:"liveScope"`
@@ -88,32 +89,30 @@ func (e NativeEvent) Target() NativeTarget {
 // NativeOperation uses existing semantic intents, not terminal keys. Exactly
 // one operation is admitted by transport; its owner applies ordinary policy.
 type NativeOperation struct {
-	SaveDraft     *string                                  `json:"saveDraft,omitzero"`
-	Completion    *NativeEditorInput                       `json:"completion,omitzero"`
-	Preferences   *NativePreferenceUpdate                  `json:"preferences,omitzero"`
-	Focused       *bool                                    `json:"focused,omitzero"`
-	Editor        *NativeEditorInput                       `json:"editor,omitzero"`
-	Command       *string                                  `json:"command,omitzero"`
-	Composer      *NativeComposerInput                     `json:"composer,omitzero"`
-	Menu          *sessionpresentation.MenuAction          `json:"menu,omitzero"`
-	Resume        *sessionpresentation.ResumeAction        `json:"resume,omitzero"`
-	Panel         *sessionpresentation.PanelAction         `json:"panel,omitzero"`
-	Display       *sessionpresentation.DisplayIntent       `json:"display,omitzero"`
-	History       *sessionpresentation.HistoryIntent       `json:"history,omitzero"`
-	Interrupt     *sessionpresentation.InterruptIntent     `json:"interrupt,omitzero"`
-	Side          *sessionpresentation.CloseSideIntent     `json:"side,omitzero"`
-	BTW           *sessionpresentation.CloseSideIntent     `json:"btw,omitzero"`
-	Answers       *NativeAnswers                           `json:"answers,omitzero"`
-	Approval      *sessionpresentation.ApprovalIntent      `json:"approval,omitzero"`
-	Output        *NativeOutputDemand                      `json:"output,omitzero"`
-	DetailOutput  *sessionpresentation.DetailOutputRequest `json:"detailOutput,omitzero"`
-	Details       *NativeDetailRequest                     `json:"details,omitzero"`
-	CloseDetails  *sessionpresentation.DetailID            `json:"closeDetails,omitzero"`
-	CancelHistory *sessionpresentation.HistoryIntent       `json:"cancelHistory,omitzero"`
-	Notice        *NativeNoticeAction                      `json:"notice,omitzero"`
-	Receipt       *NativeReceipt                           `json:"receipt,omitzero"`
-	Recovery      *NativeRecoveryInput                     `json:"recovery,omitzero"`
-	Reference     *sessionpresentation.ReferenceIntent     `json:"reference,omitzero"`
+	SaveDraft    *string                                  `json:"saveDraft,omitzero"`
+	Completion   *NativeEditorInput                       `json:"completion,omitzero"`
+	Preferences  *NativePreferenceUpdate                  `json:"preferences,omitzero"`
+	Focused      *bool                                    `json:"focused,omitzero"`
+	Editor       *NativeEditorInput                       `json:"editor,omitzero"`
+	Command      *string                                  `json:"command,omitzero"`
+	Composer     *NativeComposerInput                     `json:"composer,omitzero"`
+	Menu         *sessionpresentation.MenuAction          `json:"menu,omitzero"`
+	Resume       *sessionpresentation.ResumeAction        `json:"resume,omitzero"`
+	Panel        *sessionpresentation.PanelAction         `json:"panel,omitzero"`
+	Display      *sessionpresentation.DisplayIntent       `json:"display,omitzero"`
+	Interrupt    *sessionpresentation.InterruptIntent     `json:"interrupt,omitzero"`
+	Side         *sessionpresentation.CloseSideIntent     `json:"side,omitzero"`
+	BTW          *sessionpresentation.CloseSideIntent     `json:"btw,omitzero"`
+	Answers      *NativeAnswers                           `json:"answers,omitzero"`
+	Approval     *sessionpresentation.ApprovalIntent      `json:"approval,omitzero"`
+	Output       *NativeOutputDemand                      `json:"output,omitzero"`
+	DetailOutput *sessionpresentation.DetailOutputRequest `json:"detailOutput,omitzero"`
+	Details      *NativeDetailRequest                     `json:"details,omitzero"`
+	CloseDetails *sessionpresentation.DetailID            `json:"closeDetails,omitzero"`
+	Notice       *NativeNoticeAction                      `json:"notice,omitzero"`
+	Receipt      *NativeReceipt                           `json:"receipt,omitzero"`
+	Recovery     *NativeRecoveryInput                     `json:"recovery,omitzero"`
+	Reference    *sessionpresentation.ReferenceIntent     `json:"reference,omitzero"`
 }
 
 // NativeEditorInput is ephemeral request metadata for an operation that may
@@ -346,10 +345,10 @@ func (f NativeFrame) withoutEditors() NativeFrame {
 func (o NativeOperation) valid() bool {
 	count := 0
 	for _, present := range []bool{o.SaveDraft != nil, o.Completion != nil, o.Preferences != nil, o.Focused != nil, o.Command != nil, o.Composer != nil, o.Menu != nil, o.Resume != nil,
-		o.Panel != nil, o.Display != nil, o.History != nil, o.Interrupt != nil,
+		o.Panel != nil, o.Display != nil, o.Interrupt != nil,
 		o.Side != nil, o.BTW != nil, o.Answers != nil,
 		o.Approval != nil, o.Output != nil, o.DetailOutput != nil, o.Details != nil,
-		o.CloseDetails != nil, o.CancelHistory != nil, o.Notice != nil, o.Receipt != nil, o.Reference != nil, o.Recovery != nil} {
+		o.CloseDetails != nil, o.Notice != nil, o.Receipt != nil, o.Reference != nil, o.Recovery != nil} {
 		if present {
 			count++
 		}

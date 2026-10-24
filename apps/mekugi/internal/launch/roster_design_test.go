@@ -56,8 +56,8 @@ func TestRosterDesignSeparateHeaderTreeAndMetrics(t *testing.T) {
 	v.Coverage = ""
 	v.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root", Role: "root-role"},
-		{Name: "/root/a", Role: "explorer", Turns: 1, Roundtrips: 1},
-		{Name: "/root/b", Responding: true},
+		{Name: "/root/a", Role: "explorer", Turns: 1, Roundtrips: 1, Responding: true},
+		{Name: "/root/b"},
 		{Name: "/root/a/x"}, {Name: "/root/a/y"},
 	}, Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/a/x", Kind: "error", Text: "failed", Observed: now}}})
 	rows := v.testRoster()
@@ -127,7 +127,7 @@ func TestRosterDesignCompactViewportAndWheel(t *testing.T) {
 	if !strings.Contains(strings.Join(first, "\n"), "d") {
 		t.Fatalf("selection not in compact viewport: %q", first)
 	}
-	if firstText := strings.Join(first, "\n"); !strings.Contains(firstText, "↓ 4 more · 1 ◐ · 1 !") || strings.Contains(firstText, "↑") {
+	if firstText := strings.Join(first, "\n"); !strings.Contains(firstText, "↓ 3 more · 1 !") || !strings.Contains(firstText, "↑ 2 more · 2 ◐") {
 		t.Errorf("hidden directional status counts = %q", firstText)
 	}
 	start := v.RosterOffset

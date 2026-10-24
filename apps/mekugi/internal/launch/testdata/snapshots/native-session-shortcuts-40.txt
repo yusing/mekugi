@@ -32,9 +32,9 @@
   ctrl+b e              Next live item
   ctrl+b q / !          Questions / erro
   ctrl+b ← / →          Resize panes
+
   Transcript
   ctrl+e       Default / events / all
   pgup / pgdn  Scroll
   esc          Back to bottom
-  ctrl+b o     Older child history
   ? / esc  Close shortcuts

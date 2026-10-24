@@ -76,6 +76,7 @@ func applyInputRestoration(attached *attachedPresentation, terminal *terminalses
 // editQueued returns all locally waiting input to the composer as one stack.
 // Already-sent steers remain host-owned until committed or interrupted.
 func editQueued(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time) {
+	attached.threadInput.reset()
 	parts := attached.conversation.TakeWaiting()
 	control.Compaction.CancelQueued(true)
 	restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, parts...)
@@ -102,8 +103,10 @@ func flushInput(attached *attachedPresentation, terminal *terminalsession.Attach
 	if len(next.Batch.Parts) == 0 && !next.Continue {
 		return nil
 	}
-	if !next.Steer || control.LocalStop != "" {
-		ready, err := attached.threadInput.prepare(parent, control.Thread)
+	childInput := attached.threadInput != nil && attached.threadInput.caller != "" && attached.threadInput.caller != "/root"
+	compacting := len(next.Batch.Parts) == 1 && next.Batch.Parts[0].Text == "/compact"
+	if !compacting && (!next.Steer || control.LocalStop != "" || childInput) {
+		ready, err := attached.threadInput.prepare(parent, control.Thread, control.Requests)
 		if err != nil {
 			restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, next.Batch.Parts...)
 			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
@@ -137,6 +140,12 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 	}
 	s := conversationmodel.Submission{Draft: composer.Join(conversationmodel.Drafts(parts)...), Parts: parts}
 	id := rand.Text()
+	if admission := attached.threadInput; admission != nil && admission.ready {
+		id = admission.id
+		if admission.effect != nil {
+			steer = admission.effect.Turn != ""
+		}
+	}
 	input, err := prepareSubmissionInput(&s.Draft, id)
 	if err != nil {
 		restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, parts...)
@@ -149,6 +158,9 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 	request := sessioncontrol.InputRequest{Thread: control.Thread, ID: id, Input: input}
 	if steer {
 		request.Turn = control.Turn
+		if admission := attached.threadInput; admission != nil && admission.effect != nil {
+			request.Turn = admission.effect.Turn
+		}
 	} else {
 		request.Tier = selectedServiceTier(tiers, model, control.Thread)
 		if len(parts) > 0 && len(binding.QuestionReplies(s.Text)) == 0 {
@@ -173,6 +185,11 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 			notice = attached.feedback.Text + " " + notice
 		}
 		setNotice(&attached.feedback, terminal, presentationTime(clock), notice, true)
+	}
+	if admission := attached.threadInput; admission != nil && admission.effect != nil {
+		effect, driver := admission.effect, admission.driver
+		request.Settled = func(turn string, err error) { driver.HumanInputAcknowledged(effect.Target, effect.ID, turn, err) }
+		admission.effect = nil // The host request owner now retains the outcome.
 	}
 	if _, err := control.Requests.SendInput(request, appServerRequest{}); err != nil {
 		applyInputEffects(attached, terminal, questions, approvals, picker, control.Turn, clock, attached.presentation.ApplyInputResult(&control.Live, attached.conversation, control.SubmissionFailed()))

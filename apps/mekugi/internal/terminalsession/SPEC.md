@@ -56,7 +56,8 @@ module state. Backward replay retains terminal focus and Diff visibility.
 Descriptor-selected roster and auxiliary views define available placements.
 Absent placements have no rows, selectors or pointer targets; restored focus on
 an absent placement returns to Main. Main and child Conversation remain readable
-without a roster contribution, and Main retains ordinary input ownership.
+without a roster contribution. Each selected live runtime retains its own input
+ownership.
 The [saved-Diff view](../../../../modules/changehistory/SPEC.md#saved-review-presentation)
 supplies interaction and source-selection values; this attachment owns its terminal
 emulation surface and final frame delivery.
@@ -260,9 +261,13 @@ Ctrl-B then 1 selects Main, 2 toggles Diff, and 3 focuses Agents. Ctrl-B PgUp/Pg
 scrolls the displayed transcript or its active live source; the wheel targets the
 pane under the pointer. Pane titles and status hints expose focus, scroll and
 unread state. Main's title uses the sanitized host name, truncated to available
-width without an unnamed placeholder. Child display hides and preserves Main's
-draft, disabling typing, paste, submission, settings and keyboard interruption;
-navigation and copying remain available. Reference returns to Main before insertion.
+width without an unnamed placeholder. Live admitted child selection preserves
+Main's draft and attaches the child's own composer, settings and prompt owners.
+Typing, paste, submission and interruption target that runtime. Ctrl-B then 1
+returns to the retained Main view. Selecting an admitted cold child can resume
+its prepared runtime without starting work. Historical and replay-only child
+views stay read-only, with navigation and copying available; their Reference
+action returns to Main before insertion. Live child references target the child's own editor.
 Clicking an agent name preserves pane focus and leaves an open Diff intact;
 the Agents selector or Ctrl-B then 3 explicitly focuses the roster.
 A blank row separates the composer

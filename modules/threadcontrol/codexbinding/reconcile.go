@@ -25,7 +25,7 @@ func (d *Driver) Reconcile(ctx context.Context, thread string) error {
 			kind = action.Phase
 		}
 		switch kind {
-		case "message", "final", "assignment_input", "wake", "initial", "followup", "interrupt":
+		case "message", "final", "assignment_input", "wake", "initial", "followup", "interrupt", "human":
 			err = d.native().Confirm(ctx, nativeInput(tree, action))
 			if err == nil {
 				err = d.control.EffectAcknowledged(context.WithoutCancel(ctx), action.Caller, action.ID, control.Receipt{Reconciled: true, Phase: action.Phase})
@@ -41,12 +41,12 @@ func (d *Driver) Reconcile(ctx context.Context, thread string) error {
 }
 
 // HumanInput is awaited on the control request worker before host dispatch.
-func (d *Driver) HumanInput(ctx context.Context, thread string) error {
+func (d *Driver) HumanInput(ctx context.Context, thread, id string) (*control.Effect, error) {
 	if _, ok := d.control.Member(thread); !ok {
-		return nil
+		return nil, nil
 	}
 	if err := d.Reconcile(ctx, thread); err != nil {
-		return err
+		return nil, err
 	}
-	return d.control.HumanInput(ctx, thread)
+	return d.control.HumanInput(ctx, thread, id)
 }

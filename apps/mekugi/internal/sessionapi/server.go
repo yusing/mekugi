@@ -101,26 +101,28 @@ type Server struct {
 	activeThread  func(string) bool
 	reserveThread func(string) error
 
-	mu             sync.Mutex
-	requests       threadcontrol.Runtime
-	published      bool
-	attachment     uint64
-	session        Session
-	playback       *Playback
-	input          *Input
-	prompts        jsontext.Value
-	status         jsontext.Value
-	main           feed
-	agents         feed
-	roster         jsontext.Value
-	review         jsontext.Value
-	reviewRevision uint64
-	livePreviews   jsontext.Value
-	subscribers    map[chan publication]struct{}
-	identity       Summary
-	caption        sessionpresentation.Caption
-	summary        []byte // The latest summary event.
-	summaryChanged chan struct{}
+	mu              sync.Mutex
+	requests        threadcontrol.Runtime
+	childAttachment func(context.Context, string, string) error
+	childAttach     sync.Mutex
+	published       bool
+	attachment      uint64
+	session         Session
+	playback        *Playback
+	input           *Input
+	prompts         jsontext.Value
+	status          jsontext.Value
+	main            feed
+	agents          feed
+	roster          jsontext.Value
+	review          jsontext.Value
+	reviewRevision  uint64
+	livePreviews    jsontext.Value
+	subscribers     map[chan publication]struct{}
+	identity        Summary
+	caption         sessionpresentation.Caption
+	summary         []byte // The latest summary event.
+	summaryChanged  chan struct{}
 }
 
 // ActiveThread queries the supplied execution registry. It grants no ownership

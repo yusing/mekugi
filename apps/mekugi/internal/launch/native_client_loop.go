@@ -151,6 +151,11 @@ type nativeClient struct {
 	ctx                    context.Context
 	workers                sync.WaitGroup
 	connection             *sessionapi.NativeConnection
+	displayParent          *nativeClient
+	attachParent           *nativeClient
+	rosterOwn              *activity.Publication
+	rosterSource           *activity.Publication
+	rosterProjection       *activity.Publication
 	renderer               nativeClientRenderer
 	event                  sessionapi.NativeEvent
 	editors                map[string]*composer.Editor
@@ -274,6 +279,21 @@ func (c *nativeClient) refreshView(now time.Time) {
 		prompt.Draft = editor.Draft.Editable()
 	}
 	frame := c.event.Frame
+	if parent := c.displayParent; parent != nil && !parent.closed && parent.event.Frame.Agents != nil {
+		// The family roster is navigation only. Transcript, editor, prompts,
+		// settings and every mutation remain owned by this runtime attachment.
+		if c.rosterOwn != frame.Agents || c.rosterSource != parent.event.Frame.Agents {
+			agents := activity.Publication{}
+			if frame.Agents != nil {
+				agents = *frame.Agents
+			}
+			agents.Roster = parent.event.Frame.Agents.Roster
+			agents.MainSummary = parent.event.Frame.Agents.MainSummary
+			agents.LineCounts, agents.NetCounts = parent.event.Frame.Agents.LineCounts, parent.event.Frame.Agents.NetCounts
+			c.rosterOwn, c.rosterSource, c.rosterProjection = frame.Agents, parent.event.Frame.Agents, &agents
+		}
+		frame.Agents = c.rosterProjection
+	}
 	if details, ok := c.localDetails.DetailView(c.localDetailID); ok {
 		frame.Details = &sessionapi.NativeDetails{View: details}
 	}
@@ -297,6 +317,9 @@ func (c *nativeClient) refreshView(now time.Time) {
 		frame.View.Status.SetFeedback(sessionpresentation.Label{Text: c.feedback.Text, Alert: c.feedback.Alert}, 0)
 	}
 	c.renderer.update(frame, draft, prompt, now)
+	if parent := c.displayParent; parent != nil && !parent.closed {
+		c.renderer.terminal.Agents.MainStatus = terminalsession.StatusText(parent.event.Frame.View.Status.State)
+	}
 	c.dirty = true
 }
 

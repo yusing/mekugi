@@ -61,7 +61,7 @@ func (c *NativeConnection) Attach(ctx context.Context, thread string) (*NativeCo
 	}
 	c.scope.refs++
 	c.scope.mu.Unlock()
-	subscription, err := c.scope.rpc.Subscribe(ctx, "view/attach", RPCParams{Thread: thread})
+	subscription, err := c.scope.rpc.Subscribe(ctx, "view/attach", RPCParams{Thread: thread, Parent: c.thread})
 	if err != nil {
 		c.scope.release()
 		return nil, nativeRPCFailure(err)

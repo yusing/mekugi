@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"maps"
 	"slices"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
@@ -18,76 +19,49 @@ func (n *nativeViews) descendants(execution *attachedPresentation, parent string
 		return nil
 	}
 	children := n.threads.hub.Descendants(parent)
+	liveChildren := make(map[string]sessionapi.Descendant, len(children))
 	for _, member := range n.threads.shared.Descendants(parent) {
 		id := member.Thread
 		execution.session.RegisterThread(observation.Thread{ID: id, Path: member.Task, Role: member.Role})
 		agent := execution.session.Activity().Agent(id)
 		agent.ParentThread = member.Parent
-		execution.session.Lifecycle(id).Paused = member.Status == control.Paused || member.Status == control.Uncertain
+		lifecycle := execution.session.Lifecycle(id)
+		lifecycle.Paused = member.Status == control.Paused || member.Status == control.Uncertain
+		lifecycle.Responding = member.Status == control.Working || member.Status == control.Pending
+		lifecycle.Waiting = member.Status == control.Waiting
+		lifecycle.Final = member.Status == control.Completed
 		child, live := children[id]
 		if !live {
+			liveChildren[id] = sessionapi.Descendant{Session: sessionapi.Session{Thread: id}}
 			execution.session.Lifecycle(id).RestoreFinal(member.Status == control.Completed)
 			continue
 		}
+		liveChildren[id] = child
 		agent.SettingsLive = true
 		agent.Settings = preferences.Evidence{Model: child.Caption.Model, Effort: child.Caption.Effort, Tier: child.Caption.Tier, TierKnown: child.Caption.Tier != ""}
 		agent.ContextKnown, agent.ContextTokens, agent.ContextWindow = child.Caption.ContextKnown, child.Caption.ContextTokens, child.Caption.ContextWindow
 	}
 	sessionpresentation.ApplyActivity(execution.source, execution.childSource, nil, execution.session.Roster())
-	return children
+	return liveChildren
 }
 
 // A projection retains the immutable source identities that produced it.
 // Unchanged child snapshots must not force the transport to re-encode history.
 type nativeChildProjection struct {
-	source, main, agents, publication *activity.Publication
-	displayed                         sessionpresentation.Thread
-	children                          map[string]sessionapi.Descendant
+	source, publication *activity.Publication
+	children            map[string]sessionapi.Descendant
 }
 
 func (n *nativeViews) publishChild(v *nativeSessionView, frame *sessionapi.NativeFrame, children map[string]sessionapi.Descendant) {
 	if n.threads == nil {
 		return
 	}
-	displayed := frame.View.Displayed
-	if displayed.ID == frame.View.Main.ID || displayed == frame.View.SideThread {
-		displayed = sessionpresentation.Thread{}
-	}
-	if v.childThread != displayed.ID {
-		v.child.Close()
-		v.child, v.childThread = nil, displayed.ID
-	}
-	child, available := children[displayed.ID]
-	if available && v.child == nil {
-		var err error
-		v.child, err = n.threads.hub.Observe(v.ctx, frame.View.Main.ID, displayed.ID)
-		if err != nil {
-			frame.View.Loading = err.Error()
-		}
-	}
-	if v.child != nil {
-		event, err := v.child.Snapshot()
-		if err != nil {
-			frame.View.Loading = err.Error()
-		}
-		if event.Frame.Main != nil {
-			available = true
-			child.Main, child.Agents, child.Caption = event.Frame.Main, event.Frame.Agents, event.Frame.View.Caption
-			child.Session.Workspace = event.Frame.View.Info.Workspace
-			frame.AgentOutput = event.Frame.MainOutput
-		}
-	}
-	if available {
-		role := frame.View.Caption.Role
-		frame.View.Caption = child.Caption
-		frame.View.Caption.Role = role
-		frame.View.DisplayedWorkspace = child.Session.Workspace
-	}
+	frame.ChildThreads = slices.Sorted(maps.Keys(children))
 	if frame.Agents == nil {
 		return
 	}
 	previous := v.childProjection
-	same := previous.source == frame.Agents && previous.displayed == displayed && previous.main == child.Main && previous.agents == child.Agents && len(previous.children) == len(children)
+	same := previous.source == frame.Agents && len(previous.children) == len(children)
 	if same {
 		for id, runtime := range children {
 			if previous.children[id].Agents != runtime.Agents {
@@ -105,9 +79,6 @@ func (n *nativeViews) publishChild(v *nativeSessionView, frame *sessionapi.Nativ
 	for i := range publication.Roster {
 		row := &publication.Roster[i]
 		runtime, ok := children[row.Agent.Thread]
-		if row.Agent.Thread == displayed.ID && available {
-			runtime, ok = child, true
-		}
 		if !ok || runtime.Agents == nil {
 			continue
 		}
@@ -127,16 +98,11 @@ func (n *nativeViews) publishChild(v *nativeSessionView, frame *sessionapi.Nativ
 			break
 		}
 	}
-	if available && child.Main != nil {
-		changed = true
-		publication.Entries = childEntries(child.Main.Entries, displayed.Caller)
-		publication.LastSeq = child.Main.LastSeq
-	}
 	projected := frame.Agents
 	if changed {
 		projected = &publication
 	}
-	v.childProjection = nativeChildProjection{source: frame.Agents, main: child.Main, agents: child.Agents, displayed: displayed, children: children, publication: projected}
+	v.childProjection = nativeChildProjection{source: frame.Agents, children: children, publication: projected}
 	frame.Agents = projected
 }
 

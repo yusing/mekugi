@@ -72,7 +72,7 @@ func (in FrameInput) Status() ShellStatus {
 	}
 	responding, _ := in.Agents.StatusCounts(in.Agents.Roster())
 	status := ShellStatus{
-		Child: in.Main.session.Displayed.ID != in.Main.session.Main.ID, Responding: responding,
+		Child: in.Main.session.Displayed.ID != in.Main.session.Main.ID || in.Main.session.Info.Caller != "" && in.Main.session.Info.Caller != "/root", Responding: responding,
 		DiffUnseen: in.DiffUnseen, Prefix: in.Prefix, LiveCount: in.Live.Live(), Locked: in.Main.InterruptLocked,
 	}
 	if side := in.Main.session.Side; side != nil && in.Main.session.SideThread.ID != "" {
@@ -93,7 +93,6 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	out.SelectionRetained = true
 	view, shell := in.Main.session, in.Shell
 	out.Source = in.SourceContext()
-	in.Agents.HistoryHint = in.Main.historyHint()
 	out.Prompt = in.Prompts.Update(view)
 	in.Main.PromptRect, in.Main.ContentPainted = Rect{}, false
 	in.Main.NoticeDetails, in.Main.NoticeDismiss = Rect{}, Rect{}
@@ -115,6 +114,9 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	}
 	plan := shell.Plan(width, height, len(roster))
 	content := ShellContent{Roster: roster, MainName: "Main"}
+	if view.Info.Caller != "" && view.Info.Caller != "/root" {
+		content.MainName = "Thread"
+	}
 	if plan.Left.W >= 4 && plan.Left.H >= 1 {
 		iw, ih := plan.Layout.Main.W, plan.Layout.Main.H
 		dockRows := 0
@@ -146,6 +148,9 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		}
 		if plan.Framed {
 			content.MainDetail = in.Main.titleDetail(shell.Focus == 0)
+			if view.Info.Caller != "" && view.Info.Caller != "/root" {
+				content.MainDetail = in.Agents.Painter.Agent(view.Info.Caller)
+			}
 			if set := view.Info.Skills; set != nil {
 				content.MainSkills = activityui.SkillLabel(set)
 				if in.Transcript.SkillsHover == "Main" {
@@ -159,7 +164,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 					content.MainName, content.MainDetail = view.Side.Label, ""
 				}
 				content.MainSkills = ""
-				content.MainRight = strings.TrimSpace(scrollLabel(in.Agents) + " " + in.Agents.HistoryHint)
+				content.MainRight = strings.TrimSpace(scrollLabel(in.Agents))
 			}
 		}
 	}

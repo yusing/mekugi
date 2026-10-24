@@ -70,7 +70,7 @@ func (a *Audience) rootLocked(thread string) string {
 		if node == nil || node.conflicted {
 			return ""
 		}
-		if !node.child {
+		if !node.child || a.supplements.Attached(thread) {
 			return thread
 		}
 		thread = node.parent
@@ -153,6 +153,12 @@ func (a *Audience) Detach() {
 // App-server notifications supply the live tool and lifecycle display.
 func (a *Audience) Attach(root string) {
 	a.Observe(root, "", "/root", false)
+	a.AttachRuntime(root)
+}
+
+// AttachRuntime borrows an independent runtime without assigning a root-shaped
+// identity. Its admitted request supplies the canonical logical membership.
+func (a *Audience) AttachRuntime(root string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.supplements.Attach(root)

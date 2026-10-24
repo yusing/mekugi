@@ -88,7 +88,7 @@ func TestEditorActionsTargetPromptAndExcludeSecrets(t *testing.T) {
 
 func TestPreparedChildAllowsPromptEditing(t *testing.T) {
 	c := newStatusConsumer()
-	c.model().RestrictChildInput()
+	c.model().RestrictChildInput(true)
 	call := &prompt.Call{ID: "ask", Thread: "main", Sync: true, Questions: []prompt.Question{{ID: "question"}}}
 	c.conversation.Questions.Add(call, false)
 	c.conversation.Questions.Open(call)
@@ -248,7 +248,7 @@ func TestInputDestinationLifetimeIgnoresProgressAndLabels(t *testing.T) {
 
 func TestPreparedChildRejectsBoundOrdinaryInput(t *testing.T) {
 	c := newStatusConsumer()
-	c.model().RestrictChildInput()
+	c.model().RestrictChildInput(true)
 	v := c.publish(sessionpresentation.Caption{})
 	intent := sessionpresentation.ComposerIntent{Version: v.Version, Thread: v.Main.ID, Target: v.EditorTarget(), Operation: sessionpresentation.SubmitComposer}
 	if err := c.model().AdmitBoundInput(intent); !errors.Is(err, sessionpresentation.ErrInputUnavailable) {

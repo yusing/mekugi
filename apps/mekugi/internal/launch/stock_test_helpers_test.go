@@ -41,9 +41,6 @@ func testCodeModeAdditionalTools(description string) map[string]any {
 				map[string]any{"type": "custom", "name": "exec", "description": description, "format": map[string]any{"type": "text"}},
 				map[string]any{"type": "function", "name": "wait"},
 			}},
-			map[string]any{"type": "namespace", "name": "collaboration", "tools": []any{
-				map[string]any{"type": "function", "name": "send_message"},
-			}},
 		},
 	}
 }

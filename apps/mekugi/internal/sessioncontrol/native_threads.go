@@ -67,18 +67,13 @@ func nativeContent(input control.NativeInput) (item map[string]any, name, output
 }
 
 func (r *Requests[T]) Input(ctx context.Context, input control.NativeInput) (string, error) {
-	if prepared := r.preparation.Load(); input.Run && prepared != nil {
-		info, err := r.Thread(ctx, input.Thread)
-		if err == nil {
-			_, err = prepared.Confirm(info)
+	if input.Kind == "HUMAN_INPUT" {
+		return "", &binding.DispatchError{Outcome: binding.NotDispatched, Cause: errors.New("human input belongs to the ordinary input request owner")}
+	}
+	if input.Run {
+		if err := r.ConfirmPreparedInput(ctx, input.Thread); err != nil {
+			return "", err
 		}
-		if err == nil {
-			err = confirmNativeSettings(info.Thread, info.Path, prepared.Settings)
-		}
-		if err != nil {
-			return "", &binding.DispatchError{Outcome: binding.NotDispatched, Cause: err}
-		}
-		r.preparation.CompareAndSwap(prepared, nil)
 	}
 	item, name, output := nativeContent(input)
 	params := map[string]any{"threadId": input.Thread}
@@ -118,6 +113,25 @@ func (r *Requests[T]) Input(ctx context.Context, input control.NativeInput) (str
 	return result.Turn.ID, err
 }
 
+// ConfirmPreparedInput runs on a request worker before either agent or human
+// input may execute a prepared child. The host event loop remains available.
+func (r *Requests[T]) ConfirmPreparedInput(ctx context.Context, thread string) error {
+	if prepared := r.preparation.Load(); prepared != nil {
+		info, err := r.Thread(ctx, thread)
+		if err == nil {
+			_, err = prepared.Confirm(info)
+		}
+		if err == nil {
+			err = confirmNativeSettings(info.Thread, info.Path, prepared.Settings)
+		}
+		if err != nil {
+			return &binding.DispatchError{Outcome: binding.NotDispatched, Cause: err}
+		}
+		r.preparation.CompareAndSwap(prepared, nil)
+	}
+	return nil
+}
+
 func (r *Requests[T]) Confirm(ctx context.Context, input control.NativeInput) error {
 	info, err := r.Thread(ctx, input.Thread)
 	if err != nil {
@@ -128,6 +142,9 @@ func (r *Requests[T]) Confirm(ctx context.Context, input control.NativeInput) er
 
 // ConfirmNativeInput reads retained host facts without starting a runtime or work.
 func ConfirmNativeInput(ctx context.Context, path string, input control.NativeInput) error {
+	if input.Kind == "HUMAN_INPUT" {
+		return binding.ConfirmUserInput(ctx, input.Thread, path, input.ID)
+	}
 	if input.Kind == "INTERRUPT" {
 		return binding.ConfirmTerminalTurn(ctx, input.Thread, path, input.TargetTurn)
 	}

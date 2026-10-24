@@ -24,7 +24,7 @@ type ActivityEntry struct {
 	Completed     time.Time `json:"-"` // Admitted completion; terminal reveal keeps its own clock.
 
 	Native      *NativeItem         `json:"-"` // In-process app-server lifecycle input, not a provider observation.
-	Assignment  *ActivityAssignment `json:"-"` // Validated native NEW_TASK, not an ordinary message.
+	Assignment  *ActivityAssignment `json:"-"` // Admitted Thread Control assignment, not an ordinary message.
 	Message     *ActivityMessage    `json:"-"` // A directed message, for a reply entry.
 	Start       *ActivityStart      `json:"-"` // A child's start, for a start entry.
 	ActivitySeq uint64              `json:"-"` // Main excerpt's exact entry in Activity, never a question target.

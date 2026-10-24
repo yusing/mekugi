@@ -187,7 +187,7 @@ func TestHumanInputSupersedesOnlyUnsentWake(t *testing.T) {
 				_, err = s.ClaimEffect(t.Context(), "root", caller.Call)
 				must(t, err)
 			}
-			err = s.HumanInput(t.Context(), "root")
+			_, err = s.HumanInput(t.Context(), "root", "human")
 			if (err != nil) != dispatched {
 				t.Fatal("human admission did not preserve dispatched ownership", err)
 			}
@@ -242,7 +242,7 @@ func TestCanceledSubscriptionRetainsHumanControlOfLocalStop(t *testing.T) {
 			if interrupt {
 				_, err = s.HumanInterrupt(t.Context(), caller.Thread, caller.Call)
 			} else {
-				err = s.HumanInput(t.Context(), caller.Thread)
+				_, err = s.HumanInput(t.Context(), caller.Thread, "human")
 			}
 			must(t, err)
 			member, _ := s.Member("root")

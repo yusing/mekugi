@@ -45,6 +45,10 @@ func ConfirmTerminalTurn(ctx context.Context, thread, path, turn string) error {
 	return rollout.ConfirmTerminalTurn(ctx, thread, path, turn)
 }
 
+func ConfirmUserInput(ctx context.Context, thread, path, id string) error {
+	return rollout.ConfirmUserInput(ctx, thread, path, id)
+}
+
 type RolloutReader func(context.Context, string, func(RolloutEvent) error) (Rollout, error)
 
 // RolloutSource exposes distinct decoded consumers of the same offline mechanism.

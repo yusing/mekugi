@@ -41,6 +41,7 @@ func (v Version) SameAttachment(current Version) bool {
 type MainInfo struct {
 	Skills                                           activitypresentation.SkillSet
 	Workspace, Title, BackendVersion, ApprovalCaller string
+	Caller                                           string
 }
 
 type View struct {
@@ -62,7 +63,6 @@ type View struct {
 	Draft              conversationmodel.DraftView
 	PromptDraft        conversationmodel.PromptDraftView
 	Admission          InputAdmission
-	History            HistoryDock
 	Interrupt          sessioncontrol.InterruptTarget
 	InterruptAvailable bool
 	Side               *SideToken
@@ -83,11 +83,6 @@ func (v View) SourceWorkspace() string {
 type DisplayIntent struct {
 	Version Version
 	Thread  Thread
-}
-
-type HistoryIntent struct {
-	Version Version
-	Thread  string
 }
 
 var ErrStaleIntent = errors.New("The action's original session or target is unavailable.")
@@ -121,7 +116,6 @@ type Model struct {
 	Status              MainState
 	compacting, polling [2]string
 	view                View
-	lastChild           string
 	destinationRevision uint64
 	ownerRevision       uint64
 	replay              bool
@@ -193,11 +187,10 @@ func (m *Model) readOnly() ReadOnly {
 	return Editable
 }
 
-// RestrictChildInput keeps an independently executing child observational for
-// human views, including the interval before its logical admission completes.
-func (m *Model) RestrictChildInput() {
-	if !m.childRuntime {
-		m.childRuntime = true
+// RestrictChildInput keeps prepared children observational until logical admission.
+func (m *Model) RestrictChildInput(restricted bool) {
+	if m.childRuntime != restricted {
+		m.childRuntime = restricted
 		m.view.Version.Revision++
 	}
 }
@@ -262,7 +255,6 @@ func cloneView(v View) View {
 	v.Pending.Queued = slices.Clone(v.Pending.Queued)
 	v.Draft.Draft = v.Draft.Draft.Clone()
 	v.PromptDraft.Draft = v.PromptDraft.Draft.Clone()
-	v.History.Entries = slices.Clone(v.History.Entries)
 	return v
 }
 
@@ -288,9 +280,6 @@ func (m *Model) Display(intent DisplayIntent) error {
 			m.destinationRevision = m.view.Version.Revision
 		}
 	}
-	if intent.Thread.ID != m.view.Main.ID && intent.Thread.ID != m.view.SideThread.ID {
-		m.lastChild = intent.Thread.ID
-	}
 	return nil
 }
 
@@ -307,12 +296,4 @@ func (m *Model) RenameCaller(old, caller string) {
 	if changed {
 		m.view.Version.Revision++
 	}
-}
-
-// PreferredHistory is independent of the renderer's highlighted roster row.
-func (m *Model) PreferredHistory() string {
-	if m.view.Displayed.ID != m.view.Main.ID {
-		return m.view.Displayed.ID
-	}
-	return m.lastChild
 }

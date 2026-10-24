@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 	"time"
@@ -123,14 +124,6 @@ func (m *Model[S, A]) Remove(from, to int) {
 	m.Entries = slices.Delete(m.Entries, from, to)
 	m.skills = nil
 }
-func (m *Model[S, A]) Reorder(indices []int) {
-	m.Revision++
-	records := slices.Clone(m.Entries)
-	for i, old := range indices {
-		m.Entries[i] = records[old]
-	}
-	m.skills = nil
-}
 func (m *Model[S, A]) Latest(name string) int {
 	for i, entry := range slices.Backward(m.Entries) {
 		if entry.Source.ActivityFacts().Agent == name {
@@ -167,7 +160,8 @@ type RosterRow[A AgentSource] struct {
 }
 
 // Source: internal/router/live_activity_view.go:497:531@[ebde9ad5].
-// Roster preserves sibling observation order and promotes unobserved parents' children.
+// Roster keeps active siblings before idle and completed work, preserving
+// observation order within each state and promoting unobserved parents' children.
 func (m *Model[S, A]) Roster() []RosterRow[A] {
 	known := make(map[string]bool, len(m.Agents))
 	for _, agent := range m.Agents {
@@ -179,10 +173,34 @@ func (m *Model[S, A]) Roster() []RosterRow[A] {
 		}
 		return ""
 	}
+	priorities := make(map[string]int, len(m.Agents))
+	for _, agent := range m.Agents {
+		facts := agent.ActivityAgent()
+		priority := 1
+		if facts.Responding || facts.Waiting {
+			priority = 0
+		} else if facts.Final {
+			priority = 2
+		}
+		priorities[facts.Name] = priority
+	}
+	// Keep a completed ancestor beside its active descendants rather than
+	// relegating the entire branch below later siblings.
+	for _, agent := range m.Agents {
+		name := agent.ActivityAgent().Name
+		priority := priorities[name]
+		for under := parent(name); under != ""; under = parent(under) {
+			priorities[under] = min(priorities[under], priority)
+		}
+	}
+	agents := slices.Clone(m.Agents)
+	slices.SortStableFunc(agents, func(a, b A) int {
+		return cmp.Compare(priorities[a.ActivityAgent().Name], priorities[b.ActivityAgent().Name])
+	})
 	var rows []RosterRow[A]
 	var visit func(string, int)
 	visit = func(under string, depth int) {
-		for _, agent := range m.Agents {
+		for _, agent := range agents {
 			if parent(agent.ActivityAgent().Name) == under {
 				rows = append(rows, RosterRow[A]{agent, depth})
 				visit(agent.ActivityAgent().Name, depth+1)

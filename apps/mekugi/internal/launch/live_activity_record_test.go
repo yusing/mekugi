@@ -13,7 +13,7 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func TestLiveActivityRecordRetentionAndHistoryInsertion(t *testing.T) {
+func TestLiveActivityRecordRetention(t *testing.T) {
 	v := newActivityAdapter()
 	v.ChildrenOnly = true
 	v.testAudience()
@@ -33,20 +33,19 @@ func TestLiveActivityRecordRetentionAndHistoryInsertion(t *testing.T) {
 	v.RenderFeed(90, 24)
 	before := v.LastSeq
 	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
-		{Seq: before + 1, Agent: "/root/worker", Kind: "text", Text: "Older page one", Observed: now},
-		{Seq: before + 2, Agent: "/root/worker", Kind: "text", Text: "Older page two", Observed: now},
+		{Seq: before + 1, Agent: "/root/worker", Kind: "text", Text: "New retained item one", Observed: now},
+		{Seq: before + 2, Agent: "/root/worker", Kind: "text", Text: "New retained item two", Observed: now},
 	}})
 	if len(v.Entries) != liveActivityFeedLimit || v.Entries[0].Source.Seq != 3 {
 		t.Fatal("retention did not discard only the two oldest records")
 	}
-	v.insertHistory(before, func(entry sessionpresentation.ActivityEntry) bool { return entry.Seq == 3 })
 	i := slices.IndexFunc(v.Entries, func(record sessionpresentation.ActivityRecord) bool { return record.Source.Seq == 3 })
-	if i != 2 || v.Entries[i].Revision != revision || v.Entries[i].Source.Native.Item != "command" {
-		t.Fatal("history insertion detached retained presentation identity")
+	if i != 0 || v.Entries[i].Revision != revision || v.Entries[i].Source.Native.Item != "command" {
+		t.Fatal("retention detached presentation identity")
 	}
 	blocks := v.blocks(i)
 	if len(blocks) != 2 || blocks[0].Label != "`printf result`" || !slices.Equal(blocks[0].Tail, []string{"result"}) || blocks[1].Body != "output not returned to the model" {
-		t.Fatalf("retention or reordering lost source output or its annotation: %+v", blocks)
+		t.Fatalf("retention lost source output or its annotation: %+v", blocks)
 	}
 	assertLiveActivityCacheFresh(t, v)
 }

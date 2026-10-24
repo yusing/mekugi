@@ -269,16 +269,16 @@ func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 	}
 	// A laptop-height pane at least 100 columns wide keeps cards beside the feed.
 	side := plainLines(view.Render(105, 16, now))
-	if !strings.HasPrefix(side[1], " ✓ inventory") || !strings.Contains(side[1], " │ ") || !strings.Contains(side[2], "→ main") ||
-		!strings.Contains(side[5], "Checking the") || !strings.Contains(side[7], "└ probe") {
+	if !strings.HasPrefix(side[1], " ◐ review") || !strings.Contains(side[1], " │ ") || !strings.Contains(side[2], "Checking the") ||
+		!strings.Contains(side[5], "Read b.go") || !strings.Contains(side[4], "└ probe") {
 		t.Fatalf("side layout = %q", side)
 	}
 	// Narrower panes compact before hiding agents.
 	stacked := plainLines(view.Render(70, 16, now))
-	if !strings.Contains(stacked[3], "probe") || !strings.HasPrefix(stacked[4], "───") {
+	if !strings.Contains(stacked[2], "probe") || !strings.HasPrefix(stacked[4], "───") {
 		t.Fatalf("stacked layout = %q", stacked)
 	}
-	if strip := plainLines(view.Render(80, 6, now)); !strings.HasPrefix(strip[1], "✓ inventory  ◐ review  · review/probe") {
+	if strip := plainLines(view.Render(80, 6, now)); !strings.HasPrefix(strip[1], "◐ review  · review/probe  ✓ inventory") {
 		t.Fatalf("strip layout = %q", strip)
 	}
 	// A message body is clipped in the shared feed and shown in full in only mode.

@@ -101,7 +101,11 @@ func (r *Requests[T]) CompleteCall(message appserver.Message) bool {
 		return false
 	}
 	request, ok := r.Lookup(string(message.ID))
-	if !ok || request.call == nil {
+	if !ok {
+		return false
+	}
+	r.completeInput(string(message.ID), request, message)
+	if request.call == nil {
 		return false
 	}
 	r.Take(string(message.ID))
@@ -117,6 +121,9 @@ func (r *Requests[T]) CompleteCall(message appserver.Message) bool {
 func (r *Requests[T]) Close() { r.closeOnce.Do(func() { close(r.closed) }) }
 
 func (request Request[T]) retireCall() {
+	if request.input != nil {
+		request.input.Settled("", &binding.DispatchError{Outcome: binding.Uncertain, Method: request.Method, Cause: errors.New("host input observation retired")})
+	}
 	if request.call != nil {
 		request.call.result <- hostCallResult{err: &binding.DispatchError{Outcome: binding.Uncertain, Method: request.Method, Cause: errors.New("host request observation retired")}}
 	}

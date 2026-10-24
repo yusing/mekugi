@@ -67,8 +67,6 @@ type InputEffect struct {
 	Dialog        *DialogIntent
 	Reference     *sessionpresentation.ReferenceIntent
 	Selection     *SelectionInput
-	History       *sessionpresentation.HistoryIntent
-	CancelHistory bool
 	Display       *sessionpresentation.DisplayIntent
 	Roster        *activityui.DisplayIntent
 	Details       *DetailInput
@@ -170,9 +168,6 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 				in.selectPane(state, int(key[0]-'1'), yield)
 			case "3":
 				in.selectPane(state, 3, yield)
-			case "o":
-				v := in.Main.session
-				yield(InputEffect{History: &sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.History.Target}})
 			case "q":
 				if in.Main != nil {
 					if in.Main.session.ReadOnly != sessionpresentation.Editable && !in.selectPane(state, 0, yield) {
@@ -232,11 +227,6 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 		return
 	}
 	main, shell := in.Main, in.Shell
-	if key == "\x1b" && main != nil && main.session.Loading != "" {
-		v := main.session
-		yield(InputEffect{History: &sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.Loading}, CancelHistory: true})
-		return
-	}
 	if main != nil && shell.Focus == 0 && main.session.ReadOnly != sessionpresentation.Editable {
 		transcript := in.displayedTranscript()
 		switch key {

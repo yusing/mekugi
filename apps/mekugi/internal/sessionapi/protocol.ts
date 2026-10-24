@@ -21,6 +21,7 @@ export type RPCInitialize = {
 
 export type RPCParams = {
   "thread"?: string;
+  "parent"?: string;
   "startup"?: string;
   "subscription"?: string;
   "body"?: unknown;
@@ -176,7 +177,6 @@ export type NativeOperation = {
   "resume"?: (ResumeAction | null);
   "panel"?: (PanelAction | null);
   "display"?: (DisplayIntent | null);
-  "history"?: (HistoryIntent | null);
   "interrupt"?: (InterruptIntent | null);
   "side"?: (CloseSideIntent | null);
   "btw"?: (CloseSideIntent | null);
@@ -186,7 +186,6 @@ export type NativeOperation = {
   "detailOutput"?: (DetailOutputRequest | null);
   "details"?: (NativeDetailRequest | null);
   "closeDetails"?: (DetailID | null);
-  "cancelHistory"?: (HistoryIntent | null);
   "notice"?: (NativeNoticeAction | null);
   "receipt"?: (NativeReceipt | null);
   "recovery"?: (NativeRecoveryInput | null);
@@ -205,6 +204,7 @@ export type NativeFrame = {
   "view": View;
   "main": (Publication | null);
   "agents": (Publication | null);
+  "childThreads"?: Array<string>;
   "review": (ReviewView | null);
   "live": Array<Preview>;
   "liveScope": Scope;
@@ -313,11 +313,6 @@ export type PanelAction = {
 export type DisplayIntent = {
   "Version": Version;
   "Thread": Thread;
-};
-
-export type HistoryIntent = {
-  "Version": Version;
-  "Thread": string;
 };
 
 export type InterruptIntent = {
@@ -451,7 +446,6 @@ export type View = {
   "Draft": DraftView;
   "PromptDraft": PromptDraftView;
   "Admission": InputAdmission;
-  "History": HistoryDock;
   "Interrupt": InterruptTarget;
   "InterruptAvailable": boolean;
   "Side": (SideToken | null);
@@ -644,6 +638,7 @@ export type MainInfo = {
   "Title": string;
   "BackendVersion": string;
   "ApprovalCaller": string;
+  "Caller": string;
 };
 
 export type MenuView = {
@@ -740,11 +735,6 @@ export type InputAdmission = {
   "Submit": boolean;
   "ReadOnly": boolean;
   "Reason": string;
-};
-
-export type HistoryDock = {
-  "Entries": Array<HistoryView>;
-  "Target": string;
 };
 
 export type SideToken = {
@@ -959,15 +949,6 @@ export type Item = {
 export type PendingText = {
   "Text": string;
   "Replies": number;
-};
-
-export type HistoryView = {
-  "Thread": string;
-  "Status": number;
-  "Failure": string;
-  "Initial": boolean;
-  "TurnPages": number;
-  "Live": boolean;
 };
 
 export type SideExchange = {

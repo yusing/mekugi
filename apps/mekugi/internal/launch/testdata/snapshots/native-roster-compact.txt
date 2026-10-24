@@ -1,5 +1,5 @@
 ─ 3 Agents · 4 · 1 working · 1 finished ────────
  ✓ main  done                                  
- ✓ ├ inventory  done                         0%
- ◐ └ review  Read native_ui_snapshot_test.…  0%
- ·   └ probe  idle                           0%
+ ◐ ├ review  Read native_ui_snapshot_test.…  0%
+ · │ └ probe  idle                           0%
+ ✓ └ inventory  done                         0%

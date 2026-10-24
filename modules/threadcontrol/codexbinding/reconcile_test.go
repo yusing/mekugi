@@ -4,12 +4,50 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+func TestHumanChildResultUsesParentDelivery(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		driver, host, _, _ := reconciliationFixture(t)
+		if err := driver.control.HostCompleted(t.Context(), "child", "child-turn", control.Completed, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := driver.DispatchPending(t.Context(), "child"); err != nil {
+			t.Fatal(err)
+		}
+		host.inputs = nil
+		if err := driver.Start(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		defer driver.Stop(t.Context())
+		if _, err := driver.HumanInput(t.Context(), "child", "human"); err != nil {
+			t.Fatal(err)
+		}
+		if len(host.inputs) != 0 {
+			t.Fatal("human admission injected agent content")
+		}
+		driver.HumanInputAcknowledged("child", "human", "human-turn", nil)
+		if err := driver.Observe("item/completed", []byte(`{"threadId":"child","turnId":"human-turn","item":{"type":"agentMessage","text":"child result","phase":"final_answer"}}`)); err != nil {
+			t.Fatal(err)
+		}
+		if err := driver.Observe("turn/completed", []byte(`{"threadId":"child","turn":{"id":"human-turn","status":"completed"}}`)); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if failures := driver.Failures(); len(failures) != 0 {
+			t.Fatal(failures)
+		}
+		if len(host.inputs) != 1 || host.inputs[0].Kind != "FINAL_ANSWER" || host.inputs[0].Thread != "root" || host.inputs[0].Message != "child result" || host.inputs[0].Run {
+			t.Fatalf("parent delivery = %+v", host.inputs)
+		}
+	})
+}
 
 type reconciliationRuntime struct{ control.Runtime }
 
@@ -220,7 +258,7 @@ func TestColdWaitConfirmationDoesNotResumeOrDispatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	inputs, resumes := len(host.inputs), host.resumes
-	if err := cold.HumanInput(t.Context(), "root"); err != nil {
+	if _, err := cold.HumanInput(t.Context(), "root", "human"); err != nil {
 		t.Fatal(err)
 	}
 	if err := cold.DispatchPending(t.Context(), "root"); err != nil {

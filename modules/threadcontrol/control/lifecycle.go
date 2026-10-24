@@ -134,25 +134,78 @@ func pausedState(state string) string {
 
 func hostOwned(state string) bool { return state == "dispatching" || state == "uncertain" }
 
-// HumanInput invalidates an unsent continuation before the session controller
-// starts or steers the host. It does not dispatch or resume logical work.
-func (s *Service) HumanInput(ctx context.Context, thread string) error {
-	return s.update(ctx, thread, func(tree *Tree, member *Member) error {
+// HumanInput reserves and claims ordinary composer input atomically with agent
+// controls. Its stable input identity never confers an agent caller or message role.
+func (s *Service) HumanInput(ctx context.Context, thread, id string) (result *Effect, err error) {
+	err = s.update(ctx, thread, func(tree *Tree, member *Member) error {
+		if id == "" || !member.AudienceAdmitted {
+			return errors.New("human input requires an admitted audience and input identity")
+		}
+		if old := tree.Effect(thread, id); old != nil {
+			return errors.New("human input identity already has a retained outcome")
+		}
 		if member.Wait != nil && hostOwned(member.Wait.State) {
 			return errors.New("wait continuation requires host reconciliation before new input")
 		}
-		changed := member.Stop != nil
+		// Main already owns ordinary host work. Its human input only supersedes
+		// logical waiting, without acquiring a second retained admission ledger.
+		if member.Parent == "" {
+			changed := member.Stop != nil
+			if member.Wait != nil && member.Wait.State != "canceled" && member.Wait.State != "completed" {
+				cancelSubscription(tree, member)
+				changed = true
+			}
+			if !changed {
+				return unchanged
+			}
+			member.Stop = nil
+			if member.Status == Waiting {
+				member.Status = Working
+			}
+			return nil
+		}
+		previous := member.Status
+		if !member.Reserved() || member.Status == Paused {
+			if member.Parent != "" && (member.Limits.Concurrency <= 0 || activeCount(tree) >= member.Limits.Concurrency) {
+				return errors.New("captured host concurrency limit reached")
+			}
+			if !member.Reserved() {
+				member.Generation++
+			}
+			member.Status = Pending
+		}
 		if member.Wait != nil && member.Wait.State != "canceled" && member.Wait.State != "completed" {
 			cancelSubscription(tree, member)
-			changed = true
-		}
-		if !changed {
-			return unchanged
 		}
 		member.Stop = nil
 		if member.Status == Waiting {
 			member.Status = Working
 		}
+		tree.Effects = append(tree.Effects, Effect{ID: id, Caller: thread, Target: thread, Kind: "human", State: "pending", Generation: member.Generation, PreviousStatus: previous})
+		result, err = tree.claimEffect(thread, id)
+		if err == nil && result == nil {
+			err = errors.New("another control operation requires settlement before human input")
+		}
+		return err
+	})
+	if err != nil {
+		result = nil
+	}
+	return
+}
+
+// HumanInputCommitted confirms only the host's stable composer identity. Text
+// resemblance and an unrelated turn's start cannot settle uncertain human input.
+func (s *Service) HumanInputCommitted(ctx context.Context, thread, turn, id string) error {
+	return s.update(ctx, thread, func(tree *Tree, member *Member) error {
+		effect := tree.Effect(thread, id)
+		if effect == nil || effect.Kind != "human" || !hostOwned(effect.State) || effect.Generation != member.Generation {
+			return unchanged
+		}
+		if turn == "" || effect.Turn != "" && effect.Turn != turn {
+			return errors.New("committed human input has a conflicting host turn")
+		}
+		effect.State, effect.Turn, effect.Error = "confirmed", turn, ""
 		return nil
 	})
 }

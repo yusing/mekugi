@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -54,25 +53,6 @@ func scrollLabel(v *activityui.View) string {
 		return terminalui.Amber + label + terminalui.Reset
 	case v.Offset > 0:
 		return terminalui.Dim + fmt.Sprintf("▲ %d", v.Offset) + terminalui.Undim
-	}
-	return ""
-}
-
-// Source: apps/mekugi/internal/router/app_server_history_pages.go:210:223@9fbf51e1.
-func (m *Main) historyHint() string {
-	for _, h := range m.session.History.Entries {
-		if h.Status == sessionpresentation.Loading && !h.Initial {
-			return "Loading older · Esc cancels"
-		}
-	}
-	for _, h := range m.session.History.Entries {
-		if h.Thread != m.session.History.Target {
-			continue
-		}
-		if h.Status == sessionpresentation.Failed {
-			return "History unavailable · Ctrl-B o retry"
-		}
-		return "Older history · Ctrl-B o load"
 	}
 	return ""
 }

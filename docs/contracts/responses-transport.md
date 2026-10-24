@@ -44,8 +44,8 @@ independent sessions require separate connections.
 
 Metadata with `request_kind="prewarm"` and explicit `generate=false` admits a
 non-generating handshake without workspace or execution-catalog requirements.
-When a supported execution catalog is supplied, the same instruction, tool and
-collaboration projections as a generating turn preserve prefix reuse. Otherwise
+When a supported execution catalog is supplied, the same instruction and tool
+projections as a generating turn preserve prefix reuse. Otherwise
 the handshake stays native. Prewarm initializes no retained replay or agent
 lifecycle state and cannot bypass generating-turn validation. Unsupported local
 context references fail before forwarding rather than restoring retired context.

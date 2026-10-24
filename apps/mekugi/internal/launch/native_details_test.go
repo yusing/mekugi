@@ -311,11 +311,6 @@ func TestNativeChildDetailsKeepCapturedSourceAcrossNavigation(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 	view.closeChildDetails()
-	view.child, err = hub.Observe(ctx, "main", "child-b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	view.childThread = "child-b"
 	if err := view.attached.presentation.Display(sessionpresentation.DisplayIntent{Version: view.attached.presentation.View().Version, Thread: sessionpresentation.Thread{ID: "child-b", Caller: "/root/child-b"}}); err != nil {
 		t.Fatal(err)
 	}

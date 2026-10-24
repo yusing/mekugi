@@ -100,7 +100,7 @@ func nativeCallLane(operation sessionapi.NativeOperation) int {
 		return nativeAcquisitionCall
 	case operation.Receipt != nil:
 		return nativeReceiptCall
-	case operation.Interrupt != nil || operation.CancelHistory != nil:
+	case operation.Interrupt != nil:
 		return nativeCancellationCall
 	case operation.Display != nil || operation.Focused != nil || operation.Preferences != nil:
 		return nativeNavigationCall
@@ -133,6 +133,9 @@ func (r *nativeClientRuntime) deliver(message nativeClientMessage) error {
 	case message.event != nil:
 		previous := c.event.Frame.View.Status.Feedback
 		c.accept(*message.event)
+		if r.active.displayParent == c {
+			r.active.refresh(time.Now())
+		}
 		if feedback := c.event.Frame.View.Status.Feedback; c != r.active && feedback.Alert && feedback.Text != "" && feedback != previous {
 			r.active.feedback.Set(fmt.Sprintf("Session %s: %s", c.event.Frame.View.Main.ID, feedback.Text), true, time.Now())
 			r.active.refresh(time.Now())
@@ -198,7 +201,7 @@ func (r *nativeClientRuntime) schedule() {
 			}
 		}
 		if retained != nil {
-			c.reattach = ""
+			c.reattach, c.attachParent = "", nil
 			r.activate(retained)
 			c = retained
 		} else {
@@ -332,6 +335,20 @@ func (r *nativeClientRuntime) activate(c *nativeClient) {
 		return true
 	})
 	r.active = c
+	parent, nextParent := previous, c
+	if previous.displayParent != nil {
+		parent = previous.displayParent
+	}
+	if c.displayParent != nil {
+		nextParent = c.displayParent
+	}
+	if parent == nextParent {
+		from, to := previous.renderer.terminal, c.renderer.terminal
+		layout := to.Shell.Preferences(to.Main)
+		current := from.Shell.Preferences(from.Main)
+		layout.Focus, layout.Split, layout.DiffOpen, layout.NavigatorColumns = current.Focus, current.Split, current.DiffOpen, current.NavigatorColumns
+		to.Shell.RestorePreferences(layout, to.Main)
+	}
 	c.notifications.focused = true
 	c.enqueue(sessionapi.NativeOperation{Focused: new(true)}, nil, nil)
 	c.renderer.terminal.Frame.Rows = nil
@@ -340,10 +357,13 @@ func (r *nativeClientRuntime) activate(c *nativeClient) {
 
 func (r *nativeClientRuntime) reattach(result nativeClientReattached, stdout *os.File) {
 	c := result.owner
-	if c.closed || c != r.active {
+	if c.closed || c != r.active || c.reattach != "" {
 		c.attaching = false
 		if result.connection != nil {
 			result.connection.Close()
+		}
+		if c.reattach == c.event.Frame.View.Main.ID {
+			c.reattach, c.attachParent = "", nil
 		}
 		return
 	}
@@ -358,7 +378,10 @@ func (r *nativeClientRuntime) reattach(result nativeClientReattached, stdout *os
 
 func (r *nativeClientRuntime) retire() {
 	for _, c := range r.owners {
-		if c == r.active || c == r.pasteOwner || c.closed || c.attaching || c.handoff != nil || c.clipboardPending || len(c.calls) != 0 || !c.effectsSettled() {
+		if c == r.active || c == r.active.displayParent || c == r.pasteOwner || c.closed || c.attaching || c.handoff != nil || c.clipboardPending || len(c.calls) != 0 || !c.effectsSettled() {
+			continue
+		}
+		if c.displayParent != nil && (r.active == c.displayParent || r.active.displayParent == c.displayParent) && (len(c.event.Frame.Questions) > 0 || len(c.event.Frame.Approvals) > 0) {
 			continue
 		}
 		if slices.ContainsFunc(r.requests[:], func(call *nativeClientCall) bool { return call != nil && call.owner == c }) {

@@ -69,7 +69,7 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 func publishSessionView(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, draft string, settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, now time.Time, clientEditors bool) sessionpresentation.View {
 	m := attached.presentation
 	if control.Startup.Prepared != nil {
-		m.RestrictChildInput()
+		m.RestrictChildInput(attached.threadInput == nil || !attached.threadInput.admitted)
 	}
 	if side != nil {
 		m.SetSide(sessionpresentation.Thread{ID: cmp.Or(side.Thread, "side:"+side.Key), Caller: side.Caller()})
@@ -86,6 +86,12 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 	}
 	caption = sessionCaption(&attached.session, m, caption, tiers)
 	info := sessionpresentation.MainInfo{Workspace: attached.cwd, Title: cmp.Or(control.Names.Pending(control.Thread), title), BackendVersion: backend, Skills: attached.source.ActiveSkills()["Main"]}
+	if logical := attached.threadInput; logical != nil && logical.admitted {
+		info.Caller = logical.caller
+		if view.Displayed.ID == view.Main.ID {
+			caption.Role = logical.role
+		}
+	}
 	if approval := attached.conversation.Approvals.View(); approval.Count > 0 {
 		if caller := attached.session.KnownCaller(approval.Approval.Thread); caller != "/root" {
 			info.ApprovalCaller = caller

@@ -48,8 +48,6 @@ type nativeSessionView struct {
 	childProjection       nativeChildProjection
 	children              *sessionapi.Hub
 	childDetails          *nativeChildDetails
-	child                 *sessionapi.Observation
-	childThread           string
 	remoteHuman           bool
 	focused               bool
 	predictionDraftEmpty  bool
@@ -108,7 +106,6 @@ func (n *nativeViews) retire(id string) {
 // joined runtime outcome. Only an ordinary view retirement closes its stream.
 func (n *nativeViews) dispose(id string) {
 	if view := n.views[id]; view != nil {
-		view.child.Close()
 		view.closeChildDetails()
 		// Drop its image claims before the existing retirement cleanup prunes
 		// unsubmitted files. The view's model remains alive for history cleanup.
@@ -189,15 +186,6 @@ func (n *nativeViews) admit(request sessionapi.NativeRequest, execution *attache
 // applyView accepts only presentation operations. Host operations retain their
 // existing handlers and need explicit view attribution before they can enter here.
 func (v *nativeSessionView) applyView(operation sessionapi.NativeOperation) string {
-	if v.child != nil && operation.Output != nil && operation.Output.Agent {
-		output := *operation.Output
-		output.Agent = false
-		operation.Output = &output
-		if err := v.child.Read(operation); err != nil {
-			return err.Error()
-		}
-		return ""
-	}
 	switch {
 	case operation.Focused != nil:
 		v.focused = *operation.Focused
@@ -266,10 +254,6 @@ func (v *nativeSessionView) applyView(operation sessionapi.NativeOperation) stri
 		}
 		if err := model.Display(intent); err != nil {
 			return err.Error()
-		}
-		if v.childThread != intent.Thread.ID {
-			v.child.Close()
-			v.child, v.childThread = nil, ""
 		}
 	case operation.Output != nil:
 		demand := operation.Output
@@ -420,8 +404,6 @@ func (n *nativeViews) rewindArchive(original string) {
 // with the same client editor lifetime; execution owners are borrowed afresh.
 func (n *nativeViews) replacePresentation(v *nativeSessionView, execution *attachedPresentation) {
 	v.closeChildDetails()
-	v.child.Close()
-	v.child, v.childThread = nil, ""
 	n.requests.Retire(viewRequestScope(v.attached.view))
 	v.files.closeOutput(v.shell)
 	v.picker.cancelScan()

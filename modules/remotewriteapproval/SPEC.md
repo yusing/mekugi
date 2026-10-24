@@ -68,9 +68,8 @@ events, async observers, nonmatching handlers and their trust state remain intac
 Managed conflicting hooks cannot be replaced and block launch with an explanation.
 User configuration files remain unchanged. Later workspace or configuration changes
 are checked at turn admission; newly conflicting hooks block with the draft retained
-rather than being replaced dynamically. Interactive passthrough
-requires explicit `--shell-guard=false`, rather than `--yolo`. Invocation-local hook
-setup preserves recovery-hook trust.
+rather than being replaced dynamically. Invocation-local hook setup preserves
+recovery-hook trust.
 
 Guard instrumentation failures reject the native tool with the actual failure
 reason. The hook's shell adapter also converts missing or failing helper
@@ -179,8 +178,7 @@ resources, including nested-shell instrumentation when only sudo is present.
 7. The default guard remains enabled with `--yolo`. Explicit `--shell-guard=false`
    removes remote-write and sudo prompts and instrumentation while preserving
    independent command tracking and the chosen
-   Codex approval and sandbox policy. Interactive passthrough rejects an enabled
-   guard and accepts the explicit opt-out.
+   Codex approval and sandbox policy.
 8. Session approval releases exact queued duplicates and subsequent matching
    commands only within the same UI session. Changed arguments, workdir or
    resolved executable require another decision; closing and resuming clears

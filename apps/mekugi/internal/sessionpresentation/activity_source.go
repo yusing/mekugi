@@ -222,18 +222,6 @@ func (v *ActivitySource) RemoveThinking(native *NativeItem) {
 	}
 }
 
-// InsertHistoryPage preserves admitted identities while ordering an older page.
-func (v *ActivitySource) InsertHistoryPage(before uint64, belongs func(ActivityEntry) bool) {
-	var at uint64
-	for _, record := range v.Entries {
-		if record.Source.Seq <= before && belongs(record.Source) {
-			at = record.Source.Seq
-			break
-		}
-	}
-	v.Model.InsertHistory(before, at)
-}
-
 func (v *ActivitySource) annotateRepetitions(entry ActivityEntry, values []activitypresentation.Value) {
 	if v.Repetition == nil || entry.Native == nil || len(values) == 0 {
 		return

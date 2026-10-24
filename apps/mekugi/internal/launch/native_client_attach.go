@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 )
 
 func (c *nativeClient) readStream(connection *sessionapi.NativeConnection) {
@@ -32,6 +34,7 @@ func (c *nativeClient) readStream(connection *sessionapi.NativeConnection) {
 
 type nativeClientReattached struct {
 	owner              *nativeClient
+	displayParent      *nativeClient
 	source, connection *sessionapi.NativeConnection
 	event              sessionapi.NativeEvent
 	err                error
@@ -40,6 +43,7 @@ type nativeClientReattached struct {
 
 func (c *nativeClient) attachDestination(ctx context.Context, done chan<- nativeClientReattached) {
 	source, thread := c.connection, c.reattach
+	displayParent := c.attachParent
 	target := c.event.Target()
 	var preferences *sessionapi.NativePreferenceUpdate
 	var preferenceError error
@@ -51,10 +55,14 @@ func (c *nativeClient) attachDestination(ctx context.Context, done chan<- native
 			preferences = &sessionapi.NativePreferenceUpdate{Presentation: data, Flush: true}
 		}
 	}
-	c.reattach, c.attaching = "", true
+	c.reattach, c.attaching, c.attachParent = "", true, nil
 	c.workers.Go(func() {
-		result := nativeClientReattached{owner: c, source: source, preferenceError: preferenceError}
-		result.connection, result.err = source.Attach(ctx, thread)
+		result := nativeClientReattached{owner: c, source: source, displayParent: displayParent, preferenceError: preferenceError}
+		destination := source
+		if displayParent != nil {
+			destination = displayParent.connection
+		}
+		result.connection, result.err = destination.Attach(ctx, thread)
 		if result.err == nil {
 			result.event, result.err = result.connection.Next()
 		}
@@ -95,11 +103,35 @@ func (c *nativeClient) applyReattachment(result nativeClientReattached) *nativeC
 	terminal.Faint = c.renderer.terminal.Faint
 	terminal.Frame.Clipboard = c.renderer.terminal.Frame.Clipboard
 	terminal.Width, terminal.Height = c.renderer.terminal.Width, c.renderer.terminal.Height
-	next := &nativeClient{connection: result.connection, renderer: nativeClientRenderer{terminal: terminal, views: c.renderer.views}}
+	next := &nativeClient{connection: result.connection, displayParent: result.displayParent, renderer: nativeClientRenderer{terminal: terminal, views: c.renderer.views}}
 	if result.preferenceError != nil {
 		next.feedback.Set("Could not save outgoing session layout: "+result.preferenceError.Error(), true, time.Now())
 	}
 	return next
+}
+
+// Display navigation borrows the selected live runtime instead of forwarding
+// its input through the parent's observational presentation.
+func (c *nativeClient) displayThread(thread sessionpresentation.Thread) {
+	parent := c
+	if c.displayParent != nil && !c.displayParent.closed {
+		parent = c.displayParent
+	}
+	if c.runtime != nil && parent.event.Frame.View.ReadOnly != sessionpresentation.Replay &&
+		(thread.ID == parent.event.Frame.View.Main.ID || slices.Contains(parent.event.Frame.ChildThreads, thread.ID)) {
+		if thread.ID == parent.event.Frame.View.Main.ID && parent.event.Frame.View.Displayed.ID != thread.ID {
+			parent.enqueue(sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: parent.event.Frame.View.Version, Thread: thread}}, nil, nil)
+		}
+		if thread.ID != c.event.Frame.View.Main.ID || c.attaching {
+			c.reattach, c.attachParent = thread.ID, parent
+		}
+		return
+	}
+	// Historical children outside the admitted runtime tree remain observational.
+	if parent != c {
+		c.runtime.activate(parent)
+	}
+	parent.enqueue(sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: parent.event.Frame.View.Version, Thread: thread}}, nil, nil)
 }
 
 // finishPendingCalls runs after request workers join. A dispatched request keeps

@@ -556,8 +556,10 @@ rows before selection. The viewport moves only when selection leaves it.
 Hover emphasizes the name; selection shades the row. Returning to Main brings
 its roster row into view and clears the previous child highlight. Remembering a
 child for toggling does not present it as the displayed transcript.
-Clicking a subagent selects its read-only transcript without focusing the roster;
-Main’s draft stays Main’s. [Terminal pane controls](../../apps/mekugi/internal/terminalsession/SPEC.md#panes)
+Clicking an admitted subagent attaches its native runtime without focusing the
+roster. Main and each child retain their own drafts, prompts and settings; explicit
+cold selection can resume the prepared runtime without starting work. Historical
+and replay-only views remain read-only. [Terminal pane controls](../../apps/mekugi/internal/terminalsession/SPEC.md#panes)
 own explicit roster focus.
 The invocation-local Side destination remains available through thread navigation;
 its tab lives beside Main in the shared tab bar, outside the roster counts.
@@ -566,9 +568,7 @@ Its editable destination follows
 Arrows/k/j stop at either end; n/Tab/p also navigate, a toggles Main/current child.
 Roster wheel scrolling changes neither selection nor transcript follow. Transcript
 page/wheel scrolling pauses follow and Esc resumes it; frozen selections retain
-their own navigation. Inserting older history preserves a paused viewport and
-existing output/navigation identities; [session presentation](../../apps/mekugi/internal/sessionpresentation/SPEC.md#history)
-owns page admission and evidence placement. Running headers scroll normally; the composer process count
+their own navigation. Running headers scroll normally; the composer process count
 and `/ps` dialog follow [running processes](#running-processes).
 
 Statuses describe observed open response, latest error, plaintext FINAL_ANSWER,

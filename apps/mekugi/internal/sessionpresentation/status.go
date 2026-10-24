@@ -86,6 +86,7 @@ func (s *MainStatus) SetFeedback(value Label, revision uint64) {
 // retained, and the resulting view contains no owner pointers or capabilities.
 type MainInputs struct {
 	Info                   MainInfo
+	DisplayedWorkspace     string
 	Menu                   *MenuView
 	Control                *sessioncontrol.Live
 	RecordedTurn           string // Playback selection, used only without live control.
@@ -96,7 +97,6 @@ type MainInputs struct {
 	BTWRunning             bool
 	SideThreads            []string
 	Processes              int
-	History                []HistoryView
 }
 
 type Caption struct {
@@ -112,6 +112,7 @@ type Caption struct {
 // composer_notice.go:32:74@1145fbbc.
 func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) {
 	v = m.View()
+	v.DisplayedWorkspace = in.DisplayedWorkspace
 	v.Status = MainStatus{}
 	defer func() {
 		if in.ClientEditors {
@@ -152,7 +153,6 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 	v.Draft = in.Conversation.DraftView()
 	v.PromptDraft = in.Conversation.PromptDraftView()
 	v.Admission = m.inputAdmission(in.Control, v.Draft.Available, in.Restoring)
-	v.History = m.HistoryView(in.History)
 	v.Side = nil
 	v.BTW, v.BTWRunning = nil, false
 	if body := in.Conversation.BTW; body != nil && v.Displayed == v.Main {

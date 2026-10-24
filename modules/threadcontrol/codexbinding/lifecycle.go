@@ -18,6 +18,8 @@ type hostObservation struct {
 	value                binding.Notification
 	session              history.Session
 	restored             chan error
+	inputID              string
+	receipt              control.Receipt
 }
 
 func (d *Driver) Start(ctx context.Context) error {
@@ -68,7 +70,7 @@ func (d *Driver) Observe(method string, raw jsontext.Value) error {
 	if err != nil {
 		return err
 	}
-	if method == "item/completed" && (value.Item.Type != "agentMessage" || value.Item.Phase == "commentary") {
+	if method == "item/completed" && !(value.Item.Type == "agentMessage" && value.Item.Phase != "commentary" || value.Item.Type == "userMessage" && value.Item.ClientID != "") {
 		return nil
 	}
 	if _, ok := d.control.Member(value.ThreadID); ok {
@@ -86,6 +88,18 @@ func (d *Driver) Tick(now time.Time) {
 func (d *Driver) Interrupt(thread, wait string) {
 	d.enqueue(hostObservation{thread: thread, method: "human/interrupt", wait: wait})
 }
+
+// HumanInputAcknowledged queues the sole request owner's correlated outcome.
+func (d *Driver) HumanInputAcknowledged(thread, id, turn string, err error) {
+	receipt := control.Receipt{Turn: turn}
+	if err != nil {
+		receipt.Error = err.Error()
+		failure, known := errors.AsType[*binding.DispatchError](err)
+		receipt.Uncertain = !known || failure.Outcome == binding.Uncertain
+	}
+	d.enqueue(hostObservation{thread: thread, method: "human/input", inputID: id, receipt: receipt})
+}
+
 func (d *Driver) enqueue(event hostObservation) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -140,6 +154,8 @@ func (d *Driver) reduceHost() {
 				}
 			}
 			event.restored <- err
+		case "human/input":
+			err = d.control.EffectAcknowledged(d.lifecycle, thread, event.inputID, event.receipt)
 		case "human/interrupt":
 			if member, ok := d.control.Member(thread); !ok || member.Wait == nil || member.Wait.ID != event.wait {
 				continue
@@ -161,7 +177,11 @@ func (d *Driver) reduceHost() {
 				err = d.control.RequestStarted(d.lifecycle, control.Identity{Thread: thread, Session: member.Session, Turn: p.Turn.ID}, member.Parent == "")
 			}
 		case "item/completed":
-			err = d.control.AnswerCompleted(d.lifecycle, thread, p.TurnID, p.Item.Text)
+			if p.Item.Type == "userMessage" {
+				err = d.control.HumanInputCommitted(d.lifecycle, thread, p.TurnID, p.Item.ClientID)
+			} else {
+				err = d.control.AnswerCompleted(d.lifecycle, thread, p.TurnID, p.Item.Text)
+			}
 		case "turn/completed":
 			failure := ""
 			if p.Turn.Error != nil {
@@ -169,7 +189,7 @@ func (d *Driver) reduceHost() {
 			}
 			err = d.control.HostCompleted(d.lifecycle, thread, p.Turn.ID, control.Status(p.Turn.Status), failure)
 		}
-		if err == nil && (event.method == "turn/completed" || event.method == "human/interrupt" || event.method == "") {
+		if err == nil && (event.method == "turn/completed" || event.method == "human/interrupt" || event.method == "human/input" || event.method == "") {
 			err = d.DispatchPending(d.lifecycle, thread)
 			err = errors.Join(err, d.Wake(d.lifecycle, thread, time.Now()))
 			if member, ok := d.control.Member(thread); ok && member.Parent != "" {

@@ -100,6 +100,8 @@ func (d *Driver) dispatchClaimedAction(ctx context.Context, effect *control.Effe
 	var receipt control.Receipt
 	var callErr error
 	switch kind {
+	case "human":
+		return errors.New("human input must be dispatched by its ordinary request owner")
 	case "create":
 		path := ""
 		if effect.Child.Import != "" {
@@ -170,6 +172,8 @@ func nativeInput(tree control.Tree, effect control.Effect) control.NativeInput {
 	}
 	input := control.NativeInput{Thread: effect.Target, ParentTurn: effect.CallerTurn, ID: effect.Caller + ":" + effect.ID, Sender: tree.Members[effect.Caller].Task, Recipient: tree.Members[effect.Target].Task, Kind: "MESSAGE", Message: effect.Message, Wake: effect.Wake}
 	switch kind {
+	case "human":
+		input.Kind, input.ID, input.TargetTurn = "HUMAN_INPUT", effect.ID, effect.Turn
 	case "interrupt":
 		input.Kind, input.TargetTurn = "INTERRUPT", effect.Turn
 	case "initial":

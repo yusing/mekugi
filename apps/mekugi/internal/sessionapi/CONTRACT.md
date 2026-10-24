@@ -149,8 +149,11 @@ children through the server’s runtime owner, independently of renderer subscri
 Preparation supplies frozen execution settings and an optional retained fork import.
 The server starts no assignment from ordinary creation text: confirmed creation,
 durable logical admission, attributed assignment retention and execution are distinct
-acknowledgements. Ordinary child input remains unavailable; prompt answers,
-approval decisions and cancellation retain their existing authority.
+acknowledgements. Ordinary human input becomes available after logical child
+admission and uses that child's actual runtime. An idle child acquires a tracked
+assignment and concurrency reservation; a running child receives a steer. Its
+result follows the existing parent-delivery lifecycle. Prompt answers, approval
+decisions and cancellation retain their existing authority.
 
 Agent calls carry authenticated host-call identity through the invocation’s MCP
 connection. Native/remote JSON-RPC authority cannot impersonate that identity.
@@ -164,7 +167,7 @@ also apply to children. A lost response never authorizes repeated creation or in
 The confirmed-thread `view/attach` and `view/intent` methods bind the existing
 per-view projection and semantic dispatcher. They share the request/event types
 with native attachments, including commands, menus, ordinary prompts, approvals,
-resume/status, history and detail/output controls. They add no command registry
+resume/status and detail/output controls. They add no command registry
 or execution owner. The simpler shared publication/input methods remain available.
 
 The handler establishes the view's remote-human authority; neither JSON nor
@@ -482,3 +485,8 @@ and selected workspace, run outside publication locks, and share attachment-tran
 capacity. Missing, oversized or non-raster sources fail explicitly. Local
 files and inline image data are supported up to the upload limit; remote URLs are
 not fetched. Browser image transfers use an independent authenticated connection.
+
+Explicit native `view/attach` may name `parent` alongside a retained child
+`thread`. The selected parent's prepared-runtime owner admits only its own
+descendants and resumes their runtime without submitting input or restarting
+work. Unadmitted historical identities remain observational.

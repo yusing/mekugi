@@ -136,17 +136,14 @@ func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 	}
 	c.conversation.Questions.Hide()
 	c.conversation.Editor.Files = []composer.Token{{Path: "source"}}
-	history := []sessionpresentation.HistoryView{{Thread: "child", Status: sessionpresentation.Unloaded}}
-	v = c.model().Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation, History: history}, caption, c.now)
+	v = c.model().Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation}, caption, c.now)
 	if v.Version == want.Version || v.Status.State.Text != "new state" {
 		t.Fatal("changed owner facts were not published")
 	}
 	want = c.model().View()
 	v.Draft.Draft.Files[0].Path = "changed"
-	v.History.Entries[0].Thread = "changed"
-	history[0].Thread = "changed again"
 	if !reflect.DeepEqual(c.model().View(), want) {
-		t.Fatal("draft or history publication aliases mutable storage")
+		t.Fatal("draft publication aliases mutable storage")
 	}
 	c.conversation.Side = nil
 	if c.publish(caption).Side != nil {

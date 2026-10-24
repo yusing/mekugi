@@ -80,3 +80,27 @@ func TestConfirmTerminalTurnUsesExactIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestConfirmHumanInputRequiresRetainedClientIdentity(t *testing.T) {
+	for _, kind := range []string{"user_message", "agent_message"} {
+		t.Run(kind, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "rollout.jsonl")
+			record, err := json.Marshal(map[string]any{"type": "event_msg", "payload": map[string]any{"type": kind, "client_id": "human", "message": "same text"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, append([]byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"child\"}}\n"), append(record, '\n')...), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := ConfirmUserInput(t.Context(), "child", path, "human"); (err == nil) != (kind == "user_message") {
+				t.Fatalf("confirmation: %v", err)
+			}
+			if err := ConfirmUserInput(t.Context(), "foreign", path, "human"); err == nil {
+				t.Fatal("foreign history confirmed input")
+			}
+			if err := ConfirmUserInput(t.Context(), "child", path, "different"); err == nil {
+				t.Fatal("text similarity confirmed different input")
+			}
+		})
+	}
+}

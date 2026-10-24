@@ -171,7 +171,7 @@ var Module = module.Descriptor[Deps, int, int, int]{Requires: %s}
 	for _, tt := range []struct{ name, deps, requires, extra, reason string }{
 		{"matching", "History retained.Publisher", `[]module.ID{"history"}`, "", ""},
 		{"missing requirement", "History retained.Publisher", `[]module.ID{}`, "", "must match"},
-		{"missing typed dependency", "", `[]module.ID{"history"}`, "", "must match"},
+		{"pure module API", "", `[]module.ID{"history"}`, "", ""},
 		{"extra requirement", "History retained.Publisher", `[]module.ID{"history","extra"}`, "", "must match"},
 		{"platform import", "History retained.Publisher", `[]module.ID{"history"}`, "platform", "must match"},
 		{"test import ignored", "History retained.Publisher", `[]module.ID{"history"}`, "test", ""},

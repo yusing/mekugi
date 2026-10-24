@@ -34,6 +34,7 @@ type Request[T any] struct {
 	SideInput  *conversationmodel.Input
 	Prediction *Prediction
 	call       *HostCall
+	input      *InputRequest
 }
 
 // Requests is the sole request ledger for one application client. Its event-loop

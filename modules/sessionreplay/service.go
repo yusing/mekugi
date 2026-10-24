@@ -2,14 +2,12 @@ package sessionreplay
 
 import (
 	"github.com/yusing/mekugi/contracts/module"
-	"github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 )
 
 type Deps struct {
-	History  *history.Service
-	Activity *feed.Service
+	History *history.Service
 }
 
 func newService(deps Deps, slots module.Slots) (*playback.Service, error) {
