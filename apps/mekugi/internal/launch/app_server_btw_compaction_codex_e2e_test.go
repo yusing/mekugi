@@ -19,8 +19,9 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
-// Only the side answer reports high authoritative usage. Its next question
-// therefore asks installed Codex to compact, without estimating tokens locally.
+// Main reports 62% authoritative usage, leaving 38% of the configured compact
+// budget. Its fork must answer without premature compaction. Only the side
+// answer exceeds that budget, so its next question genuinely requires compaction.
 type btwCompactionProvider struct {
 	mu                                sync.Mutex
 	main                              string
@@ -42,7 +43,7 @@ func (p *btwCompactionProvider) ForwardExecution(_, _ context.Context, _ []byte,
 	if p.main == "" {
 		p.main = thread
 	}
-	tokens, text := 10, "Main remains available."
+	tokens, text := 62000, "Main remains available."
 	if thread == p.main {
 		p.mainTurns++
 	} else {

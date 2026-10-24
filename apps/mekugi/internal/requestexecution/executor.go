@@ -216,11 +216,11 @@ func (a *requestAttempt) prepare() error {
 	a.finalization.threadID = a.threadID
 	a.finalization.turnID = a.metadata.TurnID
 	if !a.approvalReview && a.executor.Observations != nil && a.metadataValid && a.metadata.RequestKind == responses.Compaction {
-		if err := codexresponses.ValidateCompaction(&a.request, a.metadata); err != nil {
-			return err
-		}
 		if a.executor.Control.IsSideThread(a.threadID) {
 			return inferencegateway.IncompatibleRequest("btw_compaction_required", conversationmodel.SideCompactionRequired)
+		}
+		if err := codexresponses.ValidateCompaction(&a.request, a.metadata); err != nil {
+			return err
 		}
 	}
 	if exchange := a.executor.Exchange; exchange != nil && exchange.State != nil {
