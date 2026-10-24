@@ -114,8 +114,8 @@ func spawnActivityItem(status string) binding.ThreadItem {
 	if status == "completed" {
 		item.Result = jsontext.Value(`{"content":[{"type":"text","text":"{\"thread_id\":\"worker-thread\",\"task_name\":\"/root/worker\",\"state\":\"confirmed\"}"}]}`)
 	} else if status == "failed" {
-		item.Arguments = jsontext.Value(`{"task_name":"image-paths","message":"Inspect the parser."}`)
-		item.Result = jsontext.Value(`{"isError":true,"content":[{"type":"text","text":"task name must contain only lowercase letters, digits and underscores"}]}`)
+		item.Arguments = jsontext.Value(`{"task_name":"image/paths","message":"Inspect the parser."}`)
+		item.Result = jsontext.Value(`{"isError":true,"content":[{"type":"text","text":"task name must contain only lowercase letters, digits, underscores and hyphens"}]}`)
 	}
 	return item
 }

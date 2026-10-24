@@ -2,6 +2,26 @@ package control
 
 import "testing"
 
+func TestSpawnTaskNames(t *testing.T) {
+	for _, name := range []string{"worker_1", "child-runtime", "-child", "child-", "-", "", "child/runtime", `child\runtime`, "..", "Child", "child runtime", "子"} {
+		t.Run(name, func(t *testing.T) {
+			s, _ := fixture(t)
+			spawn, err := s.ReserveSpawn(t.Context(), identity("root", "rt"), SpawnRequest{Name: name, Message: "Work.", Settings: Settings{Workspace: t.TempDir()}})
+			switch name {
+			case "worker_1", "child-runtime", "-child", "child-", "-":
+				must(t, err)
+				if spawn.Child.Task != "/root/"+name {
+					t.Fatalf("task name changed: %+v", spawn.Child)
+				}
+			default:
+				if err == nil {
+					t.Fatalf("invalid task name %q was admitted", name)
+				}
+			}
+		})
+	}
+}
+
 func TestColdFollowupCompletesOnlyUnfinishedAdmission(t *testing.T) {
 	for _, phase := range []string{"assignment_input", "admit", "initial"} {
 		t.Run(phase, func(t *testing.T) {

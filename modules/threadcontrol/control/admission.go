@@ -40,8 +40,8 @@ func (s *Service) ReserveSpawn(ctx context.Context, caller Identity, request Spa
 			return errors.New("spawn requires host call identity, task name and selected absolute workspace")
 		}
 		for _, r := range name {
-			if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_') {
-				return errors.New("task name must contain only lowercase letters, digits and underscores")
+			if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
+				return errors.New("task name must contain only lowercase letters, digits, underscores and hyphens")
 			}
 		}
 		task := member.Task + "/" + name

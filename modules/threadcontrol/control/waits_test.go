@@ -35,7 +35,14 @@ func fixture(t *testing.T) (*Service, history.Session) {
 
 func TestRestoreBeforeAnyRequestLeavesChildrenCold(t *testing.T) {
 	s, session := fixture(t)
-	child(t, s, "root", "worker", "/root/worker", "wt")
+	child(t, s, "root", "worker", "/root/child-runtime", "wt")
+	for _, target := range []string{"child-runtime", "/root/child-runtime"} {
+		member, err := s.Target(identity("root", "rt"), target)
+		must(t, err)
+		if member.Thread != "worker" {
+			t.Fatalf("hyphenated target resolved to %+v", member)
+		}
+	}
 	restored := New()
 	must(t, restored.Restore(t.Context(), session))
 	root, ok := restored.Member("root")
@@ -43,7 +50,7 @@ func TestRestoreBeforeAnyRequestLeavesChildrenCold(t *testing.T) {
 		t.Fatalf("root was not restored paused: %+v", root)
 	}
 	members := restored.Descendants("root")
-	if len(members) != 1 || members[0].Task != "/root/worker" || members[0].Status != Paused {
+	if len(members) != 1 || members[0].Task != "/root/child-runtime" || members[0].Status != Paused {
 		t.Fatalf("cold roster unavailable before input: %+v", members)
 	}
 	fresh, err := session.Store.SelectSession(t.Context(), nil, session.Limits, "fresh")

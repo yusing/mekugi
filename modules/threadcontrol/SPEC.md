@@ -40,7 +40,9 @@ native request metadata remains unchanged on the provider wire.
 
 - `spawn_agent` preserves task name, assignment, role, context, model and effort
   conventions and adds optional `cwd`. It returns confirmed independent host
-  identity and canonical logical task path.
+  identity and canonical logical task path. Task names are nonempty and contain
+  only lowercase ASCII letters, digits, underscores and hyphens; each name forms
+  one segment of its parent's logical task path.
 - `followup_task` controls an admitted non-root target: start when idle, steer its
   actual running turn, or supersede an unsent wait/wake before reconciling host
   state. Original caller attribution remains attached. Action results identify
