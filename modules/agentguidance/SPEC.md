@@ -115,6 +115,10 @@ Caller inline prompts precede prompt-file contents; otherwise the stock prompt
 applies. Provider identity and authentication stay unchanged. The handover summarizes the task;
 reload metadata contains only file paths, skill names and optional line ranges.
 Selection has no fixed source-count limit.
+Codex supplies `AGENTS.md`; automatic reload excludes it at every directory level,
+including explicit selections and previously captured results. Selection includes
+known supporting implementations, callers, tests, fixtures and procedure/skill
+references needed for the next unfinished operation, rather than only entry points.
 File contents and skill instructions come from fresh reads, not generated summary
 text. Applicable guidance references can remain selected when the task is complete
 or waiting for input. Task-source selection remains focused

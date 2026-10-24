@@ -213,7 +213,7 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 			readCalls[id] = true
 		}
 		if !prewarm && metadata.RequestKind == responses.Turn && record.Selection != "" {
-			sources, _ := compact.Sources(record.Selection)
+			sources, _ := compact.ReloadSources(record.Selection)
 			command := compact.CaptureCommand(record.Selection)
 			var reloads []activity.ReloadSource
 			for _, source := range sources {
@@ -304,8 +304,8 @@ func compactReaderInput(items []map[string]jsontext.Value, calls map[string]bool
 // approvals and continuations. Completed results stay in native history.
 func compactReaderCall(record compact.Record, items []map[string]jsontext.Value, thread string) (jsontext.Value, []string, error) {
 	prefix := strings.TrimSuffix(compact.Name(record.Reference), ".json")[:40] + "-"
-	sources, err := compact.Sources(record.Selection)
-	if err != nil || len(sources) == 0 {
+	sources, err := compact.ReloadSources(record.Selection)
+	if err != nil {
 		return nil, nil, err
 	}
 	reader := compact.CaptureCommand(record.Selection)
@@ -361,6 +361,9 @@ func compactReaderCall(record compact.Record, items []map[string]jsontext.Value,
 	}
 	if seen {
 		return nil, calls, errors.New("compaction reader outcome is unavailable; reads were not repeated")
+	}
+	if len(sources) == 0 && len(calls) == 0 {
+		return nil, nil, nil
 	}
 	if inherited {
 		return nil, calls, errors.New("compaction read is still pending in its originating thread")
@@ -445,6 +448,9 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 		var reloads []activity.ReloadSource
 		var parts []map[string]string
 		for i, source := range captured.Sources {
+			if selected[i].HostLoaded() {
+				continue
+			}
 			reloads = append(reloads, activity.ReloadSource{Command: command, Path: selected[i].Path, Skill: selected[i].Skill, ExitCode: new(source.ExitCode)})
 			body := fmt.Sprintf("%s: exit_code=%d\n%s", source.Command, source.ExitCode, source.Stdout)
 			if source.Stderr != "" {

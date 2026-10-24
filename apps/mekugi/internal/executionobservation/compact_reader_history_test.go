@@ -22,7 +22,7 @@ func TestCompactReloadProviderInputHidesOrchestration(t *testing.T) {
 	p := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, p)
 	workspace := t.TempDir()
-	const selection = `{"sources":[{"path":"selected.txt"}]}`
+	const selection = `{"sources":[{"path":"AGENTS.md"},{"path":"selected.txt"},{"path":"nested/AGENTS.md"}]}`
 	ref, err := p.StoreCompact(t.Context(), "root", "handover", selection)
 	if err != nil {
 		t.Fatal(err)
@@ -30,7 +30,11 @@ func TestCompactReloadProviderInputHidesOrchestration(t *testing.T) {
 	record := compact.Record{Reference: ref, Selection: selection}
 	items := []map[string]jsontext.Value{{"type": jsontext.Value(`"compaction"`), "encrypted_content": mustTestJSON(t, ref)}}
 	completed := []map[string]string{{"type": "input_text", "text": "cat selected.txt: exit_code=0\nfresh source; EACCES denied.txt"}}
-	result := compactTestSnapshot(t, p, []compact.CapturedSource{{Command: "cat selected.txt", Stdout: "fresh source; EACCES denied.txt"}})
+	result := compactTestSnapshot(t, p, compact.Snapshot{Selection: selection, Sources: []compact.CapturedSource{
+		{Command: "cat AGENTS.md", Stdout: "host instructions must not be reloaded"},
+		{Command: "cat selected.txt", Stdout: "fresh source; EACCES denied.txt"},
+		{Command: "cat nested/AGENTS.md", Stdout: "nested host instructions must not be reloaded"},
+	}})
 	raw, _, err := compactReaderCall(record, items, "root")
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +129,7 @@ func TestCompactReloadDeduplicatesOrdinaryReread(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := strings.Repeat("Source rows shared with an ordinary unnumbered read.\n", 12)
-	result := compactTestSnapshot(t, p, []compact.CapturedSource{{Command: "cat selected.txt", Stdout: body}})
+	result := compactTestSnapshot(t, p, compact.Snapshot{Selection: selection, Sources: []compact.CapturedSource{{Command: "cat selected.txt", Stdout: body}}})
 	input := []any{
 		map[string]any{"type": "compaction", "encrypted_content": ref}, reader,
 		map[string]any{"type": "custom_tool_call_output", "call_id": reader["call_id"], "output": result},
@@ -188,7 +192,7 @@ func TestCompactReloadIntroducesMultipleOutputsOnce(t *testing.T) {
 	}
 }
 
-func compactTestSnapshot(t *testing.T, p *Preparer, sources []compact.CapturedSource) string {
+func compactTestSnapshot(t *testing.T, p *Preparer, snapshot compact.Snapshot) string {
 	t.Helper()
 	ns, err := p.retained.Store.NamespaceForThread("root")
 	if err != nil {
@@ -198,7 +202,7 @@ func compactTestSnapshot(t *testing.T, p *Preparer, sources []compact.CapturedSo
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := json.Marshal(compact.Snapshot{Selection: `{"sources":[{"path":"selected.txt"}]}`, Sources: sources})
+	data, err := json.Marshal(snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}

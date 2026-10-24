@@ -35,13 +35,25 @@ func Capture(ctx context.Context, request command.Request) (command.Output, erro
 	if len(request.Args) != 1 {
 		return command.Output{}, errors.New("mreload requires one reload selection")
 	}
+	sources, err := Sources(request.Args[0])
+	if err != nil {
+		return command.Output{}, err
+	}
 	commands, err := ReadCommands(request.Args[0])
 	if err != nil {
 		return command.Output{}, err
 	}
-	results := make([]CapturedSource, len(commands))
+	// Keep original selection indices and command identity for retained history.
+	// Host-loaded instructions have no acquisition or result body.
+	results := make([]CapturedSource, len(sources))
 	var readers sync.WaitGroup
-	for i, script := range commands {
+	commandIndex := 0
+	for i, source := range sources {
+		if source.HostLoaded() {
+			continue
+		}
+		script := commands[commandIndex]
+		commandIndex++
 		readers.Go(func() {
 			var stdout, stderr bytes.Buffer
 			cmd := exec.CommandContext(ctx, "bash", "-c", script)

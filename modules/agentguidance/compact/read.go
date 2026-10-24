@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
@@ -15,7 +16,7 @@ func ReadCommands(selection string) ([]string, error) {
 	if selection == "" {
 		return nil, nil
 	}
-	selected, err := Sources(selection)
+	selected, err := ReloadSources(selection)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +61,16 @@ type Source struct {
 	Path   string   `json:"path"`
 	Skill  string   `json:"skill"`
 	Ranges [][2]int `json:"ranges"`
+}
+
+// HostLoaded sources are supplied by Codex's instruction discovery.
+func (s Source) HostLoaded() bool { return filepath.Base(s.Path) == "AGENTS.md" }
+
+// ReloadSources excludes host-owned instructions while Sources preserves the
+// original order for interpreting already retained capture results.
+func ReloadSources(selection string) ([]Source, error) {
+	sources, err := Sources(selection)
+	return slices.DeleteFunc(sources, Source.HostLoaded), err
 }
 
 func Sources(selection string) ([]Source, error) {

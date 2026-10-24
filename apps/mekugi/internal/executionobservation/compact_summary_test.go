@@ -126,3 +126,27 @@ func TestCompactReaderCallIDsFitOpenAI(t *testing.T) {
 		t.Fatalf("invalid OpenAI call_id: %q", id)
 	}
 }
+
+func TestCompactHostInstructionsSkipAcquisitionButRecognizeHistory(t *testing.T) {
+	record := compact.Record{Reference: "mekugi:compact:thread:amber", Selection: `{"sources":[{"path":"AGENTS.md"}]}`}
+	if pending, _, err := compactReaderCall(record, nil, "root"); err != nil || len(pending) != 0 {
+		t.Fatalf("host-only selection scheduled acquisition: %s, %v", pending, err)
+	}
+	// A completed acquisition retained before exclusion must still be identified
+	// so its original AGENTS.md result cannot reappear as ordinary tool output.
+	prior := record
+	prior.Selection = `{"sources":[{"path":"selected.txt"}]}`
+	raw, _, err := compactReaderCall(prior, nil, "root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var call map[string]jsontext.Value
+	if err := json.Unmarshal(raw, &call); err != nil {
+		t.Fatal(err)
+	}
+	call["input"] = mustTestJSON(t, codexresponses.CompactReadProgram(compact.CaptureCommand(record.Selection)))
+	items := []map[string]jsontext.Value{call, {"type": mustTestJSON(t, "custom_tool_call_output"), "call_id": call["call_id"], "output": mustTestJSON(t, "Script completed\nWall time 0.1 seconds\nOutput:\n")}}
+	if pending, calls, err := compactReaderCall(record, items, "root"); err != nil || len(pending) != 0 || len(calls) != 1 {
+		t.Fatalf("host-only retained acquisition lost identity: %s, %v, %v", pending, calls, err)
+	}
+}

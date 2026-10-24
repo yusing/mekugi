@@ -61,6 +61,47 @@ func TestReloadReadsFullSelectedContent(t *testing.T) {
 	}
 }
 
+func TestReloadExcludesHostInstructionsAndPreservesSourceOrder(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "selected.txt")
+	if err := os.WriteFile(path, []byte("selected body"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	selection, _ := json.Marshal(map[string]any{"sources": []Source{
+		{Path: "AGENTS.md"}, {Path: path},
+		{Path: filepath.Join(dir, "AGENTS.md"), Ranges: [][2]int{{1, 10}}},
+		{Path: path + ".missing"}, {Path: "nested/../nested/AGENTS.md"},
+	}})
+	output, err := Capture(t.Context(), command.Request{Args: []string{string(selection)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := output.Delivery.Prepare([]string{"amber"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot Snapshot
+	if err := json.Unmarshal([]byte(prepared.Recovery[0].Stdout), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := Sources(snapshot.Selection)
+	if err != nil || len(selected) != 5 || len(snapshot.Sources) != 5 || snapshot.Selection != string(selection) {
+		t.Fatalf("selection/results correlation: %+v, %v", snapshot, err)
+	}
+	if selected[1].Path != path || snapshot.Sources[1].Stdout != "selected body" || snapshot.Sources[1].ExitCode != 0 || selected[3].Path != path+".missing" || snapshot.Sources[3].ExitCode == 0 {
+		t.Fatalf("filtered results lost source identity: %+v", snapshot)
+	}
+	for _, i := range []int{0, 2, 4} {
+		if snapshot.Sources[i] != (CapturedSource{}) {
+			t.Fatalf("host-owned source acquired: %+v", snapshot.Sources[i])
+		}
+	}
+	commands, err := ReadCommands(`{"sources":[{"path":"AGENTS.md"}]}`)
+	if err != nil || len(commands) != 0 {
+		t.Fatalf("host-only selection must acquire nothing: %v, %v", commands, err)
+	}
+}
+
 func TestReloadReadsDashFile(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "-"), []byte("first\nsecond\n"), 0600); err != nil {
