@@ -650,8 +650,9 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	report := dialExecTrackReport(t, hub, script)
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
 	awaitMain(t, u, "Running go test ./...")
-	// The first call edited one file; an unrelated change makes the sibling
-	// watch visible too. Neither can acquire completion from this report.
+	// The first call's exact endpoint can settle without a correlated report.
+	// The sibling's unrelated change cannot borrow that match or this report,
+	// and the ambiguous report cannot establish an observed edit receipt.
 	writeTestFile(t, filepath.Join(workspace, "one", "source.go"), "after\n")
 	writeTestFile(t, filepath.Join(workspace, "two", "source.go"), "unrelated\n")
 	seen := make(map[string]bool)
@@ -661,16 +662,26 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 		select {
 		case <-sub.Ready():
 			for _, event := range testReview(auto).TakePreviews(sub) {
-				if event.Preview == nil || len(event.Preview.Files) == 0 {
+				if event.Preview == nil {
 					continue
 				}
-				if event.Preview.Complete {
+				if event.Preview.EditReceipt != "" {
+					t.Fatalf("ambiguous sibling report published an edit receipt: %s", event.Preview.ID)
+				}
+				if len(event.Preview.Files) == 0 {
+					continue
+				}
+				if event.Preview.ID == "running:one" {
+					if !event.Preview.Complete {
+						continue
+					}
+				} else if event.Preview.Complete {
 					t.Fatalf("sibling window borrowed completion: %s", event.Preview.ID)
 				}
 				seen[event.Preview.ID] = true
 			}
 		case <-timer.C:
-			t.Fatal("sibling preview retired before its own command")
+			t.Fatal("missing own endpoint settlement or running sibling preview")
 		}
 	}
 }

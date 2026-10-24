@@ -129,7 +129,7 @@ func runExecScopePreview(ctx context.Context, broker *previewmodel.Session, obse
 		if capture != nil && tracking != nil {
 			capture.update(ctx, broker, endpoint.View(), tracking, state)
 		}
-		if endpoint.Advance(ctx, state.tracked, state.settled) && (capture == nil || tracking == nil) {
+		if endpoint.Advance(ctx, state.settled) && (capture == nil || tracking == nil) {
 			return
 		}
 	}

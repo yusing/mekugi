@@ -46,7 +46,7 @@ func TestRunningPreviewUsesComposedReaderAndCapturedScope(t *testing.T) {
 	if err := os.WriteFile(path, []byte("after\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if !endpoint.Advance(t.Context(), false, false) || reads != 1 {
+	if !endpoint.Advance(t.Context(), false) || reads != 1 {
 		t.Fatalf("source edit did not settle independently of the following command: reads=%d", reads)
 	}
 	for _, event := range session.TakePreviews(sub) {

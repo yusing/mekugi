@@ -197,7 +197,7 @@ func (w *Endpoint) Close() { w.broker.DiscardRunning(w.preview) }
 
 // Advance samples only admitted endpoints and reports source-card settlement.
 // It does not close host windows or decide retained-evidence completion.
-func (w *Endpoint) Advance(ctx context.Context, tracked, settled bool) bool {
+func (w *Endpoint) Advance(ctx context.Context, settled bool) bool {
 	if w.preview.Complete || len(w.observation.Files) == 0 {
 		return w.preview.Complete
 	}
@@ -307,7 +307,7 @@ func (w *Endpoint) Advance(ctx context.Context, tracked, settled bool) bool {
 	// The literal edit has landed. A following test keeps the host command
 	// alive, not this edit's live card. This does not close the observation
 	// window or persist a command outcome or completed change receipt.
-	if settled && len(w.settledPaths) == len(w.observation.Files) || !tracked && len(w.expected) > 0 && len(w.matched) == len(w.expected) {
+	if settled && len(w.settledPaths) == len(w.observation.Files) || len(w.expected) > 0 && len(w.matched) == len(w.expected) {
 		if len(w.preview.Files) > 0 && ctx.Err() == nil {
 			w.preview.Status, w.preview.Complete = PreviewRunning, true
 			w.preview.Footer = "observed edit"

@@ -19,6 +19,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 
+	"github.com/yusing/mekugi/modules/commandsegments/segments"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -74,9 +76,19 @@ func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
 	broker := newLivePreview(ctx)
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 	sub := testReview(broker).Subscribe()
-	registry := &Windows{}
-	registry.open(&execWindow{ref: "edit-then-test", roots: []string{workspace}, thread: "thread"})
+	hub := newExecTrackFixture(t, ctx, segments.Instrumentation{})
+	registry := &Windows{Reports: hub.Observer}
+	registry.open(&execWindow{ref: "edit-then-test", roots: []string{workspace}, thread: "thread", turn: "turn"})
 	registry.preview("edit-then-test", observation, broker, workspace, "thread", "/root", nil)
+	report := hub.begin(t, [3]string{"thread", "turn", "call"}, observation.Commands[0].Command)
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0})
+	hub.await(t, [3]string{"thread", "turn", "call"}, func(view segments.Report) bool { return view.LastStarted() == 0 })
+	registry.mu.Lock()
+	state := registry.find("edit-then-test").tracking.state()
+	registry.mu.Unlock()
+	if !state.tracked || state.settled {
+		t.Fatalf("fixture must retain an unfinished writer report: %+v", state)
+	}
 	if err := os.WriteFile(path, []byte("aft"), 0o600); err != nil {
 		t.Fatal(err)
 	}
