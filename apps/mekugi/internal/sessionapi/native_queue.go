@@ -12,8 +12,9 @@ import (
 // Inspect only delivery identity. Rendering payloads remain raw, including
 // fields unknown to this queue and exact integers inside retained output.
 type nativeQueueEvent struct {
-	Attachment string `json:"attachment"`
-	Startup    string `json:"startup"`
+	Retained   nativeOwners `json:"retained"`
+	Attachment string       `json:"attachment"`
+	Startup    string       `json:"startup"`
 	Frame      *struct {
 		View struct {
 			Version sessionpresentation.Version
@@ -42,6 +43,9 @@ func coalesceNative(previous, next publication) (publication, bool) {
 		return publication{}, false
 	}
 	old, current := before.Frame, after.Frame
+	if after.Retained != 0 && (next.Kind == "snapshot" || old.View.Version.Attachment != current.View.Version.Attachment || old.View.Main.ID != current.View.Main.ID || current.Switch != nil) {
+		return publication{}, false
+	}
 	hasOutput := len(old.MainOutput) != 0 || len(old.AgentOutput) != 0
 	if old.Switch != nil || hasOutput {
 		if current.Switch != nil || old.View.Main.ID != current.View.Main.ID || before.Startup != after.Startup || old.View.Version.Attachment != current.View.Version.Attachment {
@@ -54,12 +58,25 @@ func coalesceNative(previous, next publication) (publication, bool) {
 	if previous.Kind == "snapshot" {
 		merged.Kind = "snapshot"
 	}
-	if old.Switch == nil && !hasOutput && (!old.ReacquireOutput || current.ReacquireOutput) {
+	if after.Retained & ^before.Retained == 0 && old.Switch == nil && !hasOutput && (!old.ReacquireOutput || current.ReacquireOutput) {
 		return merged, true
 	}
 	var envelope, frame map[string]jsontext.Value
 	if json.Unmarshal(next.Data, &envelope) != nil || json.Unmarshal(envelope["frame"], &frame) != nil {
 		return publication{}, false
+	}
+	if after.Retained & ^before.Retained != 0 {
+		var oldEnvelope, oldFrame map[string]jsontext.Value
+		if json.Unmarshal(previous.Data, &oldEnvelope) != nil || json.Unmarshal(oldEnvelope["frame"], &oldFrame) != nil {
+			return publication{}, false
+		}
+		for i, field := range []string{"main", "agents", "review"} {
+			bit := nativeOwners(1 << i)
+			if after.Retained&bit != 0 && before.Retained&bit == 0 {
+				frame[field] = oldFrame[field]
+			}
+		}
+		envelope["retained"], _ = json.Marshal(after.Retained&before.Retained, nativeEncoding)
 	}
 	if old.Switch != nil {
 		frame["switch"], _ = json.Marshal(old.Switch, nativeEncoding)
@@ -121,13 +138,17 @@ const nativeOutputBacklogBytes = 8 << 20
 // to reacquire their unresolved demands, never to treat missing data as empty.
 // Both queues normalize after folding and also on their first publication.
 func normalizeNativeOutput(event publication) publication {
+	return normalizeNativeOutputLimit(event, nativePublicationBytes)
+}
+
+func normalizeNativeOutputLimit(event publication, limit int) publication {
 	if event.Kind != "snapshot" && event.Kind != "patch" {
 		return event
 	}
 	// Each output array fits inside the complete publication. Below the
 	// per-feed budget neither trimming loop can remove anything, so avoid
 	// parsing the entire transcript on both the server and the client.
-	if len(event.Data) <= nativeOutputBacklogBytes {
+	if len(event.Data) <= nativeOutputBacklogBytes && len(event.Data) <= limit {
 		return event
 	}
 	var decoded nativeQueueEvent
@@ -169,7 +190,7 @@ func normalizeNativeOutput(event publication) publication {
 	if len(decoded.Frame.Effects) > 0 {
 		minimum = 0
 	}
-	for size > nativePublicationBytes && len(outputs[0])+len(outputs[1]) > minimum {
+	for size > limit && len(outputs[0])+len(outputs[1]) > minimum {
 		feed := 0
 		if len(outputs[0]) == 0 || len(outputs[1]) > 0 && sizes[1] > sizes[0] {
 			feed = 1

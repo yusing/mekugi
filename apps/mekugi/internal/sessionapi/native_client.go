@@ -123,15 +123,9 @@ func (c *NativeConnection) Next() (NativeEvent, error) {
 		return NativeEvent{}, &outcome
 	}
 	first := c.last.Attachment == ""
-	if kind != "snapshot" && kind != "patch" || first && kind != "snapshot" {
-		return NativeEvent{}, errors.New("native stream did not provide a compatible snapshot")
-	}
-	var event NativeEvent
-	if err := json.Unmarshal(data, &event, nativeEncoding); err != nil {
-		return NativeEvent{}, fmt.Errorf("decode native publication: %w", err)
-	}
-	if event.Attachment == "" || c.last.Attachment != "" && c.last.Attachment != event.Attachment {
-		return NativeEvent{}, errors.New("native stream changed its presentation attachment")
+	event, err := decodeNativeEvent(kind, data, c.last)
+	if err != nil {
+		return NativeEvent{}, err
 	}
 	if first && c.thread == "" && c.startup == "" {
 		c.startup = event.Startup
@@ -145,6 +139,38 @@ func (c *NativeConnection) Next() (NativeEvent, error) {
 		return NativeEvent{}, errors.New("native stream silently changed its logical thread")
 	}
 	c.last = event
+	return event, nil
+}
+
+// Both socket clients and in-process child observations consume this wire
+// contract. Rendering owners only receive fully reconstructed immutable frames.
+func decodeNativeEvent(kind string, data []byte, previous NativeEvent) (NativeEvent, error) {
+	first := previous.Attachment == ""
+	if kind != "snapshot" && kind != "patch" || first && kind != "snapshot" {
+		return NativeEvent{}, errors.New("native stream did not provide a compatible snapshot")
+	}
+	var wire nativeWireEvent
+	if err := json.Unmarshal(data, &wire, nativeEncoding); err != nil {
+		return NativeEvent{}, fmt.Errorf("decode native publication: %w", err)
+	}
+	event := wire.NativeEvent
+	if wire.Retained != 0 {
+		if kind == "snapshot" || first || wire.Retained & ^(nativeMain|nativeAgents|nativeReview) != 0 || event.Frame.View.Version.Attachment != previous.Frame.View.Version.Attachment || event.Frame.Switch != nil {
+			return NativeEvent{}, errors.New("native delta has no compatible owner snapshot")
+		}
+		if wire.Retained&nativeMain != 0 {
+			event.Frame.Main = previous.Frame.Main
+		}
+		if wire.Retained&nativeAgents != 0 {
+			event.Frame.Agents = previous.Frame.Agents
+		}
+		if wire.Retained&nativeReview != 0 {
+			event.Frame.Review = previous.Frame.Review
+		}
+	}
+	if event.Attachment == "" || previous.Attachment != "" && previous.Attachment != event.Attachment {
+		return NativeEvent{}, errors.New("native stream changed its presentation attachment")
+	}
 	return event, nil
 }
 

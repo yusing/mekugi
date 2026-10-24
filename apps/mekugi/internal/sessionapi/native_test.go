@@ -329,8 +329,8 @@ func TestNativePublicationSuppressesOnlyIdenticalFrames(t *testing.T) {
 	}
 }
 
-func TestNativeUnchangedPublicationDoesNotReencodeHistory(t *testing.T) {
-	allocatedBytes := func(entries int, authority viewAuthority) uint64 {
+func TestNativePublicationMetadataCostDoesNotScaleWithOwners(t *testing.T) {
+	allocatedBytes := func(entries int, authority viewAuthority, changing bool) uint64 {
 		n := NewLive().Native()
 		source, request, failure := n.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", authority)
 		if failure != nil {
@@ -354,19 +354,25 @@ func TestNativeUnchangedPublicationDoesNotReencodeHistory(t *testing.T) {
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
 		for range 5 {
+			if changing {
+				frame.View.Version.Revision++
+			}
 			// The owner returns a new wrapper over the same immutable content.
 			frame.Review = new(*frame.Review)
 			if err := n.Publish(request.Attachment, frame); err != nil {
 				t.Fatal(err)
 			}
+			source.native.pop()
 		}
 		runtime.ReadMemStats(&after)
 		return (after.TotalAlloc - before.TotalAlloc) / 5
 	}
 	for _, authority := range []viewAuthority{localNativeView, remoteHumanView} {
-		small, large := allocatedBytes(1, authority), allocatedBytes(1000, authority)
-		if large > small+128<<10 {
-			t.Fatalf("unchanged publication bytes scale with history for authority %d: small=%d large=%d", authority, small, large)
+		for _, changing := range []bool{false, true} {
+			small, large := allocatedBytes(1, authority, changing), allocatedBytes(1000, authority, changing)
+			if large > small+128<<10 {
+				t.Fatalf("publication bytes scale with history for authority %d (changing=%v): small=%d large=%d", authority, changing, small, large)
+			}
 		}
 	}
 }

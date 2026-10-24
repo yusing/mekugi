@@ -98,6 +98,36 @@ func TestHubDescendantPublicationAndReadOnlyObservation(t *testing.T) {
 	if request.Attach || request.Operation.Output.Demands[0] != demand || request.Version != frame.View.Version {
 		t.Fatalf("read lost source/version: %+v", request)
 	}
+	previous, _ := observer.Snapshot()
+	for _, replace := range []bool{false, true} {
+		frame.View.Version.Revision++
+		frame.MainOutput = []activity.OutputResult{{Demand: demand}}
+		if replace {
+			frame.Main = &activity.Publication{LastSeq: 8}
+		}
+		frames <- frame
+		deadline = time.After(3 * time.Second)
+		for {
+			event, err := observer.Snapshot()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if event.Frame.View.Version == frame.View.Version {
+				if event.Frame.Main == nil || len(event.Frame.MainOutput) != 1 || event.Frame.MainOutput[0].Demand != demand {
+					t.Fatal("child hydration lost its retained owner or demand")
+				}
+				if !replace && event.Frame.Main != previous.Frame.Main || replace && event.Frame.Main.LastSeq != 8 {
+					t.Fatal("child observation lost owner retention or replacement")
+				}
+				break
+			}
+			select {
+			case <-deadline:
+				t.Fatal("missing child delta")
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}
 	observer.Close()
 	if _, err := hub.Requests("child"); err == nil {
 		t.Fatal("test child unexpectedly has request owner")

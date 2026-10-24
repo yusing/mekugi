@@ -60,7 +60,7 @@ func controlRead(t *testing.T, conn *websocket.Conn) RPCMessage {
 
 func controlInitialize(t *testing.T, conn *websocket.Conn) {
 	t.Helper()
-	controlWrite(t, conn, `{"jsonrpc":"2.0","id":"init","method":"initialize","params":{"version":"2"}}`)
+	controlWrite(t, conn, `{"jsonrpc":"2.0","id":"init","method":"initialize","params":{"version":"3"}}`)
 	if reply := controlRead(t, conn); reply.Error != nil {
 		t.Fatalf("initialize: %+v", reply)
 	}
@@ -70,7 +70,7 @@ func TestRPCServerInitializationAndRequestBoundary(t *testing.T) {
 	for _, initial := range []string{
 		`{"jsonrpc":"2.0","id":1,"method":"session/list","params":{}}`,
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"version":"1"}}`,
-		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"version":"2","token":""}}`,
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"version":"3","token":""}}`,
 	} {
 		t.Run(initial, func(t *testing.T) {
 			hub := NewHub(t.Context(), nil)

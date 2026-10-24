@@ -57,19 +57,20 @@ const (
 )
 
 type nativeView struct {
-	authority viewAuthority
-	target    requestTarget
-	startup   string
-	version   sessionpresentation.Version
-	ctx       context.Context
-	cancel    context.CancelCauseFunc
-	queue     *nativePublications
-	started   bool
-	frame     []byte
-	main      *activity.Publication
-	agents    *activity.Publication
-	state     []byte
-	feeds     [2]nativeFeedEncoding
+	authority   viewAuthority
+	target      requestTarget
+	startup     string
+	version     sessionpresentation.Version
+	ctx         context.Context
+	cancel      context.CancelCauseFunc
+	queue       *nativePublications
+	started     bool
+	frame       []byte
+	main        *activity.Publication
+	agents      *activity.Publication
+	state       []byte
+	reviewState []byte
+	ownerBytes  [3]int
 }
 
 // nativePublications retains ordered deliveries while coalescing superseded
@@ -210,7 +211,16 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 	// Keep mutable caller values detached through bytes, not retained aliases.
 	main, agents := frame.Main, frame.Agents
 	frame = frame.withoutEditors()
-	var state []byte
+	var state, reviewState []byte
+	if frame.Review != nil && frame.Review.Revision != 0 {
+		review := *frame.Review
+		review.Files, review.Unfiltered, review.Counts.Callers, review.Counts.Net = nil, nil, nil, nil
+		var err error
+		reviewState, err = json.Marshal(review, nativeEncoding)
+		if err != nil {
+			return err
+		}
+	}
 	if len(frame.Effects) == 0 && len(frame.MainOutput) == 0 && len(frame.AgentOutput) == 0 {
 		// Consequence suffixes and hydration must go through bounded prefix
 		// selection without first encoding their unbounded aggregate.
@@ -238,7 +248,24 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 	if v.authority == remoteHumanView {
 		frame = frame.remote()
 	}
-	data, err := encodeNativePrefix(id, startup, frame, &v.feeds)
+	event := "patch"
+	if !v.started || v.version.Attachment != frame.View.Version.Attachment || frame.Switch != nil {
+		event = "snapshot"
+	}
+	var retained nativeOwners
+	if event == "patch" && v.authority == localNativeView {
+		if v.main == main {
+			retained |= nativeMain
+		}
+		if v.agents == agents {
+			retained |= nativeAgents
+		}
+		if reviewState != nil && bytes.Equal(v.reviewState, reviewState) {
+			retained |= nativeReview
+		}
+	}
+	sizes := v.ownerBytes
+	data, err := encodeNativePrefix(id, startup, frame, retained, &sizes)
 	if err != nil {
 		if errors.Is(err, errNativePublicationLimit) {
 			v.cancel(err)
@@ -249,13 +276,10 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		v.main, v.agents, v.state = main, agents, state
 		return nil
 	}
-	event := "patch"
-	if !v.started || v.version.Attachment != frame.View.Version.Attachment {
-		event = "snapshot"
-	}
 	notification := publication{Kind: event, Data: data}
 	if v.queue.push(notification) {
 		v.frame = data
+		v.reviewState, v.ownerBytes = reviewState, sizes
 		v.main, v.agents, v.state = main, agents, state
 		v.started, v.version = true, frame.View.Version
 		if frame.Switch != nil {

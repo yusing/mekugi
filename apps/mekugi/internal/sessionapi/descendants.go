@@ -2,7 +2,6 @@ package sessionapi
 
 import (
 	"context"
-	json "encoding/json/v2"
 	"errors"
 	"sync"
 
@@ -135,8 +134,9 @@ func (h *Hub) Observe(ctx context.Context, parent, thread string) (*Observation,
 				if event.Kind == "exit" {
 					return
 				}
-				var frame NativeEvent
-				if err := json.Unmarshal(event.Data, &frame, nativeEncoding); err != nil {
+				previous, _ := o.Snapshot()
+				frame, err := decodeNativeEvent(event.Kind, event.Data, previous)
+				if err != nil {
 					setError(err)
 					return
 				}

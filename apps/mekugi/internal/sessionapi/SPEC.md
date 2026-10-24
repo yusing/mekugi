@@ -52,12 +52,13 @@ edit previews from the existing owners. Saved review uses the terminal Diff
 pane's temporary-file policy and composed evidence; unchanged revisions reuse
 their projection and encoding. Published user and View images share bound-image
 read admission, including restored history.
-Native server and client queues replace superseded complete-frame updates so restoration
+Native server and client queues fold superseded owner updates so restoration
 and ordinary progress do not accumulate copies of the same history. Attachment
 transitions, acquired output and runtime exit remain ordered, and unacknowledged
 effects remain available in the newer frame.
-Unchanged native publications reuse immutable Activity snapshots and revisioned
-saved-review content before encoding history. Other frame facts still participate
+Native metadata updates retain unchanged immutable Activity and revisioned saved-review
+owners across encoding, transport and client decoding. Complete replacements are
+sent when an owner changes; snapshots reset retained identity. Other frame facts still participate
 in change detection independently of the presentation revision; output and semantic
 consequence budgets remain unchanged.
 The [contract](CONTRACT.md) defines payloads. Consumers own rendering, drafts,

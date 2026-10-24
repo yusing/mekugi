@@ -2,6 +2,7 @@ package sessionapi
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -126,7 +127,7 @@ func BenchmarkNormalizeNativeOutput(b *testing.B) {
 					View:   activityfeed.OutputView{Lines: []string{strings.Repeat("x", 1<<20)}},
 				}}
 			}
-			data, err := encodeNativePrefix("benchmark", "", frame, new([2]nativeFeedEncoding))
+			data, err := encodeNativePrefix("benchmark", "", frame, 0, new([3]int))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -142,6 +143,65 @@ func BenchmarkNormalizeNativeOutput(b *testing.B) {
 			if normalized.Kind != event.Kind || len(normalized.Data) != len(data) || &normalized.Data[0] != &data[0] {
 				b.Fatal("normalization replaced a below-budget publication")
 			}
+		})
+	}
+}
+
+// Representative owner sizes: about 52 MB saved review, 6 MB main history and
+// 2 MB agent history. Includes publication, server queue and typed consumption.
+func BenchmarkNativeWireLargeOwners(b *testing.B) {
+	for _, changingEntry := range []bool{false, true} {
+		name := "Metadata"
+		if changingEntry {
+			name = "OneEntry"
+		}
+		b.Run(name, func(b *testing.B) {
+			n := NewLive().Native()
+			source, request, failure := n.newView(b.Context(), requestTarget{"thread", "/workspace"}, "", localNativeView)
+			if failure != nil {
+				b.Fatal(failure)
+			}
+			defer source.close()
+			frame := benchmarkNativeHistoryFrame(476)
+			for i := range frame.Main.Entries {
+				frame.Main.Entries[i].Text = strings.Repeat("history ", 1500)
+			}
+			frame.Agents = &activity.Publication{Entries: slices.Clone(frame.Main.Entries[:33])}
+			for i := range frame.Agents.Entries {
+				frame.Agents.Entries[i].Text = strings.Repeat("agent ", 10000)
+			}
+			file := changes.File{Path: "saved.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("+saved diff\n", 2<<20)}}}}
+			frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{Files: []changes.File{file}, Unfiltered: map[string]changes.File{"saved.go": file}}}
+			connection := &NativeConnection{thread: "thread", subscription: &RPCSubscription{client: &RPCClient{}}}
+			consume := func() int {
+				if err := n.Publish(request.Attachment, frame); err != nil {
+					b.Fatal(err)
+				}
+				queued, ok := source.native.pop()
+				if !ok {
+					b.Fatal("missing publication")
+				}
+				connection.subscription.events = []RPCEvent{{Kind: queued.Kind, Data: queued.Data}}
+				if _, err := connection.Next(); err != nil {
+					b.Fatal(err)
+				}
+				return len(queued.Data)
+			}
+			snapshotBytes := consume()
+			b.ReportAllocs()
+			bytes := 0
+			for b.Loop() {
+				frame.View.Version.Revision++
+				if changingEntry {
+					frame.Main = new(*frame.Main)
+					frame.Main.Entries = slices.Clone(frame.Main.Entries)
+					frame.Main.Entries[0].Revision++
+					frame.Main.Entries[0].Text = fmt.Sprint(frame.View.Version.Revision)
+				}
+				bytes = consume()
+			}
+			b.ReportMetric(float64(snapshotBytes), "snapshot-bytes")
+			b.ReportMetric(float64(bytes), "update-bytes")
 		})
 	}
 }

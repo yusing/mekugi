@@ -78,7 +78,7 @@ func TestControlBrowser(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, controlBrowserPage, remoteURL)
+		fmt.Fprintf(w, controlBrowserPage, remoteURL, sessionapi.RPCSubprotocol, sessionapi.ProtocolVersion)
 	}))
 	defer page.Close()
 	// A fixed credential is confined to this disposable fixture and its page.
@@ -119,18 +119,18 @@ func TestControlBrowser(t *testing.T) {
 
 const controlBrowserPage = `<!doctype html><title>Control protocol fixture</title><p>Browser control acceptance</p><script>
 window.controlResult=(async()=>{
- const endpoint=%q, token="a".repeat(64);
+ const endpoint=%q, subprotocol=%q, version=%q, token="a".repeat(64);
  const check=(value,message)=>{if(!value)throw Error(message)};
  async function connect(){
-  const ws=new WebSocket(endpoint,"mekugi.control.v2"), pending=new Map(), events=[];
+  const ws=new WebSocket(endpoint,subprotocol), pending=new Map(), events=[];
   let next=0, eventWake;
   const closed=new Promise(resolve=>ws.addEventListener("close",()=>{resolve();for(const p of pending.values())p.reject(Error("closed"));pending.clear()}));
   ws.addEventListener("message",e=>{const m=JSON.parse(e.data);if(m.id!==undefined){const p=pending.get(m.id);if(p){pending.delete(m.id);p.resolve(m)}}else{events.push(m);if(eventWake){eventWake();eventWake=null}}});
   await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=()=>reject(Error("upgrade failed"))});
   const call=(method,params)=>new Promise((resolve,reject)=>{const id=String(++next);pending.set(id,{resolve,reject});ws.send(JSON.stringify({jsonrpc:"2.0",id,method,params}))});
   const event=async()=>{while(!events.length)await new Promise(resolve=>eventWake=resolve);return events.shift()};
-  const initialized=await call("initialize",{version:"2",token});
-  check(initialized.result?.version==="2","initialization failed");
+  const initialized=await call("initialize",{version,token});
+  check(initialized.result?.version===version,"initialization failed");
   return {ws,call,event,closed};
  }
  const first=await connect();

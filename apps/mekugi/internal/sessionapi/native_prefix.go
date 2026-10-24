@@ -1,44 +1,36 @@
 package sessionapi
 
 import (
-	"bytes"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
 
-	"github.com/yusing/goutils/synk"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
-// Each view retains only its latest immutable feed encodings. Metadata updates
-// and bounded-prefix probes can reuse them without revisiting retained entries.
-type nativeFeedEncoding struct {
-	source *activity.Publication
-	data   []byte
+// Native wire deltas retain immutable owners from the preceding publication.
+// They are transport state only; rendering consumers receive complete frames.
+type nativeOwners uint8
+
+const (
+	nativeMain nativeOwners = 1 << iota
+	nativeAgents
+	nativeReview
+)
+
+type nativeWireEvent struct {
+	NativeEvent
+	Retained nativeOwners `json:"retained,omitzero"`
 }
 
-func (e *nativeFeedEncoding) update(source *activity.Publication) error {
-	if e.source == source && e.data != nil {
-		return nil
-	}
-	data, err := json.Marshal(source, nativeEncoding)
-	if err != nil {
-		return err
-	}
-	e.source, e.data = source, data
-	return nil
-}
-
-// Shadow only the feeds, keeping every other NativeFrame field on its owner.
-// These omitted fields are appended from validated immutable encodings after
-// prefix selection, avoiding even a JSON rescan of unchanged history.
+// Owner values are appended from their individual encodings after prefix
+// selection. Probing a semantic prefix never re-encodes retained history.
 type nativeFrameMetadata struct {
 	*NativeFrame
-	// The outer pointer distinguishes an omitted cached feed from an explicit
-	// null feed. Both encoding paths keep these members last, so identical
-	// frames remain byte-identical when a cold cache warms up.
 	Main   **activity.Publication `json:"main,omitzero"`
 	Agents **activity.Publication `json:"agents,omitzero"`
+	Review **changes.ReviewView   `json:"review,omitzero"`
 }
 
 // subscribe admits at most 256 bytes of subscription identity. Each byte can
@@ -52,62 +44,54 @@ var errNativePublicationLimit = errors.New("native publication exceeds the 64 Mi
 // prefix travels here; neither a shorter subsequent prefix nor queue replacement
 // acknowledges a withheld effect. A receipt for the visible prefix admits the
 // suffix on the next publication, even when changing state shrinks the window.
-func encodeNativePrefix(attachment, startup string, frame NativeFrame, feeds *[2]nativeFeedEncoding) ([]byte, error) {
-	// A newly replaced feed may change again on the next observation. Encode
-	// that frame directly; materialize a reusable feed encoding only when its
-	// identity survives another changed frame, avoiding duplicate copies on
-	// continuously advancing history.
-	reuse := true
-	for i, feed := range []*activity.Publication{frame.Main, frame.Agents} {
-		if feeds[i].source != feed {
-			feeds[i] = nativeFeedEncoding{source: feed}
-			reuse = false
-		}
-	}
-	feedBytes := 0
-	if reuse {
-		for i, feed := range []*activity.Publication{frame.Main, frame.Agents} {
-			if err := feeds[i].update(feed); err != nil {
+func encodeNativePrefix(attachment, startup string, frame NativeFrame, retained nativeOwners, sizes *[3]int) ([]byte, error) {
+	var owners [3][]byte
+	ownerBytes, retainedBytes := 0, 0
+	for i, owner := range []any{frame.Main, frame.Agents, frame.Review} {
+		if retained&(1<<i) == 0 {
+			data, err := json.Marshal(owner, nativeEncoding)
+			if err != nil {
 				return nil, err
 			}
+			owners[i], sizes[i] = data, len(data)
+		} else {
+			retainedBytes += sizes[i]
 		}
-		feedBytes = len(`,"main":,"agents":`) + len(feeds[0].data) + len(feeds[1].data)
+		ownerBytes += sizes[i]
 	}
-	appendFeeds := func(data []byte) []byte {
-		if !reuse {
+	// Keep complete state within the reconnect snapshot limit even though a
+	// delta itself can be much smaller. Count all three field names as well.
+	ownerBytes += len(`,"main":,"agents":,"review":`)
+	appendOwners := func(data []byte) []byte {
+		if retained == nativeMain|nativeAgents|nativeReview {
 			return data
 		}
-		// The shadow frame is the final event member and is always an object.
-		// Insert its two feed members before the frame and event closing braces.
-		pool := synk.GetUnsizedBytesPool()
-		encoded := pool.GetAtLeast(len(data) + feedBytes)
-		defer func() {
-			clear(encoded) // Native consequences may carry retained private input.
-			pool.Put(encoded)
-		}()
+		// This is the final immutable allocation retained by the queue and
+		// last-frame comparison, not borrowed scratch that can be returned.
+		encoded := make([]byte, 0, len(data)+ownerBytes-retainedBytes)
 		encoded = append(encoded, data[:len(data)-2]...)
-		encoded = append(encoded, `,"main":`...)
-		encoded = append(encoded, feeds[0].data...)
-		encoded = append(encoded, `,"agents":`...)
-		encoded = append(encoded, feeds[1].data...)
+		for i, field := range []string{`,"main":`, `,"agents":`, `,"review":`} {
+			if owners[i] != nil {
+				encoded = append(encoded, field...)
+				encoded = append(encoded, owners[i]...)
+			}
+		}
 		encoded = append(encoded, '}', '}')
-		// The queue and last-frame comparison outlive this pooled construction.
-		return bytes.Clone(encoded)
+		return encoded
 	}
 	encodeFrame := func(current NativeFrame) ([]byte, error) {
-		event := NativeEvent{Attachment: attachment, Startup: startup, Frame: current}
+		// Frame stays last so appendOwners can splice its validated encodings.
 		encoded := struct {
-			*NativeEvent
-			Frame nativeFrameMetadata `json:"frame"`
-		}{NativeEvent: &event, Frame: nativeFrameMetadata{NativeFrame: &event.Frame}}
-		if !reuse {
-			encoded.Frame.Main, encoded.Frame.Agents = &event.Frame.Main, &event.Frame.Agents
-		}
+			Attachment string              `json:"attachment"`
+			Startup    string              `json:"startup,omitzero"`
+			Retained   nativeOwners        `json:"retained,omitzero"`
+			Frame      nativeFrameMetadata `json:"frame"`
+		}{attachment, startup, retained, nativeFrameMetadata{NativeFrame: &current}}
 		return json.Marshal(&encoded, nativeEncoding)
 	}
 	mainOutput, agentOutput := frame.MainOutput, frame.AgentOutput
 	frame.MainOutput, frame.AgentOutput = nil, nil
-	limit := nativePublicationBytes - feedBytes
+	limit := nativePublicationBytes - ownerBytes
 	if len(mainOutput)+len(agentOutput) > 0 && !frame.ReacquireOutput {
 		limit -= len(`,"reacquireOutput":true`)
 	}
@@ -195,11 +179,11 @@ func encodeNativePrefix(attachment, startup string, frame NativeFrame, feeds *[2
 		if err != nil {
 			return nil, err
 		}
-		data = normalizeNativeOutput(publication{Kind: "patch", Data: appendFeeds(data)}).Data
-		if len(data) > nativePublicationBytes {
+		data = normalizeNativeOutputLimit(publication{Kind: "patch", Data: appendOwners(data)}, nativePublicationBytes-retainedBytes).Data
+		if len(data) > nativePublicationBytes-retainedBytes {
 			return nil, fmt.Errorf("indivisible output with complete state: %w", errNativePublicationLimit)
 		}
 		return data, nil
 	}
-	return appendFeeds(data), nil
+	return appendOwners(data), nil
 }

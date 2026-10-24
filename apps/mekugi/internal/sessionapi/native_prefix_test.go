@@ -2,96 +2,107 @@ package sessionapi
 
 import (
 	"bytes"
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	activityfeed "github.com/yusing/mekugi/modules/activity/feed"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
-func TestNativePublicationReusesEncodedFeeds(t *testing.T) {
-	native := NewLive().Native()
-	source, request, failure := native.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", localNativeView)
-	if failure != nil {
-		t.Fatal(failure)
-	}
-	defer source.close()
-	frame := benchmarkNativeHistoryFrame(1000)
-	frame.Agents = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: "quoted \"history\" \\ 世界"}}}}
-	frame.Effects = []NativeEffect{{ID: 1, Restore: &composer.Draft{Text: "restore"}}}
-	feeds := &native.views[request.Attachment].feeds
-	var retained []struct{ data, want []byte }
-	for step, mutate := range []func(){
-		func() {},
-		func() {
-			frame.View.Version.Revision++
-			frame.Facts.Busy = true
-		},
-		func() {
-			frame.MainOutput = []activity.OutputResult{{Demand: activity.OutputDemand{Source: 1}, View: activityfeed.OutputView{Lines: []string{"output"}}}}
-		},
-		func() { frame.Main, frame.Agents = frame.Agents, frame.Main },
-		func() { frame.Agents = nil },
-		func() { frame.Main, frame.Agents = frame.Agents, frame.Main },
-		func() { frame.Main, frame.Agents = nil, nil },
-	} {
-		previous := *feeds
-		mutate()
-		if err := native.Publish(request.Attachment, frame); err != nil {
-			t.Fatal(err)
-		}
-		queued, ok := source.native.pop()
-		if !ok {
-			t.Fatal("lost changed metadata or feed")
-		}
-		retained = append(retained, struct{ data, want []byte }{queued.Data, bytes.Clone(queued.Data)})
-		// Compare the consuming wire value to ordinary complete-frame encoding,
-		// including fields carried by the metadata shadow and hydrated output.
-		want, err := json.Marshal(NativeEvent{Attachment: request.Attachment, Frame: frame.withoutEditors()}, nativeEncoding)
-		if err != nil {
-			t.Fatal(err)
-		}
-		gotJSON, wantJSON := jsontext.Value(bytes.Clone(queued.Data)), jsontext.Value(want)
-		for _, data := range []*jsontext.Value{&gotJSON, &wantJSON} {
-			if err := data.Canonicalize(jsontext.CanonicalizeRawInts(false)); err != nil {
-				t.Fatal(err)
+func TestNativeOwnerDeltasThroughQueues(t *testing.T) {
+	for _, backlog := range []string{"none", "server", "client"} {
+		t.Run(backlog, func(t *testing.T) {
+			native := NewLive().Native()
+			source, request, failure := native.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", localNativeView)
+			if failure != nil {
+				t.Fatal(failure)
 			}
-		}
-		if !bytes.Equal(gotJSON, wantJSON) {
-			t.Fatal("cached feed publication changed the complete wire value")
-		}
-		for i, cached := range feeds {
-			if cached.source != previous[i].source && cached.data != nil {
-				t.Fatal("replacement encoded a feed before reuse")
+			defer source.close()
+			frame := benchmarkNativeHistoryFrame(1000)
+			frame.Agents = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: "agent history"}}}}
+			frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{Files: []changes.File{{Path: "saved.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("+saved diff\n", 1<<16)}}}}}}}
+			frame.Effects = []NativeEffect{{ID: 1, Restore: &composer.Draft{Text: "restore"}}}
+			connection := &NativeConnection{thread: "thread", subscription: &RPCSubscription{client: &RPCClient{}}}
+			var events []publication
+			var frozen []byte
+			for step := range 5 {
+				frame.View.Version.Revision++
+				switch step {
+				case 2:
+					frame.Main = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: "new history"}}}}
+					frame.MainOutput = []activity.OutputResult{{Demand: activity.OutputDemand{Source: 1}, View: activityfeed.OutputView{Lines: []string{"output"}}}}
+				case 3:
+					frame.MainOutput = nil
+				case 4:
+					frame.Agents = nil
+				}
+				if err := native.Publish(request.Attachment, frame); err != nil {
+					t.Fatal(err)
+				}
+				if backlog == "server" {
+					continue
+				}
+				queued, ok := source.native.pop()
+				if !ok {
+					t.Fatal("lost changed metadata or owner")
+				}
+				if step == 1 && len(queued.Data) > 16000 {
+					t.Fatalf("metadata repeated retained owners: %d bytes", len(queued.Data))
+				}
+				events = append(events, queued)
+				if backlog == "client" {
+					continue
+				}
+				previous := connection.last.Frame
+				connection.subscription.events = []RPCEvent{{Kind: queued.Kind, Data: queued.Data}}
+				got, err := connection.Next()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if step == 1 && (got.Frame.Main != previous.Main || got.Frame.Agents != previous.Agents || got.Frame.Review != previous.Review) {
+					t.Fatal("unchanged owner identity was replaced")
+				}
+				if step == 0 {
+					frozen, _ = json.Marshal(got.Frame.Review, nativeEncoding)
+				}
+				want, _ := json.Marshal(frame.withoutEditors(), nativeEncoding)
+				actual, _ := json.Marshal(got.Frame, nativeEncoding)
+				if !bytes.Equal(actual, want) {
+					t.Fatalf("step %d delta did not reconstruct complete owner state", step)
+				}
 			}
-			if step == 1 && cached.data == nil {
-				t.Fatal("reused feed was not cached")
+			if backlog == "server" {
+				queued, ok := source.native.pop()
+				if !ok {
+					t.Fatal("lost snapshot")
+				}
+				events = []publication{queued}
+				if _, ok := source.native.pop(); ok {
+					t.Fatal("progress accumulated")
+				}
 			}
-			if cached.source == previous[i].source && previous[i].data != nil && &cached.data[0] != &previous[i].data[0] {
-				t.Fatal("metadata or hydration re-encoded an unchanged feed")
+			if backlog != "none" {
+				_, subscription := bufferedRPCPublications(t, "view/attach", events)
+				connection.subscription = subscription
+				got, err := connection.Next()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got.Frame.Main.Entries[0].Text != "new history" || got.Frame.Agents != nil || got.Frame.Review.Revision != 1 || len(got.Frame.Effects) != 1 || len(got.Frame.MainOutput) != 1 {
+					t.Fatal("coalescing lost owner state, semantic effect or hydration")
+				}
+			} else {
+				actual, _ := json.Marshal(connection.last.Frame.Review, nativeEncoding)
+				if !bytes.Equal(actual, frozen) {
+					t.Fatal("delta mutated saved review")
+				}
 			}
-			if cached.data == nil {
-				continue // replacement frames defer caching until the feed is reused
-			}
-			if allocs := testing.AllocsPerRun(10, func() { _ = feeds[i].update(cached.source) }); allocs != 0 {
-				t.Fatalf("unchanged feed encoding allocated: %v", allocs)
-			}
-		}
-		if err := native.Publish(request.Attachment, frame); err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := source.native.pop(); ok {
-			t.Fatal("identical effects frame published again while warming the feed cache")
-		}
-	}
-	for _, previous := range retained {
-		if !bytes.Equal(previous.data, previous.want) {
-			t.Fatal("later publication mutated retained frame bytes")
-		}
+		})
 	}
 }
 
@@ -237,5 +248,111 @@ func TestNativePublicationBudgetIncludesRPCEnvelope(t *testing.T) {
 	data, err := json.Marshal(RPCMessage{JSONRPC: "2.0", Method: "subscription/event", Params: params}, encoding)
 	if err != nil || nativePublicationBytes+len(data)-2 != subscriptionBytes {
 		t.Fatalf("publication budget does not match admitted RPC framing: %d, %v", len(data), err)
+	}
+}
+
+func TestNativeOwnerDeltaResetAndReviewReplacement(t *testing.T) {
+	native := NewLive().Native()
+	source, request, failure := native.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", localNativeView)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	defer source.close()
+	frame := benchmarkNativeHistoryFrame(1)
+	frame.Review = &changes.ReviewView{Revision: 1, Coverage: "loading", Publication: changes.Publication{Files: []changes.File{{Path: "first.go"}}}}
+	connection := &NativeConnection{thread: "thread", subscription: &RPCSubscription{client: &RPCClient{}}}
+	var first NativeFrame
+	for step := range 6 {
+		frame.View.Version.Revision++
+		switch step {
+		case 1:
+			frame.Review = new(*frame.Review)
+			frame.Review.Coverage = "complete"
+		case 2:
+			frame.Review = &changes.ReviewView{Revision: 2, Publication: changes.Publication{Files: []changes.File{{Path: "second.go"}}}}
+		case 3:
+			frame.View.Version.Attachment++
+		case 4:
+			frame.View.Main.ID = "replacement"
+			frame.Switch = &NativeSwitch{From: "thread", To: "replacement", Origin: request.Attachment}
+		case 5:
+			frame.Switch = nil
+			frame.Review = nil
+		}
+		if err := native.Publish(request.Attachment, frame); err != nil {
+			t.Fatal(err)
+		}
+		queued, ok := source.native.pop()
+		if !ok {
+			t.Fatal("lost replacement")
+		}
+		var wire nativeWireEvent
+		if err := json.Unmarshal(queued.Data, &wire, nativeEncoding); err != nil {
+			t.Fatal(err)
+		}
+		if (step == 3 || step == 4) && (queued.Kind != "snapshot" || wire.Retained != 0) {
+			t.Fatal("reset retained previous owners")
+		}
+		connection.subscription.events = []RPCEvent{{Kind: queued.Kind, Data: queued.Data}}
+		got, err := connection.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if step == 0 {
+			first = got.Frame
+		}
+		want, _ := json.Marshal(frame.withoutEditors(), nativeEncoding)
+		actual, _ := json.Marshal(got.Frame, nativeEncoding)
+		if !bytes.Equal(actual, want) {
+			t.Fatalf("step %d replacement did not reach consumer", step)
+		}
+	}
+	if first.Review.Coverage != "loading" || first.Review.Files[0].Path != "first.go" {
+		t.Fatal("replacement mutated prior review")
+	}
+}
+
+func TestNativeRetainedOwnersKeepSnapshotAndHydrationLimits(t *testing.T) {
+	native := NewLive().Native()
+	source, request, failure := native.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", localNativeView)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	defer source.close()
+	frame := benchmarkNativeHistoryFrame(1)
+	frame.Main.Entries[0].Text = strings.Repeat("m", 30<<20)
+	frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{Files: []changes.File{{Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("r", 30<<20)}}}}}}}
+	if err := native.Publish(request.Attachment, frame); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, ok := source.native.pop()
+	if !ok || len(snapshot.Data) < 60<<20 || len(snapshot.Data) > nativePublicationBytes {
+		t.Fatal("complete near-limit snapshot was lost")
+	}
+	connection := &NativeConnection{thread: "thread", subscription: &RPCSubscription{client: &RPCClient{}, events: []RPCEvent{{Kind: snapshot.Kind, Data: snapshot.Data}}}}
+	if _, err := connection.Next(); err != nil {
+		t.Fatal(err)
+	}
+	payload := strings.Repeat("o", 3<<20)
+	frame.MainOutput = []activity.OutputResult{
+		{Demand: activity.OutputDemand{Source: 1}, View: activityfeed.OutputView{Lines: []string{payload}}},
+		{Demand: activity.OutputDemand{Source: 2}, View: activityfeed.OutputView{Lines: []string{payload}}},
+	}
+	if err := native.Publish(request.Attachment, frame); err != nil {
+		t.Fatal(err)
+	}
+	delta, ok := source.native.pop()
+	if !ok || len(delta.Data) > 4<<20 {
+		t.Fatal("hydration did not reserve retained snapshot bytes")
+	}
+	connection.subscription.events = []RPCEvent{{Kind: delta.Kind, Data: delta.Data}}
+	got, err := connection.Next()
+	if err != nil || !got.Frame.ReacquireOutput || len(got.Frame.MainOutput) != 1 || got.Frame.MainOutput[0].Demand.Source != 2 {
+		t.Fatalf("retained-owner hydration lost recovery identity: %v", err)
+	}
+	frame.MainOutput = nil
+	frame.Effects = []NativeEffect{{ID: 1, Restore: &composer.Draft{Text: strings.Repeat("e", 5<<20)}}}
+	if err := native.Publish(request.Attachment, frame); !errors.Is(err, errNativePublicationLimit) {
+		t.Fatalf("delta exceeded complete snapshot capacity: %v", err)
 	}
 }

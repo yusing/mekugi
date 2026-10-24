@@ -15,7 +15,7 @@ import (
 const (
 	RPCPath         = "/api/control"
 	NativeRPCPath   = "/api/native/control"
-	RPCSubprotocol  = "mekugi.control.v2"
+	RPCSubprotocol  = "mekugi.control.v3"
 	RPCMessageLimit = InputBodyLimit + (64 << 10)
 	// RPCPublicationLimit bounds one server-to-client message, including its
 	// envelope. Relays must admit it so a large publication reaches its client.
