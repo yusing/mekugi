@@ -78,6 +78,7 @@ type detailFiles struct {
 }
 
 type markdownFileResult struct {
+	summary      bool
 	id           sessionpresentation.DetailID
 	workspace    string
 	path, source string
@@ -168,6 +169,15 @@ func (u *detailFiles) loadedMarkdownFile(session *sessionpresentation.Attachment
 	}
 	if result.classified {
 		terminal.Dialog, u.pendingFile = d, nil
+		return true, ""
+	}
+	if result.summary {
+		block := activitypresentation.Value{Kind: "compaction", Body: textsanitize.MarkdownSource(result.source)}
+		if result.err != nil {
+			block.Kind, block.Body = "error", result.err.Error()
+		}
+		u.stopFileRead()
+		u.replaceDetails(session, terminal, activitypresentation.DetailPages([]activitypresentation.Value{block}))
 		return true, ""
 	}
 	if result.copyPath {

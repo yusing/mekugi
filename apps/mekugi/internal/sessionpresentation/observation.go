@@ -189,7 +189,12 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 		switch item.Type {
 		case "contextCompaction":
 			if method == "item/completed" {
-				entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "progress", Text: "Context compacted", Observed: now, Native: native})
+				summary := item.Text
+				native.SummaryPending = summary == ""
+				if summary == "" {
+					summary = "Compaction summary unavailable."
+				}
+				entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "compaction", Text: summary, Observed: now, Native: native})
 			}
 		case "reasoning":
 			entries = append(entries, textEntries(s.ObserveText(transcript, text, main), true)...)

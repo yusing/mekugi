@@ -14,6 +14,7 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/replaytiming"
 	"github.com/yusing/mekugi/modules/activity/coordination"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -128,6 +129,17 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 			e := Event{Event: observed}
 			if e.Kind == observation.ItemCompleted {
 				r.Items++
+				if e.Item.Type == "contextCompaction" {
+					summary, size, err := compact.ReadSummary(store, thread, e.Item.CompactionReference)
+					totalBytes += size
+					if totalBytes > 256<<20 {
+						return nil, errors.New("replay corpus exceeds 256 MiB")
+					}
+					if err != nil {
+						summary = "Compaction summary unavailable: " + err.Error()
+					}
+					e.Item.Text = summary
+				}
 				if c, ok := coordination.ProjectCoordination(e.Item); ok && c.Kind == "start" && c.Confirmed && r.Threads[c.Thread] == "" {
 					r.Threads[c.Thread] = c.Target
 					children = append(children, c.Thread)

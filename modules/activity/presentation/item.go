@@ -159,7 +159,7 @@ func (entry ItemContent) Values() (blocks []Value) {
 		}
 		return []Value{{Kind: "error", Body: text, Label: entry.Agent}}
 	case "compaction":
-		return []Value{{Kind: "compaction", Body: text}}
+		return []Value{{Kind: "compaction", Body: source}}
 	case "tool":
 		if n := entry.Details; n != nil && len(n.Reload) != 0 {
 			for _, source := range n.Reload {

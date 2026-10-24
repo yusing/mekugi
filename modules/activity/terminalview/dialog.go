@@ -281,6 +281,9 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string 
 		block.Running = !block.OutputSnapshot.Done
 	}
 	verb := RowVerb(block)
+	if block.Kind == "compaction" {
+		block.Verb, verb = "", "Context compacted"
+	}
 	if verb == "" {
 		switch block.Kind {
 		case "summary":

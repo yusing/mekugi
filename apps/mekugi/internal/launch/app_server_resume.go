@@ -306,7 +306,7 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 	case "contextCompaction":
 		if item.Status != "inProgress" {
 			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
-				Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: "Context compacted", Observed: presentationTime(clock),
+				Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "compaction", Text: cmp.Or(item.Text, "Compaction summary unavailable."), Observed: presentationTime(clock),
 				Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: "item/completed"},
 			}}})
 		}

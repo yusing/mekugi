@@ -19,7 +19,7 @@ func (i ThreadItem) Observation() observation.Item {
 		DurationMS: i.DurationMS, AggregatedOutput: i.AggregatedOutput, ExitCode: i.ExitCode,
 		Summary: slices.Clone(i.Summary), Query: i.Query,
 	}
-	if i.Type == "agentMessage" {
+	if i.Type == "agentMessage" || i.Type == "contextCompaction" {
 		out.Text = i.Text
 	}
 	if i.Type == "mcpToolCall" {

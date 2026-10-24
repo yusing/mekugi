@@ -31,6 +31,10 @@ type replayRecord struct {
 		Started   int64          `json:"started_at_ms"`
 		Completed int64          `json:"completed_at_ms"`
 		Item      jsontext.Value `json:"item"`
+		History   []struct {
+			Type      string `json:"type"`
+			Reference string `json:"encrypted_content"`
+		} `json:"replacement_history"`
 	} `json:"payload"`
 }
 
@@ -70,7 +74,7 @@ func readReplayLines(ctx context.Context, path string, visit func([]byte) error)
 // retained feature records. Known threads identify inherited sibling evidence.
 func Replay(ctx context.Context, path string, known map[string]bool) (observation.Source, error) {
 	r := observation.Source{Unsupported: make(map[string]int)}
-	var owner string
+	var owner, pendingCompaction string
 	ancestors := make(map[string]bool)
 	turns := make(map[string]string)
 	err := readReplayLines(ctx, path, func(line []byte) error {
@@ -80,6 +84,7 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 			return err
 		}
 		p := rec.Payload
+		boundary, reference := compactionBoundary(rec, r.Thread, &pendingCompaction)
 		if rec.Type == "session_meta" {
 			if r.Thread != "" {
 				ancestors[p.ID] = true
@@ -140,6 +145,9 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 			}
 			if item.ID == "" || p.Turn == "" || p.Started <= 0 || p.Completed < p.Started {
 				return errors.New("item lacks valid identity or start/end timing")
+			}
+			if boundary == item.ID {
+				item.CompactionReference = reference
 			}
 			item.DurationMS = new(p.Completed - p.Started)
 			e.At, e.Started = time.UnixMilli(p.Completed), time.UnixMilli(p.Started)

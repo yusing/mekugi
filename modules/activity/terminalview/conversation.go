@@ -437,7 +437,7 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 	entryRows := make(map[uint64]int)
 	p := &v.Painter
 	switch {
-	case entry.Agent == v.conversationSpeaker() && (entry.Kind == "reasoning" || entry.Kind == "progress"):
+	case entry.Agent == v.conversationSpeaker() && (entry.Kind == "reasoning" || entry.Kind == "progress" || entry.Kind == "compaction"):
 		var summaries []Block
 		for k := first; k <= last; k++ {
 			if v.Visible(v.entries[k]) {

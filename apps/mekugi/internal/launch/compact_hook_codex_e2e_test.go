@@ -184,6 +184,17 @@ func testCompactReloadNativeCodex(t *testing.T, automatic bool, promptKind strin
 		}
 		terminal.send("/compact\r")
 		terminal.await("Context compacted")
+		for row, line := range strings.Split(terminal.screen.String(), "\n") {
+			if strings.Contains(line, "Context compacted") {
+				terminal.send(fmt.Sprintf("\x1b[<0;10;%dM\x1b[<0;10;%dm", row+1, row+1))
+				break
+			}
+		}
+		terminal.await("Goal: finish the parser fix.")
+		terminal.send("\x1b")
+		terminal.awaitMatch("compaction summary dialog closed", func(screen string) bool {
+			return !strings.Contains(screen, "Goal: finish the parser fix.")
+		})
 		terminal.send("Continue after compaction.\r")
 		terminal.await("compaction continuation accepted")
 		found := false

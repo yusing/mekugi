@@ -4,6 +4,7 @@ package sessioncontrol
 // identities; composer payloads and presentation never live in this state.
 // Source: apps/mekugi/internal/router/app_server_lifecycle.go@dd97276b.
 type Live struct {
+	RolloutPath              string // Host-selected source, replaced with the admitted thread.
 	Thread, Turn             string
 	Waiting, LocalStop       string // Detached logical wait and stopped host-turn identities.
 	HasUserTurn              bool

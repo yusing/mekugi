@@ -23,7 +23,7 @@ func TestActivityPublicationKeepsMainSkillsImmutable(t *testing.T) {
 	if source.Publication(session, main) != first {
 		t.Fatal("unchanged Main skills replaced the publication")
 	}
-	main.Apply(ActivityEvent{Entries: []ActivityEntry{{Seq: 1, Agent: "Main", Kind: "progress", Text: "Context compacted"}}})
+	main.Apply(ActivityEvent{Entries: []ActivityEntry{{Seq: 1, Agent: "Main", Kind: "compaction", Text: "retained summary"}}})
 	next := source.Publication(session, main)
 	if next == first || len(next.Roster[0].Agent.Skills) != 0 || !slices.Equal(first.Roster[0].Agent.Skills, activitypresentation.SkillSet{"commit"}) {
 		t.Fatal("skill reset mutated or reused the old publication")

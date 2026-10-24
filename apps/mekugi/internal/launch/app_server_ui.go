@@ -179,6 +179,9 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	settlePresentation(&attached, shell, &control, &picker, &editor, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
 	predictions := composerPredictions{provider: predictionProvider, results: make(chan predictionConfiguration, 1)}
 	native := newNativeViews(ctx, api.Native(), views, terminalViews, activity, control.Requests)
+	attached.compaction = func(thread, item string) func(context.Context) (string, error) {
+		return compactionSummaryReader(retainedSession, control.RolloutPath, thread, item)
+	}
 	native.diagnostics = &c.Diagnostics
 	native.threads = threads
 	syncPredictions := func() error {
@@ -1240,7 +1243,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			if err := json.Unmarshal(m.Result, statusConfig); err != nil {
 				return err
 			}
-			control.Thread = result.Thread.ID
+			control.Thread, control.RolloutPath = result.Thread.ID, result.Thread.Path
 			attached.inputHistory.selectThread(control.Thread)
 			for i := range attached.conversation.Editor.InputHistory {
 				entry := &attached.conversation.Editor.InputHistory[i]

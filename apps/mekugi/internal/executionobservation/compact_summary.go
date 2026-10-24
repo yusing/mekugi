@@ -8,7 +8,6 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -162,16 +161,7 @@ func (p *Preparer) readCompact(ctx context.Context, reference string) (compact.R
 			return compact.Record{}, err
 		}
 	}
-	source, handle, ok := strings.Cut(strings.TrimPrefix(reference, compact.Prefix), ":")
-	owner, err := store.HandleOwner(namespace, handle)
-	if err != nil || !ok || owner != source {
-		return compact.Record{}, errors.New("compaction reference is unavailable in this session")
-	}
-	data, err := history.ReadRecord(filepath.Join(store.Directory(), compact.Name(reference)))
-	if err != nil {
-		return compact.Record{}, err
-	}
-	return compact.Decode(data, reference)
+	return compact.Read(store, namespace, reference)
 }
 
 // Prewarm projects immutable history without publishing a scope or running readers.

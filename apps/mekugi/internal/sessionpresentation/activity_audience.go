@@ -21,7 +21,7 @@ func ActivityOwner(entry ActivityEntry) string {
 // Ordinary root activity stays in Main, but a directed message belongs at
 // both ends, and a child's start and answer show where Main follows them.
 func MainActivityEntry(entry ActivityEntry) (ActivityEntry, bool) {
-	main := entry.Agent == "/root" && (entry.Kind == "compact_reload" || entry.Kind == "output_dedupe" || entry.Kind == "tool" || entry.Kind == "hook" || entry.Kind == "exit" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress")
+	main := entry.Agent == "/root" && (entry.Kind == "compaction" || entry.Kind == "compact_reload" || entry.Kind == "output_dedupe" || entry.Kind == "tool" || entry.Kind == "hook" || entry.Kind == "exit" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress")
 	if (entry.Kind == "assignment" || entry.Kind == "start") && entry.Assignment != nil {
 		main = true
 		entry.Agent = entry.Assignment.From

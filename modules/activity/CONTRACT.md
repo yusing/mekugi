@@ -114,6 +114,9 @@ retained source, output, dialog pages, copies and navigation keep the original p
 One live invocation's multiple operations reveal at 80 ms intervals in Main, children and
 roster summaries; restored history appears immediately. A completed child
 compaction is an event and latest activity; attempts and failures do not imply it.
+Clicking `Context compacted` opens that boundary's retained summary in the shared
+content dialog, including after restoration and in replay. Missing or unauthorized
+summary evidence is explicit. Opening a summary starts no model request or reload.
 
 Skill rows emphasize the skill name; reference paths and run arguments keep normal
 weight. Per-command Run excerpts omit terminating semicolons, preserving quoted

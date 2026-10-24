@@ -24,7 +24,7 @@ Own host-operation feeds, roster derivation and retained output
 Assemble agent guidance without changing caller authority
 
 - Composition: selected; lifetime: `stateless`.
-- Requires: none.
+- Requires: `sessionhistory`.
 - Contributes: `commands`, `record-kinds`.
 - Hosts: `guidance`.
 - Commands: `mreload`.
@@ -198,7 +198,7 @@ Retain applied settings and renderer preferences for a workspace and thread
 Schedule retained observations with synthetic streaming and read-only playback controls
 
 - Composition: selected; lifetime: `stateless`.
-- Requires: `activity`, `sessionhistory`.
+- Requires: `activity`, `agentguidance`, `sessionhistory`.
 - Hosts: `replay-timing`.
 - Codex connections: `rollout`.
 - Capabilities: `rollout` (required).

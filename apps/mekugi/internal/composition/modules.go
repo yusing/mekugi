@@ -69,6 +69,7 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 	transport := c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
 	metrics := c.Add(agentmetrics.Module, func() agentmetrics.Deps { return agentmetrics.Deps{} })
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
+	c.Add(agentguidance.Module, func() agentguidance.Deps { return agentguidance.Deps{ChildReplySummary: childReplySummary} })
 	thread := c.Add(threadcontrol.Module, func() threadcontrol.Deps { return threadcontrol.Deps{History: history.Value(), Shared: threads} })
 	replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps {
 		return sessionreplay.Deps{History: history.Value()}
@@ -86,7 +87,6 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 	c.Add(fileread.Module, func() fileread.Deps { return fileread.Deps{} })
 	c.Add(symbolquery.Module, func() symbolquery.Deps { return symbolquery.Deps{} })
 	c.Add(outputdeduplication.Module, func() outputdeduplication.Deps { return outputdeduplication.Deps{} })
-	c.Add(agentguidance.Module, func() agentguidance.Deps { return agentguidance.Deps{ChildReplySummary: childReplySummary} })
 	c.Add(sessionnaming.Module, func() sessionnaming.Deps { return sessionnaming.Deps{} })
 	c.Add(remotewriteapproval.Module, func() remotewriteapproval.Deps { return remotewriteapproval.Deps{} })
 	c.Add(sudoapproval.Module, func() sudoapproval.Deps { return sudoapproval.Deps{} })

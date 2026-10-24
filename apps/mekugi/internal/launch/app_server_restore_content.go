@@ -8,7 +8,9 @@ import (
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
+	"github.com/yusing/mekugi/backends/codex/rollout"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -45,6 +47,20 @@ func restorePaneContent(attached *attachedPresentation, terminal *terminalsessio
 	restoreDiffThread(attached, terminal, *reviewOwner, reviewSource, preparePane, root)
 	attached.presentation.Status.SetText("Restoring Activity…")
 	retainedRollout := readRestoredRollout(root, "/root")
+	references := rollout.CompactionReferences(parent, root.ID, root.Path)
+	for ti := range root.Turns {
+		for ii := range root.Turns[ti].Items {
+			item := &root.Turns[ti].Items[ii]
+			if item.Type != "contextCompaction" {
+				continue
+			}
+			summary, _, err := compact.ReadSummary(retainedSession.Store, root.ID, references[item.ID])
+			if err != nil {
+				summary = "Compaction summary unavailable: " + err.Error()
+			}
+			item.Text = summary
+		}
+	}
 	retainedRollout.events = append(retainedRollout.events, restoredHookEvents(attached, activityService, *retainedSession, r, root)...)
 	var placements []*restoredPlacement
 	for _, event := range retainedRollout.events {

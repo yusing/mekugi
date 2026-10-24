@@ -40,7 +40,7 @@ thread; unavailable or dropped history is disclosed. Unfinished hook observation
 show an unknown outcome without becoming running work. Private/raw reasoning,
 original keystrokes, resize events and live diff previews are absent.
 
-The corpus is bounded to 256 MiB across decoded rollouts and retained hook input,
+The corpus is bounded to 256 MiB across decoded rollouts and retained hook/compaction input,
 128 threads and 500,000 generated item/hook events. Source admission and individual
 record bounds belong to the backend. Playback duration is at most 24 hours.
 
@@ -96,8 +96,9 @@ incomplete source fails explicitly. Messages and public reasoning share
 ## Records
 
 Replay publishes no records. [Session history](../sessionhistory/SPEC.md) owns
-retained hook facts; replay reads them without permission changes or creating
-storage directories.
+retained hook facts and shared retention; [agent guidance](../agentguidance/SPEC.md)
+owns retained compaction summaries. Replay reads them without permission changes
+or creating storage directories.
 
 ## Failure
 

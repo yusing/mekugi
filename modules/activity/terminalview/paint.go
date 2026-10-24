@@ -631,7 +631,11 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		return lines
 	case "compaction":
-		return []string{terminalui.Amber + "◉ Context compacted" + terminalui.Reset}
+		label := "◉ Context compacted"
+		if block.Hovered {
+			label = Underline(label)
+		}
+		return []string{terminalui.Amber + label + terminalui.Reset}
 	case "batch":
 		return p.batchRow(block, width)
 	case "filter":

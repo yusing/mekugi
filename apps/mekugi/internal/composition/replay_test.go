@@ -2,6 +2,7 @@ package composition
 
 import (
 	"github.com/yusing/mekugi/modules/activity"
+	"github.com/yusing/mekugi/modules/agentguidance"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,6 +22,7 @@ func TestCompositionReplayRolloutAndOptionalTiming(t *testing.T) {
 		t.Run(map[bool]string{false: "without timing", true: "with timing"}[timing], func(t *testing.T) {
 			var c Composition
 			history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
+			c.Add(agentguidance.Module, func() agentguidance.Deps { return agentguidance.Deps{} })
 			c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
 			replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps {
 				return sessionreplay.Deps{History: history.Value()}

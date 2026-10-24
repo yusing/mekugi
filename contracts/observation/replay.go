@@ -45,7 +45,8 @@ type Context struct {
 // question options preserve opaque user-content blocks for their own consumer;
 // raw/private reasoning is never included.
 type Item struct {
-	UserShell                                          bool // Host-identified command entered by the user.
+	CompactionReference                                string // Exact retained replacement bound to this native boundary.
+	UserShell                                          bool   // Host-identified command entered by the user.
 	ID, Type, Status, Text, Delivery, Phase, Cwd, Path string
 	Command, ProcessID, ClientID                       string
 	Tool                                               string

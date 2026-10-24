@@ -15,6 +15,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -251,6 +252,18 @@ func (p *uiReplayPlayback) applyInput(effects iter.Seq[terminalsession.InputEffe
 			}
 		case effect.Dialog != nil:
 			p.outputIntent(*effect.Dialog)
+		case effect.Selection != nil:
+			target := effect.Selection.Target
+			view := p.ui.presentation.View()
+			if target.View == nil || !target.Version.SameAttachment(view.Version) || target.Thread != view.Displayed.ID {
+				continue
+			}
+			block, ok := target.View.SnippetBlock(target.Snippet)
+			if !ok || block.Kind != "compaction" {
+				continue
+			}
+			pages := activitypresentation.DetailPages([]activitypresentation.Value{block.Value})
+			p.ui.openDetailSelection(&p.ui.session, view.Version, p.ui.activitySource(target.View), p.ui.shell, target.View, pages, false)
 		default:
 			return nil
 		}

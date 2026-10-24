@@ -1,6 +1,8 @@
 package launch
 
 import (
+	"context"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -15,6 +17,7 @@ import (
 // executionPresentation owns one admitted execution attachment. Views borrow this
 // actual owner; its feature scopes, transcript and input queues are never copied.
 type executionPresentation struct {
+	compaction          func(thread, item string) func(context.Context) (string, error)
 	inputHistory        *appServerInputHistory
 	session             sessionpresentation.Attachment
 	source, childSource *sessionpresentation.ActivitySource

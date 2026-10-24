@@ -58,7 +58,7 @@ func TestReloadPlansRetireAndPreserveLateMetadata(t *testing.T) {
 			apply(ActivityEntry{Kind: "compact_reload", Native: &NativeItem{Thread: "thread"}, ReloadSources: []activity.ReloadSource{{Command: "mreload next-selection", Path: "next.txt"}}})
 			switch reset {
 			case "compaction":
-				apply(ActivityEntry{Kind: "progress", Text: "Context compacted", Native: &NativeItem{Thread: "thread", Item: "boundary"}})
+				apply(ActivityEntry{Kind: "compaction", Text: "retained summary", Native: &NativeItem{Thread: "thread", Item: "boundary"}})
 			case "empty-selection":
 				apply(ActivityEntry{Kind: "compact_reload", Native: &NativeItem{Thread: "thread"}})
 			case "completed":

@@ -6,6 +6,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/modules/fileread"
+	"github.com/yusing/mekugi/modules/sessionhistory"
 )
 
 func TestCompositionGuidanceRemovalKeepsCommands(t *testing.T) {
@@ -13,6 +14,7 @@ func TestCompositionGuidanceRemovalKeepsCommands(t *testing.T) {
 		var c Composition
 		c.Add(fileread.Module, func() fileread.Deps { return fileread.Deps{} })
 		if enabled {
+			c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
 			c.Add(agentguidance.Module, func() agentguidance.Deps { return agentguidance.Deps{} })
 		}
 		runtime, err := c.Activate(t.Context(), new(binding.Registry))
