@@ -3,7 +3,16 @@
   import { stream } from "./stream.svelte";
   import Button from "./ui/Button.svelte";
 
-  let { entry, index, image }: { entry: Entry; index: number; image: string } = $props();
+  // An image bound to an entry: one a user attached, or one an agent viewed.
+  // label names it for assistive technology; small fits a row of thumbnails.
+  let {
+    entry,
+    index,
+    image,
+    label = `Attached image ${index + 1}`,
+    small = false,
+  }: { entry: Entry; index: number; image: string; label?: string; small?: boolean } = $props();
+  const size = $derived(small ? "h-32 w-44" : "h-48 w-64");
   let element = $state<HTMLElement>();
   let url = $state<string>();
   let error = $state<string>();
@@ -39,15 +48,15 @@
   });
 </script>
 
-<figure class="h-48 w-64 min-w-0 max-w-full" bind:this={element}>
+<figure class="{size} min-w-0 max-w-full" bind:this={element}>
   {#if url}
-    <a href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open image ${index + 1}`}>
+    <a href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${label}`}>
       <img
         src={url}
-        alt={`Attached image ${index + 1}`}
-        width="256"
-        height="192"
-        class="h-48 w-64 max-w-full rounded-card object-contain"
+        alt={label}
+        width={small ? 176 : 256}
+        height={small ? 128 : 192}
+        class={[size, "max-w-full rounded-card object-contain", small && "bg-raised"]}
         onerror={() => {
           error = "Image could not be decoded.";
           url = undefined;
@@ -56,10 +65,12 @@
     </a>
   {:else}
     <div
-      class="grid h-48 w-full place-content-center gap-1 rounded-card bg-raised px-3 py-2 text-small text-muted"
+      class="grid {small
+        ? 'h-32'
+        : 'h-48'} w-full place-content-center gap-1 rounded-card bg-raised px-3 py-2 text-small text-muted"
       role="status"
     >
-      <span>{error ?? `Loading image ${index + 1}…`}</span>
+      <span>{error ?? (small ? "Loading…" : `Loading image ${index + 1}…`)}</span>
       {#if error}<Button size="sm" variant="quiet" onclick={() => retry++}>Retry image</Button>{/if}
     </div>
   {/if}

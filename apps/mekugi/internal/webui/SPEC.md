@@ -117,15 +117,43 @@ agent selection independently. Recorded model text is labelled as simulated.
 A thread shows a centered transcript with the composer for a live session, or
 the playback clock for a replay, docked below it. Session identifiers, timing,
 usage, the continuation command and End sit behind an information button. The
-agent roster is a collapsible right panel toggled from the thread header; a long
-status truncates there so the title and toggle stay visible, and the details
-show it in full. Each
-transcript row offers its details, which open in the same right panel; on narrow
-screens both panels open as sheets over the transcript. User turns sit on the right of the
+right panel holds tabs for the agent roster, the session's changes and, once
+requested, one row's details; header toggles open the roster or the changes, and
+closing the panel also closes the details. A long
+status truncates in the header so the title and toggles stay visible, and the details
+show it in full. A failure's message stays out of the header line: the header
+names the state in small type, and choosing it opens the full message beneath
+the header. Each
+transcript row offers its details, which open in the panel's Details tab; on narrow
+screens the panel opens as a sheet over the transcript.
+
+While the displayed agent writes a file, its live source replaces that agent's
+transcript above the composer, as in the terminal: one card per edit call with
+its editing tool and the diff or text so far. Prompts and docks below stay in
+place. Each completed call stays for its own 1.5-second settling interval, and
+the transcript returns, at the place it was left, when no cards remain. Show
+transcript hides the current cards until another call arrives. Calls already
+complete when the transcript opens are not shown again, and side conversations
+and replays have no live source.
+
+The Changes tab, and its header toggle, appear for a live session; the toggle
+shows the net changed lines. It holds the saved review of one agent, the
+displayed agent until an agent picker chooses another or all agents. The picker
+lists the roster's agents with the lines each changed and its file count. One
+agent's files compose as the terminal's caller filter shows them, with other
+agents' changes as baseline. Each file has a section with its workspace path,
+net counts, the agents (for all agents) and programs that changed it, and its
+composed unified diff with line numbers on both sides; hunk headers are left
+out, and a rule separates hunks. Recently captured changes are marked. Long diffs
+start collapsed, and what the reader opens or closes stays so as the review
+updates. Loading, coverage and failure stay visible; replays have no changes.
+
+User turns sit on the right of the
 transcript and agent activity on the left. Bound image, file, skill and selection
 markers use their terminal colours; literal lookalikes remain ordinary text. Attached
 images appear above the message, with a visible unavailable state if their source
-cannot be read. Empty items have no expansion control. Attachment events show their paths or skill
+cannot be read. An image an agent views appears under its View row; consecutive
+images one agent views share one row of captioned thumbnails. Empty items have no expansion control. Attachment events show their paths or skill
 names and auto-reload state, with columns sized to the visible verbs. Questions
 show identical heading and body text only once. Output counts share the
 event heading instead of occupying a separate collapsed row. Search patterns use accent ink, separate from their path operands. Compound
@@ -156,7 +184,8 @@ skills, output rate and context use. Usage that is only partly known is shown
 as a lower bound with a trailing plus. A card has a name row, a state row and a
 wrapping row of values with muted units, rather than a run of metric symbols;
 a context bar runs along its foot. The roster heading counts agents by state
-and totals the session's changed lines, usage and cost.
+and totals the session's changed lines, usage and cost. Changed lines follow
+the saved review as it updates.
 
 The transcript shows Main's activity until a viewer selects another agent in the
 roster; it then shows that agent's own activity under its name and state, with a

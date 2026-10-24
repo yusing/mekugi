@@ -1,15 +1,18 @@
 <script lang="ts">
   import { doing, since, stateLabel, worked } from "./agents";
   import { atLeast, cost, duration, tokens } from "./format";
-  import type { Agent, Entry, Roster } from "./protocol";
+  import type { Agent, Counts, Entry, Roster } from "./protocol";
   import Dot, { type Tone } from "./ui/Dot.svelte";
   import { emptyBox, skeleton } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
 
   // The agents of the session, as a tree under Main. Selecting one shows its
-  // own activity; now is the recorded clock, for timers.
+  // own activity; now is the recorded clock, for timers. The saved review's
+  // edit lines, by agent and net, are newer than the roster's when present.
   let {
     roster,
+    lines: edited,
+    net,
     loading = false,
     selected,
     now,
@@ -17,6 +20,8 @@
     onselect,
   }: {
     roster: Roster;
+    lines?: Record<string, Counts>;
+    net?: Counts | null;
     loading?: boolean;
     selected: string;
     now: number;
@@ -25,6 +30,12 @@
   } = $props();
 
   const agents = $derived(roster.agents);
+  const known = (c?: Counts | null): c is Counts => !!c && c.Added >= 0 && c.Removed >= 0;
+  const changes = (agent: Agent) =>
+    edited?.[agent.name] ?? { Added: agent.added ?? 0, Removed: agent.removed ?? 0 };
+  const whole = $derived(
+    known(net) ? net : { Added: roster.added ?? 0, Removed: roster.removed ?? 0 },
+  );
   const lines = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
   const unit = (n: number, word: string) => (n === 1 ? word : `${word}s`);
   const plural = (n: number, word: string) => `${n} ${unit(n, word)}`;
@@ -40,7 +51,7 @@
       })),
   );
   // A tally that covers every agent says the total itself.
-  const whole = $derived(tallies.length === 1 && tallies[0].n === agents.length);
+  const single = $derived(tallies.length === 1 && tallies[0].n === agents.length);
 
   // Session totals; usage that is partly unknown is a lower bound.
   const totals = $derived.by(() => {
@@ -101,19 +112,19 @@
   <h2 class="font-semibold">Agents</h2>
   {#if !loading}
     <span class="text-small text-muted tabular-nums">
-      {#if whole}<span class={tallyInk[tallies[0].state]}>{tallies[0].text}</span
+      {#if single}<span class={tallyInk[tallies[0].state]}>{tallies[0].text}</span
         >{:else}{agents.length}{#each tallies as tally (tally.state)}<span
             class="ml-2 {tallyInk[tally.state] ?? ''}">{tally.text}</span
           >{/each}{/if}
     </span>
   {/if}
 </div>
-{#if roster.added || roster.removed || totals.input || totals.cost}
+{#if whole.Added || whole.Removed || totals.input || totals.cost}
   <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-small tabular-nums">
-    {#if roster.added || roster.removed}{@render changed(
-        roster.added,
-        roster.removed,
-        `Net lines changed in the workspace (${lines(roster.added ?? 0)} added, ${lines(roster.removed ?? 0)} removed)`,
+    {#if whole.Added || whole.Removed}{@render changed(
+        whole.Added,
+        whole.Removed,
+        `Net lines changed in the workspace (${lines(whole.Added)} added, ${lines(whole.Removed)} removed)`,
       )}{/if}
     {#if totals.input}{@render metric(totals.input, "in", "Input tokens")}{@render metric(
         totals.output!,
@@ -137,6 +148,7 @@
       {@const current = agent.state === "working" ? activity(agent) : undefined}
       {@const what = current && doing(current)}
       {@const replied = since(agent.lastResponse, now)}
+      {@const edits = changes(agent)}
       <!-- A nested agent hangs from a guide under its parent. -->
       <li
         class={agent.depth ? "border-l border-rule pl-1.5" : undefined}
@@ -172,9 +184,9 @@
             {/if}
           </span>
           <span class="{sub} flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums empty:hidden">
-            {#if agent.added || agent.removed}{@render changed(
-                agent.added,
-                agent.removed,
+            {#if edits.Added || edits.Removed}{@render changed(
+                edits.Added,
+                edits.Removed,
                 "Lines this agent changed",
               )}{/if}
             {#if agent.inputTokens !== undefined}{@render metric(

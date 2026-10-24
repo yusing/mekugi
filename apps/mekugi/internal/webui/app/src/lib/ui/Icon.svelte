@@ -31,6 +31,7 @@
     history: "M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2",
     compose: "M4 20h4L19 9l-4-4L4 16zM14 6l4 4",
     check: "M5 12l5 5 9-10",
+    diff: "M12 4v8M8 8h8M8 18h8",
   } as const;
   export type IconName = keyof typeof paths;
 </script>

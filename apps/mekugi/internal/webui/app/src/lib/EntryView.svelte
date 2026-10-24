@@ -2,7 +2,7 @@
   import AgentName from "./AgentName.svelte";
   import UserImage from "./UserImage.svelte";
   import Excerpt from "./Excerpt.svelte";
-  import { duration } from "./format";
+  import { basename, duration } from "./format";
   import { outputLanguage } from "./highlight";
   import { failed, isUser, reasoningBody } from "./kinds";
   import Markdown from "./Markdown.svelte";
@@ -14,14 +14,23 @@
   import ValueRow from "./ValueRow.svelte";
 
   // at is the time stamp stamp names, empty when it repeats the previous
-  // row's. owner is the agent whose activity the transcript shows.
+  // row's. owner is the agent whose activity the transcript shows. views are
+  // the images an agent viewed in a row, starting with entry.
   let {
     entry,
     at,
     stamp,
     turn,
     owner,
-  }: { entry: Entry; at: string; stamp: string; turn?: number; owner: string } = $props();
+    views,
+  }: {
+    entry: Entry;
+    at: string;
+    stamp: string;
+    turn?: number;
+    owner: string;
+    views?: Entry[];
+  } = $props();
 
   const user = $derived(isUser(entry));
   // A compound command's result row has nothing to show until it settles.
@@ -207,6 +216,41 @@
               "\n",
             )}</pre>
         {/if}
+      {:else if views}
+        {@const paths = views.map((view) => view.values?.[0]?.reads?.[0]?.path ?? "")}
+        <div
+          class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 rounded-card border px-3.5 py-1 max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:px-3"
+        >
+          {#if views.length === 1}
+            <ValueRow value={entry.values![0]} />
+          {:else}
+            <div class="col-span-full grid grid-cols-subgrid items-baseline py-[5px]">
+              <span class="text-small font-medium text-kind-read max-sm:col-span-full">View</span>
+              <span class="text-muted">{views.length} images</span>
+            </div>
+          {/if}
+          <div class="col-[2/-1] flex min-w-0 flex-wrap gap-3 pt-1 pb-2.5 max-sm:col-span-full">
+            {#each views as view, i (view.seq)}
+              {#each view.images ?? [] as image, index (`${image}:${index}`)}
+                <div class="min-w-0">
+                  <UserImage
+                    entry={view}
+                    {image}
+                    {index}
+                    label="Viewed image {paths[i]}"
+                    small={views.length > 1}
+                  />
+                  {#if views.length > 1}<p
+                      class="mt-1 w-44 max-w-full truncate font-mono text-tiny text-muted"
+                      title={paths[i]}
+                    >
+                      {basename(paths[i])}
+                    </p>{/if}
+                </div>
+              {/each}
+            {/each}
+          </div>
+        </div>
       {:else if entry.values?.length}
         <div
           class={[

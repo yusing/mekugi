@@ -13,6 +13,7 @@ const families: Record<string, Family> = {
   custom: "run",
   mcp: "run",
   read: "read",
+  view: "read",
   search: "read",
   list: "read",
   status: "read",
@@ -68,5 +69,16 @@ export function hasDetails(entry: Entry): boolean {
         value.changes?.length ||
         value.questions?.length,
     )
+  );
+}
+
+// A viewed image: a tool entry whose one value views a path, with the image
+// bound for reading.
+export function isView(entry: Entry): boolean {
+  return (
+    entry.kind === "tool" &&
+    !!entry.images?.length &&
+    entry.values?.length === 1 &&
+    entry.values[0].verb === "View"
   );
 }

@@ -2,7 +2,7 @@
   import { tick, type Snippet } from "svelte";
   import EntryView from "./EntryView.svelte";
   import { date, offset } from "./format";
-  import { hasDetails, isUser } from "./kinds";
+  import { hasDetails, isUser, isView } from "./kinds";
   import type { Entry } from "./protocol";
   import Icon from "./ui/Icon.svelte";
   import { emptyBox } from "./ui/styles";
@@ -44,25 +44,32 @@
   let reading = false;
 
   // Offsets print once per recorded second, clock times once a minute, and
-  // user messages count turns.
+  // user messages count turns. Images one agent views in a row share a row.
   const rows = $derived.by(() => {
     let previous = "";
     let turns = 0;
-    return entries.map((entry) => {
+    const out: { entry: Entry; at: string; turn?: number; views?: Entry[] }[] = [];
+    for (const entry of entries) {
+      const last = out.at(-1);
+      if (last?.views && isView(entry) && entry.agent === last.entry.agent) {
+        last.views.push(entry);
+        continue;
+      }
       const at = !entry.observed
         ? ""
         : live
           ? date(entry.observed).slice(11)
           : offset(entry.observed - start, span);
       const user = isUser(entry);
-      const row = {
+      out.push({
         entry,
         at: user || at !== previous ? at : "",
         turn: user ? ++turns : undefined,
-      };
+        views: isView(entry) ? [entry] : undefined,
+      });
       previous = at;
-      return row;
-    });
+    }
+    return out;
   });
 
   function pin() {
@@ -151,6 +158,7 @@
           at={row.at}
           stamp={live ? "Time" : "Recorded offset"}
           turn={row.turn}
+          views={row.views}
           {owner}
         />
         <!-- Shown on hover or focus, and always on touch. -->

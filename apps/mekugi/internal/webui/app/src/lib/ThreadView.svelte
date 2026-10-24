@@ -4,6 +4,8 @@
   import type { InitialInput } from "./attachments";
   import Composer from "./Composer.svelte";
   import DetailsPanel from "./DetailsPanel.svelte";
+  import DiffPanel from "./DiffPanel.svelte";
+  import LiveSource from "./LiveSource.svelte";
   import { basename, duration, statusText } from "./format";
   import type { Machine } from "./hub.svelte";
   import NativeTranscript from "./NativeTranscript.svelte";
@@ -15,6 +17,7 @@
   import SemanticDialogs from "./SemanticDialogs.svelte";
   import SessionInfo from "./SessionInfo.svelte";
   import { stream } from "./stream.svelte";
+  import { newIdentity } from "./transport";
   import ThreadDocks from "./ThreadDocks.svelte";
   import Transcript from "./Transcript.svelte";
   import Button from "./ui/Button.svelte";
@@ -22,12 +25,13 @@
   import Icon from "./ui/Icon.svelte";
   import Notice from "./ui/Notice.svelte";
   import Popover from "./ui/Popover.svelte";
-  import { segment, segments, skeleton } from "./ui/styles";
+  import { floating, segment, segments, skeleton } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
   import { show, view } from "./view.svelte";
 
   // One thread: its transcript, the composer or playback controls at the
-  // foot, and a right panel holding the agents or one activity's details.
+  // foot, and a right panel whose tabs hold the agents, the session's changes
+  // and one activity's details.
   let {
     machine,
     id,
@@ -81,6 +85,13 @@
     return () => (document.title = "Mekugi");
   });
   const statusLabel = $derived(ended ? "Ended" : statusText(stream.status));
+  // The header names the state; a failure's message opens beneath it on request.
+  const failure = $derived(ended ? undefined : stream.status.failure);
+  const headline = $derived(
+    ended ? "Ended" : statusText({ ...stream.status, failure: undefined }) || "Failed",
+  );
+  const failureID = `failure-${newIdentity()}`;
+  let failureOpen = $state(false);
   const main = $derived(stream.main.order.map((seq) => stream.main.entries[seq]));
 
   // Arriving from the thread list moves focus to the thread's heading.
@@ -141,26 +152,53 @@
 
   // The right panel is open by default where it fits beside the transcript.
   const wide = matchMedia("(min-width: 1100px)");
-  let agentsOpen = $state(wide.matches);
+  let panelOpen = $state(wide.matches);
   $effect(() => {
-    const change = () => (agentsOpen = wide.matches);
+    const change = () => (panelOpen = wide.matches);
     wide.addEventListener("change", change);
     return () => wide.removeEventListener("change", change);
   });
   const frame = $derived(semantic.frame);
   const sview = $derived(frame?.view);
   const details = $derived(live && !ended ? frame?.details : undefined);
-  const panel = $derived(details ? "details" : agentsOpen ? "agents" : undefined);
+  // Saved changes exist for live sessions; recorded playback has none.
+  const changes = $derived(!!stream.review);
+  const net = $derived(stream.review?.counts.Net);
+  type Tab = "agents" | "changes" | "details";
+  let chosen = $state<Tab>("agents");
+  // Requested details show at once; once closed, the tab shown before returns.
+  let before: Tab = "agents";
+  $effect(() => {
+    if (details?.view.ID.Selection === undefined) return;
+    untrack(() => {
+      if (chosen !== "details") before = chosen;
+      chosen = "details";
+      panelOpen = true;
+    });
+  });
+  const tab = $derived.by(() => {
+    const current = chosen === "details" && !details ? before : chosen;
+    return current === "changes" && !changes ? "agents" : current;
+  });
+  const panel = $derived(panelOpen ? tab : undefined);
   function select(name: string) {
     show(name);
-    if (!wide.matches) agentsOpen = false;
+    if (!wide.matches) panelOpen = false;
   }
   function closeDetails() {
     if (details) void semantic.send({ closeDetails: details.view.ID });
   }
   function closePanel() {
-    if (details) closeDetails();
-    else agentsOpen = false;
+    closeDetails();
+    panelOpen = false;
+  }
+  // A header toggle opens its tab, or closes the panel showing it.
+  function toggle(target: Tab) {
+    if (panel === target) closePanel();
+    else {
+      chosen = target;
+      panelOpen = true;
+    }
   }
 
   const side = $derived(!!sview && sview.Displayed.ID !== sview.Main.ID);
@@ -303,10 +341,31 @@
       <span class="flex-none text-small text-muted">{machine.label}</span>
     </span>
     <div class="ml-auto flex min-w-0 items-center justify-end gap-0.5">
-      {#if session && statusLabel}
+      {#if session && failure}
+        <button
+          type="button"
+          popovertarget={failureID}
+          aria-expanded={failureOpen}
+          aria-label="{headline}: show the error"
+          title="Show the error"
+          class="mr-1 inline-flex min-h-8 min-w-0 items-center gap-2 rounded-control px-2 text-small text-negative hover:bg-active aria-expanded:bg-active max-sm:mr-0 max-sm:min-h-11"
+          ><Dot tone="alert" /><span class="truncate max-sm:hidden">{headline}</span><span
+            class="flex flex-none"><Icon name="chevron" size={12} /></span
+          ></button
+        >
+        <div
+          id={failureID}
+          class="fixed inset-auto top-[calc(var(--topbar)+env(safe-area-inset-top,0px)+6px)] right-2 m-0 max-h-[calc(100dvh-var(--topbar)-24px)] w-[min(480px,calc(100vw-24px))] overflow-y-auto p-0 {floating}"
+          popover="auto"
+          onbeforetoggle={(e) => (failureOpen = e.newState === "open")}
+        >
+          <p class="px-4 pt-3 font-semibold text-negative">{headline}</p>
+          <p class="px-4 pt-1 pb-4 text-small whitespace-pre-wrap wrap-anywhere">{failure}</p>
+        </div>
+      {:else if session && statusLabel}
         <span
           class={[
-            "mr-2 inline-flex min-w-0 items-center gap-2 max-sm:mr-0.5",
+            "mr-2 inline-flex min-w-0 items-center gap-2 text-small max-sm:mr-0.5",
             !ended && stream.status.alert
               ? "text-negative"
               : !ended && stream.status.running
@@ -330,8 +389,23 @@
           label="Agents ({stream.roster.agents.length})"
           title="Agents"
           aria-pressed={panel === "agents"}
-          onclick={() => (details ? closeDetails() : (agentsOpen = !agentsOpen))}
+          onclick={() => toggle("agents")}
           ><span class="tabular-nums">{stream.roster.agents.length}</span></Button
+        >
+      {/if}
+      {#if changes}
+        <Button
+          variant="quiet"
+          icon="diff"
+          label="Changes"
+          title="Changes"
+          aria-pressed={panel === "changes"}
+          onclick={() => toggle("changes")}
+          >{#if net && net.Added >= 0 && net.Removed >= 0 && (net.Added || net.Removed)}<span
+              class="font-mono text-small tabular-nums max-sm:hidden"
+              ><span class="text-positive">+{net.Added}</span>
+              <span class="text-negative">−{net.Removed}</span></span
+            >{/if}</Button
         >
       {/if}
     </div>
@@ -448,6 +522,7 @@
                     })
                 : undefined}
             ></Transcript>
+            {#if live && !ended}<LiveSource previews={stream.live} {owner} />{/if}
           {/key}
         {:else if gone}
           <div class="mx-auto grid max-w-column gap-1.5 px-4 py-6">
@@ -510,34 +585,63 @@
       <aside
         class={[
           "flex min-h-0 flex-none flex-col border-l border-rule bg-surface",
-          details ? "w-[min(480px,40vw)]" : "w-side",
-          "max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-10 max-lg:w-[min(420px,92vw)] max-lg:border-border max-lg:shadow-float",
+          panel === "agents"
+            ? "w-side"
+            : panel === "details"
+              ? "w-[min(480px,40vw)]"
+              : "w-[min(640px,46vw)]",
+          "max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-10 max-lg:w-[min(560px,92vw)] max-lg:border-border max-lg:shadow-float",
           "max-sm:w-full max-sm:border-l-0 max-sm:pb-safe",
         ]}
-        aria-label={panel === "details" ? "Activity details" : "Agents"}
+        aria-label="Thread panel"
       >
-        {#if details}
-          <DetailsPanel {details} onclose={closeDetails} />
-        {:else}
-          <!-- Positioned, so the overflow clips hidden labels, which are positioned. -->
-          <div class="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-1 pb-5">
-            <Button
-              variant="quiet"
-              icon="close"
-              label="Close agents"
-              class="absolute top-1.5 right-1.5"
-              onclick={() => (agentsOpen = false)}
-            />
-            <Roster
-              roster={stream.roster}
-              loading={!session}
-              selected={owner}
-              {now}
-              {activity}
-              onselect={select}
-            />
+        <div class="flex min-h-12 flex-none items-center gap-2 border-b border-rule pr-1.5 pl-3">
+          <div class="{segments} flex min-w-0" role="tablist" aria-label="Panel">
+            {#snippet tabButton(target: Tab, label: string)}
+              <button
+                type="button"
+                role="tab"
+                class={segment}
+                aria-selected={panel === target}
+                aria-controls="panel-content"
+                onclick={() => (chosen = target)}>{label}</button
+              >
+            {/snippet}
+            {@render tabButton("agents", "Agents")}
+            {#if changes}{@render tabButton("changes", "Changes")}{/if}
+            {#if details}{@render tabButton("details", "Details")}{/if}
           </div>
-        {/if}
+          <Button
+            variant="quiet"
+            icon="close"
+            label="Close panel"
+            class="ml-auto"
+            onclick={closePanel}
+          />
+        </div>
+        <div id="panel-content" role="tabpanel" class="flex min-h-0 flex-1 flex-col">
+          {#if panel === "details" && details}
+            <DetailsPanel {details} onclose={closeDetails} />
+          {:else if panel === "changes"}
+            <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3.5 pb-6">
+              <DiffPanel review={stream.review} {owner} />
+            </div>
+          {:else}
+            <!-- Positioned, so the overflow clips hidden labels, which are positioned. -->
+            <div class="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-1 pb-5">
+              <Roster
+                roster={stream.roster}
+                lines={stream.review?.counts.Callers}
+                net={stream.review?.counts.Net}
+                loading={!session}
+                selected={owner}
+                {now}
+                {activity}
+                onselect={select}
+              />
+            </div>
+          {/if}
+        </div>
       </aside>
     {/if}
   </div>

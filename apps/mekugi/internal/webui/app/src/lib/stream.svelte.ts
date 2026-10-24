@@ -11,7 +11,9 @@ import type {
   Input,
   Message,
   Playback,
+  Preview,
   Roster,
+  SavedReview,
   Session,
   Status,
 } from "./protocol";
@@ -37,6 +39,8 @@ class Stream {
   main = $state.raw<Feed>(empty);
   agents = $state.raw<Feed>(empty);
   roster = $state.raw<Roster>({ agents: [] });
+  review = $state.raw<SavedReview | null>(null);
+  live = $state.raw<Preview[]>([]);
   byName = $derived(new Map(this.roster.agents.map((agent) => [agent.name, agent])));
   controlError = $state<string | undefined>();
   error = $state<string | undefined>();
@@ -61,6 +65,8 @@ class Stream {
     this.status = {};
     this.main = this.agents = empty;
     this.roster = { agents: [] };
+    this.review = null;
+    this.live = [];
     this.controlError = this.error = this.notice = undefined;
     const lifetime = this.#requests.signal;
     let snapshot = false;
@@ -100,6 +106,8 @@ class Stream {
       this.prompts = message.prompts;
       this.status = message.status ?? {};
       this.roster = message.roster ?? { agents: [] };
+      this.review = message.review ?? null;
+      this.live = message.live ?? [];
       this.main = merge(empty, message.main);
       this.agents = merge(empty, message.agents);
       this.jumps++;
@@ -111,6 +119,8 @@ class Stream {
     if (message.prompts) this.prompts = message.prompts;
     if (message.status) this.status = message.status;
     if (message.roster) this.roster = message.roster;
+    if (message.review !== undefined) this.review = message.review;
+    if (message.live !== undefined) this.live = message.live ?? [];
     if (message.main) this.main = merge(this.main, message.main);
     if (message.agents) this.agents = merge(this.agents, message.agents);
   }

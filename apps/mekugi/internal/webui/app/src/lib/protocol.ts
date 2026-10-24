@@ -7,7 +7,23 @@ export type {
   StartOptions,
   Model as StartModel,
 } from "../../../../sessionapi/protocol.ts";
-import type { Session, Input, Playback } from "../../../../sessionapi/protocol.ts";
+import type {
+  Session,
+  Input,
+  Playback,
+  Chunk,
+  Counts,
+  Origin,
+  Presentation_Counts,
+  Preview,
+} from "../../../../sessionapi/protocol.ts";
+export type {
+  Chunk,
+  Counts,
+  Origin,
+  Preview,
+  ReviewFile,
+} from "../../../../sessionapi/protocol.ts";
 
 // Wire shapes served by apps/mekugi/internal/sessionapi/projection.go. Times are Unix
 // milliseconds; durations and playback offsets are milliseconds.
@@ -170,6 +186,27 @@ export interface Roster {
   removed?: number;
 }
 
+// The saved review: each file's net composition of its captured changes.
+// Negative counts are unavailable.
+export interface SavedReview {
+  revision: number;
+  workspace: string;
+  coverage: string;
+  failure?: string;
+  files: ReviewedFile[];
+  // Each caller's own files, Main first; "?" is an unknown caller.
+  callers: { caller: string; files: ReviewedFile[] }[];
+  counts: Presentation_Counts;
+}
+
+export interface ReviewedFile {
+  key: string;
+  path: string;
+  chunks: Chunk[];
+  origins: Origin[];
+  counts: Counts;
+}
+
 export interface FeedChange {
   entries?: Entry[];
   order?: number[];
@@ -184,6 +221,9 @@ export interface Message {
   main?: FeedChange;
   agents?: FeedChange;
   roster?: Roster;
+  // A patch sends null when the review becomes unavailable, and [] to clear live.
+  review?: SavedReview | null;
+  live?: Preview[] | null;
 }
 
 export type Action = "toggle-pause" | "faster" | "slower" | "back" | "forward" | "restart" | "seek";

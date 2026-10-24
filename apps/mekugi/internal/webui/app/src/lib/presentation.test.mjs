@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { markedBlock, toolLabel } from "./markdown.ts";
-import { hasDetails, reasoningBody } from "./kinds.ts";
+import { hasDetails, isView, reasoningBody } from "./kinds.ts";
+import { diffRows, workspacePath } from "./diff.ts";
 
 test("only bound UTF-8 spans become attachment markers", () => {
   const text = "圖 [Image 1] and [Image 1] <script>";
@@ -45,4 +46,39 @@ test("search patterns and paths retain distinct operands", () => {
     '<code class="tool-operand">cat</code> <code class="tool-operand">python3</code>',
   );
   assert.match(toolLabel("`printf 'a, b'`", "Run"), /a, b/);
+});
+
+test("diff rows number each side from its hunk and skip file headers", () => {
+  const rows = diffRows(
+    "--- a/x\n+++ b/x\n@@ -1,2 +1,3 @@\n a\n+insert\n b\n@@ -20 +21 @@\n-old\n+new\n\\ No newline at end of file\n",
+  );
+  assert.deepEqual(rows, [
+    { kind: "hunk", text: "@@ -1,2 +1,3 @@" },
+    { kind: "context", text: "a", old: 1, new: 1 },
+    { kind: "add", text: "insert", new: 2 },
+    { kind: "context", text: "b", old: 2, new: 3 },
+    { kind: "hunk", text: "@@ -20 +21 @@" },
+    { kind: "remove", text: "old", old: 20 },
+    { kind: "add", text: "new", new: 21 },
+    { kind: "note", text: "No newline at end of file" },
+  ]);
+});
+
+test("workspace paths drop only their own workspace", () => {
+  assert.equal(workspacePath("/project/src/a.go", "/project/"), "src/a.go");
+  assert.equal(workspacePath("/project-other/a.go", "/project"), "/project-other/a.go");
+  assert.equal(workspacePath("/tmp/a", ""), "/tmp/a");
+});
+
+test("only a bound viewed image is a View entry", () => {
+  const view = {
+    seq: 1,
+    kind: "tool",
+    images: ["id"],
+    values: [{ verb: "View", reads: [{ path: "a.png" }] }],
+  };
+  assert.ok(isView(view));
+  assert.ok(!isView({ ...view, images: [] }));
+  assert.ok(!isView({ ...view, values: [{ verb: "Read", reads: [{ path: "a.png" }] }] }));
+  assert.ok(!isView({ ...view, kind: "text" }));
 });
