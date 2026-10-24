@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 func assertAppServerSettingsRequest(t *testing.T, w *appServerTestInput, method string, params map[string]any) {
@@ -47,6 +49,56 @@ func TestAppServerSettingsReasoningKeys(t *testing.T) {
 				t.Fatal("shortcut changed draft or authoritative effort optimistically")
 			}
 		})
+	}
+}
+
+func TestAppServerSideSettings(t *testing.T) {
+	for _, command := range []string{"/side", "/oneoff task"} {
+		t.Run(command, func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			u.model, u.reasoningEffort = "main-model", "high"
+			if err := json.Unmarshal([]byte(`[{"model":"side-model","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]`), &u.models); err != nil {
+				t.Fatal(err)
+			}
+			appServerTestKeys(t, u, command+"\r")
+			fork := btwTestRequest(t, w, "thread/fork", "main")
+			btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"side-model","reasoningEffort":"high"}`)
+			if u.side.OneOff {
+				start := btwTestRequest(t, w, "turn/start", "side")
+				btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
+			}
+			appServerTestKeys(t, u, "\x1b[1;2B")
+			assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "side", "effort": "low"})
+			if u.side.Effort != "high" || u.Settings.Pending() {
+				t.Fatal("side intent changed authoritative settings or Main admission")
+			}
+			// Switching views cannot redirect the confirmation or active-turn repair.
+			selectSideThread(t, u, u.attached.presentation.View().Main)
+			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "side", "threadSettings": map[string]any{"model": "side-model", "effort": "low"}})
+			if u.side.OneOff {
+				assertAppServerSettingsRequest(t, w, "turn/settings/update", map[string]any{"threadId": "side", "turnId": "side-turn", "effort": "low"})
+				appServerTestMessage(t, u, `{"id":4,"result":{"status":"applied"}}`)
+			}
+			if u.side.Effort != "low" || u.reasoningEffort != "high" || u.model != "main-model" {
+				t.Fatal("host-confirmed side settings leaked into Main or remained pending")
+			}
+			selectSideThread(t, u, u.attached.presentation.View().SideThread)
+			appServerTestKeys(t, u, "/model custom\r")
+			assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "side", "model": "custom"})
+			if u.side.Model != "side-model" {
+				t.Fatal("model changed before confirmation")
+			}
+		})
+	}
+}
+
+func TestAppServerSideSettingsDuringFork(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestKeys(t, u, "/side\r")
+	btwTestRequest(t, w, "thread/fork", "main")
+	appServerTestKeys(t, u, "/model custom\r")
+	if w.Len() != 0 || u.Settings.Pending() || u.Text != "/model custom" {
+		t.Fatal("pending Side sent settings to Main or discarded the command")
 	}
 }
 
@@ -167,13 +219,17 @@ func TestAppServerSettingsReasoningWaitsForCatalog(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.model, u.reasoningEffort, u.modelsLoading = "test", "low", true
 	appServerTestRequest(t, u, "99", "model/list")
-	appServerTestKeys(t, u, "\x1b[1;2A")
-	if w.Len() != 0 || u.reasoningKey == nil {
+	// Native views borrow execution while retaining their own presentation value.
+	view := u.attached
+	if err := stepReasoning(&view, u.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort}, &u.serviceTiers, u.panes, false, u.clock, u.models, u.modelsLoading, true); err != nil {
+		t.Fatal(err)
+	}
+	if w.Len() != 0 || u.attached.reasoning == nil {
 		t.Fatal("shortcut was lost or sent without metadata")
 	}
 	appServerTestMessage(t, u, `{"id":99,"result":{"data":[{"model":"test","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]}}`)
 	assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", "effort": "high"})
-	if u.modelsLoading || u.reasoningKey != nil {
+	if u.modelsLoading || u.attached.reasoning != nil {
 		t.Fatal("model loading not settled")
 	}
 }

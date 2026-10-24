@@ -55,11 +55,75 @@ func effortChoices(models []appServerModel, selected string) []string {
 	return choices
 }
 
+func selectedSettings(attached *attachedPresentation, requests *sessioncontrol.Requests[appServerRequest], main preferences.Applied) (*sessioncontrol.Side, preferences.Applied) {
+	if attached.presentation.DisplayingSide() {
+		if side := requests.Side(attached.presentation.View().SideThread.ID); side != nil {
+			return side, preferences.Applied{Model: side.Model, Effort: side.Effort, Tier: side.Tier}
+		}
+	}
+	return nil, main
+}
+
+func settingsChoices(command string, models []appServerModel, applied preferences.Applied, tiers *inferencegateway.Tiers, thread string) ([]string, string) {
+	var choices []string
+	current := applied.Model
+	switch command {
+	case "/model":
+		for _, model := range models {
+			if !model.Hidden {
+				choices = append(choices, model.Model)
+			}
+		}
+	case "/reasoning", "/effort":
+		current, choices = applied.Effort, effortChoices(models, applied.Model)
+	case "/tier":
+		current, choices = tiers.Effective(applied.Model, applied.Tier, thread), []string{"default"}
+		if model := currentModel(models, applied.Model); model != nil {
+			for _, tier := range model.Tiers {
+				choices = append(choices, tier.ID)
+			}
+		}
+	}
+	return choices, current
+}
+
+func refreshSettingsPicker(p *composerPicker, thread string, models []appServerModel, applied preferences.Applied, tiers *inferencegateway.Tiers, problem string) {
+	if p.Kind != "settings" {
+		return
+	}
+	if p.settingThread != thread {
+		problem = "Settings target changed · reopen the picker"
+	}
+	if problem != "" {
+		p.Loading, p.Problem = false, problem
+		return
+	}
+	choices, current := settingsChoices(p.Setting, models, applied, tiers, thread)
+	p.showSettingsPicker(false, p.Setting, choices, current)
+}
+
 // Codex owns configuration_update history items. These RPCs submit settings
 // intent, never synthetic Responses items or writes to the user's config file.
 // Source: codex-rs/app-server-protocol/src/protocol/v2/{thread,turn}.rs
 func updateSettings(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, restoring bool, clock func() time.Time, change map[string]any) (bool, error) {
+	return updateSettingsForTurn(attached, terminal, control, applied, tiers, panes, restoring, clock, change, nil)
+}
+
+func updateSettingsForTurn(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, restoring bool, clock func() time.Time, change map[string]any, originalTurn *string) (bool, error) {
 	decision := control.PrepareSettings(applied, change, restoring)
+	side, applied := selectedSettings(attached, control.Requests, applied)
+	if side != nil {
+		decision = side.PrepareSettings(change)
+	}
+	if attached.presentation.DisplayingSide() && side == nil || restoring || control.Replacement.Pending() {
+		decision.Action = sessioncontrol.SettingsUnavailable
+	}
+	if originalTurn != nil && decision.Turn != *originalTurn {
+		decision.Turn = ""
+		if decision.Action == sessioncontrol.SettingsTurn {
+			decision.Action = sessioncontrol.SettingsUnchanged
+		}
+	}
 	switch decision.Action {
 	case sessioncontrol.SettingsUnavailable:
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the thread or turn to finish starting", true)
@@ -68,8 +132,14 @@ func updateSettings(attached *attachedPresentation, terminal *terminalsession.At
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings update pending", false)
 		return false, nil
 	}
-	if err := control.Requests.ApplySettings(&control.Live, decision); err != nil {
-		return false, err
+	if side != nil {
+		if err := control.Requests.ApplySideSettings(side, decision); err != nil {
+			return false, err
+		}
+	} else {
+		if err := control.Requests.ApplySettings(&control.Live, decision); err != nil {
+			return false, err
+		}
 	}
 
 	if decision.RestoreDefault {
@@ -92,12 +162,33 @@ func updateSettings(attached *attachedPresentation, terminal *terminalsession.At
 	return true, nil
 }
 
-func stepReasoning(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, restoring bool, clock func() time.Time, models []appServerModel, loading bool, reasoningKey **bool, up bool) error {
+type pendingReasoning struct {
+	attached     *attachedPresentation
+	terminal     *terminalsession.Attachment
+	thread, turn string
+	up           bool
+}
+
+func stepReasoning(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, restoring bool, clock func() time.Time, models []appServerModel, loading bool, up bool) error {
+	side, applied := selectedSettings(attached, control.Requests, applied)
+	if attached.presentation.DisplayingSide() && side == nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the side conversation to finish starting", false)
+		return nil
+	}
 	if loading {
-		(*reasoningKey) = new(up)
+		turn := control.Turn
+		if side != nil {
+			turn = side.Turn
+		}
+		attached.reasoning = &pendingReasoning{attached: attached, terminal: terminal, thread: attached.presentation.View().Input.ID, turn: turn, up: up}
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Loading model choices…", false)
 		return nil
 	}
+	return stepReasoningForTurn(attached, terminal, control, applied, tiers, panes, restoring, clock, models, up, nil)
+}
+
+func stepReasoningForTurn(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, restoring bool, clock func() time.Time, models []appServerModel, up bool, originalTurn *string) error {
+	_, applied = selectedSettings(attached, control.Requests, applied)
 	choices := effortChoices(models, applied.Model)
 	if len(choices) == 0 {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Reasoning choices unavailable · use /reasoning VALUE", true)
@@ -117,7 +208,7 @@ func stepReasoning(attached *attachedPresentation, terminal *terminalsession.Att
 	if next < 0 || next >= len(choices) {
 		return nil
 	}
-	_, err := updateSettings(attached, terminal, control, applied, tiers, panes, restoring, clock, map[string]any{"effort": choices[next]})
+	_, err := updateSettingsForTurn(attached, terminal, control, applied, tiers, panes, restoring, clock, map[string]any{"effort": choices[next]}, originalTurn)
 	return err
 }
 
@@ -153,37 +244,20 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 		setLivePane(&attached.feedback, terminal, clock, value)
 		return true, nil
 	}
-	var choices []string
-	current := applied.Model
-	switch command {
-	case "/model":
-		for _, model := range models {
-			if !model.Hidden {
-				choices = append(choices, model.Model)
-			}
-		}
-	case "/reasoning", "/effort":
-		current = applied.Effort
-		choices = effortChoices(models, applied.Model)
-	case "/tier":
-		current = (*tiers).Effective(applied.Model, applied.Tier, control.Thread)
-		choices = []string{"default"}
-		if model := currentModel(models, applied.Model); model != nil {
-			for _, tier := range model.Tiers {
-				choices = append(choices, tier.ID)
-			}
-		}
-	}
+	target, selected := selectedSettings(attached, control.Requests, applied)
+	applied = selected
+	choices, current := settingsChoices(command, models, applied, *tiers, control.Thread)
 	if len(fields) == 1 {
 		deleteDraftRange(attached, terminal, control, picker, editor, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay, owned, 0, len((*editor).Text))
 		picker.showSettingsPicker(loading, command, choices, current)
+		picker.settingThread = attached.presentation.View().Input.ID
 		return true, nil
 	}
 	if len(fields) != 2 {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Use "+command+" or "+command+" VALUE", true)
 		return true, nil
 	}
-	if control.Settings.Pending() {
+	if target == nil && control.Settings.Pending() || target != nil && target.Settings.Pending() {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings update pending", false)
 		return true, nil
 	}
@@ -211,14 +285,19 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 	return true, err
 }
 
-func settingsMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, model *string, effort *string, tier *string, models *[]appServerModel, loading *bool, reasoningKey **bool, status *appServerStatusConfig, method string, m appserver.Message) (bool, error) {
+func settingsMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, model *string, effort *string, tier *string, models *[]appServerModel, loading *bool, status *appServerStatusConfig, method string, m appserver.Message) (bool, error) {
 	if method == "model/list" {
 		if m.Error != nil {
-			(*loading), (*reasoningKey) = false, nil
-			if picker.Kind == "settings" {
-				picker.Loading = false
-				picker.Problem = "Model choices unavailable · Esc to close; use an explicit VALUE"
+			(*loading) = false
+			problem := "Model choices unavailable · Esc to close; use an explicit VALUE"
+			refreshSettingsPicker(picker, attached.presentation.View().Input.ID, nil, preferences.Applied{}, *tiers, problem)
+			if attached.modelsReady != nil {
+				attached.modelsReady(nil, preferences.Applied{}, *tiers, problem)
 			}
+			if pending := attached.reasoning; pending != nil && pending.attached.executionPresentation == attached.executionPresentation {
+				setNotice(&pending.attached.feedback, pending.terminal, presentationTime(clock), problem, true)
+			}
+			attached.reasoning = nil
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Model choices unavailable: "+m.Error.Message, true)
 			return true, nil
 		}
@@ -234,16 +313,22 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 			return true, control.Request("model/list", map[string]any{"cursor": result.NextCursor, "includeHidden": true})
 		}
 		(*loading) = false
-		if picker.Setting != "" {
-			command := picker.Setting
-			if picker.Kind == "settings" {
-				_, _ = settingsCommand(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, panes, (*models), (*loading), command)
-			}
+		applied := preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}
+		_, selected := selectedSettings(attached, control.Requests, applied)
+		refreshSettingsPicker(picker, attached.presentation.View().Input.ID, *models, selected, *tiers, "")
+		if attached.modelsReady != nil {
+			attached.modelsReady(*models, applied, *tiers, "")
 		}
-		if (*reasoningKey) != nil {
-			up := *(*reasoningKey)
-			(*reasoningKey) = nil
-			return true, stepReasoning(attached, terminal, control, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, panes, restoring, clock, (*models), (*loading), reasoningKey, up)
+		if pending := attached.reasoning; pending != nil {
+			attached.reasoning = nil
+			if pending.attached.executionPresentation != attached.executionPresentation || pending.attached.presentation == nil {
+				return true, nil
+			}
+			if pending.thread != pending.attached.presentation.View().Input.ID {
+				setNotice(&pending.attached.feedback, pending.terminal, presentationTime(clock), "Settings target changed · retry the reasoning control", false)
+				return true, nil
+			}
+			return true, stepReasoningForTurn(pending.attached, pending.terminal, control, applied, tiers, panes, restoring, clock, *models, pending.up, &pending.turn)
 		}
 		return true, nil
 	}
@@ -370,6 +455,10 @@ func chooseServiceTier(tiers *inferencegateway.Tiers, model, thread, tier string
 func chooseSetting(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, restoring bool, clock func() time.Time, picker *composerPicker, choice completion.Choice) {
 	p := picker
 	if p.Loading {
+		return
+	}
+	if picker.settingThread != "" && picker.settingThread != attached.presentation.View().Input.ID {
+		p.Problem = "Settings target changed · reopen the picker"
 		return
 	}
 	field := "model"

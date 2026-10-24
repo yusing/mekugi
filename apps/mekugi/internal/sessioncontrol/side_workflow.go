@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	json "encoding/json/v2"
 	"errors"
+	"maps"
 	"strings"
 	"time"
 
@@ -45,6 +46,23 @@ func (r *Requests[T]) sendSide(s *Side, method string, params any) error {
 		r.pending[id] = request
 	}
 	return err
+}
+
+// ApplySideSettings retains the original side operation through view switches.
+func (r *Requests[T]) ApplySideSettings(s *Side, plan SettingsPlan) error {
+	if plan.Action == SettingsThread || plan.Action == SettingsTurn {
+		params := maps.Clone(plan.Change)
+		params["threadId"] = s.Thread
+		method := "thread/settings/update"
+		if plan.Action == SettingsTurn {
+			method, params["turnId"] = "turn/settings/update", plan.Turn
+		}
+		if err := r.sendSide(s, method, params); err != nil {
+			return err
+		}
+	}
+	s.Settings.Admit(plan)
+	return nil
 }
 
 // StartSide receives acquired Conversation input and uses the one request ledger.
@@ -150,6 +168,22 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		}
 		if s.Unloaded {
 			return update, nil
+		}
+		if method == "thread/settings/update" || method == "turn/settings/update" {
+			ack, err := s.Settings.Acknowledge(method, m.Result, m.Error != nil)
+			if s.Closed {
+				return update, err
+			}
+			if m.Error != nil {
+				update.Notice = "Settings update failed: " + m.Error.Message
+			} else if method == "turn/settings/update" {
+				update.Notice = "Settings saved for next turn"
+				if ack.Status == "applied" {
+					update.Notice = "Settings updated"
+				}
+			}
+			update.Flush = !s.Settings.Pending()
+			return update, err
 		}
 		if input := response.SideInput; input != nil {
 			root := input.Question == nil || input.Question.Thread == s.Thread
@@ -293,6 +327,28 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		return update, nil
 	}
 	switch m.Method {
+	case "thread/settings/updated":
+		if s.Closed {
+			return update, nil
+		}
+		var event struct {
+			Settings struct {
+				Model       string `json:"model"`
+				Effort      string `json:"effort"`
+				ServiceTier string `json:"serviceTier"`
+			} `json:"threadSettings"`
+		}
+		if err := json.Unmarshal(m.Params, &event); err != nil {
+			return update, err
+		}
+		s.Model, s.Effort, s.Tier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
+		confirmation := s.Settings.Confirmed(s.Turn, s.Effort)
+		if confirmation.Requested {
+			if confirmation.Update.Action == SettingsTurn {
+				return update, r.ApplySideSettings(s, confirmation.Update)
+			}
+			update.Notice, update.Flush = "Settings saved for next turn", true
+		}
 	case "turn/started":
 		s.Turn = p.Turn.ID
 	case "turn/completed":

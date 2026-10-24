@@ -154,7 +154,19 @@ func (n *nativeViews) attach(request sessionapi.NativeRequest, execution *attach
 		}
 	})
 	n.views[request.Attachment] = v
+	execution.modelsReady = n.refreshSettings
 	return ""
+}
+
+func (n *nativeViews) refreshSettings(models []appServerModel, applied preferences.Applied, tiers *inferencegateway.Tiers, problem string) {
+	for _, view := range n.views {
+		if view.ctx.Err() != nil {
+			continue
+		}
+		_, current := selectedSettings(&view.attached, n.requests, applied)
+		refreshSettingsPicker(&view.picker, view.attached.presentation.View().Input.ID, models, current, tiers, problem)
+		view.projected = time.Time{}
+	}
 }
 
 func (n *nativeViews) admit(request sessionapi.NativeRequest, execution *attachedPresentation, thread string) (*nativeSessionView, string) {

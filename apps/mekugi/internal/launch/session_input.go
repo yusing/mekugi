@@ -46,7 +46,7 @@ func submitInput(attached *attachedPresentation, terminal *terminalsession.Attac
 	return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, (*owned), hook, editor, parent, restoring, observations, reviewOwner, receipts)
 }
 
-func applyComposerCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, reasoningKey **bool, intent sessionpresentation.ComposerIntent, preparation *composerPreparation) (bool, error) {
+func applyComposerCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, intent sessionpresentation.ComposerIntent, preparation *composerPreparation) (bool, error) {
 	if err := attached.presentation.AdmitClientComposer(intent); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false, nil
@@ -55,6 +55,15 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 	if inputThread == "" {
 		inputThread = attached.presentation.View().Input.ID
 	}
+	command := strings.Fields((*editor).Text)
+	settingsIntent := intent.Operation == sessionpresentation.IncreaseEffort || intent.Operation == sessionpresentation.DecreaseEffort
+	if len(command) > 0 && (intent.Operation == sessionpresentation.SubmitComposer || intent.Operation == sessionpresentation.QueueComposer) {
+		settingsIntent = command[0] == "/model" || command[0] == "/effort" || command[0] == "/reasoning" || command[0] == "/tier"
+	}
+	if settingsIntent && inputThread != attached.presentation.View().Input.ID {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings target changed · retry the control", false)
+		return false, nil
+	}
 	if sideThread := attached.presentation.View().SideThread.ID; sideThread != "" && inputThread == sideThread {
 		text := strings.TrimSpace((*editor).Text)
 		switch intent.Operation {
@@ -62,18 +71,20 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 			if !strings.HasPrefix(text, "/") && !strings.HasPrefix(text, "!") {
 				return false, submitBTW(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}, *tiers, *title, *backend, *restoring != nil, side, *panel != nil || *resumePicker != nil, owned, environment, hook, observations, preparation)
 			}
-			if text != "/copy" {
-				setNotice(&attached.feedback, terminal, presentationTime(clock), "Return to Main to use this command; Side retains its captured settings", false)
+			command := strings.Fields(text)
+			setting := len(command) > 0 && (command[0] == "/model" || command[0] == "/effort" || command[0] == "/reasoning")
+			if text != "/copy" && !setting {
+				setNotice(&attached.feedback, terminal, presentationTime(clock), "Return to Main to use this command", false)
 				return false, nil
 			}
-		case sessionpresentation.RestoreWaiting, sessionpresentation.IncreaseEffort, sessionpresentation.DecreaseEffort:
+		case sessionpresentation.RestoreWaiting:
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Return to Main to use this control", false)
 			return false, nil
 		}
 	}
 	switch intent.Operation {
 	case sessionpresentation.IncreaseEffort, sessionpresentation.DecreaseEffort:
-		return false, stepReasoning(attached, terminal, control, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, panes, (*restoring) != nil, clock, (*models), (*modelsLoading), reasoningKey, intent.Operation == sessionpresentation.IncreaseEffort)
+		return false, stepReasoning(attached, terminal, control, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, panes, (*restoring) != nil, clock, (*models), (*modelsLoading), intent.Operation == sessionpresentation.IncreaseEffort)
 	case sessionpresentation.RestoreWaiting:
 		active, err := attached.presentation.ResolveInterrupt(sessionpresentation.InterruptIntent{Version: intent.Version, Target: *intent.Work, Mode: sessioncontrol.RestoreWaiting}, &control.Live, &attached.session)
 		if err != nil {
@@ -167,7 +178,7 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		}
 		if attached.conversation.ShellMode() || text == "" || strings.HasPrefix(text, "/") || control.Turn == "" && !control.Starting() && !control.InputPending() {
 			intent.Operation = sessionpresentation.SubmitComposer
-			return applyComposerCommand(attached, terminal, control, picker, editor, questions, approvals, clock, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, reasoningKey, intent, preparation)
+			return applyComposerCommand(attached, terminal, control, picker, editor, questions, approvals, clock, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, intent, preparation)
 		}
 		view := attached.presentation.View()
 		return false, submitInput(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.QueueNextTurn})

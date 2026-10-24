@@ -51,6 +51,7 @@ type composerPicker struct {
 	sideTask                        *composer.Draft
 	sideTaskDelivery                uint64
 	sideTarget                      string
+	settingThread                   string
 }
 
 // invalidateSkills is shared by the local attachment and native views after the

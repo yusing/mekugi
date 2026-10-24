@@ -1,7 +1,10 @@
 // Source: apps/mekugi/internal/router/app_server_btw.go:105:330@[4ded0a4e] side operation correlation and release.
 package sessioncontrol
 
-import conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+import (
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+)
 
 // Side owns live side-thread admission and cleanup independently of Main.
 // Closing its presentation does not retire pending fork/start acknowledgements.
@@ -13,10 +16,15 @@ type Side struct {
 	Busy, Starting, Closed      bool
 	Interrupting, Unloading     bool
 	Unloaded                    bool
+	Settings                    Settings
+}
+
+func (s *Side) PrepareSettings(change map[string]any) SettingsPlan {
+	return s.Settings.prepare(preferences.Applied{Model: s.Model, Effort: s.Effort, Tier: s.Tier}, change, s.Turn, s.Thread != "" && !s.Starting && !s.Closed && !s.Unloaded)
 }
 
 func (s *Side) Ready(replacing bool) bool {
-	return s != nil && !s.Closed && !s.Unloaded && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !replacing
+	return s != nil && !s.Closed && !s.Unloaded && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !s.Settings.Pending() && !replacing
 }
 
 func (s *Side) Close() {

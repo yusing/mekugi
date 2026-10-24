@@ -331,6 +331,8 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   closes only that dock.
 - `/model`, `/effort` (or `/reasoning`), and `/tier` open pickers or accept values.
   `/tier default` clears the tier. Changes reach upcoming steps without editing config.
+  Model and reasoning controls, including Shift+Up/Down, target the selected Main,
+  Side or One-off conversation independently. Service-tier controls target Main.
 - `/compact` resets context: Enter interrupts then resets, Tab queues. `/clear` starts
   fresh while idle, preserving sessions/files. See [reset policy](#context-reset-and-recovery).
 - `/lock` prevents Esc/Ctrl-C interruption and Ctrl-C exit; `/unlock` restores them.

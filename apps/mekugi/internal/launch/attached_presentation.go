@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -8,6 +9,7 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 // executionPresentation owns one admitted execution attachment. Views borrow this
@@ -29,6 +31,8 @@ type executionPresentation struct {
 	rewindArchive       func(string)
 	interruptWait       func(string, string)
 	threadInput         *threadInput
+	reasoning           *pendingReasoning
+	modelsReady         func([]appServerModel, preferences.Applied, *inferencegateway.Tiers, string)
 }
 
 // attachedPresentation combines a borrowed execution attachment with one view's

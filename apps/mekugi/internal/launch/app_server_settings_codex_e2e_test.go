@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +21,73 @@ import (
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
+
+func TestAppServerSideSettingsNativeCodex(t *testing.T) {
+	codex, err := exec.LookPath("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &appSettingsProvider{requests: make(chan []byte, 8), release: make(chan struct{})}
+	close(p.release)
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, p, nil, nil))
+	defer server.Close()
+	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
+	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
+		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", `model_reasoning_effort="high"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd.Env, cmd.Dir = environment, workspace
+		return cmd
+	}, "")
+	defer terminal.cancel()
+	terminal.await("Ready")
+	terminal.send("Seed Main context\r")
+	select {
+	case <-p.requests:
+	case <-terminal.ctx.Done():
+		t.Fatal(terminal.ctx.Err())
+	}
+	terminal.await("completed")
+	terminal.send("/side\r")
+	terminal.awaitMatch("side ready", func(frame string) bool { return strings.Contains(frame, "1 Side") && strings.Contains(frame, "Ready") })
+	terminal.send("\x1b[1;2B")
+	terminal.await("Settings saved for next turn")
+	terminal.send("/model gpt-6-sol\r")
+	terminal.await("gpt-6-sol")
+	terminal.send("Side settings request\r")
+	select {
+	case body := <-p.requests:
+		request, err := codexresponses.ParseRequest(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if request.Model() != "gpt-6-sol" || request.ReasoningEffort() != "medium" {
+			t.Fatalf("side provider settings: model=%q effort=%q", request.Model(), request.ReasoningEffort())
+		}
+	case <-terminal.ctx.Done():
+		t.Fatal(terminal.ctx.Err())
+	}
+	terminal.awaitMatch("side completed", func(frame string) bool { return strings.Contains(frame, "╭─ completed") })
+	terminal.send("\x021") // Select Main without closing Side.
+	terminal.awaitMatch("Main selected", func(frame string) bool {
+		return strings.HasPrefix(frame, "┌ 1 Main") && strings.Contains(frame, "gpt-6-astra (high)")
+	})
+	terminal.send("Main settings request\r")
+	select {
+	case body := <-p.requests:
+		request, err := codexresponses.ParseRequest(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if request.Model() != "gpt-6-astra" || request.ReasoningEffort() != "high" {
+			t.Fatalf("Main provider settings changed: model=%q effort=%q", request.Model(), request.ReasoningEffort())
+		}
+	case <-terminal.ctx.Done():
+		t.Fatal(terminal.ctx.Err())
+	}
+	terminal.await("completed")
+	terminal.quit()
+}
 
 type appSettingsProvider struct {
 	requests chan []byte

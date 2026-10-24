@@ -8,8 +8,10 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
@@ -106,5 +108,106 @@ func TestNativeStartupViewHasNoFabricatedThread(t *testing.T) {
 	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
 	if view.Main.ID != "" || view.Info.Workspace != "/workspace" || view.Version.Attachment == 0 {
 		t.Fatalf("startup publication fabricated a confirmed thread: %+v", view)
+	}
+}
+
+func nativeSideSettingsTest(t *testing.T) (*appServerUI, *appServerTestInput, *nativeSessionView) {
+	t.Helper()
+	u, wire := newAppServerTestUI()
+	u.startSession("main", "/workspace")
+	u.model, u.reasoningEffort = "test", "low"
+	appServerTestKeys(t, u, "/side\r")
+	fork := btwTestRequest(t, wire, "thread/fork", "main")
+	btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	t.Cleanup(n.close)
+	request := sessionapi.NativeRequest{Attach: true, Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}
+	if refusal := n.attach(request, &u.attached, u.Thread); refusal != "" {
+		t.Fatal(refusal)
+	}
+	view := n.views["view"]
+	publishSessionView(&view.attached, &u.Client, &view.picker, "", preferences.Applied{Model: u.model, Effort: u.reasoningEffort}, u.serviceTiers, "", "", false, u.side, time.Now(), true)
+	display := sessionpresentation.DisplayIntent{Version: view.attached.presentation.View().Version, Thread: view.attached.presentation.View().SideThread}
+	if refusal := view.applyView(sessionapi.NativeOperation{Display: &display}); refusal != "" {
+		t.Fatal(refusal)
+	}
+	if !view.attached.presentation.DisplayingSide() || u.attached.presentation.DisplayingSide() {
+		t.Fatal("fixture did not keep native Side independent of execution Main")
+	}
+	return u, wire, view
+}
+
+func TestNativeSideReasoningWaitsForCatalog(t *testing.T) {
+	u, wire, view := nativeSideSettingsTest(t)
+	u.modelsLoading = true
+	appServerTestRequest(t, u, "99", "model/list")
+	if err := stepReasoning(&view.attached, view.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort}, &u.serviceTiers, u.panes, false, u.clock, u.models, u.modelsLoading, true); err != nil {
+		t.Fatal(err)
+	}
+	appServerTestMessage(t, u, `{"id":99,"result":{"data":[{"model":"test","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]}}`)
+	if wire.Len() == 0 {
+		t.Fatalf("unchanged native Side shortcut discarded; execution feedback=%q native feedback=%q", u.attached.feedback.Text, view.attached.feedback.Text)
+	}
+	assertAppServerSettingsRequest(t, wire, "thread/settings/update", map[string]any{"threadId": "side", "effort": "high"})
+}
+func TestNativeSidePickerWaitsForCatalog(t *testing.T) {
+	u, _, view := nativeSideSettingsTest(t)
+	u.modelsLoading = true
+	appServerTestRequest(t, u, "99", "model/list")
+	requestEditor := new(composer.Editor)
+	requestEditor.Text = "/model"
+	if handled, err := settingsCommand(&view.attached, view.shell, &u.Client, &view.picker, &requestEditor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort}, &u.serviceTiers, u.title, u.backendVersion, false, u.side, u.clock, &u.questions, &u.approvals, false, u.ownedImages, u.panes, u.models, u.modelsLoading, "/model"); err != nil || !handled {
+		t.Fatalf("settings command handled=%v err=%v", handled, err)
+	}
+	appServerTestMessage(t, u, `{"id":99,"result":{"data":[{"model":"test","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]}}`)
+	if view.picker.Loading || len(view.picker.Choices) != 1 {
+		t.Fatalf("unchanged native Side picker never refreshed: loading=%v choices=%v", view.picker.Loading, view.picker.Choices)
+	}
+}
+
+func TestSettingsCommandRetainsInputThread(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	appServerTestKeys(t, u, "/side\r")
+	fork := btwTestRequest(t, wire, "thread/fork", "main")
+	btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	captured := u.attached.presentation.View()
+	selectSideThread(t, u, captured.SideThread)
+	u.Text = "/model intended-for-main"
+	intent := sessionpresentation.ComposerIntent{Version: captured.Version, Thread: captured.Input.ID, Operation: sessionpresentation.SubmitComposer}
+	if _, err := u.applyComposerInput(terminalsession.ComposerInput{Command: intent}); err != nil {
+		t.Fatal(err)
+	}
+	if wire.Len() == 0 {
+		return
+	} // Explicit stale-target rejection also preserves isolation.
+	assertAppServerSettingsRequest(t, wire, "thread/settings/update", map[string]any{"threadId": "main", "model": "intended-for-main"})
+}
+
+func TestDeferredSideReasoningRetainsTurn(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.model, u.reasoningEffort = "test", "low"
+	appServerTestKeys(t, u, "/side\r")
+	fork := btwTestRequest(t, wire, "thread/fork", "main")
+	btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)
+	appServerTestKeys(t, u, "old work\r")
+	start := btwTestRequest(t, wire, "turn/start", "side")
+	btwTestReply(t, u, start, `{"turn":{"id":"old-turn"}}`)
+	u.modelsLoading = true
+	appServerTestRequest(t, u, "99", "model/list")
+	appServerTestKeys(t, u, "\x1b[1;2A")
+	if u.attached.reasoning == nil {
+		t.Fatal("shortcut not waiting for catalog")
+	}
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "old-turn", "status": "completed"}})
+	appServerTestKeys(t, u, "new work\r")
+	start = btwTestRequest(t, wire, "turn/start", "side")
+	btwTestReply(t, u, start, `{"turn":{"id":"new-turn"}}`)
+	appServerTestMessage(t, u, `{"id":99,"result":{"data":[{"model":"test","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]}}`)
+	assertAppServerSettingsRequest(t, wire, "thread/settings/update", map[string]any{"threadId": "side", "effort": "high"})
+	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "side", "threadSettings": map[string]any{"model": "test", "effort": "high"}})
+	if wire.Len() != 0 {
+		t.Fatalf("deferred shortcut repaired a later turn: %s", wire.String())
 	}
 }

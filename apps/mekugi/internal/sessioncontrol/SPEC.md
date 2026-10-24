@@ -215,7 +215,11 @@ audience. Activity with unresolved ancestry remains outside Main until metadata
 settles its audience. Closing the slot retires their visible activity and prompts without
 answering them or claiming that their host processes completed. Queued answers wait
 for their own thread's tool-input generation, independently of Main.
-Forks preserve Main’s effective settings without changing Main. That operation borrows
+Side and One-off forks initially preserve Main’s effective settings without changing Main.
+While either is selected, model and reasoning commands, pickers and shifted-arrow
+reasoning controls target that fork. Host confirmation and active-turn repair stay
+with the original fork through view switches; Main's settings remain independent.
+That operation borrows
 Conversation's current exchange and owns fork/start validation, effective fork
 settings, side classification before sampling, and delayed cleanup. Acquisition
 prepares attachments before dispatch; restoration returns the existing input

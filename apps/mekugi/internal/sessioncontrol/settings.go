@@ -44,13 +44,17 @@ type SettingsPlan struct {
 // commits the plan only after its request was successfully issued.
 // Source: apps/mekugi/internal/router/app_server_settings.go:53:113@[59a0d2b9]
 func (h *Live) PrepareSettings(current preferences.Applied, change map[string]any, restoring bool) SettingsPlan {
-	if restoring || !h.AcceptsSettings() {
+	return h.Settings.prepare(current, change, h.Turn, !restoring && h.AcceptsSettings())
+}
+
+func (o *Settings) prepare(current preferences.Applied, change map[string]any, turn string, available bool) SettingsPlan {
+	if !available {
 		return SettingsPlan{Action: SettingsUnavailable}
 	}
-	if h.Settings.Pending() {
+	if o.Pending() {
 		return SettingsPlan{Action: SettingsAlreadyPending}
 	}
-	plan := SettingsPlan{Action: SettingsThread, Change: maps.Clone(change), Turn: h.Turn}
+	plan := SettingsPlan{Action: SettingsThread, Change: maps.Clone(change), Turn: turn}
 	for field, value := range change {
 		switch field {
 		case "collaborationMode":
@@ -72,12 +76,12 @@ func (h *Live) PrepareSettings(current preferences.Applied, change map[string]an
 		}
 	}
 	_, plan.ChooseTier = change["serviceTier"]
-	if h.Turn != "" {
+	if turn != "" {
 		plan.Action = SettingsTurn
 	} else {
 		plan.Action = SettingsUnchanged
 		_, explicit := change["effort"]
-		plan.RestoreDefault = explicit && h.Settings.RestoreEffort
+		plan.RestoreDefault = explicit && o.RestoreEffort
 	}
 	return plan
 }

@@ -146,6 +146,9 @@ func flushBTW(attached *attachedPresentation, terminal *terminalsession.Attachme
 
 func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, side **sessioncontrol.Side, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations) error {
 	b := (*side)
+	if b != nil && b.Settings.Pending() {
+		return nil
+	}
 	if b != nil && b.OneOff && !b.Closed && !b.Unloaded && !b.Starting {
 		for len(b.Drafts.Unsent) > 0 {
 			input := b.Drafts.Unsent[0]
