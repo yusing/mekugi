@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -150,8 +151,15 @@ func TestReplaySnapshotsRejectUnavailableAndCorruptEvidence(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if _, found, err := store.lookup(t.Context(), "/w", "call"); err == nil || found {
-				t.Fatalf("unavailable evidence claimed readable: found=%v err=%v", found, err)
+			_, found, readErr := store.lookup(t.Context(), "/w", "call")
+			if readErr == nil || found {
+				t.Fatalf("unavailable evidence claimed readable: found=%v err=%v", found, readErr)
+			}
+			request := &codexresponses.Request{Fields: map[string]json.RawMessage{
+				"input": json.RawMessage(`[{"type":"function_call","call_id":"call"}]`),
+			}}
+			if _, err := testProxyWithStore(store).reconcileVisibleInput(t.Context(), request, "/w", "session"); err == nil || err.Error() != readErr.Error() {
+				t.Fatalf("request preparation must reject invalid dependencies: got %v, want %v", err, readErr)
 			}
 			if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"call": snapshotTestHistory()}); err == nil {
 				t.Fatal("retry claimed durable success with invalid dependencies")

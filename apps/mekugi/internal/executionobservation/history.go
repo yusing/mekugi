@@ -131,6 +131,53 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 	if json.Unmarshal(raw, &items) != nil {
 		return visible, nil
 	}
+	// Validate this request's retained selections under one publication lock.
+	// Keep errors with their selection so input-order error handling is unchanged.
+	// The snapshot lease continues protecting dependencies until adoption below.
+	type lookupKey struct {
+		id         string
+		commentary bool
+	}
+	type lookupResult struct {
+		history legacycall.History
+		found   bool
+		err     error
+	}
+	retained := make(map[lookupKey]lookupResult)
+	if p.retained.Store != nil {
+		err := p.retained.Store.Transaction(ctx, nil, func(*history.Transaction) error {
+			for _, item := range items {
+				var key lookupKey
+				switch responses.StringField(item, "type") {
+				case "message":
+					key = lookupKey{id: responses.StringField(item, "id"), commentary: true}
+				case "custom_tool_call", "function_call", "custom_tool_call_output", "function_call_output":
+					if codexresponses.StandaloneFunctionOutput(item) {
+						continue
+					}
+					key.id = responses.StringField(item, "call_id")
+					if key.id == "" {
+						continue // The input validator reports missing call identities below.
+					}
+				default:
+					continue
+				}
+				if _, read := retained[key]; read {
+					continue
+				}
+				result := lookupResult{err: ctx.Err()}
+				if result.err == nil {
+					record, found, err := p.retained.Store.ReadHostCall(workspace, key.id, key.commentary)
+					result = lookupResult{history: record.History, found: found, err: err}
+				}
+				retained[key] = result
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
 	changed := false
 	commentaryIDs := p.calls.CommentaryIDs(sessionID)
 	filtered := make([]map[string]json.RawMessage, 0, len(items))
@@ -149,11 +196,11 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 			id := responses.StringField(item, "id")
 			_, generated := commentaryIDs[id]
 			if p.retained.Store != nil {
-				var err error
-				generated, err = p.retained.Store.HasCommentary(ctx, workspace, id)
-				if err != nil {
-					return nil, err
+				lookup := retained[lookupKey{id: id, commentary: true}]
+				if lookup.err != nil {
+					return nil, lookup.err
 				}
+				generated = lookup.found
 			}
 			if generated {
 				changed = true
@@ -217,12 +264,10 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 		history, known := visible[callID]
 		if !known {
 			if p.retained.Store != nil {
-				var err error
-				var retained legacycall.History
-				retained, known, err = p.retained.Store.LookupHostCall(ctx, workspace, callID)
-				history = legacyHistory(retained)
-				if err != nil {
-					return nil, err
+				lookup := retained[lookupKey{id: callID}]
+				history, known = legacyHistory(lookup.history), lookup.found
+				if lookup.err != nil {
+					return nil, lookup.err
 				}
 			} else {
 				var retained legacycall.History
