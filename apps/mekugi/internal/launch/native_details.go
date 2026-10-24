@@ -12,14 +12,29 @@ import (
 type nativeChildDetails struct {
 	observation *sessionapi.Observation
 	id          sessionpresentation.DetailID
+	copy        *nativeEffectReservation
 }
 
 func (v *nativeSessionView) closeChildDetails() {
 	if details := v.childDetails; details != nil {
+		details.copy.release()
 		details.observation.Close()
 		v.files.details.CloseDetails(details.id)
 		v.childDetails = nil
 	}
+}
+
+func (v *nativeSessionView) reserveFileCopy() *nativeEffectReservation {
+	reservation := v.effects.current
+	if reservation == nil {
+		reservation = v.effects.reserve(1)
+	}
+	if reservation == nil || reservation.remaining == 0 {
+		return nil
+	}
+	// Transfer one admitted consequence to asynchronous acquisition.
+	reservation.remaining--
+	return &nativeEffectReservation{owner: &v.effects, remaining: 1}
 }
 
 func (v *nativeSessionView) openNoticeDetails(text string) string {
@@ -53,8 +68,16 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 	}
 	if v.children != nil {
 		if _, live := v.children.Descendants(v.thread)[thread.ID]; live {
+			var copyReservation *nativeEffectReservation
+			if request.Kind == sessionapi.NativeFileDetails {
+				copyReservation = v.reserveFileCopy()
+				if copyReservation == nil {
+					return "Clipboard delivery capacity is exhausted."
+				}
+			}
 			observer, err := v.children.Observe(v.ctx, v.thread, thread.ID)
 			if err != nil {
+				copyReservation.release()
 				return err.Error()
 			}
 			request.Displayed, request.Agent = thread, false
@@ -62,13 +85,14 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 				request.Caller = "Main"
 			}
 			if err := observer.Read(sessionapi.NativeOperation{Details: &request}); err != nil {
+				copyReservation.release()
 				observer.Close()
 				return err.Error()
 			}
 			v.closeChildDetails()
 			v.files.closeOutput(v.shell)
 			id := v.files.details.OpenDetails(view.Version, nil, nil, false, nil)
-			v.childDetails = &nativeChildDetails{observation: observer, id: id}
+			v.childDetails = &nativeChildDetails{observation: observer, id: id, copy: copyReservation}
 			return ""
 		}
 	}
@@ -82,8 +106,22 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 	publishActivity(&v.attached, v.shell)
 	switch request.Kind {
 	case sessionapi.NativeFileDetails:
+		copyReservation := v.reserveFileCopy()
+		if copyReservation == nil {
+			return "Clipboard delivery capacity is exhausted."
+		}
 		if !v.files.openMarkdownFile(&v.attached.session, v.attached.presentation, v.attached.cwd, activitySource(&v.attached, v.shell, terminal), v.shell, terminal, request.Path) {
+			copyReservation.release()
 			return "The local file target is unavailable."
+		}
+		if v.files.fileReads == nil {
+			copyReservation.release()
+			break
+		}
+		cancel := v.files.cancelRead
+		v.files.cancelRead = func() { cancel(); copyReservation.release() }
+		v.files.copyFilePath = func(path string) {
+			copyReservation.add(sessionapi.NativeEffect{Thread: v.thread, Clipboard: new(path)})
 		}
 	case sessionapi.NativeErrorDetails:
 		openErrorDetails(&v.attached, v.shell, &v.files, v.shell, terminal)
@@ -144,7 +182,24 @@ func (v *nativeSessionView) publishDetails(frame *sessionapi.NativeFrame) {
 		}
 		event, err := child.observation.Snapshot()
 		if err != nil {
+			child.copy.release()
 			frame.View.Loading = err.Error()
+		}
+		if child.copy != nil && child.copy.remaining > 0 {
+			for _, effect := range event.Frame.Effects {
+				if effect.Clipboard != nil {
+					child.copy.add(sessionapi.NativeEffect{Thread: v.thread, Clipboard: effect.Clipboard})
+					// Closing this one-shot observation retires its child effect;
+					// the requesting view now owns acknowledged delivery.
+					v.closeChildDetails()
+					frame.Effects = v.effects.publication()
+					frame.PendingEffects = v.effects.reserved > 0
+					return
+				}
+			}
+			if event.Frame.Details != nil && !event.Frame.PendingEffects {
+				child.copy.release()
+			}
 		}
 		if event.Frame.Details != nil {
 			details := *event.Frame.Details

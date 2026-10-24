@@ -21,13 +21,32 @@ import (
 
 func awaitMarkdownFile(t *testing.T, u *terminalUI) {
 	t.Helper()
+	for u.main.fileReads != nil {
+		select {
+		case result := <-u.main.fileReads:
+			changed, path := u.main.detailFiles.loadedMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.Attachment, result)
+			if !changed {
+				t.Fatal("file result was not admitted")
+			}
+			if path != "" {
+				u.Frame.CopyText(path)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for file result")
+		}
+	}
+}
+
+func awaitMarkdownFileLoading(t *testing.T, u *terminalUI) {
+	t.Helper()
 	select {
 	case result := <-u.main.fileReads:
-		if !u.main.detailFiles.loadedMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.Attachment, result) {
-			t.Fatal("file result was not admitted")
+		if !result.classified {
+			t.Fatalf("regular file was not classified: %+v", result)
 		}
+		u.main.detailFiles.loadedMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.Attachment, result)
 	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for file result")
+		t.Fatal("file classification did not finish")
 	}
 }
 
@@ -59,7 +78,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			u.Frame.Source = selectionTestSource(u.main)
 			u.selectionMouse(0, 1, 0, false)
 			u.selectionMouse(0, 1, 0, true)
-			if u.Dialog == nil || u.Frame.Clipboard != "" || u.Selection != nil {
+			if u.main.pendingFile == nil || u.Frame.Clipboard != "" || u.Selection != nil {
 				t.Fatal("file click did not open a clean dialog")
 			}
 			awaitMarkdownFile(t, u)
@@ -119,7 +138,7 @@ func TestMarkdownSelectionClickRetainsWorkspace(t *testing.T) {
 					t.Fatal("old click acquired from a replacement workspace")
 				}
 			} else {
-				if u.Dialog == nil {
+				if u.main.pendingFile == nil {
 					t.Fatal("status publication discarded the original click")
 				}
 				awaitMarkdownFile(t, u)
@@ -308,7 +327,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 			t.Fatalf("opened non-file destination %q", target)
 		}
 	}
-	for _, target := range []string{"missing.go", workspace} {
+	for _, target := range []string{"missing.go"} {
 		if !strings.Contains(main.shell.Transcript.Painter.Inline("[file](<"+target+">)"), "\x1b]8;") {
 			t.Fatalf("local destination was not linked: %q", target)
 		}

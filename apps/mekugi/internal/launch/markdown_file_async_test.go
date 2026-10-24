@@ -31,6 +31,7 @@ func TestUISnapshotMarkdownFileLoading(t *testing.T) {
 			u := terminalTest(main)
 			u.Width, u.Height = 80, 18
 			u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, activitySource(&u.main.attached, u.main.shell, main.shell.Transcript), u.Attachment, main.shell.Transcript, "sample."+extension+":40")
+			awaitMarkdownFileLoading(t, u)
 			rows := make([]string, u.Height)
 			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 			u.Dialog.Paint(rows, u.Width, u.Height)
@@ -83,6 +84,7 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 			u := terminalTest(main)
 			u.Width, u.Height = 80, 18
 			u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, activitySource(&u.main.attached, u.main.shell, main.shell.Transcript), u.Attachment, main.shell.Transcript, path)
+			awaitMarkdownFileLoading(t, u)
 			results := u.main.fileReads
 			switch boundary {
 			case "close":
@@ -183,7 +185,7 @@ func TestSessionUIReplayPausedMarkdownFileCompletion(t *testing.T) {
 		}
 		return nil
 	}, false, io.Discard)
-	if !errors.Is(err, context.Canceled) || frames != 2 {
+	if !errors.Is(err, context.Canceled) || frames != 3 {
 		t.Fatalf("paused replay needed further input to paint completion: frames=%d err=%v", frames, err)
 	}
 }

@@ -3,6 +3,7 @@ package launch
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -72,6 +73,8 @@ type detailFiles struct {
 	links        markdownLinkChecks
 	fileReadSlot chan struct{}
 	fileReads    <-chan markdownFileResult
+	pendingFile  *terminalsession.ContentDialog
+	copyFilePath func(string)
 }
 
 type markdownFileResult struct {
@@ -81,9 +84,12 @@ type markdownFileResult struct {
 	location     string
 	first, last  int
 	err          error
+	classified   bool
+	copyPath     bool
 }
 
-// openMarkdownFile publishes loading before starting one bounded physical read.
+// openMarkdownFile admits a selection before starting one bounded physical read.
+// Its loading dialog remains hidden until the path is known to be regular.
 // Retiring a dialog cannot release the slot of a still-blocked filesystem call.
 func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, source *sessionpresentation.ActivitySource, terminal *terminalsession.Attachment, view *activityui.View, target string) bool {
 	path, ok := markdownFileTarget(workspace, target)
@@ -93,6 +99,7 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 	display := pathdisplay.ForWorkspace(workspace, path)
 	u.openDetailSelection(session, model.View().Version, source, terminal, view, activitypresentation.DetailPages([]activitypresentation.Value{{Kind: "reads", Verb: "Read", Path: display, Body: "Loading…"}}), false)
 	d := terminal.Dialog
+	u.pendingFile, terminal.Dialog = d, nil
 	d.File = &activitypresentation.DetailFile{Path: display}
 	result := markdownFileResult{id: d.ID, workspace: workspace, path: path}
 	if u.fileReadSlot == nil {
@@ -101,6 +108,7 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 	select {
 	case u.fileReadSlot <- struct{}{}:
 	default:
+		terminal.Dialog, u.pendingFile = d, nil
 		result.err = fmt.Errorf("local file read capacity exhausted; close and reopen after the pending read finishes")
 		u.finishMarkdownFile(session, terminal, result)
 		return true
@@ -111,15 +119,31 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 	}
 	ctx, cancel := context.WithCancel(parent)
 	u.cancelRead = cancel
-	results := make(chan markdownFileResult, 1)
+	results := make(chan markdownFileResult, 2)
 	u.fileReads = results
 	go func(slot chan struct{}) {
-		data, err := readMarkdownFile(ctx, path)
+		info, err := os.Stat(path)
 		if os.IsNotExist(err) {
 			base, location, first, last := markdownFileLocation(path)
 			if first > 0 {
 				result.path, result.location, result.first, result.last = base, location, first, last
-				data, err = readMarkdownFile(ctx, base)
+				info, err = os.Stat(base)
+			}
+		}
+		if err == nil {
+			err = ctx.Err()
+		}
+		var data []byte
+		if err == nil && !info.Mode().IsRegular() {
+			result.copyPath = true
+		} else if err == nil {
+			loading := result
+			loading.classified = true
+			results <- loading
+			data, err = readMarkdownFile(ctx, result.path)
+			result.copyPath = errors.Is(err, errMarkdownNonregular)
+			if result.copyPath {
+				err = nil
 			}
 		}
 		result.source, result.err = string(data), err
@@ -129,17 +153,34 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 	return true
 }
 
-func (u *detailFiles) loadedMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, terminal *terminalsession.Attachment, result markdownFileResult) bool {
+func (u *detailFiles) loadedMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, terminal *terminalsession.Attachment, result markdownFileResult) (changed bool, copyPath string) {
 	d := terminal.Dialog
+	if u.pendingFile != nil {
+		d = u.pendingFile
+	}
 	if d == nil || d.ID != result.id {
-		return false
+		return false, ""
 	}
 	_, current := u.details.DetailView(result.id)
 	if !current || session.Scope() == nil || model.View().Version.Attachment != result.id.Attachment || workspace != result.workspace {
 		u.closeOutput(terminal)
-		return true
+		return true, ""
 	}
-	return u.finishMarkdownFile(session, terminal, result)
+	if result.classified {
+		terminal.Dialog, u.pendingFile = d, nil
+		return true, ""
+	}
+	if result.copyPath {
+		if u.copyFilePath != nil {
+			u.copyFilePath(result.path)
+			u.closeOutput(terminal)
+			return true, ""
+		}
+		u.closeOutput(terminal)
+		return true, result.path
+	}
+	terminal.Dialog, u.pendingFile = d, nil
+	return u.finishMarkdownFile(session, terminal, result), ""
 }
 
 func (u *detailFiles) finishMarkdownFile(session *sessionpresentation.Attachment, terminal *terminalsession.Attachment, result markdownFileResult) bool {
@@ -189,6 +230,8 @@ func markdownFileLocation(path string) (base, location string, first, last int) 
 	return path[:colon], path[colon:], first, last
 }
 
+var errMarkdownNonregular = errors.New("file is not a regular file")
+
 // Keep this auxiliary read bounded without applying the composer's attachment
 // envelope budget. Larger or binary files show a copyable read error.
 func readMarkdownFile(ctx context.Context, path string) ([]byte, error) {
@@ -209,7 +252,7 @@ func readMarkdownFile(ctx context.Context, path string) ([]byte, error) {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("file is not a regular file")
+		return nil, errMarkdownNonregular
 	}
 	data, err := io.ReadAll(io.LimitReader(f, limit+1))
 	if err != nil {
@@ -233,4 +276,6 @@ func (u *detailFiles) stopFileRead() {
 		u.cancelRead = nil
 	}
 	u.fileReads = nil
+	u.pendingFile = nil
+	u.copyFilePath = nil
 }

@@ -706,7 +706,9 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 				case result := <-files.links.results:
 					files.links.finish(result)
 				case result := <-files.fileReads:
-					files.loadedMarkdownFile(&attached.session, attached.presentation, attached.cwd, shell, result)
+					if _, path := files.loadedMarkdownFile(&attached.session, attached.presentation, attached.cwd, shell, result); path != "" {
+						copyText(&attached.feedback, shell, clock, shell, path)
+					}
 				case result := <-picker.scanResults:
 					picker.applyScan(attached.cwd, picker.completionTarget(editor.Draft, attached.conversation.ShellMode()), result)
 				case <-commits.Updates():

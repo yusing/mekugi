@@ -229,12 +229,17 @@ func TestReplayChildFileLinksUseSelectedWorkspace(t *testing.T) {
 	if !u.detailFiles.openMarkdownFile(&u.session, u.presentation, view.SourceWorkspace(), u.childSource, u.shell, u.agents, "relative.md") {
 		t.Fatal("child link was not admitted")
 	}
-	select {
-	case result := <-u.fileReads:
-		if !u.loadedMarkdownFile(&u.session, u.presentation, view.SourceWorkspace(), u.shell, result) || u.shell.Dialog.File.Source != "child document" {
-			t.Fatal("selected child link opened another workspace")
+	for u.fileReads != nil {
+		select {
+		case result := <-u.fileReads:
+			if changed, _ := u.loadedMarkdownFile(&u.session, u.presentation, view.SourceWorkspace(), u.shell, result); !changed {
+				t.Fatal("selected child link opened another workspace")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("child file read did not finish")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("child file read did not finish")
+	}
+	if u.shell.Dialog.File.Source != "child document" {
+		t.Fatal("selected child content was lost")
 	}
 }

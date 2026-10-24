@@ -157,13 +157,13 @@ func TestNativeFileDialogsOwnReadAndStaleCompletionLifetime(t *testing.T) {
 	if firstResults == secondResults || first.files.fileReadSlot == second.files.fileReadSlot {
 		t.Fatal("native views shared acquisition or capacity")
 	}
-	old := first.shell.Dialog.ID
+	old := first.files.pendingFile.ID
 	if refusal := first.openNoticeDetails("replacement detail"); refusal != "" {
 		t.Fatal(refusal)
 	}
 	select {
 	case stale := <-firstResults:
-		if first.files.loadedMarkdownFile(&first.attached.session, first.attached.presentation, first.attached.cwd, first.shell, stale) {
+		if changed, _ := first.files.loadedMarkdownFile(&first.attached.session, first.attached.presentation, first.attached.cwd, first.shell, stale); changed {
 			t.Fatal("stale file completion replaced a new dialog")
 		}
 	case <-time.After(time.Second):
@@ -177,13 +177,15 @@ func TestNativeFileDialogsOwnReadAndStaleCompletionLifetime(t *testing.T) {
 	if err := second.attached.presentation.Display(sessionpresentation.DisplayIntent{Version: before.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/child"}}); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case result := <-secondResults:
-		if !second.files.loadedMarkdownFile(&second.attached.session, second.attached.presentation, second.attached.cwd, second.shell, result) {
-			t.Fatal("closing first view canceled second read")
+	for second.files.fileReads != nil {
+		select {
+		case result := <-secondResults:
+			if changed, _ := second.files.loadedMarkdownFile(&second.attached.session, second.attached.presentation, second.attached.cwd, second.shell, result); !changed {
+				t.Fatal("closing first view canceled second read")
+			}
+		case <-time.After(time.Second):
+			t.Fatal("second acquisition did not finish")
 		}
-	case <-time.After(time.Second):
-		t.Fatal("second acquisition did not finish")
 	}
 	frame := nativeDetailFrame(second)
 	if frame.Details == nil || frame.Details.File == nil || frame.Details.File.Source != "package second\n" || frame.Details.File.Path != "second.go" {
@@ -255,13 +257,16 @@ func TestNativeChildDetailsKeepCapturedSourceAcrossNavigation(t *testing.T) {
 	defer rpc.Close()
 	serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: workspace, Model: "fixture"})
 	reads := make(chan sessionapi.NativeRequest, 8)
+	childPaths := make(map[string]string)
 	for _, thread := range []string{"child-a", "child-b"} {
+		childWorkspace := t.TempDir()
+		childPaths[thread] = childWorkspace
 		u.attached.session.RegisterThread(observation.Thread{ID: thread, Path: "/root/" + thread})
-		_, err := hub.StartPrepared(ctx, "main", "", workspace, func(ctx context.Context, api *sessionapi.Server) error {
-			if err := api.Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: thread, Workspace: workspace}, Main: &activity.Publication{}}); err != nil {
+		_, err := hub.StartPrepared(ctx, "main", "", childWorkspace, func(ctx context.Context, api *sessionapi.Server) error {
+			if err := api.Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: thread, Workspace: childWorkspace}, Main: &activity.Publication{}}); err != nil {
 				return err
 			}
-			if err := api.SetSummary(sessionapi.Summary{Thread: thread, Workspace: workspace, Ready: true}); err != nil {
+			if err := api.SetSummary(sessionapi.Summary{Thread: thread, Workspace: childWorkspace, Ready: true}); err != nil {
 				return err
 			}
 			frames := make(map[string]sessionapi.NativeFrame)
@@ -273,13 +278,29 @@ func TestNativeChildDetailsKeepCapturedSourceAcrossNavigation(t *testing.T) {
 					frame := frames[request.Attachment]
 					if request.Attach {
 						frame.View = sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Main: sessionpresentation.Thread{ID: thread}, Displayed: sessionpresentation.Thread{ID: thread}}
-						frame.View.Info.Workspace = workspace
+						frame.View.Info.Workspace = childWorkspace
 					}
 					if details := request.Operation.Details; details != nil {
 						if details.Displayed.ID != thread {
 							t.Errorf("detail source %q reached %q", details.Displayed.ID, thread)
 						}
 						frame.Details = &sessionapi.NativeDetails{Source: frame.View.Main, View: sessionpresentation.DetailView{ID: sessionpresentation.DetailID{Attachment: 1, Selection: 1}, Pages: []sessionpresentation.DetailItem{{DetailPage: activity.DetailPage{ID: thread}}}}}
+						if details.Kind == sessionapi.NativeFileDetails {
+							copyUI, _ := newAppServerTestUI()
+							copyUI.startSession(thread, childWorkspace)
+							_, copyView, _ := nativeDetailTestViews(t, copyUI)
+							if refusal := copyView.openDetails(*details); refusal != "" {
+								t.Error(refusal)
+								return nil
+							}
+							select {
+							case result := <-copyView.files.fileReads:
+								copyView.files.loadedMarkdownFile(&copyView.attached.session, copyView.attached.presentation, childWorkspace, copyView.shell, result)
+							case <-ctx.Done():
+								return ctx.Err()
+							}
+							frame.Effects, frame.Details = copyView.effects.publication(), nil
+						}
 						reads <- request
 					}
 					if request.Operation.DetailOutput != nil {
@@ -322,7 +343,7 @@ func TestNativeChildDetailsKeepCapturedSourceAcrossNavigation(t *testing.T) {
 	if refusal := view.applyView(sessionapi.NativeOperation{Details: &sessionapi.NativeDetailRequest{Displayed: sessionpresentation.Thread{ID: "main"}, Kind: sessionapi.NativeFileDetails, Path: path}}); refusal != "" {
 		t.Fatal(refusal)
 	}
-	if view.childDetails != nil || view.shell.Dialog == nil {
+	if view.childDetails != nil || view.files.pendingFile == nil || view.files.pendingFile.File.Path != "main.md" {
 		t.Fatal("main details followed the displayed child")
 	}
 	open := func(thread string) sessionapi.NativeDetails {
@@ -391,6 +412,35 @@ func TestNativeChildDetailsKeepCapturedSourceAcrossNavigation(t *testing.T) {
 	if nativeDetailFrame(view).Details != nil {
 		t.Fatal("closed child details remained published")
 	}
+	if refusal := view.openDetails(sessionapi.NativeDetailRequest{Displayed: sessionpresentation.Thread{ID: "child-a"}, Kind: sessionapi.NativeFileDetails, Path: "."}); refusal != "" {
+		t.Fatal(refusal)
+	}
+	for view.childDetails != nil {
+		frame := nativeDetailFrame(view)
+		if frame.Details != nil {
+			t.Fatal("child directory opened a dialog")
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(time.Millisecond):
+		}
+	}
+	effects := view.effects.publication()
+	if len(effects) != 1 || effects[0].Clipboard == nil || *effects[0].Clipboard != childPaths["child-a"] {
+		t.Fatalf("child directory copy lost source workspace: %+v", effects)
+	}
+	nativeDetailFrame(view)
+	if len(view.effects.publication()) != 1 || view.effects.reserved != 0 {
+		t.Fatal("child directory copy duplicated delivery or retained capacity")
+	}
+	if refusal := view.applyView(sessionapi.NativeOperation{Receipt: &sessionapi.NativeReceipt{Effect: effects[0].ID}}); refusal != "" {
+		t.Fatal(refusal)
+	}
+	if len(view.effects.publication()) != 0 {
+		t.Fatal("child copy receipt retained the effect")
+	}
+
 }
 
 func TestNativeChildDialogLinkKeepsSourceAcrossNavigation(t *testing.T) {

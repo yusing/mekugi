@@ -59,3 +59,12 @@ func TestReadMarkdownFileRejectsFIFOWithoutWriter(t *testing.T) {
 		t.Fatalf("FIFO admission blocked or failed: %v: %s", err, output)
 	}
 }
+
+func TestNativeFIFOPathCopiesWithoutWriter(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "pipe")
+	if err := syscall.Mkfifo(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	checkNativePathCopy(t, workspace, "pipe", path, false)
+}

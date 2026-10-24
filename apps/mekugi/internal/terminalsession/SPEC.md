@@ -333,7 +333,9 @@ rows request asynchronous existence checks; painting never accesses the filesyst
 Results are retained for the attachment, displayed thread and workspace, including
 when scrolling away and back. Unchecked or missing paths remain ordinary text;
 opening still validates the current target.
-Opening reads current regular-file UTF-8 contents, up to 8 MiB. Relative
+Activating a directory or other nonregular path copies its resolved path to the
+terminal clipboard without opening a dialog. Symlinks follow their target type.
+Opening a regular file reads its current UTF-8 contents, up to 8 MiB. Relative
 paths require session workspace metadata; absolute paths and local file URLs are
 accepted. Workspace paths display relatively, external paths absolutely. A
 selectable path precedes syntax-colored content. Line/range suffixes remain in
