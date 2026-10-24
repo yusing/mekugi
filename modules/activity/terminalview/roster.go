@@ -279,7 +279,7 @@ func RosterMetricParts(v *View, agent activitypresentation.Agent, now time.Time)
 			parts[0] = context
 		}
 	}
-	_, timer := v.Current(agent, now)
+	timer := agentTimer(agent, now)
 	parts[2], parts[3], _ = strings.Cut(timer, " · ")
 	if count, ok := v.RosterLines[agent.Name]; ok {
 		parts[4], parts[5] = v.LineCountParts(count)

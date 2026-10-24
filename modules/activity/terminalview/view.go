@@ -697,19 +697,25 @@ func (v *View) Current(agent activitypresentation.Agent, now time.Time, widths .
 	}
 	if len(blocks) > 0 {
 		blocks[len(blocks)-1].Live = agent.Responding && blocks[len(blocks)-1].Live
-		painter := v.Painter
-		painter.Clock = func() time.Time { return now }
-		summary = painter.Summary(blocks, width)
+		// Keep syntax cache ownership on the view, including its byte accounting.
+		clock := v.Painter.Clock
+		v.Painter.Clock = func() time.Time { return now }
+		summary = v.Painter.Summary(blocks, width)
+		v.Painter.Clock = clock
 	}
+	return summary, agentTimer(agent, now)
+}
+
+func agentTimer(agent activitypresentation.Agent, now time.Time) string {
 	last := cmp.Or(agent.LastResponse, agent.Started)
 	if agent.Started.IsZero() || !agent.WorkKnown {
-		return summary, ""
+		return ""
 	}
 	elapsed := agent.WorkElapsed
 	if !agent.WorkSince.IsZero() {
 		elapsed += max(0, now.Sub(agent.WorkSince))
 	}
-	return summary, FormatDuration(elapsed) + " · " + Last(last, now)
+	return FormatDuration(elapsed) + " · " + Last(last, now)
 }
 
 // SummaryBlocks applies this feed's disclosure and pacing before the application
