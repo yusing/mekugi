@@ -248,12 +248,13 @@ func (a *requestAttempt) prepare() error {
 	webSocketRequest := a.executor.Exchange != nil
 	a.prewarm = webSocketRequest && a.metadataValid &&
 		a.metadata.RequestKind == responses.Prewarm && string(a.request.Fields["generate"]) == "false"
-	if !a.approvalReview && a.executor.Observations != nil {
+	if a.executor.Observations != nil {
 		automatic := a.executor.Exchange != nil && a.executor.Exchange.State != nil && a.executor.Exchange.State.Automatic()
 		var err error
 		a.prepared, err = a.executor.Observations.Prepare(a.startCtx, &a.request, Preparation{
 			Session: a.sessionID, Thread: a.threadID, Metadata: a.metadata,
 			MetadataValid: a.metadataValid, Prewarm: a.prewarm, Automatic: automatic, Trace: a.trace,
+			ApprovalReview: a.approvalReview,
 		})
 		if err != nil {
 			return fmt.Errorf("prepare mekugi response proxy: %w", err)

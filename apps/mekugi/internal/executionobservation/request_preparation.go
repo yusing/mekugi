@@ -13,6 +13,9 @@ import (
 )
 
 func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request, input requestexecution.Preparation) (requestexecution.Prepared, error) {
+	if input.ApprovalReview {
+		return nil, p.restoreApprovalReviewContext(ctx, request, input)
+	}
 	t, err := p.prepareModelRequest(ctx, request, input.Session, input.Thread, input.Metadata, input.MetadataValid, input.Prewarm)
 	if errors.Is(err, binding.ErrUnsupportedExecutionInterface) {
 		return nil, inferencegateway.IncompatibleRequest("unsupported_execution_interface", err.Error())

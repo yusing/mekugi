@@ -1,6 +1,7 @@
 package executionobservation
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json/jsontext"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
@@ -19,6 +21,85 @@ import (
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
+
+// Native reviewers borrow only immutable compaction context. They do not publish
+// a retained scope, acquire reload sources, or enter execution observation.
+func (p *Preparer) restoreApprovalReviewContext(ctx context.Context, request *codexresponses.Request, input requestexecution.Preparation) error {
+	raw := bytes.TrimSpace(request.Fields["input"])
+	if len(raw) == 0 || raw[0] != '[' {
+		return nil
+	}
+	var items []jsontext.Value
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return err
+	}
+	var release func()
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
+	for index, rawItem := range items {
+		var item struct {
+			Type      string `json:"type"`
+			Reference string `json:"encrypted_content"`
+		}
+		if err := json.Unmarshal(rawItem, &item); err != nil {
+			return err
+		}
+		if (item.Type != "compaction" && item.Type != "compaction_summary") || !strings.HasPrefix(item.Reference, compact.Prefix) {
+			continue
+		}
+		if release == nil {
+			metadata := input.Metadata
+			if p == nil || p.retained.Store == nil || !input.MetadataValid || input.Thread == "" || metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != input.Thread {
+				return errors.New("approval review compaction recovery requires admitted identity and storage")
+			}
+			store := p.retained.Store
+			scope, exists, err := store.ReadScope(input.Thread)
+			if err != nil {
+				return err
+			}
+			if exists && (metadata.ParentThreadID != "" && metadata.ParentThreadID != scope.Parent || metadata.ForkedFromThreadID != "" && metadata.ForkedFromThreadID != scope.Fork) {
+				return errors.New("approval review retained scope conflicts with host ancestry")
+			}
+			namespace, err := store.NamespaceForThread(input.Thread)
+			if err != nil {
+				return err
+			}
+			ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: input.Thread, Namespace: namespace})
+			// Existing bindings and frozen allocation ranges remain authoritative.
+			// Only an unbound reviewer borrows prospective host ancestry.
+			if !exists {
+				// Internal reviewers can carry a parent without a subagent kind.
+				if metadata.ParentThreadID != "" && metadata.SubagentKind == "" {
+					metadata.SubagentKind = "guardian"
+				}
+				ctx, err = prepareHandleScope(ctx, store, nil, metadata)
+				if err != nil {
+					return err
+				}
+			}
+			release, err = store.SnapshotLease(ctx)
+			if err != nil {
+				return err
+			}
+		}
+		record, err := p.readCompact(ctx, item.Reference)
+		if err != nil {
+			return err
+		}
+		items[index] = responses.MustMarshalJSON(map[string]any{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": record.Summary}}})
+	}
+	if release != nil {
+		projected, err := json.Marshal(items)
+		if err != nil {
+			return err
+		}
+		request.Fields["input"] = projected
+	}
+	return nil
+}
 
 // StoreCompact publishes the exact model answer and separate reload selection before the
 // native compaction reference can enter host history. It owns no second store.

@@ -14,6 +14,7 @@ type Preparation struct {
 	Session, Thread                   string
 	Metadata                          codexresponses.TurnMetadata
 	MetadataValid, Prewarm, Automatic bool
+	ApprovalReview                    bool
 	Trace                             Trace
 }
 

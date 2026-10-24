@@ -20,6 +20,12 @@ Codex-owned automatic approval reviewers retain their native instructions, tools
 and output schema. They use ordinary provider delivery and accounting without
 entering the managed-agent tree or receiving Mekugi execution guidance. Codex
 continues to own review decisions, reviewer permissions and action execution.
+Inherited Mekugi compaction references expand to their exact retained summaries
+under the reviewer's authenticated source scope, preserving existing retained
+bindings and frozen fork authority. This restoration neither runs
+reload readers nor publishes reviewer history. Missing, corrupt or unauthorized
+local references stop forwarding; provider-owned opaque compaction and other
+native review context remain unchanged.
 
 [Execution observation](../executionobservation/SPEC.md) supplies the prepared
 transformer, usage observation and cleanup lifetime. It admits review identity
