@@ -3,6 +3,7 @@ package codexbinding
 import (
 	json "encoding/json/v2"
 	"errors"
+	"slices"
 )
 
 // CaptureCatalog receives the actual selected catalog before host projection.
@@ -49,4 +50,20 @@ func (d *Driver) CaptureCatalog(raw []byte) {
 	d.mu.Lock()
 	d.models, d.catalogError = models, err
 	d.mu.Unlock()
+}
+
+// ReasoningChoices borrows the selected catalog for auxiliary request policy.
+func (d *Driver) ReasoningChoices(name string) (string, []string) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	for _, model := range d.models {
+		if model.Name == name {
+			var fallback string
+			if model.DefaultEffort != nil {
+				fallback = *model.DefaultEffort
+			}
+			return fallback, slices.Clone(model.Efforts)
+		}
+	}
+	return "", nil
 }

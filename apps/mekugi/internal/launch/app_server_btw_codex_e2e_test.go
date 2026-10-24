@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 )
 
 type btwCodexRequest struct {
@@ -123,7 +124,11 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 			}
 			p := &btwCodexProvider{requests: make(chan btwCodexRequest, 12), mainGate: make(chan struct{}), sideGate: make(chan struct{}), cancelGate: make(chan struct{}), canceled: make(chan struct{})}
 			proxy := newManagedMekugiProxy(t)
-			server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, p, nil, proxy))
+			driver := new(threadbinding.Driver)
+			driver.CaptureCatalog([]byte(`{"models":[{"slug":"gpt-6-sol","default_reasoning_level":"high","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]},{"slug":"gpt-6-astra","default_reasoning_level":"high","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}`))
+			executor := testRequestExecutor(p, nil, proxy)
+			executor.ReasoningChoices = driver.ReasoningChoices
+			server := httptest.NewServer(inferencegateway.ResponsesHandler(t.Context(), time.Minute, executor.ExecuteHTTP))
 			defer server.Close()
 			defer func() {
 				for _, gate := range []chan struct{}{p.mainGate, p.sideGate, p.cancelGate} {
@@ -204,8 +209,8 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 			if err := json.Unmarshal(side.body, &sideSettings); err != nil {
 				t.Fatal(err)
 			}
-			if mainSettings != sideSettings {
-				t.Fatalf("side did not inherit live settings: main=%+v side=%+v", mainSettings, sideSettings)
+			if mainSettings.Model != sideSettings.Model || mainSettings.Reasoning.Effort != "high" || sideSettings.Reasoning.Effort != "low" {
+				t.Fatalf("side reasoning isolation: main=%+v side=%+v", mainSettings, sideSettings)
 			}
 			if !bytes.Contains(side.body, []byte("Main seed")) || active && !bytes.Contains(side.body, []byte("Main running")) {
 				t.Fatal("branch omitted the current conversation")

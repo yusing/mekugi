@@ -117,7 +117,7 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 		} else {
 			attached.conversation.Side = answer
 		}
-		(*owner) = &sessioncontrol.Side{SideAnswer: answer}
+		(*owner) = &sessioncontrol.Side{SideAnswer: answer, LowReasoning: command}
 	}
 	b := (*owner)
 	// Remove the command through the composer so attachment offsets stay valid.

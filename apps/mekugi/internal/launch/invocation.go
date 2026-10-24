@@ -341,6 +341,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	executor := requestexecution.Executor{Provider: provider, Client: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
 	if threads != nil {
 		executor.ThreadControl = threads.shared
+		executor.ReasoningChoices = threads.driver.ReasoningChoices
 	}
 	var compactPrompt atomic.Pointer[string]
 	if mekugiCalls != nil {

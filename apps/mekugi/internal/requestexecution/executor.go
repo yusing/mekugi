@@ -36,21 +36,22 @@ import (
 // Executor runs attempts using borrowed application services. Each invocation
 // keeps its original capture, usage, control and retained-publication owners.
 type Executor struct {
-	ThreadControl *control.Service
-	Naming        Naming
-	ServiceTiers  *inferencegateway.Tiers
-	Provider      inferencegateway.Forwarder
-	Client        *inferencegateway.Client
-	Exchange      *inferencegateway.Exchange
-	Output        io.Writer
-	Issues        *Failures
-	Observations  Preparer
-	Guidance      *binding.Guidance
-	SkillsManager bool
-	CompactPrompt func() string
-	CompactStore  func(context.Context, string, string, string) (string, error)
-	Control       *sessioncontrol.Observations
-	Usage         *accounting.Service
+	ThreadControl    *control.Service
+	Naming           Naming
+	ServiceTiers     *inferencegateway.Tiers
+	Provider         inferencegateway.Forwarder
+	Client           *inferencegateway.Client
+	Exchange         *inferencegateway.Exchange
+	Output           io.Writer
+	Issues           *Failures
+	Observations     Preparer
+	Guidance         *binding.Guidance
+	SkillsManager    bool
+	CompactPrompt    func() string
+	ReasoningChoices func(string) (string, []string)
+	CompactStore     func(context.Context, string, string, string) (string, error)
+	Control          *sessioncontrol.Observations
+	Usage            *accounting.Service
 }
 
 type requestAttempt struct {
@@ -274,6 +275,12 @@ func (a *requestAttempt) prepareWire() error {
 		a.request.Fields["access_programs"] = programs
 	}
 	compaction := !a.approvalReview && a.metadataValid && a.metadata.RequestKind == responses.Compaction
+	if !a.approvalReview && a.executor.ReasoningChoices != nil && (compaction || a.executor.Control.IsBTWThread(a.threadID)) {
+		fallback, choices := a.executor.ReasoningChoices(a.request.Model())
+		if err := a.request.UseLowReasoning(fallback, choices); err != nil {
+			return err
+		}
+	}
 	if compaction && a.executor.CompactPrompt != nil {
 		err = codexresponses.PrepareCompactTurn(&a.request, a.executor.CompactPrompt())
 		if err != nil {

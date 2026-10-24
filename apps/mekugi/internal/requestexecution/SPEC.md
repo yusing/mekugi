@@ -16,6 +16,12 @@ reload metadata and returns a native compaction reference only after publication
 the summary and source-snapshot contract. Provider usage and terminal failures
 retain ordinary accounting and delivery paths.
 
+Temporary `/btw` answers and compaction summaries use low reasoning when the
+selected model advertises it. Explicit lower efforts remain lower; an unset
+effort uses the catalog's advertised default to decide whether to reduce it.
+Unknown defaults and models without an advertised low choice stay unchanged.
+This request-local policy preserves Main, Side and One-off settings.
+
 Codex-owned automatic approval reviewers retain their native instructions, tools
 and output schema. They use ordinary provider delivery and accounting without
 entering the managed-agent tree or receiving Mekugi execution guidance. Codex

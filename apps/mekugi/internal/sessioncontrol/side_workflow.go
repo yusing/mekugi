@@ -264,6 +264,9 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 				s.Busy = false
 			}
 			observations.SetSideThread(s.Thread, !s.OneOff)
+			if s.LowReasoning {
+				observations.SetBTWThread(s.Thread)
+			}
 			r.TrackSide(s.Thread, s)
 		case "turn/start":
 			if result.Turn.ID == "" {

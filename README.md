@@ -335,6 +335,8 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   Side or One-off conversation independently. Service-tier controls target Main.
 - `/compact` resets context: Enter interrupts then resets, Tab queues. `/clear` starts
   fresh while idle, preserving sessions/files. See [reset policy](#context-reset-and-recovery).
+  `/btw` and `/compact` requests use low reasoning when the model advertises it,
+  preserving already-lower efforts and conversation settings.
 - `/lock` prevents Esc/Ctrl-C interruption and Ctrl-C exit; `/unlock` restores them.
   The lock survives resume; explicit commands and steering still work.
 

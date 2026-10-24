@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -66,6 +67,30 @@ func (r Request) ReasoningEffort() string {
 		_ = json.Unmarshal(raw, &reasoning, jsonv1.DefaultOptionsV1())
 	}
 	return strings.TrimSpace(reasoning.Effort)
+}
+
+// UseLowReasoning changes only auxiliary request effort, retaining summary and
+// other reasoning options. Unadvertised choices and lower efforts stay intact.
+func (r *Request) UseLowReasoning(fallback string, supported []string) error {
+	effort := r.ReasoningEffort()
+	if effort == "" {
+		effort = fallback
+	}
+	if !slices.Contains(supported, "low") || !slices.Contains([]string{"medium", "high", "xhigh", "max"}, effort) {
+		return nil
+	}
+	var reasoning map[string]jsontext.Value
+	if raw := r.Fields["reasoning"]; len(raw) != 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &reasoning); err != nil {
+			return err
+		}
+	}
+	if reasoning == nil {
+		reasoning = make(map[string]jsontext.Value)
+	}
+	reasoning["effort"] = jsontext.Value(`"low"`)
+	r.Fields["reasoning"] = responses.MustMarshalJSON(reasoning)
+	return nil
 }
 
 // PromptCacheKey returns the prompt cache key from the request.

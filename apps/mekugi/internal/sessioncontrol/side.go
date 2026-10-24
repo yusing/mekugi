@@ -17,6 +17,7 @@ type Side struct {
 	Interrupting, Unloading     bool
 	Unloaded                    bool
 	Settings                    Settings
+	LowReasoning                bool
 }
 
 func (s *Side) PrepareSettings(change map[string]any) SettingsPlan {

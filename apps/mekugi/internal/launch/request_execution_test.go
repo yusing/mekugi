@@ -11,11 +11,56 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
+
+func TestAuxiliaryRequestsUseLowReasoning(t *testing.T) {
+	for _, tc := range []struct{ kind, effort, choices, fallback, want string }{
+		{"main", "high", "low", "high", "high"},
+		{"side", "high", "low", "high", "high"},
+		{"btw", "high", "low", "high", "low"},
+		{"compaction", "xhigh", "low", "high", "low"},
+		{"btw", "none", "low", "high", "none"},
+		{"compaction", "minimal", "low", "high", "minimal"},
+		{"btw", "high", "medium", "high", "high"},
+		{"btw", "", "low", "high", "low"},
+		{"compaction", "", "low", "", ""},
+	} {
+		t.Run(tc.kind+"/"+tc.effort+"/"+tc.choices+"/"+tc.fallback, func(t *testing.T) {
+			driver := new(threadbinding.Driver)
+			driver.CaptureCatalog(mustTestJSON(t, map[string]any{"models": []any{map[string]any{"slug": "test-model", "default_reasoning_level": tc.fallback, "supported_reasoning_levels": []any{map[string]any{"effort": tc.choices}}}}}))
+			proxy := newManagedMekugiProxy(t)
+			if tc.kind == "btw" {
+				proxy.control.SetBTWThread("auxiliary")
+			} else if tc.kind == "side" {
+				proxy.control.SetSideThread("auxiliary", true)
+			}
+			request := modelTestRequest(t, "test-model")
+			request.Fields["reasoning"] = mustTestJSON(t, map[string]any{"effort": tc.effort, "summary": "auto"})
+			headers := serverMetadataHeaders(t, "turn", nil)
+			if tc.kind == "compaction" {
+				headers = serverCompactionMetadataHeaders(t)
+			}
+			headers.Set(codexresponses.ThreadIDHeader, "auxiliary")
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
+			executor := requestexecution.Executor{Provider: provider, Control: proxy.control, ReasoningChoices: driver.ReasoningChoices, Output: io.Discard}
+			if err := executor.Execute(t.Context(), t.Context(), request, headers, "auxiliary"); err != nil {
+				t.Fatal(err)
+			}
+			forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if forwarded.ReasoningEffort() != tc.want || !bytes.Contains(forwarded.Fields["reasoning"], []byte(`"summary":"auto"`)) {
+				t.Fatalf("reasoning = %s; want effort %q with original summary", forwarded.Fields["reasoning"], tc.want)
+			}
+		})
+	}
+}
 
 // executeRequest preserves the direct attempt setup used throughout the package
 // tests while production code owns stable services through requestexecution.Executor.
