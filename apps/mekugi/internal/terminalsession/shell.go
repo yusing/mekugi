@@ -62,9 +62,10 @@ func (s *Shell) Compose(plan ShellPlan, in ShellContent) []string {
 	layout := plan.Layout
 	rows := make([]string, plan.Height)
 	draw := func(rect Rect, lines []string) {
+		prefix := fmt.Sprintf("\x1b[%dG\x1b[0m", rect.X+1)
 		for i, line := range lines {
 			if y := rect.Y + i; y >= 0 && y < len(rows) && i < rect.H {
-				rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", rect.X+1, line)
+				rows[y] += prefix + line + "\x1b[0m"
 			}
 		}
 	}

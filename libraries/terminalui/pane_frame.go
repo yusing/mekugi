@@ -53,10 +53,16 @@ func PaneBox(width, height int, title, right string, focused bool, body []string
 			continue
 		}
 		text := ""
+		textWidth := 0
 		if row < len(body) {
-			text = ansi.Truncate(body[row], width-2, "")
+			text = body[row]
+			textWidth = ansi.StringWidth(text)
+			if textWidth > width-2 {
+				text = ansi.Truncate(text, width-2, "")
+				textWidth = ansi.StringWidth(text)
+			}
 		}
-		lines = append(lines, color+"│"+Reset+text+strings.Repeat(" ", max(0, width-2-ansi.StringWidth(text)))+color+"│"+Reset)
+		lines = append(lines, color+"│"+Reset+text+strings.Repeat(" ", max(0, width-2-textWidth))+color+"│"+Reset)
 	}
 	return append(lines, color+"└"+strings.Repeat("─", width-2)+"┘"+Reset)
 }
