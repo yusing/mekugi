@@ -63,12 +63,17 @@ func runWrap(routerArgs, args []string) int {
 	return code
 }
 
-func wrapCodex(ctx context.Context, routerArgs, args []string) (int, error) {
+func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr error) {
 	if interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
 		if err := validateCodexArgs(args); err != nil {
 			return 2, err
 		}
-		err := runNativeClient(ctx, "", routerArgs, args, os.Stdin, os.Stdout)
+		stopProfiling, err := startProfiling(ctx, os.Stderr)
+		if err != nil {
+			return 1, err
+		}
+		defer func() { runErr = errors.Join(runErr, stopProfiling()) }()
+		err = runNativeClient(ctx, "", routerArgs, args, os.Stdin, os.Stdout)
 		if outcome, ok := errors.AsType[*sessionapi.NativeExit](err); ok {
 			return outcome.Code, err
 		}

@@ -110,6 +110,8 @@ Launch or [replay](../../modules/sessionreplay/SPEC.md) with `bin/mekugi-pprof`.
 use `bin/mekugi-pprof replay-session --session ID --headless --width 160 --height 48`.
 Each owning process binds its own OS-assigned IPv4 loopback port and prints
 `mekugi-pprof: http://127.0.0.1:PORT/debug/pprof/` to stderr before UI handoff.
+The native interactive client opens its listener before connecting to the server;
+profile that URL for client rendering and the server URL for session execution.
 The standalone server opens its listener before accepting sessions. Start a CPU
 capture before connecting a client to include session startup and resume costs;
 all server-owned sessions share that listener. Use its URL with `go tool pprof`.
