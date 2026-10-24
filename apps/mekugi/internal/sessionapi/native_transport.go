@@ -69,6 +69,7 @@ type nativeView struct {
 	main      *activity.Publication
 	agents    *activity.Publication
 	state     []byte
+	feeds     [2]nativeFeedEncoding
 }
 
 // nativePublications retains ordered deliveries while coalescing superseded
@@ -237,7 +238,7 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 	if v.authority == remoteHumanView {
 		frame = frame.remote()
 	}
-	data, err := encodeNativePrefix(id, startup, frame)
+	data, err := encodeNativePrefix(id, startup, frame, &v.feeds)
 	if err != nil {
 		if errors.Is(err, errNativePublicationLimit) {
 			v.cancel(err)

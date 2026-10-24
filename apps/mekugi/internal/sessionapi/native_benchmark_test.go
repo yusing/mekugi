@@ -1,6 +1,7 @@
 package sessionapi
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,9 +11,9 @@ import (
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
-func benchmarkNativeHistoryFrame() NativeFrame {
+func benchmarkNativeHistoryFrame(entries int) NativeFrame {
 	frame := nativeTestFrame("thread", 1)
-	frame.Main = &activity.Publication{Entries: make([]activity.Entry, 1000), LastSeq: 1000}
+	frame.Main = &activity.Publication{Entries: make([]activity.Entry, entries), LastSeq: uint64(entries)}
 	text := strings.Repeat("Completed tool output with retained session history. ", 8)
 	for i := range frame.Main.Entries {
 		frame.Main.Entries[i] = activity.Entry{
@@ -30,7 +31,7 @@ func BenchmarkNativePublishSavedReview(b *testing.B) {
 		b.Fatal(failure)
 	}
 	defer source.close()
-	frame := benchmarkNativeHistoryFrame()
+	frame := benchmarkNativeHistoryFrame(1000)
 	frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{
 		Files: []changes.File{{Path: "large.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{
 			Diff: strings.Repeat("+saved diff\n", 1<<20),
@@ -65,43 +66,49 @@ func BenchmarkNativePublish(b *testing.B) {
 }
 
 func benchmarkNativePublish(b *testing.B, authority viewAuthority) {
-	for _, changing := range []bool{false, true} {
-		name := "UnchangedHistory1000"
-		if changing {
-			name = "ChangingFrameHistory1000"
-		}
-		b.Run(name, func(b *testing.B) {
-			n := NewLive().Native()
-			source, request, failure := n.newView(b.Context(), requestTarget{"thread", "/workspace"}, "", authority)
-			if failure != nil {
-				b.Fatal(failure)
-			}
-			defer source.close()
-			frame := benchmarkNativeHistoryFrame()
-			if err := n.Publish(request.Attachment, frame); err != nil {
-				b.Fatal(err)
-			}
-			if _, ok := source.native.pop(); !ok {
-				b.Fatal("missing initial publication")
-			}
-			b.ReportAllocs()
-			for b.Loop() {
-				if changing {
-					frame.View.Version.Revision++
+	for _, entries := range []int{1, 1000, 10000} {
+		for _, mode := range []string{"Unchanged", "ChangingFrame", "ReplacingFeed", "QueuedFrame"} {
+			name := fmt.Sprintf("%sHistory%d", mode, entries)
+			b.Run(name, func(b *testing.B) {
+				n := NewLive().Native()
+				source, request, failure := n.newView(b.Context(), requestTarget{"thread", "/workspace"}, "", authority)
+				if failure != nil {
+					b.Fatal(failure)
 				}
+				defer source.close()
+				frame := benchmarkNativeHistoryFrame(entries)
 				if err := n.Publish(request.Attachment, frame); err != nil {
 					b.Fatal(err)
 				}
-				if changing {
-					if _, ok := source.native.pop(); !ok {
-						b.Fatal("missing changed publication")
+				if _, ok := source.native.pop(); !ok {
+					b.Fatal("missing initial publication")
+				}
+				b.ReportAllocs()
+				for b.Loop() {
+					if mode != "Unchanged" {
+						frame.View.Version.Revision++
+					}
+					if mode == "ReplacingFeed" {
+						frame.Main = new(*frame.Main)
+						frame.Main.LastSeq++
+					}
+					if err := n.Publish(request.Attachment, frame); err != nil {
+						b.Fatal(err)
+					}
+					if mode == "ChangingFrame" || mode == "ReplacingFeed" {
+						if _, ok := source.native.pop(); !ok {
+							b.Fatal("missing changed publication")
+						}
 					}
 				}
-			}
-			if _, ok := source.native.pop(); ok {
-				b.Fatal("unexpected queued publication")
-			}
-		})
+				if _, ok := source.native.pop(); ok != (mode == "QueuedFrame") {
+					b.Fatal("unexpected queued publication")
+				}
+				if _, ok := source.native.pop(); ok {
+					b.Fatal("progress accumulated instead of coalescing")
+				}
+			})
+		}
 	}
 }
 
@@ -112,14 +119,14 @@ func BenchmarkNormalizeNativeOutput(b *testing.B) {
 			name = "HydrationHistory1000"
 		}
 		b.Run(name, func(b *testing.B) {
-			frame := benchmarkNativeHistoryFrame()
+			frame := benchmarkNativeHistoryFrame(1000)
 			if hydration {
 				frame.MainOutput = []activity.OutputResult{{
 					Demand: activity.OutputDemand{Source: 1, Output: 1, Version: 1},
 					View:   activityfeed.OutputView{Lines: []string{strings.Repeat("x", 1<<20)}},
 				}}
 			}
-			data, err := encodeNativePrefix("benchmark", "", frame)
+			data, err := encodeNativePrefix("benchmark", "", frame, new([2]nativeFeedEncoding))
 			if err != nil {
 				b.Fatal(err)
 			}

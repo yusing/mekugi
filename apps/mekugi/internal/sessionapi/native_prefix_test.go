@@ -1,6 +1,8 @@
 package sessionapi
 
 import (
+	"bytes"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"strings"
@@ -10,6 +12,88 @@ import (
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
+
+func TestNativePublicationReusesEncodedFeeds(t *testing.T) {
+	native := NewLive().Native()
+	source, request, failure := native.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", localNativeView)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	defer source.close()
+	frame := benchmarkNativeHistoryFrame(1000)
+	frame.Agents = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: "quoted \"history\" \\ 世界"}}}}
+	frame.Effects = []NativeEffect{{ID: 1, Restore: &composer.Draft{Text: "restore"}}}
+	feeds := &native.views[request.Attachment].feeds
+	var retained []struct{ data, want []byte }
+	for step, mutate := range []func(){
+		func() {},
+		func() {
+			frame.View.Version.Revision++
+			frame.Facts.Busy = true
+		},
+		func() {
+			frame.MainOutput = []activity.OutputResult{{Demand: activity.OutputDemand{Source: 1}, View: activityfeed.OutputView{Lines: []string{"output"}}}}
+		},
+		func() { frame.Main, frame.Agents = frame.Agents, frame.Main },
+		func() { frame.Agents = nil },
+		func() { frame.Main, frame.Agents = frame.Agents, frame.Main },
+		func() { frame.Main, frame.Agents = nil, nil },
+	} {
+		previous := *feeds
+		mutate()
+		if err := native.Publish(request.Attachment, frame); err != nil {
+			t.Fatal(err)
+		}
+		queued, ok := source.native.pop()
+		if !ok {
+			t.Fatal("lost changed metadata or feed")
+		}
+		retained = append(retained, struct{ data, want []byte }{queued.Data, bytes.Clone(queued.Data)})
+		// Compare the consuming wire value to ordinary complete-frame encoding,
+		// including fields carried by the metadata shadow and hydrated output.
+		want, err := json.Marshal(NativeEvent{Attachment: request.Attachment, Frame: frame.withoutEditors()}, nativeEncoding)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotJSON, wantJSON := jsontext.Value(bytes.Clone(queued.Data)), jsontext.Value(want)
+		for _, data := range []*jsontext.Value{&gotJSON, &wantJSON} {
+			if err := data.Canonicalize(jsontext.CanonicalizeRawInts(false)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if !bytes.Equal(gotJSON, wantJSON) {
+			t.Fatal("cached feed publication changed the complete wire value")
+		}
+		for i, cached := range feeds {
+			if cached.source != previous[i].source && cached.data != nil {
+				t.Fatal("replacement encoded a feed before reuse")
+			}
+			if step == 1 && cached.data == nil {
+				t.Fatal("reused feed was not cached")
+			}
+			if cached.source == previous[i].source && previous[i].data != nil && &cached.data[0] != &previous[i].data[0] {
+				t.Fatal("metadata or hydration re-encoded an unchanged feed")
+			}
+			if cached.data == nil {
+				continue // replacement frames defer caching until the feed is reused
+			}
+			if allocs := testing.AllocsPerRun(10, func() { _ = feeds[i].update(cached.source) }); allocs != 0 {
+				t.Fatalf("unchanged feed encoding allocated: %v", allocs)
+			}
+		}
+		if err := native.Publish(request.Attachment, frame); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := source.native.pop(); ok {
+			t.Fatal("identical effects frame published again while warming the feed cache")
+		}
+	}
+	for _, previous := range retained {
+		if !bytes.Equal(previous.data, previous.want) {
+			t.Fatal("later publication mutated retained frame bytes")
+		}
+	}
+}
 
 func TestNativeSemanticPrefixSurvivesBacklogAndReceipt(t *testing.T) {
 	native := NewLive().Native()
@@ -97,7 +181,7 @@ func TestNativeSemanticPrefixCanShrinkBeforeReceipt(t *testing.T) {
 	if err := native.Publish(attachment.Attachment, frame); err != nil {
 		t.Fatal(err)
 	}
-	frame.Notice = strings.Repeat("n", 30<<20)
+	frame.Main = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: strings.Repeat("n", 30<<20)}}}}
 	if err := native.Publish(attachment.Attachment, frame); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +205,7 @@ func TestNativeSemanticPrefixCanShrinkBeforeReceipt(t *testing.T) {
 
 func TestNativePublicationRejectsIndivisibleOversize(t *testing.T) {
 	payload := strings.Repeat("x", subscriptionBytes)
-	for _, kind := range []string{"state", "consequence"} {
+	for _, kind := range []string{"state", "feed", "consequence"} {
 		t.Run(kind, func(t *testing.T) {
 			native := NewLive().Native()
 			source, attachment, failure := native.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", localNativeView)
@@ -132,6 +216,8 @@ func TestNativePublicationRejectsIndivisibleOversize(t *testing.T) {
 			frame := nativeTestFrame("thread", 1)
 			if kind == "state" {
 				frame.Notice = payload
+			} else if kind == "feed" {
+				frame.Main = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: payload}}}}
 			} else {
 				frame.Effects = []NativeEffect{{ID: 1, Restore: &composer.Draft{Text: payload}}}
 			}
