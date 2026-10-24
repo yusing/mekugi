@@ -32,12 +32,16 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 	} {
 		t.Run(tc.want+"/"+tc.age.String(), func(t *testing.T) {
 			now := start.Add(tc.age)
+			live := tc.want
+			if tc.age < time.Second {
+				live = ""
+			}
 			for _, status := range []string{"Waiting", "Working"} {
 				u := *appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: activityui.NewView()}, Turn: "active"})
 				u.attached.presentation.Status.Set(status, false)
 				u.attached.presentation.Status.Started = start
-				if got := ansi.Strip(u.sessionLabel(now)); !strings.HasSuffix(got, " "+tc.want) {
-					t.Fatalf("composer = %q, want elapsed %q", got, tc.want)
+				if got := ansi.Strip(u.sessionLabel(now)); got != strings.TrimSpace("◐ "+status+" "+live) {
+					t.Fatalf("composer = %q, want elapsed %q", got, live)
 				}
 			}
 			v := newActivityAdapter()
@@ -47,11 +51,18 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 			if tc.age < 2*time.Second {
 				last = "just now"
 			}
-			if _, got := v.testCurrent(agent, now); got != tc.want+" · "+last {
+			timer := ""
+			if live != "" {
+				timer = live + " · " + last
+			}
+			if _, got := v.testCurrent(agent, now); got != timer {
 				t.Fatalf("running agent timer = %q", got)
 			}
 			agent.LastResponse = now.Add(-time.Minute)
-			if _, got := v.testCurrent(agent, now); got != tc.want+" · 1m ago" {
+			if live != "" {
+				timer = live + " · 1m ago"
+			}
+			if _, got := v.testCurrent(agent, now); got != timer {
 				t.Fatalf("responded agent timer = %q", got)
 			}
 			agent.ObserveActive(false, now)

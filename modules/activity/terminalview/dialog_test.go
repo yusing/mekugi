@@ -302,16 +302,20 @@ func TestRunElapsedSuffix(t *testing.T) {
 		{999 * time.Millisecond, "999ms"}, {time.Second, "1s"}, {70 * time.Second, "1m10s"}, {time.Hour, "1h"},
 	} {
 		for _, live := range []bool{false, true} {
+			want := tc.want
+			if live && tc.duration < time.Second {
+				want = ""
+			}
 			b := Block{Kind: "op", Verb: "Run", Code: "echo ok", Duration: tc.duration, Running: live}
 			if live {
 				b.Started = now.Add(-tc.duration)
 			}
-			if got := RunElapsed(b, now); got != tc.want {
+			if got := RunElapsed(b, now); got != want {
 				t.Fatalf("%s live=%v: %q", tc.duration, live, got)
 			}
 			p := Painter{}
 			title := ansi.Strip(p.DialogPageTitle(b, now, 80))
-			if tc.want != "" && !strings.HasSuffix(title, " · "+tc.want) {
+			if want != "" && !strings.HasSuffix(title, " · "+want) || want == "" && (strings.Contains(title, "ms") || strings.HasSuffix(title, " · 0s")) {
 				t.Fatalf("title %q", title)
 			}
 			if !live {

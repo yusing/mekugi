@@ -218,9 +218,9 @@ func TestSessionUIReplayBatchElapsedUsesRecordedClock(t *testing.T) {
 		position time.Duration
 		elapsed  string
 	}{
-		{4500 * time.Millisecond, "500ms"},
+		{4500 * time.Millisecond, ""},
 		{5500 * time.Millisecond, "1s"},
-		{4500 * time.Millisecond, "500ms"},
+		{4500 * time.Millisecond, ""},
 	} {
 		move := p.advance
 		if tc.position < p.Position {
@@ -230,7 +230,13 @@ func TestSessionUIReplayBatchElapsedUsesRecordedClock(t *testing.T) {
 			t.Fatal(err)
 		}
 		frame := replayPlaybackTestPaint(t, p, 120, 28)
-		if !strings.Contains(frame, "Running shell batch · "+tc.elapsed) {
+		_, tail, found := strings.Cut(frame, "Running shell batch")
+		row, _, _ := strings.Cut(tail, "\n")
+		want := ""
+		if tc.elapsed != "" {
+			want = " · " + tc.elapsed
+		}
+		if !found || !strings.HasPrefix(row, want) || tc.elapsed == "" && strings.HasPrefix(row, " · ") {
 			t.Fatalf("replayed elapsed time at %v is not %s:\n%s", tc.position, tc.elapsed, frame)
 		}
 	}

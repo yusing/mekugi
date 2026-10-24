@@ -11,6 +11,6 @@ Mekugi dev • codex
 • Queued for the next turn · alt+↑ edits
   ↳ Next turn stays queued.
 
-╭─ ◐ Interrupting… 0s ─────────────────────────────────────────────────────────╮
+╭─ ◐ Interrupting… ────────────────────────────────────────────────────────────╮
 │ ❯ Keep editing this draft.                                                   │
 ╰───────────────────────────────────────────────────────────────────────── 0% ─╯

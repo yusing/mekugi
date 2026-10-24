@@ -712,10 +712,15 @@ func agentTimer(agent activitypresentation.Agent, now time.Time) string {
 		return ""
 	}
 	elapsed := agent.WorkElapsed
+	duration := FormatDuration(elapsed)
 	if !agent.WorkSince.IsZero() {
 		elapsed += max(0, now.Sub(agent.WorkSince))
+		duration = FormatLiveDuration(elapsed)
 	}
-	return FormatDuration(elapsed) + " · " + Last(last, now)
+	if duration == "" {
+		return ""
+	}
+	return duration + " · " + Last(last, now)
 }
 
 // SummaryBlocks applies this feed's disclosure and pacing before the application

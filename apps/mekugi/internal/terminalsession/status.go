@@ -42,7 +42,9 @@ func PaintSessionStatus(label sessionpresentation.Label, now time.Time, colors t
 		}
 		painted = "\x1b[39m◐ " + painted + terminalui.Reset
 		if label.ElapsedKnown {
-			painted += terminalui.Dim + " " + activityui.FormatDuration(label.Elapsed) + terminalui.Undim
+			if elapsed := activityui.FormatLiveDuration(label.Elapsed); elapsed != "" {
+				painted += terminalui.Dim + " " + elapsed + terminalui.Undim
+			}
 		}
 		return painted
 	}

@@ -11,6 +11,6 @@
 › /compact  Compact context now; Tab queues while busy                          
 
   ↑/↓ navigate · enter select · tab queue · esc close
-╭─ ◐ Interrupting… 0s · Compaction cancelled · input restored · interruption… ─╮
+╭─ ◐ Interrupting… · Compaction cancelled · input restored · interruption al… ─╮
 │ ❯ /compact                                                                   │
 ╰───────────────────────────────────────────────── snapshot-model (high) • 0% ─╯

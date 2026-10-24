@@ -1,0 +1,16 @@
+0s
+◐ Working
+╭─ /btw · Answering
+│ 
+╰─ /btw follow-up · Esc close
+999ms
+◐ Working
+╭─ /btw · Answering
+│ 
+╰─ /btw follow-up · Esc close
+1s
+◐ Working 1s
+╭─ /btw · Answering · 1s
+│ 
+╰─ /btw follow-up · Esc close
+Completed in 125ms

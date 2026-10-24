@@ -58,7 +58,10 @@ func (s *BTWDock) Render(painter *activityui.Painter, now time.Time, width, heig
 	status := textsanitize.Safe(s.body.Status, false)
 	if s.running && s.body.Status == "Answering" && !s.body.Alert && !s.body.Started.IsZero() {
 		elapsed := max(time.Duration(0), now.Sub(s.body.Started))
-		status = activityui.ReasoningShimmer("Answering", elapsed, painter.Colors) + terminalui.Dim + " · " + activityui.FormatDuration(elapsed) + terminalui.Reset
+		status = activityui.ReasoningShimmer("Answering", elapsed, painter.Colors)
+		if duration := activityui.FormatLiveDuration(elapsed); duration != "" {
+			status += terminalui.Dim + " · " + duration + terminalui.Reset
+		}
 	}
 	frame := conversationui.Side(*s.body, &painter.Painter, status, width, height, s.Scroll)
 	s.CopyAnswer, s.Rows, s.Scroll = frame.CopyAnswer, frame.AnswerRows, frame.Scroll

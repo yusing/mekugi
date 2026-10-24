@@ -17,12 +17,12 @@
 │    [Image 1]                                                                                     │
 │                                                                                                  │
 │                                                                                                  │
-│╭─ ◐ Working 0s · ✗ rejected · Enter in an empty One-off composer retries the attachment deliv… ─╮│
+│╭─ ◐ Working · ✗ rejected · Enter in an empty One-off composer retries the attachment delivery ──╮│
 ││ ❯                                                                                              ││
 │╰─────────────────────────────────────────────────────────────────────────────────────────── 0% ─╯│
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ─ 3 Agents · 2 · 1 working ─────────────────────────────────────────────────────────────────────────
  ● main  idle
- ◐ └ worker  Asked 1 question · sending                                           0%  0s · just now
+ ◐ └ worker  Asked 1 question · sending                                                          0%
 
  1 Main  One-off  2 Diff  3 Agents¹   ^B 1-3 views · ^E expand events

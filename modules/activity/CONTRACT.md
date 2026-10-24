@@ -206,8 +206,9 @@ and falls back to its bounded display tail; attribution loss or between-frame
 overflow uses combined host output. Dialogs see retained completion even while
 the visible feed tail is still rolling.
 
-Elapsed time appears only above 3 ms, truncated to milliseconds below one second
-and whole seconds thereafter, omitting trailing zero units (`4ms`, `1m10s`, `1h`).
+Live elapsed counters stay hidden below one second. Completed command elapsed
+time appears only above 3 ms, truncated to milliseconds below one second and
+whole seconds thereafter, omitting trailing zero units (`4ms`, `1m10s`, `1h`).
 Negative duration displays zero. Live elapsed starts at the observed command
 boundary and freezes at measured completion. Each feed frame uses one elapsed
 timestamp for layout and painting; timer rollovers take effect on the next frame.

@@ -42,7 +42,7 @@ func TestUISnapshotFeedElapsedRollover(t *testing.T) {
 			v.Painter.Theme = diffrender.DarkTheme
 			v.Clock = func() time.Time { return start }
 			v.Update(&presentation.Publication{Entries: []presentation.Entry{{Facts: item.Facts, Values: item.Values()}}}, Display{})
-			// The next clock read crosses the boundary that shortens 999ms to 1s.
+			// The next frame crosses the boundary that reveals the live counter.
 			now := start.Add(999 * time.Millisecond)
 			v.Painter.Clock = func() time.Time {
 				stamp := now
@@ -50,7 +50,7 @@ func TestUISnapshotFeedElapsedRollover(t *testing.T) {
 				return stamp
 			}
 			var snapshot strings.Builder
-			for _, elapsed := range []string{"999ms", "1s"} {
+			for _, elapsed := range []string{"", "1s"} {
 				stamp := now
 				eager := *v
 				eager.Runs = nil
@@ -61,12 +61,27 @@ func TestUISnapshotFeedElapsedRollover(t *testing.T) {
 					t.Fatalf("deferred frame differs from fixed-time eager render: got %#v, want %#v", got, want)
 				}
 				text := ansi.Strip(strings.Join(got.Lines, "\n"))
-				if !strings.Contains(text, elapsed) {
+				if elapsed != "" && !strings.Contains(text, elapsed) || elapsed == "" && strings.Contains(text, "ms") {
 					t.Fatalf("elapsed time did not advance to %s: %s", elapsed, text)
 				}
-				fmt.Fprintf(&snapshot, "== %s ==\n%s\n", elapsed, strings.Join(got.Lines, "\n"))
+				fmt.Fprintf(&snapshot, "== %s ==\n%s\n", stamp.Sub(start), strings.Join(got.Lines, "\n"))
 			}
 			uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/feed_elapsed_rollover_main_%t.txt", main), snapshot.String())
 		})
 	}
+}
+
+func TestUISnapshotRosterElapsedRollover(t *testing.T) {
+	start := time.Unix(100, 0)
+	v := NewView()
+	agent := presentation.Agent{AgentFacts: presentation.AgentFacts{Name: "/root", Started: start, WorkKnown: true, WorkSince: start}}
+	var rows []string
+	for _, elapsed := range []time.Duration{0, 999 * time.Millisecond, time.Second} {
+		rows = append(rows, fmt.Sprint(elapsed))
+		rows = append(rows, v.MetricTable([]presentation.AgentRow{{Agent: agent}}, start.Add(elapsed))...)
+	}
+	agent.WorkSince, agent.WorkElapsed = time.Time{}, 125*time.Millisecond
+	rows = append(rows, "completed")
+	rows = append(rows, v.MetricTable([]presentation.AgentRow{{Agent: agent}}, start.Add(time.Second))...)
+	uisnapshot.Assert(t, "testdata/snapshots/roster_elapsed_rollover.txt", strings.Join(rows, "\n"))
 }

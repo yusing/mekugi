@@ -11,6 +11,6 @@ Mekugi dev • codex
     Preserve pending attachments.
     …
 
-╭─ ◐ Sending… 0s ──────────────────╮
+╭─ ◐ Sending… ─────────────────────╮
 │ ❯                                │
 ╰───────────────────────────── 0% ─╯

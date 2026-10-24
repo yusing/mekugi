@@ -1,3 +1,2 @@
 └ Running │ set -e (timeout 10s)
           │ timeout 10 sleep 1
-          · 500ms

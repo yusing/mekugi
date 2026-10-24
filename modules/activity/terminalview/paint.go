@@ -1398,6 +1398,17 @@ func RunElapsed(block Block, now time.Time) string {
 	if elapsed <= 3*time.Millisecond {
 		return ""
 	}
+	if block.Running {
+		return FormatLiveDuration(elapsed)
+	}
+	return FormatDuration(elapsed)
+}
+
+// FormatLiveDuration hides live elapsed counters until their first whole second.
+func FormatLiveDuration(elapsed time.Duration) string {
+	if elapsed < time.Second {
+		return ""
+	}
 	return FormatDuration(elapsed)
 }
 
