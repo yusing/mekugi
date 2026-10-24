@@ -81,6 +81,7 @@ func (p *PreviewPane) batch(caller string) *previewBatch {
 	if len(b.order) > 0 && !slices.Contains(b.order, b.selected) {
 		b.selected, b.pinned = b.order[len(b.order)-1], false
 		b.files[b.selected].Paused = false
+		b.files[b.selected].ScrollRow = 0
 	}
 	return b
 }
@@ -186,6 +187,7 @@ func (p *PreviewPane) ScrollBatch(caller string, key byte) bool {
 	for _, view := range b.files {
 		if key == 'r' {
 			view.Paused = false
+			view.ScrollRow = 0
 			continue
 		}
 		if view.rows == 0 {
@@ -193,7 +195,7 @@ func (p *PreviewPane) ScrollBatch(caller string, key byte) bool {
 		}
 		at := view.ScrollRow
 		if !view.Paused {
-			at = view.Focus
+			at = max(view.Focus, view.ScrollRow)
 		}
 		next, follow, _ := terminalui.PaneScroll(key, at, view.rows, len(view.Source))
 		// Source offsets anchor the bottom row, not the first viewport row.

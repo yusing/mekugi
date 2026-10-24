@@ -212,6 +212,29 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if frame = paint(140, 48); !strings.Contains(frame, "streaming_tip") {
 		t.Fatal("resume did not follow source tip")
 	}
+	scroll := nativeBatchPreview("scroll", "/root", "scroll")
+	scroll.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/scroll.txt", "/workspace/scroll.txt",
+		"retained\n"+strings.Repeat("old baseline source\n", 60), strings.Repeat("new source\n", 30)+"retained\n")}
+	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), scroll, false)
+	paint(140, 48)
+	pageDown := func() {
+		for _, key := range []byte("\x02\x1b[6~") {
+			if err := terminalTest(u).key(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for range 100 {
+		pageDown()
+	}
+	bottom := paint(140, 48)
+	for range 3 {
+		pageDown()
+		if got := paint(140, 48); got != bottom {
+			t.Fatal("live diff shook after scrolling to the deleted suffix bottom")
+		}
+	}
+	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "scroll", Workspace: "/workspace"}, false)
 	p.Complete = true
 	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
 	revealNativeDock(terminalTest(u))

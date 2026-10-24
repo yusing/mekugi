@@ -252,6 +252,9 @@ func (p *PreviewView) prepare(now time.Time) error {
 	if current.Input != "" && !current.DiffText {
 		p.Focus = max(0, len(source)-1)
 	}
+	if !p.Paused {
+		p.ScrollRow = 0 // New source releases the preceding scroll-to-bottom anchor.
+	}
 	p.Source, p.Rendered = source, current
 	return nil
 }
@@ -351,7 +354,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 	// Keep the tip's last wrapped fragment visible before admitting trailing
 	// context. Fill the region with source rather than empty centering padding.
 	focus := p.Focus
-	if p.Paused {
+	if p.Paused || p.ScrollRow > focus {
 		focus = min(max(0, p.ScrollRow), len(p.Source)-1)
 	}
 	p.rows = rows

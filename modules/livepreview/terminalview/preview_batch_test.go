@@ -2,6 +2,7 @@ package terminalview
 
 // Source: internal/ui/diffview/preview_batch_test.go@[a42ac9f1]
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -72,6 +74,107 @@ func batchTestRender(t *testing.T, pane *PreviewPane, height int) []string {
 		t.Fatal(err)
 	}
 	return rows
+}
+
+func TestNativeBatchScrollStopsAfterDeletedSuffix(t *testing.T) {
+	var pane PreviewPane
+	p := batchTestPreview("rewrite", "/root", "source.txt")
+	p.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/source.txt", "/workspace/source.txt",
+		"retained\n"+strings.Repeat("old baseline\n", 60), strings.Repeat("new source\n", 30)+"retained\n")}
+	pane.Update(p, time.Time{})
+	batchTestRender(t, &pane, 16)
+	view := pane.batches["/root"].files[previewFileKey{"rewrite", "/workspace/source.txt"}]
+	if view.Focus >= len(view.Source)-1 {
+		t.Fatal("fixture lacks a deleted suffix after the live tip")
+	}
+	for _, height := range []int{16, 24} {
+		batchTestRender(t, &pane, height)
+		for range len(view.Source) {
+			pane.ScrollBatch("/root", terminalui.PaneWheelDown)
+		}
+		bottom := batchTestRender(t, &pane, height)
+		for range 3 {
+			pane.ScrollBatch("/root", terminalui.PaneWheelDown)
+			if got := batchTestRender(t, &pane, height); !slices.Equal(got, bottom) {
+				t.Fatal("downward scroll moved the rendered bottom viewport")
+			}
+		}
+		if view.ScrollRow != len(view.Source)-1 {
+			t.Fatal("deleted suffix did not retain its clamped viewport")
+		}
+	}
+	p.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/source.txt", "/workspace/source.txt",
+		"retained\n"+strings.Repeat("old baseline\n", 60), strings.Repeat("new source\n", 30)+"new tip\nretained\n")}
+	pane.Update(p, time.Time{})
+	if rows := batchTestRender(t, &pane, 24); !strings.Contains(strings.Join(rows, "\n"), "new tip") {
+		t.Fatal("deleted-bottom scrolling failed to follow new source")
+	}
+	for range len(view.Source) {
+		pane.ScrollBatch("/root", terminalui.PaneWheelDown)
+	}
+	pane.ScrollBatch("/root", 'r')
+	if view.Paused || view.ScrollRow != 0 {
+		t.Fatal("explicit resume did not restore the live tip")
+	}
+}
+
+func TestNativeBatchContextBottomResumesNewSource(t *testing.T) {
+	var pane PreviewPane
+	p := batchTestPreview("edit", "/root", "source.txt")
+	var source strings.Builder
+	for i := range 120 {
+		fmt.Fprintf(&source, "line_%03d\n", i)
+	}
+	before := source.String()
+	after := strings.Replace(before, "line_040\n", "new first\n", 1)
+	p.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/source.txt", "/workspace/source.txt", before, after)}
+	pane.Update(p, time.Time{})
+	batchTestRender(t, &pane, 16)
+	pane.ScrollBatch("/root", 'b')
+	for range 40 {
+		pane.ScrollBatch("/root", terminalui.PaneWheelDown)
+	}
+	view := pane.batches["/root"].files[previewFileKey{"edit", "/workspace/source.txt"}]
+	if view.Paused {
+		t.Fatal("unchanged context at the bottom prevented automatic follow")
+	}
+	bottom := batchTestRender(t, &pane, 16)
+	for range 3 {
+		pane.ScrollBatch("/root", terminalui.PaneWheelDown)
+		if got := batchTestRender(t, &pane, 16); !slices.Equal(got, bottom) {
+			t.Fatal("following contextual source shook after reaching the bottom")
+		}
+	}
+	after = strings.Replace(after, "line_100\n", "new last\n", 1)
+	p.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/source.txt", "/workspace/source.txt", before, after)}
+	pane.Update(p, time.Time{})
+	if rows := batchTestRender(t, &pane, 16); !strings.Contains(strings.Join(rows, "\n"), "new last") {
+		t.Fatal("scrolling to the context bottom failed to follow a later edit")
+	}
+	// Keep a preexisting addition beyond the next arriving tip. Reaching that
+	// physical bottom can enable addition-focused deletion compaction.
+	after += "existing added tail\n"
+	publish := func(source string) []string {
+		p.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/source.txt", "/workspace/source.txt", before, source)}
+		pane.Update(p, time.Time{})
+		return batchTestRender(t, &pane, 16)
+	}
+	publish(after)
+	after = strings.Replace(after, "new first", "earlier tip", 1)
+	publish(after)
+	for range len(view.Source) {
+		pane.ScrollBatch("/root", terminalui.PaneWheelDown)
+	}
+	bottom = batchTestRender(t, &pane, 16)
+	for range 3 {
+		pane.ScrollBatch("/root", terminalui.PaneWheelDown)
+		if got := batchTestRender(t, &pane, 16); !slices.Equal(got, bottom) {
+			t.Fatal("existing added tail shook after an earlier rewrite")
+		}
+	}
+	if rows := publish(strings.Replace(after, "earlier tip", "latest source", 1)); !strings.Contains(strings.Join(rows, "\n"), "latest source") {
+		t.Fatal("added-tail bottom failed to follow newly arriving source")
+	}
 }
 
 func TestUISnapshotNativeBatch(t *testing.T) {
