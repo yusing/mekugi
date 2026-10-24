@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -343,6 +344,34 @@ func TestLiveDiffInterpreterReplacementPreview(t *testing.T) {
 		}
 		return diffs
 	}
+	t.Run("composed Path loop uses actual file baselines", func(t *testing.T) {
+		workspace := t.TempDir()
+		const before = "package fixture\n\nimport \"old/module\"\n"
+		for _, name := range []string{"main", "worker"} {
+			writeTestFile(t, filepath.Join(workspace, "pkg", name, "history.go"), before)
+		}
+		command := python("for name in ['main', 'worker']:\n p=Path('pkg')/name/'history.go';s=p.read_text().replace('old/module', 'new/module');p.write_text(s)\n")
+		for _, final := range []bool{false, true} {
+			input := command
+			if final {
+				input += "PY\n"
+			}
+			diffs := project(t, workspace, input, final)
+			if len(diffs) != 2 {
+				t.Fatalf("final=%v: composed paths lost independent edits: %q", final, diffs)
+			}
+			for _, diff := range diffs {
+				if !strings.Contains(diff, "-import \"old/module\"") || !strings.Contains(diff, "+import \"new/module\"") {
+					t.Fatalf("final=%v: replacement lost actual baseline: %s", final, diff)
+				}
+			}
+		}
+		for _, name := range []string{"main", "worker"} {
+			if data, err := os.ReadFile(filepath.Join(workspace, "pkg", name, "history.go")); err != nil || string(data) != before {
+				t.Fatalf("projection mutated baseline: %q %v", data, err)
+			}
+		}
+	})
 	t.Run("replacement closing a block is gated in its file", func(t *testing.T) {
 		workspace := t.TempDir()
 		writeTestFile(t, filepath.Join(workspace, "demo.go"), "package demo\n\nfunc launch() {\n\tif requested {\n\t\told()\n\t}\n\twait()\n}\n")
