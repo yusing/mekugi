@@ -40,7 +40,6 @@ type Executor struct {
 	Naming           Naming
 	ServiceTiers     *inferencegateway.Tiers
 	Provider         inferencegateway.Forwarder
-	Client           *inferencegateway.Client
 	Exchange         *inferencegateway.Exchange
 	Output           io.Writer
 	Issues           *Failures
@@ -348,26 +347,11 @@ func (a *requestAttempt) prepareWire() error {
 	if compaction && a.executor.CompactPrompt != nil {
 		a.request.CachedInput, a.request.RebaseInput = 0, true
 	}
-	nativeWire, err := a.request.IncrementalBody(nativeBody, !inferencegateway.IsThirdPartyModel(a.request.Model()))
-	if err != nil {
-		return err
-	}
-	if exchange := a.executor.Exchange; exchange != nil && exchange.State.Automatic() {
-		transportcapture.ObserveProjectedRequest(a.startCtx, nil)
-	} else {
-		transportcapture.ObserveProjectedRequest(a.startCtx, nativeWire)
-	}
-
 	return nil
 }
 
 func (a *requestAttempt) forward() error {
 	projectedBody := a.forwardBody
-	a.finalization.failurePhase = requestFailureForward
-	cacheKey := a.request.PromptCacheKey()
-	if cacheKey == "" {
-		cacheKey = a.sessionID
-	}
 	var err error
 	a.forwardBody, err = a.request.IncrementalBody(a.forwardBody, !inferencegateway.IsThirdPartyModel(a.request.Model()))
 	if err != nil {
@@ -376,6 +360,12 @@ func (a *requestAttempt) forward() error {
 	debugWire := a.forwardBody
 	if exchange := a.executor.Exchange; exchange != nil && exchange.State.Automatic() {
 		debugWire = nil
+	}
+	transportcapture.ObserveProjectedRequest(a.startCtx, debugWire)
+	a.finalization.failurePhase = requestFailureForward
+	cacheKey := a.request.PromptCacheKey()
+	if cacheKey == "" {
+		cacheKey = a.sessionID
 	}
 	a.debug.instructions(projectedBody, debugWire, a.headers, a.sessionID, a.debugID, a.request.CachedInput)
 	if !a.prewarm {
@@ -454,8 +444,6 @@ func (a *requestAttempt) prepareResponse() error {
 		}
 	}
 	a.hooks.OnUsage = func(counts inference.Usage) {
-		a.finalization.observation.usageCounts = counts
-		a.finalization.observation.usageObserved = true
 		if a.usageTracker != nil {
 			a.usageTracker.ReceivedAt = a.hooks.ReceivedAt
 		}
@@ -556,17 +544,17 @@ func (a *requestAttempt) deliver() error {
 	a.finalization.failurePhase = ""
 	switch {
 	case a.response.StatusCode < http.StatusOK || a.response.StatusCode >= http.StatusMultipleChoices:
-		a.finalization.observation.outcome = requestOutcomeFailed
+		a.finalization.outcome = requestOutcomeFailed
 		a.finalization.failurePhase = requestFailureTerminalValidation
 	case a.finalization.upstreamTerminalState == responses.TerminalCompleted ||
 		a.finalization.upstreamTerminalState == responses.TerminalSteered ||
 		a.finalization.upstreamTerminalState == responses.TerminalInterrupted:
-		a.finalization.observation.outcome = requestOutcomeCompleted
+		a.finalization.outcome = requestOutcomeCompleted
 	case a.finalization.upstreamTerminalState == responses.TerminalFailed:
-		a.finalization.observation.outcome = requestOutcomeFailed
+		a.finalization.outcome = requestOutcomeFailed
 		a.finalization.failurePhase = requestFailureTerminalValidation
 	default:
-		a.finalization.observation.outcome = requestOutcomeFailed
+		a.finalization.outcome = requestOutcomeFailed
 		a.finalization.failurePhase = requestFailureTerminalValidation
 	}
 	return nil
@@ -592,7 +580,7 @@ func (a *requestAttempt) finish(requestErr error) error {
 	_, compatibilityFault := errors.AsType[*inferencegateway.CompatibilityError](requestErr)
 	if (a.finalization.failurePhase == requestFailureTransform || a.finalization.failurePhase == requestFailurePrepare && compatibilityFault) &&
 		a.hooks.deliveredResponseID != "" && !a.hooks.deliveredTerminal &&
-		a.finalization.observation.outcome == requestOutcomeFailed {
+		a.finalization.outcome == requestOutcomeFailed {
 		payload := responses.MustMarshalJSON(map[string]any{
 			"type": "response.failed",
 			"response": map[string]any{
@@ -608,7 +596,7 @@ func (a *requestAttempt) finish(requestErr error) error {
 		"client_request_id": a.headers.Get("x-client-request-id"),
 		"thread_id":         codexresponses.ThreadID(a.headers),
 		"session_id":        a.sessionID,
-		"outcome":           a.finalization.observation.outcome.String(),
+		"outcome":           a.finalization.outcome.String(),
 		"phase":             a.finalization.failurePhase,
 		"upstream_status":   a.finalization.upstreamStatusCode,
 		"duration_ms":       time.Since(a.started).Milliseconds(),

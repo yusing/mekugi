@@ -247,7 +247,7 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 	provider := newTestProviderClient(upstream.URL, upstream.Client())
 	g := newTestSessionNaming(t.Context(), provider)
 	g.register(binding.ThreadInfo{ID: "main"})
-	handler := inferencegateway.ResponsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, (requestexecution.Executor{Provider: provider, Client: provider, Naming: g}).ExecuteHTTP)
+	handler := inferencegateway.ResponsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, (requestexecution.Executor{Provider: provider, Naming: g}).ExecuteHTTP)
 	request := modelTestRequest(t, "gpt-6-sol")
 	request.Fields["input"] = mustTestJSON(t, []any{map[string]any{"role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": "Private host instructions"},

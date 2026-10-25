@@ -63,6 +63,6 @@ func (a *requestAttempt) completeLocalWait() (bool, error) {
 		}
 	}
 	a.finalization.failurePhase = ""
-	a.finalization.observation.outcome = requestOutcomeCompleted
+	a.finalization.outcome = requestOutcomeCompleted
 	return true, nil
 }

@@ -269,7 +269,7 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 			}))
 			defer upstream.Close()
 			client := newTestProviderClient(upstream.URL, upstream.Client())
-			executor := requestexecution.Executor{Provider: client, Client: client, ServiceTiers: inferencegateway.NewTiers(map[string]string{"gpt-6-astra": "priority"})}
+			executor := requestexecution.Executor{Provider: client, ServiceTiers: inferencegateway.NewTiers(map[string]string{"gpt-6-astra": "priority"})}
 			request := serverRequest(t, func(fields map[string]any) {
 				fields["model"], fields["service_tier"], fields["stream"] = "gpt-6-astra", "default", transport != "http"
 			})

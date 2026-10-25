@@ -1,8 +1,6 @@
 // Source: apps/mekugi/internal/router/request_observation.go:1:41@b9679c93.
 package requestexecution
 
-import "github.com/yusing/mekugi/contracts/inference"
-
 type requestOutcome uint8
 
 const (
@@ -32,11 +30,4 @@ func (outcome requestOutcome) String() string {
 	default:
 		return "unknown"
 	}
-}
-
-type requestObservation struct {
-	outcome requestOutcome
-
-	usageCounts   inference.Usage
-	usageObserved bool
 }

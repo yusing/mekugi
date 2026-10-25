@@ -27,7 +27,7 @@ const (
 )
 
 type requestFinalization struct {
-	observation           requestObservation
+	outcome               requestOutcome
 	sessionID             string
 	threadID              string
 	turnID                string
@@ -49,27 +49,27 @@ func (f *requestFinalization) finish(
 	issues *Failures,
 ) {
 	responseStarted := requestResponseStarted(output)
-	if f.observation.outcome == requestOutcomeUnknown {
+	if f.outcome == requestOutcomeUnknown {
 		switch {
 		case errors.Is(requestErr, context.DeadlineExceeded):
-			f.observation.outcome = requestOutcomeTimedOut
+			f.outcome = requestOutcomeTimedOut
 		case errors.Is(requestErr, codexresponses.ErrDownstreamDisconnected),
 			errors.Is(requestErr, context.Canceled) && errors.Is(ctx.Err(), context.Canceled):
 			if errors.Is(requestErr, httptransport.ErrStreamIdleTimeout) {
 				f.failurePhase = requestFailureInspectResponse
 			}
 			if responseStarted {
-				f.observation.outcome = requestOutcomeCanceledAfterResponse
+				f.outcome = requestOutcomeCanceledAfterResponse
 			} else {
-				f.observation.outcome = requestOutcomeCanceledBeforeResponse
+				f.outcome = requestOutcomeCanceledBeforeResponse
 			}
 		case errors.Is(requestErr, httptransport.ErrStreamIdleTimeout):
-			f.observation.outcome = requestOutcomeStreamIdleTimedOut
+			f.outcome = requestOutcomeStreamIdleTimedOut
 		default:
-			f.observation.outcome = requestOutcomeFailed
+			f.outcome = requestOutcomeFailed
 		}
 	}
-	if f.observation.outcome == requestOutcomeCompleted || f.observation.outcome == requestOutcomeCanceledBeforeResponse || f.observation.outcome == requestOutcomeCanceledAfterResponse {
+	if f.outcome == requestOutcomeCompleted || f.outcome == requestOutcomeCanceledBeforeResponse || f.outcome == requestOutcomeCanceledAfterResponse {
 		return
 	}
 	if requestErr == nil {

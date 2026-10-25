@@ -105,7 +105,7 @@ func testCompactReloadNativeCodex(t *testing.T, automatic bool, promptKind strin
 		upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
 		defer upstream.Close()
 		client := newTestProviderClient(upstream.URL, upstream.Client())
-		executor.Provider, executor.Client = client, client
+		executor.Provider = client
 		endpoint = inferencegateway.NewWebSocketEndpoint(ctx, time.Minute, client, executor.ExecuteWebSocket)
 		defer endpoint.Close()
 	}

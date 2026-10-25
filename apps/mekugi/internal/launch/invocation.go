@@ -338,7 +338,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, issues.ReportCatalog, observeCatalog))
 	inferencegateway.RegisterCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
 
-	executor := requestexecution.Executor{Provider: provider, Client: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
+	executor := requestexecution.Executor{Provider: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
 	if threads != nil {
 		executor.ThreadControl = threads.shared
 		executor.ReasoningChoices = threads.driver.ReasoningChoices

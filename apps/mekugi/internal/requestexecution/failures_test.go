@@ -21,7 +21,7 @@ func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithCompleteCauses(t *tes
 			c := testCriticalErrors()
 			record := func(err error) {
 				c.record(&requestFinalization{sessionID: "one", failurePhase: test.phase,
-					observation: requestObservation{outcome: requestOutcomeFailed}}, err)
+					outcome: requestOutcomeFailed}, err)
 			}
 			first := errors.New("Authorization Bearer firstsecret")
 			record(first)
@@ -41,7 +41,7 @@ func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithCompleteCauses(t *tes
 
 	terminal := testCriticalErrors()
 	terminal.record(&requestFinalization{sessionID: "one", failurePhase: requestFailureTerminalValidation,
-		observation: requestObservation{outcome: requestOutcomeFailed}}, fmt.Errorf("validate response: %w", ErrMissingTerminal))
+		outcome: requestOutcomeFailed}, fmt.Errorf("validate response: %w", ErrMissingTerminal))
 	terminalNotice := strings.Join(terminal.Notices.Pending(), "\n")
 	if !strings.Contains(terminalNotice, "Failure phase: terminal response validation.") ||
 		!strings.Contains(terminalNotice, "ended without a completed or failed terminal state") {
@@ -50,7 +50,7 @@ func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithCompleteCauses(t *tes
 
 	prepare := testCriticalErrors()
 	prepare.record(&requestFinalization{sessionID: "one", failurePhase: requestFailurePrepare,
-		observation: requestObservation{outcome: requestOutcomeFailed}}, errors.New("plain preparesecret"))
+		outcome: requestOutcomeFailed}, errors.New("plain preparesecret"))
 	prepareNotice := strings.Join(prepare.Notices.Pending(), "\n")
 	if strings.Contains(prepareNotice, "check the request error") || !strings.Contains(prepareNotice, "preparesecret") ||
 		!strings.Contains(prepareNotice, "Failure phase: request preparation.") {
@@ -61,7 +61,7 @@ func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithCompleteCauses(t *tes
 func TestCriticalErrorsSuccessAndCancellationSilent(t *testing.T) {
 	c := testCriticalErrors()
 	for _, outcome := range []requestOutcome{requestOutcomeCompleted, requestOutcomeCanceledBeforeResponse, requestOutcomeCanceledAfterResponse} {
-		c.record(&requestFinalization{observation: requestObservation{outcome: outcome}}, context.Canceled)
+		c.record(&requestFinalization{outcome: outcome}, context.Canceled)
 	}
 	if len(c.Notices.Pending()) != 0 {
 		t.Fatal("success or cancellation emitted a notice")

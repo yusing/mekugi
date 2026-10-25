@@ -52,7 +52,7 @@ func (c *Failures) Report(failure Failure, err error) Diagnostic {
 	f := requestFinalization{sessionID: failure.Session, threadID: failure.Thread, turnID: failure.Turn,
 		failurePhase: requestFailurePhase(failure.Phase), upstreamStatusCode: failure.UpstreamStatus,
 		upstreamTerminalState: failure.Terminal, streamDiagnostics: failure.Stream,
-		observation: requestObservation{outcome: requestOutcomeFailed}}
+		outcome: requestOutcomeFailed}
 	c.record(&f, err)
 	c.persistFailure(&f)
 	return Diagnostic{f.diagnosticCode, f.diagnosticReference, f.diagnosticError, f.diagnosticMessage}

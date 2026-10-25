@@ -72,8 +72,8 @@ func TestDownstreamDisconnectFinalization(t *testing.T) {
 				} else if errors.Is(test.err, context.DeadlineExceeded) {
 					want = requestOutcomeTimedOut
 				}
-				if f.observation.outcome != want {
-					t.Fatalf("started=%v: outcome=%v, want %v", started, f.observation.outcome, want)
+				if f.outcome != want {
+					t.Fatalf("started=%v: outcome=%v, want %v", started, f.outcome, want)
 				}
 				if (len(issues.Notices.Pending()) == 0) != test.disconnected {
 					t.Fatalf("unexpected notices: %v", issues.Notices.Pending())
@@ -169,8 +169,8 @@ func TestHTTPDownstreamDisconnectFinalization(t *testing.T) {
 						} else if errors.Is(test.err, context.DeadlineExceeded) {
 							want = requestOutcomeTimedOut
 						}
-						if f.observation.outcome != want || f.failurePhase != requestFailureWriteResponse {
-							t.Fatalf("committed=%v: outcome=%v want %v, phase=%v", output.ResponseStarted(), f.observation.outcome, want, f.failurePhase)
+						if f.outcome != want || f.failurePhase != requestFailureWriteResponse {
+							t.Fatalf("committed=%v: outcome=%v want %v, phase=%v", output.ResponseStarted(), f.outcome, want, f.failurePhase)
 						}
 						if (len(issues.Notices.Pending()) == 0) != test.disconnected {
 							t.Fatalf("unexpected notices: %v", issues.Notices.Pending())

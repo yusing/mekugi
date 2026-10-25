@@ -104,7 +104,7 @@ func (a *requestAttempt) deliverCompactSummary() error {
 			return err
 		}
 		a.hooks.Delivered(collected.failure)
-		a.finalization.observation.outcome = requestOutcomeFailed
+		a.finalization.outcome = requestOutcomeFailed
 		a.finalization.failurePhase = requestFailureTerminalValidation
 		return nil
 	}
@@ -151,7 +151,7 @@ func (a *requestAttempt) deliverCompactSummary() error {
 		}
 		a.hooks.Delivered(payload)
 	}
-	a.finalization.observation.outcome = requestOutcomeCompleted
+	a.finalization.outcome = requestOutcomeCompleted
 	a.finalization.failurePhase = ""
 	return nil
 }

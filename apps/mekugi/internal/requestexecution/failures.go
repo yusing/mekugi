@@ -143,8 +143,8 @@ func (c *Failures) diagnosticReference(f *requestFinalization, err error) string
 }
 
 func (c *Failures) record(f *requestFinalization, err error) {
-	if c == nil || f.observation.outcome == requestOutcomeCompleted ||
-		f.observation.outcome == requestOutcomeCanceledBeforeResponse || f.observation.outcome == requestOutcomeCanceledAfterResponse {
+	if c == nil || f.outcome == requestOutcomeCompleted ||
+		f.outcome == requestOutcomeCanceledBeforeResponse || f.outcome == requestOutcomeCanceledAfterResponse {
 		return
 	}
 	if err == nil && f.providerFailure != nil {

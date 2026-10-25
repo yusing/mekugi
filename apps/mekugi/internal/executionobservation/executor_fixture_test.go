@@ -21,7 +21,6 @@ func testRequestExecutor(provider inferencegateway.Forwarder, issues *requestexe
 		executor.Observations, executor.Guidance = proxy, proxy.registry.Guidance
 		executor.Control, executor.Usage = proxy.control, proxy.usage
 	}
-	executor.Client, _ = provider.(*inferencegateway.Client)
 	executor.Exchange, _ = provider.(*inferencegateway.Exchange)
 	return executor
 }
