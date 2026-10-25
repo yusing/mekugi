@@ -27,7 +27,15 @@ import (
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
+
+// TestWebUIControlsBrowser bounds acceptance to links, metrics and process controls.
+func TestWebUIControlsBrowser(t *testing.T) {
+	t.Setenv("MEKUGI_TEST_WEBUI_CONTROLS", "1")
+	TestWebUISemanticBrowser(t)
+}
 
 // The visible browser consumes the real server and connector. Only Codex is a
 // controlled subprocess; its ledger records the admitted semantic operations.
@@ -49,12 +57,15 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	}
 	writeFeatureConfig(t, "shell_guard = false")
 	t.Setenv("AGENT_BROWSER_ENGINE", "chrome")
-	directory, err := os.MkdirTemp("/tmp", "mekugi-webui-semantic-")
+	directory, err := os.MkdirTemp("", "mekugi-webui-semantic-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(directory)
 	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "notes.md"), []byte("Browser file details fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	ledger := filepath.Join(directory, "host.jsonl")
 	t.Setenv("MEKUGI_TEST_WEBUI_SEMANTIC_LOG", ledger)
 	bin := t.TempDir()
@@ -65,6 +76,22 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
+	retainedDirectory, err := history.ReplayDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained, err := testHistory().Open(ctx, retainedDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"saved", "recorded"} {
+		_, release, err := retained.BeginSession(ctx, nil, history.Limits{}, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		release()
+	}
+
 	socket := filepath.Join(directory, "control.sock")
 	serverContext, stopServer := context.WithCancel(ctx)
 	launcher := &webUISemanticLauncher{serverLauncher: new(serverLauncher), failures: make(chan error, 4)}
@@ -238,16 +265,113 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	waitRecovered()
 	run("wait", "--text", "Browser host answer 1")
 	run("find", "text", "Browser host answer 1", "text", "--exact")
+	run("wait", "--fn", `Array.from(document.querySelectorAll('.prose a')).some(a => a.getAttribute('href') === 'https://example.com/auto' && a.target === '_blank' && a.rel.includes('noopener'))`)
+	run("wait", "--fn", `Array.from(document.querySelectorAll('.prose a')).some(a => a.textContent === 'Website' && a.getAttribute('href') === 'https://example.com/markdown')`)
+	run("find", "role", "link", "click", "--name", "Workspace notes", "--exact")
+	run("wait", "--text", "Browser file details fixture")
+	button("Close details")
+	message("/session")
+	run("wait", "--text", "Session metrics")
+	run("wait", "--text", "Requests")
+	capture("session-metrics")
+	button("Transport")
+	run("wait", "--text", "Provider requests")
+	button("Exchanges")
+	run("wait", "--fn", `!!document.querySelector('[aria-label="Retained exchange"]') || document.body.textContent.includes("No completed exchanges yet")`)
+	closeDialog()
+	message("/status")
+	run("wait", "--text", "Session status")
+	if strings.TrimSpace(run("eval", `document.querySelectorAll('dialog dt, dialog dd').length > 0 && Array.from(document.querySelectorAll('dialog dt, dialog dd')).every(el => getComputedStyle(el).borderTopWidth === '0px')`)) != "true" {
+		t.Fatal("status retained per-line separators")
+	}
+	capture("status")
+	closeDialog()
+	run("wait", "--text", "Active processes")
+	run("wait", "--text", "The host does not expose individual Stop.")
+	capture("processes")
+	message("/ps")
+	run("wait", "--fn", `document.querySelector('#composer-text')?.value === '' && !document.querySelector('dialog[open]') && !!document.querySelector('[aria-label="Active processes"]')`)
+	button("Stop sleep 101")
+	run("wait", "--text", "Fixture stop refused")
+	button("Stop sleep 101")
+	run("wait", "--fn", `!document.querySelector('button[aria-label="Stop sleep 101"]') && !!document.querySelector('button[aria-label="Stop sleep 102"]')`)
+	button("Stop sleep 102")
+	run("wait", "--fn", `!document.querySelector('[aria-label="Active processes"]')`)
+	if os.Getenv("MEKUGI_TEST_WEBUI_CONTROLS") == "1" {
+		body, err := os.ReadFile(ledger)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Count(string(body), "thread/backgroundTerminals/terminate ") != 3 || strings.Contains(string(body), "turn/interrupt ") {
+			t.Fatal("individual Stop lost its host identity or interrupted the turn")
+		}
+		// A populated capture exercises the browser buttons through the actual
+		// shared panel action owner; the ordinary host fixture has no provider traffic.
+		var metricsUI *appServerUI
+		metricsMachine := newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Metrics", token, func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
+			if request.Attach {
+				metricsUI, _ = newAppServerTestUI()
+				metricsUI.Thread = request.Thread
+				metricsUI.startSession(request.Thread, request.Workspace)
+				metricsUI.attached.presentation.Attach(sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}, false)
+				appServerTestKeys(t, metricsUI, "/session\r")
+				*metricsUI.statusPanel.Metrics = sessionMetricsFixture(t)
+				metricsUI.statusPanel.RenderMetrics()
+			} else if action := request.Operation.Panel; action != nil {
+				if action.Kind == sessionpresentation.PanelRefresh {
+					exchanges := metricsUI.statusPanel.Metrics.Exchanges
+					metricsUI.statusPanel.Metrics.Exchanges = append(exchanges, exchanges[len(exchanges)-1])
+					metricsUI.statusPanel.Metrics.Exchanges[len(exchanges)].Sequence++
+				}
+				applyPanelAction(&metricsUI.attached, metricsUI.shell, metricsUI.clock, &metricsUI.statusPanel, nil, *action)
+			}
+			published := publishPresentation(&metricsUI.attached, metricsUI.shell, &metricsUI.Client, &metricsUI.picker, &metricsUI.Editor, preferences.Applied{}, nil, "", "", false, nil, time.Now())
+			if err := native.Publish(request.Attachment, sessionapi.NativeFrame{View: published}); err != nil {
+				request.Reply <- err.Error()
+			} else {
+				request.Reply <- ""
+			}
+			return true
+		})
+		button("Machines")
+		button("Add machine")
+		run("find", "label", "Machine name", "fill", "Metrics")
+		run("find", "label", "Connector URL", "fill", metricsMachine.remote.URL)
+		run("find", "label", "Access token", "fill", token)
+		button("Connect")
+		run("wait", "--text", "Metrics thread")
+		run("find", "text", "Metrics thread", "click", "--exact")
+		run("wait", "--text", "Session metrics")
+		button("Exchanges")
+		run("wait", "--text", "2 of 2")
+		button("Older")
+		run("wait", "--text", "1 of 2")
+		button("Transport")
+		button("Exchanges")
+		run("wait", "--text", "1 of 2")
+		button("Newer")
+		run("wait", "--text", "2 of 2")
+		button("Refresh")
+		run("wait", "--text", "3 of 3")
+		capture("session-exchanges")
+		if strings.Contains(run("eval", `document.querySelector('dialog').textContent`), "[ older") {
+			t.Fatal("browser metrics advertise terminal shortcuts")
+		}
+		t.Log("links, machine-local details, metrics views, grouped status and individual process lifecycle passed")
+		return
+	}
+
 	run("snapshot", "-i")
 	t.Log("created through the empty-state composer with uploaded text and image")
+	run("eval", `document.querySelector('figure')?.scrollIntoView({block:'center'})`)
 	run("wait", "--fn", `document.querySelector('img[alt="Attached image 1"]')?.naturalWidth > 0`)
 	run("wait", "--fn", `document.querySelector('.text-marker-image')?.textContent === '[Image 1]'`)
 	run("wait", "--fn", `document.querySelector('h1')?.nextElementSibling?.getAttribute('aria-label') === 'Session details'`)
 	run("find", "label", "Message", "fill", "draft survives fast mode")
-	button("Fast mode")
-	run("wait", "--fn", `document.querySelector('button[aria-label="Fast mode"]')?.getAttribute('aria-pressed') === 'true'`)
-	button("Fast mode")
-	run("wait", "--fn", `document.querySelector('button[aria-label="Fast mode"]')?.getAttribute('aria-pressed') === 'false' && document.querySelector('#composer-text')?.value === 'draft survives fast mode'`)
+	button("Fast")
+	run("wait", "--fn", `document.querySelector('button[title="Disable fast mode"]')?.getAttribute('aria-pressed') === 'true'`)
+	button("Fast")
+	run("wait", "--fn", `document.querySelector('button[title="Enable fast mode"]')?.getAttribute('aria-pressed') === 'false' && document.querySelector('#composer-text')?.value === 'draft survives fast mode'`)
 	run("find", "label", "Message", "fill", `!printf '%s\n' "$PATH"`)
 	run("wait", "--fn", `document.querySelector('#composer-text')?.previousElementSibling?.querySelectorAll('span[style]').length > 1`)
 	capture("shell-highlight")
@@ -295,11 +419,11 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	button("Close answer")
 	run("wait", "--fn", "!document.querySelector('[aria-label=\"Side answer\"]')")
 	message("/side")
-	run("wait", "--fn", "document.querySelectorAll('[role=tab]').length === 2")
+	run("wait", "--fn", `document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]').length === 2`)
 	run("find", "role", "tab", "click", "--name", "Main", "--exact")
 	run("wait", "--fn", "Array.from(document.querySelectorAll('[role=tab]')).find(tab => tab.textContent.trim() === 'Main')?.getAttribute('aria-selected') === 'true'")
 	button("Close side")
-	run("wait", "--fn", "!document.querySelector('[role=tab]')")
+	run("wait", "--fn", `!document.querySelector('[role=tablist][aria-label=Conversation]')`)
 	run("upload", "input[type=file]", laterUpload)
 	run("wait", "--text", "later.txt")
 	message("browser later input")
@@ -470,12 +594,14 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	if err := os.MkdirAll(sessions, 0700); err != nil {
 		t.Fatal(err)
 	}
-	replayTestWrite(t, sessions, "rollout-recorded.jsonl", replayTestMeta("recorded"), replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}), replayTestItem("recorded", "turn", replayTestEpoch+1, replayTestEpoch+2, map[string]any{"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "Browser recorded answer"}}}), replayTestRecord("event_msg", replayTestEpoch+100, map[string]any{"type": "task_complete", "turn_id": "turn"}))
+	replayTestWrite(t, sessions, "rollout-recorded.jsonl", replayTestMeta("recorded"), replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}), replayTestItem("recorded", "turn", replayTestEpoch+1, replayTestEpoch+2, map[string]any{"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "Browser recorded answer\n\n[Recorded file](notes.md)"}}}), replayTestRecord("event_msg", replayTestEpoch+100, map[string]any{"type": "task_complete", "turn_id": "turn"}))
 	button("More ways to start")
 	run("find", "role", "menuitem", "click", "--name", "Open replay")
 	run("find", "label", "Saved session ID", "fill", "recorded")
 	button("Open replay")
 	run("wait", "--text", "Browser recorded answer")
+	run("find", "role", "link", "click", "--name", "Recorded file", "--exact")
+	run("wait", "--text", "File details are available on a connected live thread.")
 	button("Restart")
 	button("Session details")
 	button("End replay")
@@ -484,7 +610,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"first uploaded snapshot", "later uploaded snapshot", "localImage", "thread/fork", "thread/resume", "account/read", "native continuation"} {
+	for _, want := range []string{"first uploaded snapshot", "later uploaded snapshot", "localImage", "thread/fork", "thread/resume", "account/read", "native continuation", "thread/backgroundTerminals/terminate"} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("host ledger missing %q", want)
 		}
@@ -570,6 +696,7 @@ func serveWebUISemanticHost(t *testing.T) {
 	user, _ := json.Marshal([]map[string]string{{"type": "text", "text": "Saved fixture input"}})
 	threads := map[string]binding.ThreadInfo{"main": {ID: "main", Cwd: cwd}, "saved": {ID: "saved", Cwd: cwd, Turns: []binding.HistoryTurn{{ID: "saved-turn", Status: "completed", Items: []binding.ThreadItem{{ID: "saved-user", Type: "userMessage", Content: user}, {ID: "saved-answer", Type: "agentMessage", Text: "Saved fixture answer"}}}}}}
 	inputs, forks := 0, 0
+	stops := 0
 	rejections := make(map[string]int)
 	settings := map[string]any{}
 	for {
@@ -590,12 +717,13 @@ func serveWebUISemanticHost(t *testing.T) {
 		}
 		fmt.Fprintf(log, "%s %s\n", request.Method, request.Params)
 		var params struct {
-			Thread string         `json:"threadId"`
-			Turn   string         `json:"turnId"`
-			Input  jsontext.Value `json:"input"`
-			Model  string         `json:"model"`
-			Effort string         `json:"effort"`
-			Tier   jsontext.Value `json:"serviceTier"`
+			Thread  string         `json:"threadId"`
+			Process string         `json:"processId"`
+			Turn    string         `json:"turnId"`
+			Input   jsontext.Value `json:"input"`
+			Model   string         `json:"model"`
+			Effort  string         `json:"effort"`
+			Tier    jsontext.Value `json:"serviceTier"`
 		}
 		if len(request.Params) != 0 {
 			if err := json.Unmarshal(request.Params, &params); err != nil {
@@ -638,6 +766,17 @@ func serveWebUISemanticHost(t *testing.T) {
 			thread.ID = fmt.Sprintf("fork-%d", forks)
 			threads[thread.ID] = thread
 			result["thread"] = thread
+		case "thread/backgroundTerminals/terminate":
+			stops++
+			if stops == 1 {
+				write(map[string]any{"id": request.ID, "error": map[string]any{"code": -32000, "message": "Fixture stop refused"}})
+				continue
+			}
+			result["terminated"] = true
+			confirmed = map[string]any{"method": "item/completed", "params": map[string]any{"threadId": params.Thread, "turnId": "process-turn", "item": map[string]any{"id": "process-" + params.Process, "type": "commandExecution", "command": "sleep " + params.Process, "processId": params.Process, "status": "completed", "exitCode": 0}}}
+			if params.Process == "102" {
+				write(map[string]any{"method": "item/completed", "params": map[string]any{"threadId": params.Thread, "turnId": "process-turn", "item": map[string]any{"id": "process-shell", "type": "commandExecution", "command": "user shell", "status": "completed", "exitCode": 0}}})
+			}
 		case "turn/interrupt":
 			confirmed = map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": params.Thread, "turn": map[string]any{"id": params.Turn, "status": "interrupted"}}}
 		case "turn/steer":
@@ -661,7 +800,11 @@ func serveWebUISemanticHost(t *testing.T) {
 			thread := threads[params.Thread]
 			id := fmt.Sprintf("turn-%d", inputs)
 			content := params.Input
-			history := binding.HistoryTurn{ID: id, Status: "completed", Items: []binding.ThreadItem{{ID: fmt.Sprintf("user-%d", inputs), Type: "userMessage", Content: content}, {ID: fmt.Sprintf("answer-%d", inputs), Type: "agentMessage", Text: fmt.Sprintf("Browser host answer %d", inputs)}}}
+			answer := fmt.Sprintf("Browser host answer %d", inputs)
+			if inputs == 1 {
+				answer += "\n\nAutomatic https://example.com/auto and [Website](https://example.com/markdown). [Workspace notes](notes.md)"
+			}
+			history := binding.HistoryTurn{ID: id, Status: "completed", Items: []binding.ThreadItem{{ID: fmt.Sprintf("user-%d", inputs), Type: "userMessage", Content: content}, {ID: fmt.Sprintf("answer-%d", inputs), Type: "agentMessage", Text: answer}}}
 			thread.Turns = append(thread.Turns, history)
 			threads[thread.ID] = thread
 			turn = &history
@@ -681,6 +824,18 @@ func serveWebUISemanticHost(t *testing.T) {
 				write(map[string]any{"method": "item/completed", "params": map[string]any{"threadId": params.Thread, "turnId": turn.ID, "item": item}})
 			}
 			write(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": params.Thread, "turn": map[string]any{"id": turn.ID, "status": "completed"}}})
+			if inputs == 1 {
+				for _, process := range []string{"101", "102", "shell"} {
+					item := map[string]any{"id": "process-" + process, "type": "commandExecution", "command": "sleep " + process, "status": "inProgress"}
+					if process != "shell" {
+						item["processId"] = process
+					} else {
+						item["command"] = "user shell"
+					}
+					write(map[string]any{"method": "item/started", "params": map[string]any{"threadId": params.Thread, "turnId": "process-turn", "item": item}})
+				}
+			}
+
 		}
 	}
 }

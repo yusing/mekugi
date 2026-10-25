@@ -92,6 +92,22 @@ refreshes them. Choices become actionable after that refresh; cached menu identi
 are never submitted. Caches belong to the attached view and are discarded on
 disconnection or thread changes. Menu motion respects reduced-motion preferences.
 
+Running commands stay visible above the composer and leave when the authoritative
+host invocation completes. Each command offers Stop when the host exposes an
+individual process identity. Commands without one, including user-entered shell
+commands, show a disabled Stop with an explanation; a later process identity enables
+it. Stop targets that captured invocation and never interrupts the whole turn.
+The browser's `/ps` directs attention to these persistent controls; the native
+terminal retains its process dialog.
+
+`/session` opens session metrics with Overview, Transport and Exchanges views,
+exchange navigation and refresh, using the same fields as the terminal. `/status`
+groups labelled values without individual row separators. Automatic web links and
+Markdown web links open separately. Markdown machine-local file links use shared
+file details on a connected live thread on the selected execution machine; other
+views explain that requirement. Raw HTML and unsafe schemes remain
+inactive, and untrusted images never load automatically.
+
 Stopping interrupts Main. Explicit End names the thread and confirms that active
 work stops. A continuation command uses `mekugi resume ID` on the selected machine;
 it attaches to the active owner or resumes saved history after the owner ends.

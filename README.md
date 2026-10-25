@@ -221,6 +221,13 @@ commands, files and skills, and a leading `!` runs shell input; Enter sends or
 steers, and Tab queues while Main works. Answer secret prompts in the native
 terminal.
 
+Active processes stay above the composer, with **Stop** for each command whose
+host exposes individual process control. Other commands remain visible with a
+disabled Stop and an explanation. `/session` opens the shared session metrics;
+`/status` shows grouped settings and usage. Web links open in a new tab, while
+Markdown file links open details from a connected live thread on the selected
+execution machine.
+
 Submissions rejected after admission offer **Retry intact** or **Discard**. Retry reuses the original
 attachment snapshots. Resolve unsent input before leaving the thread or reconnecting;
 its recovery belongs to that control view. A refused first message leaves the opened

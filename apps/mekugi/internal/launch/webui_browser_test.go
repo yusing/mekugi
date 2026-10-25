@@ -50,10 +50,21 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		request sessionapi.NativeRequest
 	}
 	childAttachment := make(chan pendingAttachment, 1)
+	childFile := make(chan sessionapi.NativeRequest, 1)
+	processStop := make(chan pendingAttachment, 1)
 	inputReply := make(chan chan string, 1)
 	alpha := newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Alpha", strings.Repeat("a", 64), func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
 		if request.Attach && request.Thread == "child" {
 			childAttachment <- pendingAttachment{native, request}
+			return true
+		}
+		if request.Operation.StopProcess != nil {
+			processStop <- pendingAttachment{native, request}
+			return true
+		}
+		if request.Operation.Details != nil {
+			childFile <- request
+			request.Reply <- "Child file target reached its runtime."
 			return true
 		}
 		if request.Operation.Composer != nil && request.Operation.Composer.Intent.Operation == sessionpresentation.SubmitComposer {
@@ -196,11 +207,15 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}
 	run("fill", "#composer-text", "draft while attaching")
 	run("wait", "--fn", "!document.body.innerText.includes('Parent-only question') && !document.querySelector('button[aria-label=Details]')")
-	thread := sessionpresentation.Thread{ID: "child", Caller: "/root/worker"}
-	if err := attachment.native.Publish(attachment.request.Attachment, sessionapi.NativeFrame{View: sessionpresentation.View{
+	thread := sessionpresentation.Thread{ID: "child", Caller: "/root"}
+	childFrame := sessionapi.NativeFrame{View: sessionpresentation.View{
 		Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Main: thread, Input: thread, Displayed: thread,
 		Info: sessionpresentation.MainInfo{Workspace: alpha.workdir, Caller: "/root/worker"},
-	}}); err != nil {
+	}}
+	for i := range 20 {
+		childFrame.Processes = append(childFrame.Processes, sessionpresentation.Process{Thread: "child", Turn: "process-turn", Item: fmt.Sprint(i), ID: fmt.Sprint(i), Agent: "/root/controls-links/controls-ui/accessibility-review", Command: fmt.Sprintf("dense %d", i)})
+	}
+	if err := attachment.native.Publish(attachment.request.Attachment, childFrame); err != nil {
 		t.Fatal(err)
 	}
 	attachment.request.Reply <- ""
@@ -213,10 +228,52 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal("child runtime publication unavailable")
 	}
 	const pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
-	if err := childServer.(*sessionapi.Server).Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: "child", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 97, Agent: "You", Kind: "text", Text: "Child image", Images: []string{pixel}}}}}}); err != nil {
+	if err := childServer.(*sessionapi.Server).Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: "child", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}}}}}}); err != nil {
 		t.Fatal(err)
 	}
+	// The process dock can leave this lazy image above the transcript scrollport.
+	run("eval", "document.querySelector('figure')?.scrollIntoView({block:'center'})")
 	run("wait", "--fn", "document.querySelector('img[alt=\"Attached image 1\"]')?.naturalWidth === 1")
+	run("find", "role", "link", "click", "--name", "Child file", "--exact")
+	run("wait", "--text", "Child file target reached its runtime.")
+	select {
+	case request := <-childFile:
+		details := request.Operation.Details
+		if request.Thread != "child" || details.Displayed.ID != "child" || details.Agent || details.Path != "child.md" {
+			t.Fatal("local child file link borrowed Main's destination")
+		}
+	case <-ctx.Done():
+		t.Fatal("child file link did not reach its runtime")
+	}
+
+	run("set", "viewport", "390", "844")
+	run("wait", "--fn", `document.querySelector('[aria-label="Active processes"] code')?.getBoundingClientRect().width > 60`)
+	button("Stop dense 0")
+	select {
+	case stopped := <-processStop:
+		if stopped.request.Thread != "child" || stopped.request.Operation.StopProcess.ID != "0" {
+			t.Fatal("process Stop lost its child destination")
+		}
+		stopped.request.Reply <- ""
+		childFrame.View.Version.Revision++
+		childFrame.View.Status.Feedback.Text, childFrame.View.Status.Feedback.Alert = "Could not stop process: dense fixture refusal", true
+		if err := stopped.native.Publish(stopped.request.Attachment, childFrame); err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("process Stop did not reach the selected child")
+	}
+	run("wait", "--fn", `(() => { const note = document.querySelector('[aria-label="Thread feedback"]'); const command = document.querySelector('button[aria-label="Stop dense 0"]'); if (!note || !command || !note.textContent.includes('dense fixture refusal')) return false; const n=note.getBoundingClientRect(), c=command.getBoundingClientRect(); return n.top >= 0 && n.bottom <= innerHeight && c.top >= 0 && c.bottom <= innerHeight; })()`)
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("screenshot", filepath.Join(artifacts, "process-feedback-phone.png"))
+	}
+	childFrame.Processes = nil
+	childFrame.View.Status.Feedback.Text = ""
+	childFrame.View.Version.Revision++
+	if err := attachment.native.Publish(attachment.request.Attachment, childFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("set", "viewport", "1280", "720")
 	run("fill", "#composer-text", "child draft")
 	button("Stop")
 	select {
