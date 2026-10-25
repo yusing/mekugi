@@ -21,7 +21,7 @@ type CatalogFailure struct {
 	UpstreamStatus, DownstreamStatus int
 }
 
-func ModelsHandler(provider *Client, codeModeOnly bool, report func(*http.Request, CatalogFailure), observe func([]byte)) http.HandlerFunc {
+func ModelsHandler(provider *Client, report func(*http.Request, CatalogFailure), observe func([]byte)) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		tracked := &ResponseWriter{ResponseWriter: writer}
 		writer = tracked
@@ -67,7 +67,7 @@ func ModelsHandler(provider *Client, codeModeOnly bool, report func(*http.Reques
 		if observe != nil && response.StatusCode == http.StatusOK {
 			observe(body)
 		}
-		if codeModeOnly && response.StatusCode == http.StatusOK {
+		if response.StatusCode == http.StatusOK {
 			body, err = binding.CodeModeOnlyModelCatalog(body)
 			if err == nil && len(body) > MaxCatalogBytes {
 				err = errors.New("projected model catalog exceeds the router buffer budget")

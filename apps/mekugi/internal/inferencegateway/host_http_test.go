@@ -67,7 +67,7 @@ func TestModelsHandlerHTTPRefreshesSameIdentity(t *testing.T) {
 	}))
 	defer upstream.Close()
 	var reports []CatalogFailure
-	handler := ModelsHandler(newTestClient(upstream.URL, upstream.Client()), true, func(_ *http.Request, failure CatalogFailure) { reports = append(reports, failure) }, nil)
+	handler := ModelsHandler(newTestClient(upstream.URL, upstream.Client()), func(_ *http.Request, failure CatalogFailure) { reports = append(reports, failure) }, nil)
 	for attempt := 1; attempt <= 3; attempt++ {
 		request := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=fixture", nil)
 		request.Header = hostHTTPHeaders()

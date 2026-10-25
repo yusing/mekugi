@@ -23,8 +23,12 @@ func TestModelsHandlerValidatesAndProjectsEachCatalog(t *testing.T) {
 		response.Header.Set("ETag", "account-version")
 		return response, nil
 	})})
-	handler := inferencegateway.ModelsHandler(provider, true, nil, nil)
+	handler := inferencegateway.ModelsHandler(provider, nil, nil)
 	for request := range 3 {
+		if request == 2 {
+			// Third-party routing preserves native catalog projection.
+			provider.Grok = &inferencegateway.ThirdPartyClient{}
+		}
 		recorder := httptest.NewRecorder()
 		handler(recorder, catalogRequest())
 		if request == 0 {

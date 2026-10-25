@@ -335,7 +335,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if threads != nil {
 		observeCatalog = threads.driver.CaptureCatalog
 	}
-	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, options.Mode == "mekugi", issues.ReportCatalog, observeCatalog))
+	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, issues.ReportCatalog, observeCatalog))
 	inferencegateway.RegisterCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
 
 	executor := requestexecution.Executor{Provider: provider, Client: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
