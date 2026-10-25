@@ -269,7 +269,7 @@ func TestAppServerExecTrackNativeCodexSandbox(t *testing.T) {
 				if _, err := io.WriteString(outer, "\x023"); err != nil {
 					t.Fatal(err)
 				}
-				await("echo SEG_NEVER · skipped")
+				await("Skipped echo SEG_NEVER")
 				for _, want := range []string{"echo SEG_ONE", "echo SEG_TWO", "false · exit 1", "┆ SEG_ONE", "┆ SEG_TWO"} {
 					if !strings.Contains(screen.String(), want) {
 						t.Fatalf("missing segment evidence %q:\n%s", want, screen.String())
