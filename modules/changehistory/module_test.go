@@ -1,6 +1,7 @@
 package changehistory_test
 
 import (
+	"crypto/sha256"
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"errors"
@@ -128,7 +129,7 @@ func TestModulePublicationScopedReadAndFrozenRecovery(t *testing.T) {
 	if partial.ExitCode != 1 || !strings.Contains(partial.Stdout, "first.txt") || !strings.Contains(partial.Stderr, "amber999") {
 		t.Fatalf("partial read: %+v", partial)
 	}
-	query, err := f.service.Parse([]string{"--mine", "--workspace", f.workspace}, f.workspace)
+	query, err := f.service.Parse([]string{"--mine", "--history", "--workspace", f.workspace}, f.workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +137,7 @@ func TestModulePublicationScopedReadAndFrozenRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	paged := f.execute(t, "owner", "--mine", "--max-tokens", "10")
+	paged := f.execute(t, "owner", "--mine", "--history", "--max-tokens", "10")
 	if paged.Delivery == nil || paged.Delivery.ReferenceCount() != 1 {
 		t.Fatalf("missing frozen read plan: %+v", paged)
 	}
@@ -175,6 +176,46 @@ func TestModulePublicationScopedReadAndFrozenRecovery(t *testing.T) {
 	}
 	if got := prepared.Referenced.Stdout + omitted.Stdout; got != original || omitted.StdoutKind != "rows" {
 		t.Fatalf("frozen recovery changed:\n%s\nwant:\n%s", got, original)
+	}
+}
+
+func TestModuleLegacyEmptyViewRecovery(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	id := f.reserve(t, "owner", "legacy")
+	f.publish(t, id, "legacy", "legacy-call", "owner", []legacycall.ReviewFile{review(filepath.Join(f.workspace, "file.txt"), "old", "new")})
+	legacy := id + "\n@@ -1 +1 @@\n-old\n+new\n"
+	paged := f.execute(t, "owner", id, "--max-tokens", "10")
+	if paged.Delivery == nil {
+		t.Fatalf("missing composed read delivery: %+v", paged)
+	}
+	prepared, err := paged.Delivery.Prepare([]string{"legacy-read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selection map[string]any
+	if err := json.Unmarshal(prepared.Recovery[0].ChangeSelection, &selection); err != nil {
+		t.Fatal(err)
+	}
+	if selection["view"] != "net" {
+		t.Fatalf("new default selection view = %v", selection["view"])
+	}
+	selection["view"], selection["offset"], selection["digest"] = "", 1, fmt.Sprintf("%x", sha256.Sum256([]byte(legacy)))
+	resolver := changehistory.Module.Contributes.References[0]
+	for _, frozen := range []bool{false, true} {
+		selection["frozen"] = frozen
+		data, err := json.Marshal(selection)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err = resolver.Canonicalize(data, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		omitted, err := resolver.Resolve(t.Context(), reference.View{Scope: scope.Retained{Directory: f.selected.Store.Directory(), Namespace: "owner", Thread: "owner"}, Retain: func(...string) error { return nil }}, data)
+		if err != nil || omitted.Stdout != legacy[1:] {
+			t.Fatalf("legacy frozen=%v recovery: %+v, %v", frozen, omitted, err)
+		}
 	}
 }
 

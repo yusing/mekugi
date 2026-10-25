@@ -133,7 +133,7 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 			return "", missingChangeError(index, id)
 		}
 		if len(change.Calls) == 0 || change.RetiredCalls != 0 {
-			return "", fmt.Errorf("change %s has pending or retired history; cannot produce a complete --net view", id)
+			return "", fmt.Errorf("change %s has pending or retired history; cannot produce a complete composed view; use --history to inspect it", id)
 		}
 	}
 	var paths []string
@@ -156,12 +156,12 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 			matched = matched || changePathMatches(options, file.BeforePath) || changePathMatches(options, file.AfterPath)
 		}
 		if capture.coverage != "" && capture.coverage != "exact" {
-			failures = append(failures, fmt.Errorf("change %s has partial captured effects; read without --net to inspect them", capture.id))
+			failures = append(failures, fmt.Errorf("change %s has partial captured effects; use --history to inspect them", capture.id))
 			continue
 		}
 		for _, file := range capture.files {
 			if file.Binary {
-				failures = append(failures, fmt.Errorf("change %s includes binary evidence that cannot be composed; read without --net to inspect it", capture.id))
+				failures = append(failures, fmt.Errorf("change %s includes binary evidence that cannot be composed; use --history to inspect it", capture.id))
 				continue
 			}
 			key := file.BeforePath
@@ -174,7 +174,7 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 				ordered = append(ordered, chain)
 			}
 			if err := chain.ApplyWithHighlight(file, false, false); err != nil {
-				failures = append(failures, fmt.Errorf("change %s cannot be composed: %w; read without --net to inspect its captured diff", capture.id, err))
+				failures = append(failures, fmt.Errorf("change %s cannot be composed: %w; use --history to inspect its captured diff", capture.id, err))
 				continue
 			}
 			delete(chains, key)

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 
 	"slices"
+	"strings"
 
 	"testing"
 
@@ -93,6 +94,11 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 				_ = json.Unmarshal(raw, &item)
 				if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "developer" && responses.StringField(item, "content") != "Follow the task.\n\n"+projected+"\n"+instructionOmitStart+"omitted-rtk-policy"+instructionOmitEnd {
 					t.Fatal("effective developer cleanup differs from recorded projection")
+				}
+			}
+			for _, guidance := range []string{"Default output composes selected captured diffs", "--history shows individual attempts", "--net is a compatibility alias", "Piping partial stdout can modify the index", "validate the collected output", "pure moves use display-only headers"} {
+				if !strings.Contains(string(warm.Fields["tools"])+string(warm.Fields["input"]), guidance) {
+					t.Errorf("prepared frontend guidance lacks %q", guidance)
 				}
 			}
 			// The comparison is meaningful only if the prewarm was projected.

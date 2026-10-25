@@ -75,7 +75,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	if err := command.Run(); err != nil || directOut.String() != "A\t12\t0\tfile.txt\n" || directErr.Len() != 0 {
 		t.Fatalf("stock frontend: output %q, stderr %q, error %v", directOut.String(), directErr.String(), err)
 	}
-	want, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, Paths: []string{"file.txt", "new name.txt"}})
+	want, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, Paths: []string{"file.txt", "new name.txt"}, View: "net"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 		for _, view := range []string{"", "--summary", "--history"} {
 			filtered, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{
 				Workspace: workspace, IDs: []string{id}, Paths: []string{"file.txt", "new name.txt"},
-				View: strings.TrimPrefix(view, "--"),
+				View: map[string]string{"": "net", "--summary": "summary", "--history": "history"}[view],
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -161,7 +161,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "sh", nil,
 		"mchanges "+id+" -- absent.txt 'also absent.txt'", nil, invocation)
-	if status != 0 || stderr != "" || !strings.Contains(stdout, `no files match paths after --: "absent.txt" "also absent.txt"`) {
+	if status != 0 || stderr != "" || !strings.Contains(stdout, `no captured files match paths after -- in workspace`) {
 		t.Fatalf("unmatched union: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "bash", nil,
@@ -177,7 +177,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "bash", nil,
 		"mchanges "+id+" -- --summary apple2", nil, invocation)
-	if status != 0 || stderr != "" || stdout != id+"\nadd \"\" -> \"--summary\"\nadd \"\" -> \"apple2\"\n" {
+	if status != 0 || stderr != "" || stdout != "add \"\" -> \"--summary\"\nadd \"\" -> \"apple2\"\n" {
 		t.Fatalf("literal flag and ID paths: %q, %q, %d", stdout, stderr, status)
 	}
 	for _, arguments := range []string{"read " + id, id + " --path file.txt", "amber1..apple2", "--max-tokens 0 amber1", "--history --summary amber1"} {
@@ -203,7 +203,7 @@ func TestParseChangeRead(t *testing.T) {
 	}
 	for _, arguments := range [][]string{{"amber1"}, {"amber1", "--"}} {
 		options, err := testChanges().Parse(arguments, workspace)
-		if err != nil || len(options.Paths) != 0 || strings.Join(options.IDs, ",") != "amber1" {
+		if err != nil || len(options.Paths) != 0 || strings.Join(options.IDs, ",") != "amber1" || options.View != "net" {
 			t.Fatalf("unfiltered read: %+v, %v", options, err)
 		}
 	}

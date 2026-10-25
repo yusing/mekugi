@@ -64,8 +64,9 @@ shows known direct `+N -N` capture counts, not a composed net total. Partial or 
 `?` marks unknown authored counts. Observation-only and tool-managed IDs
 are omitted from the authored list. Pending and retired IDs remain visible;
 sibling threads' IDs are not exposed by implicit selection. Explicit IDs can still be read across
-agents in the shared namespace. The default view shows each ID and unified
-file diff. `--summary` prefixes each path's added and removed line counts with the same
+agents in the shared namespace. The default view composes selected captured edits
+into one combined patch, without change-ID headings. `--net` remains a compatibility
+alias. `--summary` prefixes each path's added and removed line counts with the same
 file status as the diff pane (`A`, `M`, `D`, `R`, `RM`, `UU`, or `?` for incomplete evidence), aggregating across
 selected records in durable capture order, regardless of argument or author order.
 Counts come from the composed file differences, not the sum of repeated attempts.
@@ -79,9 +80,8 @@ past the latest ID still return available IDs. When no selected ID is readable a
 IDs are missing, stdout instead reports `available IDs:` ranges retained in those
 IDs' streams. These are recovery suggestions, not substituted diffs or a claim of
 complete evidence; retired gaps are not bridged and unrelated streams are not
-listed. This recovery is shared by all read modes, including `--list` and `--net`.
-`--net` composes available evidence
-and reports skipped or uncomposable targets rather than claiming complete coverage.
+listed. This recovery is shared by all read modes, including `--list` and the
+default composed view. The composed view includes available evidence and reports skipped or uncomposable targets rather than claiming complete coverage.
 Successful output stays on stdout. `apply` and `revert` retain dependency checks
 and do not skip failed dependencies. It is not a net workspace diff;
 binary or incomplete files have unknown counts. Incomplete path rows append quoted retained
@@ -100,8 +100,8 @@ workspace so callers can correct `--workspace`. Consecutive missing IDs in one
 stream with the same failure reason share one range-qualified diagnostic.
 Ranges do not bridge available IDs, unselected IDs, or different failure reasons.
 
-`--net` composes selected completed captures in recorded capture order using the
-same review composition as the live view. It follows moves; diff output and edit
+The default view composes selected completed captures in recorded capture order
+using the same review composition as the live view. It follows moves; diff output and edit
 dialogs show workspace-relative paths inside the owning workspace and preserve
 absolute paths outside it. Retained evidence keeps canonical paths. It never reads
 the live workspace. Composed text creations and deletions each use one complete
@@ -109,7 +109,7 @@ file section, preserving all retained rows and line endings when applied with Gi
 Display-region boundaries do not split those operations into repeated file sections.
 Pending or retired history and
 inconsistent, incomplete, partial-coverage, or binary capture chains
-fail rather than claim a complete net diff; ordinary reads preserve that evidence.
+fail rather than claim a complete net diff; `--history` preserves that evidence.
 Complete captured diffs remain composable regardless of command exit status,
 including older retained records. Normal views
 describe captured file differences, not command outcomes; execution and capture
@@ -121,6 +121,11 @@ operation's intervals, while net composition interleaves all selected evidence
 in captured order. Retaining an interval boundary does not complete the host call.
 Path filters apply to the composed files. An empty composition is explicit and
 distinct from no selected captures or a path filter matching no captured files.
+For patch export, collect all pages, require a successful read and validate the
+collected output with the intended patch consumer before applying it. Pure moves
+use display-only headers, not Git patches. Failed reads can retain partial stdout;
+an ordinary pipeline can obscure the producer failure and modify the index before
+that failure is reported.
 An empty own-thread selection names the workspace and suggests explicit IDs for
 other agents; it does not imply that their captures are missing.
 Mutations still require explicit IDs; `--mine` never selects writes. `--history` includes the original observed patch or command input, the
@@ -135,8 +140,9 @@ boundaries. The receipt freezes the selected attempts, allocation state and view
 under the read lock, and retains those exact attempt dependencies. Appended
 attempts or a pending change completing cannot change an existing continuation;
 its original pending/retired markers remain visible. Older receipts without a
-frozen selection retain their digest-check behavior. Pending, expired, or incomplete
-history is explicit; no missing evidence becomes an empty successful diff.
+frozen selection retain their digest-check behavior. Retained empty-view selections
+keep their original per-attempt rendering; new default reads freeze the composed
+view. Pending, expired, or incomplete history is explicit; no missing evidence becomes an empty successful diff.
 In `--history`, a record with file changes is `applied`; a no-effect attempt
 is `no changes`. The original command's results and errors are separate debug
 information. Only unfinished work is `pending`.

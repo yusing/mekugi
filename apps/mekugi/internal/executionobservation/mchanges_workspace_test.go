@@ -197,7 +197,7 @@ func TestMChangesWrongWorkspaceReadKeepsValidTargets(t *testing.T) {
 		command := "mchanges " + view + " " + valid + " " + foreign
 		stdout, stderr, status := f.run(t, command)
 		marker := valid
-		if view == "--net" || view == "--summary" {
+		if view == "" || view == "--net" || view == "--summary" {
 			marker = "file.txt"
 		}
 		if status == 0 || !strings.Contains(stdout, marker) || !strings.Contains(stderr, foreign) {

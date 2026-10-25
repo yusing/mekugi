@@ -158,6 +158,11 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			return options, fmt.Errorf("resolve workspace: %w", err)
 		}
 	}
+	// New commands compose captures; retained empty-view selections keep their
+	// original per-attempt rendering for digest-checked recovery.
+	if options.view == "" {
+		options.view = "net"
+	}
 	return options, nil
 }
 
@@ -265,7 +270,7 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 			var readErr error
 			if options.view == "net" {
 				if len(change.Calls) == 0 || change.RetiredCalls != 0 {
-					readErr = fmt.Errorf("change %s has pending or retired history; cannot produce a complete --net view", id)
+					readErr = fmt.Errorf("change %s has pending or retired history; cannot produce a complete composed view; use --history to inspect it", id)
 				}
 			}
 			if readErr != nil {

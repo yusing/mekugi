@@ -178,7 +178,7 @@ func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 	f := newMChangesSliceFixture(t, "slice-arguments")
 	description := f.registry.FrontendGuidance.Descriptions
 	_, usageErr := testChanges().Parse([]string{"--invalid"}, f.workspace)
-	agentUsage := strings.Replace(strings.TrimPrefix(usageErr.Error(), "unknown option --invalid; "), "--summary|--history|--net", "--summary|--net", 1)
+	agentUsage := strings.TrimPrefix(usageErr.Error(), "unknown option --invalid; ")
 	if !strings.Contains(description, "Usage: `"+agentUsage+"`") {
 		t.Fatalf("agent-facing mchanges usage does not match parser usage: %q", description)
 	}
@@ -367,7 +367,7 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 	var bareOutput, mineOutput string
 	for _, command := range []string{"mchanges", "mchanges --mine"} {
 		stdout, stderr, status := f.run(t, command)
-		if status != 0 || stderr != "" || !strings.Contains(stdout, "own.txt") ||
+		if status != 1 || !strings.Contains(stderr, pending+" has pending") || !strings.Contains(stderr, retired+" is retired") || !strings.Contains(stdout, "own.txt") ||
 			strings.Contains(stdout, "outsider.txt") {
 			t.Errorf("%s did not read only the calling thread: %q, %q, %d", command, stdout, stderr, status)
 		}
@@ -430,7 +430,7 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 	}
 }
 
-func TestMChangesSlicesNetComposesRepeatedEditsAndRejectsIncompleteEvidence(t *testing.T) {
+func TestMChangesDefaultComposesRepeatedEditsAndRejectsIncompleteEvidence(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "slice-net")
 	correlation := "net-repeated-edits"
@@ -441,17 +441,29 @@ func TestMChangesSlicesNetComposesRepeatedEditsAndRejectsIncompleteEvidence(t *t
 	f.publish(t, id, correlation, "net-first-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{first}})
 	f.publish(t, id, correlation, "net-second-call", mekugiHistory{Attempt: 2, ReviewFiles: []diffmodel.ReviewFile{second}})
 	want := "--- \"target.txt\"\n+++ \"target.txt\"\n@@ -1,1 +1,1 @@\n-old value\n+final value\n"
-	stdout, stderr, status := f.run(t, "mchanges --net "+id)
+	stdout, stderr, status := f.run(t, "mchanges "+id)
 	if status != 0 || stderr != "" || stdout != want {
 		t.Fatalf("net composition = %q, %q, %d; want %q", stdout, stderr, status, want)
 	}
-	stdout, stderr, status = f.run(t, "mchanges --mine --net")
+	for _, command := range []string{"mchanges --net " + id, "mchanges"} {
+		alias, diagnostic, code := f.run(t, command)
+		if code != 0 || diagnostic != "" || alias != want {
+			t.Fatalf("%s: %q, %q, %d", command, alias, diagnostic, code)
+		}
+	}
+	stdout, stderr, status = f.run(t, "mchanges --mine")
 	if status != 0 || stderr != "" || stdout != want {
 		t.Fatalf("mine net composition = %q, %q, %d; want %q", stdout, stderr, status, want)
 	}
+	stdout, stderr, status = f.run(t, "mchanges --history "+id)
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "attempts=2") ||
+		!strings.Contains(stdout, "+intermediate value") || !strings.Contains(stdout, "-intermediate value") ||
+		!strings.Contains(stdout, "net-first-call") || !strings.Contains(stdout, "net-second-call") {
+		t.Fatalf("history lost original attempts: %q, %q, %d", stdout, stderr, status)
+	}
 
 	pending := f.reserve(t, f.thread, "net-pending")
-	stdout, stderr, status = f.run(t, "mchanges --net "+pending)
+	stdout, stderr, status = f.run(t, "mchanges "+pending)
 	if status == 0 || stdout != "" || !(strings.Contains(stderr, "pending") || strings.Contains(stderr, "incomplete")) {
 		t.Fatalf("pending net evidence was not rejected: %q, %q, %d", stdout, stderr, status)
 	}
@@ -460,7 +472,7 @@ func TestMChangesSlicesNetComposesRepeatedEditsAndRejectsIncompleteEvidence(t *t
 	f.publish(t, incomplete, incompleteCorrelation, "net-incomplete-call", mekugiHistory{
 		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("unknown.txt", "unknown.txt", "capture unavailable")},
 	})
-	stdout, stderr, status = f.run(t, "mchanges --net "+incomplete)
+	stdout, stderr, status = f.run(t, "mchanges "+incomplete)
 	if status == 0 || stdout != "" || !(strings.Contains(stderr, "incomplete") || strings.Contains(stderr, "pending")) {
 		t.Fatalf("incomplete net evidence was not rejected: %q, %q, %d", stdout, stderr, status)
 	}
@@ -503,7 +515,7 @@ func TestMChangesNetGitRoundTrip(t *testing.T) {
 			f.publish(t, last, "last", "last-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{
 				diffmodel.RenderReviewFile(path, afterPath, test.mid, test.after),
 			}})
-			patch, stderr, status := f.run(t, "mchanges --net "+first+".."+last+" --max-tokens 15500")
+			patch, stderr, status := f.run(t, "mchanges "+first+".."+last+" --max-tokens 15500")
 			if status != 0 || stderr != "" {
 				t.Fatalf("net read: %q, %q, %d", patch, stderr, status)
 			}
@@ -578,7 +590,7 @@ func TestMChangesNetWithoutOwnStreamExcludesSiblingChanges(t *testing.T) {
 	f.publish(t, sibling, correlation, "sibling-only-call", mekugiHistory{
 		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("sibling.txt", "sibling.txt", "old\n", "new\n")},
 	})
-	stdout, stderr, status := f.run(t, "mchanges --mine --net")
+	stdout, stderr, status := f.run(t, "mchanges --mine")
 	if status != 0 || stderr != "" || !strings.Contains(stdout, "no captures selected") || !strings.Contains(stdout, "use explicit IDs") ||
 		strings.Contains(stdout, "sibling.txt") {
 		t.Fatalf("empty own-thread net selection included sibling effects: %q, %q, %d", stdout, stderr, status)
@@ -590,10 +602,14 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 	f := newMChangesSliceFixture(t, "net-capture-confidence")
 	assertRejected := func(id, reason string) {
 		t.Helper()
-		stdout, stderr, status := f.run(t, "mchanges --net "+id)
+		stdout, stderr, status := f.run(t, "mchanges "+id)
 		if status == 0 || stdout != "" || !strings.Contains(stderr, reason) ||
-			!strings.Contains(stderr, "without --net to inspect") {
+			!strings.Contains(stderr, "use --history to inspect") {
 			t.Errorf("net accepted or obscured %s capture: %q, %q, %d", reason, stdout, stderr, status)
+		}
+		stdout, stderr, status = f.run(t, "mchanges --history "+id)
+		if status != 0 || stderr != "" || !strings.Contains(stdout, "input:") || !strings.Contains(stdout, "+after") {
+			t.Errorf("partial capture history: %q, %q, %d", stdout, stderr, status)
 		}
 	}
 
@@ -606,7 +622,7 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 		ExecOutcome:     &changecapture.Outcome{Status: "", Coverage: changecapture.CoverageExact},
 		ReviewFiles:     []diffmodel.ReviewFile{diffmodel.RenderReviewFile("exec.txt", "exec.txt", "before\n", "after\n")},
 	})
-	stdout, stderr, status := f.run(t, "mchanges --net "+codeMode)
+	stdout, stderr, status := f.run(t, "mchanges "+codeMode)
 	if status != 0 || stderr != "" || strings.Contains(stdout, "composing observed effects") || !strings.Contains(stdout, "-before\n+after\n") {
 		t.Fatalf("unconfirmed capture lost its diff or outcome: %q, %q, %d", stdout, stderr, status)
 	}
@@ -629,7 +645,7 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 			diffmodel.RenderReviewFile("after.txt", "after.txt", "same content\n", "confirmed edit\n"),
 		},
 	})
-	stdout, stderr, status = f.run(t, "mchanges --net "+move)
+	stdout, stderr, status = f.run(t, "mchanges "+move)
 	if status != 0 || stderr != "" || strings.Contains(stdout, "composing observed effects") || !strings.Contains(stdout, "+confirmed edit\n") {
 		t.Fatalf("unconfirmed move lost its diff or outcome: %q, %q, %d", stdout, stderr, status)
 	}
@@ -650,10 +666,14 @@ func TestMChangesNetKeepsTextWhenBinaryEvidenceFails(t *testing.T) {
 	f := newMChangesSliceFixture(t, "net-binary-evidence")
 	assertRejected := func(id string) {
 		t.Helper()
-		stdout, stderr, status := f.run(t, "mchanges --net "+id)
+		stdout, stderr, status := f.run(t, "mchanges "+id)
 		if status == 0 || stdout != "" || !strings.Contains(stderr, "binary evidence that cannot be composed") ||
-			!strings.Contains(stderr, "without --net to inspect") {
+			!strings.Contains(stderr, "use --history to inspect") {
 			t.Errorf("binary net evidence was not rejected with a review hint: %q, %q, %d", stdout, stderr, status)
+		}
+		stdout, stderr, status = f.run(t, "mchanges --history "+id)
+		if status != 0 || stderr != "" || !strings.Contains(stdout, "Binary files") {
+			t.Errorf("binary history: %q, %q, %d", stdout, stderr, status)
 		}
 	}
 
@@ -674,7 +694,7 @@ func TestMChangesNetKeepsTextWhenBinaryEvidenceFails(t *testing.T) {
 			diffmodel.RenderReviewFile("text.txt", "text.txt", "before\n", "after\n"),
 		},
 	})
-	stdout, stderr, status := f.run(t, "mchanges --net "+mixed)
+	stdout, stderr, status := f.run(t, "mchanges "+mixed)
 	if status != 1 || !strings.Contains(stdout, "text.txt") || !strings.Contains(stdout, "+after") || strings.Contains(stdout, "mixed.dat") || !strings.Contains(stderr, "binary evidence that cannot be composed") {
 		t.Fatalf("mixed net evidence: %q, %q, %d", stdout, stderr, status)
 	}
@@ -799,9 +819,9 @@ func TestMChangesOverlappingCapturesKeepIndependentEvidence(t *testing.T) {
 		ids = append(ids, id)
 	}
 	for _, selection := range []string{ids[0] + ".." + ids[5], strings.Join([]string{ids[5], ids[3], ids[2], ids[1], ids[4], ids[0]}, " ")} {
-		out, diagnostic, status := f.run(t, "mchanges --net "+selection)
+		out, diagnostic, status := f.run(t, "mchanges "+selection)
 		if status != 1 || !strings.Contains(diagnostic, ids[2]+" cannot be composed") ||
-			!strings.Contains(diagnostic, "captured source does not match") || !strings.Contains(diagnostic, "without --net") {
+			!strings.Contains(diagnostic, "captured source does not match") || !strings.Contains(diagnostic, "use --history") {
 			t.Fatalf("overlap diagnostic: %q %q %d", out, diagnostic, status)
 		}
 		for _, expected := range []string{"+first", "+documented", "+fourth", "-index+10\n+index+14", "-driver.message(now)", "-now := time.Now()", "+driver.message()"} {
@@ -813,8 +833,8 @@ func TestMChangesOverlappingCapturesKeepIndependentEvidence(t *testing.T) {
 			t.Fatalf("inconsistent source leaked into net: %q", out)
 		}
 	}
-	out, diagnostic, status := f.run(t, "mchanges "+ids[0]+".."+ids[5])
+	out, diagnostic, status := f.run(t, "mchanges --history "+ids[0]+".."+ids[5])
 	if status != 0 || diagnostic != "" || !strings.Contains(out, "-index+12\n+index+14") {
-		t.Fatalf("ordinary read lost overlapping capture: %q %q %d", out, diagnostic, status)
+		t.Fatalf("history read lost overlapping capture: %q %q %d", out, diagnostic, status)
 	}
 }
