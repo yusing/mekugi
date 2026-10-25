@@ -149,23 +149,6 @@ func TestCodeModeEditIntentBatchPreview(t *testing.T) {
 	}
 }
 
-func TestLiveActivityRequestedEditReplacedByReceipt(t *testing.T) {
-	view := newActivityAdapter()
-	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
-		Seq: 1, Agent: "/root/worker", Kind: "tool", CallID: "edit-call", Text: "Edit `a.go` · cat (requested)",
-	}}})
-	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
-		Seq: 2, Agent: "/root/worker", Kind: "exit", CallID: "edit-call", Text: "2",
-	}}})
-	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
-		Seq: 3, Agent: "/root/worker", Kind: "tool", CallID: "edit-call", Text: "Edit `a.go` +1 -1 · cat",
-	}}})
-	if len(view.Entries) != 1 || view.Entries[0].Source.Seq != 1 || view.Entries[0].Source.Text != "Edit `a.go` +1 -1 · cat" ||
-		len(view.blocks(0)) != 1 || view.blocks(0)[0].Verb != "Edit" || view.blocks(0)[0].ExitCode != 2 {
-		t.Fatalf("confirmed receipt did not replace requested edit and retain exit: records %+v", view.Entries)
-	}
-}
-
 func TestShellEditIntentDoesNotInventWrites(t *testing.T) {
 	for _, command := range []string{
 		`sed 's/old/new/' a.go`,

@@ -186,36 +186,6 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 	}
 }
 
-func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
-	v := newActivityAdapter()
-	caller := "/root/worker"
-	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
-		Seq: 1, Agent: caller, Kind: "tool", CallID: "call", Text: "Run\n```bash\npython3 edit.py\n```",
-	}}})
-	if len(v.Entries) != 1 || v.blocks(0)[0].Verb != "Run" {
-		t.Fatalf("pending command = %+v", v.Entries)
-	}
-	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
-		Seq: 3, Agent: caller, Kind: "exit", CallID: "call", Text: "1",
-	}}})
-	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
-		Seq: 4, Agent: caller, Kind: "tool", CallID: "call", Text: "Edit `edit.py` +1 -1",
-	}}})
-	if len(v.Entries) != 1 || v.blocks(0)[0].Verb != "Edit" || v.Entries[0].Source.Seq != 1 || v.LastSeq != 4 {
-		t.Fatalf("confirmed edit did not replace Run: records=%+v", v.Entries)
-	}
-	if len(v.blocks(0)) != 1 || v.blocks(0)[0].ExitCode != 1 ||
-		!strings.Contains(ansi.Strip(strings.Join(v.Painter.Block(v.blocks(0)[0], 80), "\n")), "exit 1") {
-		t.Fatalf("replacement lost failure: %+v", v.blocks(0))
-	}
-	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
-		Seq: 5, Agent: caller, Kind: "tool", CallID: "other", Text: "Edit `other.py` +1 -0",
-	}}})
-	if len(v.Entries) != 2 || v.blocks(1)[0].Verb != "Edit" {
-		t.Fatalf("unmatched receipt lost: %+v", v.Entries)
-	}
-}
-
 func TestLiveActivityViewCollapsesReadsAcrossRun(t *testing.T) {
 	view := newActivityAdapter()
 	now := time.Now()

@@ -13,6 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
 // Compare the complete feed and hit targets, not just the visible text: an
@@ -90,6 +91,9 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 				if !settleActivity(now.Add(time.Minute), v) {
 					t.Fatal("completed output did not collapse")
 				}
+			case "receipt":
+				v.ApplyCapturedEdits([]*changepresentation.Receipt{{Thread: entry.Native.Thread, Calls: []string{entry.Native.Item}, Text: "Edit `result.go` +3 -1"}})
+				v.publishActivity()
 			default:
 				update := entry
 				update.Seq = v.LastSeq + 1
@@ -102,8 +106,6 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 					update.Text = "**Checking the updated result**\nUpdated public summary"
 				case "exit":
 					update.Kind, update.Text, update.Native = "exit", "1", nil
-				case "receipt":
-					update.Text, update.Native = "Edit `result.go` +3 -1", nil
 				}
 				v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{update}})
 			}
