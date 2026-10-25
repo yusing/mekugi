@@ -80,7 +80,15 @@ func selectedEvent(tree *Tree, wait *Wait) *Effect {
 }
 
 func (tree *Tree) waitResult(wait *Wait) *WaitResult {
-	result := &WaitResult{ID: wait.ID, State: wait.State}
+	result := &WaitResult{ID: wait.ID, State: wait.State, EffectiveMS: wait.EffectiveMS}
+	if wait.Terminal != nil {
+		result.Event = new(*wait.Terminal)
+	}
+	for _, target := range wait.Targets {
+		if member := tree.Members[target]; member != nil {
+			result.Targets = append(result.Targets, member.Task)
+		}
+	}
 	for _, effect := range tree.Effects {
 		if effect.delivered() && effect.ClaimedBy == wait.ID && effect.Target == wait.Caller {
 			result.Event = tree.event(effect)
@@ -88,6 +96,35 @@ func (tree *Tree) waitResult(wait *Wait) *WaitResult {
 		}
 	}
 	return result
+}
+
+// Prefer ordered delivered events. A stopped target still settles a wait when
+// its notification was already read, was addressed to its own parent, or cannot
+// arrive because its runtime was paused. Pending direct delivery keeps ordering.
+func (tree *Tree) selectWaitOutcome(wait *Wait) bool {
+	if event := selectedEvent(tree, wait); event != nil {
+		event.ClaimedBy = wait.ID
+		return true
+	}
+	for _, id := range wait.Targets {
+		member := tree.Members[id]
+		if member == nil || member.HostRunning || member.Status != Completed && member.Status != Failed && member.Status != Interrupted && member.Status != Paused {
+			continue
+		}
+		pending := false
+		for _, effect := range tree.Effects {
+			if effect.Kind == "final" && effect.Caller == id && effect.Target == wait.Caller && effect.CallerGeneration == member.Generation && (effect.State == "pending" || hostOwned(effect.State)) {
+				pending = true
+				break
+			}
+		}
+		if pending {
+			continue
+		}
+		wait.Terminal = &Event{ID: wait.ID + ":stopped:" + id, Recipient: wait.Caller, Source: id, Task: member.Task, Turn: member.Turn, Generation: member.Generation, Kind: string(member.Status), Status: member.Status}
+		return true
+	}
+	return false
 }
 
 func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []string, all bool, timeout *int64, now time.Time) (result WaitResult, err error) {
@@ -117,8 +154,8 @@ func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []s
 			}
 			wait.RequestedMS, wait.EffectiveMS, wait.Deadline = new(*timeout), new(effective), new(now.Add(time.Duration(effective)*time.Millisecond))
 		}
-		if event := selectedEvent(tree, wait); event != nil {
-			event.ClaimedBy, wait.State = wait.ID, "completed"
+		if tree.selectWaitOutcome(wait) {
+			wait.State = "completed"
 		} else if wait.EffectiveMS != nil && *wait.EffectiveMS == 0 {
 			wait.State = "timeout"
 		}
@@ -195,12 +232,8 @@ func (s *Service) PrepareWake(ctx context.Context, thread string, now time.Time)
 		if wait == nil || wait.State != "registered" || wait.Stop != "committed" || member.HostRunning || member.Status != Waiting || wait.Generation != member.Generation {
 			return unchanged
 		}
-		event := selectedEvent(tree, wait)
-		if event == nil && (wait.Deadline == nil || now.Before(*wait.Deadline)) {
+		if !tree.selectWaitOutcome(wait) && (wait.Deadline == nil || now.Before(*wait.Deadline)) {
 			return unchanged
-		}
-		if event != nil {
-			event.ClaimedBy = wait.ID
 		}
 		wait.State = "queued"
 		result = new(wait.Effect)
@@ -229,6 +262,29 @@ func (tree *Tree) wakeResult(wait *Wait) *WaitResult {
 	result.State = "timeout"
 	if result.Event != nil {
 		result.State = "completed"
+	}
+	return result
+}
+
+// WaitPublication reads the selected subscription and its actual wake reason.
+// It borrows the immutable tree and copies only detached display facts.
+func (s *Service) WaitPublication(thread string) *WaitResult {
+	owner, err := s.owner(thread)
+	if err != nil {
+		return nil
+	}
+	tree := owner.state.Load()
+	wait := tree.Members[thread].Wait
+	if wait == nil {
+		return nil
+	}
+	result := tree.waitResult(wait)
+	result.EffectiveMS = nil
+	if wait.EffectiveMS != nil {
+		result.EffectiveMS = new(*wait.EffectiveMS)
+	}
+	if wait.State == "completed" && result.Event == nil {
+		result.State = "timeout"
 	}
 	return result
 }

@@ -52,6 +52,7 @@ type Value struct {
 	ShowWorkdir                                   bool
 	From, To, Owner                               string
 	WaitTargets                                   []WaitTarget
+	WaitTimeout, WaitReason                       string
 	Results                                       *int
 	Exited                                        bool
 	ExitCode                                      int

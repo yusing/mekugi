@@ -18,8 +18,12 @@ An admitted parent can observe its server-owned descendants through the same
 detached publications and native presentation subscriptions. These subscriptions
 accept only output and detail reads, never execution or input operations. Their
 closure releases the view without stopping the child. Detail dialogs retain their
-captured child source across display navigation until closed or replaced. Publication uses the child's
-confirmed workspace and settings, with no parent defaults for missing facts.
+captured child source across display navigation until closed or replaced.
+Publication borrows the same complete runtime frame used for Main, including
+retained review. The child's confirmed workspace and settings supply its path
+base and caption, with no parent defaults for missing facts. Family review
+composes admitted immutable captures once; roster totals and selected-child Diff
+retain the same source evidence and authorship.
 
 Creation and resume use the existing startup policy and retained history. Model
 and workspace choices describe the execution machine. Acknowledgement means

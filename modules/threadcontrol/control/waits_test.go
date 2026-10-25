@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	json "encoding/json/v2"
+	"fmt"
 	"path"
 	"path/filepath"
 	"testing"
@@ -255,7 +256,7 @@ func TestWaitAnyConsumesOnlyUnseenEvents(t *testing.T) {
 	}
 }
 
-func TestConsumedFinalStaysConsumedAfterRestart(t *testing.T) {
+func TestStoppedTargetAfterRestartKeepsResultConsumed(t *testing.T) {
 	s, session := fixture(t)
 	child(t, s, "root", "a", "/root/a", "at")
 	must(t, s.HostCompleted(t.Context(), "a", "at", Completed, ""))
@@ -269,8 +270,13 @@ func TestConsumedFinalStaysConsumedAfterRestart(t *testing.T) {
 	hostStarted(t, restored, "root", "resumed")
 	wait, err := restored.RegisterWait(t.Context(), identity("root", "resumed"), []string{"a"}, false, nil, time.Now())
 	must(t, err)
-	if wait.State != "registered" || wait.Event != nil {
-		t.Fatalf("restart redelivered a result already read by the parent: %+v", wait)
+	if wait.State != "completed" || wait.Event == nil || wait.Event.Status != Completed || wait.Event.Message != "" {
+		t.Fatalf("stopped target lost its terminal status: %+v", wait)
+	}
+	tree, err = restored.Snapshot("root")
+	must(t, err)
+	if !tree.Effect(final.Caller, final.ID).Consumed {
+		t.Fatal("restart made an already-read result deliverable again")
 	}
 }
 
@@ -551,4 +557,83 @@ func claimPending(t *testing.T, s *Service, ctx context.Context, caller string) 
 		}
 	}
 	return nil, nil
+}
+
+func TestWaitWakeReasonSurvivesRootTurnObservation(t *testing.T) {
+	s, _ := fixture(t)
+	child(t, s, "root", "child", "/root/child", "ct")
+	id := identity("root", "rt")
+	_, err := s.RegisterWait(t.Context(), id, nil, true, nil, time.Unix(100, 0))
+	must(t, err)
+	stop(t, s, id)
+	must(t, s.HostCompleted(t.Context(), "child", "ct", Completed, ""))
+	deliver(t, s, "child")
+	wake, err := claimWake(t, s, t.Context(), "root", time.Unix(101, 0))
+	must(t, err)
+	if wake == nil {
+		t.Fatal("no completion wake")
+	}
+	must(t, s.EffectAcknowledged(t.Context(), "root", wake.ID, Receipt{Turn: "next"}))
+	must(t, s.HostCompleted(t.Context(), "root", "next", Completed, ""))
+	must(t, s.RequestStarted(t.Context(), identity("root", "later"), true))
+	tree, err := s.Snapshot("root")
+	must(t, err)
+	wait := tree.Members["root"].Wait
+	if wait.State != "completed" || tree.waitResult(wait).Event == nil || tree.waitResult(wait).Event.Task != "/root/child" {
+		t.Fatalf("turn observation discarded wake reason: %+v", wait)
+	}
+}
+
+func TestStoppedTargetsSettleWaits(t *testing.T) {
+	for _, during := range []bool{false, true} {
+		for _, status := range []Status{Paused, Completed, Failed, Interrupted} {
+			t.Run(fmt.Sprintf("%s/during=%t", status, during), func(t *testing.T) {
+				s, _ := fixture(t)
+				child(t, s, "root", "running", "/root/running", "running-turn")
+				child(t, s, "root", "stopped", "/root/stopped", "stopped-turn")
+				id, now := identity("root", "rt"), time.Unix(100, 0)
+				settle := func() {
+					if status == Paused {
+						must(t, s.Pause(t.Context(), "stopped"))
+						return
+					}
+					must(t, s.HostCompleted(t.Context(), "stopped", "stopped-turn", status, ""))
+					deliver(t, s, "stopped")
+					// The result was already read before this wait; its stopped
+					// state must still avoid an indefinite subscription.
+					must(t, s.InputConsumed(t.Context(), id, []string{MessageItemID("stopped:1:stopped-turn:final")}))
+				}
+				if !during {
+					settle()
+				}
+				first, err := s.RegisterWait(t.Context(), id, []string{"running"}, false, nil, now)
+				must(t, err)
+				if first.State != "registered" {
+					t.Fatalf("unselected target woke wait: %+v", first)
+				}
+				_, err = s.CancelWait(t.Context(), id, id.Call)
+				must(t, err)
+				id.Call += "-mixed"
+				result, err := s.RegisterWait(t.Context(), id, []string{"running", "stopped"}, false, new(int64(100)), now)
+				must(t, err)
+				if during {
+					stop(t, s, id)
+					settle()
+					wake, err := claimWake(t, s, t.Context(), "root", now.Add(time.Millisecond))
+					must(t, err)
+					if wake == nil {
+						t.Fatal("stopped selected target left wait pending")
+					}
+					result = *wake
+					must(t, s.EffectAcknowledged(t.Context(), "root", id.Call, Receipt{Turn: "continued"}))
+				}
+				if result.State != "completed" || result.Event == nil || result.Event.Task != "/root/stopped" || result.Event.Status != status {
+					t.Fatalf("wrong stopped-target disposition: %+v", result)
+				}
+				if got := s.WaitPublication("root"); got.Event == nil || got.Event.Status != status {
+					t.Fatalf("lost visible reason: %+v", got)
+				}
+			})
+		}
+	}
 }

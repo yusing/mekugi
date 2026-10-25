@@ -17,7 +17,7 @@ func (b Value) ProgressText() string {
 	text.WriteString(textsanitize.Safe(body, false))
 	for i, target := range b.WaitTargets {
 		if i == 0 {
-			text.WriteString(" · ")
+			text.WriteString(" ")
 		} else {
 			text.WriteString(", ")
 		}
@@ -26,6 +26,12 @@ func (b Value) ProgressText() string {
 		if target.Status != "" {
 			text.WriteString(": " + textsanitize.Safe(target.Status, false))
 		}
+	}
+	if b.WaitTimeout != "" {
+		text.WriteString(" (timeout " + b.WaitTimeout + ")")
+	}
+	if b.WaitReason != "" {
+		text.WriteString(": " + textsanitize.Safe(b.WaitReason, false))
 	}
 	return text.String()
 }

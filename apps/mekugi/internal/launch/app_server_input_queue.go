@@ -176,6 +176,7 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 		delete(owned, path)
 	}
 	attached.presentation.StageInput(&control.Live, attached.conversation, id, s, steer)
+	control.Shell.ConsumeContinuation()
 	if !steer {
 		hook.readyThread = ""
 	}

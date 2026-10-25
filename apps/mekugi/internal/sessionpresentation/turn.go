@@ -14,6 +14,7 @@ type TurnModels struct {
 	Agent      *activity.AgentLifecycle
 	Selected   string
 	Start      string // Admitted start origin for this thread, when supplied by live control.
+	Auxiliary  bool
 }
 
 type TurnObservation struct {
@@ -46,14 +47,16 @@ func (a *Attachment) ObserveTurn(models TurnModels, e TurnObservation) TurnUpdat
 			record.start = models.Start
 			a.turns[key] = record
 		}
-		models.Agent.TurnStarted(e.At)
+		if !models.Auxiliary {
+			models.Agent.TurnStarted(e.At)
+		}
 	case observation.TurnCompleted:
 		result.Current = result.Admitted && (models.Selected == "" || models.Selected == e.Turn)
 		if result.Admitted {
 			result.Text = models.Transcript.TurnCompleted(e.Thread, e.Turn, e.Status, e.At, result.Current, stores)
 			a.CloseTurn(e.Thread, e.Turn)
 		}
-		if result.Current {
+		if result.Current && !models.Auxiliary {
 			models.Agent.TurnCompleted(e.Status == "completed", e.At)
 		}
 	}

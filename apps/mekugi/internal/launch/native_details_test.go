@@ -13,8 +13,10 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
@@ -477,30 +479,59 @@ func TestNativeChildDialogLinkKeepsSourceAcrossNavigation(t *testing.T) {
 
 func TestNativeChildProjectionRetainsImmutableSnapshots(t *testing.T) {
 	n := &nativeViews{threads: &threadExecution{}}
-	v := &nativeSessionView{}
 	base := &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{Thread: "child", Name: "/root/worker", Role: "worker"}}}}
-	project := func(children map[string]sessionapi.Descendant) *activity.Publication {
+	project := func(children map[string]sessionapi.Frame) *activity.Publication {
 		frame := sessionapi.NativeFrame{Agents: base, View: sessionpresentation.View{Main: sessionpresentation.Thread{ID: "main"}, Displayed: sessionpresentation.Thread{ID: "main"}}}
-		n.publishChild(v, &frame, children)
+		n.publishChild(&frame, children)
 		return frame.Agents
 	}
 	if got := project(nil); got != base {
 		t.Fatal("a view without child publications copied its immutable feed")
 	}
 	own := &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{Thread: "child", Name: "/root", Status: "working", Summary: []activity.Entry{{Agent: "Main", Text: "retained"}}}}}}
-	first := project(map[string]sessionapi.Descendant{"child": {Agents: own}})
+	first := project(map[string]sessionapi.Frame{"child": {Agents: own}})
 	if first == base || first.Roster[0].Agent.Status != "working" || first.Roster[0].Agent.Name != "/root/worker" || first.Roster[0].Agent.Summary[0].Agent != "/root/worker" {
 		t.Fatal("child roster projection lost owner facts or caller labels")
 	}
-	if got := project(map[string]sessionapi.Descendant{"child": {Agents: own, Caption: sessionpresentation.Caption{Model: "changed"}}}); got != first {
+	if got := project(map[string]sessionapi.Frame{"child": {Agents: own, Caption: sessionpresentation.Caption{Model: "changed"}}}); got != first {
 		t.Fatal("unchanged Activity snapshots replaced the projected feed")
 	}
 	next := &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{Thread: "child", Name: "/root", Status: "idle"}}}}
-	second := project(map[string]sessionapi.Descendant{"child": {Agents: next}})
+	second := project(map[string]sessionapi.Frame{"child": {Agents: next}})
 	if second == first || second.Roster[0].Agent.Status != "idle" || first.Roster[0].Agent.Status != "working" || base.Roster[0].Agent.Status != "" {
 		t.Fatal("changed child snapshot mutated or reused its predecessor")
 	}
 	if got := project(nil); got != base {
 		t.Fatal("retired child retained a stale projected feed")
+	}
+}
+
+func TestNativeFamilyReviewComposesOwnerCapturesOnce(t *testing.T) {
+	capture := func(key, caller, before, after string, order uint64) changes.Publication {
+		return changes.Publication{}.With(changes.GroupCaptures([]changes.Chunk{{Key: key, Workspace: "/workspace", CaptureOrder: order,
+			Origin: changes.Origin{Caller: caller}, Review: diffmodel.RenderReviewFile("/workspace/file.go", "/workspace/file.go", before, after)}}))
+	}
+	root := &changes.ReviewView{Revision: 1, Workspace: "/workspace", Publication: capture("root1", "/root", "one\n", "one\nparent\n", 1)}
+	child := &changes.ReviewView{Revision: 1, Workspace: "/workspace", Publication: capture("child1", "/root/child", "one\nparent\n", "one\nchild\n", 2)}
+	agents := &activity.Publication{}
+	children := map[string]sessionapi.Frame{"child": {Review: child}, "nested": {Review: child}}
+	n := nativeViews{threads: &threadExecution{}}
+	frame := sessionapi.NativeFrame{Agents: agents, Review: root}
+	n.publishChild(&frame, children)
+	if counts := frame.Agents.NetCounts; counts == nil || counts.Added != 1 || counts.Removed != 0 {
+		t.Fatalf("family counts summed overlapping edits or duplicated nested captures: %+v", counts)
+	}
+	if counts := frame.Agents.LineCounts["/root/child"]; counts.Added != 1 || counts.Removed != 1 {
+		t.Fatalf("child counts: %+v", counts)
+	}
+	review := frame.Review
+	children["child"] = sessionapi.Frame{Review: child, Agents: &activity.Publication{LastSeq: 1}}
+	frame = sessionapi.NativeFrame{Agents: agents, Review: root}
+	n.publishChild(&frame, children)
+	if frame.Review != review {
+		t.Fatal("ordinary child activity recomposed unchanged retained review")
+	}
+	if root.Counts.Net.Added != 1 || len(root.Files[0].Chunks) != 1 {
+		t.Fatal("family projection mutated root's immutable evidence")
 	}
 }

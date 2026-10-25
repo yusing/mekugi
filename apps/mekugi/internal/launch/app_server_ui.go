@@ -213,12 +213,18 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	var restoredCoordination string
 	var dispatch func(appserver.Message) error
 	dispatch = func(m appserver.Message) error {
-		if control.Requests.CompleteCall(m) {
+		response, _ := control.Requests.Lookup(string(m.ID))
+		if control.CompleteCall(m) {
+			if m.Error == nil {
+				if input := response.NativeDelivery(); input != nil {
+					publishNativeDelivery(&attached, *input, presentationTime(clock))
+				}
+			}
 			return nil
 		}
 		if threads != nil {
 			syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
-			if err := threads.driver.Observe(m.Method, m.Params); err != nil {
+			if err := observeLogicalHost(threads.driver, &control.Live, m); err != nil {
 				return err
 			}
 		}
@@ -722,8 +728,8 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					persistSessionTitle(&control, generator, &attached.feedback, shell, clock, update)
 				case request := <-guard.Requests():
 					addGuardApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, panel != nil || resumePicker != nil, notifications, reviewOwner, &receipts, request)
-				case call := <-control.Requests.Calls():
-					control.Requests.Dispatch(call)
+				case call := <-control.Calls():
+					control.Dispatch(call)
 				case <-threadChanges:
 					syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
 					for _, failure := range threads.driver.Failures() {
@@ -817,7 +823,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 							return err
 						}
 					}
-					if attached.threadInput.preparing() || len(attached.conversation.Unsent) > 0 && attached.conversation.Unsent[0].Question != nil && (observationInputs == nil || !observationInputs.EmittingToolInput(attached.cwd, control.Thread)) {
+					if control.Shell.Continuation() || attached.threadInput.preparing() || len(attached.conversation.Unsent) > 0 && attached.conversation.Unsent[0].Question != nil && (observationInputs == nil || !observationInputs.EmittingToolInput(attached.cwd, control.Thread)) {
 						if err := flushInput(&attached, shell, &control, &picker, &questions, &approvalDock, clock, model, serviceTiers, environment, ownedImages, &guardHook, &editor, ctx, restoring != nil, observationInputs, reviewOwner, &receipts); err != nil {
 							return err
 						}
@@ -1274,6 +1280,9 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				return err
 			}
 			startAttachedSession(attached, bindings, control.Thread, result.Thread.Cwd)
+			if method == "thread/start" {
+				restoreDiffThread(attached, terminal, (*reviewOwner), reviewSource, preparePane, result.Thread)
+			}
 			(*streams) = terminalsession.Streams{}
 			retainedSession.Close()
 			(*retainedSession) = history.Session{}
@@ -1467,6 +1476,7 @@ func observedEvent(attached *attachedPresentation, terminal *terminalsession.Att
 			}
 		}
 		if p.ThreadID == control.Thread && p.Turn.ID == control.Turn {
+			shellTurn := control.Shell.OwnsTurn(p.Turn.ID)
 			if r := control.Rewind; r != nil && r.Turn == p.Turn.ID && p.Turn.Status != "completed" {
 				r.Completed, r.Failed = true, true
 			}
@@ -1476,14 +1486,14 @@ func observedEvent(attached *attachedPresentation, terminal *terminalsession.Att
 			if p.Turn.Error != nil {
 				failure = &p.Turn.Error.Message
 			}
-			localStop := control.LocalStop == p.Turn.ID && p.Turn.Status == "completed"
+			localStop := p.Turn.Status == "completed" && (control.LocalStop == p.Turn.ID || shellTurn && control.LocalStop != "")
 			if localStop {
 				attached.presentation.Status.Set("Waiting for agents", false)
 			} else {
 				attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(clock))
 			}
 			settleInput(attached, terminal, control, picker, questions, approvals, clock, p.Turn.ID, p.Turn.Status == "interrupted")
-			if !localStop && p.Turn.Status == "completed" && questions.Count(control.Thread) == 0 {
+			if !localStop && !shellTurn && p.Turn.Status == "completed" && questions.Count(control.Thread) == 0 {
 				notifications.notify(&attached.feedback, terminal, clock, "agent-turn-complete", "Agent turn complete")
 			}
 			for _, c := range questions.calls() {

@@ -4,22 +4,12 @@ import (
 	"context"
 	"errors"
 	"sync"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	activity "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
-// Descendant is a borrowed immutable publication, not another runtime or feed.
-type Descendant struct {
-	Session      Session
-	Caption      sessionpresentation.Caption
-	Main, Agents *activity.Publication
-}
-
 // Descendants reads only runtimes owned below the selected parent's lifetime.
-func (h *Hub) Descendants(parent string) map[string]Descendant {
+func (h *Hub) Descendants(parent string) map[string]Frame {
 	h.mu.Lock()
-	result := make(map[string]Descendant)
+	result := make(map[string]Frame)
 	root := h.sessions[parent]
 	if root == nil || root.runtime == nil {
 		h.mu.Unlock()
@@ -39,7 +29,7 @@ func (h *Hub) Descendants(parent string) map[string]Descendant {
 	for id, s := range servers {
 		s.mu.Lock()
 		if s.published {
-			result[id] = Descendant{s.session, s.caption, s.main.publication, s.agents.publication}
+			result[id] = s.frame
 		}
 		s.mu.Unlock()
 	}

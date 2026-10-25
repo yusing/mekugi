@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
 func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
@@ -34,6 +36,10 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 	child.Startup.Prepared = &sessioncontrol.PreparedThread{Parent: "main"}
 	child.attached.threadInput = &threadInput{admitted: true, caller: "/root/worker", role: "worker"}
 	main.attached.session.RegisterThread(observation.Thread{ID: "child", Path: "/root/worker", Role: "worker"})
+	captures := changes.Publication{}.With(changes.GroupCaptures([]changes.Chunk{{Key: "child-change", Workspace: child.attached.cwd, CaptureOrder: 1,
+		Origin: changes.Origin{Caller: "/root/worker", Change: "child1", Source: "apply_patch"},
+		Review: diffmodel.RenderReviewFile("", filepath.Join(child.attached.cwd, "child.go"), "", "package child\n// captured child edit\n")}}))
+	child.reviewSource.PublishReview(child.attached.session.Scope(), &changes.Snapshot{Publication: captures}, child.attached.cwd, "", "")
 	frames := make(map[string]sessionapi.NativeFrame)
 	for _, u := range []*appServerUI{main, child} {
 		u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, false)
@@ -42,11 +48,11 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 		u.attached.presentation.Status.Text = "Ready"
 		u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 		u.testMainFrame(100, 12, 0)
-		frames[u.Thread] = sessionapi.NativeFrame{View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: u.attached.childSource.Publication(u.attached.presentation, u.attached.source)}
+		frames[u.Thread] = sessionapi.NativeFrame{View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: u.attached.childSource.Publication(u.attached.presentation, u.attached.source), Review: new(u.reviewSource.ReviewView(u.attached.session.Scope()))}
 	}
 	parentFrame := frames["main"]
 	childFrame := frames["child"]
-	(&nativeViews{threads: &threadExecution{}}).publishChild(&nativeSessionView{}, &parentFrame, map[string]sessionapi.Descendant{"child": {Session: sessionapi.Session{Thread: "child", Workspace: child.attached.cwd}, Caption: childFrame.View.Caption, Main: childFrame.Main, Agents: childFrame.Agents}})
+	(&nativeViews{threads: &threadExecution{}}).publishChild(&parentFrame, map[string]sessionapi.Frame{"child": {Session: sessionapi.Session{Thread: "child", Workspace: child.attached.cwd}, Caption: childFrame.View.Caption, Main: childFrame.Main, Agents: childFrame.Agents, Review: childFrame.Review}})
 	frames["main"] = parentFrame
 	if len(parentFrame.ChildThreads) != 1 || parentFrame.ChildThreads[0] != "child" {
 		t.Fatal("live child was not published for runtime attachment")
@@ -134,6 +140,19 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 		t.Fatalf("child runtime caption/input: %s", plain)
 	}
 	assertNativeUISnapshot(t, "native-child-runtime-input", painted.Rows)
+	rosterRows := terminal.Agents.NativeRoster(100, 8, now, false)
+	if text := ansi.Strip(strings.Join(rosterRows, "\n")); !strings.Contains(text, "+2") {
+		t.Fatalf("child capture totals missing from native family roster: %s", text)
+	}
+	diff, err := terminal.Diff.Paint(t.Context(), terminal.Auxiliary, 100, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := ansi.Strip(strings.Join(diff, "\n")); !strings.Contains(text, "captured child edit") || strings.Contains(text, child.attached.cwd) {
+		t.Fatalf("selected child diff missing: %s", text)
+	}
+	assertNativeUISnapshot(t, "native-child-runtime-diff", diff)
+	assertNativeUISnapshot(t, "native-child-runtime-roster", rosterRows)
 	roster := selected.renderer.frame.Agents
 	selected.refresh(now)
 	if selected.renderer.frame.Agents != roster {
@@ -342,5 +361,16 @@ func TestChildFamilyRosterPreservesEditCounts(t *testing.T) {
 	rows := ansi.Strip(strings.Join(terminal.Agents.NativeRoster(120, 10, time.Now(), false), "\n"))
 	if !strings.Contains(rows, "+100") || !strings.Contains(rows, "+103") {
 		t.Fatalf("selected child changed family roster edit ownership:\n%s", rows)
+	}
+}
+
+func TestPreparedChildStartsWithItsOwnReviewWorkspace(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.Startup.Prepared = &sessioncontrol.PreparedThread{Parent: "main"}
+	appServerTestRequest(t, u, "1", "thread/start")
+	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"child","cwd":"/var/tmp/child-worktree","turns":[]}}}`)
+	view := u.reviewSource.ReviewView(u.attached.session.Scope())
+	if view.Workspace != "/var/tmp/child-worktree" || !u.review.Scope().Workspaces[view.Workspace]["child"] {
+		t.Fatalf("fresh child borrowed another review workspace: %+v", view)
 	}
 }

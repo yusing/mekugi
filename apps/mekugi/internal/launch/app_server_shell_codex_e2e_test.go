@@ -92,8 +92,23 @@ func TestAppServerShellNativeCodex(t *testing.T) {
 	}
 	// The standalone host harness must supply both parts of launch's frontend
 	// environment, including inherited PATH before any shell snapshot is made.
-	runAppServerPreviewWith(t, p, proxy, appServerPreview{environment: []string{routerTestWorkerEnvironment + "=1", "PATH=" + f.registry.FrontendDirectory + string(os.PathListSeparator) + execTrackPath(), "BASH_ENV=" + startup}, beforePrompt: before})
+	retry := func(t *testing.T, outer io.Writer, _ func(string), awaitFrame func(func(string) bool), _ *vt.Emulator) {
+		// Captured changes may paint before native shell input admission settles.
+		// Follow its visible retry instruction while the original draft remains.
+		awaitFrame(func(frame string) bool {
+			if strings.Contains(frame, "Previous input is still settling") && strings.Contains(frame, "❯ A deterministic preview prompt") {
+				if _, err := io.WriteString(outer, "\r"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			return strings.Contains(frame, "Recovered after a retry.")
+		})
+	}
+	runAppServerPreviewWith(t, p, proxy, appServerPreview{environment: []string{routerTestWorkerEnvironment + "=1", "PATH=" + f.registry.FrontendDirectory + string(os.PathListSeparator) + execTrackPath(), "BASH_ENV=" + startup}, beforePrompt: before, duringTurn: retry})
 	if !p.sawOutput.Load() {
 		t.Fatal("next user input did not carry native shell output")
+	}
+	if p.calls.Load() != 1 {
+		t.Fatalf("shell input retry repeated inference: %d calls", p.calls.Load())
 	}
 }

@@ -1,6 +1,10 @@
 package launch
 
 import (
+	json "encoding/json/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -14,7 +18,7 @@ import (
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-func logicalWaitUI(t *testing.T, cancelSubscription bool) (*appServerUI, *threadExecution, *time.Time) {
+func logicalWaitUI(t *testing.T, cancelSubscription bool, timeout *int64) (*appServerUI, *threadExecution, *time.Time) {
 	t.Helper()
 	check := func(err error) {
 		t.Helper()
@@ -48,8 +52,17 @@ func logicalWaitUI(t *testing.T, cancelSubscription bool) (*appServerUI, *thread
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first"}})
 	caller.Call = "wait"
-	_, err = service.RegisterWait(t.Context(), caller, nil, true, new(int64(1000)), *at)
+	registration, err := service.RegisterWait(t.Context(), caller, nil, true, timeout, *at)
 	check(err)
+	payload, err := json.Marshal(registration)
+	check(err)
+	envelope, err := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": string(payload)}}})
+	check(err)
+	args := `{}`
+	if timeout != nil {
+		args = `{"timeout_ms":1000}`
+	}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "first", "item": binding.ThreadItem{ID: "wait-item", Type: "mcpToolCall", Server: "threadcontrol", Tool: "wait_agent", Status: "completed", Arguments: []byte(args), Result: envelope}})
 	check(service.Execution(t.Context(), "main", "first", "exec", "", true))
 	stop, err := service.ClaimLocalStop(t.Context(), "main", "first", "exec")
 	check(err)
@@ -72,7 +85,7 @@ func logicalWaitUI(t *testing.T, cancelSubscription bool) (*appServerUI, *thread
 }
 
 func TestUISnapshotLogicalWaiting(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, false)
+	u, threads, at := logicalWaitUI(t, false, new(int64(1000)))
 	appServerTestNotify(t, u, "thread/status/changed", map[string]any{"threadId": "main", "status": map[string]any{"type": "idle"}})
 	*at = at.Add(8 * time.Second)
 	rows, _ := u.testMainFrame(80, 8, 0)
@@ -100,7 +113,7 @@ func TestUISnapshotLogicalWaiting(t *testing.T) {
 }
 
 func TestLogicalWaitContinuationPreservesElapsed(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, false)
+	u, threads, at := logicalWaitUI(t, false, new(int64(1000)))
 	*at = at.Add(8 * time.Second)
 	service := threads.shared
 	wake, err := service.PrepareWake(t.Context(), "main", *at)
@@ -114,6 +127,16 @@ func TestLogicalWaitContinuationPreservesElapsed(t *testing.T) {
 		t.Fatal(err)
 	}
 	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	before := len(u.attached.source.Entries)
+	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	if len(u.attached.source.Entries) != before {
+		t.Fatal("wake repeated its completion notice")
+	}
+	rows, _ := u.testMainFrame(100, 15, 0)
+	text := ansi.Strip(strings.Join(rows, "\n"))
+	if !strings.Contains(text, "Finished waiting for worker: timeout") {
+		t.Fatalf("invisible timeout wake: %s", text)
+	}
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "continued"}})
 	*at = at.Add(3 * time.Second)
 	_, _ = u.testMainFrame(80, 8, 0)
@@ -125,7 +148,7 @@ func TestLogicalWaitContinuationPreservesElapsed(t *testing.T) {
 func TestLogicalWaitHumanCancellation(t *testing.T) {
 	for _, canceled := range []bool{false, true} {
 		t.Run(map[bool]string{false: "active-subscription", true: "canceled-subscription"}[canceled], func(t *testing.T) {
-			u, threads, at := logicalWaitUI(t, canceled)
+			u, threads, at := logicalWaitUI(t, canceled, nil)
 			if err := threads.driver.Start(t.Context()); err != nil {
 				t.Fatal(err)
 			}
@@ -151,7 +174,7 @@ func TestLogicalWaitHumanCancellation(t *testing.T) {
 }
 
 func TestUISnapshotLogicalPausedChildren(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, false)
+	u, threads, at := logicalWaitUI(t, false, new(int64(1000)))
 	if err := threads.shared.Pause(t.Context(), "main"); err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +223,7 @@ func TestRecoveryInputRetriesWithoutAnotherHostMessage(t *testing.T) {
 
 func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		u, threads, _ := logicalWaitUI(t, false)
+		u, threads, _ := logicalWaitUI(t, false, new(int64(1000)))
 		if err := threads.shared.HostCompleted(t.Context(), "child", "child-turn", control.Completed, ""); err != nil {
 			t.Fatal(err)
 		}
@@ -227,4 +250,45 @@ func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
 		wire := u.Host.Input.(*appServerTestInput)
 		appServerOneRequest(t, wire, "thread/compact/start", "")
 	})
+}
+
+func TestUISnapshotLogicalWaitNoTimeout(t *testing.T) {
+	u, threads, at := logicalWaitUI(t, false, nil)
+	*at = at.Add(time.Hour)
+	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	if wake, err := threads.shared.PrepareWake(t.Context(), "main", *at); err != nil || wake != nil {
+		t.Fatalf("deadline-free wait woke without an event: %+v %v", wake, err)
+	}
+	agent := u.attached.session.Agent("/root")
+	if agent.Responding || !agent.Waiting || agent.WaitingFor != "worker" {
+		t.Fatalf("stopped parent remained active: %+v", agent)
+	}
+	rows, _ := u.testMainFrame(100, 10, 0)
+	if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Waiting for worker") || strings.Contains(text, "timeout") {
+		t.Fatalf("deadline-free wait: %s", text)
+	}
+	assertNativeUISnapshot(t, "logical-wait-no-timeout", rows)
+}
+
+func TestLogicalStoppedTargetPublishesWakeReason(t *testing.T) {
+	u, threads, at := logicalWaitUI(t, false, nil)
+	service := threads.shared
+	if err := service.Pause(t.Context(), "child"); err != nil {
+		t.Fatal(err)
+	}
+	wake, err := service.PrepareWake(t.Context(), "main", *at)
+	if err != nil || wake == nil {
+		t.Fatalf("stopped child did not wake: %+v %v", wake, err)
+	}
+	if _, err := service.ClaimEffect(t.Context(), "main", wake.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.EffectAcknowledged(t.Context(), "main", wake.ID, control.Receipt{Turn: "continued"}); err != nil {
+		t.Fatal(err)
+	}
+	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	rows, _ := u.testMainFrame(100, 15, 0)
+	if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Finished waiting for worker: paused") {
+		t.Fatalf("stopped-target wake was invisible: %s", text)
+	}
 }

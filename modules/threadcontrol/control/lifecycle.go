@@ -21,7 +21,7 @@ func (s *Service) RequestStarted(ctx context.Context, caller Identity, root bool
 			return errors.New("request overlaps another host turn")
 		}
 		if root {
-			if member.Wait != nil && !hostOwned(member.Wait.State) {
+			if member.Wait != nil && (member.Wait.State == "registered" || member.Wait.State == "queued") {
 				cancelSubscription(tree, member)
 			}
 			if !member.Reserved() {

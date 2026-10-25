@@ -22,6 +22,7 @@ type ObservationInput struct {
 	Main, Selected, Workspace, CommandTimeout string
 	Start                                     string // Main's admitted start origin, absent during replay.
 	Tracked                                   bool
+	AuxiliaryTurn                             bool // Standalone user-shell execution, not model work.
 }
 
 type ObservationResult struct {
@@ -144,7 +145,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 			active, start = agent.Turn, ""
 		}
 		updates := s.ObserveTurn(TurnModels{
-			Transcript: transcript, Agent: s.Lifecycle(p.ThreadID), Selected: active, Start: start,
+			Transcript: transcript, Agent: s.Lifecycle(p.ThreadID), Selected: active, Start: start, Auxiliary: in.AuxiliaryTurn,
 		}, TurnObservation{
 			Kind: observation.Kind(method), Thread: p.ThreadID, Turn: p.TurnID,
 			Status: p.TurnStatus, At: now,

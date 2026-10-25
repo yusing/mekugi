@@ -1,6 +1,6 @@
-Mekugi dev • codex
+• Waiting for worker (timeout 1s)
 
-
+• Finished waiting for worker: paused
 
 
 ╭─ Paused ─────────────────────────────────────────────────────────────────────╮

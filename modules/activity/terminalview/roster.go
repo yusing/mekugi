@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -483,6 +484,9 @@ func (v *View) AgentState(agent activitypresentation.Agent, width int, now time.
 	case agent.Paused:
 		return terminalui.Dim + "paused" + terminalui.Undim
 	case agent.Waiting:
+		if agent.WaitingFor != "" {
+			return "waiting for " + textsanitize.Safe(agent.WaitingFor, false)
+		}
 		return "waiting"
 	case agent.LatestKind == "error":
 		return terminalui.Red + "error" + terminalui.Reset

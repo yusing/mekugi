@@ -15,10 +15,10 @@ import (
 )
 
 func TestUISnapshotWaitProgressMutedTargets(t *testing.T) {
-	block := activityui.Block{Kind: "progress", Body: "Finished waiting", WaitTargets: []activityui.WaitTarget{
+	block := activityui.Block{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activityui.WaitTarget{
 		{Name: "/root/agent1", Status: "Still running"}, {Name: "/root/agent6", Status: "completed"},
 	}}
-	if block.ProgressText() != "Finished waiting · agent1: Still running, agent6: completed" {
+	if block.ProgressText() != "Finished waiting for agent1: Still running, agent6: completed" {
 		t.Fatal("plain summary differs")
 	}
 	var p activityui.Painter
@@ -39,7 +39,7 @@ func TestWaitProgressSanitizesHostText(t *testing.T) {
 	b := activityui.Block{Kind: "progress", Body: "Waiting", WaitTargets: []activityui.WaitTarget{{Name: "/root/agent\x1b[31m", Status: "done\x1b[2J"}}}
 	p := activityui.Painter{}
 	rows := strings.Join(p.Block(b, 120), "\n")
-	if strings.Contains(rows, "\x1b[31m") || strings.Contains(rows, "\x1b[2J") || ansi.Strip(rows) != "• Waiting · agent: done" {
+	if strings.Contains(rows, "\x1b[31m") || strings.Contains(rows, "\x1b[2J") || ansi.Strip(rows) != "• Waiting agent: done" {
 		t.Fatalf("unsafe wait: %q", rows)
 	}
 }
@@ -56,7 +56,7 @@ func TestUISnapshotWaitingBreathing(t *testing.T) {
 				}
 				p.Colors = terminalui.Colors{Foreground: fg, Background: bg, HasForeground: true, HasBackground: true}
 			}
-			wait := activityui.Block{Kind: "progress", Body: "Waiting for agent (timeout 600s)", Live: true, WaitTargets: []activityui.WaitTarget{{Name: "/root/agent1"}, {Name: "/root/agent6"}}}
+			wait := activityui.Block{Kind: "progress", Body: "Waiting for", WaitTimeout: "10m0s", Live: true, WaitTargets: []activityui.WaitTarget{{Name: "/root/agent1"}, {Name: "/root/agent6"}}}
 			reasoning := activityui.Block{Kind: "summary", Body: "Checking results", Live: true}
 			var rows []string
 			for _, phase := range []time.Duration{0, time.Second} {
@@ -69,4 +69,11 @@ func TestUISnapshotWaitingBreathing(t *testing.T) {
 			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/wait_breathing_%d.txt", theme), rows, 100)
 		})
 	}
+}
+
+func TestUISnapshotWaitTimeoutMuted(t *testing.T) {
+	p := activityui.Painter{Clock: func() time.Time { return time.Unix(0, 0) }}
+	block := activityui.Block{Kind: "progress", Body: "Waiting for", Live: true, WaitTargets: []activityui.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "10s"}
+	rows := append(p.Block(block, 100), "plain after wait")
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/wait_timeout.txt", rows, 100)
 }

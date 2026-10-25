@@ -71,6 +71,7 @@ type Wait struct {
 	Targets                  []string
 	RequestedMS, EffectiveMS *int64
 	Deadline                 *time.Time
+	Terminal                 *Event
 }
 
 // View exposes wait state without checkpoint settings or effect payloads.
@@ -138,9 +139,11 @@ type Receipt struct {
 }
 
 type WaitResult struct {
-	ID    string `json:"id"`
-	State string `json:"state"`
-	Event *Event `json:"event,omitempty"`
+	ID          string   `json:"id"`
+	State       string   `json:"state"`
+	Event       *Event   `json:"event,omitempty"`
+	Targets     []string `json:"targets,omitempty"`
+	EffectiveMS *int64   `json:"effective_ms,omitempty"`
 }
 
 func (tree *Tree) Effect(caller, id string) *Effect {

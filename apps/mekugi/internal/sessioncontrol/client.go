@@ -21,6 +21,47 @@ type Client[T any] struct {
 	retired  map[string]string // Retired thread to its former session root.
 }
 
+// Calls admits feature requests only after actual user-shell execution and its
+// acknowledgement settle. The existing channel and ledger retain ownership.
+func (u *Client[T]) Calls() <-chan *HostCall {
+	if u.Shell.BlocksInput(u.Turn) {
+		return nil
+	}
+	return u.Requests.Calls()
+}
+
+// Dispatch keeps native model starts in the same pre-notification input gate as
+// composer starts. The request ledger still owns issuance and acknowledgement.
+func (u *Client[T]) Dispatch(call *HostCall) {
+	if call.phase.Load() != callQueued {
+		return
+	}
+	u.Requests.Dispatch(call)
+	if call.phase.Load() == callDispatched && call.method == "turn/start" && call.scope == u.Thread {
+		u.AwaitingTurn = true
+	}
+}
+
+func (u *Client[T]) CompleteCall(message appserver.Message) bool {
+	request, _ := u.Requests.Lookup(string(message.ID))
+	if !u.Requests.CompleteCall(message) {
+		return false
+	}
+	if request.Method == "turn/start" && request.Scope == u.Thread {
+		var result struct {
+			Turn struct {
+				ID string `json:"id"`
+			} `json:"turn"`
+		}
+		_ = json.Unmarshal(message.Result, &result)
+		// A follow-up can steer an existing turn without another start event.
+		if message.Error != nil || result.Turn.ID != "" && result.Turn.ID == u.Turn {
+			u.AwaitingTurn = false
+		}
+	}
+	return true
+}
+
 // Start constructs the sole request ledger over the backend's actual connection.
 // The observer runs before queued delivery under the backend's bounded-observer contract.
 func Start[T any](cmd *exec.Cmd, observe func(appserver.Message)) (Client[T], error) {

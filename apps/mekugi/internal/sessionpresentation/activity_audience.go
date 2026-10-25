@@ -30,7 +30,7 @@ func MainActivityEntry(entry ActivityEntry) (ActivityEntry, bool) {
 		}
 	}
 	if entry.Kind == "reply" && entry.Message != nil {
-		main = entry.Message.From == "/root" || entry.Message.To == "/root"
+		main = entry.Message.From == "/root" || entry.Message.To == "/root" || entry.Message.To == "Main"
 		entry.Agent = entry.Message.From
 	}
 	main = main || (entry.Kind == "final" || entry.Kind == "start") && entry.Agent != "/root"

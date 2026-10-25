@@ -41,7 +41,7 @@ func (h *Live) Completed(success bool) {
 	h.Compaction.Completed(h.Turn, success)
 	h.Turn, h.AwaitingTurn = "", false
 	h.startOrigin = ""
-	h.Shell.phase = shellIdle
+	h.Shell.completed(success)
 	h.Interruption.Finish()
 }
 
@@ -63,7 +63,7 @@ func (h *Live) AcceptsInput() bool {
 }
 
 func (h *Live) AcceptsShell() bool {
-	return !h.Replacement.Pending() && !h.Shell.Pending && h.Shell.origin == nil &&
+	return !h.Replacement.Pending() && !h.Shell.Pending && !h.Shell.wake && h.Shell.origin == nil &&
 		!h.Starting() && !h.Compaction.Pending() && !h.InputPending() &&
 		h.Interruption.Target == "" && !h.SteerInterruptAckPending
 }
@@ -74,7 +74,7 @@ func (h *Live) AcceptsSettings() bool {
 
 func (h *Live) Busy(waitingInput bool) bool {
 	return h.Turn != "" || h.LocalStop != "" || h.Starting() || h.Compaction.Pending() ||
-		h.InputPending() || h.Settings.Pending() || h.Shell.Pending || waitingInput
+		h.InputPending() || h.Settings.Pending() || h.Shell.Pending || h.Shell.Continuation() || waitingInput
 }
 
 // LeaveThread retires source operations together after confirmed replacement.
@@ -178,25 +178,46 @@ type Shell struct {
 	Pending bool
 	origin  *string
 	phase   shellPhase
+	turn    string
+	wake    bool
 }
 
 func (o *Shell) Begin(turn string) {
+	o.turn, o.wake = "", false
 	o.Pending, o.origin = true, new(turn)
 	if turn == "" {
 		o.phase = shellStarting
 	}
 }
 func (o *Shell) Standalone() bool { return o.phase != shellIdle }
+
+// OwnsTurn correlates standalone execution before logical turn reduction, and
+// retains its identity so duplicate completions cannot finish model work.
+func (o *Shell) OwnsTurn(turn string) bool {
+	return turn != "" && (turn == o.turn || o.phase == shellStarting || o.origin != nil && turn != *o.origin)
+}
+func (o *Shell) WakeAfterSettlement() { o.wake = true }
+func (o *Shell) Continuation() bool   { return o.wake && !o.Pending && o.phase == shellIdle }
+func (o *Shell) ConsumeContinuation() { o.wake = false }
+func (o *Shell) completed(success bool) {
+	if o.Standalone() {
+		o.wake = o.wake && success
+	}
+	o.phase = shellIdle
+}
 func (o *Shell) started(turn string) {
 	if o.origin != nil && turn != *o.origin {
 		o.phase, o.origin = shellRunning, nil
+		o.turn = turn
 	} else if o.phase == shellStarting {
 		o.phase = shellRunning
+		o.turn = turn
 	}
 }
 func (o *Shell) Acknowledge(failed bool, turn string) {
 	o.Pending = false
 	if failed {
+		o.wake = false
 		o.Identified()
 		if turn == "" {
 			o.phase = shellIdle

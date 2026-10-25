@@ -22,7 +22,7 @@ func (b Block) progressText(style string) string {
 	text.WriteString(textsanitize.Safe(body, false))
 	for i, target := range b.WaitTargets {
 		if i == 0 {
-			text.WriteString(" · ")
+			text.WriteString(" ")
 		} else {
 			text.WriteString(", ")
 		}
@@ -34,6 +34,12 @@ func (b Block) progressText(style string) string {
 		if target.Status != "" {
 			text.WriteString(": " + textsanitize.Safe(target.Status, false))
 		}
+	}
+	if b.WaitTimeout != "" {
+		text.WriteString(terminalui.Dim + " (timeout " + textsanitize.Safe(b.WaitTimeout, false) + ")" + terminalui.Reset + style)
+	}
+	if b.WaitReason != "" {
+		text.WriteString(": " + textsanitize.Safe(b.WaitReason, false))
 	}
 	return text.String()
 }

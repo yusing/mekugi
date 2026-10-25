@@ -1,3 +1,3 @@
 ─ 3 Agents · 2 · 1 working ─────────────────────────────────────────────────────
- ◐ main  waiting                                                  10s · 10s ago 
+ ◐ main  waiting for worker                                       10s · 10s ago 
  ● └ worker  idle                                             0%               

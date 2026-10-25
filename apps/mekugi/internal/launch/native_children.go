@@ -3,23 +3,41 @@ package launch
 import (
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/contracts/observation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
+func publishNativeDelivery(attached *attachedPresentation, input control.NativeInput, now time.Time) {
+	entry := nativeDeliveryEntry(input, control.MessageItemID(input.ID), now)
+	entry.Seq = attached.session.Activity().NextSequence()
+	sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+}
+
+func nativeDeliveryEntry(input control.NativeInput, item string, now time.Time) sessionpresentation.ActivityEntry {
+	entry := sessionpresentation.ActivityEntry{Agent: input.Sender, Kind: "final", Text: input.Message, Observed: now, Completed: now,
+		Native: &sessionpresentation.NativeItem{Thread: input.Thread, Item: item, Phase: "item/completed"}}
+	if input.Kind == "MESSAGE" {
+		entry.Kind = "reply"
+		entry.Message = &sessionpresentation.ActivityMessage{From: input.Sender, To: "Main", Text: input.Message}
+	}
+	return entry
+}
+
 // descendants borrows publications from the actual runtime owners. Only small
 // admitted identity/settings facts enter the parent's existing Activity roster.
-func (n *nativeViews) descendants(execution *attachedPresentation, parent string) map[string]sessionapi.Descendant {
+func (n *nativeViews) descendants(execution *attachedPresentation, parent string) map[string]sessionapi.Frame {
 	if n.threads == nil || n.threads.hub == nil {
 		return nil
 	}
 	children := n.threads.hub.Descendants(parent)
-	liveChildren := make(map[string]sessionapi.Descendant, len(children))
+	liveChildren := make(map[string]sessionapi.Frame, len(children))
 	for _, member := range n.threads.shared.Descendants(parent) {
 		id := member.Thread
 		execution.session.RegisterThread(observation.Thread{ID: id, Path: member.Task, Role: member.Role})
@@ -32,7 +50,7 @@ func (n *nativeViews) descendants(execution *attachedPresentation, parent string
 		lifecycle.Final = member.Status == control.Completed
 		child, live := children[id]
 		if !live {
-			liveChildren[id] = sessionapi.Descendant{Session: sessionapi.Session{Thread: id}}
+			liveChildren[id] = sessionapi.Frame{Session: sessionapi.Session{Thread: id}}
 			execution.session.Lifecycle(id).RestoreFinal(member.Status == control.Completed)
 			continue
 		}
@@ -48,11 +66,12 @@ func (n *nativeViews) descendants(execution *attachedPresentation, parent string
 // A projection retains the immutable source identities that produced it.
 // Unchanged child snapshots must not force the transport to re-encode history.
 type nativeChildProjection struct {
-	source, publication *activity.Publication
-	children            map[string]sessionapi.Descendant
+	source, publication        *activity.Publication
+	children                   map[string]sessionapi.Frame
+	reviewSource, review, diff *changes.ReviewView
 }
 
-func (n *nativeViews) publishChild(v *nativeSessionView, frame *sessionapi.NativeFrame, children map[string]sessionapi.Descendant) {
+func (n *nativeViews) publishChild(frame *sessionapi.NativeFrame, children map[string]sessionapi.Frame) {
 	if n.threads == nil {
 		return
 	}
@@ -60,18 +79,16 @@ func (n *nativeViews) publishChild(v *nativeSessionView, frame *sessionapi.Nativ
 	if frame.Agents == nil {
 		return
 	}
-	previous := v.childProjection
+	previous := n.childProjection
+	reviewSame := sameReview(previous.reviewSource, frame.Review) && len(previous.children) == len(children)
 	same := previous.source == frame.Agents && len(previous.children) == len(children)
-	if same {
-		for id, runtime := range children {
-			if previous.children[id].Agents != runtime.Agents {
-				same = false
-				break
-			}
-		}
+	for id, runtime := range children {
+		old, exists := previous.children[id]
+		same = same && exists && old.Agents == runtime.Agents
+		reviewSame = reviewSame && exists && sameReview(old.Review, runtime.Review)
 	}
-	if same {
-		frame.Agents = previous.publication
+	if same && reviewSame {
+		frame.Agents, frame.Review = previous.publication, previous.diff
 		return
 	}
 	publication := *frame.Agents
@@ -98,12 +115,56 @@ func (n *nativeViews) publishChild(v *nativeSessionView, frame *sessionapi.Nativ
 			break
 		}
 	}
+	// All runtimes publish through the same saved-review owner contract. Compose
+	// their admitted immutable captures once, not counters or a second ledger.
+	review, diff := previous.review, previous.diff
+	if !reviewSame && frame.Review != nil {
+		combined := *frame.Review
+		var chunks []changes.Chunk
+		seen := make(map[string]bool)
+		add := func(view *changes.ReviewView) {
+			if view == nil {
+				return
+			}
+			for _, file := range view.Files {
+				for _, chunk := range file.Chunks {
+					key := chunk.Workspace + "\x00" + chunk.Key
+					if !seen[key] {
+						seen[key] = true
+						chunks = append(chunks, chunk)
+					}
+				}
+			}
+			if combined.Failure == "" {
+				combined.Failure = view.Failure
+			}
+		}
+		add(frame.Review)
+		for _, id := range frame.ChildThreads {
+			add(children[id].Review)
+		}
+		if len(children) > 0 {
+			combined.Publication = combined.Publication.With(changes.GroupCaptures(chunks))
+		}
+		combined.Revision = previous.reviewRevision() + 1
+		review = &combined
+		pane := combined
+		pane.Publication = pane.Publication.ForDiff(pane.Workspace)
+		diff = &pane
+	}
+	if frame.Review == nil {
+		review, diff = nil, nil
+	}
+	if review != nil && len(children) > 0 {
+		publication.LineCounts, publication.NetCounts = review.Counts.Callers, review.Counts.Net
+		changed = true
+	}
 	projected := frame.Agents
 	if changed {
 		projected = &publication
 	}
-	v.childProjection = nativeChildProjection{source: frame.Agents, children: children, publication: projected}
-	frame.Agents = projected
+	n.childProjection = nativeChildProjection{source: frame.Agents, children: children, publication: projected, reviewSource: frame.Review, review: review, diff: diff}
+	frame.Agents, frame.Review = projected, diff
 }
 
 // Child source identities stay unchanged so output/detail reads resolve at the
@@ -137,4 +198,18 @@ func childEntries(entries []activity.Entry, caller string) []activity.Entry {
 		relabel(entry.Values)
 	}
 	return entries
+}
+
+func sameReview(a, b *changes.ReviewView) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Revision == b.Revision && a.Workspace == b.Workspace && a.Coverage == b.Coverage && a.Failure == b.Failure
+}
+
+func (p nativeChildProjection) reviewRevision() uint64 {
+	if p.review == nil {
+		return 0
+	}
+	return p.review.Revision
 }

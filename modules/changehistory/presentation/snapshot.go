@@ -94,6 +94,14 @@ func (p Publication) ForDiff(workspace string) Publication {
 					path = filepath.Join(base, path)
 				}
 				path = filepath.Clean(path)
+				base := cmp.Or(chunk.Workspace, workspace)
+				if filepath.IsAbs(base) {
+					relative, err := filepath.Rel(base, path)
+					if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+						onlyTemporary = false
+						break
+					}
+				}
 				if path != "/tmp" && !strings.HasPrefix(path, "/tmp/") {
 					onlyTemporary = false
 					break

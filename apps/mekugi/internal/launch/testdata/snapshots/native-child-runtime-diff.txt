@@ -1,0 +1,12 @@
+ Files  1/1 · tree       │  1/1  child.go · New file +2 -0 ──────────────────────────────────────── 
+ / filter paths          │  ┄ child1 worker·apply_patch                                             
+A child.go +2 -0         │  1│+package child                                                        
+                         │  2│+// captured child edit                                               
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          

@@ -208,7 +208,10 @@ reorder effects. Files retain identity through moves, deletion and recreation.
 All authored captures participate regardless of command exit status.
 
 The saved Diff pane omits captures whose existing endpoints are all at `/tmp`
-or below it from Files, Changes and diff content. Relative paths resolve against
+or below it outside their admitted workspace from Files, Changes and diff content.
+Authored files inside a workspace remain visible when that workspace itself is
+under `/tmp`. The selected runtime supplies the path base for its Diff tree and
+details; external paths remain absolute. Relative paths resolve against
 the capture's workspace, or the selected review workspace when unspecified,
 never the application directory. Moves crossing that boundary remain visible
 with both endpoints. Capture, retained history, `mchanges`, exact-operation

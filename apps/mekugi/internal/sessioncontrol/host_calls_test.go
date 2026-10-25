@@ -24,7 +24,7 @@ func TestHostCallSharesLedgerAndSettlesOnce(t *testing.T) {
 		requests := NewRequests[string](transport)
 		result := make(chan hostCallResult, 1)
 		go func() {
-			value, err := requests.call(t.Context(), "child", "thread/start", jsontext.Value(`{"cwd":"/child"}`))
+			value, err := requests.call(t.Context(), "child", "thread/start", jsontext.Value(`{"cwd":"/child"}`), nil)
 			result <- hostCallResult{value, err}
 		}()
 		call := <-requests.Calls()
@@ -59,7 +59,7 @@ func TestHostCallCancellationAndUncertainDispatch(t *testing.T) {
 				}
 				result := make(chan error, 1)
 				go func() {
-					_, err := requests.call(ctx, "work", "turn/start", jsontext.Value(`{"input":[]}`))
+					_, err := requests.call(ctx, "work", "turn/start", jsontext.Value(`{"input":[]}`), nil)
 					result <- err
 				}()
 				if phase != "before_handoff" {
@@ -159,6 +159,11 @@ func TestNativeInputUsesAttributedHostOperations(t *testing.T) {
 					if item.ID != id || item.Role != "assistant" || item.Phase != "commentary" || len(item.Content) != 1 || item.Content[0].Type != "output_text" || item.Content[0].Text != text || !slices.Equal(item.Metadata.Kinds, []string{"multi_agent.inter_agent_completion_message"}) {
 						t.Fatalf("attribution lost: %s", raw)
 					}
+				}
+				request, _ := requests.Lookup("native")
+				answer := request.NativeDelivery()
+				if (answer != nil) != !run || answer != nil && (answer.ID != input.ID || answer.Sender != input.Sender || answer.Message != input.Message) {
+					t.Fatalf("native answer attribution: %+v", answer)
 				}
 				requests.CompleteCall(appserver.Message{ID: jsontext.Value(`native`), Result: jsontext.Value(`{"turn":{"id":"turn"}}`)})
 				if err := <-result; err != nil {

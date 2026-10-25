@@ -318,7 +318,7 @@ func TestThreadControlTrafficLiveRestoredReplay(t *testing.T) {
 				t.Fatalf("%s lost canonical traffic: %+v", items[i].Tool, entry.Values)
 			}
 		}
-		if wait := source.Entries[3].Values[0]; wait.Body != "Wait registered" || len(wait.WaitTargets) != 1 || wait.WaitTargets[0].Name != "/root/worker" {
+		if wait := source.Entries[3].Values[0]; wait.Body != "Waiting for" || len(wait.WaitTargets) != 1 || wait.WaitTargets[0].Name != "/root/worker" {
 			t.Fatalf("wait acknowledgement became completion: %+v", wait)
 		}
 	}
@@ -360,7 +360,7 @@ func TestUISnapshotThreadControlTraffic(t *testing.T) {
 	item.Result = []byte(`{"content":[{"type":"text","text":"{\"id\":\"mailbox-wait\",\"state\":\"completed\",\"event\":{\"kind\":\"message\",\"task\":\"/root/worker\",\"status\":\"working\"}}"}]}`)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	entry := u.attached.source.Entries[len(u.attached.source.Entries)-1].Values[0]
-	if entry.Body != "Message received" || entry.WaitTargets[0].Status != "working" {
+	if entry.Body != "Finished waiting for" || entry.WaitReason != "message received" {
 		t.Fatalf("mailbox wake displayed as assignment completion: %+v", entry)
 	}
 	now = now.Add(time.Second)

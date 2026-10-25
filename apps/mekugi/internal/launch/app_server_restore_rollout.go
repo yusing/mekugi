@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/rollout"
@@ -22,7 +23,7 @@ import (
 const restoredRolloutLimit = 64 << 20
 
 // restoredRollout is observational evidence that Codex's thread history
-// omits: exec cell results. Live
+// omits: exec cell results and retained attributed deliveries. Live
 // Activity reads the same records from provider input, so restoration
 // projects them the same way instead of replaying any effect.
 type restoredRollout struct {
@@ -36,7 +37,7 @@ type restoredRolloutEvent struct {
 	entry        sessionpresentation.ActivityEntry
 }
 
-// readRestoredRollout restores item timestamps and stock execution failures.
+// readRestoredRollout restores timestamps, execution failures and attributed deliveries.
 func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout {
 	r := restoredRollout{itemAt: make(map[string]time.Time)}
 	f, stat, ok := rollout.Open(info.ID, info.Path)
@@ -68,7 +69,7 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 			Type      string    `json:"type"`
 			// Only the fields read here; others are skipped without copying.
 			Payload struct {
-				Type   string `json:"type"`
+				sessioncontrol.NativeMessage
 				TurnID string `json:"turn_id"`
 				Item   struct {
 					ID string `json:"id"`
@@ -83,7 +84,8 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 			continue
 		}
 		p := record.Payload
-		// Evidence outside a known turn has no position in the host's history.
+		// Retained-only deliveries can precede the first host turn. Their
+		// timestamps place them without inventing a turn or starting work.
 		event := restoredRolloutEvent{turn: turn, anchor: anchor, at: record.Timestamp}
 		switch record.Type + "/" + p.Type {
 		case "event_msg/task_started", "event_msg/turn_started":
@@ -106,7 +108,12 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 				event.entry = sessionpresentation.ActivityEntry{Agent: agent, Kind: "error", Text: activityui.ErrorPreview(text), ErrorDetail: text, CallID: p.CallID}
 				r.events = append(r.events, event)
 			}
-
+		case "response_item/message":
+			if input, ok := p.NativeMessage.Delivery(); ok {
+				input.Thread = info.ID
+				event.entry = nativeDeliveryEntry(input, p.ID, record.Timestamp)
+				r.events = append(r.events, event)
+			}
 		}
 	}
 }

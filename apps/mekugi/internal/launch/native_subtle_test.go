@@ -106,7 +106,7 @@ func TestNativeUIFaintOutputPolicy(t *testing.T) {
 					row.WriteString(screen.CellAt(x, y).Content)
 				}
 				text := row.String()
-				if !strings.Contains(text, "Wait registered") {
+				if !strings.Contains(text, "Waiting for") {
 					continue
 				}
 				before, _, ok := strings.Cut(text, "agent1")

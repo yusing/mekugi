@@ -29,7 +29,7 @@ type NativeItem struct {
 	ReplySource        string                            `json:"-"` // Stock async envelope or synchronous turn prompt.
 	Thread, Turn, Item string                            `json:"-"`
 	Phase              string                            `json:"-"`
-	Wait               *activitypresentation.Value       `json:"-"` // Structured wait progress is roster-only.
+	Wait               *activitypresentation.Value       `json:"-"` // Structured logical-wait progress.
 	Command, Status    string                            `json:"-"`
 	Exit               *int                              `json:"-"` // Observed exit presence is independent of retained output.
 	CommandCwd         string                            `json:"-"` // Metadata-owned directory for classified paths and receipt refreshes.

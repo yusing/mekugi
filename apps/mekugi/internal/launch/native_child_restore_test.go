@@ -29,7 +29,7 @@ func projectRestoredChild(t *testing.T, child *appServerUI) *activity.Publicatio
 		Agents: parent.attached.childSource.Publication(parent.attached.presentation, parent.attached.source),
 	}
 	n := nativeViews{threads: &threadExecution{}}
-	n.publishChild(&nativeSessionView{}, &frame, map[string]sessionapi.Descendant{child.Thread: {
+	n.publishChild(&frame, map[string]sessionapi.Frame{child.Thread: {
 		Main:   child.attached.source.Publication(child.attached.presentation, nil),
 		Agents: child.attached.childSource.Publication(child.attached.presentation, child.attached.source),
 	}})

@@ -18,6 +18,7 @@ import (
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -27,25 +28,25 @@ import (
 // nativeViews owns renderer attachments on the existing execution goroutine.
 // It borrows execution owners and never constructs another host request ledger.
 type nativeViews struct {
-	diagnostics *appserver.Diagnostics
-	threads     *threadExecution
-	activity    *activitymodel.Service
-	api         *sessionapi.Native
-	requests    *sessioncontrol.Requests[appServerRequest]
-	models      *sessionpresentation.Service
-	terminals   terminalsession.Views
-	replacing   string
-	retiring    func(*nativeSessionView) error
-	failure     error
-	completions scope.Key[completion.State]
-	views       map[string]*nativeSessionView
-	closed      chan string
-	ctx         context.Context
-	cancel      context.CancelFunc
+	childProjection nativeChildProjection
+	diagnostics     *appserver.Diagnostics
+	threads         *threadExecution
+	activity        *activitymodel.Service
+	api             *sessionapi.Native
+	requests        *sessioncontrol.Requests[appServerRequest]
+	models          *sessionpresentation.Service
+	terminals       terminalsession.Views
+	replacing       string
+	retiring        func(*nativeSessionView) error
+	failure         error
+	completions     scope.Key[completion.State]
+	views           map[string]*nativeSessionView
+	closed          chan string
+	ctx             context.Context
+	cancel          context.CancelFunc
 }
 
 type nativeSessionView struct {
-	childProjection       nativeChildProjection
 	children              *sessionapi.Hub
 	childDetails          *nativeChildDetails
 	remoteHuman           bool
@@ -365,7 +366,13 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 		}
 		v.attached.presentation.BorrowExecutionStatus(execution.presentation)
 		view := publishSessionView(&v.attached, control, &v.picker, "", settings, tiers, title, backend, restoring, side, now, true)
-		facts.Busy = view.Status.Session.Running || control.Turn != "" || control.Starting()
+		facts.Busy = view.Status.Session.Running || control.Busy(false)
+		var reviewView changepresentation.ReviewView
+		if n.threads != nil {
+			reviewView = reviewSource.ReviewView(execution.session.Scope())
+		} else {
+			reviewView = reviewSource.DiffReviewView(execution.session.Scope())
+		}
 		frame := sessionapi.NativeFrame{View: view, Facts: facts, CompletionTarget: v.completionTarget, CompletionCatalog: v.picker.skillsRevision,
 			Effects:  v.effects.publication(),
 			Activity: v.effects.activityPublication(), Notification: v.notification,
@@ -374,7 +381,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			Approvals:      nativePendingApprovals(execution.conversation),
 			Main:           v.attached.source.Publication(v.attached.presentation, nil),
 			Agents:         v.attached.childSource.Publication(v.attached.presentation, v.attached.source),
-			Review:         new(reviewSource.DiffReviewView(execution.session.Scope())),
+			Review:         &reviewView,
 			MainOutput:     v.mainOutput, AgentOutput: v.agentOutput, Switch: switched,
 		}
 		if v.notices != nil {
@@ -387,7 +394,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			}
 		}
 		v.publishDetails(&frame)
-		n.publishChild(v, &frame, children)
+		n.publishChild(&frame, children)
 		if err := n.api.Publish(id, frame); err != nil {
 			n.retire(id)
 			continue

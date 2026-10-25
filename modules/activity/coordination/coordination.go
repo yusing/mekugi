@@ -14,6 +14,7 @@ import (
 // Confirmed distinguishes admitted traffic from queued and uncertain requests.
 type Coordination struct {
 	Action, Kind, Target, Thread, Message, State, Failure, EventKind string
+	TimeoutMS                                                        *int64
 	Confirmed                                                        bool
 	Targets                                                          []Target
 	Count                                                            int
@@ -46,11 +47,13 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		Task    string         `json:"task_name"`
 		Message string         `json:"message"`
 		Target  jsontext.Value `json:"target"`
+		Timeout *int64         `json:"timeout_ms"`
 		Cancel  *string        `json:"cancel_id"`
 	}
 	argumentsOK := json.Unmarshal(item.Arguments, &args) == nil
 	c.Target, c.Message = args.Task, args.Message
 	if item.Tool == "wait_agent" {
+		c.TimeoutMS = args.Timeout
 		var targets []string
 		if args.Target.Kind() == '[' {
 			_ = json.Unmarshal(args.Target, &targets)
@@ -103,12 +106,14 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		return c, true
 	}
 	var result struct {
-		ID     string            `json:"id"`
-		State  string            `json:"state"`
-		Thread string            `json:"thread_id"`
-		Task   string            `json:"task_name"`
-		Agents *[]jsontext.Value `json:"agents"`
-		Event  *struct {
+		Targets     []string          `json:"targets"`
+		EffectiveMS *int64            `json:"effective_ms"`
+		ID          string            `json:"id"`
+		State       string            `json:"state"`
+		Thread      string            `json:"thread_id"`
+		Task        string            `json:"task_name"`
+		Agents      *[]jsontext.Value `json:"agents"`
+		Event       *struct {
 			Kind   string `json:"kind"`
 			Task   string `json:"task"`
 			Status string `json:"status"`
@@ -131,6 +136,15 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		}
 	case "wait_agent":
 		c.Confirmed = result.ID != "" && slices.Contains([]string{"registered", "completed", "timeout", "canceled", "paused"}, result.State)
+		if c.Confirmed && len(result.Targets) > 0 {
+			c.Targets = nil
+			for _, target := range result.Targets {
+				c.Targets = append(c.Targets, Target{Name: target})
+			}
+		}
+		if result.EffectiveMS != nil {
+			c.TimeoutMS = result.EffectiveMS
+		}
 		if c.Confirmed && result.Event != nil {
 			c.EventKind = result.Event.Kind
 			c.Targets = []Target{{Name: result.Event.Task, Status: result.Event.Status}}

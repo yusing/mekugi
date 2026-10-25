@@ -117,6 +117,14 @@ completion. Acknowledgement settles submission, not execution. Compaction blocks
 shell submission for retry. Rejected commands return to an empty composer or, when
 newer prose exists, local history instead. Observed edits use the ordinary recorder.
 
+A shell submitted during a logical wait runs before Main resumes. After shell
+acknowledgement and successful host-turn settlement, Main continues once with
+empty input and Codex's retained command/output, including nonzero command exits.
+This supersedes the logical wait through ordinary input admission. A selected wake
+that already owns continuation instead resumes Main after the shell settles.
+Standalone shell turns do not complete logical model work or announce Main done;
+addressed messages and child wakes wait for actual shell settlement.
+
 The native client borrows observation, accounting, review and capture owners
 independently of provider request preparation. Shell observations share the ordinary
 capture admission and completion path, retaining the submission's original workspace

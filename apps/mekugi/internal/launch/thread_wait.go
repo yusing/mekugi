@@ -4,11 +4,15 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -31,6 +35,11 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 	if !ok {
 		return
 	}
+	// A previously claimed wake already owns the sole continuation. Shell
+	// execution gates its host dispatch, rather than creating a competing start.
+	if member.Wait != nil && (member.Wait.State == "dispatching" || member.Wait.State == "uncertain" || member.Wait.State == "completed") {
+		live.Shell.ConsumeContinuation()
+	}
 	stopped := live.LocalStop != ""
 	live.LocalStop, live.Waiting = "", ""
 	if stop := member.Stop; stop != nil && stop.Turn == member.Turn && stop.Generation == member.Generation && (member.Status == threadcontrol.Working || member.Status == threadcontrol.Waiting) {
@@ -42,6 +51,43 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 	lifecycle := attached.session.Lifecycle(live.Thread)
 	lifecycle.Paused = member.Status == threadcontrol.Paused || member.Status == threadcontrol.Uncertain
 	lifecycle.SetWaiting(live.LocalStop != "", now)
+	wait := threads.shared.WaitPublication(live.Thread)
+	lifecycle.WaitingFor = ""
+	if wait != nil {
+		names := make([]string, len(wait.Targets))
+		for i, target := range wait.Targets {
+			names[i] = pathdisplay.AgentDisplayName(target)
+		}
+		if lifecycle.Waiting {
+			lifecycle.WaitingFor = strings.Join(names, ", ")
+		}
+		input := attached.threadInput
+		// Wake acknowledgements are retained owner facts, not ordinary host
+		// tool-completion items. Publish their actual reason before continuing.
+		if (member.Wait.Stop == "committed" || input.waitID == wait.ID) && (wait.State == "completed" || wait.State == "timeout" || wait.State == "canceled" || wait.State == "paused") && (input.waitID != wait.ID || input.waitState != wait.State) {
+			value := &activity.Value{Kind: "progress", Body: "Finished waiting for", WaitReason: wait.State}
+			for _, target := range wait.Targets {
+				value.WaitTargets = append(value.WaitTargets, activity.WaitTarget{Name: target})
+			}
+			if event := wait.Event; event != nil {
+				value.WaitReason = string(event.Status)
+				if len(wait.Targets) > 1 {
+					value.WaitReason = fmt.Sprintf("%s: %s", pathdisplay.AgentDisplayName(event.Task), event.Status)
+				}
+				if event.Kind == "message" {
+					value.WaitReason = "message received from " + pathdisplay.AgentDisplayName(event.Task)
+				}
+				if event.Kind == "delivery_failed" {
+					value.WaitReason = "delivery failed from " + pathdisplay.AgentDisplayName(event.Task)
+				}
+			}
+			entry := sessionpresentation.ActivityEntry{Agent: "/root", Kind: "progress", Text: value.ProgressText(), Observed: now,
+				Native: &sessionpresentation.NativeItem{Thread: live.Thread, Turn: member.Wait.Turn, Item: "threadcontrol:wait:" + wait.ID, Phase: "supplement", Wait: value}}
+			entry.Seq = attached.session.Activity().NextSequence()
+			sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+		}
+		input.waitID, input.waitState = wait.ID, wait.State
+	}
 	if live.Turn == "" {
 		switch member.Status {
 		case threadcontrol.Paused, threadcontrol.Uncertain:
@@ -61,16 +107,17 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 // One pending admission borrows the driver; payloads stay in Conversation until
 // reconciliation completes. The host event loop keeps serving receipts/cancel.
 type threadInput struct {
-	driver       *threadbinding.Driver
-	pending      chan humanInputAdmission
-	cancel       context.CancelFunc
-	ready        bool
-	admitted     bool
-	caller, role string
-	id           string
-	effect       *threadcontrol.Effect
-	restoration  chan error
-	restoreErr   error
+	driver            *threadbinding.Driver
+	pending           chan humanInputAdmission
+	cancel            context.CancelFunc
+	ready             bool
+	admitted          bool
+	caller, role      string
+	id                string
+	waitID, waitState string
+	effect            *threadcontrol.Effect
+	restoration       chan error
+	restoreErr        error
 }
 
 type humanInputAdmission struct {

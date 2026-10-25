@@ -2,18 +2,20 @@ package sessioncontrol
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func (r *Requests[T]) Thread(ctx context.Context, thread string) (control.ThreadInfo, error) {
-	raw, err := r.call(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": false})
+	raw, err := r.call(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": false}, nil)
 	var response struct {
 		Thread control.ThreadInfo `json:"thread"`
 	}
@@ -27,30 +29,75 @@ func (r *Requests[T]) Thread(ctx context.Context, thread string) (control.Thread
 }
 
 func (r *Requests[T]) Configuration(ctx context.Context, thread, workspace string) (jsontext.Value, error) {
-	return r.call(ctx, thread, "config/read", map[string]any{"cwd": workspace, "includeLayers": true})
+	return r.call(ctx, thread, "config/read", map[string]any{"cwd": workspace, "includeLayers": true}, nil)
 }
 
 func (r *Requests[T]) Interrupt(ctx context.Context, thread, turn string) error {
-	_, err := r.call(ctx, thread, "turn/interrupt", map[string]any{"threadId": thread, "turnId": turn})
+	_, err := r.call(ctx, thread, "turn/interrupt", map[string]any{"threadId": thread, "turnId": turn}, nil)
 	return err
+}
+
+// NativeMessage is the retained host envelope for first-party attributed input.
+// Its delivery projection requires the complete generated shape, not printed prose.
+type NativeMessage struct {
+	Type     string              `json:"type"`
+	ID       string              `json:"id"`
+	Role     string              `json:"role"`
+	Phase    string              `json:"phase"`
+	Content  []nativeMessageText `json:"content"`
+	Metadata struct {
+		Kinds []string `json:"content_item_kinds"`
+	} `json:"internal_chat_message_metadata_passthrough"`
+}
+
+type nativeMessageText struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+// Delivery decodes only retained-only messages/results. The caller must supply
+// an identity-validated host rollout; decoding grants no dispatch authority.
+func (item NativeMessage) Delivery() (input control.NativeInput, ok bool) {
+	id, owned := strings.CutPrefix(item.ID, "threadcontrol_")
+	if _, err := hex.DecodeString(id); !owned || len(id) != 64 || err != nil || len(item.Content) != 1 {
+		return input, false
+	}
+	text, ok := strings.CutPrefix(item.Content[0].Text, "Message Type: ")
+	if !ok {
+		return input, false
+	}
+	input.Kind, text, ok = strings.Cut(text, "\nTask name: ")
+	if !ok || input.Kind != "MESSAGE" && input.Kind != "FINAL_ANSWER" {
+		return input, false
+	}
+	input.Recipient, text, ok = strings.Cut(text, "\nSender: ")
+	if !ok || input.Recipient == "" {
+		return input, false
+	}
+	input.Sender, input.Message, ok = strings.Cut(text, "\nPayload:\n")
+	if !ok || input.Sender == "" {
+		return input, false
+	}
+	expected, _, _ := nativeContent(input)
+	expected.ID = item.ID
+	return input, reflect.DeepEqual(item, expected)
 }
 
 // nativeContent preserves attribution and stable retained identity for both live
 // delivery and subsequent confirmation. No agent text acquires a human role.
 // Source: codex-rs/core/src/context/inter_agent_{message,completion_message}.rs
 // @0df4aa677.
-func nativeContent(input control.NativeInput) (item map[string]any, name, output string) {
+func nativeContent(input control.NativeInput) (item NativeMessage, name, output string) {
 	metadata := "multi_agent.inter_agent_message"
 	if input.Kind == "FINAL_ANSWER" {
 		metadata = "multi_agent.inter_agent_completion_message"
 	}
 	output = fmt.Sprintf("Message Type: %s\nTask name: %s\nSender: %s\nPayload:\n%s", input.Kind, input.Recipient, input.Sender, input.Message)
-	item = map[string]any{
-		"type": "message", "id": control.MessageItemID(input.ID),
-		"role": "assistant", "phase": "commentary",
-		"content": []any{map[string]any{"type": "output_text", "text": output}},
-		"internal_chat_message_metadata_passthrough": map[string]any{"content_item_kinds": []string{metadata}},
+	item = NativeMessage{
+		Type: "message", ID: control.MessageItemID(input.ID), Role: "assistant", Phase: "commentary",
+		Content: []nativeMessageText{{Type: "output_text", Text: output}},
 	}
+	item.Metadata.Kinds = []string{metadata}
 	name = "followup_task"
 	if input.Run {
 		output = "Operation ID: " + input.ID + "\n" + output
@@ -97,7 +144,7 @@ func (r *Requests[T]) Input(ctx context.Context, input control.NativeInput) (str
 	} else {
 		params["items"] = []any{item}
 	}
-	raw, err := r.call(ctx, input.Thread, method, params)
+	raw, err := r.call(ctx, input.Thread, method, params, &input)
 	var result struct {
 		Turn struct {
 			ID string `json:"id"`

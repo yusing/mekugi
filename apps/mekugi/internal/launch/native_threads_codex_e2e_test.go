@@ -37,6 +37,7 @@ type nativeThreadsProvider struct {
 	mu                                      sync.Mutex
 	childDirectory, parent, child, waitTurn string
 	fullHistory                             bool
+	shellWait                               bool
 	calls                                   map[string]int
 	users                                   int
 	waiting, mailbox                        chan struct{}
@@ -193,7 +194,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		p.waitTurn = metadata.TurnID
 		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["worker"]}));`
 	case parent && step == 5:
-		if metadata.TurnID == p.waitTurn || users != p.users || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "/root/worker") || !strings.Contains(string(body), "wait_agent") {
+		if p.shellWait {
+			if metadata.TurnID == p.waitTurn || users != p.users+1 || strings.Count(string(body), "<user_shell_command>") != 1 || !strings.Contains(string(body), "SHELL_WAIT_OUTPUT") {
+				failure = fmt.Sprintf("shell continuation: same_turn=%t user_items=%d want=%d shell_records=%d has_output=%t", metadata.TurnID == p.waitTurn, users, p.users+1, strings.Count(string(body), "<user_shell_command>"), strings.Contains(string(body), "SHELL_WAIT_OUTPUT"))
+			}
+		} else if metadata.TurnID == p.waitTurn || users != p.users || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "/root/worker") || !strings.Contains(string(body), "wait_agent") {
 			failure = "local stop inferred again or wake omitted retained attributed result/added human input"
 		}
 		answer = "MANAGED_PARENT_RESUMED"
@@ -241,6 +246,15 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 		program = `text(await tools.mcp__threadcontrol__send_message({target:"/root",message:"CHILD_PROGRESS_ALREADY_READ"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
 	case !parent && step == 2:
+		receipt := false
+		for _, item := range request.Input {
+			if string(item["type"]) == `"function_call_output"` || string(item["type"]) == `"custom_tool_call_output"` {
+				receipt = receipt || strings.Contains(string(item["output"]), "mchanges ")
+			}
+		}
+		if !receipt {
+			failure = "child shell tool output omitted its retained capture receipt"
+		}
 		if !strings.Contains(string(body), p.childDirectory) {
 			failure = "stock shell did not return selected cwd"
 		}
@@ -299,15 +313,28 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 // The public server owns both installed host processes; this client uses native
 // semantic controls without a terminal renderer or live provider credentials.
 func TestNativeThreadsServerOwnedCodex(t *testing.T) {
-	testNativeThreadsServerOwnedCodex(t, false)
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{})
 }
 
 func TestNativeThreadsFullHistoryServerOwnedCodex(t *testing.T) {
-	testNativeThreadsServerOwnedCodex(t, true)
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{fullHistory: true})
 }
 
-func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
+func TestNativeThreadsShellWaitServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{shellWait: true})
+}
+
+func TestNativeThreadsNonGitServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{nonGit: true})
+}
+
+type nativeThreadsScenario struct {
+	fullHistory, shellWait, nonGit bool
+}
+
+func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
 	t.Helper()
+	fullHistory, shellWait := scenario.fullHistory, scenario.shellWait
 	codex, err := exec.LookPath("codex")
 	if err != nil {
 		t.Fatal("installed Codex is required:", err)
@@ -364,11 +391,17 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
+	if !scenario.nonGit {
+		workspace = gitTestWorkspace(t)
+	}
 	childDirectory := workspace
 	if fullHistory {
-		childDirectory = t.TempDir()
+		repository := newGitFixture(t)
+		repository.run("commit", "--allow-empty", "-q", "-m", "base")
+		childDirectory = filepath.Join(t.TempDir(), "child-worktree")
+		repository.run("worktree", "add", "-q", "--detach", childDirectory, "HEAD")
 	}
-	fixture := &nativeThreadsProvider{childDirectory: childDirectory, fullHistory: fullHistory, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
+	fixture := &nativeThreadsProvider{childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
@@ -464,7 +497,17 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 			}
 			if !waitingObserved {
 				waitingObserved = true
-				close(fixture.waiting)
+				if shellWait {
+					_, err = connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
+						Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: root, Operation: sessionpresentation.SubmitComposer},
+						Draft:  composer.Draft{Text: "!printf SHELL_WAIT_OUTPUT"},
+					}})
+					if err != nil {
+						t.Fatal("shell during logical waiting:", err)
+					}
+				} else {
+					close(fixture.waiting)
+				}
 			}
 		}
 		body, err := json.Marshal(event.Frame, jsonv1.FormatDurationAsNano(true))
@@ -474,6 +517,29 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 		if strings.Contains(string(body), "MANAGED_PARENT_RESUMED") {
 			break
 		}
+		if shellWait && waitingObserved && event.Frame.View.Status.Session.CompletionKnown {
+			t.Fatal("standalone shell marked Main done before model continuation")
+		}
+	}
+	if shellWait {
+		fixture.mu.Lock()
+		calls := fixture.calls[root]
+		fixture.mu.Unlock()
+		if calls != 5 {
+			t.Fatalf("shell resumed Main more than once: %d inference calls", calls)
+		}
+		close(fixture.waiting)
+		return
+	}
+	childReply, childMessage := false, false
+	if event.Frame.Main != nil {
+		for _, entry := range event.Frame.Main.Entries {
+			childReply = childReply || entry.Agent == "/root/worker" && entry.Kind == "final" && entry.Text == "MANAGED_CHILD_FINAL"
+			childMessage = childMessage || entry.Agent == "/root/worker" && entry.Kind == "reply" && entry.Text == "CHILD_PROGRESS_ALREADY_READ"
+		}
+	}
+	if !childReply || !childMessage {
+		t.Fatalf("delivered delegate traffic missing from Main transcript: final=%t message=%t", childReply, childMessage)
 	}
 	fixture.mu.Lock()
 	parent, child := fixture.parent, fixture.child
@@ -502,6 +568,26 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 	data, err := os.ReadFile(filepath.Join(childDirectory, "managed-child.txt"))
 	if err != nil || string(data) != "managed-child-write" {
 		t.Fatalf("inherited child cwd effect: %q, %v", data, err)
+	}
+	for {
+		review := childEvent.Frame.Review
+		if review == nil || review.Workspace != childDirectory {
+			t.Fatalf("child saved review lost its admitted workspace: %+v", review)
+		}
+		found := false
+		for _, file := range review.Files {
+			for _, chunk := range file.Chunks {
+				found = found || chunk.Review.AfterPath == filepath.Join(childDirectory, "managed-child.txt")
+			}
+		}
+		if found {
+			break
+		}
+		// Review hydration publishes independently of task completion.
+		childEvent, err = childView.Next()
+		if err != nil {
+			t.Fatalf("child workspace edit missing from saved Diff: %v; review=%+v", err, review)
+		}
 	}
 
 	// A new server and host process recover only retained identities. Attaching a
@@ -551,6 +637,16 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 		if event.Frame.View.Main.ID == root && event.Frame.View.Admission.Submit && retainedChild {
 			break
 		}
+	}
+	childReply, childMessage = false, false
+	if event.Frame.Main != nil {
+		for _, entry := range event.Frame.Main.Entries {
+			childReply = childReply || entry.Agent == "/root/worker" && entry.Kind == "final" && entry.Text == "MANAGED_CHILD_FINAL"
+			childMessage = childMessage || entry.Agent == "/root/worker" && entry.Kind == "reply" && entry.Text == "CHILD_PROGRESS_ALREADY_READ"
+		}
+	}
+	if !childReply || !childMessage {
+		t.Fatalf("cold Main lost delivered delegate traffic: final=%t message=%t", childReply, childMessage)
 	}
 	if attached, err := sessionapi.OpenNative(ctx, client, "http://mekugi", child); err == nil {
 		attached.Close()

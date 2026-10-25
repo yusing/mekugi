@@ -151,8 +151,12 @@ confirmed child workspace. Directory selection grants no additional permission.
 
 Selection resolves once to immutable visible descendant identities. `"all"`
 snapshots that set; empty, unknown, ambiguous, foreign, self and ancestor selections
-reject. A selected queued event returns immediately, leaving others queued. One
-pending wait per caller is retained; distinct registrations report the existing
+reject. A selected queued event returns immediately, leaving others queued.
+Stopped selected targets settle with their terminal status, including when their
+notification was already read or their runtime was paused. Pending result delivery
+keeps its existing order. Mixed selections settle on an eligible selected outcome;
+unselected stopped targets do not wake the caller.
+One pending wait per caller is retained; distinct registrations report the existing
 wait instead of replacing it. Cancellation affects only the subscription.
 
 Omitted timeout has no deadline. Explicit values above the captured host maximum
@@ -186,6 +190,8 @@ from that turn, including an empty payload when absent, then injects one attribu
 `FINAL_ANSWER` through `thread/inject_items`. Failure/interruption retains its actual
 outcome. Injection alone neither starts nor steers its receiver. A completion wake
 follows confirmed delivery and carries identity/status rather than duplicate text.
+Confirmed messages and answers appear in the receiving runtime's Main transcript
+with their original logical sender. Failed injections do not publish delivered traffic.
 Rejected delivery remains visible and may satisfy a wait as delivery failure.
 
 Stable work/event/delivery identities persist intent before dispatch and acknowledgement
@@ -200,7 +206,10 @@ Host lifecycle and logical working/waiting state remain separate in admission,
 elapsed timing, roster/composer publication, idle guards and cancellation. Existing
 prompt handling remains independent and responsive to unrelated storage waits.
 Activity and Session Presentation consume detached owner state and reuse existing
-terminal painting. View switches do not transfer or stop coordination.
+terminal painting. The roster names the selected wait targets. Transcript progress
+shows `Waiting for …`, adds a muted explicit timeout when present, and records
+`Finished waiting for …: reason` when the wait settles, including timeout,
+addressed messages, completion, failure and cancellation. View switches do not transfer or stop coordination.
 The child composer shows its admitted role, actual model and reasoning effort;
 follow-ups, settings changes and resumed facts remain scoped to that child. Missing
 facts never borrow parent settings or model defaults. Human input to an admitted

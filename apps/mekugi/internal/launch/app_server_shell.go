@@ -15,6 +15,7 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
@@ -23,6 +24,21 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
+
+// Standalone user-shell turns execute and retain output in Codex without
+// acquiring or completing logical model work.
+func observeLogicalHost(driver *threadbinding.Driver, live *sessioncontrol.Live, message appserver.Message) error {
+	if message.Method == "turn/started" || message.Method == "turn/completed" {
+		p, err := binding.DecodeNotification(message.Method, message.Params)
+		if err != nil {
+			return err
+		}
+		if p.ThreadID == live.Thread && live.Shell.OwnsTurn(p.Turn.ID) {
+			return nil
+		}
+	}
+	return driver.Observe(message.Method, message.Params)
+}
 
 // Source: codex-rs/tui/src/chatwidget/input_submission.rs:36:67@1cc7e236.
 // Codex owns execution, cancellation and history: active shell results inject
@@ -65,6 +81,9 @@ func dispatchShell(attached *attachedPresentation, terminal *terminalsession.Att
 	}
 	shellEdits.pending = edit
 	control.Shell.Begin(control.Turn)
+	if control.LocalStop != "" {
+		control.Shell.WakeAfterSettlement()
+	}
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "Shell command submitted", false)
 	terminal.Transcript.Follow()
 	return nil

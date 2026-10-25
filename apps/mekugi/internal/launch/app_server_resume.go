@@ -203,7 +203,8 @@ func restoreMainHistory(attached *attachedPresentation, terminal *terminalsessio
 		index := p.position().TurnFor(positions)
 		if index >= 0 {
 			byTurn[index] = append(byTurn[index], p)
-		} else if p.entry.Kind == "hook" {
+		} else if p.entry.Kind == "hook" || p.turn == "" {
+			// A retained delivery can arrive before the receiver has any turns.
 			applyRestoredMain(attached.source, []*restoredPlacement{p})
 		}
 	}
