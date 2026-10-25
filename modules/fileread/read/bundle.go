@@ -107,9 +107,6 @@ func executeBundle(
 		// Keep source diagnostics visible with one path prefix; only omitted
 		// output needs a retained continuation.
 		for line := range strings.Lines(execution.Stderr) {
-			if execution.FailureClass == "output_limit" && strings.HasPrefix(line, "mcat: output incomplete:") {
-				continue
-			}
 			diagnostics.WriteString(prefixReadBundleDiagnostic(spec.Path, line))
 		}
 		var remainder command.OmittedOutput

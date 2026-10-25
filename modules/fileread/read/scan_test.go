@@ -104,14 +104,18 @@ func TestNativeMCatHeadTailAndRetainedNumbering(t *testing.T) {
 		name           string
 		args           []string
 		shown, omitted string
+		diagnostic     string
 	}{
-		{"head range", []string{"--number", "-n", "1", path, "2:3"}, "     2\t\n", "     3\tthird\n"},
-		{"tail", []string{"--number", "--tail", "-n", "1", path}, "     3\tthird\n", "     1\tfirst\n     2\t\n"},
+		{"head range", []string{"--number", "-n", "1", path, "2:3"}, "     2\t\n", "     3\tthird\n", "mcat: shown 2:2 of 2 rows (6000-token limit)\n"},
+		{"tail", []string{"--number", "--tail", "-n", "1", path}, "     3\tthird\n", "     1\tfirst\n     2\t\n", "mcat: shown 3:3 of 3 rows (6000-token limit)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out := nativeExecute(t, "mcat", tc.args...)
 			if out.ExitCode != 1 || out.Stdout != tc.shown || out.OmittedOutput == nil || out.OmittedOutput.Stdout != tc.omitted || out.OmittedOutput.StdoutKind != "rows" {
 				t.Fatalf("bounded numbered output: %+v", out)
+			}
+			if out.Stderr != tc.diagnostic {
+				t.Fatalf("diagnostic = %q, want %q", out.Stderr, tc.diagnostic)
 			}
 		})
 	}
@@ -136,6 +140,26 @@ func TestNativeMCatBudgetAndWholeFileUTF8Validation(t *testing.T) {
 		if out.ExitCode != 1 || !strings.Contains(strings.ToLower(out.Stderr), "utf") {
 			t.Fatalf("invalid UTF-8 escaped validation: %+v", out)
 		}
+	}
+}
+
+func TestNativeMCatUnavailableRecoveryDiagnostics(t *testing.T) {
+	for _, tc := range []struct {
+		name, source, diagnostic string
+	}{
+		{"oversized row", strings.Repeat("x", 1_984_001), "row 1 exceeds the 1984000-byte inspection bound; use mrun with a byte-oriented command such as head -c"},
+		{"retained output", strings.Repeat(strings.Repeat("x", 1023)+"\n", (16<<20)/1024+1), "result exceeds the 16 MiB recovery bound; narrow the source range"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := nativeFixture(t, "large.txt", tc.source)
+			out := nativeExecute(t, "mcat", "-n", "1", path)
+			if out.ExitCode != 1 || out.FailureClass != "output_limit" || out.OmittedOutput != nil {
+				t.Fatalf("unavailable recovery: %+v", out)
+			}
+			if want := "mcat: " + tc.diagnostic + "\n"; out.Stderr != want {
+				t.Fatalf("diagnostic = %q, want %q", out.Stderr, want)
+			}
+		})
 	}
 }
 

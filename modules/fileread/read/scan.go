@@ -180,13 +180,9 @@ func scan(ctx context.Context, selection commandargs.ReadSelection, o commandarg
 	if incomplete {
 		result.ExitCode = 1
 		result.FailureClass = "output_limit"
-		if reason == "" {
-			reason = fmt.Sprintf("output incomplete: %d-token limit reached\n", o.Budget)
-			if o.Lines > 0 {
-				reason = fmt.Sprintf("output incomplete: %d-line limit or %d-token limit reached\n", o.Lines, o.Budget)
-			}
+		if reason != "" {
+			result.Stderr = "mcat: " + reason
 		}
-		result.Stderr = "mcat: " + reason
 		if !unavailable {
 			all := retained.String()
 			omitted := strings.TrimPrefix(all, current)

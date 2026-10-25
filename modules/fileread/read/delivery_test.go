@@ -22,6 +22,9 @@ func TestBundleDeliveryUsesActualReferencesAndCapturedRows(t *testing.T) {
 	if err != nil || out.Delivery == nil {
 		t.Fatalf("bundle=%+v err=%v", out, err)
 	}
+	if out.Stderr != "" {
+		t.Fatalf("recoverable bundle emitted redundant diagnostics: %q", out.Stderr)
+	}
 	plan := out.Delivery
 	if plan.ReferenceCount() != 2 {
 		t.Fatalf("reference slots=%d, want 2", plan.ReferenceCount())

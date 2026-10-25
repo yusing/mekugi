@@ -3,7 +3,6 @@ package read
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
 
@@ -39,14 +38,7 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 			if budget != 6000 {
 				execution.OmittedOutput.MaxTokens = budget
 			}
-			var notices strings.Builder
-			for line := range strings.Lines(execution.Stderr) {
-				if !strings.HasPrefix(line, "mcat: output incomplete:") {
-					notices.WriteString(line)
-				}
-			}
-			fmt.Fprintf(&notices, "mcat: shown %s of %d rows (%d-token limit)\n", bundleRowSpan(shownStart, execution.Stdout), shown+omitted, budget)
-			execution.Stderr = notices.String()
+			execution.Stderr += fmt.Sprintf("mcat: shown %s of %d rows (%d-token limit)\n", bundleRowSpan(shownStart, execution.Stdout), shown+omitted, budget)
 		}
 		return execution, err
 	}
