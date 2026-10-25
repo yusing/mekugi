@@ -48,8 +48,6 @@ func (c *Projection) Apply(ctx context.Context, events ...Event) (bool, error) {
 			next.awaitingResync = false
 		}
 		switch event.Kind {
-		case "coverage":
-			next.Coverage, changed = event.Status, true
 		case "scope":
 			if next.Retained.Store != nil {
 				if err := reconcileReview(ctx, next.Retained, next.Changes, builder, *event.Scope); err != nil {

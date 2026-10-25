@@ -4,7 +4,6 @@ import (
 	"context"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -19,7 +18,6 @@ import (
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -112,10 +110,6 @@ func applyReview(attached *attachedPresentation, terminal *terminalsession.Attac
 		case "scope":
 			if event.Resync && event.Scope != nil {
 				terminal.Live.Resync(*event.Scope, event.PreviewIDs)
-			}
-		case "coverage":
-			if strings.HasPrefix(event.Status, "RECONNECTING:") {
-				terminal.Live = previewview.PreviewPane{}
 			}
 		case "change":
 			terminal.DiffUnseen = terminal.DiffUnseen || !terminal.DiffOpen

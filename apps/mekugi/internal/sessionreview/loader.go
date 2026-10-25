@@ -72,7 +72,7 @@ func (l *Loader) Enqueue(event Event) error {
 	if err := validateEvent(event); err != nil {
 		return err
 	}
-	if event.Kind != "scope" && event.Kind != "change" && event.Kind != "coverage" {
+	if event.Kind != "scope" && event.Kind != "change" {
 		return nil
 	}
 	if event.Kind == "scope" && event.Resync {

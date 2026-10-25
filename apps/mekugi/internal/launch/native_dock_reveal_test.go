@@ -8,8 +8,6 @@ import (
 
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/charmbracelet/x/vt"
@@ -60,7 +58,7 @@ func TestUISnapshotNativeDockReveal(t *testing.T) {
 }
 
 func TestNativeDockPendingLifecycle(t *testing.T) {
-	for _, finish := range []string{"completed", "withdrawn", "turn ended", "reconnect"} {
+	for _, finish := range []string{"completed", "withdrawn", "turn ended"} {
 		t.Run(finish, func(t *testing.T) {
 			u := nativeBatchFixture(t)
 			p := nativeBatchPreview("main", "/root", "main")
@@ -76,14 +74,12 @@ func TestNativeDockPendingLifecycle(t *testing.T) {
 				applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: p.ID, Workspace: p.Workspace}, false)
 			case "turn ended":
 				endTurnPreviews(u.execWindows, u.review, u.attached.cwd, u.shell, presentationTime(u.clock), "main", "turn")
-			case "reconnect":
-				applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "coverage", Status: "RECONNECTING: test"})
 			}
 			revealNativeDock(terminalTest(u))
 			if terminalTest(u).Live.Views[p.ID] != nil {
 				t.Fatal("retired pending preview reappeared")
 			}
-			if finish != "reconnect" && terminalTest(u).Live.Views[child.ID] == nil {
+			if terminalTest(u).Live.Views[child.ID] == nil {
 				t.Fatal("another caller's pending preview was removed")
 			}
 		})

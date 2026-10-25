@@ -24,9 +24,6 @@ func validateEvent(event Event) error {
 		if event.TurnRevision == 0 || event.Status != "active" && event.Status != "completed" {
 			return errors.New("invalid live diff turn status")
 		}
-	case "coverage", "heartbeat", "end":
-	case "error":
-		return errors.New(event.Status)
 	default:
 		return fmt.Errorf("unknown live diff event %q", event.Kind)
 	}
