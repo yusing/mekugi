@@ -14,6 +14,9 @@ applicable coverage below.
 
 ## Runner
 
+Test recipes preserve Go's native package outcomes, failure diagnostics and exit
+status. Apply command-output bounds at the invocation when needed.
+
 Use `make test`; the root has no Go module. Default `TEST_PACKAGES=@workspace` expands
 explicit `go.work` members. Focused runs also include `testsupport/uisnapshot`:
 

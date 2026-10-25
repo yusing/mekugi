@@ -1,5 +1,5 @@
 GO ?= go
-# Compact noninteractive output when rtk is available; RTK= keeps raw output.
+# Compact build output when rtk is available; RTK= keeps it raw.
 RTK := $(shell rtk --version >/dev/null 2>&1 && printf rtk)
 # Native rtk Go filters invoke go from PATH; preserve custom GO commands raw.
 GO_OUTPUT = $(if $(filter-out go,$(GO)),,$(RTK)) $(GO)
@@ -65,7 +65,7 @@ preview-native-ui:
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test: workspace-check
-	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO_OUTPUT) test $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
+	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO) test $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
 
 # Installed Codex, isolated local mocks, no installation or live model requests.
 test-host:
@@ -90,8 +90,8 @@ lint: workspace-check
 
 # Offline rendered-output regression checks. Mismatches leave .txt.new candidates.
 test-ui-snapshots:
-	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO_OUTPUT) test $(GO_BUILD_FLAGS) ./testsupport/uisnapshot/... $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
+	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO) test $(GO_BUILD_FLAGS) ./testsupport/uisnapshot/... $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
 
 # Replaces baselines for the selected tests; review candidates/diffs first.
 update-ui-snapshots:
-	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(WORKSPACE) run $(GO_OUTPUT) test $(GO_BUILD_FLAGS) $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1
+	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(WORKSPACE) run $(GO) test $(GO_BUILD_FLAGS) $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1
