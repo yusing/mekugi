@@ -127,7 +127,9 @@ Mutations still require explicit IDs; `--mine` never selects writes. `--history`
 host result, and for a command the observed scope. Paths after `--` filter review files without re-reading the
 current filesystem. `--workspace ..` selects the owning workspace index when
 the command runs from a subdirectory; paths after `--` only filter entries in
-the selected record. `--max-tokens` bounds displayed output. When output is
+the selected record. Read-only views remain available after that workspace is
+deleted; select its canonical path. Apply and revert require the workspace to
+exist. `--max-tokens` bounds displayed output. When output is
 omitted, an `mread` reference retrieves the retained remainder on complete-row
 boundaries. The receipt freezes the selected attempts, allocation state and view
 under the read lock, and retains those exact attempt dependencies. Appended

@@ -1,9 +1,39 @@
 package retained
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestChangeWorkspaceMissingSuffix(t *testing.T) {
+	t.Parallel()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	for _, suffix := range []string{"", "removed", filepath.Join("removed", "workspace")} {
+		options, err := parseChangeRead([]string{"amber1", "--workspace", filepath.Join(alias, suffix)}, root)
+		if err != nil || options.workspace != filepath.Join(root, suffix) {
+			t.Fatalf("suffix %q: workspace=%q error=%v", suffix, options.workspace, err)
+		}
+	}
+	for _, operation := range []string{"revert", "apply"} {
+		if _, err := parseChangeRead([]string{operation, "amber1", "--workspace", filepath.Join(alias, "removed")}, root); err == nil {
+			t.Fatalf("%s accepted a missing workspace", operation)
+		}
+	}
+	if err := os.Remove(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseChangeRead([]string{"amber1", "--workspace", alias}, filepath.Dir(alias)); err == nil {
+		t.Fatal("dangling symlink accepted as a lexical workspace")
+	}
+}
 
 func TestChangePathSpellings(t *testing.T) {
 	t.Parallel()

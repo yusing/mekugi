@@ -14,6 +14,55 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
+func TestMChangesFrontendReadsDeletedWorkspace(t *testing.T) {
+	t.Parallel()
+	f := newMChangesSliceFixture(t, "deleted-workspace")
+	root := f.workspace
+	if err := os.MkdirAll(filepath.Join(root, "real", "child"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	f.workspace = filepath.Join(root, "real", "workspace")
+	if err := os.Mkdir(f.workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(filepath.Join(root, "real", "child"), alias); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	id := f.reserve(t, f.thread, "edit")
+	f.publish(t, id, "edit", "edit-call", mekugiHistory{
+		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")},
+	})
+	// Execute from a surviving directory while selecting the historical owner.
+	f.invocation = f.invocationFor(t.TempDir(), f.thread)
+	listed, stderr, status := f.run(t, fmt.Sprintf("mchanges --list --workspace %q", f.workspace))
+	ids := strings.Fields(listed)
+	if status != 0 || stderr != "" || len(ids) == 0 || ids[0] != id {
+		t.Fatalf("owning-workspace discovery: stdout=%q stderr=%q status=%d", listed, stderr, status)
+	}
+	id = ids[0]
+	views := []string{"", "--summary", "--history", "--list", "--net"}
+	want := make([]string, len(views))
+	for i, view := range views {
+		stdout, stderr, status := f.run(t, fmt.Sprintf("mchanges %s %s --workspace %q", view, id, f.workspace))
+		if status != 0 || stderr != "" || stdout == "" {
+			t.Fatalf("before deletion %s: stdout=%q stderr=%q status=%d", view, stdout, stderr, status)
+		}
+		want[i] = stdout
+	}
+	if err := os.Remove(f.workspace); err != nil {
+		t.Fatal(err)
+	}
+	for i, view := range views {
+		for _, workspace := range []string{f.workspace, alias + string(os.PathSeparator) + ".." + string(os.PathSeparator) + "workspace"} {
+			stdout, stderr, status := f.run(t, fmt.Sprintf("mchanges %s %s --workspace %q", view, id, workspace))
+			if status != 0 || stderr != "" || stdout != want[i] {
+				t.Errorf("after deletion %s workspace=%q: stdout=%q stderr=%q status=%d; want %q", view, workspace, stdout, stderr, status, want[i])
+			}
+		}
+	}
+}
+
 func TestMChangesWorkspaceAllocationIgnoresForeignIndexPayload(t *testing.T) {
 	t.Parallel()
 	for _, namespace := range []string{"foreign", ""} {

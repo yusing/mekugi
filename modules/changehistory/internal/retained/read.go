@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -152,12 +153,39 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		if !filepath.IsAbs(options.workspace) {
 			options.workspace = filepath.Join(cwd, options.workspace)
 		}
-		options.workspace, err = filepath.EvalSymlinks(options.workspace)
+		options.workspace, err = resolveChangeWorkspace(options.workspace, options.view != "revert" && options.view != "apply")
 		if err != nil {
 			return options, fmt.Errorf("resolve workspace: %w", err)
 		}
 	}
 	return options, nil
+}
+
+func resolveChangeWorkspace(path string, allowMissing bool) (string, error) {
+	var suffix string
+	for {
+		resolved, err := filepath.EvalSymlinks(path)
+		if err == nil {
+			return filepath.Join(resolved, suffix), nil
+		}
+		if !allowMissing || !errors.Is(err, os.ErrNotExist) || filepath.Dir(path) == path {
+			return "", err
+		}
+		// Only absent components can be reconstructed. An existing dangling
+		// symlink must not become a different lexical workspace identity.
+		if _, statErr := os.Lstat(path); !errors.Is(statErr, os.ErrNotExist) {
+			return "", err
+		}
+		// Split without cleaning: a surviving symlink/.. prefix must be
+		// resolved by the filesystem before the absent suffix is appended.
+		parent, name := filepath.Split(path)
+		if name == "" {
+			path = path[:len(path)-1]
+			continue
+		}
+		suffix = filepath.Join(name, suffix)
+		path = parent
+	}
 }
 
 func (s *store) readChanges(ctx context.Context, options changeReadOptions) (string, error) {
