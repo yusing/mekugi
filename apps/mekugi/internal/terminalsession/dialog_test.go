@@ -168,3 +168,34 @@ func TestDialogFiveTabsSub16CellPathBudget(t *testing.T) {
 		}
 	}
 }
+
+func TestDialogSelectionResolvesOffscreenFileLinks(t *testing.T) {
+	var d Dialog
+	painter := terminalui.Painter{DeferFileLinks: true, FileLink: func(string) bool { return true }}
+	line := painter.Markdown("[target](sample.go)", 80, false)[0]
+	var page terminalui.DialogPage
+	for range 60 {
+		page.Add(terminalui.DialogLine{Text: line})
+	}
+	d.FileLinks = map[string]bool{"sample.go": true}
+	d.SetDocument(page, d.Prepare(100, 24))
+	rows := make([]string, 24)
+	d.Paint(rows, 100, 24, &painter)
+	x, y := d.rect.X+2, d.rect.Y+d.Chrome()-1
+	d.Mouse(0, x, y, false)
+	d.Mouse(32, x+2, y, false)
+	d.Mouse(0, x+2, y, true)
+	if d.Selection == nil || d.Selection.ScreenRows() == 0 {
+		t.Fatal("selection did not retain offscreen rows")
+	}
+	d.Key("\x1b[F")
+	if d.Selection == nil || d.Selection.Top() == 0 {
+		t.Fatal("selection did not scroll beyond its original viewport")
+	}
+	d.Paint(rows, 100, 24, &painter)
+	for _, row := range d.body {
+		if strings.Contains(row, "mekugi-file-candidate:") {
+			t.Fatal("offscreen selection emitted a private file-link destination")
+		}
+	}
+}

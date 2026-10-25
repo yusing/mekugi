@@ -2,7 +2,6 @@ package terminalsession
 
 import (
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 
@@ -474,22 +473,8 @@ func (d *Dialog) selectionMouse(button, x, y int, release bool) (DialogIntent, b
 	return DialogIntent{}, true
 }
 
-// Paint overlays the prepared document and its frozen selection on supplied rows.
-func (d *Dialog) Paint(rows []string, width, height int, painter *terminalui.Painter) {
-	w, h := dialogSize(width, height)
-	if w < 12 || h < d.Chrome()+1 {
-		d.rect, d.Selection = Rect{}, nil
-		return
-	}
-	d.theme = painter.Theme
-	if width >= 60 {
-		h = min(h, max(d.Chrome()+3, d.Chrome()+d.total()))
-	}
-	rect := Rect{(width - w) / 2, (height - h) / 2, w, h}
-	if d.Selection != nil && d.rect != rect {
-		d.Selection = nil
-	}
-	d.rows = h - d.Chrome()
+// layoutBody keeps input selection and painting on the same selected viewport.
+func (d *Dialog) layoutBody() []string {
 	if d.pendingLine > 0 {
 		for i, line := range d.Document.Lines {
 			if line.Number == d.pendingLine {
@@ -507,7 +492,7 @@ func (d *Dialog) Paint(rows []string, width, height int, painter *terminalui.Pai
 	var indents []int
 	var gutterStyles []string
 	for i := sort.SearchInts(d.starts[1:], d.top+1); i < len(d.Document.Lines) && len(body) < d.rows; i++ {
-		lines := d.Document.Rows(i, w-4)
+		lines := d.Document.Rows(i, d.width)
 		if skip := d.top - d.starts[i]; skip > 0 {
 			lines = lines[min(skip, len(lines)):]
 		}
@@ -523,20 +508,44 @@ func (d *Dialog) Paint(rows []string, width, height int, painter *terminalui.Pai
 		body = append(body, "")
 		indents = append(indents, 0)
 	}
+	d.resolveFileLinks(body)
 	d.body, d.indents = body, indents
+	return gutterStyles
+}
+
+func (d *Dialog) resolveFileLinks(rows []string) {
+	d.FileLinkDemands = nil
+	for i, row := range rows {
+		var demands []string
+		rows[i], demands = terminalui.ResolveFileLinks(row, d.FileLinks, d.theme.Accent())
+		d.FileLinkDemands = append(d.FileLinkDemands, demands...)
+	}
+}
+
+// Paint overlays the prepared document and its frozen selection on supplied rows.
+func (d *Dialog) Paint(rows []string, width, height int, painter *terminalui.Painter) {
+	w, h := dialogSize(width, height)
+	if w < 12 || h < d.Chrome()+1 {
+		d.rect, d.Selection = Rect{}, nil
+		return
+	}
+	d.theme = painter.Theme
+	if width >= 60 {
+		h = min(h, max(d.Chrome()+3, d.Chrome()+d.total()))
+	}
+	rect := Rect{(width - w) / 2, (height - h) / 2, w, h}
+	if d.Selection != nil && d.rect != rect {
+		d.Selection = nil
+	}
+	d.rows = h - d.Chrome()
+	gutterStyles := d.layoutBody()
+	body := d.body
 	if selected := d.Selection; selected != nil {
-		body = slices.Clone(body)
 		for i := range body {
 			body[i] = selected.Row(selected.DocumentY(i), painter.Theme)
 		}
+		d.resolveFileLinks(body)
 	}
-	d.FileLinkDemands = nil
-	for i, row := range body {
-		var demands []string
-		body[i], demands = terminalui.ResolveFileLinks(row, d.FileLinks, painter.Theme.Accent())
-		d.FileLinkDemands = append(d.FileLinkDemands, demands...)
-	}
-	d.body = body
 	frame := terminalui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.Document, Paused: d.Document.Live && !d.follow, Rows: body, GutterStyles: gutterStyles, Top: d.top, Total: d.total(), Footer: d.footer(w)}
 	if d.Selection != nil {
 		frame.Footer = SelectionHints.Render()

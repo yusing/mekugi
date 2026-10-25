@@ -319,7 +319,8 @@ Output dialogs default to Original. When altered prepared content is available,
 `o` toggles Original / Model-visible within the same page, with a footer hint.
 Each variant preserves its own navigation and copy content; frozen selections keep
 their selected document. Unavailable or equal content has no toggle or hint.
-Left/Right or clickable tabs choose pages. Tab paths retain nearby
+Left/Right or clickable tabs choose pages. Copy, search and navigation use the
+selected page even when input arrives before its next frame. Tab paths retain nearby
 directories and filenames. Each page keeps independent scroll, search and follow
 state. Live pages follow until scrolled away; End or returning to bottom resumes.
 `/` starts case-insensitive substring search, Enter finds and n/N advances,

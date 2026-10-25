@@ -33,6 +33,7 @@ type contentDialogKey struct {
 	width        int
 	version      uint64
 	retained     bool
+	output       bool
 	modelVisible bool
 	theme        diffrender.Theme
 	file         *activitypresentation.DetailFile
@@ -96,9 +97,10 @@ func (d *ContentDialog) Layout(width int) {
 	}
 	key := contentDialogKey{modelVisible: page.ModelVisible, id: page.ID, revision: page.Revision, width: width, version: page.OutputVersion, retained: page.Retained, theme: d.View.Painter.Theme, file: d.File}
 	var output *activitymodel.OutputView
-	if d.Output != nil {
+	if d.Output != nil && d.Output.Page == page.ID && d.Output.Version == page.OutputVersion {
 		output = &d.Output.View
 	}
+	key.output = output != nil
 	if !page.Retained && page.Running {
 		if frame, version, ok := d.View.CurrentCommandFrame(page.Source); ok {
 			key.frame = version
@@ -137,6 +139,9 @@ func (d *ContentDialog) Invalidate() { d.laidKey = contentDialogKey{} }
 
 // Key toggles the selected output without changing the application's page identity.
 func (d *ContentDialog) Key(key string) DialogIntent {
+	if d.Selection == nil && len(d.Pages) > 0 && d.width > 0 {
+		d.Layout(d.width)
+	}
 	if key == "o" && !d.Typing {
 		if d.Selection == nil && len(d.Pages) > 0 {
 			page := d.Pages[d.Page]
@@ -156,4 +161,15 @@ func (d *ContentDialog) Key(key string) DialogIntent {
 		return DialogIntent{}
 	}
 	return d.Dialog.Key(key)
+}
+
+// Mouse synchronizes selected content before a gesture can freeze its document.
+func (d *ContentDialog) Mouse(button, x, y int, release bool) DialogIntent {
+	if d.Selection == nil && len(d.Pages) > 0 && d.width > 0 {
+		d.Layout(d.width)
+		if button&^28 == 0 && !release {
+			d.layoutBody()
+		}
+	}
+	return d.Dialog.Mouse(button, x, y, release)
 }
