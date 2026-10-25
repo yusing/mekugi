@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // RequestStarted authenticates a new turn or reuses an admitted provider retry.
@@ -45,6 +46,55 @@ func (s *Service) AnswerCompleted(ctx context.Context, thread, turn, text string
 			return unchanged
 		}
 		member.LastAnswer = text
+		return nil
+	})
+}
+
+// InputConsumed retires unclaimed notifications already present in the admitted
+// parent's model input. Injection acknowledgement alone does not mean they were
+// read: messages delivered while the parent is stopped must still wake it.
+func (s *Service) InputConsumed(ctx context.Context, caller Identity, items []string) error {
+	if len(items) == 0 {
+		return nil
+	}
+	owner, err := s.owner(caller.Thread)
+	if errors.Is(err, ErrNotAdmitted) {
+		return nil // Unadmitted history has no notification ledger to consume.
+	}
+	if err != nil {
+		return err
+	}
+	var consumed []Effect
+	for _, effect := range owner.state.Load().Effects {
+		if effect.Target != caller.Thread || effect.Kind != "message" && effect.Kind != "final" || effect.Consumed || effect.ClaimedBy != "" {
+			continue
+		}
+		id := effect.ID
+		if effect.Kind == "message" {
+			id = effect.Caller + ":" + id
+		}
+		if slices.Contains(items, MessageItemID(id)) {
+			consumed = append(consumed, effect)
+		}
+	}
+	if len(consumed) == 0 {
+		return nil
+	}
+	return s.update(ctx, caller.Thread, func(tree *Tree, member *Member) error {
+		if caller.Session == "" || member.Session != caller.Session || !member.AudienceAdmitted {
+			return errors.New("consumed input has no matching logical audience")
+		}
+		changed := false
+		for _, candidate := range consumed {
+			effect := tree.Effect(candidate.Caller, candidate.ID)
+			if effect == nil || effect.Consumed || effect.ClaimedBy != "" {
+				continue
+			}
+			effect.Consumed, changed = true, true
+		}
+		if !changed {
+			return unchanged
+		}
 		return nil
 	})
 }

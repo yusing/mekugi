@@ -198,6 +198,79 @@ func TestNestedStopWaitPreservesLogicalWork(t *testing.T) {
 	}
 }
 
+func TestWaitAnyConsumesOnlyUnseenEvents(t *testing.T) {
+	s, _ := fixture(t)
+	child(t, s, "root", "a", "/root/a", "at")
+	child(t, s, "root", "b", "/root/b", "bt")
+	action, err := s.PrepareAction(t.Context(), identity("a", "at"), "/root", "message", "progress already read")
+	must(t, err)
+	_, err = s.ClaimEffect(t.Context(), "a", action.ID)
+	must(t, err)
+	foreign := identity("root", "rt")
+	foreign.Session = "foreign"
+	if err := s.InputConsumed(t.Context(), foreign, []string{MessageItemID("a:a-wait-call")}); err == nil {
+		t.Fatal("foreign session consumed an attributed notification")
+	}
+	must(t, s.InputConsumed(t.Context(), identity("root", "rt"), []string{MessageItemID("a:a-wait-call")}))
+	// The host can expose injected input before its acknowledgement is reduced.
+	must(t, s.EffectAcknowledged(t.Context(), "a", action.ID, Receipt{}))
+	items := []string{MessageItemID("a:a-wait-call")}
+	caller := identity("root", "rt")
+	if allocations := testing.AllocsPerRun(10, func() { err = s.InputConsumed(t.Context(), caller, items) }); err != nil || allocations != 0 {
+		t.Fatalf("unchanged input copied the retained tree: allocations=%v err=%v", allocations, err)
+	}
+	wait, err := s.RegisterWait(t.Context(), caller, []string{"a", "b"}, false, nil, time.Now())
+	must(t, err)
+	if wait.State != "registered" || wait.Event != nil {
+		t.Fatalf("already read progress woke a new wait: %+v", wait)
+	}
+	stop(t, s, caller)
+	message(t, s, identity("b", "bt"), "new progress")
+	wake, err := claimWake(t, s, t.Context(), "root", time.Now())
+	must(t, err)
+	if wake == nil || wake.Event.Kind != "message" || wake.Event.Source != "b" || wake.Event.Status != Working {
+		t.Fatalf("legitimate mailbox wake lost identity: %+v", wake)
+	}
+	must(t, s.EffectAcknowledged(t.Context(), "root", wake.ID, Receipt{Turn: "rt2"}))
+	caller.Turn, caller.Call, caller.Item = "rt2", "second-wait", "second-exec"
+	wait, err = s.RegisterWait(t.Context(), caller, []string{"a", "b"}, false, nil, time.Now())
+	must(t, err)
+	if wait.State != "registered" {
+		t.Fatalf("consumed event was delivered twice: %+v", wait)
+	}
+	stop(t, s, caller)
+	must(t, s.HostCompleted(t.Context(), "a", "at", Completed, ""))
+	deliver(t, s, "a")
+	wake, err = claimWake(t, s, t.Context(), "root", time.Now())
+	must(t, err)
+	if wake == nil || wake.Event.Kind != "completed" || wake.Event.Source != "a" {
+		t.Fatalf("wait-any did not wake on one completion: %+v", wake)
+	}
+	b, _ := s.Member("b")
+	if b.Status != Working || !b.HostRunning {
+		t.Fatal("wait-any changed the unfinished child", b)
+	}
+}
+
+func TestConsumedFinalStaysConsumedAfterRestart(t *testing.T) {
+	s, session := fixture(t)
+	child(t, s, "root", "a", "/root/a", "at")
+	must(t, s.HostCompleted(t.Context(), "a", "at", Completed, ""))
+	deliver(t, s, "a")
+	tree, err := s.Snapshot("root")
+	must(t, err)
+	final := effectsOf(tree, "final")[0]
+	must(t, s.InputConsumed(t.Context(), identity("root", "rt"), []string{MessageItemID(final.ID)}))
+	restored := New()
+	must(t, restored.Restore(t.Context(), session))
+	hostStarted(t, restored, "root", "resumed")
+	wait, err := restored.RegisterWait(t.Context(), identity("root", "resumed"), []string{"a"}, false, nil, time.Now())
+	must(t, err)
+	if wait.State != "registered" || wait.Event != nil {
+		t.Fatalf("restart redelivered a result already read by the parent: %+v", wait)
+	}
+}
+
 func TestWakeDispatchSurvivesTerminalAndColdRestore(t *testing.T) {
 	for _, terminal := range []bool{false, true} {
 		t.Run(map[bool]string{false: "cold", true: "terminal_before_ack"}[terminal], func(t *testing.T) {

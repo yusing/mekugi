@@ -110,6 +110,7 @@ type Tree struct {
 type Effect struct {
 	ID, Caller, CallerTurn, Target, Kind, Message, State, Phase, Turn, Error, ClaimedBy string
 	CallerGeneration, Generation                                                        uint64
+	Consumed                                                                            bool
 	PreviousStatus, Outcome                                                             Status
 	Child                                                                               *Child
 	Wake                                                                                *WaitResult `json:"-"`

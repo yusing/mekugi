@@ -10,4 +10,6 @@
 "\x1b[2m• Interrupt requested for /root/worker\x1b[m                                          "
 "                                                                                "
 "\x1b[2m• Listed 2 agents\x1b[m                                                               "
+"                                                                                "
+"\x1b[2m• Message received · \x1b[38;5;37mworker\x1b[39m: working\x1b[m                                            "
 "plain after traffic                                                             "

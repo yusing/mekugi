@@ -61,6 +61,9 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 		switch c.Action {
 		case "Wait":
 			entry.Text = map[string]string{"registered": "Wait registered", "completed": "Finished waiting", "timeout": "Wait timed out", "canceled": "Wait canceled", "paused": "Wait paused"}[c.State]
+			if c.State == "completed" && c.EventKind == "message" {
+				entry.Text = "Message received"
+			}
 			wait := &activitypresentation.Value{Kind: "progress", Body: entry.Text}
 			for _, target := range c.Targets {
 				if caller := s.KnownCaller(target.Name); caller != "" {

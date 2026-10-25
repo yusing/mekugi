@@ -234,6 +234,11 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		if err := codexresponses.ValidateCompaction(request, metadata); err != nil {
 			return nil, err
 		}
+		if !prewarm {
+			if err := p.consumeThreadInput(ctx, threadID, sessionID, request); err != nil {
+				return nil, err
+			}
+		}
 		if err := p.observeCompactionInput(ctx, request, sessionID, threadID, metadata); err != nil {
 			if _, incompatible := errors.AsType[*inferencegateway.CompatibilityError](err); incompatible {
 				return nil, err
@@ -261,6 +266,11 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	if codexresponses.ExecutionFree(request) {
 		if !prewarm && strings.TrimSpace(threadID) == "" {
 			return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
+		}
+		if !prewarm {
+			if err := p.consumeThreadInput(ctx, threadID, sessionID, request); err != nil {
+				return nil, err
+			}
 		}
 		return nil, projectReload()
 	}
@@ -351,6 +361,10 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			})
 		}
 		if err != nil {
+			retained.Finish(false)
+			return nil, err
+		}
+		if err := p.consumeThreadInput(ctx, threadID, sessionID, request); err != nil {
 			retained.Finish(false)
 			return nil, err
 		}

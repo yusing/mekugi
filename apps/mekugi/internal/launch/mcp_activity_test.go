@@ -355,6 +355,14 @@ func TestUISnapshotThreadControlTraffic(t *testing.T) {
 	for _, item := range coordinationActivityItems(t) {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	}
+	item := coordinationActivityItems(t)[3]
+	item.ID = "mailbox-wait"
+	item.Result = []byte(`{"content":[{"type":"text","text":"{\"id\":\"mailbox-wait\",\"state\":\"completed\",\"event\":{\"kind\":\"message\",\"task\":\"/root/worker\",\"status\":\"working\"}}"}]}`)
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	entry := u.attached.source.Entries[len(u.attached.source.Entries)-1].Values[0]
+	if entry.Body != "Message received" || entry.WaitTargets[0].Status != "working" {
+		t.Fatalf("mailbox wake displayed as assignment completion: %+v", entry)
+	}
 	now = now.Add(time.Second)
 	settleActivity(now, view)
 	for _, width := range []int{38, 80} {

@@ -171,6 +171,10 @@ no final answer, completion event/notice, idle transition or released reservatio
 Selected logical child completion/failure/interruption or an addressed message may
 wake. Child questions, approvals and their human replies do not. Nested coordinators
 obey the same state machine. Events retain arrival order and are claimed once.
+Exact attributed item identities observed in admitted model input consume their
+unclaimed notifications, so a later wait does not replay already-read messages or
+results. Injection acknowledgement alone does not consume an event. Message wakes
+are presented as received messages, separately from assignment completion.
 After host settlement, Session Control starts empty input with retained
 `toolOutput:{namespace:"threadcontrol",name:"wait_agent",output:...,retain:true}`.
 The result identifies wait/event/source task/thread/turn/kind/status, without fake

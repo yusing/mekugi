@@ -72,7 +72,7 @@ func descendants(tree *Tree, caller *Member, targets []string, all bool) ([]stri
 func selectedEvent(tree *Tree, wait *Wait) *Effect {
 	for i := range tree.Effects {
 		effect := &tree.Effects[i]
-		if effect.delivered() && effect.Target == wait.Caller && effect.ClaimedBy == "" && slices.Contains(wait.Targets, effect.Caller) {
+		if effect.delivered() && !effect.Consumed && effect.Target == wait.Caller && effect.ClaimedBy == "" && slices.Contains(wait.Targets, effect.Caller) {
 			return effect
 		}
 	}

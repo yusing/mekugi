@@ -2,7 +2,9 @@ package control
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json/jsontext"
+	"fmt"
 )
 
 // Native is the server's semantic thread API. The execution owner chooses host
@@ -39,4 +41,9 @@ type NativeInput struct {
 	Run                                                                  bool
 	Settings                                                             *Settings
 	Wake                                                                 *WaitResult
+}
+
+// MessageItemID is the retained host item identity for attributed delivery.
+func MessageItemID(id string) string {
+	return fmt.Sprintf("threadcontrol_%x", sha256.Sum256([]byte(id)))
 }

@@ -2,7 +2,6 @@ package sessioncontrol
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
@@ -47,7 +46,7 @@ func nativeContent(input control.NativeInput) (item map[string]any, name, output
 	}
 	output = fmt.Sprintf("Message Type: %s\nTask name: %s\nSender: %s\nPayload:\n%s", input.Kind, input.Recipient, input.Sender, input.Message)
 	item = map[string]any{
-		"type": "message", "id": fmt.Sprintf("threadcontrol_%x", sha256.Sum256([]byte(input.ID))),
+		"type": "message", "id": control.MessageItemID(input.ID),
 		"role": "assistant", "phase": "commentary",
 		"content": []any{map[string]any{"type": "output_text", "text": output}},
 		"internal_chat_message_metadata_passthrough": map[string]any{"content_item_kinds": []string{metadata}},

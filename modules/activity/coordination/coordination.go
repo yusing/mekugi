@@ -13,10 +13,10 @@ import (
 // Coordination is an observed operation, never authority to execute or deliver it.
 // Confirmed distinguishes admitted traffic from queued and uncertain requests.
 type Coordination struct {
-	Action, Kind, Target, Thread, Message, State, Failure string
-	Confirmed                                             bool
-	Targets                                               []Target
-	Count                                                 int
+	Action, Kind, Target, Thread, Message, State, Failure, EventKind string
+	Confirmed                                                        bool
+	Targets                                                          []Target
+	Count                                                            int
 }
 
 type Target struct{ Name, Status string }
@@ -109,6 +109,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		Task   string            `json:"task_name"`
 		Agents *[]jsontext.Value `json:"agents"`
 		Event  *struct {
+			Kind   string `json:"kind"`
 			Task   string `json:"task"`
 			Status string `json:"status"`
 		} `json:"event"`
@@ -131,6 +132,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 	case "wait_agent":
 		c.Confirmed = result.ID != "" && slices.Contains([]string{"registered", "completed", "timeout", "canceled", "paused"}, result.State)
 		if c.Confirmed && result.Event != nil {
+			c.EventKind = result.Event.Kind
 			c.Targets = []Target{{Name: result.Event.Task, Status: result.Event.Status}}
 		}
 	}

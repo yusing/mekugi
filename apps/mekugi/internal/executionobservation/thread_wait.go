@@ -1,6 +1,7 @@
 package executionobservation
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
@@ -9,7 +10,31 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+// Consumption is observation, including when compaction or an execution-free
+// request reads injected messages without starting logical work.
+func (p *Preparer) consumeThreadInput(ctx context.Context, thread, session string, request *codexresponses.Request) error {
+	if p == nil || p.threadControl == nil || !bytes.Contains(request.Fields["input"], []byte("threadcontrol_")) {
+		return nil
+	}
+	var items []struct {
+		Type string `json:"type"`
+		Role string `json:"role"`
+		ID   string `json:"id"`
+	}
+	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
+		return err
+	}
+	var consumed []string
+	for _, item := range items {
+		if item.Type == "message" && item.Role == "assistant" && strings.HasPrefix(item.ID, "threadcontrol_") {
+			consumed = append(consumed, item.ID)
+		}
+	}
+	return p.threadControl.Coordination().InputConsumed(ctx, control.Identity{Thread: thread, Session: session}, consumed)
+}
 
 // observeThreadWait runs after the normal authenticated request/history join.
 // It admits only a trailing host result for the wait's exact enclosing exec

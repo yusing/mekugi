@@ -39,7 +39,7 @@ type nativeThreadsProvider struct {
 	fullHistory                             bool
 	calls                                   map[string]int
 	users                                   int
-	waiting                                 chan struct{}
+	waiting, mailbox                        chan struct{}
 	stop                                    context.CancelFunc
 }
 
@@ -48,7 +48,7 @@ type nativeThreadsProvider struct {
 func (p *nativeThreadsProvider) diagnostic() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return fmt.Sprintf("provider inference counts=%v; parent=%q child=%q wait_turn=%q; want initial parent=4 child=2, recovered parent=7 child=3", p.calls, p.parent, p.child, p.waitTurn)
+	return fmt.Sprintf("provider inference counts=%v; parent=%q child=%q wait_turn=%q; want initial parent=5 child=2, recovered parent=8 child=3", p.calls, p.parent, p.child, p.waitTurn)
 }
 
 func (p *nativeThreadsProvider) serveSocket(t *testing.T, w http.ResponseWriter, r *http.Request) {
@@ -136,7 +136,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		return
 	}
 	p.mu.Lock()
-	resumedParent := metadata.ThreadID == p.parent && p.calls[p.parent] >= 4
+	resumedParent := metadata.ThreadID == p.parent && p.calls[p.parent] >= 5
 	p.mu.Unlock()
 	wantEffort := "low"
 	if resumedParent {
@@ -185,19 +185,23 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				}
 			}
 		}
+		program = `text("PARENT_ACCEPTED_MAILBOX");`
+	case parent && step == 4:
+		if !strings.Contains(string(body), "CHILD_PROGRESS_ALREADY_READ") {
+			failure = "parent input omitted injected mailbox message"
+		}
 		p.waitTurn = metadata.TurnID
 		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["worker"]}));`
-		close(p.waiting)
-	case parent && step == 4:
+	case parent && step == 5:
 		if metadata.TurnID == p.waitTurn || users != p.users || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "/root/worker") || !strings.Contains(string(body), "wait_agent") {
 			failure = "local stop inferred again or wake omitted retained attributed result/added human input"
 		}
 		answer = "MANAGED_PARENT_RESUMED"
-	case parent && step == 5:
-		program = `text(await tools.mcp__threadcontrol__list_agents({})); text(await tools.mcp__threadcontrol__followup_task({target:"worker",message:"COLD_CHILD_FOLLOWUP"}));`
 	case parent && step == 6:
-		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["worker"]}));`
+		program = `text(await tools.mcp__threadcontrol__list_agents({})); text(await tools.mcp__threadcontrol__followup_task({target:"worker",message:"COLD_CHILD_FOLLOWUP"}));`
 	case parent && step == 7:
+		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["worker"]}));`
+	case parent && step == 8:
 		if !strings.Contains(string(body), "MANAGED_CHILD_RECOVERED") {
 			failure = "cold recovery omitted the retained child's attributed result"
 		}
@@ -235,7 +239,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				failure = "full-history child guidance omitted child role or retained duplicate/parent generated role"
 			}
 		}
-		program = `text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
+		program = `text(await tools.mcp__threadcontrol__send_message({target:"/root",message:"CHILD_PROGRESS_ALREADY_READ"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
 	case !parent && step == 2:
 		if !strings.Contains(string(body), p.childDirectory) {
 			failure = "stock shell did not return selected cwd"
@@ -256,7 +260,15 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		p.stop()
 		return
 	}
+	if parent && step == 3 {
+		select {
+		case <-p.mailbox:
+		case <-r.Context().Done():
+			return
+		}
+	}
 	if !parent && step == 2 {
+		close(p.mailbox)
 		select {
 		case <-p.waiting:
 		case <-r.Context().Done():
@@ -356,7 +368,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 	if fullHistory {
 		childDirectory = t.TempDir()
 	}
-	fixture := &nativeThreadsProvider{childDirectory: childDirectory, fullHistory: fullHistory, calls: make(map[string]int), waiting: make(chan struct{}), stop: cancel}
+	fixture := &nativeThreadsProvider{childDirectory: childDirectory, fullHistory: fullHistory, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
@@ -432,6 +444,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 			t.Fatal("root native readiness:", err)
 		}
 	}
+	waitingObserved := false
 	root := event.Frame.View.Main.ID
 	_, err = connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
 		Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: root, Operation: sessionpresentation.SubmitComposer},
@@ -445,8 +458,14 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 		if err != nil {
 			t.Fatal("parent completion:", err)
 		}
-		if event.Frame.View.Status.Composer.Text == "Waiting for agents" && !event.Frame.Facts.Busy {
-			t.Fatal("logical waiting lost the native terminal-title busy state")
+		if event.Frame.View.Status.Composer.Text == "Waiting for agents" {
+			if !event.Frame.Facts.Busy {
+				t.Fatal("logical waiting lost the native terminal-title busy state")
+			}
+			if !waitingObserved {
+				waitingObserved = true
+				close(fixture.waiting)
+			}
 		}
 		body, err := json.Marshal(event.Frame, jsonv1.FormatDurationAsNano(true))
 		if err != nil {
@@ -463,7 +482,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 		counts[id] = n
 	}
 	fixture.mu.Unlock()
-	if parent != root || child == "" || child == parent || len(counts) != 2 || counts[parent] != 4 || counts[child] != 2 {
+	if parent != root || child == "" || child == parent || len(counts) != 2 || counts[parent] != 5 || counts[child] != 2 {
 		t.Fatalf("native host identities/inferences: root=%q parent=%q child=%q calls=%v", root, parent, child, counts)
 	}
 	childView, err := connection.Attach(ctx, child)
@@ -576,7 +595,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, fullHistory bool) {
 	}
 	fixture.mu.Lock()
 	defer fixture.mu.Unlock()
-	if len(fixture.calls) != 2 || fixture.calls[parent] != 7 || fixture.calls[child] != 3 || fixture.child != child {
+	if len(fixture.calls) != 2 || fixture.calls[parent] != 8 || fixture.calls[child] != 3 || fixture.child != child {
 		t.Fatalf("cold recovery changed identity or repeated old work: %v", fixture.calls)
 	}
 }
