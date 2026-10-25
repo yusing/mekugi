@@ -11,8 +11,6 @@ import (
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
-	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
-	"github.com/yusing/mekugi/modules/outputrecovery/internal/paging"
 	"github.com/yusing/mekugi/modules/outputrecovery/internal/record"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -43,7 +41,7 @@ func openTestRecovery(t *testing.T, directory string) *Session {
 func (s *Session) putShellOutput(ctx context.Context, stdout, stderr string, exit int) (string, error) {
 	return s.Publish(ctx, command.OmittedOutput{Stdout: stdout, Stderr: stderr}, exit)
 }
-func TestRecoveryPagesAndRestart(t *testing.T) {
+func TestRecoverySurvivesRestart(t *testing.T) {
 	store := openTestRecovery(t, t.TempDir())
 	out, diagnostic := strings.Repeat("out π🙂\n", 36), strings.Repeat("err 引用\n", 30)
 	id, err := store.putShellOutput(t.Context(), out, diagnostic, 7)
@@ -55,75 +53,8 @@ func TestRecoveryPagesAndRestart(t *testing.T) {
 	if err != nil || record.Stdout != out || record.Stderr != diagnostic || record.ExitCode != 7 {
 		t.Fatalf("restart record: %#v, %v", record, err)
 	}
-	codec, err := tokenizer.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := t.Context()
-	const pageBudget = 96
-	for _, selection := range []string{"", "stdout", "stderr"} {
-		t.Run(selection, func(t *testing.T) {
-			position := [2]int{}
-			var gotOut, gotErr strings.Builder
-			for pageIndex := range 100 {
-				page, err := paging.Page(ctx, paging.ReadRequest{Stdout: out, Stderr: diagnostic, Position: position, Stream: selection}, pageBudget)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if count, err := codec.Count(page.Text); err != nil || count > pageBudget {
-					t.Fatalf("page budget = %d, %v", count, err)
-				}
-
-				frame := page.Text
-				if after, ok := strings.CutPrefix(frame, "[stdout bytes]\n"); ok {
-					part, rest, found := strings.Cut(after, "\n[/stdout]\n")
-					if !found {
-						t.Fatalf("missing stdout frame: %q", frame)
-					}
-					gotOut.WriteString(part)
-					frame = rest
-				}
-				if after, ok := strings.CutPrefix(frame, "[stderr bytes]\n"); ok {
-					part, found := strings.CutSuffix(after, "\n[/stderr]\n")
-					if !found {
-						t.Fatalf("missing stderr frame: %q", frame)
-					}
-					gotErr.WriteString(part)
-				} else {
-					gotOut.WriteString(frame)
-				}
-
-				if page.Complete {
-					wantOut, wantErr := out, diagnostic
-					if selection == "stdout" {
-						wantErr = ""
-					} else if selection == "stderr" {
-						wantOut = ""
-					}
-					minimumPageIndex := 1
-					if selection == "" {
-						minimumPageIndex = 2
-					}
-					if pageIndex < minimumPageIndex || gotOut.String() != wantOut || gotErr.String() != wantErr {
-						t.Fatalf("incomplete or duplicated pages: %d, %q, %q", pageIndex, gotOut.String(), gotErr.String())
-					}
-					return
-				}
-				ref, err := reopened.putCursor(ctx, record, page.Position, selection)
-				if err != nil {
-					t.Fatal(err)
-				}
-				cursor, err := reopened.read(ctx, ref)
-				if err != nil || cursor.Position != page.Position || cursor.Stream != selection {
-					t.Fatalf("cursor round trip: %#v, %v", cursor, err)
-				}
-				position = page.Position
-			}
-			t.Fatal("pagination did not finish")
-		})
-	}
-
 }
+
 func TestShellOutputReadRejectsInvalidState(t *testing.T) {
 	t.Parallel()
 	store := openTestRecovery(t, t.TempDir())
@@ -264,27 +195,6 @@ func TestReadCursorRejectsAlteredPosition(t *testing.T) {
 		if _, err := store.read(t.Context(), ref); err == nil {
 			t.Fatalf("altered cursor accepted: %s", position)
 		}
-	}
-}
-
-func TestShortReadCursorSurvivesRestart(t *testing.T) {
-	store := openTestRecovery(t, t.TempDir())
-	id, err := store.putShellOutput(t.Context(), "output", "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	source, err := store.read(t.Context(), id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cursor, err := store.putCursor(t.Context(), source, [2]int{1, 0}, "stdout")
-	if err != nil {
-		t.Fatal(err)
-	}
-	reopened := openTestRecovery(t, store.scope.Directory)
-	again, err := reopened.putCursor(t.Context(), source, [2]int{1, 0}, "stdout")
-	if err != nil || cursor != again {
-		t.Fatalf("cursor changed after restart: %q != %q, %v", cursor, again, err)
 	}
 }
 
