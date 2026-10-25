@@ -116,6 +116,27 @@ func (r *Review) Scope() previewmodel.Scope {
 	defer r.mu.Unlock()
 	return CloneScope(r.scope)
 }
+
+// WorkspaceForThread returns only an unambiguous admitted execution scope.
+// Request readers borrow this identity without copying the complete membership.
+func (r *Review) WorkspaceForThread(thread string) string {
+	if r == nil || thread == "" {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var selected string
+	for workspace, threads := range r.scope.Workspaces {
+		if threads[thread] {
+			if selected != "" && selected != workspace {
+				return ""
+			}
+			selected = workspace
+		}
+	}
+	return selected
+}
+
 func (r *Review) Workspace() string        { r.mu.Lock(); defer r.mu.Unlock(); return r.workspace }
 func (r *Review) Changed() <-chan struct{} { return r.changed }
 
