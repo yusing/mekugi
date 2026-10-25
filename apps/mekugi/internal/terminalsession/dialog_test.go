@@ -169,6 +169,31 @@ func TestDialogFiveTabsSub16CellPathBudget(t *testing.T) {
 	}
 }
 
+func TestDialogPaintLongLineAllocationBound(t *testing.T) {
+	var allocations []float64
+	for _, size := range []int{16 << 10, 1 << 20} {
+		var d Dialog
+		page := terminalui.DialogPage{Text: strings.Repeat("x", size)}
+		page.Add(terminalui.DialogLine{Number: 1, Gutter: "│", Text: page.Text})
+		d.SetDocument(page, d.Prepare(100, 24))
+		rows := make([]string, 24)
+		paint := func() {
+			clear(rows)
+			d.Paint(rows, 100, 24, new(terminalui.Painter))
+		}
+		allocations = append(allocations, testing.AllocsPerRun(3, paint))
+		d.Key("G")
+		paint()
+		if d.top != d.bottom() || !strings.Contains(ansi.Strip(d.body[len(d.body)-1]), "x") || d.Key("y").Text != page.Text {
+			t.Fatal("bounded paint lost tail scrolling or full-source copy")
+		}
+	}
+	t.Logf("allocations/paint: 16KiB=%.0f, 1MiB=%.0f", allocations[0], allocations[1])
+	if allocations[1] > allocations[0]+16 {
+		t.Fatal("paint allocations grew with offscreen wrapped rows")
+	}
+}
+
 func TestDialogSelectionResolvesOffscreenFileLinks(t *testing.T) {
 	var d Dialog
 	painter := terminalui.Painter{DeferFileLinks: true, FileLink: func(string) bool { return true }}

@@ -8,7 +8,8 @@ key bindings, selection lifetime, file-link authorization and backend interactio
 
 Choice lists measure columns from visible rows. Shared list and dialog drawing
 preserves supplied syntax and source-copy annotations while sharing wrapping,
-selection styling and hit geometry.
+selection styling and hit geometry. Dialog viewport painting materializes only
+visible wrapped rows, while complete source remains available for search and copy.
 Consumers supply content, headers and actions; they own navigation and effect
 dispatch. Rendering neither reads files nor opens links.
 

@@ -1,11 +1,13 @@
 package terminalui
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	ansiparser "github.com/charmbracelet/x/ansi/parser"
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
@@ -89,14 +91,26 @@ func wrappedRows(text string, width int) int {
 // Rows lays out line i at width: numbered lines wrap under their gutter, and
 // continuation rows leave the number blank.
 func (d DialogPage) Rows(i, width int) []string {
+	return d.RowsRange(i, width, 0, math.MaxInt)
+}
+
+// RowsRange materializes only the requested display rows of a logical line.
+// Skipped source is scanned without retaining wrapped rows or copying its text.
+func (d DialogPage) RowsRange(i, width, first, count int) []string {
+	if count <= 0 {
+		return nil
+	}
 	line := d.Lines[i]
 	if line.Gutter == "" {
 		if line.Wrap {
-			return Wrap(line.Text, max(1, width), true)
+			return hardWrapWindow(line.Text, max(1, width), first, count)
+		}
+		if first > 0 {
+			return nil
 		}
 		return []string{line.Text}
 	}
-	parts := Wrap(line.Text, d.textWidth(width), true)
+	parts := hardWrapWindow(line.Text, d.textWidth(width), first, count)
 	rows := make([]string, len(parts))
 	for k, part := range parts {
 		if line.CopySource != nil {
@@ -105,7 +119,7 @@ func (d DialogPage) Rows(i, width int) []string {
 			part = AttachCopy(part, []CopySpan{{CopyFragment: fragment}})
 		}
 		number := ""
-		if k == 0 && line.Number > 0 {
+		if first+k == 0 && line.Number > 0 {
 			number = strconv.Itoa(line.Number)
 		}
 		style, end := Dim, Undim
@@ -117,6 +131,77 @@ func (d DialogPage) Rows(i, width int) []string {
 		rows[k] = style + strings.Repeat(" ", d.digits-len(number)) + number + " " + gutter + end + " " + part
 	}
 	return rows
+}
+
+// hardWrapWindow locates source boundaries before using the shared wrapper, so
+// style restoration and hyperlink handling remain identical to complete rows.
+func hardWrapWindow(text string, width, first, count int) []string {
+	var style uv.Style
+	var link uv.Link
+	parser := ansi.GetParser()
+	defer func() { parser.SetHandler(ansi.Handler{}); ansi.PutParser(parser) }()
+	parser.SetHandler(ansi.Handler{HandleCsi: func(cmd ansi.Cmd, params ansi.Params) {
+		if cmd == 'm' {
+			uv.ReadStyle(params, &style)
+		}
+	}, HandleOsc: func(cmd int, data []byte) {
+		if cmd == 8 {
+			uv.ReadLink(data, &link)
+		}
+	}})
+	row, column, start := 0, 0, 0
+	carry := ""
+	leadingWide := false
+	wrap := func(end int) []string {
+		rows := Wrap(carry+text[start:end], width, true)
+		if leadingWide {
+			rows = rows[1:] // The full source already supplied this glyph's leading empty row.
+		}
+		return rows
+	}
+	var state byte
+	for at := 0; at < len(text); {
+		seq, cells, n, next := ansi.DecodeSequence(text[at:], state, nil)
+		newline := seq == "\n"
+		boundWidth := cells
+		if cells == 0 && len(seq) == 1 {
+			// Hardwrap checks one cell for executable controls without advancing
+			// the column. Reuse its parser classification instead of a control list.
+			if _, action := ansiparser.Table.Transition(ansiparser.GroundState, seq[0]); action == ansiparser.ExecuteAction {
+				boundWidth = 1
+			}
+		}
+		if newline || boundWidth > 0 && column+boundWidth > width {
+			row++
+			if row >= first && row-first >= count {
+				return wrap(at)
+			}
+			column = 0
+			if row == first {
+				leadingWide = !newline && cells > width
+				start = at
+				if newline {
+					start += n
+				}
+				carry = style.String()
+				if style.IsZero() {
+					carry = Reset
+				}
+				if !link.IsZero() {
+					carry += ansi.SetHyperlink(link.URL, link.Params)
+				}
+			}
+		}
+		if row < first && strings.HasPrefix(seq, "\x1b") {
+			parser.Parse([]byte(seq))
+		}
+		column += cells
+		at, state = at+n, next
+	}
+	if row < first {
+		return nil
+	}
+	return wrap(len(text))
 }
 
 // MatchRow finds a case-insensitive substring in a logical line and locates

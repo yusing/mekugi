@@ -2,6 +2,7 @@ package terminalui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -54,6 +55,41 @@ func TestDialogWrappedRowsMatchesWrap(t *testing.T) {
 	rows := page.Rows(0, 9)
 	if len(rows) != 2 || ansi.Strip(rows[0]) != "12 ┆ abcd" || ansi.Strip(rows[1]) != "   ┆ efgh" || page.Indent(0) != 5 || page.RowCount(0, 9) != 2 {
 		t.Fatalf("wrapped numbered rows=%q", rows)
+	}
+}
+
+func TestDialogRowsRangePreservesWrappedContent(t *testing.T) {
+	for _, text := range []string{"", "abc def  ghi", "界界ab", "e\u0301👩‍💻text", "\x1b[31mcolored\x1b[39m text", "\x1b[1;31mabc def\n界界end", "\x1b]8;;https://example.com\x1b\\linked text\x1b]8;;\x1b\\"} {
+		for _, width := range []int{1, 2, 5, 20} {
+			page := DialogPage{}
+			page.Add(DialogLine{Number: 12, Gutter: "│", GutterStyle: "\x1b[35m", Text: text})
+			rows := page.Rows(0, width+5)
+			for first := 0; first <= len(rows); first++ {
+				got := page.RowsRange(0, width+5, first, 2)
+				want := rows[first:min(first+2, len(rows))]
+				if !slices.Equal(got, want) {
+					t.Fatalf("%q width=%d first=%d: got %q want %q", text, width, first, got, want)
+				}
+			}
+		}
+	}
+}
+
+func TestDialogRowsRangeMatchesControlWrapping(t *testing.T) {
+	for _, text := range []string{"a\ta", "a\ra", "a\x00a", "a\x7fa", "a\n\tend"} {
+		for _, width := range []int{1, 2, 5} {
+			page := DialogPage{Lines: []DialogLine{{Text: text, Wrap: true}}}
+			rows := Wrap(text, width, true)
+			for first := 0; first <= len(rows); first++ {
+				for _, count := range []int{1, 2} {
+					got := page.RowsRange(0, width, first, count)
+					want := rows[first:min(first+count, len(rows))]
+					if !slices.Equal(got, want) {
+						t.Fatalf("%q width=%d first=%d count=%d: got %q want %q", text, width, first, count, got, want)
+					}
+				}
+			}
+		}
 	}
 }
 

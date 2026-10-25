@@ -492,18 +492,13 @@ func (d *Dialog) layoutBody() []string {
 	var indents []int
 	var gutterStyles []string
 	for i := sort.SearchInts(d.starts[1:], d.top+1); i < len(d.Document.Lines) && len(body) < d.rows; i++ {
-		lines := d.Document.Rows(i, d.width)
-		if skip := d.top - d.starts[i]; skip > 0 {
-			lines = lines[min(skip, len(lines)):]
-		}
+		lines := d.Document.RowsRange(i, d.width, max(0, d.top-d.starts[i]), d.rows-len(body))
 		for _, line := range lines {
 			body = append(body, d.highlight(line, d.Document.Indent(i), i == d.match))
 			indents = append(indents, d.Document.Indent(i))
 			gutterStyles = append(gutterStyles, d.Document.Lines[i].GutterStyle)
 		}
 	}
-	body = body[:min(len(body), d.rows)]
-	indents = indents[:len(body)]
 	for len(body) < d.rows {
 		body = append(body, "")
 		indents = append(indents, 0)
