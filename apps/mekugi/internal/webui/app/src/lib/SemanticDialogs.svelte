@@ -21,6 +21,7 @@
   );
   const resume = $derived(view?.Resume);
   const panel = $derived(view?.Panel);
+  const metricCount = $derived(panel?.Metrics?.exchanges.length ?? 0);
   const disabled = $derived(semantic.connection !== "open" || semantic.pending > 0);
   const groups = $derived.by(() => {
     const map = new Map<string, StatusField[]>();
@@ -187,19 +188,72 @@
   </Dialog>
 {:else if panel && view}
   <Dialog
-    title="Session status"
+    title={panel.Metrics ? "Session metrics" : "Session status"}
     wide
     onclose={() => semantic.send({ panel: { Version: view.Version, Panel: panel.ID, Kind: 1 } })}
   >
+    {#if panel.Metrics}
+      <div class="{segments} mb-4 flex flex-wrap" role="group" aria-label="Session metrics view">
+        {#each ["Overview", "Transport", "Exchanges"] as tab, i (tab)}
+          <button
+            type="button"
+            class={segment}
+            aria-pressed={panel.MetricTab === i}
+            {disabled}
+            onclick={() =>
+              semantic.send({
+                panel: {
+                  Version: view.Version,
+                  Panel: panel.ID,
+                  Kind: 3,
+                  Tab: i,
+                  Exchange: panel.MetricExchange,
+                },
+              })}>{tab}</button
+          >
+        {/each}
+      </div>
+      {#if panel.MetricTab === 2 && metricCount > 0}
+        <div class="mb-3 flex flex-wrap items-center gap-2" aria-label="Retained exchange">
+          <Button
+            disabled={disabled || panel.MetricIndex === 0}
+            onclick={() =>
+              semantic.send({
+                panel: {
+                  Version: view.Version,
+                  Panel: panel.ID,
+                  Kind: 3,
+                  Tab: 2,
+                  Exchange: panel.Metrics!.exchanges[panel.MetricIndex - 1].sequence,
+                },
+              })}>Older</Button
+          >
+          <span class="text-small text-muted">{panel.MetricIndex + 1} of {metricCount}</span>
+          <Button
+            disabled={disabled || panel.MetricIndex >= metricCount - 1}
+            onclick={() =>
+              semantic.send({
+                panel: {
+                  Version: view.Version,
+                  Panel: panel.ID,
+                  Kind: 3,
+                  Tab: 2,
+                  Exchange: panel.Metrics!.exchanges[panel.MetricIndex + 1].sequence,
+                },
+              })}>Newer</Button
+          >
+        </div>
+      {/if}
+    {/if}
     {#each groups as [group, fields] (group)}
       <section class="not-first:mt-4">
         {#if group}<h3 class="mb-1.5 text-small font-semibold text-muted">{group}</h3>{/if}
         <dl class="grid grid-cols-[minmax(120px,1fr)_2fr] max-sm:grid-cols-1">
           {#each fields as field, i (i)}
-            <dt class="border-t border-rule py-[7px] text-muted">{field.Label}</dt>
+            <dt class="py-[7px] text-muted">{field.Label}</dt>
             <dd
               class={[
-                "grid gap-0.5 border-t border-rule py-[7px] wrap-anywhere max-sm:border-t-0 max-sm:pt-0",
+                "grid gap-0.5 py-[7px] wrap-anywhere max-sm:pt-0",
                 field.Alert && "text-negative",
               ]}
             >
