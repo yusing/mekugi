@@ -18,7 +18,7 @@ func TestSnapshotCommitHookChecksStagedTree(t *testing.T) {
 	makePath := filepath.Join(bin, "make")
 	writeTestFile(t, makePath, `#!/bin/sh
 set -eu
-[ "$*" = 'test-ui-snapshots SNAPSHOT_PACKAGES=@workspace SNAPSHOT=^TestUISnapshot' ]
+[ "$*" = 'test-ui-snapshots SNAPSHOT_PACKAGES=@snapshots SNAPSHOT=^TestUISnapshot' ]
 [ -z "${MEKUGI_UPDATE_UI_SNAPSHOTS-}" ]
 [ -z "${GIT_INDEX_FILE-}" ]
 [ "$TMPDIR" = "$(dirname "$(pwd -P)")/tmp" ]

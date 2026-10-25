@@ -26,7 +26,7 @@ HOST_ACCEPTANCE_TESTS := TestNativeToolFrontendCodexE2E \
 	TestMChangesNestedNativeCodexE2E \
 	TestAppServerExecTrackNativeCodexSandbox
 SNAPSHOT ?= ^TestUISnapshot
-SNAPSHOT_PACKAGES ?= @workspace
+SNAPSHOT_PACKAGES ?= @snapshots
 
 install: workspace-check
 	$(GO) install $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec

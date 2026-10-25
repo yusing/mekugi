@@ -11,8 +11,12 @@ make test-ui-snapshots SNAPSHOT_PACKAGES=./apps/mekugi/internal/launch SNAPSHOT=
 ```
 
 Checks are offline, include the snapshot harness, and need neither Codex nor model requests.
-Omit `SNAPSHOT_PACKAGES` for the workspace or `SNAPSHOT` for all snapshot cases. The same selections
-apply to `make update-ui-snapshots`.
+Omit `SNAPSHOT_PACKAGES` to discover snapshot-containing packages across the workspace before
+compiling them, or `SNAPSHOT` for all UI snapshot cases. Discovery includes `TestUISnapshot`
+and harness `TestSnapshot` declarations, including platform-tagged files; Go selects runnable
+tests. `SNAPSHOT` filters test names within selected packages. Explicit package paths bypass discovery;
+`SNAPSHOT_PACKAGES=@workspace` compiles every member package. The same selections apply to
+`make update-ui-snapshots`.
 
 - `testsupport/uisnapshot.Assert` strips ANSI only: spacing, blank lines, wrapping and borders
   remain exact. Text comparisons do not prove color/style correctness.

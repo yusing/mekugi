@@ -14,7 +14,7 @@ unset $(git rev-parse --local-env-vars)
 cd "$snapshot_tree/source"
 printf 'Checking all UI snapshots in the staged tree...\n'
 if ! env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS -u COLORFGBG TMPDIR="$snapshot_tree/tmp" \
-    make test-ui-snapshots SNAPSHOT_PACKAGES=@workspace SNAPSHOT='^TestUISnapshot'; then
+    make test-ui-snapshots SNAPSHOT_PACKAGES=@snapshots SNAPSHOT='^TestUISnapshot'; then
     printf '%s\n' 'Commit blocked: review the snapshot diff and stage current baselines.' >&2
     exit 1
 fi

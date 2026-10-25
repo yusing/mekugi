@@ -51,7 +51,11 @@ func run(args []string) error {
 	if args[0] != "run" || len(args) < 2 {
 		return errors.New("expected check, index-write, index-check or run COMMAND [ARGS]")
 	}
-	command := exec.Command(args[1], expand(args[2:], members)...)
+	expanded, err := expand(args[2:], members)
+	if err != nil {
+		return err
+	}
+	command := exec.Command(args[1], expanded...)
 	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return command.Run()
 }
@@ -94,9 +98,21 @@ func workspaceMembers() ([]member, error) {
 	return members, nil
 }
 
-func expand(args []string, members []member) []string {
+func expand(args []string, members []member) ([]string, error) {
 	var result []string
+	var snapshots []string
 	for _, arg := range args {
+		if arg == "@snapshots" {
+			if snapshots == nil {
+				var err error
+				snapshots, err = snapshotPackages(members)
+				if err != nil {
+					return nil, err
+				}
+			}
+			result = append(result, snapshots...)
+			continue
+		}
 		if arg != "@workspace" {
 			result = append(result, arg)
 			continue
@@ -105,7 +121,7 @@ func expand(args []string, members []member) []string {
 			result = append(result, "./"+filepath.ToSlash(m.directory)+"/...")
 		}
 	}
-	return result
+	return result, nil
 }
 
 func checkImports(members []member) error {

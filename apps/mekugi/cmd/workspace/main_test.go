@@ -94,9 +94,9 @@ func TestExpandWorkspaceArguments(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			original := slices.Clone(tt.args)
-			got := expand(tt.args, tt.members)
-			if !slices.Equal(got, tt.want) || !slices.Equal(tt.args, original) {
-				t.Fatalf("expanded=%q args=%q, want %q", got, tt.args, tt.want)
+			got, err := expand(tt.args, tt.members)
+			if err != nil || !slices.Equal(got, tt.want) || !slices.Equal(tt.args, original) {
+				t.Fatalf("expanded=%q args=%q error=%v, want %q", got, tt.args, err, tt.want)
 			}
 		})
 	}

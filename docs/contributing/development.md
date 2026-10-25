@@ -42,7 +42,9 @@ git config --local core.hooksPath "$(git rev-parse --show-toplevel)/.githooks"
 ```
 
 The gate checks every UI snapshot against the staged source in a temporary checkout.
-The absolute hook path also applies the gate to this clone's other worktrees.
+The absolute hook path also applies the gate to this clone's other worktrees. To test changes
+to the hook in another worktree, use `git -c core.hooksPath="$PWD/.githooks" commit` there;
+this selects that worktree's hook without changing the clone's configuration.
 Unstaged fixes cannot hide stale staged fixtures. A mismatch blocks the commit and
 prints its diff. Review and update the affected baselines, then stage them with the
 source change. The existing Linux CI suite also checks all UI snapshots.
