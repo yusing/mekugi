@@ -271,8 +271,7 @@
       @apply rounded-chip border border-rule bg-raised px-[3px] py-px text-code;
       box-decoration-break: clone;
     }
-    /* Workspace links cannot open in a browser, so they read as plain paths
-       rather than as links. */
+    /* Machine-local targets use the shared file details action. */
     & .file-link {
       @apply font-mono text-code;
     }

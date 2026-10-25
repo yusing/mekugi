@@ -1,11 +1,15 @@
 import MarkdownIt from "markdown-it";
 
-// Recorded text is untrusted: raw HTML stays escaped, and only web links
-// navigate. Workspace file links render as plain paths, with the target as a
-// title, because the browser cannot open them.
+// Recorded text is untrusted. Local links use the machine's shared file
+// interaction instead of navigating the browser filesystem.
 const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
 
-const web = /^https?:\/\//i;
+const web = /^(?:https?:\/\/|mailto:)/i;
+const local = (href: string) =>
+  !/^[#?]/.test(href) &&
+  (!/^[a-z][a-z\d+.-]*:/i.test(href) || href.startsWith("/") || href.startsWith("file:"));
+const validateLink = md.validateLink.bind(md);
+md.validateLink = (href) => href.startsWith("file:") || validateLink(href);
 const defaultLinkOpen =
   md.renderer.rules.link_open ??
   ((tokens, i, options, _env, self) => self.renderToken(tokens, i, options));
@@ -14,11 +18,23 @@ md.renderer.rules.link_open = (tokens, i, options, env, self) => {
   const href = String(tokens[i].attrGet("href") ?? "");
   if (!web.test(href)) {
     tokens[i].attrs = [];
-    tokens[i].tag = "span";
+    tokens[i].tag = local(href) ? "a" : "span";
+    if (local(href)) {
+      tokens[i].attrSet("href", "#");
+      let path = href;
+      if (!href.startsWith("file:")) {
+        try {
+          path = decodeURIComponent(href);
+        } catch {
+          /* Preserve a literal malformed escape. */
+        }
+      }
+      tokens[i].attrSet("data-file-link", path);
+    }
     tokens[i].attrSet("class", "file-link");
     tokens[i].attrSet("title", href);
     const close = tokens.slice(i + 1).find((t) => t.type === "link_close");
-    if (close) close.tag = "span";
+    if (close) close.tag = tokens[i].tag;
     return self.renderToken(tokens, i, options);
   }
   tokens[i].attrSet("target", "_blank");
