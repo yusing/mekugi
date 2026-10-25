@@ -1,5 +1,6 @@
 import type { HighlighterCore } from "shiki/core";
 import type { Value } from "./protocol";
+import type { DiffRow } from "./diff";
 
 // Syntax highlighting for code the transcript shows. Shiki runs on its
 // JavaScript regex engine; it and each grammar load the first time a block
@@ -123,6 +124,40 @@ const limit = 64 * 1024;
 let core: Promise<HighlighterCore> | undefined;
 const loading = new Map<string, Promise<unknown>>();
 
+export interface SyntaxToken {
+  text: string;
+  style?: string;
+}
+
+// Whole source sides retain multiline grammar state. The diff painter owns
+// row geometry and changed-word backgrounds, independently of these colors.
+export async function highlightLines(
+  code: string,
+  lang: string | undefined,
+): Promise<SyntaxToken[][] | undefined> {
+  const id = language(lang);
+  if (code.length > limit || !id) return undefined;
+  try {
+    const h = await grammarHighlighter(id);
+    return h
+      .codeToTokens(code, {
+        lang: id,
+        themes: { light: "github-light-default", dark: "github-dark-default" },
+        defaultColor: false,
+      })
+      .tokens.map((line) =>
+        line.map((token) => ({
+          text: token.content,
+          style: Object.entries(token.htmlStyle ?? {})
+            .map(([key, value]) => `${key}:${value}`)
+            .join(";"),
+        })),
+      );
+  } catch {
+    return undefined;
+  }
+}
+
 function highlighter() {
   core ??= Promise.all([import("shiki/core"), import("shiki/engine/javascript")]).then(
     ([{ createHighlighterCore }, { createJavaScriptRegexEngine }]) =>
@@ -136,6 +171,18 @@ function highlighter() {
   );
   core.catch(() => (core = undefined));
   return core;
+}
+
+async function grammarHighlighter(id: string) {
+  const h = await highlighter();
+  let grammar = loading.get(id);
+  if (!grammar) {
+    grammar = grammars[id]().then((m) => h.loadLanguage(m.default));
+    loading.set(id, grammar);
+    grammar.catch(() => loading.delete(id));
+  }
+  await grammar;
+  return h;
 }
 
 // Change statistics as `git diff --numstat` and `mchanges` print them: an
@@ -175,14 +222,7 @@ export async function highlight(code: string, lang: string | undefined) {
   const id = language(lang);
   if (!id) return diffstat(code);
   try {
-    const h = await highlighter();
-    let grammar = loading.get(id);
-    if (!grammar) {
-      grammar = grammars[id]().then((m) => h.loadLanguage(m.default));
-      loading.set(id, grammar);
-      grammar.catch(() => loading.delete(id));
-    }
-    await grammar;
+    const h = await grammarHighlighter(id);
     return h.codeToHtml(code, {
       lang: id,
       themes: { light: "github-light-default", dark: "github-dark-default" },
@@ -220,4 +260,36 @@ export function highlightWithin(
       });
     }
   });
+}
+
+// Keep each hunk's before/after grammar state independent. Gaps are not source,
+// and a deleted comment/string delimiter must not affect the added side.
+export async function diffSyntax(
+  rows: DiffRow[],
+  beforePath: string,
+  afterPath: string,
+): Promise<Map<number, SyntaxToken[]>> {
+  const syntax = new Map<number, SyntaxToken[]>();
+  if (rows.reduce((n, row) => n + row.text.length + 1, 0) > limit) return syntax;
+  for (let start = 0; start < rows.length;) {
+    let end = start + 1;
+    while (end < rows.length && rows[end].kind !== "hunk") end++;
+    for (const [side, path] of [beforePath, afterPath].entries()) {
+      const indexes: number[] = [];
+      for (let i = start; i < end; i++)
+        if (rows[i].kind === "context" || rows[i].kind === (side ? "add" : "remove"))
+          indexes.push(i);
+      if (!indexes.length) continue;
+      const source = indexes.map((index) => rows[index].text).join("\n");
+      const lines = await highlightLines(source, pathLanguage(path));
+      if (lines)
+        indexes.forEach((index, i) => {
+          // Shiki normalizes CRLF. Never let decoration replace source content.
+          if (lines[i]?.map((token) => token.text).join("") === rows[index].text)
+            syntax.set(index, lines[i]);
+        });
+    }
+    start = end;
+  }
+  return syntax;
 }

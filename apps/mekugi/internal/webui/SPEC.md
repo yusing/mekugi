@@ -144,7 +144,12 @@ agent's files compose as the terminal's caller filter shows them, with other
 agents' changes as baseline. Each file has a section with its workspace path,
 net counts, the agents (for all agents) and programs that changed it, and its
 composed unified diff with line numbers on both sides; hunk headers are left
-out, and a rule separates hunks. Recently captured changes are marked. Long diffs
+out, and a rule separates hunks. Saved and live diffs use the file's syntax
+colours, with deletions and additions highlighted independently. Replacement
+blocks emphasize changed words across consecutive rows while retaining syntax
+colours; pure additions and removals keep their ordinary row fill. Unknown
+languages and oversized inputs remain plain, and large or complex replacement
+blocks may omit word emphasis. Recently captured changes are marked. Long diffs
 start collapsed, and what the reader opens or closes stays so as the review
 updates. Loading, coverage and failure stay visible; replays have no changes.
 

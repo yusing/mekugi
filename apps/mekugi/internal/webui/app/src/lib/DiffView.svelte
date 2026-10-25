@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { diffRows, workspacePath } from "./diff";
+  import { diffRows, diffWords, diffTokens, workspacePath } from "./diff";
+  import { diffSyntax, type SyntaxToken } from "./highlight";
   import type { ReviewFile } from "./protocol";
 
   // One captured or previewed file change: what kind of change it is, then
@@ -12,7 +13,23 @@
     recent = false,
   }: { file: ReviewFile; workspace: string; status?: string; recent?: boolean } = $props();
 
-  const rows = $derived(file.Diff ? diffRows(file.Diff) : []);
+  const source = $derived(file.Diff ?? "");
+  const beforePath = $derived(file.BeforePath);
+  const afterPath = $derived(file.AfterPath);
+  const rows = $derived(diffRows(source));
+  const words = $derived(diffWords(rows));
+  let syntax = $state.raw(new Map<number, SyntaxToken[]>());
+  $effect(() => {
+    const current = rows;
+    let active = true;
+    syntax = new Map();
+    void diffSyntax(current, beforePath, afterPath).then((result) => {
+      if (active) syntax = result;
+    });
+    return () => {
+      active = false;
+    };
+  });
   const digits = $derived(
     String(rows.reduce((n, row) => Math.max(n, row.old ?? 0, row.new ?? 0), 0)).length,
   );
@@ -54,13 +71,18 @@
           {:else if row.kind === "note"}
             <div class="px-2.5 text-muted italic">{row.text}</div>
           {:else}
-            <div class="flex {tints[row.kind] ?? ''}">
+            <div class="flex {tints[row.kind] ?? ''}" class:bg-add={row.kind === "add"}>
               <span class={number} style:width="{digits + 2}ch">{row.old ?? ""}</span>
               <span class={number} style:width="{digits + 2}ch">{row.new ?? ""}</span>
               <span class="w-[2ch] flex-none text-center select-none {signs[row.kind] ?? ''}"
                 >{row.kind === "add" ? "+" : row.kind === "remove" ? "−" : ""}</span
               >
-              <span class="pr-3 whitespace-pre">{row.text}</span>
+              <span class="pr-3 whitespace-pre"
+                >{#each diffTokens(row.text, syntax.get(i), words.get(i)) as token, j (j)}<span
+                    style={token.style}
+                    class:diff-word={token.changed}>{token.text}</span
+                  >{/each}</span
+              >
             </div>
           {/if}
         {/each}
@@ -68,3 +90,23 @@
     </div>
   {/if}
 </div>
+
+<style>
+  /* Tinted rows need stronger ink than the themes' white/black code surfaces.
+     Keep each syntax hue while giving comments and changed words enough contrast. */
+  [style*="--shiki-light"] {
+    color: color-mix(in srgb, var(--shiki-light) 60%, var(--text));
+  }
+  @media (prefers-color-scheme: dark) {
+    [style*="--shiki-dark"] {
+      color: color-mix(in srgb, var(--shiki-dark) 60%, var(--text));
+    }
+  }
+  .diff-word {
+    background: color-mix(in srgb, var(--negative) 16%, transparent);
+    border-radius: 2px;
+  }
+  .bg-add .diff-word {
+    background: color-mix(in srgb, var(--positive) 16%, transparent);
+  }
+</style>
