@@ -3,6 +3,8 @@ package run
 import (
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
 func TestMRunCapture(t *testing.T) {
@@ -96,7 +98,7 @@ func TestMRunCombinedCaptureBoundsPendingLine(t *testing.T) {
 func TestInvalidRowOptions(t *testing.T) {
 
 	for _, flags := range []string{"-n", "-n 0", "-n -1", "-n 01", "-n 1.5", "-n 999999999999999999999", "-n 1 -n 2"} {
-		if _, _, err := parseMRunArguments(strings.Fields(flags + " -- echo")); err == nil {
+		if _, _, err := commandargs.ParseRunOptions(strings.Fields(flags + " -- echo")); err == nil {
 			t.Fatalf("accepted %q", flags)
 		}
 	}

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -22,60 +21,6 @@ const (
 	mrunDeliveryTokens   = commandargs.MaxOutputTokens
 	mrunProcessWaitDelay = 2 * time.Second
 )
-
-type mrunOptions struct {
-	maxLines  int
-	maxTokens int
-	tail      bool
-}
-
-func parseMRunArguments(arguments []string) (mrunOptions, []string, error) {
-	var options mrunOptions
-	for len(arguments) > 0 {
-		arguments = commandargs.ExpandMaxTokensOption(arguments)
-		switch arguments[0] {
-		case "--max-tokens":
-			if len(arguments) < 2 || options.maxTokens != 0 {
-				return options, nil, errors.New(commandargs.MaxTokensArgumentError)
-			}
-			value := arguments[1]
-			number, err := commandargs.ParseMaxTokens(value)
-			if err != nil {
-				return options, nil, err
-			}
-			options.maxTokens = number
-			arguments = arguments[2:]
-		case "-n":
-			if len(arguments) < 2 || options.maxLines != 0 {
-				return options, nil, fmt.Errorf("-n requires one positive integer and cannot repeat")
-			}
-			number, err := strconv.Atoi(arguments[1])
-			if err != nil || number < 1 || strconv.Itoa(number) != arguments[1] {
-				return options, nil, fmt.Errorf("-n requires one positive integer")
-			}
-			options.maxLines = number
-			arguments = arguments[2:]
-
-		case "--tail":
-			if options.tail {
-				return options, nil, fmt.Errorf("--tail cannot repeat")
-			}
-			options.tail = true
-			arguments = arguments[1:]
-		case "--":
-			if (options.maxTokens == 0 && options.maxLines == 0) || len(arguments) < 2 || arguments[1] == "" {
-				return options, nil, fmt.Errorf("expected -n N or --max-tokens N, optionally --tail, then -- COMMAND [ARG...]")
-			}
-			return options, arguments[1:], nil
-		default:
-			if !strings.HasPrefix(arguments[0], "-") && arguments[0] != "" && (options.maxTokens != 0 || options.maxLines != 0) {
-				return options, arguments, nil
-			}
-			return options, nil, fmt.Errorf("expected -n N or --max-tokens N, optionally --tail, then -- COMMAND [ARG...]")
-		}
-	}
-	return options, nil, fmt.Errorf("expected -n N or --max-tokens N, optionally --tail, then -- COMMAND [ARG...]")
-}
 
 // mrunCapture drains every write. Token-only tail mode uses a byte ring;
 // line mode retains complete lines, bounding each candidate when tokens are limited.
@@ -259,16 +204,16 @@ func trimMRunBoundary(value string, tail bool) string {
 // Source: internal/router/mrun.go:256:386@[e702dffa] executeMRun/mrunRetainedKind.
 func (Service) Execute(ctx context.Context, request command.Request) (command.Output, error) {
 	arguments, stdin := request.Args, request.Stdin
-	options, argv, err := parseMRunArguments(arguments)
+	options, argv, err := commandargs.ParseRunOptions(arguments)
 	if err != nil {
 		return command.Output{Stderr: fmt.Sprintf("mrun: %v\n", err), ExitCode: 2}, nil
 	}
 	// Source: plugins/tokens.ts MAX_POSSIBLE_GPT5_TOKEN_BYTES.
 	// No GPT-5 token spans more than 128 bytes. Keep a small UTF-8 boundary
 	// reserve, separately for each stream, before exact final token selection.
-	byteLimit := options.maxTokens*128 + utf8.UTFMax
-	stdout := mrunCapture{buffer: make([]byte, byteLimit), tail: options.tail, maxLines: options.maxLines}
-	stderr := mrunCapture{buffer: make([]byte, byteLimit), tail: options.tail, maxLines: options.maxLines}
+	byteLimit := options.Tokens*128 + utf8.UTFMax
+	stdout := mrunCapture{buffer: make([]byte, byteLimit), tail: options.Tail, maxLines: options.Lines}
+	stderr := mrunCapture{buffer: make([]byte, byteLimit), tail: options.Tail, maxLines: options.Lines}
 	path, err := exec.LookPath(argv[0])
 	if err != nil {
 		return command.Output{Stderr: fmt.Sprintln(err), ExitCode: 127}, nil
@@ -296,14 +241,14 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 	// notices are never part of command-output selection or retained data.
 	errText, outText := stderr.text(), stdout.text()
 	mode := "head"
-	if options.tail {
+	if options.Tail {
 		mode = "tail"
 	}
 	selectedOut, selectedErr := outText, errText
-	if options.maxTokens > 0 && (len(outText)+len(errText) > options.maxTokens || outText != "" && len(errText) > options.maxTokens/2) {
+	if options.Tokens > 0 && (len(outText)+len(errText) > options.Tokens || outText != "" && len(errText) > options.Tokens/2) {
 		// A token always contains at least one source byte. Only invoke the exact
 		// tokenizer when the captured byte count cannot prove the output fits.
-		formatted, err := outputbudget.Select(ctx, options.maxTokens, mode, outText, errText)
+		formatted, err := outputbudget.Select(ctx, options.Tokens, mode, outText, errText)
 		if err != nil {
 			return command.Output{}, fmt.Errorf("select output: %w", err)
 		}
@@ -311,11 +256,11 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 	}
 	notice := ""
 	if stdout.omitted || stderr.omitted || selectedOut != outText || selectedErr != errText {
-		limit := fmt.Sprintf("%d-token limit", options.maxTokens)
-		if options.maxLines > 0 {
-			limit = fmt.Sprintf("%d-line limit", options.maxLines)
-			if options.maxTokens > 0 {
-				limit += fmt.Sprintf(" or %d-token limit", options.maxTokens)
+		limit := fmt.Sprintf("%d-token limit", options.Tokens)
+		if options.Lines > 0 {
+			limit = fmt.Sprintf("%d-line limit", options.Lines)
+			if options.Tokens > 0 {
+				limit += fmt.Sprintf(" or %d-token limit", options.Tokens)
 			}
 		}
 		notice = fmt.Sprintf("mrun: output incomplete: %s reached\n", limit)
