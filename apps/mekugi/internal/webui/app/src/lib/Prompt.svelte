@@ -2,7 +2,7 @@
   import Alert from "./ui/Alert.svelte";
   import { onDestroy, tick, untrack } from "svelte";
   import type { Approval, QuestionCall } from "./protocol";
-  import { stream } from "./stream.svelte";
+  import { stream, type Stream } from "./stream.svelte";
   import Button from "./ui/Button.svelte";
   import { input } from "./ui/styles";
 
@@ -10,10 +10,12 @@
     item,
     count = 1,
     unavailable = false,
+    source = stream,
   }: {
     item: Approval | QuestionCall;
     count?: number;
     unavailable?: boolean;
+    source?: Stream;
   } = $props();
 
   const call = $derived("questions" in item ? item : undefined);
@@ -69,7 +71,7 @@
     }
     submittedWithFocus = card.contains(document.activeElement);
     sending = true;
-    error = await stream.answer({
+    error = await source.answer({
       call: call.id,
       answers: call.questions.map((q) => {
         const draft = drafts[q.id];
@@ -89,7 +91,7 @@
     if (!approval || disabled) return;
     submittedWithFocus = card.contains(document.activeElement);
     sending = true;
-    error = await stream.decide({
+    error = await source.decide({
       approval: approval.id,
       choice,
       reason: choice === deny ? reason : undefined,
@@ -111,7 +113,7 @@
   data-prompt
   bind:this={card}
 >
-  {#if item.agent}<p class="mb-2 text-small text-muted">{stream.label(item.agent)}</p>{/if}
+  {#if item.agent}<p class="mb-2 text-small text-muted">{source.label(item.agent)}</p>{/if}
   {#if approval}
     <div class="flex items-baseline gap-3">
       <h2 class="font-semibold">{approval.title}</h2>

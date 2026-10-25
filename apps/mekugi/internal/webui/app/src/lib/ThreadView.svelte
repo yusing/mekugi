@@ -16,7 +16,7 @@
   import { semantic } from "./semantic.svelte";
   import SemanticDialogs from "./SemanticDialogs.svelte";
   import SessionInfo from "./SessionInfo.svelte";
-  import { stream } from "./stream.svelte";
+  import { stream, Stream } from "./stream.svelte";
   import { newIdentity } from "./transport";
   import ThreadDocks from "./ThreadDocks.svelte";
   import Transcript from "./Transcript.svelte";
@@ -112,12 +112,35 @@
     if (view.agent && stream.roster.agents.length && !shown) show(undefined, true);
   });
   const owner = $derived(shown?.name ?? "/root");
+  const child = new Stream();
+  const childThread = $derived(
+    shown?.thread && semantic.root?.frame.childThreads?.includes(shown.thread)
+      ? shown.thread
+      : undefined,
+  );
+  const childReady = $derived(!!childThread && semantic.frame?.view.Main.ID === childThread);
+  const childFeedReady = $derived(childReady && child.session?.thread === childThread);
+  const active = $derived(childThread ? child : stream);
+  $effect(() => {
+    const thread = live && !ended ? childThread : undefined;
+    untrack(() => semantic.select(thread));
+  });
+  $effect(() => {
+    const thread = childReady ? childThread : undefined;
+    untrack(() => {
+      if (thread) child.connect(thread, machine);
+      else child.close();
+    });
+    return () => child.close();
+  });
   const entries = $derived(
-    shown
-      ? stream.agents.order
-          .map((seq) => stream.agents.entries[seq])
-          .filter((e) => e.agent === shown.name)
-      : main,
+    childFeedReady
+      ? child.main.order.map((seq) => child.main.entries[seq])
+      : shown
+        ? stream.agents.order
+            .map((seq) => stream.agents.entries[seq])
+            .filter((e) => e.agent === shown.name)
+        : main,
   );
   // A view changed from inside the transcript removes the control that changed
   // it; focus then moves to the new transcript, which names whose it is.
@@ -201,8 +224,10 @@
     }
   }
 
-  const side = $derived(!!sview && sview.Displayed.ID !== sview.Main.ID);
-  const tabs = $derived(!!sview && (!!sview.Side || side));
+  const side = $derived(
+    (!shown || childFeedReady) && !!sview && sview.Displayed.ID !== sview.Main.ID,
+  );
+  const tabs = $derived((!shown || childFeedReady) && !!sview && (!!sview.Side || side));
 
   const notice = $derived.by(() => {
     if (gone) return ended ? "This thread has ended. Its last state stays here." : undefined;
@@ -506,7 +531,8 @@
               jumps={stream.jumps}
               {empty}
               {live}
-              ondetails={live && !ended && sview
+              source={childFeedReady ? child : stream}
+              ondetails={live && !ended && sview && (!childThread || childFeedReady)
                 ? (seq) =>
                     semantic.send({
                       details: {
@@ -515,14 +541,17 @@
                         Source: seq,
                         Output: 0,
                         Sources: [],
-                        Agent: owner !== "/root",
+                        Agent: !!shown && !childFeedReady,
                         Path: "",
                         Caller: owner,
                       },
                     })
                 : undefined}
             ></Transcript>
-            {#if live && !ended}<LiveSource previews={stream.live} {owner} />{/if}
+            {#if live && !ended && (!childThread || childFeedReady)}<LiveSource
+                previews={active.live}
+                {owner}
+              />{/if}
           {/key}
         {:else if gone}
           <div class="mx-auto grid max-w-column gap-1.5 px-4 py-6">
@@ -544,33 +573,50 @@
         </div>
       {:else if live && !ended}
         <div class="flex-none pt-1">
-          {#if stream.prompts && (stream.prompts.approvals.length || stream.prompts.questions.length)}
-            <section
-              class="mx-auto flex max-h-[50dvh] w-full max-w-column flex-col gap-3 overflow-y-auto overscroll-contain px-4 pb-2"
-              aria-label="Pending prompts"
-            >
-              {#each stream.prompts.approvals.slice(0, 1) as approval (approval.id)}
-                <Prompt
-                  item={approval}
-                  count={stream.prompts.approvals.length}
-                  unavailable={stream.connection !== "open"}
-                />
-              {/each}
-              {#each stream.prompts.questions as question (question.id)}
-                <Prompt item={question} unavailable={stream.connection !== "open"} />
-              {/each}
-            </section>
+          {#if shown && !childThread}
+            <p class="{column} py-3 text-small text-muted">
+              This agent's retained activity is read-only.
+            </p>
+          {:else}
+            {#if (!childThread || childFeedReady) && active.prompts && (active.prompts.approvals.length || active.prompts.questions.length)}
+              <section
+                class="mx-auto flex max-h-[50dvh] w-full max-w-column flex-col gap-3 overflow-y-auto overscroll-contain px-4 pb-2"
+                aria-label="Pending prompts"
+              >
+                {#each active.prompts.approvals.slice(0, 1) as approval (approval.id)}
+                  <Prompt
+                    item={approval}
+                    count={active.prompts.approvals.length}
+                    unavailable={active.connection !== "open"}
+                    source={active}
+                  />
+                {/each}
+                {#each active.prompts.questions as question (question.id)}
+                  <Prompt
+                    item={question}
+                    unavailable={active.connection !== "open"}
+                    source={active}
+                  />
+                {/each}
+              </section>
+            {/if}
+            <ThreadDocks />
+            {#key childThread ?? id}
+              <Composer
+                input={!childThread || childFeedReady ? active.input : undefined}
+                source={active}
+                agentName={shown?.label ?? "main"}
+                machine={machine.label}
+                initial={shown ? undefined : initial}
+                {oninitial}
+                unavailable={(!shown || childFeedReady) &&
+                active.connection === "open" &&
+                semantic.connection === "open"
+                  ? undefined
+                  : "Not connected to the thread."}
+              />
+            {/key}
           {/if}
-          <ThreadDocks />
-          <Composer
-            input={stream.input}
-            machine={machine.label}
-            {initial}
-            {oninitial}
-            unavailable={stream.connection === "open" && semantic.connection === "open"
-              ? undefined
-              : "Not connected to the thread."}
-          />
         </div>
       {/if}
     </main>
@@ -645,5 +691,5 @@
       </aside>
     {/if}
   </div>
-  {#if live && !ended}<SemanticDialogs />{/if}
+  {#if live && !ended && (!shown || childFeedReady)}<SemanticDialogs />{/if}
 </div>

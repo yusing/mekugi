@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 // This opt-in acceptance drives the embedded application through its visible
@@ -43,7 +45,25 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatal("built application is unavailable; run make webui before this test")
 	}
-	alpha := newWebUIBrowserMachine(t, ctx, page.URL, "Alpha", strings.Repeat("a", 64))
+	type pendingAttachment struct {
+		native  *sessionapi.Native
+		request sessionapi.NativeRequest
+	}
+	childAttachment := make(chan pendingAttachment, 1)
+	inputReply := make(chan chan string, 1)
+	alpha := newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Alpha", strings.Repeat("a", 64), func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
+		if request.Attach && request.Thread == "child" {
+			childAttachment <- pendingAttachment{native, request}
+			return true
+		}
+		if request.Operation.Composer != nil && request.Operation.Composer.Intent.Operation == sessionpresentation.SubmitComposer {
+			inputReply <- request.Reply
+			return true
+		}
+		return false
+	})
+	alpha.childThreads = []string{"child"}
+	alpha.start("child")
 	beta := newWebUIBrowserMachine(t, ctx, page.URL, "Beta", strings.Repeat("b", 64))
 	identity, err := exec.CommandContext(ctx, browser, "session", "id", "--scope", "worktree", "--prefix", "webui-transport").CombinedOutput()
 	if err != nil {
@@ -139,7 +159,8 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if run("eval", "document.body.innerText.includes('file199.go')") != "false\n" {
 		t.Fatal("large temporary capture started expanded")
 	}
-	run("find", "text", "188 more files", "click", "--exact")
+	run("eval", "Array.from(document.querySelectorAll('summary')).find(row => row.textContent.includes('188 more files')).focus()")
+	run("press", "Enter")
 	run("wait", "--fn", "document.body.innerText.includes('file199.go')")
 	frame.Main.Entries[0].Revision++
 	if err := alpha.api.Publish(frame); err != nil {
@@ -148,6 +169,88 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--fn", "document.body.innerText.includes('file199.go')")
 	run("find", "text", "188 more files", "click", "--exact")
 	run("wait", "--fn", "!document.body.innerText.includes('file199.go')")
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("set", "viewport", "1280", "900")
+		run("screenshot", filepath.Join(artifacts, "temporary-edits-desktop.png"))
+		run("set", "viewport", "390", "844")
+		run("screenshot", filepath.Join(artifacts, "temporary-edits-mobile.png"))
+		run("set", "viewport", "1280", "900")
+	}
+	// Agent selection attaches its own runtime while keeping Main's draft and
+	// mutation target. Retained-only agents never borrow Main's composer.
+	frame.Agents = &activitypresentation.Publication{Roster: []activitypresentation.AgentRow{
+		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root/worker", Thread: "child"}}},
+		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root/history", Thread: "old-child"}}},
+	}}
+	frame.Prompts = &sessionapi.Prompts{Questions: []sessionapi.QuestionCall{{ID: "parent-question", Questions: []sessionapi.Question{{ID: "q", Text: "Parent-only question"}}}}}
+	if err := alpha.api.Publish(frame); err != nil {
+		t.Fatal(err)
+	}
+	run("fill", "#composer-text", "main draft")
+	run("find", "text", "worker", "click", "--exact")
+	var attachment pendingAttachment
+	select {
+	case attachment = <-childAttachment:
+	case <-ctx.Done():
+		t.Fatal("child attachment was not requested")
+	}
+	run("fill", "#composer-text", "draft while attaching")
+	run("wait", "--fn", "!document.body.innerText.includes('Parent-only question') && !document.querySelector('button[aria-label=Details]')")
+	thread := sessionpresentation.Thread{ID: "child", Caller: "/root/worker"}
+	if err := attachment.native.Publish(attachment.request.Attachment, sessionapi.NativeFrame{View: sessionpresentation.View{
+		Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Main: thread, Input: thread, Displayed: thread,
+		Info: sessionpresentation.MainInfo{Workspace: alpha.workdir, Caller: "/root/worker"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	attachment.request.Reply <- ""
+	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'draft while attaching' && !document.querySelector('button[aria-label=Stop]')?.disabled")
+	run("wait", "--fn", "document.querySelector('#composer-text')?.placeholder === \"Steer worker's turn\" && document.querySelector('button[aria-label=Stop]')?.title === \"Stop worker's turn\"")
+	// A child's own feed resolves images against that runtime, not Main's
+	// unrelated sequence namespace.
+	childServer, ok := alpha.sessions.Load("child")
+	if !ok {
+		t.Fatal("child runtime publication unavailable")
+	}
+	const pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
+	if err := childServer.(*sessionapi.Server).Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: "child", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 97, Agent: "You", Kind: "text", Text: "Child image", Images: []string{pixel}}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", "document.querySelector('img[alt=\"Attached image 1\"]')?.naturalWidth === 1")
+	run("fill", "#composer-text", "child draft")
+	button("Stop")
+	select {
+	case intent := <-alpha.intents:
+		if intent.Thread != "child" {
+			t.Fatalf("child Stop targeted %q", intent.Thread)
+		}
+	case <-ctx.Done():
+		t.Fatal("child Stop did not reach its runtime")
+	}
+	button("Back to main")
+	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'main draft'")
+	run("find", "text", "worker", "click", "--exact")
+	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'child draft'")
+	button("Back to main")
+	// An input accepted by Main's owner remains pending there while its view is
+	// off-screen. Agent navigation never restores it as a failed submission.
+	run("fill", "#composer-text", "pending main input")
+	button("Send")
+	var reply chan string
+	select {
+	case reply = <-inputReply:
+	case <-ctx.Done():
+		t.Fatal("Main input was not admitted")
+	}
+	run("find", "text", "worker", "click", "--exact")
+	button("Back to main")
+	run("wait", "--fn", "document.querySelector('#composer-text')?.value === '' && document.querySelector('#composer-text')?.readOnly")
+	reply <- "known admission refusal"
+	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'pending main input' && !document.querySelector('#composer-text')?.readOnly")
+	run("wait", "--text", "known admission refusal")
+	run("find", "text", "history", "click", "--exact")
+	run("wait", "--text", "This agent's retained activity is read-only.")
+	button("Back to main")
 	interrupt(alpha, beta)
 	alphaAddress := run("get", "url")
 	add(beta, "Beta", strings.Repeat("b", 64))
@@ -232,13 +335,15 @@ func TestWebUIBrowserMachines(t *testing.T) {
 }
 
 type webUIBrowserMachine struct {
-	api     *sessionapi.Server
-	remote  *httptest.Server
-	bridge  atomic.Pointer[connector.Connector]
-	options connector.Options
-	intents chan sessionapi.Intent
-	workdir string
-	start   func(string)
+	sessions     sync.Map
+	childThreads []string
+	api          *sessionapi.Server
+	remote       *httptest.Server
+	bridge       atomic.Pointer[connector.Connector]
+	options      connector.Options
+	intents      chan sessionapi.Intent
+	workdir      string
+	start        func(string)
 }
 
 func newWebUIBrowserMachine(t *testing.T, ctx context.Context, origin, label, token string) *webUIBrowserMachine {
@@ -254,7 +359,10 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(directory) })
 	machine := &webUIBrowserMachine{intents: make(chan sessionapi.Intent, 16), workdir: directory}
-	launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+	launcher := &nativeReattachLauncher{prepare: func(_ context.Context, _ string, input sessionapi.InputRequest) (*sessionapi.PreparedInput, error) {
+		return &sessionapi.PreparedInput{Draft: composer.Draft{Text: input.Text}}, nil
+	}, run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+		machine.sessions.Store(start.Resume, api)
 		if start.Resume == "same-thread" {
 			machine.api = api
 		}
@@ -280,7 +388,7 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 				}
 				if request.Attach {
 					thread := sessionpresentation.Thread{ID: start.Resume, Caller: "/root"}
-					frame := sessionapi.NativeFrame{View: sessionpresentation.View{
+					frame := sessionapi.NativeFrame{ChildThreads: machine.childThreads, View: sessionpresentation.View{
 						Version: sessionpresentation.Version{Attachment: 1, Revision: 1},
 						Main:    thread, Input: thread, Displayed: thread,
 						Info: sessionpresentation.MainInfo{Workspace: directory},

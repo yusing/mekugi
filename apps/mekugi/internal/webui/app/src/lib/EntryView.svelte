@@ -8,6 +8,7 @@
   import Markdown from "./Markdown.svelte";
   import { inline } from "./markdown";
   import type { Entry, Value } from "./protocol";
+  import { stream, type Stream } from "./stream.svelte";
   import Icon from "./ui/Icon.svelte";
   import { caret } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
@@ -23,6 +24,7 @@
     turn,
     owner,
     views,
+    source = stream,
   }: {
     entry: Entry;
     at: string;
@@ -30,6 +32,7 @@
     turn?: number;
     owner: string;
     views?: Entry[];
+    source?: Stream;
   } = $props();
 
   const user = $derived(isUser(entry));
@@ -143,6 +146,7 @@
               {entry}
               {image}
               {index}
+              {source}
             />{/each}
         </div>{/if}
       <Markdown text={entry.text ?? ""} spans={entry.spans} />
@@ -248,6 +252,7 @@
                     entry={view}
                     {image}
                     {index}
+                    {source}
                     label="Viewed image {paths[i]}"
                     small={views.length > 1}
                   />

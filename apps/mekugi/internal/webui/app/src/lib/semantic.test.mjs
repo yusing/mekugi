@@ -88,6 +88,7 @@ function machine(id = "machine-one", thread = "thread-one", attachment = "view-o
       if (!views.length) assert.deepEqual(params, { thread });
       const subscription = {
         thread: params.thread,
+        parent: params.parent,
         stopped: 0,
         event,
         state,
@@ -160,6 +161,122 @@ test("mutations capture originating owner, attachment and version before enterin
   owner.requests[1].resolve({ version: { Attachment: 1, Revision: 3 } });
   assert.equal(await second, undefined);
   assert.equal(semantic.pending, 0);
+});
+
+test("admitted child views preserve drafts and route captured input to its own runtime", async () => {
+  const owner = machine();
+  owner.views[0].snapshot(1, [], { childThreads: ["child"] });
+  semantic.editor().text = "main draft";
+  const parentEvent = semantic.event;
+  semantic.select("child");
+  assert.equal(owner.views[1].thread, "child");
+  assert.equal(owner.views[1].parent, "thread-one");
+  semantic.editor().text = "draft before attachment";
+  owner.views[1].snapshot();
+  assert.equal(semantic.editor().text, "draft before attachment");
+  semantic.editor().text = "child draft";
+  const childEvent = semantic.event;
+  const childInput = semantic.send({ command: "/child" });
+  await tick();
+  semantic.select();
+  assert.equal(semantic.editor().text, "main draft");
+  assert.equal(owner.views[0].stopped, 0);
+  owner.requests[0].resolve({ version: { Attachment: 1, Revision: 2 } });
+  owner.views[1].snapshot(2);
+  assert.equal(await childInput, undefined, "inactive child confirmation remains scoped");
+  assert.equal(owner.requests[0].params.thread, "child");
+  const prepared = semantic.send({ command: "/prepared" }, undefined, false, childEvent);
+  await tick();
+  assert.equal(owner.requests[1].params.thread, "child");
+  owner.requests[1].resolve({ version: { Attachment: 1, Revision: 2 } });
+  assert.equal(await prepared, undefined);
+  assert.equal(semantic.event.attachment, parentEvent.attachment);
+  semantic.select("historical");
+  assert.equal(owner.views.length, 2, "unadmitted history never attaches a runtime");
+  semantic.select("child");
+  assert.equal(semantic.editor().text, "child draft");
+  assert.equal(owner.views.length, 2, "returning to a child reuses its attached view");
+  semantic.release("thread-one", owner);
+  assert.deepEqual(
+    owner.views.map((subscription) => subscription.stopped),
+    [1, 1],
+  );
+});
+
+test("returning to a cached agent view never reapplies its editor effects", async () => {
+  const owner = machine();
+  const effect = { ID: 1, Restore: textDraft("restored main"), Clipboard: null };
+  owner.views[0].snapshot(1, [effect], { childThreads: ["child"] });
+  await tick();
+  owner.requests[0].resolve({});
+  await tick();
+  semantic.select("child");
+  owner.views[1].snapshot(1, [{ ...effect, Restore: textDraft("restored child") }]);
+  await tick();
+  owner.requests[1].resolve({});
+  await tick();
+  semantic.select();
+  assert.equal(semantic.editor().text, "restored main");
+  semantic.select("child");
+  assert.equal(semantic.editor().text, "restored child");
+  assert.equal(owner.requests.length, 2, "effect receipts belong to each retained view");
+});
+
+test("selected child resumes and switches navigate from the parent page", async () => {
+  const owner = machine();
+  Object.assign(view, { machine: owner.id, session: "thread-one", agent: "/root/child" });
+  owner.views[0].snapshot(1, [], { childThreads: ["child"] });
+  semantic.select("child");
+  owner.views[1].snapshot(1, [{ ID: 1, Reattach: "resumed", Clipboard: null }]);
+  await tick();
+  assert.equal(owner.views[2].thread, "resumed");
+  owner.views[2].snapshot();
+  owner.requests[0].resolve({});
+  await tick();
+  assert.equal(view.session, "resumed");
+  assert.equal(view.agent, undefined);
+  semantic.close();
+
+  const second = machine();
+  Object.assign(view, { machine: second.id, session: "thread-one", agent: "/root/child" });
+  second.views[0].snapshot(1, [], { childThreads: ["child"] });
+  semantic.select("child");
+  second.views[1].snapshot(2, [], {
+    switch: { From: "child", To: "replacement", Origin: "child-view" },
+  });
+  assert.equal(view.session, "replacement");
+  semantic.select("child");
+  assert.equal(second.views.length, 3, "the original roster child cannot reuse its replacement");
+  semantic.close();
+  assert.equal(second.views[1].stopped, 1, "switched runtime views are released");
+});
+
+test("active controls do not materialize retained child views", async (t) => {
+  const owner = machine();
+  const children = Array.from({ length: 128 }, (_, i) => `child-${i}`);
+  owner.views[0].snapshot(1, [], { childThreads: children });
+  for (const child of children) {
+    semantic.select(child);
+    owner.views.at(-1).snapshot();
+  }
+  const values = Map.prototype.values;
+  let visited = 0;
+  let sent;
+  try {
+    t.mock.method(Map.prototype, "values", function* () {
+      for (const value of values.call(this)) {
+        if (value?.parent === "thread-one" && value.lifetime instanceof AbortController) visited++;
+        yield value;
+      }
+    });
+    sent = semantic.send({ command: "/active" });
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(visited, 0);
+  await tick();
+  owner.requests[0].resolve({ version: { Attachment: 1, Revision: 1 } });
+  assert.equal(await sent, undefined);
 });
 
 test("reconnection rejects an attachment captured before asynchronous preparation", async () => {

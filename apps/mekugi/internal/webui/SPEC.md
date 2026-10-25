@@ -193,7 +193,11 @@ the saved review as it updates.
 
 The transcript shows Main's activity until a viewer selects another agent in the
 roster; it then shows that agent's own activity under its name and state, with a
-way back to Main. Selection belongs to each viewer, while playback stays shared.
+way back to Main. In a live session, selecting an admitted child attaches its
+server-owned runtime. Its composer, prompts, settings and Stop target that child;
+Main and each child retain separate drafts and attached control views until the
+parent session view closes. Historical agents outside the admitted runtime tree
+remain read-only. Selection belongs to each viewer, while playback stays shared.
 The page address supports returning to a previous selection with browser history
 and after reload using the saved machine identity. Seeking back
 to before the selected agent started returns to

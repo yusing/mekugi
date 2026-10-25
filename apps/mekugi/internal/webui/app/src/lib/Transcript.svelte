@@ -4,6 +4,7 @@
   import { date, offset } from "./format";
   import { hasDetails, isUser, isView } from "./kinds";
   import type { Entry } from "./protocol";
+  import { stream, type Stream } from "./stream.svelte";
   import Icon from "./ui/Icon.svelte";
   import { emptyBox } from "./ui/styles";
 
@@ -22,6 +23,7 @@
     live = false,
     ondetails,
     header,
+    source = stream,
   }: {
     entries: Entry[];
     owner: string;
@@ -32,6 +34,7 @@
     live?: boolean;
     ondetails?: (seq: number) => unknown;
     header?: Snippet;
+    source?: Stream;
   } = $props();
 
   let scroller = $state<HTMLElement>();
@@ -160,6 +163,7 @@
           turn={row.turn}
           views={row.views}
           {owner}
+          {source}
         />
         <!-- Shown on hover or focus, and always on touch. -->
         {#if ondetails && hasDetails(row.entry)}<button

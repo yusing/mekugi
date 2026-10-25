@@ -29,7 +29,7 @@ export interface Gone {
 }
 const empty: Feed = { order: [], entries: {} };
 
-class Stream {
+export class Stream {
   connection = $state<Connection>("connecting");
   session = $state.raw<Session | undefined>();
   playback = $state.raw<Playback | undefined>();

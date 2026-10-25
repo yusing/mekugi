@@ -7,7 +7,7 @@
   import { prepareAttachments, type InitialInput } from "./attachments";
   import type { Attachment, Input } from "./protocol";
   import { semantic, textDraft } from "./semantic.svelte";
-  import { stream } from "./stream.svelte";
+  import { stream, type Stream } from "./stream.svelte";
   import Button from "./ui/Button.svelte";
   import ComposerCard from "./ui/ComposerCard.svelte";
   import Menu from "./ui/Menu.svelte";
@@ -23,19 +23,24 @@
     input,
     machine,
     unavailable,
+    source = stream,
+    agentName = "main",
     initial,
     oninitial,
   }: {
     input?: Input;
     machine: string;
     unavailable?: string;
+    source?: Stream;
+    agentName?: string;
     initial?: InitialInput;
     oninitial?: () => void;
   } = $props();
   const editor = $derived(semantic.editor());
   const view = $derived(semantic.frame?.view);
   const shell = $derived(editor.text.startsWith("!"));
-  let pending = $state<AbortController>();
+  const pending = $derived(editor.submission);
+  let acquisition: AbortController | undefined;
   let stopping = $state(false);
   let error = $state<string>();
   let progress = $state("");
@@ -52,7 +57,9 @@
         ? undefined
         : view?.Admission.Reason || (input ? input.reason : "Waiting for the session…")),
   );
-  onDestroy(() => pending?.abort());
+  // Navigation may cancel file acquisition, but admitted input belongs to its
+  // retained control view until confirmation or explicit cancellation.
+  onDestroy(() => acquisition?.abort());
 
   // Completions belong to the draft revision they were computed for.
   let dismissed = $state<string>();
@@ -143,10 +150,10 @@
   }
   async function send(queue = false, initialAttachments?: Attachment[]) {
     if (empty || pending || refusal) return;
-    const controller = new AbortController();
-    pending = controller;
-    const release = semantic.retainInput();
     const destination = editor;
+    const controller = new AbortController();
+    destination.submission = controller;
+    const release = semantic.retainInput();
     const text = destination.text,
       items = destination.items,
       back = destination.cursorBack;
@@ -162,6 +169,7 @@
         error = "Wait for the thread controls to connect.";
         return;
       }
+      acquisition = !command && !initialAttachments ? controller : undefined;
       const prepared = command
         ? []
         : (initialAttachments ??
@@ -173,6 +181,7 @@
                 ? `Reading files: ${Math.round((read / total) * 100)}%`
                 : "Preparing input…"),
           )));
+      acquisition = undefined;
       progress = command ? "Running command…" : "Sending…";
       if (!command) {
         destination.text = "";
@@ -206,13 +215,14 @@
           ? failure.message
           : "Could not prepare input.";
     } finally {
+      acquisition = undefined;
       if (error && detached !== undefined && destination.revision === detached) {
         destination.text = text;
         destination.items = items;
         destination.cursorBack = back;
         destination.revision++;
       }
-      pending = undefined;
+      if (destination.submission === controller) destination.submission = undefined;
       progress = "";
       field?.focus();
       release(error);
@@ -220,7 +230,7 @@
   }
   async function stop() {
     stopping = true;
-    error = await stream.stop();
+    error = await source.stop();
     stopping = false;
     field?.focus();
   }
@@ -263,14 +273,15 @@
   const hint = $derived(
     error ||
       progress ||
+      (pending ? "Sending…" : undefined) ||
       refusal ||
-      stream.notice ||
+      source.notice ||
       (touch
         ? ""
         : shell
-          ? "Enter runs this on the machine. Remove the leading ! to message main."
+          ? `Enter runs this on the machine. Remove the leading ! to message ${agentName}.`
           : running
-            ? "Enter steers main's turn · Tab queues for the next turn · Shift+Enter adds a line"
+            ? `Enter steers ${agentName}'s turn · Tab queues for the next turn · Shift+Enter adds a line`
             : "Enter sends · Shift+Enter adds a line · / for commands · ! for shell"),
   );
 </script>
@@ -380,8 +391,8 @@
         placeholder={shell
           ? `Shell command on ${machine}`
           : running
-            ? "Steer main's turn"
-            : "Message main"}
+            ? `Steer ${agentName}'s turn`
+            : `Message ${agentName}`}
         aria-describedby="composer-hint"
         aria-invalid={error ? "true" : undefined}></textarea>
     </div>
@@ -441,7 +452,7 @@
             shape="round"
             icon="stop"
             label="Stop"
-            title="Stop main's turn"
+            title={`Stop ${agentName}'s turn`}
             onclick={stop}
             disabled={stopping || !!unavailable}
           />{/if}

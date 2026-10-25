@@ -161,6 +161,7 @@ export type AgentState = "working" | "error" | "done" | "idle";
 
 export interface Agent {
   name: string;
+  thread?: string;
   label: string;
   role?: string;
   depth?: number;

@@ -32,6 +32,7 @@ export type Editor = {
   cursorBack: number;
   revision: number;
   items: PendingAttachment[];
+  submission?: AbortController;
 };
 
 type ControlView = {
@@ -40,10 +41,40 @@ type ControlView = {
   lifetime: AbortController;
   stop?: () => void;
   event?: NativeEvent;
+  parent?: string;
+  connection: Connection;
+  error?: string;
+  operationError?: string;
+  work: number;
+  inputs: number;
+  pending: number;
+  queue: Promise<unknown>;
+  effect: number;
+  acknowledged: number;
+  receipt: number;
+  applied?: string;
 };
+
+function controlView(thread: string, machine: Machine, parent?: string): ControlView {
+  return {
+    thread,
+    machine,
+    parent,
+    lifetime: new AbortController(),
+    connection: "connecting",
+    work: 0,
+    inputs: 0,
+    pending: 0,
+    queue: Promise.resolve(),
+    effect: 0,
+    acknowledged: 0,
+    receipt: 0,
+  };
+}
 
 class Semantic {
   event = $state.raw<NativeEvent>();
+  root = $state.raw<NativeEvent>();
   connection = $state<Connection>("connecting");
   error = $state<string>();
   connectionError = $state<string>();
@@ -56,13 +87,9 @@ class Semantic {
   #completions = new Map<string, NonNullable<NativeEvent["frame"]["view"]["Menu"]>>();
   openingSetting = $state<string>();
   #source?: ControlView;
+  #root?: ControlView;
+  #children = new Map<string, ControlView>();
   #destination?: ControlView;
-  #work = 0;
-  #inputs = 0;
-  #queue: Promise<unknown> = Promise.resolve();
-  #effect = 0;
-  #acknowledged = 0;
-  #receipt = 0;
   #settle = new Set<() => void>();
 
   get frame() {
@@ -132,6 +159,9 @@ class Semantic {
     const id = this.frame?.view.Input.ID || this.#source?.thread || "";
     return this.editors[id] ?? this.emptyEditor;
   }
+  private ensureEditor(thread: string): Editor {
+    return (this.editors[thread] ??= { text: "", cursorBack: 0, revision: 0, items: [] });
+  }
   target(): EditorTarget {
     return { Call: "", Question: "", Request: "", Revision: this.editor().revision };
   }
@@ -141,24 +171,52 @@ class Semantic {
   }
 
   connect(thread: string, machine: Machine): void {
-    if (this.#source?.thread === thread && this.#source.machine === machine) return;
+    if (this.#root?.thread === thread && this.#root.machine === machine) return;
     this.close();
-    this.#source = { thread, machine, lifetime: new AbortController() };
+    this.#source = this.#root = controlView(thread, machine);
+    this.ensureEditor(thread);
     this.subscribe(this.#source);
+  }
+
+  // Retain each admitted runtime's view and draft for this parent attachment.
+  // Historical identities never acquire an execution runtime.
+  select(thread?: string): void {
+    const root = this.#root;
+    if (!root) return;
+    const target = thread && this.root?.frame.childThreads?.includes(thread) ? thread : root.thread;
+    if (this.#source?.thread === target) return;
+    this.cancelResume();
+    let source = target === root.thread ? root : this.#children.get(target);
+    if (!source) {
+      source = controlView(target, root.machine, root.thread);
+      this.#children.set(target, source);
+    }
+    this.#source = source;
+    this.ensureEditor(source.thread);
+    this.event = undefined;
+    this.clearMenus();
+    this.pending = source.pending;
+    this.connection = source.connection;
+    this.error = source.operationError;
+    this.copied = undefined;
+    this.connectionError = source.error;
+    if (source.event) this.receive(source.event);
+    if (!source.stop) this.subscribe(source);
   }
 
   // Component cleanup releases only the view it borrowed, not an adopted successor.
   release(thread: string, machine: Machine): void {
-    if (this.#source?.thread === thread && this.#source.machine === machine) this.close();
+    if (this.#root?.thread === thread && this.#root.machine === machine) this.close();
   }
 
   retainInput(): (error?: string) => void {
     const source = this.#source;
     if (!source) return () => {};
-    this.#inputs++;
+    source.inputs++;
     return (error) => {
+      source.inputs--;
+      if (error) source.operationError = error;
       if (this.#source !== source) return;
-      this.#inputs--;
       if (error) this.failResume(error);
       this.advanceResume();
     };
@@ -171,6 +229,7 @@ class Semantic {
         get thread() {
           return source.thread;
         },
+        ...(source.parent ? { parent: source.parent } : {}),
       },
       (event) => {
         if (source.lifetime.signal.aborted || !["snapshot", "patch"].includes(event.kind)) return;
@@ -186,6 +245,9 @@ class Semantic {
           return;
         }
         source.event = next;
+        source.connection = "open";
+        if (source === this.#root) this.root = next;
+        for (const settle of this.#settle) settle();
         if (source === this.#source) {
           this.connection = "open";
           this.receive(next);
@@ -193,6 +255,8 @@ class Semantic {
       },
       (connection, failure) => {
         if (source.lifetime.signal.aborted) return;
+        source.connection = connection;
+        source.error = failure?.message;
         if (connection !== "open") source.event = undefined;
         if (source === this.#source) {
           this.connection = connection;
@@ -210,24 +274,22 @@ class Semantic {
     const source = this.#source;
     if (!source) return;
     if (next.frame.view.Input.ID !== this.frame?.view.Input.ID) this.clearMenus();
-    if (next.attachment !== this.event?.attachment) {
+    if (next.attachment !== source.applied) {
       this.clearMenus();
-      this.#effect = this.#receipt = this.#acknowledged = 0;
+      source.effect = source.receipt = source.acknowledged = 0;
+      source.applied = next.attachment;
     }
     const switched = next.frame.switch;
     if (switched?.To && switched.Origin === next.attachment && switched.From === source.thread) {
-      const selected = view.machine === source.machine.id && view.session === source.thread;
+      const selected = view.machine === source.machine.id && view.session === this.#root?.thread;
       this.cancelResume();
+      if (source !== this.#root) this.#children.delete(source.thread);
       source.thread = switched.To;
+      if (source !== this.#root) this.#children.set(source.thread, source);
       if (selected) open(source.thread, true);
     }
     let destination: string | undefined;
-    this.editors[next.frame.view.Input.ID] ??= {
-      text: "",
-      cursorBack: 0,
-      revision: 0,
-      items: [],
-    };
+    this.ensureEditor(next.frame.view.Input.ID);
     this.event = next;
     const menu = next.frame.view.Menu;
     if (menu && !menu.Loading && !menu.Problem) {
@@ -245,9 +307,9 @@ class Semantic {
     }
     for (const settle of this.#settle) settle();
     for (const effect of next.frame.effects ?? []) {
-      if (effect.ID <= this.#effect) continue;
+      if (effect.ID <= source.effect) continue;
       if (effect.Recovery) {
-        this.#effect = effect.ID;
+        source.effect = effect.ID;
         continue;
       }
       const restored = effect.Restore ?? effect.ShellRestore;
@@ -257,16 +319,11 @@ class Semantic {
       ) {
         this.error =
           "This completion needs the native editor. Use Attachments to include files here.";
-        this.#effect = effect.ID;
+        source.effect = effect.ID;
         continue;
       }
       const key = effect.Thread || next.frame.view.Main.ID;
-      const editor = (this.editors[key] ??= {
-        text: "",
-        cursorBack: 0,
-        revision: 0,
-        items: [],
-      });
+      const editor = this.ensureEditor(key);
       if (effect.Target && effect.Target.Revision !== editor.revision) {
         this.error = "The draft changed before the requested insertion completed.";
       } else {
@@ -313,11 +370,11 @@ class Semantic {
         }
       }
       if (effect.Clipboard !== null) this.copied = effect.Clipboard;
-      this.#effect = effect.ID;
+      source.effect = effect.ID;
       if (effect.Reattach) destination = effect.Reattach;
     }
-    if (this.#effect > this.#receipt) {
-      const effect = (this.#receipt = this.#effect);
+    if (source.effect > source.receipt) {
+      const effect = (source.receipt = source.effect);
       void this.send(
         {
           receipt: {
@@ -328,16 +385,16 @@ class Semantic {
         undefined,
         true,
       ).then((error) => {
-        if (this.#source !== source || this.event?.attachment !== next.attachment) return;
+        if (source.event?.attachment !== next.attachment) return;
         if (error) {
           this.failResume(error);
           return;
         }
-        this.#acknowledged = effect;
-        this.advanceResume();
+        source.acknowledged = effect;
+        if (this.#source === source) this.advanceResume();
       });
     }
-    if (destination && view.machine === source.machine.id && view.session === source.thread)
+    if (destination && view.machine === source.machine.id && view.session === this.#root?.thread)
       this.resume(destination);
     this.advanceResume();
   }
@@ -346,7 +403,7 @@ class Semantic {
     const source = this.#source;
     if (!source || thread === source.thread || this.#destination?.thread === thread) return;
     this.cancelResume();
-    this.#destination = { thread, machine: source.machine, lifetime: new AbortController() };
+    this.#destination = controlView(thread, source.machine);
     this.resuming = "Opening resumed thread…";
     this.subscribe(this.#destination);
   }
@@ -368,14 +425,14 @@ class Semantic {
     const source = this.#source,
       destination = this.#destination;
     if (!source || !destination?.event || !this.frame) return;
-    if (view.machine !== source.machine.id || view.session !== source.thread) {
+    if (view.machine !== source.machine.id || view.session !== this.#root?.thread) {
       this.cancelResume();
       return;
     }
     if (
-      this.#work ||
-      this.#inputs ||
-      this.#acknowledged < this.#effect ||
+      source.work ||
+      source.inputs ||
+      source.acknowledged < source.effect ||
       this.frame.pendingEffects ||
       this.frame.effects?.some((effect) => effect.Recovery)
     ) {
@@ -383,9 +440,13 @@ class Semantic {
       return;
     }
     this.#destination = undefined;
-    this.#source = destination;
-    source.lifetime.abort();
-    source.stop?.();
+    for (const previous of [this.#root, ...this.#children.values()]) {
+      previous?.lifetime.abort();
+      previous?.stop?.();
+    }
+    this.#children.clear();
+    this.#source = this.#root = destination;
+    this.root = destination.event;
     this.event = undefined;
     this.editors = {};
     this.error = this.connectionError = this.resuming = undefined;
@@ -397,8 +458,13 @@ class Semantic {
   close(): void {
     this.clearMenus();
     this.cancelResume();
-    this.#source?.lifetime.abort();
-    this.#source?.stop?.();
+    for (const source of [this.#root, ...this.#children.values()]) {
+      source?.lifetime.abort();
+      source?.stop?.();
+    }
+    this.#children.clear();
+    this.#root = undefined;
+    this.root = undefined;
     this.#source = undefined;
     this.event = undefined;
     this.connection = "connecting";
@@ -407,9 +473,7 @@ class Semantic {
     this.resuming = undefined;
     this.editors = {};
     this.copied = undefined;
-    this.#effect = this.#receipt = this.#acknowledged = 0;
-    this.pending = this.#work = this.#inputs = 0;
-    this.#queue = Promise.resolve();
+    this.pending = 0;
   }
   async send(
     operation: RemoteOperation,
@@ -417,9 +481,18 @@ class Semantic {
     quiet = false,
     event = this.event,
   ): Promise<string | undefined> {
-    const source = this.#source;
-    if (!event || !source || this.connection !== "open") {
-      const error = "Wait for this thread's control view to connect.";
+    const active = this.#source;
+    const source =
+      active?.event?.attachment === event?.attachment
+        ? active
+        : [this.#root, ...this.#children.values(), this.#destination].find(
+            (candidate) => candidate && candidate.event?.attachment === event?.attachment,
+          );
+    if (!event || !source || source.connection !== "open") {
+      const error =
+        event && this.event && event.attachment !== this.event.attachment
+          ? "The control view changed. Select the action again."
+          : "Wait for this thread's control view to connect.";
       if (!quiet) this.error = error;
       return error;
     }
@@ -432,14 +505,17 @@ class Semantic {
     };
     const requestSignal = signal ? AbortSignal.any([signal, lifetime]) : lifetime;
     const run = async () => {
-      if (requestSignal.aborted || this.event?.attachment !== body.attachment) {
+      if (requestSignal.aborted || source.event?.attachment !== body.attachment) {
         const error = "The control view changed. Select the action again.";
-        if (!quiet && !lifetime.aborted) this.error = error;
+        if (!quiet) source.operationError = error;
+        if (!quiet && !lifetime.aborted && this.#source === source) this.error = error;
         return error;
       }
       if (!quiet) {
-        this.pending++;
-        this.error = undefined;
+        source.operationError = undefined;
+        source.pending++;
+        if (this.#source === source) this.pending = source.pending;
+        if (this.#source === source) this.error = undefined;
       }
       try {
         const result = await machine.request<NativeResult>(
@@ -447,7 +523,7 @@ class Semantic {
           { thread, body },
           { signal: requestSignal },
         );
-        if (!quiet) await this.settled(body.attachment, result.version, requestSignal);
+        if (!quiet) await this.settled(source, body.attachment, result.version, requestSignal);
         return undefined;
       } catch (failure) {
         // A stale-target refusal asks for the action again on the current view.
@@ -458,24 +534,34 @@ class Semantic {
             ? stale
             : errorText(failure, true);
         if (!lifetime.aborted && !quiet) {
-          this.error = error;
-          this.failResume(error);
+          source.operationError = error;
+          if (this.#source === source) {
+            this.error = error;
+            this.failResume(error);
+          }
         }
         return error;
       } finally {
-        if (!quiet && this.#source === source) this.pending--;
+        if (!quiet) {
+          source.pending--;
+          if (this.#source === source) this.pending = source.pending;
+        }
       }
     };
-    this.#work++;
-    const result = this.#queue.then(run, run).finally(() => {
-      if (this.#source !== source) return;
-      this.#work--;
-      this.advanceResume();
+    source.work++;
+    const result = source.queue.then(run, run).finally(() => {
+      source.work--;
+      if (this.#source === source) this.advanceResume();
     });
-    this.#queue = result;
+    source.queue = result;
     return result;
   }
-  private settled(attachment: string, version: Version, signal: AbortSignal): Promise<void> {
+  private settled(
+    source: ControlView,
+    attachment: string,
+    version: Version,
+    signal: AbortSignal,
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const done = (error?: Error) => {
         clearTimeout(timer);
@@ -485,7 +571,7 @@ class Semantic {
         else resolve();
       };
       const check = () => {
-        const current = this.event;
+        const current = source.event;
         if (current?.attachment !== attachment)
           return done(new Error("The view changed before confirmation."));
         if (
