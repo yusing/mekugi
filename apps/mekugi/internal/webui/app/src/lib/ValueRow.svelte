@@ -217,7 +217,8 @@
       {:else if multiline}
         <details class="group/disclosure mt-0.5" bind:open={scriptOpen}>
           <summary class={disclosure}
-            >Script <span class="ml-2">{lines(code.split("\n").length)}</span></summary
+            >{value.foldSource ? "Source" : "Script"}
+            <span class="ml-2">{lines(code.split("\n").length)}</span></summary
           >
           {#if scriptOpen}<pre class="{scroll} whitespace-pre"><Code
                 {code}

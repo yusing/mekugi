@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 // This opt-in acceptance drives the embedded application through its visible
@@ -121,6 +123,31 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("--engine", "chrome", "open", page.URL)
 	run("snapshot", "-i")
 	add(alpha, "Alpha", strings.Repeat("a", 64))
+	// Captured temporary trees fold at the same boundary as the terminal;
+	// opening them reveals retained paths without another host request.
+	var captures []string
+	for i := range 200 {
+		captures = append(captures, fmt.Sprintf("Create `/tmp/tree/file%03d.go` +3 -0 · cp", i))
+	}
+	item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(captures, "\n\n")}}
+	frame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true},
+		Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: item.Facts, Values: item.Values(), Revision: 1}}}}
+	if err := alpha.api.Publish(frame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "188 more files")
+	if run("eval", "document.body.innerText.includes('file199.go')") != "false\n" {
+		t.Fatal("large temporary capture started expanded")
+	}
+	run("find", "text", "188 more files", "click", "--exact")
+	run("wait", "--fn", "document.body.innerText.includes('file199.go')")
+	frame.Main.Entries[0].Revision++
+	if err := alpha.api.Publish(frame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", "document.body.innerText.includes('file199.go')")
+	run("find", "text", "188 more files", "click", "--exact")
+	run("wait", "--fn", "!document.body.innerText.includes('file199.go')")
 	interrupt(alpha, beta)
 	alphaAddress := run("get", "url")
 	add(beta, "Beta", strings.Repeat("b", 64))

@@ -150,8 +150,12 @@ updates. Loading, coverage and failure stay visible; replays have no changes.
 
 User turns sit on the right of the
 transcript and agent activity on the left. Bound image, file, skill and selection
-markers use their terminal colours; literal lookalikes remain ordinary text. Attached
-images appear above the message, with a visible unavailable state if their source
+markers use their terminal colours; literal lookalikes remain ordinary text.
+Large captured temporary-file groups show their first files and a counted
+disclosure for the rest, following Activity's shared folding policy. Opening the
+disclosure preserves every retained file and its edit metadata. Large temporary
+Create sources start behind a source disclosure; original details remain complete.
+Attached images appear above the message, with a visible unavailable state if their source
 cannot be read. An image an agent views appears under its View row; consecutive
 images one agent views share one row of captioned thumbnails. Empty items have no expansion control. Attachment events show their paths or skill
 names and auto-reload state, with columns sized to the visible verbs. Questions

@@ -42,6 +42,17 @@
     !value.duration &&
     !value.running;
   const first = $derived(entry.values?.[0]);
+  const rows = $derived.by(() => {
+    const values = entry.values ?? [];
+    const out: { value: Value; index: number; hidden?: Value[] }[] = [];
+    for (let i = 0; i < values.length;) {
+      const value = values[i];
+      const count = value.hiddenEdits ?? 0;
+      out.push({ value, index: i, hidden: count ? values.slice(i, i + count) : undefined });
+      i += Math.max(1, count);
+    }
+    return out;
+  });
   const hookFailed = $derived(first !== undefined && failed(first));
 
   // Traffic between agents: a task, a message, or a child's answer. Like the
@@ -258,11 +269,24 @@
             entry.running && "border-[color-mix(in_srgb,var(--accent)_45%,var(--border))]",
           ]}
         >
-          {#each entry.values as value, i (i)}
+          {#each rows as { value, index, hidden } (index)}
             {#if value.kind === "progress"}
               <p class="col-span-full py-[5px] text-muted">{value.body}</p>
+            {:else if hidden}
+              <details class="group/disclosure col-span-full py-1">
+                <summary
+                  class="{summary} {caret} min-h-8 text-small text-muted pointer-coarse:min-h-11"
+                >
+                  {hidden.length} more {hidden.length === 1 ? "file" : "files"}
+                </summary>
+                <div
+                  class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 divide-y divide-rule max-sm:grid-cols-[minmax(0,1fr)_auto]"
+                >
+                  {#each hidden as file, i (i)}<ValueRow value={file} />{/each}
+                </div>
+              </details>
             {:else if !pending(value)}
-              <ValueRow {value} outputLang={outputLanguage(entry.values, i)} />
+              <ValueRow {value} outputLang={outputLanguage(entry.values, index)} />
             {/if}
           {/each}
         </div>
