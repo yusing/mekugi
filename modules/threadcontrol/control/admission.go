@@ -8,22 +8,7 @@ import (
 	"strings"
 )
 
-func activeCount(tree *Tree) int {
-	count := 0
-	for _, member := range tree.Members {
-		if member.Reserved() && member.Status != Paused {
-			count++
-		}
-	}
-	for _, effect := range tree.Effects {
-		if effect.Kind == "create" && effect.Phase == "create" && effect.State != "confirmed" && effect.State != "failed" && effect.State != "paused" {
-			count++
-		}
-	}
-	return count
-}
-
-// ReserveSpawn captures the prepared settings and reserves capacity before any
+// ReserveSpawn captures the prepared settings and reserves one work identity before any
 // host creation dispatch. Repeated host calls return the same reservation.
 func (s *Service) ReserveSpawn(ctx context.Context, caller Identity, request SpawnRequest) (result Effect, err error) {
 	request, err = detach(request)
@@ -61,9 +46,6 @@ func (s *Service) ReserveSpawn(ctx context.Context, caller Identity, request Spa
 			if old.Kind == "create" && old.Child.Task == task && old.State != "failed" {
 				return errors.New("task name has a pending or uncertain spawn")
 			}
-		}
-		if member.Limits.Concurrency <= 0 || activeCount(tree) >= member.Limits.Concurrency {
-			return errors.New("captured host concurrency limit reached")
 		}
 		result = Effect{ID: caller.Call, Caller: caller.Thread, CallerTurn: caller.Turn, CallerGeneration: member.Generation, Kind: "create", Phase: "create", State: "pending", Message: request.Message, Generation: 1, Child: &Child{Task: task, Settings: settings, Limits: limits, Arguments: request.Arguments, Import: request.Import}}
 		tree.Effects = append(tree.Effects, result)

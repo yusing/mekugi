@@ -5,7 +5,6 @@ import (
 	json "encoding/json/v2"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -15,13 +14,12 @@ import (
 func TestAdmitRequestCodexV2Limits(t *testing.T) {
 	for _, tc := range []struct {
 		name, config string
-		concurrency  int
 		min, max     int64
 	}{
-		{"defaults", `{}`, 4, 10_000, 3_600_000},
-		{"legacy depth ignored", `{"agents":{"max_depth":0,"max_concurrent_threads_per_session":3}}`, 4, 10_000, 3_600_000},
-		{"V2 precedence and wait bounds", `{"agents":{"max_depth":1,"max_concurrent_threads_per_session":8},"features":{"multi_agent_v2":{"max_concurrent_threads_per_session":3,"min_wait_timeout_ms":0,"max_wait_timeout_ms":1500000}}}`, 3, 0, 1_500_000},
-		{"root consumes sole slot", `{"features":{"multi_agent_v2":{"max_concurrent_threads_per_session":1}}}`, 1, 10_000, 3_600_000},
+		{"defaults", `{}`, 10_000, 3_600_000},
+		{"legacy depth ignored", `{"agents":{"max_depth":0,"max_concurrent_threads_per_session":3}}`, 10_000, 3_600_000},
+		{"V2 precedence and wait bounds", `{"agents":{"max_depth":1,"max_concurrent_threads_per_session":8},"features":{"multi_agent_v2":{"max_concurrent_threads_per_session":3,"min_wait_timeout_ms":0,"max_wait_timeout_ms":1500000}}}`, 0, 1_500_000},
+		{"host sole-slot setting does not cap Mekugi", `{"features":{"multi_agent_v2":{"max_concurrent_threads_per_session":1}}}`, 10_000, 3_600_000},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			retained, err := history.NewService(control.RecordKinds())
@@ -63,12 +61,16 @@ func TestAdmitRequestCodexV2Limits(t *testing.T) {
 			}
 			member, _ := service.Member("root")
 			limits := member.Limits
-			if limits.Concurrency != tc.concurrency || limits.MinWaitMS != tc.min || limits.MaxWaitMS != tc.max {
+			if limits.MinWaitMS != tc.min || limits.MaxWaitMS != tc.max {
 				t.Fatalf("captured limits = %+v", limits)
 			}
 			// Each next parent is a real admitted child from the preceding spawn.
-			// Depth must not consume capacity beyond the actual working members.
-			for slot := 1; slot < tc.concurrency; slot++ {
+			// Logical depth and host thread-count hints impose no Mekugi cap.
+			depth := 1
+			if tc.name == "defaults" {
+				depth = 8
+			}
+			for slot := 1; slot <= depth; slot++ {
 				id := fmt.Sprintf("child%d", slot)
 				spawn, err := service.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: id, Message: "nested work", Settings: member.Settings, Limits: limits})
 				if err != nil {
@@ -85,9 +87,9 @@ func TestAdmitRequestCodexV2Limits(t *testing.T) {
 				}
 				caller = control.Identity{Thread: id, Session: id + "-session", Turn: id + "-turn", Call: "spawn", Item: "exec"}
 			}
-			_, err = service.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: "overflow", Message: "excess work", Settings: member.Settings, Limits: limits})
-			if err == nil || !strings.Contains(err.Error(), "concurrency limit") {
-				t.Fatalf("capacity was not enforced: %v", err)
+			_, err = service.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: "reviewer", Message: "independent review", Settings: member.Settings, Limits: limits})
+			if err != nil {
+				t.Fatalf("nested review rejected by a Mekugi cap: %v", err)
 			}
 		})
 	}

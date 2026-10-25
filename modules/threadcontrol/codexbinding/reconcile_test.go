@@ -111,7 +111,7 @@ func reconciliationFixture(t *testing.T) (*Driver, *reconciliationHost, history.
 	}
 	t.Cleanup(session.Close)
 	service := control.New()
-	root := &control.Member{Thread: "root", Session: "root-session", Task: "/root", Turn: "root-turn", Generation: 1, Status: control.Working, HostRunning: true, AudienceAdmitted: true, Limits: control.Limits{Concurrency: 4, MaxWaitMS: 1000}}
+	root := &control.Member{Thread: "root", Session: "root-session", Task: "/root", Turn: "root-turn", Generation: 1, Status: control.Working, HostRunning: true, AudienceAdmitted: true, Limits: control.Limits{MaxWaitMS: 1000}}
 	if err := service.AdmitRoot(t.Context(), session, root); err != nil {
 		t.Fatal(err)
 	}

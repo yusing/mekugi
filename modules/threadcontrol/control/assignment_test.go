@@ -72,7 +72,7 @@ func TestInitialAssignmentSerializesFollowupAndInterrupt(t *testing.T) {
 			ctx := t.Context()
 			caller := identity("root", "rt")
 			caller.Call = "spawn"
-			spawn, err := s.ReserveSpawn(ctx, caller, SpawnRequest{Name: "new", Message: "Work.", Settings: Settings{Workspace: t.TempDir()}, Limits: Limits{Concurrency: 8}})
+			spawn, err := s.ReserveSpawn(ctx, caller, SpawnRequest{Name: "new", Message: "Work.", Settings: Settings{Workspace: t.TempDir()}, Limits: Limits{}})
 			must(t, err)
 			settle(t, s, "root", spawn.ID, Receipt{Thread: "new", Session: "new-session"})
 			settle(t, s, "root", spawn.ID, Receipt{})
@@ -134,7 +134,7 @@ func TestCreationPhasesRetainOneReservationAndPauseOnRecovery(t *testing.T) {
 	settle(t, s, "root", spawn.ID, Receipt{Thread: "new", Session: "new-session"})
 	tree, err := s.Snapshot("root")
 	must(t, err)
-	if len(tree.Effects) != 1 || activeCount(&tree) != 2 || tree.Effects[0].Phase != "assignment_input" || tree.Members["new"].AudienceAdmitted {
+	if len(tree.Effects) != 1 || len(tree.Members) != 2 || tree.Effects[0].Phase != "assignment_input" || tree.Members["new"].AudienceAdmitted {
 		t.Fatal("creation did not retain exactly one reservation before admission", tree)
 	}
 	_, err = s.ClaimEffect(t.Context(), "root", spawn.ID)
@@ -176,5 +176,29 @@ func TestInterruptBeforeAdmissionSuppressesInitialAssignment(t *testing.T) {
 	must(t, err)
 	if tree.Effect("root", spawn.ID).State != "canceled" || tree.Members["new"].Status != Interrupted || !tree.Members["new"].AudienceAdmitted || tree.Members["new"].Reserved() {
 		t.Fatal("interruption lost audience admission or ran initial work", tree)
+	}
+}
+
+func TestColdFollowupAndNestedReviewHaveNoThreadCountCap(t *testing.T) {
+	s, session := fixture(t)
+	for _, name := range []string{"a", "b", "c", "d", "e"} {
+		child(t, s, "root", name, "/root/"+name, name+"t")
+	}
+	restored := New()
+	must(t, restored.AdmitRoot(t.Context(), session, &Member{Thread: "root", Session: "root-session", Task: "/root"}))
+	hostStarted(t, restored, "root", "resumed")
+	action, err := restored.PrepareAction(t.Context(), identity("root", "resumed"), "e", "followup", "Review the change.")
+	must(t, err)
+	claimed, err := restored.ClaimEffect(t.Context(), "root", action.ID)
+	must(t, err)
+	if claimed == nil {
+		t.Fatal("paused followup was not admitted")
+	}
+	must(t, restored.EffectAcknowledged(t.Context(), "root", action.ID, Receipt{Turn: "reviewing"}))
+	child(t, restored, "e", "reviewer", "/root/e/reviewer", "reviewer-turn")
+	tree, err := restored.Snapshot("root")
+	must(t, err)
+	if len(tree.Members) != 7 || tree.Members["reviewer"].Parent != "e" {
+		t.Fatalf("nested review lost resumed ownership: %+v", tree.Members["reviewer"])
 	}
 }

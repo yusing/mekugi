@@ -90,7 +90,7 @@ func TestHumanChildInputAdmissionAndSettlement(t *testing.T) {
 	}
 }
 
-func TestHumanInputPreservesMainAndCapacity(t *testing.T) {
+func TestHumanInputPreservesMainAndOrdering(t *testing.T) {
 	s, _ := fixture(t)
 	before, err := s.Snapshot("root")
 	must(t, err)
@@ -103,14 +103,6 @@ func TestHumanInputPreservesMainAndCapacity(t *testing.T) {
 	}
 	child(t, s, "root", "worker", "/root/worker", "original")
 	must(t, s.HostCompleted(t.Context(), "worker", "original", Completed, ""))
-	must(t, s.update(t.Context(), "worker", func(_ *Tree, member *Member) error { member.Limits.Concurrency = 1; return nil }))
-	if _, err := s.HumanInput(t.Context(), "worker", "over-capacity"); err == nil {
-		t.Fatal("idle child input exceeded captured capacity")
-	}
-	member, _ := s.Member("worker")
-	if member.Reserved() {
-		t.Fatal("refused input mutated child reservation")
-	}
 	caller := identity("root", "rt")
 	_, err = s.PrepareAction(t.Context(), caller, "worker", "followup", "agent assignment")
 	must(t, err)

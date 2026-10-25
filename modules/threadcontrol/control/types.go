@@ -39,7 +39,6 @@ type Settings struct {
 
 type RoleSelection struct{ Name, Description, Path, Digest, Contents string }
 type Limits struct {
-	Concurrency          int
 	MinWaitMS, MaxWaitMS int64
 }
 
@@ -55,7 +54,7 @@ type Member struct {
 	Stop                                                  *LocalStop
 }
 
-// A paused generation retains its reservation without consuming a live slot.
+// A paused generation retains its admitted work identity.
 func (m *Member) Reserved() bool {
 	return m != nil && (m.Status == Pending || m.Status == Working || m.Status == Waiting || m.Status == Paused || m.Status == Uncertain)
 }

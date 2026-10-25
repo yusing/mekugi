@@ -62,13 +62,14 @@ Task labels and tool arguments confer no authority. Members communicate with
 admitted peers/ancestors and control non-root targets in their tree. Human/session
 control retains root authority. Foreign, retired or conflicting callers reject.
 
-Effective Codex V2 configuration supplies total concurrency and timeout bounds.
-Absent overrides use four slots and explicit waits from ten seconds to one hour.
+Codex retains execution admission and resource failures; Mekugi imposes no
+thread-count cap. Effective Codex V2 configuration supplies timeout bounds.
+Absent overrides use explicit waits from ten seconds to one hour.
 Delegation depth is unrestricted, matching V2; the legacy `agents.max_depth`
-setting does not constrain its logical tree. Admission reserves before dispatch,
-releases only on confirmed logical settlement, and reacquires before restarting
-idle work. Stop-wait retains its
-reservation. Unknown role/settings and unavailable authority fail explicitly.
+setting does not constrain its logical tree. Admission records work before dispatch
+and releases that identity only on confirmed logical settlement; restarting idle
+work records a new generation. Stop-wait retains its reservation.
+Unknown role/settings and unavailable authority fail explicitly.
 
 ## Prepared children and guidance
 
@@ -203,7 +204,7 @@ terminal painting. View switches do not transfer or stop coordination.
 The child composer shows its admitted role, actual model and reasoning effort;
 follow-ups, settings changes and resumed facts remain scoped to that child. Missing
 facts never borrow parent settings or model defaults. Human input to an admitted
-idle child starts a tracked assignment with the same concurrency reservation and
+idle child starts a tracked assignment with the same work-generation admission and
 parent-result delivery as a follow-up; running child input steers its actual turn.
 Human input keeps its native user role and serializes with agent follow-ups.
 Known refusal releases a new reservation; uncertain dispatch remains retained

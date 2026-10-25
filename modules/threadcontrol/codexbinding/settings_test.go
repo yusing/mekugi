@@ -31,7 +31,7 @@ func TestPrepareChildModelEffortAndContext(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.options.Message = "assignment"
-			child, err := prepareChild(parent, control.Limits{Concurrency: 3}, tc.options, models, nil, tc.defaults)
+			child, err := prepareChild(parent, control.Limits{}, tc.options, models, nil, tc.defaults)
 			if tc.fail {
 				if err == nil {
 					t.Fatal("invalid override admitted")
@@ -41,7 +41,7 @@ func TestPrepareChildModelEffortAndContext(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if child.FullHistory != tc.full || child.Settings.Model != tc.model || child.Settings.Effort == nil || *child.Settings.Effort != tc.effort || child.Limits.Concurrency != 3 {
+			if child.FullHistory != tc.full || child.Settings.Model != tc.model || child.Settings.Effort == nil || *child.Settings.Effort != tc.effort {
 				t.Fatalf("preparation = %+v", child)
 			}
 			if child.Settings.Provider != parent.Provider || !reflect.DeepEqual(child.Settings.PermissionProfile, parent.PermissionProfile) || !reflect.DeepEqual(child.Settings.ApprovalPolicy, parent.ApprovalPolicy) {

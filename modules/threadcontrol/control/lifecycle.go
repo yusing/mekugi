@@ -216,9 +216,6 @@ func (s *Service) HumanInput(ctx context.Context, thread, id string) (result *Ef
 		}
 		previous := member.Status
 		if !member.Reserved() || member.Status == Paused {
-			if member.Parent != "" && (member.Limits.Concurrency <= 0 || activeCount(tree) >= member.Limits.Concurrency) {
-				return errors.New("captured host concurrency limit reached")
-			}
 			if !member.Reserved() {
 				member.Generation++
 			}

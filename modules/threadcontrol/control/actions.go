@@ -90,9 +90,6 @@ func (s *Service) PrepareAction(ctx context.Context, caller Identity, target, ki
 				cancelSubscription(tree, receiver)
 			}
 			if kind == "followup" && (!receiver.Reserved() || receiver.Status == Paused) {
-				if member.Limits.Concurrency <= 0 || activeCount(tree) >= member.Limits.Concurrency {
-					return errors.New("captured host concurrency limit reached")
-				}
 				if !receiver.Reserved() {
 					receiver.Generation++
 				}
