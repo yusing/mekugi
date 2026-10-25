@@ -47,6 +47,14 @@ func Recognize(argv0 string) (*Invocation, error) {
 	if err != nil || info.Mode()&os.ModeSymlink == 0 {
 		return nil, nil
 	}
+	frontendDirectory := filepath.Dir(candidate)
+	directory := filepath.Dir(frontendDirectory)
+	if filepath.Base(frontendDirectory) != "bin" {
+		return nil, nil
+	}
+	if _, authenticated := RegistryIDFromDirectory(directory); !authenticated {
+		return nil, nil
+	}
 	fail := func(err error) (*Invocation, error) { return nil, fmt.Errorf("%s: %w", invokedName, err) }
 
 	executable, err := openRunningExecutable()
@@ -59,47 +67,15 @@ func Recognize(argv0 string) (*Invocation, error) {
 		return fail(fmt.Errorf("inspect mekugi executable: %w", err))
 	}
 
-	wrapper := candidate
-	directory := filepath.Dir(wrapper)
-	_, snapshotWrapper := RegistryIDFromDirectory(directory)
-	if !snapshotWrapper {
-		if filepath.Base(directory) != "bin" {
-			return nil, nil
-		}
-		if _, authenticated := RegistryIDFromDirectory(filepath.Dir(directory)); !authenticated {
-			return nil, nil
-		}
-		target, readErr := os.Readlink(candidate)
-		if readErr != nil {
-			return fail(fmt.Errorf("resolve tool frontend: %w", readErr))
-		}
-		if !filepath.IsAbs(target) {
-			target = filepath.Join(filepath.Dir(candidate), target)
-		}
-		wrapper = filepath.Clean(target)
-		if filepath.Dir(wrapper) != filepath.Dir(directory) || filepath.Base(wrapper) != invokedName {
-			return fail(errors.New("tool frontend and snapshot wrapper names differ"))
-		}
-		wrapperInfo, wrapperErr := os.Lstat(wrapper)
-		directory = filepath.Dir(wrapper)
-		_, snapshotWrapper = RegistryIDFromDirectory(directory)
-		if wrapperErr != nil || wrapperInfo.Mode()&os.ModeSymlink == 0 || !snapshotWrapper {
-			return fail(errors.New("tool frontend does not target an authenticated snapshot wrapper"))
-		}
-	}
-	if filepath.Base(wrapper) != invokedName {
-		return fail(errors.New("invoked tool and snapshot wrapper names differ"))
-	}
-
-	target, err := os.Stat(wrapper)
+	target, err := os.Stat(candidate)
 	if err != nil {
-		return fail(fmt.Errorf("resolve tool wrapper: %w", err))
+		return fail(fmt.Errorf("resolve tool frontend: %w", err))
 	}
 	if !os.SameFile(target, executableInfo) {
-		return fail(errors.New("tool wrapper does not target the running mekugi executable"))
+		return fail(errors.New("tool frontend does not target the running mekugi executable"))
 	}
 
-	return &Invocation{directory: directory, name: filepath.Base(wrapper)}, nil
+	return &Invocation{directory: directory, name: invokedName}, nil
 }
 
 // Run authenticates and dispatches the selected command under the caller's

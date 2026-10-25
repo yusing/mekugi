@@ -16,10 +16,10 @@ func TestWorkerArgumentsCannotSelectMCPBridge(t *testing.T) {
 	// A pinned executable shape selects worker dispatch, but its missing
 	// manifest must still fail authentication for every operand spelling.
 	directory := filepath.Join(t.TempDir(), "mekugi-tools-test-"+strings.Repeat("0", 64))
-	if err := os.Mkdir(directory, 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(directory, "bin"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	frontend := filepath.Join(directory, "mcat")
+	frontend := filepath.Join(directory, "bin", "mcat")
 	if err := os.Symlink(executable, frontend); err != nil {
 		t.Fatal(err)
 	}

@@ -26,8 +26,8 @@ func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
 					t.Error(err)
 				}
 			})
-			if len(registry.ordered) != len(commands) || len(registry.wrappers) != len(commands) {
-				t.Fatalf("selected %d commands, registered %d and pinned %d", len(commands), len(registry.ordered), len(registry.wrappers))
+			if len(registry.Frontends) != len(commands) {
+				t.Fatalf("selected %d commands, exposed %d frontends", len(commands), len(registry.Frontends))
 			}
 			for _, spec := range all {
 				selected := slices.ContainsFunc(commands, func(c command.Contribution) bool { return c.Spec == spec.Spec })
@@ -44,11 +44,16 @@ func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
 }
 
 func TestComposedCatalogRejectsInvalidExposure(t *testing.T) {
-	for _, name := range []string{"../escaped-frontend", "/absolute", `..\escaped`, ".", "..", "unimplemented"} {
+	for _, name := range []string{"../escaped-frontend", "/absolute", `..\escaped`, ".", "..", "", "unimplemented"} {
 		t.Run(name, func(t *testing.T) {
 			directory := t.TempDir()
 			runtime := filepath.Join(directory, "runtime")
-			registry, err := New(t.Context(), Config{Commands: []command.Contribution{{Name: name, Description: "unavailable frontend"}}, Guidance: testGuidance(), RuntimeDirectory: runtime, ReplayDirectory: filepath.Join(directory, "replay")})
+			contribution := testCommands()[0]
+			contribution.Name = name
+			if name == "unimplemented" {
+				contribution.Run = nil
+			}
+			registry, err := New(t.Context(), Config{Commands: []command.Contribution{contribution}, Guidance: testGuidance(), RuntimeDirectory: runtime, ReplayDirectory: filepath.Join(directory, "replay")})
 			if err == nil {
 				_ = registry.Close()
 				t.Fatal("published invalid frontend")
@@ -58,18 +63,5 @@ func TestComposedCatalogRejectsInvalidExposure(t *testing.T) {
 				t.Fatalf("failed publication left owned artifacts: %v, %v", entries, readErr)
 			}
 		})
-	}
-}
-
-func TestWorkerSymlinkRejectsNonLeafNames(t *testing.T) {
-	for _, name := range []string{"../escape", "/absolute", `..\escape`, ".", "..", ""} {
-		directory := t.TempDir()
-		if link, err := ensureWorkerSymlinkInDirectory("worker", directory, name); err == nil || link != "" {
-			t.Fatalf("accepted %q: link=%q error=%v", name, link, err)
-		}
-		entries, err := os.ReadDir(directory)
-		if err != nil || len(entries) != 0 {
-			t.Fatalf("invalid name changed directory: %v, %v", entries, err)
-		}
 	}
 }

@@ -36,8 +36,8 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	if manifest.GuidanceSHA256 != hex.EncodeToString(digest[:]) {
 		t.Fatal("snapshot sections are not authenticated")
 	}
-	byName := make(map[string]catalogEntry, len(registry.ordered))
-	for _, contribution := range registry.ordered {
+	byName := make(map[string]catalogEntry, len(manifest.Tools))
+	for _, contribution := range manifest.Tools {
 		byName[contribution.Name] = contribution
 	}
 	for _, name := range []string{"mcat", "inspect_file", "msymbol", "mrun", "mchanges", "mread"} {

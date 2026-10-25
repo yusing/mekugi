@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
@@ -56,14 +55,9 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create tool registry snapshot: %w", err)
 	}
-	wrappers := make(map[string]string)
 	frontends := make(map[string]string)
 	fail := func(cause error) (*Registry, error) {
-		return nil, errors.Join(
-			cause,
-			removeWorkerFrontendSymlinks(frontends, wrappers),
-			os.RemoveAll(snapshotDirectory),
-		)
+		return nil, errors.Join(cause, os.RemoveAll(snapshotDirectory))
 	}
 	if err := pinRunningExecutable(filepath.Join(snapshotDirectory, workerExecutableFilename)); err != nil {
 		return fail(err)
@@ -126,7 +120,7 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 		AXReadOutput:    config.AXReadOutput,
 		Version:         2,
 		GuidanceSHA256:  hex.EncodeToString(guidanceHash[:]),
-		Tools:           slices.Clone(contributions),
+		Tools:           contributions,
 	}
 	registryID, err := registryIdentity(manifest)
 	if err != nil {
@@ -145,34 +139,27 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	if err := writeToolWorkerManifest(snapshotDirectory, manifest); err != nil {
 		return fail(err)
 	}
+	frontendDirectory := filepath.Join(snapshotDirectory, "bin")
+	if len(contributions) != 0 {
+		if err := os.Mkdir(frontendDirectory, 0o700); err != nil {
+			return fail(fmt.Errorf("create session tool frontends: %w", err))
+		}
+	}
 	for _, contribution := range contributions {
-		if !contribution.Executable {
-			continue
+		frontend := filepath.Join(frontendDirectory, contribution.Name)
+		if err := os.Symlink(executable, frontend); err != nil {
+			return fail(fmt.Errorf("create %s worker symlink: %w", contribution.Name, err))
 		}
-		wrapper, wrapperErr := ensureWorkerSymlinkInDirectory(executable, snapshotDirectory, contribution.Name)
-		if wrapperErr != nil {
-			validationErrors = append(validationErrors, wrapperErr)
-			continue
-		}
-		wrappers[contribution.Name] = wrapper
+		frontends[contribution.Name] = frontend
 	}
-	if len(validationErrors) != 0 {
-		return fail(errors.Join(validationErrors...))
-	}
-	registry := &Registry{
+	return &Registry{
 		SnapshotDir:       snapshotDirectory,
 		ReplayDirectory:   config.ReplayDirectory,
-		FrontendDirectory: filepath.Join(snapshotDirectory, "bin"),
-		ordered:           contributions,
+		FrontendDirectory: frontendDirectory,
 		FrontendGuidance:  frontendGuidance,
 		Guidance:          guidance,
-		wrappers:          wrappers,
 		Frontends:         frontends,
-	}
-	if err := registry.installFrontends(); err != nil {
-		return nil, errors.Join(err, registry.Close())
-	}
-	return registry, nil
+	}, nil
 }
 
 func validateToolContribution(contribution catalogEntry) error {
@@ -215,46 +202,12 @@ func writeToolWorkerManifest(directory string, manifest workerManifest) error {
 	return nil
 }
 
-func (registry *Registry) installFrontends() error {
-	if len(registry.wrappers) == 0 {
-		return nil
-	}
-	if err := os.MkdirAll(registry.FrontendDirectory, 0o700); err != nil {
-		return fmt.Errorf("create session tool frontends: %w", err)
-	}
-	fail := func(cause error) error {
-		cleanupErr := removeWorkerFrontendSymlinks(registry.Frontends, registry.wrappers)
-		clear(registry.Frontends)
-		return errors.Join(cause, cleanupErr)
-	}
-	for _, contribution := range registry.ordered {
-		wrapper, ok := registry.wrappers[contribution.Name]
-		if !ok {
-			continue
-		}
-		frontend, err := ensureWorkerSymlinkInDirectory(
-			wrapper,
-			registry.FrontendDirectory,
-			contribution.Name,
-		)
-		if err != nil {
-			return fail(err)
-		}
-		registry.Frontends[contribution.Name] = frontend
-	}
-	return nil
-}
-
 func (registry *Registry) Close() error {
 	if registry == nil {
 		return nil
 	}
 	registry.closeOnce.Do(func() {
-		registry.closeErr = errors.Join(
-			removeWorkerFrontendSymlinks(registry.Frontends, registry.wrappers),
-			os.RemoveAll(registry.SnapshotDir),
-		)
-
+		registry.closeErr = os.RemoveAll(registry.SnapshotDir)
 	})
 	return registry.closeErr
 }

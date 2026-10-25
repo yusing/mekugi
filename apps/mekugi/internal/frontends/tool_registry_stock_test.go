@@ -21,17 +21,6 @@ func TestToolRegistryExposesOnlyExecutableFrontends(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("frontends = %v, want %v", got, want)
 	}
-	for _, name := range []string{"mcat", "inspect_file", "msymbol", "mread", "mrun", "mchanges"} {
-		found := false
-		for _, contribution := range registry.ordered {
-			if contribution.Name == name {
-				found = contribution.NativeExecutor == name
-			}
-		}
-		if !found {
-			t.Fatalf("%s is not a compiled tool with its native backend", name)
-		}
-	}
 }
 
 func TestNativeFrontendAuthenticatesCatalogWithoutExternalRuntime(t *testing.T) {

@@ -21,10 +21,8 @@ type (
 		SnapshotDir       string
 		ReplayDirectory   string
 		FrontendDirectory string
-		ordered           []catalogEntry
 		FrontendGuidance  binding.FrontendGuidance
 		Guidance          *binding.Guidance
-		wrappers          map[string]string
 		Frontends         map[string]string
 
 		closeOnce sync.Once
