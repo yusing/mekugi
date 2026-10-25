@@ -41,6 +41,24 @@ func TestPrefixResizeRepeat(t *testing.T) {
 	feed("\x02\x1b[5~\x1b[C", 69, "\x1b[C")
 }
 
+func TestDecoderInterruptedReplyDispatch(t *testing.T) {
+	for _, reset := range []string{"\x03", "\x18", "\x1a", "\x1b[D"} {
+		var state Interaction
+		in := FrameInput{Main: &Main{}, Transcript: activityui.NewView(), Shell: &Shell{}, Now: time.Unix(1, 0)}
+		keys := ""
+		for _, b := range []byte("\x1b]11;rgb:ffff" + reset + "text") {
+			for effect := range in.Dispatch(&state, state.Decoder.Feed(b, in.Now)) {
+				if effect.Main != nil {
+					keys += effect.Main.key
+				}
+			}
+		}
+		if keys != reset+"text" || state.Decoder.Pending() || state.Decoder.Pasting() {
+			t.Fatalf("reset %q: dispatched %q", reset, keys)
+		}
+	}
+}
+
 func TestPrefixResizeRepeatCancellation(t *testing.T) {
 	for _, stop := range []string{"paste", "pointer", "focus loss", "dialog", "escape", "pane"} {
 		t.Run(stop, func(t *testing.T) {

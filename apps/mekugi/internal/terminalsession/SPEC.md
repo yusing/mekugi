@@ -80,7 +80,8 @@ without its source.
 ## Input
 
 The live decoder separates key sequences, SGR pointer reports, terminal color and
-focus replies, and bracketed paste before pane routing. Paste bytes are opaque,
+focus replies, and bracketed paste before pane routing. Ctrl-C and a new escape
+sequence recover input after an interrupted terminal reply. Paste bytes are opaque,
 including shortcut bytes and incomplete control sequences; only the exact end
 marker changes paste state. Dialogs and status views discard paste payloads while
 the decoder still consumes their terminator. Terminal replies never reach the

@@ -65,6 +65,16 @@ func (d *Decoder) Feed(key byte, now time.Time) Input {
 		return Input{PasteInput, payload}
 	}
 	if d.reply != nil {
+		// Cancellation and a new Escape recover an interrupted reply. Keep
+		// Escape pending until the next byte distinguishes ST from new input.
+		if key == 3 || key == 24 || key == 26 || d.replyEscape && key != '\\' && key != 7 {
+			escaped := d.replyEscape
+			d.reply, d.discard, d.replyEscape = nil, false, false
+			if escaped && key != 27 && key != 3 && key != 24 && key != 26 {
+				d.sequence = "\x1b"
+			}
+			return d.Feed(key, now)
+		}
 		done := key == 7 || d.replyEscape && key == '\\'
 		d.replyEscape = key == 27
 		if len(d.reply) < 4<<20 && !d.discard {
