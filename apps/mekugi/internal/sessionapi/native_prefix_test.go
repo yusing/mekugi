@@ -352,7 +352,63 @@ func TestNativeRetainedOwnersKeepSnapshotAndHydrationLimits(t *testing.T) {
 	}
 	frame.MainOutput = nil
 	frame.Effects = []NativeEffect{{ID: 1, Restore: &composer.Draft{Text: strings.Repeat("e", 5<<20)}}}
-	if err := native.Publish(request.Attachment, frame); !errors.Is(err, errNativePublicationLimit) {
-		t.Fatalf("delta exceeded complete snapshot capacity: %v", err)
+	if err := native.Publish(request.Attachment, frame); err != nil {
+		t.Fatal(err)
+	}
+	delta, _ = source.native.pop()
+	connection.subscription.events = []RPCEvent{{Kind: delta.Kind, Data: delta.Data}}
+	got, err = connection.Next()
+	if err != nil || got.Frame.Review.Failure == "" || len(got.Frame.Review.Files) != 0 || len(got.Frame.Effects) != 1 || source.ctx.Err() != nil {
+		t.Fatalf("auxiliary review exhaustion blocked the semantic consequence: %v", err)
+	}
+	frame.Effects = nil // A completed receipt releases temporary pressure.
+	if err := native.Publish(request.Attachment, frame); err != nil {
+		t.Fatal(err)
+	}
+	delta, _ = source.native.pop()
+	connection.subscription.events = []RPCEvent{{Kind: delta.Kind, Data: delta.Data}}
+	got, err = connection.Next()
+	if err != nil || got.Frame.Review.Failure != "" || len(got.Frame.Review.Files) != 1 {
+		t.Fatalf("receipt did not restore the unchanged source review: %v", err)
+	}
+	frame.MainOutput = []activity.OutputResult{{Demand: activity.OutputDemand{Source: 1}, View: activityfeed.OutputView{Lines: []string{strings.Repeat("o", 5<<20)}}}}
+	if err := native.Publish(request.Attachment, frame); err != nil {
+		t.Fatal(err)
+	}
+	delta, _ = source.native.pop()
+	connection.subscription.events = []RPCEvent{{Kind: delta.Kind, Data: delta.Data}}
+	got, err = connection.Next()
+	if err != nil || got.Frame.Review.Failure == "" || len(got.Frame.MainOutput) != 1 || len(got.Frame.MainOutput[0].View.Lines[0]) != 5<<20 || source.ctx.Err() != nil {
+		t.Fatalf("auxiliary review exhaustion blocked selected output: %v", err)
+	}
+}
+
+func TestNativeOversizedReviewKeepsAttachmentAndReconnect(t *testing.T) {
+	frame := nativeTestFrame("thread", 1)
+	file := changes.File{Path: "large.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("r", 33<<20)}}}}
+	frame.Review = &changes.ReviewView{Revision: 1, Workspace: "/workspace", Publication: changes.Publication{Files: []changes.File{file}, Unfiltered: map[string]changes.File{"large.go": file}}}
+	frame.Effects = []NativeEffect{{ID: 1, Restore: &composer.Draft{Text: "retained input"}}}
+	native := NewLive().Native()
+	for range 2 { // Reattachment must independently contain the same source.
+		source, request, failure := native.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", localNativeView)
+		if failure != nil {
+			t.Fatal(failure)
+		}
+		if err := native.Publish(request.Attachment, frame); err != nil {
+			t.Fatal(err)
+		}
+		publication, ok := source.native.pop()
+		if !ok || publication.Kind != "snapshot" || len(publication.Data) > nativePublicationBytes {
+			t.Fatal("bounded reconnect snapshot was not published")
+		}
+		connection := &NativeConnection{thread: "thread", subscription: &RPCSubscription{client: &RPCClient{}, events: []RPCEvent{{Kind: publication.Kind, Data: publication.Data}}}}
+		got, err := connection.Next()
+		if err != nil || got.Frame.Review.Failure == "" || got.Frame.Review.Revision != 1 || len(got.Frame.Effects) != 1 || got.Frame.Effects[0].Restore.Text != "retained input" || source.ctx.Err() != nil {
+			t.Fatalf("review exhaustion escaped its pane or lost restoration: %v", err)
+		}
+		source.close()
+	}
+	if frame.Review.Failure != "" || len(frame.Review.Files) != 1 || len(frame.Review.Unfiltered) != 1 {
+		t.Fatal("publication changed retained source evidence")
 	}
 }

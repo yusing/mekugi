@@ -67,6 +67,9 @@ func (c *Pane) ClearHover() {
 
 // Key handles one decoded terminal key. The attachment owns sequence timing.
 func (c *Pane) Key(input string) bool {
+	if c.failure != "" {
+		return input == "q" || input == "\x03"
+	}
 	if input == "" {
 		return false
 	}
@@ -149,7 +152,7 @@ func (c *Pane) Key(input string) bool {
 
 // Mouse uses pane-local one-based cells and the shared pointer action codes.
 func (c *Pane) Mouse(action byte, row, column int) {
-	if action == 0 || c.help {
+	if action == 0 || c.help || c.failure != "" {
 		return
 	}
 	navWidth := c.navigation.Width(c.lastWidth)

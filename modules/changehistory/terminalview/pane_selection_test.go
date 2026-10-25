@@ -15,6 +15,53 @@ import (
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
+func TestPaneReviewCapacityFailureAtSameRevision(t *testing.T) {
+	for _, revision := range []uint64{1, 2} {
+		t.Run(fmt.Sprint(revision), func(t *testing.T) {
+			pane := NewPane("/workspace", diffrender.DarkTheme)
+			publication := (presentation.Publication{}).With(presentation.GroupCaptures([]presentation.Chunk{
+				liveDiffCapture("one", "a.go", 1, "", "a\n", presentation.Origin{}),
+				liveDiffCapture("two", "b.go", 2, "", "b\n", presentation.Origin{}),
+			}))
+			view := presentation.ReviewView{Revision: 1, Workspace: "/workspace", Coverage: "complete", Publication: publication}
+			pane.PublishReview(view)
+			var output bytes.Buffer
+			if err := pane.Paint(t.Context(), &output, 120, 10); err != nil {
+				t.Fatal(err)
+			}
+			pane.Key("s")
+			pane.Key("j")
+			if pane.view.Selected != 1 || pane.EditorPath() == "" {
+				t.Fatal("fixture did not select an editable second file")
+			}
+			view.Revision, view.Publication, view.Failure = revision, presentation.Publication{}, "Saved Diff exceeds the native publication capacity."
+			pane.PublishReview(view)
+			output.Reset()
+			if err := pane.Paint(t.Context(), &output, 120, 10); err != nil {
+				t.Fatal(err)
+			}
+			if rendered := ansi.Strip(output.String()); !strings.Contains(rendered, view.Failure) || !strings.Contains(rendered, "Use mchanges") {
+				t.Fatalf("capacity failure was hidden: %q", rendered)
+			}
+			if pane.EditorPath() != "" || pane.Back() {
+				t.Fatal("unavailable pane exposed hidden operations")
+			}
+			pane.Key("k")
+			pane.Mouse('\r', 1, 1)
+			view.Failure, view.Publication = "", publication
+			pane.PublishReview(view)
+			if pane.view.Selected != 1 {
+				t.Fatal("capacity failure discarded explicit file selection")
+			}
+			view.Workspace, view.Failure = "/other", "unavailable"
+			pane.PublishReview(view)
+			if len(pane.view.Files) != 0 {
+				t.Fatal("workspace replacement retained another scope's selection")
+			}
+		})
+	}
+}
+
 func TestPaneSelectionPinnedHeadingAndFrozenCopies(t *testing.T) {
 	for _, width := range []int{70, 120} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {

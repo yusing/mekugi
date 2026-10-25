@@ -30,6 +30,7 @@ type Service struct {
 type reviewPublication struct {
 	snapshot *presentation.Snapshot
 	view     presentation.ReviewView
+	diff     presentation.ReviewView
 }
 
 func (s *Service) PublishReview(store *scope.Store, snapshot *presentation.Snapshot, workspace, coverage, failure string) {
@@ -41,6 +42,7 @@ func (s *Service) PublishReview(store *scope.Store, snapshot *presentation.Snaps
 		return
 	}
 	review.snapshot = snapshot
+	review.diff = presentation.ReviewView{}
 	review.view = presentation.ReviewView{Workspace: workspace, Coverage: coverage, Failure: failure, Revision: s.reviewRevision.Add(1)}
 	if snapshot != nil {
 		review.view.Publication = snapshot.Publication
@@ -52,6 +54,20 @@ func (s *Service) ReviewView(store *scope.Store) presentation.ReviewView {
 		return presentation.ReviewView{}
 	}
 	return s.review.Value(store).view
+}
+
+// DiffReviewView projects only the saved pane's evidence. Exact-operation
+// details and edit totals continue to use the complete admitted snapshot.
+func (s *Service) DiffReviewView(store *scope.Store) presentation.ReviewView {
+	if s == nil || store == nil {
+		return presentation.ReviewView{}
+	}
+	review := s.review.Value(store)
+	if review.diff.Revision != review.view.Revision {
+		review.diff = review.view
+		review.diff.Publication = review.view.Publication.ForDiff(review.view.Workspace)
+	}
+	return review.diff
 }
 
 func (s *Service) ActivityDetail(store *scope.Store, request activitydetail.Request) activitydetail.Result {

@@ -374,7 +374,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			Approvals:      nativePendingApprovals(execution.conversation),
 			Main:           v.attached.source.Publication(v.attached.presentation, nil),
 			Agents:         v.attached.childSource.Publication(v.attached.presentation, v.attached.source),
-			Review:         new(reviewSource.ReviewView(execution.session.Scope())),
+			Review:         new(reviewSource.DiffReviewView(execution.session.Scope())),
 			MainOutput:     v.mainOutput, AgentOutput: v.agentOutput, Switch: switched,
 		}
 		if v.notices != nil {

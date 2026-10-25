@@ -142,7 +142,7 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 				}
 			}
 			await(func() bool {
-				return event.Frame.View.Main.ID == "main" && event.Frame.Main != nil && len(event.Frame.Main.Entries) > 0 && event.Frame.Review != nil && len(event.Frame.Review.Files) > 0 && event.Frame.Review.Coverage != "CONNECTING"
+				return event.Frame.View.Main.ID == "main" && event.Frame.Main != nil && len(event.Frame.Main.Entries) > 0 && event.Frame.Review != nil && event.Frame.Review.Coverage != "CONNECTING"
 			})
 			send(sessionapi.NativeOperation{Command: new("/rewind")})
 			choose("second")

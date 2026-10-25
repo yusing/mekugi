@@ -7,8 +7,33 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
+
+func TestDiffReviewPublicationPreservesRetainedEvidence(t *testing.T) {
+	service := new(Service)
+	store := new(scope.Store)
+	publication := (presentation.Publication{}).With(presentation.GroupCaptures([]presentation.Chunk{
+		{Key: "temporary", Workspace: "/workspace", Review: diffmodel.ReviewFile{AfterPath: "/tmp/worktree/file.go", Diff: "temporary evidence"}},
+		{Key: "project", Workspace: "/workspace", Review: diffmodel.ReviewFile{AfterPath: "/workspace/file.go", Diff: "project evidence"}},
+	}))
+	service.PublishReview(store, &presentation.Snapshot{Publication: publication}, "/workspace", "complete", "")
+	full, pane := service.ReviewView(store), service.DiffReviewView(store)
+	if len(full.Files) != 2 || len(pane.Files) != 1 || pane.Files[0].Path != "/workspace/file.go" || pane.Revision != full.Revision {
+		t.Fatal("pane projection changed retained evidence or exposed hidden captures")
+	}
+	again := service.DiffReviewView(store)
+	if &again.Files[0] != &pane.Files[0] {
+		t.Fatal("unchanged owner re-materialized growing review history")
+	}
+	service.PublishReview(store, nil, "/workspace", "loading", "")
+	if next := service.DiffReviewView(store); len(next.Files) != 0 || next.Revision == pane.Revision || next.Coverage != "loading" {
+		t.Fatal("new owner revision retained the preceding pane")
+	}
+}
 
 func TestServiceOwnsSelectedCheckpointLifetime(t *testing.T) {
 	isolateSnapshotGit(t)

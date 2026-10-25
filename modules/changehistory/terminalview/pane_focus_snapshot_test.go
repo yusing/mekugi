@@ -31,3 +31,20 @@ func TestUISnapshotLiveDiffFocus(t *testing.T) {
 		}
 	}
 }
+
+func TestUISnapshotSavedDiffCapacity(t *testing.T) {
+	pane := liveDiffChangesController(t, 80, 6, []presentation.Chunk{
+		liveDiffCapture("one", "a.go", 1, "old\n", "new\n", presentation.Origin{}),
+	})
+	pane.navigation.Focused = true
+	pane.PublishReview(presentation.ReviewView{Revision: 1, Workspace: pane.Workspace(),
+		Failure: "Saved Diff exceeds the native publication capacity; use mchanges with a narrower range."})
+	var output bytes.Buffer
+	pane.paintTo(t, &output)
+	left, right := pane.Title()
+	rows := []string{left + " | " + right}
+	for row := 1; row <= 6; row++ {
+		rows = append(rows, liveDiffFrameRow(output.String(), row))
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/saved-diff-capacity.txt", strings.Join(rows, "\n"))
+}

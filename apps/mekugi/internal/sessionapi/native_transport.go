@@ -13,6 +13,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -57,20 +58,22 @@ const (
 )
 
 type nativeView struct {
-	authority   viewAuthority
-	target      requestTarget
-	startup     string
-	version     sessionpresentation.Version
-	ctx         context.Context
-	cancel      context.CancelCauseFunc
-	queue       *nativePublications
-	started     bool
-	frame       []byte
-	main        *activity.Publication
-	agents      *activity.Publication
-	state       []byte
-	reviewState []byte
-	ownerBytes  [3]int
+	authority     viewAuthority
+	target        requestTarget
+	startup       string
+	version       sessionpresentation.Version
+	ctx           context.Context
+	cancel        context.CancelCauseFunc
+	queue         *nativePublications
+	started       bool
+	frame         []byte
+	main          *activity.Publication
+	agents        *activity.Publication
+	state         []byte
+	reviewState   []byte
+	ownerBytes    [3]int
+	reviewBytes   int
+	reviewLimited bool
 }
 
 // nativePublications retains ordered deliveries while coalescing superseded
@@ -265,7 +268,33 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		}
 	}
 	sizes := v.ownerBytes
-	data, err := encodeNativePrefix(id, startup, frame, retained, &sizes)
+	var data []byte
+	var err error
+	reviewBytes, reviewLimited := v.reviewBytes, false
+	if v.reviewLimited && reviewState != nil && bytes.Equal(v.reviewState, reviewState) {
+		// Probe the original immutable review's footprint without serializing
+		// it again on each frame while a consequence or hydration is pending.
+		probe := sizes
+		probe[2] = reviewBytes
+		_, err = encodeNativePrefix(id, startup, frame, retained|nativeReview, &probe)
+		if err == nil {
+			retained &^= nativeReview // Replace the client's failure projection.
+		}
+	}
+	if err == nil {
+		data, err = encodeNativePrefix(id, startup, frame, retained, &sizes)
+		reviewBytes = sizes[2]
+	}
+	if errors.Is(err, errNativePublicationLimit) && frame.Review != nil && len(frame.Review.Files)+len(frame.Review.Unfiltered) > 0 {
+		// Auxiliary evidence failure cannot retire input or semantic delivery.
+		// The complete source remains available to details and retained reads.
+		review := *frame.Review
+		review.Publication = changes.Publication{}
+		review.Failure = "Saved Diff exceeds the native publication capacity; use mchanges with a narrower range."
+		frame.Review = &review
+		data, err = encodeNativePrefix(id, startup, frame, retained&^nativeReview, &sizes)
+		reviewLimited = true
+	}
 	if err != nil {
 		if errors.Is(err, errNativePublicationLimit) {
 			v.cancel(err)
@@ -274,12 +303,14 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 	}
 	if v.started && bytes.Equal(v.frame, data) {
 		v.main, v.agents, v.state = main, agents, state
+		v.reviewBytes, v.reviewLimited = reviewBytes, reviewLimited
 		return nil
 	}
 	notification := publication{Kind: event, Data: data}
 	if v.queue.push(notification) {
 		v.frame = data
 		v.reviewState, v.ownerBytes = reviewState, sizes
+		v.reviewBytes, v.reviewLimited = reviewBytes, reviewLimited
 		v.main, v.agents, v.state = main, agents, state
 		v.started, v.version = true, frame.View.Version
 		if frame.Switch != nil {

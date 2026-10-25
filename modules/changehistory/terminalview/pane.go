@@ -63,7 +63,7 @@ func (c *Pane) SetNavigatorColumns(columns int) {
 	c.dirty = c.dirty || c.navigation.Columns != columns
 	c.navigation.Columns = columns
 }
-func (c *Pane) Back() bool { return c.back.kind != 0 }
+func (c *Pane) Back() bool { return c.failure == "" && c.back.kind != 0 }
 
 // Invalidate repaints a replaced terminal surface even when content is unchanged.
 func (c *Pane) Invalidate() { c.dirty = true }
@@ -92,7 +92,7 @@ func (c *Pane) Reset() {
 // The application owns the explicit current-file read and editor handoff.
 func (c *Pane) EditorPath() string {
 	n := &c.navigation
-	if c.help || !n.Focused || n.Filtering || n.ChangesTab || n.Cursor < 0 || n.Cursor >= len(n.Entries) {
+	if c.failure != "" || c.help || !n.Focused || n.Filtering || n.ChangesTab || n.Cursor < 0 || n.Cursor >= len(n.Entries) {
 		return ""
 	}
 	if file := n.Entries[n.Cursor].File; file >= 0 && file < len(c.files) {
@@ -336,6 +336,9 @@ func (c *Pane) Paint(ctx context.Context, out io.Writer, width, height int) erro
 // line totals on the left; coverage, caller filter, focus and the open
 // file's position on the right.
 func (c *Pane) Title() (string, string) {
+	if c.failure != "" {
+		return "saved · unavailable", ""
+	}
 	left := "no captured edits yet"
 	visible, position := 0, 0
 	for i, file := range c.files {
@@ -392,6 +395,9 @@ func (c *Pane) Title() (string, string) {
 
 // Hints describes the saved-review controls in their current navigation state.
 func (c *Pane) Hints() terminalui.Hints {
+	if c.failure != "" {
+		return terminalui.Hints{{"q", "close", 0}}
+	}
 	hints := terminalui.Hints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
 	if c.Back() {
 		hints = append(terminalui.Hints{{"esc", "back", 0}}, hints...)

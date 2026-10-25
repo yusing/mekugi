@@ -20,9 +20,11 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/activity/feed"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"golang.org/x/term"
 )
@@ -96,6 +98,10 @@ func TestNativeClientPTYDraftAndDetach(t *testing.T) {
 	}
 	u.testMainFrame(80, 24, 0)
 	frame := sessionapi.NativeFrame{View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: u.attached.childSource.Publication(u.attached.presentation, u.attached.source)}
+	// Retained source fits the review owner's bound, but its two wire
+	// representations exceed a transport frame. Input and detach must survive.
+	file := changes.File{Path: "large.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("r", 33<<20)}}}}
+	frame.Review = &changes.ReviewView{Revision: 1, Workspace: u.attached.cwd, Publication: changes.Publication{Files: []changes.File{file}, Unfiltered: map[string]changes.File{"large.go": file}}}
 	frame.Main.Entries = append([]activity.Entry{{Seq: 100, Agent: "Main", Kind: "tool", Text: "retained command", Outputs: map[int]int{1: 2}, Values: []activity.Value{{Kind: "op", Verb: "Run", Label: "printf retained", Source: 100, Output: 1, Exited: true, Tail: []string{"retained tail"}, TailOmitted: 1}}}}, frame.Main.Entries...)
 	views := make(chan context.Context, 1)
 	burst := make(chan struct{})

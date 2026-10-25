@@ -263,7 +263,12 @@ reservations and its deliveries settle; input acknowledgement alone is insuffici
 Admission reserves retained consequence capacity before consuming input or
 dispatching work. Native restored inputs remain individually deliverable, in their
 original editor order. Remote recovery retains its joined submission behind the
-bounded preview. A complete state or single consequence that exceeds the transport's
+bounded preview. Native saved review carries the saved pane's projection; complete
+retained evidence remains with its detail and edit-total owners. If saved review
+cannot fit alongside state, semantic delivery and selected output, Diff reports its capacity failure
+and directs narrower reads through `mchanges`; the attachment remains interactive.
+Diff recovers when publication capacity returns, preserving its selected file.
+A remaining complete state or single consequence that exceeds the transport's
 publication limit is an explicit resource failure, distinct from observation backlog.
 The `activity` window is reconstructible pacing state: a newer `Reset` watermark
 clears transient reveal state against the complete Main/Agents publication without
