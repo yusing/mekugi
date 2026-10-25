@@ -216,6 +216,9 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string) (result 
 	if inner := shellsyntax.UnwrapEnv(statement); inner != statement {
 		return sourceStatement(script, inner, cwd)
 	}
+	if inner := shellsyntax.UnwrapMRun(statement); inner != statement {
+		return sourceStatement(script, inner, cwd)
+	}
 	if argv, ok := shellsyntax.PatternCall("", statement); ok && len(argv) == 3 &&
 		(argv[0] == "bash" || argv[0] == "sh" || argv[0] == "dash") && (argv[1] == "-c" || argv[1] == "-lc") {
 		display, recognized := ClassifyShell(argv[2], cwd)
@@ -250,7 +253,7 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string) (result 
 		if display, ok := sourcePipedRead(script, statement, binary, cwd); ok {
 			return display, true
 		}
-		argv, ok := shellsyntax.PatternCall(script, binary.Y)
+		argv, ok := sourcePatternCall(script, binary.Y)
 		if !ok {
 			return "", false
 		}
@@ -269,7 +272,7 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string) (result 
 			}
 		}
 		if binary.Op == syntax.Pipe && len(statement.Redirs) == 0 && len(argv) > 0 && argv[0] == "head" && sourceSearchFilter(argv) {
-			if source, valid := shellsyntax.PatternCall(script, binary.X); valid && source[0] == "cat" &&
+			if source, valid := sourcePatternCall(script, binary.X); valid && source[0] == "cat" &&
 				(strings.HasPrefix(left, "Read ") || strings.HasPrefix(left, "Skill ")) {
 				return left, true
 			}
@@ -362,8 +365,8 @@ func sourcePipedRead(script string, statement *syntax.Stmt, binary *syntax.Binar
 	if binary.Op != syntax.Pipe || len(statement.Redirs) != 0 {
 		return "", false
 	}
-	left, leftOK := shellsyntax.PatternCall(script, binary.X)
-	right, rightOK := shellsyntax.PatternCall("", binary.Y)
+	left, leftOK := sourcePatternCall(script, binary.X)
+	right, rightOK := sourcePatternCall("", binary.Y)
 	if !leftOK || !rightOK || len(right) != 3 ||
 		right[0] != "sed" || right[1] != "-n" {
 		return "", false
@@ -383,6 +386,17 @@ func sourcePipedRead(script string, statement *syntax.Stmt, binary *syntax.Binar
 		return "", false
 	}
 	return "Read " + SourceCode(pathdisplay.ForWorkspace(cwd, path)+" "+strings.Join(spans, " ")), true
+}
+
+// Pipeline checks use the same display wrappers as individual operations.
+func sourcePatternCall(script string, statement *syntax.Stmt) ([]string, bool) {
+	for {
+		inner := shellsyntax.UnwrapMRun(shellsyntax.UnwrapEnv(shellsyntax.UnwrapTimeout(statement)))
+		if inner == statement {
+			return shellsyntax.PatternCall(script, statement)
+		}
+		statement = inner
+	}
 }
 
 func sourcePrintSpans(program string) ([]string, bool) {

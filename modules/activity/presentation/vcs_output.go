@@ -40,7 +40,11 @@ func VCSOutputRows(command, cwd, output string) ([]ChangeRow, CommitKey) {
 	lines := strings.Split(strings.ReplaceAll(textsanitize.StripSequences(output), "\r\n", "\n"), "\n")
 	switch {
 	case call.kind == vcsCommit && call.tool == "git":
-		return gitCommitRows(call, cwd, lines)
+		rows, key := gitCommitRows(call, cwd, lines)
+		if call.repositoryUnknown {
+			key = CommitKey{}
+		}
+		return rows, key
 	case call.kind == vcsCommit:
 		return svnCommitRows(lines), CommitKey{}
 	case call.kind == vcsDiff:

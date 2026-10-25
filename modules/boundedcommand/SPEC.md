@@ -16,6 +16,8 @@ continuation. It creates no private continuation handle or recovery store.
 command under the host's existing process, stdin, cancellation, and continuation
 authority. The first non-option operand starts the command; all subsequent
 arguments belong to it. `--` explicitly marks the same boundary.
+The shared `commandargs.ParseRunOptions` grammar also supplies Activity's
+display-only wrapper recognition.
 
 `-n` selects up to N rows per stream. `--max-tokens` accepts 1–15500 and bounds
 the combined selected command text. When stdout is nonempty, stderr receives

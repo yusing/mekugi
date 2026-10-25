@@ -19,12 +19,13 @@ import (
 // words only, plus a quoted heredoc message; nothing is expanded, evaluated,
 // or run.
 type vcsCall struct {
-	tool    string // git, svn, or mchanges
-	kind    string // One of the vcs* kinds.
-	format  string // A stat read's output form, such as numstat.
-	dir     string // git -C directory, as written.
-	subject string // A commit's first message line, when literal.
-	display string // The operation paragraph.
+	tool              string // git, svn, or mchanges
+	kind              string // One of the vcs* kinds.
+	format            string // A stat read's output form, such as numstat.
+	dir               string // git -C directory, as written.
+	subject           string // A commit's first message line, when literal.
+	display           string // The operation paragraph.
+	repositoryUnknown bool   // An env wrapper may override Git repository selection.
 }
 
 const (
@@ -43,6 +44,14 @@ func vcsStatement(statement *syntax.Stmt) (vcsCall, bool) {
 	statement = shellsyntax.UnwrapTimeout(statement)
 	if statement == nil || statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 		return vcsCall{}, false
+	}
+	if inner := shellsyntax.UnwrapEnv(statement); inner != statement {
+		call, ok := vcsStatement(inner)
+		call.repositoryUnknown = true
+		return call, ok
+	}
+	if inner := shellsyntax.UnwrapMRun(statement); inner != statement {
+		return vcsStatement(inner)
 	}
 	call, ok := statement.Cmd.(*syntax.CallExpr)
 	if !ok || len(call.Assigns) != 0 || len(call.Args) == 0 {

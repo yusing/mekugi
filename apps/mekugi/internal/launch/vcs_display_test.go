@@ -80,7 +80,7 @@ func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	g, output := vcsCommitFixture(t, "amend! feat(router): pin latest reply")
 	_, commit := activitypresentation.VCSOutputRows("git commit -m x", g.dir, output)
 	hash := commit.Hash
-	script := "git diff --check && git add a.go b.go gone.txt && timeout 90s git commit -F - <<'EOF'\namend! feat(router): pin latest reply\n\nbody\nEOF"
+	script := "git diff --check && git add a.go b.go gone.txt && mrun --tail -n 35 timeout 90s git commit -F - <<'EOF'\namend! feat(router): pin latest reply\n\nbody\nEOF"
 	var err error
 	script, err = shellinstrumentation.RewriteCommands(script, displayGuardHelper, displayGuardDirectory, "", "")
 	if err != nil {

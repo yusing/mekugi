@@ -11,7 +11,31 @@ import (
 
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+func TestUISnapshotMRunCommit(t *testing.T) {
+	source := "mrun --tail -n 35 git commit -F - <<'EOF'\nfix: keep commit activity\n\nRetain the message body.\nEOF\n"
+	values := presentation.Operations(presentation.ShellSource(source, "/workspace"))
+	if len(values) != 1 || values[0].Verb != "Commit" || !strings.Contains(values[0].Label, "fix: keep commit activity") {
+		t.Fatalf("wrapped commit source = %+v", values)
+	}
+	block := Block{Value: values[0]}
+	var p Painter
+	if got := RowVerb(block); got != "Commit" {
+		t.Fatalf("requested verb = %q", got)
+	}
+	output := "[main 3a1f9c2] fix: keep commit activity\n 1 file changed, 2 insertions(+)\n"
+	block.Changes, _ = presentation.VCSOutputRows(source, "/workspace", output)
+	if got := RowVerb(block); got != "Committed" {
+		t.Fatalf("observed verb = %q", got)
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/mrun_commit.txt", append(p.Block(block, 80), "plain"), 80)
+	block.ExitCode = 1
+	if got := RowVerb(block); got != "Commit" {
+		t.Fatalf("failed verb = %q", got)
+	}
+}
 
 func vcsRows(p *Painter, block Block, width int) string {
 	return ansi.Strip(strings.Join(p.Block(block, width), "\n"))
