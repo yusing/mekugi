@@ -75,7 +75,7 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 		return sessionreplay.Deps{History: history.Value()}
 	})
 	prefs := c.Add(sessionpreferences.Module, func() sessionpreferences.Deps { return sessionpreferences.Deps{History: history.Value()} })
-	usage := c.Add(usage.Module, func() usage.Deps { return usage.Deps{History: history.Value()} })
+	usage := c.Add(usage.Module, func() usage.Deps { return usage.Deps{} })
 	changes := c.Add(changehistory.Module, func() changehistory.Deps {
 		return changehistory.Deps{History: history.Value(), Directory: captureDirectory}
 	})

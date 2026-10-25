@@ -17,9 +17,9 @@ import (
 func TestCompositionPresentationUsageSelection(t *testing.T) {
 	for _, included := range []bool{false, true} {
 		var c Composition
-		history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
+		c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
 		if included {
-			c.Add(usage.Module, func() usage.Deps { return usage.Deps{History: history.Value()} })
+			c.Add(usage.Module, func() usage.Deps { return usage.Deps{} })
 		}
 		runtime, err := c.Activate(t.Context(), new(binding.Registry))
 		if err != nil {

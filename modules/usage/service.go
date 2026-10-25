@@ -4,11 +4,10 @@ import (
 	"context"
 
 	"github.com/yusing/mekugi/contracts/module"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
-type Deps struct{ History *history.Service }
+type Deps struct{}
 
 func newService(_ Deps, _ module.Slots) (*accounting.Service, error) {
 	return accounting.New(), nil
