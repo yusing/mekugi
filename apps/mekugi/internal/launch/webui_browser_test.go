@@ -169,11 +169,11 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if err := alpha.api.Publish(frame); err != nil {
 		t.Fatal(err)
 	}
-	run("wait", "--text", "188 more files")
+	run("wait", "--text", "190 more files")
 	if run("eval", "document.body.innerText.includes('file199.go')") != "false\n" {
 		t.Fatal("large temporary capture started expanded")
 	}
-	run("eval", "Array.from(document.querySelectorAll('summary')).find(row => row.textContent.includes('188 more files')).focus()")
+	run("eval", "Array.from(document.querySelectorAll('summary')).find(row => row.textContent.includes('190 more files')).focus()")
 	run("press", "Enter")
 	run("wait", "--fn", "document.body.innerText.includes('file199.go')")
 	frame.Main.Entries[0].Revision++
@@ -181,7 +181,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("wait", "--fn", "document.body.innerText.includes('file199.go')")
-	run("find", "text", "188 more files", "click", "--exact")
+	run("find", "text", "190 more files", "click", "--exact")
 	run("wait", "--fn", "!document.body.innerText.includes('file199.go')")
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("set", "viewport", "1280", "900")
