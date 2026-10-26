@@ -18,7 +18,7 @@ correlation, independently of the logical checkpoint.
 Each runtime exposes one authenticated MCP server, `threadcontrol`, through stock
 JavaScript execution. Coordination calls the Mekugi server's typed native-thread
 API for creation, attributed input, interruption and retained-outcome confirmation.
-Session Control translates those semantic operations into backend requests. Its six operations replace native collaboration; no native alias or
+Session Control translates those semantic operations into backend requests. Its operations replace native collaboration; no native alias or
 fallback remains callable. Only Thread Control records supply coordination history. The Codex
 binding supplies the final invocation and thread-admission policy:
 `features.multi_agent_v2.enabled=true` and
@@ -56,8 +56,20 @@ native request metadata remains unchanged on the provider wire.
   Request acknowledgement alone is not completion.
 - `list_agents` reads admitted tree state, including pending, paused and uncertain
   work/delivery identities, with the existing `path_prefix` filter.
+- `inspect` reads an admitted active agent by `target` path, including `/root`.
+  It reports applied model, reasoning effort and service tier, current context
+  usage/window, and completed compactions. Unavailable observations are `null`,
+  distinct from a measured zero. Inspection borrows the runtime's existing session facts without starting
+  work or restoring an inactive runtime.
 - `wait_agent` accepts `target?: string[] | "all"`, `timeout_ms?: integer`.
   Omitted target means `"all"`.
+
+Follow-up acknowledgements include the target's current context and compaction
+metrics. Immediate wait results and resumed wait outputs include those same metrics
+for each selected target, keyed by canonical task path. Unavailable runtimes report
+`null` observations without failing an otherwise successful coordination operation.
+Dispatched wait metrics freeze with that wait's existing checkpoint so a resumed
+runtime can confirm the exact retained continuation without replacing its facts.
 
 Host MCP thread/session/turn/call/item metadata binds each call to admitted ownership.
 Task labels and tool arguments confer no authority. Members communicate with

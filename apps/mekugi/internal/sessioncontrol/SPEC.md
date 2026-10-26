@@ -18,6 +18,8 @@ Server-owned thread coordination submits asynchronous host calls to that same
 event loop and ledger. Cancellation before dispatch prevents execution; after
 dispatch it releases observation with an uncertain outcome. Shutdown releases
 waiting callers without replaying their operations.
+Coordination inspection uses the same event-loop handoff to read current applied
+settings and session metrics, without issuing a host request or copying a UI frame.
 Prepared-child resume preserves retained host identity and checks canonical
 authority before execution. History confirmation can read the retained source
 without a live host connection. Ordinary child input waits for logical admission

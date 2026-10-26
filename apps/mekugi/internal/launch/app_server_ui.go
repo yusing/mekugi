@@ -751,6 +751,8 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					addGuardApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, panel != nil || resumePicker != nil, notifications, reviewOwner, &receipts, request)
 				case call := <-control.Calls():
 					control.Dispatch(call)
+				case inspection := <-control.Requests.Inspections():
+					inspection.Complete(control.Thread, threadInspection(&attached.session, control.Thread, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers))
 				case <-threadChanges:
 					syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
 					for _, failure := range threads.driver.Failures() {
@@ -1330,6 +1332,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				}
 			}
 			restoreContextUsage(attached.session.Agent("/root"), result.Thread)
+			restoreCompactionMetrics(&attached.session, result.Thread)
 			restoreUsage(usage, result.Thread)
 			observeCost(usage, control.Thread, attached.session.Agent("/root"))
 			if attached.childSource != nil {

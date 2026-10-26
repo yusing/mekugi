@@ -180,8 +180,14 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	switch {
 	case parent && step == 1:
 		p.users = users
-		program = `text(Object.keys(tools).filter(name => name.includes("threadcontrol"))); text(await tools.mcp__threadcontrol__list_agents({}));`
+		program = `text(Object.keys(tools).filter(name => name.includes("threadcontrol"))); text(await tools.mcp__threadcontrol__list_agents({})); text(await tools.mcp__threadcontrol__inspect({target:"/root"}));`
 	case parent && step == 2:
+		if !strings.Contains(string(body), "compactions") || !strings.Contains(string(body), "context_window") || !strings.Contains(string(body), "reasoning_effort") {
+			failure = "root inspection omitted applied settings or metrics"
+		}
+		if strings.Contains(string(body), "context_known") || strings.Contains(string(body), "compactions_known") {
+			failure = "root inspection exposed availability flags"
+		}
 		if !strings.Contains(string(body), "mcp__threadcontrol__spawn_agent") || !strings.Contains(string(body), "/root") {
 			failure = "replacement MCP discovery/list_agents omitted root or spawn tool"
 		}

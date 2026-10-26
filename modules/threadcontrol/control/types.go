@@ -71,6 +71,7 @@ type LocalStop struct {
 // Wait owns its continuation intent, including dispatch and uncertainty.
 type Wait struct {
 	Effect
+	Metrics                  map[string]SessionMetrics
 	Item, Stop, ResumeHandle string
 	Targets                  []string
 	All                      bool
@@ -146,12 +147,13 @@ type Receipt struct {
 }
 
 type WaitResult struct {
-	ID          string   `json:"-"`
-	All         bool     `json:"-"`
-	State       string   `json:"state"`
-	Event       *Event   `json:"event,omitempty"`
-	Targets     []string `json:"targets,omitempty"`
-	EffectiveMS *int64   `json:"effective_ms,omitempty"`
+	Metrics     map[string]SessionMetrics `json:"metrics,omitempty"`
+	ID          string                    `json:"-"`
+	All         bool                      `json:"-"`
+	State       string                    `json:"state"`
+	Event       *Event                    `json:"event,omitempty"`
+	Targets     []string                  `json:"targets,omitempty"`
+	EffectiveMS *int64                    `json:"effective_ms,omitempty"`
 }
 
 func (tree *Tree) Effect(caller, id string) *Effect {

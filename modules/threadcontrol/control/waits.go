@@ -80,7 +80,7 @@ func selectedEvent(tree *Tree, wait *Wait) *Effect {
 }
 
 func (tree *Tree) waitResult(wait *Wait) *WaitResult {
-	result := &WaitResult{ID: wait.ID, All: wait.All, State: wait.State, EffectiveMS: wait.EffectiveMS}
+	result := &WaitResult{ID: wait.ID, All: wait.All, State: wait.State, EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
 	if wait.Terminal != nil {
 		result.Event = new(*wait.Terminal)
 	}
@@ -263,6 +263,7 @@ func (s *Service) WaitPublication(thread string) *WaitResult {
 		return nil
 	}
 	result := tree.waitResult(wait)
+	result.Metrics = nil // Display facts do not borrow frozen continuation payloads.
 	result.EffectiveMS = nil
 	if wait.EffectiveMS != nil {
 		result.EffectiveMS = new(*wait.EffectiveMS)

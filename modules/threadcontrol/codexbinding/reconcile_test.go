@@ -51,6 +51,10 @@ func TestHumanChildResultUsesParentDelivery(t *testing.T) {
 
 type reconciliationRuntime struct{ control.Runtime }
 
+func (*reconciliationRuntime) Inspect(context.Context, string) (control.SessionDetails, error) {
+	return control.SessionDetails{}, nil
+}
+
 type reconciliationHost struct {
 	control.Native
 	reconciliationRuntime
@@ -227,6 +231,7 @@ func TestColdRunReconciliationDoesNotRedispatch(t *testing.T) {
 
 func TestColdWaitConfirmationDoesNotResumeOrDispatch(t *testing.T) {
 	driver, host, session, caller := reconciliationFixture(t)
+	driver.host = instructionNative{Native: host, owner: &inspectionRuntime{}}
 	caller.Call = "wait"
 	if _, err := driver.waitAgent(t.Context(), caller, []byte(`{"target":["child"]}`)); err != nil {
 		t.Fatal(err)
@@ -245,7 +250,14 @@ func TestColdWaitConfirmationDoesNotResumeOrDispatch(t *testing.T) {
 	if _, err := driver.controlAction(t.Context(), child, []byte(`{"target":"/root","message":"ready"}`), "send_message"); err == nil {
 		t.Fatal("uncertain wake succeeded")
 	}
+	if display := driver.control.WaitPublication("root"); display.Metrics != nil {
+		t.Fatal("display publication exposed frozen metrics")
+	}
+	*host.inputs[len(host.inputs)-1].Wake.Metrics["/root/child"].ContextTokens = 999
 	root, _ := driver.control.Member("root")
+	if *root.Wait.Metrics["/root/child"].ContextTokens != 123 {
+		t.Fatal("caller mutation changed frozen metrics")
+	}
 	restored := control.New()
 	if err := restored.AdmitRoot(t.Context(), session, root); err != nil {
 		t.Fatal(err)
@@ -271,6 +283,9 @@ func TestColdWaitConfirmationDoesNotResumeOrDispatch(t *testing.T) {
 	last := host.confirmed[len(host.confirmed)-1]
 	if last.Wake == nil || last.Wake.ID != "wait" || last.Wake.Event == nil || last.Wake.Event.Message != "ready" {
 		t.Fatal("confirmation lost exact retained wake output", last)
+	}
+	if metrics := last.Wake.Metrics["/root/child"]; metrics.ContextTokens == nil || *metrics.ContextTokens != 123 || metrics.Compactions == nil || *metrics.Compactions != 2 {
+		t.Fatal("cold confirmation lost dispatched metrics")
 	}
 }
 

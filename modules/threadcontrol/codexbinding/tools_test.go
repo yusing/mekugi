@@ -38,7 +38,7 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	slices.Sort(names)
-	expected := []string{"followup_task", "interrupt_agent", "list_agents", "send_message", "spawn_agent", "wait_agent"}
+	expected := []string{"followup_task", "inspect", "interrupt_agent", "list_agents", "send_message", "spawn_agent", "wait_agent"}
 	if !slices.Equal(names, expected) {
 		t.Fatalf("catalog=%v", names)
 	}

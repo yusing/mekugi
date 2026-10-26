@@ -130,7 +130,17 @@ func (d *Driver) dispatchClaimedAction(ctx context.Context, effect *control.Effe
 			if kind == "interrupt" {
 				callErr = owner.Interrupt(ctx, effect.Target, effect.Turn)
 			} else {
-				receipt.Turn, callErr = owner.Input(ctx, nativeInput(tree, *effect))
+				input := nativeInput(tree, *effect)
+				if input.Wake != nil && input.Wake.Metrics == nil {
+					input.Wake = new(*input.Wake)
+					d.waitMetrics(ctx, input.Thread, input.Wake)
+					if err := d.control.RetainWaitMetrics(ctx, input.Thread, input.Wake.ID, input.Wake.Metrics); err != nil {
+						callErr = &binding.DispatchError{Outcome: binding.NotDispatched, Cause: err}
+					}
+				}
+				if callErr == nil {
+					receipt.Turn, callErr = owner.Input(ctx, input)
+				}
 			}
 		}
 	}

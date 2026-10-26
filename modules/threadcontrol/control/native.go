@@ -19,10 +19,25 @@ type Native interface {
 // Runtime is one admitted native execution owner's typed operations.
 type Runtime interface {
 	Thread(context.Context, string) (ThreadInfo, error)
+	Inspect(context.Context, string) (SessionDetails, error)
 	Configuration(context.Context, string, string) (jsontext.Value, error)
 	Input(context.Context, NativeInput) (string, error)
 	Interrupt(context.Context, string, string) error
 	Confirm(context.Context, NativeInput) error
+}
+
+// SessionMetrics are current runtime observations, not cumulative provider usage.
+type SessionMetrics struct {
+	ContextTokens *uint64 `json:"context_tokens"`
+	ContextWindow *uint64 `json:"context_window"`
+	Compactions   *uint64 `json:"compactions"`
+}
+
+type SessionDetails struct {
+	Model           string  `json:"model"`
+	ReasoningEffort *string `json:"reasoning_effort"`
+	ServiceTier     *string `json:"service_tier"`
+	SessionMetrics
 }
 
 type ThreadInfo struct {

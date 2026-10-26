@@ -368,6 +368,10 @@ of cumulative usage. Before usage arrives it shows 0% used; an absent window sho
 only the known count. Host reports, including compaction reductions, replace the
 snapshot. Identity-validated rollout context cannot overwrite newer live usage.
 Accounting and rates remain with [usage](../../../../modules/usage/SPEC.md).
+Coordination inspection reads the same context snapshot. Completed native compaction
+boundaries are counted once per thread, restored from full admitted native history
+on resume and fork, and retired with that thread's attachment. An unavailable
+history baseline remains unknown rather than reporting zero completed compactions.
 
 Compaction replaces Working with `Compacting context`, then emits `Context compacted`
 on success. Turn termination clears unfinished progress without claiming success;
