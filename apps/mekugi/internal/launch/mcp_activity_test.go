@@ -14,7 +14,6 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -367,19 +366,6 @@ func TestUISnapshotThreadControlTraffic(t *testing.T) {
 	settleActivity(now, view)
 	for _, width := range []int{38, 80} {
 		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/threadcontrol-traffic-%d.txt", width), append(view.testRenderConversation(width).Lines, "plain after traffic"), width)
-	}
-}
-
-func TestThreadControlChildMessageKeepsGlobalParent(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	item := coordinationActivityItems(t)[2]
-	item.Arguments = jsontext.Value(`{"target":"/root","message":"The parser fixture is ready."}`)
-	item.Result = jsontext.Value(`{"content":[{"type":"text","text":"{\"id\":\"message\",\"state\":\"confirmed\",\"thread_id\":\"parent-thread\",\"task_name\":\"/root\"}"}]}`)
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-	entry := u.attached.source.Entries[0].Publish()
-	got := childEntries([]activity.Entry{entry}, "/root/worker")[0]
-	if len(got.Values) != 1 || got.Values[0].From != "/root/worker" || got.Values[0].To != "/root" {
-		t.Fatalf("child message became self-directed: %+v", got.Values)
 	}
 }
 

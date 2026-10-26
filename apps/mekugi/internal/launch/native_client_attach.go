@@ -34,7 +34,6 @@ func (c *nativeClient) readStream(connection *sessionapi.NativeConnection) {
 
 type nativeClientReattached struct {
 	owner              *nativeClient
-	displayParent      *nativeClient
 	source, connection *sessionapi.NativeConnection
 	event              sessionapi.NativeEvent
 	err                error
@@ -43,7 +42,6 @@ type nativeClientReattached struct {
 
 func (c *nativeClient) attachDestination(ctx context.Context, done chan<- nativeClientReattached) {
 	source, thread := c.connection, c.reattach
-	displayParent := c.attachParent
 	target := c.event.Target()
 	var preferences *sessionapi.NativePreferenceUpdate
 	var preferenceError error
@@ -55,14 +53,10 @@ func (c *nativeClient) attachDestination(ctx context.Context, done chan<- native
 			preferences = &sessionapi.NativePreferenceUpdate{Presentation: data, Flush: true}
 		}
 	}
-	c.reattach, c.attaching, c.attachParent = "", true, nil
+	c.reattach, c.attaching = "", true
 	c.workers.Go(func() {
-		result := nativeClientReattached{owner: c, source: source, displayParent: displayParent, preferenceError: preferenceError}
-		destination := source
-		if displayParent != nil {
-			destination = displayParent.connection
-		}
-		result.connection, result.err = destination.Attach(ctx, thread)
+		result := nativeClientReattached{owner: c, source: source, preferenceError: preferenceError}
+		result.connection, result.err = source.Attach(ctx, thread)
 		if result.err == nil {
 			result.event, result.err = result.connection.Next()
 		}
@@ -91,6 +85,7 @@ func (c *nativeClient) attachDestination(ctx context.Context, done chan<- native
 func (c *nativeClient) applyReattachment(result nativeClientReattached) *nativeClient {
 	c.attaching = false
 	if result.err != nil {
+		c.attachOperation = nil
 		c.feedback.Set(result.err.Error(), true, time.Now())
 		c.refresh(time.Now())
 		return nil
@@ -103,7 +98,7 @@ func (c *nativeClient) applyReattachment(result nativeClientReattached) *nativeC
 	terminal.Faint = c.renderer.terminal.Faint
 	terminal.Frame.Clipboard = c.renderer.terminal.Frame.Clipboard
 	terminal.Width, terminal.Height = c.renderer.terminal.Width, c.renderer.terminal.Height
-	next := &nativeClient{connection: result.connection, displayParent: result.displayParent, renderer: nativeClientRenderer{terminal: terminal, views: c.renderer.views}}
+	next := &nativeClient{connection: result.connection, renderer: nativeClientRenderer{terminal: terminal, views: c.renderer.views}}
 	if result.preferenceError != nil {
 		next.feedback.Set("Could not save outgoing session layout: "+result.preferenceError.Error(), true, time.Now())
 	}
@@ -113,25 +108,26 @@ func (c *nativeClient) applyReattachment(result nativeClientReattached) *nativeC
 // Display navigation borrows the selected live runtime instead of forwarding
 // its input through the parent's observational presentation.
 func (c *nativeClient) displayThread(thread sessionpresentation.Thread) {
-	parent := c
-	if c.displayParent != nil && !c.displayParent.closed {
-		parent = c.displayParent
-	}
-	if c.runtime != nil && parent.event.Frame.View.ReadOnly != sessionpresentation.Replay &&
-		(thread.ID == parent.event.Frame.View.Main.ID || slices.Contains(parent.event.Frame.ChildThreads, thread.ID)) {
-		if thread.ID == parent.event.Frame.View.Main.ID && parent.event.Frame.View.Displayed.ID != thread.ID {
-			parent.enqueue(sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: parent.event.Frame.View.Version, Thread: thread}}, nil, nil)
+	c.attachOperation = nil
+	family := c.event.Frame.Family
+	if c.runtime != nil && family != nil && c.event.Frame.View.ReadOnly != sessionpresentation.Replay {
+		if thread.ID == family.Root || slices.Contains(family.Threads, thread.ID) {
+			if thread.ID != c.event.Frame.View.Main.ID || c.attaching {
+				c.reattach = thread.ID
+			} else if c.event.Frame.View.Displayed.ID != thread.ID {
+				c.enqueue(sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: c.event.Frame.View.Version, Thread: thread}}, nil, nil)
+			}
+			return
 		}
-		if thread.ID != c.event.Frame.View.Main.ID || c.attaching {
-			c.reattach, c.attachParent = thread.ID, parent
+		// Historical content belongs to the family's retained source, never to
+		// an independently started runtime.
+		if family.Root != c.event.Frame.View.Main.ID {
+			c.reattach = family.Root
+			c.attachOperation = &sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Thread: thread}}
+			return
 		}
-		return
 	}
-	// Historical children outside the admitted runtime tree remain observational.
-	if parent != c {
-		c.runtime.activate(parent)
-	}
-	parent.enqueue(sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: parent.event.Frame.View.Version, Thread: thread}}, nil, nil)
+	c.enqueue(sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: c.event.Frame.View.Version, Thread: thread}}, nil, nil)
 }
 
 // finishPendingCalls runs after request workers join. A dispatched request keeps

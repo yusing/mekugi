@@ -303,6 +303,9 @@ their own running state after the edit dock retires.
 
 ## Content dialogs
 
+Links targeting another live runtime select its ordinary session attachment before
+opening the detail. Each attachment retains its own detail selection and source.
+
 A dialog captures input above both panes without changing transcript follow. It
 uses at most 90% of each dimension, or available width below 60 columns, over faint
 uncolored panes. Its theme-aware fill and accent frame preserve syntax, diff and

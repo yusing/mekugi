@@ -77,7 +77,6 @@ func (v *View) Update(publication *presentation.Publication, display Display) {
 	}
 	v.publication = publication
 	entries := publication.Entries
-	v.LineCounts, v.NetCounts = publication.LineCounts, publication.NetCounts
 	previous := make(map[uint64]uint64, len(v.entries))
 	for _, entry := range v.entries {
 		previous[entry.Seq] = entry.Revision
@@ -144,15 +143,22 @@ func (v *View) Update(publication *presentation.Publication, display Display) {
 			v.InvalidateRuns(key.Source)
 		}
 	}
+	v.entries, v.lastSeq, v.outputVersions = entries, publication.LastSeq, versions
+	v.UpdateRoster(publication)
+	v.trackPace(v.Now())
+	v.KeepSelection()
+}
+
+// UpdateRoster binds navigation independently of the selected thread's feed.
+func (v *View) UpdateRoster(publication *presentation.Publication) {
 	if !slices.EqualFunc(v.roster, publication.Roster, func(a, b presentation.AgentRow) bool {
 		return a.Agent.Name == b.Agent.Name && a.Agent.Role == b.Agent.Role
 	}) {
 		v.Runs = nil
 		v.Hovered = ""
 	}
-	v.entries, v.roster, v.lastSeq, v.outputVersions = entries, publication.Roster, publication.LastSeq, versions
-	v.trackPace(v.Now())
-	v.KeepSelection()
+	v.roster = publication.Roster
+	v.LineCounts, v.NetCounts = publication.LineCounts, publication.NetCounts
 }
 
 func (v *View) Roster() []presentation.AgentRow {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,6 +24,8 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
+	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // This opt-in acceptance drives the embedded application through its visible
@@ -52,12 +55,39 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		native  *sessionapi.Native
 		request sessionapi.NativeRequest
 	}
+	var delayedChild atomic.Bool
 	childAttachment := make(chan pendingAttachment, 1)
 	childFile := make(chan sessionapi.NativeRequest, 1)
 	processStop := make(chan pendingAttachment, 1)
 	inputReply := make(chan chan string, 1)
-	alpha := newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Alpha", strings.Repeat("a", 64), func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
-		if request.Attach && request.Thread == "child" {
+	settingsCommands := make(chan sessionapi.NativeRequest, 8)
+	settingsDismissal := make(chan sessionapi.NativeRequest, 1)
+	var holdSettingsDismissal atomic.Bool
+	var alpha *webUIBrowserMachine
+	alpha = newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Alpha", strings.Repeat("a", 64), func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
+		command := request.Operation.Command
+		menu := request.Operation.Menu
+		if command != nil && (*command == "/model" || *command == "/effort" || strings.HasPrefix(*command, "/tier ")) || menu != nil && menu.Kind == sessionpresentation.MenuDismiss {
+			thread := sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}
+			view := sessionpresentation.View{Version: request.Version, Main: thread, Input: thread, Displayed: thread, Info: sessionpresentation.MainInfo{Workspace: request.Workspace}}
+			view.Version.Revision++
+			if command != nil {
+				settingsCommands <- request
+				if *command == "/model" || *command == "/effort" {
+					view.Menu = &sessionpresentation.MenuView{ID: view.Version.Revision, Kind: sessionpresentation.MenuSettings, Setting: *command}
+				}
+			}
+			family, _ := alpha.hub.Family(request.Thread)
+			if err := native.Publish(request.Attachment, sessionapi.NativeFrame{View: view, Family: family}); err != nil {
+				request.Reply <- err.Error()
+			} else if menu != nil && holdSettingsDismissal.Swap(false) {
+				settingsDismissal <- request
+			} else {
+				request.Reply <- ""
+			}
+			return true
+		}
+		if request.Attach && request.Thread == "child" && delayedChild.CompareAndSwap(false, true) {
 			childAttachment <- pendingAttachment{native, request}
 			return true
 		}
@@ -95,7 +125,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		if err != nil {
 			snapshot, _ := exec.CommandContext(ctx, browser, "--session", name, "snapshot", "-i").CombinedOutput()
 			text, _ := exec.CommandContext(ctx, browser, "--session", name, "get", "text", "[aria-label=Transcript]").CombinedOutput()
-			errors, _ := exec.CommandContext(ctx, browser, "--session", name, "errors").CombinedOutput()
+			errors, _ := exec.CommandContext(ctx, browser, "--session", name, "errors", "--json").CombinedOutput()
 			t.Fatalf("browser %s failed: %v: %s\n%s\nTranscript: %s\n%s", strings.Join(args[:min(2, len(args))], " "), err, output, snapshot, text, errors)
 		}
 		return string(output)
@@ -165,9 +195,9 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		captures = append(captures, fmt.Sprintf("Create `/tmp/tree/file%03d.go` +3 -0 · cp", i))
 	}
 	item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(captures, "\n\n")}}
-	frame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true},
+	frame := sessionapi.Frame{FamilyRoot: "same-thread", Members: []threadcontrol.Participant{{Thread: "same-thread", Task: "/root"}, {Thread: "child", Parent: "same-thread", Task: "/root/worker", Role: "worker"}}, Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true},
 		Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: item.Facts, Values: item.Values(), Revision: 1}}}}
-	if err := alpha.api.Publish(frame); err != nil {
+	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "190 more files")
@@ -178,7 +208,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("press", "Enter")
 	run("wait", "--fn", "document.body.innerText.includes('file199.go')")
 	frame.Main.Entries[0].Revision++
-	if err := alpha.api.Publish(frame); err != nil {
+	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--fn", "document.body.innerText.includes('file199.go')")
@@ -192,8 +222,9 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		run("set", "viewport", "1280", "900")
 	}
 	// Wait publications retain targets, timeouts and the actual settlement reason.
+	frame.Members[0].Status = threadcontrol.Waiting
 	frame.Agents = &activitypresentation.Publication{Roster: []activitypresentation.AgentRow{
-		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root", Waiting: true, Wait: &activitypresentation.Value{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "5s"}}}},
+		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root", Thread: "same-thread", Waiting: true, Wait: &activitypresentation.Value{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "5s"}}}},
 		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root/worker", Thread: "child"}}},
 		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root/history", Thread: "old-child"}}},
 	}}
@@ -205,7 +236,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		entry := &frame.Main.Entries[i]
 		entry.Text = entry.Values[0].ProgressText()
 	}
-	if err := alpha.api.Publish(frame); err != nil {
+	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "Waiting for worker (timeout 5s)")
@@ -220,7 +251,8 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	frame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{frame.Main.Entries[0], settled}}
 	frame.Agents = &activitypresentation.Publication{Roster: append([]activitypresentation.AgentRow(nil), frame.Agents.Roster...)}
 	frame.Agents.Roster[0].Agent.Waiting, frame.Agents.Roster[0].Agent.Wait = false, nil
-	if err := alpha.api.Publish(frame); err != nil {
+	frame.Members[0].Status = ""
+	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "Finished waiting for worker: message received")
@@ -229,6 +261,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	// copying the child's transcript into the parent's feed.
 	frame.Agents = &activitypresentation.Publication{Roster: append([]activitypresentation.AgentRow(nil), frame.Agents.Roster...)}
 	for i, kind := range []string{"progress", "reasoning"} {
+		frame.Members[i].Status = threadcontrol.Working
 		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Kind: kind, Text: "Connecting to provider"}}
 		if i == 1 {
 			item.Text = "**Checking child callers**\n\nThe expanded reasoning body stays in the transcript."
@@ -237,7 +270,19 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		agent.Responding = true
 		agent.Summary = []activitypresentation.Entry{{Facts: item.Facts, Values: item.Values()}}
 	}
-	if err := alpha.api.Publish(frame); err != nil {
+	_, ok := alpha.sessions.Load("child")
+	if !ok {
+		t.Fatal("child runtime publication unavailable")
+	}
+	childActivity := frame.Agents.Roster[1].Agent
+	childActivity.Name = "/root"
+	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread",
+		Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir},
+		Input:   &sessionapi.Input{Stoppable: true}, Agents: &activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: childActivity}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--fn", `document.querySelector('[aria-label="Thread panel"]')?.textContent.includes('Connecting to provider') && document.querySelector('[aria-label="Thread panel"]')?.textContent.includes('Checking child callers')`)
@@ -254,7 +299,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}}))
 	frame.Review = &review
 	frame.Prompts = &sessionapi.Prompts{Questions: []sessionapi.QuestionCall{{ID: "parent-question", Questions: []sessionapi.Question{{ID: "q", Text: "Parent-only question"}}}}}
-	if err := alpha.api.Publish(frame); err != nil {
+	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
 	run("fill", "#composer-text", "main draft")
@@ -266,12 +311,16 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal("child attachment was not requested")
 	}
 	run("fill", "#composer-text", "draft while attaching")
+	if got := run("eval", "document.querySelector('#composer-text')?.value"); !strings.Contains(got, "draft while attaching") {
+		t.Fatalf("destination draft was not editable during attachment: %s", got)
+	}
 	run("wait", "--fn", "!document.body.innerText.includes('Parent-only question') && !document.querySelector('button[aria-label=Details]')")
 	thread := sessionpresentation.Thread{ID: "child", Caller: "/root"}
 	childFrame := sessionapi.NativeFrame{View: sessionpresentation.View{
 		Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Main: thread, Input: thread, Displayed: thread,
 		Info: sessionpresentation.MainInfo{Workspace: alpha.workdir, Caller: "/root/worker"},
 	}}
+	childFrame.Family, _ = alpha.hub.Family("child")
 	for i := range 20 {
 		childFrame.Processes = append(childFrame.Processes, sessionpresentation.Process{Thread: "child", Turn: "process-turn", Item: fmt.Sprint(i), ID: fmt.Sprint(i), Agent: "/root/controls-links/controls-ui/accessibility-review", Command: fmt.Sprintf("dense %d", i)})
 	}
@@ -286,19 +335,20 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("find", "role", "tab", "click", "--name", "Agents", "--exact")
 	// A child's own feed resolves images against that runtime, not Main's
 	// unrelated sequence namespace.
-	childServer, ok := alpha.sessions.Load("child")
+	_, ok = alpha.sessions.Load("child")
 	if !ok {
 		t.Fatal("child runtime publication unavailable")
 	}
 	const pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
-	if err := childServer.(*sessionapi.Server).Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: "child", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}}}}}}); err != nil {
+	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}}}}}}); err != nil {
 		t.Fatal(err)
 	}
 	// The process dock can leave this lazy image above the transcript scrollport.
+	run("wait", "--fn", "!!document.querySelector('figure')")
 	run("eval", "document.querySelector('figure')?.scrollIntoView({block:'center'})")
 	run("wait", "--fn", "document.querySelector('img[alt=\"Attached image 1\"]')?.naturalWidth === 1")
 	generated := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 98, Agent: "Main", Kind: "tool", Text: "Generated `artwork.png`", Images: []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(previewFixturePNG(t))}}}
-	if err := childServer.(*sessionapi.Server).Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: "child", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{
+	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{
 		{Facts: activitypresentation.Facts{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}}},
 		{Facts: generated.Facts, Values: generated.Values()},
 	}}}); err != nil {
@@ -355,7 +405,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: uint64(98 + i), Agent: "/root/worker/reviewer", Kind: "reply", ItemComplete: true}, Message: &activitypresentation.DirectedContent{From: "/root/worker/reviewer", To: "Main", Text: text}}
 		replies = append(replies, activitypresentation.Entry{Facts: item.Facts, Values: item.Values()})
 	}
-	if err := childServer.(*sessionapi.Server).Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: "child", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, ChildReplySummary: true, Main: &activitypresentation.Publication{Entries: replies}}); err != nil {
+	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, ChildReplySummary: true, Main: &activitypresentation.Publication{Entries: replies}}); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--fn", `(() => { const feed = document.querySelector('[aria-label="worker\'s activity"]'); return feed?.textContent.includes('Nested review complete.') && [...feed.querySelectorAll('summary')].some(e => e.textContent === 'Full reply') && [...feed.querySelectorAll('button')].some(e => e.textContent.trim() === 'Show full reply'); })()`)
@@ -380,13 +430,14 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	button("Back to main")
 	// An input accepted by Main's owner remains pending there while its view is
 	// off-screen. Agent navigation never restores it as a failed submission.
+	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'main draft'")
 	run("fill", "#composer-text", "pending main input")
 	button("Send")
 	var reply chan string
 	select {
 	case reply = <-inputReply:
-	case <-ctx.Done():
-		t.Fatal("Main input was not admitted")
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Main input was not admitted: %s", run("snapshot", "-i"))
 	}
 	run("find", "text", "worker", "click", "--exact")
 	button("Back to main")
@@ -394,6 +445,56 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	reply <- "known admission refusal"
 	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'pending main input' && !document.querySelector('#composer-text')?.readOnly")
 	run("wait", "--text", "known admission refusal")
+	// A setting's delayed menu dismissal must not continue on the thread selected
+	// in the meantime. Staying on the originating thread still applies the action.
+	for _, action := range []struct{ title, command string }{{"Enable fast mode", "/tier priority"}, {"Reasoning effort", "/effort"}} {
+		for _, navigate := range []bool{false, true} {
+			run("click", "button[title=Model]")
+			select {
+			case request := <-settingsCommands:
+				if request.Thread != "same-thread" || *request.Operation.Command != "/model" {
+					t.Fatalf("opening model settings targeted %s: %s", request.Thread, *request.Operation.Command)
+				}
+			case <-ctx.Done():
+				t.Fatal("model settings did not reach Main")
+			}
+			run("wait", "--fn", `!!document.querySelector('[role=listbox][aria-label=Model]') && document.querySelector('button[title="Enable fast mode"]')?.disabled === false`)
+			holdSettingsDismissal.Store(true)
+			run("click", fmt.Sprintf("button[title=%q]", action.title))
+			var dismissal sessionapi.NativeRequest
+			select {
+			case dismissal = <-settingsDismissal:
+				if dismissal.Thread != "same-thread" {
+					t.Fatal("settings dismissal lost its originating thread")
+				}
+			case <-ctx.Done():
+				t.Fatal("settings transition did not dismiss its menu")
+			}
+			if navigate {
+				run("find", "text", "worker", "click", "--exact")
+				run("wait", "--fn", `document.querySelector('#composer-text')?.placeholder === "Steer worker's turn"`)
+			}
+			dismissal.Reply <- ""
+			timeout := 5 * time.Second
+			if navigate {
+				timeout = 200 * time.Millisecond
+			}
+			select {
+			case request := <-settingsCommands:
+				if navigate || request.Thread != "same-thread" || *request.Operation.Command != action.command {
+					t.Fatalf("settings continuation after navigation=%v targeted %s: %s", navigate, request.Thread, *request.Operation.Command)
+				}
+			case <-time.After(timeout):
+				if !navigate {
+					t.Fatalf("same-thread settings continuation %s was lost", action.command)
+				}
+			}
+			if navigate {
+				button("Back to main")
+			}
+			run("wait", "--fn", `document.querySelector('button[title="Enable fast mode"]')?.getAttribute('aria-busy') === 'false'`)
+		}
+	}
 	run("find", "text", "history", "click", "--exact")
 	run("wait", "--text", "This agent's retained activity is read-only.")
 	button("Back to main")
@@ -481,6 +582,8 @@ func TestWebUIBrowserMachines(t *testing.T) {
 }
 
 type webUIBrowserMachine struct {
+	hub          *sessionapi.Hub
+	frames       sync.Map
 	sessions     sync.Map
 	childThreads []string
 	api          *sessionapi.Server
@@ -490,6 +593,15 @@ type webUIBrowserMachine struct {
 	intents      chan sessionapi.Intent
 	workdir      string
 	start        func(string)
+}
+
+func (m *webUIBrowserMachine) publishFrame(frame sessionapi.Frame) error {
+	m.frames.Store(frame.Session.Thread, frame)
+	server, ok := m.sessions.Load(frame.Session.Thread)
+	if !ok {
+		return fmt.Errorf("fixture runtime %s is unavailable", frame.Session.Thread)
+	}
+	return server.(*sessionapi.Server).Publish(frame)
 }
 
 func newWebUIBrowserMachine(t *testing.T, ctx context.Context, origin, label, token string) *webUIBrowserMachine {
@@ -516,7 +628,11 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 		if start.Resume != "same-thread" {
 			title = label + " " + start.Resume + " thread"
 		}
-		if err := api.Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: start.Resume, Title: title, Workspace: directory}, Input: &sessionapi.Input{Stoppable: true}}); err != nil {
+		familyRoot, caller, role := start.Resume, "/root", ""
+		if slices.Contains(machine.childThreads, start.Resume) {
+			familyRoot, caller, role = "same-thread", "/root/worker", "worker"
+		}
+		if err := machine.publishFrame(sessionapi.Frame{FamilyRoot: familyRoot, Session: sessionapi.Session{Thread: start.Resume, Caller: caller, Role: role, Title: title, Workspace: directory}, Input: &sessionapi.Input{Stoppable: true}}); err != nil {
 			return err
 		}
 		if err := api.SetSummary(sessionapi.Summary{Thread: start.Resume, Title: title, Workspace: directory, Ready: true}); err != nil {
@@ -529,16 +645,30 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 				machine.intents <- intent
 				intent.Reply <- ""
 			case request := <-native.Requests():
+				if request.Attach {
+					if raw, ok := machine.frames.Load(start.Resume); ok {
+						if err := api.Publish(raw.(sessionapi.Frame)); err != nil {
+							request.Reply <- err.Error()
+							continue
+						}
+					}
+				}
 				if handle != nil && handle(native, request) {
 					continue
 				}
 				if request.Attach {
 					thread := sessionpresentation.Thread{ID: start.Resume, Caller: "/root"}
-					frame := sessionapi.NativeFrame{ChildThreads: machine.childThreads, View: sessionpresentation.View{
+					family, _ := machine.hub.Family(start.Resume)
+					frame := sessionapi.NativeFrame{Family: family, View: sessionpresentation.View{
 						Version: sessionpresentation.Version{Attachment: 1, Revision: 1},
 						Main:    thread, Input: thread, Displayed: thread,
 						Info: sessionpresentation.MainInfo{Workspace: directory},
 					}}
+					if raw, ok := machine.frames.Load(start.Resume); ok && raw.(sessionapi.Frame).Prompts != nil {
+						for _, call := range raw.(sessionapi.Frame).Prompts.Questions {
+							frame.Questions = append(frame.Questions, prompt.CallView{ID: call.ID, Thread: start.Resume})
+						}
+					}
 					if err := native.Publish(request.Attachment, frame); err != nil {
 						request.Reply <- err.Error()
 						continue
@@ -556,6 +686,7 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 	hub := sessionapi.NewHub(ctx, launcher)
+	machine.hub = hub
 	t.Cleanup(hub.Close)
 	server := &http.Server{Handler: sessionapi.Versioned(hub.Handler())}
 	t.Cleanup(func() { _ = server.Close() })
@@ -569,7 +700,14 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 	t.Cleanup(func() { _ = rpc.Close() })
 	machine.start = func(thread string) {
 		t.Helper()
-		serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: directory, Model: "fixture", Resume: thread})
+		start := sessionapi.Start{Workspace: directory, Model: "fixture", Resume: thread}
+		if slices.Contains(machine.childThreads, thread) {
+			if _, err := hub.StartPrepared(ctx, "same-thread", thread, directory, func(ctx context.Context, api *sessionapi.Server) error { return launcher.run(ctx, start, api) }); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		serverRPCCall(t, rpc, "session/start", "", start)
 	}
 	machine.start("same-thread")
 	machine.options = connector.Options{SocketPath: filepath.Join(directory, "control.sock"), TokenFile: filepath.Join(directory, "token"), Origins: []string{origin}}
@@ -594,7 +732,7 @@ func (m *webUIBrowserMachine) restart(t *testing.T) {
 
 func (m *webUIBrowserMachine) publish(t *testing.T, title string) {
 	t.Helper()
-	if err := m.api.Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: title, Workspace: m.workdir}, Input: &sessionapi.Input{Stoppable: true}}); err != nil {
+	if err := m.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: title, Workspace: m.workdir}, Input: &sessionapi.Input{Stoppable: true}}); err != nil {
 		t.Fatal(err)
 	}
 }

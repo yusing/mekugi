@@ -24,7 +24,7 @@ import (
 // apiLive publishes the owned runtime independently of attached viewers.
 type apiLive struct {
 	server       *sessionapi.Server
-	family       *nativeViews
+	threads      *threadExecution
 	main, agents commandFeed
 	attachment   uint64
 	started      time.Time
@@ -45,27 +45,27 @@ func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsess
 		if view.Version.Attachment != w.attachment {
 			w.main, w.agents, w.attachment = commandFeed{}, commandFeed{}, view.Version.Attachment
 		}
-		var children map[string]sessionapi.Frame
-		if w.family != nil {
-			children = w.family.descendants(attached, control.Thread)
+		caller, role := "/root", ""
+		if attached.threadInput != nil {
+			if attached.threadInput.caller != "" {
+				caller = attached.threadInput.caller
+			}
+			role = attached.threadInput.role
 		}
 		frame := sessionapi.Frame{
-			Session:    sessionapi.Session{Thread: control.Thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started.UnixMilli()},
+			Session:    sessionapi.Session{Thread: control.Thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started.UnixMilli(), Caller: caller, Role: role},
 			Input:      &sessionapi.Input{Reason: apiInputRefusal(attached, control, restoring), Stoppable: sessionpresentation.MainInterruptible(&control.Live, attached.conversation), Waiting: waiting},
 			Prompts:    apiPrompts(attached, control),
 			Attachment: view.Version.Attachment,
 			Status:     view.Status.Session,
-			Caption:    view.Caption,
 			Main:       w.main.publication(attached.source, attached.source.Publication(attached.presentation, nil)),
 			Agents:     w.agents.publication(attached.childSource, attached.childSource.Publication(attached.presentation, attached.source)),
 			Review:     new(reviewSource.ReviewView(attached.session.Scope())),
 
 			ChildReplySummary: childSummary,
 		}
-		if w.family != nil {
-			family := sessionapi.NativeFrame{Agents: frame.Agents, Review: frame.Review}
-			w.family.publishChild(&family, children)
-			frame.Agents, frame.Review = family.Agents, family.Review
+		if w.threads != nil && w.threads.shared != nil {
+			frame.FamilyRoot, frame.Members = w.threads.shared.Family(control.Thread)
 		}
 		if review != nil {
 			if previews := review.Preview(); previews != nil {

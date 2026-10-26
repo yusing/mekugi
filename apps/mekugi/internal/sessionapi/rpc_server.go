@@ -586,8 +586,8 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 		}
 	}
 	selected, failure := h.lookup(params.Thread, params.Startup, c.authority)
-	if failure != nil && method == "view/attach" && params.Startup == "" && params.Parent != "" {
-		if failure = h.attachChild(ctx, params.Parent, params.Thread, c.authority); failure == nil {
+	if failure != nil && method == "view/attach" && params.Startup == "" {
+		if failure = h.attachThread(ctx, params.Thread, c.authority); failure == nil {
 			selected, failure = h.lookup(params.Thread, "", c.authority)
 		}
 	}

@@ -280,7 +280,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		predictions.observe(m, control.Thread)
 		return err
 	}
-	live := &apiLive{server: api, family: native, started: time.Now()}
+	live := &apiLive{server: api, threads: threads, started: time.Now()}
 	attached.restoreInput = native.restore
 	attached.restoreShell = native.restoreShell
 	attached.restoreSide = native.restoreSide

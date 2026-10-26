@@ -67,7 +67,7 @@ func TestHubPreparedIdentityAndRequestOwner(t *testing.T) {
 		t.Fatalf("prepared identity: %q, %v", id, err)
 	}
 	conn := rawControl(t, hub.Handler(), false)
-	controlWrite(t, conn, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"version":"3"}}`)
+	controlWrite(t, conn, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"version":"`+ProtocolVersion+`"}}`)
 	if message := controlRead(t, conn); message.Error != nil {
 		t.Fatal(message.Error)
 	}

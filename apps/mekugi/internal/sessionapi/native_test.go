@@ -342,6 +342,10 @@ func TestNativePublicationMetadataCostDoesNotScaleWithOwners(t *testing.T) {
 		for i := range frame.Main.Entries {
 			frame.Main.Entries[i].Text = strings.Repeat("history ", 32)
 		}
+		frame.Family = &Family{Root: "thread", Agents: &activity.Publication{MainSummary: make([]activity.Entry, entries)}}
+		for i := range frame.Family.Agents.MainSummary {
+			frame.Family.Agents.MainSummary[i].Text = strings.Repeat("family summary ", 32)
+		}
 		frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{
 			Files: []changes.File{{Path: "large.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{
 				Diff: strings.Repeat("+saved diff\n", entries*1024),

@@ -1,4 +1,6 @@
 import { parseSelection, selectionHash, type Selection } from "./transport";
+import { semantic } from "./semantic.svelte";
+import { stream } from "./stream.svelte";
 
 // Connection, logical thread and agent together identify this viewer's selection.
 export const view = $state<Selection>(parseSelection(location.hash));
@@ -22,6 +24,13 @@ export function select(machine: string | undefined): void {
 }
 
 export function show(agent: string | undefined, replace = false): void {
+  if (agent === "Main") agent = "/root";
+  const family = !stream.playback ? semantic.frame?.family : undefined;
+  const thread = !agent || agent === "/root" ? family?.root : stream.agent(agent)?.thread;
+  if (thread && (!agent || agent === "/root" || family?.threads.includes(thread))) {
+    open(thread, replace);
+    return;
+  }
   if (agent === "/root") agent = undefined;
   if (agent !== view.agent) go({ ...view, agent }, replace);
 }

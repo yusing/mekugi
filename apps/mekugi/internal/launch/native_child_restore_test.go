@@ -1,7 +1,9 @@
 package launch
 
 import (
+	"context"
 	json "encoding/json/v2"
+	"net/http/httptest"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -10,30 +12,57 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/inference"
-	"github.com/yusing/mekugi/contracts/observation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-// Both publications come from their runtime's real Activity sources. The parent
-// owns only the logical child identity, never the child's restored host history.
+// Restored runtime facts join the family through ordinary publications. The
+// root carries admitted identity without borrowing the child's host history.
 func projectRestoredChild(t *testing.T, child *appServerUI) *activity.Publication {
 	t.Helper()
-	parent := newAppServerSessionTestUI(t, t.TempDir())
-	parent.attached.session.RegisterThread(observation.Thread{ID: child.Thread, Path: "/root/worker", Role: "worker"})
-	sessionpresentation.ApplyActivity(parent.attached.source, parent.attached.childSource, nil, parent.attached.session.Roster())
-	frame := sessionapi.NativeFrame{
-		View:   sessionpresentation.View{Main: sessionpresentation.Thread{ID: parent.Thread}, Displayed: sessionpresentation.Thread{ID: parent.Thread}},
-		Agents: parent.attached.childSource.Publication(parent.attached.presentation, parent.attached.source),
+	root := newAppServerSessionTestUI(t, t.TempDir())
+	members := []control.Participant{{Thread: root.Thread, Task: "/root"}, {Thread: child.Thread, Parent: root.Thread, Task: "/root/worker", Role: "worker"}}
+	launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+		frame := sessionapi.NativeFrame{View: root.attached.presentation.View(), Main: root.attached.source.Publication(root.attached.presentation, nil), Agents: root.attached.childSource.Publication(root.attached.presentation, root.attached.source)}
+		if err := publishNativeFamilySource(api, frame, start.Workspace, root.Thread, "/root", "", members); err != nil {
+			return err
+		}
+		if err := api.SetSummary(sessionapi.Summary{Thread: root.Thread, Workspace: start.Workspace, Ready: true}); err != nil {
+			return err
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	hub := sessionapi.NewHub(t.Context(), launcher)
+	defer hub.Close()
+	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
+	defer server.Close()
+	rpc, err := sessionapi.OpenRPC(t.Context(), server.Client(), server.URL+sessionapi.RPCPath, "")
+	if err != nil {
+		t.Fatal(err)
 	}
-	n := nativeViews{threads: &threadExecution{}}
-	n.publishChild(&frame, map[string]sessionapi.Frame{child.Thread: {
-		Main:   child.attached.source.Publication(child.attached.presentation, nil),
-		Agents: child.attached.childSource.Publication(child.attached.presentation, child.attached.source),
-	}})
-	return frame.Agents
+	defer rpc.Close()
+	serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: root.attached.cwd, Model: "fixture", Resume: root.Thread})
+	if _, err := hub.StartPrepared(t.Context(), root.Thread, child.Thread, child.attached.cwd, func(ctx context.Context, api *sessionapi.Server) error {
+		frame := sessionapi.NativeFrame{View: child.attached.presentation.View(), Main: child.attached.source.Publication(child.attached.presentation, nil), Agents: child.attached.childSource.Publication(child.attached.presentation, child.attached.source)}
+		if err := publishNativeFamilySource(api, frame, child.attached.cwd, root.Thread, "/root/worker", "worker", members); err != nil {
+			return err
+		}
+		if err := api.SetSummary(sessionapi.Summary{Thread: child.Thread, Workspace: child.attached.cwd, Ready: true}); err != nil {
+			return err
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	family, _ := hub.Family(child.Thread)
+	if family == nil {
+		t.Fatal("restored runtime has no admitted family")
+	}
+	return family.Agents
 }
 
 func restoredChildRow(t *testing.T, publication *activity.Publication) activity.Agent {
@@ -120,11 +149,16 @@ func TestNativeIndependentChildRestoredUsage(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		measured.Observe(inference.Usage{TotalsKnown: true, InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 100})
 		usage.Close()
-		child := newAppServerSessionTestUI(t, t.TempDir())
+		workspace := t.TempDir()
+		child := newAppServerSessionTestUI(t, workspace)
 		setTestAppServerIntegration(child, &observationFixture{usage: storedUsageFixture(t, store)})
 		child.Startup.Thread = "child"
 		appServerTestRequest(t, child, "1", "thread/resume")
-		appServerTestMessage(t, child, `{"id":1,"result":{"thread":{"id":"child","turns":[{"id":"saved","status":"completed","items":[]}]}}}`)
+		response, err := json.Marshal(map[string]any{"id": 1, "result": map[string]any{"thread": binding.ThreadInfo{ID: "child", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "saved", Status: "completed", Items: []binding.ThreadItem{}}}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		appServerTestMessage(t, child, string(response))
 		agent := restoredChildRow(t, projectRestoredChild(t, child))
 		rate, known := agent.OutputThroughput.Rate()
 		if !agent.TokensKnown || agent.InputTokens != 100_000 || agent.OutputTokens != 100 || agent.Roundtrips != 1 || !agent.CostKnown || rate != 50 || !known {

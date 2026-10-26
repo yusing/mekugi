@@ -138,6 +138,18 @@ func (m *Model[S, A]) Latest(name string) int {
 // Status reports only observed activity, not host task completion.
 func (m *Model[S, A]) Status(agent A) string {
 	facts := agent.ActivityAgent()
+	if facts.Paused || facts.Waiting || facts.Responding {
+		return facts.ObservedStatus("")
+	}
+	kind := ""
+	if latest := m.Latest(facts.Name); latest >= 0 {
+		kind = m.Entries[latest].Source.ActivityFacts().Kind
+	}
+	return facts.ObservedStatus(kind)
+}
+
+// ObservedStatus keeps detached roster publications consistent with feed models.
+func (facts AgentFacts) ObservedStatus(latestKind string) string {
 	if facts.Paused {
 		return "paused"
 	}
@@ -147,7 +159,7 @@ func (m *Model[S, A]) Status(agent A) string {
 	if facts.Responding {
 		return "responding"
 	}
-	if latest := m.Latest(facts.Name); latest >= 0 && m.Entries[latest].Source.ActivityFacts().Kind == "error" {
+	if latestKind == "error" {
 		return "error"
 	}
 	if facts.Final {

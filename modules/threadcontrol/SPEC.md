@@ -245,7 +245,10 @@ request. Prepared child startup is an internal typed server operation, not a new
 human-control method. Children borrow the captured provider selection and use
 their own control, approval and observation owners.
 
-Child display borrows its actual runtime attachment. Explicit selection of a
+Main and delegate display use the same runtime attachment and control path;
+role-declared threads additionally show their role in the composer. Detail links
+to another live runtime select it and open its ordinary detail view.
+Explicit selection of a
 retained admitted child can resume its prepared runtime without starting a work
 turn; historical and replay-only children remain read-only. A
 child’s native runtime identity is distinct from its logical task path. The

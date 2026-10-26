@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"encoding/json/jsontext"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
 // Action is one renderer-neutral request from a viewer.
@@ -98,6 +100,7 @@ type Server struct {
 	prepare       func(context.Context, string, InputRequest) (*PreparedInput, error)
 	activeThread  func(string) bool
 	reserveThread func(string) error
+	family        func() (*Family, *changes.ReviewView)
 
 	mu              sync.Mutex
 	requests        threadcontrol.Runtime
@@ -113,13 +116,15 @@ type Server struct {
 	main            feed
 	agents          feed
 	roster          jsontext.Value
+	rosterSource    *activitypresentation.Publication
 	review          jsontext.Value
 	reviewRevision  uint64
+	reviewWorkspace string
 	livePreviews    jsontext.Value
 	subscribers     map[chan publication]struct{}
 	identity        Summary
-	frame           Frame
-	summary         []byte // The latest summary event.
+	frame           atomic.Pointer[Frame] // Raw local input; family projections never feed back here.
+	summary         []byte                // The latest summary event.
 	summaryChanged  chan struct{}
 }
 
@@ -223,11 +228,20 @@ func (s *Server) SetSummary(summary Summary) error {
 func (s *Server) Publish(f Frame) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.frame.Store(new(f))
+	var family *Family
+	if s.family != nil {
+		var review *changes.ReviewView
+		family, review = s.family()
+		if family != nil {
+			f.Review = review
+		}
+	}
 	reset := !s.published || f.Attachment != s.attachment || f.Session.Thread != s.session.Thread
 	s.published, s.attachment = true, f.Attachment
-	s.frame = f
 	if reset {
 		s.input, s.status, s.main, s.agents, s.roster = nil, nil, feed{}, feed{}, nil
+		s.rosterSource = nil
 		s.prompts = nil
 		s.review, s.livePreviews = nil, nil
 	}
@@ -262,13 +276,14 @@ func (s *Server) Publish(f Frame) error {
 	if !bytes.Equal(data, s.status) {
 		s.status, patch.Status = data, data
 	}
-	if f.Review != nil && (s.review == nil || f.Review.Revision != s.reviewRevision) {
+	if f.Review != nil && (s.review == nil || f.Review.Revision != s.reviewRevision || f.Review.Workspace != s.reviewWorkspace) {
 		review := projectReview(f.Review)
 		data, err := json.Marshal(&review, encoding)
 		if err != nil {
 			return err
 		}
 		s.review, patch.Review, s.reviewRevision = data, data, f.Review.Revision
+		s.reviewWorkspace = f.Review.Workspace
 	} else if f.Review == nil && s.review != nil {
 		s.review, patch.Review = nil, jsontext.Value("null")
 	}
@@ -284,14 +299,19 @@ func (s *Server) Publish(f Frame) error {
 	if patch.Main, err = s.main.update(f.Main, nil, f.ChildReplySummary); err != nil {
 		return err
 	}
-	if f.Agents != nil && f.Agents != s.agents.publication {
-		data, err := json.Marshal(projectRoster(f.Agents), encoding)
+	rosterSource := f.Agents
+	if family != nil {
+		rosterSource = family.Agents
+	}
+	if rosterSource != nil && rosterSource != s.rosterSource {
+		data, err := json.Marshal(projectRoster(rosterSource), encoding)
 		if err != nil {
 			return err
 		}
 		if !bytes.Equal(data, s.roster) {
 			s.roster, patch.Roster = data, data
 		}
+		s.rosterSource = rosterSource
 	}
 	// The child feed repeats Main's activity under Main's caller path or name;
 	// viewers read that from Main's own feed.

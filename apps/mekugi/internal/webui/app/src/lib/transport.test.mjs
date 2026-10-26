@@ -11,6 +11,7 @@ registerHooks({
 });
 const { Connector, endpointURL, errorText, parseSelection, selectionHash, unknownOutcome } =
   await import("./transport.ts");
+const { protocolVersion, subprotocol } = await import("../../../../sessionapi/protocol.ts");
 
 const originalWebSocket = globalThis.WebSocket;
 let sockets;
@@ -75,9 +76,9 @@ class Socket extends EventTarget {
 }
 function initialize(socket, message) {
   if (message.method !== "initialize") return false;
-  assert.equal(socket.protocol, "mekugi.control.v3");
-  assert.equal(message.params.version, "3");
-  socket.reply(message, { version: "3" });
+  assert.equal(socket.protocol, subprotocol);
+  assert.equal(message.params.version, protocolVersion);
+  socket.reply(message, { version: protocolVersion });
   return true;
 }
 function publication(socket, message, data = { generation: 1 }) {
@@ -129,7 +130,10 @@ test(
     assert.deepEqual(await connector.request("session/options"), { ready: true });
     assert.equal(sockets.length, 1);
     assert.equal(sockets[0].url.href, "wss://example.test/prefix/api/control");
-    assert.deepEqual(sockets[0].sent[0].params, { version: "3", token: "private-token" });
+    assert.deepEqual(sockets[0].sent[0].params, {
+      version: protocolVersion,
+      token: "private-token",
+    });
     assert.ok(!JSON.stringify(connector).includes("private-token"));
     assert.ok(
       !sockets[0].sent

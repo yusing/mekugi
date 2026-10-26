@@ -3,6 +3,7 @@
   import { onDestroy, tick, untrack } from "svelte";
   import type { Approval, QuestionCall } from "./protocol";
   import { stream, type Stream } from "./stream.svelte";
+  import { semantic } from "./semantic.svelte";
   import Button from "./ui/Button.svelte";
   import { input } from "./ui/styles";
 
@@ -20,28 +21,22 @@
 
   const call = $derived("questions" in item ? item : undefined);
   const approval = $derived("choices" in item ? item : undefined);
-  // The parent keys each card by request ID, keeping drafts across stream patches.
-  type Draft = { choice: number | "skip" | undefined; text: string };
-  let drafts = $state<Record<string, Draft>>({});
+  // Keyed prompts retain their originating control view's input and outcomes.
+  const state = untrack(() => semantic.prompt(item.id));
   $effect.pre(() => {
     const questions = call?.questions ?? [];
     untrack(() => {
-      drafts = Object.fromEntries(
+      state.drafts = Object.fromEntries(
         questions.map((q) => [
           q.id,
-          drafts[q.id] ?? { choice: q.options?.length ? undefined : 0, text: "" },
+          state.drafts[q.id] ?? { choice: q.options?.length ? undefined : 0, text: "" },
         ]),
       );
     });
   });
-  let deny = $state<number>();
-  let reason = $state("");
-  let sending = $state(false);
-  let accepted = $state(false);
-  let error = $state<string>();
   let card: HTMLElement;
   let submittedWithFocus = false;
-  const disabled = $derived(unavailable || sending);
+  const disabled = $derived(unavailable || state.sending);
 
   onDestroy(() => {
     const active = document.activeElement;
@@ -59,22 +54,24 @@
     if (!call || disabled) return;
     if (
       call.questions.some((q) => {
-        const d = drafts[q.id];
+        const d = state.drafts[q.id];
         return (
           !d || d.choice === undefined || (d.choice === (q.options?.length ?? 0) && !d.text.trim())
         );
       })
     ) {
-      error = "Answer every question or skip it.";
+      state.error = "Answer every question or skip it.";
       tick().then(() => card.querySelector<HTMLElement>("[role=alert]")?.focus());
       return;
     }
     submittedWithFocus = card.contains(document.activeElement);
-    sending = true;
-    error = await source.answer({
+    const pending = state;
+    const release = semantic.retainInput();
+    pending.sending = true;
+    pending.error = await source.answer({
       call: call.id,
       answers: call.questions.map((q) => {
-        const draft = drafts[q.id];
+        const draft = pending.drafts[q.id];
         return {
           question: q.id,
           choice: typeof draft.choice === "number" ? draft.choice : undefined,
@@ -83,21 +80,25 @@
         };
       }),
     });
-    accepted = !error;
-    sending = false;
+    pending.accepted = !pending.error;
+    pending.sending = false;
+    release();
   }
 
   async function decide(choice: number) {
     if (!approval || disabled) return;
     submittedWithFocus = card.contains(document.activeElement);
-    sending = true;
-    error = await source.decide({
+    const pending = state;
+    const release = semantic.retainInput();
+    pending.sending = true;
+    pending.error = await source.decide({
       approval: approval.id,
       choice,
-      reason: choice === deny ? reason : undefined,
+      reason: choice === pending.deny ? pending.reason : undefined,
     });
-    accepted = !error;
-    sending = false;
+    pending.accepted = !pending.error;
+    pending.sending = false;
+    release();
   }
 
   const text = "my-2 whitespace-pre-wrap";
@@ -124,11 +125,11 @@
           >{approval.subject}</code
         ></pre>{/if}
     {#each approval.details as detail}<p class={text}>{detail}</p>{/each}
-    {#if deny !== undefined}
+    {#if state.deny !== undefined}
       <form
         onsubmit={(event) => {
           event.preventDefault();
-          if (deny !== undefined) decide(deny);
+          if (state.deny !== undefined) decide(state.deny);
         }}
       >
         <label class={written}
@@ -137,13 +138,13 @@
             class={answerBox}
             name="denial-reason"
             autocomplete="off"
-            bind:value={reason}
+            bind:value={state.reason}
             rows="2"
             {disabled}></textarea>
         </label>
         <div class="mt-3 flex flex-wrap gap-2">
           <Button type="submit" variant="primary" size="lg" {disabled}>Deny</Button>
-          <Button size="lg" onclick={() => (deny = undefined)} {disabled}>Cancel</Button>
+          <Button size="lg" onclick={() => (state.deny = undefined)} {disabled}>Cancel</Button>
         </div>
       </form>
     {:else}
@@ -153,8 +154,8 @@
             size="lg"
             {disabled}
             onclick={() => {
-              error = undefined;
-              if (choice.deny) deny = choice.id;
+              state.error = undefined;
+              if (choice.deny) state.deny = choice.id;
               else decide(choice.id);
             }}>{choice.label}</Button
           >
@@ -171,7 +172,7 @@
       {#each call.questions as question (question.id)}
         {#if question.secret}
           <p class={text}>Answer this secret prompt in the terminal.</p>
-        {:else if drafts[question.id]}
+        {:else if state.drafts[question.id]}
           <fieldset class="mb-4 min-w-0" {disabled}>
             <legend class="font-semibold">{question.header || "Question"}</legend>
             {#if question.text && question.text.trim() !== question.header?.trim()}<p class={text}>
@@ -183,7 +184,7 @@
                   class={radio}
                   type="radio"
                   name={question.id}
-                  bind:group={drafts[question.id].choice}
+                  bind:group={state.drafts[question.id].choice}
                   value={index}
                 />
                 <span
@@ -198,19 +199,19 @@
                 class={radio}
                 type="radio"
                 name={question.id}
-                bind:group={drafts[question.id].choice}
+                bind:group={state.drafts[question.id].choice}
                 value={question.options?.length ?? 0}
               />
               <span>Other</span>
             </label>
-            {#if drafts[question.id].choice === (question.options?.length ?? 0)}
+            {#if state.drafts[question.id].choice === (question.options?.length ?? 0)}
               <label class={written}
                 >Your answer
                 <textarea
                   class={answerBox}
                   name={question.id + "-answer"}
                   autocomplete="off"
-                  bind:value={drafts[question.id].text}
+                  bind:value={state.drafts[question.id].text}
                   rows="2"></textarea>
               </label>
             {/if}
@@ -219,7 +220,7 @@
                 class={radio}
                 type="radio"
                 name={question.id}
-                bind:group={drafts[question.id].choice}
+                bind:group={state.drafts[question.id].choice}
                 value="skip"
               />
               <span>Skip this question</span>
@@ -232,9 +233,9 @@
       {/if}
     </form>
   {/if}
-  {#if error}<Alert class="my-2" tabindex={-1}>{error}</Alert>
+  {#if state.error}<Alert class="my-2" tabindex={-1}>{state.error}</Alert>
   {:else if unavailable}<p class={note} role="status">Not connected to the thread.</p>
-  {:else if sending || accepted}<p class={note} role="status">
-      {accepted ? "Submitted. Waiting for the session…" : "Sending…"}
+  {:else if state.sending || state.accepted}<p class={note} role="status">
+      {state.accepted ? "Submitted. Waiting for the session…" : "Sending…"}
     </p>{/if}
 </article>

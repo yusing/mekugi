@@ -26,8 +26,8 @@ type NativeFrame struct {
 	View              sessionpresentation.View      `json:"view"`
 	Main              *activity.Publication         `json:"main"`
 	Agents            *activity.Publication         `json:"agents"`
-	ChildThreads      []string                      `json:"childThreads,omitzero"`
 	Review            *changes.ReviewView           `json:"review"`
+	Family            *Family                       `json:"family"`
 	Live              []preview.Preview             `json:"live"`
 	LiveScope         preview.Scope                 `json:"liveScope"`
 	Details           *NativeDetails                `json:"details"`

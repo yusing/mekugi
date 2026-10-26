@@ -7,23 +7,6 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-// Native child dialogs keep the source view alive independently of navigation.
-// The parent's existing selection owner supplies IDs for all of its dialogs.
-type nativeChildDetails struct {
-	observation *sessionapi.Observation
-	id          sessionpresentation.DetailID
-	copy        *nativeEffectReservation
-}
-
-func (v *nativeSessionView) closeChildDetails() {
-	if details := v.childDetails; details != nil {
-		details.copy.release()
-		details.observation.Close()
-		v.files.details.CloseDetails(details.id)
-		v.childDetails = nil
-	}
-}
-
 func (v *nativeSessionView) reserveFileCopy() *nativeEffectReservation {
 	reservation := v.effects.current
 	if reservation == nil {
@@ -38,7 +21,6 @@ func (v *nativeSessionView) reserveFileCopy() *nativeEffectReservation {
 }
 
 func (v *nativeSessionView) openNoticeDetails(text string) string {
-	v.closeChildDetails()
 	openBlocks(&v.attached, v.shell, &v.files, v.shell, v.shell.Transcript, []activityui.Block{{Kind: "error", Body: text}})
 	v.detailDemand = nil
 	return ""
@@ -66,37 +48,6 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 			request.Agent, request.Caller = false, "Main"
 		}
 	}
-	if v.children != nil {
-		if _, live := v.children.Descendants(v.thread)[thread.ID]; live {
-			var copyReservation *nativeEffectReservation
-			if request.Kind == sessionapi.NativeFileDetails {
-				copyReservation = v.reserveFileCopy()
-				if copyReservation == nil {
-					return "Clipboard delivery capacity is exhausted."
-				}
-			}
-			observer, err := v.children.Observe(v.ctx, v.thread, thread.ID)
-			if err != nil {
-				copyReservation.release()
-				return err.Error()
-			}
-			request.Displayed, request.Agent = thread, false
-			if request.Kind == sessionapi.NativeSkillDetails {
-				request.Caller = "Main"
-			}
-			if err := observer.Read(sessionapi.NativeOperation{Details: &request}); err != nil {
-				copyReservation.release()
-				observer.Close()
-				return err.Error()
-			}
-			v.closeChildDetails()
-			v.files.closeOutput(v.shell)
-			id := v.files.details.OpenDetails(view.Version, nil, nil, false, nil)
-			v.childDetails = &nativeChildDetails{observation: observer, id: id, copy: copyReservation}
-			return ""
-		}
-	}
-	v.closeChildDetails()
 	terminal := v.shell.Transcript
 	if request.Agent {
 		terminal = v.shell.Agents
@@ -184,47 +135,6 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 }
 
 func (v *nativeSessionView) publishDetails(frame *sessionapi.NativeFrame) {
-	if v.shell.Dialog != nil {
-		v.closeChildDetails()
-	}
-	if child := v.childDetails; child != nil {
-		if child.id.Attachment != frame.View.Version.Attachment {
-			v.closeChildDetails()
-			return
-		}
-		event, err := child.observation.Snapshot()
-		if err != nil {
-			child.copy.release()
-			frame.View.Loading = err.Error()
-		}
-		if child.copy != nil && child.copy.remaining > 0 {
-			for _, effect := range event.Frame.Effects {
-				if effect.Clipboard != nil {
-					child.copy.add(sessionapi.NativeEffect{Thread: v.thread, Clipboard: effect.Clipboard})
-					// Closing this one-shot observation retires its child effect;
-					// the requesting view now owns acknowledged delivery.
-					v.closeChildDetails()
-					frame.Effects = v.effects.publication()
-					frame.PendingEffects = v.effects.reserved > 0
-					return
-				}
-			}
-			if event.Frame.Details != nil && !event.Frame.PendingEffects {
-				child.copy.release()
-			}
-		}
-		if event.Frame.Details != nil {
-			details := *event.Frame.Details
-			details.View.ID, details.Agent = child.id, true
-			if details.Output != nil {
-				output := *details.Output
-				output.ID = child.id
-				details.Output = &output
-			}
-			frame.Details = &details
-		}
-		return
-	}
 	select {
 	case result := <-v.files.fileReads:
 		v.files.loadedMarkdownFile(&v.attached.session, v.attached.presentation, v.attached.cwd, v.shell, result)

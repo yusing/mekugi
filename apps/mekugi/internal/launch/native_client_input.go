@@ -217,13 +217,13 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 			c.enqueue(sessionapi.NativeOperation{Command: effect.Command}, nil, nil)
 		case effect.Display != nil:
 			thread := effect.Display.Thread
-			if c.displayParent != nil && thread.ID == c.event.Frame.View.Main.ID {
-				thread = c.displayParent.event.Frame.View.Main
+			if family := c.event.Frame.Family; family != nil && thread.ID == c.event.Frame.View.Main.ID {
+				thread = sessionpresentation.Thread{ID: family.Root, Caller: "/root"}
 			}
 			c.displayThread(thread)
 		case effect.Roster != nil:
-			if agents := c.renderer.frame.Agents; agents != nil {
-				for _, row := range agents.Roster {
+			if c.renderer.terminal != nil {
+				for _, row := range c.renderer.terminal.Agents.Roster() {
 					if row.Agent.Name == effect.Roster.Caller {
 						c.displayThread(sessionpresentation.Thread{ID: row.Agent.Thread, Caller: effect.Roster.Caller})
 						break
@@ -345,11 +345,48 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 }
 
 func (c *nativeClient) details(version sessionpresentation.Version, request sessionapi.NativeDetailRequest) {
-	target := c.event.Target()
-	target.Version = version
+	if !version.SameAttachment(c.event.Frame.View.Version) {
+		c.notice = sessionpresentation.ErrStaleIntent.Error()
+		return
+	}
 	if request.Displayed.ID == "" {
 		request.Displayed = c.event.Frame.View.Displayed
 	}
+	if request.Kind == sessionapi.NativeSkillDetails && request.Agent {
+		found := false
+		if c.renderer.terminal != nil {
+			for _, row := range c.renderer.terminal.Agents.Roster() {
+				if row.Agent.Name == request.Caller {
+					request.Displayed = sessionpresentation.Thread{ID: row.Agent.Thread, Caller: row.Agent.Name}
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			c.notice = sessionpresentation.ErrStaleIntent.Error()
+			return
+		}
+	}
+	if family := c.event.Frame.Family; family != nil && c.runtime != nil && request.Displayed.ID != c.event.Frame.View.Main.ID {
+		destination := request.Displayed.ID
+		if destination != family.Root && !slices.Contains(family.Threads, destination) {
+			destination = family.Root
+		}
+		if destination != c.event.Frame.View.Main.ID {
+			c.displayThread(sessionpresentation.Thread{ID: destination})
+			c.attachOperation = &sessionapi.NativeOperation{Details: &request}
+			return
+		}
+	}
+	if request.Displayed.ID == c.event.Frame.View.Main.ID {
+		request.Agent = false
+		if request.Kind == sessionapi.NativeSkillDetails {
+			request.Caller = "Main"
+		}
+	}
+	target := c.event.Target()
+	target.Version = version
 	c.calls = append(c.calls, &nativeClientCall{owner: c, target: target, operation: sessionapi.NativeOperation{Details: &request}})
 }
 

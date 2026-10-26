@@ -33,7 +33,8 @@ reconnects only that machine. Storage failures are visible without preventing
 connections for the current page.
 
 Connections retain independent lists, subscriptions, errors and selected threads.
-The page address identifies connection, logical thread and selected agent. Equal
+The page address identifies connection and the selected logical thread; recorded
+history can additionally select an agent within that recording. Equal
 thread IDs on different machines do not collide. Switching or removing a connection
 releases browser-owned requests, not server work; one unreachable machine cannot
 reroute or cancel another's work. Unknown mutation outcomes are reported and never
@@ -216,10 +217,12 @@ and optional timeout, separately from idle agents.
 
 The transcript shows Main's activity until a viewer selects another agent in the
 roster; it then shows that agent's own activity under its name and state, with a
-way back to Main. In a live session, selecting an admitted child attaches its
-server-owned runtime. Its composer, prompts, settings and Stop target that child;
-Main and each child retain separate drafts and attached control views until the
-parent session view closes. Historical agents outside the admitted runtime tree
+way back to Main. Live Main and delegate threads use the same selected-thread
+publication and control lifecycle. Family navigation comes from the server's
+ordinary thread publications without a retained parent view. The selected
+thread owns its composer, prompts, settings and Stop; a declared role appears
+in its composer. Per-thread drafts and unsettled input remain isolated across
+navigation. Historical agents outside the admitted runtime tree
 remain read-only. Selection belongs to each viewer, while playback stays shared.
 The page address supports returning to a previous selection with browser history
 and after reload using the saved machine identity. Seeking back

@@ -275,6 +275,24 @@ func (s *Service) Descendants(thread string) []Participant {
 	return result
 }
 
+// Family publishes only admitted navigation metadata, independently of runtime
+// lifetime ancestry. Replacing a runtime's thread does not reparent its peers.
+func (s *Service) Family(thread string) (string, []Participant) {
+	owner, err := s.owner(thread)
+	if err != nil {
+		return "", nil
+	}
+	tree := owner.state.Load()
+	members := make([]Participant, 0, len(tree.Members))
+	for _, member := range tree.Members {
+		if member.AudienceAdmitted {
+			members = append(members, Participant{member.Thread, member.Parent, member.Task, member.Settings.Role, member.Status})
+		}
+	}
+	slices.SortFunc(members, func(a, b Participant) int { return strings.Compare(a.Task, b.Task) })
+	return tree.Root, members
+}
+
 // member borrows only the current immutable publication, never the storage lock.
 func (s *Service) member(thread string) (*Member, bool) {
 	owner, err := s.owner(thread)

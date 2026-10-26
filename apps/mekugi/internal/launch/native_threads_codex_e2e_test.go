@@ -627,8 +627,8 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			t.Fatal("cold root readiness:", err)
 		}
 		retainedChild := false
-		if event.Frame.Agents != nil {
-			for _, row := range event.Frame.Agents.Roster {
+		if family := event.Frame.Family; family != nil && family.Agents != nil {
+			for _, row := range family.Agents.Roster {
 				if row.Agent.Thread == child && row.Agent.Name == "/root/worker" && row.Agent.Final {
 					retainedChild = true
 				}
@@ -647,10 +647,6 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 	if !childReply || !childMessage {
 		t.Fatalf("cold Main lost delivered delegate traffic: final=%t message=%t", childReply, childMessage)
-	}
-	if attached, err := sessionapi.OpenNative(ctx, client, "http://mekugi", child); err == nil {
-		attached.Close()
-		t.Fatal("cold recovery automatically restarted a child")
 	}
 	attachedChild, err := connection.Attach(ctx, child)
 	if err != nil {

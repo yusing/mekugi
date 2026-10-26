@@ -156,6 +156,7 @@ func TestRemoteViewDetachedSecretProjection(t *testing.T) {
 	entry := activity.Entry{Facts: activity.Facts{Text: "2 questions\nhidden-description"}, Values: []activity.Value{value, {Content: activityfeed.Content{Body: "hidden-nested-body"}, Members: []activity.Value{value}, RequestedOperations: []activity.Value{value}}}}
 	frame.Main = &activity.Publication{Entries: []activity.Entry{entry}, MainSummary: []activity.Entry{entry}, Roster: []activity.AgentRow{{Agent: activity.Agent{Summary: []activity.Entry{entry}}}}}
 	frame.Agents = frame.Main
+	frame.Family = &Family{Root: "root", Threads: []string{"root", "view"}, Agents: frame.Agents, Status: sessionpresentation.Label{Text: "Working", Running: true}}
 	frame.Details = &NativeDetails{View: sessionpresentation.DetailView{Pages: []sessionpresentation.DetailItem{{DetailPage: activity.DetailPage{Value: value, ID: "page"}}}}}
 	frame.Facts = NativeSessionFacts{History: []composer.HistoryEntry{{Draft: composer.Draft{Text: "hidden-local-history"}}}, DebugDirectory: "hidden-debug", Diagnostics: "hidden-host-stderr", Preferences: []byte(`{"private":"hidden-preferences"}`)}
 	event, _, client := openRemoteTest(t, s, hub.Handler(), frame)
@@ -165,6 +166,12 @@ func TestRemoteViewDetachedSecretProjection(t *testing.T) {
 	}
 	if bytes.Contains(data, []byte("hidden-")) || !bytes.Contains(data, []byte("ordinary-question")) || !bytes.Contains(data, []byte("ordinary-answer")) {
 		t.Fatal("remote projection leaked secret/native content or lost ordinary content")
+	}
+	if family := event.Frame.Family; family == nil || family.Root != "root" || len(family.Threads) != 2 || family.Threads[1] != "view" || family.Status.Text != "Working" || !family.Status.Running || family.Agents != nil {
+		t.Fatalf("remote projection lost family metadata or exposed its private roster: %+v", family)
+	}
+	if frame.Family.Agents != frame.Agents {
+		t.Fatal("remote projection mutated the retained family owner")
 	}
 	if frame.Questions[0].Questions[0].Text != "hidden-description" || frame.Main.Entries[0].Values[0].Body != "hidden-body" || frame.Details.View.Pages[0].Questions[0].Answer != "hidden-answer" {
 		t.Fatal("remote projection mutated native/owner publication")

@@ -120,6 +120,10 @@ func (f NativeFrame) remote() NativeFrame {
 		side = publicActivity(f.Main)
 	}
 	f.Main, f.Agents, f.Review, f.Live, f.FileLinks, f.Activity = side, nil, nil, nil, nil, nil
+	if f.Family != nil {
+		f.Family = new(*f.Family)
+		f.Family.Agents = nil
+	}
 	f.MainOutput, f.AgentOutput, f.ReacquireOutput = nil, nil, false
 	if f.Details != nil {
 		details := *f.Details

@@ -34,6 +34,15 @@ export type Editor = {
   items: PendingAttachment[];
   submission?: AbortController;
 };
+export type PromptState = {
+  drafts: Record<string, { choice: number | "skip" | undefined; text: string }>;
+  deny?: number;
+  reason: string;
+  sending: boolean;
+  accepted: boolean;
+  error?: string;
+  resolved?: boolean;
+};
 
 type ControlView = {
   machine: Machine;
@@ -41,10 +50,11 @@ type ControlView = {
   lifetime: AbortController;
   stop?: () => void;
   event?: NativeEvent;
-  parent?: string;
+  received: boolean;
   connection: Connection;
   error?: string;
   operationError?: string;
+  outcome?: TransportError["kind"];
   work: number;
   inputs: number;
   pending: number;
@@ -53,15 +63,17 @@ type ControlView = {
   acknowledged: number;
   receipt: number;
   applied?: string;
+  prompts: Record<string, PromptState>;
 };
 
-function controlView(thread: string, machine: Machine, parent?: string): ControlView {
+function controlView(thread: string, machine: Machine): ControlView {
+  const prompts = $state<Record<string, PromptState>>({});
   return {
     thread,
     machine,
-    parent,
     lifetime: new AbortController(),
     connection: "connecting",
+    received: false,
     work: 0,
     inputs: 0,
     pending: 0,
@@ -69,12 +81,12 @@ function controlView(thread: string, machine: Machine, parent?: string): Control
     effect: 0,
     acknowledged: 0,
     receipt: 0,
+    prompts,
   };
 }
 
 class Semantic {
   event = $state.raw<NativeEvent>();
-  root = $state.raw<NativeEvent>();
   connection = $state<Connection>("connecting");
   error = $state<string>();
   connectionError = $state<string>();
@@ -86,9 +98,8 @@ class Semantic {
   #settings = new Map<string, NonNullable<NativeEvent["frame"]["view"]["Menu"]>>();
   #completions = new Map<string, NonNullable<NativeEvent["frame"]["view"]["Menu"]>>();
   openingSetting = $state<string>();
-  #source?: ControlView;
-  #root?: ControlView;
-  #children = new Map<string, ControlView>();
+  #source = $state.raw<ControlView>();
+  #views = new Map<string, ControlView>();
   #destination?: ControlView;
   #settle = new Set<() => void>();
 
@@ -170,26 +181,67 @@ class Semantic {
     return { Target: this.target(), Draft: textDraft(editor.text, editor.cursorBack) };
   }
 
-  connect(thread: string, machine: Machine): void {
-    if (this.#root?.thread === thread && this.#root.machine === machine) return;
-    this.close();
-    this.#source = this.#root = controlView(thread, machine);
-    this.ensureEditor(thread);
-    this.subscribe(this.#source);
+  prompt(id: string): PromptState {
+    const source = this.#source;
+    if (!source) throw new Error("A prompt requires an attached control view.");
+    source.prompts[id] ??= { drafts: {}, reason: "", sending: false, accepted: false };
+    return source.prompts[id];
   }
 
-  // Retain each admitted runtime's view and draft for this parent attachment.
-  // Historical identities never acquire an execution runtime.
-  select(thread?: string): void {
-    const root = this.#root;
-    if (!root) return;
-    const target = thread && this.root?.frame.childThreads?.includes(thread) ? thread : root.thread;
-    if (this.#source?.thread === target) return;
+  private reconcilePrompts(source: ControlView, ids: string[]): void {
+    const kept = new Set(ids);
+    for (const [id, prompt] of Object.entries(source.prompts)) {
+      if (kept.has(id)) delete prompt.resolved;
+      else if (prompt.sending) prompt.resolved = true;
+      else delete source.prompts[id];
+    }
+  }
+
+  private retire(source: ControlView): void {
+    if (
+      source === this.#source ||
+      source === this.#destination ||
+      this.#views.get(source.thread) !== source ||
+      !this.#source?.event ||
+      this.#source.connection !== "open" ||
+      source.work ||
+      source.inputs ||
+      source.outcome === "unknown"
+    )
+      return;
+    const frame = source.event?.frame;
+    if (
+      (!frame && source.received) ||
+      source.acknowledged < source.effect ||
+      frame?.pendingEffects ||
+      frame?.effects.some(
+        (effect) =>
+          effect.Recovery ||
+          source.event?.attachment !== source.applied ||
+          effect.ID > source.acknowledged,
+      ) ||
+      frame?.questions?.length ||
+      frame?.approvals?.length ||
+      Object.values(source.prompts).some((prompt) => !prompt.resolved || prompt.sending)
+    )
+      return;
+    this.#views.delete(source.thread);
+    source.lifetime.abort();
+    source.stop?.();
+  }
+
+  private retireInactive(): void {
+    for (const source of this.#views.values()) this.retire(source);
+  }
+
+  connect(thread: string, machine: Machine): void {
+    if (this.#source?.thread === thread && this.#source.machine === machine) return;
+    if (this.#source && this.#source.machine !== machine) this.close();
     this.cancelResume();
-    let source = target === root.thread ? root : this.#children.get(target);
+    let source = this.#views.get(thread);
     if (!source) {
-      source = controlView(target, root.machine, root.thread);
-      this.#children.set(target, source);
+      source = controlView(thread, machine);
+      this.#views.set(thread, source);
     }
     this.#source = source;
     this.ensureEditor(source.thread);
@@ -200,13 +252,20 @@ class Semantic {
     this.error = source.operationError;
     this.copied = undefined;
     this.connectionError = source.error;
-    if (source.event) this.receive(source.event);
+    if (source.event) {
+      this.receive(source.event);
+      this.retireInactive();
+    }
     if (!source.stop) this.subscribe(source);
   }
 
   // Component cleanup releases only the view it borrowed, not an adopted successor.
   release(thread: string, machine: Machine): void {
-    if (this.#root?.thread === thread && this.#root.machine === machine) this.close();
+    if (this.#source?.machine !== machine) return;
+    // Keyed thread components are replaced during ordinary navigation. Their
+    // control views retain unresolved input and drafts on the selected machine.
+    if (view.machine === machine.id && view.session && view.session !== thread) return;
+    this.close();
   }
 
   retainInput(): (error?: string) => void {
@@ -216,7 +275,10 @@ class Semantic {
     return (error) => {
       source.inputs--;
       if (error) source.operationError = error;
-      if (this.#source !== source) return;
+      if (this.#source !== source) {
+        this.retire(source);
+        return;
+      }
       if (error) this.failResume(error);
       this.advanceResume();
     };
@@ -229,29 +291,49 @@ class Semantic {
         get thread() {
           return source.thread;
         },
-        ...(source.parent ? { parent: source.parent } : {}),
       },
       (event) => {
         if (source.lifetime.signal.aborted || !["snapshot", "patch"].includes(event.kind)) return;
         if (!source.event && event.kind !== "snapshot") return;
+        const initial = !source.event;
         const next = event.data as NativeEvent;
         if (
-          source === this.#destination &&
+          initial &&
           (!next.attachment ||
-            next.frame?.view?.Main?.ID !== source.thread ||
-            !next.frame.view.Version)
+            !next.frame?.view?.Version ||
+            (next.frame.view.Main?.ID !== source.thread &&
+              !(
+                next.frame.switch?.From === source.thread &&
+                next.frame.switch.To === next.frame.view.Main?.ID &&
+                next.frame.switch.Origin === next.attachment
+              )))
         ) {
-          this.failResume("The destination did not provide a valid thread view.");
+          const error = "The destination did not provide a valid thread view.";
+          if (source === this.#destination) this.failResume(error);
+          else {
+            source.connection = "lost";
+            source.error = error;
+            if (source === this.#source) {
+              this.connection = "lost";
+              this.connectionError = error;
+            }
+          }
           return;
         }
         source.event = next;
+        source.received = true;
         source.connection = "open";
-        if (source === this.#root) this.root = next;
+        this.reconcilePrompts(source, [
+          ...(next.frame.questions ?? []).map((call) => call.ID),
+          ...(next.frame.approvals ?? []).map((approval) => approval.ID),
+        ]);
         for (const settle of this.#settle) settle();
         if (source === this.#source) {
           this.connection = "open";
           this.receive(next);
+          if (initial) this.retireInactive();
         } else if (source === this.#destination) this.advanceResume();
+        else this.retire(source);
       },
       (connection, failure) => {
         if (source.lifetime.signal.aborted) return;
@@ -281,11 +363,11 @@ class Semantic {
     }
     const switched = next.frame.switch;
     if (switched?.To && switched.Origin === next.attachment && switched.From === source.thread) {
-      const selected = view.machine === source.machine.id && view.session === this.#root?.thread;
+      const selected = view.machine === source.machine.id && view.session === source.thread;
       this.cancelResume();
-      if (source !== this.#root) this.#children.delete(source.thread);
+      this.#views.delete(source.thread);
       source.thread = switched.To;
-      if (source !== this.#root) this.#children.set(source.thread, source);
+      this.#views.set(source.thread, source);
       if (selected) open(source.thread, true);
     }
     let destination: string | undefined;
@@ -393,14 +475,19 @@ class Semantic {
       ).then((error) => {
         if (source.event?.attachment !== next.attachment) return;
         if (error) {
-          this.failResume(error);
+          source.operationError = error;
+          if (this.#source === source) {
+            this.error = error;
+            this.failResume(error);
+          }
           return;
         }
         source.acknowledged = effect;
         if (this.#source === source) this.advanceResume();
+        else this.retire(source);
       });
     }
-    if (destination && view.machine === source.machine.id && view.session === this.#root?.thread)
+    if (destination && view.machine === source.machine.id && view.session === source.thread)
       this.resume(destination);
     this.advanceResume();
   }
@@ -431,7 +518,7 @@ class Semantic {
     const source = this.#source,
       destination = this.#destination;
     if (!source || !destination?.event || !this.frame) return;
-    if (view.machine !== source.machine.id || view.session !== this.#root?.thread) {
+    if (view.machine !== source.machine.id || view.session !== source.thread) {
       this.cancelResume();
       return;
     }
@@ -446,31 +533,28 @@ class Semantic {
       return;
     }
     this.#destination = undefined;
-    for (const previous of [this.#root, ...this.#children.values()]) {
-      previous?.lifetime.abort();
-      previous?.stop?.();
-    }
-    this.#children.clear();
-    this.#source = this.#root = destination;
-    this.root = destination.event;
+    const previous = this.#views.get(destination.thread);
+    previous?.lifetime.abort();
+    previous?.stop?.();
+    this.#views.set(destination.thread, destination);
+    this.#source = destination;
     this.event = undefined;
-    this.editors = {};
+    this.pending = destination.pending;
     this.error = this.connectionError = this.resuming = undefined;
     this.connection = "open";
     open(destination.thread, true);
     this.receive(destination.event);
+    this.retireInactive();
   }
 
   close(): void {
     this.clearMenus();
     this.cancelResume();
-    for (const source of [this.#root, ...this.#children.values()]) {
+    for (const source of this.#views.values()) {
       source?.lifetime.abort();
       source?.stop?.();
     }
-    this.#children.clear();
-    this.#root = undefined;
-    this.root = undefined;
+    this.#views.clear();
     this.#source = undefined;
     this.event = undefined;
     this.connection = "connecting";
@@ -491,7 +575,7 @@ class Semantic {
     const source =
       active?.event?.attachment === event?.attachment
         ? active
-        : [this.#root, ...this.#children.values(), this.#destination].find(
+        : [...this.#views.values(), this.#destination].find(
             (candidate) => candidate && candidate.event?.attachment === event?.attachment,
           );
     if (!event || !source || source.connection !== "open") {
@@ -519,6 +603,7 @@ class Semantic {
       }
       if (!quiet) {
         source.operationError = undefined;
+        source.outcome = undefined;
         source.pending++;
         if (this.#source === source) this.pending = source.pending;
         if (this.#source === source) this.error = undefined;
@@ -541,6 +626,7 @@ class Semantic {
             : errorText(failure, true);
         if (!lifetime.aborted && !quiet) {
           source.operationError = error;
+          source.outcome = failure instanceof TransportError ? failure.kind : "unknown";
           if (this.#source === source) {
             this.error = error;
             this.failResume(error);
@@ -558,6 +644,7 @@ class Semantic {
     const result = source.queue.then(run, run).finally(() => {
       source.work--;
       if (this.#source === source) this.advanceResume();
+      else this.retire(source);
     });
     source.queue = result;
     return result;

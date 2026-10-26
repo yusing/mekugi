@@ -86,6 +86,11 @@ func (c *nativeClientRenderer) update(frame sessionapi.NativeFrame, draft conver
 		agentDisplay.Caller = view.Info.Caller
 	}
 	u.Agents.Update(agents, agentDisplay)
+	if family := frame.Family; family != nil && family.Agents != nil {
+		u.Agents.UpdateRoster(family.Agents)
+		u.Agents.MainSummary = u.Transcript.SummaryBlocks(family.Agents.MainSummary)
+		u.Agents.MainStatus = terminalsession.StatusText(family.Status)
+	}
 	u.Transcript.Hydrate(frame.MainOutput)
 	u.Agents.Hydrate(frame.AgentOutput)
 	for _, painter := range []*activityui.View{u.Transcript, u.Agents} {

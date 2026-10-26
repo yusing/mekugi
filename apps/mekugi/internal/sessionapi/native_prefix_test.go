@@ -2,11 +2,13 @@ package sessionapi
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	activityfeed "github.com/yusing/mekugi/modules/activity/feed"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
@@ -15,8 +17,10 @@ import (
 )
 
 func TestNativeOwnerDeltasThroughQueues(t *testing.T) {
-	for _, backlog := range []string{"none", "server", "client"} {
+	for _, backlog := range []string{"none", "server", "client", "server-clear", "client-clear"} {
 		t.Run(backlog, func(t *testing.T) {
+			clearFamily := backlog == "none" || strings.HasSuffix(backlog, "-clear")
+			backlog := strings.TrimSuffix(backlog, "-clear")
 			native := NewLive().Native()
 			source, request, failure := native.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", localNativeView)
 			if failure != nil {
@@ -25,6 +29,7 @@ func TestNativeOwnerDeltasThroughQueues(t *testing.T) {
 			defer source.close()
 			frame := benchmarkNativeHistoryFrame(1000)
 			frame.Agents = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: "agent history"}}}}
+			frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child"}, Agents: &activity.Publication{MainSummary: []activity.Entry{{Facts: activity.Facts{Text: "family summary"}}}}}
 			frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{Files: []changes.File{{Path: "saved.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("+saved diff\n", 1<<16)}}}}}}}
 			frame.Effects = []NativeEffect{{ID: 1, Restore: &composer.Draft{Text: "restore"}}}
 			connection := &NativeConnection{thread: "thread", subscription: &RPCSubscription{client: &RPCClient{}}}
@@ -35,11 +40,15 @@ func TestNativeOwnerDeltasThroughQueues(t *testing.T) {
 				switch step {
 				case 2:
 					frame.Main = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: "new history"}}}}
+					frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child", "grandchild"}, Agents: &activity.Publication{MainSummary: []activity.Entry{{Facts: activity.Facts{Text: "new family summary"}}}}}
 					frame.MainOutput = []activity.OutputResult{{Demand: activity.OutputDemand{Source: 1}, View: activityfeed.OutputView{Lines: []string{"output"}}}}
 				case 3:
 					frame.MainOutput = nil
 				case 4:
 					frame.Agents = nil
+					if clearFamily {
+						frame.Family = nil
+					}
 				}
 				if err := native.Publish(request.Attachment, frame); err != nil {
 					t.Fatal(err)
@@ -54,6 +63,18 @@ func TestNativeOwnerDeltasThroughQueues(t *testing.T) {
 				if step == 1 && len(queued.Data) > 16000 {
 					t.Fatalf("metadata repeated retained owners: %d bytes", len(queued.Data))
 				}
+				if step == 1 {
+					var wire struct {
+						Retained nativeOwners              `json:"retained"`
+						Frame    map[string]jsontext.Value `json:"frame"`
+					}
+					if err := json.Unmarshal(queued.Data, &wire, nativeEncoding); err != nil {
+						t.Fatal(err)
+					}
+					if _, present := wire.Frame["family"]; present || wire.Retained&nativeFamily == 0 {
+						t.Fatal("unchanged family was encoded instead of retained")
+					}
+				}
 				events = append(events, queued)
 				if backlog == "client" {
 					continue
@@ -64,7 +85,7 @@ func TestNativeOwnerDeltasThroughQueues(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if step == 1 && (got.Frame.Main != previous.Main || got.Frame.Agents != previous.Agents || got.Frame.Review != previous.Review) {
+				if step == 1 && (got.Frame.Main != previous.Main || got.Frame.Agents != previous.Agents || got.Frame.Review != previous.Review || got.Frame.Family != previous.Family) {
 					t.Fatal("unchanged owner identity was replaced")
 				}
 				if step == 0 {
@@ -95,6 +116,11 @@ func TestNativeOwnerDeltasThroughQueues(t *testing.T) {
 				}
 				if got.Frame.Main.Entries[0].Text != "new history" || got.Frame.Agents != nil || got.Frame.Review.Revision != 1 || len(got.Frame.Effects) != 1 || len(got.Frame.MainOutput) != 1 {
 					t.Fatal("coalescing lost owner state, semantic effect or hydration")
+				}
+				want, _ := json.Marshal(frame.Family, nativeEncoding)
+				actual, _ := json.Marshal(got.Frame.Family, nativeEncoding)
+				if !bytes.Equal(actual, want) {
+					t.Fatal("coalescing lost the replaced or cleared family")
 				}
 			} else {
 				actual, _ := json.Marshal(connection.last.Frame.Review, nativeEncoding)
@@ -259,6 +285,7 @@ func TestNativeOwnerDeltaResetAndReviewReplacement(t *testing.T) {
 	}
 	defer source.close()
 	frame := benchmarkNativeHistoryFrame(1)
+	frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child"}, Agents: &activity.Publication{MainSummary: []activity.Entry{{Facts: activity.Facts{Text: "family summary"}}}}, Status: sessionpresentation.Label{Text: "Working", Running: true}}
 	frame.Review = &changes.ReviewView{Revision: 1, Coverage: "loading", Publication: changes.Publication{Files: []changes.File{{Path: "first.go"}}}}
 	connection := &NativeConnection{thread: "thread", subscription: &RPCSubscription{client: &RPCClient{}}}
 	var first NativeFrame
@@ -268,8 +295,10 @@ func TestNativeOwnerDeltaResetAndReviewReplacement(t *testing.T) {
 		case 1:
 			frame.Review = new(*frame.Review)
 			frame.Review.Coverage = "complete"
+			frame.Family = new(*frame.Family)
 		case 2:
 			frame.Review = &changes.ReviewView{Revision: 2, Publication: changes.Publication{Files: []changes.File{{Path: "second.go"}}}}
+			frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child", "grandchild"}, Status: sessionpresentation.Label{Text: "Finished"}}
 		case 3:
 			frame.View.Version.Attachment++
 		case 4:
@@ -278,6 +307,7 @@ func TestNativeOwnerDeltaResetAndReviewReplacement(t *testing.T) {
 		case 5:
 			frame.Switch = nil
 			frame.Review = nil
+			frame.Family = nil
 		}
 		if err := native.Publish(request.Attachment, frame); err != nil {
 			t.Fatal(err)
@@ -294,9 +324,13 @@ func TestNativeOwnerDeltaResetAndReviewReplacement(t *testing.T) {
 			t.Fatal("reset retained previous owners")
 		}
 		connection.subscription.events = []RPCEvent{{Kind: queued.Kind, Data: queued.Data}}
+		previousFamily := connection.last.Frame.Family
 		got, err := connection.Next()
 		if err != nil {
 			t.Fatal(err)
+		}
+		if step == 1 && (got.Frame.Family == previousFamily || wire.Retained&nativeFamily != 0) {
+			t.Fatal("equal-content replacement retained the previous family identity")
 		}
 		if step == 0 {
 			first = got.Frame
@@ -310,6 +344,9 @@ func TestNativeOwnerDeltaResetAndReviewReplacement(t *testing.T) {
 	if first.Review.Coverage != "loading" || first.Review.Files[0].Path != "first.go" {
 		t.Fatal("replacement mutated prior review")
 	}
+	if first.Family.Root != "thread" || len(first.Family.Threads) != 2 || first.Family.Agents.MainSummary[0].Text != "family summary" || !first.Family.Status.Running {
+		t.Fatal("replacement mutated prior family")
+	}
 }
 
 func TestNativeRetainedOwnersKeepSnapshotAndHydrationLimits(t *testing.T) {
@@ -320,8 +357,9 @@ func TestNativeRetainedOwnersKeepSnapshotAndHydrationLimits(t *testing.T) {
 	}
 	defer source.close()
 	frame := benchmarkNativeHistoryFrame(1)
-	frame.Main.Entries[0].Text = strings.Repeat("m", 30<<20)
-	frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{Files: []changes.File{{Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("r", 30<<20)}}}}}}}
+	frame.Main.Entries[0].Text = strings.Repeat("m", 20<<20)
+	frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{Files: []changes.File{{Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("r", 20<<20)}}}}}}}
+	frame.Family = &Family{Root: "thread", Agents: &activity.Publication{MainSummary: []activity.Entry{{Facts: activity.Facts{Text: strings.Repeat("f", 20<<20)}}}}}
 	if err := native.Publish(request.Attachment, frame); err != nil {
 		t.Fatal(err)
 	}

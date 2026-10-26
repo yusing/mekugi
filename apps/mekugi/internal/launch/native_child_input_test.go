@@ -17,11 +17,11 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
@@ -35,7 +35,6 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 	child.model, child.reasoningEffort, child.serviceTier = "child-model", "low", "flex"
 	child.Startup.Prepared = &sessioncontrol.PreparedThread{Parent: "main"}
 	child.attached.threadInput = &threadInput{admitted: true, caller: "/root/worker", role: "worker"}
-	main.attached.session.RegisterThread(observation.Thread{ID: "child", Path: "/root/worker", Role: "worker"})
 	captures := changes.Publication{}.With(changes.GroupCaptures([]changes.Chunk{{Key: "child-change", Workspace: child.attached.cwd, CaptureOrder: 1,
 		Origin: changes.Origin{Caller: "/root/worker", Change: "child1", Source: "apply_patch"},
 		Review: diffmodel.RenderReviewFile("", filepath.Join(child.attached.cwd, "child.go"), "", "package child\n// captured child edit\n")}}))
@@ -50,21 +49,24 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 		u.testMainFrame(100, 12, 0)
 		frames[u.Thread] = sessionapi.NativeFrame{View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: u.attached.childSource.Publication(u.attached.presentation, u.attached.source), Review: new(u.reviewSource.ReviewView(u.attached.session.Scope()))}
 	}
-	parentFrame := frames["main"]
-	childFrame := frames["child"]
-	(&nativeViews{threads: &threadExecution{}}).publishChild(&parentFrame, map[string]sessionapi.Frame{"child": {Session: sessionapi.Session{Thread: "child", Workspace: child.attached.cwd}, Caption: childFrame.View.Caption, Main: childFrame.Main, Agents: childFrame.Agents, Review: childFrame.Review}})
-	frames["main"] = parentFrame
-	if len(parentFrame.ChildThreads) != 1 || parentFrame.ChildThreads[0] != "child" {
-		t.Fatal("live child was not published for runtime attachment")
-	}
 	submitted := make(chan sessionapi.NativeRequest, 1)
+	details := make(chan sessionapi.NativeRequest, 4)
 	release := make(chan string, 1)
+	var hub *sessionapi.Hub
 	launcher := &nativeReattachLauncher{
 		prepare: func(_ context.Context, _ string, input sessionapi.InputRequest) (*sessionapi.PreparedInput, error) {
 			return sessionapi.NewPreparedInput(input.NativeDraft.Clone(), nil), nil
 		},
 		run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
 			frame := frames[start.Resume]
+			caller, role := "/root", ""
+			members := []control.Participant{{Thread: "main", Task: "/root"}, {Thread: "child", Parent: "main", Task: "/root/worker", Role: "worker"}}
+			if start.Resume == "child" {
+				caller, role = "/root/worker", "worker"
+			}
+			if err := publishNativeFamilySource(api, frame, start.Workspace, "main", caller, role, members); err != nil {
+				return err
+			}
 			if err := api.SetSummary(sessionapi.Summary{Thread: start.Resume, Workspace: start.Workspace, Ready: true}); err != nil {
 				return err
 			}
@@ -73,9 +75,13 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 				case <-ctx.Done():
 					return ctx.Err()
 				case request := <-api.Native().Requests():
+					if request.Operation.Details != nil {
+						details <- request
+					}
 					if request.Operation.Composer != nil {
 						submitted <- request
 					}
+					frame.Family, frame.Review = hub.Family(start.Resume)
 					frame.View.Version.Revision++
 					if err := api.Native().Publish(request.Attachment, frame); err != nil {
 						request.Reply <- err.Error()
@@ -94,7 +100,7 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 			}
 		},
 	}
-	hub := sessionapi.NewHub(t.Context(), launcher)
+	hub = sessionapi.NewHub(t.Context(), launcher)
 	defer hub.Close()
 	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
 	defer server.Close()
@@ -103,8 +109,11 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rpc.Close()
-	for _, u := range []*appServerUI{main, child} {
-		serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: u.attached.cwd, Model: "fixture", Resume: u.Thread})
+	serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: main.attached.cwd, Model: "fixture", Resume: "main"})
+	if _, err := hub.StartPrepared(t.Context(), "main", "child", child.attached.cwd, func(ctx context.Context, api *sessionapi.Server) error {
+		return launcher.run(ctx, sessionapi.Start{Resume: "child", Workspace: child.attached.cwd}, api)
+	}); err != nil {
+		t.Fatal(err)
 	}
 	connection, err := sessionapi.OpenNative(t.Context(), server.Client(), server.URL, "main")
 	if err != nil {
@@ -113,9 +122,9 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 	runtime := nativeSchedulingRuntime(t, main, connection)
 	parent := runtime.active
 	parent.editor("main").InsertText("Main draft stays here")
-	parent.displayThread(sessionpresentation.Thread{ID: "child", Caller: "/root/worker"})
+	parent.details(parent.event.Frame.View.Version, sessionapi.NativeDetailRequest{Kind: sessionapi.NativeSkillDetails, Agent: true, Caller: "/root/worker"})
 	if parent.reattach != "child" {
-		t.Fatalf("child navigation did not select runtime: %+v", parent.event.Frame.ChildThreads)
+		t.Fatalf("child navigation did not select runtime: %+v", parent.event.Frame.Family.Threads)
 	}
 	for runtime.active == parent {
 		nativeSchedulingStep(t, runtime)
@@ -124,7 +133,17 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 		}
 	}
 	selected := runtime.active
-	if selected.event.Frame.View.Main.ID != "child" || selected.displayParent != parent || parent.closed || selected.editor("main") == parent.editor("main") {
+	for len(details) == 0 {
+		nativeSchedulingStep(t, runtime)
+	}
+	read := <-details
+	if read.Thread != "child" || read.Workspace != child.attached.cwd || read.Operation.Details.Agent || read.Operation.Details.Caller != "Main" || read.Operation.Details.Displayed.ID != "child" || parent.attachOperation != nil {
+		t.Fatalf("detail did not use the selected runtime's ordinary attachment: %+v", read)
+	}
+	for !parent.closed {
+		nativeSchedulingStep(t, runtime)
+	}
+	if selected.event.Frame.View.Main.ID != "child" || selected.editor("main") == parent.editor("main") {
 		t.Fatal("child did not acquire its own runtime and draft")
 	}
 	for _, char := range "child input" {
@@ -153,11 +172,6 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 	}
 	assertNativeUISnapshot(t, "native-child-runtime-diff", diff)
 	assertNativeUISnapshot(t, "native-child-runtime-roster", rosterRows)
-	roster := selected.renderer.frame.Agents
-	selected.refresh(now)
-	if selected.renderer.frame.Agents != roster {
-		t.Fatal("unchanged family roster replaced its immutable projection")
-	}
 	selected.event.Frame.View.Caption = sessionpresentation.Caption{}
 	selected.refresh(now)
 	unknown := terminal.Main.Render(terminal.Transcript, &terminal.Transcript.Painter, terminal.Prompts, terminalsession.MainOptions{Now: now, Focused: true}, 100, 8, 0)
@@ -172,20 +186,30 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 	if request.Thread != "child" || request.Workspace != child.attached.cwd || request.Operation.Composer.Intent.Thread != "child" || request.Operation.Composer.Draft.Text != "child input" {
 		t.Fatalf("submission lost child destination: %+v", request)
 	}
-	selected.displayThread(parent.event.Frame.View.Main)
-	runtime.schedule()
-	if runtime.active != parent || selected.closed {
+	selected.details(selected.event.Frame.View.Version, sessionapi.NativeDetailRequest{Kind: sessionapi.NativeFileDetails, Displayed: parent.event.Frame.View.Main, Path: "main.md"})
+	for runtime.active == selected {
+		nativeSchedulingStep(t, runtime)
+	}
+	returned := runtime.active
+	if returned == parent || selected.closed {
 		t.Fatal("navigation retired an unsettled child input")
+	}
+	for len(details) == 0 {
+		nativeSchedulingStep(t, runtime)
+	}
+	read = <-details
+	if read.Thread != "main" || read.Workspace != main.attached.cwd || read.Operation.Details.Path != "main.md" || read.Operation.Details.Agent {
+		t.Fatalf("returning detail did not use Main's ordinary attachment: %+v", read)
 	}
 	release <- "known child refusal"
 	for runtime.inputOwner != nil || selected.editor("main").Text == "" {
 		nativeSchedulingStep(t, runtime)
 	}
-	if parent.editor("main").Text != "Main draft stays here" || selected.editor("main").Text != "child input" {
+	if returned.editor("main").Text != "Main draft stays here" || selected.editor("main").Text != "child input" {
 		t.Fatal("child refusal restored into Main")
 	}
-	parent.displayThread(sessionpresentation.Thread{ID: "child"})
-	for runtime.active == parent {
+	returned.displayThread(sessionpresentation.Thread{ID: "child"})
+	for runtime.active == returned {
 		nativeSchedulingStep(t, runtime)
 	}
 	if runtime.active.editor("main").Text != "child input" {
@@ -324,10 +348,10 @@ func TestChildFamilyRosterPreservesMainSummary(t *testing.T) {
 	u.startSession("child", t.TempDir())
 	u.testMainFrame(100, 24, 0)
 	rootAgent := activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root", Thread: "main"}, Summary: []activity.Entry{{Facts: activity.Facts{Kind: "text", Text: "PARENT_SUMMARY", Agent: "Main"}, Values: []activity.Value{{Kind: "text", Body: "PARENT_SUMMARY"}}}}}
-	parent := &nativeClient{event: sessionapi.NativeEvent{Frame: sessionapi.NativeFrame{Agents: &activity.Publication{Roster: []activity.AgentRow{{Agent: rootAgent}}, MainSummary: rootAgent.Summary}}}}
+	family := &sessionapi.Family{Root: "main", Agents: &activity.Publication{Roster: []activity.AgentRow{{Agent: rootAgent}}, MainSummary: rootAgent.Summary}}
 	terminal, _ := u.terminalViews.NewAttachment(diffrender.DarkTheme)
-	c := &nativeClient{displayParent: parent, renderer: nativeClientRenderer{terminal: terminal, views: u.terminalViews}}
-	c.event.Frame = sessionapi.NativeFrame{View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: &activity.Publication{MainSummary: []activity.Entry{{Facts: activity.Facts{Kind: "text", Text: "CHILD_SUMMARY", Agent: "Main"}, Values: []activity.Value{{Kind: "text", Body: "CHILD_SUMMARY"}}}}}}
+	c := &nativeClient{renderer: nativeClientRenderer{terminal: terminal, views: u.terminalViews}}
+	c.event.Frame = sessionapi.NativeFrame{Family: family, View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: &activity.Publication{MainSummary: []activity.Entry{{Facts: activity.Facts{Kind: "text", Text: "CHILD_SUMMARY", Agent: "Main"}, Values: []activity.Value{{Kind: "text", Body: "CHILD_SUMMARY"}}}}}}
 	c.event.Frame.View.Info.Caller = "/root/worker"
 	c.refreshView(time.Now())
 	summary, _ := terminal.Agents.Current(rootAgent, time.Now(), 100)
@@ -335,8 +359,7 @@ func TestChildFamilyRosterPreservesMainSummary(t *testing.T) {
 		t.Fatalf("family main row lost its owner: %s", ansi.Strip(summary))
 	}
 	rootAgent.Summary = nil
-	parent.event.Frame.Agents = &activity.Publication{Roster: []activity.AgentRow{{Agent: rootAgent}}}
-	parent.event.Frame.View.Status.State.Text = "Parent working"
+	c.event.Frame.Family = &sessionapi.Family{Root: "main", Agents: &activity.Publication{Roster: []activity.AgentRow{{Agent: rootAgent}}}, Status: sessionpresentation.Label{Text: "Parent working"}}
 	c.refreshView(time.Now())
 	summary, _ = terminal.Agents.Current(rootAgent, time.Now(), 100)
 	if !strings.Contains(ansi.Strip(summary), "Parent working") {
@@ -351,11 +374,11 @@ func TestChildFamilyRosterPreservesEditCounts(t *testing.T) {
 	u.testMainFrame(120, 24, 0)
 	rootAgent := activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root", Thread: "main"}}
 	childAgent := activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root/worker", Thread: "child"}}
-	family := &activity.Publication{Roster: []activity.AgentRow{{Agent: rootAgent}, {Agent: childAgent, Depth: 1}}, LineCounts: map[string]diffmodel.Counts{"/root": {Added: 100}, "/root/worker": {Added: 3}}, NetCounts: new(diffmodel.Counts{Added: 103})}
-	parent := &nativeClient{event: sessionapi.NativeEvent{Frame: sessionapi.NativeFrame{Agents: family}}}
+	roster := &activity.Publication{Roster: []activity.AgentRow{{Agent: rootAgent}, {Agent: childAgent, Depth: 1}}, LineCounts: map[string]diffmodel.Counts{"/root": {Added: 100}, "/root/worker": {Added: 3}}, NetCounts: new(diffmodel.Counts{Added: 103})}
+	family := &sessionapi.Family{Root: "main", Agents: roster}
 	terminal, _ := u.terminalViews.NewAttachment(diffrender.DarkTheme)
-	c := &nativeClient{displayParent: parent, renderer: nativeClientRenderer{terminal: terminal, views: u.terminalViews}}
-	c.event.Frame = sessionapi.NativeFrame{View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: &activity.Publication{LineCounts: map[string]diffmodel.Counts{"/root": {Added: 3}}, NetCounts: new(diffmodel.Counts{Added: 3})}}
+	c := &nativeClient{renderer: nativeClientRenderer{terminal: terminal, views: u.terminalViews}}
+	c.event.Frame = sessionapi.NativeFrame{Family: family, View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: &activity.Publication{LineCounts: map[string]diffmodel.Counts{"/root": {Added: 3}}, NetCounts: new(diffmodel.Counts{Added: 3})}}
 	c.event.Frame.View.Info.Caller = "/root/worker"
 	c.refreshView(time.Now())
 	rows := ansi.Strip(strings.Join(terminal.Agents.NativeRoster(120, 10, time.Now(), false), "\n"))
@@ -373,4 +396,15 @@ func TestPreparedChildStartsWithItsOwnReviewWorkspace(t *testing.T) {
 	if view.Workspace != "/var/tmp/child-worktree" || !u.review.Scope().Workspaces[view.Workspace]["child"] {
 		t.Fatalf("fresh child borrowed another review workspace: %+v", view)
 	}
+}
+
+// Publish the same ordinary source consumed by Hub.Family, independently of any
+// native attachment or selected renderer.
+func publishNativeFamilySource(api *sessionapi.Server, frame sessionapi.NativeFrame, workspace, root, caller, role string, members []control.Participant) error {
+	return api.Publish(sessionapi.Frame{
+		Session:    sessionapi.Session{Thread: frame.View.Main.ID, Workspace: workspace, Caller: caller, Role: role},
+		FamilyRoot: root,
+		Status:     frame.View.Status.State, Members: members,
+		Main: frame.Main, Agents: frame.Agents, Review: frame.Review,
+	})
 }

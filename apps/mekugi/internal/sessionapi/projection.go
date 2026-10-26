@@ -11,6 +11,7 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
+	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // Frame is one detached renderer input. Launch builds it from admitted owners;
@@ -22,7 +23,8 @@ type Frame struct {
 	Prompts    *Prompts  // Absent for a replay.
 	Attachment uint64    // A change restarts entry sequences.
 	Status     sessionpresentation.Label
-	Caption    sessionpresentation.Caption // Runtime facts for admitted descendant viewers.
+	FamilyRoot string                      // Admitted logical family, independent of runtime lifetime.
+	Members    []threadcontrol.Participant // Admitted coordination facts, never transcript history.
 	Main       *activitypresentation.Publication
 	// Agents is the child feed: each agent's own activity, and the roster.
 	Agents *activitypresentation.Publication
@@ -34,6 +36,8 @@ type Frame struct {
 
 type Session struct {
 	Thread    string `json:"thread"`
+	Caller    string `json:"caller,omitzero"`
+	Role      string `json:"role,omitzero"`
 	Title     string `json:"title,omitzero"`
 	Workspace string `json:"workspace,omitzero"`
 	Started   int64  `json:"started,omitzero"`

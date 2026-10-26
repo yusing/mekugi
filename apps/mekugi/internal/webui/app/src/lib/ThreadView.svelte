@@ -16,7 +16,7 @@
   import { semantic } from "./semantic.svelte";
   import SemanticDialogs from "./SemanticDialogs.svelte";
   import SessionInfo from "./SessionInfo.svelte";
-  import { stream, Stream } from "./stream.svelte";
+  import { stream } from "./stream.svelte";
   import { newIdentity } from "./transport";
   import ThreadDocks from "./ThreadDocks.svelte";
   import Transcript from "./Transcript.svelte";
@@ -66,7 +66,13 @@
   $effect(() => {
     const thread = id,
       owner = machine;
-    return () => semantic.release(thread, owner);
+    return () =>
+      queueMicrotask(() => {
+        // Svelte teardown reads the departing route's values. Reconcile only
+        // after navigation, and never close a newly mounted view of this thread.
+        if (view.machine === owner.id && view.session === thread) return;
+        semantic.release(thread, owner);
+      });
   });
 
   const session = $derived(stream.session);
@@ -102,45 +108,29 @@
       tick().then(() => heading?.focus({ preventScroll: true }));
   });
 
-  // The transcript shows the chosen agent's own activity, and Main's otherwise.
-  const shown = $derived(
+  // Live selections name ordinary thread IDs. An agent route selects only
+  // retained activity within the current recording or historical publication.
+  const recorded = $derived(
     view.agent && view.agent !== "/root" ? stream.agent(view.agent) : undefined,
   );
+  const selected = $derived(stream.roster.agents.find((agent) => agent.thread === id));
+  const shown = $derived(recorded ?? (selected?.name !== "/root" ? selected : undefined));
   // Seeking back to before the chosen agent started returns to Main for good,
   // rather than switching again once the agent starts.
   $effect(() => {
-    if (view.agent && stream.roster.agents.length && !shown) show(undefined, true);
-  });
-  const owner = $derived(shown?.name ?? "/root");
-  const child = new Stream();
-  const childThread = $derived(
-    shown?.thread && semantic.root?.frame.childThreads?.includes(shown.thread)
-      ? shown.thread
-      : undefined,
-  );
-  const childReady = $derived(!!childThread && semantic.frame?.view.Main.ID === childThread);
-  const childFeedReady = $derived(childReady && child.session?.thread === childThread);
-  const active = $derived(childThread ? child : stream);
-  $effect(() => {
-    const thread = live && !ended ? childThread : undefined;
-    untrack(() => semantic.select(thread));
+    if (view.agent && stream.roster.agents.length && !recorded) show(undefined, true);
   });
   $effect(() => {
-    const thread = childReady ? childThread : undefined;
-    untrack(() => {
-      if (thread) child.connect(thread, machine);
-      else child.close();
-    });
-    return () => child.close();
+    if (live && recorded?.thread && frame?.family?.threads.includes(recorded.thread))
+      show(recorded.name, true);
   });
+  const owner = $derived(shown?.name ?? session?.caller ?? "/root");
   const entries = $derived(
-    childFeedReady
-      ? child.main.order.map((seq) => child.main.entries[seq])
-      : shown
-        ? stream.agents.order
-            .map((seq) => stream.agents.entries[seq])
-            .filter((e) => e.agent === shown.name)
-        : main,
+    recorded
+      ? stream.agents.order
+          .map((seq) => stream.agents.entries[seq])
+          .filter((e) => e.agent === recorded.name)
+      : main,
   );
   // A view changed from inside the transcript removes the control that changed
   // it; focus then moves to the new transcript, which names whose it is.
@@ -179,7 +169,7 @@
     wide.addEventListener("change", change);
     return () => wide.removeEventListener("change", change);
   });
-  const frame = $derived(semantic.frame);
+  const frame = $derived(semantic.frame?.view.Main.ID === id ? semantic.frame : undefined);
   const sview = $derived(frame?.view);
   const details = $derived(live && !ended ? frame?.details : undefined);
   // Saved changes exist for live sessions; recorded playback has none.
@@ -222,17 +212,14 @@
     }
   }
 
-  const side = $derived(
-    (!shown || childFeedReady) && !!sview && sview.Displayed.ID !== sview.Main.ID,
-  );
-  const tabs = $derived((!shown || childFeedReady) && !!sview && (!!sview.Side || side));
+  const side = $derived(!recorded && !!sview && sview.Displayed.ID !== sview.Main.ID);
+  const tabs = $derived(!recorded && !!sview && (!!sview.Side || side));
 
   const notice = $derived.by(() => {
     if (gone) return ended ? "This thread has ended. Its last state stays here." : undefined;
-    if (childThread && child.gone) return child.gone.text;
-    if (active.connection === "open") return active.controlError;
-    if (active.error) return active.error;
-    if (active.connection === "lost") return "Connection to this machine lost. Retrying…";
+    if (stream.connection === "open") return stream.controlError;
+    if (stream.error) return stream.error;
+    if (stream.connection === "lost") return "Connection to this machine lost. Retrying…";
     return session ? "Connection lost. Reconnecting…" : undefined;
   });
 
@@ -527,11 +514,11 @@
               {owner}
               {start}
               span={playback?.until ?? 0}
-              jumps={childFeedReady ? child.jumps : stream.jumps}
+              jumps={stream.jumps}
               {empty}
               {live}
-              source={childFeedReady ? child : stream}
-              ondetails={live && !ended && sview && (!childThread || childFeedReady)
+              source={stream}
+              ondetails={live && !ended && sview
                 ? (seq) =>
                     semantic.send({
                       details: {
@@ -540,15 +527,15 @@
                         Source: seq,
                         Output: 0,
                         Sources: [],
-                        Agent: !!shown && !childFeedReady,
+                        Agent: !!recorded,
                         Path: "",
                         Caller: owner,
                       },
                     })
                 : undefined}
             ></Transcript>
-            {#if live && !ended && (!childThread || childFeedReady)}<LiveSource
-                previews={active.live}
+            {#if live && !ended && !recorded && frame}<LiveSource
+                previews={stream.live}
                 {owner}
               />{/if}
           {/key}
@@ -572,49 +559,46 @@
         </div>
       {:else if live && !ended}
         <div class="flex-none pt-1">
-          {#if shown && !childThread}
+          {#if recorded}
             <p class="{column} py-3 text-small text-muted">
               This agent's retained activity is read-only.
             </p>
           {:else}
-            {#if (!childThread || childFeedReady) && active.prompts && (active.prompts.approvals.length || active.prompts.questions.length)}
+            {#if frame && stream.prompts && (stream.prompts.approvals.length || stream.prompts.questions.length)}
               <section
                 class="mx-auto flex max-h-[50dvh] w-full max-w-column flex-col gap-3 overflow-y-auto overscroll-contain px-4 pb-2"
                 aria-label="Pending prompts"
               >
-                {#each active.prompts.approvals.slice(0, 1) as approval (approval.id)}
+                {#each stream.prompts.approvals.slice(0, 1) as approval (approval.id)}
                   <Prompt
                     item={approval}
-                    count={active.prompts.approvals.length}
-                    unavailable={active.connection !== "open"}
-                    source={active}
+                    count={stream.prompts.approvals.length}
+                    unavailable={stream.connection !== "open"}
+                    source={stream}
                   />
                 {/each}
-                {#each active.prompts.questions as question (question.id)}
+                {#each stream.prompts.questions as question (question.id)}
                   <Prompt
                     item={question}
-                    unavailable={active.connection !== "open"}
-                    source={active}
+                    unavailable={stream.connection !== "open"}
+                    source={stream}
                   />
                 {/each}
               </section>
             {/if}
-            <ThreadDocks />
-            {#key childThread ?? id}
-              <Composer
-                input={!childThread || childFeedReady ? active.input : undefined}
-                source={active}
-                agentName={shown?.label ?? "main"}
-                machine={machine.label}
-                initial={shown ? undefined : initial}
-                {oninitial}
-                unavailable={(!shown || childFeedReady) &&
-                active.connection === "open" &&
-                semantic.connection === "open"
-                  ? undefined
-                  : "Not connected to the thread."}
-              />
-            {/key}
+            {#if frame}<ThreadDocks />{/if}
+            <Composer
+              input={frame ? stream.input : undefined}
+              source={stream}
+              agentName={shown?.label ?? "main"}
+              role={session?.role || selected?.role}
+              machine={machine.label}
+              {initial}
+              {oninitial}
+              unavailable={frame && stream.connection === "open" && semantic.connection === "open"
+                ? undefined
+                : "Not connected to the thread."}
+            />
           {/if}
         </div>
       {/if}
@@ -690,5 +674,5 @@
       </aside>
     {/if}
   </div>
-  {#if live && !ended && (!shown || childFeedReady)}<SemanticDialogs />{/if}
+  {#if live && !ended && !recorded && frame}<SemanticDialogs />{/if}
 </div>

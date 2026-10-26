@@ -1,9 +1,12 @@
 package launch
 
 import (
+	"context"
 	json "encoding/json/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -181,18 +184,44 @@ func TestUISnapshotLogicalPausedChildren(t *testing.T) {
 	if err := threads.shared.Pause(t.Context(), "main"); err != nil {
 		t.Fatal(err)
 	}
-	threads.hub = sessionapi.NewHub(t.Context(), nil)
-	defer threads.hub.Close()
-	views := nativeViews{threads: threads}
-	if children := views.descendants(&u.attached, "main"); len(children) != 1 || children["child"].Main != nil {
+	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	u.testActivity(u.shell.Agents).publishActivity()
+	launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+		frame := sessionapi.NativeFrame{View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: u.attached.childSource.Publication(u.attached.presentation, u.attached.source)}
+		root, members := threads.shared.Family("main")
+		if err := publishNativeFamilySource(api, frame, start.Workspace, root, "/root", "", members); err != nil {
+			return err
+		}
+		if err := api.SetSummary(sessionapi.Summary{Thread: "main", Workspace: start.Workspace, Ready: true}); err != nil {
+			return err
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	hub := sessionapi.NewHub(t.Context(), launcher)
+	defer hub.Close()
+	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
+	defer server.Close()
+	rpc, err := sessionapi.OpenRPC(t.Context(), server.Client(), server.URL+sessionapi.RPCPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rpc.Close()
+	serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: u.attached.cwd, Model: "fixture", Resume: "main"})
+	family, _ := hub.Family("main")
+	if family == nil || !slices.Contains(family.Threads, "child") {
 		t.Fatal("paused child was not retained as a cold runtime destination")
 	}
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
-	child := u.attached.session.Agent("/root/worker")
-	if child == nil || child.Thread != "child" || !child.Paused || child.Responding || child.Waiting {
-		t.Fatalf("paused child identity or work was lost: %+v", child)
+	found := false
+	for _, row := range family.Agents.Roster {
+		if row.Agent.Thread == "child" {
+			found = row.Agent.Paused && !row.Agent.Responding && !row.Agent.Waiting
+		}
 	}
-	u.testActivity(u.shell.Agents).publishActivity()
+	if !found {
+		t.Fatal("cold family child lost its paused work metadata")
+	}
+	u.shell.Agents.UpdateRoster(family.Agents)
 	assertNativeUISnapshot(t, "logical-paused-children", u.shell.Agents.NativeRoster(80, 5, *at, true))
 }
 

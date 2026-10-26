@@ -61,7 +61,7 @@ func (c *NativeConnection) Attach(ctx context.Context, thread string) (*NativeCo
 	}
 	c.scope.refs++
 	c.scope.mu.Unlock()
-	subscription, err := c.scope.rpc.Subscribe(ctx, "view/attach", RPCParams{Thread: thread, Parent: c.thread})
+	subscription, err := c.scope.rpc.Subscribe(ctx, "view/attach", RPCParams{Thread: thread})
 	if err != nil {
 		c.scope.release()
 		return nil, nativeRPCFailure(err)
@@ -155,7 +155,7 @@ func decodeNativeEvent(kind string, data []byte, previous NativeEvent) (NativeEv
 	}
 	event := wire.NativeEvent
 	if wire.Retained != 0 {
-		if kind == "snapshot" || first || wire.Retained & ^(nativeMain|nativeAgents|nativeReview) != 0 || event.Frame.View.Version.Attachment != previous.Frame.View.Version.Attachment || event.Frame.Switch != nil {
+		if kind == "snapshot" || first || wire.Retained & ^(nativeMain|nativeAgents|nativeReview|nativeFamily) != 0 || event.Frame.View.Version.Attachment != previous.Frame.View.Version.Attachment || event.Frame.Switch != nil {
 			return NativeEvent{}, errors.New("native delta has no compatible owner snapshot")
 		}
 		if wire.Retained&nativeMain != 0 {
@@ -166,6 +166,9 @@ func decodeNativeEvent(kind string, data []byte, previous NativeEvent) (NativeEv
 		}
 		if wire.Retained&nativeReview != 0 {
 			event.Frame.Review = previous.Frame.Review
+		}
+		if wire.Retained&nativeFamily != 0 {
+			event.Frame.Family = previous.Frame.Family
 		}
 	}
 	if event.Attachment == "" || previous.Attachment != "" && previous.Attachment != event.Attachment {

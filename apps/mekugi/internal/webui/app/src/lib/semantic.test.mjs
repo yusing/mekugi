@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { registerHooks, stripTypeScriptTypes } from "node:module";
 import { afterEach, test } from "node:test";
 import { compileModule } from "svelte/compiler";
+import { derived, get } from "svelte/internal/client";
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -41,6 +42,16 @@ test("agent labels retain canonical display names before roster metadata arrives
   assert.equal(stream.label("/root"), "main");
   assert.equal(stream.label("/root/worker/reviewer"), "worker/reviewer");
   assert.equal(stream.label("unknown"), "unknown");
+  stream.session = { thread: "delegate-thread", caller: "/root/delegate" };
+  stream.roster = {
+    agents: [
+      { name: "/root", thread: "root-thread", label: "root", state: "working" },
+      { name: "/root/delegate", thread: "delegate-thread", label: "delegate", state: "working" },
+    ],
+  };
+  assert.equal(stream.label("Main"), "delegate");
+  assert.equal(stream.agent("Main")?.name, "/root/delegate");
+  assert.equal(stream.agent("Main")?.thread, "delegate-thread");
 });
 
 test("roster activity uses observed progress and collapsed reasoning labels", () => {
@@ -70,13 +81,38 @@ test("roster activity uses observed progress and collapsed reasoning labels", ()
     { verb: "Thinking", html: "" },
   );
 });
-const { view } = await import("./view.svelte.ts");
+const { view, show } = await import("./view.svelte.ts");
 const { prepareAttachments } = await import("./attachments.ts");
-const { Connector, unknownOutcome } = await import("./transport.ts");
+const { Connector, TransportError, unknownOutcome } = await import("./transport.ts");
+const { protocolVersion } = await import("../../../../sessionapi/protocol.ts");
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+const nativeQuestion = (ID = "question", Thread = "thread-one") => ({
+  ID,
+  Thread,
+  Sync: false,
+  Local: false,
+  Turn: "turn",
+  Item: "item",
+  Questions: [],
+  Sent: false,
+  Resolved: false,
+});
+const nativeApproval = (ID = "approval", Thread = "thread-one") => ({
+  ID,
+  Thread,
+  Selected: 0,
+  Turn: "turn",
+  Item: "item",
+  Title: "Approve",
+  Subject: "command",
+  Outcome: "",
+  Details: [],
+  Choices: [],
+});
 afterEach(() => {
   semantic.close();
   stream.close();
+  stream.session = undefined;
   Object.assign(view, { machine: undefined, session: undefined, agent: undefined });
 });
 
@@ -121,10 +157,9 @@ function machine(id = "machine-one", thread = "thread-one", attachment = "view-o
     views,
     subscribe(method, params, event, state) {
       assert.equal(method, "view/attach");
-      if (!views.length) assert.deepEqual(params, { thread });
+      assert.deepEqual(params, { thread: params.thread });
       const subscription = {
         thread: params.thread,
-        parent: params.parent,
         stopped: 0,
         event,
         state,
@@ -134,13 +169,18 @@ function machine(id = "machine-one", thread = "thread-one", attachment = "view-o
             data: {
               attachment: params.thread === thread ? attachment : `${params.thread}-view`,
               frame: {
+                questions: [],
+                approvals: [],
+                ...extra,
                 view: {
                   Input: { ID: subscription.thread },
                   Main: { ID: subscription.thread },
                   Version: { Attachment: 1, Revision: revision },
+                  Questions: { Count: extra.questions?.length ?? 0 },
+                  Approvals: { Count: extra.approvals?.length ?? 0 },
+                  ...extra.view,
                 },
                 effects,
-                ...extra,
               },
             },
           });
@@ -199,70 +239,437 @@ test("mutations capture originating owner, attachment and version before enterin
   assert.equal(semantic.pending, 0);
 });
 
-test("admitted child views preserve drafts and route captured input to its own runtime", async () => {
+test("ordinary thread views preserve drafts and captured requests across same-machine navigation", async () => {
   const owner = machine();
-  owner.views[0].snapshot(1, [], { childThreads: ["child"] });
+  Object.assign(view, { machine: owner.id, session: "thread-one" });
   semantic.editor().text = "main draft";
-  const parentEvent = semantic.event;
-  semantic.select("child");
-  assert.equal(owner.views[1].thread, "child");
-  assert.equal(owner.views[1].parent, "thread-one");
+  view.session = "delegate";
+  semantic.release("thread-one", owner);
+  semantic.connect("delegate", owner);
+  assert.equal(owner.views[1].thread, "delegate");
   semantic.editor().text = "draft before attachment";
   owner.views[1].snapshot();
   assert.equal(semantic.editor().text, "draft before attachment");
-  semantic.editor().text = "child draft";
-  const childEvent = semantic.event;
-  const childInput = semantic.send({ command: "/child" });
+  const delegateEvent = semantic.event;
+  const releaseDelegate = semantic.retainInput();
+  const first = semantic.send({ command: "/first" });
+  const queued = semantic.send({ command: "/queued" });
   await tick();
-  semantic.select();
+  view.session = "thread-one";
+  semantic.release("delegate", owner);
+  semantic.connect("thread-one", owner);
   assert.equal(semantic.editor().text, "main draft");
-  assert.equal(owner.views[0].stopped, 0);
+  owner.views[2].snapshot();
+  assert.equal(semantic.pending, 0);
+  assert.deepEqual(
+    owner.views.map((item) => item.stopped),
+    [1, 0, 0],
+  );
   owner.requests[0].resolve({ version: { Attachment: 1, Revision: 2 } });
   owner.views[1].snapshot(2);
-  assert.equal(await childInput, undefined, "inactive child confirmation remains scoped");
-  assert.equal(owner.requests[0].params.thread, "child");
-  const prepared = semantic.send({ command: "/prepared" }, undefined, false, childEvent);
+  assert.equal(await first, undefined);
   await tick();
-  assert.equal(owner.requests[1].params.thread, "child");
+  assert.equal(owner.requests[1].params.thread, "delegate");
   owner.requests[1].resolve({ version: { Attachment: 1, Revision: 2 } });
+  assert.equal(await queued, undefined);
+  const prepared = semantic.send({ command: "/prepared" }, undefined, false, delegateEvent);
+  await tick();
+  assert.equal(owner.requests[2].params.thread, "delegate");
+  owner.requests[2].resolve({ version: { Attachment: 1, Revision: 2 } });
   assert.equal(await prepared, undefined);
-  assert.equal(semantic.event.attachment, parentEvent.attachment);
-  semantic.select("historical");
-  assert.equal(owner.views.length, 2, "unadmitted history never attaches a runtime");
-  semantic.select("child");
-  assert.equal(semantic.editor().text, "child draft");
-  assert.equal(owner.views.length, 2, "returning to a child reuses its attached view");
-  semantic.release("thread-one", owner);
+  releaseDelegate();
+  assert.equal(owner.views[1].stopped, 1);
+  semantic.connect("delegate", owner);
+  assert.equal(semantic.editor().text, "draft before attachment");
+  assert.equal(owner.views.length, 4);
+  owner.views[3].snapshot();
+  view.session = undefined;
+  semantic.release("delegate", owner);
   assert.deepEqual(
-    owner.views.map((subscription) => subscription.stopped),
-    [1, 1],
+    owner.views.map((item) => item.stopped),
+    [1, 1, 1, 1],
   );
+});
+
+test("idle source retirement waits for a valid destination snapshot and restores drafts on reattach", () => {
+  const owner = machine();
+  semantic.editor().text = "root draft";
+  semantic.connect("delegate", owner);
+  const delegate = owner.views[1];
+  delegate.event({
+    kind: "patch",
+    data: {
+      attachment: "delegate-view",
+      frame: {
+        view: {
+          Main: { ID: "delegate" },
+          Input: { ID: "delegate" },
+          Version: { Attachment: 1, Revision: 1 },
+        },
+        effects: [],
+      },
+    },
+  });
+  assert.equal(owner.views[0].stopped, 0, "a patch cannot establish the destination");
+  delegate.event({ kind: "snapshot", data: { attachment: "malformed" } });
+  assert.equal(owner.views[0].stopped, 0, "a malformed snapshot cannot retire the source");
+  delegate.state("lost", { message: "unavailable", status: 410 });
+  assert.equal(owner.views[0].stopped, 0, "failed destination admission keeps the source alive");
+  semantic.connect("thread-one", owner);
+  assert.equal(semantic.editor().text, "root draft");
+  assert.equal(owner.views.length, 2);
+  semantic.connect("sibling", owner);
+  owner.views[2].snapshot();
+  assert.equal(owner.views[0].stopped, 1, "the original root has no permanent lifetime exception");
+  owner.views[0].snapshot(2, [{ ID: 1, Restore: textDraft("late root effect") }]);
+  assert.equal(semantic.frame.view.Main.ID, "sibling");
+  semantic.connect("thread-one", owner);
+  owner.views[3].snapshot();
+  assert.equal(semantic.editor().text, "root draft");
+});
+
+test("the reactive composer owns destination input while its first snapshot is pending", () => {
+  const owner = machine();
+  semantic.editor().text = "source draft";
+  owner.state("connecting");
+  const composer = derived(() => semantic.editor());
+  assert.equal(get(composer).text, "source draft");
+  semantic.connect("delegate", owner);
+  get(composer).text = "draft while attaching";
+  owner.views[1].snapshot();
+  assert.equal(get(composer).text, "draft while attaching");
+  semantic.connect("thread-one", owner);
+  assert.equal(get(composer).text, "source draft");
+});
+
+test("inactive native questions and approvals retain their source until both resolve", () => {
+  const owner = machine();
+  owner.views[0].snapshot(2, [], { questions: [nativeQuestion()], approvals: [nativeApproval()] });
+  semantic.prompt("question").drafts.answer = { choice: undefined, text: "retained answer" };
+  semantic.connect("sibling", owner);
+  owner.views[1].snapshot();
+  assert.equal(owner.views[0].stopped, 0);
+  semantic.connect("thread-one", owner);
+  assert.equal(semantic.prompt("question").drafts.answer.text, "retained answer");
+  semantic.connect("sibling", owner);
+  owner.views.at(-1).snapshot();
+  owner.views[0].snapshot(3, [], { approvals: [nativeApproval()] });
+  assert.equal(owner.views[0].stopped, 0, "an unresolved approval still retains its source");
+  owner.views[0].snapshot(4);
+  assert.equal(owner.views[0].stopped, 1, "resolved native prompts clear nonsending cached drafts");
+  semantic.connect("thread-one", owner);
+  owner.views.at(-1).snapshot();
+  assert.deepEqual(semantic.prompt("question").drafts, {});
+});
+
+test("a captured prompt reply retains its resolved source until sending finishes", () => {
+  const owner = machine();
+  owner.views[0].snapshot(2, [], { questions: [nativeQuestion()] });
+  const prompt = semantic.prompt("question");
+  prompt.drafts.answer = { choice: undefined, text: "pending reply" };
+  prompt.sending = true;
+  const release = semantic.retainInput();
+  semantic.connect("sibling", owner);
+  owner.views[1].snapshot();
+  owner.views[0].snapshot(3);
+  assert.equal(prompt.resolved, true);
+  assert.equal(prompt.drafts.answer.text, "pending reply");
+  assert.equal(owner.views[0].stopped, 0);
+  prompt.sending = false;
+  release();
+  assert.equal(owner.views[0].stopped, 1);
+  semantic.connect("thread-one", owner);
+  owner.views[2].snapshot();
+  assert.deepEqual(semantic.prompt("question").drafts, {});
+});
+
+test("unacknowledged editor effects retain their source until its receipt settles", async () => {
+  const owner = machine();
+  owner.snapshot(2, [{ ID: 1, Restore: textDraft("restored source"), Clipboard: null }]);
+  await tick();
+  semantic.connect("sibling", owner);
+  owner.views[1].snapshot();
+  assert.equal(owner.views[0].stopped, 0);
+  assert.equal(owner.requests[0].params.thread, "thread-one");
+  owner.requests[0].resolve({});
+  await tick();
+  assert.equal(owner.views[0].stopped, 1);
+  semantic.connect("thread-one", owner);
+  owner.views[2].snapshot();
+  assert.equal(semantic.editor().text, "restored source");
+  assert.equal(owner.requests.length, 1, "retired receipts do not replay on a fresh attachment");
+});
+
+test("inactive server consequences and recovery keep their source until published settlement", () => {
+  const owner = machine();
+  owner.views[0].snapshot(2, [], { pendingEffects: true });
+  semantic.connect("sibling", owner);
+  owner.views[1].snapshot();
+  assert.equal(owner.views[0].stopped, 0);
+  owner.views[0].snapshot(3, [{ ID: 1, Recovery: { preview: "recover me", attachments: true } }]);
+  assert.equal(owner.views[0].stopped, 0, "retained recovery is unsettled source work");
+  owner.views[0].snapshot(4);
+  assert.equal(owner.views[0].stopped, 1);
+  assert.equal(semantic.frame.view.Main.ID, "sibling");
+});
+
+test("inactive refusals retire while unknown mutation outcomes remain visible on return", async () => {
+  for (const message of [
+    "Refused",
+    unknownOutcome,
+    `Server admission uncertain. ${unknownOutcome}`,
+  ]) {
+    const unknown = message !== "Refused";
+    semantic.close();
+    const owner = machine();
+    const result = semantic.send({ command: "/status" });
+    await tick();
+    owner.requests[0].reject(new TransportError(message, unknown ? "unknown" : "refused"));
+    await result;
+    semantic.connect("sibling", owner);
+    owner.views[1].snapshot();
+    assert.equal(owner.views[0].stopped, unknown ? 0 : 1);
+    semantic.connect("thread-one", owner);
+    if (unknown) {
+      assert.equal(semantic.error, message);
+      assert.equal(owner.views.length, 2);
+    } else {
+      owner.views[2].snapshot();
+      assert.equal(semantic.error, undefined);
+    }
+  }
+});
+
+test("delegate, sibling and Main navigation retires idle views while preserving independent drafts", () => {
+  const owner = machine("machine-one", "delegate");
+  assert.equal(owner.views.length, 1, "cold selection needs only its ordinary thread attachment");
+  stream.session = { thread: "delegate", caller: "/root/delegate" };
+  Object.assign(view, { machine: owner.id, session: "delegate" });
+  const family = {
+    root: "main-thread",
+    threads: ["main-thread", "delegate", "sibling"],
+    agents: {},
+    status: {},
+  };
+  stream.roster = {
+    agents: [
+      { name: "/root", thread: "main-thread", label: "Main", state: "working" },
+      { name: "/root/delegate", thread: "delegate", label: "delegate", state: "working" },
+      { name: "/root/sibling", thread: "sibling", label: "sibling", state: "working" },
+    ],
+  };
+  owner.views[0].snapshot(2, [], { family });
+  semantic.editor().text = "delegate draft";
+  assert.equal(stream.agent("/root/sibling")?.thread, "sibling");
+  assert.equal(semantic.frame.family.root, "main-thread");
+  show("/root/sibling");
+  assert.equal(view.session, "sibling");
+  assert.equal(view.agent, undefined);
+  semantic.connect(view.session, owner);
+  owner.views[1].snapshot(1, [], { family });
+  semantic.editor().text = "sibling draft";
+  show("Main");
+  assert.equal(view.session, "main-thread");
+  semantic.connect(view.session, owner);
+  owner.views[2].snapshot(1, [], { family });
+  semantic.editor().text = "main draft";
+  show("/root/delegate");
+  assert.equal(view.session, "delegate");
+  semantic.connect(view.session, owner);
+  owner.views.at(-1).snapshot(1, [], { family });
+  assert.equal(semantic.editor().text, "delegate draft");
+  show("/root/sibling");
+  assert.equal(view.session, "sibling");
+  assert.equal(view.agent, undefined);
+  semantic.connect(view.session, owner);
+  owner.views.at(-1).snapshot(1, [], { family });
+  assert.equal(semantic.editor().text, "sibling draft");
+  show(undefined);
+  assert.equal(view.session, "main-thread");
+  semantic.connect(view.session, owner);
+  owner.views.at(-1).snapshot(1, [], { family });
+  assert.equal(semantic.editor().text, "main draft");
+  assert.deepEqual(
+    owner.views.map((item) => item.thread),
+    ["delegate", "sibling", "main-thread", "delegate", "sibling", "main-thread"],
+  );
+  assert.deepEqual(
+    owner.views.map((item) => item.stopped),
+    [1, 1, 1, 1, 1, 0],
+  );
+});
+
+test("historical agents and replay keep the selected thread and use recorded agent routing", (t) => {
+  const owner = machine("machine-one", "delegate");
+  Object.assign(view, { machine: owner.id, session: "delegate" });
+  owner.views[0].snapshot(2, [], {
+    family: { root: "main", threads: ["main", "delegate", "sibling"], agents: {}, status: {} },
+  });
+  stream.roster = {
+    agents: [
+      { name: "/root/old", thread: "historical", label: "old", state: "done" },
+      { name: "/root/sibling", thread: "sibling", label: "sibling", state: "working" },
+    ],
+  };
+  show("/root/old");
+  assert.equal(view.session, "delegate");
+  assert.equal(view.agent, "/root/old");
+  stream.playback = { position: 1, until: 10, speed: 1, paused: true };
+  t.after(() => {
+    stream.playback = undefined;
+  });
+  show("/root/sibling");
+  assert.equal(view.session, "delegate");
+  assert.equal(view.agent, "/root/sibling");
+  assert.equal(owner.views.length, 1);
+});
+
+test("returning to an unavailable family Main attempts its original thread and surfaces refusal", () => {
+  const owner = machine("machine-one", "delegate");
+  Object.assign(view, { machine: owner.id, session: "delegate" });
+  owner.views[0].snapshot(2, [], {
+    family: { root: "original-main", threads: ["delegate"], agents: {}, status: {} },
+  });
+  semantic.editor().text = "delegate draft";
+  show("/root");
+  assert.equal(view.session, "original-main");
+  assert.equal(view.agent, undefined);
+  semantic.release("delegate", owner);
+  stream.connect(view.session, {
+    subscribe(method, params, _event, state) {
+      assert.equal(method, "session/subscribe");
+      assert.equal(params.thread, "original-main");
+      state("lost", { status: 410, message: "Original thread unavailable." });
+      return () => {};
+    },
+  });
+  assert.equal(stream.gone.text, "Original thread unavailable.");
+  assert.equal(semantic.editor().text, "delegate draft");
+  assert.equal(owner.views[0].stopped, 0);
+});
+
+test("prompt drafts and outcomes are thread-local and prune only after sending settles", () => {
+  const owner = machine();
+  owner.views[0].snapshot(2, [], { questions: [nativeQuestion("same-prompt")] });
+  const main = semantic.prompt("same-prompt");
+  Object.assign(main, {
+    drafts: { question: { choice: 2, text: "main answer" } },
+    reason: "main reason",
+    accepted: true,
+    error: "main outcome",
+  });
+  semantic.connect("sibling", owner);
+  owner.views[1].snapshot();
+  const sibling = semantic.prompt("same-prompt");
+  assert.notEqual(sibling, main);
+  assert.deepEqual(sibling, { drafts: {}, reason: "", sending: false, accepted: false });
+  sibling.drafts.question = { choice: "skip", text: "sibling answer" };
+  sibling.sending = true;
+  owner.views[1].snapshot(2);
+  assert.deepEqual(semantic.prompt("same-prompt"), sibling, "in-flight replies retain their state");
+  semantic.connect("thread-one", owner);
+  assert.deepEqual(semantic.prompt("same-prompt"), main);
+  assert.equal(main.drafts.question.text, "main answer");
+  assert.equal(main.accepted, true);
+  assert.equal(main.error, "main outcome");
+  owner.views[0].snapshot(3, [], { questions: [{ ...nativeQuestion("same-prompt"), Sent: true }] });
+  assert.deepEqual(
+    semantic.prompt("same-prompt"),
+    main,
+    "sent but unresolved answers remain owned",
+  );
+  owner.views[0].snapshot(4);
+  assert.deepEqual(
+    semantic.prompt("same-prompt"),
+    { drafts: {}, reason: "", sending: false, accepted: false },
+    "resolved prompts discard cached outcomes",
+  );
+  semantic.connect("sibling", owner);
+  assert.deepEqual(semantic.prompt("same-prompt"), sibling);
+  assert.equal(sibling.drafts.question.text, "sibling answer");
+  sibling.sending = false;
+  owner.views[1].snapshot(3);
+  assert.deepEqual(semantic.prompt("same-prompt"), {
+    drafts: {},
+    reason: "",
+    sending: false,
+    accepted: false,
+  });
+});
+
+test("selected connection, operation errors and retained recovery stay scoped to their source", async () => {
+  const owner = machine();
+  const failed = semantic.send({ command: "/unknown" });
+  await tick();
+  owner.requests[0].reject({ kind: "unknown" });
+  assert.equal(await failed, unknownOutcome);
+  owner.snapshot(2, [{ ID: 1, Recovery: { preview: "main recovery", attachments: true } }]);
+  semantic.connect("sibling", owner);
+  owner.views[1].snapshot();
+  assert.equal(semantic.error, undefined);
+  assert.deepEqual(semantic.frame.effects, []);
+  owner.views[0].state("lost", { message: "main disconnected" });
+  assert.equal(semantic.connection, "open");
+  assert.equal(semantic.connectionError, undefined);
+  semantic.connect("thread-one", owner);
+  assert.equal(semantic.connection, "lost");
+  assert.equal(semantic.connectionError, "main disconnected");
+  assert.equal(semantic.error, unknownOutcome);
+  owner.views[0].state("open");
+  owner.snapshot(3, [{ ID: 1, Recovery: { preview: "main recovery", attachments: true } }]);
+  assert.equal(semantic.frame.effects[0].Recovery.preview, "main recovery");
+  semantic.connect("sibling", owner);
+  owner.views.at(-1).snapshot();
+  assert.equal(semantic.error, undefined);
+  assert.equal(semantic.connectionError, undefined);
+  assert.deepEqual(semantic.frame.effects, []);
 });
 
 test("returning to a cached agent view never reapplies its editor effects", async () => {
   const owner = machine();
   const effect = { ID: 1, Restore: textDraft("restored main"), Clipboard: null };
-  owner.views[0].snapshot(1, [effect], { childThreads: ["child"] });
+  owner.views[0].snapshot(1, [effect], {
+    family: { root: "thread-one", threads: ["thread-one", "child"], agents: {}, status: {} },
+  });
   await tick();
   owner.requests[0].resolve({});
   await tick();
-  semantic.select("child");
+  const releaseMain = semantic.retainInput();
+  semantic.connect("child", owner);
   owner.views[1].snapshot(1, [{ ...effect, Restore: textDraft("restored child") }]);
   await tick();
   owner.requests[1].resolve({});
   await tick();
-  semantic.select();
+  const releaseChild = semantic.retainInput();
+  semantic.editor().text = "edited child";
+  semantic.connect("thread-one", owner);
   assert.equal(semantic.editor().text, "restored main");
-  semantic.select("child");
-  assert.equal(semantic.editor().text, "restored child");
+  semantic.connect("child", owner);
+  assert.equal(semantic.editor().text, "edited child");
   assert.equal(owner.requests.length, 2, "effect receipts belong to each retained view");
+  owner.views[0].snapshot(2, [{ ...effect, ID: 2, Restore: textDraft("pending main effect") }]);
+  assert.equal(semantic.editor().text, "edited child");
+  assert.equal(semantic.frame.view.Main.ID, "child");
+  semantic.connect("thread-one", owner);
+  assert.equal(semantic.editor().text, "pending main effect\nrestored main");
+  await tick();
+  assert.equal(owner.requests[2].params.thread, "thread-one");
+  owner.requests[2].resolve({});
+  await tick();
+  semantic.connect("child", owner);
+  assert.equal(semantic.editor().text, "edited child");
+  releaseMain();
+  assert.equal(owner.views[0].stopped, 1);
+  releaseChild();
 });
 
-test("selected child resumes and switches navigate from the parent page", async () => {
+test("selected ordinary threads resume and switch their own URL selection", async () => {
   const owner = machine();
-  Object.assign(view, { machine: owner.id, session: "thread-one", agent: "/root/child" });
-  owner.views[0].snapshot(1, [], { childThreads: ["child"] });
-  semantic.select("child");
+  Object.assign(view, { machine: owner.id, session: "child" });
+  owner.views[0].snapshot(1, [], {
+    family: { root: "thread-one", threads: ["thread-one", "child"], agents: {}, status: {} },
+  });
+  semantic.connect("child", owner);
   owner.views[1].snapshot(1, [{ ID: 1, Reattach: "resumed", Clipboard: null }]);
   await tick();
   assert.equal(owner.views[2].thread, "resumed");
@@ -274,34 +681,36 @@ test("selected child resumes and switches navigate from the parent page", async 
   semantic.close();
 
   const second = machine();
-  Object.assign(view, { machine: second.id, session: "thread-one", agent: "/root/child" });
-  second.views[0].snapshot(1, [], { childThreads: ["child"] });
-  semantic.select("child");
+  Object.assign(view, { machine: second.id, session: "child" });
+  second.views[0].snapshot(1, [], {
+    family: { root: "thread-one", threads: ["thread-one", "child"], agents: {}, status: {} },
+  });
+  semantic.connect("child", second);
   second.views[1].snapshot(2, [], {
     switch: { From: "child", To: "replacement", Origin: "child-view" },
   });
   assert.equal(view.session, "replacement");
-  semantic.select("child");
+  semantic.connect("child", second);
   assert.equal(second.views.length, 3, "the original roster child cannot reuse its replacement");
   semantic.close();
   assert.equal(second.views[1].stopped, 1, "switched runtime views are released");
 });
 
-test("active controls do not materialize retained child views", async (t) => {
+test("active controls do not scan retained ordinary views", async (t) => {
   const owner = machine();
   const children = Array.from({ length: 128 }, (_, i) => `child-${i}`);
-  owner.views[0].snapshot(1, [], { childThreads: children });
   for (const child of children) {
-    semantic.select(child);
-    owner.views.at(-1).snapshot();
+    semantic.connect(child, owner);
+    owner.views.at(-1).snapshot(1, [], { questions: [nativeQuestion("question", child)] });
   }
+  assert.ok(owner.views.slice(1).every((subscription) => subscription.stopped === 0));
   const values = Map.prototype.values;
   let visited = 0;
   let sent;
   try {
     t.mock.method(Map.prototype, "values", function* () {
       for (const value of values.call(this)) {
-        if (value?.parent === "thread-one" && value.lifetime instanceof AbortController) visited++;
+        if (value?.lifetime instanceof AbortController) visited++;
         yield value;
       }
     });
@@ -512,12 +921,41 @@ test("failed automatic resume preserves the source draft, attachments and in-fli
   assert.equal(await next, undefined);
 });
 
+test("an inactive receipt failure stays with its source while another thread resumes", async () => {
+  const owner = machine();
+  Object.assign(view, { machine: owner.id, session: "thread-one" });
+  owner.snapshot(2, [{ ID: 1, Restore: textDraft("source draft") }]);
+  await tick();
+  semantic.connect("sibling", owner);
+  view.session = "sibling";
+  owner.views[1].snapshot(1, [{ ID: 1, Reattach: "destination" }]);
+  await tick();
+  owner.requests[0].reject(new TransportError("Receipt refused", "refused"));
+  await tick();
+  assert.equal(owner.views[2].stopped, 0);
+  assert.equal(semantic.error, undefined);
+  owner.requests[1].resolve({});
+  await tick();
+  owner.views[2].snapshot();
+  assert.equal(view.session, "destination");
+  semantic.connect("thread-one", owner);
+  assert.equal(semantic.error, "Receipt refused");
+  assert.equal(semantic.editor().text, "source draft");
+});
+
 test("automatic resume adopts one snapshot subscription after source input and receipts settle", async () => {
   const owner = machine();
   Object.assign(view, { machine: owner.id, session: "thread-one" });
   const source = owner.views[0];
+  const releaseSource = semantic.retainInput();
+  semantic.connect("sibling", owner);
+  const sibling = owner.views[1];
+  sibling.snapshot();
+  semantic.editor().text = "sibling draft";
+  semantic.connect("thread-one", owner);
+  releaseSource();
   source.snapshot(2, [{ ID: 1, Reattach: "destination" }]);
-  const destination = owner.views[1];
+  const destination = owner.views[2];
   await tick();
   owner.requests[0].resolve({ version: { Attachment: 1, Revision: 2 } });
   await tick();
@@ -569,7 +1007,7 @@ test("automatic resume adopts one snapshot subscription after source input and r
   assert.equal(destination.stopped, 0);
   semantic.release("thread-one", owner);
   semantic.connect("destination", owner);
-  assert.equal(owner.views.length, 2, "keyed remount adopts rather than probes and reconnects");
+  assert.equal(owner.views.length, 3, "keyed remount adopts rather than probes and reconnects");
   source.snapshot(8, [{ ID: 4, Restore: textDraft("late source content") }]);
   assert.equal(semantic.editor().text, "");
   destination.snapshot(2, [{ ID: 1, Restore: textDraft("destination input") }]);
@@ -579,6 +1017,12 @@ test("automatic resume adopts one snapshot subscription after source input and r
   assert.equal(owner.requests[4].params.body.attachment, "destination-view");
   owner.requests[4].resolve({ version: { Attachment: 1, Revision: 2 } });
   await tick();
+  semantic.connect("sibling", owner);
+  assert.equal(semantic.editor().text, "sibling draft");
+  assert.equal(sibling.stopped, 1, "idle sibling views retire while their editor draft survives");
+  owner.views.at(-1).snapshot();
+  semantic.connect("destination", owner);
+  view.session = undefined;
   semantic.release("destination", owner);
   assert.equal(destination.stopped, 1);
 });
@@ -706,7 +1150,7 @@ test("saved resume reconnects through the connector to the switched thread", asy
       const request = JSON.parse(data);
       queueMicrotask(() => {
         if (request.method === "initialize")
-          this.receive({ id: request.id, result: { version: "3" } });
+          this.receive({ id: request.id, result: { version: protocolVersion } });
         if (request.method !== "view/attach") return;
         attached.push(request.params.thread);
         this.subscription = request.params.subscription;

@@ -70,7 +70,7 @@ func coalesceNative(previous, next publication) (publication, bool) {
 		if json.Unmarshal(previous.Data, &oldEnvelope) != nil || json.Unmarshal(oldEnvelope["frame"], &oldFrame) != nil {
 			return publication{}, false
 		}
-		for i, field := range []string{"main", "agents", "review"} {
+		for i, field := range []string{"main", "agents", "review", "family"} {
 			bit := nativeOwners(1 << i)
 			if after.Retained&bit != 0 && before.Retained&bit == 0 {
 				frame[field] = oldFrame[field]

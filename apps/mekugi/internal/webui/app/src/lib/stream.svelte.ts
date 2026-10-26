@@ -126,14 +126,17 @@ export class Stream {
   }
 
   label(name: string | undefined): string {
-    if (!name || name === "Main") return "main";
+    if (!name) return "main";
+    if (name === "Main") name = this.session?.caller || "/root";
     return (
       this.byName.get(name)?.label ?? (name === "/root" ? "main" : name.replace(/^\/root\//, ""))
     );
   }
 
   agent(name: string | undefined): Agent | undefined {
-    return name ? this.byName.get(name === "Main" ? "/root" : name) : undefined;
+    return name
+      ? this.byName.get(name === "Main" ? this.session?.caller || "/root" : name)
+      : undefined;
   }
 
   async control(action: Action, position?: number): Promise<void> {

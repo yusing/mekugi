@@ -5,16 +5,16 @@
 Control uses JSON-RPC 2.0 text messages over WebSocket. Local native clients
 connect to `/api/native/control` over the private Unix socket; remote human
 clients use `/api/control` through the connector. Both select WebSocket
-subprotocol `mekugi.control.v3`. The socket retains kernel-confirmed same-user
+subprotocol `mekugi.control.v4`. The socket retains kernel-confirmed same-user
 peer admission, private filesystem permissions and listener/startup locks.
 
-The first request is `initialize` with `{"version":"3"}`. Remote clients also
+The first request is `initialize` with `{"version":"4"}`. Remote clients also
 supply `token`, consumed by the connector and never forwarded to the server.
 Initialization succeeds before any session data or operation is available.
 The endpoint establishes authority; caller fields cannot select it. Remote
 connections cannot invoke native startup or native-only semantic operations.
 
-`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 3` on
+`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 4` on
 request and response. Missing/incompatible versions receive 409. WebSocket
 upgrades on the private socket also carry this header. Browser clients use the
 subprotocol and initialization version; the connector sets the private header.
@@ -102,7 +102,7 @@ thread whose initial input is pending. The latest list replaces its predecessor.
 The list contains top-level sessions only. Prepared children remain addressable
 by confirmed thread ID; `session/read` exposes their `parentThread` identity.
 This is the parent thread at admission, unchanged by runtime thread switching.
-Child discovery and presentation remain with the parent's descendant views.
+The shared family publication supplies navigation independently of parent views.
 
 ## Creation, resume and end
 
@@ -227,6 +227,10 @@ The first snapshot identifies the admitted startup operation until the execution
 owner confirms a logical thread. Startup never invents a thread ID. Subsequent intents carry `startup` until an explicit originating-view switch
 confirms `thread`. Reattachment uses `view/attach` with the selected identity.
 
+A detail request's `Displayed` identity captures content within its attachment;
+it does not route to another live runtime. Clients first attach that runtime,
+then request its details using the destination's published version and workspace.
+
 Resuming a thread already owned by this server attaches the requesting native
 renderer to that owner rather than executing another host resume. The source
 view remains alive until the destination supplies a valid initial snapshot and
@@ -250,13 +254,13 @@ composer and answer snapshots remain admissible across newer revisions of that
 same attachment; the execution owner still rechecks operation and prompt state.
 
 Native snapshots contain complete frames. Local native patches carry a `retained`
-bitmask: 1 retains `main`, 2 retains `agents`, and 4 retains `review` from the
-preceding publication instead of repeating those fields. All other frame fields
-remain complete replacements. A clear owner is an explicit `null` with its bit
-unset. Retained owners never cross an attachment reset or thread switch, and
+bitmask: 1 retains `main`, 2 retains `agents`, 4 retains `review`, and 8 retains
+`family` from the preceding publication instead of repeating those fields.
+All other frame fields remain complete replacements. A clear owner is an explicit
+`null` with its bit unset. Retained owners never cross an attachment reset or thread switch, and
 reconnection starts with a complete snapshot. Queues fold retained owners into
 newer pending updates without dropping the initial snapshot or switch boundary.
-Remote human frames remain complete projections. Protocol version 3 is required;
+Remote human frames remain complete projections. Protocol version 4 is required;
 older clients must reconnect with a matching version rather than applying deltas.
 
 Native image file details carry an admitted local source tied to the detail
@@ -512,7 +516,17 @@ capacity. Missing, oversized or non-raster sources fail explicitly. Local
 files and inline image data are supported up to the upload limit; remote URLs are
 not fetched. Browser image transfers use an independent authenticated connection.
 
-Explicit live `view/attach` may name `parent` alongside a retained child
-`thread`. The selected parent's prepared-runtime owner admits only its own
-descendants and resumes their runtime without submitting input or restarting
-work. Unadmitted historical identities remain observational.
+Live `view/attach` selects a confirmed `thread` identity. The server resolves
+admitted cold membership and preparation without client-supplied parent context;
+selection resumes execution ownership without submitting input or restarting work.
+Unadmitted historical identities remain observational.
+
+Every ordinary view includes `family`: its `root` thread, admitted `threads`,
+navigation `agents` and root `status`. Navigation contains roster summaries and
+aggregate change counts, not another thread's transcript. Each selected thread
+retains its own feed, workspace, settings, prompts and effects. The server derives
+family values from ordinary runtime publications and retained membership,
+independently of connected viewers. Shared publication rosters use that same
+family value. Admitted logical membership owns each agent's lifecycle status;
+runtime activity and usage enrich the row without replacing that status.
+Saved review composes captures once for the selected workspace.

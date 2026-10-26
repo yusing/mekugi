@@ -14,16 +14,30 @@ owns runtime contexts independently of client connections. Ending a thread or st
 the server cancels and joins its runtime. Disconnected viewers release only their
 subscriptions. Restart restores no active runtime or pending request implicitly.
 
-An admitted parent can observe its server-owned descendants through the same
-detached publications and native presentation subscriptions. These subscriptions
-accept only output and detail reads, never execution or input operations. Their
-closure releases the view without stopping the child. Detail dialogs retain their
-captured child source across display navigation until closed or replaced.
-Publication borrows the same complete runtime frame used for Main, including
-retained review. The child's confirmed workspace and settings supply its path
+All runtime creation uses one admission and lifetime owner. Human startup,
+native startup and coordinated startup supply their execution inputs to that
+owner; role and logical ancestry do not select a different connection or event
+loop. Frozen coordinated preparation and attributed input retain their existing
+authority checks.
+
+Main and delegates use the same session attachments, operations and complete
+runtime publications, including retained review. Opening a detail belonging to
+another live runtime selects that runtime before opening its ordinary detail view.
+Closing an attachment releases the view without stopping execution. A declared
+role appears in the runtime's composer caption. Confirmed workspace and settings supply its path
 base and caption, with no parent defaults for missing facts. Family review
 composes admitted immutable captures once; roster totals and selected-child Diff
 retain the same source evidence and authorship.
+
+Each runtime publishes its own thread state. Family navigation and aggregate
+changes are composed from those ordinary publications and admitted coordination
+metadata at the server, independently of any selected or connected parent view.
+Selecting Main, a sibling or a delegate uses the same thread-ID-based client
+lifecycle. Per-thread drafts, prompts, pending effects and confirmed workspace
+remain owned by that thread.
+Logical family identity survives another runtime's thread replacement. Existing
+members remain in their original family; an unavailable original Main supplies
+no replacement transcript, settings or change evidence.
 
 Creation and resume use the existing startup policy and retained history. Model
 and workspace choices describe the execution machine. Acknowledgement means

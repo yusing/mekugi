@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -46,9 +47,14 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		{Key: "plain", CaptureOrder: 2, Origin: changes.Origin{Caller: "/root", Source: "apply_patch"}, Review: unknown},
 	}))
 	frame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Diffs thread", Workspace: workspace}, Input: &sessionapi.Input{Stoppable: true}, Review: &view}
+	// Each publication is a detached snapshot: the fixture keeps mutating view
+	// and frame.Live, and attachment replays the latest recorded frame.
 	publish := func() {
 		t.Helper()
-		if err := machine.api.Publish(frame); err != nil {
+		published := frame
+		published.Review = new(view)
+		published.Live = slices.Clone(frame.Live)
+		if err := machine.publishFrame(published); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -120,7 +120,7 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 	child := changepresentation.ReviewView{Revision: 1, Workspace: workspace, Publication: capture("child1", "/root/worker", "one\nparent\n", "one\nchild\n", 2)}
 	refresh := make(chan chan struct{})
 	launcher := &nativeReattachLauncher{run: func(ctx context.Context, _ sessionapi.Start, api *sessionapi.Server) error {
-		publisher := apiLive{server: api, family: &nativeViews{threads: threads}, started: time.Now()}
+		publisher := apiLive{server: api, threads: threads, started: time.Now()}
 		now := time.Now()
 		publisher.publish(&u.attached, u.shell, &u.Client, nil, u.reviewSource, false, false, now)
 		for {
@@ -150,7 +150,7 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 		if err := api.SetSummary(sessionapi.Summary{Thread: "child", Workspace: workspace, Ready: true}); err != nil {
 			return err
 		}
-		if err := api.Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: "child", Workspace: workspace}, Review: &child, Agents: &activity.Publication{}}); err != nil {
+		if err := api.Publish(sessionapi.Frame{FamilyRoot: "main", Session: sessionapi.Session{Thread: "child", Workspace: workspace}, Review: &child, Agents: &activity.Publication{}}); err != nil {
 			return err
 		}
 		close(childReady)

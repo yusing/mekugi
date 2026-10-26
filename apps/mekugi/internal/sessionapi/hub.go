@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/rand"
 	"errors"
 	"math"
 	"net/http"
@@ -15,27 +16,35 @@ import (
 
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
 type requestTarget struct{ thread, workspace string }
 
 var errThreadOwned = errors.New("That thread is already running.")
 
-// Hub projects server-owned runtimes. Runtime admission and host dispatch remain
-// with Launcher and the session's existing event loop.
+var (
+	errRuntimeStopped = errors.New("runtime stopped before readiness")
+	errRuntimeUnknown = errors.New("runtime creation outcome is unknown")
+)
+
+// Hub admits and projects server-owned runtimes. Host dispatch remains with
+// Launcher and the session's existing event loop.
 type Hub struct {
-	ctx          context.Context
-	launcher     Launcher
-	mu           sync.Mutex
-	stopping     bool
-	sessions     map[string]*listedSession
-	running      map[*managedSession]struct{}
-	list         []byte
-	viewers      map[chan []byte]struct{}
-	wg           sync.WaitGroup
-	connections  map[*rpcConnection]struct{}
-	connectionWG sync.WaitGroup
-	preparations chan struct{}
+	familyProjection familyProjection
+	ctx              context.Context
+	launcher         Launcher
+	mu               sync.Mutex
+	stopping         bool
+	sessions         map[string]*listedSession
+	running          map[*managedSession]struct{}
+	list             []byte
+	viewers          map[chan []byte]struct{}
+	wg               sync.WaitGroup
+	connections      map[*rpcConnection]struct{}
+	connectionWG     sync.WaitGroup
+	preparations     chan struct{}
 }
 type listedSession struct {
 	entry   listed
@@ -133,40 +142,70 @@ func (h *Hub) startOptions(ctx context.Context) (any, *RPCError) {
 }
 
 func (h *Hub) startSession(requestContext context.Context, body jsontext.Value) (any, *RPCError) {
-	if h.launcher == nil {
-		return nil, rpcFailure(405, "This server does not start threads.")
-	}
 	var start Start
 	if err := decodeBody(body, &start); err != nil {
 		return nil, err
+	}
+	m, _, err := h.admitRuntime(requestContext, nil, start, "", nil)
+	if err != nil {
+		return nil, runtimeStartFailure(err)
+	}
+	if len(start.Attachments) > 0 {
+		stopCleanup := context.AfterFunc(requestContext, m.initial.Cleanup)
+		defer stopCleanup()
+	}
+	id, err := m.waitReady(requestContext)
+	if err != nil {
+		return nil, runtimeStartFailure(err)
+	}
+	notice := ""
+	if m.initial != nil {
+		notice = m.initial.Draft.AttachmentNotice
+	}
+	return struct {
+		ID     string `json:"id"`
+		Notice string `json:"notice,omitempty"`
+	}{id, notice}, nil
+}
+
+// admitRuntime owns construction and registration for every execution input.
+// A native view is installed before execution; frozen preparation supplies the
+// execution operation without changing runtime admission or publication.
+func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start Start, parent string, run func(context.Context, *Server) error) (*managedSession, *rpcSubscription, error) {
+	if h.launcher == nil {
+		return nil, nil, rpcFailure(405, "This server does not start threads.")
 	}
 	var prepared *PreparedInput
 	requestedThread := start.Resume
 	if start.Replay != nil {
 		if start.Workspace != "" || start.Model != "" || start.Effort != "" || start.Text != "" || len(start.Attachments) != 0 || start.Resume != "" {
-			return nil, rpcFailure(400, "Recorded playback cannot include live session fields.")
+			return nil, nil, rpcFailure(400, "Recorded playback cannot include live session fields.")
 		}
 		replay := start.Replay
 		if strings.TrimSpace(replay.Session) == "" || strings.ContainsAny(replay.Session, `/\*?[]`) || replay.Speed != nil && (math.IsNaN(*replay.Speed) || math.IsInf(*replay.Speed, 0) || *replay.Speed < 0.1 || *replay.Speed > 100) {
-			return nil, rpcFailure(400, "Choose a recorded session ID and a speed between 0.1 and 100.")
+			return nil, nil, rpcFailure(400, "Choose a recorded session ID and a speed between 0.1 and 100.")
 		}
 		requestedThread = replay.Session
 	} else {
 		start.Text = strings.TrimSpace(start.Text)
 		if strings.HasPrefix(start.Text, "/") || strings.HasPrefix(start.Text, "!") {
-			return nil, rpcFailure(400, "Initial input must be a message, not a slash or shell command.")
+			return nil, nil, rpcFailure(400, "Initial input must be a message, not a slash or shell command.")
 		}
 		info, err := os.Stat(start.Workspace)
 		if !filepath.IsAbs(start.Workspace) || err != nil || !info.IsDir() {
-			return nil, rpcFailure(400, "Choose an existing absolute workspace directory.")
+			return nil, nil, rpcFailure(400, "Choose an existing absolute workspace directory.")
 		}
 		start.Workspace = filepath.Clean(start.Workspace)
-		options, err := h.launcher.StartOptions(requestContext)
-		if err != nil {
-			return nil, rpcFailure(503, "Start options are unavailable.")
-		}
-		if err = options.ValidateSelection(start.Model, start.Effort); err != nil {
-			return nil, rpcFailure(400, err.Error())
+		if start.Native != nil {
+			start.Native.Workspace = start.Workspace
+		} else if run == nil {
+			options, err := h.launcher.StartOptions(requestContext)
+			if err != nil {
+				return nil, nil, rpcFailure(503, "Start options are unavailable.")
+			}
+			if err = options.ValidateSelection(start.Model, start.Effort); err != nil {
+				return nil, nil, rpcFailure(400, err.Error())
+			}
 		}
 		if start.Text != "" || len(start.Attachments) > 0 {
 			var failure *RPCError
@@ -174,7 +213,7 @@ func (h *Hub) startSession(requestContext context.Context, body jsontext.Value) 
 				return h.launcher.PrepareInput(requestContext, start.Workspace, InputRequest{Text: start.Text, Attachments: start.Attachments})
 			})
 			if failure != nil {
-				return nil, failure
+				return nil, nil, failure
 			}
 		}
 	}
@@ -187,7 +226,18 @@ func (h *Hub) startSession(requestContext context.Context, body jsontext.Value) 
 	h.mu.Lock()
 	if h.stopping || h.ctx.Err() != nil || requestContext.Err() != nil {
 		h.mu.Unlock()
-		return nil, rpcFailure(503, "The server is stopping.")
+		return nil, nil, rpcFailure(503, "The server is stopping.")
+	}
+	var parentRuntime *managedSession
+	lifetime := h.ctx
+	if parent != "" {
+		s := h.sessions[parent]
+		if s == nil || s.runtime == nil || s.runtime.ctx.Err() != nil {
+			h.mu.Unlock()
+			return nil, nil, rpcFailure(409, "Parent native runtime is unavailable.")
+		}
+		parentRuntime = s.runtime
+		lifetime = parentRuntime.ctx
 	}
 	resuming := h.sessions[requestedThread] != nil
 	for current := range h.running {
@@ -195,43 +245,77 @@ func (h *Hub) startSession(requestContext context.Context, body jsontext.Value) 
 	}
 	if requestedThread != "" && resuming {
 		h.mu.Unlock()
-		return nil, rpcFailure(409, errThreadOwned.Error())
+		return nil, nil, errThreadOwned
 	}
-	ctx, cancel := context.WithCancel(h.ctx)
+	ctx, cancel := context.WithCancel(lifetime)
 	server := NewPreparedLive(h.launcher.PrepareInput)
 	if start.Replay != nil {
 		server = New()
 	}
-	m := &managedSession{resume: requestedThread, ctx: ctx, server: server, initial: prepared, inputContext: ctx, inputWorkspace: start.Workspace, cancel: cancel, done: make(chan struct{}), ready: make(chan string, 1)}
+	if run == nil {
+		run = func(ctx context.Context, server *Server) error { return h.launcher.Run(ctx, start, server) }
+	}
+	m := &managedSession{parent: parentRuntime, parentThread: parent, run: run, operation: rand.Text(), resume: requestedThread, ctx: ctx, server: server, initial: prepared, inputContext: ctx, inputWorkspace: start.Workspace, cancel: cancel, done: make(chan struct{}), ready: make(chan string, 1)}
 	m.server.activeThread = h.activeThread
+	m.server.family = func() (*Family, *changes.ReviewView) {
+		if frame := m.server.frame.Load(); frame != nil {
+			return h.Family(frame.Session.Thread)
+		}
+		return nil, nil
+	}
 	if len(start.Attachments) > 0 {
 		m.inputContext = requestContext
-		stopCleanup := context.AfterFunc(requestContext, prepared.Cleanup)
-		defer stopCleanup()
+	}
+	var subscription *rpcSubscription
+	var attach NativeRequest
+	if viewContext != nil {
+		var failure *RPCError
+		subscription, attach, failure = server.Native().newView(viewContext, requestTarget{workspace: start.Workspace}, m.operation, localNativeView)
+		if failure != nil {
+			h.mu.Unlock()
+			cancel()
+			return nil, nil, failure
+		}
 	}
 	h.running[m] = struct{}{}
 	h.wg.Add(1)
 	h.mu.Unlock()
 	scheduled = true
 	go h.run(ctx, m, start)
+	if subscription != nil {
+		attach.Context = requestContext
+		if failure := server.Native().deliver(attach); failure != nil {
+			subscription.close()
+			return m, nil, failure
+		}
+	}
+	return m, subscription, nil
+}
+
+func (m *managedSession) waitReady(requestContext context.Context) (string, error) {
 	select {
 	case id := <-m.ready:
-		notice := ""
-		if prepared != nil {
-			notice = prepared.Draft.AttachmentNotice
-		}
-		return struct {
-			ID     string `json:"id"`
-			Notice string `json:"notice,omitempty"`
-		}{id, notice}, nil
+		return id, nil
 	case <-m.done:
-		if errors.Is(m.err, errThreadOwned) {
-			return nil, rpcFailure(409, m.err.Error())
-		}
-		return nil, rpcFailure(502, "Thread startup failed.")
+		return "", errors.Join(errRuntimeStopped, m.err)
 	case <-requestContext.Done():
-		return nil, rpcUnknown("Creation outcome unknown; do not automatically retry.")
+		return "", errors.Join(errRuntimeUnknown, requestContext.Err())
 	}
+}
+
+func runtimeStartFailure(err error) *RPCError {
+	if errors.Is(err, errThreadOwned) {
+		return rpcFailure(409, errThreadOwned.Error())
+	}
+	if errors.Is(err, errRuntimeUnknown) {
+		return rpcUnknown("Creation outcome unknown; do not automatically retry.")
+	}
+	if !errors.Is(err, errRuntimeStopped) {
+		if failure, ok := errors.AsType[*RPCError](err); ok {
+			return failure
+		}
+	}
+	return rpcFailure(502, "Thread startup failed.")
 }
 
 func (h *Hub) run(ctx context.Context, m *managedSession, start Start) {
@@ -258,11 +342,7 @@ func (h *Hub) run(ctx context.Context, m *managedSession, start Start) {
 	}
 	result := make(chan error, 1)
 	go func() {
-		if m.run != nil {
-			result <- m.run(ctx, m.server)
-		} else {
-			result <- h.launcher.Run(ctx, start, m.server)
-		}
+		result <- m.run(ctx, m.server)
 	}()
 	defer func() {
 		if m.server.live {

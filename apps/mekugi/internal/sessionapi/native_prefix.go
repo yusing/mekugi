@@ -17,6 +17,7 @@ const (
 	nativeMain nativeOwners = 1 << iota
 	nativeAgents
 	nativeReview
+	nativeFamily
 )
 
 type nativeWireEvent struct {
@@ -31,6 +32,7 @@ type nativeFrameMetadata struct {
 	Main   **activity.Publication `json:"main,omitzero"`
 	Agents **activity.Publication `json:"agents,omitzero"`
 	Review **changes.ReviewView   `json:"review,omitzero"`
+	Family **Family               `json:"family,omitzero"`
 }
 
 // subscribe admits at most 256 bytes of subscription identity. Each byte can
@@ -44,10 +46,10 @@ var errNativePublicationLimit = errors.New("native publication exceeds the 64 Mi
 // prefix travels here; neither a shorter subsequent prefix nor queue replacement
 // acknowledges a withheld effect. A receipt for the visible prefix admits the
 // suffix on the next publication, even when changing state shrinks the window.
-func encodeNativePrefix(attachment, startup string, frame NativeFrame, retained nativeOwners, sizes *[3]int) ([]byte, error) {
-	var owners [3][]byte
+func encodeNativePrefix(attachment, startup string, frame NativeFrame, retained nativeOwners, sizes *[4]int) ([]byte, error) {
+	var owners [4][]byte
 	ownerBytes, retainedBytes := 0, 0
-	for i, owner := range []any{frame.Main, frame.Agents, frame.Review} {
+	for i, owner := range []any{frame.Main, frame.Agents, frame.Review, frame.Family} {
 		if retained&(1<<i) == 0 {
 			data, err := json.Marshal(owner, nativeEncoding)
 			if err != nil {
@@ -60,17 +62,17 @@ func encodeNativePrefix(attachment, startup string, frame NativeFrame, retained 
 		ownerBytes += sizes[i]
 	}
 	// Keep complete state within the reconnect snapshot limit even though a
-	// delta itself can be much smaller. Count all three field names as well.
-	ownerBytes += len(`,"main":,"agents":,"review":`)
+	// delta itself can be much smaller. Count all owner field names as well.
+	ownerBytes += len(`,"main":,"agents":,"review":,"family":`)
 	appendOwners := func(data []byte) []byte {
-		if retained == nativeMain|nativeAgents|nativeReview {
+		if retained == nativeMain|nativeAgents|nativeReview|nativeFamily {
 			return data
 		}
 		// This is the final immutable allocation retained by the queue and
 		// last-frame comparison, not borrowed scratch that can be returned.
 		encoded := make([]byte, 0, len(data)+ownerBytes-retainedBytes)
 		encoded = append(encoded, data[:len(data)-2]...)
-		for i, field := range []string{`,"main":`, `,"agents":`, `,"review":`} {
+		for i, field := range []string{`,"main":`, `,"agents":`, `,"review":`, `,"family":`} {
 			if owners[i] != nil {
 				encoded = append(encoded, field...)
 				encoded = append(encoded, owners[i]...)

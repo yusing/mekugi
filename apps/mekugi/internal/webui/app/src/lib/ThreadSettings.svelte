@@ -5,7 +5,7 @@
   import Icon from "./ui/Icon.svelte";
   import { chip, floating } from "./ui/styles";
 
-  // Main's model and reasoning effort. Each chip runs the terminal's /model or
+  // The thread's model and reasoning effort. Each chip runs the terminal's /model or
   // /effort command, whose menu lists the thread's own choices above the chips.
   let { caption, disabled = false }: { caption: Caption; disabled?: boolean } = $props();
   let root = $state<HTMLElement>();
@@ -17,9 +17,11 @@
   async function toggleFast() {
     if (tierPending) return;
     tierPending = true;
+    const attachment = semantic.event?.attachment;
+    const command = `/tier ${fast ? "default" : "priority"}`;
     try {
       if (menu) await choose(1);
-      await semantic.send({ command: `/tier ${fast ? "default" : "priority"}` });
+      if (attachment && semantic.event?.attachment === attachment) await semantic.send({ command });
     } finally {
       tierPending = false;
     }
@@ -62,9 +64,10 @@
   async function toggle(command: string) {
     if (changing) return;
     changing = true;
+    const attachment = semantic.event?.attachment;
     const other = !menu || effort === (command === "/model");
     if (menu) await choose(1);
-    if (other) {
+    if (other && attachment && semantic.event?.attachment === attachment) {
       opening = semantic.openSetting(command);
       await opening;
       opening = undefined;

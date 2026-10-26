@@ -2,10 +2,7 @@ package sessionapi
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
-	"os"
-	"path/filepath"
 
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -39,71 +36,90 @@ func (h *Hub) Requests(thread string) (threadcontrol.Runtime, error) {
 var ErrPreparedNotStarted = errors.New("prepared runtime was not started")
 
 func (h *Hub) StartPrepared(request context.Context, parent, resume, workspace string, run func(context.Context, *Server) error) (string, error) {
-	info, err := os.Stat(workspace)
-	if !filepath.IsAbs(workspace) || err != nil || !info.IsDir() || run == nil {
-		return "", errors.Join(ErrPreparedNotStarted, errors.New("prepared runtime requires an existing absolute workspace and execution owner"))
+	if parent == "" || run == nil {
+		return "", errors.Join(ErrPreparedNotStarted, errors.New("prepared runtime requires a parent and execution owner"))
 	}
-	h.mu.Lock()
-	s := h.sessions[parent]
-	if h.stopping || request.Err() != nil || s == nil || s.runtime == nil || s.runtime.ctx.Err() != nil {
-		h.mu.Unlock()
-		return "", errors.Join(ErrPreparedNotStarted, errors.New("parent native runtime is unavailable"))
+	m, _, err := h.admitRuntime(request, nil, Start{Workspace: workspace, Resume: resume}, parent, run)
+	if err != nil {
+		return "", errors.Join(ErrPreparedNotStarted, err)
 	}
-	if resume != "" {
-		if h.sessions[resume] != nil {
-			h.mu.Unlock()
-			return "", errors.Join(ErrPreparedNotStarted, errThreadOwned)
-		}
-		for current := range h.running {
-			if current.resume == resume {
-				h.mu.Unlock()
-				return "", errors.Join(ErrPreparedNotStarted, errThreadOwned)
-			}
-		}
-	}
-	ctx, cancel := context.WithCancel(s.runtime.ctx)
-	m := &managedSession{parent: s.runtime, parentThread: parent, resume: resume, run: run, operation: rand.Text(), ctx: ctx, server: NewPreparedLive(h.launcher.PrepareInput), inputContext: ctx, inputWorkspace: workspace, cancel: cancel, done: make(chan struct{}), ready: make(chan string, 1)}
-	m.server.activeThread = h.activeThread
-	h.running[m] = struct{}{}
-	h.wg.Add(1)
-	h.mu.Unlock()
-	go h.run(ctx, m, Start{Workspace: workspace})
-	select {
-	case id := <-m.ready:
-		return id, nil
-	case <-m.done:
-		return "", errors.Join(errors.New("prepared runtime stopped before readiness"), m.err)
-	case <-request.Done():
-		return "", errors.Join(errors.New("prepared runtime creation outcome is unknown"), request.Err())
-	}
+	return m.waitReady(request)
 }
 
 // BindChildAttachment supplies the prepared runtime owner used by explicit
-// native navigation. It never supplies or dispatches a work assignment.
+// view navigation. It never supplies or dispatches a work assignment.
 func (s *Server) BindChildAttachment(attach func(context.Context, string, string) error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.childAttachment = attach
 }
 
-func (h *Hub) attachChild(ctx context.Context, parent, thread string, authority viewAuthority) *RPCError {
-	selected, failure := h.lookup(parent, "", authority)
-	if failure != nil {
-		return failure
+func (h *Hub) attachThread(ctx context.Context, thread string, authority viewAuthority) *RPCError {
+	if _, failure := h.lookup(thread, "", authority); failure == nil {
+		return nil
 	}
-	s := selected.server
+	// Resolve only logical ancestors in admitted membership. Physical lifetime
+	// ancestry survives thread replacement and cannot authorize preparation.
+	h.mu.Lock()
+	var owner *listedSession
+	var ownerFamily string
+	for _, source := range h.sessions {
+		if !source.server.live || source.runtime == nil || source.runtime.ctx.Err() != nil {
+			continue
+		}
+		frame := source.server.frame.Load()
+		if frame == nil || frame.FamilyRoot == "" || frame.Session.Thread != source.entry.Thread {
+			continue
+		}
+		parents := make(map[string]string, len(frame.Members))
+		for _, member := range frame.Members {
+			parents[member.Thread] = member.Parent
+		}
+		var candidate *listedSession
+		for parent := parents[thread]; parent != ""; parent = parents[parent] {
+			if ancestor := h.sessions[parent]; ancestor != nil && ancestor.server.live && ancestor.runtime != nil && ancestor.runtime.ctx.Err() == nil {
+				if current := ancestor.server.frame.Load(); current != nil && current.Session.Thread == parent && current.FamilyRoot == frame.FamilyRoot {
+					// Prefer the highest live ancestor so peers share its lock.
+					candidate = ancestor
+				}
+			}
+			if parent == frame.FamilyRoot {
+				owner, ownerFamily = candidate, frame.FamilyRoot
+				break
+			}
+		}
+		if owner != nil {
+			break
+		}
+	}
+	h.mu.Unlock()
+	if owner == nil {
+		return rpcFailure(404, "The selected thread has no admitted resumable runtime.")
+	}
+	s := owner.server
 	s.childAttach.Lock()
 	defer s.childAttach.Unlock()
 	if _, failure := h.lookup(thread, "", authority); failure == nil {
 		return nil
 	}
+	selected, failure := h.lookup(owner.entry.Thread, "", authority)
+	if failure != nil {
+		return failure
+	}
+	frame := s.frame.Load()
+	if selected.server != s || selected.runtime != owner.runtime || owner.runtime.ctx.Err() != nil || frame == nil || frame.Session.Thread != owner.entry.Thread || frame.FamilyRoot != ownerFamily {
+		return rpcFailure(409, "The preparation owner is no longer available.")
+	}
 	s.mu.Lock()
 	attach := s.childAttachment
 	s.mu.Unlock()
 	if attach == nil {
-		return rpcFailure(404, "The selected session has no resumable child runtime.")
+		return rpcFailure(404, "The selected thread has no resumable runtime owner.")
 	}
-	if err := attach(ctx, parent, thread); err != nil {
+	if err := attach(ctx, owner.entry.Thread, thread); err != nil {
+		if errors.Is(err, errRuntimeUnknown) {
+			return runtimeStartFailure(err)
+		}
 		return rpcFailure(409, err.Error())
 	}
 	return nil

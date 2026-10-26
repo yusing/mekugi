@@ -69,9 +69,10 @@ type nativeView struct {
 	frame         []byte
 	main          *activity.Publication
 	agents        *activity.Publication
+	family        *Family
 	state         []byte
 	reviewState   []byte
-	ownerBytes    [3]int
+	ownerBytes    [4]int
 	reviewBytes   int
 	reviewLimited bool
 }
@@ -226,7 +227,7 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 	// Activity publications are immutable and reused by their owner. Compare
 	// their identity, plus encoded non-feed facts, before serializing history.
 	// Keep mutable caller values detached through bytes, not retained aliases.
-	main, agents := frame.Main, frame.Agents
+	main, agents, family := frame.Main, frame.Agents, frame.Family
 	frame = frame.withoutEditors()
 	var state, reviewState []byte
 	if frame.Review != nil && frame.Review.Revision != 0 {
@@ -243,6 +244,7 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		// selection without first encoding their unbounded aggregate.
 		metadata := frame
 		metadata.Main, metadata.Agents = nil, nil
+		metadata.Family = nil
 		// Saved reviews are immutable source replacements. Their revision and
 		// coverage describe changes without re-encoding every retained diff.
 		if frame.Review != nil && frame.Review.Revision != 0 {
@@ -258,7 +260,7 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		if err != nil {
 			return err
 		}
-		if v.started && v.main == main && v.agents == agents && bytes.Equal(v.state, state) {
+		if v.started && v.main == main && v.agents == agents && v.family == family && bytes.Equal(v.state, state) {
 			return nil
 		}
 	}
@@ -279,6 +281,9 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		}
 		if reviewState != nil && bytes.Equal(v.reviewState, reviewState) {
 			retained |= nativeReview
+		}
+		if v.family == family {
+			retained |= nativeFamily
 		}
 	}
 	sizes := v.ownerBytes
@@ -316,7 +321,7 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		return err
 	}
 	if v.started && bytes.Equal(v.frame, data) {
-		v.main, v.agents, v.state = main, agents, state
+		v.main, v.agents, v.family, v.state = main, agents, family, state
 		v.reviewBytes, v.reviewLimited = reviewBytes, reviewLimited
 		return nil
 	}
@@ -325,7 +330,7 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		v.frame = data
 		v.reviewState, v.ownerBytes = reviewState, sizes
 		v.reviewBytes, v.reviewLimited = reviewBytes, reviewLimited
-		v.main, v.agents, v.state = main, agents, state
+		v.main, v.agents, v.family, v.state = main, agents, family, state
 		v.started, v.version = true, frame.View.Version
 		if frame.Switch != nil {
 			v.target = requestTarget{thread, frame.View.Info.Workspace}
