@@ -123,6 +123,7 @@ export interface Value {
   subsumed?: boolean;
   effect?: boolean;
   pending?: boolean;
+  skipped?: boolean;
   // The retained run starting at this value folds behind one disclosure.
   hiddenEdits?: number;
   foldSource?: boolean;

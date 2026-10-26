@@ -185,6 +185,7 @@ type value struct {
 	Subsumed    bool       `json:"subsumed,omitzero"`
 	Effect      bool       `json:"effect,omitzero"`
 	Pending     bool       `json:"pending,omitzero"`
+	Skipped     bool       `json:"skipped,omitzero"`
 	HiddenEdits int        `json:"hiddenEdits,omitzero"` // Count of retained rows folded from this index.
 	FoldSource  bool       `json:"foldSource,omitzero"`
 	Duration    int64      `json:"duration,omitzero"`
@@ -330,7 +331,7 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 			DetailCode: v.DetailCode,
 			Path:       v.Path, AutoReload: v.AutoReload, Approval: v.Approval,
 			Kind: v.Kind, Verb: v.Verb, BatchExit: v.BatchExit, Label: v.Label, Code: v.Code, Lang: v.Lang, Fenced: v.Fenced, Body: v.Body,
-			Subsumed: v.Subsumed, Effect: v.Effect, Pending: v.Pending, FoldSource: v.TemporarySource(), Duration: v.Duration.Milliseconds(), Thought: v.Thought.Milliseconds(), From: v.From, To: v.To,
+			Subsumed: v.Subsumed, Effect: v.Effect, Pending: v.Pending, Skipped: v.Skipped, FoldSource: v.TemporarySource(), Duration: v.Duration.Milliseconds(), Thought: v.Thought.Milliseconds(), From: v.From, To: v.To,
 			WaitReason: v.WaitReason, WaitTimeout: v.WaitTimeout,
 			EditOutcome: v.EditOutcome, Running: v.Running, Live: v.Live, Tail: v.Tail, TailOmitted: v.TailOmitted,
 		}

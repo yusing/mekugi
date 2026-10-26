@@ -127,6 +127,32 @@ func TestRosterActivityUsesSharedSummary(t *testing.T) {
 	}
 }
 
+func TestSkippedCommandProjection(t *testing.T) {
+	t.Parallel()
+	const source = "false && printf unreachable"
+	item := activitypresentation.ItemContent{Kind: "tool", Text: source, Command: activitypresentation.Command{Script: source, Display: source, Segments: []activitypresentation.CommandSegment{
+		{Source: "false", Text: activitypresentation.ShellSource("false", ""), ExitCode: 1},
+		{Source: "printf unreachable", Text: activitypresentation.ShellSource("printf unreachable", ""), Skipped: true},
+	}}, Details: &activitypresentation.ItemDetails{CommandText: source}}
+	server := New()
+	entry := activitypresentation.Entry{Values: item.Values()}
+	entry.Seq, entry.Kind, entry.Text = 1, "tool", source
+	if err := server.Publish(Frame{Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{entry}}}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := server.snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data := string(snapshot.Data); strings.Count(data, `"skipped":true`) != 1 || !strings.Contains(data, "unreachable") {
+		t.Fatalf("skipped command lost in browser snapshot: %s", data)
+	}
+	values := projectEntry(entry, false).Values
+	if len(values) < 2 || values[0].ExitCode == nil || *values[0].ExitCode != 1 || values[1].ExitCode != nil {
+		t.Fatalf("command outcomes = %+v", values)
+	}
+}
+
 func TestPendingCommandsAndEffects(t *testing.T) {
 	t.Parallel()
 	const source = "printf ready; printf later"

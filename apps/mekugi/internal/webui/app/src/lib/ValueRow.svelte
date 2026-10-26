@@ -137,7 +137,7 @@
   <span
     class="text-small font-medium whitespace-nowrap max-sm:col-span-full {verbs[
       family(verb) ?? ''
-    ] ?? 'text-muted'}">{verb}</span
+    ] ?? 'text-muted'}">{value.skipped ? "Skipped" : verb}</span
   >
   <!-- Code in a tool label is the subject itself, not an aside: mono, no chip. -->
   <div class="min-w-0 wrap-break-word [&_code]:text-code" {@attach commandLabel(label)}>
