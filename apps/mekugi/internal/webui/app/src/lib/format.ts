@@ -1,4 +1,11 @@
-import type { Status } from "./protocol";
+import type { Status, Value } from "./protocol";
+
+export function progressText(value: Value, label: (name: string) => string): string {
+  const targets = value.waits?.map(
+    (wait) => `${label(wait.name)}${wait.status ? `: ${wait.status}` : ""}`,
+  );
+  return `${value.label || value.body || ""}${targets?.length ? ` ${targets.join(", ")}` : ""}${value.waitTimeout ? ` (timeout ${value.waitTimeout})` : ""}${value.waitReason ? `: ${value.waitReason}` : ""}`;
+}
 
 // Elapsed grammar follows the terminal renderer: 850ms, 4.1s, 1m 19s, 2h 05m.
 // Whole seconds count down like the playback clock, so the two agree.

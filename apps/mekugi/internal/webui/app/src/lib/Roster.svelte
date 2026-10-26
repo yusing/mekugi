@@ -1,6 +1,6 @@
 <script lang="ts">
   import { doing, since, stateLabel, worked } from "./agents";
-  import { atLeast, cost, duration, tokens } from "./format";
+  import { atLeast, cost, duration, progressText, tokens } from "./format";
   import type { Agent, Counts, Entry, Roster } from "./protocol";
   import Dot, { type Tone } from "./ui/Dot.svelte";
   import { emptyBox, skeleton } from "./ui/styles";
@@ -30,6 +30,7 @@
   } = $props();
 
   const agents = $derived(roster.agents);
+  const labels = $derived(new Map(agents.map((agent) => [agent.name, agent.label])));
   const known = (c?: Counts | null): c is Counts => !!c && c.Added >= 0 && c.Removed >= 0;
   const changes = (agent: Agent) =>
     edited?.[agent.name] ?? { Added: agent.added ?? 0, Removed: agent.removed ?? 0 };
@@ -39,9 +40,9 @@
   const lines = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
   const unit = (n: number, word: string) => (n === 1 ? word : `${word}s`);
   const plural = (n: number, word: string) => `${n} ${unit(n, word)}`;
-  // How many agents are working, done, or failed, for the heading.
+  // Count active waits separately from model work, completed work and failures.
   const tallies = $derived(
-    (["working", "done", "error"] as const)
+    (["working", "waiting", "done", "error"] as const)
       .map((state) => ({ state, n: agents.filter((a) => a.state === state).length }))
       .filter(({ n }) => n)
       .map(({ state, n }) => ({
@@ -86,6 +87,7 @@
 
   const dots: Record<Agent["state"], Tone> = {
     working: "running",
+    waiting: "hollow",
     done: "done",
     error: "alert",
     idle: "hollow",
@@ -147,6 +149,7 @@
       {@const time = worked(agent, now)}
       {@const current = agent.state === "working" ? activity(agent) : undefined}
       {@const what = current && doing(current)}
+      {@const waiting = agent.wait && progressText(agent.wait, (name) => labels.get(name) ?? name)}
       {@const replied = since(agent.lastResponse, now)}
       {@const edits = changes(agent)}
       <!-- A nested agent hangs from a guide under its parent. -->
@@ -172,8 +175,10 @@
                 title="Time spent working">{duration(time)}</span
               >{/if}
           </span>
-          <span class="{sub} truncate {stateInk[agent.state] ?? 'text-muted'}">
-            {#if what}
+          <span class="{sub} truncate {stateInk[agent.state] ?? 'text-muted'}" title={waiting}>
+            {#if agent.state === "waiting" && waiting}
+              {waiting}
+            {:else if what}
               <span class="sr-only">Working:</span>
               <span class="font-medium text-accent">{what.verb}</span>
               {#if what.html}<span>{@html what.html}</span>{/if}

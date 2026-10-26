@@ -2,7 +2,7 @@
   import AgentName from "./AgentName.svelte";
   import UserImage from "./UserImage.svelte";
   import Excerpt from "./Excerpt.svelte";
-  import { basename, duration } from "./format";
+  import { basename, duration, progressText } from "./format";
   import { outputLanguage } from "./highlight";
   import { failed, isUser, reasoningBody } from "./kinds";
   import Markdown from "./Markdown.svelte";
@@ -276,7 +276,9 @@
         >
           {#each rows as { value, index, hidden } (index)}
             {#if value.kind === "progress"}
-              <p class="col-span-full py-[5px] text-muted">{value.body}</p>
+              <p class="col-span-full py-[5px] text-muted">
+                {progressText(value, (name) => source.label(name))}
+              </p>
             {:else if hidden}
               <details class="group/disclosure col-span-full py-1">
                 <summary

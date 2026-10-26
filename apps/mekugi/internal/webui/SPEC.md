@@ -202,7 +202,7 @@ recording, Space or `p` restarts, as the play button does.
 ### Agents
 
 The roster lists Main and its agents as a tree by display name, as the terminal
-roster does. Each agent shows its role, its state (working, idle, done or
+roster does. Each agent shows its role, its state (working, waiting, idle, done or
 error), what a working agent is doing now or when a finished one last replied,
 its work time, the lines it changed, token usage, cost, turns, round trips,
 skills, output rate and context use. Usage that is only partly known is shown
@@ -210,7 +210,8 @@ as a lower bound with a trailing plus. A card has a name row, a state row and a
 wrapping row of values with muted units, rather than a run of metric symbols;
 a context bar runs along its foot. The roster heading counts agents by state
 and totals the session's changed lines, usage and cost. Changed lines follow
-the saved review as it updates.
+the saved review as it updates. Waiting agents show the transcript's target names
+and optional timeout, separately from idle agents.
 
 The transcript shows Main's activity until a viewer selects another agent in the
 roster; it then shows that agent's own activity under its name and state, with a

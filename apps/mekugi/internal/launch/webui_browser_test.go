@@ -18,7 +18,9 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -91,8 +93,9 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		output, err := exec.CommandContext(ctx, browser, append([]string{"--session", name}, args...)...).CombinedOutput()
 		if err != nil {
 			snapshot, _ := exec.CommandContext(ctx, browser, "--session", name, "snapshot", "-i").CombinedOutput()
+			text, _ := exec.CommandContext(ctx, browser, "--session", name, "get", "text", "[aria-label=Transcript]").CombinedOutput()
 			errors, _ := exec.CommandContext(ctx, browser, "--session", name, "errors").CombinedOutput()
-			t.Fatalf("browser %s failed: %v: %s\n%s\n%s", strings.Join(args[:min(2, len(args))], " "), err, output, snapshot, errors)
+			t.Fatalf("browser %s failed: %v: %s\n%s\nTranscript: %s\n%s", strings.Join(args[:min(2, len(args))], " "), err, output, snapshot, text, errors)
 		}
 		return string(output)
 	}
@@ -187,12 +190,49 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		run("screenshot", filepath.Join(artifacts, "temporary-edits-mobile.png"))
 		run("set", "viewport", "1280", "900")
 	}
-	// Agent selection attaches its own runtime while keeping Main's draft and
-	// mutation target. Retained-only agents never borrow Main's composer.
+	// Wait publications retain targets, timeouts and the actual settlement reason.
 	frame.Agents = &activitypresentation.Publication{Roster: []activitypresentation.AgentRow{
+		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root", Waiting: true, Wait: &activitypresentation.Value{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "5s"}}}},
 		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root/worker", Thread: "child"}}},
 		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root/history", Thread: "old-child"}}},
 	}}
+	frame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
+		{Facts: activitypresentation.Facts{Seq: 2, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "5s"}}, Revision: 1},
+		{Facts: activitypresentation.Facts{Seq: 3, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitReason: "paused"}}, Revision: 1},
+	}}
+	for i := range frame.Main.Entries {
+		entry := &frame.Main.Entries[i]
+		entry.Text = entry.Values[0].ProgressText()
+	}
+	if err := alpha.api.Publish(frame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "Waiting for worker (timeout 5s)")
+	run("wait", "--text", "Finished waiting for worker: paused")
+	run("wait", "--fn", `document.querySelector('[aria-label="Thread panel"] [title="Waiting for worker (timeout 5s)"]')`)
+	run("wait", "--text", "1 waiting")
+	settled := frame.Main.Entries[1]
+	settled.Values = []activitypresentation.Value{settled.Values[0]}
+	settled.Values[0].WaitReason = "message received"
+	settled.Text = settled.Values[0].ProgressText()
+	settled.Revision++
+	frame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{frame.Main.Entries[0], settled}}
+	frame.Agents = &activitypresentation.Publication{Roster: append([]activitypresentation.AgentRow(nil), frame.Agents.Roster...)}
+	frame.Agents.Roster[0].Agent.Waiting, frame.Agents.Roster[0].Agent.Wait = false, nil
+	if err := alpha.api.Publish(frame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "Finished waiting for worker: message received")
+	run("wait", "--fn", `(() => { const row = document.querySelector('[aria-label="Thread panel"] button[aria-current=true]'); return row?.textContent.includes('Idle') && !row.textContent.includes('Waiting'); })()`)
+	// Agent selection attaches its own runtime while keeping Main's draft and
+	// mutation target. Retained-only agents never borrow Main's composer.
+	review := changes.ReviewView{Workspace: alpha.workdir, Revision: 1}
+	review.Publication = review.Publication.With(changes.GroupCaptures([]changes.Chunk{{
+		Key: "child-capture", Workspace: alpha.workdir, CaptureOrder: 1,
+		Origin: changes.Origin{Caller: "/root/worker", Change: "child1", Source: "apply_patch"},
+		Review: diffmodel.RenderReviewFile("", filepath.Join(alpha.workdir, "child.go"), "", "package child\n// child saved capture\n"),
+	}}))
+	frame.Review = &review
 	frame.Prompts = &sessionapi.Prompts{Questions: []sessionapi.QuestionCall{{ID: "parent-question", Questions: []sessionapi.Question{{ID: "q", Text: "Parent-only question"}}}}}
 	if err := alpha.api.Publish(frame); err != nil {
 		t.Fatal(err)
@@ -221,6 +261,9 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	attachment.request.Reply <- ""
 	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'draft while attaching' && !document.querySelector('button[aria-label=Stop]')?.disabled")
 	run("wait", "--fn", "document.querySelector('#composer-text')?.placeholder === \"Steer worker's turn\" && document.querySelector('button[aria-label=Stop]')?.title === \"Stop worker's turn\"")
+	button("Changes")
+	run("wait", "--fn", `document.querySelector('[aria-labelledby="saved-heading"]')?.textContent.includes('child saved capture')`)
+	run("find", "role", "tab", "click", "--name", "Agents", "--exact")
 	// A child's own feed resolves images against that runtime, not Main's
 	// unrelated sequence namespace.
 	childServer, ok := alpha.sessions.Load("child")

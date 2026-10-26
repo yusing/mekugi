@@ -132,6 +132,8 @@ export interface Value {
   to?: string;
   questions?: { text?: string; answer?: string }[];
   waits?: { name: string; status?: string }[];
+  waitTimeout?: string;
+  waitReason?: string;
   exitCode?: number;
   editOutcome?: string;
   running?: boolean;
@@ -157,7 +159,7 @@ export interface Entry {
   values?: Value[];
 }
 
-export type AgentState = "working" | "error" | "done" | "idle";
+export type AgentState = "working" | "waiting" | "error" | "done" | "idle";
 
 export interface Agent {
   name: string;
@@ -166,6 +168,7 @@ export interface Agent {
   role?: string;
   depth?: number;
   state: AgentState;
+  wait?: Value;
   turns?: number;
   roundtrips?: number;
   work?: number;

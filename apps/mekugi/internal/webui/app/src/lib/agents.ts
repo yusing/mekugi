@@ -48,6 +48,7 @@ export function since(at: number | undefined, now: number): string | undefined {
 
 export const stateLabel: Record<Agent["state"], string> = {
   working: "Working",
+  waiting: "Waiting",
   error: "Error",
   done: "Done",
   idle: "Idle",

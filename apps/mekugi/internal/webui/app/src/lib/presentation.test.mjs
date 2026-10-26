@@ -3,6 +3,29 @@ import { test } from "node:test";
 import { markedBlock, toolLabel } from "./markdown.ts";
 import { hasDetails, isView, reasoningBody } from "./kinds.ts";
 import { diffRows, workspacePath } from "./diff.ts";
+import { progressText } from "./format.ts";
+
+test("progress text preserves named wait targets, optional timeout and settlement", () => {
+  const labels = { "/root/worker": "worker", "/root/reader": "reader" };
+  const label = (name) => labels[name] ?? name;
+  const waiting = {
+    body: "Waiting for",
+    waits: [{ name: "/root/worker" }, { name: "/root/reader", status: "done" }],
+    waitTimeout: "5s",
+  };
+  assert.equal(progressText(waiting, label), "Waiting for worker, reader: done (timeout 5s)");
+  assert.equal(
+    progressText(
+      { ...waiting, body: "Finished waiting for", waitTimeout: undefined, waitReason: "paused" },
+      label,
+    ),
+    "Finished waiting for worker, reader: done: paused",
+  );
+  assert.equal(
+    progressText({ body: "Waiting for", waits: [{ name: "unknown" }] }, label),
+    "Waiting for unknown",
+  );
+});
 
 test("only bound UTF-8 spans become attachment markers", () => {
   const text = "圖 [Image 1] and [Image 1] <script>";
