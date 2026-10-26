@@ -70,12 +70,12 @@ func TestWaitOutcomeProjection(t *testing.T) {
 	for _, tc := range []struct{ result, reason, timeout string }{
 		{`{"id":"w","state":"registered"}`, "", "2s"},
 		{`{"id":"w","state":"timeout"}`, "timeout", ""},
-		{`{"id":"w","state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", ""},
+		{`{"id":"w","state":"completed","event":{"task":"/root/child","status":"completed"}}`, "child: completed", ""},
 	} {
 		session := new(sessionpresentation.Attachment)
 		entry := session.CoordinationEntry(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Phase: "item/completed"}}, observation.Item{
 			Type: "mcpToolCall", Server: "threadcontrol", Tool: "wait_agent", Status: "completed",
-			Arguments: []byte(`{"target":"/root/child","timeout_ms":2000}`),
+			Arguments: []byte(`{"target":"all","timeout_ms":2000}`),
 			Result:    []byte(`{"content":[{"type":"text","text":` + strconv.Quote(tc.result) + `}]}`),
 		})
 		if entry.Native.Wait == nil {
