@@ -14,7 +14,7 @@
   }: { tone?: Tone; mono?: boolean; class?: string; children: Snippet } = $props();
   const tones: Record<Tone, string> = {
     neutral: "bg-neutral-tint text-neutral-ink",
-    live: "bg-accent-tint text-accent",
+    live: "bg-accent-tint text-accent-ink",
     negative: "bg-negative-tint text-negative-ink",
   };
 </script>

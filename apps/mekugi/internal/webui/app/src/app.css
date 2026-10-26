@@ -3,24 +3,35 @@
 /* Framed sheet: one tinted frame holds the sidebar; the thread sits on a
    sheet with a hairline edge and soft corners. Colour goes on the data: tool
    kinds, diff counts, failures and the recorded clock. The palettes below are
-   the only colours; the theme maps them to utilities. */
+   the only colours; the theme maps them to utilities.
+
+   The page wears the terminal it continues: IBM Plex Sans for interface text,
+   JetBrains Mono without ligatures for code, and in the dark the terminal's
+   own palette. The theme owner sets data-theme on the root to the effective
+   appearance, which the palette and code highlighting follow. The thread's
+   sheet is the terminal background (#15141b), the frame one step darker,
+   dividers the split colour, the accent the cursor violet and muted text the
+   foreground at the terminal's 65% faint opacity. The light palette keeps the
+   same hues at readable depths. */
 :root {
   color-scheme: light;
-  --ground: #f3f6f8;
+  --ground: #f4f3f7;
   --surface: #ffffff;
-  --raised: #f4f6f8;
-  --active: #ebedee;
-  --border: #e3e6e9;
-  --rule: #eef0f2;
-  --control: #cdced1;
-  --text: #131416;
-  --muted: #5d5f60;
-  --primary: #1d1f20;
+  --raised: #f5f4f8;
+  --active: #ebe9f1;
+  --border: #e4e2ea;
+  --rule: #efeef3;
+  --control: #cdcad6;
+  --text: #15141b;
+  --muted: #5e5c66;
+  --primary: #15141b;
   --on-primary: #ffffff;
-  --accent: #1b6c80;
-  --accent-tint: #e8f2f5;
-  --kind-run: #1b6c80;
-  --kind-read: #2f70bb;
+  --accent: #6a46b8;
+  --accent-tint: #f1edfa;
+  --accent-ink: #6a46b8;
+  --selection: #d9cdf5;
+  --kind-run: #6a46b8;
+  --kind-read: #2a68ae;
   --kind-write: #8a5a06;
   --marker-image: #a23c97;
   --positive: #1e7b4f;
@@ -30,43 +41,53 @@
   --pill-warning-bg: #fffbeb;
   --pill-warning-ink: #92400e;
   --pill-warning-edge: #fde68a;
-  --pill-neutral-bg: #ebedee;
-  --pill-neutral-ink: #353736;
-  --float-shadow: 0 8px 28px rgba(16, 24, 32, 0.12), 0 1px 3px rgba(16, 24, 32, 0.08);
+  --pill-neutral-bg: #ebe9f1;
+  --pill-neutral-ink: #35333d;
+  --float-shadow: 0 8px 28px rgba(21, 20, 27, 0.12), 0 1px 3px rgba(21, 20, 27, 0.08);
   --topbar: 48px;
 }
 
+/* Until the theme owner marks the root, the page is still empty: a dark
+   system gets its ground, so loading never flashes the light palette. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     color-scheme: dark;
-    --ground: #0f1012;
-    --surface: #17181a;
-    --raised: #1f2023;
-    --active: #2a2b2e;
-    --border: #2a2c2f;
-    --rule: #222326;
-    --control: #45474b;
-    --text: #ededee;
-    --muted: #a1a4a8;
-    --primary: #ededee;
-    --on-primary: #111214;
-    --accent: #5bb3c9;
-    --accent-tint: #1a2a2f;
-    --kind-run: #5bb3c9;
-    --kind-read: #7aaeef;
-    --kind-write: #d9a54c;
-    --marker-image: #d98bd0;
-    --positive: #4cc38a;
-    --negative: #ee6b7e;
-    --pill-negative-bg: #2c1a20;
-    --pill-negative-ink: #ee6b7e;
-    --pill-warning-bg: #2a2416;
-    --pill-warning-ink: #d9a54c;
-    --pill-warning-edge: #4a3d1f;
-    --pill-neutral-bg: #2a2b2e;
-    --pill-neutral-ink: #c9cbce;
-    --float-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px #2a2c2f;
+    --ground: #100f15;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #100f15;
+  --surface: #15141b;
+  --raised: #1c1a24;
+  --active: #29263c;
+  --border: #29263c;
+  --rule: #201e2a;
+  --control: #3e3a55;
+  --text: #d5d4d6;
+  --muted: #929195;
+  --primary: #d5d4d6;
+  --on-primary: #15141b;
+  --accent: #8e6ad9;
+  --accent-tint: #282239;
+  /* The cursor violet, lifted to read on its tint. */
+  --accent-ink: #a588e2;
+  --selection: #584384;
+  --kind-run: #8e6ad9;
+  --kind-read: #68afda;
+  --kind-write: #daae76;
+  --marker-image: #d98bd0;
+  --positive: #58d8ad;
+  --negative: #d85d5d;
+  --pill-negative-bg: #2e1a1f;
+  --pill-negative-ink: #e07a7a;
+  --pill-warning-bg: #2a2219;
+  --pill-warning-ink: #daae76;
+  --pill-warning-edge: #4a3b27;
+  --pill-neutral-bg: #29263c;
+  --pill-neutral-ink: #c4c3c8;
+  --float-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px #29263c;
 }
 
 @theme {
@@ -74,8 +95,11 @@
      also says. */
   --breakpoint-lg: 68.75rem;
 
-  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* Interface text in Plex Sans, code in the terminal's face. Ordinary text
+     stays at regular weight; components add medium or semibold for deliberate
+     emphasis. */
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, Menlo, monospace;
 
   --text-*: initial;
   --text-tiny: 11px;
@@ -126,6 +150,7 @@
   --color-on-primary: var(--on-primary);
   --color-accent: var(--accent);
   --color-accent-tint: var(--accent-tint);
+  --color-accent-ink: var(--accent-ink);
   --color-kind-run: var(--kind-run);
   --color-kind-read: var(--kind-read);
   --color-kind-write: var(--kind-write);
@@ -175,12 +200,27 @@
   body {
     height: 100%;
   }
+  /* Ligatures stay off, as in the terminal, so code reads as typed. Body text
+     sets at regular weight with grayscale antialiasing. */
   body {
     background: var(--ground);
     color: var(--text);
     font: 400 14px / 20px var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    font-variant-ligatures: none;
+    font-feature-settings:
+      "calt" 0,
+      "liga" 0,
+      "clig" 0;
     -webkit-text-size-adjust: 100%;
+  }
+  ::selection {
+    background: var(--selection);
+    color: var(--text);
+  }
+  input,
+  textarea {
+    caret-color: var(--accent);
   }
   #app {
     height: 100%;
@@ -229,10 +269,8 @@
   [style*="--shiki-light"] {
     color: var(--shiki-light);
   }
-  @media (prefers-color-scheme: dark) {
-    [style*="--shiki-dark"] {
-      color: var(--shiki-dark);
-    }
+  [data-theme="dark"] [style*="--shiki-dark"] {
+    color: var(--shiki-dark);
   }
 
   /* Rendered Markdown from recorded messages, whose elements no template

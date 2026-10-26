@@ -14,6 +14,15 @@ owners running. Ending a thread or replay releases its server-owned resources.
 
 The page reuses the existing transcript, roster, code rendering and visual tokens.
 It is a browser interface to shared semantic controls, not a terminal emulator.
+Non-code text uses IBM Plex Sans; code uses JetBrains Mono without ligatures.
+Body text uses regular weight;
+headings and controls retain their own emphasis. Its dark appearance uses the
+terminal palette, and its light appearance the same hues at readable depths.
+The sidebar offers System, Light and Dark appearance choices, including before a
+machine is connected. System is the default and follows system appearance changes.
+The choice is saved for this browser and UI origin, independently of machines and
+sessions. If browser storage is unavailable, the choice still applies for the
+current page and the page explains that it could not be saved.
 Secret prompts and native filesystem/editor integration remain native-only.
 
 ## Machines and selection
@@ -112,7 +121,9 @@ applies the thread's priority service tier or restores its default tier. Its
 yellow ink and tint reflect the confirmed fast setting; refusal leaves the
 setting unchanged and shows the server's error. Choosing or closing a picker
 hides its menu at once; a menu the server opens in response shows once the
-choice settles.
+choice settles. Where the composer's controls do not fit one row, the pickers and
+Fast take their own row above the other actions, and Stop and Send keep the
+trailing corner.
 Reopening a picker or
 revisiting a completion query shows cached choices while the current control view
 refreshes them. Choices become actionable after that refresh; cached menu identities
@@ -219,8 +230,7 @@ keep a control-sized target.
 Session details sit beside the thread title. Shell input is syntax-highlighted while editing. A compound command's combined result
 follows its classified steps as an outcome and output row, without repeating
 what the steps show; a result with no classified steps shows the command that
-ran, where the terminal labels it as a shell batch. The page follows the system's light or dark
-appearance. Command output shows the retained tail. Commands, scripts, tool
+ran, where the terminal labels it as a shell batch. Command output shows the retained tail. Commands, scripts, tool
 arguments and fenced code are syntax-highlighted; output is highlighted when
 Activity identifies its source, such as a file read or a diff, or when it is
 complete JSON. Unknown languages stay plain, except change statistics as

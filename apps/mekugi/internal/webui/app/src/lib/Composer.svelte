@@ -407,7 +407,9 @@
         aria-describedby="composer-hint"
         aria-invalid={error ? "true" : undefined}></textarea>
     </div>
-    <div class="{composerTools} gap-0.5">
+    <!-- A query container: where one row cannot hold every control, the thread
+      settings take their own row (ThreadSettings) and Send keeps the corner. -->
+    <div class="{composerTools} @container flex-wrap gap-x-0.5 gap-y-1">
       <Menu label="Add files or paths" icon="plus" disabled={!!pending || shell}>
         {#snippet children(close)}
           <MenuItem
@@ -469,7 +471,7 @@
       <span class="flex-1"></span>
       {#if pending}<Button variant="quiet" onclick={() => pending?.abort()}>Cancel</Button>
       {/if}
-      <div class="flex flex-none items-center gap-2">
+      <div class="ml-auto flex flex-none items-center gap-2">
         {#if input?.stoppable}<Button
             shape="round"
             icon="stop"

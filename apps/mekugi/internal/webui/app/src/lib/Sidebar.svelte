@@ -9,11 +9,12 @@
   import Icon from "./ui/Icon.svelte";
   import { skeleton } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
+  import { appearance, themes, type Theme } from "./theme.svelte";
   import { select, view } from "./view.svelte";
 
   // Every connected machine's threads, grouped under the machine. The footer
-  // opens machine settings; a machine whose token was refused offers its
-  // replacement in place.
+  // opens machine settings and chooses the page's theme; a machine whose
+  // token was refused offers its replacement in place.
   let {
     onhide,
     onmachines,
@@ -36,6 +37,9 @@
     onnavigate();
     queueMicrotask(() => document.getElementById("new-text")?.focus());
   }
+  // The theme button shows the current choice and moves to the next.
+  const themeIcons = { system: "monitor", light: "sun", dark: "moon" } as const;
+  const title = (theme: Theme) => theme[0].toUpperCase() + theme.slice(1);
   // The sidebar's rows: neutral grey for the current one and under hover.
   const row =
     "flex w-full items-center rounded-card text-left text-ink hover:bg-active aria-[current=page]:bg-active max-sm:min-h-11";
@@ -145,16 +149,28 @@
   </div>
 
   <div class="border-t border-rule py-2">
-    <button
-      type="button"
-      class="{row} min-h-9 gap-2.5 px-2.5 font-medium"
-      onclick={() => onmachines()}
-    >
-      <Icon name="server" />Machines
-      {#if hub.machines.length}<span
-          class="ml-auto text-small text-muted tabular-nums"
-          aria-hidden="true">{hub.machines.length}</span
-        >{/if}
-    </button>
+    <div class="flex items-center gap-1">
+      <button
+        type="button"
+        class="{row} min-h-9 min-w-0 flex-1 gap-2.5 px-2.5 font-medium"
+        onclick={() => onmachines()}
+      >
+        <Icon name="server" />Machines
+        {#if hub.machines.length}<span
+            class="ml-auto text-small text-muted tabular-nums"
+            aria-hidden="true">{hub.machines.length}</span
+          >{/if}
+      </button>
+      <Button
+        variant="quiet"
+        icon={themeIcons[appearance.choice]}
+        label="Theme: {title(appearance.choice)}"
+        onclick={() =>
+          appearance.set(themes[(themes.indexOf(appearance.choice) + 1) % themes.length])}
+      />
+    </div>
+    {#if appearance.storageError}<p role="status" class="mt-1 px-2.5 text-small text-muted">
+        {appearance.storageError}
+      </p>{/if}
   </div>
 </nav>

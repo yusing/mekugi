@@ -108,7 +108,11 @@
   }}
 />
 
-<span class="relative ml-1 flex min-w-0 gap-1" bind:this={root}>
+<!-- Below 560px of composer tools, the chips lead on a row of their own. -->
+<span
+  class="relative ml-1 flex min-w-0 gap-1 @max-[560px]:order-first @max-[560px]:ml-0 @max-[560px]:basis-full @max-[560px]:flex-wrap"
+  bind:this={root}
+>
   {#each settings as setting (setting.command)}
     <button
       type="button"

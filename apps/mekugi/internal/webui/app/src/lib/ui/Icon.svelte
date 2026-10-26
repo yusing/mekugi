@@ -34,6 +34,9 @@
     check: "M5 12l5 5 9-10",
     rename: "M4 7V5h16v2M12 5v14M9 19h6",
     diff: "M12 4v8M8 8h8M8 18h8",
+    monitor: "M3 5h18v11H3zM8 20h8M12 16v4",
+    sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4",
+    moon: "M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z",
   } as const;
   export type IconName = keyof typeof paths;
 </script>

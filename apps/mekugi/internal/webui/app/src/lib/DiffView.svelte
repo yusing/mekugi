@@ -97,10 +97,8 @@
   [style*="--shiki-light"] {
     color: color-mix(in srgb, var(--shiki-light) 60%, var(--text));
   }
-  @media (prefers-color-scheme: dark) {
-    [style*="--shiki-dark"] {
-      color: color-mix(in srgb, var(--shiki-dark) 60%, var(--text));
-    }
+  :global([data-theme="dark"]) [style*="--shiki-dark"] {
+    color: color-mix(in srgb, var(--shiki-dark) 55%, var(--text));
   }
   .diff-word {
     background: color-mix(in srgb, var(--negative) 16%, transparent);
