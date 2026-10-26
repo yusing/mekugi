@@ -57,7 +57,7 @@ func drainKeys(attached *attachedPresentation, terminal *terminalsession.Attachm
 // prepareComposerInput admits terminal-selected prompt suspension before editing.
 func prepareComposerInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock) bool {
 	ready := terminal.Prompts.Ready()
-	publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, presentationTime(clock))
+	publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side)
 	preparation := terminal.Main.PrepareInput(ready)
 	if !preparation.Editable {
 		return false
@@ -99,7 +99,7 @@ func input(attached *attachedPresentation, terminal *terminalsession.Attachment,
 			(*editor).Run = composer.NoRun
 		}
 		if event.Kind != terminalsession.PasteInput {
-			publishPresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), presentationTime(clock))
+			publishPresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side))
 		}
 		pasted, err := terminal.Main.PasteInput(event, terminal.Prompts)
 		if err != nil {

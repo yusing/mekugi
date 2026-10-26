@@ -42,8 +42,8 @@ func (s *replayAttachment) workspace(thread string) string {
 	return cmp.Or(s.workspaces[thread], s.cwd)
 }
 
-// sessionView publishes the scope's detached session values at the recorded time.
-func (s *replayAttachment) sessionView(at time.Time) sessionpresentation.View {
+// sessionView publishes the scope's detached session values.
+func (s *replayAttachment) sessionView() sessionpresentation.View {
 	processes := 0
 	for range s.session.RunningProcesses() {
 		processes++
@@ -52,7 +52,7 @@ func (s *replayAttachment) sessionView(at time.Time) sessionpresentation.View {
 		Info:               sessionpresentation.MainInfo{Workspace: s.cwd, Skills: s.source.ActiveSkills()["Main"]},
 		DisplayedWorkspace: s.workspace(s.presentation.View().Displayed.ID),
 		RecordedTurn:       s.Turn, Conversation: s.conversation, Feedback: &s.feedback, Processes: processes,
-	}, sessionCaption(&s.session, s.presentation, sessionpresentation.Caption{}, nil), at)
+	}, sessionCaption(&s.session, s.presentation, sessionpresentation.Caption{}, nil))
 }
 
 // apply admits one recorded observation. Playback selects recorded turns
@@ -189,7 +189,7 @@ func (p *uiReplayPlayback) reset() {
 
 func (p *uiReplayPlayback) publish() {
 	u := p.ui
-	view := u.sessionView(p.At)
+	view := u.sessionView()
 	u.shell.Main.Update(view)
 	u.shell.Prompts.Update(view)
 	u.view.Painter.FileLink, u.agents.Painter.FileLink = markdownFileLinks(view.SourceWorkspace()), markdownFileLinks(view.SourceWorkspace())

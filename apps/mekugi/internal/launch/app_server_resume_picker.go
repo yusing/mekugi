@@ -142,7 +142,7 @@ func resumePickerResponse(attached *attachedPresentation, terminal *terminalsess
 	if attached.view != "" {
 		return nil
 	}
-	publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side), presentationTime(clock))
+	publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side))
 	return applyResumeAction(attached, terminal, control, picker, editor, questions, approvals, clock, settings, tiers, title, backend, restoring, side, panel, resumePicker, approvalMode, quit, terminal.Main.Resume.PageDemand())
 }
 
@@ -237,7 +237,7 @@ func applyResumeAction(attached *attachedPresentation, terminal *terminalsession
 		if attached.view != "" {
 			return nil
 		}
-		publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side), presentationTime(clock))
+		publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side))
 		return applyResumeAction(attached, terminal, control, picker, editor, questions, approvals, clock, settings, tiers, title, backend, restoring, side, panel, resumePicker, approvalMode, quit, terminal.Main.Resume.PageDemand())
 	case sessionpresentation.ResumeToggleWorkspace:
 		if p.Workspace != "" {

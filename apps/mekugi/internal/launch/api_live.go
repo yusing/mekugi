@@ -167,7 +167,7 @@ func applyAPIIntent(attached *attachedPresentation, terminal *terminalsession.At
 	case sessionapi.Stop:
 		// Ctrl-C semantics for Main, even while the terminal displays a side
 		// conversation; the terminal's lock guards only its keyboard.
-		view := publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, (*side), presentationTime(clock))
+		view := publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, (*side))
 		if !sessionpresentation.MainInterruptible(&control.Live, attached.conversation) {
 			return "Nothing is running.", nil
 		}

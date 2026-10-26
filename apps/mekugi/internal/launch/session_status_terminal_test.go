@@ -12,13 +12,13 @@ import (
 )
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
-	return terminalsession.PaintSessionStatus(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, now).Status.Session, now, u.shell.Transcript.Painter.Colors)
+	return terminalsession.PaintSessionStatus(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Session, now, u.shell.Transcript.Painter.Colors)
 }
 func (u *appServerUI) stateLabel(now time.Time) string {
-	return terminalsession.PaintMainStatus(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, now).Status, now, u.shell.Transcript.Painter.Colors)
+	return terminalsession.PaintMainStatus(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status, now, u.shell.Transcript.Painter.Colors)
 }
 func (u *appServerUI) composerErrorText() string {
-	return terminalsession.MainStatusDetails(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Status)
+	return terminalsession.MainStatusDetails(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status)
 }
 
 // testMainFrame settles directly configured fixture state before rendering.
@@ -96,11 +96,11 @@ func (u *appServerUI) testDeliveredMainFrame(t *testing.T, width, height, dock i
 }
 
 func (u *appServerUI) applyComposerKey(key string) (bool, error) {
-	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	return u.applyComposerInput(u.shell.Main.ComposerKey(key, u.shell.Prompts, transcriptView(u.attached.presentation, u.shell)))
 }
 func (u *appServerUI) approvalKey(key string) (bool, error) {
-	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	input := u.shell.Main.PromptKey(key, u.shell.Prompts)
 	if input == nil {
 		return false, nil
@@ -108,7 +108,7 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 	return applyApprovalInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, *input)
 }
 func (u *appServerUI) questionKey(key string) (bool, error) {
-	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	input := u.shell.Main.PromptKey(key, u.shell.Prompts)
 	if input == nil {
 		return false, nil

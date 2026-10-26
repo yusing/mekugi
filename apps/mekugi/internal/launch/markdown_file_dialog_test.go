@@ -74,7 +74,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			}
 			u := selectionTestUI(row)
 			u.main.attached.cwd = workspace
-			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
+			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side)
 			u.Frame.Source = selectionTestSource(u.main)
 			u.selectionMouse(0, 1, 0, false)
 			u.selectionMouse(0, 1, 0, true)
@@ -99,7 +99,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			}
 			u = selectionTestUI(row)
 			u.main.attached.cwd = workspace
-			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
+			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side)
 			u.Frame.Source = selectionTestSource(u.main)
 			selectionTestDrag(t, u, 0, 0, 5, 0)
 			if u.Dialog != nil || u.Frame.Clipboard != "" || u.Selection.Text() != "source" {
@@ -119,11 +119,11 @@ func TestMarkdownSelectionClickRetainsWorkspace(t *testing.T) {
 			painter := activityui.Painter{FileLink: markdownFileLinks(workspace)}
 			u := selectionTestUI(painter.Inline("[source](source.go)"))
 			u.main.attached.cwd = workspace
-			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
+			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side)
 			u.Frame.Source = selectionTestSource(u.main)
 			if change == "workspace before press" {
 				u.main.attached.cwd = t.TempDir()
-				publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
+				publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side)
 			}
 			u.selectionMouse(0, 1, 0, false)
 			if change == "workspace" {
@@ -131,7 +131,7 @@ func TestMarkdownSelectionClickRetainsWorkspace(t *testing.T) {
 			} else {
 				setNotice(&u.main.attached.feedback, u.main.shell, presentationTime(u.main.clock), "unrelated status", false)
 			}
-			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
+			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side)
 			u.selectionMouse(0, 1, 0, true)
 			if change != "status" {
 				if u.Dialog != nil || u.main.fileReads != nil || !u.main.attached.feedback.Alert {

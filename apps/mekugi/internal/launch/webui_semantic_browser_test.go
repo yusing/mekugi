@@ -391,7 +391,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 				}
 				applyPanelAction(&metricsUI.attached, metricsUI.shell, metricsUI.clock, &metricsUI.statusPanel, nil, *action)
 			}
-			published := publishPresentation(&metricsUI.attached, metricsUI.shell, &metricsUI.Client, &metricsUI.picker, &metricsUI.Editor, preferences.Applied{}, nil, "", "", false, nil, time.Now())
+			published := publishPresentation(&metricsUI.attached, metricsUI.shell, &metricsUI.Client, &metricsUI.picker, &metricsUI.Editor, preferences.Applied{}, nil, "", "", false, nil)
 			if err := native.Publish(request.Attachment, sessionapi.NativeFrame{View: published}); err != nil {
 				request.Reply <- err.Error()
 			} else {

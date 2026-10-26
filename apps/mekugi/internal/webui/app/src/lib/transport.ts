@@ -120,7 +120,7 @@ class Channel {
     return this.#closed;
   }
 
-  constructor(endpoint: string, token: string) {
+  constructor(endpoint: string, token: string, clock?: (server: number) => void) {
     const url = new URL(endpoint + "/api/control");
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     this.#socket = new WebSocket(url, subprotocol);
@@ -153,6 +153,12 @@ class Channel {
                   "This connector uses an incompatible Mekugi protocol.",
                   "incompatible",
                 );
+              if (!Number.isFinite(result.serverTime) || !result.serverTime)
+                throw new TransportError(
+                  "The connector returned an invalid clock sample.",
+                  "network",
+                );
+              clock?.(result.serverTime);
               clearTimeout(timer);
               this.#socket.removeEventListener("close", fail);
               resolve();
@@ -389,6 +395,11 @@ export class Connector {
   #disposed = false;
   #shared?: Channel;
   #uploads = new Set<Channel>();
+  #clock?: { server: number; received: number };
+
+  get now(): number | undefined {
+    return this.#clock && this.#clock.server + performance.now() - this.#clock.received;
+  }
 
   constructor(endpoint: string, token: string) {
     this.endpoint = endpointURL(endpoint);
@@ -419,7 +430,9 @@ export class Connector {
   }
   #channel(): Channel {
     if (!this.#shared || this.#shared.closed)
-      this.#shared = new Channel(this.endpoint, this.#token);
+      this.#shared = new Channel(this.endpoint, this.#token, (server) => {
+        this.#clock = { server, received: performance.now() };
+      });
     return this.#shared;
   }
   async request<T>(

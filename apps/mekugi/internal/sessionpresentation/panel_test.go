@@ -16,7 +16,7 @@ func TestNonTerminalPanelPublicationAndAdmission(t *testing.T) {
 	source.Fields = []sessionpresentation.StatusField{{Group: "Usage", Remaining: new(50.0)}}
 	source.Metrics = new(transportcapture.MetricsSnapshot)
 	publish := func() sessionpresentation.View {
-		return m.Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation}, sessionpresentation.Caption{}, c.now)
+		return m.Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation}, sessionpresentation.Caption{})
 	}
 	v := publish()
 	want := m.View()

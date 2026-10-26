@@ -851,7 +851,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					}
 					refreshSessionMetrics(panel, capture, presentationTime(clock), false)
 					applyObservedActivity(&attached, shell, &control, &streams, usage, reviewOwner, &approvalDock, &receipts, clock, restoring, audience)
-					publishPresentation(&attached, shell, &control, &picker, &editor, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, presentationTime(clock))
+					publishPresentation(&attached, shell, &control, &picker, &editor, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side)
 					if err := applyResumeAction(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, &panel, &resumePicker, approvals, &quit, shell.Main.Resume.PageDemand()); err != nil {
 						return err
 					}

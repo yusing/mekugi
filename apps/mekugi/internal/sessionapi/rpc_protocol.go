@@ -15,7 +15,7 @@ import (
 const (
 	RPCPath         = "/api/control"
 	NativeRPCPath   = "/api/native/control"
-	RPCSubprotocol  = "mekugi.control.v4"
+	RPCSubprotocol  = "mekugi.control.v5"
 	RPCMessageLimit = InputBodyLimit + (64 << 10)
 	// RPCPublicationLimit bounds one server-to-client message, including its
 	// envelope. Relays must admit it so a large publication reaches its client.
@@ -47,8 +47,9 @@ type RPCErrorData struct {
 // Token is consumed only by the remote connector's initialization exchange.
 // It is never forwarded to the session server or included in diagnostics.
 type RPCInitialize struct {
-	Version string `json:"version"`
-	Token   string `json:"token,omitempty"`
+	Version    string `json:"version"`
+	Token      string `json:"token,omitempty"`
+	ServerTime int64  `json:"serverTime,omitzero"`
 }
 
 // Body uses the operation's existing input type. Subscription is selected by

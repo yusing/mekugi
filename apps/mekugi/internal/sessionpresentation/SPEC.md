@@ -25,7 +25,10 @@ closing it or redirect a delayed dismissal to a replacement conversation. Closin
 the side removes its visible exchange immediately while Control retains any
 pending host acknowledgement and cleanup. Scrolling and copy geometry remain
 renderer-local.
-Clock-driven changes settle on explicit maintenance or replay transitions.
+Running status publishes a stable start time; renderers derive elapsed time from
+their presentation clock. Time passing alone leaves semantic revisions unchanged.
+Completion publishes its settled duration. Replay pause, speed and seek retain
+their playback clock and attachment-transition semantics.
 Feedback publication includes its replacement revision. Publication and prompt
 admission do not acknowledge display. Only successful
 terminal delivery makes a newly opened dock eligible for keyboard input.

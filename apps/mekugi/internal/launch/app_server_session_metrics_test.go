@@ -202,7 +202,7 @@ func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
 	now = now.Add(500 * time.Millisecond)
 	u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), false) || u.dirty
 	sessionMetricField(t, u, "Requests", "Logical", "1")
-	published := publishSessionView(&u.attached, &u.Client, &u.picker, "", preferences.Applied{}, nil, "", "", false, nil, now, true)
+	published := publishSessionView(&u.attached, &u.Client, &u.picker, "", preferences.Applied{}, nil, "", "", false, nil, true)
 	logical := ""
 	for _, field := range published.Panel.Fields {
 		if field.Group == "Requests" && field.Label == "Logical" {

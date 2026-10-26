@@ -13,7 +13,7 @@ func TestResumePublicationRejectsStaleAndUnpublishedTargets(t *testing.T) {
 	source := m.OpenResume(false, "/work")
 	source.Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next", 1)
 	publish := func() sessionpresentation.View {
-		return m.Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation}, sessionpresentation.Caption{}, c.now)
+		return m.Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation}, sessionpresentation.Caption{})
 	}
 	v := publish()
 	if publish().Version != v.Version {

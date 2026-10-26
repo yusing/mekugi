@@ -229,7 +229,7 @@ func (c *rpcConnection) run() {
 	}
 	var result jsontext.Value
 	if failure == nil {
-		result, _ = json.Marshal(RPCInitialize{Version: ProtocolVersion})
+		result, _ = json.Marshal(RPCInitialize{Version: ProtocolVersion, ServerTime: time.Now().UnixMilli()})
 	}
 	if !c.write(RPCMessage{JSONRPC: "2.0", ID: responseID(request.ID), Result: result, Error: failure}) || failure != nil {
 		return

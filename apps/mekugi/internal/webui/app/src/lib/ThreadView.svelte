@@ -157,10 +157,11 @@
   });
 
   // The recorded clock during replay; agents' timers count on it.
-  let wall = $state(Date.now());
+  let wall = $state(0);
   $effect(() => {
-    if (playback) return;
-    const timer = setInterval(() => (wall = Date.now()), 1000);
+    if (playback || !session) return;
+    wall = machine.now ?? 0;
+    const timer = setInterval(() => (wall = machine.now ?? 0), 1000);
     return () => clearInterval(timer);
   });
   const now = $derived(playback ? start + playback.position : wall);

@@ -40,6 +40,10 @@ export class Machine {
     return { id: this.id, label: this.label, endpoint: this.endpoint, token: this.#token };
   }
 
+  get now(): number | undefined {
+    return this.#connector.now;
+  }
+
   request<T>(method: RPCMethod, params?: RPCParams, options?: RequestOptions): Promise<T> {
     return this.#connector.request<T>(method, params, options);
   }

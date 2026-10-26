@@ -32,7 +32,7 @@ func deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.
 		removeDraft(attached, (*editor), terminal, clock, owned, questions, approvals, side, start, end, composer.NoRun)
 		return
 	}
-	view := publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, presentationTime(clock))
+	view := publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side)
 	defer func() {
 		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
 	}()

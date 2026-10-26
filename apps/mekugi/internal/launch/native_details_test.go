@@ -28,7 +28,7 @@ func nativeDetailTestViews(t *testing.T, u *appServerUI) (*nativeViews, *nativeS
 			t.Fatal(refusal)
 		}
 		v := n.views[id]
-		publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+		publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
 	}
 	return n, n.views["first"], n.views["second"]
 }
@@ -60,7 +60,7 @@ func TestNativeDetailsSelectAndCloseIndependently(t *testing.T) {
 		call := client.calls[0]
 		request := sessionapi.NativeRequest{Attachment: call.target.Attachment, Thread: call.target.Thread, Version: call.target.Version, Workspace: u.attached.cwd, Context: t.Context(), Operation: call.operation}
 		view.attached.feedback.Set("running progress", false, time.Now())
-		after := publishSessionView(&view.attached, &u.Client, &view.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+		after := publishSessionView(&view.attached, &u.Client, &view.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
 		if after.Version == before.Version {
 			t.Fatal("fixture did not advance the running publication")
 		}
@@ -136,7 +136,7 @@ func TestNativeFileDialogsOwnReadAndStaleCompletionLifetime(t *testing.T) {
 	client := nativeClient{event: sessionapi.NativeEvent{Attachment: "first", Frame: sessionapi.NativeFrame{View: before}}, renderer: nativeClientRenderer{terminal: first.shell}}
 	client.dialog(terminalsession.DialogIntent{Action: terminalsession.DialogOpenLink, Text: "first.go"})
 	first.attached.feedback.Set("progress before link admission", false, time.Now())
-	after := publishSessionView(&first.attached, &u.Client, &first.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+	after := publishSessionView(&first.attached, &u.Client, &first.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
 	if after.Version == before.Version || len(client.calls) != 1 {
 		t.Fatal("fixture did not capture a link before publication advanced")
 	}

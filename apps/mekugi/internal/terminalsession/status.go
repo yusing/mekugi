@@ -36,13 +36,17 @@ func PaintSessionStatus(label sessionpresentation.Label, now time.Time, colors t
 		return terminalui.Red + "✗ " + activityui.ErrorPreview(full) + terminalui.Reset
 	}
 	if label.Running {
+		elapsed := time.Duration(0)
+		if !label.Started.IsZero() {
+			elapsed = max(0, now.Sub(label.Started))
+		}
 		painted := activityui.StatusPulse(text, now, colors)
 		if label.Animation == sessionpresentation.Working {
-			painted = activityui.ReasoningShimmer(text, label.Elapsed, colors)
+			painted = activityui.ReasoningShimmer(text, elapsed, colors)
 		}
 		painted = "\x1b[39m◐ " + painted + terminalui.Reset
-		if label.ElapsedKnown {
-			if elapsed := activityui.FormatLiveDuration(label.Elapsed); elapsed != "" {
+		if !label.Started.IsZero() {
+			if elapsed := activityui.FormatLiveDuration(elapsed); elapsed != "" {
 				painted += terminalui.Dim + " " + elapsed + terminalui.Undim
 			}
 		}

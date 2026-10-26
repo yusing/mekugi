@@ -31,7 +31,7 @@ func TestNativeViewsBorrowExecutionAndDisposeIndependently(t *testing.T) {
 		}
 		view := n.views[id]
 		view.attached.presentation.BorrowExecutionStatus(u.attached.presentation)
-		publishSessionView(&view.attached, &u.Client, &view.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+		publishSessionView(&view.attached, &u.Client, &view.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
 	}
 	first, second := n.views["first"], n.views["second"]
 	if first.attached.presentation.View().Draft.Draft.Text != "" || second.attached.presentation.View().Draft.Draft.Text != "" || u.Text != "private local draft" {
@@ -105,7 +105,7 @@ func TestNativeStartupViewHasNoFabricatedThread(t *testing.T) {
 		t.Fatal(refusal)
 	}
 	v := n.views["startup"]
-	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, time.Now(), true)
+	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
 	if view.Main.ID != "" || view.Info.Workspace != "/workspace" || view.Version.Attachment == 0 {
 		t.Fatalf("startup publication fabricated a confirmed thread: %+v", view)
 	}
@@ -127,7 +127,7 @@ func nativeSideSettingsTest(t *testing.T) (*appServerUI, *appServerTestInput, *n
 		t.Fatal(refusal)
 	}
 	view := n.views["view"]
-	publishSessionView(&view.attached, &u.Client, &view.picker, "", preferences.Applied{Model: u.model, Effort: u.reasoningEffort}, u.serviceTiers, "", "", false, u.side, time.Now(), true)
+	publishSessionView(&view.attached, &u.Client, &view.picker, "", preferences.Applied{Model: u.model, Effort: u.reasoningEffort}, u.serviceTiers, "", "", false, u.side, true)
 	display := sessionpresentation.DisplayIntent{Version: view.attached.presentation.View().Version, Thread: view.attached.presentation.View().SideThread}
 	if refusal := view.applyView(sessionapi.NativeOperation{Display: &display}); refusal != "" {
 		t.Fatal(refusal)

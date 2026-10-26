@@ -123,7 +123,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || publishPresentation(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.picker, &p.ui.Editor, preferences.Applied{Model: p.ui.model, Effort: p.ui.reasoningEffort, Tier: p.ui.serviceTier}, p.ui.serviceTiers, p.ui.title, p.ui.backendVersion, p.ui.restoring != nil, p.ui.side, presentationTime(p.ui.clock)).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || publishPresentation(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.picker, &p.ui.Editor, preferences.Applied{Model: p.ui.model, Effort: p.ui.reasoningEffort, Tier: p.ui.serviceTier}, p.ui.serviceTiers, p.ui.title, p.ui.backendVersion, p.ui.restoring != nil, p.ui.side).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
 					if err := paint(); err != nil {
 						return err
 					}

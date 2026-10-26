@@ -155,7 +155,7 @@ func applyMainKey(attached *attachedPresentation, terminal *terminalsession.Atta
 	if picker.Open && picker.Kind == "" && picker.completionTarget((*editor).Draft, attached.conversation.ShellMode()) != picker.Target {
 		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 	}
-	publishPresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), presentationTime(clock))
+	publishPresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side))
 	refresh := false
 	defer func() {
 		if refresh {
@@ -189,7 +189,7 @@ func applyMainKey(attached *attachedPresentation, terminal *terminalsession.Atta
 		if input.Next == nil {
 			return false, nil
 		}
-		publishPresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), presentationTime(clock))
+		publishPresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side))
 		input = terminal.Main.ContinueKey(*input.Next, terminal.Prompts, transcriptView(attached.presentation, terminal), focused)
 	}
 }

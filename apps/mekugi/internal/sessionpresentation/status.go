@@ -54,12 +54,13 @@ const (
 // Label keeps full text and timing. Sanitization, previews and animation frames
 // belong to the consumer, not the semantic status selection.
 type Label struct {
-	Text, Failure                 string
-	Alert, Running                bool
-	Animation                     Animation
-	Elapsed, Completion           time.Duration
-	ElapsedKnown, CompletionKnown bool
-	FailureKnown                  bool
+	Text, Failure   string
+	Alert, Running  bool
+	Animation       Animation
+	Started         time.Time
+	Completion      time.Duration
+	CompletionKnown bool
+	FailureKnown    bool
 }
 
 type MainStatus struct {
@@ -110,7 +111,7 @@ type Caption struct {
 // The caption already names the displayed thread, including unknown settings.
 // Source: apps/mekugi/internal/router/app_server_ui.go:1550:1585 and
 // composer_notice.go:32:74@1145fbbc.
-func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) {
+func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 	v = m.View()
 	v.DisplayedWorkspace = in.DisplayedWorkspace
 	v.Status = MainStatus{}
@@ -165,13 +166,13 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 	state := m.Status
 	base := Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,
 		Completion: state.completed, CompletionKnown: state.completionKnown}
-	v.Status.Session = m.sessionLabel(base, turn, pending, archiving, shell, now)
+	v.Status.Session = m.sessionLabel(base, turn, pending, archiving, shell)
 	if in.Control != nil && in.Control.LocalStop != "" && turn == "" {
 		text := "Working"
 		if in.Control.Waiting != "" {
 			text = "Waiting for agents"
 		}
-		v.Status.Session = Label{Text: text, Running: true, Animation: Pulse, Elapsed: now.Sub(state.Started), ElapsedKnown: !state.Started.IsZero()}
+		v.Status.Session = Label{Text: text, Running: true, Animation: Pulse, Started: state.Started}
 	}
 	if m.DisplayingSide() && in.Conversation.Side != nil {
 		side := in.Conversation.Side
@@ -201,8 +202,7 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 		v.Status.Composer = v.Status.State
 		if in.SideRunning {
 			v.Status.Composer.Animation = Pulse
-			v.Status.Composer.Elapsed = now.Sub(side.Started)
-			v.Status.Composer.ElapsedKnown = !side.Started.IsZero()
+			v.Status.Composer.Started = side.Started
 		}
 		v.Status.Animating = in.SideRunning || v.BTWRunning
 		v.Status.FeedbackRevision = in.Feedback.Revision
@@ -310,7 +310,7 @@ func (m *Model) TerminalInteraction(thread, turn, activeTurn, process, stdin str
 }
 
 // sessionLabel is Main's own status, whichever thread is displayed.
-func (m *Model) sessionLabel(l Label, turn string, pending, archiving, shell bool, now time.Time) Label {
+func (m *Model) sessionLabel(l Label, turn string, pending, archiving, shell bool) Label {
 	state := m.Status
 	switch {
 	case archiving:
@@ -318,7 +318,7 @@ func (m *Model) sessionLabel(l Label, turn string, pending, archiving, shell boo
 	case state.Text == "" || state.Alert:
 	case turn != "":
 		l.Running, l.Animation = true, Pulse
-		l.Elapsed, l.ElapsedKnown = now.Sub(state.Started), !state.Started.IsZero()
+		l.Started = state.Started
 		if state.Text == "Working" {
 			l.Animation = Working
 			switch {

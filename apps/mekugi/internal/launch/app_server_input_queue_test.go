@@ -111,7 +111,7 @@ func TestAppServerSteersStackUntilSendable(t *testing.T) {
 	appServerTestUserMessage(t, u, "user-1", first.Params.ClientUserMessageID, "first")
 	appServerTestUserMessage(t, u, "user-2", stacked.Params.ClientUserMessageID, "second\nthird")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, stacked.ID))
-	if len(u.Steers()) != 0 || len(u.attached.conversation.Submitted) != 0 || len(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Pending, 80)) != 0 {
+	if len(u.Steers()) != 0 || len(u.attached.conversation.Submitted) != 0 || len(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80)) != 0 {
 		t.Fatalf("committed steers still pending: %+v", u.Steers())
 	}
 	if len(u.attached.source.Entries) != 2 || u.attached.source.Entries[1].Source.Text != "second\nthird" {
@@ -323,7 +323,7 @@ func TestAppServerInputStackedDuringSettingsSendsAfterApply(t *testing.T) {
 	appServerTestKeys(t, u, "/reasoning high\r")
 	appServerOneRequest(t, w, "thread/settings/update", "")
 	appServerTestKeys(t, u, "prompt\r")
-	if len(appServerTurnRequests(t, w)) != 0 || !strings.Contains(ansi.Strip(strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Pending, 80), "\n")), "Sending when settings apply") {
+	if len(appServerTurnRequests(t, w)) != 0 || !strings.Contains(ansi.Strip(strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n")), "Sending when settings apply") {
 		t.Fatal("prompt not held while settings apply")
 	}
 	appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"effort":"high"}}}`)

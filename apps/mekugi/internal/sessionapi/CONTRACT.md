@@ -5,16 +5,18 @@
 Control uses JSON-RPC 2.0 text messages over WebSocket. Local native clients
 connect to `/api/native/control` over the private Unix socket; remote human
 clients use `/api/control` through the connector. Both select WebSocket
-subprotocol `mekugi.control.v4`. The socket retains kernel-confirmed same-user
+subprotocol `mekugi.control.v5`. The socket retains kernel-confirmed same-user
 peer admission, private filesystem permissions and listener/startup locks.
 
-The first request is `initialize` with `{"version":"4"}`. Remote clients also
+The first request is `initialize` with `{"version":"5"}`. Remote clients also
 supply `token`, consumed by the connector and never forwarded to the server.
 Initialization succeeds before any session data or operation is available.
+Its response includes `serverTime` in Unix milliseconds. Browser timers anchor
+that sample to their local monotonic clock, independently of local wall time.
 The endpoint establishes authority; caller fields cannot select it. Remote
 connections cannot invoke native startup or native-only semantic operations.
 
-`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 4` on
+`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 5` on
 request and response. Missing/incompatible versions receive 409. WebSocket
 upgrades on the private socket also carry this header. Browser clients use the
 subprotocol and initialization version; the connector sets the private header.
@@ -264,7 +266,7 @@ All other frame fields remain complete replacements. A clear owner is an explici
 `null` with its bit unset. Retained owners never cross an attachment reset or thread switch, and
 reconnection starts with a complete snapshot. Queues fold retained owners into
 newer pending updates without dropping the initial snapshot or switch boundary.
-Remote human frames remain complete projections. Protocol version 4 is required;
+Remote human frames remain complete projections. The current protocol version is required;
 older clients must reconnect with a matching version rather than applying deltas.
 
 Native image file details carry an admitted local source tied to the detail

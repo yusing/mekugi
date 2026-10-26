@@ -27,7 +27,7 @@ func TestPresetNativeViewPersistenceRecallAndAdmission(t *testing.T) {
 	}
 	v := n.views["view"]
 	publish := func() sessionpresentation.View {
-		return publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, time.Now(), true)
+		return publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, true)
 	}
 	publish()
 	editor := &composer.Editor{Draft: composer.Draft{Text: "ordinary draft", CursorBack: 3}}

@@ -89,7 +89,7 @@ func TestUISnapshotLogicalWaiting(t *testing.T) {
 	*at = at.Add(8 * time.Second)
 	rows, _ := u.testMainFrame(80, 8, 0)
 	view := u.attached.presentation.View()
-	if view.Status.Composer.Text != "Waiting for agents" || !view.InterruptAvailable || !u.Busy(false) || view.Status.Session.CompletionKnown || view.Status.Session.Elapsed != 10*time.Second {
+	if view.Status.Composer.Text != "Waiting for agents" || !view.InterruptAvailable || !u.Busy(false) || view.Status.Session.CompletionKnown || at.Sub(view.Status.Session.Started) != 10*time.Second {
 		t.Fatalf("logical wait lost work: %+v", view.Status)
 	}
 	agent := u.attached.session.Agent("/root")
@@ -142,7 +142,7 @@ func TestLogicalWaitContinuationPreservesElapsed(t *testing.T) {
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "continued"}})
 	*at = at.Add(3 * time.Second)
 	_, _ = u.testMainFrame(80, 8, 0)
-	if got := u.attached.presentation.View().Status.Session.Elapsed; got != 13*time.Second {
+	if got := at.Sub(u.attached.presentation.View().Status.Session.Started); got != 13*time.Second {
 		t.Fatalf("elapsed reset across wake: %v", got)
 	}
 }

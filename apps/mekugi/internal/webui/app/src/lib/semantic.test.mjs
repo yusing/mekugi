@@ -1308,7 +1308,10 @@ test("saved resume reconnects through the connector to the switched thread", asy
       const request = JSON.parse(data);
       queueMicrotask(() => {
         if (request.method === "initialize")
-          this.receive({ id: request.id, result: { version: protocolVersion } });
+          this.receive({
+            id: request.id,
+            result: { version: protocolVersion, serverTime: 1_800_000_000_000 },
+          });
         if (request.method !== "view/attach") return;
         attached.push(request.params.thread);
         this.subscription = request.params.subscription;

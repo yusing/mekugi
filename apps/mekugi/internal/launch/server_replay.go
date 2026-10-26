@@ -41,7 +41,7 @@ func (p *serverReplay) apply(event playback.Event) error {
 func (p *serverReplay) frame() sessionapi.Frame {
 	s := p.current
 	refreshRosterRoles(&s.session, s.childSource)
-	view := s.sessionView(p.At)
+	view := s.sessionView()
 	status := view.Status.Session
 	if len(p.Source.Missing)+len(p.Source.Unsupported)+len(p.Source.HookUnavailable) > 0 {
 		status.Text += fmt.Sprintf("; replay coverage: %d missing children, %d unsupported item kinds, %d unavailable hook histories", len(p.Source.Missing), len(p.Source.Unsupported), len(p.Source.HookUnavailable))

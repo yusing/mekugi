@@ -45,7 +45,7 @@ func (c *statusConsumer) model() *sessionpresentation.Model { return c.service.S
 func (c *statusConsumer) publish(caption sessionpresentation.Caption) sessionpresentation.View {
 	return c.model().Publish(sessionpresentation.MainInputs{
 		Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation, Processes: 2,
-	}, caption, c.now)
+	}, caption)
 }
 
 func TestReplayPublicationWithoutControl(t *testing.T) {
@@ -60,8 +60,8 @@ func TestReplayPublicationWithoutControl(t *testing.T) {
 	m.Status.Set("Working", false)
 	conversation.Questions.Add(&prompt.Call{ID: "question", Thread: "recorded", Questions: []prompt.Question{{ID: "choice", Question: "Proceed?"}}}, true)
 	in := sessionpresentation.MainInputs{RecordedTurn: "turn", Conversation: &conversation, Feedback: &feedback}
-	v := m.Publish(in, sessionpresentation.Caption{}, now)
-	if !v.Status.Session.Running || v.Status.Session.Elapsed != 2*time.Second || v.Questions.Count != 1 {
+	v := m.Publish(in, sessionpresentation.Caption{})
+	if !v.Status.Session.Running || now.Sub(v.Status.Session.Started) != 2*time.Second || v.Questions.Count != 1 {
 		t.Fatalf("recorded facts missing: %+v", v)
 	}
 	if v.Admission.Edit || v.Admission.Submit || v.InterruptAvailable || v.Interrupt != (sessioncontrol.InterruptTarget{}) || !reflect.DeepEqual(v.Pending, conversationmodel.PendingView{}) {
@@ -69,7 +69,7 @@ func TestReplayPublicationWithoutControl(t *testing.T) {
 	}
 	in.RecordedTurn = ""
 	m.Status.Complete("completed", nil, now)
-	v = m.Publish(in, sessionpresentation.Caption{}, now.Add(time.Second))
+	v = m.Publish(in, sessionpresentation.Caption{})
 	if v.Status.Session.Running || v.Status.Animating || v.InterruptAvailable {
 		t.Fatalf("recorded completion retained live status: %+v", v.Status)
 	}
@@ -89,7 +89,7 @@ func TestNonTerminalSurfaceScopeLifetime(t *testing.T) {
 	var replacement scope.Store
 	fresh := c.service.Session(&replacement)
 	fresh.Attach(sessionpresentation.Thread{ID: "replacement", Caller: "/root"}, false)
-	v = fresh.Publish(sessionpresentation.MainInputs{Control: &c.control, Conversation: &c.conversation, Feedback: &c.feedback}, sessionpresentation.Caption{}, c.now)
+	v = fresh.Publish(sessionpresentation.MainInputs{Control: &c.control, Conversation: &c.conversation, Feedback: &c.feedback}, sessionpresentation.Caption{})
 	if v.Panel != nil || v.Resume != nil || fresh.Menu().Kind != "" || fresh.Menu().ID != 0 {
 		t.Fatal("replacement inherited a retired surface")
 	}
@@ -136,7 +136,7 @@ func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 	}
 	c.conversation.Questions.Hide()
 	c.conversation.Editor.Files = []composer.Token{{Path: "source"}}
-	v = c.model().Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation}, caption, c.now)
+	v = c.model().Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation}, caption)
 	if v.Version == want.Version || v.Status.State.Text != "new state" {
 		t.Fatal("changed owner facts were not published")
 	}
@@ -155,7 +155,7 @@ func TestNonTerminalStatusTimingAndDetachedDetails(t *testing.T) {
 	c := newStatusConsumer()
 	c.now = c.now.Add(7 * time.Second)
 	running := c.publish(sessionpresentation.Caption{Model: "model", Effort: "high", ContextKnown: true, ContextTokens: 123, ContextWindow: 1000})
-	if s := running.Status.Session; !s.Running || !s.ElapsedKnown || s.Elapsed != 7*time.Second || s.Animation != sessionpresentation.Working {
+	if s := running.Status.Session; !s.Running || s.Started.IsZero() || c.now.Sub(s.Started) != 7*time.Second || s.Animation != sessionpresentation.Working {
 		t.Fatalf("running timing: %+v", s)
 	}
 	c.model().Status.Complete("completed", nil, c.now)
@@ -312,7 +312,7 @@ func TestNonTerminalStatusReplacementRetiresProgress(t *testing.T) {
 	c.control.Thread = "replacement"
 	c.control.Started("next")
 	m.Status.Set("Working", false)
-	if s := c.publish(sessionpresentation.Caption{}).Status.Session; s.Text != "Working" || s.ElapsedKnown || s.CompletionKnown || s.Failure != "" {
+	if s := c.publish(sessionpresentation.Caption{}).Status.Session; s.Text != "Working" || !s.Started.IsZero() || s.CompletionKnown || s.Failure != "" {
 		t.Fatalf("replacement retained previous status: %+v", s)
 	}
 }

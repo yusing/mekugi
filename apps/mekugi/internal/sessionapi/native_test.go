@@ -2,6 +2,7 @@ package sessionapi
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"errors"
 	"net/http"
 	"runtime"
@@ -9,12 +10,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
+	notice "github.com/yusing/mekugi/modules/notifications/presentation"
 )
 
 func nativeTestServer(t *testing.T) (*Native, *http.Client) {
@@ -36,6 +40,47 @@ func nativeTestFrame(thread string, attachment uint64) NativeFrame {
 		Main:    sessionpresentation.Thread{ID: thread, Caller: "/root"},
 		Info:    sessionpresentation.MainInfo{Workspace: "/workspace"},
 	}}
+}
+
+func TestNativeStatusAnchorDoesNotRepublish(t *testing.T) {
+	for _, authority := range []viewAuthority{localNativeView, remoteHumanView} {
+		native := NewLive().Native()
+		source, request, failure := native.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", authority)
+		if failure != nil {
+			t.Fatal(failure)
+		}
+		defer source.close()
+		var model sessionpresentation.Model
+		model.Attach(sessionpresentation.Thread{ID: "thread", Caller: "/root"}, false)
+		model.Status.Set("Working", false)
+		model.Status.Started = time.Unix(100, 0)
+		var control sessioncontrol.Live
+		control.Thread = "thread"
+		control.Started("turn")
+		input := sessionpresentation.MainInputs{Info: sessionpresentation.MainInfo{Workspace: "/workspace"}, Control: &control, Conversation: &conversation.Session{}, Feedback: &notice.Model{}}
+		publish := func() {
+			if err := native.Publish(request.Attachment, NativeFrame{View: model.Publish(input, sessionpresentation.Caption{})}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		publish()
+		first, ok := source.native.pop()
+		var decoded NativeEvent
+		if !ok || json.Unmarshal(first.Data, &decoded, nativeEncoding) != nil || !decoded.Frame.View.Status.Session.Started.Equal(model.Status.Started) {
+			t.Fatal("status start anchor did not reach the consuming wire type")
+		}
+		publish()
+		if _, ok := source.native.pop(); ok {
+			t.Fatal("unchanged status emitted another semantic publication")
+		}
+		model.Status.Complete("completed", nil, model.Status.Started.Add(time.Minute))
+		control.Completed(true)
+		publish()
+		last, ok := source.native.pop()
+		if !ok || json.Unmarshal(last.Data, &decoded, nativeEncoding) != nil || decoded.Frame.View.Status.Session.Completion != time.Minute {
+			t.Fatal("settled duration did not publish")
+		}
+	}
 }
 
 func openNativeTest(t *testing.T, n *Native, client *http.Client, frame NativeFrame, startup string) (*NativeConnection, NativeRequest) {

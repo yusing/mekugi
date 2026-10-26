@@ -96,7 +96,7 @@ func TestAppServerProgressTerminalPolling(t *testing.T) {
 	poll("main", "t", "proc", "")
 	label("Compacting context")
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "interrupted"}})
-	if got := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Status.Session; got.Text != "Interrupted" || got.Running {
+	if got := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Session; got.Text != "Interrupted" || got.Running {
 		t.Fatal("interrupt retained progress")
 	}
 }

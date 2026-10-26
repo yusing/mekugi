@@ -3,7 +3,6 @@ package terminalsession
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -24,7 +23,7 @@ func TestPreparedChildHumanControls(t *testing.T) {
 	var live sessioncontrol.Live
 	live.Thread = "child"
 	live.Started("turn")
-	v := model.Publish(sessionpresentation.MainInputs{Control: &live, Feedback: &notice.Model{}, Conversation: &conv}, sessionpresentation.Caption{}, time.Unix(100, 0))
+	v := model.Publish(sessionpresentation.MainInputs{Control: &live, Feedback: &notice.Model{}, Conversation: &conv}, sessionpresentation.Caption{})
 	var main Main
 	main.Update(v)
 	transcript := activityui.NewView()

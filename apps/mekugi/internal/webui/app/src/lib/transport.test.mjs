@@ -78,7 +78,7 @@ function initialize(socket, message) {
   if (message.method !== "initialize") return false;
   assert.equal(socket.protocol, subprotocol);
   assert.equal(message.params.version, protocolVersion);
-  socket.reply(message, { version: protocolVersion });
+  socket.reply(message, { version: protocolVersion, serverTime: 1_800_000_000_000 });
   return true;
 }
 function publication(socket, message, data = { generation: 1 }) {
@@ -111,6 +111,35 @@ test("connector URLs and viewer addresses preserve explicit composite identity",
   assert.deepEqual(parseSelection(selectionHash(first)), first);
   assert.notEqual(selectionHash(first), selectionHash({ ...first, machine: "two" }));
   assert.equal(parseSelection("#thread=same").session, undefined);
+});
+
+test("server clock advances monotonically without depending on browser wall time", async (t) => {
+  let monotonic = 100;
+  t.mock.method(performance, "now", () => monotonic);
+  t.mock.method(Date, "now", () => 123);
+  handler = (socket, message) => {
+    if (!initialize(socket, message)) socket.reply(message, []);
+  };
+  const connector = connect("https://example.test", "token");
+  assert.equal(connector.now, undefined);
+  await connector.request("session/list");
+  assert.equal(connector.now, 1_800_000_000_000);
+  monotonic += 2000;
+  assert.equal(connector.now, 1_800_000_002_000);
+  const reinitializing = Promise.withResolvers();
+  handler = (socket, message) => {
+    if (message.method === "initialize") reinitializing.resolve(message);
+    else socket.reply(message, []);
+  };
+  sockets[0].close();
+  await Promise.resolve();
+  const refreshed = connector.request("session/list");
+  const initialization = await reinitializing.promise;
+  monotonic += 3000;
+  assert.equal(connector.now, 1_800_000_005_000);
+  sockets[1].reply(initialization, { version: protocolVersion, serverTime: 1_800_000_005_100 });
+  await refreshed;
+  assert.equal(connector.now, 1_800_000_005_100);
 });
 
 test(

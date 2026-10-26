@@ -24,10 +24,10 @@ import (
 
 // publishPresentation settles detached facts at a semantic transition boundary.
 // Reading Model.View does not run this projection or bind an attachment.
-func publishPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, now time.Time) sessionpresentation.View {
+func publishPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side) sessionpresentation.View {
 	m := attached.presentation
 	if attached.view != "" {
-		view := publishSessionView(attached, control, picker, "", settings, tiers, title, backend, restoring, side, now, true)
+		view := publishSessionView(attached, control, picker, "", settings, tiers, title, backend, restoring, side, true)
 		terminal.Main.Update(view)
 		return view
 	}
@@ -52,7 +52,7 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 	} else {
 		*editor = &attached.conversation.Editor
 	}
-	view := publishSessionView(attached, control, picker, (*editor).Text, settings, tiers, title, backend, restoring, side, now, false)
+	view := publishSessionView(attached, control, picker, (*editor).Text, settings, tiers, title, backend, restoring, side, false)
 	terminal.Prompts.Update(view)
 	terminal.Main.Update(view)
 	for _, terminal := range []*activityui.View{terminal.Transcript, terminal.Agents} {
@@ -66,7 +66,7 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 
 // publishSessionView projects semantic owner state without choosing an editor,
 // touching renderer geometry or acknowledging terminal delivery.
-func publishSessionView(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, draft string, settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, now time.Time, clientEditors bool) sessionpresentation.View {
+func publishSessionView(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, draft string, settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, clientEditors bool) sessionpresentation.View {
 	m := attached.presentation
 	if control.Startup.Prepared != nil {
 		m.RestrictChildInput(attached.threadInput == nil || !attached.threadInput.admitted)
@@ -102,7 +102,7 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 		Info:       info, ClientEditors: clientEditors,
 		Menu: picker.menuView(attached.cwd, draft, &control.Live), Control: &control.Live, Feedback: &attached.feedback, Conversation: attached.conversation, Restoring: restoring,
 		SideThreads: control.Requests.SideThreads(side), SideRunning: side != nil && (side.Busy || side.Starting), Processes: runningProcessCount(&attached.session),
-	}, caption, now)
+	}, caption)
 }
 
 func attachPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, review **sessionreview.Review, commits **activitypresentation.CommitReader, parent context.Context, retained changes.Scope, changeSource changes.Service, activityPresent bool) {
@@ -128,7 +128,7 @@ func settlePresentation(attached *attachedPresentation, terminal *terminalsessio
 		autoOpenApprovals(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
 		autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
 	}
-	publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, presentationTime(clock))
+	publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side)
 	publishActivity(attached, terminal)
 }
 

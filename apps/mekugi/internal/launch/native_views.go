@@ -356,7 +356,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			}
 		}
 		v.attached.presentation.BorrowExecutionStatus(execution.presentation)
-		view := publishSessionView(&v.attached, control, &v.picker, "", settings, tiers, title, backend, restoring, side, now, true)
+		view := publishSessionView(&v.attached, control, &v.picker, "", settings, tiers, title, backend, restoring, side, true)
 		facts.Busy = view.Status.Session.Running || control.Busy(false)
 		reviewView := reviewSource.DiffReviewView(execution.session.Scope())
 		frame := sessionapi.NativeFrame{Processes: v.attached.session.Processes(), View: view, Facts: facts, CompletionTarget: v.completionTarget, CompletionCatalog: v.picker.skillsRevision,

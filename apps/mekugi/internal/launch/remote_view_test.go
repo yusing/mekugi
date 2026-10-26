@@ -105,7 +105,7 @@ func remoteOwnerView(t *testing.T, u *appServerUI) *remoteViewHarness {
 
 func (h *remoteViewHarness) publish() {
 	u, v := h.u, h.view
-	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, time.Now(), true)
+	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, true)
 	frame := sessionapi.NativeFrame{View: view, Questions: nativePendingQuestions(u.attached.conversation), Main: v.attached.source.Publication(v.attached.presentation, nil)}
 	v.publishDetails(&frame)
 	if err := h.api.Native().Publish(h.event.Attachment, frame); err != nil {

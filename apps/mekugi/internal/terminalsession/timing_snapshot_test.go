@@ -19,7 +19,7 @@ func TestUISnapshotLiveElapsedRollover(t *testing.T) {
 	dock := BTWDock{body: &conversationmodel.SideView{Status: "Answering", Started: start}, running: true}
 	var rows []string
 	for _, elapsed := range []time.Duration{0, 999 * time.Millisecond, time.Second} {
-		rows = append(rows, fmt.Sprint(elapsed), PaintSessionStatus(sessionpresentation.Label{Text: "Working", Running: true, ElapsedKnown: true, Elapsed: elapsed}, start.Add(elapsed), terminalui.Colors{}))
+		rows = append(rows, fmt.Sprint(elapsed), PaintSessionStatus(sessionpresentation.Label{Text: "Working", Running: true, Started: start}, start.Add(elapsed), terminalui.Colors{}))
 		rows = append(rows, dock.Render(&painter, start.Add(elapsed), 60, 4).Rows...)
 	}
 	rows = append(rows, PaintSessionStatus(sessionpresentation.Label{Text: "Completed", CompletionKnown: true, Completion: 125 * time.Millisecond}, start.Add(time.Second), terminalui.Colors{}))
