@@ -2,6 +2,8 @@ package launch
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +84,43 @@ func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 	}
 	if u.picker.Open || wire.Len() != 0 {
 		t.Fatal("lock broke contextual picker dismissal")
+	}
+}
+
+func TestNativePickerEscapeDoesNotInterrupt(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.Turn = "active"
+	appServerTestKeys(t, u, "/model\r")
+	c := nativeTestPromptClient(u)
+	defer c.renderer.terminal.Diff.Close()
+	c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x1b"})
+	if len(c.calls) != 1 || c.calls[0].operation.Menu == nil || c.calls[0].operation.Interrupt != nil {
+		t.Fatalf("picker Escape queued more than its dismissal: %+v", c.calls)
+	}
+}
+
+func TestNativePickerClickRetainsSubmission(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.Text = "/model"
+	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	c := nativeTestPromptClient(u)
+	defer c.renderer.terminal.Diff.Close()
+	c.editor("main").Replace(u.Editor.Draft)
+	_, c.event.Frame.CompletionTarget = c.selectedEditor()
+	c.refresh(time.Now())
+	terminal := c.renderer.terminal
+	terminal.Width, terminal.Height = 100, 24
+	if _, err := c.renderer.render(t.Context(), io.Discard, time.Now(), mekugiVersion()); err != nil {
+		t.Fatal(err)
+	}
+	menu := &terminal.Main.Menu
+	if menu.RowCount == 0 {
+		t.Fatal("completion row was not painted")
+	}
+	x, y := terminal.Layout.Main.X+menu.Rect.X+1, terminal.Layout.Main.Y+menu.Rect.Y+menu.RowStart+1
+	c.dispatch(terminalsession.Input{Kind: terminalsession.MouseInput, Text: fmt.Sprintf("\x1b[<0;%d;%dM", x, y)})
+	if len(c.calls) != 1 || c.calls[0].operation.Menu == nil || c.calls[0].next == nil {
+		t.Fatalf("completion click lost its post-accept submission: %+v", c.calls)
 	}
 }
 

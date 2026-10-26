@@ -39,6 +39,15 @@ type KeyContinuation struct {
 	regular bool
 }
 
+// Continuation submits an accepted slash completion without accepting its menu
+// again. Pointer selection needs the same post-menu Enter phase as the keyboard.
+func (r MenuResult) Continuation() *KeyContinuation {
+	if !r.Submit {
+		return nil
+	}
+	return &KeyContinuation{key: "\r", phase: mainKeyComposer}
+}
+
 const (
 	mainKeyPrompt uint8 = iota
 	mainKeyPrelude

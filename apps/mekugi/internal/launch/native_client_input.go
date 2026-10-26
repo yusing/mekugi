@@ -210,7 +210,9 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 		case effect.Resume != nil:
 			c.enqueue(sessionapi.NativeOperation{Resume: effect.Resume}, nil, nil)
 		case effect.Menu != nil:
-			c.menu(*effect.Menu, nil)
+			if c.menu(*effect.Menu, nil) {
+				return
+			}
 		case effect.Display != nil:
 			thread := effect.Display.Thread
 			if c.displayParent != nil && thread.ID == c.event.Frame.View.Main.ID {
@@ -389,6 +391,9 @@ func (c *nativeClient) continueKey(next terminalsession.KeyContinuation) {
 
 func (c *nativeClient) menu(menu terminalsession.MenuResult, next *terminalsession.KeyContinuation) bool {
 	if menu.Action.Kind != sessionpresentation.MenuNoAction {
+		if next == nil {
+			next = menu.Continuation()
+		}
 		if menu.Handled && !menu.Submit {
 			next = nil
 		}
