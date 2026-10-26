@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -53,6 +54,9 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 	lifecycle.SetWaiting(live.LocalStop != "", now)
 	wait := threads.shared.WaitPublication(live.Thread)
 	lifecycle.WaitingFor = ""
+	if !lifecycle.Waiting || wait == nil {
+		lifecycle.Wait = nil
+	}
 	if wait != nil {
 		names := make([]string, len(wait.Targets))
 		for i, target := range wait.Targets {
@@ -60,6 +64,17 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 		}
 		if lifecycle.Waiting {
 			lifecycle.WaitingFor = strings.Join(names, ", ")
+			value := activity.Value{Kind: "progress", Body: "Waiting for", Live: true}
+			for _, target := range wait.Targets {
+				value.WaitTargets = append(value.WaitTargets, activity.WaitTarget{Name: target})
+			}
+			if wait.EffectiveMS != nil {
+				value.WaitTimeout = (time.Duration(*wait.EffectiveMS) * time.Millisecond).String()
+			}
+			if lifecycle.Wait == nil || lifecycle.Wait.WaitTimeout != value.WaitTimeout || !slices.Equal(lifecycle.Wait.WaitTargets, value.WaitTargets) {
+				// Published values are immutable; keep unchanged roster identity stable.
+				lifecycle.Wait = &value
+			}
 		}
 		input := attached.threadInput
 		// Wake acknowledgements are retained owner facts, not ordinary host

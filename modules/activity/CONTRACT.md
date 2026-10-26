@@ -520,7 +520,9 @@ Thread-control operations share the existing started, follow-up and directed-mes
 traffic rows. Only confirmed outcomes establish a child or delivered content.
 Pending, queued, failed and unconfirmed attempts retain explicit progress or error
 rows. Waits publish their supplied targets and distinguish registration, completion,
-timeout and cancellation. Interrupt acknowledgement reports the request, not task
+timeout and cancellation. A waiting roster row uses the transcript's wait text,
+canonical target colors and muted optional timeout, rather than a names-only label.
+Interrupt acknowledgement reports the request, not task
 completion. Agent listing reports its observed count alongside the existing roster.
 Raw arguments and outcomes remain in details rather than the transcript.
 

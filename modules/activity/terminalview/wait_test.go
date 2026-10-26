@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	activitymodel "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -76,4 +77,22 @@ func TestUISnapshotWaitTimeoutMuted(t *testing.T) {
 	block := activityui.Block{Kind: "progress", Body: "Waiting for", Live: true, WaitTargets: []activityui.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "10s"}
 	rows := append(p.Block(block, 100), "plain after wait")
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/wait_timeout.txt", rows, 100)
+}
+
+func TestUISnapshotWaitingRosterMatchesTranscript(t *testing.T) {
+	now := time.Unix(0, 0)
+	v := activityui.View{Painter: activityui.Painter{Clock: func() time.Time { return now }}}
+	var rows []string
+	for _, timeout := range []string{"", "10s"} {
+		block := activityui.Block{Kind: "progress", Body: "Waiting for", Live: true,
+			WaitTargets: []activityui.WaitTarget{{Name: "/root/backend-extraction/backend-extraction-review"}}, WaitTimeout: timeout}
+		agent := activitymodel.Agent{Waiting: true, Wait: &block.Value}
+		got := v.AgentState(agent, 120, now)
+		if want := v.Painter.Summary([]activityui.Block{block}, 120); got != want {
+			t.Fatalf("roster %q differs from transcript summary %q", got, want)
+		}
+		rows = append(rows, v.Painter.Block(block, 120)...)
+		rows = append(rows, got, "plain after wait")
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/wait_roster.txt", rows, 120)
 }

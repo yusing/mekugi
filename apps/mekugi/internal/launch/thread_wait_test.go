@@ -99,6 +99,9 @@ func TestUISnapshotLogicalWaiting(t *testing.T) {
 	}
 	assertNativeUISnapshot(t, "logical-waiting", rows)
 	u.testActivity(u.shell.Agents).publishActivity()
+	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for worker (timeout 1s)") {
+		t.Fatalf("roster lost transcript wait details: %s", text)
+	}
 	assertNativeUISnapshot(t, "logical-waiting-roster", u.shell.Agents.NativeRoster(80, 5, *at, true))
 	if err := threads.shared.Pause(t.Context(), "main"); err != nil {
 		t.Fatal(err)
@@ -254,12 +257,16 @@ func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
 
 func TestUISnapshotLogicalWaitNoTimeout(t *testing.T) {
 	u, threads, at := logicalWaitUI(t, false, nil)
+	previousWait := u.attached.session.Agent("/root").Wait
 	*at = at.Add(time.Hour)
 	syncLogicalWork(&u.attached, &u.Live, threads, *at)
 	if wake, err := threads.shared.PrepareWake(t.Context(), "main", *at); err != nil || wake != nil {
 		t.Fatalf("deadline-free wait woke without an event: %+v %v", wake, err)
 	}
 	agent := u.attached.session.Agent("/root")
+	if previousWait == nil || agent.Wait != previousWait {
+		t.Fatal("unchanged wait invalidated roster publication")
+	}
 	if agent.Responding || !agent.Waiting || agent.WaitingFor != "worker" {
 		t.Fatalf("stopped parent remained active: %+v", agent)
 	}
@@ -268,6 +275,10 @@ func TestUISnapshotLogicalWaitNoTimeout(t *testing.T) {
 		t.Fatalf("deadline-free wait: %s", text)
 	}
 	assertNativeUISnapshot(t, "logical-wait-no-timeout", rows)
+	u.testActivity(u.shell.Agents).publishActivity()
+	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for worker") || strings.Contains(text, "timeout") {
+		t.Fatalf("roster differs from deadline-free transcript: %s", text)
+	}
 }
 
 func TestLogicalStoppedTargetPublishesWakeReason(t *testing.T) {

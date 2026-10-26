@@ -1371,6 +1371,7 @@ export type AgentFacts = {
   "Role": string;
   "Thread": string;
   "WaitingFor": string;
+  "Wait": (Value | null);
   "Responding": boolean;
   "Final": boolean;
   "Waiting": boolean;

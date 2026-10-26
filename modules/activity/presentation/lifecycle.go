@@ -11,6 +11,7 @@ type AgentLifecycle struct {
 	WorkTimer    WorkTimer `json:",omitzero"`
 	Responding   bool      `json:",omitzero"`
 	WaitingFor   string    `json:",omitzero"`
+	Wait         *Value    `json:"-"`
 	Waiting      bool      `json:",omitzero"`
 	Paused       bool      `json:",omitzero"`
 	Final        bool      `json:",omitzero"`
