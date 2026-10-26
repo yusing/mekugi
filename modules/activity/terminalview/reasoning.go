@@ -14,7 +14,7 @@ import (
 // streams, following grok-build's truncated thinking blocks.
 const ThinkingTailRows = 3
 
-// CompactReasoning joins collapsed sections of one item without changing the
+// CompactReasoning joins consecutive collapsed reasoning without changing the
 // source blocks used by expanded presentation or the dialog's section pages.
 func CompactReasoning(blocks []Block) []Block {
 	var out []Block
@@ -22,7 +22,7 @@ func CompactReasoning(blocks []Block) []Block {
 		block := blocks[i]
 		j := i + 1
 		if block.Kind == "summary" && block.Collapsed && !block.Live {
-			for j < len(blocks) && blocks[j].Kind == "summary" && blocks[j].Collapsed && !blocks[j].Live && blocks[j].Source == block.Source {
+			for j < len(blocks) && blocks[j].Kind == "summary" && blocks[j].Collapsed && !blocks[j].Live {
 				j++
 			}
 		}

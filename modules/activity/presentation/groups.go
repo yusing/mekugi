@@ -117,16 +117,23 @@ func MergeReads(values []Value, counts []int) Value {
 // Reasoning joins admitted sections while retaining each section's source.
 func Reasoning(values []Value) Value {
 	value := Group(values[0], values)
+	value.Thought = 0
 	var labels, bodies []string
-	for _, section := range values {
+	for i, section := range values {
 		label := section.Label
+		if body := strings.TrimSpace(ReasoningSummaryBody(section.Body)); label == "" && !strings.ContainsAny(body, "\r\n") {
+			label = body
+		}
 		if label == "" {
 			label = "Thought"
 		}
 		labels, bodies = append(labels, label), append(bodies, section.Body)
+		// Each item's final section owns its observed duration.
+		if i+1 == len(values) || section.Source != values[i+1].Source {
+			value.Thought += section.Thought
+		}
 	}
 	value.Label, value.Body = strings.Join(labels, " • "), strings.Join(bodies, "\n\n")
-	value.Thought = values[len(values)-1].Thought
 	return value
 }
 

@@ -213,8 +213,8 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 		}
 		feed := v.RenderFeed(80, 40)
 		got := strings.Join(threadPlain(feed), "\n")
-		if strings.Count(got, "Thought for 12s • First") != 1 || strings.Count(got, "Thought for 12s • Second") != 1 || strings.Count(got, "Thought for 12s • Latest body") != 1 || strings.Contains(got, "Old body") || strings.Contains(got, "Second body") {
-			t.Fatalf("independent folded items: %s", got)
+		if !strings.Contains(got, "Thought for 36s • First • Second • Latest body") || strings.Contains(got, "Old body") || strings.Contains(got, "Second body") {
+			t.Fatalf("consecutive folded items: %s", got)
 		}
 		shell := &terminalUI{Attachment: &terminalsession.Attachment{}}
 		opened := 0
@@ -225,13 +225,18 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 			if !shell.openOutput(v.bind(shell), snippet) {
 				t.Fatal("reasoning did not request dialog")
 			}
-			page := v.Painter.DetailDocument(shell.Dialog.Pages[0].DetailPage, nil, nil, 80)
-			if page.Text != v.Entries[opened].Source.Text {
-				t.Fatalf("wrong item opened: %q", page.Text)
+			if len(shell.Dialog.Pages) != len(v.Entries) {
+				t.Fatalf("reasoning dialog lost original items: %+v", shell.Dialog.Pages)
+			}
+			for i, detail := range shell.Dialog.Pages {
+				page := v.Painter.DetailDocument(detail.DetailPage, nil, nil, 80)
+				if page.Text != v.Entries[i].Source.Text {
+					t.Fatalf("wrong item opened: %q", page.Text)
+				}
 			}
 			opened++
 		}
-		if opened != 2 {
+		if opened != 1 {
 			t.Fatalf("only %d items could reopen", opened)
 		}
 	}

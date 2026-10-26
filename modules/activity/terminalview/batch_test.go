@@ -18,6 +18,7 @@ func TestCollapseBatchKeepsUnsettledOrSingleWork(t *testing.T) {
 		"skipped":        {read, func() Block { b := run; b.Skipped = true; return b }()},
 		"approval":       {read, func() Block { b := run; b.Approval = "Approved"; return b }()},
 		"requested edit": {read, {Kind: "op", Verb: "Edit", EditSource: "cat (requested)"}},
+		"confirmed edit": {read, {Kind: "op", Verb: "Edit", EditSource: "apply_patch"}},
 		"question":       {read, {Kind: "op", Verb: "Asked", Questions: []Question{{Text: "Continue?"}}}},
 		"message":        {read, {Kind: "text", Body: "note"}},
 		"attach":         {read, {Kind: "op", Verb: "Attach failed", Path: "b.go", Label: "too large"}},
@@ -28,8 +29,8 @@ func TestCollapseBatchKeepsUnsettledOrSingleWork(t *testing.T) {
 	}
 	merged := read
 	merged.Members = []presentation.Value{read.Value, read.Value}
-	batch, ok := CollapseBatch([]Block{merged, run, {Kind: "op", Verb: "Edit", EditSource: "apply_patch"}, {Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true}})
-	if !ok || len(batch.Members) != 5 || batch.Members[3].EditSource != "apply_patch" {
+	batch, ok := CollapseBatch([]Block{merged, run, {Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true}})
+	if !ok || len(batch.Members) != 4 || !batch.Members[3].BatchExit {
 		t.Fatalf("batch = %+v, %v; want merged reads and the batch result as dialog pages", batch, ok)
 	}
 }

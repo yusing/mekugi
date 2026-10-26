@@ -189,7 +189,6 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 				}
 				items = append(items, item)
 			}
-			items = append(items, binding.ThreadItem{ID: "edit", Type: "fileChange", Status: "completed", Changes: []binding.FileChange{{Path: "bar.go", Diff: "+new\n-old\n"}, {Path: "baz.go", Diff: "+other\n"}}})
 			if mode == "resume" {
 				u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: items}})
 			} else {
@@ -223,15 +222,9 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 					break
 				}
 			}
-			if terminalTest(u).Dialog == nil || len(terminalTest(u).Dialog.Pages) != 6 ||
-				!slices.ContainsFunc(terminalTest(u).Dialog.Pages, func(b sessionpresentation.DetailItem) bool { return b.ExitCode == 2 }) ||
-				!slices.ContainsFunc(terminalTest(u).Dialog.Pages, func(b sessionpresentation.DetailItem) bool {
-					return b.Lang == "diff" && strings.Contains(b.Code, "+new")
-				}) ||
-				!slices.ContainsFunc(terminalTest(u).Dialog.Pages, func(b sessionpresentation.DetailItem) bool {
-					return b.Lang == "diff" && strings.Contains(b.Code, "+other")
-				}) {
-				t.Fatal("rendered batch click did not open failed-command and edit details")
+			if terminalTest(u).Dialog == nil || len(terminalTest(u).Dialog.Pages) != 4 ||
+				!slices.ContainsFunc(terminalTest(u).Dialog.Pages, func(b sessionpresentation.DetailItem) bool { return b.ExitCode == 2 }) {
+				t.Fatal("rendered batch click did not open failed-command details")
 			}
 		})
 	}

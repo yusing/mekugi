@@ -138,7 +138,6 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 					{Kind: "reads", Verb: "Search", Reads: []activitymodel.Read{{Path: "bbb"}}},
 					{Kind: "op", Verb: "Run", Code: "foo", Lang: "bash", Fenced: true},
 					{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "bar"}}},
-					{Kind: "op", Verb: "Edit", EditSource: "apply_patch"},
 				}))
 				return batch
 			}(),
@@ -351,41 +350,23 @@ func TestTemporaryCapturedChangesRetainBatchAndOutput(t *testing.T) {
 	for i := range 200 {
 		records = append(records, fmt.Sprintf("Create `/tmp/worktree/file%03d.go` +3 -0 · git worktree add", i))
 	}
-	for _, state := range []string{"restored", "passed", "output", "expanded-output"} {
+	for _, state := range []string{"output", "expanded-output"} {
 		t.Run(state, func(t *testing.T) {
-			facts := presentation.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(records, "\n\n"), Restored: state == "restored"}
+			facts := presentation.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(records, "\n\n")}
 			item := presentation.ItemContent{Facts: facts}
-			output := strings.Contains(state, "output")
-			if output {
-				item.Command.Tail = []string{"retained command output"}
-				item.Details = &presentation.ItemDetails{Output: 1}
-			}
+			item.Command.Tail = []string{"retained command output"}
+			item.Details = &presentation.ItemDetails{Output: 1}
 			v := NewView()
 			v.Conversation = true
 			v.Clock = func() time.Time { return time.Unix(1000, 0) }
 			v.Update(&presentation.Publication{Entries: []presentation.Entry{{Facts: facts, Values: item.Values()}}}, Display{})
-			if state == "passed" {
-				v.Passed = map[uint64]bool{1: true}
-				v.Following = false
-			}
 			if state == "expanded-output" {
 				v.Expansion = 1
 			}
 			feed := v.RenderConversation(100)
 			text := ansi.Strip(strings.Join(feed.Lines, "\n"))
-			if output {
-				if !strings.Contains(text, "retained command output") || !strings.Contains(text, "… +189 files") || !strings.Contains(text, "file199.go") {
-					t.Fatalf("output-bearing final capture lost: %s", text)
-				}
-			} else {
-				if !strings.Contains(text, "Created ×200") {
-					t.Fatalf("incorrect batch tally: %s", text)
-				}
-				for _, run := range v.Runs {
-					if len(run.Blocks) != 1 || len(run.Blocks[0].Members) != 200 {
-						t.Fatal("batch lost original file membership")
-					}
-				}
+			if !strings.Contains(text, "retained command output") || !strings.Contains(text, "… +189 files") || !strings.Contains(text, "file199.go") {
+				t.Fatalf("output-bearing final capture lost: %s", text)
 			}
 		})
 	}

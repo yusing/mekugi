@@ -38,7 +38,7 @@ func CollapseBatch(blocks []Block) (Block, bool) {
 		case block.UserShell:
 			return Block{}, false
 		case block.Kind != "op" && block.Kind != "reads", block.Verb == "", block.Verb == "Attach failed", block.Repeated != "", block.Running, block.Skipped, block.Pending, block.Approval != "", block.Hook != nil,
-			block.EditOperation() && block.EditHeading() != "Edited", len(block.Questions) > 0:
+			block.EditOperation(), len(block.Questions) > 0:
 			return Block{}, false
 		}
 		if !block.BatchExit && !block.Effect {

@@ -399,7 +399,8 @@ them. Omitted-row links open the retained entry, never nearby similar text. The
 latest exchange keeps the larger excerpt; narrative gaps do not consume excerpt
 rows. Reasoning between traffic appears after its rail closes; later Main tools
 retain their own narrative heading or a continued heading. Settled off-screen
-operation groups collapse to counted verbs and failure counts; running, skipped,
+operation groups without edits collapse to counted verbs and failure counts;
+edit paths remain visible. Running, skipped,
 declined, unconfirmed, unanswered and outcome-unknown work stays visible. Resume
 starts settled groups collapsed. Shrinking preserves a scrolled-up anchor.
 
@@ -429,8 +430,10 @@ preview longer streams, paced like command output.
 Earlier sections fold as a new one starts. Completion first drains queued text,
 then leaves the latest completed item open until later activity and a five-second
 quiet period shared with successful command output across Main and children.
-Restored long summaries start folded. Collapsed sections share one row and one
-item duration; dialogs retain each section's full body as pages. Observed durations
+Restored long summaries start folded. Consecutive collapsed reasoning items share
+one row with their observed durations combined; sections of one item count its
+duration once.
+Dialogs retain each section's full body and source as pages. Observed durations
 appear only from one second onward, on the final section rather than per section.
 Completed timed headings and short summaries lead with `Thought for Ns`, followed
 by ` • ` and their title or short text when present. No duration is invented when
