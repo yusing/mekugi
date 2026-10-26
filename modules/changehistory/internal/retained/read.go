@@ -24,7 +24,7 @@ import (
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
-const changesReadUsage = "mchanges --list [ID[..ID] ...] [--workspace DIR] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]"
+const changesReadUsage = "mchanges --list [ID[..ID] ...] [--workspace DIR] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]"
 
 type changeReadOptions struct {
 	// Only initial reads collect unavailable targets; frozen recovery stays strict.
@@ -104,7 +104,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 				return options, fmt.Errorf("%s does not accept %s", options.view, flag)
 			}
 			if options.view != "" {
-				return options, errors.New("choose one of --list, --summary, --history, or --net")
+				return options, errors.New("choose only one review view")
 			}
 			options.view = strings.TrimPrefix(flag, "--")
 		case "--workspace", "--max-tokens":

@@ -50,7 +50,7 @@ IDs or reads selected IDs and ranges:
 
 ```text
 mchanges --list [ID[..ID] ...] [--workspace DIR] [--max-tokens N]
-mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...]
+mchanges [--mine | ID[..ID] ...] [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]
 mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]
 ```
 
@@ -65,8 +65,8 @@ shows known direct `+N -N` capture counts, not a composed net total. Partial or 
 are omitted from the authored list. Pending and retired IDs remain visible;
 sibling threads' IDs are not exposed by implicit selection. Explicit IDs can still be read across
 agents in the shared namespace. The default view composes selected captured edits
-into one combined patch, without change-ID headings. `--net` remains a compatibility
-alias. `--summary` prefixes each path's added and removed line counts with the same
+into one combined patch, without change-ID headings. `--summary` prefixes each path's
+added and removed line counts with the same
 file status as the diff pane (`A`, `M`, `D`, `R`, `RM`, `UU`, or `?` for incomplete evidence), aggregating across
 selected records in durable capture order, regardless of argument or author order.
 Counts come from the composed file differences, not the sum of repeated attempts.

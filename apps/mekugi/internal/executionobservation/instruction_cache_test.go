@@ -96,10 +96,13 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 					t.Fatal("effective developer cleanup differs from recorded projection")
 				}
 			}
-			for _, guidance := range []string{"Default output composes selected captured diffs", "--history shows individual attempts", "--net is a compatibility alias", "Piping partial stdout can modify the index", "validate the collected output", "pure moves use display-only headers"} {
+			for _, guidance := range []string{"For composed review, use `mchanges ID...` or bare `mchanges`", "This default composes selected captured diffs", "Use --history only to diagnose individual attempts", "Piping partial stdout can modify the index", "validate the collected output", "pure moves use display-only headers"} {
 				if !strings.Contains(string(warm.Fields["tools"])+string(warm.Fields["input"]), guidance) {
 					t.Errorf("prepared frontend guidance lacks %q", guidance)
 				}
+			}
+			if strings.Contains(string(warm.Fields["tools"])+string(warm.Fields["input"]), "--net") {
+				t.Error("prepared frontend guidance exposes an undocumented compatibility option")
 			}
 			// The comparison is meaningful only if the prewarm was projected.
 			if bytes.Contains(warm.Fields["input"], []byte(conflictingProgress)) || !bytes.Contains(append(slices.Clone(warm.Fields["tools"]), warm.Fields["input"]...), []byte(frontendGuidanceStart)) {
