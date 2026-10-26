@@ -33,12 +33,12 @@ Application owners below are under `apps/mekugi/internal/`.
 | --- | --- |
 | Thread control | `modules/threadcontrol`: server-owned logical trees, admitted agent operations, prepared children and retained waits; Session API owns native runtime lifetime, Session Control owns each runtime’s host ledger |
 | Activity | `modules/activity/module.go`: historical wait-snapshot retention; `feed`: content/output retention and `contracts/activitydetail` host; `coordination`: shared thread-control observation decoding; `presentation`: lifecycle, grouping, source/segment interpretation, roster, commit enrichment and detached publications; `terminalview`: layout, reveal/pacing, cursors, navigation and painting |
-| Conversation | `modules/conversation/{composer,presentation,prompt,completion}`: edits/attachments, drafts/queues/side values, prompts and completion; `transcript`/`codexbinding`: message correlation/history/native mapping; `terminalview`: keys/painting. Session Control owns live replies/dispatch; Launch owns scans, skill writes and image lifetime |
+| Conversation | `modules/conversation/{composer,presentation,presets,prompt,completion}`: edits/attachments, drafts/queues/side values, durable reusable input slots, prompts and completion; `transcript`/`codexbinding`: message correlation/history/native mapping; `terminalview`: keys/painting. Session Control owns live replies/dispatch; Launch owns scans, skill writes and image lifetime |
 | Composer predictions | `launch/composer_predictions.go`: asynchronous configuration and source/draft eligibility; `sessioncontrol/prediction.go`: host fork, turn and cleanup; `providers/openai/predictions.go`: authenticated remote configuration and moderation policy |
 | Saved changes | `modules/changehistory`: identities, review, frozen selections, apply/revert and retirement; `capture`: bounded acquisition/checkpoints/scope merging/completion; `presentation`: immutable review/counts/details; `terminalview`: pane interaction/painting |
 | Provisional changes | `modules/livepreview/{preview,codexbinding,projection}`: source admission/endpoints, arriving input/baselines/pacing, bounded evaluation; `terminalview/lifecycle.go`: reveal/settling. Execution Observation continues evidence comparison after source-card settlement |
 | Diff primitives | `libraries/diffmodel`: composition/grouping/alignment; `libraries/diffrender`: geometry, syntax and word highlighting |
-| Shared UI | `libraries/terminalui`: panes/dialogs, Markdown/tables, copy fragments and choices; `libraries/textsanitize`: shared display sanitization; `libraries/pathdisplay`: workspace paths |
+| Shared UI | `libraries/terminalui`: panes/dialogs, Markdown/tables, copy fragments and choices; `{images,image_frame}.go`: terminal graphics capabilities, encoding and lifetime; `libraries/textsanitize`: shared display sanitization; `libraries/pathdisplay`: workspace paths |
 | Notices | `modules/notifications/{notice,presentation}`: bounded notices/claims/feedback; Request Execution classifies failures, Launch `{critical_errors,composer_notice}.go` binds audience/receipts |
 | Settings/naming | `modules/sessionpreferences`: applied settings/resume precedence; Terminal Session `preferences.go`: layout restoration; `modules/sessionnaming`: naming policy/requests; Launch `{session_naming,app_server_session_title}.go`: lifetime/name saves |
 | Approvals | `modules/remotewriteapproval`: VCS classification/grants; `modules/sudoapproval`: sudo policy/password validation; `apps/mekugi/cmd/mekugi-exec/{guard*,sudo}.go`: native helpers; Session Control `{shell_approvals,approval,question}.go`: pending decisions/grants/replies |
@@ -58,7 +58,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | --- | --- |
 | Codex RPC/processes | `backends/codex/appserver` |
 | Native facts | `backends/codex/binding`: notifications/items, tool results, history identity, submitted text, execution source/results, catalogs and continuation evidence; `backends/codex/nativetrace`: bounded trace correlation |
-| Rollouts | `backends/codex/rollout`: selected identity/context/resume evidence; `{inspection,replay}.go`: logical calls/endpoints and replay observations |
+| Rollouts | `backends/codex/rollout`: selected identity/context/resume evidence; `settings_file.go`: plain/compressed resume-settings acquisition; `{inspection,replay}.go`: logical calls/endpoints and replay observations |
 | Composer recall | `backends/codex/messagehistory`: shared Codex input-history format, locking and retention; Launch `app_server_persistent_history.go`: asynchronous reads/writes; Conversation composer: recall and restored-entry reconciliation |
 | Responses | `backends/codex/responses`: envelopes/catalogs, byte-preserving projection, streams/lifecycle and Codex framing; `compact_plaintext.go`: ordinary-turn compaction request adaptation; `{session,session_provider}.go`: connection ancestry/steering/prefix confirmation; `libraries/modelprotocol`: wire facts/exact JSON |
 | Shell hooks | `backends/codex/shellhook`: registration/protocol; `backends/codex/shellapproval`: shared approval wire/resource names; Launch installs composed resources |
@@ -73,6 +73,9 @@ Cross-owner adapter entry points:
 - Live/replay observations: `launch/{attached_presentation,app_server_events,session_ui_replay_attachment}.go`.
 - Activity sources/painter/output: `launch/activity_terminal.go`; VCS facts: `activity_vcs.go`;
   enrichment resources: `activity_commit_reader.go`; auxiliary observations: `activity_supplements.go`.
+- Transcript images: `launch/image_previews.go` acquires images admitted by
+  `sessionpresentation/activity_images.go`; `modules/activity/terminalview/images.go` owns placement.
+- Reusable input slots: `launch/composer_presets.go` binds Conversation presets to shared menus/input.
 - Native input/frame delivery: `launch/{native_client_loop,native_client_input,native_client_render}.go`;
   shared pane painting: `launch/native_shell.go`.
 - Conversation forks, rewind and side input: `sessioncontrol/{startup,side_workflow}.go`;
