@@ -35,6 +35,7 @@ import (
 
 // appServerIntegration selects independent collaborators for native-session fixtures.
 type appServerIntegration struct {
+	nativeHub           func(*sessionapi.Hub)
 	controlObservations *sessioncontrol.Observations
 	usage               *accounting.Service
 	audience            *sessioncontrol.Audience
@@ -94,6 +95,9 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 			return wait()
 		}}
 		hub := sessionapi.NewHub(serverContext, &launcher)
+		if integration.nativeHub != nil {
+			integration.nativeHub(hub)
+		}
 		done := make(chan error, 1)
 		go func() { done <- serveSessionHub(serverContext, listener, hub) }()
 		defer func() { stopServer(); runErr = errors.Join(runErr, <-done) }()
