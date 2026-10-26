@@ -452,6 +452,8 @@ func codexArgs(baseURL string, args []string, codeMode, skillsManagerAvailable, 
 	overrides := []string{
 		"--disable", "goals",
 		"-c", "features.goals=false",
+		"--disable", "sleep_tool",
+		"-c", "features.sleep_tool=false",
 	}
 	if openAIAuth {
 		// Keep stock capabilities and runtime-only internal metadata.

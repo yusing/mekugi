@@ -60,6 +60,7 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 		var config struct {
 			Features struct {
 				Goals    *bool `toml:"goals"`
+				Sleep    *bool `toml:"sleep_tool"`
 				Exec     *bool `toml:"code_mode"`
 				ExecOnly *bool `toml:"code_mode_only"`
 			} `toml:"features"`
@@ -78,13 +79,13 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 			} `toml:"model_providers"`
 		}
 		var settings []string
-		goalsDisabled := false
+		disabled := map[string]bool{}
 		for i := index; i < delimiter; i += 2 {
 			if args[i] == "--disable" {
-				if args[i+1] != "goals" {
+				if args[i+1] != "goals" && args[i+1] != "sleep_tool" {
 					t.Fatalf("unexpected disabled feature: %q", args)
 				}
-				goalsDisabled = true
+				disabled[args[i+1]] = true
 				continue
 			}
 			if args[i] != "-c" {
@@ -92,8 +93,8 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 			}
 			settings = append(settings, args[i+1])
 		}
-		if !goalsDisabled {
-			t.Fatalf("goal feature toggle not disabled: %q", args)
+		if !disabled["goals"] || !disabled["sleep_tool"] {
+			t.Fatalf("host feature toggles not disabled: %q", args)
 		}
 		if _, err := toml.Decode(strings.Join(settings, "\n"), &config); err != nil {
 			t.Fatal(err)
@@ -109,6 +110,9 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 		}
 		if config.Features.Goals == nil || *config.Features.Goals {
 			t.Fatalf("goals not disabled: %q", args)
+		}
+		if config.Features.Sleep == nil || *config.Features.Sleep {
+			t.Fatalf("sleep tool not disabled: %q", args)
 		}
 		if openAIAuth {
 			if config.ModelProvider != "openai" || config.OpenAIBaseURL != "http://127.0.0.1:12345/v1" || len(config.Providers) != 0 {

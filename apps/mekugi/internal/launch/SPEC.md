@@ -136,6 +136,9 @@ Mekugi does not pin a bundled OpenAI catalog or edit the shared host cache.
 Explicit caller-supplied static catalogs retain host selection semantics and
 must expose the supported interface.
 
+Final invocation overrides disable `features.sleep_tool`, including caller feature
+toggles. Thread-control waits and independent clock/timer behavior remain available.
+
 Wrapped launches enable Codex's native rollout trace in a private, session-scoped
 temporary directory. The recorder includes prompts and responses and has no
 tool-only filter or storage cap. Session cleanup removes the directory; abrupt
