@@ -1,5 +1,7 @@
 <script lang="ts">
+  import AgentName from "./AgentName.svelte";
   import Alert from "./ui/Alert.svelte";
+  import ProcessCommand from "./ProcessCommand.svelte";
   import RecoveryEditor from "./RecoveryEditor.svelte";
   import ResponseCopy from "./ResponseCopy.svelte";
   import Markdown from "./Markdown.svelte";
@@ -44,14 +46,14 @@
             {#each processes as process (JSON.stringify( [process.Thread, process.Turn, process.Item] ))}
               <li class="flex min-w-0 items-center gap-2">
                 <div class="grid min-w-0 flex-1 gap-0.5">
-                  <code class="truncate text-small" title={process.Command}>{process.Command}</code>
+                  <ProcessCommand command={process.Command} />
                   {#if !process.ID}<span class="text-small text-muted"
                       >The host does not expose individual Stop.</span
                     >{/if}
                 </div>
                 {#if process.Agent && process.Agent !== "/root"}<span
                     class="min-w-0 max-w-[30%] truncate text-small text-muted"
-                    title={process.Agent}>{process.Agent}</span
+                    title={process.Agent}><AgentName name={process.Agent} current="" quiet /></span
                   >{/if}
                 <Button
                   variant="quiet"

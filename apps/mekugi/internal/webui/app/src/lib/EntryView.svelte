@@ -13,6 +13,7 @@
   import { caret } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
   import ValueRow from "./ValueRow.svelte";
+  import Wait from "./Wait.svelte";
 
   // at is the time stamp stamp names, empty when it repeats the previous
   // row's. owner is the agent whose activity the transcript shows. views are
@@ -45,8 +46,42 @@
     !value.duration &&
     !value.running;
   const first = $derived(entry.values?.[0]);
+  // A run of file edits, all a command's effects or all captured on their
+  // own, names the programs behind all of them once, above the run; each edit
+  // keeps only the programs the others did not share.
+  const sourced = (value: Value) =>
+    value.kind === "op" &&
+    ["Create", "Edit", "Delete", "Move"].includes(value.verb ?? "") &&
+    !!value.sources?.length;
+  const edits = $derived.by(() => {
+    const all = entry.values ?? [];
+    const values = [...all];
+    const via = new Map<number, { sources: string[]; files: number; effect?: boolean }>();
+    for (let i = 0, end = 1; i < all.length; i = end++) {
+      while (
+        end < all.length &&
+        sourced(all[i]) &&
+        sourced(all[end]) &&
+        !all[end].effect === !all[i].effect
+      )
+        end++;
+      if (end - i < 2) continue;
+      const shared = all
+        .slice(i, end)
+        .map((value) => value.sources!)
+        .reduce((common, sources) => common.filter((program) => sources.includes(program)));
+      if (!shared.length) continue;
+      via.set(i, { sources: shared, files: end - i, effect: all[i].effect });
+      for (let j = i; j < end; j++)
+        values[j] = {
+          ...all[j],
+          sources: all[j].sources!.filter((program) => !shared.includes(program)),
+        };
+    }
+    return { values, via };
+  });
+  const values = $derived(edits.values);
   const rows = $derived.by(() => {
-    const values = entry.values ?? [];
     const out: { value: Value; index: number; hidden?: Value[] }[] = [];
     for (let i = 0; i < values.length;) {
       const value = values[i];
@@ -114,7 +149,37 @@
     message: "text-muted",
   };
   const summary = "flex items-center gap-2 pointer-coarse:min-h-9";
+  const waits = $derived(
+    !!entry.values?.length &&
+      entry.values.every((value) => value.kind === "progress" && value.waits?.length),
+  );
 </script>
+
+{#snippet wait(value: Value)}
+  <Wait
+    text={value.label || value.body || ""}
+    targets={value.waits ?? []}
+    timeout={value.waitTimeout}
+    reason={value.waitReason}
+    {owner}
+  />
+{/snippet}
+<!-- The programs behind a run of edits, in the edits' own column. -->
+{#snippet via(index: number)}
+  {@const group = edits.via.get(index)!}
+  <div
+    class={[
+      "col-span-full grid grid-cols-subgrid items-baseline py-[5px]",
+      group.effect && "ml-3 border-l border-rule pl-3",
+    ]}
+  >
+    <span class="text-small font-medium text-muted max-sm:col-span-full">Via</span>
+    <span class="col-[2/-1] flex flex-wrap items-baseline gap-1.5 max-sm:col-span-full">
+      {#each group.sources as source (source)}<Tag mono>{source}</Tag>{/each}
+      <span class="ml-1 text-small text-muted">for all {group.files} files</span>
+    </span>
+  </div>
+{/snippet}
 
 <!-- Agent output reads down the left beside its offsets; your turns sit on the right,
      ending where agent output ends. -->
@@ -171,12 +236,10 @@
             {#if traffic.detail}<span class="text-muted">{traffic.detail}</span>{/if}
           </div>
           {#if body}
-            <!-- A task is long and its agent's own view leads with it. -->
+            <!-- A task is long and its agent's own view leads with it; elsewhere
+                 it opens with its first lines. -->
             {#if traffic.glyph === "start" && traffic.to !== owner}
-              <details class="group/disclosure">
-                <summary class="{summary} {caret} min-h-6 text-small text-muted">Task</summary>
-                <Markdown text={body} />
-              </details>
+              <Excerpt text={body} noun="task" />
             {:else if reply && first?.summary}
               <Markdown text={first.summary} context={replyContext} />
               <details class="group/disclosure">
@@ -272,6 +335,17 @@
             {/each}
           </div>
         </div>
+      {:else if waits}
+        <!-- A wait is a compact line like a hook's, its marker breathing while
+             it lasts. -->
+        {#each entry.values ?? [] as value, i (i)}
+          <p class="flex min-h-[26px] items-start gap-2 py-[3px] text-small text-muted">
+            <span class={["flex h-5 flex-none items-center", value.live && "animate-blink"]}
+              ><Icon name="agents" size={13} /></span
+            >
+            <span class="min-w-0">{@render wait(value)}</span>
+          </p>
+        {/each}
       {:else if entry.values?.length}
         <div
           class={[
@@ -280,7 +354,10 @@
           ]}
         >
           {#each rows as { value, index, hidden } (index)}
-            {#if value.kind === "progress"}
+            {#if edits.via.has(index)}{@render via(index)}{/if}
+            {#if value.kind === "progress" && value.waits?.length}
+              <p class="col-span-full py-[5px] text-muted">{@render wait(value)}</p>
+            {:else if value.kind === "progress"}
               <p class="col-span-full py-[5px] text-muted">
                 {progressText(value, (name) => source.label(name))}
               </p>
@@ -294,7 +371,9 @@
                 <div
                   class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 divide-y divide-rule max-sm:grid-cols-[minmax(0,1fr)_auto]"
                 >
-                  {#each hidden as file, i (i)}<ValueRow value={file} />{/each}
+                  {#each hidden as file, i (i)}{#if i && edits.via.has(index + i)}{@render via(
+                        index + i,
+                      )}{/if}<ValueRow value={file} />{/each}
                 </div>
               </details>
             {:else if !pending(value)}

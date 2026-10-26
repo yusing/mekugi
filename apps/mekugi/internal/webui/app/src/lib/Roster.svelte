@@ -5,6 +5,8 @@
   import Dot, { type Tone } from "./ui/Dot.svelte";
   import { emptyBox, skeleton } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
+  import { stream } from "./stream.svelte";
+  import Wait from "./Wait.svelte";
 
   // The agents of the session, as a tree under Main. Selecting one shows its
   // own activity; now is the recorded clock, for timers. The saved review's
@@ -95,6 +97,22 @@
   const tallyInk: Record<string, string> = { working: "text-accent", error: "text-negative" };
   const stateInk: Record<string, string> = { working: "text-ink", error: "text-negative" };
   const sub = "pl-4 text-small leading-[18px]";
+
+  // An agent that is not working keeps its card to three rows: its values
+  // share one line, and the rest show while the card is focused or selected.
+  // Hidden values are counted, and the line's title lists them all.
+  let clipped = $state<Record<string, number>>({});
+  const clip = (agent: Agent) => (node: HTMLElement) => {
+    const observer = new ResizeObserver(() => {
+      const top = (node.firstElementChild as HTMLElement | null)?.offsetTop ?? 0;
+      const n = [...node.children].filter((child) => (child as HTMLElement).offsetTop > top).length;
+      if ((clipped[agent.name] ?? 0) !== n) clipped[agent.name] = n;
+      node.title = n ? (node.textContent ?? "").replace(/\s+/g, " ").trim() : "";
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  };
+  const unclamped = "group-focus-visible/card:max-h-none group-aria-[current=true]/card:max-h-none";
 </script>
 
 <!-- A value with its unit in muted ink: 33.72M in, 7 turns. -->
@@ -152,6 +170,8 @@
       {@const waiting = agent.wait && progressText(agent.wait, (name) => labels.get(name) ?? name)}
       {@const replied = since(agent.lastResponse, now)}
       {@const edits = changes(agent)}
+      {@const color = stream.roleColor(agent.role)}
+      {@const compact = agent.state !== "working"}
       <!-- A nested agent hangs from a guide under its parent. -->
       <li
         class={agent.depth ? "border-l border-rule pl-1.5" : undefined}
@@ -160,24 +180,34 @@
         <button
           type="button"
           class={[
-            "relative grid w-full min-w-0 gap-1 rounded-card px-2.5 pt-2 pb-3 text-left pointer-coarse:pt-[11px] pointer-coarse:pb-[13px]",
+            "group/card relative grid w-full min-w-0 gap-1 rounded-card px-2.5 pt-2 pb-3 text-left pointer-coarse:pt-[11px] pointer-coarse:pb-[13px]",
             agent.name === selected ? "bg-accent-tint" : "hover:bg-raised",
           ]}
           aria-current={agent.name === selected ? "true" : undefined}
           onclick={() => onselect(agent.name)}
         >
           <span class="flex min-w-0 items-center gap-2">
-            <Dot tone={dots[agent.state]} size={8} />
-            <span class="min-w-0 truncate font-semibold">{name(agent)}</span>
-            {#if agent.role}<Tag>{agent.role}</Tag>{/if}
+            <Dot tone={dots[agent.state]} size={8} {color} />
+            <span
+              class={["min-w-0 truncate font-semibold", color && "text-role"]}
+              style:--role={color}>{name(agent)}</span
+            >
+            {#if agent.role}<Tag {color}>{agent.role}</Tag>{/if}
             {#if time !== undefined}<span
-                class="ml-auto pl-2 text-small text-muted tabular-nums"
+                class="ml-auto pl-2 text-small whitespace-nowrap text-muted tabular-nums"
                 title="Time spent working">{duration(time)}</span
               >{/if}
           </span>
           <span class="{sub} truncate {stateInk[agent.state] ?? 'text-muted'}" title={waiting}>
-            {#if agent.state === "waiting" && waiting}
-              {waiting}
+            {#if agent.state === "waiting" && agent.wait && waiting}
+              <Wait
+                text={agent.wait.label || agent.wait.body || ""}
+                targets={agent.wait.waits ?? []}
+                timeout={agent.wait.waitTimeout}
+                reason={agent.wait.waitReason}
+                owner={agent.name}
+                plain
+              />
             {:else if what}
               <span class="sr-only">Working:</span>
               <span class="font-medium text-accent">{what.verb}</span>
@@ -188,40 +218,53 @@
                 >{/if}
             {/if}
           </span>
-          <span class="{sub} flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums empty:hidden">
-            {#if edits.Added || edits.Removed}{@render changed(
-                edits.Added,
-                edits.Removed,
-                "Lines this agent changed",
-              )}{/if}
-            {#if agent.inputTokens !== undefined}{@render metric(
-                atLeast(tokens(agent.inputTokens), agent.usagePartial),
-                "in",
-                "Input tokens",
-              )}{@render metric(
-                atLeast(tokens(agent.outputTokens ?? 0), agent.usagePartial),
-                "out",
-                "Output tokens",
-              )}{/if}
-            {#if agent.cost !== undefined}<span class="text-ink" title="Cost"
-                >{atLeast(cost(agent.cost), agent.costPartial)}</span
-              >{/if}
-            {#if agent.turns}{@render metric(String(agent.turns), unit(agent.turns, "turn"))}{/if}
-            {#if agent.roundtrips}{@render metric(
-                String(agent.roundtrips),
-                unit(agent.roundtrips, "round trip"),
-              )}{/if}
-            {#if agent.skills?.length}{@render metric(
-                String(agent.skills.length),
-                unit(agent.skills.length, "skill"),
-                agent.skills.join(", "),
-              )}{/if}
-            {#each agent.items ?? [] as item, i (i)}<span class="text-muted">{item}</span>{/each}
-            {#if agent.context !== undefined}<span class="whitespace-nowrap" title="Context used"
-                ><span class="text-ink">{tokens(agent.context)}</span>
-                <span class="text-muted"
-                  >{agent.window ? `of ${tokens(agent.window)} context` : "context"}</span
-                ></span
+          <span class="{sub} flex items-start gap-3 tabular-nums not-has-[>:first-child>*]:hidden">
+            <span
+              class={[
+                "flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-0.5",
+                compact && `max-h-[18px] overflow-hidden ${unclamped}`,
+              ]}
+              {@attach compact ? clip(agent) : undefined}
+            >
+              {#if edits.Added || edits.Removed}{@render changed(
+                  edits.Added,
+                  edits.Removed,
+                  "Lines this agent changed",
+                )}{/if}
+              {#if agent.inputTokens !== undefined}{@render metric(
+                  atLeast(tokens(agent.inputTokens), agent.usagePartial),
+                  "in",
+                  "Input tokens",
+                )}{@render metric(
+                  atLeast(tokens(agent.outputTokens ?? 0), agent.usagePartial),
+                  "out",
+                  "Output tokens",
+                )}{/if}
+              {#if agent.cost !== undefined}<span class="text-ink" title="Cost"
+                  >{atLeast(cost(agent.cost), agent.costPartial)}</span
+                >{/if}
+              {#if agent.turns}{@render metric(String(agent.turns), unit(agent.turns, "turn"))}{/if}
+              {#if agent.roundtrips}{@render metric(
+                  String(agent.roundtrips),
+                  unit(agent.roundtrips, "round trip"),
+                )}{/if}
+              {#if agent.skills?.length}{@render metric(
+                  String(agent.skills.length),
+                  unit(agent.skills.length, "skill"),
+                  agent.skills.join(", "),
+                )}{/if}
+              {#each agent.items ?? [] as item, i (i)}<span class="text-muted">{item}</span>{/each}
+              {#if agent.context !== undefined}<span class="whitespace-nowrap" title="Context used"
+                  ><span class="text-ink">{tokens(agent.context)}</span>
+                  <span class="text-muted"
+                    >{agent.window ? `of ${tokens(agent.window)} context` : "context"}</span
+                  ></span
+                >{/if}
+            </span>
+            <!-- Screen readers already read every value. -->
+            {#if compact && clipped[agent.name]}<span
+                class="flex-none text-muted group-focus-visible/card:hidden group-aria-[current=true]/card:hidden"
+                aria-hidden="true">+{clipped[agent.name]}</span
               >{/if}
           </span>
           <!-- The context bar runs along the card's foot rather than taking a row. -->

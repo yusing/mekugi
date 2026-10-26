@@ -201,6 +201,40 @@ test("ended streams recover only from fresh discovery and an authoritative snaps
   }
 });
 
+test("role colours survive roster reordering and thread navigation", () => {
+  const source = new Stream();
+  let publish;
+  const owner = {
+    subscribe(_method, _params, event) {
+      publish = event;
+      return () => {};
+    },
+  };
+  source.connect("role-thread", owner);
+  const agents = ["worker", "explorer", "worker"].map((role, i) => ({
+    name: `/root/${i}`,
+    label: role,
+    role,
+    state: "idle",
+  }));
+  publish({ kind: "snapshot", data: { roster: { agents } } });
+  assert.equal(source.roleColor("worker"), "#5fafff");
+  assert.equal(source.roleColor("explorer"), "#ffaf00");
+  publish({
+    kind: "patch",
+    data: { roster: { agents: [{ ...agents[0], role: "review-correctness" }, agents[1]] } },
+  });
+  for (const thread of ["child-thread", "role-thread"]) {
+    source.connect(thread, owner);
+    publish({ kind: "snapshot", data: { roster: { agents: [agents[1], agents[0]] } } });
+    assert.equal(source.roleColor("worker"), "#5fafff");
+    assert.equal(source.roleColor("explorer"), "#ffaf00");
+    assert.equal(source.roleColor("review-correctness"), "#af87ff");
+  }
+  assert.equal(source.roleColor(undefined), undefined);
+  source.close();
+});
+
 function machine(id = "machine-one", thread = "thread-one", attachment = "view-one") {
   const requests = [],
     views = [];

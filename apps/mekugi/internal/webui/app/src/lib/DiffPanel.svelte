@@ -80,6 +80,15 @@
   // One agent's files need not name it again.
   const callers = (file: ReviewedFile) =>
     caller ? [] : [...new Set(file.origins.map((o) => o.Caller))];
+  // Agents and programs behind every file shown are named once above them;
+  // each file names only those that differ.
+  const common = (list: (file: ReviewedFile) => string[]) =>
+    files.length
+      ? files.map(list).reduce((shared, keys) => shared.filter((key) => keys.includes(key)))
+      : [];
+  const sharedCallers = $derived(common(callers));
+  const sharedSources = $derived(common(sources));
+  const own = (keys: string[], shared: string[]) => keys.filter((key) => !shared.includes(key));
   const known = (c?: Counts | null) => !!c && c.Added >= 0 && c.Removed >= 0;
   const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;
 </script>
@@ -113,6 +122,15 @@
           )}{/if}{/if}
       {#if coverage}<span class="text-small text-muted">{coverage}</span>{/if}
     </div>
+    {#if !loading && (sharedCallers.length || sharedSources.length)}
+      <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-small">
+        <span class="text-muted">{files.length === 1 ? "Changed" : "Every file changed"}</span>
+        {#if sharedCallers.length}<span class="text-muted">by</span>
+          {#each sharedCallers as name (name)}<AgentName {name} current={owner} />{/each}{/if}
+        {#if sharedSources.length}<span class="text-muted">via</span>
+          {#each sharedSources as source (source)}<Tag mono>{source}</Tag>{/each}{/if}
+      </p>
+    {/if}
     {#if review?.failure}<Alert class="mt-2">{review.failure}</Alert>{/if}
     {#if loading}
       <div class="mt-3 grid gap-3" aria-busy="true" aria-label="Loading saved changes">
@@ -130,6 +148,8 @@
       <ul class="mt-1.5">
         {#each files as file (file.key)}
           {@const isOpen = open(file)}
+          {@const fileCallers = own(callers(file), sharedCallers)}
+          {@const fileSources = own(sources(file), sharedSources)}
           <li class="border-rule py-1 not-first:border-t">
             <details
               class="group/disclosure"
@@ -145,17 +165,16 @@
                 <span class="min-w-0 flex-1 font-mono text-code wrap-break-word"
                   ><Path path={workspacePath(file.path, review!.workspace)} /></span
                 >
+                {#each fileCallers as name (name)}<span class="flex-none text-small"
+                    ><AgentName {name} current={owner} /></span
+                  >{/each}
+                {#each fileSources as source (source)}<Tag mono class="flex-none">{source}</Tag
+                  >{/each}
                 {#if file.chunks.some((c) => c.Highlighted)}<span
                     class="flex-none text-small text-accent">new</span
                   >{/if}
                 {#if known(file.counts)}{@render counts(file.counts)}{/if}
               </summary>
-              {#if callers(file).length || sources(file).length}
-                <div class="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 pl-5 text-small">
-                  {#each callers(file) as name (name)}<AgentName {name} current={owner} />{/each}
-                  {#each sources(file) as source (source)}<Tag mono>{source}</Tag>{/each}
-                </div>
-              {/if}
               {#if isOpen}
                 <div class="pb-2">
                   {#each file.chunks as chunk, i (chunk.Key || i)}

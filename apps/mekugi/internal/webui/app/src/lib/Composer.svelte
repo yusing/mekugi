@@ -447,7 +447,7 @@
       />
       {#if shell}<Tag mono class="ml-1.5">Shell</Tag>{/if}
       <!-- On phones the breadcrumb above already names the role. -->
-      {#if role}<Tag class="ml-1.5 max-sm:hidden">{role}</Tag>{/if}
+      {#if role}<Tag color={source.roleColor(role)} class="ml-1.5 max-sm:hidden">{role}</Tag>{/if}
       {#if view && view.Displayed.ID === view.Main.ID}
         <Button
           variant="quiet"

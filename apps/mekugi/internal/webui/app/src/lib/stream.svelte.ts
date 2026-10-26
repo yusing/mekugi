@@ -1,3 +1,4 @@
+import { roleColor } from "./agents";
 import type { Machine } from "./hub.svelte";
 import { errorText, type Connection, type RPCMethod } from "./transport";
 import type {
@@ -42,6 +43,10 @@ export class Stream {
   review = $state.raw<SavedReview | null>(null);
   live = $state.raw<Preview[]>([]);
   byName = $derived(new Map(this.roster.agents.map((agent) => [agent.name, agent])));
+  // Roles in the order this viewer first saw them, which fixes their colours.
+  // Like the terminal view's, the order outlives connections, so moving
+  // between threads keeps each role's colour.
+  roles = $state.raw<string[]>([]);
   controlError = $state<string | undefined>();
   error = $state<string | undefined>();
   notice = $state<string | undefined>();
@@ -132,6 +137,7 @@ export class Stream {
       this.prompts = message.prompts;
       this.status = message.status ?? {};
       this.roster = message.roster ?? { agents: [] };
+      this.#observeRoles();
       this.review = message.review ?? null;
       this.live = message.live ?? [];
       this.main = merge(empty, message.main);
@@ -144,11 +150,29 @@ export class Stream {
     if (message.input) this.input = message.input;
     if (message.prompts) this.prompts = message.prompts;
     if (message.status) this.status = message.status;
-    if (message.roster) this.roster = message.roster;
+    if (message.roster) {
+      this.roster = message.roster;
+      this.#observeRoles();
+    }
     if (message.review !== undefined) this.review = message.review;
     if (message.live !== undefined) this.live = message.live ?? [];
     if (message.main) this.main = merge(this.main, message.main);
     if (message.agents) this.agents = merge(this.agents, message.agents);
+  }
+
+  #observeRoles(): void {
+    const seen = this.roles;
+    const added = this.roster.agents
+      .map((agent) => agent.role)
+      .filter((role, i, all): role is string => !!role && all.indexOf(role) === i)
+      .filter((role) => !seen.includes(role));
+    if (added.length) this.roles = [...seen, ...added];
+  }
+
+  // A role's colour, once the roster has shown it.
+  roleColor(role: string | undefined): string | undefined {
+    const index = role ? this.roles.indexOf(role) : -1;
+    return index < 0 ? undefined : roleColor(index);
   }
 
   label(name: string | undefined): string {

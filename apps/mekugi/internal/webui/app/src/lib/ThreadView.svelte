@@ -524,13 +524,16 @@
 
       {#if shown}
         {@const time = worked(shown, now)}
+        {@const color = stream.roleColor(shown.role)}
         <div class="{column} mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-small">
           <Button size="sm" icon="left" label="Back to main" onclick={() => select("/root")}
             >main</Button
           >
           <span class="text-control" aria-hidden="true">/</span>
-          <span class="text-body font-semibold">{shown.label}</span>
-          {#if shown.role}<Tag>{shown.role}</Tag>{/if}
+          <span class={["text-body font-semibold", color && "text-role"]} style:--role={color}
+            >{shown.label}</span
+          >
+          {#if shown.role}<Tag {color}>{shown.role}</Tag>{/if}
           <span
             class={shown.state === "working"
               ? "text-accent"

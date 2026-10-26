@@ -158,6 +158,17 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		return string(output)
 	}
 	button := func(label string) { t.Helper(); run("find", "role", "button", "click", "--name", label, "--exact") }
+	// The theme button moves through System, Light and Dark in turn.
+	theme := func(name string) {
+		t.Helper()
+		for range 3 {
+			if strings.TrimSpace(run("eval", `document.querySelector('[aria-label="Theme: `+name+`"]') !== null`)) == "true" {
+				return
+			}
+			run("eval", `document.querySelector('[aria-label^="Theme: "]').click()`)
+		}
+		t.Fatalf("theme button never reached %s", name)
+	}
 	closeDialog := func() {
 		t.Helper()
 		button("Close dialog")
@@ -215,6 +226,47 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("--engine", "chrome", "open", page.URL)
 	run("snapshot", "-i")
 	add(alpha, "Alpha", strings.Repeat("a", 64))
+	// Role assignments accumulate across publications, even when only one child
+	// is visible. Exercise the colour cube after the twelve preferred colours.
+	beforeRoles, _ := alpha.frames.Load("child")
+	for i := 1; i <= 14; i++ {
+		role := fmt.Sprintf("role-%02d", i)
+		child := beforeRoles.(sessionapi.Frame)
+		child.Session.Role = role
+		if err := alpha.publishFrame(child); err != nil {
+			t.Fatal(err)
+		}
+		root, _ := alpha.frames.Load("same-thread")
+		if err := alpha.publishFrame(root.(sessionapi.Frame)); err != nil {
+			t.Fatal(err)
+		}
+		run("wait", "--text", role)
+		if i < 12 {
+			continue
+		}
+		for _, choice := range []string{"Dark", "Light"} {
+			theme(choice)
+			t.Log(role, choice, run("eval", `(() => {
+				const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+				const luminance = color => { ctx.fillStyle = color; ctx.fillRect(0, 0, 1, 1); return [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3).map(c => c / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4).reduce((sum, c, i) => sum + c * [.2126, .7152, .0722][i], 0); };
+				const labels = [...document.querySelectorAll('[aria-label="Thread panel"] .text-role')];
+				if (!labels.some(e => e.textContent.startsWith('role-'))) throw Error('Role labels missing');
+				return labels.map(e => { const ink = luminance(getComputedStyle(e).color); let surface = e; while (getComputedStyle(surface).backgroundColor === 'rgba(0, 0, 0, 0)') surface = surface.parentElement; const paper = luminance(getComputedStyle(surface).backgroundColor); const ratio = (Math.max(ink, paper) + .05) / (Math.min(ink, paper) + .05); if (ratio < 4.5) throw Error(e.textContent + ' contrast ' + ratio); return {label:e.textContent, contrast:ratio}; });
+			})()`))
+			if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
+				run("screenshot", filepath.Join(directory, role+"-"+choice+".png"))
+			}
+		}
+	}
+	if err := alpha.publishFrame(beforeRoles.(sessionapi.Frame)); err != nil {
+		t.Fatal(err)
+	}
+	rootAfterRoles, _ := alpha.frames.Load("same-thread")
+	if err := alpha.publishFrame(rootAfterRoles.(sessionapi.Frame)); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "worker")
+	theme("System")
 	run("fill", "#composer-text", "/")
 	run("wait", "--fn", `document.querySelector('[aria-label="Suggestions"]')`)
 	choices := run("get", "text", "[aria-label=Suggestions]")

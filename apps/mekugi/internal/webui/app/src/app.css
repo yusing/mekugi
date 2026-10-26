@@ -43,6 +43,9 @@
   --pill-warning-edge: #fde68a;
   --pill-neutral-bg: #ebe9f1;
   --pill-neutral-ink: #35333d;
+  /* Role colours are the terminal's; on light grounds they keep their hue at
+     a depth that reads on white. */
+  --role-depth: 56%;
   --float-shadow: 0 8px 28px rgba(21, 20, 27, 0.12), 0 1px 3px rgba(21, 20, 27, 0.08);
   --topbar: 48px;
 }
@@ -87,6 +90,7 @@
   --pill-warning-edge: #4a3b27;
   --pill-neutral-bg: #29263c;
   --pill-neutral-ink: #c4c3c8;
+  --role-depth: 100%;
   --float-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px #29263c;
 }
 
@@ -166,6 +170,14 @@
   --color-neutral-ink: var(--pill-neutral-ink);
   --color-scrim: rgb(0 0 0 / 38%);
   --shadow-float: var(--float-shadow);
+}
+
+/* An agent role's colour, set as --role on the element or an ancestor. */
+@utility text-role {
+  color: color-mix(in oklab, var(--role) var(--role-depth), #000);
+}
+@utility bg-role {
+  background-color: color-mix(in oklab, var(--role) var(--role-depth), #000);
 }
 
 /* Without hover, actions that hover reveals stay visible. */

@@ -2,11 +2,11 @@
   import Markdown from "./Markdown.svelte";
   import { caretButton } from "./ui/styles";
 
-  // A reply shown away from its own agent's transcript: its first lines, with
-  // the rest one click away.
-  let { text }: { text: string } = $props();
+  // A reply or task shown away from its own agent's transcript: its first
+  // lines, with the rest one click away. noun names what the rest completes.
+  let { text, noun = "reply" }: { text: string; noun?: string } = $props();
 
-  // Five lines of prose; a reply only clamps when that hides two more lines.
+  // Five lines of prose; the text only clamps when that hides two more lines.
   const clamp = 110;
   const slack = 44;
   let open = $state(false);
@@ -41,6 +41,6 @@
     aria-expanded={open}
     onclick={() => (open = !open)}
   >
-    {open ? "Show less" : "Show full reply"}
+    {open ? "Show less" : `Show full ${noun}`}
   </button>
 {/if}

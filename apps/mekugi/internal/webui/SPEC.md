@@ -131,7 +131,11 @@ are never submitted. Caches belong to the attached view and are discarded on
 disconnection or thread changes. Menu motion respects reduced-motion preferences.
 
 Running commands stay visible above the composer and leave when the authoritative
-host invocation completes. Each command offers Stop when the host exposes an
+host invocation completes. Each shows its first line with shell highlighting;
+hovering, focusing or pressing it shows the whole command, which stays while the
+pointer is over either or the command keeps focus. It follows the command as the
+page scrolls, resizes or reflows, staying within the viewport, and Escape hides
+it wherever focus is. Each command offers Stop when the host exposes an
 individual process identity. Commands without one, including user-entered shell
 commands, show a disabled Stop with an explanation; a later process identity enables
 it. Stop targets that captured invocation and never interrupts the whole turn.
@@ -200,7 +204,8 @@ lists the roster's agents with the lines each changed and its file count. One
 agent's files compose as the terminal's caller filter shows them, with other
 agents' changes as baseline. Each file has a section with its workspace path,
 net counts, the agents (for all agents) and programs that changed it, and its
-composed unified diff with line numbers on both sides; hunk headers are left
+composed unified diff with line numbers on both sides; agents and programs
+behind every shown file are named once above the files instead; hunk headers are left
 out, and a rule separates hunks. Saved and live diffs use the file's syntax
 colours, with deletions and additions highlighted independently. Replacement
 blocks emphasize changed words across consecutive rows while retaining syntax
@@ -225,7 +230,10 @@ names and auto-reload state, with columns sized to the visible verbs. Questions
 show identical heading and body text only once. Output counts share the
 event heading instead of occupying a separate collapsed row. Search patterns use accent ink, separate from their path operands. Compound
 labels use spaced segments and command chips instead of separator punctuation;
-the programs that made an edit show as chips after its path. Output toggles
+the programs that made an edit show as chips after its path. A run of edits,
+including folded ones, names the programs behind all of them once above the run,
+and each edit keeps only the programs the others did not share. A command's own
+effects and edits captured apart from a command form separate runs. Output toggles
 keep a control-sized target.
 Session details sit beside the thread title. Shell input is syntax-highlighted while editing. A compound command's combined result
 follows its classified steps as an outcome and output row, without repeating
@@ -246,16 +254,25 @@ The roster lists Main and its agents as a tree by display name, as the terminal
 roster does. Each agent shows its role, its state (working, waiting, idle, done or
 error), what a working agent is doing now or when a finished one last replied,
 its work time, the lines it changed, token usage, cost, turns, round trips,
-skills, output rate and context use. Usage that is only partly known is shown
-as a lower bound with a trailing plus. A card has a name row, a state row and a
-wrapping row of values with muted units, rather than a run of metric symbols;
-a context bar runs along its foot. The roster heading counts agents by state
+skills, output rate and context use. A role colours the agent's state dot,
+role and name with the terminal's role colour, assigned in the order this
+viewer first sees each role and kept as it moves between threads. Palette colours
+too dark to read in the dark appearance use its ordinary text ink instead. Usage that
+is only partly known is shown as a lower bound with a trailing plus. A card has a name row, a state row and a
+row of values with muted units, rather than a run of metric symbols; a context
+bar runs along its foot. A working agent's values wrap; any other agent's stay
+on one line with a count of those hidden, all shown while its card is focused
+or selected, and listed in the line's title. The roster heading counts agents by state
 and totals the session's changed lines, usage and cost. Changed lines follow
 the saved review as it updates. Waiting agents show the transcript's target names
-and optional timeout, separately from idle agents.
+and optional timeout, separately from idle agents. Transcript, roster and side
+conversation waits name their targets by display name, with each target's
+status, the timeout and why the wait finished. A transcript entry that only
+waits is a compact line like a hook's, its marker pulsing while the wait lasts.
 
 The transcript shows Main's activity until a viewer selects another agent in the
-roster; it then shows that agent's own activity under its name and state, with a
+roster; it then shows that agent's own activity under its name, role and state,
+the name and role in its role colour, with a
 way back to Main. Live Main and delegate threads use the same selected-thread
 publication and control lifecycle. Family navigation comes from the server's
 ordinary thread publications without a retained parent view. The selected
@@ -269,9 +286,10 @@ to before the selected agent started returns to
 Main.
 Traffic between agents is headed by who sent it to whom: a task, a message, or
 an agent's final answer or failure in Main's transcript. Another agent's name in
-a heading selects that agent. A task is collapsed except in its recipient's own
-transcript. In Main's transcript, an agent's answer or message shows the summary
-the agent wrote, with supporting details behind a disclosure, when
+a heading selects that agent. A task shows its first lines, with the rest
+behind a disclosure, except in its recipient's own transcript. In Main's
+transcript, an agent's answer or message shows the summary the agent wrote,
+with supporting details behind a disclosure, when
 `child_reply_summary` is on and the reply has [a summary](../../../../modules/activity/CONTRACT.md);
 the disclosure omits the repeated summary and section headings. Otherwise it shows the reply's first lines and a button for the rest. The
 agent's own transcript shows its replies whole. As in the terminal, each
