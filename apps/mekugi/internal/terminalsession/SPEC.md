@@ -115,6 +115,10 @@ owns scheduling and semantic playback controls.
 
 ## Composer controls
 
+The composer's bottom border groups the displayed thread's working directory,
+model and usage on the right, with the directory immediately before the model.
+Narrow panes abbreviate the directory; the full workspace remains available in `/status`.
+
 The terminal adapts these controls to [conversation drafts](../../../../modules/conversation/SPEC.md)
 and [session operations](../sessioncontrol/SPEC.md#interactive-operations):
 

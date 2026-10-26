@@ -85,6 +85,7 @@ func logicalWaitUI(t *testing.T, timeout *int64) (*appServerUI, *threadExecution
 
 func TestUISnapshotLogicalWaiting(t *testing.T) {
 	u, threads, at := logicalWaitUI(t, new(int64(1000)))
+	u.attached.cwd = "/workspace"
 	appServerTestNotify(t, u, "thread/status/changed", map[string]any{"threadId": "main", "status": map[string]any{"type": "idle"}})
 	*at = at.Add(8 * time.Second)
 	rows, _ := u.testMainFrame(80, 8, 0)
@@ -278,6 +279,7 @@ func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
 
 func TestUISnapshotLogicalWaitNoTimeout(t *testing.T) {
 	u, threads, at := logicalWaitUI(t, nil)
+	u.attached.cwd = "/workspace"
 	previousWait := u.attached.session.Agent("/root").Wait
 	*at = at.Add(time.Hour)
 	syncLogicalWork(&u.attached, &u.Live, threads, *at)

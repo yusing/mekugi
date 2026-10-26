@@ -3,4 +3,4 @@
 │   third                          │
 │   fourth                         │
 │   fifth                          │
-╰──────────── snapshot-model • 0% ─╯
+╰─── /worksp… snapshot-model • 0% ─╯

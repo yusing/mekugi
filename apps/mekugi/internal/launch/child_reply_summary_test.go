@@ -93,6 +93,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 				t.Fatalf("original changed: %q", terminalTest(u).Dialog.Document.Text)
 			}
 			var frame bytes.Buffer
+			u.attached.cwd = "/workspace"
 			terminalTest(u).Frame.Rows = nil
 			if err := u.testPaint(&frame, 100, 28); err != nil {
 				t.Fatal(err)

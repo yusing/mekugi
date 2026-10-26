@@ -54,6 +54,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 	setTestAppServerIntegration(u, proxy)
 	u.serviceTiers = inferencegateway.NewTiers(config.ServiceTiers)
 	u.attached.presentation.Status.Text = "Ready"
+	u.attached.cwd = "/workspace"
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	for _, tc := range []struct{ model, requested, want string }{
 		{"gpt-6.1-sol", "default", "priority"},

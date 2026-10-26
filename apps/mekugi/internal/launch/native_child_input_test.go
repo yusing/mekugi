@@ -153,6 +153,9 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 		t.Fatal("typing crossed thread editors")
 	}
 	terminal := selected.renderer.terminal
+	view := selected.renderer.frame.View
+	view.Info.Workspace = "/workspace/child"
+	terminal.Main.Update(view)
 	painted := terminal.Main.Render(terminal.Transcript, &terminal.Transcript.Painter, terminal.Prompts, terminalsession.MainOptions{Now: now, Focused: true}, 100, 8, 0)
 	plain := ansi.Strip(strings.Join(painted.Rows, "\n"))
 	if !strings.Contains(plain, "worker · child-model (low) · flex") || strings.Contains(plain, "Read-only") || strings.Contains(plain, "parent-only-model") {

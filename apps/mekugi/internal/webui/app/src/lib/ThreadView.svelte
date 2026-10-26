@@ -184,6 +184,9 @@
   });
   const frame = $derived(semantic.frame?.view.Main.ID === id ? semantic.frame : undefined);
   const sview = $derived(frame?.view);
+  const workspace = $derived(
+    sview?.DisplayedWorkspace || sview?.Info.Workspace || session?.workspace,
+  );
   const details = $derived(live && !ended ? frame?.details : undefined);
   // Saved changes exist for live sessions; recorded playback has none.
   const changes = $derived(!!stream.review);
@@ -340,20 +343,28 @@
         label="Show sidebar"
         onclick={onsidebar}
       />{/if}
-    <!-- One element throughout, so focus moved here stays as it loads. -->
-    <h1
-      bind:this={heading}
-      class="max-w-[50%] min-w-0 flex-none truncate text-base font-semibold focus:outline-none max-sm:max-w-none max-sm:flex-1 max-sm:pl-2"
-      title={session?.workspace}
-      tabindex="-1"
-    >
-      {#if session}{title}
-      {:else if gone}Thread unavailable
-      {:else}<span class="sr-only">Loading thread</span><span
-          class="{skeleton} inline-block w-40 text-transparent"
-          aria-hidden="true">&nbsp;</span
+    <div class="flex min-w-0 flex-1 items-center gap-2 max-sm:gap-1">
+      <!-- One element throughout, so focus moved here stays as it loads. -->
+      <h1
+        bind:this={heading}
+        class="max-w-[50%] min-w-0 truncate text-base font-semibold focus:outline-none max-sm:pl-2"
+        {title}
+        aria-describedby={workspace ? "thread-workspace" : undefined}
+        tabindex="-1"
+      >
+        {#if session}{title}
+        {:else if gone}Thread unavailable
+        {:else}<span class="sr-only">Loading thread</span><span
+            class="{skeleton} inline-block w-40 text-transparent"
+            aria-hidden="true">&nbsp;</span
+          >{/if}
+      </h1>
+      {#if workspace}<span
+          id="thread-workspace"
+          class="min-w-0 flex-1 truncate text-small text-muted"
+          title={workspace}><span class="sr-only">Working directory: </span>{workspace}</span
         >{/if}
-    </h1>
+    </div>
     {#if live && !ended && !recorded && frame}
       <Button
         variant="quiet"

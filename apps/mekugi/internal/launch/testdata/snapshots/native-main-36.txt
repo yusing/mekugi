@@ -13,4 +13,4 @@
 │ ❯ Add narrow-screen coverage.    │
 │   Keep the interaction assertions│
 │   .                              │
-╰───── snapshot-model (high) • 0% ─╯
+╰── /worksp… snapshot-model… • 0% ─╯

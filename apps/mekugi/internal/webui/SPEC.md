@@ -114,6 +114,9 @@ quoted-selection attachment framing as the terminal, rather than becoming an ord
 instruction. A changed draft refuses a late insertion; references stay isolated between
 threads and side-conversation inputs.
 
+The title bar shows the displayed thread's working directory alongside its title.
+Long directories abbreviate without displacing the title or header controls;
+the full path is available in the label and Session details.
 While Main is displayed, the composer shows its model and reasoning effort as
 pickers. Each opens the thread's own `/model` or `/effort` menu above the composer;
 choosing applies the setting and leaves the draft unchanged.

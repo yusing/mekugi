@@ -85,8 +85,11 @@ func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	screen := vt.NewEmulator(100, 28)
 	defer screen.Close()
 	preview := previewmodel.Preview{ID: "edit", Workspace: t.TempDir(), Caller: "/root", Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+Live edit still in progress\n*** End Patch"}
+	preview = projectStockPatchPreview(t.Context(), preview.Workspace, preview)
+	// Keep rendered paths fixed independently of the isolated filesystem input.
+	preview.Workspace, preview.Files[0].AfterPath = "/workspace", "/workspace/live.txt"
 	u.attached.cwd = preview.Workspace
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), projectStockPatchPreview(t.Context(), preview.Workspace, preview), false)
+	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
 	revealNativeDock(terminalTest(u))
 	for _, value := range []string{"off", "on"} {
 		appServerTestKeys(t, u, "/live\r")

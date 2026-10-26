@@ -70,6 +70,7 @@ func TestUISnapshotNativeWelcome(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.backendVersion, u.attached.presentation.Status.Text, u.model, u.Text = "0.158.0", "Ready", "snapshot-model", tc.draft
+			u.attached.cwd = "/workspace"
 			rows, _ := u.testMainFrame(tc.width, tc.height, 0)
 			// Build identity is not fixed across test executables.
 			if tc.version == "" {

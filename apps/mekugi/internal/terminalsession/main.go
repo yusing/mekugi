@@ -224,6 +224,12 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 		}
 	}
 	if boxed {
+		cwd := strings.ReplaceAll(textsanitize.Safe(presentation.SourceWorkspace(), false), "\n", " ")
+		cwd = ansi.Truncate(cwd, max(1, (width-10)/3), "…")
+		captionWidth := max(0, width-7)
+		if cwd != "" {
+			captionWidth = max(0, width-8-ansi.StringWidth(cwd))
+		}
 		model := presentation.Caption.Model
 		if model != "" && presentation.Caption.Effort != "" {
 			model += " (" + presentation.Caption.Effort + ")"
@@ -246,10 +252,14 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 			context.WriteString(" • " + textsanitize.Safe(item.Text, false))
 		}
 		caption := context.String()
-		if room := width - 7 - ansi.StringWidth(context.String()) - 3; model != "" && room > 0 {
+		if room := captionWidth - ansi.StringWidth(context.String()) - 3; model != "" && room > 0 {
 			caption = ansi.Truncate(model, room, "…") + " • " + context.String()
 		}
-		caption = terminalui.Dim + ansi.Truncate(caption, max(0, width-7), "…") + terminalui.Reset
+		caption = ansi.Truncate(caption, captionWidth, "…")
+		if cwd != "" {
+			caption = cwd + " " + caption
+		}
+		caption = terminalui.Dim + caption + terminalui.Reset
 		frame = append(frame, composerBorder("╰", "╯", "", caption, width, border))
 	}
 	out.Rows, out.Dock = frame, Rect{0, dockAt, width, dock}

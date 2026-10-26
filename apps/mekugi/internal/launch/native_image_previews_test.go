@@ -67,6 +67,7 @@ func TestUISnapshotNativeImagePreviews(t *testing.T) {
 			previews := imagePreviews{}
 			t.Cleanup(previews.close)
 			c := nativeClient{ctx: t.Context(), renderer: nativeClientRenderer{terminal: terminal, views: u.terminalViews}}
+			received.View.Info.Workspace = "/workspace"
 			c.renderer.update(received, conversation.DraftView{}, conversation.PromptDraftView{}, now)
 			terminal.Width, terminal.Height = 80, 24
 			terminal.Transcript.Expansion = 2

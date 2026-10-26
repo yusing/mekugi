@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
@@ -34,6 +35,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			// An idle session avoids wall-clock durations and status animation.
 			u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+			u.attached.cwd = "/workspace/project"
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 				{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the snapshot workflow.", Observed: now},
@@ -43,6 +45,20 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 			rows, _ := u.testMainFrame(width, 16, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("native-main-%d", width), rows)
 		})
+	}
+}
+
+func TestComposerWorkspaceStatus(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	workspace := "/workspace/" + strings.Repeat("long-directory/", 6) + "project"
+	u.attached.cwd = workspace
+	rows, _ := u.testMainFrame(36, 8, 0)
+	if line := ansi.Strip(rows[len(rows)-1]); !strings.Contains(line, "/worksp…") || strings.Contains(line, workspace) {
+		t.Fatalf("long workspace was not abbreviated: %q", line)
+	}
+	appServerTestKeys(t, u, "/status\r")
+	if !strings.Contains(statusReportText(u.statusPanel), "Directory: "+workspace) {
+		t.Fatal("status lost the full workspace")
 	}
 }
 

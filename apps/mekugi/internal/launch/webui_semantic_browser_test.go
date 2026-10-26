@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -67,7 +68,10 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(directory)
-	workspace := t.TempDir()
+	workspace := filepath.Join(t.TempDir(), "project-with-a-long-directory-name", "nested-workspace-for-title-bar-layout")
+	if err := os.MkdirAll(workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
 	previewFile := filepath.Join(workspace, "image with space.png")
 	preview := image.NewRGBA(image.Rect(0, 0, 48, 32))
 	for y := range 32 {
@@ -221,23 +225,27 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		t.Helper()
 		run("wait", "--fn", "!document.querySelector('[aria-label=\"Unsent submission\"]')")
 	}
-	// With MEKUGI_TEST_WEBUI_ARTIFACTS set, each captured state is saved at
-	// desktop, tablet and phone sizes in both themes. The primary action must
-	// stay on screen at its responsive control height, without sideways scroll.
+	// Check each state at desktop, tablet and phone sizes in both themes.
+	// Screenshots are optional; geometry checks always run.
 	capture := func(state string) {
 		t.Helper()
 		artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS")
-		if artifacts == "" {
-			return
-		}
 		for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "900"}, {"tablet", "768", "1024"}, {"phone", "390", "844"}} {
 			run("set", "viewport", size.width, size.height)
 			for _, theme := range []string{"dark", "light"} {
 				run("set", "media", theme)
+				if strings.TrimSpace(run("eval", `(() => { const cwd = document.querySelector('header #thread-workspace'); if (!cwd) return !document.querySelector('#composer-text'); const header = cwd.closest('header'), title = header.querySelector('h1'); const a = cwd.getBoundingClientRect(), b = title.getBoundingClientRect(), h = header.getBoundingClientRect(); const buttons = [...header.querySelectorAll('button')].filter(button => !button.closest('[popover]')).map(button => button.getBoundingClientRect()).filter(r => r.width); return !!cwd.title && cwd.textContent.endsWith(cwd.title) && a.width >= 16 && b.width >= 16 && b.right <= a.left && a.right <= h.right && buttons.every(r => r.left >= h.left && r.right <= h.right && r.top >= h.top && r.bottom <= h.bottom && (r.right <= b.left || r.left >= a.right)); })()`)) != "true" {
+					t.Errorf("%s %s %s: title-bar directory, title or controls collide or lose their full path", state, size.name, theme)
+				}
+				if size.name == "desktop" && strings.TrimSpace(run("eval", `(() => { const model = document.querySelector('button[title="Model"]'), add = document.querySelector('button[aria-label="Add files or paths"]'); if (!model || !add) return true; const m = model.getBoundingClientRect(), a = add.getBoundingClientRect(); return Math.abs((m.top + m.bottom - a.top - a.bottom) / 2) < 1 && !document.querySelector('#composer-workspace'); })()`)) != "true" {
+					t.Errorf("%s %s: desktop composer controls must share one row", state, theme)
+				}
 				if strings.TrimSpace(run("eval", "(() => { const b = document.querySelector('button[type=submit]'); if (!b) return true; const r = b.getBoundingClientRect(); return r.height >= (innerWidth <= 640 ? 44 : 32) && r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && document.documentElement.scrollWidth <= innerWidth; })()")) != "true" {
 					t.Errorf("%s %s %s: the primary action must stay on screen at its responsive control height: %s", state, size.name, theme, run("eval", "document.querySelector('button[type=submit]')?.getBoundingClientRect().toJSON()"))
 				}
-				run("screenshot", filepath.Join(artifacts, state+"-"+size.name+"-"+theme+".png"))
+				if artifacts != "" {
+					run("screenshot", filepath.Join(artifacts, state+"-"+size.name+"-"+theme+".png"))
+				}
 			}
 		}
 		run("set", "viewport", "1280", "720")
@@ -429,10 +437,20 @@ func TestWebUISemanticBrowser(t *testing.T) {
 
 	run("snapshot", "-i")
 	t.Log("created through the empty-state composer with uploaded text and image")
+	run("wait", "--fn", `document.querySelector('header #thread-workspace')?.title === `+strconv.Quote(workspace))
+	const longTitle = "A deliberately long thread title that shares the title bar with its full working directory"
+	button("Rename thread")
+	run("fill", "#thread-title", longTitle)
+	button("Save")
+	run("wait", "--fn", `document.querySelector('header h1')?.textContent.trim() === `+strconv.Quote(longTitle))
+	capture("long-header")
+	button("Session details")
+	run("wait", "--fn", `document.querySelector('[popover]:popover-open')?.textContent.includes(`+strconv.Quote(workspace)+`)`)
+	run("press", "Escape")
 	run("eval", `document.querySelector('figure')?.scrollIntoView({block:'center'})`)
 	run("wait", "--fn", `document.querySelector('img[alt="Attached image 1"]')?.naturalWidth > 0`)
 	run("wait", "--fn", `document.querySelector('.text-marker-image')?.textContent === '[Image 1]'`)
-	run("wait", "--fn", `!!document.querySelector('header h1')?.parentElement?.querySelector('button[aria-label="Session details"]')`)
+	run("wait", "--fn", `!!document.querySelector('header h1')?.closest('header')?.querySelector('button[aria-label="Session details"]')`)
 	run("find", "label", "Message", "fill", "draft survives fast mode")
 	button("Fast")
 	run("wait", "--fn", `document.querySelector('button[title="Disable fast mode"]')?.getAttribute('aria-pressed') === 'true'`)
@@ -515,7 +533,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--text", "Browser host answer 1")
 	run("find", "first", `[aria-label="Transcript"] button[aria-label="Copy response"]`, "click")
 	run("wait", "--fn", `window.copiedResponse === 'Browser host answer 1\n\nAutomatic https://example.com/auto and [Website](https://example.com/markdown). [Workspace notes](notes.md)'`)
-	run("wait", "--fn", `(() => { const rows = Array.from(document.querySelectorAll('[aria-label="Transcript"] [data-entry]')).filter(row => row.textContent.includes('browser first input')); return rows.length > 0 && rows.every(row => !row.querySelector('button[aria-label="Copy response"]')); })()`)
+	run("wait", "--fn", `(() => { const rows = Array.from(document.querySelectorAll('[aria-label="Transcript"] article')).filter(row => row.textContent.includes('browser first input')); return rows.length > 0 && rows.every(row => !row.querySelector('button[aria-label="Copy response"]')); })()`)
 	run("find", "role", "tab", "click", "--name", "Main", "--exact")
 	run("wait", "--fn", "Array.from(document.querySelectorAll('[role=tab]')).find(tab => tab.textContent.trim() === 'Main')?.getAttribute('aria-selected') === 'true'")
 	button("Close side")
