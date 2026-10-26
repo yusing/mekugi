@@ -338,17 +338,19 @@ summary content, then top-level `## Details` and nonblank details identify it.
 Labels are exact and case-sensitive. Quoted, indented and fenced lookalikes are
 ordinary content; another Summary before Details is ambiguous and falls back.
 Everything after the first valid Details delimiter is ordinary detail content.
-Activity derives the summary once at its shared presentation boundary, preserving
+Activity derives summary and details once at its shared presentation boundary, preserving
 source identity and original content without a second record or persistent store.
 
 Default Main disclosure shows the complete summary with normal Markdown wrapping
 and `↩ Open reply`, without an excerpt limit or omitted-detail line count. Explicit
-expanded disclosure and the child transcript retain the original body. Missing,
+expanded disclosure shows summary and details once, without their delimiter headings;
+the child transcript retains the original body. Missing,
 malformed, empty and in-flight structures use the existing excerpt and dialog:
 four wrapped rows for the latest reply, two for earlier replies. Disabling the
 feature selects that fallback even for retained structured replies. Root ordinary
 answers remain unchanged. Opening selects the exact retained Activity entry and
-shows the original Summary and Details, subject to explicit retention limits.
+shows its supporting details without repeating the summary or delimiter headings,
+subject to explicit retention limits. Full-copy actions preserve the original body.
 No parsing, display, reopening, restoration or replay generates a model request,
 repairs a reply, changes parent input or merges messages by text.
 

@@ -96,6 +96,9 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 func (d *ContentDialog) Layout(width int) {
 	page := d.Pages[d.Page]
 	d.StopAvailable = d.Processes && page.Process != nil
+	if !d.View.ChildReplySummary {
+		page.ReplyDetails = ""
+	}
 	page.ModelVisible = d.modelVisible[page.ID] && page.Prepared != nil
 	d.OutputToggle = ""
 	if page.Prepared != nil {

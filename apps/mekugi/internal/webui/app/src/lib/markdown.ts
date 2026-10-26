@@ -1,4 +1,4 @@
-import MarkdownIt from "markdown-it";
+import MarkdownIt, { type Env } from "markdown-it";
 
 // Recorded text is untrusted. Local links use the machine's shared file
 // interaction instead of navigating the browser filesystem.
@@ -51,7 +51,14 @@ md.renderer.rules.image = (tokens, i) => {
     : `<span class="file-link" title="${md.utils.escapeHtml(src)}">Image: ${alt}</span>`;
 };
 
-export const block = (text: string) => md.render(text);
+// Sections share their original document's link definitions.
+export function referenceContext(text: string): Env {
+  const context = {};
+  md.parse(text, context);
+  return context;
+}
+
+export const block = (text: string, context?: Env) => md.render(text, context);
 export const inline = (text: string) => md.renderInline(text);
 
 // Classified labels already quote operands as Markdown code spans. Keep their

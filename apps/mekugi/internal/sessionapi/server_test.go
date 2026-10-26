@@ -16,7 +16,7 @@ import (
 
 func TestChildReplySummaryFollowsFeature(t *testing.T) {
 	t.Parallel()
-	reply := activitypresentation.Entry{Values: []activitypresentation.Value{{Kind: "final", Body: "## Summary\nDone.\n## Details\nEvery step.", ReplySummary: "Done."}}}
+	reply := activitypresentation.Entry{Values: []activitypresentation.Value{{Kind: "final", Body: "## Summary\nDone.\n## Details\nEvery step.", ReplySummary: "Done.", ReplyDetails: "Every step."}}}
 	reply.Seq, reply.Agent, reply.Kind = 1, "/root/docs", "final"
 	for _, enabled := range []bool{true, false} {
 		server := New()
@@ -28,7 +28,7 @@ func TestChildReplySummaryFollowsFeature(t *testing.T) {
 			t.Fatal(err)
 		}
 		// The original reply is always sent; its summary only when enabled.
-		if event := string(data.Data); !strings.Contains(event, `"body":"## Summary`) || strings.Contains(event, `"summary":"Done."`) != enabled {
+		if event := string(data.Data); !strings.Contains(event, `"body":"## Summary`) || strings.Contains(event, `"summary":"Done."`) != enabled || strings.Contains(event, `"details":"Every step."`) != enabled {
 			t.Fatalf("feature %v: snapshot = %s", enabled, event)
 		}
 	}

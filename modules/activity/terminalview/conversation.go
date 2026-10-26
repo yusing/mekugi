@@ -805,9 +805,13 @@ func (v *View) replyContext(out *conversationLines, question activitypresentatio
 }
 
 func (v *View) childReply(out *conversationLines, entry activitypresentation.Entry, block Block, gutter, tail string, width, limit int) {
-	if v.ChildReplySummary && v.Expansion == 0 && block.ReplySummary != "" {
+	if v.ChildReplySummary && block.ReplySummary != "" {
 		out.hang(gutter, gutter, v.Painter.Markdown(block.ReplySummary, width, false))
-		out.add(entry.Seq, tail+ansi.Truncate(v.Painter.Theme.Accent()+"↩ Open reply"+terminalui.Reset, width, "…"))
+		if v.Expansion == 0 {
+			out.add(entry.Seq, tail+ansi.Truncate(v.Painter.Theme.Accent()+"↩ Open reply"+terminalui.Reset, width, "…"))
+		} else {
+			out.hang(gutter, gutter, v.Painter.Markdown(block.ReplyDetails, width, false))
+		}
 		return
 	}
 	v.replyExcerpt(out, entry, block.Body, gutter, tail, width, limit)

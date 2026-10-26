@@ -178,6 +178,7 @@ type value struct {
 	Lang        string     `json:"lang,omitzero"`
 	Fenced      bool       `json:"fenced,omitzero"`
 	Body        string     `json:"body,omitzero"`
+	Details     string     `json:"details,omitzero"` // Supporting child reply content without section delimiters.
 	Summary     string     `json:"summary,omitzero"` // A child reply's own summary of Body.
 	Reads       []read     `json:"reads,omitzero"`
 	Subsumed    bool       `json:"subsumed,omitzero"`
@@ -333,7 +334,7 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 			EditOutcome: v.EditOutcome, Running: v.Running, Live: v.Live, Tail: v.Tail, TailOmitted: v.TailOmitted,
 		}
 		if summaries {
-			p.Summary = v.ReplySummary
+			p.Summary, p.Details = v.ReplySummary, v.ReplyDetails
 		}
 		if v.EditSource != "" {
 			p.Label, p.Sources = v.EditLabel(), strings.Split(v.EditSource, ", ")

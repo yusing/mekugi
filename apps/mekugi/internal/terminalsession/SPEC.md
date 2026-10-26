@@ -311,8 +311,9 @@ uses at most 90% of each dimension, or available width below 60 columns, over fa
 uncolored panes. Its theme-aware fill and accent frame preserve syntax, diff and
 selection colors. Close uses the top-right button, Esc/q or outside click.
 
-Child reply summary links open the exact retained original, including Summary and
-Details, using the same dialog. Opening and dismissal preserve underlying pane
+Child reply summary links open the exact retained reply’s supporting details,
+without repeating its summary or section headings. Copy keeps the original reply.
+Opening and dismissal preserve underlying pane
 focus, scroll and transcript follow; stale or missing targets cannot select another reply.
 
 Arrows/j/k, page keys, b/space, g/G and Home/End scroll; the wheel affects only the

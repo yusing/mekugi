@@ -115,6 +115,7 @@ export interface Value {
   body?: string;
   // A child reply's own summary of body, when the feature is on.
   summary?: string;
+  details?: string;
   reads?: Read[];
   path?: string;
   autoReload?: boolean;

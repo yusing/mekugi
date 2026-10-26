@@ -3,6 +3,8 @@ package presentation
 import (
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
 func TestChildReplySummaryInterpretation(t *testing.T) {
@@ -38,6 +40,9 @@ func TestChildReplySummaryInterpretation(t *testing.T) {
 				values := entry.Values()
 				if len(values) != 1 || strings.Trim(values[0].ReplySummary, "\r\n") != tc.want || values[0].Source != 17 {
 					t.Fatalf("%s values = %#v, want summary %q", kind, values, tc.want)
+				}
+				if tc.want != "" && (strings.TrimSpace(values[0].ReplyDetails) == "" || values[0].Body != textsanitize.MarkdownSource(tc.body)) {
+					t.Fatalf("details or original body lost: %#v", values[0])
 				}
 				entry.ItemComplete = false
 				if entry.Values()[0].ReplySummary != "" {

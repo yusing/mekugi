@@ -1053,6 +1053,7 @@ export type Value = {
   "Effect": boolean;
   "Output": number;
   "ReplySummary": string;
+  "ReplyDetails": string;
   "DetailCode"?: string;
   "Repeated": string;
   "AutoReload": boolean;
@@ -1095,7 +1096,7 @@ export type Value = {
   "DetailLines": number;
   "Live": boolean;
   "Thought": number;
-} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Effect" | "Output" | "ReplySummary" | "DetailCode" | "Repeated" | "AutoReload" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "WaitTimeout" | "WaitReason" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Pending" | "Tail" | "TailOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought">;
+} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Effect" | "Output" | "ReplySummary" | "ReplyDetails" | "DetailCode" | "Repeated" | "AutoReload" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "WaitTimeout" | "WaitReason" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Pending" | "Tail" | "TailOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought">;
 
 export type ItemContent = {
   "Command": Command;

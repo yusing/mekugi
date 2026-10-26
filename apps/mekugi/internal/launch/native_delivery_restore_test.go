@@ -1,12 +1,16 @@
 package launch
 
 import (
+	"bytes"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"slices"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -18,8 +22,9 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 		live := newAppServerSessionTestUI(t, t.TempDir())
 		wire := live.Host.Input.(*appServerTestInput)
 		var records []map[string]any
+		bodies := []string{"MESSAGE\nPayload:\nunaltered body\n", "## Summary\nFINAL_ANSWER result.\n\n## Details\nPayload:\nFinal evidence.\n"}
 		for i, kind := range []string{"MESSAGE", "FINAL_ANSWER"} {
-			input := control.NativeInput{Thread: "main", ID: kind, Sender: "/root/worker", Recipient: "/root", Kind: kind, Message: kind + "\nPayload:\nunaltered body\n"}
+			input := control.NativeInput{Thread: "main", ID: kind, Sender: "/root/worker", Recipient: "/root", Kind: kind, Message: bodies[i]}
 			wire.Reset()
 			result := make(chan error, 1)
 			go func() { _, err := live.Requests.Input(t.Context(), input); result <- err }()
@@ -58,7 +63,7 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 		for _, idle := range []bool{false, true} {
 			restored := newAppServerSessionTestUI(t, live.attached.cwd)
 			root := binding.ThreadInfo{ID: "main", Cwd: live.attached.cwd, Path: writeTestRollout(t, "main", records...)}
-			want := []string{"MESSAGE\nPayload:\nunaltered body\n", "host answer", "FINAL_ANSWER\nPayload:\nunaltered body\n"}
+			want := []string{bodies[0], "host answer", bodies[1]}
 			if idle {
 				root.Path = writeTestRollout(t, "main", records[0], records[1])
 				want = want[:1]
@@ -69,6 +74,7 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 				t.Fatal(err)
 			}
 			var got []string
+			var target uint64
 			for _, entry := range restored.attached.source.Entries {
 				got = append(got, entry.Source.Text)
 				if entry.Source.Text == "host answer" {
@@ -83,9 +89,36 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 				if entry.Source.Kind == "reply" && (entry.Source.Message == nil || entry.Source.Message.From != "/root/worker" || entry.Source.Message.To != "Main") {
 					t.Fatalf("message lost receiver presentation: %+v", entry.Source)
 				}
+				if entry.Source.ActivitySeq == 0 || entry.Source.Kind == "final" && entry.Values[0].ReplySummary == "" {
+					t.Fatal("restored reply lost its summary or exact Activity target")
+				}
+				target = entry.Source.Seq
 			}
 			if !slices.Equal(got, want) {
 				t.Fatalf("idle=%v: restored traffic = %q, want %q", idle, got, want)
+			}
+			view := restored.testActivity(restored.shell.Transcript)
+			rendered := ansi.Strip(strings.Join(view.testRenderConversation(100).Lines, "\n"))
+			if !idle && (!strings.Contains(rendered, "FINAL_ANSWER result.") || !strings.Contains(rendered, "↩ Open reply") || strings.Contains(rendered, "Summary") || strings.Contains(rendered, "Details") || strings.Contains(rendered, "Final evidence.")) {
+				t.Fatalf("restored default disclosure: %s", rendered)
+			}
+			view.Expansion = 2
+			view.InvalidateRuns(0)
+			rendered = ansi.Strip(strings.Join(view.testRenderConversation(100).Lines, "\n"))
+			if !idle && (strings.Count(rendered, "FINAL_ANSWER result.") != 1 || !strings.Contains(rendered, "Final evidence.") || strings.Contains(rendered, "Summary") || strings.Contains(rendered, "Details")) {
+				t.Fatalf("restored expanded disclosure: %s", rendered)
+			}
+			if err := restored.testPaint(&bytes.Buffer{}, 100, 28); err != nil {
+				t.Fatal(err)
+			}
+			if !terminalTest(restored).openActivityReply(target) {
+				t.Fatal("restored reply cannot open its exact Activity target")
+			}
+			if err := restored.testPaint(&bytes.Buffer{}, 100, 28); err != nil {
+				t.Fatal(err)
+			}
+			if terminalTest(restored).Dialog.Document.Text != want[len(want)-1] {
+				t.Fatal("restored reply lost its original body")
 			}
 			if requests := restoreContentRequests(t, restored.Host.Input.(*appServerTestInput)); len(requests) != 0 {
 				t.Fatalf("restoration dispatched host requests: %+v", requests)

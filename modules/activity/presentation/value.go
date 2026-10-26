@@ -36,7 +36,7 @@ type Value struct {
 	Output int
 
 	feed.Content
-	ReplySummary                                  string // Derived from the completed original body; never replaces Body.
+	ReplySummary, ReplyDetails                    string // Derived from the completed original body; never replaces Body.
 	DetailCode                                    string `json:",omitempty"` // Original tool evidence, displayed only in details.
 	Repeated                                      string
 	AutoReload                                    bool   // Native compaction reader, distinct from a submitted attachment.

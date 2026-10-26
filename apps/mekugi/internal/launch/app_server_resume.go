@@ -203,7 +203,7 @@ func restoreMainHistory(attached *attachedPresentation, terminal *terminalsessio
 			byTurn[index] = append(byTurn[index], p)
 		} else if p.entry.Kind == "hook" || p.turn == "" {
 			// A retained delivery can arrive before the receiver has any turns.
-			applyRestoredMain(attached.source, []*restoredPlacement{p})
+			applyRestoredMain(attached, []*restoredPlacement{p})
 		}
 	}
 	for index, turn := range turns {
@@ -212,7 +212,7 @@ func restoreMainHistory(attached *attachedPresentation, terminal *terminalsessio
 		slots := positions[index].Slots(restoredPositions(placements))
 		place := func(indices []int) {
 			for _, index := range indices {
-				applyRestoredMain(attached.source, placements[index:index+1])
+				applyRestoredMain(attached, placements[index:index+1])
 			}
 		}
 		place(slots[0])
@@ -248,13 +248,20 @@ func restoreMainHistory(attached *attachedPresentation, terminal *terminalsessio
 	applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, nil, attached.session.Roster())
 }
 
-func applyRestoredMain(source *sessionpresentation.ActivitySource, placements []*restoredPlacement) {
+func applyRestoredMain(attached *attachedPresentation, placements []*restoredPlacement) {
 	for _, p := range placements {
 		entry := p.entry
 		if entry.Observed.IsZero() {
 			entry.Observed = p.at
 		}
-		source.ApplyMain(entry)
+		if sessionpresentation.MainActivityLinked(entry) {
+			// Retained deliveries need the same exact Activity target as live
+			// deliveries for summary disclosure and opening their original body.
+			entry.Seq = attached.session.Activity().NextSequence()
+			sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+		} else {
+			attached.source.ApplyMain(entry)
+		}
 	}
 }
 

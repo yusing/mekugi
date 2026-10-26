@@ -11,9 +11,15 @@
     text,
     quiet = false,
     spans,
-  }: { text: string; quiet?: boolean; spans?: import("./protocol").Entry["spans"] } = $props();
+    context,
+  }: {
+    text: string;
+    quiet?: boolean;
+    spans?: import("./protocol").Entry["spans"];
+    context?: import("markdown-it").Env;
+  } = $props();
   let problem = $state<string>();
-  const html = $derived(spans?.length ? markedBlock(text, spans) : block(text));
+  const html = $derived(spans?.length ? markedBlock(text, spans) : block(text, context));
   // Fenced code names its language as a language-NAME class.
   const fences = (rendered: string) => (node: HTMLElement) => {
     if (rendered.includes("<pre>"))

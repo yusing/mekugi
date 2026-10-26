@@ -19,7 +19,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 	for _, kind := range []string{"directed", "final"} {
 		t.Run(kind, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.shell.Transcript.ChildReplySummary = true
+			u.shell.Transcript.ChildReplySummary, u.shell.Agents.ChildReplySummary = true, true
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			send := func(id, body string) {
@@ -59,18 +59,26 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 			}
 			u.shell.Transcript.Expansion = 1
 			expanded := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 80).Lines, "\n"))
-			if !strings.Contains(expanded, "End of evidence.") {
+			if !strings.Contains(expanded, "End of evidence.") || strings.Count(expanded, "Fixed exact reply navigation") != 1 || strings.Contains(expanded, "Summary") || strings.Contains(expanded, "Details") {
 				t.Fatal("expanded disclosure lost Details")
 			}
 			u.shell.Transcript.Expansion = 0
-			u.shell.Transcript.ChildReplySummary = false
+			u.shell.Transcript.ChildReplySummary, u.shell.Agents.ChildReplySummary = false, false
 			u.shell.Transcript.InvalidateRuns(0)
 			feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 80)
 			if !strings.Contains(ansi.Strip(strings.Join(feed.Lines, "\n")), "+") {
 				t.Fatal("disabled summary did not use excerpt")
 			}
 			assertNativeUISnapshot(t, "child-reply-summary-"+kind+"-disabled", feed.Lines)
-			u.shell.Transcript.ChildReplySummary = true
+			if !terminalTest(u).openActivityReply(seq) {
+				t.Fatal("cannot open disabled-summary reply")
+			}
+			terminalTest(u).Dialog.Layout(80)
+			if !strings.Contains(ansi.Strip(terminalTest(u).Dialog.Document.Lines[0].Text), "Summary") {
+				t.Fatal("disabled feature lost original reply headings")
+			}
+			terminalTest(u).outputKey("\x1b")
+			u.shell.Transcript.ChildReplySummary, u.shell.Agents.ChildReplySummary = true, true
 			u.shell.Transcript.InvalidateRuns(0)
 			if err := u.testPaint(&bytes.Buffer{}, 100, 28); err != nil {
 				t.Fatal(err)
@@ -94,6 +102,9 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 			if _, err := screen.Write(frame.Bytes()); err != nil {
 				t.Fatal(err)
 			}
+			if rendered := screen.String(); strings.Count(rendered, "Fixed exact reply navigation") != 1 || strings.Contains(rendered, "Summary") || strings.Contains(rendered, "Details") || !strings.Contains(rendered, "End of evidence.") {
+				t.Fatalf("reply details repeated summary or delimiters: %s", rendered)
+			}
 			assertNativeUISnapshot(t, "child-reply-summary-"+kind+"-dialog", strings.Split(screen.String(), "\n"))
 			terminalTest(u).outputKey("\x1b")
 			if terminalTest(u).Dialog != nil {
@@ -105,7 +116,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 
 func TestUISnapshotChildReplySummaryFallback(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.shell.Transcript.ChildReplySummary = true
+	u.shell.Transcript.ChildReplySummary, u.shell.Agents.ChildReplySummary = true, true
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{

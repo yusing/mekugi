@@ -509,17 +509,19 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("set", "viewport", "1280", "720")
-	var replies []activitypresentation.Entry
-	for i, text := range []string{"## Summary\nNested review complete.\n## Details\nNested retained details.", strings.Repeat("Nested unstructured reply paragraph.\n\n", 12)} {
-		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: uint64(98 + i), Agent: "/root/worker/reviewer", Kind: "reply", ItemComplete: true}, Message: &activitypresentation.DirectedContent{From: "/root/worker/reviewer", To: "Main", Text: text}}
-		replies = append(replies, activitypresentation.Entry{Facts: item.Facts, Values: item.Values()})
+	restoredReplies := newAppServerSessionTestUI(t, t.TempDir())
+	for i, text := range []string{"## Summary\nNested review complete.\n\n[evidence]: https://example.com/evidence\n\n## Details\nNested retained details. See [evidence].", strings.Repeat("Nested unstructured reply paragraph.\n\n", 12)} {
+		entry := nativeDeliveryEntry(threadcontrol.NativeInput{Thread: "main", Sender: "/root/worker/reviewer", Recipient: "/root", Kind: "MESSAGE", Message: text}, fmt.Sprint(i), time.Now())
+		applyRestoredMain(&restoredReplies.attached, []*restoredPlacement{{entry: entry}})
 	}
-	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, ChildReplySummary: true, Main: &activitypresentation.Publication{Entries: replies}}); err != nil {
+	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, ChildReplySummary: true, Main: restoredReplies.attached.source.Publication(restoredReplies.attached.presentation, nil)}); err != nil {
 		t.Fatal(err)
 	}
-	run("wait", "--fn", `(() => { const feed = document.querySelector('[aria-label="worker\'s activity"]'); return feed?.textContent.includes('Nested review complete.') && [...feed.querySelectorAll('summary')].some(e => e.textContent === 'Full reply') && [...feed.querySelectorAll('button')].some(e => e.textContent.trim() === 'Show full reply'); })()`)
+	run("wait", "--fn", `(() => { const feed = document.querySelector('[aria-label="worker\'s activity"]'); return feed?.textContent.includes('Nested review complete.') && [...feed.querySelectorAll('summary')].some(e => e.textContent === 'Details') && [...feed.querySelectorAll('button')].some(e => e.textContent.trim() === 'Show full reply'); })()`)
 	run("find", "first", `[data-entry]:has([data-kind="reply"]) button[aria-label="Copy response"]`, "click")
 	run("wait", "--fn", `window.copiedResponse === '## Summary\nNested review complete.\n\n[evidence]: https://example.com/evidence\n\n## Details\nNested retained details. See [evidence].'`)
+	run("eval", `document.querySelector('[data-kind="reply"] details').open = true`)
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-kind="reply"]'); return row.innerText.includes('Nested retained details.') && row.innerText.split('Nested review complete.').length === 2 && !row.querySelector('h2') && row.querySelector('details a[href="https://example.com/evidence"]'); })()`)
 	run("wait", "--fn", `(() => { const row = document.querySelector('[data-kind="reply"]'); return row?.textContent.includes('worker/reviewer') && !row.textContent.includes('/root/') && /→\s*worker/.test(row.textContent) && !/→\s*main/.test(row.textContent); })()`)
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "child-incoming-replies.png"))

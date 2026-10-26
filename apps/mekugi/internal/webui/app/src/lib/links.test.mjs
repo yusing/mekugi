@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { block } from "./markdown.ts";
+import { block, referenceContext } from "./markdown.ts";
 
 test("automatic and Markdown web links navigate safely", () => {
   const html = block(
@@ -31,4 +31,14 @@ test("untrusted links and images never execute or fetch automatically", () => {
   assert.doesNotMatch(html, /<script>|<img|href="javascript:|data-file-link="#heading"/);
   assert.match(html, /&lt;script&gt;/);
   assert.match(html, /Image: Remote<\/a>/);
+});
+
+test("reply sections retain original-document reference links", () => {
+  const summary = "Done.\n\n[evidence]: https://example.com/evidence";
+  const details = "See [evidence] for the result.";
+  const context = referenceContext(`## Summary\n${summary}\n## Details\n${details}`);
+  const html = block(details, context);
+  assert.match(html, /href="https:\/\/example.com\/evidence"[^>]*>evidence<\/a>/);
+  assert.doesNotMatch(html, /Done|<h2>/);
+  assert.doesNotMatch(block(details), /<a /);
 });

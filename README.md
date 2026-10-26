@@ -566,8 +566,9 @@ settings, and are preserved in the printed resume command. A fresh launch or
 resume reads the current file again.
 
 Child replies normally include a short authored Summary and supporting Details in
-one response. Main shows the complete summary; **Open reply** opens the retained
-original. Plain or malformed replies keep the excerpt fallback. Set
+one response. Main shows the complete summary; **Open reply** shows supporting
+details without repeating it. Full-copy actions keep the original response.
+Plain or malformed replies keep the excerpt fallback. Set
 `child_reply_summary = false` or launch `mekugi --child-reply-summary=false codex`
 to use excerpts for all replies and omit the child-authoring rule. This adds no
 separate summarization request and leaves parent input and child transcripts intact.

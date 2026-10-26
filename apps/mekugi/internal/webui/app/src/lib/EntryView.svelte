@@ -6,7 +6,7 @@
   import { outputLanguage } from "./highlight";
   import { failed, isUser, reasoningBody } from "./kinds";
   import Markdown from "./Markdown.svelte";
-  import { inline } from "./markdown";
+  import { inline, referenceContext } from "./markdown";
   import type { Entry, Value } from "./protocol";
   import { stream, type Stream } from "./stream.svelte";
   import Icon from "./ui/Icon.svelte";
@@ -88,6 +88,7 @@
     return undefined;
   });
   const body = $derived(first?.body || entry.assignmentText || entry.text || "");
+  const replyContext = $derived(first?.summary ? referenceContext(body) : undefined);
   // Incoming replies use their summary or excerpt in the recipient's feed;
   // the displayed agent's own replies remain complete.
   const reply = $derived(
@@ -177,11 +178,10 @@
                 <Markdown text={body} />
               </details>
             {:else if reply && first?.summary}
-              <Markdown text={first.summary} />
+              <Markdown text={first.summary} context={replyContext} />
               <details class="group/disclosure">
-                <summary class="{summary} {caret} min-h-6 text-small text-muted">Full reply</summary
-                >
-                <Markdown text={body} />
+                <summary class="{summary} {caret} min-h-6 text-small text-muted">Details</summary>
+                <Markdown text={first.details ?? body} context={replyContext} />
               </details>
             {:else if reply}
               <Excerpt text={body} />

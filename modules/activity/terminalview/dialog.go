@@ -129,7 +129,10 @@ func (p *Painter) DialogPage(block Block, width int) terminalui.DialogPage {
 				}
 				rows = append(rows, "")
 			}
-			rows = append(rows, p.Markdown(block.Body, width, block.Kind == "summary")...)
+			if block.ReplyDetails != "" {
+				body = block.ReplyDetails
+			}
+			rows = append(rows, p.Markdown(body, width, block.Kind == "summary")...)
 			for _, row := range rows {
 				add(terminalui.DialogLine{Text: row})
 			}

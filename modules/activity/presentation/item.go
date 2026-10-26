@@ -101,7 +101,8 @@ func (entry ItemContent) Values() (blocks []Value) {
 	case "reply":
 		// Direction comes from the delivered message, never from its text.
 		if entry.Message != nil {
-			return []Value{{Kind: "message", From: entry.Message.From, To: entry.Message.To, Owner: entry.Agent, Body: textsanitize.MarkdownSource(entry.Message.Text), ReplySummary: entry.replySummary(entry.Message.Text)}}
+			summary, details := entry.replySections(entry.Message.Text)
+			return []Value{{Kind: "message", From: entry.Message.From, To: entry.Message.To, Owner: entry.Agent, Body: textsanitize.MarkdownSource(entry.Message.Text), ReplySummary: summary, ReplyDetails: details}}
 		}
 	case "question":
 		label, body, _ := strings.Cut(text, "\n")
@@ -143,7 +144,8 @@ func (entry ItemContent) Values() (blocks []Value) {
 			return []Value{{Kind: "op", Verb: "Run", Label: textsanitize.Safe(entry.Details.Status, false), Code: textsanitize.Safe(entry.Details.CommandText, false), Lang: "bash", Fenced: true}}
 		}
 	case "final":
-		return []Value{{Kind: "final", Body: source, Owner: entry.Agent, ReplySummary: entry.replySummary(entry.Text)}}
+		summary, details := entry.replySections(entry.Text)
+		return []Value{{Kind: "final", Body: source, Owner: entry.Agent, ReplySummary: summary, ReplyDetails: details}}
 	case "start":
 		if entry.StartLabel != nil {
 			block := Value{Kind: "start", Label: textsanitize.Safe(*entry.StartLabel, false)}

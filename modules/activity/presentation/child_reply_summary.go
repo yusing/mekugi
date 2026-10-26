@@ -7,14 +7,14 @@ import (
 	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
-// replySummary interprets only completed child replies. Its result is detached
+// replySections interprets only completed child replies. Its result is detached
 // presentation data on the same identified value as the unmodified source body.
-func (entry ItemContent) replySummary(body string) string {
+func (entry ItemContent) replySections(body string) (summary, details string) {
 	if !entry.ItemComplete || entry.Agent == "" || entry.Agent == "/root" || entry.Agent == "Main" {
-		return ""
+		return "", ""
 	}
 	if entry.Message != nil && entry.Message.To != "/root" && entry.Message.To != "Main" {
-		return ""
+		return "", ""
 	}
 	lines := strings.Split(body, "\n")
 	start := 0
@@ -22,7 +22,7 @@ func (entry ItemContent) replySummary(body string) string {
 		start++
 	}
 	if start == len(lines) || strings.TrimSuffix(lines[start], "\r") != "## Summary" {
-		return ""
+		return "", ""
 	}
 	start++
 	fence := ""
@@ -45,14 +45,14 @@ func (entry ItemContent) replySummary(body string) string {
 		}
 		switch line {
 		case "## Summary":
-			return ""
+			return "", ""
 		case "## Details":
 			summary := strings.Join(lines[start:i], "\n")
 			if strings.TrimSpace(summary) != "" && strings.TrimSpace(strings.Join(lines[i+1:], "\n")) != "" {
-				return textsanitize.MarkdownSource(summary)
+				return textsanitize.MarkdownSource(summary), textsanitize.MarkdownSource(strings.Join(lines[i+1:], "\n"))
 			}
-			return ""
+			return "", ""
 		}
 	}
-	return ""
+	return "", ""
 }

@@ -250,9 +250,9 @@ Traffic between agents is headed by who sent it to whom: a task, a message, or
 an agent's final answer or failure in Main's transcript. Another agent's name in
 a heading selects that agent. A task is collapsed except in its recipient's own
 transcript. In Main's transcript, an agent's answer or message shows the summary
-the agent wrote, with the full reply behind a disclosure, when
+the agent wrote, with supporting details behind a disclosure, when
 `child_reply_summary` is on and the reply has [a summary](../../../../modules/activity/CONTRACT.md);
-otherwise it shows the reply's first lines and a button for the rest. The
+the disclosure omits the repeated summary and section headings. Otherwise it shows the reply's first lines and a button for the rest. The
 agent's own transcript shows its replies whole. As in the terminal, each
 transcript keeps only its newest entries, so a long session's earliest activity
 is no longer shown, and an agent may have no activity left to show.
