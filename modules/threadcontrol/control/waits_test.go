@@ -350,13 +350,9 @@ func TestWaitSelectionTimeoutAndExecutionAdmission(t *testing.T) {
 	if *w.RequestedMS != 1 || *w.EffectiveMS != 5 || w.Deadline.Sub(now) != 5*time.Millisecond {
 		t.Fatal(w)
 	}
-	for _, e := range []struct{ success, yield bool }{{false, false}, {true, true}} {
-		must(t, s.Execution(ctx, "root", "rt", caller.Item, "", e.success && !e.yield))
-		ok, err := s.ClaimLocalStop(ctx, "root", "rt", caller.Item)
-		must(t, err)
-		if ok != nil {
-			t.Fatal("unfinished execution armed stop")
-		}
+	must(t, s.Execution(ctx, "root", "rt", caller.Item, "cell:running", false))
+	if stopped, err := s.ClaimLocalStop(ctx, "root", "rt", caller.Item); err != nil || stopped != nil {
+		t.Fatalf("yielded execution armed stop: %v, %v", stopped, err)
 	}
 	message(t, s, identity("b", "bt"), "unselected")
 	stop(t, s, caller)
@@ -611,7 +607,7 @@ func TestStoppedTargetsSettleWaits(t *testing.T) {
 				if first.State != "registered" {
 					t.Fatalf("unselected target woke wait: %+v", first)
 				}
-				_, err = s.CancelWait(t.Context(), id, id.Call)
+				_, err = s.HumanInput(t.Context(), id.Thread, "new-input")
 				must(t, err)
 				id.Call += "-mixed"
 				result, err := s.RegisterWait(t.Context(), id, []string{"running", "stopped"}, false, new(int64(100)), now)

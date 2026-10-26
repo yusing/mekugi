@@ -21,7 +21,7 @@ import (
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-func logicalWaitUI(t *testing.T, cancelSubscription bool, timeout *int64) (*appServerUI, *threadExecution, *time.Time) {
+func logicalWaitUI(t *testing.T, timeout *int64) (*appServerUI, *threadExecution, *time.Time) {
 	t.Helper()
 	check := func(err error) {
 		t.Helper()
@@ -72,10 +72,6 @@ func logicalWaitUI(t *testing.T, cancelSubscription bool, timeout *int64) (*appS
 	if stop == nil {
 		t.Fatal("missing local stop")
 	}
-	if cancelSubscription {
-		_, err = service.CancelWait(t.Context(), caller, caller.Call)
-		check(err)
-	}
 	driver, err := threadbinding.NewDriver(service)
 	check(err)
 	threads := &threadExecution{shared: service, driver: driver}
@@ -88,7 +84,7 @@ func logicalWaitUI(t *testing.T, cancelSubscription bool, timeout *int64) (*appS
 }
 
 func TestUISnapshotLogicalWaiting(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, false, new(int64(1000)))
+	u, threads, at := logicalWaitUI(t, new(int64(1000)))
 	appServerTestNotify(t, u, "thread/status/changed", map[string]any{"threadId": "main", "status": map[string]any{"type": "idle"}})
 	*at = at.Add(8 * time.Second)
 	rows, _ := u.testMainFrame(80, 8, 0)
@@ -119,7 +115,7 @@ func TestUISnapshotLogicalWaiting(t *testing.T) {
 }
 
 func TestLogicalWaitContinuationPreservesElapsed(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, false, new(int64(1000)))
+	u, threads, at := logicalWaitUI(t, new(int64(1000)))
 	*at = at.Add(8 * time.Second)
 	service := threads.shared
 	wake, err := service.PrepareWake(t.Context(), "main", *at)
@@ -152,35 +148,31 @@ func TestLogicalWaitContinuationPreservesElapsed(t *testing.T) {
 }
 
 func TestLogicalWaitHumanCancellation(t *testing.T) {
-	for _, canceled := range []bool{false, true} {
-		t.Run(map[bool]string{false: "active-subscription", true: "canceled-subscription"}[canceled], func(t *testing.T) {
-			u, threads, at := logicalWaitUI(t, canceled, nil)
-			if err := threads.driver.Start(t.Context()); err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = threads.driver.Stop(t.Context()) })
-			if c := nativeTestCancel(t, u); c.quit {
-				t.Fatal("wait cancellation quit the client")
-			}
-			select {
-			case <-threads.driver.Changed():
-			case <-time.After(3 * time.Second):
-				t.Fatal("wait cancellation did not settle")
-			}
-			if failures := threads.driver.Failures(); len(failures) != 0 {
-				t.Fatal(failures)
-			}
-			syncLogicalWork(&u.attached, &u.Live, threads, *at)
-			member, _ := threads.shared.Member("main")
-			if member.Status != control.Interrupted || u.LocalStop != "" || u.Busy(false) {
-				t.Fatalf("canceled work: %+v", member)
-			}
-		})
+	u, threads, at := logicalWaitUI(t, nil)
+	if err := threads.driver.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = threads.driver.Stop(t.Context()) })
+	if c := nativeTestCancel(t, u); c.quit {
+		t.Fatal("wait cancellation quit the client")
+	}
+	select {
+	case <-threads.driver.Changed():
+	case <-time.After(3 * time.Second):
+		t.Fatal("wait cancellation did not settle")
+	}
+	if failures := threads.driver.Failures(); len(failures) != 0 {
+		t.Fatal(failures)
+	}
+	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	member, _ := threads.shared.Member("main")
+	if member.Status != control.Interrupted || u.LocalStop != "" || u.Busy(false) {
+		t.Fatalf("canceled work: %+v", member)
 	}
 }
 
 func TestUISnapshotLogicalPausedChildren(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, false, new(int64(1000)))
+	u, threads, at := logicalWaitUI(t, new(int64(1000)))
 	if err := threads.shared.Pause(t.Context(), "main"); err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +247,7 @@ func TestRecoveryInputRetriesWithoutAnotherHostMessage(t *testing.T) {
 
 func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		u, threads, _ := logicalWaitUI(t, false, new(int64(1000)))
+		u, threads, _ := logicalWaitUI(t, new(int64(1000)))
 		if err := threads.shared.HostCompleted(t.Context(), "child", "child-turn", control.Completed, ""); err != nil {
 			t.Fatal(err)
 		}
@@ -285,7 +277,7 @@ func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
 }
 
 func TestUISnapshotLogicalWaitNoTimeout(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, false, nil)
+	u, threads, at := logicalWaitUI(t, nil)
 	previousWait := u.attached.session.Agent("/root").Wait
 	*at = at.Add(time.Hour)
 	syncLogicalWork(&u.attached, &u.Live, threads, *at)
@@ -311,7 +303,7 @@ func TestUISnapshotLogicalWaitNoTimeout(t *testing.T) {
 }
 
 func TestLogicalStoppedTargetPublishesWakeReason(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, false, nil)
+	u, threads, at := logicalWaitUI(t, nil)
 	service := threads.shared
 	if err := service.Pause(t.Context(), "child"); err != nil {
 		t.Fatal(err)

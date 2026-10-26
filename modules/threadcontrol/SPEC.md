@@ -54,8 +54,8 @@ native request metadata remains unchanged on the provider wire.
   Request acknowledgement alone is not completion.
 - `list_agents` reads admitted tree state, including pending, paused and uncertain
   work/delivery identities, with the existing `path_prefix` filter.
-- `wait_agent` accepts `target?: string[] | "all"`, `timeout_ms?: integer`, or
-  exclusive `cancel_id?: string`. Omitted target means `"all"`.
+- `wait_agent` accepts `target?: string[] | "all"`, `timeout_ms?: integer`.
+  Omitted target means `"all"`.
 
 Host MCP thread/session/turn/call/item metadata binds each call to admitted ownership.
 Task labels and tool arguments confer no authority. Members communicate with
@@ -171,16 +171,18 @@ notification was already read or their runtime was paused. Pending result delive
 keeps its existing order. Mixed selections settle on an eligible selected outcome;
 unselected stopped targets do not wake the caller.
 One pending wait per caller is retained; distinct registrations report the existing
-wait instead of replacing it. Cancellation affects only the subscription.
+wait instead of replacing it. Human interruption, `interrupt_agent`, and new input
+supersede pending waits through their existing work-lifetime controls.
 
 Omitted timeout has no deadline. Explicit values above the captured host maximum
 reject and lower values clamp to its minimum. Retain requested/effective duration
 and registration-time deadline. Zero effective duration times out immediately when
 no selected event exists. Later timeout delivery waits for host settlement.
 
-Registration persists and returns `{id,state:"registered"}` immediately, closing
+Registration persists and returns `{state:"registered"}` immediately, closing
 the MCP call. Only successful completion of that enclosing stock execution admits
-a persisted local-stop disposition. Failed, yielded, incomplete or unrelated calls
+a persisted local-stop disposition. A failed enclosing execution retires its
+registration so a later execution can retry. Yielded, incomplete or unrelated calls
 cannot arm it. Request Execution then supplies an empty completed continuation
 locally, without provider inference or usage. New input or admitted wake invalidates
 a stale stop. Stop disposition and terminal reduction serialize per work generation.
@@ -196,7 +198,7 @@ results. Injection acknowledgement alone does not consume an event. Message wake
 are presented as received messages, separately from assignment completion.
 After host settlement, Session Control starts empty input with retained
 `toolOutput:{namespace:"threadcontrol",name:"wait_agent",output:...,retain:true}`.
-The result identifies wait/event/source task/thread/turn/kind/status, without fake
+The result identifies event/source task/thread/turn/kind/status, without fake
 human text or composer insertion. A running host turn never receives a second start.
 
 Ordinary successful terminal work first retains its last completed ordinary answer

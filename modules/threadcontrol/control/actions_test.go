@@ -224,31 +224,3 @@ func TestHumanInterruptUsesExactWaitAndSettlesOnce(t *testing.T) {
 		t.Fatal("logical interruption did not settle", member)
 	}
 }
-
-func TestCanceledSubscriptionRetainsHumanControlOfLocalStop(t *testing.T) {
-	for _, interrupt := range []bool{false, true} {
-		t.Run(map[bool]string{false: "input", true: "interrupt"}[interrupt], func(t *testing.T) {
-			s, _ := fixture(t)
-			child(t, s, "root", "worker", "/root/worker", "wt")
-			caller := identity("root", "rt")
-			_, err := s.RegisterWait(t.Context(), caller, nil, true, nil, time.Now())
-			must(t, err)
-			must(t, s.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true))
-			_, err = s.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item)
-			must(t, err)
-			_, err = s.CancelWait(t.Context(), caller, caller.Call)
-			must(t, err)
-			must(t, s.HostCompleted(t.Context(), caller.Thread, caller.Turn, Completed, ""))
-			if interrupt {
-				_, err = s.HumanInterrupt(t.Context(), caller.Thread, caller.Call)
-			} else {
-				_, err = s.HumanInput(t.Context(), caller.Thread, "human")
-			}
-			must(t, err)
-			member, _ := s.Member("root")
-			if member.Stop != nil || interrupt && member.Status != Interrupted {
-				t.Fatal("canceled subscription stranded human control", member)
-			}
-		})
-	}
-}

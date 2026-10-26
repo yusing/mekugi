@@ -2,6 +2,7 @@ package codexbinding
 
 import (
 	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"net"
 	"slices"
 	"strings"
@@ -48,6 +49,7 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		{"list_agents", `{"unknown":true}`},
 		{"wait_agent", `{"target":[]}`},
 		{"wait_agent", `{"timeout_ms":1.5}`},
+		{"wait_agent", `{"cancel_id":"wait"}`},
 		{"send_message", `{"message":"hello"}`},
 		{"followup_task", `{"target":"child","message":3}`},
 		{"interrupt_agent", `{"target":"child","message":"extra"}`},
@@ -77,5 +79,29 @@ func TestControlActionReturnsCanonicalTargetForAlias(t *testing.T) {
 				t.Fatalf("action acknowledgement = %#v; want confirmed action identifying child and /root/child", result)
 			}
 		})
+	}
+}
+
+func TestWaitAgentKeepsRegistrationIdentityInternal(t *testing.T) {
+	driver, _, _, caller := reconciliationFixture(t)
+	caller.Call, caller.Item = "wait", "exec"
+	result, err := driver.waitAgent(t.Context(), caller, []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]jsontext.Value
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if fields["id"] != nil || string(fields["state"]) != `"registered"` || string(fields["targets"]) != `["/root/child"]` {
+		t.Fatalf("wait result: %s", payload)
+	}
+	member, _ := driver.control.Member(caller.Thread)
+	if member.Wait == nil || member.Wait.ID != caller.Call {
+		t.Fatal("lost internal wait correlation")
 	}
 }

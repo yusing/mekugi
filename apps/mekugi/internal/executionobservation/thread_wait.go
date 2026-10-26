@@ -104,8 +104,11 @@ func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName
 		if result.ResumeHandle != "" {
 			return "", p.threadControl.Coordination().Execution(ctx, thread, turn, wait.Item, result.ResumeHandle, false)
 		}
-		if !result.Terminal || !result.Succeeded {
+		if !result.Terminal {
 			return "", nil
+		}
+		if !result.Succeeded {
+			return "", p.threadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", false)
 		}
 		return wait.Item, p.threadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", true)
 	}

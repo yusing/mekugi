@@ -21,7 +21,7 @@ func (d *Driver) mcp() binding.MCPServer {
 	for _, entry := range []struct{ name, description, schema string }{
 		{"spawn_agent", "Create a native agent with role and optional cwd. Full-history forks inherit model and effort; fork_turns=none permits authorized overrides and optional preload. Preload uses the compaction sources schema: file path with optional inclusive ranges, or skill name with optional SKILL.md path. Relative paths use child cwd; AGENTS.md is host-loaded. Reads use child permissions before inference; failures remain visible.", `{"type":"object","properties":{"task_name":{"type":"string"},"message":{"type":"string"},"agent_type":{"type":"string"},"fork_turns":{"type":"string","enum":["all","none"]},"model":{"type":"string"},"reasoning_effort":{"type":"string"},"cwd":{"type":"string"},"preload":` + compact.SelectionSchema + `},"required":["task_name","message"],"additionalProperties":false}`},
 		{"list_agents", "List admitted agents and retained operations, optionally below path_prefix.", `{"type":"object","properties":{"path_prefix":{"type":"string"}},"additionalProperties":false}`},
-		{"wait_agent", "Wait for selected descendants without polling. target defaults to all; omit timeout_ms for no deadline. Returns a queued event or registers a local stop after successful enclosing execution. cancel_id cancels only the subscription and excludes other fields.", `{"type":"object","properties":{"target":{"oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"timeout_ms":{"type":"integer"},"cancel_id":{"type":"string"}},"additionalProperties":false}`},
+		{"wait_agent", "Wait for selected descendants without polling. target defaults to all; omit timeout_ms for no deadline. Returns a queued event or registers a local stop after successful enclosing execution.", `{"type":"object","properties":{"target":{"oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"timeout_ms":{"type":"integer"}},"additionalProperties":false}`},
 		{"send_message", "Queue attributed input without starting idle work.", `{"type":"object","properties":{"target":{"type":"string"},"message":{"type":"string"}},"required":["target","message"],"additionalProperties":false}`},
 		{"followup_task", "Start or steer an admitted non-root agent with a new assignment.", `{"type":"object","properties":{"target":{"type":"string"},"message":{"type":"string"}},"required":["target","message"],"additionalProperties":false}`},
 		{"interrupt_agent", "Interrupt a non-root agent, retaining it for later work.", `{"type":"object","properties":{"target":{"type":"string"}},"required":["target"],"additionalProperties":false}`},
@@ -100,26 +100,9 @@ func (d *Driver) waitAgent(ctx context.Context, caller control.Identity, raw jso
 	var args struct {
 		Target  jsontext.Value `json:"target"`
 		Timeout *int64         `json:"timeout_ms"`
-		Cancel  *string        `json:"cancel_id"`
 	}
 	if err := json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err != nil {
 		return nil, err
-	}
-	if args.Cancel != nil {
-		var fields map[string]jsontext.Value
-		if err := json.Unmarshal(raw, &fields); err != nil {
-			return nil, err
-		}
-		if len(fields) != 1 {
-			return nil, errors.New("cancel_id excludes target and timeout_ms")
-		}
-		if _, err := d.control.Caller(caller); err != nil {
-			return nil, err
-		}
-		if err := d.Reconcile(ctx, caller.Thread); err != nil {
-			return nil, err
-		}
-		return d.control.CancelWait(ctx, caller, *args.Cancel)
 	}
 	all := len(args.Target) == 0
 	var targets []string

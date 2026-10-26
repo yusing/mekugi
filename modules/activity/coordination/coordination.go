@@ -48,7 +48,6 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		Message string         `json:"message"`
 		Target  jsontext.Value `json:"target"`
 		Timeout *int64         `json:"timeout_ms"`
-		Cancel  *string        `json:"cancel_id"`
 	}
 	argumentsOK := json.Unmarshal(item.Arguments, &args) == nil
 	c.Target, c.Message = args.Task, args.Message
@@ -58,7 +57,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		if args.Target.Kind() == '[' {
 			_ = json.Unmarshal(args.Target, &targets)
 		}
-		if args.Cancel == nil && (len(args.Target) == 0 || args.Target.Kind() == '"') {
+		if len(args.Target) == 0 || args.Target.Kind() == '"' {
 			targets = []string{"All descendants"}
 		}
 		for _, target := range targets {
@@ -135,7 +134,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 			c.State = "completed"
 		}
 	case "wait_agent":
-		c.Confirmed = result.ID != "" && slices.Contains([]string{"registered", "completed", "timeout", "canceled", "paused"}, result.State)
+		c.Confirmed = slices.Contains([]string{"registered", "completed", "timeout", "canceled", "paused"}, result.State)
 		if c.Confirmed && len(result.Targets) > 0 {
 			c.Targets = nil
 			for _, target := range result.Targets {

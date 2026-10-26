@@ -51,8 +51,7 @@ Logical waits retain their own observed identity after the host turn ends. They
 remain busy for replacement/exit admission and cancellable through Thread Control;
 no host turn identity is fabricated for cancellation. Human input reconciles and
 supersedes unsent logical continuations before dispatch. Host-turn completion does
-not settle logical work; cancellation retains its captured wait and stop identity,
-including after cancellation of the wait subscription.
+not settle logical work; cancellation retains its captured wait and stop identity.
 
 Terminal keys and contextual dismissal belong to
 [terminal session](../terminalsession/SPEC.md#composer-controls).

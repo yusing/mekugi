@@ -145,7 +145,7 @@ type Receipt struct {
 }
 
 type WaitResult struct {
-	ID          string   `json:"id"`
+	ID          string   `json:"-"`
 	State       string   `json:"state"`
 	Event       *Event   `json:"event,omitempty"`
 	Targets     []string `json:"targets,omitempty"`

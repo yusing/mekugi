@@ -15,7 +15,7 @@ func TestAppServerShellWakesLogicalWait(t *testing.T) {
 	for _, completionFirst := range []bool{false, true} {
 		t.Run(fmt.Sprint(completionFirst), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				u, threads, at := logicalWaitUI(t, false, nil)
+				u, threads, at := logicalWaitUI(t, nil)
 				if err := threads.driver.Start(t.Context()); err != nil {
 					t.Fatal(err)
 				}
@@ -84,7 +84,7 @@ func TestAppServerShellWakesLogicalWait(t *testing.T) {
 }
 
 func TestAppServerRejectedShellKeepsLogicalWait(t *testing.T) {
-	u, threads, _ := logicalWaitUI(t, false, nil)
+	u, threads, _ := logicalWaitUI(t, nil)
 	wire := u.Host.Input.(*appServerTestInput)
 	wire.Reset()
 	appServerTestKeys(t, u, "!pwd\r")
@@ -99,7 +99,7 @@ func TestAppServerRejectedShellKeepsLogicalWait(t *testing.T) {
 
 func TestAppServerShellSerializesClaimedWaitWake(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		u, threads, at := logicalWaitUI(t, false, nil)
+		u, threads, at := logicalWaitUI(t, nil)
 		wire := u.Host.Input.(*appServerTestInput)
 		wire.Reset()
 		appServerTestKeys(t, u, "!pwd\r")
@@ -152,7 +152,7 @@ func TestAppServerShellAfterDispatchedWaitWake(t *testing.T) {
 	for _, acknowledged := range []bool{false, true} {
 		t.Run(fmt.Sprint(acknowledged), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				u, threads, at := logicalWaitUI(t, false, nil)
+				u, threads, at := logicalWaitUI(t, nil)
 				notifications := 0
 				u.notifications = &nativeNotifications{relay: func(event, _ string) {
 					if event == "agent-turn-complete" {

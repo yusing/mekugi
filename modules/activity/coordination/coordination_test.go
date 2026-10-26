@@ -30,7 +30,7 @@ func TestProjectCoordinationRoutes(t *testing.T) {
 			Coordination{Action: "Message", Kind: "reply", Target: "/root/child", Thread: "thread-1", Message: "update", State: "confirmed", Confirmed: true}},
 		{"interrupt_agent", `{"target":"child"}`, `{"id":"op-3","state":"confirmed","thread_id":"thread-1","task_name":"/root/child"}`,
 			Coordination{Action: "Interrupt", Kind: "progress", Target: "/root/child", Thread: "thread-1", State: "confirmed", Confirmed: true}},
-		{"wait_agent", `{"target":["/root/a","/root/b"]}`, `{"id":"wait-1","state":"registered"}`,
+		{"wait_agent", `{"target":["/root/a","/root/b"]}`, `{"state":"registered"}`,
 			Coordination{Action: "Wait", Kind: "progress", State: "registered", Confirmed: true, Targets: []Target{{Name: "/root/a"}, {Name: "/root/b"}}}},
 		{"list_agents", `{}`, `{"agents":[{"task_name":"/root/a"},{"task_name":"/root/b"}]}`,
 			Coordination{Action: "List agents", Kind: "progress", State: "completed", Confirmed: true, Count: 2}},
@@ -81,7 +81,6 @@ func TestProjectCoordinationAcknowledgementGuards(t *testing.T) {
 		{name: "nontext content", tool: "send_message", envelope: `{"content":[{"type":"image"}]}`},
 		{name: "MCP failure", tool: "send_message", envelope: `{"isError":true,"content":[{"type":"text","text":"denied"}]}`, failure: "denied"},
 		{name: "host error", tool: "send_message", result: `{"id":"op","state":"confirmed"}`, hostError: `"host rejected"`, failure: "host rejected"},
-		{name: "wait missing identity", tool: "wait_agent", result: `{"state":"registered"}`},
 		{name: "wait unknown disposition", tool: "wait_agent", result: `{"id":"wait-1","state":"confirmed"}`},
 		{name: "list missing agents", tool: "list_agents", result: `{}`},
 		{name: "list null agents", tool: "list_agents", result: `{"agents":null}`},
@@ -109,12 +108,11 @@ func TestProjectCoordinationWaitDispositions(t *testing.T) {
 		name, args, result, state string
 		targets                   []Target
 	}{
-		{"implicit all", `{}`, `{"id":"w","state":"registered"}`, "registered", []Target{{Name: "All descendants"}}},
-		{"explicit all", `{"target":"all"}`, `{"id":"w","state":"registered"}`, "registered", []Target{{Name: "All descendants"}}},
-		{"completed event", `{"target":["child"]}`, `{"id":"w","state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", []Target{{Name: "/root/child", Status: "completed"}}},
-		{"timeout", `{"target":["child"]}`, `{"id":"w","state":"timeout"}`, "timeout", []Target{{Name: "child"}}},
-		{"canceled", `{"cancel_id":"w"}`, `{"id":"w","state":"canceled"}`, "canceled", nil},
-		{"paused", `{"target":["child"]}`, `{"id":"w","state":"paused"}`, "paused", []Target{{Name: "child"}}},
+		{"implicit all", `{}`, `{"state":"registered"}`, "registered", []Target{{Name: "All descendants"}}},
+		{"explicit all", `{"target":"all"}`, `{"state":"registered"}`, "registered", []Target{{Name: "All descendants"}}},
+		{"completed event", `{"target":["child"]}`, `{"state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", []Target{{Name: "/root/child", Status: "completed"}}},
+		{"timeout", `{"target":["child"]}`, `{"state":"timeout"}`, "timeout", []Target{{Name: "child"}}},
+		{"paused", `{"target":["child"]}`, `{"state":"paused"}`, "paused", []Target{{Name: "child"}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got, ok := ProjectCoordination(coordinationItem("wait_agent", tt.args, tt.result))

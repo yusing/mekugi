@@ -107,7 +107,7 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 }
 
 func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
-	u, threads, _ := logicalWaitUI(t, false, new(int64(1000)))
+	u, threads, _ := logicalWaitUI(t, new(int64(1000)))
 	workspace := u.attached.cwd
 	capture := func(key, caller, before, after string, order uint64) changepresentation.Publication {
 		return changepresentation.Publication{}.With(changepresentation.GroupCaptures([]changepresentation.Chunk{{

@@ -10,7 +10,7 @@ import (
 )
 
 func TestNativeMessageVisibleBeforeWaitContinuation(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, false, nil)
+	u, threads, at := logicalWaitUI(t, nil)
 	service := threads.shared
 	check := func(err error) {
 		t.Helper()

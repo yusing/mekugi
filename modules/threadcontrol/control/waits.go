@@ -166,31 +166,13 @@ func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []s
 	return
 }
 
-func (s *Service) CancelWait(ctx context.Context, caller Identity, id string) (result WaitResult, err error) {
-	err = s.update(ctx, caller.Thread, func(tree *Tree, member *Member) error {
-		if _, err := admitted(tree, caller); err != nil {
-			return err
-		}
-		if member.Wait == nil || member.Wait.ID != id {
-			return errors.New("unknown caller wait")
-		}
-		if hostOwned(member.Wait.State) {
-			return errors.New("wait continuation is host-owned and requires reconciliation")
-		}
-		cancelSubscription(tree, member)
-		member.Status = Working
-		result = WaitResult{ID: id, State: "canceled"}
-		return nil
-	})
-	return
-}
-
 // Execution records authenticated enclosing-cell evidence, never the MCP result.
-func (s *Service) Execution(ctx context.Context, thread, turn, item, handle string, completed bool) error {
+// An empty handle is terminal: success arms the stop; failure retires the wait.
+func (s *Service) Execution(ctx context.Context, thread, turn, item, handle string, succeeded bool) error {
 	if handle != "" && (!strings.HasPrefix(handle, "cell:") || len(handle) == len("cell:")) {
 		return errors.New("wait requires a host execution-cell handle")
 	}
-	return s.update(ctx, thread, func(_ *Tree, member *Member) error {
+	return s.update(ctx, thread, func(tree *Tree, member *Member) error {
 		wait := member.Wait
 		if wait == nil || wait.Turn != turn || wait.Item != item || wait.Generation != member.Generation || wait.State != "registered" || wait.Stop == "committed" {
 			return unchanged
@@ -201,8 +183,10 @@ func (s *Service) Execution(ctx context.Context, thread, turn, item, handle stri
 			}
 			wait.ResumeHandle = handle
 		}
-		if completed {
+		if succeeded {
 			wait.Stop = "eligible"
+		} else if handle == "" {
+			cancelSubscription(tree, member)
 		}
 		return nil
 	})
