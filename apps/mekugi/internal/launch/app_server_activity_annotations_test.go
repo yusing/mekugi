@@ -148,7 +148,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 			}
 			if !child {
 				got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n"))
-				if !strings.Contains(got, "✗ Main") || !strings.Contains(got, "│ exec script failed: SyntaxError: Unexpected token '<<'") {
+				if !strings.Contains(got, "✗ main") || !strings.Contains(got, "│ exec script failed: SyntaxError: Unexpected token '<<'") {
 					t.Fatalf("Main lacks the failed cell:\n%s", got)
 				}
 			}
