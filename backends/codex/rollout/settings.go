@@ -11,7 +11,7 @@ import (
 // ThreadSettingsAppliedEvent, ThreadSettingsSnapshot and TurnContextItem.
 func ResumeSettings(threadID, path string, newerThan time.Time) map[string]any {
 	settings := make(map[string]any)
-	for line := range reverseRecords(threadID, path) {
+	for line := range settingsRecords(threadID, path) {
 		var record struct {
 			Timestamp time.Time `json:"timestamp"`
 			Type      string    `json:"type"`

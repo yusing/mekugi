@@ -264,6 +264,12 @@ usage distinguishes absent evidence from a known zero. Resume settings select
 the newest value for each supported field, preserve explicit nullable defaults,
 and may exclude records at or before an application-supplied timestamp.
 
+Resume settings also accept the host's Zstandard-compressed rollout, either
+selected directly or retained beside a missing plain rollout. An existing plain
+file takes precedence. Compressed reads validate the decompressed identity and
+select complete records from the decompressed tail without materializing or
+changing host files. Unavailable or corrupt compressed evidence supplies no settings.
+
 The application chooses whether restored facts may replace live state, applies
 invocation/preference precedence, and gates resumed input on host confirmation.
 It projects restored Activity with its own 64 MiB reading policy over the same

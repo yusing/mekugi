@@ -32,6 +32,16 @@ func reverseRecords(threadID, path string) iter.Seq[[]byte] {
 		if start > 0 {
 			_, data, _ = bytes.Cut(data, []byte{'\n'})
 		}
+		for line := range reverseLines(data) {
+			if !yield(line) {
+				return
+			}
+		}
+	}
+}
+
+func reverseLines(data []byte) iter.Seq[[]byte] {
+	return func(yield func([]byte) bool) {
 		data, _, complete := bytes.CutLast(data, []byte{'\n'})
 		if !complete {
 			return
@@ -65,15 +75,19 @@ func Open(threadID, path string) (*os.File, os.FileInfo, bool) {
 		f.Close()
 		return nil, nil, false
 	}
+	if !matchesIdentity(threadID, f) {
+		f.Close()
+		return nil, nil, false
+	}
+	return f, stat, true
+}
+
+func matchesIdentity(threadID string, r io.Reader) bool {
 	var meta struct {
 		Type    string `json:"type"`
 		Payload struct {
 			ID string `json:"id"`
 		} `json:"payload"`
 	}
-	if json.UnmarshalDecode(jsontext.NewDecoder(io.LimitReader(f, 64<<10)), &meta) != nil || meta.Type != "session_meta" || meta.Payload.ID != threadID {
-		f.Close()
-		return nil, nil, false
-	}
-	return f, stat, true
+	return json.UnmarshalDecode(jsontext.NewDecoder(io.LimitReader(r, 64<<10)), &meta) == nil && meta.Type == "session_meta" && meta.Payload.ID == threadID
 }

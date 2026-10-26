@@ -5,6 +5,7 @@ package launch
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/backends/codex/rollout"
 )
 
 // Each UI/router integration and Codex host runs in a separate process. Only
@@ -73,6 +76,32 @@ func testAppServerAppliedSettingsFreshProcessNativeCodex(t *testing.T, commandRe
 				expectedTier = ""
 			}
 			provider.assertSettings(t, 0, "gpt-6-sol", expectedEffort, expectedTier)
+			if tier == "priority" && !commandResume {
+				// Host metadata can still name the missing plain rollout before
+				// resume. Withhold application settings so preflight must read
+				// the compressed host evidence in this fresh process.
+				found := false
+				err := filepath.WalkDir(filepath.Join(codexHome, "sessions"), func(path string, entry fs.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					if !entry.IsDir() && strings.HasSuffix(path, ".jsonl") && rollout.ResumeSettings(threads[0], path, time.Time{})["model"] != nil {
+						compressResumeSettingsRollout(t, path)
+						found = true
+					}
+					return nil
+				})
+				if err != nil || !found {
+					t.Fatalf("completed host rollout: found=%t err=%v", found, err)
+				}
+				preferences, err := filepath.Glob(filepath.Join(stateHome, "mekugi", "ui", "panes-*.json"))
+				if err != nil || len(preferences) != 1 {
+					t.Fatalf("saved preferences: %v, %v", preferences, err)
+				}
+				if err := os.Rename(preferences[0], preferences[0]+".withheld"); err != nil {
+					t.Fatal(err)
+				}
+			}
 			// Change process defaults, not explicit invocation flags. Saved nullable
 			// defaults must beat these just as saved priority/high settings do.
 			conflictingEffort := "low"

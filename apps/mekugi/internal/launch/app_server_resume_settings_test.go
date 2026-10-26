@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
@@ -24,6 +25,43 @@ func resumeSettingsRollout(t *testing.T, records ...string) binding.ThreadInfo {
 		t.Fatal(err)
 	}
 	return info
+}
+
+func compressResumeSettingsRollout(t *testing.T, path string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoder, err := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer encoder.Close()
+	if err := os.WriteFile(path+".zst", encoder.EncodeAll(data, nil), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAppServerResumeSettingsCompressedPreflight(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	u, _ := appliedSettingsTestUI(t, "/workspace", "saved")
+	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
+	appliedSettingsTestNotify(t, u, "stale", "low", "flex")
+	info := resumeSettingsRollout(t, `{"timestamp":"2026-09-30T13:00:00Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"saved-model","reasoning_effort":"high","service_tier":"priority"}}}`, "")
+	info.Cwd = "/workspace"
+	compressResumeSettingsRollout(t, info.Path)
+	fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
+	params, _ := appliedSettingsTestResume(t, fresh, w, info)
+	if !reflect.DeepEqual(params["config"], map[string]any{"model": "saved-model", "model_reasoning_effort": "high"}) || params["serviceTier"] != "priority" {
+		t.Fatalf("compressed preflight lost newer settings: %#v", params)
+	}
+	if _, err := os.Stat(info.Path); !os.IsNotExist(err) {
+		t.Fatalf("preflight materialized plain rollout: %v", err)
+	}
 }
 
 func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {
