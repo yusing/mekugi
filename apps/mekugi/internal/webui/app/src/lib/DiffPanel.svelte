@@ -1,11 +1,15 @@
 <script lang="ts">
+  import { tick, untrack } from "svelte";
   import AgentName from "./AgentName.svelte";
+  import AutoPage from "./AutoPage.svelte";
   import { workspacePath } from "./diff";
   import DiffView from "./DiffView.svelte";
   import Path from "./Path.svelte";
-  import type { Counts, ReviewedFile, SavedReview } from "./protocol";
+  import type { Counts, ReviewedFile, SavedReview, PageCursor, PageResult } from "./protocol";
   import { stream } from "./stream.svelte";
   import Alert from "./ui/Alert.svelte";
+  import Button from "./ui/Button.svelte";
+  import { errorText } from "./transport";
   import Picker, { type Choice } from "./ui/Picker.svelte";
   import { caret, emptyBox, skeleton } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
@@ -17,12 +21,135 @@
 
   // "" is every agent; "?" is changes recorded without an agent.
   let caller = $derived(owner);
-  const loading = $derived(!review || review.coverage === "CONNECTING");
+  let metadata = $state.raw<ReviewedFile[]>([]);
+  let complete = $state.raw<Record<string, ReviewedFile>>({});
+  let pending = $state.raw<Record<string, boolean>>({});
+  let failures = $state.raw<Record<string, string>>({});
+  let next = $state.raw<PageCursor | null>();
+  let pageLoading = $state(false);
+  let pageError = $state<string>();
+  let request = new AbortController();
+  let container = $state<HTMLElement>();
+  let refreshing = $state(false);
+  let windowOwner = "";
+  let windowRows = 0;
+  let anchor: { key?: string; focus?: string; offset: number; top: number } | undefined;
+  $effect(() => {
+    const page = review?.page;
+    const selected = caller;
+    const identity = `${page?.attachment}:${selected}`;
+    const scroller = untrack(() => container?.closest<HTMLElement>(".overflow-y-auto"));
+    untrack(() => {
+      if (identity !== windowOwner) {
+        windowRows = 0;
+        anchor = undefined;
+      } else if (!anchor && scroller) {
+        const top = scroller.getBoundingClientRect().top;
+        const row = [...container!.querySelectorAll<HTMLElement>("[data-file]")].find(
+          (node) => node.getBoundingClientRect().bottom > top,
+        );
+        anchor = {
+          key: row?.dataset.file,
+          focus: document.activeElement?.closest<HTMLElement>("[data-file]")?.dataset.file,
+          offset: (row?.getBoundingClientRect().top ?? top) - top,
+          top: scroller.scrollTop,
+        };
+      }
+      windowOwner = identity;
+    });
+    request.abort();
+    request = new AbortController();
+    metadata = [];
+    complete = {};
+    pending = {};
+    failures = {};
+    pageLoading = false;
+    pageError = undefined;
+    next = page ? { ...page, caller: selected } : undefined;
+    refreshing = false;
+    if (page) untrack(() => void refreshPages());
+    return () => request.abort();
+  });
+  async function refreshPages() {
+    if (refreshing) return;
+    const signal = request.signal;
+    const scroller = container?.closest<HTMLElement>(".overflow-y-auto");
+    // A revision refreshes only the window already acquired by this reader.
+    const wanted = windowRows;
+    refreshing = true;
+    do {
+      await loadPage();
+    } while (!signal.aborted && !pageError && next && metadata.length < wanted);
+    if (signal.aborted) return;
+    await tick();
+    if (signal.aborted) return;
+    if (anchor && scroller) {
+      const row = [...container!.querySelectorAll<HTMLElement>("[data-file]")].find(
+        (node) => node.dataset.file === anchor!.key,
+      );
+      scroller.scrollTop = row
+        ? scroller.scrollTop +
+          row.getBoundingClientRect().top -
+          scroller.getBoundingClientRect().top -
+          anchor.offset
+        : anchor.top;
+      if (anchor.focus && document.activeElement === document.body) {
+        [...container!.querySelectorAll<HTMLElement>("[data-file]")]
+          .find((node) => node.dataset.file === anchor!.focus)
+          ?.querySelector<HTMLElement>("summary")
+          ?.focus({ preventScroll: true });
+      }
+    }
+    if (!pageError) {
+      windowRows = metadata.length;
+      anchor = undefined;
+    }
+    refreshing = false;
+  }
+  async function loadPage(demand?: AbortSignal) {
+    const cursor = next,
+      session = request.signal,
+      signal = demand ? AbortSignal.any([session, demand]) : session;
+    if (!cursor || pageLoading) return;
+    pageLoading = true;
+    pageError = undefined;
+    let result: PageResult | undefined;
+    try {
+      result = await stream.page(cursor, signal);
+      if (signal.aborted) return;
+      metadata = [...metadata, ...((result.files ?? []) as ReviewedFile[])];
+      windowRows = Math.max(windowRows, metadata.length);
+      next = result.next;
+    } catch (error) {
+      if (!signal.aborted) pageError = errorText(error);
+    } finally {
+      result?.acknowledge?.();
+      if (!session.aborted) pageLoading = false;
+    }
+  }
+  async function loadFile(file: ReviewedFile) {
+    if (!file.content || pending[file.key]) return;
+    const signal = request.signal;
+    pending = { ...pending, [file.key]: true };
+    failures = { ...failures, [file.key]: "" };
+    toggled[file.key] = true;
+    try {
+      const result = await stream.readContent(file.content, signal);
+      if (signal.aborted) return;
+      if (!result.review) throw new Error("The composed file is unavailable.");
+      complete = { ...complete, [file.key]: result.review as ReviewedFile };
+    } catch (error) {
+      if (!signal.aborted) failures = { ...failures, [file.key]: errorText(error) };
+    } finally {
+      if (!signal.aborted) pending = { ...pending, [file.key]: false };
+    }
+  }
+  const loading = $derived(
+    !review || review.coverage === "CONNECTING" || (pageLoading && !metadata.length),
+  );
   // Coverage reads as its status; an empty one is complete.
   const coverage = $derived(loading ? "" : (review?.coverage ?? ""));
-  const scoped = (key: string) =>
-    key ? (review?.callers?.find((c) => c.caller === key)?.files ?? []) : (review?.files ?? []);
-  const files = $derived(scoped(caller));
+  const files = $derived(metadata.map((file) => complete[file.key] ?? file));
 
   const name = (key: string) =>
     key === "" ? "All agents" : key === "?" ? "Unknown agent" : stream.label(key);
@@ -38,7 +165,9 @@
     return ["", ...keys].map((key) => ({ value: key, label: name(key), detail: summary(key) }));
   });
   function summary(key: string): string {
-    const n = scoped(key).length;
+    const n =
+      (key ? review?.callers?.find((value) => value.caller === key)?.count : review?.fileCount) ??
+      0;
     if (!n) return "No saved changes";
     const c = total(key);
     return [known(c) && `+${c!.Added} −${c!.Removed}`, plural(n, "file")]
@@ -46,40 +175,25 @@
       .join(" · ");
   }
 
-  // Bound initial painting across the review, not separately for every file.
-  // All file controls remain available; explicit choices outlive updates.
+  // Explicit choices outlive updates; only two files start open.
   let toggled = $state<Record<string, boolean>>({});
-  const defaults = $derived.by(() => {
-    const opened = new Set<string>();
-    let lines = 300;
-    let characters = 64 * 1024;
-    for (const file of files) {
-      let size = 0;
-      let count = 0;
-      for (const chunk of file.chunks) {
-        const text = chunk.Review.Diff;
-        size += text.length;
-        if (size > characters) break;
-        for (let at = text.indexOf("\n"); at !== -1; at = text.indexOf("\n", at + 1)) {
-          if (++count > lines) break;
-        }
-        if (count > lines) break;
-      }
-      if (size > characters || count > lines) continue;
-      opened.add(file.key);
-      characters -= size;
-      lines -= count;
-    }
-    return opened;
-  });
+  const defaults = $derived(new Set(metadata.slice(0, 2).map((file) => file.key)));
   const open = (file: ReviewedFile) => toggled[file.key] ?? defaults.has(file.key);
+  $effect(() => {
+    const visible = files.filter(
+      (file) => open(file) && file.content && !pending[file.key] && !failures[file.key],
+    );
+    untrack(() => {
+      for (const file of visible) void loadFile(file);
+    });
+  });
   // The tool that applied a patch is the editing path, not news.
   const sources = (file: ReviewedFile) => [
-    ...new Set(file.origins.map((o) => o.Source).filter((s) => s && s !== "apply_patch")),
+    ...new Set((file.origins ?? []).map((o) => o.Source).filter((s) => s && s !== "apply_patch")),
   ];
   // One agent's files need not name it again.
   const callers = (file: ReviewedFile) =>
-    caller ? [] : [...new Set(file.origins.map((o) => o.Caller))];
+    caller ? [] : [...new Set((file.origins ?? []).map((o) => o.Caller))];
   // Agents and programs behind every file shown are named once above them;
   // each file names only those that differ.
   const common = (list: (file: ReviewedFile) => string[]) =>
@@ -101,7 +215,7 @@
 {/snippet}
 
 <!-- One shrinkable column, so wide diffs scroll inside their own frame. -->
-<div class="grid grid-cols-[minmax(0,1fr)]">
+<div class="grid grid-cols-[minmax(0,1fr)]" bind:this={container}>
   <section aria-labelledby="saved-heading">
     <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
       <h2 id="saved-heading" class="font-semibold">Saved</h2>
@@ -150,7 +264,7 @@
           {@const isOpen = open(file)}
           {@const fileCallers = own(callers(file), sharedCallers)}
           {@const fileSources = own(sources(file), sharedSources)}
-          <li class="border-rule py-1 not-first:border-t">
+          <li class="border-rule py-1 not-first:border-t" data-file={file.key}>
             <details
               class="group/disclosure"
               open={isOpen}
@@ -170,14 +284,21 @@
                   >{/each}
                 {#each fileSources as source (source)}<Tag mono class="flex-none">{source}</Tag
                   >{/each}
-                {#if file.chunks.some((c) => c.Highlighted)}<span
+                {#if file.chunks?.some((c) => c.Highlighted)}<span
                     class="flex-none text-small text-accent">new</span
                   >{/if}
                 {#if known(file.counts)}{@render counts(file.counts)}{/if}
               </summary>
               {#if isOpen}
                 <div class="pb-2">
-                  {#each file.chunks as chunk, i (chunk.Key || i)}
+                  {#if failures[file.key]}<Alert>{failures[file.key]}</Alert><Button
+                      variant="quiet"
+                      onclick={() => loadFile(file)}>Retry file</Button
+                    >
+                  {:else if file.content}<p class="text-small text-muted">
+                      Loading composed file…
+                    </p>{/if}
+                  {#each file.chunks ?? [] as chunk, i (chunk.Key || i)}
                     <DiffView
                       file={chunk.Review}
                       workspace={review!.workspace}
@@ -192,5 +313,13 @@
         {/each}
       </ul>
     {/if}
+    {#if pageError}<Alert
+        >{pageError}<Button variant="quiet" onclick={refreshPages}>Retry</Button></Alert
+      >{/if}
+    {#if next}<AutoPage
+        cursor={JSON.stringify(next)}
+        ready={!refreshing && !pageLoading && !pageError}
+        onpage={loadPage}
+      />{/if}
   </section>
 </div>

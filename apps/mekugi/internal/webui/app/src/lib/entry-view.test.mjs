@@ -43,6 +43,42 @@ const view = (values, kind = "tool") =>
 const edit = (path, sources) => ({ kind: "op", verb: "Edit", path, sources, effect: true });
 const tags = (html, name) => html.split(`>${name}<`).length - 1;
 
+test("deferred JSON retains its formatted disclosure count", () => {
+  const html = view([
+    { kind: "op", verb: "Run", code: "{", lang: "json", fenced: true, codeLines: 4 },
+  ]);
+  assert.match(html, /4 lines/);
+  assert.doesNotMatch(html, /1 line</);
+});
+
+test("deferred replies keep their authored summary and Details disclosure", () => {
+  const html = render(EntryView, {
+    props: {
+      entry: {
+        seq: 1,
+        agent: "/root/child",
+        kind: "reply",
+        autoContent: true,
+        content: { attachment: "current", kind: "main", revision: 1, seq: 1 },
+        values: [
+          {
+            kind: "message",
+            from: "/root/child",
+            to: "/root",
+            body: "Supporting text.",
+            summary: "A **compact summary**.",
+          },
+        ],
+      },
+      at: "",
+      stamp: "",
+      owner: "/root",
+    },
+  }).body;
+  assert.match(html, /<strong>compact summary<\/strong>/);
+  assert.match(html, /<summary[^>]*>Details<\/summary>/);
+});
+
 test("a run of edits names its shared programs once and keeps each edit's own", () => {
   const html = view([
     { kind: "op", verb: "Run", code: "python3 - <<'PY'", lang: "bash" },

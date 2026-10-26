@@ -46,6 +46,8 @@ acknowledgements cannot reactivate a retired subscription.
 | `session/image` | Read one image bound to a published user or View entry |
 | `session/attachment-image` | Preview an explicitly attached execution-machine path |
 | `session/read` | One confirmed thread's list entry |
+| `session/page` | A bounded retained-feed, roster or saved-review metadata page |
+| `session/content` | Complete content named by a published reference |
 | `session/start` | Create/resume using the creation body |
 | `session/end` | End the selected owned runtime |
 | `session/subscribe` | Session-list updates without `thread`; shared publications with `thread` |
@@ -61,8 +63,10 @@ acknowledgements cannot reactivate a retired subscription.
 | `native/start` | Native invocation body plus its initial subscription; native endpoint only |
 | `subscription/cancel` | Release one subscription, leaving execution running |
 | `request/cancel` | Cancel pending request work; body contains the original `id` |
+| `publication/ack` | Acknowledge the current connection-local delivery ID |
 
-Notifications use `subscription/event` with `{subscription, kind, data}`.
+Notifications use `subscription/event` with `{subscription, kind, data}` and an
+optional `delivery` receipt ID for shared publications.
 Kind is `sessions`, `snapshot`, `patch` or `exit`; data preserves the corresponding
 publication shape. `subscription/closed` terminates a subscription and may carry
 an error. Explicit runtime exit carries the joined outcome. EOF without that
@@ -101,6 +105,20 @@ and method execution do not block the reader. Attachment-bearing submissions
 use a separate authenticated connection with the same methods and originating
 view/target/version; its lifetime does not replace the view's lifetime. Limits
 apply to both each submission and aggregate concurrent preparation.
+
+Selected-thread shared publications and page replies have a 32 KiB envelope
+budget and at most 50 entries per page. These are transport windows, not retained
+history limits. One such delivery may be in flight on a connection. Its optional
+`delivery` ID, on the event envelope or page result, is acknowledged after
+application or intentional stale discard;
+only the current ID releases the next delivery. Canceling an observation removes
+unsent work but does not acknowledge already-sent bytes. Other control replies,
+semantic effects, discovery and local native frames retain their delivery rules.
+Complete content reads use independent authenticated connections, so cancellation
+of a large read cannot hold the selected thread's connection. Content transfers
+share the endpoint's aggregate preparation capacity through response delivery.
+Explicit content reads remain cancelable and do not inherit the ordinary
+control-read deadline, which can expire during healthy large transfers.
 
 Session-list data is `{"sessions":[...]}`. Entries expose `id`, `thread`,
 `workspace`, title/start/status and waiting facts when known. `starting` marks a
@@ -274,6 +292,12 @@ selection. The physical frontend acquires bounded preview pixels using its own
 terminal capabilities; pixels stay outside serialized frames. Closing or replacing
 the selection retires its acquisition and graphics.
 
+Large remote detail pages and retained output may instead carry a content
+reference. Selection, output identity and semantic effects remain owned by the
+admitted view; the read returns that same public, redacted projection. Closing or
+replacing the view, detail selection or referenced revision makes the read stale.
+Local native detail and effect publications retain their existing shape.
+
 Native frames repeat an ordered, size-bounded prefix of unacknowledged semantic
 `effects` with immutable IDs. Receipts advance delivery to the retained suffix;
 activity and notification watermarks never skip a withheld semantic effect. Clients
@@ -308,34 +332,53 @@ known rejection restores that source rather than deleting text from a newer edit
 | `input` | Always for a live session | When it changed |
 | `prompts` | Always for a live session | The whole value when it changed |
 | `status` | Always | When it changed |
-| `main`, `agents` | The complete feed | The feed's changes, when it changed |
-| `roster` | The complete roster | The complete roster, when it changed |
-| `review` | Saved review for a live session | The whole value when its revision changes |
+| `main`, `agents` | The latest bounded feed window | Changes to that window |
+| `roster` | A bounded roster page | The latest roster page when it changed |
+| `review` | Saved-review identity, coverage, failure and counts | Updated metadata when its revision changes |
 | `live` | Current previews for a live session | The whole list when it changes, including `[]` to clear it |
+| `deferred` | References for oversized auxiliary sections | The current reference set |
 
 Main’s `live` list includes the current admitted family’s previews with original
 source attribution. Selecting a child keeps its own live list. Attachment
 replacement and scope withdrawal retire the corresponding previews independently
 of saved review and host execution.
 
-A feed is an object with `entries` and `order`. In a snapshot, `entries` holds
-every entry and `order` every entry's `seq` in display order. In a patch,
-`entries` holds only added or changed entries, and `order` is present when
-membership or order changed.
+A feed is an object with `entries`, `order`, a history revision and an optional
+earlier-page cursor. In a snapshot, `entries` holds the latest window and `order`
+its sequence IDs in display order. In a patch,
+`entries` and `order` replace the latest window whenever that feed changes.
+An entry's `position` preserves display order independently of sequence identity;
+its optional `turn` is the user-turn ordinal across the retained feed.
 
 A connection receives a snapshot as soon as anything has been published, then
 patches. Every viewer receives a new snapshot when the attachment or the
 session's thread changes, as seeking backward, restarting and switching a live
 session's thread do; a snapshot replaces patches still queued for a viewer. A
-snapshot replaces all client state, because a new attachment may reuse entry
-sequence numbers.
+snapshot replaces attachment-scoped client state when the attachment changes,
+because a new attachment may reuse entry sequence numbers. A catch-up snapshot
+with unchanged attachment and history revision preserves acquired earlier pages
+and the reader's position.
 
 A client applies a feed patch by replacing each listed entry whole, keyed by
-`seq` within that feed, and by adopting a listed `order`; entries whose `seq` is
-absent from that order are removed. Fields a patch omits keep their previous
+`seq` and entry revision within that feed, and by adopting the latest window's
+listed `order`. Explicitly loaded earlier pages survive ordinary latest updates.
+Attachment replacement or historical mutation invalidates their cursors and
+loaded history. An oversized entry preserves its compact semantic presentation
+and carries a typed reference to its complete published content. Inline content
+is acquired automatically; content behind existing disclosures is acquired when
+opened. This transport deferral is distinct from
+Activity's source/output omission facts. Fields a patch omits keep their previous
 value. Each viewer has a bounded queue; pressure replaces pending deltas with an
 authoritative snapshot of the same owner. A session's stream ends when the
 session leaves, and stopping the server closes every stream.
+
+Page cursors bind attachment, feed or metadata category, revision, caller filter
+and boundary. Stale cursors fail rather than mixing attachments or compositions.
+Saved-review file metadata loads when Changes opens; full file content is read by
+the exact caller, revision and file identity. Caller filtering composes the
+selected caller's changes against other callers' captures as baseline. It never
+filters an all-callers diff after composition. Oversized auxiliary sections remain
+available through explicit content references rather than silent truncation.
 
 ## Messages
 
@@ -361,20 +404,18 @@ field is zero, false or empty, except facts that may be unknown: a step's
   `title`, `subject`, `details`, and `choices` (`id`, `label`, `deny`).
 - `status`: Main's [session status](../sessionpresentation/SPEC.md) as `text`,
   with `failure`, `alert`, `running` and `completed`, the turn's duration.
-- `review`: `revision`, `workspace`, `coverage`, optional `failure`, `files` and
-  `counts`. Each file has `key`, `path`, composed `chunks`, `origins` and `counts`.
-  Chunks and origins retain the Change History wire shapes, including each
-  chunk's `Review.Diff` and `Change`, `Caller`, `Source` provenance. File counts
-  use `Added` and `Removed`; negative counts mean unavailable. Review counts
-  contain `Net` (null when no project evidence exists) and `Callers`. `files` is
-  the unfiltered saved composition across admitted runtime descendants, with
-  the same temporary-only exclusion as the terminal Diff pane. `callers` lists
-  each caller with captures, Main first, as
-  `caller` (its canonical path, or `?` when unknown) and the `files` it changed,
-  composed as the terminal's caller filter shows them: other callers' captures
-  are baseline, and origins name only that caller's changes. Loading and
-  failure remain explicit. An unavailable review clears the previous value with
-  `null`; attachment replacement resets it.
+- `review`: `revision`, `workspace`, `coverage`, optional `failure`, `fileCount`,
+  `counts` and a metadata `page` cursor. `callers` lists each caller with captures,
+  Main first, as `caller` (canonical path, or `?` when unknown) and file `count`.
+  Review counts contain `Net` (null without project evidence) and `Callers`.
+  Metadata pages return files with `key`, `path`, `counts` and a `content`
+  reference. The complete file adds composed `chunks` and `origins`, retaining
+  Change History's wire shapes and provenance. File counts use `Added` and
+  `Removed`; negative counts mean unavailable. Metadata may abbreviate long paths;
+  complete reads retain them. Compositions include admitted runtime descendants
+  and share the terminal Diff pane's temporary-only exclusion and caller policy.
+  Loading and failure remain explicit. An unavailable review clears the previous
+  value with `null`; attachment replacement resets it.
 - `live`: the ordered current Live Preview snapshots, with `ID`, `Caller`,
   `Status`, `Files` (including `Diff` text), `Truncated` and `Complete`, plus the
   preview owner's remaining metadata. Live sessions sample these at the shared
@@ -390,7 +431,8 @@ field is zero, false or empty, except facts that may be unknown: a step's
   `observed` is its time and `running` marks unfinished work. A task sets
   `assignment`, with its recipient's caller path in `assignmentTo` and its
   Markdown in `assignmentText`. `values` holds the entry's presentation values.
-- `roster`: `agents` in tree order, and the session's net changed lines as
+- `roster`: a page of `agents` in tree order, `total`, optional `next` cursor,
+  and the session's net changed lines as
   `added` and `removed` when known. Each agent has its caller path as `name`,
   its display name as `label`, `role` (absent for Main), tree `depth` and a
   `state` of `working`, `waiting`, `idle`, `done` or `error`. A waiting agent

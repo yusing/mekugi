@@ -26,6 +26,7 @@
     owner,
     views,
     source = stream,
+    onload,
   }: {
     entry: Entry;
     at: string;
@@ -34,6 +35,7 @@
     owner: string;
     views?: Entry[];
     source?: Stream;
+    onload?: () => unknown;
   } = $props();
 
   const user = $derived(isUser(entry));
@@ -41,6 +43,8 @@
   const pending = (value: Value) =>
     value.batchExit &&
     !value.code &&
+    !value.codeLines &&
+    !value.tailLines &&
     !value.tail?.length &&
     value.exitCode === undefined &&
     !value.duration &&
@@ -71,7 +75,13 @@
         .map((value) => value.sources!)
         .reduce((common, sources) => common.filter((program) => sources.includes(program)));
       if (!shared.length) continue;
-      via.set(i, { sources: shared, files: end - i, effect: all[i].effect });
+      via.set(i, {
+        sources: shared,
+        files: all
+          .slice(i, end)
+          .reduce((n, v) => n + (entry.content && v.hiddenEdits ? v.hiddenEdits : 1), 0),
+        effect: all[i].effect,
+      });
       for (let j = i; j < end; j++)
         values[j] = {
           ...all[j],
@@ -81,15 +91,20 @@
     return { values, via };
   });
   const values = $derived(edits.values);
+  let openFiles = $state<Record<number, boolean>>({});
   const rows = $derived.by(() => {
     const out: { value: Value; index: number; hidden?: Value[] }[] = [];
     for (let i = 0; i < values.length;) {
       const value = values[i];
       const count = value.hiddenEdits ?? 0;
       out.push({ value, index: i, hidden: count ? values.slice(i, i + count) : undefined });
-      i += Math.max(1, count);
+      i += entry.content ? 1 : Math.max(1, count);
     }
     return out;
+  });
+  $effect(() => {
+    if (entry.content && rows.some(({ value, index }) => value.hiddenEdits && openFiles[index]))
+      onload?.();
   });
   const hookFailed = $derived(first !== undefined && failed(first));
   // Main is local to an independently hosted runtime; canonical paths are global.
@@ -362,22 +377,27 @@
                 {progressText(value, (name) => source.label(name))}
               </p>
             {:else if hidden}
-              <details class="group/disclosure col-span-full py-1">
+              <details
+                class="group/disclosure col-span-full py-1"
+                ontoggle={(event) => {
+                  openFiles[index] = event.currentTarget.open;
+                }}
+              >
                 <summary
                   class="{summary} {caret} min-h-8 text-small text-muted pointer-coarse:min-h-11"
                 >
-                  {hidden.length} more {hidden.length === 1 ? "file" : "files"}
+                  {value.hiddenEdits} more {value.hiddenEdits === 1 ? "file" : "files"}
                 </summary>
                 <div
                   class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 divide-y divide-rule max-sm:grid-cols-[minmax(0,1fr)_auto]"
                 >
-                  {#each hidden as file, i (i)}{#if i && edits.via.has(index + i)}{@render via(
+                  {#each entry.content ? [] : hidden as file, i (i)}{#if i && edits.via.has(index + i)}{@render via(
                         index + i,
-                      )}{/if}<ValueRow value={file} />{/each}
+                      )}{/if}<ValueRow value={file} {onload} />{/each}
                 </div>
               </details>
             {:else if !pending(value)}
-              <ValueRow {value} outputLang={outputLanguage(entry.values, index)} />
+              <ValueRow {value} {onload} outputLang={outputLanguage(entry.values, index)} />
             {/if}
           {/each}
         </div>

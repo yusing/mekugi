@@ -6,12 +6,47 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 )
+
+func TestReviewPagePreservesLongPaths(t *testing.T) {
+	path := "/project/" + strings.Repeat("long-path/", 2000) + "file"
+	view := &changes.ReviewView{Revision: 1, Workspace: "/project"}
+	capture := reviewChunk(1, "/root", path, path, "old\n", "new\n")
+	capture.Key = strings.Repeat("\x01", 219)
+	view.Publication = view.Publication.With(changes.GroupCaptures([]changes.Chunk{capture}))
+	server, hub := New(), NewHub(t.Context(), nil)
+	registerTestSession(hub, "thread", server, Summary{Thread: "thread", Workspace: "/project"})
+	if err := server.Publish(Frame{Session: Session{Thread: "thread"}, Review: view}); err != nil {
+		t.Fatal(err)
+	}
+	value, failure := server.page(testJSON(t, PageCursor{Kind: "review", Attachment: server.readAttachment, Revision: 1}))
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	page := value.(PageResult)
+	if len(page.Files) != 1 || len(testJSON(t, page)) > feedBytes {
+		t.Fatal("long path metadata was not bounded")
+	}
+	conn := rawControl(t, hub.Handler(), false)
+	conn.SetReadLimit(RPCMessageLimit)
+	controlInitialize(t, conn)
+	controlWrite(t, conn, `{"jsonrpc":"2.0","id":"content","method":"session/content","params":{"thread":"thread","body":`+string(testJSON(t, page.Files[0].Content))+`}}`)
+	reply := controlRead(t, conn)
+	var content ContentResult
+	if reply.Error != nil || json.Unmarshal(reply.Result, &content) != nil || content.Review == nil {
+		t.Fatalf("content reference failed admission: %+v", reply.Error)
+	}
+	file := content.Review
+	if file.Path != path || file.Key != page.Files[0].Key || len(file.Chunks) != 1 {
+		t.Fatal("long path content was lost")
+	}
+}
 
 func reviewSubscriber(t *testing.T, server *Server) *rpcSubscription {
 	t.Helper()
@@ -74,11 +109,42 @@ func TestPublishReviewComposition(t *testing.T) {
 	if err := json.Unmarshal(first["review"], &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Revision != 7 || got.Workspace != "/project" || got.Coverage != "complete" || len(got.Files) != 2 {
+	if got.Page == nil || got.FileCount != 2 {
+		t.Fatalf("initial review must contain metadata only: %+v", got)
+	}
+	readFiles := func(caller string) []reviewFile {
+		t.Helper()
+		cursor := *got.Page
+		cursor.Caller = caller
+		var files []reviewFile
+		for {
+			value, failure := server.page(testJSON(t, cursor))
+			if failure != nil {
+				t.Fatal(failure)
+			}
+			page := value.(PageResult)
+			for _, metadata := range page.Files {
+				if len(metadata.Chunks) != 0 || metadata.Content == nil {
+					t.Fatal("metadata page transferred complete diff")
+				}
+				content, failure := server.content(testJSON(t, metadata.Content))
+				if failure != nil {
+					t.Fatal(failure)
+				}
+				files = append(files, *content.(ContentResult).Review)
+			}
+			if page.Next == nil {
+				return files
+			}
+			cursor = *page.Next
+		}
+	}
+	files := readFiles("")
+	if got.Revision != 7 || got.Workspace != "/project" || got.Coverage != "complete" || len(files) != 2 {
 		t.Fatalf("saved review = %+v", got)
 	}
-	a := got.Files[0]
-	if a.Key != "capture-1" || a.Path != "/project/a" || len(a.Chunks) != 1 || a.Counts != (diffmodel.Counts{Added: 1, Removed: 1}) {
+	a := files[0]
+	if a.Key != reviewIdentity("capture-1") || a.Path != "/project/a" || len(a.Chunks) != 1 || a.Counts != (diffmodel.Counts{Added: 1, Removed: 1}) {
 		t.Fatalf("composed file = %+v", a)
 	}
 	if diff := a.Chunks[0].Review.Diff; !bytes.Contains([]byte(diff), []byte("-old")) || !bytes.Contains([]byte(diff), []byte("+final")) || bytes.Contains([]byte(diff), []byte("draft")) {
@@ -87,7 +153,7 @@ func TestPublishReviewComposition(t *testing.T) {
 	if !reflect.DeepEqual(a.Origins, []changes.Origin{captures[0].Origin, captures[1].Origin}) {
 		t.Fatalf("origins = %+v", a.Origins)
 	}
-	move := got.Files[1]
+	move := files[1]
 	if len(move.Chunks) != 1 || move.Chunks[0].Review.BeforePath != "/tmp/moved" || move.Chunks[0].Review.AfterPath != "/project/moved" {
 		t.Fatalf("crossing move = %+v", move)
 	}
@@ -97,12 +163,12 @@ func TestPublishReviewComposition(t *testing.T) {
 	if len(got.Callers) != 2 || got.Callers[0].Caller != "/root" || got.Callers[1].Caller != "/root/worker" {
 		t.Fatalf("callers = %+v", got.Callers)
 	}
-	if root := got.Callers[0].Files; len(root) != 2 || root[0].Key != a.Key || root[1].Key != move.Key {
+	if root := readFiles(got.Callers[0].Caller); len(root) != 2 || root[0].Key != a.Key || root[1].Key != move.Key {
 		t.Fatalf("main's files = %+v", root)
 	}
 	// As in the terminal's caller filter, a region the worker touched shows
 	// its net outcome, and only the worker's change is its origin.
-	worker := got.Callers[1].Files
+	worker := readFiles(got.Callers[1].Caller)
 	if len(worker) != 1 || worker[0].Key != a.Key || !reflect.DeepEqual(worker[0].Chunks, a.Chunks) || worker[0].Counts != a.Counts {
 		t.Fatalf("worker's files = %+v", worker)
 	}

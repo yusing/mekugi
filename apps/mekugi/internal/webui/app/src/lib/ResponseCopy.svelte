@@ -11,7 +11,13 @@
     text,
     gutter = false,
     below = false,
-  }: { text: string; gutter?: boolean; below?: boolean } = $props();
+    resolveText,
+  }: {
+    text: string;
+    gutter?: boolean;
+    below?: boolean;
+    resolveText?: () => Promise<string>;
+  } = $props();
   let feedback = $state<"copied" | "failed">();
   let reset: ReturnType<typeof setTimeout>;
   onDestroy(() => clearTimeout(reset));
@@ -19,7 +25,15 @@
   async function copy() {
     clearTimeout(reset);
     try {
-      await navigator.clipboard.writeText(text);
+      if (resolveText) {
+        // Start the write during the gesture; WebKit permits the payload itself
+        // to resolve asynchronously through ClipboardItem.
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": resolveText().then((body) => new Blob([body], { type: "text/plain" })),
+          }),
+        ]);
+      } else await navigator.clipboard.writeText(text);
       feedback = "copied";
     } catch {
       feedback = "failed";

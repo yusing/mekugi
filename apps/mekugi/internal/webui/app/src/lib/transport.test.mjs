@@ -209,6 +209,32 @@ test(
   },
 );
 
+test("content survives the control deadline and remains explicitly cancelable", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const connector = connect("https://example.test", "token");
+  const requested = Promise.withResolvers();
+  handler = (socket, message) => {
+    if (initialize(socket, message)) return;
+    if (message.method === "session/content") requested.resolve({ socket, message });
+  };
+  const controller = new AbortController();
+  const content = connector.request(
+    "session/content",
+    { thread: "large" },
+    { signal: controller.signal },
+  );
+  const { socket } = await requested.promise;
+  t.mock.timers.tick(60_000);
+  assert.equal(socket.readyState, Socket.OPEN);
+  assert.equal(
+    socket.sent.some((call) => call.method === "request/cancel"),
+    false,
+  );
+  controller.abort();
+  await assert.rejects(content, /canceled/);
+  assert.equal(socket.readyState, 3);
+});
+
 test("timed-out subscription admission cancels its known identity and ignores late data", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const connector = connect("https://example.test", "token");
@@ -365,6 +391,7 @@ test(
       if (!initialize(socket, message)) socket.reply(message, null);
     };
     for (const [method, payload] of [
+      ["session/content", { attachment: "retained", kind: "main", seq: 1, revision: 1 }],
       ["session/attachment-image", { path: "image.png" }],
       [
         "session/answer",
@@ -397,7 +424,7 @@ test(
       assert.equal(sockets.at(-1).readyState, 3);
       assert.equal(sockets[0].readyState, 1);
     }
-    assert.equal(sockets.length, 7);
+    assert.equal(sockets.length, 8);
     stop();
     connector.close();
   },
@@ -528,3 +555,59 @@ test(
     connector.close();
   },
 );
+
+test("delivery receipts follow application or stale discard on their originating channel", async () => {
+  const connector = connect("https://example.test", "token");
+  handler = (socket, message) => {
+    if (initialize(socket, message)) return;
+    if (message.method === "session/page")
+      socket.reply(message, { entries: [], earlier: null, delivery: "page" });
+    else if (message.method === "session/subscribe") publication(socket, message);
+    else socket.reply(message, null);
+  };
+  const page = await connector.request("session/page", { thread: "one" });
+  assert.equal(
+    sockets[0].sent.some((message) => message.method === "publication/ack"),
+    false,
+  );
+  page.acknowledge();
+  assert.equal(sockets[0].sent.at(-1).params.body.delivery, "page");
+  const stale = await connector.request("session/page", { thread: "one" });
+  connector.authorize("replacement");
+  await connector.request("session/list");
+  stale.acknowledge();
+  assert.equal(
+    sockets[1].sent.some((message) => message.method === "publication/ack"),
+    false,
+    "a stale receipt cannot release a new connection's credit",
+  );
+  const ready = Promise.withResolvers();
+  let received = 0;
+  const stop = connector.subscribe(
+    "session/subscribe",
+    { thread: "one" },
+    (event) => {
+      received++;
+      if (event.delivery)
+        assert.notEqual(sockets[1].sent.at(-1).params.body?.delivery, event.delivery);
+      ready.resolve();
+    },
+    () => {},
+  );
+  await ready.promise;
+  const subscription = sockets[1].sent.find((message) => message.method === "session/subscribe")
+    .params.subscription;
+  const event = (delivery) => ({
+    jsonrpc: "2.0",
+    method: "subscription/event",
+    params: { subscription, kind: "patch", data: {}, delivery },
+  });
+  sockets[1].receive(event("applied"));
+  assert.equal(sockets[1].sent.at(-1).params.body.delivery, "applied");
+  stop();
+  await new Promise(setImmediate);
+  const before = received;
+  sockets[1].receive(event("discarded"));
+  assert.equal(received, before);
+  assert.equal(sockets[1].sent.at(-1).params.body.delivery, "discarded");
+});

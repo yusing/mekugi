@@ -66,6 +66,7 @@ type RPCSubscribed struct {
 }
 
 type RPCEvent struct {
+	Delivery     string         `json:"delivery,omitzero"`
 	Subscription string         `json:"subscription"`
 	Kind         string         `json:"kind"`
 	Data         jsontext.Value `json:"data"`

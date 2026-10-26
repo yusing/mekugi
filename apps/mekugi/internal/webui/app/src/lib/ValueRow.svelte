@@ -13,7 +13,8 @@
   import Tag from "./ui/Tag.svelte";
 
   // outputLang names the grammar of the retained output, when known.
-  let { value, outputLang }: { value: Value; outputLang?: string } = $props();
+  let { value, outputLang, onload }: { value: Value; outputLang?: string; onload?: () => unknown } =
+    $props();
 
   const lines = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
   const count = (sign: string, n: string) =>
@@ -70,10 +71,9 @@
     return out.filter(Boolean);
   }
 
-  const hasOutput = $derived(value.tail?.some((line) => line.trim()));
-  const outputDisclosure = $derived(
-    hasOutput && ((value.tail?.length ?? 0) > 1 || !!value.tailOmitted),
-  );
+  const hasOutput = $derived(!!value.tailLines || value.tail?.some((line) => line.trim()));
+  const tailLines = $derived(value.tailLines ?? value.tail?.length ?? 0);
+  const outputDisclosure = $derived(hasOutput && (tailLines > 1 || !!value.tailOmitted));
   const status = $derived(
     hasOutput ||
       value.running ||
@@ -84,7 +84,10 @@
       !!value.duration,
   );
   const code = $derived(value.code?.replace(/\n$/, ""));
-  const multiline = $derived(code !== undefined && code.includes("\n"));
+  const multiline = $derived(
+    (value.codeLines ?? 0) > 1 || (code !== undefined && code.includes("\n")),
+  );
+  const codeLines = $derived(value.codeLines ?? code?.split("\n").length ?? 0);
   // A command with no label is its own subject: its first line takes the label.
   const headline = $derived(
     !value.label && !value.reads?.length && code ? code.split("\n")[0] : undefined,
@@ -113,7 +116,7 @@
     }
   });
   const output = $derived.by(() => {
-    const shown = value.tail?.length ?? 0;
+    const shown = tailLines;
     return value.tailOmitted
       ? `last ${shown} of ${lines(shown + value.tailOmitted)}`
       : lines(shown);
@@ -121,6 +124,9 @@
   // Disclosed text renders, and is highlighted, once it is opened.
   let scriptOpen = $state(false);
   let outputOpen = $state(false);
+  $effect(() => {
+    if ((scriptOpen && value.codeLines) || (outputOpen && value.tailLines)) onload?.();
+  });
   // A Run label quotes its command as inline code.
   const commandLabel = (html: string) => (node: HTMLElement) => {
     if (html && verb === "Run") highlightWithin(node, "code", () => "bash", true);
@@ -201,7 +207,7 @@
             ><Icon name="chevron" size={12} /></span
           >
           <span class="max-sm:hidden">Output <span class="text-tiny">{output}</span></span><span
-            class="hidden max-sm:inline">{lines(value.tail?.length ?? 0)}</span
+            class="hidden max-sm:inline">{lines(tailLines)}</span
           >
         </button>{/if}
       {#if value.running}
@@ -219,16 +225,17 @@
       {#if value.duration}<span class="text-muted">{duration(value.duration)}</span>{/if}
     </span>{/if}
 
-  {#if code && (multiline || (value.fenced && headline === undefined))}
+  {#if value.codeLines || (code && (multiline || (value.fenced && headline === undefined)))}
     <div class={extra}>
-      {#if json !== undefined}
+      {#if json !== undefined || (value.codeLines && value.lang === "json")}
         <details class="group/disclosure mt-0.5" bind:open={scriptOpen}>
           <summary class={disclosure}
-            >Arguments and result <span class="ml-2">{lines(json.split("\n").length)}</span
+            >Arguments and result <span class="ml-2"
+              >{lines(value.codeLines ?? json?.split("\n").length ?? codeLines)}</span
             ></summary
           >
           {#if scriptOpen}<pre class="{scroll} whitespace-pre-wrap wrap-anywhere"><Code
-                code={json}
+                code={json ?? ""}
                 lang="json"
               /></pre>{/if}
         </details>
@@ -236,15 +243,18 @@
         <details class="group/disclosure mt-0.5" bind:open={scriptOpen}>
           <summary class={disclosure}
             >{value.foldSource ? "Source" : "Script"}
-            <span class="ml-2">{lines(code.split("\n").length)}</span></summary
+            <span class="ml-2">{lines(codeLines)}</span></summary
           >
           {#if scriptOpen}<pre class="{scroll} whitespace-pre"><Code
-                {code}
+                code={code ?? ""}
                 lang={value.lang}
               /></pre>{/if}
         </details>
       {:else}
-        <pre class="{block} px-2.5 py-1.5 whitespace-pre"><Code {code} lang={value.lang} /></pre>
+        <pre class="{block} px-2.5 py-1.5 whitespace-pre"><Code
+            code={code ?? ""}
+            lang={value.lang}
+          /></pre>
       {/if}
     </div>
   {/if}

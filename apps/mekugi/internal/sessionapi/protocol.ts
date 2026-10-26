@@ -3,7 +3,47 @@
 
 export const protocolVersion = "5" as const;
 export const subprotocol = "mekugi.control.v5" as const;
-export type RPCMethod = "initialize" | "native/start" | "request/cancel" | "session/answer" | "session/attachment-image" | "session/control" | "session/decide" | "session/end" | "session/image" | "session/input" | "session/interrupt" | "session/list" | "session/options" | "session/read" | "session/redraw" | "session/shell" | "session/start" | "session/subscribe" | "subscription/cancel" | "view/attach" | "view/intent";
+export type RPCMethod = "initialize" | "native/start" | "publication/ack" | "request/cancel" | "session/answer" | "session/attachment-image" | "session/content" | "session/control" | "session/decide" | "session/end" | "session/image" | "session/input" | "session/interrupt" | "session/list" | "session/options" | "session/page" | "session/read" | "session/redraw" | "session/shell" | "session/start" | "session/subscribe" | "subscription/cancel" | "view/attach" | "view/intent";
+
+export type PageCursor = {
+  "attachment": string;
+  "kind": string;
+  "revision": number;
+  "before"?: number;
+  "caller"?: string;
+};
+
+export type PageResult = {
+  "roster"?: (roster | null);
+  "delivery"?: string;
+  "files"?: Array<reviewFile>;
+  "next"?: (PageCursor | null);
+  "entries": Array<entry>;
+  "earlier": (PageCursor | null);
+};
+
+export type ContentReference = {
+  "key"?: string;
+  "caller"?: string;
+  "thread"?: string;
+  "attachment": string;
+  "kind": string;
+  "revision": number;
+  "seq"?: number;
+};
+
+export type ContentResult = {
+  "session"?: (Session | null);
+  "input"?: (Input | null);
+  "prompts"?: (Prompts | null);
+  "status"?: (status | null);
+  "reviewInfo"?: (savedReview | null);
+  "live"?: Array<Preview>;
+  "agent"?: (agent | null);
+  "review"?: (reviewFile | null);
+  "entry"?: (entry | null);
+  "details"?: (NativeDetails | null);
+};
 
 export type RPCMessage = {
   "jsonrpc": string;
@@ -28,6 +68,7 @@ export type RPCParams = {
 };
 
 export type RPCEvent = {
+  "delivery"?: string;
   "subscription": string;
   "kind": string;
   "data": unknown;
@@ -116,6 +157,7 @@ export type listed = {
 };
 
 export type message = {
+  "deferred": (DeferredSections | null);
   "session"?: (Session | null);
   "playback"?: (Playback | null);
   "input"?: (Input | null);
@@ -126,6 +168,139 @@ export type message = {
   "roster"?: unknown;
   "review"?: unknown;
   "live"?: unknown;
+};
+
+export type roster = {
+  "next"?: (PageCursor | null);
+  "total": number;
+  "agents": Array<agent>;
+  "added"?: number;
+  "removed"?: number;
+};
+
+export type reviewFile = {
+  "content"?: (ContentReference | null);
+  "key": string;
+  "path": string;
+  "chunks": Array<Chunk>;
+  "origins": Array<Origin>;
+  "counts": Counts;
+};
+
+export type entry = {
+  "position": number;
+  "turn"?: number;
+  "revision"?: number;
+  "content"?: (ContentReference | null);
+  "autoContent"?: boolean;
+  "spans"?: Array<TextSpan>;
+  "images"?: Array<string>;
+  "seq": number;
+  "agent"?: string;
+  "kind"?: string;
+  "text"?: string;
+  "observed"?: number;
+  "running"?: boolean;
+  "assignment"?: boolean;
+  "assignmentTo"?: string;
+  "assignmentText"?: string;
+  "values"?: Array<value>;
+};
+
+export type Session = {
+  "thread": string;
+  "caller"?: string;
+  "role"?: string;
+  "title"?: string;
+  "workspace"?: string;
+  "started"?: number;
+};
+
+export type Input = {
+  "reason"?: string;
+  "stoppable"?: boolean;
+  "waiting"?: number;
+};
+
+export type Prompts = {
+  "questions": Array<QuestionCall>;
+  "approvals": Array<Approval>;
+};
+
+export type status = {
+  "text"?: string;
+  "failure"?: string;
+  "alert"?: boolean;
+  "running"?: boolean;
+  "completed"?: (number | null);
+};
+
+export type savedReview = {
+  "page"?: (PageCursor | null);
+  "fileCount": number;
+  "revision": number;
+  "workspace": string;
+  "coverage": string;
+  "failure"?: string;
+  "callers": Array<callerReview>;
+  "counts": Presentation_Counts;
+};
+
+export type Preview = {
+  "ID": string;
+  "Workspace": string;
+  "Caller": string;
+  "Turn"?: string;
+  "Thread": string;
+  "HostItems"?: Array<string>;
+  "EditReceipt"?: string;
+  "Files": Array<ReviewFile>;
+  "Input": string;
+  "Truncated": boolean;
+  "Evaluated"?: boolean;
+  "Complete"?: boolean;
+  "DiffText"?: boolean;
+  "Status": string;
+  "Footer"?: string;
+  "Tool"?: string;
+};
+
+export type agent = {
+  "content"?: (ContentReference | null);
+  "name": string;
+  "thread"?: string;
+  "label": string;
+  "role"?: string;
+  "depth"?: number;
+  "state": string;
+  "wait"?: (value | null);
+  "activity"?: (entry | null);
+  "turns"?: number;
+  "roundtrips"?: number;
+  "work"?: (number | null);
+  "workSince"?: number;
+  "lastResponse"?: number;
+  "cost"?: (number | null);
+  "costPartial"?: boolean;
+  "inputTokens"?: (number | null);
+  "outputTokens"?: (number | null);
+  "usagePartial"?: boolean;
+  "context"?: (number | null);
+  "window"?: number;
+  "added"?: (number | null);
+  "removed"?: (number | null);
+  "skills"?: Array<string>;
+  "items"?: Array<string>;
+};
+
+export type NativeDetails = {
+  "content"?: (ContentReference | null);
+  "source": Thread;
+  "selected"?: string;
+  "view": DetailView;
+  "output": (DetailOutput | null);
+  "file": (DetailFile | null);
+  "agent": boolean;
 };
 
 export type RPCError = {
@@ -225,21 +400,13 @@ export type NativeFrame = {
   "notice"?: string;
 };
 
-export type status = {
-  "text"?: string;
-  "failure"?: string;
-  "alert"?: boolean;
-  "running"?: boolean;
-  "completed"?: (number | null);
-};
-
-export type Session = {
-  "thread": string;
-  "caller"?: string;
-  "role"?: string;
-  "title"?: string;
-  "workspace"?: string;
-  "started"?: number;
+export type DeferredSections = {
+  "session"?: (ContentReference | null);
+  "input"?: (ContentReference | null);
+  "prompts"?: (ContentReference | null);
+  "status"?: (ContentReference | null);
+  "review"?: (ContentReference | null);
+  "live"?: (ContentReference | null);
 };
 
 export type Playback = {
@@ -250,15 +417,148 @@ export type Playback = {
   "simulated"?: boolean;
 };
 
-export type Input = {
-  "reason"?: string;
-  "stoppable"?: boolean;
-  "waiting"?: number;
-};
-
 export type feedPatch = {
+  "attachment": string;
   "entries"?: Array<unknown>;
   "order"?: Array<number>;
+  "revision": number;
+  "earlier": (PageCursor | null);
+};
+
+export type Chunk = {
+  "Key": string;
+  "Status": string;
+  "Stream": string;
+  "Workspace": string;
+  "CaptureOrder": number;
+  "Review": ReviewFile;
+  "Highlighted": boolean;
+} & Omit<Origin, "Key" | "Status" | "Stream" | "Workspace" | "CaptureOrder" | "Review" | "Highlighted">;
+
+export type Origin = {
+  "Change": string;
+  "Caller": string;
+  "Source": string;
+};
+
+export type Counts = {
+  "Added": number;
+  "Removed": number;
+};
+
+export type TextSpan = {
+  "Start": number;
+  "End": number;
+  "Kind": number;
+};
+
+export type value = {
+  "kind"?: string;
+  "verb"?: string;
+  "batchExit"?: boolean;
+  "label"?: string;
+  "sources"?: Array<string>;
+  "path"?: string;
+  "autoReload"?: boolean;
+  "approval"?: string;
+  "code"?: string;
+  "detailCode"?: string;
+  "detailsAvailable"?: boolean;
+  "lang"?: string;
+  "fenced"?: boolean;
+  "body"?: string;
+  "details"?: string;
+  "summary"?: string;
+  "reads"?: Array<read>;
+  "subsumed"?: boolean;
+  "effect"?: boolean;
+  "pending"?: boolean;
+  "skipped"?: boolean;
+  "hiddenEdits"?: number;
+  "codeLines"?: number;
+  "tailLines"?: number;
+  "foldSource"?: boolean;
+  "duration"?: number;
+  "thought"?: number;
+  "workdir"?: string;
+  "from"?: string;
+  "to"?: string;
+  "questions"?: Array<question>;
+  "waits"?: Array<wait>;
+  "waitReason"?: string;
+  "waitTimeout"?: string;
+  "exitCode"?: (number | null);
+  "editOutcome"?: string;
+  "running"?: boolean;
+  "live"?: boolean;
+  "tail"?: Array<string>;
+  "tailOmitted"?: number;
+  "tailClipped"?: boolean;
+  "sourceOmitted"?: boolean;
+  "changes"?: Array<change>;
+  "hook"?: (hook | null);
+};
+
+export type QuestionCall = {
+  "id": string;
+  "agent"?: string;
+  "questions": Array<Question>;
+};
+
+export type Approval = {
+  "id": string;
+  "agent"?: string;
+  "title": string;
+  "subject"?: string;
+  "details": Array<string>;
+  "choices": Array<Choice>;
+};
+
+export type callerReview = {
+  "caller": string;
+  "count": number;
+};
+
+export type Presentation_Counts = {
+  "Callers": Record<string, Counts>;
+  "Net": (Counts | null);
+};
+
+export type ReviewFile = {
+  "BeforePath": string;
+  "AfterPath": string;
+  "Diff": string;
+  "Incomplete"?: string;
+  "Directory"?: boolean;
+  "Binary"?: boolean;
+  "Link"?: boolean;
+  "CopyFrom"?: string;
+  "Origin"?: string;
+  "OriginNote"?: string;
+};
+
+export type Thread = {
+  "ID": string;
+  "Caller": string;
+};
+
+export type DetailView = {
+  "Revision": number;
+  "ID": DetailID;
+  "Pages": Array<DetailItem>;
+  "Processes": boolean;
+};
+
+export type DetailOutput = {
+  "View": OutputView;
+} & Omit<DetailOutputRequest, "View">;
+
+export type DetailFile = {
+  "Path": string;
+  "Source": string;
+  "First": number;
+  "Last": number;
+  "ImagePath"?: string;
 };
 
 export type RPCErrorData = {
@@ -441,7 +741,7 @@ export type ApprovalView = {
   "Subject": string;
   "Outcome": string;
   "Details": Array<string>;
-  "Choices": Array<Choice>;
+  "Choices": Array<Prompt_Choice>;
 };
 
 export type View = {
@@ -495,36 +795,8 @@ export type Family = {
   "status": Label;
 };
 
-export type Preview = {
-  "ID": string;
-  "Workspace": string;
-  "Caller": string;
-  "Turn"?: string;
-  "Thread": string;
-  "HostItems"?: Array<string>;
-  "EditReceipt"?: string;
-  "Files": Array<ReviewFile>;
-  "Input": string;
-  "Truncated": boolean;
-  "Evaluated"?: boolean;
-  "Complete"?: boolean;
-  "DiffText"?: boolean;
-  "Status": string;
-  "Footer"?: string;
-  "Tool"?: string;
-};
-
 export type Scope = {
   "Workspaces": Record<string, Record<string, boolean>>;
-};
-
-export type NativeDetails = {
-  "source": Thread;
-  "selected"?: string;
-  "view": DetailView;
-  "output": (DetailOutput | null);
-  "file": (DetailFile | null);
-  "agent": boolean;
 };
 
 export type OutputResult = {
@@ -576,6 +848,67 @@ export type NativeActivityFrame = {
   "Effects": Array<NativeEffect>;
 };
 
+export type read = {
+  "path": string;
+  "ranges"?: Array<string>;
+};
+
+export type question = {
+  "text"?: string;
+  "answer"?: string;
+};
+
+export type wait = {
+  "name": string;
+  "status"?: string;
+};
+
+export type change = {
+  "verb"?: string;
+  "code"?: string;
+  "label"?: string;
+  "added"?: number;
+  "removed"?: number;
+  "note"?: string;
+  "footer"?: boolean;
+};
+
+export type hook = {
+  "status"?: string;
+  "hasError"?: boolean;
+};
+
+export type Question = {
+  "id": string;
+  "header"?: string;
+  "text"?: string;
+  "options"?: Array<Option>;
+  "secret"?: boolean;
+};
+
+export type Choice = {
+  "id": number;
+  "label": string;
+  "deny"?: boolean;
+};
+
+export type DetailItem = {
+  "Process"?: (Process | null);
+  "OutputVersion": number;
+  "Retained": boolean;
+  "OutputLive": boolean;
+} & Omit<DetailPage, "Process" | "OutputVersion" | "Retained" | "OutputLive">;
+
+export type OutputView = {
+  "Lines": Array<string>;
+  "Dropped": number;
+  "Truncated": boolean;
+  "Released": boolean;
+  "Done": boolean;
+  "Exited": boolean;
+  "Exit": number;
+};
+
 export type Draft = {
   "Text": string;
   "CursorBack": number;
@@ -601,11 +934,6 @@ export type ChoiceID = {
   "Name": string;
   "Path": string;
   "ID": number;
-};
-
-export type Thread = {
-  "ID": string;
-  "Caller": string;
 };
 
 export type InterruptTarget = {
@@ -643,12 +971,12 @@ export type QuestionView = {
   "Header": string;
   "Text": string;
   "State": string;
-  "Choices": Array<Option>;
+  "Choices": Array<Prompt_Option>;
   "Answer": Array<string>;
   "Secret": boolean;
 };
 
-export type Choice = {
+export type Prompt_Choice = {
   "ID": number;
   "Label": string;
   "Approve": boolean;
@@ -803,11 +1131,6 @@ export type AgentRow = {
   "Depth": number;
 };
 
-export type Counts = {
-  "Added": number;
-  "Removed": number;
-};
-
 export type Presentation_Publication = {
   "Files": Array<File>;
   "Unfiltered": Record<string, File>;
@@ -824,48 +1147,6 @@ export type Label = {
   "Completion": number;
   "CompletionKnown": boolean;
   "FailureKnown": boolean;
-};
-
-export type ReviewFile = {
-  "BeforePath": string;
-  "AfterPath": string;
-  "Diff": string;
-  "Incomplete"?: string;
-  "Directory"?: boolean;
-  "Binary"?: boolean;
-  "Link"?: boolean;
-  "CopyFrom"?: string;
-  "Origin"?: string;
-  "OriginNote"?: string;
-};
-
-export type DetailView = {
-  "Revision": number;
-  "ID": DetailID;
-  "Pages": Array<DetailItem>;
-  "Processes": boolean;
-};
-
-export type DetailOutput = {
-  "View": OutputView;
-} & Omit<DetailOutputRequest, "View">;
-
-export type DetailFile = {
-  "Path": string;
-  "Source": string;
-  "First": number;
-  "Last": number;
-  "ImagePath"?: string;
-};
-
-export type OutputView = {
-  "Lines": Array<string>;
-  "Dropped": number;
-  "Truncated": boolean;
-  "Released": boolean;
-  "Done": boolean;
-  "Exited": boolean;
-  "Exit": number;
 };
 
 export type HistoryEntry = {
@@ -939,6 +1220,19 @@ export type NativeDesktopNotification = {
   "Message": string;
 };
 
+export type Option = {
+  "label": string;
+  "description"?: string;
+};
+
+export type DetailPage = {
+  "ID": string;
+  "Revision": number;
+  "PreparedSource": number;
+  "ModelVisible": boolean;
+  "Prepared": (PreparedContent | null);
+} & Omit<Value, "ID" | "Revision" | "PreparedSource" | "ModelVisible" | "Prepared">;
+
 export type AnswerInput = {
   "Call": string;
   "Question": string;
@@ -947,7 +1241,7 @@ export type AnswerInput = {
   "Skip": boolean;
 };
 
-export type Option = {
+export type Prompt_Option = {
   "Label": string;
   "Description": string;
 };
@@ -1063,7 +1357,7 @@ export type Value = {
   "Started": string;
   "Duration": number;
   "NotificationTiming": boolean;
-  "Questions": Array<Question>;
+  "Questions": Array<Presentation_Question>;
   "Source": number;
   "Operation": number;
   "Section": number;
@@ -1126,18 +1420,6 @@ export type File = {
   "Baseline": number;
 };
 
-export type Presentation_Counts = {
-  "Callers": Record<string, Counts>;
-  "Net": (Counts | null);
-};
-
-export type DetailItem = {
-  "Process"?: (Process | null);
-  "OutputVersion": number;
-  "Retained": boolean;
-  "OutputLive": boolean;
-} & Omit<DetailPage, "Process" | "OutputVersion" | "Retained" | "OutputLive">;
-
 export type TextUpdate = {
   "Ref": ItemRef;
   "Replaces": string;
@@ -1178,6 +1460,14 @@ export type CommandReportDelivery = {
   "Snapshot": ReportSnapshot;
   "Version": number;
   "Final": boolean;
+};
+
+export type PreparedContent = {
+  "ID": string;
+  "Text": string;
+  "Calls": Array<string>;
+  "Cell": boolean;
+  "Altered": boolean;
 };
 
 export type Target = {
@@ -1281,12 +1571,6 @@ export type ItemRef = {
   "ItemID": string;
 };
 
-export type TextSpan = {
-  "Start": number;
-  "End": number;
-  "Kind": number;
-};
-
 export type Content = {
   "Kind": string;
   "Verb": string;
@@ -1301,7 +1585,7 @@ export type Content = {
   "EditHeader": boolean;
 };
 
-export type Question = {
+export type Presentation_Question = {
   "Text": string;
   "Answer": string;
   "Options": string;
@@ -1371,7 +1655,7 @@ export type ItemDetails = {
   "WaitLive": boolean;
   "Output": number;
   "SearchResults": (number | null);
-  "Questions": Array<Question>;
+  "Questions": Array<Presentation_Question>;
   "Attachments": Array<Value>;
   "Wait": (Value | null);
   "Hook": (HookDetails | null);
@@ -1414,30 +1698,6 @@ export type AgentFacts = {
   "ContextWindow": number;
   "ContextKnown": boolean;
 };
-
-export type Chunk = {
-  "Key": string;
-  "Status": string;
-  "Stream": string;
-  "Workspace": string;
-  "CaptureOrder": number;
-  "Review": ReviewFile;
-  "Highlighted": boolean;
-} & Omit<Origin, "Key" | "Status" | "Stream" | "Workspace" | "CaptureOrder" | "Review" | "Highlighted">;
-
-export type Origin = {
-  "Change": string;
-  "Caller": string;
-  "Source": string;
-};
-
-export type DetailPage = {
-  "ID": string;
-  "Revision": number;
-  "PreparedSource": number;
-  "ModelVisible": boolean;
-  "Prepared": (PreparedContent | null);
-} & Omit<Value, "ID" | "Revision" | "PreparedSource" | "ModelVisible" | "Prepared">;
 
 export type SegmentReport = {
   "Segments": Array<SegmentObservation>;
@@ -1544,14 +1804,6 @@ export type ReloadSource = {
   "Skill": string;
   "ExitCode": (number | null);
   "Preload"?: boolean;
-};
-
-export type PreparedContent = {
-  "ID": string;
-  "Text": string;
-  "Calls": Array<string>;
-  "Cell": boolean;
-  "Altered": boolean;
 };
 
 export type SegmentObservation = {

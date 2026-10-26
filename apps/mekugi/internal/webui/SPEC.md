@@ -305,12 +305,22 @@ with supporting details behind a disclosure, when
 `child_reply_summary` is on and the reply has [a summary](../../../../modules/activity/CONTRACT.md);
 the disclosure omits the repeated summary and section headings. Otherwise it shows the reply's first lines and a button for the rest. The
 agent's own transcript shows its replies whole. As in the terminal, each
-transcript keeps only its newest entries, so a long session's earliest activity
-is no longer shown, and an agent may have no activity left to show.
-Opening a long transcript renders its newest page first. Earlier retained entries
-remain available through Show earlier entries, which preserves the reading
-position. Incoming updates keep those entries available while reading; Latest
+transcript reads the activity retained by its owner; activity that has aged out
+of that retention is unavailable, and an agent may have no retained activity.
+Opening a long transcript acquires its newest bounded page first. Approaching
+the top loads earlier retained entries automatically, one page at a time, while
+preserving the visible reading anchor. Loading, exhaustion and retryable failure
+remain distinct. Incoming updates keep explicitly loaded pages available while reading; Latest
 returns to the newest page and resumes following.
+Transport deferral preserves compact activity rows and their existing disclosures.
+Oversized content that belongs inline loads automatically through independent reads;
+controls and the initial visible view can become ready before that content finishes.
+Roster, saved-file lists and paginated dialogs acquire additional rows automatically
+as the reader approaches the end, preserving the current selection and reading position.
+Existing disclosure and copy actions acquire complete retained content without
+occupying the navigation connection. Changes acquires bounded file
+metadata and loads exact composed diffs for visible or opened files. Agent return
+navigation uses the kit's quiet breadcrumb button.
 
 ## Delivery and acceptance
 

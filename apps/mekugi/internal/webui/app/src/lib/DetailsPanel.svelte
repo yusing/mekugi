@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import Alert from "./ui/Alert.svelte";
   import type { NativeDetails } from "../../../../sessionapi/protocol";
   import Code from "./Code.svelte";
   import { pathLanguage } from "./highlight";
   import Markdown from "./Markdown.svelte";
   import ReferenceSelection from "./ReferenceSelection.svelte";
+  import { stream } from "./stream.svelte";
+  import { errorText } from "./transport";
   import { semantic } from "./semantic.svelte";
   import Button from "./ui/Button.svelte";
   import { codeBlock } from "./ui/styles";
@@ -15,6 +18,31 @@
     onclose,
     onreference,
   }: { details: NativeDetails; onclose: () => void; onreference: () => void } = $props();
+  let hydrated = $state.raw<NativeDetails>();
+  let failure = $state<string>();
+  let retry = $state(0);
+  const display = $derived(hydrated ?? details);
+  const contentIdentity = $derived(JSON.stringify(details.content));
+  $effect(() => {
+    void contentIdentity;
+    const reference = untrack(() => details.content);
+    void retry;
+    hydrated = undefined;
+    failure = undefined;
+    if (!reference) return;
+    const request = new AbortController();
+    void stream
+      .readContent(reference, request.signal)
+      .then((result) => {
+        if (request.signal.aborted) return;
+        if (!result.details) throw new Error("The complete details are unavailable.");
+        hydrated = result.details;
+      })
+      .catch((error) => {
+        if (!request.signal.aborted) failure = errorText(error);
+      });
+    return () => request.abort();
+  });
   const disabled = $derived(semantic.connection !== "open" || semantic.pending > 0);
   let heading = $state<HTMLElement>();
   let content = $state<HTMLElement>();
@@ -32,19 +60,25 @@
       class="min-w-0 flex-1 truncate font-semibold focus:outline-none"
       tabindex="-1"
       bind:this={heading}
-      title={details.file?.Path}
+      title={display.file?.Path}
     >
-      {details.file?.Path || "Activity details"}
+      {display.file?.Path || "Activity details"}
     </h2>
-    <ReferenceSelection root={content} source={details.file?.Path || ""} {onreference} />
+    <ReferenceSelection root={content} source={display.file?.Path || ""} {onreference} />
     <Button variant="quiet" icon="close" label="Close details" onclick={onclose} />
   </header>
   <div bind:this={content} class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-6">
-    {#if details.file}<pre class={block}><Code
-          code={details.file.Source}
-          lang={pathLanguage(details.file.Path)}
+    {#if display.content}
+      {#if failure}<Alert>{failure}</Alert><Button variant="quiet" onclick={() => retry++}
+          >Retry complete details</Button
+        >
+      {:else}<p class="text-small text-muted">Loading complete details…</p>{/if}
+    {/if}
+    {#if display.file}<pre class={block}><Code
+          code={display.file.Source}
+          lang={pathLanguage(display.file.Path)}
         /></pre>{/if}
-    {#each details.view.Pages as page (page.ID)}
+    {#each display.view.Pages as page (page.ID)}
       <section class="not-first:mt-4 not-first:border-t not-first:border-rule not-first:pt-4">
         {#if page.Label || page.Path || page.Verb}<h3
             class={[
@@ -58,26 +92,26 @@
         {#if page.Code}<pre class={block}><Code code={page.Code} lang={page.Lang} /></pre>{/if}
         {#if page.Tail.length}<pre class={block}><Code
               code={page.Tail.join("\n")}
-              lang={details.file ? pathLanguage(details.file.Path) : undefined}
+              lang={display.file ? pathLanguage(display.file.Path) : undefined}
             /></pre>{/if}
-        {#if details.output?.Page === page.ID}
+        {#if display.output?.Page === page.ID}
           <pre class={block}><Code
-              code={details.output.View.Lines.join("\n")}
-              lang={details.file ? pathLanguage(details.file.Path) : undefined}
+              code={display.output.View.Lines.join("\n")}
+              lang={display.file ? pathLanguage(display.file.Path) : undefined}
             /></pre>
-          {#if details.output.View.Dropped}<p class="text-small text-muted">
-              {details.output.View.Dropped} earlier lines are no longer kept.
+          {#if display.output.View.Dropped}<p class="text-small text-muted">
+              {display.output.View.Dropped} earlier lines are no longer kept.
             </p>{/if}
         {:else if page.Retained}<Button
             {disabled}
             onclick={() =>
               semantic.send({
-                detailOutput: { ID: details.view.ID, Page: page.ID, Version: page.OutputVersion },
+                detailOutput: { ID: display.view.ID, Page: page.ID, Version: page.OutputVersion },
               })}>Load full output</Button
           >{/if}
       </section>
     {:else}
-      {#if !details.file}<p class="text-small text-muted">
+      {#if !display.file && !display.content}<p class="text-small text-muted">
           No further details for this activity.
         </p>{/if}
     {/each}

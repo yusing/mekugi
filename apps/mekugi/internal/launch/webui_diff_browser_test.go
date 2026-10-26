@@ -171,10 +171,25 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	if strings.TrimSpace(run("eval", `document.querySelectorAll('[aria-labelledby="saved-heading"] span.whitespace-pre').length <= 300`)) != "true" {
 		t.Fatal("opening a large saved review rendered more than the initial line budget")
 	}
+	for range 10 {
+		if strings.TrimSpace(run("eval", `document.querySelectorAll('[aria-labelledby="saved-heading"] details').length === 200`)) == "true" {
+			break
+		}
+		run("eval", `(() => { const list = document.querySelector('#panel-content > div'); window.fileCount = list.querySelectorAll('details').length; list.scrollTop = list.scrollHeight; })()`)
+		run("wait", "--fn", `document.querySelector('#panel-content').querySelectorAll('details').length > window.fileCount`)
+	}
+	if strings.TrimSpace(run("eval", `document.querySelectorAll('[aria-labelledby="saved-heading"] details').length === 200 && !document.body.innerText.includes('Load more')`)) != "true" {
+		t.Fatal("saved files did not page automatically")
+	}
 	run("eval", `document.querySelector('[aria-labelledby="saved-heading"] li:last-child summary').click()`)
 	run("wait", "--fn", `document.querySelector('[aria-labelledby="saved-heading"] li:last-child').textContent.includes('const retained = true;')`)
+	run("eval", `(() => { const pane = document.querySelector('#panel-content > div'); const row = [...pane.querySelectorAll('[data-file]')].find(node => node.getBoundingClientRect().bottom > pane.getBoundingClientRect().top); window.reviewAnchor = row.dataset.file; window.reviewOffset = row.getBoundingClientRect().top - pane.getBoundingClientRect().top; const summary = pane.querySelector('li:last-child summary'); summary.focus({preventScroll:true}); window.reviewFocus = summary.closest('[data-file]').dataset.file; })()`)
 	view.Revision++
 	publish()
 	run("wait", "--fn", `document.querySelector('[aria-labelledby="saved-heading"] li:last-child details')?.open`)
+	run("wait", "--fn", `[...document.querySelectorAll('[aria-labelledby="saved-heading"] details[open]')].every(node => node.textContent.includes('const retained = true;'))`)
+	if strings.TrimSpace(run("eval", `(() => { const pane = document.querySelector('#panel-content > div'); const row = [...pane.querySelectorAll('[data-file]')].find(node => node.dataset.file === window.reviewAnchor); return Math.abs(row.getBoundingClientRect().top - pane.getBoundingClientRect().top - window.reviewOffset) < 2 && document.activeElement.closest('[data-file]')?.dataset.file === window.reviewFocus; })()`)) != "true" {
+		t.Fatal("review refresh lost its later-page reading anchor or focus")
+	}
 	t.Log("Saved/live diffs retain source, independent gutters, hunk gaps, syntax, word emphasis, streaming replacement and settling across desktop/tablet/phone in both appearances")
 }

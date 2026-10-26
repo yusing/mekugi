@@ -7,6 +7,8 @@
   import type { Entry } from "./protocol";
   import { stream, type Stream } from "./stream.svelte";
   import Button from "./ui/Button.svelte";
+  import Alert from "./ui/Alert.svelte";
+  import { errorText } from "./transport";
   import Icon from "./ui/Icon.svelte";
   import { emptyBox, revealed, rowAction } from "./ui/styles";
 
@@ -18,6 +20,7 @@
   let {
     entries,
     owner,
+    caller,
     start,
     span,
     jumps,
@@ -29,6 +32,7 @@
   }: {
     entries: Entry[];
     owner: string;
+    caller?: string;
     start: number;
     span: number;
     jumps: number;
@@ -52,7 +56,6 @@
   // user messages count turns. Images one agent views in a row share a row.
   const rows = $derived.by(() => {
     let previous = "";
-    let turns = 0;
     const out: { entry: Entry; at: string; turn?: number; views?: Entry[] }[] = [];
     for (const entry of entries) {
       const last = out.at(-1);
@@ -74,7 +77,7 @@
       out.push({
         entry,
         at: user || at !== previous ? at : "",
-        turn: user ? ++turns : undefined,
+        turn: entry.turn,
         views: isView(entry) ? [entry] : undefined,
       });
       previous = at;
@@ -98,21 +101,25 @@
   $effect(() => {
     if (following) oldest = rows[Math.max(0, rows.length - pageSize)]?.entry.seq;
   });
+  let paging = false;
+  const canEarlier = $derived(first > 0 || !!source.history(caller).earlier);
+  const pageError = $derived(source.historyErrors[caller ?? ""]);
   async function earlier() {
-    if (!scroller || !column) return;
+    if (!scroller || !column || paging || !canEarlier) return;
+    paging = true;
     following = false;
+    const container = scroller;
     const anchor = column.querySelector<HTMLElement>("[data-entry]");
     const top = anchor?.getBoundingClientRect().top ?? 0;
+    if (first === 0) {
+      await source.earlier(caller, reads.signal);
+      await tick();
+    }
     oldest = rows[Math.max(0, first - pageSize)]?.entry.seq;
     await tick();
-    if (anchor) {
-      scroller.scrollTop += anchor.getBoundingClientRect().top - top;
-      // Focus stays on the row being read, which takes focus only for this, so
-      // clicking a row's text neither focuses nor rings it.
-      anchor.tabIndex = -1;
-      anchor.addEventListener("blur", () => anchor.removeAttribute("tabindex"), { once: true });
-      anchor.focus({ preventScroll: true });
-    }
+    if (anchor && scroller === container)
+      container.scrollTop += anchor.getBoundingClientRect().top - top;
+    paging = false;
     measure();
   }
 
@@ -131,6 +138,7 @@
     measure();
     if (!scroller || !reading) return;
     following = !below;
+    if (scroller.scrollTop <= 80 && canEarlier && !pageError) void earlier();
   }
   const read = () => (reading = true);
   const scrollKeys = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
@@ -174,6 +182,127 @@
     reading = false;
     scroller?.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
   }
+
+  let complete = $state.raw<Record<number, { reference: Entry["content"]; entry: Entry }>>({});
+  let contentErrors = $state.raw<
+    Record<number, { reference: Entry["content"]; text: string } | undefined>
+  >({});
+  let loading = $state.raw<Record<number, boolean>>({});
+  const pending = new Map<
+    number,
+    { reference: Entry["content"]; read: AbortController; promise: Promise<Entry> }
+  >();
+  const reads = new AbortController();
+  let autoPosition: number | undefined;
+  $effect(() => () => reads.abort());
+  $effect(() => {
+    const current = new Map(entries.map((entry) => [entry.seq, entry.content]));
+    untrack(() => {
+      for (const [seq, request] of pending) {
+        const reference = current.get(seq);
+        if (
+          reference?.attachment !== request.reference?.attachment ||
+          reference?.revision !== request.reference?.revision
+        )
+          request.read.abort();
+      }
+      complete = Object.fromEntries(
+        Object.entries(complete).filter(([seq]) => current.has(Number(seq))),
+      );
+    });
+  });
+  const historyIdentity = $derived(`${source.agents.attachment}:${source.agents.revision}`);
+  $effect(() => {
+    void historyIdentity;
+    const selected = caller;
+    if (!selected) return;
+    const request = new AbortController();
+    untrack(() => void source.prepareHistory(selected, request.signal));
+    return () => request.abort();
+  });
+  $effect(() => {
+    const changed = visible
+      .map((row) => row.entry)
+      .filter((entry) => {
+        const prior = complete[entry.seq]?.reference;
+        return (
+          entry.content &&
+          (entry.autoContent || prior?.attachment === entry.content.attachment) &&
+          (prior?.attachment !== entry.content.attachment ||
+            prior?.revision !== entry.content.revision) &&
+          !loading[entry.seq] &&
+          !(
+            contentErrors[entry.seq]?.reference?.attachment === entry.content.attachment &&
+            contentErrors[entry.seq]?.reference?.revision === entry.content.revision
+          )
+        );
+      });
+    untrack(() => {
+      if (Object.values(loading).some(Boolean)) return;
+      const entry =
+        autoPosition === undefined
+          ? changed.at(-1)
+          : (changed.find((candidate) => (candidate.position ?? candidate.seq) > autoPosition!) ??
+            changed[0]);
+      if (entry) {
+        autoPosition = entry.position ?? entry.seq;
+        void load(entry).catch(() => {});
+      }
+    });
+  });
+  function load(entry: Entry): Promise<Entry> {
+    const cached = complete[entry.seq];
+    if (!entry.content) return Promise.resolve(entry);
+    if (
+      cached?.reference?.attachment === entry.content.attachment &&
+      cached.reference.revision === entry.content.revision
+    )
+      return Promise.resolve(cached.entry);
+    const active = pending.get(entry.seq);
+    if (
+      active?.reference?.attachment === entry.content.attachment &&
+      active.reference.revision === entry.content.revision
+    )
+      return active.promise;
+    active?.read.abort();
+    const request = new AbortController();
+    const promise = acquire(entry, AbortSignal.any([request.signal, reads.signal]));
+    pending.set(entry.seq, { reference: entry.content, read: request, promise });
+    return promise;
+  }
+  async function acquire(entry: Entry, signal: AbortSignal): Promise<Entry> {
+    loading = { ...loading, [entry.seq]: true };
+    contentErrors = { ...contentErrors, [entry.seq]: undefined };
+    try {
+      const result = await source.content(entry, signal);
+      const current = entries.find((value) => value.seq === entry.seq)?.content;
+      if (
+        !signal.aborted &&
+        current?.attachment === entry.content?.attachment &&
+        current?.revision === entry.content?.revision
+      )
+        complete = { ...complete, [entry.seq]: { reference: entry.content, entry: result } };
+      return result;
+    } catch (error) {
+      if (
+        !signal.aborted &&
+        entries.find((value) => value.seq === entry.seq)?.content?.attachment ===
+          entry.content?.attachment &&
+        entries.find((value) => value.seq === entry.seq)?.content?.revision ===
+          entry.content?.revision
+      )
+        contentErrors = {
+          ...contentErrors,
+          [entry.seq]: { reference: entry.content, text: errorText(error) },
+        };
+      throw error;
+    } finally {
+      if (pending.get(entry.seq)?.reference === entry.content) {
+        pending.delete(entry.seq);
+        if (!reads.signal.aborted) loading = { ...loading, [entry.seq]: false };
+      }
+    }
+  }
 </script>
 
 <svelte:window {onkeydown} onwheel={read} ontouchstart={read} onpointerdown={read} />
@@ -193,30 +322,49 @@
     bind:this={column}
   >
     {@render header?.()}
-    {#if first > 0}
-      <!-- Centred on the rows' text, past the time gutter. -->
-      <div class="mb-3 ml-19 flex justify-center max-sm:ml-0">
-        <Button onclick={earlier}
-          >Show {Math.min(first, pageSize)} earlier entries ({first} remaining)</Button
-        >
-      </div>
+    {#if source.historyLoading[caller ?? ""]}<p class="ml-19 text-small text-muted">
+        Loading earlier entries…
+      </p>{/if}
+    {#if pageError}
+      <Alert
+        >{pageError}<Button variant="quiet" onclick={earlier}>Retry earlier entries</Button></Alert
+      >
+    {:else if entries.length && !canEarlier && source.history(caller).loaded?.length}
+      <p class="ml-19 text-small text-muted">Beginning of retained history</p>
     {/if}
     {#each visible as row (row.entry.seq)}
-      {@const details = !!ondetails && hasDetails(row.entry)}
+      {@const hydrated = complete[row.entry.seq]}
+      {@const entry =
+        row.entry.content &&
+        hydrated?.reference?.attachment === row.entry.content.attachment &&
+        hydrated.reference.revision === row.entry.content.revision
+          ? hydrated.entry
+          : row.entry}
+      {@const details = !!ondetails && hasDetails(entry)}
       {@const response =
-        !isUser(row.entry) && !row.entry.assignment
-          ? responseText(row.entry.kind, row.entry.text, row.entry.values?.[0]?.body)
+        !isUser(entry) && !entry.assignment
+          ? responseText(entry.kind, entry.text, entry.values?.[0]?.body)
           : ""}
       <div class="group/row relative" data-entry={row.entry.seq}>
         <EntryView
-          entry={row.entry}
+          {entry}
           at={row.at}
           stamp={live ? "Time" : "Recorded offset"}
           turn={row.turn}
           views={row.views}
           {owner}
           {source}
+          onload={() => void load(row.entry).catch(() => {})}
         />
+        {#if loading[entry.seq]}<p class="ml-19 text-small text-muted" role="status">
+            Loading content…
+          </p>{/if}
+        {#if contentErrors[entry.seq]?.reference?.attachment === row.entry.content?.attachment && contentErrors[entry.seq]?.reference?.revision === row.entry.content?.revision && contentErrors[entry.seq]}<Alert
+            >{contentErrors[entry.seq]!.text}<Button
+              variant="quiet"
+              onclick={() => void load(row.entry).catch(() => {})}>Retry</Button
+            ></Alert
+          >{/if}
         <!-- The row's actions stack in the gutter, shown on hover or focus and
              always on touch. -->
         {#if details}<button
@@ -226,7 +374,17 @@
             title="Details"
             onclick={() => ondetails?.(row.entry.seq)}><Icon name="expand" size={14} /></button
           >{/if}
-        {#if response}<ResponseCopy text={response} gutter below={details} />{/if}
+        {#if response || (entry.content && !entry.assignment && !isUser(entry) && ["text", "final", "reply"].includes(entry.kind ?? ""))}<ResponseCopy
+            text={response}
+            gutter
+            below={details}
+            resolveText={entry.content
+              ? async () => {
+                  const full = await load(row.entry);
+                  return responseText(full.kind, full.text, full.values?.[0]?.body);
+                }
+              : undefined}
+          />{/if}
       </div>
     {:else}
       <p class="{emptyBox} mt-6 ml-17 max-sm:ml-0">{empty}</p>

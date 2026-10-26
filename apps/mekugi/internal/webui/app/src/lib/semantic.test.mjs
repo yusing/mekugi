@@ -232,6 +232,69 @@ test("a confirmed child attachment retries an unavailable shared read only once"
   }
 });
 
+test("same-thread recovery releases aborted reads without clearing replacement gates", async () => {
+  for (const caller of [undefined, "/root/worker"]) {
+    const source = new Stream();
+    const subscriptions = [],
+      requests = [];
+    const owner = {
+      sessions: [{ id: "same-thread" }],
+      subscribe(_method, _params, event, state) {
+        subscriptions.push({ event, state });
+        return () => {};
+      },
+      request(method, _params, { signal }) {
+        if (signal.aborted) return Promise.reject(signal.reason);
+        const reply = Promise.withResolvers();
+        requests.push({ method, signal, ...reply });
+        return reply.promise;
+      },
+    };
+    const snapshot = {
+      kind: "snapshot",
+      data: {
+        session: { thread: "same-thread" },
+        main: { attachment: "A", revision: 1, entries: [{ seq: 1, text: "retained" }] },
+        roster: { agents: [], next: { attachment: "A", kind: "roster", revision: 1, before: 40 } },
+        deferred: { status: { attachment: "A", kind: "status", revision: 1 } },
+      },
+    };
+    source.connect("same-thread", owner);
+    subscriptions[0].event(snapshot);
+    const oldReads = [source.moreRoster(caller), source.loadSection("status")];
+    await tick();
+    assert.equal(requests.length, 2);
+    subscriptions[0].state("lost", { status: 410, message: "Thread ended." });
+    owner.sessions = [{ id: "same-thread" }];
+    source.recover();
+    subscriptions[1].event(snapshot);
+    assert.equal(source.main.entries[1].text, "retained");
+    const newReads = [source.moreRoster(caller), source.loadSection("status")];
+    await tick();
+    assert.equal(requests.length, 4, "recovery permits fresh reads while canceled replies lag");
+    for (const request of requests.slice(0, 2)) {
+      assert.equal(request.signal.aborted, true);
+      request.resolve({ roster: { agents: [], next: null }, status: { text: "stale" } });
+    }
+    await Promise.all(oldReads);
+    assert.equal(source.sectionLoading.status, true);
+    await source.moreRoster(caller);
+    await source.loadSection("status");
+    assert.equal(requests.length, 4, "stale cleanup leaves replacement requests in flight");
+    for (const request of requests.slice(2))
+      request.resolve({
+        roster: { agents: [{ name: "/root/worker" }], next: null },
+        status: { text: "Ready" },
+      });
+    await Promise.all(newReads);
+    assert.equal(source.roster.agents[0].name, "/root/worker");
+    assert.equal(source.status.text, "Ready");
+    assert.equal(source.rosterLoading, false);
+    assert.equal(source.sectionLoading.status, false);
+    source.close();
+  }
+});
+
 test("role colours survive roster reordering and thread navigation", () => {
   const source = new Stream();
   let publish;
@@ -1564,4 +1627,156 @@ test("preset recall fills the composer once without submitting", async () => {
   assert.equal(semantic.editor().text, "/clear");
   assert.equal(semantic.editor().cursorBack, 0);
   assert.equal(semantic.editor().revision, revision);
+});
+
+const historyRow = (seq, position) => ({ seq, position, revision: 1, text: `entry ${seq}` });
+
+test("pages preserve loaded history and acknowledge stale attachment replies after discard", async () => {
+  const source = new Stream();
+  let publish;
+  const replies = [];
+  const owner = {
+    subscribe(_method, _params, event) {
+      publish = event;
+      return () => {};
+    },
+    request(method) {
+      assert.equal(method, "session/page");
+      const reply = Promise.withResolvers();
+      replies.push(reply);
+      return reply.promise;
+    },
+  };
+  source.connect("thread", owner);
+  const cursor = { attachment: "first", kind: "main", revision: 1, before: 2 };
+  publish({
+    kind: "snapshot",
+    data: {
+      session: { thread: "thread" },
+      main: {
+        attachment: "first",
+        revision: 1,
+        order: [2],
+        entries: [historyRow(2, 1)],
+        earlier: cursor,
+      },
+    },
+  });
+  const page = source.earlier();
+  await tick();
+  publish({
+    kind: "patch",
+    data: {
+      main: {
+        attachment: "first",
+        revision: 1,
+        order: [2, 1],
+        entries: [historyRow(2, 1), historyRow(1, 2)],
+        earlier: cursor,
+      },
+    },
+  });
+  let acknowledgements = 0;
+  replies[0].resolve({
+    entries: [historyRow(3, 0)],
+    earlier: cursor,
+    acknowledge() {
+      acknowledgements++;
+      assert.deepEqual(source.main.order, [3, 2, 1]);
+    },
+  });
+  await page;
+  publish({
+    kind: "patch",
+    data: {
+      main: {
+        attachment: "first",
+        revision: 1,
+        order: [1],
+        entries: [historyRow(1, 2)],
+        earlier: cursor,
+      },
+    },
+  });
+  assert.deepEqual(
+    source.main.order,
+    [3, 2, 1],
+    "latest membership cannot drop explicitly acquired rows",
+  );
+  const jumps = source.jumps;
+  publish({
+    kind: "snapshot",
+    data: {
+      session: { thread: "thread" },
+      main: {
+        attachment: "first",
+        revision: 1,
+        order: [1],
+        entries: [historyRow(1, 2)],
+        earlier: cursor,
+      },
+    },
+  });
+  assert.deepEqual(source.main.order, [3, 2, 1], "catch-up snapshots retain acquired pages");
+  assert.equal(source.jumps, jumps, "catch-up does not interrupt reading");
+  const stale = source.earlier();
+  await tick();
+  publish({
+    kind: "snapshot",
+    data: {
+      session: { thread: "thread" },
+      main: {
+        attachment: "replacement",
+        revision: 1,
+        order: [9],
+        entries: [historyRow(9, 0)],
+        earlier: null,
+      },
+    },
+  });
+  replies[1].resolve({
+    entries: [historyRow(8, 0)],
+    earlier: null,
+    acknowledge() {
+      acknowledgements++;
+      assert.deepEqual(source.main.order, [9]);
+    },
+  });
+  await stale;
+  assert.equal(acknowledgements, 2);
+  source.close();
+});
+
+test("roster retries retain the failed page or agent operation", async () => {
+  const source = new Stream();
+  const content = { attachment: "A", kind: "roster", revision: 1, seq: 1 };
+  const agent = { name: "/root/worker", content };
+  source.roster = {
+    agents: [agent],
+    next: { attachment: "A", kind: "roster", revision: 1, before: 40 },
+  };
+  let pages = 0,
+    agents = 0;
+  source.page = async () => {
+    if (++pages === 1) throw new Error("page unavailable");
+    return { roster: { agents: [], next: null } };
+  };
+  source.readContent = async () => {
+    if (++agents === 1) throw new Error("agent unavailable");
+    return { agent: { name: agent.name } };
+  };
+  const retry = () =>
+    source.rosterRetryAgent ? source.completeAgent(source.rosterRetryAgent) : source.moreRoster();
+  await source.moreRoster();
+  assert.equal(source.rosterRetryAgent, undefined);
+  await retry();
+  assert.equal(pages, 2);
+  assert.equal(agents, 0);
+  assert.equal(source.roster.next, null);
+  await source.completeAgent(agent);
+  assert.equal(source.rosterRetryAgent, agent);
+  await retry();
+  assert.equal(agents, 2);
+  assert.equal(source.rosterError, undefined);
+  assert.equal(source.roster.agents[0].content, undefined);
 });

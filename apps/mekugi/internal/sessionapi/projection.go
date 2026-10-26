@@ -151,6 +151,11 @@ func projectStatus(label sessionpresentation.Label) status {
 }
 
 type entry struct {
+	Position       int                             `json:"position"`
+	Turn           uint64                          `json:"turn,omitzero"`
+	Revision       uint64                          `json:"revision,omitzero"`
+	Content        *ContentReference               `json:"content,omitzero"`
+	AutoContent    bool                            `json:"autoContent,omitzero"`
 	Spans          []activitypresentation.TextSpan `json:"spans,omitzero"`
 	Images         []string                        `json:"images,omitzero"`
 	Seq            uint64                          `json:"seq"`
@@ -166,47 +171,50 @@ type entry struct {
 }
 
 type value struct {
-	Kind          string     `json:"kind,omitzero"`
-	Verb          string     `json:"verb,omitzero"`
-	BatchExit     bool       `json:"batchExit,omitzero"` // A compound command's combined result.
-	Label         string     `json:"label,omitzero"`
-	Sources       []string   `json:"sources,omitzero"` // Programs that made a file edit, outside its label.
-	Path          string     `json:"path,omitzero"`
-	AutoReload    bool       `json:"autoReload,omitzero"`
-	Approval      string     `json:"approval,omitzero"`
-	Code          string     `json:"code,omitzero"`
-	DetailCode    string     `json:"detailCode,omitzero"`
-	Lang          string     `json:"lang,omitzero"`
-	Fenced        bool       `json:"fenced,omitzero"`
-	Body          string     `json:"body,omitzero"`
-	Details       string     `json:"details,omitzero"` // Supporting child reply content without section delimiters.
-	Summary       string     `json:"summary,omitzero"` // A child reply's own summary of Body.
-	Reads         []read     `json:"reads,omitzero"`
-	Subsumed      bool       `json:"subsumed,omitzero"`
-	Effect        bool       `json:"effect,omitzero"`
-	Pending       bool       `json:"pending,omitzero"`
-	Skipped       bool       `json:"skipped,omitzero"`
-	HiddenEdits   int        `json:"hiddenEdits,omitzero"` // Count of retained rows folded from this index.
-	FoldSource    bool       `json:"foldSource,omitzero"`
-	Duration      int64      `json:"duration,omitzero"`
-	Thought       int64      `json:"thought,omitzero"`
-	Workdir       string     `json:"workdir,omitzero"`
-	From          string     `json:"from,omitzero"` // Caller paths of a message's ends.
-	To            string     `json:"to,omitzero"`
-	Questions     []question `json:"questions,omitzero"`
-	Waits         []wait     `json:"waits,omitzero"`
-	WaitReason    string     `json:"waitReason,omitzero"`
-	WaitTimeout   string     `json:"waitTimeout,omitzero"`
-	ExitCode      *int       `json:"exitCode,omitzero"`
-	EditOutcome   string     `json:"editOutcome,omitzero"`
-	Running       bool       `json:"running,omitzero"`
-	Live          bool       `json:"live,omitzero"`
-	Tail          []string   `json:"tail,omitzero"`
-	TailOmitted   int        `json:"tailOmitted,omitzero"`
-	TailClipped   bool       `json:"tailClipped,omitzero"`
-	SourceOmitted bool       `json:"sourceOmitted,omitzero"`
-	Changes       []change   `json:"changes,omitzero"`
-	Hook          *hook      `json:"hook,omitzero"`
+	Kind             string     `json:"kind,omitzero"`
+	Verb             string     `json:"verb,omitzero"`
+	BatchExit        bool       `json:"batchExit,omitzero"` // A compound command's combined result.
+	Label            string     `json:"label,omitzero"`
+	Sources          []string   `json:"sources,omitzero"` // Programs that made a file edit, outside its label.
+	Path             string     `json:"path,omitzero"`
+	AutoReload       bool       `json:"autoReload,omitzero"`
+	Approval         string     `json:"approval,omitzero"`
+	Code             string     `json:"code,omitzero"`
+	DetailCode       string     `json:"detailCode,omitzero"`
+	DetailsAvailable bool       `json:"detailsAvailable,omitzero"`
+	Lang             string     `json:"lang,omitzero"`
+	Fenced           bool       `json:"fenced,omitzero"`
+	Body             string     `json:"body,omitzero"`
+	Details          string     `json:"details,omitzero"` // Supporting child reply content without section delimiters.
+	Summary          string     `json:"summary,omitzero"` // A child reply's own summary of Body.
+	Reads            []read     `json:"reads,omitzero"`
+	Subsumed         bool       `json:"subsumed,omitzero"`
+	Effect           bool       `json:"effect,omitzero"`
+	Pending          bool       `json:"pending,omitzero"`
+	Skipped          bool       `json:"skipped,omitzero"`
+	HiddenEdits      int        `json:"hiddenEdits,omitzero"` // Count of retained rows folded from this index.
+	CodeLines        int        `json:"codeLines,omitzero"`
+	TailLines        int        `json:"tailLines,omitzero"`
+	FoldSource       bool       `json:"foldSource,omitzero"`
+	Duration         int64      `json:"duration,omitzero"`
+	Thought          int64      `json:"thought,omitzero"`
+	Workdir          string     `json:"workdir,omitzero"`
+	From             string     `json:"from,omitzero"` // Caller paths of a message's ends.
+	To               string     `json:"to,omitzero"`
+	Questions        []question `json:"questions,omitzero"`
+	Waits            []wait     `json:"waits,omitzero"`
+	WaitReason       string     `json:"waitReason,omitzero"`
+	WaitTimeout      string     `json:"waitTimeout,omitzero"`
+	ExitCode         *int       `json:"exitCode,omitzero"`
+	EditOutcome      string     `json:"editOutcome,omitzero"`
+	Running          bool       `json:"running,omitzero"`
+	Live             bool       `json:"live,omitzero"`
+	Tail             []string   `json:"tail,omitzero"`
+	TailOmitted      int        `json:"tailOmitted,omitzero"`
+	TailClipped      bool       `json:"tailClipped,omitzero"`
+	SourceOmitted    bool       `json:"sourceOmitted,omitzero"`
+	Changes          []change   `json:"changes,omitzero"`
+	Hook             *hook      `json:"hook,omitzero"`
 }
 
 type read struct {
@@ -240,36 +248,39 @@ type hook struct {
 }
 
 type roster struct {
-	Agents  []agent `json:"agents"`
-	Added   int     `json:"added,omitzero"` // Net workspace lines, when known.
-	Removed int     `json:"removed,omitzero"`
+	Next    *PageCursor `json:"next,omitzero"`
+	Total   int         `json:"total"`
+	Agents  []agent     `json:"agents"`
+	Added   int         `json:"added,omitzero"` // Net workspace lines, when known.
+	Removed int         `json:"removed,omitzero"`
 }
 
 type agent struct {
-	Name         string   `json:"name"`            // Caller path, the agent's identity.
-	Thread       string   `json:"thread,omitzero"` // Runtime identity; admission remains server-owned.
-	Label        string   `json:"label"`           // Display name.
-	Role         string   `json:"role,omitzero"`
-	Depth        int      `json:"depth,omitzero"`
-	State        string   `json:"state"`
-	Wait         *value   `json:"wait,omitzero"`
-	Activity     *entry   `json:"activity,omitzero"` // Shared roster summary, without retained source/output.
-	Turns        uint64   `json:"turns,omitzero"`
-	Roundtrips   uint64   `json:"roundtrips,omitzero"`
-	Work         *int64   `json:"work,omitzero"`
-	WorkSince    int64    `json:"workSince,omitzero"`
-	LastResponse int64    `json:"lastResponse,omitzero"`
-	Cost         *float64 `json:"cost,omitzero"`
-	CostPartial  bool     `json:"costPartial,omitzero"`
-	InputTokens  *uint64  `json:"inputTokens,omitzero"`
-	OutputTokens *uint64  `json:"outputTokens,omitzero"`
-	UsagePartial bool     `json:"usagePartial,omitzero"`
-	Context      *uint64  `json:"context,omitzero"`
-	Window       uint64   `json:"window,omitzero"`
-	Added        *int     `json:"added,omitzero"`
-	Removed      *int     `json:"removed,omitzero"`
-	Skills       []string `json:"skills,omitzero"`
-	Items        []string `json:"items,omitzero"`
+	Content      *ContentReference `json:"content,omitzero"`
+	Name         string            `json:"name"`            // Caller path, the agent's identity.
+	Thread       string            `json:"thread,omitzero"` // Runtime identity; admission remains server-owned.
+	Label        string            `json:"label"`           // Display name.
+	Role         string            `json:"role,omitzero"`
+	Depth        int               `json:"depth,omitzero"`
+	State        string            `json:"state"`
+	Wait         *value            `json:"wait,omitzero"`
+	Activity     *entry            `json:"activity,omitzero"` // Shared roster summary, without retained source/output.
+	Turns        uint64            `json:"turns,omitzero"`
+	Roundtrips   uint64            `json:"roundtrips,omitzero"`
+	Work         *int64            `json:"work,omitzero"`
+	WorkSince    int64             `json:"workSince,omitzero"`
+	LastResponse int64             `json:"lastResponse,omitzero"`
+	Cost         *float64          `json:"cost,omitzero"`
+	CostPartial  bool              `json:"costPartial,omitzero"`
+	InputTokens  *uint64           `json:"inputTokens,omitzero"`
+	OutputTokens *uint64           `json:"outputTokens,omitzero"`
+	UsagePartial bool              `json:"usagePartial,omitzero"`
+	Context      *uint64           `json:"context,omitzero"`
+	Window       uint64            `json:"window,omitzero"`
+	Added        *int              `json:"added,omitzero"`
+	Removed      *int              `json:"removed,omitzero"`
+	Skills       []string          `json:"skills,omitzero"`
+	Items        []string          `json:"items,omitzero"`
 }
 
 func millis(t time.Time) int64 {
@@ -283,7 +294,7 @@ func millis(t time.Time) int64 {
 func projectEntry(e activitypresentation.Entry, summaries bool) entry {
 	e = publicEntry(e)
 	p := entry{
-		Seq: e.Seq, Agent: e.Agent, Kind: e.Kind, Text: e.Text, Observed: millis(e.Observed), Running: e.Running,
+		Seq: e.Seq, Revision: e.Revision, Agent: e.Agent, Kind: e.Kind, Text: e.Text, Observed: millis(e.Observed), Running: e.Running,
 		Assignment: e.Assignment, AssignmentTo: e.AssignmentTo, AssignmentText: e.AssignmentText,
 		Values: projectValues(e.Values, summaries), Spans: e.Spans,
 	}
@@ -323,6 +334,8 @@ func projectEntry(e activitypresentation.Entry, summaries bool) entry {
 	}
 	return p
 }
+
+func humanEntry(agent string) bool { return agent == "You" || strings.HasSuffix(agent, " · user") }
 
 func projectValues(values []activitypresentation.Value, summaries bool) []value {
 	if len(values) == 0 {

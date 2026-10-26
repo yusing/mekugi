@@ -7,6 +7,7 @@
   import Tag from "./ui/Tag.svelte";
   import { stream } from "./stream.svelte";
   import Wait from "./Wait.svelte";
+  import AutoPage from "./AutoPage.svelte";
 
   // The agents of the session, as a tree under Main. Selecting one shows its
   // own activity; now is the recorded clock, for timers. The saved review's
@@ -32,6 +33,7 @@
   } = $props();
 
   const agents = $derived(roster.agents);
+  let completing = $state(false);
   const labels = $derived(new Map(agents.map((agent) => [agent.name, agent.label])));
   const known = (c?: Counts | null): c is Counts => !!c && c.Added >= 0 && c.Removed >= 0;
   const changes = (agent: Agent) =>
@@ -63,7 +65,7 @@
       usd = 0,
       tokensKnown = false,
       costKnown = false,
-      partial = false;
+      partial = !!roster.next;
     for (const a of agents) {
       if (a.inputTokens !== undefined) {
         input += a.inputTokens;
@@ -130,6 +132,9 @@
 
 <div class="mt-3.5 mb-0.5 flex items-baseline gap-2.5">
   <h2 class="font-semibold">Agents</h2>
+  {#if roster.next}<span class="text-small text-muted"
+      >Showing {agents.length} of {roster.total}</span
+    >{/if}
   {#if !loading}
     <span class="text-small text-muted tabular-nums">
       {#if single}<span class={tallyInk[tallies[0].state]}>{tallies[0].text}</span
@@ -280,6 +285,15 @@
             >
           {/if}
         </button>
+        {#if agent.content}<AutoPage
+            cursor={JSON.stringify(agent.content)}
+            ready={!completing && !stream.rosterError}
+            onpage={async (signal) => {
+              completing = true;
+              await stream.completeAgent(agent, signal);
+              completing = false;
+            }}
+          />{/if}
       </li>
     {/each}
   </ul>

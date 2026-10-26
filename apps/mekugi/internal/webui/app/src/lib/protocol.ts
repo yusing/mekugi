@@ -1,4 +1,18 @@
-import type { Start as APIStart, ReplayStart } from "../../../../sessionapi/protocol.ts";
+import type {
+  Start as APIStart,
+  ReplayStart,
+  PageCursor,
+  ContentReference,
+  PageResult as APIPageResult,
+  DeferredSections,
+} from "../../../../sessionapi/protocol.ts";
+export type {
+  PageCursor,
+  ContentReference,
+  ContentResult,
+  DeferredSections,
+} from "../../../../sessionapi/protocol.ts";
+export type PageResult = APIPageResult & { acknowledge?: () => void };
 export type {
   Session,
   Input,
@@ -102,6 +116,7 @@ export interface Change {
 }
 
 export interface Value {
+  detailsAvailable?: boolean;
   detailCode?: string;
   tailClipped?: boolean;
   sourceOmitted?: boolean;
@@ -129,6 +144,8 @@ export interface Value {
   skipped?: boolean;
   // The retained run starting at this value folds behind one disclosure.
   hiddenEdits?: number;
+  codeLines?: number;
+  tailLines?: number;
   foldSource?: boolean;
   duration?: number;
   thought?: number;
@@ -150,6 +167,11 @@ export interface Value {
 }
 
 export interface Entry {
+  position?: number;
+  turn?: number;
+  revision?: number;
+  content?: ContentReference | null;
+  autoContent?: boolean;
   spans?: { Start: number; End: number; Kind: number }[];
   images?: string[];
   seq: number;
@@ -167,6 +189,7 @@ export interface Entry {
 export type AgentState = "working" | "waiting" | "error" | "done" | "idle";
 
 export interface Agent {
+  content?: ContentReference | null;
   name: string;
   thread?: string;
   label: string;
@@ -194,6 +217,8 @@ export interface Agent {
 }
 
 export interface Roster {
+  next?: PageCursor | null;
+  total?: number;
   agents: Agent[];
   added?: number;
   removed?: number;
@@ -202,17 +227,19 @@ export interface Roster {
 // The saved review: each file's net composition of its captured changes.
 // Negative counts are unavailable.
 export interface SavedReview {
+  page?: PageCursor | null;
+  fileCount: number;
   revision: number;
   workspace: string;
   coverage: string;
   failure?: string;
-  files: ReviewedFile[];
   // Each caller's own files, Main first; "?" is an unknown caller.
-  callers: { caller: string; files: ReviewedFile[] }[];
+  callers: { caller: string; count: number }[];
   counts: Presentation_Counts;
 }
 
 export interface ReviewedFile {
+  content?: ContentReference | null;
   key: string;
   path: string;
   chunks: Chunk[];
@@ -221,11 +248,15 @@ export interface ReviewedFile {
 }
 
 export interface FeedChange {
+  attachment?: string;
   entries?: Entry[];
   order?: number[];
+  revision?: number;
+  earlier?: PageCursor | null;
 }
 
 export interface Message {
+  deferred?: DeferredSections | null;
   session?: Session;
   playback?: Playback;
   input?: Input;

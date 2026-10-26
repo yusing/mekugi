@@ -58,23 +58,26 @@ const (
 )
 
 type nativeView struct {
-	authority     viewAuthority
-	target        requestTarget
-	startup       string
-	version       sessionpresentation.Version
-	ctx           context.Context
-	cancel        context.CancelCauseFunc
-	queue         *nativePublications
-	started       bool
-	frame         []byte
-	main          *activity.Publication
-	agents        *activity.Publication
-	family        *Family
-	state         []byte
-	reviewState   []byte
-	ownerBytes    [4]int
-	reviewBytes   int
-	reviewLimited bool
+	authority       viewAuthority
+	target          requestTarget
+	startup         string
+	version         sessionpresentation.Version
+	ctx             context.Context
+	cancel          context.CancelCauseFunc
+	queue           *nativePublications
+	started         bool
+	frame           []byte
+	main            *activity.Publication
+	agents          *activity.Publication
+	family          *Family
+	state           []byte
+	reviewState     []byte
+	ownerBytes      [4]int
+	reviewBytes     int
+	reviewLimited   bool
+	detailsKey      []byte
+	details         []byte
+	detailsRevision uint64
 }
 
 // nativePublications retains ordered deliveries while coalescing superseded
@@ -229,6 +232,12 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 	// Keep mutable caller values detached through bytes, not retained aliases.
 	main, agents, family := frame.Main, frame.Agents, frame.Family
 	frame = frame.withoutEditors()
+	if v.authority == remoteHumanView {
+		frame = frame.remote()
+		if err := v.deferDetails(id, &frame); err != nil {
+			return err
+		}
+	}
 	var state, reviewState []byte
 	if frame.Review != nil && frame.Review.Revision != 0 {
 		review := *frame.Review
@@ -252,9 +261,6 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 			review.Files, review.Unfiltered, review.Counts.Callers, review.Counts.Net = nil, nil, nil, nil
 			metadata.Review = &review
 		}
-		if v.authority == remoteHumanView {
-			metadata = metadata.remote()
-		}
 		var err error
 		state, err = json.Marshal(NativeEvent{Attachment: id, Startup: startup, Frame: metadata}, nativeEncoding)
 		if err != nil {
@@ -263,9 +269,6 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		if v.started && v.main == main && v.agents == agents && v.family == family && bytes.Equal(v.state, state) {
 			return nil
 		}
-	}
-	if v.authority == remoteHumanView {
-		frame = frame.remote()
 	}
 	event := "patch"
 	if !v.started || v.version.Attachment != frame.View.Version.Attachment || frame.Switch != nil {

@@ -36,6 +36,8 @@ var rpcMethods = map[string]rpcMethod{
 	"session/options":          {limit: 1024},
 	"session/list":             {limit: 1024},
 	"session/read":             {limit: 1024},
+	"session/page":             {limit: 1024},
+	"session/content":          {limit: 1024},
 	"session/start":            {limit: InputBodyLimit},
 	"session/end":              {limit: 1024},
 	"session/subscribe":        {limit: 1024},
@@ -51,6 +53,7 @@ var rpcMethods = map[string]rpcMethod{
 	"native/start":             {limit: inputLimit, native: true},
 	"subscription/cancel":      {limit: 1024},
 	"request/cancel":           {limit: 1024},
+	"publication/ack":          {limit: 1024},
 }
 
 func rpcFailure(status int, message string) *RPCError {
@@ -114,6 +117,8 @@ func (e *rpcEndpoint) handler() http.Handler {
 type rpcReply struct {
 	message RPCMessage
 	sent    func()
+	page    *PageResult
+	ctx     context.Context
 }
 
 type rpcConnection struct {
@@ -126,6 +131,9 @@ type rpcConnection struct {
 	requests      map[string]context.CancelFunc
 	subscriptions map[string]*rpcSubscription
 	responses     chan rpcReply
+	page          *rpcReply
+	delivery      string
+	nextDelivery  uint64
 	wake          chan struct{}
 	slots         chan struct{}
 	wg            sync.WaitGroup
@@ -283,6 +291,25 @@ func (c *rpcConnection) run() {
 			continue
 		}
 		// Cancellation never waits behind ordinary method execution or bulk work.
+		if request.Method == "publication/ack" {
+			var receipt struct {
+				Delivery string `json:"delivery"`
+			}
+			failure := decodeBody(params.Body, &receipt)
+			if failure == nil && receipt.Delivery == "" {
+				failure = rpcFailure(400, "A delivery ID is required.")
+			}
+			if failure == nil {
+				c.mu.Lock()
+				if c.delivery == receipt.Delivery {
+					c.delivery = ""
+				}
+				c.mu.Unlock()
+				c.signal()
+			}
+			c.reply(request.ID, nil, failure, nil)
+			continue
+		}
 		if request.Method == "request/cancel" {
 			var original struct {
 				ID jsontext.Value `json:"id"`
@@ -296,6 +323,12 @@ func (c *rpcConnection) run() {
 				c.mu.Lock()
 				if cancel := c.requests[originalKey]; cancel != nil {
 					cancel()
+				}
+				if c.page != nil {
+					pageKey, _ := requestID(c.page.message.ID)
+					if pageKey == originalKey {
+						c.page = nil
+					}
 				}
 				c.mu.Unlock()
 			}
@@ -327,6 +360,10 @@ func (c *rpcConnection) run() {
 				c.signal()
 			}()
 			value, failure, sent := c.dispatch(ctx, request.Method, params)
+			if request.Method == "session/page" && failure == nil {
+				c.replyPage(ctx, request.ID, value.(PageResult))
+				return
+			}
 			if sent == nil {
 				c.reply(request.ID, value, failure, nil)
 				return
@@ -379,6 +416,42 @@ func (c *rpcConnection) write(message any) bool {
 	return WriteMessage(c.ctx, c.wire, websocket.MessageText, bytes.NewReader(data), 5*time.Second) == nil
 }
 
+func (c *rpcConnection) reserveDelivery() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.nextDelivery++
+	c.delivery = strconv.FormatUint(c.nextDelivery, 10)
+	return c.delivery
+}
+
+func (c *rpcConnection) replyPage(ctx context.Context, id jsontext.Value, page PageResult) {
+	delivered := make(chan struct{})
+	reply := rpcReply{message: RPCMessage{JSONRPC: "2.0", ID: responseID(id)}, page: &page, ctx: ctx, sent: func() { close(delivered) }}
+	c.mu.Lock()
+	if ctx.Err() != nil {
+		c.mu.Unlock()
+		return
+	}
+	if c.page != nil {
+		c.mu.Unlock()
+		c.reply(id, nil, rpcFailure(503, "An earlier page is still waiting for delivery."), nil)
+		return
+	}
+	c.page = &reply
+	c.mu.Unlock()
+	c.signal()
+	select {
+	case <-delivered:
+	case <-ctx.Done():
+		c.mu.Lock()
+		if c.page == &reply {
+			c.page = nil
+		}
+		c.mu.Unlock()
+		c.signal()
+	}
+}
+
 // beginDrain lets the single writer flush already-admitted replies and terminal
 // publications. A stalled physical connection still ends with transport loss.
 func (c *rpcConnection) beginDrain() {
@@ -406,6 +479,30 @@ func (c *rpcConnection) signal() {
 func (c *rpcConnection) writer() {
 	defer c.cancel()
 	for c.ctx.Err() == nil {
+		c.mu.Lock()
+		available := c.delivery == ""
+		var page *rpcReply
+		if available {
+			page, c.page = c.page, nil
+		}
+		c.mu.Unlock()
+		// A waiting page takes the next data turn before replaceable progress.
+		if page != nil {
+			if page.ctx.Err() != nil {
+				continue
+			}
+			page.page.Delivery = c.reserveDelivery()
+			data, err := json.Marshal(page.page, nativeEncoding)
+			if err != nil {
+				return
+			}
+			page.message.Result = data
+			if !c.write(page.message) {
+				return
+			}
+			page.sent()
+			continue
+		}
 		cases := []reflect.SelectCase{
 			{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(c.ctx.Done())},
 			{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(c.responses)},
@@ -418,6 +515,9 @@ func (c *rpcConnection) writer() {
 				continue
 			}
 			var events any = subscription.events
+			if !available {
+				events = (<-chan publication)(nil)
+			}
 			if subscription.values != nil {
 				events = subscription.values
 			} else if subscription.native != nil {
@@ -479,13 +579,17 @@ func (c *rpcConnection) writer() {
 		if !current {
 			continue
 		}
+		delivery := ""
+		if subscription.events != nil {
+			delivery = c.reserveDelivery()
+		}
 		// Encode the envelope and its typed parameters together, rather than
 		// copying and validating the complete publication in two JSON passes.
 		if !c.write(struct {
 			JSONRPC string   `json:"jsonrpc"`
 			Method  string   `json:"method"`
 			Params  RPCEvent `json:"params"`
-		}{"2.0", "subscription/event", RPCEvent{Subscription: subscription.id, Kind: event.Kind, Data: event.Data}}) {
+		}{"2.0", "subscription/event", RPCEvent{Delivery: delivery, Subscription: subscription.id, Kind: event.Kind, Data: event.Data}}) {
 			return
 		}
 		if event.Kind == "exit" {
@@ -636,6 +740,27 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 		return value, err, nil
 	case "session/read":
 		return selected.entry, nil, nil
+	case "session/page":
+		value, failure := selected.server.page(params.Body)
+		return value, failure, nil
+	case "session/content":
+		select {
+		case c.endpoint.preparations <- struct{}{}:
+		default:
+			return nil, rpcFailure(503, "Content transfer capacity is busy."), nil
+		}
+		release := sync.OnceFunc(func() { <-c.endpoint.preparations })
+		stop := context.AfterFunc(ctx, release)
+		value, failure := selected.server.content(params.Body)
+		if failure != nil || ctx.Err() != nil {
+			stop()
+			release()
+			if failure == nil {
+				failure = rpcFailure(503, "Content read was canceled.")
+			}
+			return nil, failure, nil
+		}
+		return value, nil, func() { stop(); release() }
 	case "session/end":
 		if selected.runtime == nil {
 			return nil, rpcFailure(405, "This publication has no owned runtime."), nil

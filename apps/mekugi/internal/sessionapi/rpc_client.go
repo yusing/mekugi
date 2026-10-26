@@ -24,9 +24,14 @@ type RPCClient struct {
 	write         chan struct{}
 	mu            sync.Mutex
 	next          uint64
-	pending       map[string]chan RPCMessage
+	pending       map[string]*rpcPending
 	subscriptions map[string]*RPCSubscription
 	err           error
+}
+
+type rpcPending struct {
+	response chan RPCMessage
+	applied  chan struct{}
 }
 
 type RPCSubscription struct {
@@ -66,7 +71,7 @@ func OpenRPC(ctx context.Context, client *http.Client, endpoint, token string) (
 	}
 	conn.SetReadLimit(RPCPublicationLimit)
 	lifetime, cancel := context.WithCancel(ctx)
-	c := &RPCClient{conn: conn, ctx: lifetime, cancel: cancel, done: make(chan struct{}), write: make(chan struct{}, 1), pending: make(map[string]chan RPCMessage), subscriptions: make(map[string]*RPCSubscription)}
+	c := &RPCClient{conn: conn, ctx: lifetime, cancel: cancel, done: make(chan struct{}), write: make(chan struct{}, 1), pending: make(map[string]*rpcPending), subscriptions: make(map[string]*RPCSubscription)}
 	go c.read()
 	initContext, stop := context.WithTimeout(ctx, 5*time.Second)
 	defer stop()
@@ -123,11 +128,26 @@ func (c *RPCClient) read() {
 			c.mu.Unlock()
 			if reply != nil {
 				select {
-				case reply <- message:
+				case reply.response <- message:
 				default:
 					c.fail(errors.New("duplicate control response"))
 					return
 				}
+			}
+			var receipt struct {
+				Delivery string `json:"delivery"`
+			}
+			if json.Unmarshal(message.Result, &receipt) == nil && receipt.Delivery != "" {
+				go func() {
+					if reply != nil {
+						select {
+						case <-reply.applied:
+						case <-c.ctx.Done():
+							return
+						}
+					}
+					c.ackDelivery(receipt.Delivery)
+				}()
 			}
 			continue
 		}
@@ -194,6 +214,9 @@ func (c *RPCClient) read() {
 				}
 			}
 			c.mu.Unlock()
+			if s == nil && event.Delivery != "" {
+				go c.ackDelivery(event.Delivery)
+			}
 		case "subscription/closed":
 			var end RPCClosed
 			if json.Unmarshal(message.Params, &end) != nil {
@@ -239,10 +262,10 @@ func (c *RPCClient) Call(ctx context.Context, method string, params, result any)
 	}
 	c.next++
 	id := jsontext.Value(fmt.Sprintf("\"%d\"", c.next))
-	reply := make(chan RPCMessage, 1)
+	reply := &rpcPending{response: make(chan RPCMessage, 1), applied: make(chan struct{})}
 	c.pending[string(id)] = reply
 	c.mu.Unlock()
-	defer func() { c.mu.Lock(); delete(c.pending, string(id)); c.mu.Unlock() }()
+	defer func() { c.mu.Lock(); delete(c.pending, string(id)); c.mu.Unlock(); close(reply.applied) }()
 	data, err := json.Marshal(RPCMessage{JSONRPC: "2.0", ID: id, Method: method, Params: body})
 	if err != nil {
 		return err
@@ -270,7 +293,7 @@ func (c *RPCClient) Call(ctx context.Context, method string, params, result any)
 		return fmt.Errorf("control request outcome unknown; do not resubmit automatically: %w", err)
 	}
 	select {
-	case response := <-reply:
+	case response := <-reply.response:
 		if response.Error != nil {
 			return response.Error
 		}
@@ -335,6 +358,11 @@ func (s *RPCSubscription) retire(err error) {
 		s.err = err
 		close(s.ready)
 	}
+	for _, event := range s.events {
+		if event.Delivery != "" {
+			go c.ackDelivery(event.Delivery)
+		}
+	}
 }
 
 func (c *RPCClient) cancelSubscription(id string) {
@@ -360,6 +388,9 @@ func (s *RPCSubscription) Next(ctx context.Context) (RPCEvent, error) {
 			s.events = s.events[1:]
 			s.bytes -= len(event.Data)
 			s.client.mu.Unlock()
+			if event.Delivery != "" {
+				s.client.ackDelivery(event.Delivery)
+			}
 			return event, nil
 		}
 		err := s.err
@@ -373,4 +404,13 @@ func (s *RPCSubscription) Next(ctx context.Context) (RPCEvent, error) {
 			return RPCEvent{}, ctx.Err()
 		}
 	}
+}
+
+func (c *RPCClient) ackDelivery(delivery string) {
+	ctx, cancel := context.WithTimeout(c.ctx, time.Second)
+	defer cancel()
+	body, _ := json.Marshal(struct {
+		Delivery string `json:"delivery"`
+	}{delivery})
+	_ = c.Call(ctx, "publication/ack", RPCParams{Body: body}, nil)
 }

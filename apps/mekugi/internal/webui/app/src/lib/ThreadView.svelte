@@ -3,6 +3,7 @@
   import { stateLabel, worked } from "./agents";
   import type { InitialInput } from "./attachments";
   import Composer from "./Composer.svelte";
+  import AutoPage from "./AutoPage.svelte";
   import DetailsPanel from "./DetailsPanel.svelte";
   import DiffPanel from "./DiffPanel.svelte";
   import LiveSource from "./LiveSource.svelte";
@@ -18,6 +19,7 @@
   import SemanticDialogs from "./SemanticDialogs.svelte";
   import SessionInfo from "./SessionInfo.svelte";
   import { stream } from "./stream.svelte";
+  import type { DeferredSections } from "./protocol";
   import { newIdentity } from "./transport";
   import ThreadDocks from "./ThreadDocks.svelte";
   import Transcript from "./Transcript.svelte";
@@ -125,8 +127,30 @@
   // Live selections name ordinary thread IDs. An agent route selects only
   // retained activity within the current recording or historical publication.
   const recorded = $derived(
-    view.agent && view.agent !== "/root" ? stream.agent(view.agent) : undefined,
+    view.agent && view.agent !== "/root"
+      ? (stream.agent(view.agent) ??
+          (stream.roster.next && !stream.unavailableAgents.includes(view.agent)
+            ? {
+                name: view.agent,
+                label: view.agent.replace(/^\/root\//, ""),
+                state: "idle" as const,
+                depth: 0,
+                thread: undefined,
+                role: undefined,
+              }
+            : undefined))
+      : undefined,
   );
+  $effect(() => {
+    const caller = view.agent;
+    if (
+      caller &&
+      stream.roster.next &&
+      !stream.agent(caller) &&
+      !stream.unavailableAgents.includes(caller)
+    )
+      untrack(() => void stream.moreRoster(caller));
+  });
   const selected = $derived(stream.roster.agents.find((agent) => agent.thread === id));
   const shown = $derived(recorded ?? (selected?.name !== "/root" ? selected : undefined));
   // Seeking back to before the chosen agent started returns to Main for good,
@@ -141,8 +165,9 @@
   const owner = $derived(shown?.name ?? session?.caller ?? "/root");
   const entries = $derived(
     recorded
-      ? stream.agents.order
-          .map((seq) => stream.agents.entries[seq])
+      ? stream
+          .history(recorded.name)
+          .order.map((seq) => stream.history(recorded.name).entries[seq])
           .filter((e) => e.agent === recorded.name)
       : main,
   );
@@ -192,6 +217,15 @@
   const details = $derived(live && !ended ? frame?.details : undefined);
   // Saved changes exist for live sessions; recorded playback has none.
   const changes = $derived(!!stream.review);
+  const sections = $derived(Object.keys(stream.deferred) as (keyof DeferredSections)[]);
+  const sectionLabels: Record<keyof DeferredSections, string> = {
+    session: "session information",
+    input: "input information",
+    prompts: "pending prompts",
+    status: "status",
+    review: "review totals",
+    live: "live preview",
+  };
   const net = $derived(stream.review?.counts.Net);
   type Tab = "agents" | "changes" | "details";
   let chosen = $state<Tab>("agents");
@@ -536,12 +570,32 @@
         </div>
       {/if}
 
+      {#each sections as kind (kind)}
+        {#if (kind !== "review" || panel === "changes") && (kind !== "live" || (live && !recorded && !side))}
+          <AutoPage
+            cursor={JSON.stringify(stream.deferred[kind])}
+            ready={!Object.values(stream.sectionLoading).some(Boolean) &&
+              !stream.sectionErrors[kind]}
+            onpage={(signal) => stream.loadSection(kind, signal)}
+          />
+          {#if stream.sectionErrors[kind]}<Alert class="{column} mt-2.5"
+              >{stream.sectionErrors[kind]}<Button
+                variant="quiet"
+                onclick={() => stream.loadSection(kind)}>Retry {sectionLabels[kind]}</Button
+              ></Alert
+            >{/if}
+        {/if}
+      {/each}
       {#if shown}
         {@const time = worked(shown, now)}
         {@const color = stream.roleColor(shown.role)}
         <div class="{column} mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-small">
-          <Button size="sm" icon="left" label="Back to main" onclick={() => select("/root")}
-            >main</Button
+          <Button
+            variant="quiet"
+            size="sm"
+            icon="left"
+            label="Back to main"
+            onclick={() => select("/root")}>main</Button
           >
           <span class="text-control" aria-hidden="true">/</span>
           <span class={["text-body font-semibold", color && "text-role"]} style:--role={color}
@@ -580,6 +634,7 @@
             <Transcript
               {entries}
               {owner}
+              caller={recorded?.name}
               {start}
               span={playback?.until ?? 0}
               jumps={stream.jumps}
@@ -743,6 +798,22 @@
                 {activity}
                 onselect={select}
               />
+              {#if stream.rosterError}<Alert
+                  >{stream.rosterError}<Button
+                    variant="quiet"
+                    onclick={() => {
+                      const agent = stream.rosterRetryAgent;
+                      return agent
+                        ? stream.completeAgent(agent)
+                        : stream.moreRoster(stream.rosterRetryCaller);
+                    }}>Retry</Button
+                  ></Alert
+                >{/if}
+              {#if stream.roster.next}<AutoPage
+                  cursor={JSON.stringify(stream.roster.next)}
+                  ready={!stream.rosterLoading && !stream.rosterError}
+                  onpage={(signal) => stream.moreRoster(undefined, signal)}
+                />{/if}
             </div>
           {/if}
         </div>

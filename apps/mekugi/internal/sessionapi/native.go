@@ -56,6 +56,7 @@ type NativeActivityFrame struct {
 }
 
 type NativeDetails struct {
+	Content  *ContentReference                 `json:"content,omitzero"`
 	Source   sessionpresentation.Thread        `json:"source"`
 	Selected string                            `json:"selected,omitempty"`
 	View     sessionpresentation.DetailView    `json:"view"`

@@ -87,6 +87,10 @@ function readOnly(method: RPCMethod): boolean {
     method === "initialize" ||
     method === "session/options" ||
     method === "session/attachment-image" ||
+    method === "session/image" ||
+    method === "session/page" ||
+    method === "session/content" ||
+    method === "publication/ack" ||
     method === "session/list" ||
     method === "session/read" ||
     method === "session/subscribe" ||
@@ -237,7 +241,10 @@ class Channel {
         finish();
         reject(mutation ? new TransportError(unknownOutcome, "unknown") : canceled());
       };
-      const timer = setTimeout(abort, mutation ? 120_000 : 15_000);
+      // Explicit content can exceed the control deadline on a healthy slow
+      // link. Its independent connection ends with the read's owner instead.
+      const timer =
+        method === "session/content" ? undefined : setTimeout(abort, mutation ? 120_000 : 15_000);
       this.#pending.set(id, {
         mutation,
         result: (value) => {
@@ -269,7 +276,10 @@ class Channel {
     });
   }
 
-  #cancel(method: "request/cancel" | "subscription/cancel", params: RPCParams): void {
+  #cancel(
+    method: "request/cancel" | "subscription/cancel" | "publication/ack",
+    params: RPCParams,
+  ): void {
     if (this.#closed || this.#socket.readyState !== WebSocket.OPEN) return;
     try {
       this.#socket.send(
@@ -328,6 +338,13 @@ class Channel {
         throw new Error("Invalid RPC");
       if (typeof message.id === "string" || typeof message.id === "number") {
         const pending = this.#pending.get(String(message.id));
+        const result = message.result as { delivery?: string } | null;
+        if (typeof result?.delivery === "string") {
+          const acknowledge = () =>
+            this.#cancel("publication/ack", { body: { delivery: result.delivery } });
+          if (pending) Object.defineProperty(result, "acknowledge", { value: acknowledge });
+          else acknowledge();
+        }
         if (!pending) return;
         if (message.error) pending.fail(remoteError(message.error, String(message.id) === "1"));
         else if ("result" in message) pending.result(message.result);
@@ -337,9 +354,14 @@ class Channel {
       if (message.method === "subscription/event") {
         const event = message.params as RPCEvent;
         const subscription = this.#subscriptions.get(event?.subscription);
-        if (!subscription) return;
+        if (!subscription) {
+          if (event.delivery)
+            this.#cancel("publication/ack", { body: { delivery: event.delivery } });
+          return;
+        }
         if (!subscription.acknowledged) throw new Error("Publication before acknowledgement");
         subscription.event(event);
+        if (event.delivery) this.#cancel("publication/ack", { body: { delivery: event.delivery } });
         return;
       }
       if (message.method === "subscription/closed") {
@@ -445,7 +467,7 @@ export class Connector {
       this.#lifetime.signal,
       ...(options.signal ? [options.signal] : []),
     ]);
-    if (!attachmentBearing(method, params))
+    if (method !== "session/content" && !attachmentBearing(method, params))
       return this.#channel().request<T>(method, params, signal);
     const channel = new Channel(this.endpoint, this.#token);
     this.#uploads.add(channel);

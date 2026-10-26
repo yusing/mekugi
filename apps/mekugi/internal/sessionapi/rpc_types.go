@@ -17,6 +17,7 @@ import (
 func TypeScript() ([]byte, error) {
 	g := typescriptTypes{names: make(map[reflect.Type]string), used: make(map[string]bool)}
 	roots := []reflect.Type{
+		reflect.TypeFor[PageCursor](), reflect.TypeFor[PageResult](), reflect.TypeFor[ContentReference](), reflect.TypeFor[ContentResult](),
 		reflect.TypeFor[RPCMessage](), reflect.TypeFor[RPCInitialize](), reflect.TypeFor[RPCParams](), reflect.TypeFor[RPCEvent](), reflect.TypeFor[RPCClosed](), reflect.TypeFor[RPCSubscribed](),
 		reflect.TypeFor[Start](), reflect.TypeFor[StartOptions](), reflect.TypeFor[InputRequest](), reflect.TypeFor[Answer](), reflect.TypeFor[NativeStart](), reflect.TypeFor[NativeMutation](), reflect.TypeFor[RemoteMutation](), reflect.TypeFor[NativeEvent](), reflect.TypeFor[NativeResult](), reflect.TypeFor[NativeExit](), reflect.TypeFor[listed](), reflect.TypeFor[message](),
 	}

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import Alert from "./ui/Alert.svelte";
+  import AutoPage from "./AutoPage.svelte";
   import type { ChoiceID, StatusField } from "../../../../sessionapi/protocol";
   import { date } from "./format";
   import { semantic } from "./semantic.svelte";
@@ -322,10 +323,26 @@
           </li>{/if}
       {/each}
     </ul>
-    {#if resume.CanPage}<Button class="mt-2" {disabled} onclick={() => selectResume(6)}
-        >Load more</Button
+    {#if resume.CanPage}<AutoPage
+        cursor={JSON.stringify([
+          view?.Version.Attachment,
+          resume.ID,
+          resume.Query,
+          resume.All,
+          resume.PageAfter,
+          resume.Scanned,
+          resume.LoadedAt,
+        ])}
+        ready={!disabled && !resume.Loading && !resume.Problem && !semantic.error}
+        onpage={() => selectResume(6)}
+      />{/if}
+    {#if semantic.error}<Alert class="mt-3"
+        >{semantic.error}{#if resume.CanPage}<Button
+            variant="quiet"
+            {disabled}
+            onclick={() => selectResume(6)}>Retry page</Button
+          >{/if}</Alert
       >{/if}
-    {#if semantic.error}<Alert class="mt-3">{semantic.error}</Alert>{/if}
   </Dialog>
 {:else if panel && view}
   <Dialog

@@ -47,7 +47,7 @@ export function failed(value: Value): boolean {
 }
 
 export function isUser(entry: Entry): boolean {
-  return entry.agent === "You" || !!entry.agent?.endsWith(" · user");
+  return !!entry.turn;
 }
 
 export function reasoningBody(body = "", title?: string): string {
@@ -66,6 +66,7 @@ export function hasDetails(entry: Entry): boolean {
     return false;
   return !!entry.values?.some(
     (value) =>
+      value.detailsAvailable ||
       (value.detailCode?.trim() && value.detailCode.trim() !== value.code?.trim()) ||
       value.tailClipped ||
       value.sourceOmitted ||

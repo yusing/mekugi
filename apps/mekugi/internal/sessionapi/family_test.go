@@ -439,7 +439,7 @@ func TestFamilyLivePreviewsStayFreshAndScoped(t *testing.T) {
 	}
 	rootSub := reviewSubscriber(t, root.server)
 	publishReviewFrame(t, root.server, frame)
-	if event := reviewEvent(t, rootSub, "snapshot"); !strings.Contains(string(event["live"]), "source") || strings.Contains(string(event["live"]), "outside") {
+	if event := reviewEvent(t, rootSub, "snapshot"); !strings.Contains(string(readSharedLive(t, root.server, event)), "source") || strings.Contains(string(readSharedLive(t, root.server, event)), "outside") {
 		t.Fatalf("Main live publication = %s", event["live"])
 	}
 	if len(root.server.frame.Load().Live) != 0 {
@@ -497,7 +497,7 @@ func TestFamilyPreviewCapacityKeepsNativeAttached(t *testing.T) {
 	root.server.family = func() (*Family, *changes.ReviewView) { return h.Family("thread") }
 	rootSub := reviewSubscriber(t, root.server)
 	publishReviewFrame(t, root.server, rootSource)
-	if event := reviewEvent(t, rootSub, "snapshot"); !strings.Contains(string(event["live"]), "ROOT_OWN_EDIT") {
+	if event := reviewEvent(t, rootSub, "snapshot"); !strings.Contains(string(readSharedLive(t, root.server, event)), "ROOT_OWN_EDIT") {
 		t.Fatal("surviving children hid Main's own edits")
 	}
 	combined, _ := h.Family("thread")

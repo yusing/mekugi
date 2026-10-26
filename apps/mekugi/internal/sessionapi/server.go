@@ -5,6 +5,7 @@ package sessionapi
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"math"
 	"net"
@@ -123,6 +124,9 @@ type Server struct {
 	childAttach     sync.Mutex
 	published       bool
 	attachment      uint64
+	readAttachment  string
+	contentVersions map[string]uint64
+	sharedDeferred  map[string]bool
 	session         Session
 	playback        *Playback
 	input           *Input
@@ -132,9 +136,12 @@ type Server struct {
 	agents          feed
 	roster          jsontext.Value
 	rosterSource    *activitypresentation.Publication
+	rosterValue     *roster
+	rosterRevision  uint64
 	review          jsontext.Value
 	reviewRevision  uint64
 	reviewWorkspace string
+	reviewSource    *changes.ReviewView
 	livePreviews    jsontext.Value
 	subscribers     map[chan publication]struct{}
 	identity        Summary
@@ -165,6 +172,9 @@ type feed struct {
 	summaries   bool
 	entries     map[uint64]projected
 	order       []uint64
+	history     uint64
+	window      uint64
+	windowBytes int
 }
 
 // projected is one entry's encoding at the revision it was encoded from; an
@@ -172,24 +182,32 @@ type feed struct {
 type projected struct {
 	revision uint64
 	data     jsontext.Value
+	agent    string
+	brief    *entry
+	turn     uint64
+	position int
 }
 
 type feedPatch struct {
-	Entries []jsontext.Value `json:"entries,omitzero"`
-	Order   []uint64         `json:"order,omitzero"`
+	Attachment string           `json:"attachment"`
+	Entries    []jsontext.Value `json:"entries,omitzero"`
+	Order      []uint64         `json:"order,omitzero"`
+	Revision   uint64           `json:"revision"`
+	Earlier    *PageCursor      `json:"earlier"`
 }
 
 type message struct {
-	Session  *Session       `json:"session,omitzero"`
-	Playback *Playback      `json:"playback,omitzero"`
-	Input    *Input         `json:"input,omitzero"`
-	Prompts  jsontext.Value `json:"prompts,omitzero"`
-	Status   jsontext.Value `json:"status,omitzero"`
-	Main     *feedPatch     `json:"main,omitzero"`
-	Agents   *feedPatch     `json:"agents,omitzero"`
-	Roster   jsontext.Value `json:"roster,omitzero"`
-	Review   jsontext.Value `json:"review,omitzero"`
-	Live     jsontext.Value `json:"live,omitzero"`
+	Deferred *DeferredSections `json:"deferred"`
+	Session  *Session          `json:"session,omitzero"`
+	Playback *Playback         `json:"playback,omitzero"`
+	Input    *Input            `json:"input,omitzero"`
+	Prompts  jsontext.Value    `json:"prompts,omitzero"`
+	Status   jsontext.Value    `json:"status,omitzero"`
+	Main     *feedPatch        `json:"main,omitzero"`
+	Agents   *feedPatch        `json:"agents,omitzero"`
+	Roster   jsontext.Value    `json:"roster,omitzero"`
+	Review   jsontext.Value    `json:"review,omitzero"`
+	Live     jsontext.Value    `json:"live,omitzero"`
 }
 
 // New serves a replay, whose viewers request playback.
@@ -258,10 +276,15 @@ func (s *Server) Publish(f Frame) error {
 	reset := !s.published || f.Attachment != s.attachment || f.Session.Thread != s.session.Thread
 	s.published, s.attachment = true, f.Attachment
 	if reset {
+		s.readAttachment = rand.Text()
+		s.contentVersions = map[string]uint64{}
+		s.sharedDeferred = nil
 		s.input, s.status, s.main, s.agents, s.roster = nil, nil, feed{}, feed{}, nil
 		s.rosterSource = nil
+		s.rosterValue = nil
 		s.prompts = nil
 		s.review, s.livePreviews = nil, nil
+		s.reviewSource = nil
 	}
 	var patch message
 	f.Session.Title = textsanitize.Safe(f.Session.Title, false)
@@ -295,7 +318,13 @@ func (s *Server) Publish(f Frame) error {
 		s.status, patch.Status = data, data
 	}
 	if f.Review != nil && (s.review == nil || f.Review.Revision != s.reviewRevision || f.Review.Workspace != s.reviewWorkspace) {
-		review := projectReview(f.Review)
+		s.reviewSource = f.Review
+		if family == nil {
+			s.reviewSource = new(*f.Review)
+			s.reviewSource.Publication = f.Review.Publication.ForDiff(f.Review.Workspace)
+		}
+		review := projectReview(s.reviewSource)
+		review.Page = &PageCursor{Attachment: s.readAttachment, Kind: "review", Revision: f.Review.Revision}
 		data, err := json.Marshal(&review, encoding)
 		if err != nil {
 			return err
@@ -304,6 +333,7 @@ func (s *Server) Publish(f Frame) error {
 		s.reviewWorkspace = f.Review.Workspace
 	} else if f.Review == nil && s.review != nil {
 		s.review, patch.Review = nil, jsontext.Value("null")
+		s.reviewSource = nil
 	}
 	if s.live || f.Live != nil || s.livePreviews != nil {
 		data, err := json.Marshal(f.Live, encoding)
@@ -314,7 +344,8 @@ func (s *Server) Publish(f Frame) error {
 			s.livePreviews, patch.Live = data, data
 		}
 	}
-	if patch.Main, err = s.main.update(f.Main, nil, f.ChildReplySummary); err != nil {
+	mainChanged, err := s.main.update(f.Main, nil, f.ChildReplySummary)
+	if err != nil {
 		return err
 	}
 	rosterSource := f.Agents
@@ -322,7 +353,14 @@ func (s *Server) Publish(f Frame) error {
 		rosterSource = family.Agents
 	}
 	if rosterSource != nil && rosterSource != s.rosterSource {
-		data, err := json.Marshal(projectRoster(rosterSource), encoding)
+		value := projectRoster(rosterSource)
+		s.rosterRevision++
+		s.rosterValue = &value
+		page, failure := rosterPage(&value, s.readAttachment, s.rosterRevision, PageCursor{Attachment: s.readAttachment, Kind: "roster", Revision: s.rosterRevision})
+		if failure != nil {
+			return failure
+		}
+		data, err := json.Marshal(page.Roster, encoding)
 		if err != nil {
 			return err
 		}
@@ -333,8 +371,24 @@ func (s *Server) Publish(f Frame) error {
 	}
 	// The child feed repeats Main's activity under Main's caller path or name;
 	// viewers read that from Main's own feed.
-	if patch.Agents, err = s.agents.update(f.Agents, func(e activitypresentation.Entry) bool { return e.Agent != "/root" && e.Agent != "Main" }, f.ChildReplySummary); err != nil {
+	agentsChanged, err := s.agents.update(f.Agents, func(e activitypresentation.Entry) bool { return e.Agent != "/root" && e.Agent != "Main" }, f.ChildReplySummary)
+	if err != nil {
 		return err
+	}
+	if mainChanged {
+		if patch.Main, err = s.feedPage("main", &s.main, 0, ""); err != nil {
+			return err
+		}
+	}
+	if agentsChanged {
+		if patch.Agents, err = s.feedPage("agents", &s.agents, 0, ""); err != nil {
+			return err
+		}
+	}
+	for kind, changed := range map[string]bool{"session": patch.Session != nil, "input": patch.Input != nil, "prompts": patch.Prompts != nil, "status": patch.Status != nil, "review-info": patch.Review != nil, "live": patch.Live != nil} {
+		if changed {
+			s.contentVersions[kind]++
+		}
 	}
 	if reset {
 		data, err := s.snapshot()
@@ -346,7 +400,7 @@ func (s *Server) Publish(f Frame) error {
 	if patch.Session == nil && patch.Playback == nil && patch.Input == nil && patch.Prompts == nil && patch.Status == nil && patch.Main == nil && patch.Agents == nil && patch.Roster == nil && patch.Review == nil && patch.Live == nil {
 		return nil
 	}
-	event, err := encodeEvent("patch", &patch)
+	event, err := s.encodeShared("patch", patch)
 	if err != nil {
 		return err
 	}
@@ -354,61 +408,78 @@ func (s *Server) Publish(f Frame) error {
 }
 
 // update projects the visible entries that keep admits, or all of them when
-// keep is nil, and returns those whose projection changed. An unchanged
+// keep is nil, and reports whether the projection changed. An unchanged
 // publication pointer is immutable, so it is skipped without encoding, and so
 // is an entry whose revision is unchanged.
-func (f *feed) update(publication *activitypresentation.Publication, keep func(activitypresentation.Entry) bool, summaries bool) (*feedPatch, error) {
+func (f *feed) update(publication *activitypresentation.Publication, keep func(activitypresentation.Entry) bool, summaries bool) (bool, error) {
 	if publication == nil || publication == f.publication {
-		return nil, nil
+		return false, nil
 	}
 	if f.entries == nil || f.summaries != summaries {
 		f.entries, f.summaries = map[uint64]projected{}, summaries
+		f.history++
 	}
 	f.publication = publication
-	var patch feedPatch
+	changed := false
+	historical := false
 	order := make([]uint64, 0, len(publication.Entries))
+	var turns uint64
 	for _, e := range publication.Entries {
 		if e.Hidden() || keep != nil && !keep(e) {
 			continue
 		}
 		order = append(order, e.Seq)
+		var turn uint64
+		if humanEntry(e.Agent) {
+			turns++
+			turn = turns
+		}
 		previous, ok := f.entries[e.Seq]
-		if ok && previous.revision == e.Revision {
+		position := len(order) - 1
+		if ok && previous.revision == e.Revision && previous.turn == turn && previous.position == position {
 			continue
 		}
-		data, err := json.Marshal(projectEntry(e, summaries), encoding)
-		if err != nil {
-			return nil, err
+		if ok && previous.position < int(f.window) {
+			historical = true
 		}
-		f.entries[e.Seq] = projected{e.Revision, data}
+		value := projectEntry(e, summaries)
+		value.Turn = turn
+		value.Position = position
+		data, err := json.Marshal(value, encoding)
+		if err != nil {
+			return false, err
+		}
+		stored := projected{revision: e.Revision, data: data, agent: e.Agent, turn: turn, position: position}
+		if len(data) > entryBytes {
+			brief := compactEntry(value)
+			stored.brief = &brief
+		}
+		f.entries[e.Seq] = stored
 		if !ok || !bytes.Equal(previous.data, data) {
-			patch.Entries = append(patch.Entries, data)
+			changed = true
 		}
 	}
 	if !slices.Equal(order, f.order) {
+		common := min(len(order), len(f.order))
+		if len(order) < len(f.order) || !slices.Equal(order[:common], f.order[:common]) {
+			historical = true
+		}
 		kept := make(map[uint64]bool, len(order))
 		for _, seq := range order {
 			kept[seq] = true
 		}
 		for _, seq := range f.order {
 			if !kept[seq] {
+				historical = true
 				delete(f.entries, seq)
 			}
 		}
-		f.order, patch.Order = order, order
+		f.order, changed = order, true
 	}
-	if patch.Entries == nil && patch.Order == nil {
-		return nil, nil
+	if historical {
+		f.history++
 	}
-	return &patch, nil
-}
-
-func (f *feed) snapshot() *feedPatch {
-	p := &feedPatch{Order: f.order}
-	for _, seq := range f.order {
-		p.Entries = append(p.Entries, f.entries[seq].data)
-	}
-	return p
+	return changed, nil
 }
 
 // publication is a detached payload shared by all transport subscribers.
@@ -418,8 +489,16 @@ type publication struct {
 }
 
 func (s *Server) snapshot() (publication, error) {
-	m := message{Session: &s.session, Playback: s.playback, Input: s.input, Prompts: s.prompts, Status: s.status, Main: s.main.snapshot(), Agents: s.agents.snapshot(), Roster: s.roster, Review: s.review, Live: s.livePreviews}
-	return encodeEvent("snapshot", &m)
+	main, err := s.feedPage("main", &s.main, 0, "")
+	if err != nil {
+		return publication{}, err
+	}
+	agents, err := s.feedPage("agents", &s.agents, 0, "")
+	if err != nil {
+		return publication{}, err
+	}
+	m := message{Session: &s.session, Playback: s.playback, Input: s.input, Prompts: s.prompts, Status: s.status, Main: main, Agents: agents, Roster: s.roster, Review: s.review, Live: s.livePreviews}
+	return s.encodeShared("snapshot", m)
 }
 
 func encodeEvent(name string, v any) (publication, error) {
@@ -463,7 +542,7 @@ func (s *Server) broadcast(data publication, snapshot bool) error {
 }
 
 func (s *Server) subscribe(ctx context.Context) (*rpcSubscription, *RPCError) {
-	ch := make(chan publication, subscriberBuffer)
+	ch := make(chan publication, 1)
 	s.mu.Lock()
 	if s.published {
 		first, err := s.snapshot()

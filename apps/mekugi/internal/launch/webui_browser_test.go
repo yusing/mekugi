@@ -258,9 +258,11 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		window.WebSocket = class extends Original {
 			observations = new Set();
 			cold = new Set();
+			contents = new Set();
 			send(data) {
 				const request = JSON.parse(data);
 				if (request.method === 'session/subscribe' && request.params.thread) this.observations.add(request.params.subscription);
+				if (request.method === 'session/content') this.contents.add(request.id);
 				if (request.method === 'session/subscribe' && request.params.thread === 'cold') { this.cold.add(request.id); window.coldReads++; }
 				return super.send(data);
 			}
@@ -268,6 +270,10 @@ func TestWebUIBrowserMachines(t *testing.T) {
 				if (kind !== 'message') return super.addEventListener(kind, listener, ...options);
 				return super.addEventListener(kind, event => {
 					const message = JSON.parse(event.data);
+                    if (this.contents.has(message.id) && window.holdContent) {
+                        window.heldContent.push((fail = false) => listener.call(this, fail ? new MessageEvent('message', {data: JSON.stringify({jsonrpc:'2.0',id:message.id,error:{code:-32000,message:'content unavailable',data:{status:503}}})}) : event));
+                        return;
+                    }
 					if (this.cold.has(message.id) && message.error?.data?.status === 404) window.coldRefused = true;
 					if (window.holdShared && message.method === 'subscription/event') {
 						if (this.observations.has(message.params.subscription)) {
@@ -369,12 +375,13 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if request := <-browserCommands; *request.Operation.Command != "/title A useful title" || request.Operation.Editor != nil {
 		t.Fatal("rename changed the composer")
 	}
-	const responseMarkdown = "Response with **authored Markdown**.\n\n```go\nfmt.Println(\"complete\")\n```"
+	responseMarkdown := "Response with **authored Markdown**.\n\n```go\nfmt.Println(\"complete\")\n```\n\n" + strings.Repeat("Oversized prose loads automatically.\n\n", 120) + "End of complete response."
 	if err := alpha.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 99, Agent: "Main", Kind: "final", Text: responseMarkdown}}}}}); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "authored Markdown")
-	run("eval", `Object.defineProperty(navigator, 'clipboard', {configurable:true, value:{writeText: async text => { window.copiedResponse = text; }}})`)
+	run("wait", "--text", "End of complete response.")
+	run("eval", `Object.defineProperty(navigator, 'clipboard', {configurable:true, value:{writeText: async text => { window.copiedResponse = text; }, write: items => { window.copyWriteActive = navigator.userActivation.isActive; return items[0].getType('text/plain').then(blob => blob.text()).then(text => navigator.clipboard.writeText(text)); }}})`)
 	run("wait", "--fn", `!!document.querySelector('[data-entry] button[aria-label="Copy response"]') && !document.querySelector('header button[aria-label="Copy last response"]')`)
 	button("Copy response")
 	run("wait", "--fn", fmt.Sprintf(`window.copiedResponse === %q`, responseMarkdown))
@@ -394,6 +401,111 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if run("get", "value", "#composer-text") != "keep draft\n" {
 		t.Fatal("title or message control changed draft")
 	}
+	// Captured edits keep their semantic row even when the retained raw diff
+	// crosses the transport window. The diff belongs in existing Details.
+	editItem := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 97, Agent: "Main", Kind: "tool", Text: "Edit `/tmp/manifest.json` +64 -6 · python3\n```diff\n@@ -1,6 +1,64 @@\n" + strings.Repeat("+  captured_change,\n", 300) + "```"}}
+	previewFrame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: editItem.Facts, Values: editItem.Values(), Revision: 1}}}}
+	if err := alpha.publishFrame(previewFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "manifest.json")
+	if run("eval", `(() => { const row = document.querySelector('[data-entry="97"]'); return !!row && !row.querySelector('pre') && !!row.querySelector('button[aria-label="Details"]') && !row.textContent.includes('Load complete entry'); })()`) != "true\n" {
+		t.Fatal("oversized captured edit lost compact presentation")
+	}
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		for _, palette := range []string{"Light", "Dark"} {
+			run("set", "viewport", "1280", "900")
+			theme(palette)
+			for _, width := range []string{"1280", "768", "390"} {
+				run("set", "viewport", width, "900")
+				run("screenshot", filepath.Join(artifacts, "compact-edit-"+strings.ToLower(palette)+"-"+width+".png"))
+			}
+		}
+		run("set", "viewport", "1280", "900")
+		theme("System")
+	}
+	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 98, Agent: "Main", Kind: "tool", Text: "Run command"}, Values: []activitypresentation.Value{{Kind: "op", Verb: "Run", Code: "echo begin\n" + strings.Repeat("echo middle\n", 200) + "echo script_finished", Lang: "bash", Fenced: true, Tail: []string{strings.Repeat("output ", 200), "output_finished"}}}, Revision: 1}}}
+	if err := alpha.publishFrame(previewFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "Script")
+	run("wait", "--fn", `document.querySelector('[data-entry="98"]')?.textContent.includes('202 lines') && !!document.querySelector('button[aria-label="Output: 2 lines"]')`)
+	if run("eval", `document.body.innerText.includes('script_finished') || document.body.innerText.includes('output_finished')`) != "false\n" {
+		t.Fatal("deferred command payload started expanded")
+	}
+	run("click", `[data-entry="98"] summary`)
+	run("wait", "--text", "script_finished")
+	button("Output: 2 lines")
+	run("wait", "--text", "output_finished")
+	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 95, Agent: "Main", Kind: "tool", Text: "JSON arguments"}, Values: []activitypresentation.Value{{Kind: "op", Verb: "Run", Code: "{\n  \"value\": \"" + strings.Repeat("large", 200) + "\",\n  \"message\": \"json_finished\"\n}", Lang: "json", Fenced: true}}, Revision: 2}}}
+	if err := alpha.publishFrame(previewFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `document.querySelector('[data-entry="95"] summary')?.textContent.includes('4 lines')`)
+	run("click", `[data-entry="95"] summary`)
+	run("wait", "--text", "json_finished")
+	// Held independent replies exercise cancellation, late failure, retry and
+	// clipboard admission before the complete response is available.
+	publishBody := func(revision uint64, text string) {
+		t.Helper()
+		previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 96, Agent: "Main", Kind: "final", Text: strings.Repeat("Deferred prose. ", 300) + text}, Revision: revision}}}
+		if err := alpha.publishFrame(previewFrame); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, replacement := range []string{"revision", "attachment"} {
+		run("eval", `window.holdContent = true; window.heldContent = []; window.copiedResponse = undefined`)
+		publishBody(1, "OLD_CONTENT")
+		run("wait", "--fn", `window.heldContent.length === 1`)
+		version := uint64(2)
+		if replacement == "attachment" {
+			previewFrame.Attachment++
+			version = 1
+		}
+		publishBody(version, "NEW_CONTENT")
+		run("wait", "--fn", `window.heldContent.length === 2`)
+		run("eval", `window.heldContent.shift()(true)`)
+		run("wait", "--fn", `!!document.querySelector('[data-entry="96"] button[aria-label="Copy response"]')`)
+		run("focus", `[data-entry="96"] button[aria-label="Copy response"]`)
+		run("press", "Enter")
+		if run("eval", `window.copyWriteActive && window.copiedResponse === undefined && !document.body.innerText.includes('OLD_CONTENT') && !document.body.innerText.includes('content unavailable')`) != "true\n" {
+			t.Fatal("stale reply or clipboard gesture escaped its reference")
+		}
+		run("eval", `window.heldContent.shift()()`)
+		run("wait", "--fn", `window.copiedResponse?.endsWith('NEW_CONTENT') && document.body.innerText.includes('NEW_CONTENT') && !document.body.innerText.includes('Loading content')`)
+		run("eval", `window.holdContent = false`)
+		previewFrame.Attachment++
+	}
+	run("eval", `window.holdContent = true; window.heldContent = []`)
+	publishBody(3, "RETRIED_CONTENT")
+	run("wait", "--fn", `window.heldContent.length === 1`)
+	run("eval", `window.heldContent.shift()(true)`)
+	run("wait", "--text", "content unavailable")
+	button("Retry")
+	run("wait", "--fn", `window.heldContent.length === 1`)
+	run("eval", `window.heldContent.shift()(); window.holdContent = false`)
+	run("wait", "--fn", `document.body.innerText.includes('RETRIED_CONTENT') && !document.body.innerText.includes('content unavailable') && !document.body.innerText.includes('Loading content')`)
+	// A changing newest entry must not monopolize automatic reads.
+	run("eval", `window.holdContent = true; window.heldContent = []`)
+	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
+		{Facts: activitypresentation.Facts{Seq: 94, Agent: "Main", Kind: "final", Text: strings.Repeat("Earlier prose. ", 300) + "STATIC_CONTENT"}, Revision: 1},
+		{Facts: activitypresentation.Facts{Seq: 95, Agent: "Main", Kind: "text", Text: strings.Repeat("Streaming prose. ", 300) + "STREAM_CONTENT"}, Revision: 1},
+	}}
+	if err := alpha.publishFrame(previewFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `window.heldContent.length === 1`)
+	previewFrame.Main = &activitypresentation.Publication{Entries: append([]activitypresentation.Entry(nil), previewFrame.Main.Entries...)}
+	previewFrame.Main.Entries[1].Revision++
+	if err := alpha.publishFrame(previewFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `window.heldContent.length === 2`)
+	run("eval", `window.heldContent.shift()(true); window.heldContent.shift()()`)
+	run("wait", "--text", "STATIC_CONTENT")
+	run("wait", "--fn", `window.heldContent.length === 1`)
+	run("eval", `window.heldContent.shift()(); window.holdContent = false`)
+	run("wait", "--text", "STREAM_CONTENT")
 	// Captured temporary trees fold at the same boundary as the terminal;
 	// opening them reveals retained paths without another host request.
 	var captures []string
@@ -455,13 +567,33 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal("large temporary capture started expanded")
 	}
 	run("eval", "Array.from(document.querySelectorAll('summary')).find(row => row.textContent.includes('190 more files')).focus()")
+	run("eval", `window.holdContent = true; window.heldContent = []`)
 	run("press", "Enter")
+	run("wait", "--fn", `window.heldContent.length === 1`)
+	frame.Main = &activitypresentation.Publication{Entries: append([]activitypresentation.Entry(nil), frame.Main.Entries...)}
+	frame.Main.Entries[0].Revision++
+	if err := alpha.publishFrame(frame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `window.heldContent.length === 2`)
+	run("eval", `window.heldContent.shift()(true); window.heldContent.shift()(); window.holdContent = false`)
 	run("wait", "--fn", "document.body.innerText.includes('file199.go')")
+	frame.Main = &activitypresentation.Publication{Entries: append([]activitypresentation.Entry(nil), frame.Main.Entries...)}
 	frame.Main.Entries[0].Revision++
 	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--fn", "document.body.innerText.includes('file199.go')")
+	run("eval", `window.holdContent = true; window.heldContent = []`)
+	for range 2 {
+		frame.Attachment++
+		if err := alpha.publishFrame(frame); err != nil {
+			t.Fatal(err)
+		}
+		run("wait", "--fn", fmt.Sprintf(`window.heldContent.length === %d`, frame.Attachment))
+	}
+	run("eval", `window.heldContent.shift()(true); window.heldContent.shift()(); window.holdContent = false`)
+	run("wait", "--fn", `document.body.innerText.includes('file199.go') && !document.body.innerText.includes('content unavailable') && !document.body.innerText.includes('Loading content')`)
 	run("find", "text", "190 more files", "click", "--exact")
 	run("wait", "--fn", "!document.body.innerText.includes('file199.go')")
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {

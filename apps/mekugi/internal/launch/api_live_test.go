@@ -71,9 +71,7 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 	}
 	var state struct {
 		Review struct {
-			Files []struct {
-				Chunks []changepresentation.Chunk `json:"chunks"`
-			} `json:"files"`
+			Page sessionapi.PageCursor `json:"page"`
 		} `json:"review"`
 		Live []preview.Preview `json:"live"`
 		Main struct {
@@ -87,7 +85,8 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 	if err := json.Unmarshal(event.Data, &state); err != nil {
 		t.Fatal(err)
 	}
-	if event.Kind != "snapshot" || len(state.Review.Files) != 1 || len(state.Review.Files[0].Chunks) != 1 || state.Review.Files[0].Chunks[0].Review.Diff != file.Diff || len(state.Live) != 1 || state.Live[0].ID != "edit" || state.Live[0].Files[0].Diff != file.Diff {
+	savedFile := readAPIReviewFile(t, rpc, state.Review.Page)
+	if event.Kind != "snapshot" || len(savedFile.Chunks) != 1 || savedFile.Chunks[0].Review.Diff != file.Diff || len(state.Live) != 1 || state.Live[0].ID != "edit" || state.Live[0].Files[0].Diff != file.Diff {
 		t.Fatalf("missing review or preview: %s", event.Data)
 	}
 	for _, entry := range state.Main.Entries {
@@ -174,14 +173,9 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 	}
 	var state struct {
 		Review struct {
-			Files []struct {
-				Origins []changepresentation.Origin `json:"origins"`
-			} `json:"files"`
+			Page    sessionapi.PageCursor `json:"page"`
 			Callers []struct {
 				Caller string `json:"caller"`
-				Files  []struct {
-					Origins []changepresentation.Origin `json:"origins"`
-				} `json:"files"`
 			} `json:"callers"`
 		} `json:"review"`
 		Roster struct {
@@ -201,11 +195,15 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 	if err := json.Unmarshal(event.Data, &state); err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Review.Files) != 1 || len(state.Review.Files[0].Origins) != 2 || len(state.Review.Callers) != 2 {
+	savedFile := readAPIReviewFile(t, rpc, state.Review.Page)
+	if len(savedFile.Origins) != 2 || len(state.Review.Callers) != 2 {
 		t.Fatalf("shared publication lost family captures: %s", event.Data)
 	}
 	for _, caller := range state.Review.Callers {
-		if len(caller.Files) != 1 || len(caller.Files[0].Origins) != 1 || caller.Files[0].Origins[0].Caller != caller.Caller {
+		cursor := state.Review.Page
+		cursor.Caller = caller.Caller
+		file := readAPIReviewFile(t, rpc, cursor)
+		if len(file.Origins) != 1 || file.Origins[0].Caller != caller.Caller {
 			t.Fatalf("caller projection borrowed another caller's edits: %+v", caller)
 		}
 	}
@@ -218,6 +216,26 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 		}
 	}
 	t.Fatal("shared roster lost Main")
+}
+
+type apiReviewFile struct {
+	Chunks  []changepresentation.Chunk  `json:"chunks"`
+	Origins []changepresentation.Origin `json:"origins"`
+}
+
+func readAPIReviewFile(t *testing.T, rpc *sessionapi.RPCClient, cursor sessionapi.PageCursor) apiReviewFile {
+	t.Helper()
+	var page sessionapi.PageResult
+	if err := json.Unmarshal(serverRPCCall(t, rpc, "session/page", "main", cursor), &page); err != nil || len(page.Files) != 1 {
+		t.Fatalf("expected one saved review file: %v", err)
+	}
+	var content struct {
+		Review apiReviewFile `json:"review"`
+	}
+	if err := json.Unmarshal(serverRPCCall(t, rpc, "session/content", "main", page.Files[0].Content), &content); err != nil {
+		t.Fatal(err)
+	}
+	return content.Review
 }
 
 func apiTestIntent(t *testing.T, u *appServerUI, intent sessionapi.Intent) string {
