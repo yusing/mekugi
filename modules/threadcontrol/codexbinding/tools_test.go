@@ -105,3 +105,37 @@ func TestWaitAgentKeepsRegistrationIdentityInternal(t *testing.T) {
 		t.Fatal("lost internal wait correlation")
 	}
 }
+
+func TestWaitAgentRegistersAfterImmediateTimeout(t *testing.T) {
+	driver, _, _, caller := reconciliationFixture(t)
+	for _, test := range []struct{ call, arguments, state, id string }{
+		{"poll", `{"timeout_ms":0}`, "timeout", "poll"},
+		{"poll", `{}`, "timeout", "poll"},
+		{"wait", `{}`, "registered", "wait"},
+		{"another", `{"timeout_ms":0}`, "registered", "wait"},
+	} {
+		caller.Call = test.call
+		result, err := driver.waitAgent(t.Context(), caller, []byte(test.arguments))
+		if err != nil {
+			t.Fatal(err)
+		}
+		wait := result.(control.WaitResult)
+		if wait.State != test.state || wait.ID != test.id {
+			t.Fatalf("%s(%s) = %+v; want %s id=%s", test.call, test.arguments, wait, test.state, test.id)
+		}
+		member, _ := driver.control.Member(caller.Thread)
+		if member.Wait == nil || member.Wait.ID != test.id || member.Wait.State != test.state {
+			t.Fatalf("retained wait = %+v", member.Wait)
+		}
+		if test.state == "registered" && (member.Wait.Deadline != nil || member.Wait.RequestedMS != nil || member.Wait.EffectiveMS != nil) {
+			t.Fatalf("new indefinite wait retained the expired deadline: %+v", member.Wait)
+		}
+	}
+	if err := driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {
+		t.Fatal(err)
+	}
+	stop, err := driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item)
+	if err != nil || stop == nil || stop.Wait != "wait" {
+		t.Fatalf("replacement wait local stop = %+v, %v", stop, err)
+	}
+}

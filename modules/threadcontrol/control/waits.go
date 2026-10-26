@@ -139,7 +139,7 @@ func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []s
 		if err != nil {
 			return err
 		}
-		if old := member.Wait; old != nil && (old.ID == caller.Call || old.State != "canceled" && old.State != "completed" && old.State != "paused") {
+		if old := member.Wait; old != nil && (old.ID == caller.Call || old.State != "canceled" && old.State != "completed" && old.State != "paused" && old.State != "timeout") {
 			result = *tree.waitResult(old)
 			return unchanged
 		}
