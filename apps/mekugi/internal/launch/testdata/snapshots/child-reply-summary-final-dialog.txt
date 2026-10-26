@@ -1,11 +1,11 @@
 ┌ 1 Main ──────────────────────────────────────────────────────────────────────────────────────────┐
 │✓ worker finished                                                                        11:50:00 │
 ││ An unrelated reply.                                                                             │
-││ ↩ Open reply                                                                                    │
 │├─✓ finished · 1s                                                                                 │
 ││ Fixed exact reply navigation and kept the original evidence available. Focused checks pass,     │
 ││ while live model compliance remains unverified.                                                 │
 │╰─↩ Open reply                                                                                    │
+│                                                                                                  │
 │    ╭─ /root/worker ─────────────────────────────────────────────────────────────────── [×] ─╮    │
 │    │                                                                                        │    │
 │    ├────────────────────────────────────────────────────────────────────────────────────────┤    │

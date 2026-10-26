@@ -56,19 +56,25 @@ export function reasoningBody(body = "", title?: string): string {
 }
 
 export function hasDetails(entry: Entry): boolean {
-  if (entry.kind === "reasoning")
-    return !!entry.values?.some((value) => reasoningBody(value.body, value.label));
-  return (
-    !!entry.text?.trim() ||
-    !!entry.assignmentText?.trim() ||
-    !!entry.values?.some(
-      (value) =>
-        value.body?.trim() ||
-        value.code?.trim() ||
-        value.tail?.some((line) => line.trim()) ||
-        value.changes?.length ||
-        value.questions?.length,
-    )
+  // Authored content is complete inline, or has its own measured disclosure.
+  if (
+    ["user", "text", "final", "reply", "message", "start", "assignment", "reasoning"].includes(
+      entry.kind ?? "",
+    ) ||
+    isUser(entry)
+  )
+    return false;
+  return !!entry.values?.some(
+    (value) =>
+      (value.detailCode?.trim() && value.detailCode.trim() !== value.code?.trim()) ||
+      value.tailClipped ||
+      value.sourceOmitted ||
+      (!value.questions?.length && value.kind !== "progress" && value.body?.trim()) ||
+      (value.code?.trim() && value.label && !value.fenced && !value.code.includes("\n")) ||
+      (value.tailOmitted ?? 0) > 0 ||
+      value.changes?.length ||
+      value.hook ||
+      ["Create", "Edit", "Delete", "Move"].includes(value.verb ?? ""),
   );
 }
 

@@ -844,10 +844,11 @@ func (v *View) linkedExcerpt(out *conversationLines, entry activitypresentation.
 	}
 	rows, hidden := excerptRows(rows, width, limit)
 	out.hang(gutter, gutter, rows)
-	link := v.Painter.Theme.Accent() + "↩ Open " + noun + terminalui.Reset
-	if hidden > 0 {
-		link += terminalui.Dim + " · " + terminalui.Undim + Elision{Hidden: hidden, Form: ElisionSuffix}.String()
+	if hidden == 0 {
+		return
 	}
+	link := v.Painter.Theme.Accent() + "↩ Open " + noun + terminalui.Reset
+	link += terminalui.Dim + " · " + terminalui.Undim + Elision{Hidden: hidden, Form: ElisionSuffix}.String()
 	out.add(entry.Seq, tail+ansi.Truncate(link, width, "…"))
 }
 

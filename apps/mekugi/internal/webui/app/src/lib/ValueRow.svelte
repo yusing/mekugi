@@ -71,6 +71,9 @@
   }
 
   const hasOutput = $derived(value.tail?.some((line) => line.trim()));
+  const outputDisclosure = $derived(
+    hasOutput && ((value.tail?.length ?? 0) > 1 || !!value.tailOmitted),
+  );
   const status = $derived(
     hasOutput ||
       value.running ||
@@ -186,7 +189,7 @@
   {#if status}<span
       class="flex items-center justify-end gap-2 font-mono text-small whitespace-nowrap tabular-nums"
     >
-      {#if hasOutput}<button
+      {#if outputDisclosure}<button
           type="button"
           aria-expanded={outputOpen}
           aria-label={`Output: ${output}`}
@@ -302,7 +305,7 @@
     </div>
   {/if}
 
-  {#if hasOutput && outputOpen}
+  {#if hasOutput && (!outputDisclosure || outputOpen)}
     <div class={extra}>
       <pre class="{scroll} whitespace-pre"><Code
           code={value.tail?.join("\n") ?? ""}

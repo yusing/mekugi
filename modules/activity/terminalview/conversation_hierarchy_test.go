@@ -67,7 +67,7 @@ func TestUISnapshotConversationHierarchy(t *testing.T) {
 							t.Fatalf("missing route %q:\n%s", route, plain)
 						}
 					}
-					if !slices.Contains(feed.Questions, uint64(5)) || !slices.Contains(feed.Questions, uint64(6)) || !strings.Contains(plain, "Open assignment") {
+					if !slices.Contains(feed.Questions, uint64(5)) || !strings.Contains(plain, "Open assignment") {
 						t.Fatalf("assignment lost source link:\n%s", plain)
 					}
 				} else if !strings.Contains(plain, "▶ duplicate_edits/correctness started") || !strings.Contains(plain, "├─→ follow-up") || !strings.Contains(plain, "← main") {

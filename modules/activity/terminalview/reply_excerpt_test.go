@@ -28,8 +28,19 @@ func TestNativeAssignmentExcerptWrapsAndRetainsTarget(t *testing.T) {
 			t.Fatalf("assignment row %d lost its target", i)
 		}
 	}
-	if !strings.Contains(ansi.Strip(strings.Join(out.lines, "\n")), "The response excerpt") || out.questions[len(out.questions)-1] != 43 {
-		t.Fatal("response excerpt or its Activity target was lost")
+	if !strings.Contains(ansi.Strip(strings.Join(out.lines, "\n")), "The response excerpt") || strings.Contains(strings.Join(out.lines, "\n"), "Open reply") {
+		t.Fatal("complete response was lost or gained a redundant disclosure")
+	}
+}
+
+func TestNativeCompleteReplyHasNoDisclosure(t *testing.T) {
+	for _, text := range []string{"Review completion confirmed; the handoff above remains current.", "First line.\n\nSecond line.", ""} {
+		v := NewView()
+		var out conversationLines
+		v.replyExcerpt(&out, presentation.Entry{Seq: 43}, text, "", "", 80, conversationLatestRows)
+		if strings.Contains(strings.Join(out.lines, "\n"), "Open reply") || slices.Contains(out.questions, uint64(43)) {
+			t.Fatalf("complete reply has disclosure: %q", out.lines)
+		}
 	}
 }
 

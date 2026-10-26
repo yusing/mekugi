@@ -1,6 +1,5 @@
 ← worker                                                                                    11:50:00
 │ An unrelated reply.
-│ ↩ Open reply
 ├─← replied · 1s
 │ Summary
 │ ───────

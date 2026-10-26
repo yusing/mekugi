@@ -103,6 +103,17 @@ test("a wait reads as a collaboration line naming its targets", () => {
   assert.doesNotMatch(html, /\/root\//);
 });
 
+test("complete one-line output stays visible without a disclosure", () => {
+  const value = { kind: "op", verb: "Run", code: "printf ok", tail: ["ok"] };
+  const html = render(ValueRow, { props: { value } }).body;
+  assert.match(html, /<pre[^>]*>.*ok/s);
+  assert.doesNotMatch(html, /aria-label="Output:/);
+  for (const extra of [{ tail: ["first", "last"] }, { tailOmitted: 2 }]) {
+    const folded = render(ValueRow, { props: { value: { ...value, ...extra } } }).body;
+    assert.match(folded, /aria-label="Output:/);
+  }
+});
+
 test("unreached commands render Skipped while retaining their command", () => {
   const value = { kind: "op", verb: "Run", code: "printf unreachable", lang: "bash" };
   const skipped = render(ValueRow, { props: { value: { ...value, skipped: true } } }).body;

@@ -337,6 +337,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	waitRecovered()
 	run("wait", "--text", "Browser host answer 1")
 	run("find", "text", "Browser host answer 1", "text", "--exact")
+	run("wait", "--fn", `Array.from(document.querySelectorAll('[data-entry]')).some(row => row.textContent.includes('Browser host answer 1') && !row.querySelector('button[aria-label="Details"]'))`)
 	run("wait", "--fn", `Array.from(document.querySelectorAll('.prose a')).some(a => a.getAttribute('href') === 'https://example.com/auto' && a.target === '_blank' && a.rel.includes('noopener'))`)
 	run("wait", "--fn", `Array.from(document.querySelectorAll('.prose a')).some(a => a.textContent === 'Website' && a.getAttribute('href') === 'https://example.com/markdown')`)
 	run("find", "role", "link", "click", "--name", "Workspace notes", "--exact")
@@ -574,13 +575,6 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	waitRecovery()
 	button("Discard")
 	waitRecovered()
-	// Freeze transcript following before the pointer targets an older row.
-	run("focus", `button[aria-label="Details"]`)
-	run("find", "first", `button[aria-label="Details"]`, "click")
-	run("wait", "--text", "Activity details")
-	capture("details")
-	button("Close details")
-	run("wait", "--fn", "!document.querySelector('#details-heading')")
 	t.Run("queued input editing", func(t *testing.T) {
 		message("hold queued editing")
 		run("wait", "--fn", "!!document.querySelector('button[aria-label=Stop]')")

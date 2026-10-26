@@ -127,7 +127,7 @@ func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 	u.shell.Transcript.Conversation = true
 	u.testActivity(u.shell.Transcript).testAudience()
 	main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
-	for _, want := range []string{"▶ worker started", "├─✓ finished", "The pane waits on its first frame.", "╰─↩ Open reply"} {
+	for _, want := range []string{"▶ worker started", "├─✓ finished", "The pane waits on its first frame."} {
 		if !strings.Contains(main, want) {
 			t.Fatalf("Main lacks %q:\n%s", want, main)
 		}

@@ -367,6 +367,12 @@ remain identifiers and fenced code literal. Reasoning headings stay plain bold,
 without authored-heading rules. Public app-server summaries are displayable;
 raw/encrypted reasoning is not. Completed collapsed sections keep their full
 source in dialog pages. Fully shown short content has no redundant detail target.
+Excerpt links appear only when the excerpt omits content. Inline disclosures
+replace duplicate detail actions for authored text; operation details remain
+available when they expose retained source, output or metadata absent from the row.
+Bounded output summaries report clipping within a line separately from omitted
+lines, and command previews report omitted source bodies. Both retain access to
+the original detail content even when the preview occupies only one line.
 
 Main and children share parsing, grouping and viewport behavior. User messages
 have a distinct band; assistant text, operations and final-answer cards retain

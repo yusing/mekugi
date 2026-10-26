@@ -194,7 +194,8 @@ status truncates in the header so the title and toggles stay visible, and the de
 show it in full. A failure's message stays out of the header line: the header
 names the state in small type, and choosing it opens the full message beneath
 the header. Each
-transcript row offers its details, which open in the panel's Details tab; on narrow
+transcript row offers additional retained details when its content is not already
+available inline. Those details open in the panel's Details tab; on narrow
 screens the panel opens as a sheet over the transcript.
 
 Main shows live source from its admitted session family; a selected child shows

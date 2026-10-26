@@ -54,7 +54,7 @@ test("bound markers remain escaped inside code and emphasis", () => {
   assert.match(markedBlock("**[Image 1]**", [{ Start: 2, End: 11, Kind: 0 }]), /<strong><span/);
 });
 
-test("empty reasoning and output have no details", () => {
+test("inline authored content has no duplicate details action", () => {
   assert.equal(reasoningBody("**Checking**\n\n", "Checking"), "");
   assert.equal(
     hasDetails({ kind: "reasoning", values: [{ label: "Checking", body: "**Checking**" }] }),
@@ -66,8 +66,49 @@ test("empty reasoning and output have no details", () => {
       kind: "reasoning",
       values: [{ label: "Checking", body: "**Checking**\nEvidence" }],
     }),
+    false,
+  );
+  for (const kind of ["user", "text", "final", "reply", "start", "message"])
+    assert.equal(
+      hasDetails({ kind, text: "Complete text", values: [{ body: "Complete text" }] }),
+      false,
+    );
+  assert.equal(hasDetails({ kind: "tool", values: [{ code: "echo ok", tail: ["ok"] }] }), false);
+  assert.equal(
+    hasDetails({ kind: "tool", values: [{ code: "{}", detailCode: "{}", fenced: true }] }),
+    false,
+  );
+  assert.equal(
+    hasDetails({ kind: "tool", values: [{ detailCode: "original tool arguments" }] }),
     true,
   );
+  assert.equal(hasDetails({ kind: "tool", values: [{ tail: ["last"], tailOmitted: 5 }] }), true);
+  assert.equal(
+    hasDetails({ kind: "tool", values: [{ tail: ["bounded…"], tailClipped: true }] }),
+    true,
+  );
+  assert.equal(
+    hasDetails({
+      kind: "tool",
+      values: [{ code: "python3 - <<'PY'", fenced: true, pending: true, sourceOmitted: true }],
+    }),
+    true,
+  );
+  assert.equal(
+    hasDetails({ kind: "tool", values: [{ code: "printf ready", fenced: true, pending: true }] }),
+    false,
+  );
+});
+
+test("completed questions have no duplicate details, while hidden choices remain available", () => {
+  const value = {
+    kind: "op",
+    verb: "Asked",
+    body: "Which audience?\n└ Developers",
+    questions: [{ text: "Which audience?", answer: "Developers" }],
+  };
+  assert.equal(hasDetails({ kind: "question", values: [value] }), false);
+  assert.equal(hasDetails({ kind: "question", values: [{ ...value, sourceOmitted: true }] }), true);
 });
 
 test("search patterns and paths retain distinct operands", () => {

@@ -1,6 +1,5 @@
 ✓ worker finished                                                                           11:50:00
 │ An unrelated reply.
-│ ↩ Open reply
 ├─✓ finished · 1s
 │ Summary
 │ ───────
