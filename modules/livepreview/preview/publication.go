@@ -136,7 +136,7 @@ func (b *Session) Update(preview Preview, remove bool) {
 		return
 	}
 	at := slices.IndexFunc(b.previews, func(old Preview) bool { return old.ID == preview.ID })
-	if at < 0 && !preview.Complete && len(b.previews) >= 16 {
+	if at < 0 && !preview.Complete && len(b.previews) >= MaxPreviews {
 		return
 	}
 	// Only source hunks can open live cards. Metadata and capture failures
@@ -168,7 +168,7 @@ func (b *Session) Update(preview Preview, remove bool) {
 			b.completedPreviews = slices.DeleteFunc(b.completedPreviews, func(old Preview) bool {
 				return old.ID == preview.ID
 			})
-			if len(b.completedPreviews) == 16 {
+			if len(b.completedPreviews) == MaxPreviews {
 				b.completedPreviews = slices.Delete(b.completedPreviews, 0, 1)
 			}
 			b.completedPreviews = append(b.completedPreviews, preview)

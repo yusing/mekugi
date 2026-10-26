@@ -162,9 +162,9 @@ the header. Each
 transcript row offers its details, which open in the panel's Details tab; on narrow
 screens the panel opens as a sheet over the transcript.
 
-While the displayed agent writes a file, its live source replaces that agent's
-transcript above the composer, as in the terminal: one card per edit call with
-its editing tool and the diff or text so far. Prompts and docks below stay in
+Main shows live source from its admitted session family; a selected child shows
+only its own edits. Source replaces the transcript above the composer, as in the
+terminal: one card per edit call with its author, editing tool and diff or text so far. Prompts and docks below stay in
 place. Each completed call stays for its own 1.5-second settling interval, and
 the transcript returns, at the place it was left, when no cards remain. Show
 transcript hides the current cards until another call arrives. Calls already

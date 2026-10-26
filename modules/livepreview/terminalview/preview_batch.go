@@ -37,7 +37,7 @@ func (p *PreviewPane) batch(caller string) *previewBatch {
 	}
 	for _, id := range p.Order {
 		call := p.Views[id]
-		if call.Current.Caller != caller {
+		if caller != "/root" && call.Current.Caller != caller {
 			continue
 		}
 		files := call.Current.Files
@@ -159,7 +159,7 @@ func (p *PreviewPane) ExpireBatches(now time.Time, hold time.Duration) bool {
 	// Reconcile retained file viewports and selection as well as empty callers.
 	callers := p.Callers()
 	for caller := range p.batches {
-		if !slices.Contains(callers, caller) {
+		if !slices.Contains(callers, caller) && (caller != "/root" || len(callers) == 0) {
 			delete(p.batches, caller)
 		} else if changed {
 			p.batch(caller)

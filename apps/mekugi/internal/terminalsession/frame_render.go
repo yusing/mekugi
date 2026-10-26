@@ -108,7 +108,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	caller := view.Displayed.Caller
 	transcript := in.displayedTranscript()
 	transcript.ImageDemands, transcript.ImagePlacements = nil, nil
-	mainEdit := !in.LiveHidden && slices.Contains(in.Live.Callers(), caller)
+	mainEdit := !in.LiveHidden && (slices.Contains(in.Live.Callers(), caller) || caller == "/root" && len(in.Live.Callers()) > 0)
 	in.Agents.LivePreviews = nil
 	var roster []string
 	if shell.RosterLabel != "" {

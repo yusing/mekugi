@@ -3,6 +3,7 @@
   import { workspacePath } from "./diff";
   import DiffView from "./DiffView.svelte";
   import Path from "./Path.svelte";
+  import AgentName from "./AgentName.svelte";
   import type { Preview } from "./protocol";
   import Button from "./ui/Button.svelte";
   import Dot from "./ui/Dot.svelte";
@@ -27,7 +28,8 @@
   let primed = false;
   $effect(() => {
     const mine = previews.filter(
-      (p) => p.Caller === owner && (p.Files.length > 0 || p.Input.trim() !== ""),
+      (p) =>
+        (owner === "/root" || p.Caller === owner) && (p.Files.length > 0 || p.Input.trim() !== ""),
     );
     untrack(() => {
       const now = Date.now();
@@ -114,6 +116,7 @@
             ]}
           >
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-small">
+              <AgentName name={preview.Caller} current={owner} />
               {#if preview.Tool}<Tag mono>{preview.Tool}</Tag>{/if}
               {#if preview.Status.startsWith("unavailable: ")}<span class="text-muted"
                   >{preview.Status.slice(13)}</span

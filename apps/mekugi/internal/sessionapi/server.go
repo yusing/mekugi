@@ -235,6 +235,9 @@ func (s *Server) Publish(f Frame) error {
 		family, review = s.family()
 		if family != nil {
 			f.Review = review
+			if f.Session.Thread == family.Root {
+				f.Live = family.Live
+			}
 		}
 	}
 	reset := !s.published || f.Attachment != s.attachment || f.Session.Thread != s.session.Thread

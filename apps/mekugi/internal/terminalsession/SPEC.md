@@ -286,7 +286,8 @@ the full multiline composer.
 `/live` toggles [provisional source views](../../../../modules/livepreview/SPEC.md);
 `on` and `off` apply explicitly. Each launch or resume starts enabled; the choice
 lasts only for that frontend. Hidden views reserve no space. Live source replaces
-its owning thread's selected transcript above the composer, yielding to question,
+Main's selected transcript for admitted family edits, or a selected child's own
+transcript for its edits, above the composer, yielding to question,
 approval, picker and help docks.
 
 Each file gets at least 15 rows including its heading, plus one shared Live heading.

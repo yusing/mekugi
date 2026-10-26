@@ -68,6 +68,7 @@ func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsess
 			frame.FamilyRoot, frame.Members = w.threads.shared.Family(control.Thread)
 		}
 		if review != nil {
+			frame.LiveScope = review.Scope()
 			if previews := review.Preview(); previews != nil {
 				frame.Live = previews.Current()
 			}

@@ -307,6 +307,11 @@ known rejection restores that source rather than deleting text from a newer edit
 | `review` | Saved review for a live session | The whole value when its revision changes |
 | `live` | Current previews for a live session | The whole list when it changes, including `[]` to clear it |
 
+Main’s `live` list includes the current admitted family’s previews with original
+source attribution. Selecting a child keeps its own live list. Attachment
+replacement and scope withdrawal retire the corresponding previews independently
+of saved review and host execution.
+
 A feed is an object with `entries` and `order`. In a snapshot, `entries` holds
 every entry and `order` every entry's `seq` in display order. In a patch,
 `entries` holds only added or changed entries, and `order` is present when

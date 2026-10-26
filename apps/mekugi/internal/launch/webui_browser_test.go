@@ -26,6 +26,7 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
+	"github.com/yusing/mekugi/modules/livepreview/preview"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -398,6 +399,29 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "agent-roster-activity.png"))
 	}
+	// Main follows admitted child source without broadening the child's own view.
+	childValue, _ := alpha.frames.Load("child")
+	childSource := childValue.(sessionapi.Frame)
+	childSource.Live = []preview.Preview{{ID: "family-edit", Thread: "child", Caller: "/root/worker", Workspace: alpha.workdir,
+		Tool: "apply_patch", Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(alpha.workdir, "live.go"), "", "child_source_before\n")}}}
+	publishChildLive := func() {
+		t.Helper()
+		if err := alpha.publishFrame(childSource); err != nil {
+			t.Fatal(err)
+		}
+		if err := alpha.publishFrame(frame); err != nil {
+			t.Fatal(err)
+		}
+	}
+	publishChildLive()
+	run("wait", "--fn", `(() => { const live = document.querySelector('[aria-label="Live edits"]'); return live?.textContent.includes('child_source_before') && live.textContent.includes('worker'); })()`)
+	childSource.Live = slices.Clone(childSource.Live)
+	childSource.Live[0].Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(alpha.workdir, "live.go"), "", "child_source_after\n")}
+	publishChildLive()
+	run("wait", "--fn", `(() => { const live = document.querySelector('[aria-label="Live edits"]'); return live?.textContent.includes('child_source_after') && !live.textContent.includes('child_source_before'); })()`)
+	childSource.Live = nil
+	publishChildLive()
+	run("wait", "--fn", `!document.querySelector('[aria-label="Live edits"]')`)
 	// Agent selection attaches its own runtime while keeping Main's draft and
 	// mutation target. Retained-only agents never borrow Main's composer.
 	review := changes.ReviewView{Workspace: alpha.workdir, Revision: 1}

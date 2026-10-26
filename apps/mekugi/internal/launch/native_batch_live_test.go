@@ -68,6 +68,7 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/editor")
 	paint("native-batch-child-replaces-transcript", 140, 48)
 	u.testActivity(u.shell.Agents).setDisplayFilter(false, u.shell.Agents.Selected)
+	paint("native-batch-main-child-only", 140, 48)
 	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("main", "/root", "one", "two", "three"), false)
 	revealNativeDock(terminalTest(u))
 	paint("native-batch-main-overflow", 140, 48)
@@ -186,7 +187,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("child", "/root/editor", "child"), false)
 	revealNativeDock(terminalTest(u))
 	frame := paint(140, 48)
-	if !strings.Contains(frame, "one_line_40") || strings.Contains(frame, "child_line_40") || strings.Contains(frame, "OTHER_ACTIVITY") || strings.Contains(frame, "MAIN_TRANSCRIPT") || strings.Contains(frame, "EDITOR_TRANSCRIPT") {
+	if !strings.Contains(frame, "one_line_40") || !strings.Contains(frame, "child_line_40") || strings.Contains(frame, "OTHER_ACTIVITY") || strings.Contains(frame, "MAIN_TRANSCRIPT") || strings.Contains(frame, "EDITOR_TRANSCRIPT") {
 		t.Fatalf("wrong caller replacement:\n%s", frame)
 	}
 	for _, key := range []byte("\x02\x1b[5~") {
@@ -254,8 +255,8 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	revealNativeDock(terminalTest(u))
 	terminalTest(u).Live.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
 	frame = paint(140, 48)
-	if !strings.Contains(frame, "MAIN_TRANSCRIPT") || strings.Contains(frame, "child_line_40") {
-		t.Fatal("batch close affected another caller or failed to restore transcript")
+	if strings.Contains(frame, "MAIN_TRANSCRIPT") || !strings.Contains(frame, "child_line_40") {
+		t.Fatal("Main lost its surviving child preview")
 	}
 	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/editor")
 	if frame = paint(140, 48); !strings.Contains(frame, "child_line_40") {

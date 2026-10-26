@@ -387,8 +387,8 @@ func TestUISnapshotNativeBatchToolIdentity(t *testing.T) {
 	other := batchTestPreview("other-caller", "/root/worker", "src/worker.go")
 	other.Tool = "cat"
 	pane.Update(other, time.Now())
-	// A sibling's tool must not change the pinned caller-local header.
-	assertRowsSnapshot(t, "native_batch_tool_pinned", batchTestRender(t, &pane, 16))
+	// A child joins Main without changing its pinned file or tool.
+	assertRowsSnapshot(t, "native_batch_tool_family_pinned", batchTestRender(t, &pane, 16))
 }
 
 func TestUISnapshotNativeBatchMixedToolCall(t *testing.T) {

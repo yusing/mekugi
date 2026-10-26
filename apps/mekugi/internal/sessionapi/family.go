@@ -2,7 +2,9 @@ package sessionapi
 
 import (
 	"cmp"
+	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -11,16 +13,19 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/livepreview/preview"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // Family is shared navigation, independent of the selected runtime's transcript.
 // Threads includes admitted cold targets, but never history-only roster rows.
 type Family struct {
-	Root    string                    `json:"root"`
-	Threads []string                  `json:"threads"`
-	Agents  *activity.Publication     `json:"agents"`
-	Status  sessionpresentation.Label `json:"status"`
+	Live      []preview.Preview         `json:"-"`
+	LiveScope preview.Scope             `json:"-"`
+	Root      string                    `json:"root"`
+	Threads   []string                  `json:"threads"`
+	Agents    *activity.Publication     `json:"agents"`
+	Status    sessionpresentation.Label `json:"status"`
 }
 
 // Family borrows ordinary raw publications in the selected logical family.
@@ -131,8 +136,10 @@ func (p *familyState) project(root *Frame, frames map[string]familySource, works
 	defer p.mu.Unlock()
 	rosterSame := p.family != nil && p.family.Root == root.Session.Thread && len(p.sources) == len(frames) && slices.Equal(p.members, root.Members)
 	reviewSame := p.family != nil && len(p.sources) == len(frames)
+	liveSame := reviewSame
 	for id, frame := range frames {
 		old := p.sources[id]
+		liveSame = liveSame && old.Frame != nil && old.owner == frame.owner && old.Attachment == frame.Attachment && reflect.DeepEqual(old.Live, frame.Live) && reflect.DeepEqual(old.LiveScope, frame.LiveScope)
 		rosterSame = rosterSame && old.Frame != nil && old.Agents == frame.Agents &&
 			old.Session.Caller == frame.Session.Caller && old.Session.Role == frame.Session.Role
 		reviewSame = reviewSame && old.Frame != nil && old.owner == frame.owner && old.Attachment == frame.Attachment && sameFamilyReview(old.Review, frame.Review)
@@ -175,7 +182,11 @@ func (p *familyState) project(root *Frame, frames map[string]familySource, works
 		p.review, p.diffs = combined, make(map[string]*changes.ReviewView)
 	}
 	if !rosterSame {
-		p.family = &Family{Root: root.Session.Thread, Agents: familyRoster(root, frames)}
+		family := &Family{Root: root.Session.Thread, Agents: familyRoster(root, frames)}
+		if p.family != nil {
+			family.Live, family.LiveScope = p.family.Live, p.family.LiveScope
+		}
+		p.family = family
 		admitted := make(map[string]bool, len(frames)+len(root.Members))
 		for id := range frames {
 			admitted[id] = true
@@ -199,9 +210,62 @@ func (p *familyState) project(root *Frame, frames map[string]familySource, works
 		}
 		p.family.Threads = slices.Sorted(maps.Keys(admitted))
 	}
-	if !reviewSame || !rosterSame || p.family.Status != root.Status {
+	if !liveSame || !reviewSame || !rosterSame || p.family.Status != root.Status {
 		family := *p.family
 		family.Status = root.Status
+		if !liveSame {
+			previous := family.Live
+			family.Live = nil
+			family.LiveScope = preview.Scope{Workspaces: make(map[string]map[string]bool)}
+			current := make(map[string]preview.Preview)
+			local := make(map[string]bool)
+			var order []string
+			for _, id := range slices.Sorted(maps.Keys(frames)) {
+				source := frames[id]
+				for workspace, threads := range source.LiveScope.Workspaces {
+					if family.LiveScope.Workspaces[workspace] == nil {
+						family.LiveScope.Workspaces[workspace] = make(map[string]bool)
+					}
+					maps.Copy(family.LiveScope.Workspaces[workspace], threads)
+				}
+				for _, live := range source.Live {
+					if id == root.Session.Thread {
+						local[live.ID] = true
+					}
+					if _, seen := current[live.ID]; !seen {
+						current[live.ID] = live
+						order = append(order, live.ID)
+					}
+				}
+			}
+			// Main's own source stays accessible even when children fill their
+			// separate window. Keep surviving cards in place before filling slots.
+			total, children := len(current), 0
+			admit := func(id string) {
+				live, ok := current[id]
+				if !ok || !local[id] && children == preview.MaxPreviews {
+					return
+				}
+				if !local[id] {
+					children++
+				}
+				family.Live = append(family.Live, live)
+				delete(current, id)
+			}
+			for _, old := range previous {
+				admit(old.ID)
+			}
+			for _, id := range order {
+				admit(id)
+			}
+			if omitted := total - len(family.Live); omitted > 0 {
+				last := &family.Live[len(family.Live)-1]
+				if last.Footer != "" {
+					last.Footer += " · "
+				}
+				last.Footer += fmt.Sprintf("%d more live edits; select an agent to inspect", omitted)
+			}
+		}
 		if !reviewSame || !rosterSame {
 			roster := *family.Agents
 			if p.review != nil {

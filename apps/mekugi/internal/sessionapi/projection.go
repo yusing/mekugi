@@ -27,9 +27,10 @@ type Frame struct {
 	Members    []threadcontrol.Participant // Admitted coordination facts, never transcript history.
 	Main       *activitypresentation.Publication
 	// Agents is the child feed: each agent's own activity, and the roster.
-	Agents *activitypresentation.Publication
-	Review *changepresentation.ReviewView
-	Live   []preview.Preview
+	Agents    *activitypresentation.Publication
+	Review    *changepresentation.ReviewView
+	Live      []preview.Preview
+	LiveScope preview.Scope
 	// ChildReplySummary is the invocation's child_reply_summary feature.
 	ChildReplySummary bool
 }

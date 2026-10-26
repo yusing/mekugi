@@ -98,8 +98,11 @@ lineage. Root host-turn identity controls live/saved transitions. Child turns an
 stale completions cannot change the current root view. Thread/turn retirement removes
 only matching previews and rejects late updates, including queued completed updates.
 
-Preview visibility belongs to the displayed thread. Child edits cannot take over
-Main, and previews never replace saved review. Hiding presentation leaves updates,
+Main shows current previews from its admitted session family, with each source
+identified. A selected child shows only its own previews; unrelated families stay
+isolated. Main keeps its own source window plus a bounded window of surviving
+child calls and reports additional edits; selecting an agent exposes its own current previews. Previews
+never replace saved review. Hiding presentation leaves updates,
 capture and execution active; showing it reveals only current previews. Omitting
 the feature leaves retained change publication, Activity receipts and saved review
 available.

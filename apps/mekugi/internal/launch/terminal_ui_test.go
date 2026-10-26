@@ -111,18 +111,34 @@ func TestPaneScrollUnified(t *testing.T) {
 }
 
 func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
-	for _, child := range []bool{false, true} {
+	for _, pane := range []struct {
+		name, caller string
+		children     bool
+	}{
+		{"main-empty-roster", "/root", false},
+		{"main", "/root", true},
+		{"worker", "/root/worker", true},
+	} {
 		for _, saved := range []bool{false, true} {
-			for _, caller := range []string{"/root", "/root/worker"} {
-				t.Run(fmt.Sprintf("child=%t/diff=%t/caller=%s", child, saved, caller), func(t *testing.T) {
+			for _, caller := range []string{"/root", "/root/worker", "/root/peer"} {
+				t.Run(fmt.Sprintf("pane=%s/diff=%t/caller=%s", pane.name, saved, caller), func(t *testing.T) {
 					u, _ := newAppServerTestUI()
+					now := time.Unix(100, 0)
+					u.clock = func() time.Time { return now }
 
 					defer terminalTest(u).Diff.Close()
 					terminalTest(u).DiffOpen = saved
 
-					if child {
-						u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
+					if pane.children {
+						u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}, {Name: "/root/peer", Final: true}}
 					}
+					u.testActivity(u.shell.Agents).setDisplayFilter(pane.caller != "/root", pane.caller)
+					if got := u.attached.presentation.View().Displayed.Caller; got != pane.caller {
+						t.Fatalf("displayed caller = %q, want %q", got, pane.caller)
+					}
+					// Roster membership does not select a pane. Main includes admitted
+					// child previews; a selected child excludes Main and siblings.
+					visible := pane.caller == "/root" || caller == pane.caller
 					screen := vt.NewEmulator(120, 40)
 					defer screen.Close()
 					paint := func() {
@@ -150,11 +166,10 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					revealNativeDock(terminalTest(u))
 					preview.Complete = true
 					applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
-					now := time.Now()
 					terminalTest(u).Live.Tick(now.Add(previewview.CompletionHold - time.Millisecond))
 					paint()
-					if len(terminalTest(u).Live.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root") {
-						t.Fatal("retained Live batch did not respect the owning pane")
+					if len(terminalTest(u).Live.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != visible {
+						t.Fatalf("retained Live visibility = %t, want %t for %s", strings.Contains(screen.String(), "LIVE ·"), visible, pane.caller)
 					}
 					terminalTest(u).Live.Tick(now.Add(previewview.CompletionHold))
 					assertCollapsed()
@@ -162,8 +177,8 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
 					revealNativeDock(terminalTest(u))
 					paint()
-					if len(terminalTest(u).Live.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root") {
-						t.Fatal("new batch did not respect the owning pane")
+					if len(terminalTest(u).Live.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != visible {
+						t.Fatalf("new Live visibility = %t, want %t for %s", strings.Contains(screen.String(), "LIVE ·"), visible, pane.caller)
 					}
 				})
 			}

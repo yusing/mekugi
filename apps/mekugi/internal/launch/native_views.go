@@ -383,6 +383,9 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 		if n.threads != nil && n.threads.hub != nil {
 			var familyReview *changepresentation.ReviewView
 			frame.Family, familyReview = n.threads.hub.Family(control.Thread)
+			if frame.Family != nil && control.Thread == frame.Family.Root {
+				frame.Live, frame.LiveScope = frame.Family.Live, frame.Family.LiveScope
+			}
 			if familyReview != nil {
 				frame.Review = familyReview
 			}

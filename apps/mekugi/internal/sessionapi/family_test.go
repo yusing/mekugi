@@ -1,6 +1,7 @@
 package sessionapi
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/changehistory/capture"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -408,5 +410,128 @@ func TestFamilyReviewRevisionBelongsToCaptureOwner(t *testing.T) {
 				t.Fatal("unchanged capture owner lost its cached publication")
 			}
 		})
+	}
+}
+
+func TestFamilyLivePreviewsStayFreshAndScoped(t *testing.T) {
+	h := NewHub(t.Context(), nil)
+	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root", Caller: "/root"}})
+	child := familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: "/root/worker"},
+		Live:      []preview.Preview{{ID: "edit", Thread: "child", Caller: "/root/worker", Workspace: "/other", Input: strings.Repeat("source\n", 4000)}},
+		LiveScope: preview.Scope{Workspaces: map[string]map[string]bool{"/other": {"child": true}}}})
+	familyRuntime(h, nil, Frame{Session: Session{Thread: "outside"}, Live: []preview.Preview{{ID: "outside"}}})
+	root.server.family = func() (*Family, *changes.ReviewView) { return h.Family("root") }
+	child.server.family = func() (*Family, *changes.ReviewView) { return h.Family("child") }
+	source := *child.server.frame.Load()
+	family, _ := h.Family("root")
+	if len(family.Live) != 1 || family.Live[0].Caller != "/root/worker" || !family.LiveScope.Workspaces["/other"]["child"] {
+		t.Fatalf("family lost scoped child preview: %+v", family)
+	}
+	if same, _ := h.Family("root"); same != family {
+		t.Fatal("unchanged source rebuilt family preview")
+	}
+	// Roster-only updates retain the immutable preview list, without copying source.
+	frame := *root.server.frame.Load()
+	frame.Agents = familyActivity("root", "new status")
+	root.server.frame.Store(&frame)
+	if next, _ := h.Family("root"); &next.Live[0] != &family.Live[0] {
+		t.Fatal("roster update rebuilt unchanged previews")
+	}
+	rootSub := reviewSubscriber(t, root.server)
+	publishReviewFrame(t, root.server, frame)
+	if event := reviewEvent(t, rootSub, "snapshot"); !strings.Contains(string(event["live"]), "source") || strings.Contains(string(event["live"]), "outside") {
+		t.Fatalf("Main live publication = %s", event["live"])
+	}
+	if len(root.server.frame.Load().Live) != 0 {
+		t.Fatal("family previews fed back into runtime source")
+	}
+	// A new child snapshot updates Main even when its transcript is unchanged.
+	source.Live = slices.Clone(source.Live)
+	source.Live[0].Input, source.Live[0].Complete = "finished", true
+	child.server.frame.Store(&source)
+	publishReviewFrame(t, root.server, frame)
+	if event := reviewEvent(t, rootSub, "patch"); !strings.Contains(string(event["live"]), "finished") || !strings.Contains(string(event["live"]), `"Complete":true`) {
+		t.Fatalf("stale Main preview: %s", event["live"])
+	}
+	// Child selection never gains its sibling's previews.
+	familyRuntime(h, root, Frame{Session: Session{Thread: "sibling"}, Live: []preview.Preview{{ID: "sibling"}}})
+	childSub := reviewSubscriber(t, child.server)
+	publishReviewFrame(t, child.server, source)
+	if event := reviewEvent(t, childSub, "snapshot"); strings.Contains(string(event["live"]), "sibling") {
+		t.Fatal("selected child inherited sibling previews")
+	}
+	source.Live, source.LiveScope = nil, preview.Scope{}
+	child.server.frame.Store(&source)
+	delete(h.running, child)
+	family, _ = h.Family("root")
+	if len(family.Live) != 1 || family.Live[0].ID != "sibling" || family.LiveScope.Workspaces["/other"]["child"] {
+		t.Fatal("retired child left preview or admitted scope")
+	}
+}
+
+func TestFamilyPreviewCapacityKeepsNativeAttached(t *testing.T) {
+	h := NewHub(t.Context(), nil)
+	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "thread", Caller: "/root", Workspace: "/workspace"}})
+	for i := range 90 {
+		thread := fmt.Sprintf("child-%03d", i)
+		source := Frame{Session: Session{Thread: thread, Caller: "/root/" + thread}, LiveScope: preview.Scope{Workspaces: map[string]map[string]bool{"/workspace": {thread: true}}}}
+		producer := preview.New(nil).Attach(t.Context(), new(scope.Store))
+		producer.Enable()
+		producer.SetScope(source.LiveScope)
+		for j := range preview.MaxPreviews {
+			producer.Update(preview.Preview{ID: fmt.Sprintf("%s-edit-%d", thread, j), Thread: thread, Caller: source.Session.Caller, Workspace: "/workspace", Status: preview.PreviewEdit, Input: strings.Repeat("x", 47<<10)}, false)
+		}
+		source.Live = producer.Current()
+		producer.Close()
+		familyRuntime(h, root, source)
+	}
+	family, _ := h.Family("thread")
+	if len(family.Live) != preview.MaxPreviews || !strings.Contains(family.Live[len(family.Live)-1].Footer, "1424 more live edits") {
+		t.Fatal("family preview budget or omitted count was lost")
+	}
+	// New Main edits remain reachable without evicting pinned child calls.
+	rootSource := *root.server.frame.Load()
+	for i := range preview.MaxPreviews {
+		rootSource.Live = append(rootSource.Live, preview.Preview{ID: fmt.Sprintf("root-%d", i), Thread: "thread", Caller: "/root", Workspace: "/workspace", Input: "ROOT_OWN_EDIT"})
+	}
+	root.server.family = func() (*Family, *changes.ReviewView) { return h.Family("thread") }
+	rootSub := reviewSubscriber(t, root.server)
+	publishReviewFrame(t, root.server, rootSource)
+	if event := reviewEvent(t, rootSub, "snapshot"); !strings.Contains(string(event["live"]), "ROOT_OWN_EDIT") {
+		t.Fatal("surviving children hid Main's own edits")
+	}
+	combined, _ := h.Family("thread")
+	if len(combined.Live) != 2*preview.MaxPreviews || combined.Live[0].ID != family.Live[0].ID {
+		t.Fatal("Main's new calls displaced surviving child viewports")
+	}
+	family = combined
+
+	native := NewLive().Native()
+	source, request, failure := native.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", localNativeView)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	defer source.close()
+	frame := nativeTestFrame("thread", 1)
+	frame.Family, frame.Live, frame.LiveScope = family, family.Live, family.LiveScope
+	if err := native.Publish(request.Attachment, frame); err != nil {
+		t.Fatal(err)
+	}
+	if native.views[request.Attachment].ctx.Err() != nil {
+		t.Fatal("preview capacity disconnected Main")
+	}
+	// A retiring source releases its slots without changing another source's data.
+	first := family.Live[0].Thread
+	for runtime := range h.running {
+		raw := runtime.server.frame.Load()
+		if raw.Session.Thread == first {
+			delete(h.running, runtime)
+		} else if len(raw.Live) > 0 && raw.Live[len(raw.Live)-1].Footer != "" {
+			t.Fatal("display bound modified source")
+		}
+	}
+	next, _ := h.Family("thread")
+	if len(next.Live) != 2*preview.MaxPreviews || next.Live[0].Thread == first {
+		t.Fatal("retired source retained bounded slots")
 	}
 }
