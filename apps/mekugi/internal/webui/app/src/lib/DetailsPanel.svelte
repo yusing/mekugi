@@ -2,6 +2,7 @@
   import Alert from "./ui/Alert.svelte";
   import type { NativeDetails } from "../../../../sessionapi/protocol";
   import Code from "./Code.svelte";
+  import { pathLanguage } from "./highlight";
   import Markdown from "./Markdown.svelte";
   import ReferenceSelection from "./ReferenceSelection.svelte";
   import { semantic } from "./semantic.svelte";
@@ -39,7 +40,10 @@
     <Button variant="quiet" icon="close" label="Close details" onclick={onclose} />
   </header>
   <div bind:this={content} class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-6">
-    {#if details.file}<pre class={block}><Code code={details.file.Source} /></pre>{/if}
+    {#if details.file}<pre class={block}><Code
+          code={details.file.Source}
+          lang={pathLanguage(details.file.Path)}
+        /></pre>{/if}
     {#each details.view.Pages as page (page.ID)}
       <section class="not-first:mt-4 not-first:border-t not-first:border-rule not-first:pt-4">
         {#if page.Label || page.Path || page.Verb}<h3
@@ -52,9 +56,15 @@
           </h3>{/if}
         {#if page.Body}<Markdown text={page.Body} />{/if}
         {#if page.Code}<pre class={block}><Code code={page.Code} lang={page.Lang} /></pre>{/if}
-        {#if page.Tail.length}<pre class={block}>{page.Tail.join("\n")}</pre>{/if}
+        {#if page.Tail.length}<pre class={block}><Code
+              code={page.Tail.join("\n")}
+              lang={details.file ? pathLanguage(details.file.Path) : undefined}
+            /></pre>{/if}
         {#if details.output?.Page === page.ID}
-          <pre class={block}>{details.output.View.Lines.join("\n")}</pre>
+          <pre class={block}><Code
+              code={details.output.View.Lines.join("\n")}
+              lang={details.file ? pathLanguage(details.file.Path) : undefined}
+            /></pre>
           {#if details.output.View.Dropped}<p class="text-small text-muted">
               {details.output.View.Dropped} earlier lines are no longer kept.
             </p>{/if}

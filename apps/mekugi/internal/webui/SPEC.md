@@ -244,6 +244,8 @@ arguments and fenced code are syntax-highlighted; output is highlighted when
 Activity identifies its source, such as a file read or a diff, or when it is
 complete JSON. Unknown languages stay plain, except change statistics as
 `git diff --numstat` and `mchanges` print them, which show as a diff stat.
+File details infer syntax from the file path and use the same code rendering;
+unknown languages and oversized sources remain plain text.
 Rows show the time of day in a live session and the offset into the recording
 during replay. During replay, desktop keys follow terminal replay: Space or `p`
 pauses, `+`/`-` changes speed, `[`/`]` seeks and `r` restarts. At the end of the

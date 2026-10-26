@@ -82,7 +82,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	if err := os.WriteFile(previewFile, pngData.Bytes(), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, "notes.md"), []byte("Browser file details fixture"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, "notes.md"), []byte("# Browser file details fixture\n\n**Highlighted file content**"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	ledger := filepath.Join(directory, "host.jsonl")
@@ -333,6 +333,8 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--fn", `Array.from(document.querySelectorAll('.prose a')).some(a => a.textContent === 'Website' && a.getAttribute('href') === 'https://example.com/markdown')`)
 	run("find", "role", "link", "click", "--name", "Workspace notes", "--exact")
 	run("wait", "--text", "Browser file details fixture")
+	run("wait", "--fn", `Array.from(document.querySelectorAll('[aria-labelledby="details-heading"] pre')).every(pre => pre.querySelector('span[style]') && pre.textContent.includes('**Highlighted file content**'))`)
+	capture("file-details")
 	button("Close details")
 	message("/session")
 	run("wait", "--text", "Session metrics")
