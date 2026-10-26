@@ -9,6 +9,7 @@ import type {
   Entry,
   FeedChange,
   Input,
+  Listed,
   Message,
   Playback,
   Preview,
@@ -51,6 +52,7 @@ export class Stream {
   #id?: string;
   #machine?: Machine;
   #source?: () => void;
+  #discovery?: Listed[];
   #requests = new AbortController();
 
   connect(id: string, machine: Machine): void {
@@ -68,6 +70,30 @@ export class Stream {
     this.review = null;
     this.live = [];
     this.controlError = this.error = this.notice = undefined;
+    this.#follow(id, machine);
+  }
+
+  // Discovery, not a timer, reopens an ended logical thread. One list value
+  // permits one attempt, even if it still advertised the departing runtime.
+  recover(): void {
+    const machine = this.#machine;
+    const id = this.#id;
+    if (
+      !this.gone ||
+      !machine ||
+      !id ||
+      !this.#source ||
+      machine.sessions === this.#discovery ||
+      !machine.sessions?.some((session) => session.id === id)
+    )
+      return;
+    this.close();
+    this.#requests = new AbortController();
+    this.#follow(id, machine);
+  }
+
+  #follow(id: string, machine: Machine): void {
+    this.#discovery = machine.sessions;
     const lifetime = this.#requests.signal;
     let snapshot = false;
     this.#source = machine.subscribe(
@@ -100,6 +126,7 @@ export class Stream {
 
   #apply(message: Message, snapshot: boolean): void {
     if (snapshot) {
+      this.gone = undefined;
       this.session = message.session;
       this.playback = message.playback;
       this.input = message.input;

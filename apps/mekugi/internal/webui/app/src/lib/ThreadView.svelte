@@ -57,6 +57,14 @@
     return () => stream.close();
   });
   $effect(() => {
+    // Both arrival orders matter: discovery may precede the old stream's end.
+    if (stream.gone && machine.sessions) untrack(() => stream.recover());
+  });
+  $effect(() => {
+    if (live && !ended && semantic.unavailable && machine.sessions)
+      untrack(() => semantic.recover());
+  });
+  $effect(() => {
     const active = live && !ended;
     untrack(() => {
       if (active) semantic.connect(id, machine);

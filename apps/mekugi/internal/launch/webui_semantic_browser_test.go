@@ -594,6 +594,29 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	// Resuming replaces the host thread within the existing server session.
 	// Its list title remains the selected workspace, not the host picker label.
 	run("click", `nav[aria-label="Threads"] a`)
+	// Ending the runtime keeps the browser's logical-thread selection. A new
+	// native resume of that identity must restore both publications and input.
+	address := run("get", "url")
+	button("Session details")
+	button("End thread")
+	button("End")
+	run("wait", "--text", "This thread has ended. Its last state stays here.")
+	resumed, err := sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{Workspace: workspace, Args: []string{"resume", "saved"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resumed.Close()
+	run("wait", "--fn", "!!document.querySelector('#composer-text') && !document.body.textContent.includes('This thread has ended.')")
+	if run("get", "url") != address {
+		t.Fatal("runtime resume changed the selected logical thread")
+	}
+	run("fill", "#composer-text", "browser after native resume")
+	run("wait", "--fn", "document.querySelector('button[aria-label=Send]')?.disabled === false")
+	button("Send")
+	serverCLIAwait(t, func() bool {
+		data, _ := os.ReadFile(ledger)
+		return strings.Contains(string(data), "browser after native resume")
+	})
 	button("Session details")
 	button("End thread")
 	button("End")

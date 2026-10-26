@@ -112,6 +112,9 @@ inactive, and untrusted images never load automatically.
 Stopping interrupts Main. Explicit End names the thread and confirms that active
 work stops. A continuation command uses `mekugi resume ID` on the selected machine;
 it attaches to the active owner or resumes saved history after the owner ends.
+An ended thread keeps its last state visible. If the same logical thread resumes
+on that machine, its open browser view reconnects and restores live input without
+navigation or a page reload.
 
 Automatic resume keeps the current thread usable while opening the destination.
 If attachment fails, its draft, uploads and pending recovery remain in place and

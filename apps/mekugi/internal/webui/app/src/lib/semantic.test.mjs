@@ -34,7 +34,7 @@ globalThis.location = { hash: "" };
 globalThis.addEventListener = () => {};
 globalThis.history = { replaceState() {}, pushState() {} };
 const { semantic, textDraft } = await import("./semantic.svelte.ts");
-const { stream } = await import("./stream.svelte.ts");
+const { Stream, stream } = await import("./stream.svelte.ts");
 const { doing } = await import("./agents.ts");
 
 test("agent labels retain canonical display names before roster metadata arrives", () => {
@@ -148,6 +148,59 @@ test("an unavailable thread can reopen with the same identity after leaving its 
   }
 });
 
+test("ended streams recover only from fresh discovery and an authoritative snapshot", () => {
+  const source = new Stream();
+  for (const status of [404, 410]) {
+    for (const discoveryFirst of [false, true]) {
+      const subscriptions = [];
+      const owner = {
+        sessions: [{ id: "same-thread" }],
+        subscribe(method, params, event, state) {
+          const subscription = { event, state, stopped: false };
+          subscriptions.push(subscription);
+          return () => (subscription.stopped = true);
+        },
+      };
+      source.connect("same-thread", owner);
+      const first = subscriptions[0];
+      first.event({ kind: "snapshot", data: { session: { thread: "same-thread" } } });
+      if (discoveryFirst) owner.sessions = [{ id: "same-thread" }];
+      first.state("lost", { status, message: "Thread ended." });
+      if (!discoveryFirst) {
+        source.recover();
+        assert.equal(subscriptions.length, 1, "old discovery cannot revive an ended thread");
+        owner.sessions = [{ id: "another-thread" }];
+        source.recover();
+        assert.equal(subscriptions.length, 1, "unrelated discovery cannot retarget the view");
+        owner.sessions = [{ id: "same-thread" }];
+      }
+      source.recover();
+      source.recover();
+      assert.equal(subscriptions.length, 2, "one subscription per discovery value");
+      assert.equal(first.stopped, true);
+      assert.equal(source.gone.status, status, "last state stays ended until a snapshot arrives");
+      first.event({ kind: "snapshot", data: { session: { thread: "stale" } } });
+      assert.equal(source.session.thread, "same-thread");
+      const resumed = subscriptions[1];
+      const playback = discoveryFirst ? { paused: true, position: 0, until: 100 } : undefined;
+      resumed.event({
+        kind: "snapshot",
+        data: { session: { thread: "same-thread", title: "Resumed" }, playback },
+      });
+      assert.equal(source.gone, undefined);
+      assert.equal(source.session.title, "Resumed");
+      assert.deepEqual(source.playback, playback, "a replay replacement stays read-only");
+      source.recover();
+      assert.equal(subscriptions.length, 2);
+      source.close();
+      owner.sessions = [{ id: "same-thread" }];
+      resumed.state("lost", { status, message: "late closure" });
+      source.recover();
+      assert.equal(subscriptions.length, 2, "leaving the view prevents recovery");
+    }
+  }
+});
+
 function machine(id = "machine-one", thread = "thread-one", attachment = "view-one") {
   const requests = [],
     views = [];
@@ -206,6 +259,46 @@ function machine(id = "machine-one", thread = "thread-one", attachment = "view-o
   owner.snapshot();
   return owner;
 }
+
+test("control recovery is independent of publication recovery and retains unsent input", async () => {
+  const owner = machine();
+  const fresh = structuredClone(semantic.event);
+  fresh.attachment = "resumed-view";
+  fresh.frame.view.Version.Attachment = 2;
+  semantic.editor().text = "keep my draft";
+  const pending = semantic.send({ command: "/status" });
+  await tick();
+  owner.views[0].state("lost", { status: 503, message: "Retrying" });
+  owner.sessions = [{ id: "thread-one" }];
+  semantic.recover();
+  assert.equal(owner.views.length, 1, "ordinary transport retries keep their subscription");
+  owner.views[0].state("lost", { status: 404, message: "Thread ended" });
+  owner.sessions = [{ id: "another-thread" }];
+  semantic.recover();
+  assert.equal(owner.views.length, 1, "discovery must name the selected thread");
+  owner.sessions = [{ id: "thread-one" }];
+  semantic.recover();
+  semantic.recover();
+  assert.equal(owner.views.length, 2);
+  assert.equal(owner.views[0].stopped, 1);
+  assert.equal(semantic.editor().text, "keep my draft");
+  assert.equal(owner.requests.length, 1, "unresolved input is never resubmitted");
+  owner.requests[0].reject(new TransportError("Unknown outcome", "unknown"));
+  assert.match(await pending, /Unknown outcome/);
+  owner.views[1].event({ kind: "snapshot", data: fresh });
+  owner.views[1].state("open");
+  assert.equal(semantic.unavailable, false);
+  assert.equal(semantic.frame.view.Version.Attachment, 2);
+  const command = semantic.send({ command: "/status" });
+  await tick();
+  assert.equal(owner.requests[1].params.body.attachment, "resumed-view");
+  owner.requests[1].resolve({ version: fresh.frame.view.Version });
+  assert.equal(await command, undefined);
+  semantic.close();
+  owner.sessions = [{ id: "thread-one" }];
+  semantic.recover();
+  assert.equal(owner.views.length, 2, "leaving the view prevents control recovery");
+});
 
 test("mutations capture originating owner, attachment and version before entering the queue", async () => {
   const owner = machine();

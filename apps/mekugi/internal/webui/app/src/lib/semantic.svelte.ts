@@ -11,6 +11,7 @@ import type { Machine } from "./hub.svelte";
 import { errorText, newIdentity, TransportError, type Connection } from "./transport";
 import { open, view } from "./view.svelte";
 import type { PendingAttachment } from "./attachments";
+import type { Listed } from "./protocol";
 
 export function textDraft(text = "", cursorBack = 0): Draft {
   return {
@@ -52,6 +53,8 @@ type ControlView = {
   event?: NativeEvent;
   received: boolean;
   connection: Connection;
+  unavailable?: boolean;
+  discovery?: Listed[];
   error?: string;
   operationError?: string;
   outcome?: TransportError["kind"];
@@ -88,6 +91,7 @@ function controlView(thread: string, machine: Machine): ControlView {
 class Semantic {
   event = $state.raw<NativeEvent>();
   connection = $state<Connection>("connecting");
+  unavailable = $state(false);
   error = $state<string>();
   connectionError = $state<string>();
   pending = $state(0);
@@ -249,6 +253,7 @@ class Semantic {
     this.clearMenus();
     this.pending = source.pending;
     this.connection = source.connection;
+    this.unavailable = !!source.unavailable;
     this.error = source.operationError;
     this.copied = undefined;
     this.connectionError = source.error;
@@ -268,6 +273,18 @@ class Semantic {
     this.close();
   }
 
+  recover(): void {
+    const source = this.#source;
+    if (
+      !source?.unavailable ||
+      source.discovery === source.machine.sessions ||
+      !source.machine.sessions?.some((session) => session.id === source.thread)
+    )
+      return;
+    source.stop?.();
+    this.subscribe(source);
+  }
+
   retainInput(): (error?: string) => void {
     const source = this.#source;
     if (!source) return () => {};
@@ -285,6 +302,7 @@ class Semantic {
   }
 
   private subscribe(source: ControlView): void {
+    source.discovery = source.machine.sessions;
     source.stop = source.machine.subscribe(
       "view/attach",
       {
@@ -339,9 +357,11 @@ class Semantic {
         if (source.lifetime.signal.aborted) return;
         source.connection = connection;
         source.error = failure?.message;
+        source.unavailable = failure?.status === 404 || failure?.status === 410;
         if (connection !== "open") source.event = undefined;
         if (source === this.#source) {
           this.connection = connection;
+          this.unavailable = source.unavailable;
           if (connection !== "open") {
             this.clearMenus();
             this.event = undefined;
@@ -558,6 +578,7 @@ class Semantic {
     this.#source = undefined;
     this.event = undefined;
     this.connection = "connecting";
+    this.unavailable = false;
     this.error = undefined;
     this.connectionError = undefined;
     this.resuming = undefined;
