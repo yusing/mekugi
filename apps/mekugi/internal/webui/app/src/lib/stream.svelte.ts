@@ -57,6 +57,7 @@ export class Stream {
   #machine?: Machine;
   #source?: () => void;
   #discovery?: Listed[];
+  #attachment?: string;
   #requests = new AbortController();
 
   connect(id: string, machine: Machine): void {
@@ -64,6 +65,7 @@ export class Stream {
     this.close();
     this.#id = id;
     this.#machine = machine;
+    this.#attachment = undefined;
     this.#requests = new AbortController();
     this.connection = "connecting";
     this.session = this.playback = this.input = this.gone = undefined;
@@ -77,9 +79,9 @@ export class Stream {
     this.#follow(id, machine);
   }
 
-  // Discovery, not a timer, reopens an ended logical thread. One list value
-  // permits one attempt, even if it still advertised the departing runtime.
-  recover(): void {
+  // Fresh discovery or an acquired view permits one read retry. Prepared
+  // children are addressable through their view but absent from discovery.
+  recover(attachment?: string): void {
     const machine = this.#machine;
     const id = this.#id;
     if (
@@ -87,10 +89,14 @@ export class Stream {
       !machine ||
       !id ||
       !this.#source ||
-      machine.sessions === this.#discovery ||
-      !machine.sessions?.some((session) => session.id === id)
+      !(
+        (attachment && attachment !== this.#attachment) ||
+        (machine.sessions !== this.#discovery &&
+          machine.sessions?.some((session) => session.id === id))
+      )
     )
       return;
+    this.#attachment = attachment;
     this.close();
     this.#requests = new AbortController();
     this.#follow(id, machine);

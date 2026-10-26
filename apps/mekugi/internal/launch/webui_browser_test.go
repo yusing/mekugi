@@ -133,8 +133,27 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		}
 		return false
 	})
-	alpha.childThreads = []string{"child"}
+	alpha.childThreads = []string{"child", "cold"}
 	alpha.start("child")
+	coldReady := make(chan struct{})
+	alpha.api.BindChildAttachment(func(ctx context.Context, owner, target string) error {
+		if owner != "same-thread" || target != "cold" {
+			return fmt.Errorf("unexpected cold target %s from %s", target, owner)
+		}
+		select {
+		case <-coldReady:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		alpha.start(target)
+		return nil
+	})
+	rootBeforeCold, _ := alpha.frames.Load("same-thread")
+	coldFamily := rootBeforeCold.(sessionapi.Frame)
+	coldFamily.Members = []threadcontrol.Participant{{Thread: "same-thread", Task: "/root"}, {Thread: "cold", Parent: "same-thread", Task: "/root/cold"}}
+	if err := alpha.publishFrame(coldFamily); err != nil {
+		t.Fatal(err)
+	}
 	beta := newWebUIBrowserMachine(t, ctx, page.URL, "Beta", strings.Repeat("b", 64))
 	identity, err := exec.CommandContext(ctx, browser, "session", "id", "--scope", "worktree", "--prefix", "webui-transport").CombinedOutput()
 	if err != nil {
@@ -175,10 +194,18 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		run("wait", "--fn", "!document.querySelector('dialog[open]')")
 	}
 	// Threads from every machine are links in the sidebar, under their machine.
+	firstPublication := true
 	open := func(label string) {
 		t.Helper()
 		run("wait", "--text", label+" thread")
 		run("find", "text", label+" thread", "click", "--exact")
+		if firstPublication {
+			// Hold application delivery, not authentication or the native view.
+			// Controls must wait for shared authority even when the view wins.
+			run("wait", "--fn", "window.heldShared.length > 0 && window.liveBeforeShared")
+			run("eval", `if (document.querySelector('button[aria-label=Stop]')?.disabled === false) throw Error('Controls became actionable before shared live authority'); window.holdShared = false; for (const deliver of window.heldShared.splice(0)) deliver();`)
+			firstPublication = false
+		}
 		run("wait", "--fn", "document.querySelector('button[aria-label=Stop]')?.disabled === false")
 	}
 	// The first machine connects from the welcome form; later ones from Machines.
@@ -224,8 +251,64 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}
 
 	run("--engine", "chrome", "open", page.URL)
+	run("eval", `(() => {
+		const Original = window.WebSocket;
+		window.holdShared = true; window.heldShared = []; window.liveBeforeShared = false;
+		window.coldReads = 0; window.coldRefused = false;
+		window.WebSocket = class extends Original {
+			observations = new Set();
+			cold = new Set();
+			send(data) {
+				const request = JSON.parse(data);
+				if (request.method === 'session/subscribe' && request.params.thread) this.observations.add(request.params.subscription);
+				if (request.method === 'session/subscribe' && request.params.thread === 'cold') { this.cold.add(request.id); window.coldReads++; }
+				return super.send(data);
+			}
+			addEventListener(kind, listener, ...options) {
+				if (kind !== 'message') return super.addEventListener(kind, listener, ...options);
+				return super.addEventListener(kind, event => {
+					const message = JSON.parse(event.data);
+					if (this.cold.has(message.id) && message.error?.data?.status === 404) window.coldRefused = true;
+					if (window.holdShared && message.method === 'subscription/event') {
+						if (this.observations.has(message.params.subscription)) {
+							window.heldShared.push(() => listener.call(this, event));
+							return;
+						}
+						if (message.params.data.frame?.view?.Main?.ID === 'same-thread') window.liveBeforeShared = true;
+					}
+					listener.call(this, event);
+				}, ...options);
+			}
+		};
+	})()`)
 	run("snapshot", "-i")
 	add(alpha, "Alpha", strings.Repeat("a", 64))
+	// An admitted, cold child is absent from discovery. Its successful view
+	// attachment must retry the shared read that lost the preparation race.
+	run("fill", "#composer-text", "draft before cold child")
+	run("eval", `const selection = new URLSearchParams(location.hash.slice(1)); selection.set('thread', 'cold'); location.hash = selection.toString();`)
+	run("wait", "--fn", "window.coldRefused")
+	close(coldReady)
+	run("wait", "--fn", "document.querySelector('button[aria-label=Stop]')?.disabled === false && document.title === 'Alpha cold thread · Mekugi'")
+	if run("eval", "window.coldReads") != "2\n" {
+		t.Fatal("cold attachment did not make exactly one shared-read retry")
+	}
+	button("Stop")
+	select {
+	case intent := <-alpha.intents:
+		if intent.Thread != "cold" || intent.Action != sessionapi.Stop {
+			t.Fatalf("cold control reached wrong target: %+v", intent)
+		}
+	case <-ctx.Done():
+		t.Fatal("cold child control was not usable")
+	}
+	open("Alpha")
+	if run("get", "value", "#composer-text") != "draft before cold child\n" {
+		t.Fatal("cold navigation lost the source draft")
+	}
+	if err := alpha.publishFrame(rootBeforeCold.(sessionapi.Frame)); err != nil {
+		t.Fatal(err)
+	}
 	// Role assignments accumulate across publications, even when only one child
 	// is visible. Exercise the colour cube after the twelve preferred colours.
 	beforeRoles, _ := alpha.frames.Load("child")
@@ -845,6 +928,9 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 		familyRoot, caller, role := start.Resume, "/root", ""
 		if slices.Contains(machine.childThreads, start.Resume) {
 			familyRoot, caller, role = "same-thread", "/root/worker", "worker"
+			if start.Resume == "cold" {
+				caller = "/root/cold"
+			}
 		}
 		if err := machine.publishFrame(sessionapi.Frame{FamilyRoot: familyRoot, Session: sessionapi.Session{Thread: start.Resume, Caller: caller, Role: role, Title: title, Workspace: directory}, Input: &sessionapi.Input{Stoppable: true}}); err != nil {
 			return err

@@ -58,6 +58,7 @@ type ControlView = {
   received: boolean;
   connection: Connection;
   unavailable?: boolean;
+  noView?: boolean;
   discovery?: Listed[];
   error?: string;
   operationError?: string;
@@ -210,7 +211,7 @@ class Semantic {
       source === this.#source ||
       source === this.#destination ||
       this.#views.get(source.thread) !== source ||
-      !this.#source?.event ||
+      (!this.#source?.event && !this.#source?.noView) ||
       this.#source.connection !== "open" ||
       source.work ||
       source.inputs ||
@@ -359,18 +360,21 @@ class Semantic {
       },
       (connection, failure) => {
         if (source.lifetime.signal.aborted) return;
+        source.noView = failure?.status === 405 && source !== this.#destination;
+        if (source.noView) connection = "open";
         source.connection = connection;
-        source.error = failure?.message;
-        source.unavailable = failure?.status === 404 || failure?.status === 410;
-        if (connection !== "open") source.event = undefined;
+        source.error = source.noView ? undefined : failure?.message;
+        source.unavailable = source.noView || failure?.status === 404 || failure?.status === 410;
+        if (connection !== "open" || source.noView) source.event = undefined;
         if (source === this.#source) {
           this.connection = connection;
           this.unavailable = source.unavailable;
-          if (connection !== "open") {
+          if (connection !== "open" || source.noView) {
             this.clearMenus();
             this.event = undefined;
           }
-          this.connectionError = failure?.message;
+          this.connectionError = source.error;
+          if (source.noView) this.retireInactive();
         } else if (source === this.#destination && failure) this.failResume(failure.message);
       },
     );

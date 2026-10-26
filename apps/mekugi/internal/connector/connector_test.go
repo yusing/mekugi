@@ -73,6 +73,7 @@ func dial(t *testing.T, base string, headers http.Header) *websocket.Conn {
 	defer cancel()
 	conn, _, err := websocket.Dial(ctx, base+sessionapi.RPCPath, &websocket.DialOptions{
 		Subprotocols: []string{sessionapi.RPCSubprotocol}, HTTPHeader: headers,
+		CompressionMode: websocket.CompressionNoContextTakeover,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +128,7 @@ func rpcUpstream(t *testing.T, operation func(*websocket.Conn)) string {
 		if r.URL.RequestURI() != sessionapi.RPCPath || r.Header.Get(sessionapi.ProtocolHeader) != sessionapi.ProtocolVersion {
 			t.Errorf("incorrect upstream endpoint or version: %s %q", r.URL.RequestURI(), r.Header.Get(sessionapi.ProtocolHeader))
 		}
-		for _, key := range []string{"Authorization", "Cookie", "Proxy-Authorization", "Origin", "X-Mekugi-Thread", "X-Mekugi-Authority", "Forwarded", "X-Forwarded-For", "Idempotency-Key"} {
+		for _, key := range []string{"Authorization", "Cookie", "Proxy-Authorization", "Origin", "X-Mekugi-Thread", "X-Mekugi-Authority", "Forwarded", "X-Forwarded-For", "Idempotency-Key", "Sec-WebSocket-Extensions"} {
 			if r.Header.Get(key) != "" {
 				t.Errorf("forwarded caller header %s", key)
 			}
@@ -173,6 +174,43 @@ func echo(t *testing.T, conn *websocket.Conn) {
 		if err := conn.Write(t.Context(), typ, data); err != nil {
 			return
 		}
+	}
+}
+
+func TestConnectorCompressionNegotiation(t *testing.T) {
+	for _, mode := range []websocket.CompressionMode{websocket.CompressionDisabled, websocket.CompressionNoContextTakeover} {
+		t.Run(map[websocket.CompressionMode]string{websocket.CompressionDisabled: "uncompressed", websocket.CompressionNoContextTakeover: "no-context-takeover"}[mode], func(t *testing.T) {
+			socket := rpcUpstream(t, func(conn *websocket.Conn) { echo(t, conn) })
+			bridge, path := connect(t, socket)
+			server := httptest.NewServer(bridge)
+			defer server.Close()
+			conn, response, err := websocket.Dial(t.Context(), server.URL+sessionapi.RPCPath, &websocket.DialOptions{Subprotocols: []string{sessionapi.RPCSubprotocol}, CompressionMode: mode})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.CloseNow()
+			extension := response.Header.Get("Sec-WebSocket-Extensions")
+			if mode == websocket.CompressionDisabled && extension != "" {
+				t.Fatalf("unrequested compression: %s", extension)
+			}
+			if mode != websocket.CompressionDisabled && (!strings.Contains(extension, "client_no_context_takeover") || !strings.Contains(extension, "server_no_context_takeover")) {
+				t.Fatalf("compression retained context: %s", extension)
+			}
+			if reply := initialize(t, conn, readToken(t, path)); reply.Error != nil {
+				t.Fatal(reply.Error)
+			}
+			conn.SetReadLimit(sessionapi.RPCPublicationLimit)
+			payload := []byte(strings.Repeat(`{"entry":"retained authored content","revision":1}`+"\n", 2000))
+			for range 2 {
+				if err := conn.Write(t.Context(), websocket.MessageText, payload); err != nil {
+					t.Fatal(err)
+				}
+				_, received, err := conn.Read(t.Context())
+				if err != nil || string(received) != string(payload) {
+					t.Fatalf("remote encoding changed forwarded bytes: %v", err)
+				}
+			}
+		})
 	}
 }
 

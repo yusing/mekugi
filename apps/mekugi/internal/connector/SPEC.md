@@ -32,6 +32,9 @@ It never exposes the native endpoint. Subsequent messages retain their exact byt
 mutations are never retried. Both relay halves close on rotation or shutdown. Upload
 transport accommodates the shared API's decoded 32 MiB budget plus base64 and
 message metadata, without maintaining a separate media store.
+Remote WebSockets negotiate per-message compression without context takeover,
+with uncompressed fallback. The private socket stays uncompressed. Message limits
+apply to decompressed data, and compression changes neither token nor origin admission.
 
 Closing the connector closes its own connections and leaves server-owned work
 running. Each browser machine connection has an independent transport lifetime.

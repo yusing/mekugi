@@ -201,6 +201,37 @@ test("ended streams recover only from fresh discovery and an authoritative snaps
   }
 });
 
+test("a confirmed child attachment retries an unavailable shared read only once", () => {
+  for (const attachmentFirst of [false, true]) {
+    const source = new Stream();
+    const subscriptions = [];
+    const owner = {
+      sessions: [{ id: "root" }],
+      subscribe(_method, _params, event, state) {
+        const subscription = { event, state, stopped: false };
+        subscriptions.push(subscription);
+        return () => (subscription.stopped = true);
+      },
+    };
+    source.connect("child", owner);
+    if (attachmentFirst) source.recover("child-view");
+    subscriptions[0].state("lost", { status: 404, message: "No such thread." });
+    source.recover();
+    assert.equal(subscriptions.length, 1, "children are absent from discovery");
+    source.recover("child-view");
+    source.recover("child-view");
+    assert.equal(subscriptions.length, 2);
+    assert.equal(subscriptions[0].stopped, true);
+    subscriptions[1].state("lost", { status: 404, message: "Thread ended." });
+    source.recover("child-view");
+    assert.equal(subscriptions.length, 2, "a failed retry remains visible");
+    source.close();
+    subscriptions[1].state("lost", { status: 404, message: "Late closure" });
+    source.recover("another-view");
+    assert.equal(subscriptions.length, 2, "leaving prevents reacquisition");
+  }
+});
+
 test("role colours survive roster reordering and thread navigation", () => {
   const source = new Stream();
   let publish;
@@ -332,6 +363,26 @@ test("control recovery is independent of publication recovery and retains unsent
   owner.sessions = [{ id: "thread-one" }];
   semantic.recover();
   assert.equal(owner.views.length, 2, "leaving the view prevents control recovery");
+});
+
+test("a replay candidate has no live-view error and retains unsettled source input", () => {
+  const owner = machine();
+  semantic.editor().text = "source draft";
+  const settle = semantic.retainInput();
+  semantic.connect("replay", owner);
+  owner.views[1].state(
+    "lost",
+    new TransportError("Recorded playback has no live view.", "refused", 405),
+  );
+  assert.equal(semantic.connectionError, undefined);
+  assert.equal(semantic.event, undefined);
+  assert.equal(owner.views[0].stopped, 0);
+  assert.equal(owner.views.length, 2);
+  settle();
+  assert.equal(owner.views[0].stopped, 1);
+  semantic.connect("thread-one", owner);
+  owner.views.at(-1).snapshot();
+  assert.equal(semantic.editor().text, "source draft");
 });
 
 test("mutations capture originating owner, attachment and version before entering the queue", async () => {

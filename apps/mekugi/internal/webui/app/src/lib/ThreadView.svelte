@@ -57,23 +57,25 @@
   } = $props();
 
   $effect(() => {
-    untrack(() => stream.connect(id, machine));
+    untrack(() => {
+      stream.connect(id, machine);
+      semantic.connect(id, machine);
+    });
     return () => stream.close();
   });
   $effect(() => {
-    // Both arrival orders matter: discovery may precede the old stream's end.
-    if (stream.gone && machine.sessions) untrack(() => stream.recover());
+    // A cold child's view prepares its runtime independently of discovery.
+    const attachment =
+      semantic.connection === "open" && frame ? semantic.event?.attachment : undefined;
+    if (stream.gone && (machine.sessions || attachment)) untrack(() => stream.recover(attachment));
   });
   $effect(() => {
     if (live && !ended && semantic.unavailable && machine.sessions)
       untrack(() => semantic.recover());
   });
   $effect(() => {
-    const active = live && !ended;
-    untrack(() => {
-      if (active) semantic.connect(id, machine);
-      else if (ended || playback) semantic.release(id, machine);
-    });
+    if (ended) untrack(() => semantic.release(id, machine));
+    else if (live) untrack(() => semantic.connect(id, machine));
   });
   $effect(() => {
     const thread = id,

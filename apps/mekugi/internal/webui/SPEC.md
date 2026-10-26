@@ -66,6 +66,11 @@ Unusable image previews show an unavailable state. Preview
 URLs are released when an attachment leaves the rendered draft or its view closes;
 retained files can recreate previews when returning to that draft.
 
+The browser requests the shared thread publication and its live control view
+concurrently. Controls wait for both an authoritative live publication and a
+ready control view. Recorded playback's refusal of a live view is expected and
+does not produce retry or error chrome. Retained source inputs and consequences
+still settle independently of navigation.
 The browser opens the thread and attaches its control view before sending the
 first message through the same composer path as later input. Upload bytes are
 read once. If that first submission is refused, the opened thread stays available

@@ -260,6 +260,7 @@ func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// patterns, which also allow same-host origins without configuration.
 	downstream, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		Subprotocols: []string{sessionapi.RPCSubprotocol}, InsecureSkipVerify: true,
+		CompressionMode: websocket.CompressionNoContextTakeover,
 	})
 	if err != nil {
 		return
@@ -298,9 +299,10 @@ func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Build the upstream handshake from owned facts only. Caller credentials,
 	// Origin and authority headers never reach the private socket.
 	upstream, response, err := websocket.Dial(initializeCtx, "ws://session"+sessionapi.RPCPath, &websocket.DialOptions{
-		HTTPClient:   &http.Client{Transport: c.transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
-		HTTPHeader:   http.Header{sessionapi.ProtocolHeader: []string{sessionapi.ProtocolVersion}},
-		Subprotocols: []string{sessionapi.RPCSubprotocol},
+		HTTPClient:      &http.Client{Transport: c.transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		HTTPHeader:      http.Header{sessionapi.ProtocolHeader: []string{sessionapi.ProtocolVersion}},
+		Subprotocols:    []string{sessionapi.RPCSubprotocol},
+		CompressionMode: websocket.CompressionDisabled,
 	})
 	if err != nil {
 		if response != nil {
