@@ -14,7 +14,7 @@ func TestCommandArgumentPolicy(t *testing.T) {
 			t.Fatalf("%q: %+v %v", args, got, err)
 		}
 	}
-	for _, args := range [][]string{{"--max-tokens="}, {"--max-tokens=0"}, {"--max-tokens=01"}, {"--max-tokens=15501"}, {"--max-tokens=x"}, {"--max-tokens=4", "--max-tokens", "5"}} {
+	for _, args := range [][]string{{"--max-tokens="}, {"--max-tokens=0"}, {"--max-tokens=01"}, {"--max-tokens=x"}, {"--max-tokens=4", "--max-tokens", "5"}} {
 		if _, _, err := commandargs.ParseRunOptions(append(args, "echo")); err == nil || err.Error() != commandargs.MaxTokensArgumentError {
 			t.Fatalf("%q: %v", args, err)
 		}

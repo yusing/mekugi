@@ -167,7 +167,7 @@ func TestNativeFrontendInvalidArgumentsAndReadFailures(t *testing.T) {
 	path := nativeFixture(t, "valid.go", "package p\n")
 	for _, name := range []string{"mcat"} {
 		t.Run(name, func(t *testing.T) {
-			for _, args := range [][]string{{}, {"--max-tokens", "0", path}, {"--max-tokens", "15501", path}, {"--max-tokens", "1", "--max-tokens=2", path}} {
+			for _, args := range [][]string{{}, {"--max-tokens", "0", path}, {"--max-tokens", "1", "--max-tokens=2", path}} {
 				out := nativeExecute(t, name, args...)
 				if out.ExitCode != 1 || out.Stdout != "" || out.Stderr == "" {
 					t.Fatalf("invalid args %q: %+v", args, out)

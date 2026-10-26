@@ -210,6 +210,9 @@ func TestParseChangeRead(t *testing.T) {
 	if options, err := testChanges().Parse([]string{"--list", "--max-tokens", "32"}, workspace); err != nil || options.View != "list" || len(options.IDs) != 0 {
 		t.Fatalf("list options: %+v, %v", options, err)
 	}
+	if options, err := testChanges().Parse([]string{"--max-tokens", "15501", "amber1"}, workspace); err != nil || options.MaxTokens != commandargs.MaxOutputTokens {
+		t.Fatalf("capped budget: %+v, %v", options, err)
+	}
 	options, err := testChanges().Parse([]string{"amber1..amber2", "--summary", "apple1", "--", "file"}, workspace)
 	if err != nil || strings.Join(options.IDs, ",") != "amber1,amber2,apple1" {
 		t.Fatalf("range and flags: %+v, %v", options, err)
@@ -217,7 +220,6 @@ func TestParseChangeRead(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"read", "amber1"}, {"amber1", "--path", "file"}, {"amber1", "--", ""},
 		{"--summary", "--summary", "amber1"}, {"--max-tokens", "01", "amber1"},
-		{"--max-tokens", strconv.Itoa(commandargs.MaxOutputTokens + 1), "amber1"},
 		{"--workspace", workspace, "--workspace", workspace, "amber1"},
 		{"--cursor"}, {"--cursor", "", "amber1"}, {"--unknown", "amber1"},
 		{"--list", "--", "file"}, {"--list", "--summary"},

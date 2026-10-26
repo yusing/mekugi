@@ -68,8 +68,9 @@ command outcome. Sanitized measurements belong to
 ## Output and recovery
 
 All frontends accepting `--max-tokens N` also accept `--max-tokens=N` before
-their operand terminator or command boundary. Missing, invalid, out-of-range,
-and repeated token budgets use the same diagnostic:
+their operand terminator or command boundary. Canonical positive budgets above
+15500 are capped at 15500. Missing, malformed, nonpositive, and repeated token
+budgets use the same diagnostic:
 `--max-tokens requires one integer from 1 to 15500 and cannot repeat`.
 Continuation commands use `next_call: COMMAND`.
 

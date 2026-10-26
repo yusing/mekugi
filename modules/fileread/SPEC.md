@@ -70,9 +70,9 @@ Whole-file UTF-8 validation continues after stdout admission stops.
 ### Bounds, head, and tail
 
 `--max-tokens N` sets a strict GPT-5 stdout ceiling from 1 through 15,500,
-defaulting to 6,000. Options may surround operands before `--` and cannot
-repeat. Missing or invalid budgets reject before source content is read. Outer
-host output budgets remain independent.
+defaulting to 6,000. Larger positive budgets are capped at 15,500. Options may
+surround operands before `--` and cannot repeat. Missing or invalid budgets reject
+before source content is read. Outer host output budgets remain independent.
 
 Only complete raw rows are admitted. The first row that does not fit and all
 later rows are omitted; admitted stdout remains usable and the command exits

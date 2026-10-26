@@ -14,6 +14,14 @@ func TestFrontendInlineBudgets(t *testing.T) {
 			_, options, err := commandargs.ParseReadBundle(append(args, "file.go"))
 			return options.Budget, err
 		},
+		"mrun": func(args []string) (int, error) {
+			options, _, err := commandargs.ParseRunOptions(append(args, "echo"))
+			return options.Tokens, err
+		},
+		"msymbol": func(args []string) (int, error) {
+			options, err := commandargs.ParseSymbolQueries(append(args, "def", "file.go", "Value"))
+			return options.Budget, err
+		},
 		"mchanges": func(args []string) (int, error) {
 			options, err := testChanges().Parse(append(args, "amber1"), workspace)
 			return options.MaxTokens, err
@@ -26,7 +34,12 @@ func TestFrontendInlineBudgets(t *testing.T) {
 					t.Fatalf("%q: budget=%d err=%v", args, got, err)
 				}
 			}
-			for _, args := range [][]string{{"--max-tokens="}, {"--max-tokens=0"}, {"--max-tokens=01"}, {"--max-tokens=15501"}, {"--max-tokens=x"}, {"--max-tokens=4", "--max-tokens", "5"}} {
+			for _, args := range [][]string{{"--max-tokens=20000"}, {"--max-tokens", "20000"}} {
+				if got, err := parse(args); err != nil || got != commandargs.MaxOutputTokens {
+					t.Fatalf("%q: capped budget=%d err=%v", args, got, err)
+				}
+			}
+			for _, args := range [][]string{{"--max-tokens="}, {"--max-tokens=0"}, {"--max-tokens=01"}, {"--max-tokens=x"}, {"--max-tokens=4", "--max-tokens", "5"}, {"--max-tokens=20000", "--max-tokens=20000"}} {
 				if _, err := parse(args); err == nil || err.Error() != commandargs.MaxTokensArgumentError {
 					t.Fatalf("%q: err=%v", args, err)
 				}

@@ -8,6 +8,7 @@ import (
 func TestMRunSourceUsesExecutionGrammar(t *testing.T) {
 	for _, source := range []string{
 		"mrun --tail -n 35 git commit -m 'fix: x'",
+		"mrun --max-tokens=15501 git commit -m x",
 		"mrun --max-tokens=4000 -- git commit -m 'fix: x'",
 		"env -u BASH_ENV mrun -n 35 timeout 10 git commit -m 'fix: x'",
 		"mrun -n 35 mrun -n 4 git commit -m 'fix: x'",
@@ -25,7 +26,6 @@ func TestMRunSourceUsesExecutionGrammar(t *testing.T) {
 		"mrun -n 01 git commit -m x",
 		"mrun -n 1 -n 2 git commit -m x",
 		"mrun --tail --tail -n 2 git commit -m x",
-		"mrun --max-tokens=15501 git commit -m x",
 		"mrun -n $LIMIT git commit -m x",
 		"mrun -n 2 $COMMAND commit -m x",
 		"mrun --unknown -n 2 git commit -m x",

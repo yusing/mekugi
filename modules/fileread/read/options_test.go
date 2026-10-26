@@ -5,7 +5,7 @@ import "testing"
 func TestReaderConsumerOptionBoundaries(t *testing.T) {
 	path := nativeFixture(t, "source.go", "package source\nvar Value = 1\n")
 	for _, name := range []string{"mcat"} {
-		out := nativeExecute(t, name, path, "--max-tokens=15500")
+		out := nativeExecute(t, name, path, "--max-tokens=20000")
 		if out.ExitCode != 0 || out.Stdout == "" {
 			t.Fatalf("%s inline budget: %+v", name, out)
 		}

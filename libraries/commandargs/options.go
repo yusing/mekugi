@@ -11,14 +11,17 @@ import (
 // Source: internal/router/toolplugin/frontend_options.go:11:128@[e702dffa] shared command options.
 const MaxOutputTokens = 15_500
 
-const MaxTokensArgumentError = "--max-tokens requires one integer from 1 to 15500 and cannot repeat"
+const MaxTokensArgumentError = "--max-tokens requires one positive integer and cannot repeat"
 
 func ParseMaxTokens(value string) (int, error) {
-	number, err := strconv.Atoi(value)
-	if err != nil || number < 1 || number > MaxOutputTokens || strconv.Itoa(number) != value {
+	if value == "" || value[0] == '0' || strings.Trim(value, "0123456789") != "" {
 		return 0, errors.New(MaxTokensArgumentError)
 	}
-	return number, nil
+	number, err := strconv.Atoi(value)
+	if err != nil { // Canonical positive integers exceeding int also exceed the budget.
+		return MaxOutputTokens, nil
+	}
+	return min(number, MaxOutputTokens), nil
 }
 
 // Expand only the next option, never operands owned by a command or -- boundary.
@@ -79,6 +82,9 @@ func ParseReaderOptions(args []string, allowTail bool, defaultBudget int, takesV
 				n, err = ParseMaxTokens(raw)
 			}
 			if err != nil || repeated {
+				if name == "--max-tokens" {
+					return o, nil, errors.New(MaxTokensArgumentError)
+				}
 				return o, nil, fmt.Errorf("%s requires one integer from 1 to %d and cannot repeat", name, maximum)
 			}
 			if name == "-n" {

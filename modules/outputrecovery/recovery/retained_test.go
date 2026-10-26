@@ -64,7 +64,7 @@ func TestShellOutputReadRejectsInvalidState(t *testing.T) {
 	}
 	for _, flags := range []string{
 		"", "../outside", id + " --stdout --stderr",
-		id + " --max-tokens 0", id + " --max-tokens 01", id + " --max-tokens 15501",
+		id + " --max-tokens 0", id + " --max-tokens 01",
 		id + " --cursor", id + " --tail", id + " --stdout --stdout",
 	} {
 		if _, err := parseOutputRead(strings.Fields(flags)); err == nil {
@@ -205,7 +205,13 @@ func TestInlineBudgets(t *testing.T) {
 			t.Fatalf("%v: %+v %v", args, options, err)
 		}
 	}
-	for _, args := range [][]string{{"--max-tokens="}, {"--max-tokens=0"}, {"--max-tokens=01"}, {"--max-tokens=15501"}, {"--max-tokens=x"}, {"--max-tokens=4", "--max-tokens", "5"}} {
+	for _, args := range [][]string{{"--max-tokens=20000"}, {"--max-tokens", "20000"}} {
+		options, err := parseOutputRead(append(args, "amber"))
+		if err != nil || options.maxTokens != commandargs.MaxOutputTokens {
+			t.Fatalf("%v: capped budget: %+v %v", args, options, err)
+		}
+	}
+	for _, args := range [][]string{{"--max-tokens="}, {"--max-tokens=0"}, {"--max-tokens=01"}, {"--max-tokens=x"}, {"--max-tokens=4", "--max-tokens", "5"}} {
 		if _, err := parseOutputRead(append(args, "amber")); err == nil || err.Error() != commandargs.MaxTokensArgumentError {
 			t.Fatalf("%v: %v", args, err)
 		}

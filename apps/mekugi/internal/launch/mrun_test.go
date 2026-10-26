@@ -82,7 +82,7 @@ func TestShellRunnerMRun(t *testing.T) {
 			t.Parallel()
 			invocation := newShellWorkerTestInvocation(t.TempDir())
 			stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil,
-				`mrun --max-tokens 100 -- sh -c 'printf "stdout\n"; printf "stderr\n" >&2; exit 7'`, nil, invocation)
+				`mrun --max-tokens 15501 -- sh -c 'printf "stdout\n"; printf "stderr\n" >&2; exit 7'`, nil, invocation)
 			if stdout != "stdout\n" || stderr != "stderr\n" || status != 7 {
 				t.Fatalf("streams/status: %q, %q, %d", stdout, stderr, status)
 			}
@@ -165,7 +165,7 @@ func TestShellRunnerMRunRejectsBeforeExecution(t *testing.T) {
 	directory := t.TempDir()
 	invocation := newShellWorkerTestInvocation(directory)
 	for _, flags := range []string{
-		"", "--tail", "--max-tokens", "--max-tokens 0", "--max-tokens 15501",
+		"", "--tail", "--max-tokens", "--max-tokens 0",
 		"--max-tokens -1", "--max-tokens 01", "--max-tokens 1e3",
 		"--max-tokens 10 --max-tokens 20", "--max-tokens 10 --tail --tail",
 		"--max-tokens 10 --preview-bytes 5",

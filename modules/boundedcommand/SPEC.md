@@ -19,9 +19,9 @@ arguments belong to it. `--` explicitly marks the same boundary.
 The shared `commandargs.ParseRunOptions` grammar also supplies Activity's
 display-only wrapper recognition.
 
-`-n` selects up to N rows per stream. `--max-tokens` accepts 1–15500 and bounds
-the combined selected command text. When stdout is nonempty, stderr receives
-at most half that budget; stdout receives the remainder. Token-window selection
+`-n` selects up to N rows per stream. `--max-tokens` takes a positive integer,
+capped at 15500, and bounds the combined selected command text. When stdout is
+nonempty, stderr receives at most half that budget; stdout receives the remainder. Token-window selection
 may cut a row. `--tail` selects the ending instead of the beginning. Output
 outside the selected window is discarded, not promised as recoverable.
 

@@ -53,9 +53,9 @@ complete LF-framed row; a JSON page is a valid array of complete entries. A unit
 that cannot fit reports its estimated token requirement and an exact retry command, without
 a stack trace or nonadvancing reference. Units above the accepted maximum instead name
 byte-oriented recovery. Malformed path/range operands explain that REF must be a returned handle.
-The token budget includes frames, defaults to 8,000, and accepts 1 through 15,500. Page
-completion returns status 0; an incomplete page returns status 1 with the next
-call on stderr. The producer's status is preserved independently.
+The token budget includes frames, defaults to 8,000, and caps larger positive
+values at 15,500. Page completion returns status 0; an incomplete page returns
+status 1 with the next call on stderr. The producer's status is preserved independently.
 
 Compaction acquisition uses the same publication path for complete source
 snapshots. Its provider projection reads the original retained payload under the
