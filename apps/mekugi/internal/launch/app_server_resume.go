@@ -28,14 +28,12 @@ import (
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
-	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/BurntSushi/toml"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -317,9 +315,13 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 		if entry, visible := sessionpresentation.MainActivityEntry(attached.session.CoordinationEntry(entry, facts)); visible {
 			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 		}
-	case "imageView":
-		entry := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(attached.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
-			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Images: []string{item.Path}, SearchResults: sessionpresentation.SearchResults(facts)}}
+	case "imageView", "imageGeneration":
+		text, images := sessionpresentation.ImagePresentation(facts, method, attached.cwd)
+		if text == "" {
+			return
+		}
+		entry := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: presentationTime(clock),
+			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Images: images}}
 		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
 		text := sessionpresentation.ToolText(facts, attached.cwd)

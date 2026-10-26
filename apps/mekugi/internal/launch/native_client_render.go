@@ -135,7 +135,7 @@ func (c *nativeClientRenderer) replace(attachment uint64) {
 	u := c.terminal
 	c.views.ReplaceConversation(u)
 	*u.Main = terminalsession.Main{InterruptLocked: u.Main.InterruptLocked, PredictionsDisabled: u.Main.PredictionsDisabled}
-	u.Frame = terminalsession.Frame{Clipboard: u.Frame.Clipboard}
+	u.Frame = terminalsession.Frame{Clipboard: u.Frame.Clipboard, Images: u.Frame.Images}
 	u.Selection, u.Dialog = nil, nil
 	u.Live = previewui.PreviewPane{}
 	u.LiveHidden, u.DiffUnseen = false, false

@@ -13,6 +13,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -166,6 +167,7 @@ func (o replayOwners) attachment(source *playback.Source) *replayAttachment {
 }
 
 func (p *uiReplayPlayback) reset() {
+	p.previews.reset()
 	previous := p.ui
 	if previous != nil {
 		p.close()
@@ -296,5 +298,18 @@ func (p *uiReplayPlayback) paintFrame(out io.Writer, width, height int) error {
 	u.shell.Main.ContentPainted = false
 	u.detailFiles.prepareOutput(&u.session, u.shell)
 	view := u.transcriptView()
-	return paintNative(&u.detailFiles, u.shell, p.frameInput(), view, u.activitySource(view), p.ctx, out)
+	if p.imageTerminal != nil {
+		if p.graphics == nil {
+			p.graphics = new(terminalui.ImageFrame)
+		}
+		u.shell.Frame.Images = p.graphics
+		p.previews.prepare(p.imageTerminal, u.shell, p.frameInput().SourceContext())
+	}
+	if err := paintNative(&u.detailFiles, u.shell, p.frameInput(), view, u.activitySource(view), p.ctx, out); err != nil {
+		return err
+	}
+	if p.imageTerminal != nil {
+		p.previews.request(p.ctx, p.frameInput().SourceContext(), u.shell.Frame.ImageDemands)
+	}
+	return nil
 }

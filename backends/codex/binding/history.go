@@ -22,6 +22,7 @@ type ThreadItem struct {
 	Source           string           `json:"source"`
 	ProcessID        string           `json:"processId"`
 	Path             string           `json:"path"`
+	SavedPath        string           `json:"savedPath"`
 	Status           string           `json:"status"`
 	AggregatedOutput *string          `json:"aggregatedOutput"`
 	Query            string           `json:"query"`

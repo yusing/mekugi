@@ -135,7 +135,21 @@ func (q *nativePublications) pop() (publication, bool) {
 	return event, true
 }
 
-var nativeEncoding = json.JoinOptions(encoding, jsonv1.FormatDurationAsNano(true), json.Deterministic(true))
+var nativeEncoding = json.JoinOptions(encoding, jsonv1.FormatDurationAsNano(true), json.Deterministic(true), json.WithMarshalers(json.MarshalToFunc(marshalNativeImageEntry)))
+
+// Native thumbnails consume tool artifacts only. User images may contain large
+// inline payloads; their existing browser read must not inflate every native feed.
+func marshalNativeImageEntry(enc *jsontext.Encoder, entry activity.Entry) error {
+	type nativeEntry activity.Entry
+	value := struct {
+		nativeEntry
+		Images []string `json:"Images,omitzero"`
+	}{nativeEntry: nativeEntry(entry)}
+	if entry.Kind == "tool" {
+		value.Images = entry.Images
+	}
+	return json.MarshalEncode(enc, value)
+}
 
 func (s *Server) Native() *Native {
 	s.mu.Lock()

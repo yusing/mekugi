@@ -186,6 +186,11 @@ layout and navigation retain no source or output handle.
 
 ## History
 
+Viewed images and completed generated-image artifacts retain their explicit host
+source bindings in live and restored entries. Generated artifacts use the saved
+path, never an inferred filename or URL. Renderer capability determines previews;
+the text entry and authorized browser image read remain available independently.
+
 Each independent runtime restores its own retained host history. Root restoration
 preserves original item identity, timing, retained output and saved-review scope.
 Thread Control restores logical member identities without starting child runtimes.

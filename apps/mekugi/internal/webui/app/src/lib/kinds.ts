@@ -72,13 +72,12 @@ export function hasDetails(entry: Entry): boolean {
   );
 }
 
-// A viewed image: a tool entry whose one value views a path, with the image
-// bound for reading.
+// An image artifact has a bound source, never inferred from a path label.
 export function isView(entry: Entry): boolean {
   return (
     entry.kind === "tool" &&
     !!entry.images?.length &&
     entry.values?.length === 1 &&
-    entry.values[0].verb === "View"
+    ["View", "Generated"].includes(entry.values[0].verb ?? "")
   );
 }

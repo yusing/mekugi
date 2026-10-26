@@ -337,7 +337,11 @@ when scrolling away and back. Unchecked or missing paths remain ordinary text;
 opening still validates the current target.
 Activating a directory or other nonregular path copies its resolved path to the
 terminal clipboard without opening a dialog. Symlinks follow their target type.
-Opening a regular file reads its current UTF-8 contents, up to 8 MiB. Relative
+Opening a supported raster image shows a bounded preview in the file dialog,
+using the capabilities and decoding bounds of [transcript images](#transcript-images).
+The path remains selectable; image pixels stay outside text search and copy.
+Unavailable terminal graphics are explained in the dialog. Other regular files
+open their current UTF-8 contents, up to 8 MiB. Relative
 paths require session workspace metadata; absolute paths and local file URLs are
 accepted. Workspace paths display relatively, external paths absolutely. A
 selectable path precedes syntax-colored content. Line/range suffixes remain in
@@ -489,6 +493,24 @@ absent. Compare identical inputs, seed, speed and size, using 1.0x for represent
 latency. Acceleration changes batching, not recorded times, and cannot establish
 original wall-time latency. Profiling is [opt-in](../../../../docs/contributing/development.md#profile-live-sessions-and-replay)
 and creates no automatic profile files.
+
+## Transcript images
+
+Viewed images in expanded activity and generated images beside their saved paths
+have bounded thumbnails on Kitty- or Sixel-capable terminals. The existing
+transcript remains the navigation surface. Images are clipped to its viewport,
+excluded from searchable and selectable source text, and hidden beneath overlays.
+Unrelated redraws retain placements; scrolling, resize, attachment replacement,
+editor handoff and exit clear obsolete graphics. Loading and decoding run outside
+painting and input handling. Unsupported terminals and multiplexers, unavailable
+or oversized files, and Sixel terminals without measured cell dimensions preserve
+the text entry. Remote image URLs are never fetched automatically.
+
+Generated image bindings belong to the same detached publication and authorized
+image reads as viewed images, including restored history and browser consumers. Interactive offline replay uses
+the same previews and clears them on backward seek; headless replay loads no images.
+iTerm2 3.6+ uses Kitty local-file transport with temporary thumbnails retained until
+their cache entries retire. Other supported Kitty terminals use direct transport.
 
 ## Acceptance
 

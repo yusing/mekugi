@@ -37,6 +37,9 @@ import (
 )
 
 type uiReplayPlayback struct {
+	previews      imagePreviews
+	imageTerminal *os.File
+	graphics      *terminalui.ImageFrame
 	terminalViews terminalsession.Views
 	*playback.Player
 	replayOwners
@@ -55,6 +58,7 @@ func newUIReplayPlayback(terminalViews terminalsession.Views, owners replayOwner
 }
 
 func (p *uiReplayPlayback) close() {
+	p.ui.closeOutput(p.ui.shell)
 	p.ui.shell.Diff.Close()
 	p.ui.session.Retire()
 	p.ui.links.selectAttachment(0)
@@ -258,6 +262,12 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 		select {
 		case <-p.ctx.Done():
 			return p.ctx.Err()
+		case result := <-p.previews.results:
+			p.previews.finish(result)
+			if err := paint(); err != nil {
+				return err
+			}
+			continue
 		case result := <-p.ui.links.results:
 			p.ui.links.finish(result)
 			if err := paint(); err != nil {
@@ -433,7 +443,17 @@ func RunSessionUIReplay(terminalViews terminalsession.Views, views *sessionprese
 	if *headless {
 		err = run(nil, io.Discard)
 	} else {
-		err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1000;1006h", "\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error { return run(keys, stdout) })
+		p.imageTerminal = stdout
+		defer p.previews.close()
+		err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1000;1006h", "\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) (runErr error) {
+			defer func() {
+				if p.graphics != nil {
+					_, clearErr := io.WriteString(stdout, p.graphics.Clear())
+					runErr = errors.Join(runErr, clearErr)
+				}
+			}()
+			return run(keys, stdout)
+		})
 	}
 	elapsed := time.Since(started)
 	if err != nil {

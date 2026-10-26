@@ -39,6 +39,8 @@ type FrameInput struct {
 }
 
 type RenderedFrame struct {
+	Images                         terminalui.ImageFrame
+	ImageDemands                   []terminalui.ImageSource
 	FileLinkDemands                []string
 	Notices                        NoticeReceipt
 	Source                         SourceContext
@@ -104,6 +106,8 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		in.Live.Motion.Canvas.Background = in.Agents.Painter.Colors.Background
 	}
 	caller := view.Displayed.Caller
+	transcript := in.displayedTranscript()
+	transcript.ImageDemands, transcript.ImagePlacements = nil, nil
 	mainEdit := !in.LiveHidden && slices.Contains(in.Live.Callers(), caller)
 	in.Agents.LivePreviews = nil
 	var roster []string
@@ -218,6 +222,20 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		out.FileLinkDemands = append(out.FileLinkDemands, demands...)
 	}
 	out.PromptVisible = shell.PromptVisible(in.Main.PromptRect, in.Dialog != nil, selected)
+	if in.Dialog != nil && in.Selection == nil {
+		out.Images = in.Dialog.Images()
+		if source := in.Dialog.ImageSource(); source.Path != "" && out.Images.Protocol != terminalui.NoImages && in.Dialog.Selection == nil {
+			out.ImageDemands = []terminalui.ImageSource{source}
+		}
+	} else if in.Dialog == nil && in.Selection == nil && !in.Main.Keybindings && !in.Main.Menu.Open() && view.Panel == nil && view.Resume == nil && !mainEdit {
+		out.ImageDemands = transcript.ImageDemands
+		out.Images = terminalui.ImageFrame{Protocol: transcript.ImageProtocol, CellWidth: transcript.ImageCellWidth, CellHeight: transcript.ImageCellHeight}
+		for _, p := range transcript.ImagePlacements {
+			p.X += plan.Layout.Main.X + transcript.FeedLeft - 1
+			p.Y += plan.Layout.Main.Y + transcript.FeedTop - 1
+			out.Images.Placements = append(out.Images.Placements, p)
+		}
+	}
 	return out, nil
 }
 

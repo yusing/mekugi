@@ -34,6 +34,7 @@ type DetailPage struct {
 type DetailFile struct {
 	Path, Source string
 	First, Last  int
+	ImagePath    string `json:"ImagePath,omitzero"` // Admitted raster source for native frontend acquisition.
 }
 
 // DetailSource joins an existing feed publication to admitted command facts.

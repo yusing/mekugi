@@ -55,7 +55,12 @@
     const out: { entry: Entry; at: string; turn?: number; views?: Entry[] }[] = [];
     for (const entry of entries) {
       const last = out.at(-1);
-      if (last?.views && isView(entry) && entry.agent === last.entry.agent) {
+      if (
+        last?.views &&
+        isView(entry) &&
+        entry.agent === last.entry.agent &&
+        entry.values?.[0]?.verb === last.entry.values?.[0]?.verb
+      ) {
         last.views.push(entry);
         continue;
       }

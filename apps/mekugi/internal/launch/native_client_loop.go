@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"slices"
@@ -354,10 +355,19 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 		editors: make(map[[2]string]*composer.Editor), images: make(map[string]bool),
 	}
 	runtime.start(c, stdout)
+	c.renderer.terminal.Frame.Images = new(terminalui.ImageFrame)
 	defer runtime.close()
+	defer runtime.previews.close()
 	// Source: apps/mekugi/internal/launch/app_server_ui.go:468:468@42f43ded.
 	for {
-		err := terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1004;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1004;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+		err := terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1004;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1004;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) (runErr error) {
+			defer func() {
+				if images := runtime.active.renderer.terminal.Frame.Images; images != nil {
+					_, clearErr := io.WriteString(stdout, images.Clear())
+					runErr = errors.Join(runErr, clearErr)
+					*images = terminalui.ImageFrame{}
+				}
+			}()
 			tick := time.NewTicker(33 * time.Millisecond)
 			defer tick.Stop()
 			for !runtime.active.quit && runtime.active.handoff == nil {
@@ -376,6 +386,9 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 					call.complete = true
 				case result := <-c.links.results:
 					c.links.finish(result)
+					c.dirty = true
+				case result := <-runtime.previews.results:
+					runtime.previews.finish(result)
 					c.dirty = true
 				case key, ok := <-keys:
 					if !ok {
@@ -402,6 +415,7 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 					if c.event.Attachment != "" && (c.dirty || c.renderer.terminal.Live.Tick(now)) {
 						source := c.renderer.terminal.FrameInput(now, mekugiVersion()).SourceContext()
 						c.links.selectAttachment(source.Attachment)
+						runtime.previews.prepare(stdout, c.renderer.terminal, source)
 						c.renderer.frame.FileLinks = c.links.known(source)
 						c.hydrateDetails()
 						painted, err := c.renderer.render(ctx, stdout, now, mekugiVersion())
@@ -413,6 +427,7 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 							c.enqueue(sessionapi.NativeOperation{Output: &sessionapi.NativeOutputDemand{Agent: c.event.Frame.View.Displayed.ID != c.event.Frame.View.Main.ID, Demands: painted.Demands}}, nil, func(error) { c.hydrating = false })
 						} else if len(painted.Demands) == 0 {
 							c.links.request(c.ctx, painted.Source, painted.FileLinkDemands)
+							runtime.previews.request(runtime.ctx, source, painted.ImageDemands)
 							c.dirty = false
 							receipt := sessionapi.NativeNoticeReceipt{Claim: c.renderer.frame.Notice, Attachment: painted.Notices.Attachment, Feedback: painted.Notices.Feedback, Composer: painted.Notices.Composer, Content: painted.Notices.Content}
 							c.stageReceipt(&receipt)

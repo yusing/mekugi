@@ -35,7 +35,12 @@ const (
 // Main and child transcripts share this renderer. Entries carry
 // sequence numbers, so a reconnect snapshot merges without duplicating retained rows.
 type View struct {
-	ChildReplySummary bool // Invocation-selected default disclosure for linked child replies.
+	ImageProtocol                   terminalui.ImageProtocol
+	ImageCellWidth, ImageCellHeight int
+	ImagePreviews                   map[terminalui.ImageSource]*terminalui.ImagePreview
+	ImageDemands                    []terminalui.ImageSource
+	ImagePlacements                 []terminalui.ImagePlacement
+	ChildReplySummary               bool // Invocation-selected default disclosure for linked child replies.
 
 	Clock           func() time.Time // Shared with the owning replay UI, nil for live time.
 	publication     *activitypresentation.Publication
@@ -1127,6 +1132,7 @@ func (v *View) RenderStrip(rows []activitypresentation.AgentRow, width int) stri
 }
 
 type Feed struct {
+	images    []feedImage
 	Spans     []Span
 	paints    []liveActivityPaint // Cold runs to decorate if they enter the viewport.
 	Lines     []string
@@ -1536,6 +1542,7 @@ func (v *View) Viewport(feed Feed, rows int) []string {
 		return make([]string, rows)
 	}
 	v.Offset, v.Following = v.viewportPosition(feed, rows)
+	v.imageViewport(feed, rows)
 	v.PendingTarget = 0
 	v.FeedSpans = feed.Spans
 	v.FeedLines, v.FeedRows = len(feed.Lines), max(1, rows)

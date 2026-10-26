@@ -99,3 +99,21 @@ func TestPublishedImageFailures(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeImageSourcesExcludeUserPayloads(t *testing.T) {
+	entries := []activity.Entry{{Facts: activity.Facts{Seq: 1, Kind: "text", Images: []string{"data:image/png;base64,user-private"}}}, {Facts: activity.Facts{Seq: 2, Kind: "tool", Images: []string{"/work/artifact.png"}}}}
+	wire, err := json.Marshal(&activity.Publication{Entries: entries}, nativeEncoding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got activity.Publication
+	if err := json.Unmarshal(wire, &got, nativeEncoding); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Entries[0].Images) != 0 || len(got.Entries[1].Images) != 1 || got.Entries[1].Images[0] != "/work/artifact.png" {
+		t.Fatalf("native source projection: %s", wire)
+	}
+	if len(entries[0].Images) != 1 {
+		t.Fatal("projection mutated semantic source")
+	}
+}

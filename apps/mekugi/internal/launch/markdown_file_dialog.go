@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
 	"io"
 	"net/url"
 	"os"
@@ -25,6 +26,7 @@ import (
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -75,6 +77,7 @@ type detailFiles struct {
 	fileReads    <-chan markdownFileResult
 	pendingFile  *terminalsession.ContentDialog
 	copyFilePath func(string)
+	textOnly     bool // Remote-human links retain the text-only file contract.
 }
 
 type markdownFileResult struct {
@@ -87,6 +90,7 @@ type markdownFileResult struct {
 	err          error
 	classified   bool
 	copyPath     bool
+	image        bool
 }
 
 // openMarkdownFile admits a selection before starting one bounded physical read.
@@ -122,6 +126,7 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 	u.cancelRead = cancel
 	results := make(chan markdownFileResult, 2)
 	u.fileReads = results
+	images := !u.textOnly
 	go func(slot chan struct{}) {
 		info, err := os.Stat(path)
 		if os.IsNotExist(err) {
@@ -141,7 +146,7 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 			loading := result
 			loading.classified = true
 			results <- loading
-			data, err = readMarkdownFile(ctx, result.path)
+			data, result.image, err = readMarkdownFile(ctx, result.path, images)
 			result.copyPath = errors.Is(err, errMarkdownNonregular)
 			if result.copyPath {
 				err = nil
@@ -200,11 +205,13 @@ func (u *detailFiles) finishMarkdownFile(session *sessionpresentation.Attachment
 	content := textsanitize.Safe(result.source, false)
 	if result.err != nil {
 		block.Kind, block.Verb, block.Body = "error", "", textsanitize.Safe(result.err.Error(), false)
+	} else if result.image {
+		block.Verb = "View"
 	} else {
 		block.Tail = strings.Split(content, "\n")
 	}
 	pages := []activitypresentation.Value{block}
-	if format, _ := sourcekind.Classify(result.path); result.err == nil && format.Kind == "markdown" {
+	if format, _ := sourcekind.Classify(result.path); result.err == nil && !result.image && format.Kind == "markdown" {
 		rendered := block
 		rendered.Body, rendered.Tail = content, nil
 		rendered.DetailLines = len(block.Tail)
@@ -212,6 +219,9 @@ func (u *detailFiles) finishMarkdownFile(session *sessionpresentation.Attachment
 	}
 	u.stopFileRead()
 	d.File = &activitypresentation.DetailFile{Path: display, Source: result.source, First: result.first, Last: result.last}
+	if result.err == nil && result.image {
+		d.File.ImagePath = result.path
+	}
 	// Publish source now; layout applies tabs and the reveal after any frozen
 	// loading selection is cleared. Changing chrome here would dismiss it.
 	u.replaceDetails(session, terminal, activitypresentation.DetailPages(pages))
@@ -243,15 +253,16 @@ func markdownFileLocation(path string) (base, location string, first, last int) 
 var errMarkdownNonregular = errors.New("file is not a regular file")
 
 // Keep this auxiliary read bounded without applying the composer's attachment
-// envelope budget. Larger or binary files show a copyable read error.
-func readMarkdownFile(ctx context.Context, path string) ([]byte, error) {
+// envelope budget. Raster images use the shared decoder's bounds; other binary
+// files and oversized text show a copyable read error.
+func readMarkdownFile(ctx context.Context, path string, images bool) ([]byte, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	const limit = 8 << 20
 	f, err := sourceparse.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer f.Close()
 	stop := context.AfterFunc(ctx, func() { _ = f.Close() })
@@ -259,25 +270,45 @@ func readMarkdownFile(ctx context.Context, path string) ([]byte, error) {
 	// The selected path may have been replaced before it was opened.
 	info, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, errMarkdownNonregular
+		return nil, false, errMarkdownNonregular
 	}
 	data, err := io.ReadAll(io.LimitReader(f, limit+1))
 	if err != nil {
-		return nil, err
-	}
-	if len(data) > limit {
-		return nil, fmt.Errorf("file exceeds %d-byte dialog limit", limit)
-	}
-	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
-		return nil, fmt.Errorf("file is not UTF-8 text")
+		return nil, false, err
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return data, nil
+	// A recognizable header can also begin ordinary text, such as a document
+	// about GIF89a. Preserve the existing text contract before raster admission.
+	if len(data) <= limit && utf8.Valid(data) && bytes.IndexByte(data, 0) < 0 {
+		return data, false, nil
+	}
+	if images {
+		// Recognition uses the admitted descriptor, never the filename suffix.
+		// The physical frontend owns pixel acquisition and terminal resources.
+		prefix := io.MultiReader(bytes.NewReader(data), io.LimitReader(f, terminalui.ImageInputLimit-int64(len(data))))
+		_, format, imageErr := image.DecodeConfig(prefix)
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
+		}
+		if imageErr == nil || format != "" {
+			if imageErr != nil {
+				return nil, false, fmt.Errorf("image preview unavailable: %w", imageErr)
+			}
+			if info.Size() > terminalui.ImageInputLimit {
+				return nil, false, fmt.Errorf("image exceeds %d-byte preview limit", terminalui.ImageInputLimit)
+			}
+			return nil, true, nil
+		}
+	}
+	if len(data) > limit {
+		return nil, false, fmt.Errorf("file exceeds %d-byte dialog limit", limit)
+	}
+	return nil, false, fmt.Errorf("file is not UTF-8 text")
 }
 
 func (u *detailFiles) stopFileRead() {

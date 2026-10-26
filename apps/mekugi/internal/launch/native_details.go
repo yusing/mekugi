@@ -106,6 +106,7 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 	publishActivity(&v.attached, v.shell)
 	switch request.Kind {
 	case sessionapi.NativeFileDetails:
+		v.files.textOnly = v.remoteHuman
 		copyReservation := v.reserveFileCopy()
 		if copyReservation == nil {
 			return "Clipboard delivery capacity is exhausted."

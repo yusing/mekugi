@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -296,6 +297,19 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	// The process dock can leave this lazy image above the transcript scrollport.
 	run("eval", "document.querySelector('figure')?.scrollIntoView({block:'center'})")
 	run("wait", "--fn", "document.querySelector('img[alt=\"Attached image 1\"]')?.naturalWidth === 1")
+	generated := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 98, Agent: "Main", Kind: "tool", Text: "Generated `artwork.png`", Images: []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(previewFixturePNG(t))}}}
+	if err := childServer.(*sessionapi.Server).Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: "child", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{
+		{Facts: activitypresentation.Facts{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}}},
+		{Facts: generated.Facts, Values: generated.Values()},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "artwork.png")
+	run("eval", "Array.from(document.querySelectorAll('figure')).at(-1)?.scrollIntoView({block:'center'})")
+	run("wait", "--fn", "document.querySelector('img[alt=\"Generated image artwork.png\"]')?.naturalWidth === 160")
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("screenshot", filepath.Join(artifacts, "generated-image.png"))
+	}
 	run("find", "role", "link", "click", "--name", "Child file", "--exact")
 	run("wait", "--text", "Child file target reached its runtime.")
 	select {

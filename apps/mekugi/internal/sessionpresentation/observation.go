@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/contracts/observation"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
-	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
@@ -278,9 +276,11 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 
 		case "mcpToolCall":
 			entries = append(entries, s.CoordinationEntry(ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, CallID: id, Observed: now, Native: native}, item))
-		case "imageView":
-			native.Images = []string{item.Path}
-			entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(in.Workspace, item.Path)), CallID: id, Observed: now, Native: native})
+		case "imageView", "imageGeneration":
+			if text, images := ImagePresentation(item, method, in.Workspace); text != "" {
+				native.Images = images
+				entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "tool", Text: text, CallID: id, Observed: now, Native: native})
+			}
 		case "fileChange":
 			if len(item.Changes) > 0 {
 				native.EditPages = activitypresentation.HostEditPages(item, in.Workspace, method)

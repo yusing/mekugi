@@ -833,6 +833,7 @@ export type DetailFile = {
   "Source": string;
   "First": number;
   "Last": number;
+  "ImagePath"?: string;
 };
 
 export type OutputView = {
@@ -1006,6 +1007,7 @@ export type MetricsSnapshot = {
 };
 
 export type Facts = {
+  "Images"?: Array<string>;
   "Retained": boolean;
   "TextRef": ItemRef;
   "Seq": number;

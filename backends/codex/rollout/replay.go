@@ -169,6 +169,9 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 
 func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 	var p struct {
+		SavedPath                                          string `json:"saved_path"`
+		SavedArtifact                                      string `json:"savedPath"`
+		Kind                                               string `json:"kind"`
 		Source                                             string `json:"source"`
 		Type, ID, Status, Text, Delivery, Phase, Cwd, Path string
 		Content                                            jsontext.Value `json:"content"`
@@ -195,9 +198,14 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 	if i.Type != "" {
 		i.Type = strings.ToLower(i.Type[:1]) + i.Type[1:]
 	}
+	if i.Type == "extension" && p.Kind == "image_gen.generation" {
+		i.Type, p.SavedPath = "imageGeneration", p.SavedArtifact
+	}
 	switch i.Type {
 	case "mcpToolCall":
 		i.Server, i.Arguments, i.Result, i.Error = p.Server, p.Arguments, p.Result, p.Error
+	case "imageGeneration":
+		i.SavedPath = p.SavedPath
 	case "userMessage", "reasoning", "contextCompaction", "imageView":
 	case "agentMessage":
 		var content []struct {

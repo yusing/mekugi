@@ -6,6 +6,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -22,6 +23,9 @@ type ContentDialog struct {
 	Pages        []sessionpresentation.DetailItem
 	Processes    bool
 	File         *activitypresentation.DetailFile
+	Image        *terminalui.ImagePreview // Borrowed from the physical frontend's image cache.
+	ImageReady   bool
+	imageLine    int
 	laidKey      contentDialogKey
 	modelVisible map[string]bool
 }
@@ -37,6 +41,10 @@ type contentDialogKey struct {
 	modelVisible bool
 	theme        diffrender.Theme
 	file         *activitypresentation.DetailFile
+	image        *terminalui.ImagePreview
+	imageColumns int
+	imageRows    int
+	imageMessage string
 }
 
 // Update applies only detached membership and terminal tab navigation.
@@ -96,6 +104,18 @@ func (d *ContentDialog) Layout(width int) {
 		}
 	}
 	key := contentDialogKey{modelVisible: page.ModelVisible, id: page.ID, revision: page.Revision, width: width, version: page.OutputVersion, retained: page.Retained, theme: d.View.Painter.Theme, file: d.File}
+	key.image = d.Image
+	key.imageColumns, key.imageRows = d.Image.Size(width, d.View.ImageProtocol, d.View.ImageCellWidth, d.View.ImageCellHeight)
+	if d.ImageSource().Path != "" {
+		switch {
+		case d.View.ImageProtocol == terminalui.NoImages:
+			key.imageMessage = "Image preview unavailable: terminal graphics are unsupported."
+		case d.ImageReady && d.Image == nil:
+			key.imageMessage = "Image preview unavailable: unreadable, invalid, or exceeds image decoding limits."
+		case d.Image == nil:
+			key.imageMessage = "Loading image…"
+		}
+	}
 	var output *activitymodel.OutputView
 	if d.Output != nil && d.Output.Page == page.ID && d.Output.Version == page.OutputVersion {
 		output = &d.Output.View
@@ -119,8 +139,29 @@ func (d *ContentDialog) Layout(width int) {
 	if d.File != nil && d.File != d.laidKey.file {
 		d.RevealLine(d.File.First)
 	}
-	d.SetDocument(d.View.Painter.DetailDocument(page.DetailPage, output, d.File, width), width)
+	document := d.View.Painter.DetailDocument(page.DetailPage, output, d.File, width)
+	if d.ImageSource().Path != "" {
+		document.Text = d.File.Path
+		d.imageLine = len(document.Lines)
+		if key.imageMessage != "" {
+			document.Add(terminalui.DialogLine{Text: key.imageMessage, Wrap: true})
+			document.Text += "\n\n" + key.imageMessage
+		}
+		for range key.imageRows {
+			document.Add(terminalui.DialogLine{})
+		}
+	}
+	d.SetDocument(document, width)
 	d.laidKey = key
+}
+
+// ImageSource keeps file previews separate from transcript entries and binds
+// every reopen to its new detail selection within the attachment.
+func (d *ContentDialog) ImageSource() terminalui.ImageSource {
+	if d.File == nil || d.File.ImagePath == "" {
+		return terminalui.ImageSource{}
+	}
+	return terminalui.ImageSource{Path: d.File.ImagePath, Dialog: d.ID.Selection}
 }
 
 func (d *ContentDialog) Paint(rows []string, width, height int) {
@@ -132,6 +173,23 @@ func (d *ContentDialog) Paint(rows []string, width, height int) {
 		d.Layout(bodyWidth)
 	}
 	d.Dialog.Paint(rows, width, height, &d.View.Painter.Painter)
+}
+
+// Images places the acquired pixels only inside the current dialog body.
+// Frozen text selections cover graphics just as they do in the transcript.
+func (d *ContentDialog) Images() terminalui.ImageFrame {
+	frame := terminalui.ImageFrame{Protocol: d.View.ImageProtocol, CellWidth: d.View.ImageCellWidth, CellHeight: d.View.ImageCellHeight}
+	if d.Image == nil || d.Selection != nil || d.rect.W == 0 || d.laidKey.imageRows == 0 {
+		return frame
+	}
+	row := d.starts[d.imageLine]
+	first := max(0, d.top-row)
+	y := max(0, row-d.top)
+	rows := min(d.laidKey.imageRows-first, d.rows-y)
+	if rows > 0 {
+		frame.Placements = []terminalui.ImagePlacement{{Image: d.Image, X: d.rect.X + 2, Y: d.rect.Y + d.Chrome() - 1 + y, Columns: d.laidKey.imageColumns, Rows: rows, First: first, TotalRows: d.laidKey.imageRows}}
+	}
+	return frame
 }
 
 // Invalidate discards geometry derived from replaced detached content.

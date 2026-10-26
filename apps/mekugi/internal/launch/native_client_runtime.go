@@ -32,6 +32,7 @@ const (
 // Request lanes are shared by every interaction, including hidden sources.
 // In particular, changing views cannot start a second input preparation.
 type nativeClientRuntime struct {
+	previews       imagePreviews
 	ctx            context.Context
 	active         *nativeClient
 	owners         []*nativeClient
@@ -335,6 +336,8 @@ func (r *nativeClientRuntime) activate(c *nativeClient) {
 		return true
 	})
 	r.active = c
+	r.previews.reset()
+	c.renderer.terminal.Frame.Images = previous.renderer.terminal.Frame.Images
 	parent, nextParent := previous, c
 	if previous.displayParent != nil {
 		parent = previous.displayParent

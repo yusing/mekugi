@@ -16,7 +16,7 @@ import (
 // The original typed source stays on its record; Facts is a transient semantic projection.
 type Source interface{ ActivityFacts() Facts }
 type Facts struct {
-	Images                                                []string `json:"-"` // Bound user or viewed image sources for authorized reads.
+	Images                                                []string `json:"Images,omitzero"` // Explicitly bound image sources; public projection uses opaque identities.
 	Retained                                              bool     // Bounded projections retired explicitly by their source owner.
 	TextRef                                               observation.ItemRef
 	Seq                                                   uint64

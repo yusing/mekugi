@@ -57,6 +57,7 @@ func publicEntries(entries []activity.Entry) []activity.Entry {
 	out := slices.Clone(entries)
 	for i := range out {
 		out[i] = publicEntry(out[i])
+		out[i].Images = nil // Raw sources stay on the local native transport.
 	}
 	return out
 }

@@ -101,6 +101,7 @@ test("only a bound viewed image is a View entry", () => {
     values: [{ verb: "View", reads: [{ path: "a.png" }] }],
   };
   assert.ok(isView(view));
+  assert.ok(isView({ ...view, values: [{ verb: "Generated", reads: [{ path: "a.png" }] }] }));
   assert.ok(!isView({ ...view, images: [] }));
   assert.ok(!isView({ ...view, values: [{ verb: "Read", reads: [{ path: "a.png" }] }] }));
   assert.ok(!isView({ ...view, kind: "text" }));

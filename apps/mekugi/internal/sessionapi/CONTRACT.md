@@ -259,6 +259,11 @@ newer pending updates without dropping the initial snapshot or switch boundary.
 Remote human frames remain complete projections. Protocol version 3 is required;
 older clients must reconnect with a matching version rather than applying deltas.
 
+Native image file details carry an admitted local source tied to the detail
+selection. The physical frontend acquires bounded preview pixels using its own
+terminal capabilities; pixels stay outside serialized frames. Closing or replacing
+the selection retires its acquisition and graphics.
+
 Native frames repeat an ordered, size-bounded prefix of unacknowledged semantic
 `effects` with immutable IDs. Receipts advance delivery to the retained suffix;
 activity and notification watermarks never skip a withheld semantic effect. Clients
@@ -495,8 +500,9 @@ admission; TypeScript types do not establish authority.
 
 ### Published images
 
-User entries carry bound token spans and opaque image identities; View entries
-carry the viewed image identity, including live, restored and resumed history.
+User entries carry bound token spans and opaque image identities; View and
+Generated entries carry their bound image identities, including live, restored
+and resumed history. Generated entries use the host's saved artifact path.
 `session/image`
 takes `{seq, agent, index, image}` in its body on the selected thread. It resolves
 only an image in that current published entry, never a caller-supplied path or URL,

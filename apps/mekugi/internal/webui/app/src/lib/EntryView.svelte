@@ -242,7 +242,9 @@
             <ValueRow value={entry.values![0]} />
           {:else}
             <div class="col-span-full grid grid-cols-subgrid items-baseline py-[5px]">
-              <span class="text-small font-medium text-kind-read max-sm:col-span-full">View</span>
+              <span class="text-small font-medium text-kind-read max-sm:col-span-full"
+                >{first?.verb}</span
+              >
               <span class="text-muted">{views.length} images</span>
             </div>
           {/if}
@@ -255,7 +257,9 @@
                     {image}
                     {index}
                     {source}
-                    label="Viewed image {paths[i]}"
+                    label="{view.values?.[0]?.verb === 'Generated'
+                      ? 'Generated'
+                      : 'Viewed'} image {paths[i]}"
                     small={views.length > 1}
                   />
                   {#if views.length > 1}<p

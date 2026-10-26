@@ -52,6 +52,10 @@ sessions, and patch review. Invocation overrides leave Codex configuration uncha
   Markdown file links open local source in the same dialog.
   Supported single commands and pipelines, including Bash timed commands, show measured
   command time excluding startup and matching.
+- **Image previews.** Viewed and generated images appear in the transcript on
+  Kitty- or Sixel-capable terminals. Expand activity with Ctrl-E to show viewed
+  images; generated images accompany their saved paths. Unsupported terminals,
+  unavailable files and terminal multiplexers retain readable text entries.
 - **File, directory and skill attachments.** [Send selected contents or a bounded directory tree directly](#composer)
   without a separate agent read; unreadable or oversized attachments have explicit notices.
 - **Composer additions.** Mention selected messages or diffs, and ask

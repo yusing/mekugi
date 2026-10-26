@@ -342,6 +342,10 @@ func (p *Painter) DetailDocument(detail presentation.DetailPage, output *activit
 	if file == nil {
 		return page
 	}
+	if file.ImagePath != "" {
+		// The terminal dialog reserves its image viewport after the path.
+		page.Lines = nil
+	}
 	page.Lines = append([]terminalui.DialogLine{{Text: terminalui.StyledPath(textsanitize.Safe(file.Path, false)), Wrap: true}, {}}, page.Lines...)
 	if detail.Kind != "error" {
 		page.Text = file.Source

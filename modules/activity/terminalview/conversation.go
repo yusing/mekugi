@@ -62,7 +62,7 @@ func (v *View) RenderConversation(width int) Feed {
 	// A question keeps its own rows without preventing operation groups on
 	// either side from folding out of view.
 	tools := func(entry activitypresentation.Entry) bool {
-		return v.conversationTool(entry) && entry.Kind != "question"
+		return v.conversationTool(entry) && entry.Kind != "question" && len(entry.Images) == 0
 	}
 	for i := 0; i < len(v.entries); {
 		if !v.Visible(v.entries[i]) {
@@ -270,6 +270,7 @@ func (v *View) RenderConversation(width int) Feed {
 			feed.Heads = append(feed.Heads, start)
 		}
 		feed.appendRows(run)
+		v.appendImages(&feed, it.first, it.last, head, width)
 		feed.Spans = append(feed.Spans, Span{key.First, head, len(feed.Lines)})
 		if v.sentMessage(it.first) || !key.Excerpt && run.Batch {
 			feed.Passing = append(feed.Passing, liveActivityPassing{key.First, len(feed.Lines)})

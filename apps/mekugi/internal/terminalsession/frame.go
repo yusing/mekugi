@@ -14,13 +14,15 @@ import (
 // Frame retains the last successfully painted cells and their source metadata.
 // Clearing Rows invalidates incremental painting after an external editor.
 type Frame struct {
-	Notices   NoticeReceipt
-	Source    SourceContext
-	Rows      []string
-	Copy      [][]terminalui.CopySpan
-	Width     int
-	Clipboard string
-	composer  composerDocument
+	Images       *terminalui.ImageFrame
+	ImageDemands []terminalui.ImageSource
+	Notices      NoticeReceipt
+	Source       SourceContext
+	Rows         []string
+	Copy         [][]terminalui.CopySpan
+	Width        int
+	Clipboard    string
+	composer     composerDocument
 }
 
 // SourceContext binds painted source to its original attachment and display.
@@ -52,11 +54,27 @@ func (f *Frame) Write(out io.Writer, rendered RenderedFrame, width int, faint bo
 	var b strings.Builder
 	b.WriteString(f.Clipboard)
 	b.WriteString("\x1b[?2026h\x1b[?25l\x1b[0m")
+	imagesChanged := f.Images != nil && (!f.Images.Equal(rendered.Images) || f.Width != width || len(f.Rows) != len(rows))
+	if f.Images != nil && !imagesChanged {
+		for _, p := range f.Images.Placements {
+			for y := p.Y; y < min(len(rows), p.Y+p.Rows); y++ {
+				if y >= len(f.Rows) || rows[y] != f.Rows[y] {
+					imagesChanged = true
+				}
+			}
+		}
+	}
+	if imagesChanged {
+		b.WriteString(f.Images.Clear())
+	}
 	for row, line := range rows {
-		if f.Width == width && len(f.Rows) == len(rows) && line == f.Rows[row] {
+		if !imagesChanged && f.Width == width && len(f.Rows) == len(rows) && line == f.Rows[row] {
 			continue
 		}
 		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[2K%s", row+1, line)
+	}
+	if imagesChanged {
+		b.WriteString(rendered.Images.Paint())
 	}
 	b.WriteString("\x1b[?2026l")
 	frame := b.String()
@@ -65,6 +83,10 @@ func (f *Frame) Write(out io.Writer, rendered RenderedFrame, width int, faint bo
 	}
 	_, err := io.WriteString(out, frame)
 	if err == nil {
+		f.ImageDemands = rendered.ImageDemands
+		if f.Images != nil {
+			*f.Images = rendered.Images
+		}
 		f.Notices = rendered.Notices
 		f.Source = rendered.Source
 		f.composer = rendered.composer

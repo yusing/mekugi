@@ -10,6 +10,8 @@ require (
 	github.com/muesli/cancelreader v0.2.2
 	github.com/rivo/uniseg v0.4.7
 	github.com/yuin/goldmark v1.8.6
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.46.0
 )
+
+require golang.org/x/image v0.47.0
