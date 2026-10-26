@@ -11,6 +11,9 @@ peer admission, private filesystem permissions and listener/startup locks.
 The first request is `initialize` with `{"version":"5"}`. Remote clients also
 supply `token`, consumed by the connector and never forwarded to the server.
 Initialization succeeds before any session data or operation is available.
+Observation requests may follow initialization on the ordered connection before
+its reply returns. Token and version admission still precede their execution;
+the initialization response precedes all observation replies and publications.
 Its response includes `serverTime` in Unix milliseconds. Browser timers anchor
 that sample to their local monotonic clock, independently of local wall time.
 The endpoint establishes authority; caller fields cannot select it. Remote

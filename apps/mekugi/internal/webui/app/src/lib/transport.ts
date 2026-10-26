@@ -114,6 +114,8 @@ interface Subscription {
 // One physical connection correlates replies and owns its subscription identities.
 class Channel {
   readonly ready: Promise<void>;
+  readonly #initializing: Promise<void>;
+  #initialized = false;
   #socket: WebSocket;
   #closed = false;
   #next = 0;
@@ -150,8 +152,12 @@ class Channel {
             this.close();
             return;
           }
-          this.#dispatch<RPCInitialize>("initialize", { version: protocolVersion, token })
-            .then((result) => {
+          this.#dispatch<RPCInitialize>(
+            "initialize",
+            { version: protocolVersion, token },
+            undefined,
+            (value) => {
+              const result = value as RPCInitialize;
               if (result?.version !== protocolVersion)
                 throw new TransportError(
                   "This connector uses an incompatible Mekugi protocol.",
@@ -163,23 +169,38 @@ class Channel {
                   "network",
                 );
               clock?.(result.serverTime);
+              this.#initialized = true;
+            },
+          ).then(
+            () => {
               clearTimeout(timer);
               this.#socket.removeEventListener("close", fail);
               resolve();
-            })
-            .catch((error) => {
+            },
+            (error) => {
               clearTimeout(timer);
               reject(error);
               this.close();
-            });
+            },
+          );
         },
         { once: true },
       );
     });
+    // The open listener above writes initialization first. Observation requests
+    // may follow on the ordered wire while its reply travels back; both server
+    // admission and client publication consumption still require initialization.
+    this.#initializing = Promise.race([
+      this.ready,
+      new Promise<void>((resolve) =>
+        this.#socket.addEventListener("open", () => resolve(), { once: true }),
+      ),
+    ]);
     this.#socket.addEventListener("error", () => this.close());
     this.#socket.addEventListener("close", () => this.close());
     // A connection may be removed while its first consumer is waiting to start.
     void this.ready.catch(() => {});
+    void this.#initializing.catch(() => {});
   }
 
   close(): void {
@@ -199,15 +220,10 @@ class Channel {
     this.#subscriptions.clear();
   }
 
-  async request<T>(
-    method: RPCMethod,
-    params: RPCParams,
-    signal?: AbortSignal,
-    admitted?: (result: unknown) => void,
-  ): Promise<T> {
+  async request<T>(method: RPCMethod, params: RPCParams, signal?: AbortSignal): Promise<T> {
     await waitFor(this.ready, signal);
     if (signal?.aborted) throw canceled();
-    return this.#dispatch<T>(method, params, signal, admitted);
+    return this.#dispatch<T>(method, params, signal);
   }
 
   #dispatch<T>(
@@ -252,12 +268,14 @@ class Channel {
           try {
             admitted?.(value);
             resolve(value as T);
-          } catch {
+          } catch (error) {
             reject(
-              new TransportError(
-                "The connector returned an invalid subscription acknowledgement.",
-                "network",
-              ),
+              error instanceof TransportError
+                ? error
+                : new TransportError(
+                    "The connector returned an invalid subscription acknowledgement.",
+                    "network",
+                  ),
             );
             this.close();
           }
@@ -296,14 +314,14 @@ class Channel {
     event: (event: RPCEvent) => void,
     signal: AbortSignal,
   ): Promise<void> {
-    await waitFor(this.ready, signal);
+    await waitFor(this.#initializing, signal);
     if (signal.aborted) return;
     const id = newIdentity();
     return new Promise((resolve, reject) => {
       const finish = (error?: TransportError) => {
         signal.removeEventListener("abort", abort);
         this.#subscriptions.delete(id);
-        if (error) reject(error);
+        if (error) void this.ready.then(() => reject(error), reject);
         else resolve();
       };
       const abort = () => {
@@ -313,12 +331,17 @@ class Channel {
       if (signal.aborted) return finish();
       this.#subscriptions.set(id, { acknowledged: false, event, fail: finish });
       signal.addEventListener("abort", abort, { once: true });
-      void this.request<RPCSubscribed>(method, { ...params, subscription: id }, signal, (value) => {
-        const ack = value as RPCSubscribed;
-        if (ack?.subscription !== id) throw new Error("Wrong subscription");
-        const active = this.#subscriptions.get(id);
-        if (active) active.acknowledged = true;
-      }).catch((error) => {
+      void this.#dispatch<RPCSubscribed>(
+        method,
+        { ...params, subscription: id },
+        signal,
+        (value) => {
+          const ack = value as RPCSubscribed;
+          if (ack?.subscription !== id) throw new Error("Wrong subscription");
+          const active = this.#subscriptions.get(id);
+          if (active) active.acknowledged = true;
+        },
+      ).catch((error) => {
         if (this.#subscriptions.has(id)) this.#cancel("subscription/cancel", { subscription: id });
         finish(
           error instanceof TransportError ? error : new TransportError(unreachable, "network"),
@@ -336,6 +359,8 @@ class Channel {
       message = JSON.parse(data);
       if (!message || Array.isArray(message) || message.jsonrpc !== "2.0")
         throw new Error("Invalid RPC");
+      if (!this.#initialized && String(message.id) !== "1")
+        throw new Error("Publication before initialization");
       if (typeof message.id === "string" || typeof message.id === "number") {
         const pending = this.#pending.get(String(message.id));
         const result = message.result as { delivery?: string } | null;

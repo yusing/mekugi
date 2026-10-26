@@ -113,6 +113,92 @@ test("connector URLs and viewer addresses preserve explicit composite identity",
   assert.equal(parseSelection("#thread=same").session, undefined);
 });
 
+test("observations pipeline behind initialization while clock and mutation gates remain ordered", async (t) => {
+  t.mock.method(performance, "now", () => 100);
+  const connector = connect("https://example.test", "private-token");
+  const calls = [];
+  handler = (socket, message) => calls.push({ socket, message });
+  const events = [];
+  const observe = (event) => {
+    assert.equal(connector.now, 1_800_000_000_000);
+    events.push(event);
+  };
+  const stops = [
+    connector.subscribe("session/subscribe", {}, observe, () => {}),
+    connector.subscribe("view/attach", { thread: "thread" }, observe, () => {}),
+  ];
+  const mutation = connector.request("session/interrupt", { thread: "thread" });
+  void mutation.catch(() => {});
+  await new Promise(setImmediate);
+  assert.deepEqual(
+    calls.map((call) => call.message.method),
+    ["initialize", "session/subscribe", "view/attach"],
+  );
+  assert.equal(connector.now, undefined);
+  const first = calls[0];
+  first.socket.reply(first.message, { version: protocolVersion, serverTime: 1_800_000_000_000 });
+  // Consume immediate wire-ordered replies, before a promise continuation can
+  // initialize the clock or reinterpret an acknowledgement.
+  for (const call of calls.slice(1)) publication(call.socket, call.message);
+  assert.equal(events.length, 2);
+  await new Promise(setImmediate);
+  assert.equal(calls.at(-1).message.method, "session/interrupt");
+  calls.at(-1).socket.reply(calls.at(-1).message, null);
+  await mutation;
+  for (const stop of stops) stop();
+});
+
+test("queued observations retain initialization refusals and cancellation", async () => {
+  for (const failure of ["token", "version", "clock", "cancel"]) {
+    const connector = connect(`https://${failure}.test`, "token");
+    const calls = [];
+    handler = (socket, message) => calls.push({ socket, message });
+    const refused = Promise.withResolvers();
+    const stop = connector.subscribe(
+      "session/subscribe",
+      { thread: "thread" },
+      () => assert.fail("retired observation published"),
+      (state, error) => {
+        if (error) refused.resolve({ state, error });
+      },
+    );
+    await new Promise(setImmediate);
+    assert.deepEqual(
+      calls.map((call) => call.message.method),
+      ["initialize", "session/subscribe"],
+    );
+    const { socket, message } = calls[0];
+    if (failure === "cancel") {
+      stop();
+      socket.reply(message, { version: protocolVersion, serverTime: 1_800_000_000_000 });
+      publication(socket, calls[1].message);
+      assert.ok(
+        socket.sent.some(
+          (call) =>
+            call.method === "subscription/cancel" &&
+            call.params.subscription === calls[1].message.params.subscription,
+        ),
+      );
+    } else {
+      if (failure === "token") socket.refuse(message, 401);
+      else
+        socket.reply(message, {
+          version: failure === "version" ? "old" : protocolVersion,
+          serverTime: failure === "clock" ? 0 : 1_800_000_000_000,
+        });
+      const result = await refused.promise;
+      assert.equal(
+        result.state,
+        failure === "token" ? "required" : failure === "version" ? "incompatible" : "lost",
+      );
+      if (failure === "clock") assert.match(result.error.message, /clock/);
+      assert.equal(connector.now, undefined);
+      stop();
+    }
+    connector.close();
+  }
+});
+
 test("server clock advances monotonically without depending on browser wall time", async (t) => {
   let monotonic = 100;
   t.mock.method(performance, "now", () => monotonic);
