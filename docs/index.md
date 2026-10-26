@@ -47,5 +47,5 @@ contracts stay with their owning modules.
 
 ## Measurement and host evidence
 
-[Comparisons](../doc/benchmarks.md) and [dated Codex checks](../doc/codex-router-e2e.md)
+[Comparisons](benchmarks.md) and [dated Codex checks](codex-router-e2e.md)
 describe measured behavior and verification limits.

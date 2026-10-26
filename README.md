@@ -647,8 +647,8 @@ Captures exclude prompts, patches, and credentials.
 ## Documentation
 
 [Documentation](docs/index.md) · [Contributing](CONTRIBUTING.md) ·
-[Comparisons](doc/benchmarks.md) · [Codex
-end-to-end checks](doc/codex-router-e2e.md)
+[Comparisons](docs/benchmarks.md) · [Codex
+end-to-end checks](docs/codex-router-e2e.md)
 
 ## License
 

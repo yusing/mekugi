@@ -120,7 +120,7 @@ Apply these routes when the requested change touches the boundary:
 - **Instruction projection:** mixed authorization/tool text, fenced examples and idempotence through
   stock, marked, custom and multipart developer text.
 
-Contracts: `docs/index.md`. Dated host evidence: `doc/codex-router-e2e.md`.
+Contracts: `docs/index.md`. Dated host evidence: `docs/codex-router-e2e.md`.
 
 ## Fixture isolation and cost
 
