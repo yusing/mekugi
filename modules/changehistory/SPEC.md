@@ -121,6 +121,8 @@ operation's intervals, while net composition interleaves all selected evidence
 in captured order. Retaining an interval boundary does not complete the host call.
 Path filters apply to the composed files. An empty composition is explicit and
 distinct from no selected captures or a path filter matching no captured files.
+Shell pipes are supported, for example
+`mchanges amber1..amber5 | git apply --cached -p0`.
 For patch export, collect all pages, require a successful read and validate the
 collected output with the intended patch consumer before applying it. Pure moves
 use display-only headers, not Git patches. Failed reads can retain partial stdout;
