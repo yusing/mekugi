@@ -49,6 +49,12 @@ also resumes a saved thread or opens a recorded replay. Live creation accepts in
 later input uses the same attachment semantics. Empty text is allowed with usable
 attachments. File acquisition has progress, cancellation and visible errors;
 limits and omission notices come from the shared input contract.
+Browser-selected, pasted and execution-machine path images show previews with their
+names and removal controls before submission. Path previews use the selected machine
+and the live thread's workspace, or the selected initial workspace before creation.
+Unusable image previews show an unavailable state. Preview
+URLs are released when an attachment leaves the rendered draft or its view closes;
+retained files can recreate previews when returning to that draft.
 
 The browser opens the thread and attaches its control view before sending the
 first message through the same composer path as later input. Upload bytes are
@@ -77,6 +83,11 @@ questions, approvals, ordinary question replies, history and details use the
 per-client view API. Dialogs show loading, errors and refused stale actions without
 replacing another client's selection. Prompt drafts are keyed by question identity;
 accepted admission does not permanently disable a prompt still awaiting resolution.
+Written question answers accept pasted images using the same acquisition and preview
+controls. Each question retains its own text and images through refused submission;
+the captured control view and question IDs keep asynchronous acquisition targeted.
+Images accompany that question's answer through the shared native answer delivery.
+Choosing an offered option or skipping leaves parked written input unsent.
 
 Slash suggestions omit controls already beside the composer (model, reasoning effort
 and service tier), terminal interruption locks, and the title and response-copy actions.

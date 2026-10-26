@@ -307,6 +307,43 @@ test(
       assert.equal(sockets[0].readyState, 1);
     }
     assert.equal(sockets.length, 4);
+    handler = (socket, message) => {
+      if (!initialize(socket, message)) socket.reply(message, null);
+    };
+    for (const [method, payload] of [
+      ["session/attachment-image", { path: "image.png" }],
+      [
+        "session/answer",
+        {
+          call: "ask",
+          answers: [
+            { question: "q", attachments: [{ source: "upload", name: "image.png", data: "aGk=" }] },
+          ],
+        },
+      ],
+      [
+        "view/intent",
+        {
+          operation: {
+            answers: {
+              call: "ask",
+              answers: [
+                {
+                  question: "q",
+                  attachments: [{ source: "upload", name: "image.png", data: "aGk=" }],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    ]) {
+      await connector.request(method, { thread: "same", body: payload });
+      assert.equal(sockets.at(-1).sent[1].method, method);
+      assert.equal(sockets.at(-1).readyState, 3);
+      assert.equal(sockets[0].readyState, 1);
+    }
+    assert.equal(sockets.length, 7);
     stop();
     connector.close();
   },

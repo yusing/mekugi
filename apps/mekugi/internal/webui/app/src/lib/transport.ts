@@ -10,6 +10,7 @@ import type {
   RPCSubscribed,
   RemoteMutation,
   InputRequest,
+  Answer,
 } from "../../../../sessionapi/protocol";
 export type { RPCEvent, RPCMethod, RPCParams } from "../../../../sessionapi/protocol";
 
@@ -85,6 +86,7 @@ function readOnly(method: RPCMethod): boolean {
   return (
     method === "initialize" ||
     method === "session/options" ||
+    method === "session/attachment-image" ||
     method === "session/list" ||
     method === "session/read" ||
     method === "session/subscribe" ||
@@ -362,12 +364,20 @@ function waitFor<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
 }
 
 function attachmentBearing(method: RPCMethod, params: RPCParams): boolean {
-  if (method === "session/image") return true;
+  if (method === "session/image" || method === "session/attachment-image") return true;
   if (method === "session/start" || method === "session/input")
     return !!(params.body as InputRequest | undefined)?.attachments?.length;
-  if (method === "view/intent")
-    return !!(params.body as RemoteMutation | undefined)?.operation?.composer?.input?.attachments
-      ?.length;
+  if (method === "session/answer")
+    return !!(params.body as Answer | undefined)?.answers?.some(
+      (answer) => answer.attachments?.length,
+    );
+  if (method === "view/intent") {
+    const operation = (params.body as RemoteMutation | undefined)?.operation;
+    return (
+      !!operation?.composer?.input?.attachments?.length ||
+      !!operation?.answers?.answers.some((answer) => answer.attachments?.length)
+    );
+  }
   return false;
 }
 

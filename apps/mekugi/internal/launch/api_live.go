@@ -109,6 +109,9 @@ func applyAPIIntent(attached *attachedPresentation, terminal *terminalsession.At
 		if refusal != "" {
 			return refusal, nil
 		}
+		if intent.Prepared != nil && !intent.Prepared.Admit(intent.Context, *owned) {
+			return "The answer was canceled before admission.", nil
+		}
 		for _, answer := range answers {
 			if !answerQuestion(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, sessionpresentation.AnswerIntent{Version: attached.presentation.View().Version, AnswerInput: answer}) {
 				return "This prompt was already answered.", nil

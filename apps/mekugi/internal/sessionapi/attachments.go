@@ -2,9 +2,11 @@ package sessionapi
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -35,6 +37,56 @@ type InputRequest struct {
 type InputError struct {
 	Message string
 	Limit   bool
+}
+
+func (a Answer) validate() error {
+	metadata, uploads := len(a.Call), 0
+	for _, answer := range a.Answers {
+		metadata += len(answer.Question) + len(answer.Text)
+		for _, item := range answer.Attachments {
+			metadata += len(item.Source) + len(item.Name) + len(item.Path)
+			if item.Data != nil {
+				data := *item.Data
+				uploads += base64.StdEncoding.DecodedLen(len(data)) - (len(data) - len(strings.TrimRight(data, "=")))
+			}
+		}
+	}
+	if metadata > inputLimit || uploads > UploadLimit {
+		return &InputError{Message: "Answers exceed the 1 MiB text/metadata or 32 MiB upload limit.", Limit: true}
+	}
+	return nil
+}
+
+// prepare keeps each question's snapshot separate while transferring ownership
+// of the whole batch together. Refusal releases every unadmitted acquisition.
+func (a *Answer) prepare(ctx context.Context, workspace string, prepare func(context.Context, string, InputRequest) (*PreparedInput, error)) (*PreparedInput, error) {
+	if prepare == nil {
+		return nil, errors.New("Attachment preparation is unavailable.")
+	}
+	var inputs []*PreparedInput
+	defer func() {
+		for _, input := range inputs {
+			input.Cleanup()
+		}
+	}()
+	for i := range a.Answers {
+		answer := &a.Answers[i]
+		if answer.Skip || len(answer.Attachments) == 0 {
+			continue
+		}
+		input, err := prepare(ctx, workspace, InputRequest{Text: answer.Text, Attachments: answer.Attachments})
+		if err != nil {
+			return nil, err
+		}
+		inputs = append(inputs, input)
+		draft := input.Draft.Clone()
+		draft.Files, draft.Selections = nil, nil
+		answer.draft = &draft
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return joinPreparedInputs(inputs), nil
 }
 
 func (e *InputError) Error() string { return e.Message }

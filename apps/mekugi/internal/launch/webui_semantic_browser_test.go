@@ -1,12 +1,17 @@
 package launch
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"maps"
 	"net/http"
@@ -63,6 +68,20 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	}
 	defer os.RemoveAll(directory)
 	workspace := t.TempDir()
+	previewFile := filepath.Join(workspace, "image with space.png")
+	preview := image.NewRGBA(image.Rect(0, 0, 48, 32))
+	for y := range 32 {
+		for x := range 48 {
+			preview.SetRGBA(x, y, color.RGBA{uint8(20 + x*4), 90, uint8(150 + y*3), 255})
+		}
+	}
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, preview); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(previewFile, pngData.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(workspace, "notes.md"), []byte("Browser file details fixture"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -223,6 +242,24 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		}
 		run("set", "viewport", "1280", "720")
 	}
+	narrowAttachment := func(field, destination string) {
+		t.Helper()
+		const filename = "mekugi-upload-2444056966607230000.png"
+		run("set", "viewport", "360", "780")
+		run("eval", fmt.Sprintf(`(() => { const field = document.querySelector(%q); window.narrowDraft = field.value; const bytes = Uint8Array.from(atob(%q), c => c.charCodeAt(0)); const clipboard = new DataTransfer(); clipboard.items.add(new File([bytes, new Uint8Array(180*1024)], %q, {type:'image/png'})); field.dispatchEvent(new ClipboardEvent('paste', {clipboardData:clipboard, bubbles:true, cancelable:true})); })()`, field, base64.StdEncoding.EncodeToString(pngData.Bytes()), filename))
+		run("wait", "--fn", fmt.Sprintf(`document.querySelector('img[alt="Preview of %s"]')?.naturalWidth > 0`, filename))
+		bounds := fmt.Sprintf(`(() => { const row = document.querySelector('img[alt="Preview of %s"]').closest('li'); const list = row.closest('ul'); const r = row.getBoundingClientRect(), l = list.getBoundingClientRect(), p = list.parentElement.getBoundingClientRect(), b = row.querySelector('button').getBoundingClientRect(); return l.right <= Math.min(p.right, innerWidth) && r.right <= l.right && b.right <= r.right && b.left >= 0 && b.width >= 32 && b.height >= 32; })()`, filename)
+		if run("eval", bounds) != "true\n" {
+			t.Fatalf("%s attachment or Remove control overflowed the 360px pane", destination)
+		}
+		if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+			run("eval", fmt.Sprintf(`document.querySelector('button[aria-label="Remove %s"]').scrollIntoView({block:'nearest'})`, filename))
+			run("screenshot", filepath.Join(artifacts, "attachment-"+destination+"-360.png"))
+		}
+		button("Remove " + filename)
+		run("wait", "--fn", fmt.Sprintf(`!document.querySelector('img[alt="Preview of %s"]') && document.querySelector(%q).value === window.narrowDraft`, filename, field))
+		run("set", "viewport", "1280", "720")
+	}
 	run("open", page.URL)
 	run("snapshot", "-i")
 	capture("welcome")
@@ -246,11 +283,38 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	if err := os.WriteFile(laterUpload, []byte("later uploaded snapshot"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	run("upload", "input[type=file]", firstUpload, pasteTestImage(t))
+	run("upload", "input[type=file]", firstUpload, previewFile)
 	run("wait", "--text", "first.txt")
+	run("wait", "--fn", `document.querySelector('img[alt^="Preview of"]')?.naturalWidth > 0`)
+	run("eval", `window.previewURL = document.querySelector('img[alt^="Preview of"]').src; window.revokedPreviews = []; const revoke = URL.revokeObjectURL.bind(URL); URL.revokeObjectURL = (url) => { window.revokedPreviews.push(url); revoke(url); };`)
+	pathImage, err := os.ReadFile(previewFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "preview-image"), pathImage, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{"unknown-image": pathImage, "ordinary-file": []byte("plain text")} {
+		if err := os.WriteFile(filepath.Join(workspace, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("upload", "input[type=file]", filepath.Join(workspace, "unknown-image"), filepath.Join(workspace, "ordinary-file"))
+	run("wait", "--fn", `document.querySelector('img[alt="Preview of unknown-image"]')?.naturalWidth > 0 && !document.querySelector('img[alt="Preview of ordinary-file"]')`)
+	button("Remove ordinary-file")
+	button("Remove unknown-image")
+	button("More ways to start")
+	run("find", "role", "menuitem", "click", "--name", "Attach path on Execution")
+	run("fill", "#attach-path", "preview-image")
+	button("Attach path")
+	run("wait", "--fn", `document.querySelector('img[alt="Preview of preview-image"]')?.naturalWidth > 0`)
+	run("eval", `window.pathPreviewURL = document.querySelector('img[alt="Preview of preview-image"]').src`)
 	capture("new-thread")
+	button("Remove preview-image")
+	run("wait", "--fn", `window.revokedPreviews.includes(window.pathPreviewURL)`)
 	button("Start thread")
 	waitRecovery()
+	run("wait", "--fn", `window.revokedPreviews.includes(window.previewURL)`)
 	// The first submission belongs to the newly attached browser view, so its
 	// asynchronous rejection must return here with both uploaded files intact.
 	capture("recovery")
@@ -366,7 +430,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("eval", `document.querySelector('figure')?.scrollIntoView({block:'center'})`)
 	run("wait", "--fn", `document.querySelector('img[alt="Attached image 1"]')?.naturalWidth > 0`)
 	run("wait", "--fn", `document.querySelector('.text-marker-image')?.textContent === '[Image 1]'`)
-	run("wait", "--fn", `document.querySelector('h1')?.nextElementSibling?.getAttribute('aria-label') === 'Session details'`)
+	run("wait", "--fn", `!!document.querySelector('header h1')?.parentElement?.querySelector('button[aria-label="Session details"]')`)
 	run("find", "label", "Message", "fill", "draft survives fast mode")
 	button("Fast")
 	run("wait", "--fn", `document.querySelector('button[title="Disable fast mode"]')?.getAttribute('aria-pressed') === 'true'`)
@@ -377,6 +441,18 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	capture("shell-highlight")
 	run("find", "label", "Shell command", "fill", "")
 	t.Log("images, bound markers, fast toggle and shell highlighting passed")
+	button("Add files or paths")
+	run("find", "role", "menuitem", "click", "--name", "Attach path on Execution")
+	run("fill", "#attach-path", "preview-image")
+	button("Attach path")
+	run("wait", "--fn", `document.querySelector('img[alt="Preview of preview-image"]')?.naturalWidth > 0`)
+	run("eval", `window.pathPreviewURL = document.querySelector('img[alt="Preview of preview-image"]').src`)
+	run("fill", "#composer-text", "draft beside preview")
+	run("wait", "--fn", `document.querySelector('img[alt="Preview of preview-image"]')?.src === window.pathPreviewURL`)
+	button("Remove preview-image")
+	run("wait", "--fn", `window.revokedPreviews.includes(window.pathPreviewURL)`)
+	narrowAttachment("#composer-text", "composer")
+	run("fill", "#composer-text", "")
 
 	message("/status")
 	run("wait", "--text", "Session status")
@@ -577,6 +653,34 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--text", "Rewind")
 	closeDialog()
 	t.Log("commands, completions, status, side, BTW, details, saved resume and rewind overlay consumed")
+	// Pasting belongs to each question's written answer, not the ordinary composer.
+	message("browser image questions")
+	run("wait", "--text", "Image answer fixture")
+	imageData, err := os.ReadFile(previewFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run("eval", fmt.Sprintf(`(() => { const bytes = Uint8Array.from(atob(%q), c => c.charCodeAt(0)); const clipboard = new DataTransfer(); clipboard.items.add(new File([bytes], 'answer.png')); document.querySelector('[data-prompt] textarea').dispatchEvent(new ClipboardEvent('paste', {clipboardData:clipboard, bubbles:true, cancelable:true})); })()`, base64.StdEncoding.EncodeToString(imageData)))
+	run("wait", "--fn", `document.querySelector('[data-prompt] img[alt="Preview of answer.png"]')?.naturalWidth > 0`)
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("eval", `document.querySelector('[data-prompt] img[alt="Preview of answer.png"]').scrollIntoView({block:'center'})`)
+		run("screenshot", filepath.Join(artifacts, "question-preview.png"))
+	}
+	run("fill", `[data-prompt] fieldset:nth-of-type(2) textarea`, "separate browser answer")
+	capture("question-images")
+	narrowAttachment("[data-prompt] textarea", "question")
+	// An acquisition refusal preserves the first image and both question drafts.
+	run("eval", `(() => { const clipboard = new DataTransfer(); clipboard.items.add(new File([new Uint8Array(32*1024*1024+1)], 'oversize.png', {type:'image/png'})); document.querySelector('[data-prompt] textarea').dispatchEvent(new ClipboardEvent('paste', {clipboardData:clipboard, bubbles:true, cancelable:true})); })()`)
+	button("Submit answers")
+	run("wait", "--text", "Uploads exceed the 32 MiB limit")
+	button("Remove oversize.png")
+	run("wait", "--fn", `document.querySelector('[data-prompt] img[alt="Preview of answer.png"]')?.naturalWidth > 0 && document.querySelectorAll('[data-prompt] textarea')[1].value === 'separate browser answer'`)
+	button("Submit answers")
+	run("wait", "--fn", `!document.querySelector('[data-prompt]')`)
+	serverCLIAwait(t, func() bool {
+		data, _ := os.ReadFile(ledger)
+		return strings.Contains(string(data), "answer-image-bytes "+base64.StdEncoding.EncodeToString(imageData)) && strings.Contains(string(data), `"first":{"answers":["user_note: [Image 1]`) && strings.Contains(string(data), `"second":{"answers":["user_note: separate browser answer"]}`)
+	})
 	// Detaching the browser leaves the actual server owner available natively.
 	button("New thread")
 	run("wait", "--text", "What should main work on?")
@@ -740,11 +844,13 @@ func serveWebUISemanticHost(t *testing.T) {
 	stops := 0
 	rejections := make(map[string]int)
 	settings := map[string]any{}
+	questionThread, questionTurn := "", ""
 	for {
 		var request struct {
 			ID     jsontext.Value `json:"id"`
 			Method string         `json:"method"`
 			Params jsontext.Value `json:"params"`
+			Result jsontext.Value `json:"result"`
 		}
 		if err := json.UnmarshalDecode(decoder, &request); err != nil {
 			if !errors.Is(err, io.EOF) {
@@ -754,6 +860,13 @@ func serveWebUISemanticHost(t *testing.T) {
 			return
 		}
 		if len(request.ID) == 0 {
+			continue
+		}
+		if request.Method == "" {
+			fmt.Fprintf(log, "answer-result %s\n", request.Result)
+			if string(request.ID) == `"browser-questions"` {
+				write(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": questionThread, "turn": map[string]any{"id": questionTurn, "status": "completed"}}})
+			}
 			continue
 		}
 		fmt.Fprintf(log, "%s %s\n", request.Method, request.Params)
@@ -773,6 +886,24 @@ func serveWebUISemanticHost(t *testing.T) {
 			if err := json.Unmarshal(request.Params, &params); err != nil {
 				fmt.Fprintf(log, "fixture-error: %v\n", err)
 				t.Fatal(err)
+			}
+		}
+		if strings.Contains(string(params.Input), "Attachments accompanying answers to") {
+			var parts []struct {
+				Type string `json:"type"`
+				Path string `json:"path"`
+			}
+			if err := json.Unmarshal(params.Input, &parts); err != nil {
+				t.Fatal(err)
+			}
+			for _, part := range parts {
+				if part.Type == "localImage" {
+					data, err := os.ReadFile(part.Path)
+					if err != nil {
+						t.Fatal(err)
+					}
+					fmt.Fprintf(log, "answer-image-bytes %s\n", base64.StdEncoding.EncodeToString(data))
+				}
 			}
 		}
 		result := map[string]any{}
@@ -871,6 +1002,11 @@ func serveWebUISemanticHost(t *testing.T) {
 		}
 		if turn != nil {
 			write(map[string]any{"method": "turn/started", "params": map[string]any{"threadId": params.Thread, "turn": map[string]any{"id": turn.ID}}})
+			if strings.Contains(string(turn.Items[0].Content), "browser image questions") {
+				questionThread, questionTurn = params.Thread, turn.ID
+				write(map[string]any{"id": "browser-questions", "method": "item/tool/requestUserInput", "params": map[string]any{"threadId": params.Thread, "turnId": turn.ID, "itemId": "browser-questions", "questions": []any{map[string]any{"id": "first", "header": "Image answer fixture", "question": "Paste a screenshot."}, map[string]any{"id": "second", "header": "Second answer", "question": "Describe another answer."}}}})
+				continue
+			}
 			if strings.Contains(string(turn.Items[0].Content), "hold queued editing") {
 				write(map[string]any{"method": "item/completed", "params": map[string]any{"threadId": params.Thread, "turnId": turn.ID, "item": turn.Items[0]}})
 				continue

@@ -30,25 +30,26 @@ type rpcMethod struct {
 }
 
 var rpcMethods = map[string]rpcMethod{
-	"session/image":       {limit: 1024},
-	"session/options":     {limit: 1024},
-	"session/list":        {limit: 1024},
-	"session/read":        {limit: 1024},
-	"session/start":       {limit: InputBodyLimit},
-	"session/end":         {limit: 1024},
-	"session/subscribe":   {limit: 1024},
-	"session/input":       {limit: InputBodyLimit},
-	"session/shell":       {limit: inputLimit},
-	"session/answer":      {limit: 64 << 10},
-	"session/decide":      {limit: 64 << 10},
-	"session/interrupt":   {limit: 1024},
-	"session/redraw":      {limit: 1024, native: true},
-	"session/control":     {limit: 1024},
-	"view/attach":         {limit: 1024},
-	"view/intent":         {limit: InputBodyLimit},
-	"native/start":        {limit: inputLimit, native: true},
-	"subscription/cancel": {limit: 1024},
-	"request/cancel":      {limit: 1024},
+	"session/attachment-image": {limit: 64 << 10},
+	"session/image":            {limit: 1024},
+	"session/options":          {limit: 1024},
+	"session/list":             {limit: 1024},
+	"session/read":             {limit: 1024},
+	"session/start":            {limit: InputBodyLimit},
+	"session/end":              {limit: 1024},
+	"session/subscribe":        {limit: 1024},
+	"session/input":            {limit: InputBodyLimit},
+	"session/shell":            {limit: inputLimit},
+	"session/answer":           {limit: InputBodyLimit},
+	"session/decide":           {limit: 64 << 10},
+	"session/interrupt":        {limit: 1024},
+	"session/redraw":           {limit: 1024, native: true},
+	"session/control":          {limit: 1024},
+	"view/attach":              {limit: 1024},
+	"view/intent":              {limit: InputBodyLimit},
+	"native/start":             {limit: inputLimit, native: true},
+	"subscription/cancel":      {limit: 1024},
+	"request/cancel":           {limit: 1024},
 }
 
 func rpcFailure(status int, message string) *RPCError {
@@ -556,6 +557,9 @@ func (c *rpcConnection) subscribe(ctx context.Context, id string, build func(con
 func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCParams) (any, *RPCError, func()) {
 	h := c.endpoint.hub
 	switch method {
+	case "session/attachment-image":
+		value, err := c.attachmentImage(ctx, params)
+		return value, err, nil
 	case "session/options":
 		value, err := h.startOptions(ctx)
 		return value, err, nil

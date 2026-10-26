@@ -1,5 +1,6 @@
 <script lang="ts">
   import Alert from "./ui/Alert.svelte";
+  import AttachmentPreview, { type PreviewTarget } from "./AttachmentPreview.svelte";
   import { tick } from "svelte";
   import { uploadLimit, type PendingAttachment } from "./attachments";
   import { bytes } from "./format";
@@ -16,11 +17,13 @@
     pathing = $bindable(false),
     disabled = false,
     machine,
+    previewTarget,
   }: {
     items?: PendingAttachment[];
     pathing?: boolean;
     disabled?: boolean;
     machine: string;
+    previewTarget?: PreviewTarget;
   } = $props();
   let path = $state("");
   let picker: HTMLInputElement;
@@ -63,12 +66,19 @@
 {#if items.length || pathing}
   <div class="grid gap-2 px-2.5 pt-2.5">
     {#if items.length}
-      <ul class="flex flex-wrap gap-1.5" aria-label="Attachments">
+      <ul class="flex min-w-0 flex-wrap items-center gap-1.5" aria-label="Attachments">
         {#each items as item (item.id)}
           <li
-            class="inline-flex h-[30px] max-w-full items-center gap-1.5 rounded-control border bg-raised pr-0.5 pl-2 text-small text-muted max-sm:h-9"
+            class="inline-flex min-h-[30px] max-w-full items-center gap-1.5 rounded-control border bg-raised pr-0.5 pl-2 text-small text-muted max-sm:min-h-9"
           >
-            <Icon name={"file" in item ? "attach" : "folder"} size={14} />
+            {#if "file" in item && item.reference === undefined && (!item.file.type || item.file.type.startsWith("image/"))}
+              <AttachmentPreview file={item.file} />
+            {:else}
+              {#if "path" in item && previewTarget}
+                <AttachmentPreview path={item.path} target={previewTarget} />
+              {/if}
+              <Icon name={"file" in item ? "attach" : "folder"} size={14} />
+            {/if}
             <span
               class={["min-w-0 truncate text-ink", "path" in item && "font-mono"]}
               title={name(item)}>{name(item)}</span
@@ -76,7 +86,7 @@
             {#if "file" in item}<span class="tabular-nums">{bytes(item.file.size)}</span>{/if}
             <button
               type="button"
-              class="inline-flex size-6 items-center justify-center rounded-chip text-muted hover:enabled:bg-active hover:enabled:text-ink max-sm:size-8"
+              class="inline-flex size-6 shrink-0 items-center justify-center rounded-chip text-muted hover:enabled:bg-active hover:enabled:text-ink max-sm:size-8"
               {disabled}
               aria-label={`Remove ${name(item)}`}
               onclick={() => (items = items.filter((other) => other.id !== item.id))}

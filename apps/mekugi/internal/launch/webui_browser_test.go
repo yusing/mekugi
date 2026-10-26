@@ -285,9 +285,14 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		run("screenshot", filepath.Join(artifacts, "reference-mobile.png"))
 		run("set", "viewport", "1280", "900")
 	}
+	run("eval", `window.referencePreviewURLs = []; window.originalCreateObjectURL = URL.createObjectURL; URL.createObjectURL = function(value) { const url = window.originalCreateObjectURL.call(URL, value); window.referencePreviewURLs.push(url); return url; };`)
 	run("focus", `button[aria-label="Copy selection to reference"]`)
 	run("press", "Enter")
 	run("wait", "--fn", `document.querySelector('button[aria-label="Remove Selected output"]')`)
+	if run("eval", `window.referencePreviewURLs.length === 0 && !document.querySelector('[aria-label="Attachments"] img')`) != "true\n" {
+		t.Fatal("quoted text reference acquired an image preview")
+	}
+	run("eval", `URL.createObjectURL = window.originalCreateObjectURL`)
 	if request := <-references; request.Operation.Reference.Thread != "same-thread" || !strings.Contains(request.Operation.Reference.Text, "file000.go") {
 		t.Fatal("reference lost source or destination")
 	}

@@ -8,6 +8,7 @@ import (
 	"encoding/json/jsontext"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -55,6 +56,51 @@ func (s *Server) readImage(ctx context.Context, target requestTarget, body jsont
 	if source == "" {
 		return nil, rpcFailure(404, "This attached image is no longer available.")
 	}
+	return readImageSource(ctx, target.workspace, source)
+}
+
+// attachmentImage reads only an explicitly requested draft path. It does not
+// weaken the published-image identity check or retain any draft on the server.
+func (c *rpcConnection) attachmentImage(ctx context.Context, params RPCParams) (any, *RPCError) {
+	var request struct {
+		Path      string `json:"path"`
+		Workspace string `json:"workspace,omitempty"`
+	}
+	if failure := decodeBody(params.Body, &request); failure != nil {
+		return nil, failure
+	}
+	if request.Path == "" || strings.HasPrefix(request.Path, "data:") || strings.Contains(request.Path, "://") || params.Startup != "" {
+		return nil, rpcFailure(400, "Choose an attachment path on the execution machine.")
+	}
+	workspace := request.Workspace
+	if params.Thread != "" {
+		selected, failure := c.endpoint.hub.lookup(params.Thread, "", c.authority)
+		if failure != nil {
+			return nil, failure
+		}
+		if !selected.server.live || request.Workspace != "" {
+			return nil, rpcFailure(400, "Attachment previews require the live thread's workspace.")
+		}
+		workspace = selected.entry.Workspace
+	} else {
+		if c.endpoint.hub.launcher == nil {
+			return nil, rpcFailure(405, "This server does not start threads.")
+		}
+		info, err := os.Stat(workspace)
+		if !filepath.IsAbs(workspace) || err != nil || !info.IsDir() {
+			return nil, rpcFailure(400, "Choose an existing absolute workspace directory.")
+		}
+	}
+	select {
+	case c.endpoint.preparations <- struct{}{}:
+	default:
+		return nil, rpcFailure(503, "Image transfer capacity is busy.")
+	}
+	defer func() { <-c.endpoint.preparations }()
+	return readImageSource(ctx, workspace, request.Path)
+}
+
+func readImageSource(ctx context.Context, workspace, source string) (any, *RPCError) {
 	if ctx.Err() != nil {
 		return nil, rpcFailure(499, "Image request cancelled.")
 	}
@@ -71,10 +117,10 @@ func (s *Server) readImage(ctx context.Context, target requestTarget, body jsont
 			return nil, rpcFailure(415, "Remote image URLs are not loaded automatically.")
 		}
 		if !filepath.IsAbs(source) {
-			if !filepath.IsAbs(target.workspace) {
+			if !filepath.IsAbs(workspace) {
 				return nil, rpcFailure(400, "The image has no workspace.")
 			}
-			source = filepath.Join(target.workspace, source)
+			source = filepath.Join(workspace, source)
 		}
 		file, failure := persistence.OpenRetained(source, UploadLimit)
 		if failure != nil {

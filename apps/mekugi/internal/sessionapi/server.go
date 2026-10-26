@@ -23,6 +23,7 @@ import (
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 // Action is one renderer-neutral request from a viewer.
@@ -66,10 +67,24 @@ type Answer struct {
 }
 
 type QuestionAnswer struct {
-	Question string `json:"question"`
-	Choice   *int   `json:"choice,omitzero"`
-	Text     string `json:"text,omitzero"`
-	Skip     bool   `json:"skip,omitzero"`
+	Question    string       `json:"question"`
+	Choice      *int         `json:"choice,omitzero"`
+	Text        string       `json:"text,omitzero"`
+	Skip        bool         `json:"skip,omitzero"`
+	Attachments []Attachment `json:"attachments,omitempty"`
+	draft       *composer.Draft
+}
+
+// Draft returns the server-prepared answer snapshot, or ordinary written input.
+func (a QuestionAnswer) Draft() composer.Draft {
+	if a.draft != nil {
+		return a.draft.Clone()
+	}
+	return composer.Draft{Text: a.Text}
+}
+
+func (a Answer) hasAttachments() bool {
+	return slices.ContainsFunc(a.Answers, func(q QuestionAnswer) bool { return !q.Skip && len(q.Attachments) > 0 })
 }
 
 type Decide struct {
@@ -552,7 +567,18 @@ func (s *Server) request(ctx context.Context, target requestTarget, method strin
 		if err := decodeBody(body, &intent.Answer); err != nil {
 			return nil, err
 		}
+		if err := intent.Answer.validate(); err != nil {
+			return nil, inputError(err)
+		}
 		intent.Action = AnswerQuestions
+		if intent.Answer.hasAttachments() {
+			prepared, failure := acquireInput(preparations, func() (*PreparedInput, error) { return intent.Answer.prepare(ctx, target.workspace, s.prepare) })
+			if failure != nil {
+				return nil, failure
+			}
+			defer prepared.Cleanup()
+			intent.Prepared = prepared
+		}
 	case "session/decide":
 		if !s.live {
 			return nil, rpcFailure(405, "A replay has no pending approvals.")

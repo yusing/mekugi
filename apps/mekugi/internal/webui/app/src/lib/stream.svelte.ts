@@ -2,7 +2,6 @@ import type { Machine } from "./hub.svelte";
 import { errorText, type Connection, type RPCMethod } from "./transport";
 import type {
   Action,
-  Answer,
   Decide,
   Prompts,
   Agent,
@@ -175,9 +174,6 @@ export class Stream {
 
   stop(): Promise<string | undefined> {
     return this.#request("session/interrupt", {});
-  }
-  answer(body: Answer): Promise<string | undefined> {
-    return this.#request("session/answer", body);
   }
   decide(body: Decide): Promise<string | undefined> {
     return this.#request("session/decide", body);

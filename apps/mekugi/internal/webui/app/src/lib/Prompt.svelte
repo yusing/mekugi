@@ -1,5 +1,7 @@
 <script lang="ts">
   import Alert from "./ui/Alert.svelte";
+  import Attachments from "./Attachments.svelte";
+  import { prepareAttachments } from "./attachments";
   import { onDestroy, tick, untrack } from "svelte";
   import type { Approval, QuestionCall } from "./protocol";
   import { stream, type Stream } from "./stream.svelte";
@@ -22,23 +24,31 @@
   const call = $derived("questions" in item ? item : undefined);
   const approval = $derived("choices" in item ? item : undefined);
   // Keyed prompts retain their originating control view's input and outcomes.
-  const state = untrack(() => semantic.prompt(item.id));
+  const promptState = untrack(() => semantic.prompt(item.id));
   $effect.pre(() => {
     const questions = call?.questions ?? [];
     untrack(() => {
-      state.drafts = Object.fromEntries(
+      promptState.drafts = Object.fromEntries(
         questions.map((q) => [
           q.id,
-          state.drafts[q.id] ?? { choice: q.options?.length ? undefined : 0, text: "" },
+          promptState.drafts[q.id] ?? {
+            choice: q.options?.length ? undefined : 0,
+            text: "",
+            items: [],
+          },
         ]),
       );
     });
   });
   let card: HTMLElement;
   let submittedWithFocus = false;
-  const disabled = $derived(unavailable || state.sending);
+  let trays: Record<string, ReturnType<typeof Attachments>> = {};
+  let acquisition: AbortController | undefined;
+  let progress = $state("");
+  const disabled = $derived(unavailable || promptState.sending);
 
   onDestroy(() => {
+    acquisition?.abort();
     const active = document.activeElement;
     if (!card?.contains(active) && !(submittedWithFocus && active === document.body)) return;
     tick().then(() =>
@@ -54,41 +64,73 @@
     if (!call || disabled) return;
     if (
       call.questions.some((q) => {
-        const d = state.drafts[q.id];
+        const d = promptState.drafts[q.id];
         return (
-          !d || d.choice === undefined || (d.choice === (q.options?.length ?? 0) && !d.text.trim())
+          !d ||
+          d.choice === undefined ||
+          (d.choice === (q.options?.length ?? 0) && !d.text.trim() && !d.items.length)
         );
       })
     ) {
-      state.error = "Answer every question or skip it.";
+      promptState.error = "Answer every question or skip it.";
       tick().then(() => card.querySelector<HTMLElement>("[role=alert]")?.focus());
       return;
     }
     submittedWithFocus = card.contains(document.activeElement);
-    const pending = state;
+    const pending = promptState;
     const release = semantic.retainInput();
+    const captured = semantic.event;
+    const controller = new AbortController();
+    acquisition = controller;
     pending.sending = true;
-    pending.error = await source.answer({
-      call: call.id,
-      answers: call.questions.map((q) => {
+    pending.error = undefined;
+    pending.accepted = false;
+    try {
+      const answers = [];
+      for (const q of call.questions) {
         const draft = pending.drafts[q.id];
-        return {
+        const written = draft.choice === (q.options?.length ?? 0);
+        answers.push({
           question: q.id,
           choice: typeof draft.choice === "number" ? draft.choice : undefined,
-          text: draft.text,
+          text: written ? draft.text : "",
+          attachments: written
+            ? await prepareAttachments(draft.items, controller.signal, (read, total) => {
+                progress = total
+                  ? `Reading images: ${Math.round((read / total) * 100)}%`
+                  : "Preparing answers…";
+              })
+            : [],
           skip: draft.choice === "skip",
-        };
-      }),
-    });
-    pending.accepted = !pending.error;
-    pending.sending = false;
-    release();
+        });
+      }
+      acquisition = undefined;
+      progress = "Sending…";
+      pending.error = await semantic.send(
+        { answers: { call: call.id, answers } },
+        controller.signal,
+        false,
+        captured,
+      );
+      pending.accepted = !pending.error;
+    } catch (failure) {
+      pending.error = controller.signal.aborted
+        ? "Attachment preparation cancelled."
+        : failure instanceof Error
+          ? failure.message
+          : "Could not prepare answers.";
+    } finally {
+      acquisition = undefined;
+      progress = "";
+      pending.sending = false;
+      release(pending.error);
+    }
   }
 
   async function decide(choice: number) {
     if (!approval || disabled) return;
     submittedWithFocus = card.contains(document.activeElement);
-    const pending = state;
+    const pending = promptState;
     const release = semantic.retainInput();
     pending.sending = true;
     pending.error = await source.decide({
@@ -125,11 +167,11 @@
           >{approval.subject}</code
         ></pre>{/if}
     {#each approval.details as detail}<p class={text}>{detail}</p>{/each}
-    {#if state.deny !== undefined}
+    {#if promptState.deny !== undefined}
       <form
         onsubmit={(event) => {
           event.preventDefault();
-          if (state.deny !== undefined) decide(state.deny);
+          if (promptState.deny !== undefined) decide(promptState.deny);
         }}
       >
         <label class={written}
@@ -138,13 +180,14 @@
             class={answerBox}
             name="denial-reason"
             autocomplete="off"
-            bind:value={state.reason}
+            bind:value={promptState.reason}
             rows="2"
             {disabled}></textarea>
         </label>
         <div class="mt-3 flex flex-wrap gap-2">
           <Button type="submit" variant="primary" size="lg" {disabled}>Deny</Button>
-          <Button size="lg" onclick={() => (state.deny = undefined)} {disabled}>Cancel</Button>
+          <Button size="lg" onclick={() => (promptState.deny = undefined)} {disabled}>Cancel</Button
+          >
         </div>
       </form>
     {:else}
@@ -154,8 +197,8 @@
             size="lg"
             {disabled}
             onclick={() => {
-              state.error = undefined;
-              if (choice.deny) state.deny = choice.id;
+              promptState.error = undefined;
+              if (choice.deny) promptState.deny = choice.id;
               else decide(choice.id);
             }}>{choice.label}</Button
           >
@@ -172,7 +215,7 @@
       {#each call.questions as question (question.id)}
         {#if question.secret}
           <p class={text}>Answer this secret prompt in the terminal.</p>
-        {:else if state.drafts[question.id]}
+        {:else if promptState.drafts[question.id]}
           <fieldset class="mb-4 min-w-0" {disabled}>
             <legend class="font-semibold">{question.header || "Question"}</legend>
             {#if question.text && question.text.trim() !== question.header?.trim()}<p class={text}>
@@ -184,7 +227,7 @@
                   class={radio}
                   type="radio"
                   name={question.id}
-                  bind:group={state.drafts[question.id].choice}
+                  bind:group={promptState.drafts[question.id].choice}
                   value={index}
                 />
                 <span
@@ -199,28 +242,43 @@
                 class={radio}
                 type="radio"
                 name={question.id}
-                bind:group={state.drafts[question.id].choice}
+                bind:group={promptState.drafts[question.id].choice}
                 value={question.options?.length ?? 0}
               />
               <span>Other</span>
             </label>
-            {#if state.drafts[question.id].choice === (question.options?.length ?? 0)}
+            {#if promptState.drafts[question.id].choice === (question.options?.length ?? 0)}
               <label class={written}
                 >Your answer
                 <textarea
                   class={answerBox}
                   name={question.id + "-answer"}
                   autocomplete="off"
-                  bind:value={state.drafts[question.id].text}
+                  bind:value={promptState.drafts[question.id].text}
+                  onpaste={(event) => {
+                    if (disabled) return;
+                    const files = Array.from(event.clipboardData?.files ?? []).filter(
+                      (file) => !file.type || file.type.startsWith("image/"),
+                    );
+                    if (!files.length) return;
+                    if (!event.clipboardData?.types.includes("text/plain")) event.preventDefault();
+                    trays[question.id]?.add(files);
+                  }}
                   rows="2"></textarea>
               </label>
+              <Attachments
+                bind:this={trays[question.id]}
+                bind:items={promptState.drafts[question.id].items}
+                machine=""
+                {disabled}
+              />
             {/if}
             <label class={option}>
               <input
                 class={radio}
                 type="radio"
                 name={question.id}
-                bind:group={state.drafts[question.id].choice}
+                bind:group={promptState.drafts[question.id].choice}
                 value="skip"
               />
               <span>Skip this question</span>
@@ -233,9 +291,9 @@
       {/if}
     </form>
   {/if}
-  {#if state.error}<Alert class="my-2" tabindex={-1}>{state.error}</Alert>
+  {#if promptState.error}<Alert class="my-2" tabindex={-1}>{promptState.error}</Alert>
   {:else if unavailable}<p class={note} role="status">Not connected to the thread.</p>
-  {:else if state.sending || state.accepted}<p class={note} role="status">
-      {state.accepted ? "Submitted. Waiting for the session…" : "Sending…"}
+  {:else if promptState.sending || promptState.accepted}<p class={note} role="status">
+      {promptState.accepted ? "Submitted. Waiting for the session…" : progress || "Sending…"}
     </p>{/if}
 </article>

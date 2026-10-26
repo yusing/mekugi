@@ -94,11 +94,16 @@ func prepareCallAnswers(call *prompt.Call, input sessionapi.Answer) ([]prompt.An
 		if answer.Choice != nil {
 			choice = *answer.Choice
 		}
-		text := answer.Text
-		if choice < len(call.Questions[index].Choices) || strings.TrimSpace(text) == "" {
-			text = ""
+		draft := answer.Draft()
+		if choice < len(call.Questions[index].Choices) || answer.Skip {
+			if len(answer.Attachments) > 0 && !answer.Skip {
+				return nil, false, "Attachments require a written answer."
+			}
+			draft = composer.Draft{}
+		} else if strings.TrimSpace(draft.Text) == "" {
+			draft.Text = ""
 		}
-		a := prompt.AnswerInput{Call: call.ID, Question: answer.Question, Choice: choice, Draft: composer.Draft{Text: text}, Skip: answer.Skip}
+		a := prompt.AnswerInput{Call: call.ID, Question: answer.Question, Choice: choice, Draft: draft, Skip: answer.Skip}
 		if _, err := trial.Answer(a); err != nil {
 			switch {
 			case errors.Is(err, prompt.ErrSecretAnswer):

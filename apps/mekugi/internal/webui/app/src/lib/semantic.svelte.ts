@@ -37,7 +37,10 @@ export type Editor = {
   submission?: AbortController;
 };
 export type PromptState = {
-  drafts: Record<string, { choice: number | "skip" | undefined; text: string }>;
+  drafts: Record<
+    string,
+    { choice: number | "skip" | undefined; text: string; items: PendingAttachment[] }
+  >;
   deny?: number;
   reason: string;
   sending: boolean;

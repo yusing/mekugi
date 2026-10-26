@@ -412,6 +412,11 @@ func (n *Native) request(ctx context.Context, target requestTarget, startup stri
 	if reason := mutation.Operation.routeRefusal(authority); reason != "" {
 		return NativeResult{}, rpcFailure(400, reason)
 	}
+	if answers := mutation.Operation.Answers; answers != nil && answers.public != nil {
+		if err := answers.public.validate(); err != nil {
+			return NativeResult{}, inputError(err)
+		}
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(viewContext, cancel)
 	defer stop()
@@ -432,7 +437,7 @@ func (n *Native) request(ctx context.Context, target requestTarget, startup stri
 		defer prepared.Cleanup()
 		request.Prepared = prepared
 	}
-	if answers := mutation.Operation.Answers; answers != nil && authority == localNativeView {
+	if answers := mutation.Operation.Answers; answers != nil && (authority == localNativeView || answers.public != nil && answers.public.hasAttachments()) {
 		prepared, failure := acquireInput(preparations, func() (*PreparedInput, error) { return n.prepareAnswers(ctx, target.workspace, answers) })
 		if failure != nil {
 			return NativeResult{}, failure
@@ -496,6 +501,9 @@ func (n *Native) deliver(request NativeRequest) *RPCError {
 // acquired files under a single admission. Secret text remains only in the
 // local answer payload, including when validating its attachment spans.
 func (n *Native) prepareAnswers(ctx context.Context, workspace string, answers *NativeAnswers) (*PreparedInput, error) {
+	if answers.public != nil {
+		return answers.public.prepare(ctx, workspace, n.prepare)
+	}
 	if n.prepare == nil {
 		return nil, errors.New("Native attachment preparation is unavailable.")
 	}

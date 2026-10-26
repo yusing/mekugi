@@ -4,6 +4,7 @@
   import { onDestroy, tick, untrack } from "svelte";
   import type { ChoiceID } from "../../../../sessionapi/protocol";
   import Attachments from "./Attachments.svelte";
+  import { hub } from "./hub.svelte";
   import { prepareAttachments, type InitialInput } from "./attachments";
   import type { Attachment, Input } from "./protocol";
   import { semantic, textDraft } from "./semantic.svelte";
@@ -40,6 +41,10 @@
   } = $props();
   const editor = $derived(semantic.editor());
   const view = $derived(semantic.frame?.view);
+  const previewThread = $derived(view?.Input.ID);
+  const previewTarget = $derived(
+    hub.selected && previewThread ? { machine: hub.selected, thread: previewThread } : undefined,
+  );
   const shell = $derived(editor.text.startsWith("!"));
   const pending = $derived(editor.submission);
   let acquisition: AbortController | undefined;
@@ -348,6 +353,7 @@
       bind:items={editor.items}
       bind:pathing
       {machine}
+      {previewTarget}
       disabled={!!pending || shell}
     />
     <label class="sr-only" for="composer-text">{shell ? "Shell command" : "Message"}</label>

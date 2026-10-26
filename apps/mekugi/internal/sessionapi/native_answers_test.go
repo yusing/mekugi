@@ -2,9 +2,11 @@ package sessionapi
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -122,5 +124,39 @@ func TestNativeAnswerPreparationFailureCleansEarlierAcquisitions(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("failed batch retained an earlier unadmitted acquisition", err)
+	}
+}
+
+func TestPublicAnswerLimitsAndBatchCleanup(t *testing.T) {
+	encoded := strings.Repeat("A", base64.StdEncoding.EncodedLen(UploadLimit/2))
+	encoded = encoded[:len(encoded)-2] + "==" // Exactly half the decoded upload budget.
+	answer := Answer{Answers: []QuestionAnswer{{Attachments: []Attachment{{Data: &encoded}}}, {Attachments: []Attachment{{Data: &encoded}}}}}
+	if err := answer.validate(); err != nil {
+		t.Fatal("combined limit rejected", err)
+	}
+	answer.Answers[1].Attachments = append(answer.Answers[1].Attachments, Attachment{Data: new("YQ==")})
+	if err := answer.validate(); err == nil {
+		t.Fatal("combined upload excess accepted")
+	}
+	if err := (Answer{Answers: []QuestionAnswer{{Text: strings.Repeat("x", inputLimit+1)}}}).validate(); err == nil {
+		t.Fatal("answer metadata excess accepted")
+	}
+	path := filepath.Join(t.TempDir(), "acquired")
+	if err := os.WriteFile(path, []byte("image"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	_, err := answer.prepare(t.Context(), "/workspace", func(context.Context, string, InputRequest) (*PreparedInput, error) {
+		calls++
+		if calls == 2 {
+			return nil, context.Canceled
+		}
+		return NewPreparedInput(composer.Draft{}, []string{path}), nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatal("batch acquisition failure lost", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("failed batch leaked earlier image", err)
 	}
 }

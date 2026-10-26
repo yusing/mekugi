@@ -3,7 +3,7 @@
 
 export const protocolVersion = "4" as const;
 export const subprotocol = "mekugi.control.v4" as const;
-export type RPCMethod = "initialize" | "native/start" | "request/cancel" | "session/answer" | "session/control" | "session/decide" | "session/end" | "session/image" | "session/input" | "session/interrupt" | "session/list" | "session/options" | "session/read" | "session/redraw" | "session/shell" | "session/start" | "session/subscribe" | "subscription/cancel" | "view/attach" | "view/intent";
+export type RPCMethod = "initialize" | "native/start" | "request/cancel" | "session/answer" | "session/attachment-image" | "session/control" | "session/decide" | "session/end" | "session/image" | "session/input" | "session/interrupt" | "session/list" | "session/options" | "session/read" | "session/redraw" | "session/shell" | "session/start" | "session/subscribe" | "subscription/cancel" | "view/attach" | "view/intent";
 
 export type RPCMessage = {
   "jsonrpc": string;
@@ -157,6 +157,7 @@ export type QuestionAnswer = {
   "choice"?: (number | null);
   "text"?: string;
   "skip"?: boolean;
+  "attachments"?: Array<Attachment>;
 };
 
 export type Version = {

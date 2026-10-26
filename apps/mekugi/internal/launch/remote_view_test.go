@@ -206,6 +206,107 @@ func TestRemoteViewAnswersUsePendingPromptOwner(t *testing.T) {
 	}
 }
 
+func TestRemoteQuestionImagesReachHostAndReleaseRefusals(t *testing.T) {
+	for _, mode := range []string{"async", "sync", "side", "secret", "stale"} {
+		t.Run(mode, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.ownedImages = make(map[string]bool)
+			u.startSession("main", t.TempDir())
+			u.Turn = "turn"
+			switch mode {
+			case "async", "stale":
+				questionTestAsync(t, u, "images", "First?", "Second?")
+			case "side":
+				oneoffTestStart(t, u, wire)
+				questionTestMessage(t, u, "side-question", "item/tool/requestUserInput", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "itemId": "ask", "questions": []any{map[string]any{"id": "scope", "header": "Side", "question": "Side question?"}}})
+			default:
+				questionTestSync(t, u, "images", mode == "secret")
+			}
+			call := nativePendingQuestions(u.attached.conversation)[0]
+			h := remoteOwnerView(t, u)
+			data, err := os.ReadFile(pasteTestImage(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			answer := sessionapi.Answer{Call: call.ID}
+			for i, q := range call.Questions {
+				item := sessionapi.QuestionAnswer{Question: q.ID, Text: "separate answer"}
+				if i == 0 {
+					item.Text = ""
+					item.Attachments = []sessionapi.Attachment{{Source: "upload", Name: "answer.png", Data: new(base64.StdEncoding.EncodeToString(data))}}
+				}
+				answer.Answers = append(answer.Answers, item)
+			}
+			wire.Reset()
+			var acquired string
+			code, body := h.send(map[string]any{"answers": answer}, func(request sessionapi.NativeRequest) string {
+				draft := request.Operation.Answers.PublicAnswer().Answers[0].Draft()
+				if len(draft.Images) != 1 {
+					t.Fatal("image not prepared for its question")
+				}
+				acquired = draft.Images[0].Path
+				if mode == "stale" {
+					u.questions.Calls[0].Resolved = true
+				}
+				refusal, err := applyNativeAnswers(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{}, u.serviceTiers, "", "", false, u.side, u.clock, &u.questions, &u.approvals, false, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, *request.Operation.Answers, request.Prepared, request.Context, request.RemoteHuman())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return refusal
+			})
+			if mode == "secret" || mode == "stale" {
+				if code != 409 || wire.Len() != 0 {
+					t.Fatal("refused answer dispatched", code, body)
+				}
+				if _, err := os.Stat(acquired); !errors.Is(err, os.ErrNotExist) {
+					t.Fatal("refusal leaked image", err)
+				}
+				return
+			}
+			if code != 202 {
+				t.Fatal(code, body)
+			}
+			if mode == "sync" {
+				questionTestMessage(t, u, nil, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "completed"}})
+			}
+			images := 0
+			for _, request := range appServerDrainRequests[struct {
+				Method string `json:"method"`
+				Params struct {
+					ThreadID string `json:"threadId"`
+					Input    []struct {
+						Type string `json:"type"`
+						Path string `json:"path"`
+					} `json:"input"`
+				} `json:"params"`
+			}](t, wire) {
+				for _, input := range request.Params.Input {
+					if input.Type != "localImage" {
+						continue
+					}
+					images++
+					got, err := os.ReadFile(input.Path)
+					if err != nil || string(got) != string(data) {
+						t.Fatal("host lost answer image bytes", err)
+					}
+					if mode == "side" && request.Params.ThreadID != "oneoff" || mode != "side" && request.Params.ThreadID != "main" {
+						t.Fatal("image reached wrong host thread")
+					}
+				}
+			}
+			if images != 1 {
+				t.Fatal("answer image did not reach host input")
+			}
+			if mode == "async" {
+				questions := u.questions.Calls[0].Questions
+				if !strings.Contains(strings.Join(questions[0].Answer, ""), "[Image 1]") || strings.Join(questions[1].Answer, "") != "separate answer" {
+					t.Fatal("image moved between question answers")
+				}
+			}
+		})
+	}
+}
+
 func TestRemoteViewCommandAndDetailUseSharedOwners(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.startSession("main", t.TempDir())

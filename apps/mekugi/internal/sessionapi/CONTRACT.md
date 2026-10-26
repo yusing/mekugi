@@ -39,6 +39,7 @@ among that connection's active subscriptions. An acknowledgement containing
 | `session/options` | Execution-machine workspaces and offered models |
 | `session/list` | Current session-list value |
 | `session/image` | Read one image bound to a published user or View entry |
+| `session/attachment-image` | Preview an explicitly attached execution-machine path |
 | `session/read` | One confirmed thread's list entry |
 | `session/start` | Create/resume using the creation body |
 | `session/end` | End the selected owned runtime |
@@ -196,8 +197,8 @@ native composer operations instead use `Draft` and cannot mix the two forms.
 Remote completion/editor metadata contains text and caret only, without source
 bindings or prepared snapshots. A completion request may set `Explicit: true`
 to reopen a dismissed target; passive draft updates retain the dismissal.
-Remote question answers retain the existing
-text/choice/skip contract, including its secret-question exclusion.
+Remote question answers use text/choice/skip and optional ordered attachment
+descriptors, including the secret-question exclusion.
 Remote `operation.answers` therefore uses the public `Answer` shape from the
 answer method; native answers retain their final-batch payload. Conversion
 resolves choices through the actual pending question owner at admission.
@@ -462,7 +463,9 @@ Operation bodies are JSON of at most 1 KiB, with these exceptions:
   expansion of 32 MiB plus 1 MiB for text and metadata, including intents without
   attachment input.
 - Native startup and shell bodies allow at most 1 MiB.
-- Answer/decide bodies allow at most 64 KiB.
+- Answer bodies use the attachment input envelope, with at most 1 MiB combined
+  text/metadata and 32 MiB combined decoded uploads across the questions.
+  Decide bodies allow at most 64 KiB.
 
 A larger body has error status 413.
 
@@ -485,6 +488,12 @@ current draft in place; rejected remote commands remain in input history.
 remaining question needs an answer with `question` (its ID), `choice` (zero-based option
 index), `text`, and `skip`. An absent choice or the index after the last option
 selects a written answer. `skip: true` explicitly leaves a question unanswered.
+Written answers may include `attachments` using the ordinary input descriptors and
+limits. Preparation snapshots each question separately, then transfers the batch's
+acquired images together at admission. Images follow the existing host answer
+delivery, with numbered image markers in the corresponding answer. Offered choices
+reject attachments; skipped answers do not acquire them. Preparation or admission
+failure releases unadmitted uploads without changing authoritative answer drafts.
 Secret questions cannot be answered through this endpoint.
 
 `session/decide` takes `{"approval": ID, "choice": CHOICE_ID,
@@ -526,6 +535,17 @@ and selected workspace, run outside publication locks, and share attachment-tran
 capacity. Missing, oversized or non-raster sources fail explicitly. Local
 files and inline image data are supported up to the upload limit; remote URLs are
 not fetched. Browser image transfers use an independent authenticated connection.
+
+`session/attachment-image` takes `{path}` on a selected live thread, or
+`{path, workspace}` without a thread before creation. The initial workspace must
+be an existing absolute directory on a machine that supports thread creation;
+live requests use the selected thread's workspace and reject workspace overrides.
+The read-only request uses the same authenticated connection, transfer capacity,
+regular-file bounds and raster validation as published images, and returns
+`{mime, data}`. It never fetches URLs or retains server-side drafts. Relative paths
+resolve in the selected workspace. Non-raster paths return 415 and remain ordinary
+file chips; unreadable paths show a preview failure. Previewing does not change
+which source is acquired when the draft is eventually submitted.
 
 Live `view/attach` selects a confirmed `thread` identity. The server resolves
 admitted cold membership and preparation without client-supplied parent context;

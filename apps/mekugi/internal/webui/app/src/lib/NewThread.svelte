@@ -231,6 +231,7 @@
           bind:items
           bind:pathing
           machine={machine.label}
+          previewTarget={{ machine, workspace }}
           disabled={busy}
         />
         <label class="sr-only" for="new-text">First message</label>
