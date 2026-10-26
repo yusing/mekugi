@@ -1,4 +1,4 @@
-● Main                                                                                      12:00:00
+● main                                                                                      12:00:00
 ▎ Inspect command -v gopls
 ▎         ┆ /usr/bin/gopls
 ▎         command -v codex

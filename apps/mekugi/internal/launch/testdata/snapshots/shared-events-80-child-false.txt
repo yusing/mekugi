@@ -3,15 +3,15 @@
 
 • Checking final changes
 
-✗ Main                                                                  12:34:58
+✗ main                                                                  12:34:58
 │ Provider request failed
 
-✗ Main                                                                  12:34:59
+✗ main                                                                  12:34:59
 │ Provider request failed
 │ details · ctrl+b !
 
 ● main                                                                  12:35:00
 ┃ The same narrative event is now timestamped.
 
-✓ Main finished                                                         12:35:01
+✓ main finished                                                         12:35:01
 │ Validation passed.

@@ -54,6 +54,8 @@ func TestUISnapshotConversationHierarchy(t *testing.T) {
 				add("reply", parent, sibling, "Please check the tests.")
 				add("reply", sibling, parent, "Tests checked.")
 				add("reply", parent, "/root", "Review complete.")
+				// Delivered messages use the local transcript's Main alias.
+				add("reply", parent, "Main", "Message delivered to main.")
 				v.Update(&presentation.Publication{Entries: entries}, Display{Caller: caller})
 				v.Following = false
 				v.Passed = map[uint64]bool{5: true}

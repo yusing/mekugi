@@ -1,4 +1,4 @@
-✗ Main                                                                  12:40:21
+✗ main                                                                  12:40:21
 │ exec script failed: exec_command failed: CreateProcess { message:
 │ Rejected("escaped command escaped command escaped command escaped command
 │ escaped command escaped command escaped command escaped command escaped
