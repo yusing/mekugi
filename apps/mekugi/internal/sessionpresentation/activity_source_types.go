@@ -23,13 +23,14 @@ type ActivityEntry struct {
 	Observed      time.Time
 	Completed     time.Time `json:"-"` // Admitted completion; terminal reveal keeps its own clock.
 
-	Native      *NativeItem         `json:"-"` // In-process app-server lifecycle input, not a provider observation.
-	Assignment  *ActivityAssignment `json:"-"` // Admitted Thread Control assignment, not an ordinary message.
-	Message     *ActivityMessage    `json:"-"` // A directed message, for a reply entry.
-	Start       *ActivityStart      `json:"-"` // A child's start, for a start entry.
-	ActivitySeq uint64              `json:"-"` // Main excerpt's exact entry in Activity, never a question target.
-	OutputTail  []string            `json:"-"` // Failed command's sanitized final output lines, on an exit entry.
-	OutputOmit  int                 `json:"-"` // Output lines before outputTail.
+	Native        *NativeItem         `json:"-"` // In-process app-server lifecycle input, not a provider observation.
+	Assignment    *ActivityAssignment `json:"-"` // Admitted Thread Control assignment, not an ordinary message.
+	Message       *ActivityMessage    `json:"-"` // A directed message, for a reply entry.
+	Start         *ActivityStart      `json:"-"` // A child's start, for a start entry.
+	ActivitySeq   uint64              `json:"-"` // Main excerpt's exact entry in Activity, never a question target.
+	OutputTail    []string            `json:"-"` // Failed command's sanitized final output lines, on an exit entry.
+	OutputOmit    int                 `json:"-"` // Output lines before outputTail.
+	OutputClipped bool                `json:"-"` // Output summary lost bytes within a line.
 }
 
 // Source: apps/mekugi/internal/router/subagent_activity_pane.go:34:58@45fbe279

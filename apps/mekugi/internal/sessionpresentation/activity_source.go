@@ -148,7 +148,7 @@ func (v *ActivitySource) Apply(event ActivityEvent) {
 				if v0.Source.Agent == entry.Agent && v0.Source.CallID == entry.CallID && entry.CallID != "" {
 					code, _ := strconv.Atoi(entry.Text)
 					command := CommandPresentation(v0.Source)
-					blocks := activitypresentation.CommandExit(v.SourceValues(i), command.Display, code, entry.OutputTail, entry.OutputOmit)
+					blocks := activitypresentation.CommandExit(v.SourceValues(i), command.Display, code, entry.OutputTail, entry.OutputOmit, entry.OutputClipped)
 					command.ApplyFacts(blocks)
 					v.Model.Replace(i, v0.Source, blocks)
 					break

@@ -94,7 +94,7 @@ func CommandOutput(entry *ActivityEntry, item observation.Item, settled time.Tim
 	if item.Type != "commandExecution" || !item.UserShell && item.ExitCode != nil && *item.ExitCode != 0 {
 		return
 	}
-	entry.OutputTail, entry.OutputOmit = OutputTail(item.AggregatedOutput)
+	entry.OutputTail, entry.OutputOmit, entry.OutputClipped = OutputTail(item.AggregatedOutput)
 	if item.ExitCode == nil || *item.ExitCode != 0 {
 		return
 	}
@@ -105,9 +105,9 @@ func CommandOutput(entry *ActivityEntry, item observation.Item, settled time.Tim
 // OutputTail keeps the last non-blank lines of a command's host
 // output for display. It never reads beyond the host's aggregate, and counts
 // the lines it leaves out.
-func OutputTail(output *string) ([]string, int) {
+func OutputTail(output *string) ([]string, int, bool) {
 	if output == nil {
-		return nil, 0
+		return nil, 0, false
 	}
 	return feed.TailOutput(*output)
 }

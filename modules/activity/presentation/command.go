@@ -26,6 +26,7 @@ type Command struct {
 	Approval                         string
 	Tail                             []string
 	TailOmitted                      int
+	TailClipped                      bool
 	Output                           *feed.OutputView
 	OutputContent                    bool
 	Changes                          []ChangeRow
@@ -43,6 +44,7 @@ type CommandSegment struct {
 	Duration                  time.Duration
 	Tail                      []string
 	TailOmitted               int
+	TailClipped               bool
 	Output                    *feed.OutputView
 	OutputContent             bool
 	Changes                   []ChangeRow
@@ -137,6 +139,11 @@ func hasOutput(output *feed.OutputView, content bool) bool {
 	return output != nil && (content || output.Dropped > 0 || output.Released)
 }
 
+func previewSource(source string) (string, bool) {
+	first, rest, _ := strings.Cut(source, "\n")
+	return first, strings.TrimSpace(rest) != ""
+}
+
 // SegmentValues uses observed boundaries, retaining output and honest outcomes
 // after captured edits replace intent. Detail values additionally retain source.
 // Source: apps/mekugi/internal/router/live_activity_blocks.go:309:421@6d403a5a.
@@ -163,10 +170,11 @@ func (c Command) SegmentValues(detail bool) []Value {
 		}
 		if retainSource {
 			source := segment.Source
+			omitted := false
 			if !detail {
-				source, _, _ = strings.Cut(source, "\n") // Program bodies stay in details.
+				source, omitted = previewSource(source)
 			}
-			operations = []Value{{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true}}
+			operations = []Value{{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true, SourceOmitted: omitted}}
 		}
 		for i := range operations {
 			operations[i].Running, operations[i].Skipped, operations[i].Pending = segment.Running, segment.Skipped, segment.Pending
@@ -195,7 +203,7 @@ func (c Command) SegmentValues(detail bool) []Value {
 		if !segment.Skipped && !segment.Pending {
 			last.Started, last.Ended, last.Duration = segment.Started, segment.Ended, segment.Duration
 		}
-		last.Tail, last.TailOmitted, last.Output = segment.Tail, segment.TailOmitted, outputID(segment.Output, segmentIndex+2)
+		last.Tail, last.TailOmitted, last.TailClipped, last.Output = segment.Tail, segment.TailOmitted, segment.TailClipped, outputID(segment.Output, segmentIndex+2)
 		last.Changes = segment.Changes
 		if len(operations) == 1 && !segment.Running && !segment.Skipped && !segment.Pending {
 			last.Results = segment.Results
@@ -212,14 +220,15 @@ func (c Command) SegmentValues(detail bool) []Value {
 	if combined {
 		if len(values) == 0 {
 			source := c.Script
+			omitted := false
 			if c.Captured && !detail {
-				source, _, _ = strings.Cut(source, "\n")
+				source, omitted = previewSource(source)
 			}
-			values = append(values, Value{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true})
+			values = append(values, Value{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true, SourceOmitted: omitted})
 		}
 		for i := len(values) - 1; i >= 0; i-- {
 			if !values[i].Skipped && !values[i].Pending {
-				values[i].Tail, values[i].TailOmitted, values[i].Output = c.Tail, c.TailOmitted, outputID(c.Output, 1)
+				values[i].Tail, values[i].TailOmitted, values[i].TailClipped, values[i].Output = c.Tail, c.TailOmitted, c.TailClipped, outputID(c.Output, 1)
 				values[i].Changes = c.Changes
 				break
 			}
@@ -263,7 +272,7 @@ func (c Command) DetailValues() []Value {
 		if c.CaptureText == "" && len(c.Segments) < 2 && len(operations) < 2 && (len(operations) == 0 || len(operations[0].Reads) < 2) {
 			return nil
 		}
-		values = []Value{{Source: c.Source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: c.Display, Lang: "bash", Output: outputID(c.Output, 1), Tail: c.Tail, TailOmitted: c.TailOmitted, Running: c.Running, Body: "Per-command output boundaries were not retained for this invocation."}}
+		values = []Value{{Source: c.Source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: c.Display, Lang: "bash", Output: outputID(c.Output, 1), Tail: c.Tail, TailOmitted: c.TailOmitted, TailClipped: c.TailClipped, Running: c.Running, Body: "Per-command output boundaries were not retained for this invocation."}}
 		classified := Operations(ShellSource(c.Display, c.Directory))
 		if slices.ContainsFunc(classified, func(value Value) bool { return value.EditSource != "" }) {
 			if segments, ok := shellinstrumentation.Split(c.Display); ok {

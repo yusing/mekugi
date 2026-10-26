@@ -48,18 +48,19 @@ func (entry ItemContent) Values() (blocks []Value) {
 		if n := entry.Details; entry.Kind == "tool" && n != nil && n.CommandText != "" && len(n.Reload) == 0 &&
 			(len(entry.Command.Segments) == 0 && (entry.Command.Running || entry.Command.Duration > 0) && command.Compound(blocks) || compoundApproval) &&
 			!slices.ContainsFunc(blocks, func(b Value) bool { return b.BatchExit }) {
-			source, _, _ := strings.Cut(cmp.Or(command.Display, command.Script, n.CommandText), "\n")
+			source, omitted := previewSource(cmp.Or(command.Display, command.Script, n.CommandText))
 			batch := Value{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true,
-				BatchExit: true, Running: entry.Command.Running, Output: n.Output, Tail: entry.Command.Tail, TailOmitted: entry.Command.TailOmitted}
+				SourceOmitted: omitted,
+				BatchExit:     true, Running: entry.Command.Running, Output: n.Output, Tail: entry.Command.Tail, TailOmitted: entry.Command.TailOmitted, TailClipped: entry.Command.TailClipped}
 			if len(command.Segments) > 0 {
 				batch.Operation = len(command.Segments) + 1
 			}
 			if len(entry.Command.Segments) == 0 {
 				for i := range blocks {
-					blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = 0, nil, 0
+					blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted, blocks[i].TailClipped = 0, nil, 0, false
 				}
 			} else {
-				batch.Output, batch.Tail, batch.TailOmitted = 0, nil, 0
+				batch.Output, batch.Tail, batch.TailOmitted, batch.TailClipped = 0, nil, 0, false
 			}
 			blocks = append(blocks, batch)
 		}
@@ -104,7 +105,7 @@ func (entry ItemContent) Values() (blocks []Value) {
 			return nil
 		}
 		return []Value{{Kind: "op", Verb: "Run", Hook: new(*n.Hook), Label: text, Running: entry.Command.Running,
-			Output: n.Output, Tail: entry.Command.Tail, TailOmitted: entry.Command.TailOmitted}}
+			Output: n.Output, Tail: entry.Command.Tail, TailOmitted: entry.Command.TailOmitted, TailClipped: entry.Command.TailClipped}}
 	case "reply":
 		// Direction comes from the delivered message, never from its text.
 		if entry.Message != nil {
@@ -116,6 +117,7 @@ func (entry ItemContent) Values() (blocks []Value) {
 		block := Value{Kind: "op", Verb: "Asked", Label: label, Body: body}
 		if entry.Details != nil {
 			block.Questions = slices.Clone(entry.Details.Questions)
+			block.SourceOmitted = slices.ContainsFunc(block.Questions, func(q Question) bool { return strings.TrimSpace(q.Options) != "" })
 		}
 		return []Value{block}
 	case "attachments":
@@ -184,7 +186,7 @@ func (entry ItemContent) Values() (blocks []Value) {
 			blocks := []Value{{Kind: "op", Verb: "Run", UserShell: true,
 				Code: textsanitize.Safe(command.Display, false), Lang: "bash", Fenced: true,
 				Running: command.Running, Output: outputID(command.Output, 1),
-				Tail: command.Tail, TailOmitted: command.TailOmitted}}
+				Tail: command.Tail, TailOmitted: command.TailOmitted, TailClipped: command.TailClipped}}
 			return append(blocks, command.Effects()...)
 		}
 		if entry.Details != nil && len(entry.Command.Segments) > 0 {
@@ -193,9 +195,10 @@ func (entry ItemContent) Values() (blocks []Value) {
 		}
 		if command.CaptureText != "" && command.Display != "" &&
 			(command.Running || command.Duration > 0 || command.ExitCode != 0 || len(command.Tail) > 0 || hasOutput(command.Output, command.OutputContent)) {
-			source, _, _ := strings.Cut(command.Display, "\n")
+			source, omitted := previewSource(command.Display)
 			blocks := []Value{{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true, BatchExit: command.Compound(Operations(text)),
-				Running: command.Running, Output: outputID(command.Output, 1), Tail: command.Tail, TailOmitted: command.TailOmitted, Changes: command.Changes}}
+				SourceOmitted: omitted,
+				Running:       command.Running, Output: outputID(command.Output, 1), Tail: command.Tail, TailOmitted: command.TailOmitted, TailClipped: command.TailClipped, Changes: command.Changes}}
 			return GroupOperations(append(blocks, command.Effects()...))
 		}
 		blocks := FoldStages(Operations(text))
@@ -215,7 +218,7 @@ func (entry ItemContent) Values() (blocks []Value) {
 			}
 			if len(blocks) > 0 {
 				last := &blocks[len(blocks)-1]
-				last.Tail, last.TailOmitted = entry.Command.Tail, entry.Command.TailOmitted
+				last.Tail, last.TailOmitted, last.TailClipped = entry.Command.Tail, entry.Command.TailOmitted, entry.Command.TailClipped
 				last.Changes = entry.Command.Changes
 			}
 		}
@@ -231,6 +234,7 @@ func RetainBatchResult(blocks []Value, batch Value) []Value {
 	if at := slices.IndexFunc(blocks, func(b Value) bool { return b.BatchExit }); at >= 0 {
 		if blocks[at].Code != "" {
 			batch.Code, batch.Lang, batch.Fenced, batch.Label = blocks[at].Code, blocks[at].Lang, blocks[at].Fenced, blocks[at].Label
+			batch.SourceOmitted = blocks[at].SourceOmitted
 		}
 		blocks[at] = batch
 		return blocks
@@ -255,7 +259,7 @@ func ApplyApproval(blocks []Value, outcome string) {
 
 // CommandExit keeps a combined shell failure separate from classified
 // operations: without a complete segment report none owns the batch's exit.
-func CommandExit(blocks []Value, source string, code int, tail []string, omitted int) []Value {
+func CommandExit(blocks []Value, source string, code int, tail []string, omitted int, clipped bool) []Value {
 	last, count, batch := -1, 0, -1
 	var output int
 	for i, block := range blocks {
@@ -264,7 +268,7 @@ func CommandExit(blocks []Value, source string, code int, tail []string, omitted
 		}
 		if block.UserShell {
 			blocks[i].ExitCode, blocks[i].Exited = code, true
-			blocks[i].Tail, blocks[i].TailOmitted = tail, omitted
+			blocks[i].Tail, blocks[i].TailOmitted, blocks[i].TailClipped = tail, omitted, clipped
 			return blocks
 		}
 		output = cmp.Or(output, block.Output)
@@ -285,18 +289,18 @@ func CommandExit(blocks []Value, source string, code int, tail []string, omitted
 			batch = len(blocks)
 			value := Value{Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true}
 			if source != "" {
-				source, _, _ = strings.Cut(source, "\n")
+				source, value.SourceOmitted = previewSource(source)
 				value.Label, value.Code, value.Lang, value.Fenced = "", textsanitize.Safe(source, false), "bash", true
 			}
 			blocks = append(blocks, value)
 		}
 		// Any streamed tail was combined too; move it to the batch result.
 		for i := range blocks {
-			blocks[i].Tail, blocks[i].TailOmitted, blocks[i].Output = nil, 0, 0
+			blocks[i].Tail, blocks[i].TailOmitted, blocks[i].TailClipped, blocks[i].Output = nil, 0, false, 0
 		}
 		last = batch
 	}
 	blocks[last].ExitCode, blocks[last].Exited = code, true
-	blocks[last].Tail, blocks[last].TailOmitted, blocks[last].Output = tail, omitted, output
+	blocks[last].Tail, blocks[last].TailOmitted, blocks[last].TailClipped, blocks[last].Output = tail, omitted, clipped, output
 	return blocks
 }

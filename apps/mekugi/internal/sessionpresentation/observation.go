@@ -316,7 +316,7 @@ func (s *Attachment) commandDone(entry ActivityEntry, item observation.Item, now
 	done := []ActivityEntry{entry}
 	if item.ExitCode != nil && *item.ExitCode != 0 {
 		exit := ActivityEntry{Seq: s.Activity().NextSequence(), Agent: entry.Agent, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: entry.CallID, Observed: now}
-		exit.OutputTail, exit.OutputOmit = OutputTail(item.AggregatedOutput)
+		exit.OutputTail, exit.OutputOmit, exit.OutputClipped = OutputTail(item.AggregatedOutput)
 		done = append(done, exit)
 	}
 	return done

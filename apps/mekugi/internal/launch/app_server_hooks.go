@@ -127,7 +127,7 @@ func hookEntry(s *sessionpresentation.Attachment, activity *activitymodel.Servic
 		label += " · outcome unknown"
 	}
 	entry := sessionpresentation.ActivityEntry{Agent: s.Caller(thread), Kind: "hook", CallID: run.ID, Text: label, Observed: observation.At, Native: n}
-	entry.OutputTail, entry.OutputOmit = sessionpresentation.OutputTail(&observation.Output)
+	entry.OutputTail, entry.OutputOmit, entry.OutputClipped = sessionpresentation.OutputTail(&observation.Output)
 	if observation.Completed && run.Status == "completed" && !observation.HasError {
 		if live && len(entry.OutputTail) > 0 {
 			entry.Completed = observation.At

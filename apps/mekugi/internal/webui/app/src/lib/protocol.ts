@@ -102,6 +102,9 @@ export interface Change {
 }
 
 export interface Value {
+  detailCode?: string;
+  tailClipped?: boolean;
+  sourceOmitted?: boolean;
   kind?: string;
   verb?: string;
   // A compound command's combined result; without code, its steps are listed before it.

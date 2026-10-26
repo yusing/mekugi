@@ -1090,6 +1090,8 @@ export type Value = {
   "Pending": boolean;
   "Tail": Array<string>;
   "TailOmitted": number;
+  "TailClipped": boolean;
+  "SourceOmitted": boolean;
   "Changes": Array<ChangeRow>;
   "Hook": (HookDetails | null);
   "Members": Array<Value>;
@@ -1097,7 +1099,7 @@ export type Value = {
   "DetailLines": number;
   "Live": boolean;
   "Thought": number;
-} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Effect" | "Output" | "ReplySummary" | "ReplyDetails" | "DetailCode" | "Repeated" | "AutoReload" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "WaitTimeout" | "WaitReason" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Pending" | "Tail" | "TailOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought">;
+} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Effect" | "Output" | "ReplySummary" | "ReplyDetails" | "DetailCode" | "Repeated" | "AutoReload" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "WaitTimeout" | "WaitReason" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Pending" | "Tail" | "TailOmitted" | "TailClipped" | "SourceOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought">;
 
 export type ItemContent = {
   "Command": Command;
@@ -1348,6 +1350,7 @@ export type Command = {
   "Approval": string;
   "Tail": Array<string>;
   "TailOmitted": number;
+  "TailClipped": boolean;
   "Output": (OutputView | null);
   "OutputContent": boolean;
   "Changes": Array<ChangeRow>;
@@ -1527,6 +1530,7 @@ export type CommandSegment = {
   "Duration": number;
   "Tail": Array<string>;
   "TailOmitted": number;
+  "TailClipped": boolean;
   "Output": (OutputView | null);
   "OutputContent": boolean;
   "Changes": Array<ChangeRow>;

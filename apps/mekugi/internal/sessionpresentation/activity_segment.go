@@ -20,6 +20,7 @@ type ActivitySegment struct {
 	Exit    int                              `json:"-"`
 	Tail    []string                         `json:"-"`
 	Omit    int                              `json:"-"`
+	Clipped bool                             `json:"-"`
 	Changes []activitypresentation.ChangeRow `json:"-"`
 	Output  *activitymodel.Output            `json:"-"`
 	Source  string                           `json:"-"`

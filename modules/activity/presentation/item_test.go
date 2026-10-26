@@ -91,7 +91,7 @@ func TestUserShellRetainsCommandAlongsideCapturedEdits(t *testing.T) {
 		CaptureText: "Edit `file` · +1 −0 · bash", Exited: true, ExitCode: 2, Duration: time.Second, Approval: "Approved",
 		Segments: []CommandSegment{{Source: "printf changed > file", Writer: true}, {Source: "false", ExitCode: 2}}}
 	values := (ItemContent{Seq: 1, Kind: "tool", Command: command, Details: &ItemDetails{CommandText: command.Script}}).Values()
-	values = CommandExit(values, command.Display, 2, []string{"retained failure"}, 3)
+	values = CommandExit(values, command.Display, 2, []string{"retained failure"}, 3, false)
 	if len(values) != 2 || !values[0].UserShell || values[0].Code != command.Display || values[0].ExitCode != 2 || values[0].Duration != time.Second ||
 		len(values[0].Tail) != 1 || values[0].TailOmitted != 3 || values[0].Approval != "Approved" || values[1].EditPath() != "file" || values[1].Exited {
 		t.Fatalf("capture replaced user source/output or inherited its exit: %+v", values)

@@ -13,7 +13,7 @@ import (
 
 func TestOutputTailStreamsBoundedTail(t *testing.T) {
 	output := "build\r\n\r\n10%\r50%\r100%\ndone\x1b[2K\n" + strings.Repeat("x", 3*OutputTailBytes) + "\nnext"
-	whole, wholeOmit := activitymodel.TailOutput(output)
+	whole, wholeOmit, _ := activitymodel.TailOutput(output)
 	var chunked OutputTail
 	for chunk := range slices.Values(strings.SplitAfter(output, "")) {
 		chunked.Write(chunk) // One byte at a time splits CRLF and escapes.

@@ -71,7 +71,7 @@ func TestUISnapshotCapturedEffectsUnderAction(t *testing.T) {
 					CaptureText: "Delete `old.go` · +0 −3 · rm", Exited: true, ExitCode: 1, Duration: time.Second, Tail: []string{"failure detail"}}
 				item := presentation.ItemContent{Seq: 1, Kind: "tool", Command: command, Details: &presentation.ItemDetails{CommandText: command.Script}}
 				values := item.Values()
-				values = presentation.CommandExit(values, command.Display, 1, command.Tail, 0)
+				values = presentation.CommandExit(values, command.Display, 1, command.Tail, 0, false)
 				if len(values) != 2 || !values[1].Effect || values[1].Exited || values[1].ExitCode != 0 || values[0].Operation == values[1].Operation {
 					t.Fatalf("effect borrowed action outcome or identity: %+v", values)
 				}

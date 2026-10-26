@@ -72,7 +72,7 @@ func ObserveCommandReport(invocation *activitypresentation.Invocation, report ac
 			Text: segment.Text, Source: segment.Source, Running: segment.Running, Skipped: segment.Skipped, Pending: segment.Pending, Exit: segment.ExitCode, Raw: segment.Raw,
 			Output: invocation.SegmentOutput(index), Results: segment.Results}
 		if snapshot.SeparateOutput {
-			shown.Tail, shown.Omit = segment.Tail, segment.TailOmitted
+			shown.Tail, shown.Omit, shown.Clipped = segment.Tail, segment.TailOmitted, segment.TailClipped
 			if final && !shown.Skipped && shown.Exit == 0 {
 				output := strings.Join(shown.Tail, "\n")
 				shown.Changes = activitypresentation.MChangesOutputRows(DisplayCommand(shown.Source), &output)

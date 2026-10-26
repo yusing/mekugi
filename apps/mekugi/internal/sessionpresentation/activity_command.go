@@ -14,7 +14,7 @@ import (
 // CommandPresentation admits native facts and existing output snapshots without
 // transferring handles, capture authority, or process lifetime to presentation.
 func CommandPresentation(entry ActivityEntry) activitypresentation.Command {
-	c := activitypresentation.Command{Source: entry.Seq, Text: entry.Text, Observed: entry.Observed, Tail: entry.OutputTail, TailOmitted: entry.OutputOmit}
+	c := activitypresentation.Command{Source: entry.Seq, Text: entry.Text, Observed: entry.Observed, Tail: entry.OutputTail, TailOmitted: entry.OutputOmit, TailClipped: entry.OutputClipped}
 	n := entry.Native
 	if n == nil {
 		return c
@@ -54,7 +54,7 @@ func CommandPresentation(entry ActivityEntry) activitypresentation.Command {
 		value := activitypresentation.CommandSegment{
 			Source: segment.Source, Text: segment.Text, Running: segment.Running, Skipped: segment.Skipped, Pending: segment.Pending, ExitCode: segment.Exit,
 			Started: segment.Timing.Started, Ended: segment.Timing.Ended, Duration: time.Duration(segment.Timing.ElapsedNS),
-			Tail: segment.Tail, TailOmitted: segment.Omit, Changes: segment.Changes, Results: segment.Results,
+			Tail: segment.Tail, TailOmitted: segment.Omit, TailClipped: segment.Clipped, Changes: segment.Changes, Results: segment.Results,
 		}
 		if c.Captured && !segment.Pending && !segment.Running && !segment.Skipped && segment.Exit == 0 {
 			// One observed operation in one captured invocation needs no source

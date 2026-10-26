@@ -29,16 +29,16 @@ func TestAppServerOutputTailKeepsFinalLines(t *testing.T) {
 		lines = append(lines, fmt.Sprintf("line %d", i))
 	}
 	output := strings.Join(lines[:6], "\n") + "\n\n\x1b[2K\n" + strings.Join(lines[6:], "\n") + "\x1b]0;title\x07\n\n"
-	tail, omitted := sessionpresentation.OutputTail(&output)
+	tail, omitted, _ := sessionpresentation.OutputTail(&output)
 	if want := []string{"line 3", "line 4", "line 5", "line 6", "line 7"}; !reflect.DeepEqual(tail, want) || omitted != 3 {
 		t.Fatalf("tail = %q omitted %d", tail, omitted)
 	}
 	long := strings.Repeat("é", activityui.OutputTailBytes)
-	if tail, _ := sessionpresentation.OutputTail(&long); len(tail) != 1 || len(tail[0]) > activityui.OutputTailBytes+len("…") || !strings.HasSuffix(tail[0], "…") {
+	if tail, _, clipped := sessionpresentation.OutputTail(&long); !clipped || len(tail) != 1 || len(tail[0]) > activityui.OutputTailBytes+len("…") || !strings.HasSuffix(tail[0], "…") {
 		t.Fatalf("long line tail = %q", tail)
 	}
 	for _, output := range []*string{nil, new(""), new(" \n\n")} {
-		if tail, omitted := sessionpresentation.OutputTail(output); tail != nil || omitted != 0 {
+		if tail, omitted, _ := sessionpresentation.OutputTail(output); tail != nil || omitted != 0 {
 			t.Fatalf("empty output tail = %q, %d", tail, omitted)
 		}
 	}

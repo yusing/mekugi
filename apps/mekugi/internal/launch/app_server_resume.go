@@ -346,7 +346,7 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
 			exit := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
-			exit.OutputTail, exit.OutputOmit = sessionpresentation.OutputTail(item.AggregatedOutput)
+			exit.OutputTail, exit.OutputOmit, exit.OutputClipped = sessionpresentation.OutputTail(item.AggregatedOutput)
 			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{exit}})
 		}
 	default:

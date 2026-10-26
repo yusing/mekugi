@@ -62,6 +62,7 @@ type Value struct {
 	Running, Requested, Segment, Skipped, Pending bool
 	Tail                                          []string
 	TailOmitted                                   int
+	TailClipped, SourceOmitted                    bool // Summary bytes or source content omitted from the inline value.
 	Changes                                       []ChangeRow
 	Hook                                          *HookDetails
 	Members                                       []Value

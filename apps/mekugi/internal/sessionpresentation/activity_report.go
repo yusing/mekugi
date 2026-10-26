@@ -18,7 +18,7 @@ func (v *ActivitySource) SettleCommandReport(enriched ActivityEntry, valid bool)
 		if valid {
 			native.Segments, native.Changes, native.Commit = enriched.Native.Segments, enriched.Native.Changes, enriched.Native.Commit
 			entry.Completed = enriched.Completed
-			entry.OutputTail, entry.OutputOmit = enriched.OutputTail, enriched.OutputOmit
+			entry.OutputTail, entry.OutputOmit, entry.OutputClipped = enriched.OutputTail, enriched.OutputOmit, enriched.OutputClipped
 			values = activitypresentation.RetainAnnotations(ActivityContent(entry).Values(), values)
 		}
 		v.Model.Replace(i, entry, values)

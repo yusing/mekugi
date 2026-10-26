@@ -166,45 +166,47 @@ type entry struct {
 }
 
 type value struct {
-	Kind        string     `json:"kind,omitzero"`
-	Verb        string     `json:"verb,omitzero"`
-	BatchExit   bool       `json:"batchExit,omitzero"` // A compound command's combined result.
-	Label       string     `json:"label,omitzero"`
-	Sources     []string   `json:"sources,omitzero"` // Programs that made a file edit, outside its label.
-	Path        string     `json:"path,omitzero"`
-	AutoReload  bool       `json:"autoReload,omitzero"`
-	Approval    string     `json:"approval,omitzero"`
-	Code        string     `json:"code,omitzero"`
-	DetailCode  string     `json:"detailCode,omitzero"`
-	Lang        string     `json:"lang,omitzero"`
-	Fenced      bool       `json:"fenced,omitzero"`
-	Body        string     `json:"body,omitzero"`
-	Details     string     `json:"details,omitzero"` // Supporting child reply content without section delimiters.
-	Summary     string     `json:"summary,omitzero"` // A child reply's own summary of Body.
-	Reads       []read     `json:"reads,omitzero"`
-	Subsumed    bool       `json:"subsumed,omitzero"`
-	Effect      bool       `json:"effect,omitzero"`
-	Pending     bool       `json:"pending,omitzero"`
-	Skipped     bool       `json:"skipped,omitzero"`
-	HiddenEdits int        `json:"hiddenEdits,omitzero"` // Count of retained rows folded from this index.
-	FoldSource  bool       `json:"foldSource,omitzero"`
-	Duration    int64      `json:"duration,omitzero"`
-	Thought     int64      `json:"thought,omitzero"`
-	Workdir     string     `json:"workdir,omitzero"`
-	From        string     `json:"from,omitzero"` // Caller paths of a message's ends.
-	To          string     `json:"to,omitzero"`
-	Questions   []question `json:"questions,omitzero"`
-	Waits       []wait     `json:"waits,omitzero"`
-	WaitReason  string     `json:"waitReason,omitzero"`
-	WaitTimeout string     `json:"waitTimeout,omitzero"`
-	ExitCode    *int       `json:"exitCode,omitzero"`
-	EditOutcome string     `json:"editOutcome,omitzero"`
-	Running     bool       `json:"running,omitzero"`
-	Live        bool       `json:"live,omitzero"`
-	Tail        []string   `json:"tail,omitzero"`
-	TailOmitted int        `json:"tailOmitted,omitzero"`
-	Changes     []change   `json:"changes,omitzero"`
-	Hook        *hook      `json:"hook,omitzero"`
+	Kind          string     `json:"kind,omitzero"`
+	Verb          string     `json:"verb,omitzero"`
+	BatchExit     bool       `json:"batchExit,omitzero"` // A compound command's combined result.
+	Label         string     `json:"label,omitzero"`
+	Sources       []string   `json:"sources,omitzero"` // Programs that made a file edit, outside its label.
+	Path          string     `json:"path,omitzero"`
+	AutoReload    bool       `json:"autoReload,omitzero"`
+	Approval      string     `json:"approval,omitzero"`
+	Code          string     `json:"code,omitzero"`
+	DetailCode    string     `json:"detailCode,omitzero"`
+	Lang          string     `json:"lang,omitzero"`
+	Fenced        bool       `json:"fenced,omitzero"`
+	Body          string     `json:"body,omitzero"`
+	Details       string     `json:"details,omitzero"` // Supporting child reply content without section delimiters.
+	Summary       string     `json:"summary,omitzero"` // A child reply's own summary of Body.
+	Reads         []read     `json:"reads,omitzero"`
+	Subsumed      bool       `json:"subsumed,omitzero"`
+	Effect        bool       `json:"effect,omitzero"`
+	Pending       bool       `json:"pending,omitzero"`
+	Skipped       bool       `json:"skipped,omitzero"`
+	HiddenEdits   int        `json:"hiddenEdits,omitzero"` // Count of retained rows folded from this index.
+	FoldSource    bool       `json:"foldSource,omitzero"`
+	Duration      int64      `json:"duration,omitzero"`
+	Thought       int64      `json:"thought,omitzero"`
+	Workdir       string     `json:"workdir,omitzero"`
+	From          string     `json:"from,omitzero"` // Caller paths of a message's ends.
+	To            string     `json:"to,omitzero"`
+	Questions     []question `json:"questions,omitzero"`
+	Waits         []wait     `json:"waits,omitzero"`
+	WaitReason    string     `json:"waitReason,omitzero"`
+	WaitTimeout   string     `json:"waitTimeout,omitzero"`
+	ExitCode      *int       `json:"exitCode,omitzero"`
+	EditOutcome   string     `json:"editOutcome,omitzero"`
+	Running       bool       `json:"running,omitzero"`
+	Live          bool       `json:"live,omitzero"`
+	Tail          []string   `json:"tail,omitzero"`
+	TailOmitted   int        `json:"tailOmitted,omitzero"`
+	TailClipped   bool       `json:"tailClipped,omitzero"`
+	SourceOmitted bool       `json:"sourceOmitted,omitzero"`
+	Changes       []change   `json:"changes,omitzero"`
+	Hook          *hook      `json:"hook,omitzero"`
 }
 
 type read struct {
@@ -308,7 +310,7 @@ func projectEntry(e activitypresentation.Entry, summaries bool) entry {
 		if j := slices.IndexFunc(p.Values, func(v value) bool { return v.Label == "" && v.Code == command }); command != "" && j >= 0 {
 			own, batch := &p.Values[j], p.Values[i]
 			own.Duration, own.ExitCode, own.Running = batch.Duration, batch.ExitCode, batch.Running
-			own.Tail, own.TailOmitted = batch.Tail, batch.TailOmitted
+			own.Tail, own.TailOmitted, own.TailClipped = batch.Tail, batch.TailOmitted, batch.TailClipped
 			p.Values = slices.Delete(p.Values, i, i+1)
 			continue
 		}
@@ -316,6 +318,7 @@ func projectEntry(e activitypresentation.Entry, summaries bool) entry {
 			p.Values[i].Label = ""
 		} else if command != "" {
 			p.Values[i].Label, p.Values[i].Code, p.Values[i].Lang, p.Values[i].Fenced = "", command, "bash", true
+			p.Values[i].SourceOmitted = false
 		}
 	}
 	return p
@@ -333,7 +336,7 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 			Kind: v.Kind, Verb: v.Verb, BatchExit: v.BatchExit, Label: v.Label, Code: v.Code, Lang: v.Lang, Fenced: v.Fenced, Body: v.Body,
 			Subsumed: v.Subsumed, Effect: v.Effect, Pending: v.Pending, Skipped: v.Skipped, FoldSource: v.TemporarySource(), Duration: v.Duration.Milliseconds(), Thought: v.Thought.Milliseconds(), From: v.From, To: v.To,
 			WaitReason: v.WaitReason, WaitTimeout: v.WaitTimeout,
-			EditOutcome: v.EditOutcome, Running: v.Running, Live: v.Live, Tail: v.Tail, TailOmitted: v.TailOmitted,
+			EditOutcome: v.EditOutcome, Running: v.Running, Live: v.Live, Tail: v.Tail, TailOmitted: v.TailOmitted, TailClipped: v.TailClipped, SourceOmitted: v.SourceOmitted,
 		}
 		if summaries {
 			p.Summary, p.Details = v.ReplySummary, v.ReplyDetails

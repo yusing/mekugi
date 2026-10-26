@@ -150,7 +150,7 @@ func (i *Invocation) ReportSnapshot(final bool) ReportSnapshot {
 			shown.Pending = true
 		}
 		if r.separate {
-			shown.Tail, shown.TailOmitted = segment.summary.Lines()
+			shown.Tail, shown.TailOmitted, shown.TailClipped = segment.summary.Lines()
 		}
 		if segment.output != nil {
 			if !shown.Running && !shown.Pending {

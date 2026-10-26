@@ -144,7 +144,7 @@ func restoreCommandSegments(parent context.Context, retained changes.Scope, segm
 				segment.Output = outputs.New()
 				segment.Output.Finish(part.Output, &part.Exit)
 			}
-			segment.Tail, segment.Omit = sessionpresentation.OutputTail(part.Output)
+			segment.Tail, segment.Omit, segment.Clipped = sessionpresentation.OutputTail(part.Output)
 			if part.Exit == 0 {
 				segment.Changes, segment.Commit = sessionpresentation.CommandOutputRows(observation.Item{Command: part.Source, Cwd: vcsSegmentCwd(item.Cwd, entry.Native.Segments), AggregatedOutput: part.Output})
 			}
@@ -153,9 +153,9 @@ func restoreCommandSegments(parent context.Context, retained changes.Scope, segm
 	}
 	entry.Native.Command = item.Command
 	entry.Native.Running = false
-	entry.OutputTail, entry.OutputOmit = nil, 0
+	entry.OutputTail, entry.OutputOmit, entry.OutputClipped = nil, 0, false
 	if !separate {
-		entry.OutputTail, entry.OutputOmit = sessionpresentation.OutputTail(item.AggregatedOutput)
+		entry.OutputTail, entry.OutputOmit, entry.OutputClipped = sessionpresentation.OutputTail(item.AggregatedOutput)
 	}
 }
 

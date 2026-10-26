@@ -92,7 +92,7 @@ func RefreshDetails(pages []DetailPage, sources map[uint64]DetailSource) []Detai
 			page.Value = values[0]
 			page.Running = source.Command.Running
 			if page.Output == 0 && len(source.Values) > 0 {
-				page.Tail, page.TailOmitted = source.Values[0].Tail, source.Values[0].TailOmitted
+				page.Tail, page.TailOmitted, page.TailClipped = source.Values[0].Tail, source.Values[0].TailOmitted, source.Values[0].TailClipped
 			}
 		} else if page.Kind != "op" && page.Kind != "reads" {
 			if page.Kind != "summary" && len(source.Values) == 1 || page.Kind == "summary" && page.Section < len(source.Values) {

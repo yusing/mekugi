@@ -134,7 +134,7 @@ func flushTrackedCommand(attached *attachedPresentation, terminal *terminalsessi
 	}
 	native.Segments = slices.Clone(view.segments)
 	for i := range native.Segments {
-		native.Segments[i].Tail, native.Segments[i].Omit = nil, 0
+		native.Segments[i].Tail, native.Segments[i].Omit, native.Segments[i].Clipped = nil, 0, false
 	}
 	return []sessionpresentation.ActivityEntry{entry}, true
 }
@@ -161,7 +161,7 @@ func reconcileTrackedCommand(attached *attachedPresentation, streams *terminalse
 	entry.Completed = entry.Native.CommandEnded
 	entry.Native = &native
 	if !view.output {
-		entry.OutputTail, entry.OutputOmit = sessionpresentation.OutputTail(item.AggregatedOutput)
+		entry.OutputTail, entry.OutputOmit, entry.OutputClipped = sessionpresentation.OutputTail(item.AggregatedOutput)
 		native.Changes, native.Commit = sessionpresentation.CommandOutputRows(item)
 	}
 	return entry, true

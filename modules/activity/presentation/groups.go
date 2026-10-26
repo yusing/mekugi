@@ -81,6 +81,7 @@ func MergeReads(values []Value, counts []int) Value {
 	value := Group(values[0], values)
 	value.Reads, value.Timeouts = nil, nil
 	value.Tail, value.TailOmitted = nil, 0
+	value.TailClipped = false
 	for i, member := range values {
 		for _, timeout := range member.Timeouts {
 			if !slices.Contains(value.Timeouts, timeout) {

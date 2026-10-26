@@ -18,14 +18,15 @@ type SummaryTail struct {
 	count  int
 }
 type summaryLine struct {
-	index int
-	text  string
+	index   int
+	text    string
+	clipped bool
 }
 
 func (t *SummaryTail) Write(output string) {
 	t.buffer.Write(output, SummaryLineBytes, func() {
 		if text := LineText(t.buffer.Line, SummaryLineBytes); strings.TrimSpace(text) != "" {
-			t.lines = append(t.lines, summaryLine{t.count, text})
+			t.lines = append(t.lines, summaryLine{t.count, text, len(t.buffer.Line) > SummaryLineBytes})
 			if len(t.lines) > SummaryLines {
 				t.lines = slices.Delete(t.lines, 0, 1)
 			}
@@ -35,23 +36,25 @@ func (t *SummaryTail) Write(output string) {
 	})
 }
 
-func (t *SummaryTail) Lines() ([]string, int) {
+func (t *SummaryTail) Lines() ([]string, int, bool) {
 	lines := t.lines
 	if text := LineText(t.buffer.Line, SummaryLineBytes); strings.TrimSpace(text) != "" {
-		lines = append(slices.Clip(lines), summaryLine{t.count, text})
+		lines = append(slices.Clip(lines), summaryLine{t.count, text, len(t.buffer.Line) > SummaryLineBytes})
 	}
 	lines = lines[max(0, len(lines)-SummaryLines):]
 	if len(lines) == 0 {
-		return nil, 0
+		return nil, 0, false
 	}
 	out := make([]string, len(lines))
+	clipped := false
 	for i, line := range lines {
 		out[i] = line.text
+		clipped = clipped || line.clipped
 	}
-	return out, lines[0].index
+	return out, lines[0].index, clipped
 }
 
-func TailOutput(output string) ([]string, int) {
+func TailOutput(output string) ([]string, int, bool) {
 	var tail SummaryTail
 	tail.Write(output)
 	return tail.Lines()
