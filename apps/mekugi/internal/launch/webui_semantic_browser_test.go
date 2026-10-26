@@ -342,8 +342,27 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("find", "role", "link", "click", "--name", "Workspace notes", "--exact")
 	run("wait", "--text", "Browser file details fixture")
 	run("wait", "--fn", `Array.from(document.querySelectorAll('[aria-labelledby="details-heading"] pre')).every(pre => pre.querySelector('span[style]') && pre.textContent.includes('**Highlighted file content**'))`)
-	capture("file-details")
 	button("Close details")
+	// Open after each resize: switching to a narrow layout closes the panel.
+	for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "900"}, {"tablet", "768", "1024"}, {"phone", "390", "844"}} {
+		run("set", "viewport", size.width, size.height)
+		for _, theme := range []string{"dark", "light"} {
+			run("set", "media", theme)
+			run("eval", `Array.from(document.querySelectorAll('.prose a')).find(a => a.textContent === 'Workspace notes').scrollIntoView({block:'center'})`)
+			run("wait", "--fn", `(() => { const link = Array.from(document.querySelectorAll('.prose a')).find(a => a.textContent === 'Workspace notes'); const r = link.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('a') === link; })()`)
+			run("find", "role", "link", "click", "--name", "Workspace notes", "--exact")
+			run("wait", "--fn", `(() => { const panel = document.querySelector('[aria-labelledby="details-heading"]'); const blocks = Array.from(panel?.querySelectorAll('pre') ?? []); return blocks.length > 0 && blocks.every(pre => pre.querySelector('span[style]') && pre.textContent.includes('**Highlighted file content**')); })()`)
+			if run("eval", `(() => { const panel = document.querySelector('[aria-labelledby="details-heading"]'); const r = panel.getBoundingClientRect(); const b = panel.querySelector('button[aria-label="Close details"]').getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight && b.left >= r.left && b.right <= r.right && b.bottom <= innerHeight; })()`) != "true\n" {
+				t.Fatalf("file details or close control overflowed %s %s", size.name, theme)
+			}
+			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+				run("screenshot", filepath.Join(artifacts, "file-details-"+size.name+"-"+theme+".png"))
+			}
+			button("Close panel")
+			run("wait", "--fn", `!document.querySelector('[aria-labelledby="details-heading"]')`)
+		}
+	}
+	run("set", "viewport", "1280", "720")
 	message("/session")
 	run("wait", "--text", "Session metrics")
 	run("wait", "--text", "Requests")
