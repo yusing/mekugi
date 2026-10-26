@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,12 +22,18 @@ import (
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
-// The fixture delays actual connector TCP bytes, after WebSocket compression.
+// The fixture delays HTML, asset and connector TCP bytes, after WebSocket compression.
 // Outbound writes enter a bounded simulated link buffer; transmission is paced
-// at 1 Mbit/s with 100 ms propagation each way. Assets use their ordinary host.
+// at one shared 1 Mbit/s rate with 100 ms propagation each way.
 type browserSlowListener struct {
 	net.Listener
+	link                        *browserSlowLink
 	bytes, queued, peak, active atomic.Int64
+}
+
+type browserSlowLink struct {
+	mu   sync.Mutex
+	next time.Time
 }
 
 func (l *browserSlowListener) Accept() (net.Conn, error) {
@@ -50,8 +57,6 @@ type browserSlowConn struct {
 	writes   chan browserSlowWrite
 	done     chan struct{}
 	once     sync.Once
-	mu       sync.Mutex
-	next     time.Time
 }
 
 func (c *browserSlowConn) Read(p []byte) (int, error) {
@@ -69,14 +74,15 @@ func (c *browserSlowConn) Read(p []byte) (int, error) {
 }
 
 func (c *browserSlowConn) Write(p []byte) (int, error) {
-	c.mu.Lock()
+	link := c.listener.link
+	link.mu.Lock()
 	start := time.Now().Add(100 * time.Millisecond)
-	if c.next.After(start) {
-		start = c.next
+	if link.next.After(start) {
+		start = link.next
 	}
-	c.next = start.Add(time.Duration(len(p)) * time.Second / 125000)
-	write := browserSlowWrite{append([]byte{}, p...), c.next}
-	c.mu.Unlock()
+	link.next = start.Add(time.Duration(len(p)) * time.Second / 125000)
+	write := browserSlowWrite{append([]byte{}, p...), link.next}
+	link.mu.Unlock()
 	queued := c.listener.queued.Add(int64(len(p)))
 	for peak := c.listener.peak.Load(); queued > peak && !c.listener.peak.CompareAndSwap(peak, queued); peak = c.listener.peak.Load() {
 	}
@@ -140,40 +146,28 @@ func TestWebUIBrowserSlowHistory(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
 	defer cancel()
-	var configuration string
-	assets := webui.Handler()
-	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/__probe.js" {
-			w.Header().Set("Content-Type", "text/javascript")
-			w.Header().Set("Cache-Control", "no-store")
-			_, _ = w.Write([]byte(configuration + slowHistoryProbe))
-			return
-		}
-		if r.URL.Path != "/" {
-			assets.ServeHTTP(w, r)
-			return
-		}
-		recorded := httptest.NewRecorder()
-		assets.ServeHTTP(recorded, r)
-		for key, values := range recorded.Header() {
-			w.Header()[key] = values
-		}
-		w.Header().Del("Content-Length")
-		body := strings.Replace(recorded.Body.String(), "<head>", `<head><script src="/__probe.js"></script>`, 1)
-		w.WriteHeader(recorded.Code)
-		_, _ = w.Write([]byte(body))
-	}))
+	pacing := &browserSlowLink{}
+	page := httptest.NewUnstartedServer(webui.Handler())
+	pageLink := &browserSlowListener{Listener: page.Listener, link: pacing}
+	page.Listener = pageLink
+	page.Start()
 	defer page.Close()
 	machine := newWebUIBrowserMachine(t, ctx, page.URL, "Slow", strings.Repeat("c", 64))
 	machine.remote.Close()
 	remote := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { machine.bridge.Load().ServeHTTP(w, r) }))
-	link := &browserSlowListener{Listener: remote.Listener}
+	link := &browserSlowListener{Listener: remote.Listener, link: pacing}
 	remote.Listener = link
 	remote.Start()
 	defer remote.Close()
 	machine.remote = remote
 	saved, _ := json.Marshal(map[string]string{"id": "slow", "label": "Slow", "endpoint": remote.URL, "token": strings.Repeat("c", 64)})
-	configuration = `localStorage.setItem("mekugi.machine.v1:slow",` + fmt.Sprintf("%q", string(saved)) + `); if (!location.hash) location.hash="#machine=slow&thread=same-thread";`
+	configuration := `localStorage.setItem("mekugi.machine.v1:slow",` + fmt.Sprintf("%q", string(saved)) + `); if (!location.hash) location.hash="#machine=slow&thread=same-thread";`
+	// A pre-navigation script observes the untouched application without adding
+	// a synthetic resource request or weakening its content security policy.
+	probe := filepath.Join(t.TempDir(), "probe.js")
+	if err := os.WriteFile(probe, []byte(configuration+slowHistoryProbe), 0600); err != nil {
+		t.Fatal(err)
+	}
 	main, agents := &activity.Publication{}, &activity.Publication{}
 	random := rand.NewPCG(1, 2)
 	for i := range 600 {
@@ -218,12 +212,21 @@ func TestWebUIBrowserSlowHistory(t *testing.T) {
 		}
 		return strings.TrimSpace(string(out))
 	}
-	run("open", page.URL)
+	run("--init-script", probe, "open", page.URL)
 	run("wait", "--fn", "!!window.readyResult")
 	t.Log("empty-cache cold visit (separate):", run("eval", "window.readyResult"))
+	if run("eval", "window.readyResult.assets.some(asset => asset.transfer > 0)") != "true" {
+		t.Fatal("cold visit did not transfer application assets")
+	}
+	t.Logf("cold page/asset bytes=%d, connector bytes=%d", pageLink.bytes.Load(), link.bytes.Load())
+	pageBytes, connectorBytes := pageLink.bytes.Load(), link.bytes.Load()
 	run("reload")
 	run("wait", "--fn", "!!window.readyResult")
 	t.Log("cached-asset reload:", run("eval", "window.readyResult"))
+	if run("eval", "window.readyResult.assets.length > 0 && window.readyResult.assets.every(asset => asset.transfer === 0)") != "true" {
+		t.Fatal("reload did not reuse cached application assets")
+	}
+	t.Logf("reload page/asset bytes=%d, connector bytes=%d", pageLink.bytes.Load()-pageBytes, link.bytes.Load()-connectorBytes)
 	if run("eval", "window.readyResult.ms < 1000") != "true" {
 		t.Error("cached reload exceeded one second to the initial view and usable Stop")
 	}
@@ -234,7 +237,7 @@ func TestWebUIBrowserSlowHistory(t *testing.T) {
 		if run("eval", "window.readyResult.ms < 1000") != "true" {
 			t.Fatal("small switch exceeded one second")
 		}
-		t.Log("switch back at 750 ms", round, run("eval", `new Promise(resolve => { void window.measureThread('same-thread'); setTimeout(() => window.measureThread('small').then(resolve),750); })`))
+		t.Log("switch while large read is pending", round, run("eval", `window.switchDuringLargeRead()`))
 		if run("eval", "window.readyResult.ms < 1000") != "true" {
 			t.Fatal("replacing large observation delayed the small destination")
 		}
@@ -257,15 +260,17 @@ func TestWebUIBrowserSlowHistory(t *testing.T) {
 }
 
 const slowHistoryProbe = `
-window.liveSubscriptions = new Map(); window.maxSharedBytes = 0;
+window.liveSubscriptions = new Map(); window.pendingShared = new Set(); window.maxSharedBytes = 0; window.transportMilestones = [];
 window.goal = {thread:new URLSearchParams(location.hash.slice(1)).get('thread'),started:0};
 const Original = WebSocket;
 window.WebSocket = class extends Original {
-  owned = new Set();
-  constructor(...args) { super(...args); this.addEventListener('close',()=>{ for(const id of this.owned) window.liveSubscriptions.delete(id); }); }
-  send(text) { const call=JSON.parse(text); if (call.method==='session/subscribe'||call.method==='view/attach') { this.owned.add(call.params.subscription); window.liveSubscriptions.set(call.params.subscription,{method:call.method,thread:call.params.thread}); } return super.send(text); }
-  addEventListener(type,listener,...options) { if(type!=='message') return super.addEventListener(type,listener,...options); return super.addEventListener(type,event=>{ const message=JSON.parse(event.data); if(message.method==='subscription/closed') window.liveSubscriptions.delete(message.params.subscription); if(message.method==='subscription/event'&&window.liveSubscriptions.get(message.params.subscription)?.method==='session/subscribe'&&message.params.kind!=='sessions') window.maxSharedBytes=Math.max(window.maxSharedBytes,new TextEncoder().encode(event.data).length); listener.call(this,event); },...options); }
+  owned = new Map();
+  calls = new Map();
+  constructor(...args) { super(...args); window.transportMilestones.push({event:'socket-created',ms:performance.now()}); this.addEventListener('open',()=>window.transportMilestones.push({event:'socket-open',ms:performance.now()})); this.addEventListener('close',()=>{ for(const id of this.owned.keys()) window.liveSubscriptions.delete(id); }); }
+  send(text) { const call=JSON.parse(text); this.calls.set(String(call.id),call.method); if(call.method==='initialize'||call.method==='session/subscribe'||call.method==='view/attach') window.transportMilestones.push({event:'send:'+call.method,ms:performance.now()}); if (call.method==='session/subscribe'||call.method==='view/attach') { this.owned.set(call.params.subscription,{method:call.method,thread:call.params.thread}); } const result = super.send(text); if (call.method==='session/subscribe' && call.params.thread) { window.pendingShared.add(call.params.subscription); } return result; }
+  addEventListener(type,listener,...options) { if(type!=='message') return super.addEventListener(type,listener,...options); return super.addEventListener(type,event=>{ const message=JSON.parse(event.data); if(message.id!==undefined) { const method=this.calls.get(String(message.id)); this.calls.delete(String(message.id)); if(method==='initialize'||method==='session/subscribe'||method==='view/attach') window.transportMilestones.push({event:'reply:'+method,ms:performance.now()}); if(message.result?.subscription) { const info=this.owned.get(message.result.subscription); window.liveSubscriptions.set(message.result.subscription,info); if(info?.method==='session/subscribe'&&info.thread==='same-thread') window.largeRequest?.(message.result.subscription); } } if(message.method==='subscription/closed') window.liveSubscriptions.delete(message.params.subscription); if(message.method==='subscription/event') window.pendingShared.delete(message.params.subscription); if(message.method==='subscription/event'&&window.liveSubscriptions.get(message.params.subscription)?.method==='session/subscribe'&&message.params.kind!=='sessions') window.maxSharedBytes=Math.max(window.maxSharedBytes,new TextEncoder().encode(event.data).length); listener.call(this,event); },...options); }
 };
-new MutationObserver(()=>{ const goal=window.goal; if(!goal) return; const marker=goal.thread==='small'?'SMALL-LATEST':'LARGE-LATEST'; if(!document.querySelector('[aria-label="Transcript"]')?.textContent.includes(marker)||document.querySelector('button[aria-label="Stop"]')?.disabled!==false) return; window.readyResult={thread:goal.thread,ms:performance.now()-goal.started,maxSharedBytes:window.maxSharedBytes}; window.goal=undefined; goal.resolve?.(window.readyResult); }).observe(document,{childList:true,subtree:true,attributes:true});
+new MutationObserver(()=>{ const goal=window.goal; if(!goal) return; const marker=goal.thread==='small'?'SMALL-LATEST':'LARGE-LATEST'; if(!document.querySelector('[aria-label="Transcript"]')?.textContent.includes(marker)||document.querySelector('button[aria-label="Stop"]')?.disabled!==false) return; window.readyResult={thread:goal.thread,ms:performance.now()-goal.started,maxSharedBytes:window.maxSharedBytes,...(goal.started===0?{transport:window.transportMilestones,html:performance.getEntriesByType('navigation').map(n=>({responseEnd:n.responseEnd,transfer:n.transferSize})),assets:performance.getEntriesByType('resource').filter(r=>new URL(r.name).pathname.startsWith('/assets/')).map(r=>({name:new URL(r.name).pathname.split('/').at(-1),transfer:r.transferSize,decoded:r.decodedBodySize}))}:{})}; window.goal=undefined; goal.resolve?.(window.readyResult); }).observe(document,{childList:true,subtree:true,attributes:true});
 window.measureThread=thread=>new Promise(resolve=>{ window.readyResult=undefined; window.goal={thread,started:performance.now(),resolve}; const link=[...document.querySelectorAll('nav a')].find(link=>new URLSearchParams(new URL(link.href).hash.slice(1)).get('thread')===thread); if(!link) throw Error('Missing thread link'); link.click(); });
+window.switchDuringLargeRead=async()=>{ const sent=new Promise(resolve=>window.largeRequest=resolve); const started=performance.now(); void window.measureThread('same-thread'); const subscription=await sent; window.largeRequest=undefined; const pending=window.pendingShared.has(subscription); const admitted=window.liveSubscriptions.has(subscription); const ready=!!window.readyResult; const elapsed=performance.now()-started; if(!admitted||!pending||ready) throw Error('Large thread was not admitted and pending at interruption'); const destination=await window.measureThread('small'); return {...destination,interrupted:{admitted,pending,ready,elapsed}}; };
 `
