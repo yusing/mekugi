@@ -166,6 +166,17 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		p.child = metadata.ThreadID
 	}
 	var program, answer, failure string
+	if !p.fullHistory && step == 1 {
+		rootCount := strings.Count(string(body), "You are `/root`, the primary agent in a team")
+		childCount := strings.Count(string(body), "You are an agent in a team of agents collaborating to complete a task.")
+		wantRoot, wantChild := 0, 1
+		if parent {
+			wantRoot, wantChild = 1, 0
+		}
+		if rootCount != wantRoot || childCount != wantChild || strings.Count(string(body), "<multi_agent_mode>") != 1 {
+			failure = fmt.Sprintf("stock guidance counts: root=%d child=%d parent=%t", rootCount, childCount, parent)
+		}
+	}
 	switch {
 	case parent && step == 1:
 		p.users = users
@@ -408,7 +419,12 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 			fields = child
 		}
-		fields["root"], fields["subagent"] = "NATIVE_FIXTURE_ROOT_ROLE", "NATIVE_FIXTURE_CHILD_ROLE"
+		if fullHistory {
+			fields["root"], fields["subagent"] = "NATIVE_FIXTURE_ROOT_ROLE", "NATIVE_FIXTURE_CHILD_ROLE"
+		} else {
+			delete(fields, "root")
+			delete(fields, "subagent")
+		}
 	}
 	catalog, err = json.Marshal(modelCatalog)
 	if err != nil {
@@ -645,7 +661,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 
 	if scenario.preload {
-		return // Preload acceptance ends after native acquisition and continuation.
+		return // Acquisition and prompt projection acceptance finish before cold recovery.
 	}
 
 	// A new server and host process recover only retained identities. Attaching a
