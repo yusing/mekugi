@@ -8,6 +8,8 @@ import (
 
 // PanelView contains source values, never layout or a request handle.
 type PanelView struct {
+	MetricTab, MetricIndex    int
+	MetricExchange            uint64
 	ID                        uint64
 	Fields                    []StatusField
 	Metrics                   *transportcapture.MetricsSnapshot
@@ -27,12 +29,15 @@ const (
 	PanelNoAction PanelActionKind = iota
 	PanelClose
 	PanelRefresh
+	PanelMetrics
 )
 
 type PanelAction struct {
-	Version Version
-	Panel   uint64
-	Kind    PanelActionKind
+	Version  Version
+	Panel    uint64
+	Kind     PanelActionKind
+	Tab      int    `json:",omitzero"`
+	Exchange uint64 `json:",omitzero"`
 }
 
 // AdmitPanel resolves the originating publication before any application effect.
@@ -69,4 +74,21 @@ func (p *PanelState) View(workspace string) *PanelView {
 	view := p.PanelView
 	view.Workspace = workspace
 	return &view
+}
+
+// RenderMetrics keeps exchange selection attached to an immutable sequence as
+// the bounded capture window advances.
+func (p *PanelState) RenderMetrics() {
+	if p.Metrics == nil {
+		return
+	}
+	count := len(p.Metrics.Exchanges)
+	p.MetricIndex = max(0, count-1)
+	for i, exchange := range p.Metrics.Exchanges {
+		if exchange.Sequence == p.MetricExchange {
+			p.MetricIndex = i
+			break
+		}
+	}
+	p.Fields = MetricFields(&p.PanelView, p.MetricTab, p.MetricIndex)
 }

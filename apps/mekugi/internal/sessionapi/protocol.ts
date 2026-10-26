@@ -308,6 +308,8 @@ export type PanelAction = {
   "Version": Version;
   "Panel": number;
   "Kind": number;
+  "Tab"?: number;
+  "Exchange"?: number;
 };
 
 export type DisplayIntent = {
@@ -757,6 +759,9 @@ export type SideView = {
 };
 
 export type PanelView = {
+  "MetricTab": number;
+  "MetricIndex": number;
+  "MetricExchange": number;
   "ID": number;
   "Fields": Array<StatusField>;
   "Metrics": (MetricsSnapshot | null);

@@ -5,6 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	json "encoding/json/v2"
@@ -201,6 +202,16 @@ func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
 	now = now.Add(500 * time.Millisecond)
 	u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), false) || u.dirty
 	sessionMetricField(t, u, "Requests", "Logical", "1")
+	published := publishSessionView(&u.attached, &u.Client, &u.picker, "", preferences.Applied{}, nil, "", "", false, nil, now, true)
+	logical := ""
+	for _, field := range published.Panel.Fields {
+		if field.Group == "Requests" && field.Label == "Logical" {
+			logical = field.Value
+		}
+	}
+	if logical != "1" {
+		t.Fatalf("published metrics did not include captured request: %q", logical)
+	}
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		u.shell.Transcript.Painter.Theme = theme
 		for tab := range 3 {
@@ -281,6 +292,34 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 			u.shell.Main.Panel.Top = tc.top
 			assertNativeUISnapshot(t, "native-session-"+tc.name, u.statusPanelFrame(tc.width, tc.height))
 		})
+	}
+}
+
+func TestSessionMetricsRemoteSelection(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	appServerTestKeys(t, u, "/session\r")
+	p := u.statusPanel
+	*p.Metrics = sessionMetricsFixture(t)
+	action := func(tab int, sequence uint64) {
+		applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelMetrics, Tab: tab, Exchange: sequence})
+	}
+	action(2, 8)
+	action(1, p.MetricExchange)
+	action(2, p.MetricExchange)
+	if p.MetricIndex != 0 {
+		t.Fatal("tab roundtrip changed the selected exchange")
+	}
+	action(2, 9)
+	p.Metrics.Exchanges = append(p.Metrics.Exchanges, p.Metrics.Exchanges[1])
+	p.Metrics.Exchanges[2].Sequence = 10
+	p.RenderMetrics()
+	if p.MetricIndex != 2 || p.MetricExchange != 0 {
+		t.Fatal("returning to newest did not restore following")
+	}
+	for _, field := range p.Fields {
+		if field.Group == "Exchange" && field.Label == "Retained" && field.Value != "3 / 3" {
+			t.Fatalf("shared fields contain renderer controls: %s", field.Value)
+		}
 	}
 }
 

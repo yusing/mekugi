@@ -292,6 +292,16 @@ func applyPanelAction(attached *attachedPresentation, terminal *terminalsession.
 	case sessionpresentation.PanelClose:
 		(*panel) = nil
 		attached.presentation.ClosePanel()
+	case sessionpresentation.PanelMetrics:
+		if (*panel).Metrics == nil || action.Tab < 0 || action.Tab > 2 {
+			return
+		}
+		exchanges := (*panel).Metrics.Exchanges
+		if len(exchanges) > 0 && action.Exchange == exchanges[len(exchanges)-1].Sequence {
+			action.Exchange = 0
+		}
+		(*panel).MetricTab, (*panel).MetricExchange = action.Tab, action.Exchange
+		(*panel).RenderMetrics()
 	case sessionpresentation.PanelRefresh:
 		refreshSessionMetrics((*panel), capture, presentationTime(clock), true)
 	}
