@@ -2,12 +2,55 @@ package launch
 
 import (
 	json "encoding/json/v2"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+func TestUISnapshotSideSettingsNotice(t *testing.T) {
+	for _, test := range []struct {
+		name, command, result, notice string
+		failure                       bool
+	}{
+		{"idle", "/side", "", "Settings saved for next turn", false},
+		{"applied", "/oneoff task", `{"status":"applied"}`, "Settings updated", false},
+		{"finished", "/oneoff task", `{"status":"targetUnavailable"}`, "Settings saved for next turn", false},
+		{"rejected", "/oneoff task", "", "Settings update failed: rejected", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.clock = func() time.Time { return time.Date(2026, 1, 1, 12, 0, 0, 0, time.Local) }
+			appServerTestKeys(t, u, test.command+"\r")
+			btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)
+			if u.side.OneOff {
+				btwTestReply(t, u, btwTestRequest(t, wire, "turn/start", "side"), `{"turn":{"id":"side-turn"}}`)
+			}
+			appServerTestKeys(t, u, "/effort high\r")
+			request := btwTestRequest(t, wire, "thread/settings/update", "side")
+			btwTestReply(t, u, request, `{}`)
+			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "side", "threadSettings": map[string]any{"model": "test", "effort": "high"}})
+			if u.side.OneOff {
+				request = btwTestRequest(t, wire, "turn/settings/update", "side")
+				if test.failure {
+					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
+				} else {
+					btwTestReply(t, u, request, test.result)
+				}
+			}
+			rows, _ := u.testMainFrame(80, 12, 0)
+			feedback := u.attached.presentation.View().Status.Feedback
+			if feedback.Text != test.notice || feedback.Alert != test.failure {
+				t.Fatalf("published feedback = %+v", feedback)
+			}
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/side-settings-"+test.name+".txt", append(rows, "plain after settings"), 80)
+		})
+	}
+}
 
 func assertAppServerSettingsRequest(t *testing.T, w *appServerTestInput, method string, params map[string]any) {
 	t.Helper()

@@ -24,6 +24,7 @@ type SideUpdate struct {
 	ClosedThread                  string
 	Restore                       conversationmodel.Input
 	Notice                        string
+	NoticeError                   bool
 	Side                          *Side
 }
 
@@ -150,13 +151,13 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		if method == "turn/interrupt" {
 			s.InterruptAcknowledged()
 			if m.Error != nil {
-				update.Notice = "Could not interrupt side answer: " + m.Error.Message
+				update.Notice, update.NoticeError = "Could not interrupt side answer: "+m.Error.Message, true
 			}
 			return update, r.ReleaseSide(s)
 		}
 		if method == "thread/unsubscribe" {
 			if m.Error != nil {
-				update.Notice = "Could not unload side conversation: " + m.Error.Message
+				update.Notice, update.NoticeError = "Could not unload side conversation: "+m.Error.Message, true
 			} else {
 				s.Unloaded = true
 				observations.SetSideThread(s.Thread, false)
@@ -175,7 +176,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 				return update, err
 			}
 			if m.Error != nil {
-				update.Notice = "Settings update failed: " + m.Error.Message
+				update.Notice, update.NoticeError = "Settings update failed: "+m.Error.Message, true
 			} else if method == "turn/settings/update" {
 				update.Notice = "Settings saved for next turn"
 				if ack.Status == "applied" {
@@ -196,6 +197,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 				}
 				if !s.Closed {
 					update.Restore, update.Side, update.Notice = *input, s, m.Error.Message
+					update.NoticeError = true
 				}
 				if root && method == "turn/start" {
 					s.Busy = false
@@ -215,6 +217,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 					}
 					if !s.Closed {
 						update.Restore, update.Notice = *input, "Codex returned no one-off reply turn identity"
+						update.NoticeError = true
 					}
 					return update, nil
 				}

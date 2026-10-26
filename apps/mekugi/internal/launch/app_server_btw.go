@@ -241,7 +241,7 @@ func applySideUpdate(attached *attachedPresentation, terminal *terminalsession.A
 		}
 	}
 	if update.Notice != "" {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), update.Notice, true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), update.Notice, update.NoticeError)
 	}
 }
 
