@@ -14,6 +14,7 @@ owners running. Ending a thread or replay releases its server-owned resources.
 
 The page reuses the existing transcript, roster, code rendering and visual tokens.
 It is a browser interface to shared semantic controls, not a terminal emulator.
+[DESIGN.md](DESIGN.md) owns its visual and interaction rules.
 Non-code text uses IBM Plex Sans; code uses JetBrains Mono without ligatures.
 Body text uses regular weight;
 headings and controls retain their own emphasis. Its dark appearance uses the

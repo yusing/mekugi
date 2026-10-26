@@ -31,6 +31,7 @@ and procedure links.
 | Before choosing recurring-work or growing-data implementations | [Implementation-time performance](CONTEXT-PERFORMANCE.md) |
 | Source lookup or contract inspection | Relevant owner and crossed [boundary contracts](CONTEXT-MEKUGI.md#boundary-contracts) in the [owner map](CONTEXT-MEKUGI.md) |
 | Before tests/assets or validation selection | [Test procedures](CONTEXT-TESTS.md): runner, affected coverage, and matching procedure routes |
+| Before web UI appearance or interaction changes | [Web UI design](apps/mekugi/internal/webui/DESIGN.md) |
 | Before terminal appearance changes, snapshot fixtures, or baseline checks/updates | [Terminal snapshots](docs/contributing/testing-snapshots.md) |
 | Before compiling/running installed-Codex fixtures with local providers | [Installed-Codex acceptance](CONTEXT-AUTOMATED-TESTS.md) |
 | Before compiling/running real-provider fixtures | [Live Codex requests](docs/contributing/testing-live-codex.md) |
