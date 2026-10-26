@@ -47,7 +47,9 @@ func hydrateReview(ctx context.Context, retained changes.Scope, builder *present
 		for i, file := range history.ReviewFiles {
 			files[i] = diffmodel.ReviewFile(file)
 		}
-		files, _ = changes.AuthoredEvidence(files, "")
+		files = slices.DeleteFunc(files, func(file diffmodel.ReviewFile) bool {
+			return !changes.AuthoredReview(file) && !changes.GitDiagnosticReview(file)
+		})
 		item, _, _ := strings.Cut(history.CorrelationID, "\x00")
 		attempt := presentation.Attempt{AttemptIdentity: identity, Operation: activitydetail.Operation{Thread: cmp.Or(history.ExecutingThread, event.Thread), Item: item}}
 		if history.ExecOutcome != nil && history.ExecutingThread != "" {
@@ -130,7 +132,8 @@ func CapturedReceipt(workspace string, value legacycall.History, files []diffmod
 		return nil
 	}
 	evidence := presentation.ReceiptEvidence{Files: files, Source: binding.EditReceiptSource(value.ToolName, value.Source), ChangeID: value.ChangeID, Labels: value.ExecOutcome.Labels, DeletedDirectories: value.ExecOutcome.DeletedDirectories}
-	receipt := &presentation.Receipt{Thread: value.ExecutingThread, Text: presentation.ReceiptText(workspace, evidence)}
+	receipt := presentation.NewReceipt(workspace, evidence)
+	receipt.Thread = value.ExecutingThread
 	for _, result := range value.HostResults {
 		if result.Tool == "exec_command" || result.Tool == "userShell" {
 			receipt.Calls = append(receipt.Calls, result.CallID)

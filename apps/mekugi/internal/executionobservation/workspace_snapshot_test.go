@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/activitydetail"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
@@ -342,8 +343,9 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 }
 
 func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
-	for _, mixed := range []bool{false, true} {
-		t.Run(fmt.Sprint(mixed), func(t *testing.T) {
+	for _, operation := range []string{"cherry-pick", "rebase", "reset --hard", "mixed"} {
+		t.Run(operation, func(t *testing.T) {
+			mixed := operation == "mixed"
 			isolateSnapshotGit(t)
 			workspace := gitTestWorkspace(t)
 			writeTestFile(t, filepath.Join(workspace, "authored.txt"), "before\n")
@@ -356,7 +358,7 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
 			// Global options force snapshot coverage, outside the Git scope provider.
-			command := "git -c core.fsmonitor=false cherry-pick incoming"
+			command := "git -c core.fsmonitor=false " + operation + " incoming"
 			if mixed {
 				command = "env -u BASH_ENV rtk proxy git switch incoming; python3 -c " + commandargs.QuoteArgument("from pathlib import Path; Path('authored.txt').write_text('after\\n')")
 			}
@@ -365,7 +367,7 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 					gitTestRun(t, workspace, "switch", "incoming")
 					writeTestFile(t, filepath.Join(workspace, "authored.txt"), "after\n")
 				} else {
-					gitTestRun(t, workspace, "-c", "core.fsmonitor=false", "cherry-pick", "incoming")
+					gitTestRun(t, workspace, append(strings.Fields(operation), "incoming")...)
 				}
 			})
 			if history.ChangeID == "" || len(history.ReviewFiles) != map[bool]int{false: 1, true: 2}[mixed] {
@@ -391,6 +393,13 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 			data, err := resumed.liveDiffSnapshot(ctx, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {history.ExecutingThread: true}}})
 			if err != nil || len(data.Publication.Files) != map[bool]int{false: 0, true: 1}[mixed] {
 				t.Fatalf("saved Diff: %+v, %v", data, err)
+			}
+			if receipts := data.Receipts(); len(receipts) != 1 || !strings.Contains(receipts[0].Text, "tool-managed files (diagnostic: +1 -0)") || strings.Contains(receipts[0].Text, "imported.txt") {
+				t.Fatalf("Git diagnostic receipt: %+v", receipts)
+			}
+			details := data.ActivityDetail(activitydetail.Request{Operation: activitydetail.Operation{Thread: history.ExecutingThread, Item: "vcs"}})
+			if len(details.Pages) != len(history.ReviewFiles) || !strings.Contains(details.Pages[len(details.Pages)-1].Code, "+imported") {
+				t.Fatalf("Git diagnostic details: %+v", details)
 			}
 			diagnostic, err := resumed.changes.Read(ctx, resumed.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "history"})
 			if err != nil || !strings.Contains(diagnostic, "+imported") {

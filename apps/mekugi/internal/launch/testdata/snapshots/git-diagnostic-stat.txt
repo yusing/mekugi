@@ -1,0 +1,3 @@
+└ Ran    git reset --hard HEAD
+         ┆ HEAD is now at abc123
+    Edited 20 tool-managed files (diagnostic: +20 -0) via git reset

@@ -10,6 +10,8 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/contracts/activitydetail"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -297,6 +299,49 @@ func TestUISnapshotNativeRewindNoEdits(t *testing.T) {
 			}
 			if w.Len() != 0 || u.picker.Kind == "rewind-edits" || u.Rewind != nil {
 				t.Fatal("empty selection prompted for edits or dispatched a reversal")
+			}
+		})
+	}
+}
+
+func TestRewindIgnoresDiagnosticOnlyChildren(t *testing.T) {
+	for _, authored := range []bool{false, true} {
+		t.Run(fmt.Sprint(authored), func(t *testing.T) {
+			u, w := newResumeSessionTestUI(t)
+			workspace := t.TempDir()
+			u.startSession("main", workspace)
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			builder := changepresentation.NewBuilder(nil)
+			diagnostic := changepresentation.Attempt{Key: changepresentation.AttemptKey{Workspace: workspace, Call: "git"}, Change: "amber1", Operation: activitydetail.Operation{Thread: "diagnostic-child", Item: "git"}, Chunks: []changepresentation.Chunk{{Review: diffmodel.ReviewFile{AfterPath: filepath.Join(workspace, "imported"), Origin: "git reset"}}}}
+			if err := builder.Add(diagnostic); err != nil {
+				t.Fatal(err)
+			}
+			if authored {
+				edit := diagnostic
+				edit.Key.Call, edit.Change, edit.Operation = "edit", "amber2", activitydetail.Operation{Thread: "main", Item: "edit"}
+				edit.Chunks = []changepresentation.Chunk{{Review: diffmodel.ReviewFile{AfterPath: filepath.Join(workspace, "authored")}}}
+				if err := builder.Add(edit); err != nil {
+					t.Fatal(err)
+				}
+			}
+			u.review.Projection = sessionreview.Projection{Changes: store.changes, Retained: store.changeScope(), Data: builder.Finish(), Scope: u.review.Scope()}
+			rewindTestUser(t, u)
+			appServerTestKeys(t, u, "/rewind\r")
+			read := resumeTestOne(t, w, "thread/read")
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","path":"/fixture/main.jsonl","turns":[{"id":"first","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Task"}]}]}]}}}`, read.ID))
+			appServerTestKeys(t, u, "\r")
+			if authored {
+				if requests := resumeTestRequests(t, w); len(requests) != 0 || len(u.picker.rewind.pending) != 0 || u.picker.Kind != "rewind-edits" {
+					t.Fatalf("diagnostic child acquired authored history: requests=%+v pending=%v menu=%s", requests, u.picker.rewind.pending, u.picker.Kind)
+				}
+			} else {
+				if u.picker.Kind == "rewind-edits" {
+					t.Fatalf("diagnostic-only capture triggered edit selection: %+v", u.picker.Choices)
+				}
+				resumeTestOne(t, w, "thread/fork")
 			}
 		})
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	"github.com/yusing/mekugi/modules/activity/feed"
 )
 
 func snapshotAttempt(call, thread, item string, chunks ...Chunk) Attempt {
@@ -196,5 +197,23 @@ func TestSnapshotPublicationCountsIgnoreViewState(t *testing.T) {
 	}
 	if !reflect.DeepEqual(view.Visible, publication.Unfiltered) {
 		t.Fatal("clearing caller filter did not restore the published composition")
+	}
+}
+
+func TestGitWriterIntervalsShareDiagnosticReceipt(t *testing.T) {
+	var attempts []Attempt
+	for _, id := range []string{"writer:interval:0", "writer"} {
+		chunk := liveDiffNetCapture(1, "/root", "/w/file", "/w/file", "before\n", "after\n")
+		chunk.Review.Origin = "git reset"
+		attempt := snapshotAttempt(id, "thread", "writer", chunk)
+		attempt.Receipt = NewReceipt("/w", ReceiptEvidence{Files: []diffmodel.ReviewFile{chunk.Review}})
+		attempt.Receipt.Thread, attempt.Receipt.Calls = "thread", []string{"writer-command"}
+		attempts = append(attempts, attempt)
+	}
+	snapshot := snapshotFixture(t, attempts...)
+	receipt := snapshot.Receipts()[0]
+	operations := feed.ParseOperations(receipt.Text)
+	if !strings.Contains(receipt.Text, "1 tool-managed files (diagnostic: +2 -2)") || strings.Count(receipt.Text, "tool-managed files") != 1 || len(operations) != 1 || operations[0].Verb != "Edit" {
+		t.Fatalf("Git writer intervals lost one navigable diagnostic stat row: text=%q parsed=%+v", receipt.Text, operations)
 	}
 }

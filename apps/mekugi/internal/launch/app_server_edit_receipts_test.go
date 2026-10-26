@@ -35,6 +35,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestCapturedEditInvocationCountWithoutWriterLabel(t *testing.T) {
@@ -62,6 +63,73 @@ func TestCapturedEditInvocationCountWithoutWriterLabel(t *testing.T) {
 				if !slices.Contains(feed.Snippets, activityui.Snippet{Run: uint64(i + 1), Block: activityui.EditNavigationSnippet, Path: path}) {
 					t.Fatalf("capture lost exact source for %s", path)
 				}
+			}
+		})
+	}
+}
+
+func TestUISnapshotAppServerGitDiagnosticReceipt(t *testing.T) {
+	const workspace = "/workspace"
+	var files []diffmodel.ReviewFile
+	for i := range 20 {
+		file := diffmodel.RenderReviewFile("", fmt.Sprintf("imported-%02d.go", i), "", "imported\n")
+		file.Origin = "git reset"
+		files = append(files, file)
+	}
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "main", "git\x00exec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := legacycall.History{ToolName: "exec_command", ExecutingThread: "main", CorrelationID: "git\x00exec", ChangeID: id, Root: workspace, ReviewFiles: retainedReviewFiles(files), ExecOutcome: &legacycall.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact}}
+	if err := store.put(t.Context(), workspace, map[string]legacycall.History{history.CorrelationID: history}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.liveDiffSnapshot(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+	if err != nil || len(snapshot.Publication.Files) != 0 || len(snapshot.Publication.Counts.Callers) != 0 {
+		t.Fatalf("diagnostics entered authored review: %+v, %v", snapshot, err)
+	}
+	for _, restored := range []bool{false, true} {
+		t.Run(fmt.Sprint(restored), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, workspace)
+			v := u.shell.Transcript
+			v.Painter.Theme = diffrender.DarkTheme
+			v.Clock = func() time.Time { return time.Unix(1000, 0) }
+			u.review.Projection.Data = snapshot
+			publishFixtureReview(t, u)
+			item := binding.ThreadItem{ID: "git", Type: "commandExecution", Cwd: workspace, Command: "git reset --hard HEAD", Status: "completed", ExitCode: new(0), AggregatedOutput: new("HEAD is now at abc123\n")}
+			if restored {
+				u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
+			} else {
+				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+				applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
+			}
+			v.RenderConversation(100)
+			v.Pace(time.Unix(1000, 0).Add(time.Hour))
+			feed := v.RenderConversation(100)
+			text := ansi.Strip(strings.Join(feed.Lines, "\n"))
+			if strings.Count(text, "20 tool-managed files") != 1 || strings.Contains(text, "imported-00.go") || !strings.Contains(text, "+20 -0") || !strings.Contains(text, "HEAD is now") {
+				t.Fatalf("diagnostic stat row: %s", text)
+			}
+			row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(ansi.Strip(line), "tool-managed files") })
+			if row < 0 {
+				t.Fatalf("diagnostic stat did not occupy one row: %s", text)
+			}
+			target := feed.Snippets[row]
+			if target.Block != activityui.EditNavigationSnippet || target.Path != "" {
+				t.Fatalf("diagnostic row lost operation navigation: %+v", target)
+			}
+			pages, selected := activityEditPages(&u.attached, u.shell, u.activity, v, target.Run, target.Path)
+			if len(pages) != len(files) || selected != pages[0].ID || !strings.Contains(pages[19].Code, "+imported") {
+				t.Fatalf("diagnostic details lost retained files: %+v", pages)
+			}
+			if !restored {
+				assertNativeUISnapshot(t, "git-diagnostic-stat", feed.Lines)
+				uisnapshot.AssertTerminal(t, "testdata/snapshots/git-diagnostic-stat-ansi.txt", append(slices.Clone(feed.Lines), "plain after receipt"), 100)
 			}
 		})
 	}

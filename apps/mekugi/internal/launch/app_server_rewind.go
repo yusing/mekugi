@@ -90,7 +90,7 @@ func chooseRewind(attached *attachedPresentation, terminal *terminalsession.Atta
 		if picker.rewind.problem == "" {
 			hasChanges := false
 			for attempt := range picker.rewind.snapshot.Attempts() {
-				if len(attempt.Chunks) > 0 {
+				if attempt.HasAuthoredChanges() {
 					hasChanges = true
 					break
 				}
@@ -105,11 +105,14 @@ func chooseRewind(attached *attachedPresentation, terminal *terminalsession.Atta
 		if picker.rewind.problem == "" {
 			picker.Loading = true
 			for attempt := range picker.rewind.snapshot.Attempts() {
-				if len(attempt.Chunks) > 0 && attempt.Operation.Thread == "" {
+				if !attempt.HasAuthoredChanges() {
+					continue
+				}
+				if attempt.Operation.Thread == "" {
 					picker.rewind.problem, picker.Loading = "captured change has no host thread identity", false
 					return
 				}
-				if len(attempt.Chunks) > 0 && attempt.Operation.Thread != control.Thread && !slices.Contains(picker.rewind.pending, attempt.Operation.Thread) {
+				if attempt.Operation.Thread != control.Thread && !slices.Contains(picker.rewind.pending, attempt.Operation.Thread) {
 					picker.rewind.pending = append(picker.rewind.pending, attempt.Operation.Thread)
 				}
 			}

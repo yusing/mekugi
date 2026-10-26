@@ -1,0 +1,4 @@
+"\x1b[2m└ \x1b[38;5;214;22;1mRan\x1b[m    \x1b[38;2;210;168;255mgit\x1b[m reset --hard HEAD                                                                      "
+"\x1b[2m  \x1b[m       \x1b[2m┆\x1b[m HEAD is now at abc123                                                                    "
+"\x1b[2m  \x1b[m  \x1b[38;5;114;1mEdited\x1b[m \x1b[2m20\x1b[m \x1b[2mtool-managed\x1b[m \x1b[2mfiles\x1b[m \x1b[2m(diagnostic:\x1b[m \x1b[38;5;114m+20\x1b[m \x1b[38;5;203m-0\x1b[39;2m)\x1b[m \x1b[2mvia \x1b[38;2;210;168;255;22mgit\x1b[m reset                                 "
+"plain after receipt                                                                                 "

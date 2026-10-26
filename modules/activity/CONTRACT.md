@@ -93,7 +93,11 @@ groups under `/tmp` retain a bounded prefix. The count opens that invocation’s
 expanded all restores every file row. Captures without a recognized writer label
 keep the same grouping and retained-change navigation. Source, outcome and command-directory
 boundaries remain separate; ongoing, failed and detail-bearing rows stay visible.
-Tool-managed files remain rows in their source group. Output-not-returned notes
+Diagnostic Git effects use one tool-managed stat row with the operation's source,
+file count and known line counts, or an explicit unavailable-count marker.
+The row opens all retained files for that invocation, including diagnostic evidence,
+without adding them to authored edit totals. Mixed authored edits keep their file rows.
+Output-not-returned notes
 align with command text and stay muted in either theme.
 
 Consecutive same-action operations by one agent share a verb cell and branch

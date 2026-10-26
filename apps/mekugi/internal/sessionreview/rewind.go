@@ -11,6 +11,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/rollout"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
@@ -64,7 +65,7 @@ func RewindChanges(ctx context.Context, snapshot *presentation.Snapshot, root, t
 	}
 	sides := make(map[[2]string]bool)
 	for attempt := range snapshot.Attempts() {
-		if len(attempt.Chunks) == 0 {
+		if !attempt.HasAuthoredChanges() {
 			continue
 		}
 		if !filepath.IsAbs(attempt.Key.Workspace) || attempt.Change == "" {
@@ -108,6 +109,9 @@ func RewindChanges(ctx context.Context, snapshot *presentation.Snapshot, root, t
 			continue
 		}
 		for _, chunk := range attempt.Chunks {
+			if !changes.AuthoredReview(chunk.Review) {
+				continue
+			}
 			for _, path := range []string{chunk.Review.BeforePath, chunk.Review.AfterPath} {
 				if path == "" {
 					continue

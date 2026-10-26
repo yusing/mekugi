@@ -43,3 +43,27 @@ func TestExecReceiptOmitsSharedOriginNamedByLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestGitDiagnosticReceiptCounts(t *testing.T) {
+	files := []diffmodel.ReviewFile{diffmodel.RenderReviewFile("a", "a", "before\n", "after\n"), diffmodel.RenderReviewFile("", "b", "", "new\n")}
+	for i := range files {
+		files[i].Origin = "git reset"
+	}
+	want := "+ 2 tool-managed files (diagnostic: +2 -1) · git reset"
+	if got := ReceiptText("/workspace", ReceiptEvidence{Files: files}); got != want {
+		t.Fatalf("Git receipt = %q, want %q", got, want)
+	}
+	for _, unavailable := range []string{"binary", "incomplete"} {
+		t.Run(unavailable, func(t *testing.T) {
+			file := files[0]
+			if unavailable == "binary" {
+				file.Binary = true
+			} else {
+				file.Incomplete = "unreadable target"
+			}
+			if got := ReceiptText("/workspace", ReceiptEvidence{Files: []diffmodel.ReviewFile{file}}); got != "+ 1 tool-managed files (diagnostic: counts unavailable) · git reset" {
+				t.Fatalf("unavailable counts = %q", got)
+			}
+		})
+	}
+}

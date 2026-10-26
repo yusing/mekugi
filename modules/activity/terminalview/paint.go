@@ -181,6 +181,22 @@ func (p *Painter) Label(verb, label string) string {
 			if j > 0 {
 				out.WriteByte(' ')
 			}
+			// Punctuation following a signed count belongs to the label, not the count.
+			if len(word) > 1 && (word[0] == '+' || word[0] == '-') && word[1] >= '0' && word[1] <= '9' {
+				end := 2
+				for end < len(word) && word[end] >= '0' && word[end] <= '9' {
+					end++
+				}
+				color := terminalui.Green
+				if word[0] == '-' {
+					color = terminalui.Red
+				}
+				out.WriteString(color + word[:end] + "\x1b[39m")
+				if end < len(word) {
+					out.WriteString(terminalui.Dim + word[end:] + terminalui.Undim)
+				}
+				continue
+			}
 			switch {
 			case len(word) > 1 && word[0] == '+':
 				word = terminalui.Green + word + "\x1b[39m"

@@ -223,6 +223,10 @@ The presentation owner also supplies bounded source-text edit receipts for live
 observations and retained review. Receipts preserve captured provenance, group
 confirmed directory removals, and distinguish evidence gaps from confirmed edits.
 Full per-path evidence remains available through the retained change identity.
+Diagnostic Git effects use one tool-managed stat row, retaining their source and
+known counts. Unavailable counts remain explicit. Exact-operation details include
+these diagnostic files; saved Diff composition, authored totals and rewind selection
+exclude them.
 
 Each attached session publishes one immutable retained-review snapshot for saved
 Diff, exact-operation details and edit totals. Detail requests use that snapshot

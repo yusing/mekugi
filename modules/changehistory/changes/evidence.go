@@ -14,6 +14,12 @@ func AuthoredReview(file diffmodel.ReviewFile) bool {
 	return file.Origin == "" && file.OriginNote != "observed during command window"
 }
 
+// GitDiagnosticReview identifies retained Git provenance without reclassifying
+// a command or treating its imported/discarded content as authored changes.
+func GitDiagnosticReview(file diffmodel.ReviewFile) bool {
+	return file.Origin == "git" || strings.HasPrefix(file.Origin, "git ")
+}
+
 // AuthoredEvidence omits observer/managed evidence and recomputes its coverage.
 // Unfiltered input retains its existing coverage and slice.
 func AuthoredEvidence(files []diffmodel.ReviewFile, coverage string) ([]diffmodel.ReviewFile, string) {

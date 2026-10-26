@@ -63,6 +63,12 @@ func TestRewindChangesIncludesDescendantsAndRejectsGaps(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		// Diagnostic Git effects retain details but never select rewind writes,
+		// even when their command timing is unavailable.
+		diagnostic := presentation.Attempt{Key: presentation.AttemptKey{Workspace: dir, Call: "git"}, Change: "amber5", Operation: activitydetail.Operation{Thread: "main", Item: "missing-git"}, Chunks: []presentation.Chunk{{Review: diffmodel.ReviewFile{AfterPath: filepath.Join(dir, "imported"), Origin: "git reset"}}}}
+		if err := b.Add(diagnostic); err != nil {
+			t.Fatal(err)
+		}
 		return b.Finish()
 	}
 	for _, mode := range []string{"complete", "mixed", "missing", "wrong-source", "missing-turn", "straddling", "missing-end", "overlapping-workspaces", "grouped-same", "grouped-mixed", "grouped-missing"} {

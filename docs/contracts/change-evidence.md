@@ -133,8 +133,10 @@ Changed or incomplete named evidence receives a durable change ID. Complete
 no-effect attempts and scope-only diagnostics remain in call history without an
 ID; unknown scope alone allocates none.
 Missing outcomes invent no exit status. Historical observation-only and
-tool-managed records remain explicitly inspectable with `--history`, but do not
-enter authored counts, diffs, receipts, saved review or child handoffs.
+tool-managed records remain explicitly inspectable with `--history`. They stay
+excluded from authored counts, ordinary diffs, saved review, rewind and child
+handoffs. Diagnostic Git effects may also supply a compact Activity stat receipt
+and exact-operation details; other diagnostic records supply no edit receipts.
 
 VCS operations that import, discard or write repository content are diagnostic
 history, not agent-authored changes, including redirected or piped repository

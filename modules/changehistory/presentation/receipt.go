@@ -19,6 +19,15 @@ type ReceiptEvidence struct {
 	Source, ChangeID           string
 }
 
+// NewReceipt retains detached summary inputs so intervals of the same invocation
+// can be combined before rendering their diagnostic stat row.
+func NewReceipt(workspace string, evidence ReceiptEvidence) *Receipt {
+	evidence.Files = slices.Clone(evidence.Files)
+	evidence.Labels = slices.Clone(evidence.Labels)
+	evidence.DeletedDirectories = slices.Clone(evidence.DeletedDirectories)
+	return &Receipt{Text: ReceiptText(workspace, evidence), workspace: workspace, evidence: &evidence}
+}
+
 // Source: apps/mekugi/internal/router/native_edit_receipt.go@6f68e18a.
 // Receipt diffs are display-only and stay well inside one publication.
 const (
@@ -30,6 +39,10 @@ const (
 // current workspace content or changing the retained evidence.
 func ReceiptText(workspace string, evidence ReceiptEvidence) string {
 	var summaries []string
+	var gitSources []string
+	gitPaths := make(map[string]bool)
+	gitAdded, gitRemoved := 0, 0
+	gitCountsKnown := true
 	reasons := make(map[string]int)
 	budget := MaxReceiptDiffBytes
 	directories := make(map[string]int)
@@ -54,6 +67,22 @@ func ReceiptText(workspace string, evidence ReceiptEvidence) string {
 	}
 	for _, file := range evidence.Files {
 		if !changes.AuthoredReview(file) {
+			if changes.GitDiagnosticReview(file) {
+				path := file.AfterPath
+				if path == "" {
+					path = file.BeforePath
+				}
+				gitPaths[pathdisplay.ForWorkspace(workspace, path)] = true
+				if !slices.Contains(gitSources, file.Origin) {
+					gitSources = append(gitSources, file.Origin)
+				}
+				if file.Incomplete != "" || file.Binary {
+					gitCountsKnown = false
+				} else {
+					added, removed := file.LineCounts()
+					gitAdded, gitRemoved = gitAdded+added, gitRemoved+removed
+				}
+			}
 			continue
 		}
 		if file.Incomplete != "" {
@@ -119,6 +148,13 @@ func ReceiptText(workspace string, evidence ReceiptEvidence) string {
 			}
 		}
 		summaries = append(summaries, summary)
+	}
+	if len(gitPaths) > 0 {
+		counts := "counts unavailable"
+		if gitCountsKnown {
+			counts = fmt.Sprintf("+%d -%d", gitAdded, gitRemoved)
+		}
+		summaries = append(summaries, fmt.Sprintf("+ %d tool-managed files (diagnostic: %s) · %s", len(gitPaths), counts, strings.Join(gitSources, ", ")))
 	}
 	if len(reasons) != 0 {
 		// Capture omissions are evidence gaps, not confirmed edits. Keep the

@@ -27,10 +27,12 @@ type AttemptIdentity struct {
 // Receipt is an immutable captured-effect projection. Calls retain their order:
 // the first host item anchors the receipt; siblings do not repeat its summary.
 type Receipt struct {
-	Thread string
-	Calls  []string
-	Text   string
-	Pages  []activitydetail.Page
+	Thread    string
+	Calls     []string
+	Text      string
+	Pages     []activitydetail.Page
+	workspace string
+	evidence  *ReceiptEvidence
 }
 
 type Attempt struct {
@@ -38,6 +40,11 @@ type Attempt struct {
 	Operation activitydetail.Operation
 	Chunks    []Chunk
 	Receipt   *Receipt
+}
+
+// HasAuthoredChanges excludes diagnostic detail chunks from edit workflows.
+func (a Attempt) HasAuthoredChanges() bool {
+	return slices.ContainsFunc(a.Chunks, func(chunk Chunk) bool { return changes.AuthoredReview(chunk.Review) })
 }
 
 type Counts struct {
@@ -225,7 +232,14 @@ func (b *Builder) Add(attempt Attempt) error {
 		for i, prior := range b.next.receipts {
 			if len(prior.Calls) != 0 && prior.Thread == attempt.Receipt.Thread && slices.Equal(prior.Calls, attempt.Receipt.Calls) {
 				merged := *prior
-				merged.Text = strings.TrimSpace(prior.Text + "\n" + attempt.Receipt.Text)
+				if prior.evidence != nil && attempt.Receipt.evidence != nil && prior.workspace == attempt.Receipt.workspace {
+					evidence := *prior.evidence
+					evidence.Files = append(slices.Clone(evidence.Files), attempt.Receipt.evidence.Files...)
+					merged.evidence = &evidence
+					merged.Text = ReceiptText(prior.workspace, evidence)
+				} else {
+					merged.Text = strings.TrimSpace(prior.Text + "\n" + attempt.Receipt.Text)
+				}
 				merged.Pages = append(slices.Clone(prior.Pages), attempt.Receipt.Pages...)
 				b.next.receipts[i] = &merged
 				return nil
@@ -246,7 +260,11 @@ func (b *Builder) Finish() *Snapshot {
 	}
 	var captures []Chunk
 	for _, key := range b.next.order {
-		captures = append(captures, b.next.attempts[key].Chunks...)
+		for _, chunk := range b.next.attempts[key].Chunks {
+			if changes.AuthoredReview(chunk.Review) {
+				captures = append(captures, chunk)
+			}
+		}
 	}
 	b.next.Publication = b.next.Publication.With(GroupCaptures(captures))
 	return &b.next
