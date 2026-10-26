@@ -2,13 +2,14 @@ package codexbinding
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-func TestProjectMessageIDs(t *testing.T) {
+func TestProjectLocalIdentities(t *testing.T) {
 	for _, kind := range []string{"message", "item_reference", "function_call"} {
 		for _, role := range []string{"assistant", "user"} {
 			t.Run(kind+"/"+role, func(t *testing.T) {
@@ -16,7 +17,7 @@ func TestProjectMessageIDs(t *testing.T) {
 				input := responses.MustMarshalJSON([]any{item})
 				before := bytes.Clone(input)
 				var err error
-				input, err = ProjectMessageIDs(input)
+				input, err = ProjectLocalIdentities(input)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -29,7 +30,7 @@ func TestProjectMessageIDs(t *testing.T) {
 					t.Fatal("unrelated item changed")
 				}
 				projected := bytes.Clone(input)
-				input, err = ProjectMessageIDs(input)
+				input, err = ProjectLocalIdentities(input)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -37,6 +38,40 @@ func TestProjectMessageIDs(t *testing.T) {
 					t.Fatal("projection is not idempotent")
 				}
 			})
+		}
+	}
+}
+
+func TestProjectLocalIdentitiesPreservesUnrelatedOutputs(t *testing.T) {
+	wake := control.NativeInput{ID: "root:wait", Wake: &control.WaitResult{State: "timeout"}}
+	for _, test := range []struct{ namespace, name, call string }{
+		{"threadcontrol", "wait_agent", "correlated-call"},
+		{"other", "wait_agent", ""},
+		{"threadcontrol", "other", ""},
+	} {
+		item := map[string]any{"type": "function_call_output", "namespace": test.namespace, "name": test.name, "output": wake.RetainedWaitOutput()}
+		if test.call != "" {
+			item["call_id"] = test.call
+		}
+		input := responses.MustMarshalJSON([]any{item})
+		projected, err := ProjectLocalIdentities(input)
+		if err != nil || !bytes.Equal(input, projected) {
+			t.Fatalf("unrelated output changed: %s, %v", projected, err)
+		}
+	}
+	for _, call := range []jsontext.Value{nil, jsontext.Value(`null`)} {
+		item := map[string]any{"type": "function_call_output", "namespace": "threadcontrol", "name": "wait_agent", "output": wake.RetainedWaitOutput()}
+		if call != nil {
+			item["call_id"] = call
+		}
+		projected, err := ProjectLocalIdentities(responses.MustMarshalJSON([]any{item}))
+		item["output"] = string(responses.MustMarshalJSON(wake.Wake))
+		if err != nil || !responses.SameJSONValue(projected, responses.MustMarshalJSON([]any{item})) {
+			t.Fatalf("wake identity projection: %s, %v", projected, err)
+		}
+		second, err := ProjectLocalIdentities(projected)
+		if err != nil || !bytes.Equal(projected, second) {
+			t.Fatal("wake projection is not idempotent")
 		}
 	}
 }

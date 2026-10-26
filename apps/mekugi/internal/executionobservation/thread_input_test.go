@@ -43,9 +43,13 @@ func TestThreadInputConsumedWithoutExecution(t *testing.T) {
 			check(err)
 			proxy := newManagedMekugiProxy(t)
 			proxy.threadControl = driver
+			wake := control.NativeInput{ID: "root:wait", Wake: &control.WaitResult{ID: "wait", State: "timeout", Metrics: map[string]control.SessionMetrics{"/root/child": {ContextTokens: new(uint64(123)), Compactions: new(uint64(2))}}}}
 			request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 				"model": "fixture", "stream": true, "tool_choice": "auto", "parallel_tool_calls": false,
-				"input": []any{map[string]any{"type": "message", "id": control.MessageItemID("root:message"), "role": "assistant", "content": "progress"}},
+				"input": []any{
+					map[string]any{"type": "message", "id": control.MessageItemID("root:message"), "role": "assistant", "content": "progress"},
+					map[string]any{"type": "function_call_output", "namespace": "threadcontrol", "name": "wait_agent", "output": wake.RetainedWaitOutput()},
+				},
 			}))
 			check(err)
 			metadata, ok := codexresponses.DecodeTurnMetadata(serverCompactionMetadataHeaders(t))
@@ -61,11 +65,14 @@ func TestThreadInputConsumedWithoutExecution(t *testing.T) {
 				Input []map[string]jsontext.Value `json:"input"`
 			}
 			check(json.Unmarshal(wire, &forwarded))
-			if len(forwarded.Input) != 1 || responses.StringField(forwarded.Input[0], "id") != "" || responses.StringField(forwarded.Input[0], "content") != "progress" {
+			if len(forwarded.Input) != 2 || responses.StringField(forwarded.Input[0], "id") != "" || responses.StringField(forwarded.Input[0], "content") != "progress" {
 				t.Fatalf("invalid provider message: %s", wire)
 			}
 			if !bytes.Contains(request.OriginalField("input"), []byte(control.MessageItemID("root:message"))) {
 				t.Fatal("retained host identity changed")
+			}
+			if !responses.SameJSONValue([]byte(responses.StringField(forwarded.Input[1], "output")), responses.MustMarshalJSON(wake.Wake)) || !bytes.Contains(request.OriginalField("input"), []byte(wake.ID)) {
+				t.Fatal("wake projection changed metrics, exposed identity or rewrote retained input")
 			}
 			tree, err := service.Snapshot("root")
 			check(err)
@@ -73,5 +80,23 @@ func TestThreadInputConsumedWithoutExecution(t *testing.T) {
 				t.Fatal("input read without execution did not consume the notification or started work")
 			}
 		})
+	}
+}
+
+func TestApprovalReviewProjectsRetainedWakeIdentity(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	wake := control.NativeInput{ID: "root:wait", Wake: &control.WaitResult{State: "timeout"}}
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": "fixture", "input": []any{
+		map[string]any{"type": "function_call_output", "namespace": "threadcontrol", "name": "wait_agent", "output": wake.RetainedWaitOutput()},
+	}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := proxy.Prepare(t.Context(), &request, requestexecution.Preparation{ApprovalReview: true}); err != nil {
+		t.Fatal(err)
+	}
+	wire, err := request.WireBody(request.Fields)
+	if err != nil || bytes.Contains(wire, []byte(wake.ID)) || !bytes.Contains(request.OriginalField("input"), []byte(wake.ID)) {
+		t.Fatalf("review projection did not separate retained identity: %s, %v", wire, err)
 	}
 }

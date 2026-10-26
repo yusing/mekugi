@@ -5,6 +5,7 @@ import (
 	json "encoding/json/v2"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -12,17 +13,16 @@ import (
 )
 
 func TestNativeInputRetainedRunRoundtrip(t *testing.T) {
-	for _, initial := range []bool{false, true} {
-		name := "followup"
-		if initial {
-			name = "initial"
-		}
+	for _, name := range []string{"followup", "initial", "timeout"} {
 		t.Run(name, func(t *testing.T) {
 			transport := &requestTransport{id: "native"}
 			requests := NewRequests[struct{}](transport)
 			input := control.NativeInput{Thread: "child", ParentTurn: "parent-turn", ID: "root:operation", Sender: "/root", Recipient: "/root/task", Kind: "NEW_TASK", Message: "same assignment", Run: true}
-			if initial {
+			if name == "initial" {
 				input.Settings, input.Message = &control.Settings{}, ""
+			}
+			if name == "timeout" {
+				input.Wake = &control.WaitResult{ID: "wait", State: "timeout", Targets: []string{"/root/task"}, EffectiveMS: new(int64(10)), Metrics: map[string]control.SessionMetrics{"/root/z": {ContextTokens: new(uint64(21))}, "/root/a": {Compactions: new(uint64(2))}}}
 			}
 			done := make(chan error, 1)
 			go func() {
@@ -44,11 +44,16 @@ func TestNativeInputRetainedRunRoundtrip(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantName := "followup_task"
-			if initial {
+			if name == "initial" {
 				wantName = "spawn_agent"
+			} else if name == "timeout" {
+				wantName = "wait_agent"
 			}
 			if !params.Output.Retain || params.Output.Name != wantName {
 				t.Fatalf("run output was not retained as %s: %+v", wantName, params.Output)
+			}
+			if name == "timeout" && (!strings.Contains(params.Output.Output, `"/root/z":{"context_tokens":21,"context_window":null,"compactions":null}`) || strings.Contains(params.Output.Output, "_known")) {
+				t.Fatalf("retained wait metrics = %s", params.Output.Output)
 			}
 			// Persist the actual host request payload in the host's rollout shape.
 			path := filepath.Join(t.TempDir(), "rollout.jsonl")

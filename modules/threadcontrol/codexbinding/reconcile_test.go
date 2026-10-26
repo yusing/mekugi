@@ -250,6 +250,7 @@ func TestColdWaitConfirmationDoesNotResumeOrDispatch(t *testing.T) {
 	if _, err := driver.controlAction(t.Context(), child, []byte(`{"target":"/root","message":"ready"}`), "send_message"); err == nil {
 		t.Fatal("uncertain wake succeeded")
 	}
+	retainedOutput := host.inputs[len(host.inputs)-1].RetainedWaitOutput()
 	if display := driver.control.WaitPublication("root"); display.Metrics != nil {
 		t.Fatal("display publication exposed frozen metrics")
 	}
@@ -283,6 +284,9 @@ func TestColdWaitConfirmationDoesNotResumeOrDispatch(t *testing.T) {
 	last := host.confirmed[len(host.confirmed)-1]
 	if last.Wake == nil || last.Wake.ID != "wait" || last.Wake.Event == nil || last.Wake.Event.Message != "ready" {
 		t.Fatal("confirmation lost exact retained wake output", last)
+	}
+	if last.RetainedWaitOutput() != retainedOutput {
+		t.Fatal("cold reconciliation changed retained wake identity or metrics")
 	}
 	if metrics := last.Wake.Metrics["/root/child"]; metrics.ContextTokens == nil || *metrics.ContextTokens != 123 || metrics.Compactions == nil || *metrics.Compactions != 2 {
 		t.Fatal("cold confirmation lost dispatched metrics")

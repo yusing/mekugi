@@ -218,6 +218,9 @@ results. Injection acknowledgement alone does not consume an event. Message wake
 are presented as received messages, separately from assignment completion.
 After host settlement, Session Control starts empty input with retained
 `toolOutput:{namespace:"threadcontrol",name:"wait_agent",output:...,retain:true}`.
+Retained wake output includes its dispatch identity for exact host confirmation;
+provider input omits that identity without changing the frozen metrics or saved
+history. Direct public wait results omit the internal registration identity.
 The result identifies event/source task/thread/turn/kind/status, without fake
 human text or composer insertion. A running host turn never receives a second start.
 

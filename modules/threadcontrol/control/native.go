@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"fmt"
 )
 
@@ -56,6 +57,16 @@ type NativeInput struct {
 	Run                                                                  bool
 	Settings                                                             *Settings
 	Wake                                                                 *WaitResult
+}
+
+// RetainedWaitOutput binds host confirmation to this exact dispatch, including
+// its frozen metrics. Provider projection removes the host-only identity.
+func (input NativeInput) RetainedWaitOutput() string {
+	raw, _ := json.Marshal(struct {
+		ID string `json:"id"`
+		*WaitResult
+	}{input.ID, input.Wake}, json.Deterministic(true))
+	return string(raw)
 }
 
 // MessageItemID is the retained host item identity for attributed delivery.

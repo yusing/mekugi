@@ -18,7 +18,7 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 		if err := p.restoreApprovalReviewContext(ctx, request, input); err != nil {
 			return nil, err
 		}
-		projected, err := threadbinding.ProjectMessageIDs(request.Fields["input"])
+		projected, err := threadbinding.ProjectLocalIdentities(request.Fields["input"])
 		if err == nil {
 			request.Fields["input"] = projected
 		}
@@ -31,7 +31,7 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 	if err != nil {
 		return nil, err
 	}
-	projected, err := threadbinding.ProjectMessageIDs(request.Fields["input"])
+	projected, err := threadbinding.ProjectLocalIdentities(request.Fields["input"])
 	if err != nil {
 		if t != nil {
 			t.Close()

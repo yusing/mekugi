@@ -106,8 +106,7 @@ func nativeContent(input control.NativeInput) (item NativeMessage, name, output 
 		}
 	}
 	if input.Wake != nil {
-		raw, _ := json.Marshal(input.Wake, json.Deterministic(true))
-		name, output = "wait_agent", string(raw)
+		name, output = "wait_agent", input.RetainedWaitOutput()
 	}
 	return
 }
