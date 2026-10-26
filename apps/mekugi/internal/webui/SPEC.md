@@ -235,6 +235,10 @@ otherwise it shows the reply's first lines and a button for the rest. The
 agent's own transcript shows its replies whole. As in the terminal, each
 transcript keeps only its newest entries, so a long session's earliest activity
 is no longer shown, and an agent may have no activity left to show.
+Opening a long transcript renders its newest page first. Earlier retained entries
+remain available through Show earlier entries, which preserves the reading
+position. Incoming updates keep those entries available while reading; Latest
+returns to the newest page and resumes following.
 
 ## Delivery and acceptance
 

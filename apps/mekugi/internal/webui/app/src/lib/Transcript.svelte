@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { tick, type Snippet } from "svelte";
+  import { tick, untrack, type Snippet } from "svelte";
   import EntryView from "./EntryView.svelte";
   import { date, offset } from "./format";
   import { hasDetails, isUser, isView } from "./kinds";
   import type { Entry } from "./protocol";
   import { stream, type Stream } from "./stream.svelte";
+  import Button from "./ui/Button.svelte";
   import Icon from "./ui/Icon.svelte";
   import { emptyBox } from "./ui/styles";
 
@@ -75,6 +76,40 @@
     return out;
   });
 
+  // Keep initial Markdown, code highlighting and DOM work proportional to a
+  // page, while retaining every earlier row for explicit reading.
+  const pageSize = 50;
+  let oldest = $state<number>();
+  const first = $derived(
+    oldest === undefined
+      ? Math.max(0, rows.length - pageSize)
+      : Math.max(
+          0,
+          rows.findIndex((row) => row.entry.seq === oldest),
+        ),
+  );
+  const visible = $derived(rows.slice(first));
+  $effect(() => {
+    if (following) oldest = rows[Math.max(0, rows.length - pageSize)]?.entry.seq;
+  });
+  async function earlier() {
+    if (!scroller || !column) return;
+    following = false;
+    const anchor = column.querySelector<HTMLElement>("[data-entry]");
+    const top = anchor?.getBoundingClientRect().top ?? 0;
+    oldest = rows[Math.max(0, first - pageSize)]?.entry.seq;
+    await tick();
+    if (anchor) {
+      scroller.scrollTop += anchor.getBoundingClientRect().top - top;
+      anchor.focus({ preventScroll: true });
+      // Focus stays on the row being read, which takes focus only for this, so
+      // clicking a row's text neither focuses nor rings it.
+      anchor.tabIndex = -1;
+      anchor.addEventListener("blur", () => anchor.removeAttribute("tabindex"), { once: true });
+    }
+    measure();
+  }
+
   function pin() {
     if (!scroller) return;
     reading = false;
@@ -110,6 +145,7 @@
   $effect(() => {
     void jumps;
     following = true;
+    oldest = untrack(() => rows[Math.max(0, rows.length - pageSize)]?.entry.seq);
   });
 
   $effect(() => {
@@ -154,8 +190,16 @@
     bind:this={column}
   >
     {@render header?.()}
-    {#each rows as row (row.entry.seq)}
-      <div class="group/row relative">
+    {#if first > 0}
+      <!-- Centred on the rows' text, past the time gutter. -->
+      <div class="mb-3 ml-19 flex justify-center max-sm:ml-0">
+        <Button onclick={earlier}
+          >Show {Math.min(first, pageSize)} earlier entries ({first} remaining)</Button
+        >
+      </div>
+    {/if}
+    {#each visible as row (row.entry.seq)}
+      <div class="group/row relative" data-entry={row.entry.seq}>
         <EntryView
           entry={row.entry}
           at={row.at}
