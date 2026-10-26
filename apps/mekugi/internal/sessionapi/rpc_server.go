@@ -326,7 +326,21 @@ func (c *rpcConnection) run() {
 				c.signal()
 			}()
 			value, failure, sent := c.dispatch(ctx, request.Method, params)
-			c.reply(request.ID, value, failure, sent)
+			if sent == nil {
+				c.reply(request.ID, value, failure, nil)
+				return
+			}
+			// Subscription admission belongs to this request until its
+			// acknowledgement leaves the writer, not merely the reply queue.
+			delivered := make(chan struct{})
+			c.reply(request.ID, value, failure, func() {
+				sent()
+				close(delivered)
+			})
+			select {
+			case <-delivered:
+			case <-ctx.Done():
+			}
 		})
 	}
 }
@@ -518,9 +532,9 @@ func (c *rpcConnection) subscribe(ctx context.Context, id string, build func(con
 	c.mu.Unlock()
 	stop := context.AfterFunc(ctx, viewCancel)
 	subscription, failure := build(viewContext)
-	stop()
 	c.mu.Lock()
 	if failure != nil || c.subscriptions[id] != reserved || viewContext.Err() != nil {
+		stop()
 		if c.subscriptions[id] == reserved {
 			delete(c.subscriptions, id)
 		}
@@ -537,6 +551,7 @@ func (c *rpcConnection) subscribe(ctx context.Context, id string, build func(con
 	subscription.id = id
 	cleanup := subscription.cleanup
 	subscription.cleanup = func() {
+		stop()
 		if cleanup != nil {
 			cleanup()
 		}
@@ -544,12 +559,18 @@ func (c *rpcConnection) subscribe(ctx context.Context, id string, build func(con
 	}
 	c.subscriptions[id] = subscription
 	c.mu.Unlock()
+	context.AfterFunc(viewContext, func() { c.removeSubscription(id, subscription, nil) })
 	return RPCSubscribed{Subscription: id}, nil, func() {
 		c.mu.Lock()
-		if c.subscriptions[id] == subscription {
+		stop()
+		admitted := c.subscriptions[id] == subscription && ctx.Err() == nil && viewContext.Err() == nil
+		if admitted {
 			subscription.active = true
 		}
 		c.mu.Unlock()
+		if !admitted {
+			c.removeSubscription(id, subscription, nil)
+		}
 		c.signal()
 	}
 }

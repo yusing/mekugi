@@ -33,6 +33,9 @@ and `body`. Body is the operation-specific input described below. The client
 selects a nonempty subscription ID before requesting a stream. It is unique
 among that connection's active subscriptions. An acknowledgement containing
 `subscription` precedes the first notification.
+Admission remains cancelable until that acknowledgement has been delivered.
+A failed or timed-out observer releases its subscription explicitly; late
+acknowledgements cannot reactivate a retired subscription.
 
 | Method | Purpose / body |
 | --- | --- |

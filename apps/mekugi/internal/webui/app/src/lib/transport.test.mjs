@@ -180,6 +180,31 @@ test(
   },
 );
 
+test("timed-out subscription admission cancels its known identity and ignores late data", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const connector = connect("https://example.test", "token");
+  const requested = Promise.withResolvers();
+  const canceled = Promise.withResolvers();
+  const events = [];
+  handler = (socket, message) => {
+    if (initialize(socket, message)) return;
+    if (message.method === "session/subscribe") requested.resolve(message);
+    if (message.method === "subscription/cancel") canceled.resolve(message);
+  };
+  const stop = connector.subscribe(
+    "session/subscribe",
+    { thread: "large" },
+    (event) => events.push(event),
+    () => {},
+  );
+  const request = await requested.promise;
+  t.mock.timers.tick(15_000);
+  assert.equal((await canceled.promise).params.subscription, request.params.subscription);
+  publication(sockets[0], request);
+  assert.deepEqual(events, []);
+  stop();
+});
+
 test(
   "subscription/closed refreshes only that subscription without ending server work",
   { timeout: 4000 },

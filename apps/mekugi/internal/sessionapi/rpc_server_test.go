@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/coder/websocket"
@@ -267,6 +268,85 @@ func TestRPCServerRetirementDoesNotCloseReusedSubscription(t *testing.T) {
 	}
 }
 
+func TestRPCSubscriptionAdmissionLifetime(t *testing.T) {
+	for _, acknowledged := range []bool{false, true} {
+		t.Run(map[bool]string{false: "canceled before acknowledgement", true: "transferred after acknowledgement"}[acknowledged], func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				connection := &rpcConnection{ctx: ctx, cancel: cancel, subscriptions: make(map[string]*rpcSubscription), responses: make(chan rpcReply, 2), wake: make(chan struct{}, 1)}
+				request, cancelRequest := context.WithCancel(ctx)
+				var subscription *rpcSubscription
+				_, failure, sent := connection.subscribe(request, "view", func(ctx context.Context) (*rpcSubscription, *RPCError) {
+					subscription = newRPCSubscription(ctx, nil, nil)
+					return subscription, nil
+				})
+				if failure != nil {
+					t.Fatal(failure)
+				}
+				if acknowledged {
+					sent()
+				}
+				cancelRequest()
+				synctest.Wait()
+				if acknowledged {
+					if subscription.ctx.Err() != nil || !subscription.active {
+						t.Fatal("delivered admission did not transfer ownership")
+					}
+					connection.removeSubscription("view", subscription, nil)
+				} else {
+					sent() // A delayed writer must not revive the abandoned observer.
+					if subscription.ctx.Err() == nil || subscription.active || len(connection.subscriptions) != 0 {
+						t.Fatal("canceled admission retained or reactivated its subscription")
+					}
+				}
+			})
+		})
+	}
+}
+
+func TestRPCRequestCancellationWhileAcknowledgementIsBlocked(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := NewLive()
+		hub := NewHub(t.Context(), nil)
+		registerTestSession(hub, "thread", s, Summary{Thread: "thread", Workspace: "/workspace"})
+		conn := pipeControl(t, hub)
+		controlInitialize(t, conn)
+		controlWrite(t, conn, `{"jsonrpc":"2.0","id":"attach","method":"view/attach","params":{"thread":"thread","subscription":"view"}}`)
+		request := <-s.Native().Requests()
+		if err := s.Native().Publish(request.Attachment, nativeTestFrame("thread", 1)); err != nil {
+			t.Fatal(err)
+		}
+		request.Reply <- ""
+		synctest.Wait() // The unbuffered writer cannot deliver the acknowledgement.
+		if request.ViewContext.Err() != nil {
+			t.Fatal("admission retired before acknowledgement delivery or cancellation")
+		}
+		controlWrite(t, conn, `{"jsonrpc":"2.0","id":"cancel","method":"request/cancel","params":{"body":{"id":"attach"}}}`)
+		synctest.Wait()
+		if request.ViewContext.Err() == nil {
+			t.Fatal("request cancellation lost ownership before acknowledgement delivery")
+		}
+		// Resume delivery. The old acknowledgement must not activate its queued snapshot.
+		for range 3 {
+			if message := controlRead(t, conn); message.Method == "subscription/event" {
+				t.Fatal("abandoned subscription delivered a publication")
+			}
+		}
+		synctest.Wait()
+		hub.mu.Lock()
+		defer hub.mu.Unlock()
+		for c := range hub.connections {
+			c.mu.Lock()
+			remaining := len(c.subscriptions)
+			c.mu.Unlock()
+			if remaining != 0 {
+				t.Fatalf("abandoned admission retained %d subscriptions", remaining)
+			}
+		}
+	})
+}
+
 func TestRPCServerShutdownDeliversJoinedExit(t *testing.T) {
 	for range 30 {
 		launcher := &nativeStartupLauncher{run: func(ctx context.Context, start Start, server *Server) error {
@@ -313,28 +393,7 @@ func TestRPCServerShutdownBoundsBlockedPhysicalConnection(t *testing.T) {
 		return &NativeExit{Code: 17, Message: "joined shutdown outcome"}
 	}}
 	hub := NewHub(t.Context(), launcher)
-	// An unbuffered physical link makes the blocked writer deterministic.
-	clientWire, serverWire := net.Pipe()
-	listener := &rpcPipeListener{Conn: serverWire, done: make(chan struct{})}
-	server := &http.Server{Handler: Versioned(hub.Handler())}
-	served := make(chan error, 1)
-	go func() { served <- server.Serve(listener) }()
-	transport := &http.Transport{DialContext: func(context.Context, string, string) (net.Conn, error) { return clientWire, nil }}
-	t.Cleanup(func() {
-		clientWire.Close()
-		server.Close()
-		listener.Close()
-		transport.CloseIdleConnections()
-		<-served
-	})
-	conn, _, err := websocket.Dial(t.Context(), "http://mekugi"+NativeRPCPath, &websocket.DialOptions{
-		HTTPClient: &http.Client{Transport: transport}, HTTPHeader: http.Header{ProtocolHeader: []string{ProtocolVersion}}, Subprotocols: []string{RPCSubprotocol},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { conn.CloseNow() })
-	conn.SetReadLimit(RPCMessageLimit)
+	conn := pipeControl(t, hub)
 	controlInitialize(t, conn)
 	body, _ := json.Marshal(NativeStart{Workspace: t.TempDir()})
 	params, _ := json.Marshal(RPCParams{Subscription: "view", Body: body})
@@ -361,6 +420,33 @@ func TestRPCServerShutdownBoundsBlockedPhysicalConnection(t *testing.T) {
 	if remaining != 0 {
 		t.Fatalf("shutdown retained %d connections", remaining)
 	}
+}
+
+func pipeControl(t *testing.T, hub *Hub) *websocket.Conn {
+	t.Helper()
+	// An unbuffered physical link makes the blocked writer deterministic.
+	clientWire, serverWire := net.Pipe()
+	listener := &rpcPipeListener{Conn: serverWire, done: make(chan struct{})}
+	server := &http.Server{Handler: Versioned(hub.Handler())}
+	served := make(chan error, 1)
+	go func() { served <- server.Serve(listener) }()
+	transport := &http.Transport{DialContext: func(context.Context, string, string) (net.Conn, error) { return clientWire, nil }}
+	t.Cleanup(func() {
+		clientWire.Close()
+		server.Close()
+		listener.Close()
+		transport.CloseIdleConnections()
+		<-served
+	})
+	conn, _, err := websocket.Dial(t.Context(), "http://mekugi"+NativeRPCPath, &websocket.DialOptions{
+		HTTPClient: &http.Client{Transport: transport}, HTTPHeader: http.Header{ProtocolHeader: []string{ProtocolVersion}}, Subprotocols: []string{RPCSubprotocol},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.CloseNow() })
+	conn.SetReadLimit(RPCMessageLimit)
+	return conn
 }
 
 // rpcPipeListener exposes one unbuffered connection to the actual HTTP upgrader.

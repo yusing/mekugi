@@ -302,11 +302,12 @@ class Channel {
         if (ack?.subscription !== id) throw new Error("Wrong subscription");
         const active = this.#subscriptions.get(id);
         if (active) active.acknowledged = true;
-      }).catch((error) =>
+      }).catch((error) => {
+        if (this.#subscriptions.has(id)) this.#cancel("subscription/cancel", { subscription: id });
         finish(
           error instanceof TransportError ? error : new TransportError(unreachable, "network"),
-        ),
-      );
+        );
+      });
     });
   }
 
