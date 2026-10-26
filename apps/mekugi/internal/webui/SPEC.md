@@ -166,7 +166,8 @@ blocks emphasize changed words across consecutive rows while retaining syntax
 colours; pure additions and removals keep their ordinary row fill. Unknown
 languages and oversized inputs remain plain, and large or complex replacement
 blocks may omit word emphasis. Recently captured changes are marked. Long diffs
-start collapsed, and what the reader opens or closes stays so as the review
+start collapsed; large reviews also limit the files initially expanded, with
+every remaining file available through its disclosure. What the reader opens or closes stays so as the review
 updates. Loading, coverage and failure stay visible; replays have no changes.
 
 User turns sit on the right of the

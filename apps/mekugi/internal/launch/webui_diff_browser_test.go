@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -147,5 +148,27 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	run("wait", "--fn", `!document.querySelector('[aria-label="Live edits"]')`)
 	openSaved()
 	run("wait", "--fn", `document.querySelector('[aria-labelledby="saved-heading"] .diff-word[style*="--shiki-light"]')`)
+	// A retained review can have hundreds of individually short files. Opening
+	// its tab must not paint and tokenize every file before accepting input.
+	button("Changes")
+	var many []changes.Chunk
+	for i := range 200 {
+		path := filepath.Join(workspace, fmt.Sprintf("retained-%03d.ts", i))
+		many = append(many, changes.Chunk{Key: path, CaptureOrder: uint64(i + 1), Origin: changes.Origin{Caller: "/root", Source: "apply_patch"}, Review: diffmodel.RenderReviewFile("", path, "", strings.Repeat("const retained = true;\n", 120))})
+	}
+	view.Revision++
+	view.Publication = changes.Publication{}.With(changes.GroupCaptures(many))
+	frame.Live = nil
+	publish()
+	run("wait", "--fn", `document.querySelector('button[aria-label="Changes"]')?.textContent.includes('24000')`)
+	t.Log("large review first paint:", run("eval", `new Promise(resolve => { const start = performance.now(); document.querySelector('button[aria-label="Changes"]').click(); requestAnimationFrame(() => requestAnimationFrame(() => resolve({ms: performance.now() - start, rows: document.querySelectorAll('[aria-labelledby="saved-heading"] span.whitespace-pre').length, files: document.querySelectorAll('[aria-labelledby="saved-heading"] details').length}))); })`))
+	if strings.TrimSpace(run("eval", `document.querySelectorAll('[aria-labelledby="saved-heading"] span.whitespace-pre').length <= 300`)) != "true" {
+		t.Fatal("opening a large saved review rendered more than the initial line budget")
+	}
+	run("eval", `document.querySelector('[aria-labelledby="saved-heading"] li:last-child summary').click()`)
+	run("wait", "--fn", `document.querySelector('[aria-labelledby="saved-heading"] li:last-child').textContent.includes('const retained = true;')`)
+	view.Revision++
+	publish()
+	run("wait", "--fn", `document.querySelector('[aria-labelledby="saved-heading"] li:last-child details')?.open`)
 	t.Log("Saved/live diffs retain source, independent gutters, hunk gaps, syntax, word emphasis, streaming replacement and settling across desktop/tablet/phone in both appearances")
 }

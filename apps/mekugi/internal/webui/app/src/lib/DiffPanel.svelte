@@ -46,12 +46,33 @@
       .join(" · ");
   }
 
-  // Long diffs start closed; what the reader opens or closes stays so as
-  // the review updates.
+  // Bound initial painting across the review, not separately for every file.
+  // All file controls remain available; explicit choices outlive updates.
   let toggled = $state<Record<string, boolean>>({});
-  const lines = (file: ReviewedFile) =>
-    file.chunks.reduce((n, chunk) => n + (chunk.Review.Diff.match(/\n/g)?.length ?? 0), 0);
-  const open = (file: ReviewedFile) => toggled[file.key] ?? lines(file) <= 300;
+  const defaults = $derived.by(() => {
+    const opened = new Set<string>();
+    let lines = 300;
+    let characters = 64 * 1024;
+    for (const file of files) {
+      let size = 0;
+      let count = 0;
+      for (const chunk of file.chunks) {
+        const text = chunk.Review.Diff;
+        size += text.length;
+        if (size > characters) break;
+        for (let at = text.indexOf("\n"); at !== -1; at = text.indexOf("\n", at + 1)) {
+          if (++count > lines) break;
+        }
+        if (count > lines) break;
+      }
+      if (size > characters || count > lines) continue;
+      opened.add(file.key);
+      characters -= size;
+      lines -= count;
+    }
+    return opened;
+  });
+  const open = (file: ReviewedFile) => toggled[file.key] ?? defaults.has(file.key);
   // The tool that applied a patch is the editing path, not news.
   const sources = (file: ReviewedFile) => [
     ...new Set(file.origins.map((o) => o.Source).filter((s) => s && s !== "apply_patch")),
