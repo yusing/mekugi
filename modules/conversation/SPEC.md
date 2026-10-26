@@ -87,6 +87,36 @@ bind its old prefix. Skills bind only complete references.
 
 ## References and attachments
 
+### Reusable presets
+
+`/presets` opens ten numbered slots, ordered 1–9 then 0. The quick menu recalls
+a saved prompt or slash command into the composer without submitting; an empty
+slot opens an editor. New, Edit, Rename and Delete use the same menu in terminal
+and browser clients. New and Edit end by naming the preset, starting from its
+current label; Rename changes only the label. Labels are single-line and
+trimmed; an empty label shows the input's first line. Replacing or deleting a
+saved slot requires confirmation. Escape cancels without changing the ordinary
+draft. New presets can start from plain draft text or current model settings;
+attachment bindings and images are never copied into presets.
+
+The terminal uses the same external-editor handoff as Ctrl-G for creation and
+editing, and edits labels in the menu. Recall replaces the composer text; the
+terminal keeps the previous draft in input history. Sending the recalled text
+uses ordinary submission and command admission, including busy, approval and
+Main-only gates. Presets are unavailable during startup, replay, child display
+or side conversations. They hold nonempty UTF-8 prompts or slash commands up to
+8,000 bytes; shell commands are excluded.
+
+Conversation owns their editor workflow; Session Control reads and writes the
+execution host's native `tui.presets` configuration. Presets and their optional
+labels are shared with Codex using the active user configuration or selected
+profile. Saves keep unrelated settings and other slots; an empty label is
+written explicitly so it masks an inherited one. Slots defined outside that
+active user layer cannot be replaced; deletion cannot reveal an inherited slot.
+Failed reads, saves and version conflicts remain visible and retryable. Existing
+Mekugi preset files are left untouched and unused, with no import, fallback or
+mirror.
+
 ### File and skill acquisition
 
 Completion replaces the whole token around the caret, retaining its byte span even
@@ -367,8 +397,8 @@ lifetimes. Rejected BTW input returns to Main. Main replacement closes both tran
 
 ## Lifetime
 
-Conversation writes no durable records. Submitted attachment envelopes remain
-with host user input; local edit history remains attachment-lifetime state. One
+Submitted attachment envelopes remain with host user input; local edit history
+remains attachment-lifetime state. One
 attached-session editor owns the active draft and local history; parked editors
 and submitted payloads are detached values.
 

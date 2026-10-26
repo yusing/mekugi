@@ -163,6 +163,9 @@ type NativeComposerInput struct {
 	Input  *InputRequest `json:"input,omitzero"`
 	// Consumed means the originating client has already taken its local draft.
 	Consumed bool
+	// Detached input never occupied the ordinary editor, so command completion
+	// must not remove text from that editor.
+	Detached bool `json:",omitzero"`
 }
 
 // NativeAnswers is one final answer admission. Secret text exists only in this
@@ -217,6 +220,7 @@ type NativeEffect struct {
 	Target       *conversation.EditorTarget
 	Skills       *[]composer.Token
 	Restore      *composer.Draft
+	Recall       *string
 	ShellRestore *composer.Draft
 	Recovery     *NativeRecoveryView
 	Action       *composer.Action

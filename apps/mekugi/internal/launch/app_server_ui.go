@@ -411,6 +411,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 			view.shell.Main.InterruptLocked, view.shell.Main.PredictionsDisabled = layout.InterruptLocked, layout.PredictionsDisabled
 		case operation.Command != nil || operation.Composer != nil:
 			intent := sessionpresentation.ComposerIntent{Version: view.attached.presentation.View().Version, Thread: view.attached.presentation.View().Input.ID, Operation: sessionpresentation.SubmitComposer}
+			detached := operation.Composer != nil && operation.Composer.Detached
 			if operation.Composer != nil {
 				intent = operation.Composer.Intent
 				requestEditor.Replace(operation.Composer.Draft)
@@ -421,6 +422,14 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					}
 				}
 			} else {
+				if *operation.Command == "/presets" && operation.Editor != nil {
+					if operation.Editor.Target.Call != "" || operation.Editor.Target.Request != "" {
+						return "Presets are unavailable while answering a prompt.", nil
+					}
+					requestEditor.Replace(operation.Editor.Draft)
+					openPresets(view.ctx, &view.attached, &control, &view.picker, requestEditor, settings, restoring != nil)
+					return "", nil
+				}
 				requestEditor.Text = *operation.Command
 				if operation.Editor != nil {
 					intent.Target = operation.Editor.Target
@@ -526,7 +535,9 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 				}
 			}
 			if view.remoteHuman && strings.TrimSpace(requestEditor.Text) == "/ps" {
-				view.effects.add(sessionapi.NativeEffect{Thread: inputThread, Target: new(intent.Target), Action: &composer.Action{Kind: composer.DeleteAction, Start: 0, End: len(requestEditor.Text)}})
+				if !detached {
+					view.effects.add(sessionapi.NativeEffect{Thread: inputThread, Target: new(intent.Target), Action: &composer.Action{Kind: composer.DeleteAction, Start: 0, End: len(requestEditor.Text)}})
+				}
 				setNotice(&view.attached.feedback, view.shell, presentationTime(clock), "Active processes appear above the composer.", false)
 				return "", nil
 			}
@@ -544,7 +555,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					if requestEditor.Text != "" && err == nil {
 						view.effects.add(sessionapi.NativeEffect{Thread: intent.Thread, Restore: new(requestEditor.Draft.Clone())})
 					}
-				} else if recovery == nil && requestEditor.Text == "" && (operation.Composer != nil || operation.Editor != nil) {
+				} else if !detached && recovery == nil && requestEditor.Text == "" && (operation.Composer != nil || operation.Editor != nil) {
 					// A raw command without editor metadata never occupied a draft.
 					view.effects.add(sessionapi.NativeEffect{Thread: inputThread, Target: new(intent.Target), Action: &composer.Action{Kind: composer.DeleteAction, Start: 0, End: len(before.Text)}})
 				}

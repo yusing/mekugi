@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/conversation/presets"
 )
 
 type nativeEditorHandoff struct {
@@ -21,6 +23,8 @@ type nativeEditorHandoff struct {
 	editor     *composer.Editor
 	target     conversation.EditorTarget
 	attachment uint64
+	menu       *sessionpresentation.MenuAction
+	stream     string
 }
 
 func (c *nativeClient) retainsEditor(editor *composer.Editor) bool {
@@ -33,6 +37,8 @@ func (c *nativeClient) retainsEditor(editor *composer.Editor) bool {
 }
 
 func (c *nativeClient) accept(event sessionapi.NativeEvent) {
+	previousMenu := c.event.Frame.View.Menu
+	previousStream := c.event.Attachment
 	previous := c.event.Frame.View.Main.ID
 	if c.event.Attachment != event.Attachment || c.event.Frame.View.Version.Attachment != event.Frame.View.Version.Attachment {
 		c.selection = nil
@@ -82,7 +88,20 @@ func (c *nativeClient) accept(event sessionapi.NativeEvent) {
 	c.refresh(time.Now())
 	c.acceptFacts(previous)
 	c.applyEffects()
+	if menu := event.Frame.View.Menu; menu != nil && menu.Kind == "preset-edit" && !menu.Loading && menu.Problem == "" &&
+		(previousStream != event.Attachment || previousMenu == nil || previousMenu.ID != menu.ID) {
+		c.editPreset()
+	}
 	c.refresh(time.Now())
+}
+
+func (c *nativeClient) editPreset() {
+	menu := c.event.Frame.View.Menu
+	if menu == nil || menu.Kind != "preset-edit" || menu.Loading || len(menu.Choices) == 0 {
+		return
+	}
+	action := sessionpresentation.MenuAction{Version: c.event.Frame.View.Version, Thread: c.event.Frame.View.Main.ID, Menu: menu.ID, Kind: sessionpresentation.MenuAccept, Choice: menu.Choices[0].Identity(), Query: menu.Query}
+	c.handoff = &nativeEditorHandoff{menu: &action, stream: c.event.Attachment}
 }
 
 func (c *nativeClient) applyEffects() {
@@ -159,6 +178,11 @@ func (c *nativeClient) applyEffects() {
 		}
 		if effect.Clipboard != nil {
 			c.notice, _ = c.renderer.terminal.Frame.CopyText(*effect.Clipboard)
+		}
+		if effect.Recall != nil {
+			editor.Remember(editor.Take())
+			editor.Replace(composer.Draft{Text: *effect.Recall})
+			c.notice = "Preset loaded · edit before sending"
 		}
 		if preferences := effect.Presentation; preferences != nil {
 			c.renderer.terminal.LiveHidden = preferences.LiveHidden
@@ -250,14 +274,20 @@ func (c *nativeClient) external(ctx context.Context, stdin, stdout *os.File, han
 	c.handoff = handoff
 	defer func() { c.handoff = nil }()
 	path := handoff.path
-	if handoff.editor != nil {
+	if handoff.editor != nil || handoff.menu != nil {
 		file, err := os.CreateTemp("", "mekugi-draft-*.txt")
 		if err != nil {
 			c.notice = err.Error()
 			return nil
 		}
 		path = file.Name()
-		_, writeErr := file.WriteString(handoff.editor.Text)
+		var seed string
+		if handoff.menu != nil {
+			seed = handoff.menu.Query
+		} else {
+			seed = handoff.editor.Text
+		}
+		_, writeErr := file.WriteString(seed)
 		if err := errors.Join(writeErr, file.Close()); err != nil {
 			_ = os.Remove(path)
 			c.notice = err.Error()
@@ -303,6 +333,37 @@ wait:
 		runtime.retire()
 	}
 	c.renderer.terminal.Frame.Rows = nil
+	if handoff.menu != nil {
+		menu := c.event.Frame.View.Menu
+		if err == nil && (c.event.Attachment != handoff.stream || c.event.Frame.View.Version.Attachment != handoff.menu.Version.Attachment || menu == nil || menu.ID != handoff.menu.Menu || menu.Kind != "preset-edit") {
+			err = errors.New("the original preset menu changed")
+		}
+		var data []byte
+		if err == nil {
+			data, err = os.ReadFile(path)
+		}
+		if err == nil {
+			err = presets.Validate(string(data))
+		}
+		if err != nil {
+			c.notice = fmt.Sprintf("Editor: %v · preset preserved at %s", err, path)
+			return connectionError
+		}
+		action := *handoff.menu
+		action.Version = c.event.Frame.View.Version
+		action.Query = string(data)
+		thread := sessionpresentation.Thread{ID: action.Thread}
+		c.withInput(thread, thread, conversation.EditorTarget{Revision: c.editor("main").Revision()}, func() {
+			c.enqueue(sessionapi.NativeOperation{Menu: &action}, nil, func(err error) {
+				if err != nil {
+					c.notice = fmt.Sprintf("Editor: %v · preset preserved at %s", err, path)
+					return
+				}
+				_ = os.Remove(path)
+			})
+		})
+		return connectionError
+	}
 	if handoff.editor == nil {
 		if err != nil {
 			c.notice = err.Error()

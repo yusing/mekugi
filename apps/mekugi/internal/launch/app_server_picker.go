@@ -23,6 +23,7 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/modules/conversation/presets"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
@@ -32,6 +33,7 @@ import (
 // remain Codex-owned, through app-server rather than a second filesystem index.
 
 type composerPicker struct {
+	presets        *presets.Flow
 	view           string
 	skillsRevision uint64
 	*completion.State
@@ -73,6 +75,10 @@ func (p *composerPicker) completionTarget(draft composer.Draft, shellMode bool) 
 }
 
 func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], editor *composer.Editor, parent context.Context, environment []string) {
+	if p.presets != nil {
+		p.pollPresets()
+		return
+	}
 	for _, stack := range [][]conversationmodel.Input{attached.conversation.Unsent, attached.conversation.Queued} {
 		for i := range stack {
 			before := len(stack[i].Skills)

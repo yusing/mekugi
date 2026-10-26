@@ -1,8 +1,8 @@
 
 › /resume       Resume a saved session                                          
   /reasoning    Choose the reasoning effort
+  /presets      Save and recall numbered prompts or slash commands
   /predictions  Enable or disable next-message suggestions: on|off
-
 
 
   ↑/↓ navigate · enter select · tab complete · esc close

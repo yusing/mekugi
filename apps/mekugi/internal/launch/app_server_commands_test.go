@@ -21,8 +21,9 @@ func TestComposerCommandCatalog(t *testing.T) {
 	if !strings.Contains(frame, "/model") || !strings.Contains(frame, u.picker.Choices[0].Description) {
 		t.Fatalf("missing command labels/descriptions: %s", frame)
 	}
+	completed := u.picker.Choices[1].Name + " "
 	appServerTestKeys(t, u, "\x1b[B\t")
-	if u.Text != "/reasoning " || u.picker.Open || len(pickerRequests(t, wire)) != 0 {
+	if u.Text != completed || u.picker.Open || len(pickerRequests(t, wire)) != 0 {
 		t.Fatalf("Tab did not complete locally: draft=%q picker=%+v", u.Text, u.picker)
 	}
 }

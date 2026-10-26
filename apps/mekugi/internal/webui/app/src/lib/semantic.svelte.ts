@@ -368,6 +368,12 @@ class Semantic {
           editor.text += `\n${effect.Selection.Text}`;
           editor.revision++;
         }
+        if (effect.Recall) {
+          editor.text = effect.Recall;
+          editor.cursorBack = 0;
+          editor.items = [];
+          editor.revision++;
+        }
       }
       if (effect.Clipboard !== null) this.copied = effect.Clipboard;
       source.effect = effect.ID;

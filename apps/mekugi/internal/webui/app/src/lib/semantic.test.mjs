@@ -891,3 +891,21 @@ test("Steer names captured work and leaves the editor untouched", async () => {
   await steering;
   assert.equal(editor.text, "unsent draft");
 });
+
+test("preset recall fills the composer once without submitting", async () => {
+  const owner = machine();
+  semantic.connect("thread-one", owner);
+  owner.snapshot();
+  semantic.editor().text = "keep my draft";
+  semantic.editor().cursorBack = 4;
+  const effects = [{ ID: 1, Thread: "thread-one", Recall: "/clear", Clipboard: null }];
+  owner.snapshot(2, effects);
+  const revision = semantic.editor().revision;
+  owner.snapshot(3, effects);
+  await tick();
+  const inputs = owner.requests.filter((request) => request.params.body.operation?.composer);
+  assert.equal(inputs.length, 0);
+  assert.equal(semantic.editor().text, "/clear");
+  assert.equal(semantic.editor().cursorBack, 0);
+  assert.equal(semantic.editor().revision, revision);
+});

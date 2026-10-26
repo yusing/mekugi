@@ -433,6 +433,15 @@
         onclick={() => rewrite(shell ? editor.text.slice(1) : `!${editor.text}`)}
       />
       {#if shell}<Tag mono class="ml-1.5">Shell</Tag>{/if}
+      {#if view && view.Displayed.ID === view.Main.ID}
+        <Button
+          variant="quiet"
+          icon="presets"
+          label="Presets"
+          disabled={!!pending || !!unavailable || !!initial}
+          onclick={() => semantic.send({ command: "/presets", editor: semantic.metadata() })}
+        />
+      {/if}
       {#if view && view.Displayed.ID === view.Main.ID}<ThreadSettings
           caption={view.Caption}
           disabled={!!pending || !!unavailable}

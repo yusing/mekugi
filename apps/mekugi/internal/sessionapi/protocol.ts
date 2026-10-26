@@ -295,6 +295,7 @@ export type NativeComposerInput = {
   "Draft": Draft;
   "input"?: (InputRequest | null);
   "Consumed": boolean;
+  "Detached"?: boolean;
 };
 
 export type MenuAction = {
@@ -548,6 +549,7 @@ export type NativeEffect = {
   "Target": (EditorTarget | null);
   "Skills": (Array<Token> | null);
   "Restore": (Draft | null);
+  "Recall": (string | null);
   "ShellRestore": (Draft | null);
   "Recovery": (NativeRecoveryView | null);
   "Action": (Action | null);

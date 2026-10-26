@@ -343,6 +343,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			v.attached.presentation.Attach(sessionpresentation.Thread{ID: control.Thread, Caller: "/root"}, false)
 		}
 		n.reconcileEffects(v)
+		v.picker.pollPresets()
 		if v.archiveOriginal != "" {
 			showRewindArchive(&v.picker, v.archiveOriginal)
 			v.archiveOriginal = ""

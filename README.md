@@ -56,6 +56,8 @@ sessions, and patch review. Invocation overrides leave Codex configuration uncha
   without a separate agent read; unreadable or oversized attachments have explicit notices.
 - **Composer additions.** Mention selected messages or diffs, and ask
   [side conversations](#composer) without interrupting Main.
+- **Reusable presets.** Save ten numbered prompts or slash commands and recall
+  them from the shared terminal and browser [composer](#composer).
 - **Usage, throughput and cost.** See per-thread usage and estimated API costs
   in Agents, with output tokens/sec in Main's composer and child-agent rows,
   plus launch-wide average throughput, usage
@@ -400,6 +402,15 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
 ### Composer
 
 - Enter steers; Tab queues. Type `?` in an empty draft for shortcuts.
+- `/presets` (or Ctrl+B then P) opens slots 1–9 and 0. Recall fills the composer without sending;
+  the terminal keeps the previous draft in input history. New and Edit use `$EDITOR`
+  in the terminal, like Ctrl+G, then ask for an optional label; Rename changes only
+  the label. Without a label, the menu shows the input's first line. New, Edit,
+  Rename and Delete manage slots, with confirmation before replacement or deletion.
+  Slots use Codex's native `tui.presets` on the execution machine, including its
+  active user/profile configuration and labels.
+  Existing Mekugi preset files remain untouched and unused. Presets contain text,
+  not attachments.
 - A breathing count shows running commands from Main and its children. `/ps` opens
   their live output, one tab per command, without interrupting work.
 - `@` attaches files; `@!` includes ignored files. VCS metadata is excluded;

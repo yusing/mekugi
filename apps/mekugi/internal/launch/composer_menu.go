@@ -22,6 +22,9 @@ import (
 
 func (p *composerPicker) openMenu(kind string) {
 	p.cancelPermissionSelection()
+	if !strings.HasPrefix(kind, "preset") {
+		p.presets = nil
+	}
 	p.MenuState.Begin(sessionpresentation.MenuKind(kind))
 	p.Open = true
 }
@@ -30,6 +33,9 @@ func (p *composerPicker) menuView(workspace, text string, control *sessioncontro
 		return nil
 	}
 	view := &sessionpresentation.MenuView{ID: p.ID, Kind: p.Kind, View: p.View(), Preferred: p.Preferred}
+	if p.presets != nil {
+		view.Title, view.Explanation = p.presets.Title(), p.presets.Explanation()
+	}
 	switch view.Kind {
 	case sessionpresentation.MenuManageSkills:
 		view.Saving = p.skillSaveOwnsManager(workspace)
@@ -128,9 +134,13 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 	switch action.Kind {
 	case sessionpresentation.MenuSearch:
 		p.Query = action.Query
+		if p.presets != nil {
+			p.presets.Label = action.Query // Admitted only while typing a preset label.
+		}
 		return true
 	case sessionpresentation.MenuDismiss:
 		p.cancelPermissionSelection()
+		p.presets = nil
 		p.sideTask = nil
 		switch p.Kind {
 		case "menu", "manage":
@@ -150,6 +160,9 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 			return false
 		}
 		choice := p.Choices[index]
+		if p.presets != nil {
+			return choosePreset(attached, control, p, action, choice, restoring)
+		}
 		switch p.Kind {
 		case "menu":
 			picker.chooseSkillsAction(attached, (*editor), terminal, clock, owned, questions, approvals, side, choice)

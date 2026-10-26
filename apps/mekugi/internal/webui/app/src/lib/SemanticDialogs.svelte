@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import Alert from "./ui/Alert.svelte";
   import type { ChoiceID, StatusField } from "../../../../sessionapi/protocol";
   import { date } from "./format";
@@ -13,6 +14,13 @@
   // The server's dialogs: menus other than inline completions, the saved
   // thread picker, the status panel and the copy fallback.
   let query = $state("");
+  let presetEditorIdentity = "";
+  function focusPreset(node: HTMLTextAreaElement) {
+    void tick().then(() => {
+      node.focus();
+      node.setSelectionRange(node.value.length, node.value.length);
+    });
+  }
   const view = $derived(semantic.frame?.view);
   const menu = $derived(
     view?.Menu && (view.Menu.Kind !== "" || view.Menu.Dialog) && !semantic.settingsMenu
@@ -23,6 +31,15 @@
   const panel = $derived(view?.Panel);
   const metricCount = $derived(panel?.Metrics?.exchanges.length ?? 0);
   const disabled = $derived(semantic.connection !== "open" || semantic.pending > 0);
+
+  $effect(() => {
+    const identity =
+      menu?.Kind === "preset-edit" || menu?.Kind === "preset-label"
+        ? `${view?.Version.Attachment}:${menu.ID}`
+        : "";
+    if (identity && identity !== presetEditorIdentity) query = menu!.Query;
+    presetEditorIdentity = identity;
+  });
   const groups = $derived.by(() => {
     const map = new Map<string, StatusField[]>();
     for (const field of panel?.Fields ?? [])
@@ -60,58 +77,182 @@
   const row =
     "flex min-h-11 w-full items-center justify-between gap-3 rounded-card px-2.5 py-2 text-left text-ink hover:enabled:bg-active disabled:cursor-default";
   const search = "mb-3 flex gap-2";
+  // Presets list their numbered slots, then the actions; the slot steps
+  // after it (editing, labelling, confirming) end in dialog buttons.
+  const presetList = $derived(menu?.Kind === "presets" || menu?.Kind === "preset-slots");
+  const presetStep = $derived(!!menu?.Kind.startsWith("preset") && !presetList);
+  const isSlot = (choice: { ID: number }) => choice.ID >= 1 && choice.ID <= 10;
+  const slotRow =
+    "flex min-h-9 w-full items-center gap-3 rounded-control px-2 py-1.5 text-left hover:enabled:bg-active disabled:cursor-default max-sm:min-h-11";
   const foot = "mt-4 flex justify-end gap-2";
 </script>
 
+<svelte:window
+  onkeydown={(event) => {
+    if (
+      !menu ||
+      disabled ||
+      event.repeat ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey ||
+      !["presets", "preset-slots"].includes(menu.Kind)
+    )
+      return;
+    const choice = menu.Choices.find((choice) => choice.Name === event.key);
+    if (choice) {
+      event.preventDefault();
+      choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path });
+    }
+  }}
+/>
+
 {#if menu && view}
-  <Dialog
-    title={menu.Title || menu.Setting || (menu.Kind === "manage" ? "Skills" : "Choose")}
-    onclose={() => choose(1)}
-  >
-    {#if menu.Explanation}<p class="mb-3 text-muted">{menu.Explanation}</p>{/if}
-    {#if menu.Kind === "manage"}
-      <form
-        class={search}
-        onsubmit={(event) => {
-          event.preventDefault();
-          choose(3);
-        }}
-      >
-        <label class="sr-only" for="menu-search">Search skills</label>
-        <input id="menu-search" class={input} bind:value={query} placeholder="Search skills" />
-        <Button type="submit" {disabled}>Search</Button>
-      </form>
-    {/if}
-    {#if menu.Loading || menu.Saving}<p class="text-small text-muted" role="status">
-        {menu.Saving ? "Saving…" : "Loading…"}
-      </p>{/if}
-    {#if menu.Problem}<Alert>{menu.Problem}</Alert>{/if}
-    <ul class="grid gap-0.5">
-      {#each menu.Choices as choice (JSON.stringify([choice.ID, choice.Name, choice.Path]))}
-        {@const preferred = choice.ID === menu.Preferred.ID && choice.Name === menu.Preferred.Name}
-        <li>
-          <button
-            type="button"
-            class={[row, preferred && "bg-raised"]}
-            disabled={disabled || menu.Saving}
-            onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
+  {#key menu.Kind.startsWith("preset") ? menu.ID : 0}
+    <Dialog
+      title={menu.Title || menu.Setting || (menu.Kind === "manage" ? "Skills" : "Choose")}
+      onclose={() => choose(1)}
+    >
+      {#if menu.Explanation}<p class="mb-3 text-muted">{menu.Explanation}</p>{/if}
+      {#if menu.Kind === "preset-edit"}
+        <label class="mb-2 block text-small font-medium" for="preset-input"
+          >Prompt or slash command</label
+        >
+        <textarea
+          id="preset-input"
+          use:focusPreset
+          class="{input} min-h-40 resize-y font-mono"
+          bind:value={query}
+          onkeydown={(event) => {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.isComposing &&
+              !disabled &&
+              menu.Choices[0]
+            ) {
+              event.preventDefault();
+              const choice = menu.Choices[0];
+              choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path });
+            }
+          }}></textarea>
+      {/if}
+      {#if menu.Kind === "preset-label"}
+        <label class="mb-2 block text-small font-medium" for="preset-label">Label</label>
+        <input
+          id="preset-label"
+          class={input}
+          bind:value={query}
+          placeholder="Shows the first line when empty"
+          onkeydown={(event) => {
+            if (event.key === "Enter" && !event.isComposing && !disabled && menu.Choices[0]) {
+              event.preventDefault();
+              const choice = menu.Choices[0];
+              choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path });
+            }
+          }}
+        />
+      {/if}
+      {#if menu.Kind === "manage"}
+        <form
+          class={search}
+          onsubmit={(event) => {
+            event.preventDefault();
+            choose(3);
+          }}
+        >
+          <label class="sr-only" for="menu-search">Search skills</label>
+          <input id="menu-search" class={input} bind:value={query} placeholder="Search skills" />
+          <Button type="submit" {disabled}>Search</Button>
+        </form>
+      {/if}
+      {#if menu.Loading || menu.Saving}<p class="text-small text-muted" role="status">
+          {menu.Saving ? "Saving…" : "Loading…"}
+        </p>{/if}
+      {#if menu.Problem}<Alert>{menu.Problem}</Alert>{/if}
+      {#if presetList}
+        {@const slots = menu.Choices.filter(isSlot)}
+        {@const actions = menu.Choices.filter((choice) => !isSlot(choice))}
+        {#if slots.length}<ul
+            class="grid grid-flow-col grid-cols-2 grid-rows-5 gap-x-2 gap-y-0.5 max-sm:grid-flow-row max-sm:grid-cols-1 max-sm:grid-rows-none"
           >
-            <span class="grid min-w-0 gap-0.5">
-              <span class="font-medium wrap-anywhere">{choice.Display || choice.Name}</span>
-              {#if choice.Description}<span class="text-small text-muted">{choice.Description}</span
-                >{/if}
-            </span>
-            {#if menu.Kind === "manage"}<Tag tone={choice.Enabled ? "live" : "neutral"}
-                >{choice.Enabled ? "Enabled" : "Disabled"}</Tag
-              >{:else if preferred}<Icon name="check" />{/if}
-          </button>
-        </li>
+            {#each slots as choice (choice.ID)}
+              {@const text = (choice.Display || "").slice(choice.Name.length).trim()}
+              {@const empty = text === "empty"}
+              <li>
+                <button
+                  type="button"
+                  class={slotRow}
+                  disabled={disabled || menu.Saving || menu.Loading}
+                  onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
+                >
+                  <kbd
+                    class="flex size-6 flex-none items-center justify-center rounded-chip bg-raised font-mono text-small text-muted"
+                    >{choice.Name}</kbd
+                  >
+                  <span class={["min-w-0 truncate", empty ? "text-muted" : "font-medium"]}
+                    >{empty ? "Empty" : text}</span
+                  >
+                </button>
+              </li>
+            {/each}
+          </ul>{/if}
+        {#if actions.length}<div
+            class={["flex flex-wrap gap-2", slots.length && "mt-4 border-t border-rule pt-4"]}
+          >
+            {#each actions as choice (choice.Name)}<Button
+                size="sm"
+                variant={choice.Name === "d" ? "danger" : "default"}
+                disabled={disabled || menu.Saving || menu.Loading}
+                onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
+                >{choice.Display || choice.Name}</Button
+              >{/each}
+          </div>{/if}
+      {:else if presetStep}
+        <!-- Cancel leads, as in every dialog's buttons. -->
+        <div class={foot}>
+          {#each [...menu.Choices.filter((c) => c.Name === "cancel"), ...menu.Choices.filter((c) => c.Name !== "cancel")] as choice (choice.Name)}<Button
+              variant={choice.Name === "cancel"
+                ? "quiet"
+                : menu.Title.startsWith("Delete")
+                  ? "danger"
+                  : "primary"}
+              disabled={disabled || menu.Saving || menu.Loading}
+              onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
+              >{choice.Display || choice.Name}</Button
+            >{/each}
+        </div>
       {:else}
-        {#if !menu.Loading}<li class="text-small text-muted">Nothing to choose.</li>{/if}
-      {/each}
-    </ul>
-    {#if semantic.error}<Alert class="mt-3">{semantic.error}</Alert>{/if}
-  </Dialog>
+        <ul class="grid gap-0.5">
+          {#each menu.Choices as choice (JSON.stringify([choice.ID, choice.Name, choice.Path]))}
+            {@const preferred =
+              choice.ID === menu.Preferred.ID && choice.Name === menu.Preferred.Name}
+            <li>
+              <button
+                type="button"
+                class={[row, preferred && "bg-raised"]}
+                disabled={disabled || menu.Saving || menu.Loading}
+                onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
+              >
+                <span class="grid min-w-0 gap-0.5">
+                  <span class="font-medium wrap-anywhere">{choice.Display || choice.Name}</span>
+                  {#if choice.Description}<span class="text-small text-muted"
+                      >{choice.Description}</span
+                    >{/if}
+                </span>
+                {#if menu.Kind === "manage"}<Tag tone={choice.Enabled ? "live" : "neutral"}
+                    >{choice.Enabled ? "Enabled" : "Disabled"}</Tag
+                  >{:else if preferred}<Icon name="check" />{/if}
+              </button>
+            </li>
+          {:else}
+            {#if !menu.Loading}<li class="text-small text-muted">Nothing to choose.</li>{/if}
+          {/each}
+        </ul>
+      {/if}
+      {#if semantic.error}<Alert class="mt-3">{semantic.error}</Alert>{/if}
+    </Dialog>
+  {/key}
 {:else if resume}
   <Dialog title="Resume saved thread" wide onclose={() => selectResume(4)}>
     <form

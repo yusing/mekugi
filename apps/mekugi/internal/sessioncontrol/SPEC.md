@@ -32,6 +32,9 @@ queues and provisional transcript rows; control decides which submissions settle
 return to the composer or requeue. [Session presentation](../sessionpresentation/SPEC.md)
 owns attachment lifetime, displayed-thread and history reconstruction. Control
 issues its observational reads without changing execution or input identity.
+Reusable presets use the same host request ledger for configuration reads and
+per-slot, version-checked writes to Codex's active user configuration. The host
+retains file formatting, configuration validation and persistence authority.
 Child metadata is read once per attached request scope. Its response uses the
 same request ledger; missing metadata does not block admitted Activity, and
 retiring the scope clears both correlation and read admission.

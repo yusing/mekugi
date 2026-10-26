@@ -28,6 +28,7 @@
     copy: "M9 9h11v11H9zM5 15H4V4h11v1",
     expand: "M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7",
     folder: "M3 6h6l2 2h10v11H3z",
+    presets: "M7 4h10v16l-5-4-5 4z",
     history: "M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2",
     compose: "M4 20h4L19 9l-4-4L4 16zM14 6l4 4",
     check: "M5 12l5 5 9-10",

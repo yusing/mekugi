@@ -67,7 +67,7 @@ func (m *Model) AdmitMenu(in MenuAction) error {
 		}
 		return ErrStaleIntent
 	case MenuSearch:
-		if p.Kind != MenuManageSkills {
+		if p.Kind != MenuManageSkills && p.Kind != "preset-label" {
 			return ErrStaleIntent
 		}
 	}

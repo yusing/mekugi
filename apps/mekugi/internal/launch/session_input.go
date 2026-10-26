@@ -102,6 +102,10 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 			return false, nil
 		}
 		text := strings.TrimSpace((*editor).Text)
+		if text == "/presets" {
+			openPresets(parent, attached, control, picker, *editor, preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}, *restoring != nil)
+			return false, nil
+		}
 		if text == "/archive" {
 			showArchivePicker(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned))
 			return false, nil

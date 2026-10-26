@@ -213,6 +213,8 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 			if c.menu(*effect.Menu, nil) {
 				return
 			}
+		case effect.Command != nil:
+			c.enqueue(sessionapi.NativeOperation{Command: effect.Command}, nil, nil)
 		case effect.Display != nil:
 			thread := effect.Display.Thread
 			if c.displayParent != nil && thread.ID == c.event.Frame.View.Main.ID {
@@ -390,6 +392,10 @@ func (c *nativeClient) continueKey(next terminalsession.KeyContinuation) {
 }
 
 func (c *nativeClient) menu(menu terminalsession.MenuResult, next *terminalsession.KeyContinuation) bool {
+	if menu.Action.Kind == sessionpresentation.MenuAccept && c.event.Frame.View.Menu != nil && c.event.Frame.View.Menu.Kind == "preset-edit" {
+		c.editPreset()
+		return true
+	}
 	if menu.Action.Kind != sessionpresentation.MenuNoAction {
 		if next == nil {
 			next = menu.Continuation()

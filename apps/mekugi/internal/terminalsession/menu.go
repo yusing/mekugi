@@ -2,6 +2,8 @@ package terminalsession
 
 import (
 	"slices"
+	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -13,6 +15,9 @@ type Menu struct {
 	body     *sessionpresentation.MenuView
 	version  sessionpresentation.Version
 	Selected int
+	// label is the preset label typed here. Queued keys can arrive before the
+	// host echoes the previous one, so each search sends this complete text.
+	label string
 	terminalui.ChoiceListLayout
 	Rect Rect
 }
@@ -33,7 +38,7 @@ func (m *Menu) Update(v sessionpresentation.View) {
 		previous = m.body.Choices[m.Selected].Identity()
 	}
 	if fresh {
-		*m = Menu{}
+		*m = Menu{label: v.Menu.Query}
 		previous = v.Menu.Preferred
 	}
 	m.body, m.version = v.Menu, v.Version
@@ -59,6 +64,9 @@ func (m *Menu) accept(submit bool) MenuResult {
 	}
 	r.Action = m.action(sessionpresentation.MenuAccept)
 	r.Action.Choice = m.body.Choices[m.Selected].Identity()
+	if m.body.Kind == "preset-label" {
+		r.Action.Query = m.label
+	}
 	r.Submit = submit && m.body.Kind == sessionpresentation.MenuCompletion && m.body.Target.Kind == '/'
 	return r
 }
@@ -70,6 +78,31 @@ func (m *Menu) Key(key string) MenuResult {
 		return MenuResult{}
 	}
 	p := m.body
+	if p.Loading && p.Kind != sessionpresentation.MenuCompletion && key != "\x1b" && key != "\x03" {
+		return MenuResult{Handled: true}
+	}
+	if p.Kind == "preset-confirm" {
+		if key == "\r" {
+			return MenuResult{Handled: true}
+		}
+		if key == "y" {
+			m.Selected = 0
+			return m.accept(false)
+		}
+	}
+	if p.Kind == "preset-label" {
+		if r, ok := m.labelKey(key); ok {
+			return r
+		}
+	}
+	if (p.Kind == "presets" || p.Kind == "preset-slots") && len(key) == 1 {
+		for i, choice := range p.Choices {
+			if choice.Name == key || key == "r" && choice.Name == "retry" {
+				m.Selected = i
+				return m.accept(false)
+			}
+		}
+	}
 	modal := p.Kind != sessionpresentation.MenuCompletion
 	r := MenuResult{Handled: modal}
 	move := func(delta int) {
@@ -155,6 +188,31 @@ func (m *Menu) Key(key string) MenuResult {
 	}
 	return r
 }
+
+// labelKey edits a preset label as a single-line query; Enter saves it.
+func (m *Menu) labelKey(key string) (MenuResult, bool) {
+	query := m.label
+	switch r, n := utf8.DecodeRuneInString(key); {
+	case key == "\r":
+		return m.accept(false), true
+	case key == "\x7f" || key == "\x08":
+		_, n := utf8.DecodeLastRuneInString(query)
+		query = query[:len(query)-n]
+	case key == "\x15":
+		query = ""
+	case n == len(key) && r != utf8.RuneError && unicode.IsPrint(r):
+		query += key
+	default:
+		return MenuResult{}, false
+	}
+	r := MenuResult{Handled: true}
+	if query != m.label {
+		m.label = query
+		r.Action = m.action(sessionpresentation.MenuSearch)
+		r.Action.Query = query
+	}
+	return r, true
+}
 func (m *Menu) Mouse(button, y int) MenuResult {
 	if m.body == nil {
 		return MenuResult{}
@@ -172,4 +230,8 @@ func (m *Menu) Mouse(button, y int) MenuResult {
 		return m.Key("\x0e")
 	}
 	return MenuResult{Handled: true}
+}
+
+func (m *Menu) pastePreset(event Input) bool {
+	return m.body != nil && strings.HasPrefix(string(m.body.Kind), "preset")
 }

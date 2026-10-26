@@ -55,6 +55,7 @@ type ClipboardFeedback struct {
 // applies it and publishes before requesting the next effect. Stopping iteration
 // consumes the input; no continuation or effect queue survives the dispatch.
 type InputEffect struct {
+	Command       *string
 	Paste         *Input
 	Main          *KeyContinuation
 	Prompt        *PromptInput
@@ -93,6 +94,9 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 		case NoInput:
 			return
 		case PasteStart, PasteInput, PasteEnd:
+			if in.Main != nil && in.Main.Menu.pastePreset(event) {
+				return
+			}
 			state.resizeUntil = time.Time{}
 			if event.Kind == PasteStart {
 				state.Prefix = false
@@ -162,6 +166,10 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 		if state.Prefix {
 			state.Prefix = false
 			switch key {
+			case "p":
+				if in.Main != nil && !in.Main.Menu.Modal() && in.Main.session.ReadOnly == sessionpresentation.Editable && in.Shell.Focus == 0 {
+					yield(InputEffect{Command: new("/presets")})
+				}
 			case "\x02":
 				in.send(state, key, yield)
 			case "1", "2":
