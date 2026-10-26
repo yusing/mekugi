@@ -57,6 +57,9 @@
     return out;
   });
   const hookFailed = $derived(first !== undefined && failed(first));
+  // Main is local to an independently hosted runtime; canonical paths are global.
+  const endpoint = (name?: string) =>
+    name === "Main" ? (source === stream ? "/root" : owner) : name;
 
   // Traffic between agents: a task, a message, or a child's answer. Like the
   // terminal, it is headed by who sent it and what happened.
@@ -66,15 +69,15 @@
     if (entry.kind === "start" || kind === "start")
       return {
         glyph: "start",
-        from: first?.from,
-        to: first?.to ?? entry.assignmentTo,
+        from: endpoint(first?.from),
+        to: endpoint(first?.to ?? entry.assignmentTo),
         detail: "started",
       };
     if (kind === "message" || entry.kind === "reply" || entry.assignment)
       return {
         glyph: "message",
-        from: first?.from,
-        to: first?.to ?? entry.assignmentTo,
+        from: endpoint(first?.from),
+        to: endpoint(first?.to ?? entry.assignmentTo),
         detail: "",
       };
     // A child's answer, as Main's transcript shows it.
@@ -86,14 +89,13 @@
     return undefined;
   });
   const body = $derived(first?.body || entry.assignmentText || entry.text || "");
-  // An agent's answer or message to Main. As in the terminal, Main's
-  // transcript shows the agent's own summary of it, or its first lines.
+  // Incoming replies use their summary or excerpt in the recipient's feed;
+  // the displayed agent's own replies remain complete.
   const reply = $derived(
-    owner === "/root" &&
-      (traffic?.glyph === "final" || traffic?.glyph === "message") &&
+    (traffic?.glyph === "final" || traffic?.glyph === "message") &&
       !entry.assignment &&
       entry.agent !== "Main" &&
-      entry.agent !== "/root",
+      entry.agent !== owner,
   );
   const thought = (ms?: number) => (ms && ms >= 1000 ? `Thought for ${duration(ms)}` : "Thought");
   const prose = $derived(

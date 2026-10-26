@@ -224,6 +224,25 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}
 	run("wait", "--text", "Finished waiting for worker: message received")
 	run("wait", "--fn", `(() => { const row = document.querySelector('[aria-label="Thread panel"] button[aria-current=true]'); return row?.textContent.includes('Idle') && !row.textContent.includes('Waiting'); })()`)
+	// Independent runtimes publish their own summary through the roster, without
+	// copying the child's transcript into the parent's feed.
+	frame.Agents = &activitypresentation.Publication{Roster: append([]activitypresentation.AgentRow(nil), frame.Agents.Roster...)}
+	for i, kind := range []string{"progress", "reasoning"} {
+		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Kind: kind, Text: "Connecting to provider"}}
+		if i == 1 {
+			item.Text = "**Checking child callers**\n\nThe expanded reasoning body stays in the transcript."
+		}
+		agent := &frame.Agents.Roster[i].Agent
+		agent.Responding = true
+		agent.Summary = []activitypresentation.Entry{{Facts: item.Facts, Values: item.Values()}}
+	}
+	if err := alpha.api.Publish(frame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `document.querySelector('[aria-label="Thread panel"]')?.textContent.includes('Connecting to provider') && document.querySelector('[aria-label="Thread panel"]')?.textContent.includes('Checking child callers')`)
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("screenshot", filepath.Join(artifacts, "agent-roster-activity.png"))
+	}
 	// Agent selection attaches its own runtime while keeping Main's draft and
 	// mutation target. Retained-only agents never borrow Main's composer.
 	review := changes.ReviewView{Workspace: alpha.workdir, Revision: 1}
@@ -317,6 +336,19 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("set", "viewport", "1280", "720")
+	var replies []activitypresentation.Entry
+	for i, text := range []string{"## Summary\nNested review complete.\n## Details\nNested retained details.", strings.Repeat("Nested unstructured reply paragraph.\n\n", 12)} {
+		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: uint64(98 + i), Agent: "/root/worker/reviewer", Kind: "reply", ItemComplete: true}, Message: &activitypresentation.DirectedContent{From: "/root/worker/reviewer", To: "Main", Text: text}}
+		replies = append(replies, activitypresentation.Entry{Facts: item.Facts, Values: item.Values()})
+	}
+	if err := childServer.(*sessionapi.Server).Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: "child", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, ChildReplySummary: true, Main: &activitypresentation.Publication{Entries: replies}}); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `(() => { const feed = document.querySelector('[aria-label="worker\'s activity"]'); return feed?.textContent.includes('Nested review complete.') && [...feed.querySelectorAll('summary')].some(e => e.textContent === 'Full reply') && [...feed.querySelectorAll('button')].some(e => e.textContent.trim() === 'Show full reply'); })()`)
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-kind="reply"]'); return row?.textContent.includes('worker/reviewer') && !row.textContent.includes('/root/') && /→\s*worker/.test(row.textContent) && !/→\s*main/.test(row.textContent); })()`)
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("screenshot", filepath.Join(artifacts, "child-incoming-replies.png"))
+	}
 	run("fill", "#composer-text", "child draft")
 	button("Stop")
 	select {

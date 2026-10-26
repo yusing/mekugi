@@ -34,6 +34,42 @@ globalThis.addEventListener = () => {};
 globalThis.history = { replaceState() {}, pushState() {} };
 const { semantic, textDraft } = await import("./semantic.svelte.ts");
 const { stream } = await import("./stream.svelte.ts");
+const { doing } = await import("./agents.ts");
+
+test("agent labels retain canonical display names before roster metadata arrives", () => {
+  assert.equal(stream.label("Main"), "main");
+  assert.equal(stream.label("/root"), "main");
+  assert.equal(stream.label("/root/worker/reviewer"), "worker/reviewer");
+  assert.equal(stream.label("unknown"), "unknown");
+});
+
+test("roster activity uses observed progress and collapsed reasoning labels", () => {
+  assert.deepEqual(
+    doing({ kind: "progress", values: [{ kind: "progress", body: "Connecting to provider" }] }),
+    { verb: "", html: "Connecting to provider" },
+  );
+  assert.deepEqual(
+    doing({
+      kind: "reasoning",
+      values: [
+        {
+          kind: "summary",
+          label: "Checking callers",
+          body: "Private to the expanded reasoning view",
+          live: true,
+        },
+      ],
+    }),
+    { verb: "", html: "Checking callers" },
+  );
+  assert.deepEqual(
+    doing({
+      kind: "reasoning",
+      values: [{ kind: "summary", body: "A long body\nwith another line", live: true }],
+    }),
+    { verb: "Thinking", html: "" },
+  );
+});
 const { view } = await import("./view.svelte.ts");
 const { prepareAttachments } = await import("./attachments.ts");
 const { Connector, unknownOutcome } = await import("./transport.ts");

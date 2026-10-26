@@ -244,6 +244,7 @@ type agent struct {
 	Depth        int      `json:"depth,omitzero"`
 	State        string   `json:"state"`
 	Wait         *value   `json:"wait,omitzero"`
+	Activity     *entry   `json:"activity,omitzero"` // Shared roster summary, without retained source/output.
 	Turns        uint64   `json:"turns,omitzero"`
 	Roundtrips   uint64   `json:"roundtrips,omitzero"`
 	Work         *int64   `json:"work,omitzero"`
@@ -398,6 +399,31 @@ func projectRoster(p *activitypresentation.Publication) roster {
 		}
 		if a.Waiting && a.Wait != nil {
 			x.Wait = new(projectValues([]activitypresentation.Value{*a.Wait}, false)[0])
+		}
+		if len(a.Summary) > 0 {
+			latest := publicEntry(a.Summary[len(a.Summary)-1])
+			x.Activity = &entry{Kind: latest.Kind, Observed: millis(latest.Observed)}
+			var values []activitypresentation.Value
+			for _, v := range latest.Values {
+				// Roster rows need labels, not another copy of retained bodies or output.
+				item := activitypresentation.Value{Kind: v.Kind, Verb: v.Verb, Label: v.Label, Reads: v.Reads, Live: v.Live}
+				if v.Kind == "progress" {
+					item.Body, item.WaitTargets, item.WaitTimeout, item.WaitReason = v.Body, v.WaitTargets, v.WaitTimeout, v.WaitReason
+				} else if v.Kind == "summary" && len(v.Body) <= 80 && !strings.Contains(v.Body, "\n") {
+					item.Body = v.Body
+				}
+				item.Code = v.Code
+				length := 0
+				for offset, r := range v.Code {
+					if r == '\n' || length == 256 {
+						item.Code = v.Code[:offset]
+						break
+					}
+					length++
+				}
+				values = append(values, item)
+			}
+			x.Activity.Values = projectValues(values, false)
 		}
 		if !a.Started.IsZero() && a.WorkKnown {
 			x.Work, x.WorkSince = new(a.WorkElapsed.Milliseconds()), millis(a.WorkSince)

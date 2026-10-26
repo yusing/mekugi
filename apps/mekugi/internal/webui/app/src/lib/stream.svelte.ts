@@ -127,7 +127,9 @@ export class Stream {
 
   label(name: string | undefined): string {
     if (!name || name === "Main") return "main";
-    return this.byName.get(name)?.label ?? name;
+    return (
+      this.byName.get(name)?.label ?? (name === "/root" ? "main" : name.replace(/^\/root\//, ""))
+    );
   }
 
   agent(name: string | undefined): Agent | undefined {

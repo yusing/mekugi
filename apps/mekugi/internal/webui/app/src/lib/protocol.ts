@@ -169,6 +169,7 @@ export interface Agent {
   depth?: number;
   state: AgentState;
   wait?: Value;
+  activity?: Entry;
   turns?: number;
   roundtrips?: number;
   work?: number;

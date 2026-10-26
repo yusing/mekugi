@@ -375,7 +375,11 @@ field is zero, false or empty, except facts that may be unknown: a step's
   its display name as `label`, `role` (absent for Main), tree `depth` and a
   `state` of `working`, `waiting`, `idle`, `done` or `error`. A waiting agent
   may publish `wait`, using the same presentation-value shape as transcript
-  progress, including its target names and effective timeout. `turns` and `roundtrips`
+  progress, including its target names and effective timeout. Optional `activity`
+  carries its owning runtime's latest shared roster summary as entry-shaped
+  `kind`, `observed` and `values`. It is display-only: it supplies labels, read
+  paths, progress, short reasoning and a bounded code preview, without retained
+  output, full authored bodies or a navigable source identity. `turns` and `roundtrips`
   count its work. `work` is its accumulated work time; while it works,
   `workSince` is when the current work started, so the current total is `work`
   plus the time since. `lastResponse` is when it last replied.

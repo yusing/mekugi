@@ -110,6 +110,23 @@ func TestWaitingRosterProjection(t *testing.T) {
 	}
 }
 
+func TestRosterActivityUsesSharedSummary(t *testing.T) {
+	for _, kind := range []string{"progress", "reasoning"} {
+		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Kind: kind, Text: "Checking callers", Observed: time.Unix(100, 0)}}
+		summary := activitypresentation.Entry{Facts: item.Facts, Values: item.Values()}
+		roster := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{
+			AgentFacts: activitypresentation.AgentFacts{Name: "/root/worker", Responding: true}, Summary: []activitypresentation.Entry{summary},
+		}}}})
+		got := roster.Agents[0].Activity
+		if got == nil || got.Kind != kind || got.Observed != 100_000 || len(got.Values) != 1 {
+			t.Fatalf("%s summary unavailable without a feed entry: %+v", kind, got)
+		}
+		if got.Text != "" || got.Values[0].Body != "Checking callers" {
+			t.Fatalf("summary content lost or duplicated: %+v", got)
+		}
+	}
+}
+
 func TestPendingCommandsAndEffects(t *testing.T) {
 	t.Parallel()
 	const source = "printf ready; printf later"

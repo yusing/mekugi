@@ -1,17 +1,6 @@
-import { duration } from "./format";
+import { duration, progressText } from "./format";
 import { inline } from "./markdown";
 import type { Agent, Entry } from "./protocol";
-import type { Feed } from "./stream.svelte";
-
-// Each agent's latest entry in a feed, by the entry's agent name.
-export function latest(feed: Feed): Map<string, Entry> {
-  const out = new Map<string, Entry>();
-  for (const seq of feed.order) {
-    const entry = feed.entries[seq];
-    if (entry?.agent) out.set(entry.agent, entry);
-  }
-  return out;
-}
 
 // What an entry shows its agent doing, as a verb and inline HTML without
 // links, since it is shown inside a control. A final answer is finished work.
@@ -23,8 +12,22 @@ export function doing(entry: Entry): { verb: string; html: string } | undefined 
 
 function describe(entry: Entry): { verb: string; html: string } {
   const value = entry.values?.at(-1);
-  if (entry.kind === "reasoning")
-    return { verb: "Thinking", html: value?.label ? inline(value.label) : "" };
+  if (value?.kind === "progress")
+    return {
+      verb: "",
+      html: inline(
+        progressText(value, (name) => (name === "/root" ? "main" : name.replace(/^\/root\//, ""))),
+      ),
+    };
+  if (entry.kind === "reasoning") {
+    const labels = entry.values?.filter((v) => v.kind === "summary" && v.label).map((v) => v.label);
+    if (labels?.length) return { verb: "", html: inline(labels.join(", ")) };
+    const body = value?.body?.trim();
+    return {
+      verb: value?.live ? "Thinking" : "Thought",
+      html: body && !body.includes("\n") && body.length <= 80 ? inline(body) : "",
+    };
+  }
   if (entry.kind === "text" || entry.kind === "message") return { verb: "Writing", html: "" };
   if (!value) return { verb: entry.kind ?? "", html: "" };
   const subject =

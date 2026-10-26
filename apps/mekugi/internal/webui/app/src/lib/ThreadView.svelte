@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
-  import { latest, stateLabel, worked } from "./agents";
+  import { stateLabel, worked } from "./agents";
   import type { InitialInput } from "./attachments";
   import Composer from "./Composer.svelte";
   import DetailsPanel from "./DetailsPanel.svelte";
@@ -162,12 +162,10 @@
     return () => clearInterval(timer);
   });
   const now = $derived(playback ? start + playback.position : wall);
-  const mainLatest = $derived(latest(stream.main));
-  const agentsLatest = $derived(latest(stream.agents));
   // An agent's newest entry describes its current work only if it came after
   // that work started; a new task otherwise shows the end of the old one.
   const activity = (agent: Agent) => {
-    const entry = agent.name === "/root" ? mainLatest.get("Main") : agentsLatest.get(agent.name);
+    const entry = agent.activity;
     return entry && (!agent.workSince || (entry.observed ?? 0) >= agent.workSince)
       ? entry
       : undefined;
@@ -231,9 +229,10 @@
 
   const notice = $derived.by(() => {
     if (gone) return ended ? "This thread has ended. Its last state stays here." : undefined;
-    if (stream.connection === "open") return stream.controlError;
-    if (stream.error) return stream.error;
-    if (stream.connection === "lost") return "Connection to this machine lost. Retrying…";
+    if (childThread && child.gone) return child.gone.text;
+    if (active.connection === "open") return active.controlError;
+    if (active.error) return active.error;
+    if (active.connection === "lost") return "Connection to this machine lost. Retrying…";
     return session ? "Connection lost. Reconnecting…" : undefined;
   });
 
@@ -528,7 +527,7 @@
               {owner}
               {start}
               span={playback?.until ?? 0}
-              jumps={stream.jumps}
+              jumps={childFeedReady ? child.jumps : stream.jumps}
               {empty}
               {live}
               source={childFeedReady ? child : stream}
