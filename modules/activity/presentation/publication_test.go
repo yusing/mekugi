@@ -75,7 +75,7 @@ func TestPublicationRoster(t *testing.T) {
 		{Name: "/root/b", Final: true},
 		{Name: "/missing/child", Final: true},
 	}}
-	model.Append(modelSource{Seq: 1, Agent: "/root/a", Kind: "tool"}, []Value{{Kind: "op", Verb: "Attached skill", Label: "review"}})
+	model.Append(modelSource{Seq: 1, Agent: "/root/a", Kind: "tool"}, []Value{{Kind: "op", Verb: "Attached skill", Label: "review", Exited: true}})
 	model.Append(modelSource{Seq: 2, Agent: "/root/a", Kind: "reasoning"}, []Value{{Kind: "text", Body: "latest"}})
 	model.Append(modelSource{Seq: 3, Agent: "/root/b", Kind: "error"}, []Value{{Kind: "error", Body: "failed"}})
 	rows := model.Publish().Roster

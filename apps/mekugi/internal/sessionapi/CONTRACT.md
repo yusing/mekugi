@@ -561,3 +561,6 @@ independently of connected viewers. Shared publication rosters use that same
 family value. Admitted logical membership owns each agent's lifecycle status;
 runtime activity and usage enrich the row without replacing that status.
 Saved review composes captures once for the selected workspace.
+Retained members without a live runtime keep their logical lifecycle status in
+the roster, including completed delegates on resume. Finished rows remain subject
+to the terminal's ordinary compact-roster policy.
