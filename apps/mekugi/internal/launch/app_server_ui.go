@@ -587,6 +587,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 				return sessionpresentation.ErrStaleIntent.Error(), nil
 			}
 			err = closeBTWQuestion(&attached, &control)
+		case operation.StopProcess != nil:
+			if admissionErr := attached.session.AdmitProcess(*operation.StopProcess); admissionErr != nil {
+				return admissionErr.Error(), nil
+			}
+			_, err = control.Requests.Send("thread/backgroundTerminals/terminate", map[string]any{"threadId": operation.StopProcess.Thread, "processId": operation.StopProcess.ID}, operation.StopProcess.Thread, appServerRequest{view: view.attached.view})
 		case operation.Interrupt != nil:
 			active, admissionErr := view.attached.presentation.ResolveInterrupt(*operation.Interrupt, &control.Live, &attached.session)
 			if admissionErr != nil {

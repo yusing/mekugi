@@ -18,20 +18,21 @@ import (
 // contains no renderer, source store, host connection or execution capability.
 // Draft and prompt-editor contents are removed at the publication boundary.
 type NativeFrame struct {
-	CompletionCatalog uint64                    `json:"completionCatalog"`
-	CompletionTarget  conversation.EditorTarget `json:"completionTarget"`
-	Questions         []prompt.CallView         `json:"questions"`
-	Approvals         []prompt.ApprovalView     `json:"approvals"`
-	View              sessionpresentation.View  `json:"view"`
-	Main              *activity.Publication     `json:"main"`
-	Agents            *activity.Publication     `json:"agents"`
-	ChildThreads      []string                  `json:"childThreads,omitzero"`
-	Review            *changes.ReviewView       `json:"review"`
-	Live              []preview.Preview         `json:"live"`
-	LiveScope         preview.Scope             `json:"liveScope"`
-	Details           *NativeDetails            `json:"details"`
-	MainOutput        []activity.OutputResult   `json:"mainOutput"`
-	AgentOutput       []activity.OutputResult   `json:"agentOutput"`
+	Processes         []sessionpresentation.Process `json:"processes"`
+	CompletionCatalog uint64                        `json:"completionCatalog"`
+	CompletionTarget  conversation.EditorTarget     `json:"completionTarget"`
+	Questions         []prompt.CallView             `json:"questions"`
+	Approvals         []prompt.ApprovalView         `json:"approvals"`
+	View              sessionpresentation.View      `json:"view"`
+	Main              *activity.Publication         `json:"main"`
+	Agents            *activity.Publication         `json:"agents"`
+	ChildThreads      []string                      `json:"childThreads,omitzero"`
+	Review            *changes.ReviewView           `json:"review"`
+	Live              []preview.Preview             `json:"live"`
+	LiveScope         preview.Scope                 `json:"liveScope"`
+	Details           *NativeDetails                `json:"details"`
+	MainOutput        []activity.OutputResult       `json:"mainOutput"`
+	AgentOutput       []activity.OutputResult       `json:"agentOutput"`
 	// ReacquireOutput marks compacted transient hydration. Consumers retain
 	// unresolved demands and reacquire them through identity-addressed reads.
 	ReacquireOutput bool                 `json:"reacquireOutput,omitzero"`
@@ -89,6 +90,7 @@ func (e NativeEvent) Target() NativeTarget {
 // NativeOperation uses existing semantic intents, not terminal keys. Exactly
 // one operation is admitted by transport; its owner applies ordinary policy.
 type NativeOperation struct {
+	StopProcess  *sessionpresentation.Process             `json:"stopProcess,omitzero"`
 	SaveDraft    *string                                  `json:"saveDraft,omitzero"`
 	Completion   *NativeEditorInput                       `json:"completion,omitzero"`
 	Preferences  *NativePreferenceUpdate                  `json:"preferences,omitzero"`
@@ -345,7 +347,7 @@ func (f NativeFrame) withoutEditors() NativeFrame {
 func (o NativeOperation) valid() bool {
 	count := 0
 	for _, present := range []bool{o.SaveDraft != nil, o.Completion != nil, o.Preferences != nil, o.Focused != nil, o.Command != nil, o.Composer != nil, o.Menu != nil, o.Resume != nil,
-		o.Panel != nil, o.Display != nil, o.Interrupt != nil,
+		o.Panel != nil, o.Display != nil, o.Interrupt != nil, o.StopProcess != nil,
 		o.Side != nil, o.BTW != nil, o.Answers != nil,
 		o.Approval != nil, o.Output != nil, o.DetailOutput != nil, o.Details != nil,
 		o.CloseDetails != nil, o.Notice != nil, o.Receipt != nil, o.Reference != nil, o.Recovery != nil} {

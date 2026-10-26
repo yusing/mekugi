@@ -27,6 +27,7 @@ type NativeItem struct {
 	Duration           time.Duration                     `json:"-"`
 	Questions          []activitypresentation.Question   `json:"-"`
 	ReplySource        string                            `json:"-"` // Stock async envelope or synchronous turn prompt.
+	ProcessID          string                            `json:"-"`
 	Thread, Turn, Item string                            `json:"-"`
 	Phase              string                            `json:"-"`
 	Wait               *activitypresentation.Value       `json:"-"` // Structured logical-wait progress.

@@ -67,3 +67,32 @@ func processValues(source *ActivitySource, pages []activitypresentation.DetailPa
 	}
 	return slices.SortedFunc(maps.Values(bySource), func(a, b activitypresentation.Value) int { return cmp.Compare(a.Source, b.Source) })
 }
+
+// Process identifies the actual host invocation, not a row whose retention or
+// rendering lifetime can outlast the command.
+type Process struct {
+	Thread, Turn, Item, ID, Agent, Command string
+}
+
+func (s *Attachment) Processes() []Process {
+	var processes []Process
+	for entry := range s.RunningProcesses() {
+		n := entry.Native
+		processes = append(processes, Process{Thread: n.Thread, Turn: n.Turn, Item: n.Item, ID: n.ProcessID, Agent: entry.Agent, Command: frontends.ShellDisplaySource(DisplayCommand(n.Command))})
+	}
+	slices.SortFunc(processes, func(a, b Process) int {
+		return cmp.Or(cmp.Compare(a.Thread, b.Thread), cmp.Compare(a.Turn, b.Turn), cmp.Compare(a.Item, b.Item))
+	})
+	return processes
+}
+
+func (s *Attachment) AdmitProcess(process Process) error {
+	if s.retired || process.ID == "" {
+		return ErrStaleIntent
+	}
+	run := s.Commands()[[3]string{process.Thread, process.Turn, process.Item}]
+	if run == nil || !run.Entry.Native.Invocation.Running() || run.Entry.Native.ProcessID != process.ID {
+		return ErrStaleIntent
+	}
+	return nil
+}

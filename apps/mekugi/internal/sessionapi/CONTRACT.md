@@ -170,6 +170,12 @@ with native attachments, including commands, menus, ordinary prompts, approvals,
 resume/status and detail/output controls. They add no command registry
 or execution owner. The simpler shared publication/input methods remain available.
 
+Frames publish `processes` with each live command's captured thread, turn, item
+and host process identity. `stopProcess` carries that captured value; admission
+refuses missing, replaced or completed identities before host dispatch. A successful
+request acknowledges dispatch; ordinary command completion removes the process.
+Host refusal or termination failure appears as view feedback.
+
 The handler establishes the view's remote-human authority; neither JSON nor
 headers can supply it. Subsequent intents must use the same endpoint authority as
 their attachment. Remote connections cannot act through a native attachment ID or

@@ -223,3 +223,26 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 	appServerTestKeys(t, u, "/ps\r")
 	assertNativeUISnapshot(t, "running-processes-empty", processDialog(u, 60, 12))
 }
+
+func TestRunningProcessControlIdentity(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	processNotify(t, u, "main", "cmd", "sleep 30", "inProgress")
+	processes := u.attached.session.Processes()
+	if len(processes) != 1 || processes[0].ID != "" || u.attached.session.AdmitProcess(processes[0]) == nil {
+		t.Fatal("missing process identity acquired Stop capability")
+	}
+	appServerTestNotify(t, u, "item/commandExecution/terminalInteraction", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "processId": "42"})
+	processes = u.attached.session.Processes()
+	if len(processes) != 1 || processes[0].ID != "42" || u.attached.session.AdmitProcess(processes[0]) != nil {
+		t.Fatal("late process identity did not enable Stop")
+	}
+	stale := processes[0]
+	stale.Turn = "other"
+	if u.attached.session.AdmitProcess(stale) == nil {
+		t.Fatal("Stop changed its captured invocation")
+	}
+	processNotify(t, u, "main", "cmd", "sleep 30", "completed")
+	if len(u.attached.session.Processes()) != 0 || u.attached.session.AdmitProcess(processes[0]) == nil {
+		t.Fatal("completed process retained Stop capability")
+	}
+}

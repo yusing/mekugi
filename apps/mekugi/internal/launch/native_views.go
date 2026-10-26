@@ -373,7 +373,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 		} else {
 			reviewView = reviewSource.DiffReviewView(execution.session.Scope())
 		}
-		frame := sessionapi.NativeFrame{View: view, Facts: facts, CompletionTarget: v.completionTarget, CompletionCatalog: v.picker.skillsRevision,
+		frame := sessionapi.NativeFrame{Processes: v.attached.session.Processes(), View: view, Facts: facts, CompletionTarget: v.completionTarget, CompletionCatalog: v.picker.skillsRevision,
 			Effects:  v.effects.publication(),
 			Activity: v.effects.activityPublication(), Notification: v.notification,
 			PendingEffects: v.effects.reserved > 0,

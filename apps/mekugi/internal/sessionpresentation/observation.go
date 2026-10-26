@@ -115,6 +115,10 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 	}
 	now := p.At
 	switch method {
+	case "item/commandExecution/terminalInteraction":
+		if run := s.Commands()[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil && p.ProcessID != "" {
+			run.Entry.Native.ProcessID = p.ProcessID
+		}
 	case "thread/started":
 		info := p.Thread
 		if info.ID == "" || info.ID == in.Main {
@@ -219,6 +223,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 			}
 			native.CommandTimeout = in.CommandTimeout
 			native.UserShell = item.UserShell
+			native.ProcessID = item.ProcessID
 			native.CommandCwd = CommandDirectory(item, in.Workspace)
 			native.SearchResults = SearchResults(item)
 			entry := ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "tool", Text: ToolText(item, in.Workspace), CallID: id, Observed: now, Native: native}
@@ -233,6 +238,9 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 						result.Deliveries = append(result.Deliveries, ActivityDelivery{Command: &CommandDelivery{Kind: CommandBegin, Key: key, Text: entry.Text}})
 					} else {
 						native.Invocation = run.Entry.Native.Invocation
+						if item.ProcessID != "" {
+							run.Entry.Native.ProcessID = item.ProcessID
+						}
 						native.Output = native.Invocation.Output()
 						native.CommandStarted = native.Invocation.Snapshot().Started
 						native.CommandTimeout = cmp.Or(native.CommandTimeout, run.Entry.Native.CommandTimeout)

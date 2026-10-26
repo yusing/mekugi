@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -15,6 +16,21 @@ import (
 // dispatchViewResponse is the single response binding for presentation-owned
 // acquisitions. The sole request ledger attributes each reply before this call.
 func dispatchViewResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, approvalMode bool, quit *bool, parent context.Context, environment []string, response sessioncontrol.Request[appServerRequest], m appserver.Message) (bool, error) {
+	if response.Method == "thread/backgroundTerminals/terminate" {
+		var result struct {
+			Terminated bool `json:"terminated"`
+		}
+		message := ""
+		if m.Error != nil {
+			message = "Could not stop process: " + m.Error.Message
+		} else if json.Unmarshal(m.Result, &result) != nil || !result.Terminated {
+			message = "The process already ended or could not be stopped."
+		}
+		if message != "" {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), message, true)
+		}
+		return true, nil
+	}
 	method := response.Method
 	if response.Owner.label != "" {
 		method = response.Owner.label

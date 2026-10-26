@@ -166,6 +166,7 @@ export type Version = {
 };
 
 export type NativeOperation = {
+  "stopProcess"?: (Process | null);
   "saveDraft"?: (string | null);
   "completion"?: (NativeEditorInput | null);
   "preferences"?: (NativePreferenceUpdate | null);
@@ -197,6 +198,7 @@ export type RemoteOperation = {
 } & Omit<NativeOperation, "answers">;
 
 export type NativeFrame = {
+  "processes": Array<Process>;
   "completionCatalog": number;
   "completionTarget": EditorTarget;
   "questions": Array<CallView>;
@@ -266,6 +268,15 @@ export type Model = {
   "label": string;
   "efforts": Array<string>;
   "defaultEffort"?: string;
+};
+
+export type Process = {
+  "Thread": string;
+  "Turn": string;
+  "Item": string;
+  "ID": string;
+  "Agent": string;
+  "Command": string;
 };
 
 export type NativeEditorInput = {
