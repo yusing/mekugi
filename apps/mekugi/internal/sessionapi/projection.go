@@ -243,6 +243,7 @@ type agent struct {
 	Role         string   `json:"role,omitzero"`
 	Depth        int      `json:"depth,omitzero"`
 	State        string   `json:"state"`
+	Wait         *value   `json:"wait,omitzero"`
 	Turns        uint64   `json:"turns,omitzero"`
 	Roundtrips   uint64   `json:"roundtrips,omitzero"`
 	Work         *int64   `json:"work,omitzero"`
@@ -384,6 +385,8 @@ func projectRoster(p *activitypresentation.Publication) roster {
 			x.Role = textsanitize.Safe(a.Role, false)
 		}
 		switch {
+		case a.Waiting:
+			x.State = "waiting"
 		case a.LatestKind == "error":
 			x.State = "error"
 		case !a.Responding && a.Final:
@@ -392,6 +395,9 @@ func projectRoster(p *activitypresentation.Publication) roster {
 			x.State = "idle"
 		default:
 			x.State = "working"
+		}
+		if a.Waiting && a.Wait != nil {
+			x.Wait = new(projectValues([]activitypresentation.Value{*a.Wait}, false)[0])
 		}
 		if !a.Started.IsZero() && a.WorkKnown {
 			x.Work, x.WorkSince = new(a.WorkElapsed.Milliseconds()), millis(a.WorkSince)

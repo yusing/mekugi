@@ -347,8 +347,9 @@ field is zero, false or empty, except facts that may be unknown: a step's
   chunk's `Review.Diff` and `Change`, `Caller`, `Source` provenance. File counts
   use `Added` and `Removed`; negative counts mean unavailable. Review counts
   contain `Net` (null when no project evidence exists) and `Callers`. `files` is
-  the unfiltered saved composition with the same temporary-only exclusion as the
-  terminal Diff pane. `callers` lists each caller with captures, Main first, as
+  the unfiltered saved composition across admitted runtime descendants, with
+  the same temporary-only exclusion as the terminal Diff pane. `callers` lists
+  each caller with captures, Main first, as
   `caller` (its canonical path, or `?` when unknown) and the `files` it changed,
   composed as the terminal's caller filter shows them: other callers' captures
   are baseline, and origins name only that caller's changes. Loading and
@@ -372,7 +373,9 @@ field is zero, false or empty, except facts that may be unknown: a step's
 - `roster`: `agents` in tree order, and the session's net changed lines as
   `added` and `removed` when known. Each agent has its caller path as `name`,
   its display name as `label`, `role` (absent for Main), tree `depth` and a
-  `state` of `working`, `idle`, `done` or `error`. `turns` and `roundtrips`
+  `state` of `working`, `waiting`, `idle`, `done` or `error`. A waiting agent
+  may publish `wait`, using the same presentation-value shape as transcript
+  progress, including its target names and effective timeout. `turns` and `roundtrips`
   count its work. `work` is its accumulated work time; while it works,
   `workSince` is when the current work started, so the current total is `work`
   plus the time since. `lastResponse` is when it last replied.
@@ -387,7 +390,9 @@ renderer-neutral facts: `kind`, `verb`, `label`, `code` and its language `lang`
 `path` for an attachment source, `autoReload` for compaction reload provenance,
 `approval` for its current approval outcome, `subsumed` steps, `duration`, `thought` time, `workdir`, a message's `from` and
 `to` caller paths, `questions` with their `answer`, `waits` with each target's
-`name` and `status`, `exitCode`, `editOutcome`, `running` and `live` state, the
+`name` and `status`, `waitReason` for a completed wait's actual outcome,
+`waitTimeout` for a waiting subscription's effective duration, `exitCode`,
+`editOutcome`, `running` and `live` state, the
 output `tail` with `tailOmitted` earlier lines, `changes` with their counts and
 `footer`, and `hook` status. A child's reply that carries its own summary has
 it in `summary`, alongside the whole reply in `body`, while the invocation's

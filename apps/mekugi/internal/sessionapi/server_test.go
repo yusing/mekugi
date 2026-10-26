@@ -88,6 +88,28 @@ func TestWaitOutcomeProjection(t *testing.T) {
 	}
 }
 
+func TestWaitingRosterProjection(t *testing.T) {
+	t.Parallel()
+	lifecycle := activitypresentation.AgentLifecycle{}
+	lifecycle.SetWaiting(true, time.Unix(100, 0))
+	wait := &activitypresentation.Value{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "1s", Live: true}
+	facts := activitypresentation.AgentFacts{Name: "/root", Waiting: lifecycle.Waiting, Responding: lifecycle.Responding, Final: lifecycle.Final, Wait: wait}
+	roster := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: facts, LatestKind: "error"}}}})
+	got := roster.Agents[0]
+	if got.State != "waiting" || got.Wait == nil || got.Wait.Body != "Waiting for" || len(got.Wait.Waits) != 1 || got.Wait.Waits[0].Name != "/root/worker" || got.Wait.WaitTimeout != "1s" {
+		t.Fatalf("waiting lifecycle lost its publication: %+v", got)
+	}
+	wait.WaitTargets[0].Name = "changed"
+	if got.Wait.Waits[0].Name != "/root/worker" {
+		t.Fatal("published wait borrowed mutable owner data")
+	}
+	facts.Waiting = false
+	settled := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: facts, LatestKind: "error"}}}})
+	if settled.Agents[0].State != "error" || settled.Agents[0].Wait != nil {
+		t.Fatal("settled agent retained its prior wait")
+	}
+}
+
 func TestPendingCommandsAndEffects(t *testing.T) {
 	t.Parallel()
 	const source = "printf ready; printf later"

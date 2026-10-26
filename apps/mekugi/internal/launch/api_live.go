@@ -24,6 +24,7 @@ import (
 // apiLive publishes the owned runtime independently of attached viewers.
 type apiLive struct {
 	server       *sessionapi.Server
+	family       *nativeViews
 	main, agents commandFeed
 	attachment   uint64
 	started      time.Time
@@ -44,6 +45,10 @@ func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsess
 		if view.Version.Attachment != w.attachment {
 			w.main, w.agents, w.attachment = commandFeed{}, commandFeed{}, view.Version.Attachment
 		}
+		var children map[string]sessionapi.Frame
+		if w.family != nil {
+			children = w.family.descendants(attached, control.Thread)
+		}
 		frame := sessionapi.Frame{
 			Session:    sessionapi.Session{Thread: control.Thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started.UnixMilli()},
 			Input:      &sessionapi.Input{Reason: apiInputRefusal(attached, control, restoring), Stoppable: sessionpresentation.MainInterruptible(&control.Live, attached.conversation), Waiting: waiting},
@@ -56,6 +61,11 @@ func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsess
 			Review:     new(reviewSource.ReviewView(attached.session.Scope())),
 
 			ChildReplySummary: childSummary,
+		}
+		if w.family != nil {
+			family := sessionapi.NativeFrame{Agents: frame.Agents, Review: frame.Review}
+			w.family.publishChild(&family, children)
+			frame.Agents, frame.Review = family.Agents, family.Review
 		}
 		if review != nil {
 			if previews := review.Preview(); previews != nil {
