@@ -205,7 +205,13 @@ func (h *Observer) claim(ctx context.Context, hello transport.Message) transport
 		}
 		index := -1
 		for i, command := range h.started {
-			if command.script != hello.Script || hello.Thread != "" && command.key[0] != hello.Thread {
+			if hello.Thread != "" && command.key[0] != hello.Thread {
+				continue
+			}
+			// A guarded shell can add PATH prefixes after the host observed
+			// its argv, including when the native pre-tool hook did not run.
+			// Preserve the exact fast path and never normalize authored text.
+			if command.script != hello.Script && h.source(command.script, command.key[2]) != h.source(hello.Script, command.key[2]) {
 				continue
 			}
 			if index >= 0 {

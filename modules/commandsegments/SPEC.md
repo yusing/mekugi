@@ -51,8 +51,11 @@ The UI adds measured elapsed suffixes, not extra timing metadata rows.
 
 ### Live correlation
 
-Reports match a unique live host item by thread and exact executing script within
-350 ms. Ambiguous items, redacted command differences and missing or late host
+Reports match a unique live host item by thread and script within 350 ms. Matching
+admits only the current invocation's exact, reversible guard PATH prefixes added
+after host observation; item-bound prefixes must name that host item. Authored
+source, helper wrappers and other-session instrumentation remain distinct.
+Ambiguous items, redacted command differences and missing or late host
 notifications keep the untracked fallback. Start observations reach correlation
 before waiting on presentation, so a queued UI update does not itself lose a match.
 
@@ -60,7 +63,8 @@ Writer previews subscribe independently of Activity consumption. They require
 exact thread, turn and authored-script identity after removing only the current
 session's exact authenticated guard PATH prefixes. Item-bound instrumentation
 must match that command item. Helper wrappers, other-session paths and unrecognized
-source stay intact; report matching retains the executing script.
+source stay intact. Reports retain the executing script even when admitted
+against a host script without guard prefixes.
 
 Only host items started after a preview window opened qualify, even if an older
 report arrives late. A preview retains at most one match per captured script until
@@ -74,8 +78,9 @@ it never finalizes host execution or publishes durable change evidence.
 
 A report binds the exact workspace and host turn/item identity to the command,
 aggregate output digest, terminal exit, and ordered source segments. Restoration
-requires agreement with those host facts. Missing, corrupt, conflicting, or
-unmatched evidence leaves the host's combined result available. Skipped segments
+requires agreement with those host facts. Guard-prefix admission does not rewrite
+the retained host command or relax restoration identity. Missing, corrupt,
+conflicting, or unmatched evidence leaves the host's combined result available. Skipped segments
 have no output, exit, or timing; absent per-segment output means unavailable, not
 empty output. Incomplete output is never presented as a complete stream.
 

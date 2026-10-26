@@ -88,6 +88,54 @@ func TestObserverAmbiguousClaimPreservesCandidates(t *testing.T) {
 	}
 }
 
+func TestObserverGuardRewriteIdentity(t *testing.T) {
+	const original = "git --version; printf done"
+	const guard = "/private/session/vcs-guard"
+	for _, scenario := range []string{"current", "item-bound", "wrong item", "foreign", "wrong thread", "helper wrapper", "ambiguous"} {
+		t.Run(scenario, func(t *testing.T) {
+			h := observationFixture()
+			h.instrumentation = Instrumentation{VCS: guard}
+			key := [3]string{"main", "turn", "command"}
+			directory, item, thread, source := guard, "", key[0], original
+			switch scenario {
+			case "item-bound":
+				item = key[2]
+			case "wrong item":
+				item = "other"
+			case "foreign":
+				directory = "/private/other/vcs-guard"
+			case "wrong thread":
+				thread = "other"
+			case "helper wrapper":
+				source = strings.Replace(source, "git", "/usr/bin/git", 1)
+			}
+			wrapped, err := shellinstrumentation.RewriteCommands(source, "/unrelated/mekugi-exec", directory, "", item)
+			if err != nil {
+				t.Fatal(err)
+			}
+			h.Start(key, source)
+			if scenario == "ambiguous" {
+				// An exact match must not win over another admissible host item.
+				h.Start([3]string{key[0], key[1], "second"}, wrapped)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel() // A rejected claim need not wait for another host start.
+			r := h.claim(ctx, transport.Message{Thread: thread, Script: wrapped, Segments: []string{wrapped}})
+			want := scenario == "current" || scenario == "item-bound"
+			if (r != nil) != want {
+				t.Fatalf("claimed=%v, want %v", r != nil, want)
+			}
+			if want {
+				if report, ok := h.Read(key); !ok || report.Script != wrapped {
+					t.Fatal("accepted report lost its executing source")
+				}
+			} else if len(h.started) == 0 {
+				t.Fatal("rejected report consumed a host item")
+			}
+		})
+	}
+}
+
 func TestObserverCancellationAndShutdown(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := observationFixture()

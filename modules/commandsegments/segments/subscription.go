@@ -85,6 +85,12 @@ func (p *Subscription) retain(key [3]string, report *report) {
 
 // Source removes only this invocation's exact, item-bound guard instrumentation.
 func (p *Subscription) Source(script, item string) string {
+	return p.observer.source(script, item)
+}
+
+// source admits only reversible guard prefixes from this invocation. Both
+// report correlation and preview subscriptions use the same identity rule.
+func (h *Observer) source(script, item string) string {
 	// Reapply only observed guards: sudo also runs with the VCS guard disabled.
 	var guard, sudo string
 	source := shellinstrumentation.DisplayScript(script, func(directory string) bool {
@@ -92,9 +98,9 @@ func (p *Subscription) Source(script, item string) string {
 			return false
 		}
 		switch directory {
-		case p.observer.instrumentation.VCS:
+		case h.instrumentation.VCS:
 			guard = directory
-		case p.observer.instrumentation.Sudo:
+		case h.instrumentation.Sudo:
 			sudo = directory
 		default:
 			return false

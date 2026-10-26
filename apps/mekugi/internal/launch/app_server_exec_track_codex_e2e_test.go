@@ -239,6 +239,75 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 	})
 }
 
+func TestAppServerExecTrackNativeCodexMovedWorkspace(t *testing.T) {
+	shell := newExecTrackShell(t)
+	helper, err := execTrackTestHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard := filepath.Join(shell.root, shellinstrumentation.VCSDirectory)
+	if err := os.MkdirAll(guard, 0700); err != nil {
+		t.Fatal(err)
+	}
+	bash := filepath.Join(guard, "bash")
+	if err := os.Symlink(helper, bash); err != nil {
+		t.Fatal(err)
+	}
+	marker, wrapper := filepath.Join(shell.root, "hook-runs"), filepath.Join(shell.root, "hook-helper")
+	if err := os.WriteFile(wrapper, []byte("#!/bin/sh\nprintf 'hook\\n' >> "+quoteShellWord(marker)+"\nexec "+quoteShellWord(helper)+" \"$@\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	hook, state, _, err := shellhook.Config(wrapper, guard, "", "", shellhook.Invocation{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	integration := testAppServerIntegration(proxy)
+	integration.execTrack = shell.hub.Observer
+	environment := []string{"CODEX_THREAD_ID="}
+	for _, entry := range shell.env {
+		if strings.HasPrefix(entry, "BASH_ENV=") {
+			environment = append(environment, entry)
+		}
+	}
+	moved := filepath.Join(t.TempDir(), "moved-workspace")
+	// Codex uses the shell argument to select a type, then discovers its
+	// executable on PATH. Exercise the actual guard, not an ordinary Bash.
+	environment = append(environment, "PATH="+guard+":"+execTrackPath())
+	provider := &toolFrontendCodexProvider{
+		program: `text((await tools.exec_command({cmd:` + string(responses.MustMarshalJSON("printf 'selected-shell=%s\\n' \"$BASH\"; mv \"$PWD\" "+quoteShellWord(moved)+"; printf MOVED")) + `,shell:` + string(responses.MustMarshalJSON(bash)) + `})).output);
+text((await tools.exec_command({cmd:"git --version; printf AFTER; false && printf NEVER",shell:` + string(responses.MustMarshalJSON(bash)) + `,workdir:` + string(responses.MustMarshalJSON(moved)) + `})).output);`,
+		expected: []string{"MOVED", "AFTER"}, finalText: "Recovered after a retry.",
+	}
+	after := func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), screen *vt.Emulator) {
+		provider.mu.Lock()
+		selected := strings.Contains(provider.output, "selected-shell="+bash)
+		provider.mu.Unlock()
+		if !selected {
+			t.Skip("installed Codex preferred the account shell over the fixture guard")
+		}
+		if _, err := io.WriteString(outer, "\x023"); err != nil {
+			t.Fatal(err)
+		}
+		await("printf NEVER")
+		if frame := screen.String(); !strings.Contains(frame, "Skipped printf NEVER") || !strings.Contains(frame, "┆ AFTER") {
+			t.Fatalf("missing post-relocation segment output/outcomes:\n%s", frame)
+		}
+		runs, err := os.ReadFile(marker)
+		if err != nil || string(runs) != "hook\n" {
+			t.Fatalf("expected one hook before relocation and none afterward: %q, %v", runs, err)
+		}
+		if _, err := io.WriteString(outer, "\x021"); err != nil {
+			t.Fatal(err)
+		}
+		await("A deterministic preview prompt")
+	}
+	runAppServerPreviewWith(t, provider, proxy, appServerPreview{integration: &integration,
+		environment: environment, afterPrompt: after, codexArgs: []string{"-c", hook, "-c", state},
+	})
+}
+
 // Installed Codex must retain actual segment reports while its sandbox
 // denies network access and writes to the session-private tracking directory.
 func TestAppServerExecTrackNativeCodexSandbox(t *testing.T) {

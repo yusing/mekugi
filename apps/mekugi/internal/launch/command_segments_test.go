@@ -1,10 +1,12 @@
 package launch
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,6 +26,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -320,6 +323,91 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 				t.Fatal("borrowed a mismatched invocation's report")
 			}
 		})
+	}
+}
+
+func TestCommandSegmentsGuardedShellLiveAndRestart(t *testing.T) {
+	t.Parallel()
+	shell := newExecTrackShell(t)
+	helper, err := execTrackTestHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard := filepath.Join(shell.root, shellinstrumentation.VCSDirectory)
+	if err := os.MkdirAll(guard, 0700); err != nil {
+		t.Fatal(err)
+	}
+	bash := filepath.Join(guard, "bash")
+	if err := os.Symlink(helper, bash); err != nil {
+		t.Fatal(err)
+	}
+	workspace, directory := t.TempDir(), t.TempDir()
+	store, err := openMekugiReplayStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := newAppServerSessionTestUI(t, workspace)
+	setTestAppServerIntegration(u, testProxyWithStore(store))
+	u.execTrack, shell.hub.ui = shell.hub.Observer, u
+	// The host sees original argv. Its selected shell trampoline adds the
+	// authenticated Git PATH prefix before Bash's startup reports its source.
+	script := "git --version; printf 'after\\n' >&2; read -r; false && printf never"
+	item := binding.ThreadItem{ID: "guarded", Type: "commandExecution", Command: bash + " -lc " + quoteShellWord(script), Status: "inProgress"}
+	key := [3]string{"main", "turn", item.ID}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
+	command := exec.CommandContext(t.Context(), bash, "-lc", script)
+	command.Env, command.Dir = append(shell.env, "CODEX_THREAD_ID=main"), workspace
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	input, err := command.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = input.Close(); _ = command.Wait() })
+	// No host output deltas are supplied: this live row must come from the
+	// real helper's separate stream while the command still waits on stdin.
+	awaitMain(t, u, "┆ after")
+	if _, err := input.Write([]byte("\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Wait(); err == nil {
+		t.Fatal("host lost the failing command's exit")
+	} else if failure, ok := errors.AsType[*exec.ExitError](err); !ok || failure.ExitCode() != 1 {
+		t.Fatalf("host exit: %v", err)
+	}
+	if !strings.HasPrefix(stdout.String(), "git version ") || strings.Count(stdout.String(), "git version ") != 1 || stderr.String() != "after\n" {
+		t.Fatalf("host output changed: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(1), new(stdout.String()+stderr.String())
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
+	awaitMain(t, u, "Skipped")
+	awaitCommandSegments(t, u)
+	store, err = openMekugiReplayStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shell.hub.Tracking(key) {
+		t.Fatal("live report survived completion")
+	}
+	restored := newAppServerSessionTestUI(t, workspace)
+	setTestAppServerIntegration(restored, testProxyWithStore(store))
+	restored.restoreHistory([]binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}})
+	entry := restored.attached.source.Entries[0].Source
+	parts := entry.Native.Segments
+	if entry.Native.Command != item.Command || len(parts) != 5 || parts[0].Source != "git --version" || parts[3].Exit != 1 || !parts[4].Skipped || parts[4].Output != nil {
+		t.Fatalf("restored host identity or outcomes changed: %+v", entry.Native)
+	}
+	for i, want := range []string{strings.TrimSuffix(stdout.String(), "\n"), "after", "", ""} {
+		if parts[i].Output == nil || strings.Join(parts[i].Output.View().Lines, "\n") != want {
+			t.Fatalf("restored segment %d lost its output", i)
+		}
+	}
+	pages := sessionpresentation.CommandPresentation(entry).DetailValues()
+	if len(pages) != 5 || pages[0].Output == pages[1].Output {
+		t.Fatalf("restored per-command pages lost: %+v", pages)
 	}
 }
 
