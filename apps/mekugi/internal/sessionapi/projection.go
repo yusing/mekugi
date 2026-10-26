@@ -177,6 +177,10 @@ type value struct {
 	Summary     string     `json:"summary,omitzero"` // A child reply's own summary of Body.
 	Reads       []read     `json:"reads,omitzero"`
 	Subsumed    bool       `json:"subsumed,omitzero"`
+	Effect      bool       `json:"effect,omitzero"`
+	Pending     bool       `json:"pending,omitzero"`
+	HiddenEdits int        `json:"hiddenEdits,omitzero"` // Count of retained rows folded from this index.
+	FoldSource  bool       `json:"foldSource,omitzero"`
 	Duration    int64      `json:"duration,omitzero"`
 	Thought     int64      `json:"thought,omitzero"`
 	Workdir     string     `json:"workdir,omitzero"`
@@ -184,6 +188,8 @@ type value struct {
 	To          string     `json:"to,omitzero"`
 	Questions   []question `json:"questions,omitzero"`
 	Waits       []wait     `json:"waits,omitzero"`
+	WaitReason  string     `json:"waitReason,omitzero"`
+	WaitTimeout string     `json:"waitTimeout,omitzero"`
 	ExitCode    *int       `json:"exitCode,omitzero"`
 	EditOutcome string     `json:"editOutcome,omitzero"`
 	Running     bool       `json:"running,omitzero"`
@@ -231,8 +237,9 @@ type roster struct {
 }
 
 type agent struct {
-	Name         string   `json:"name"`  // Caller path, the agent's identity.
-	Label        string   `json:"label"` // Display name.
+	Name         string   `json:"name"`            // Caller path, the agent's identity.
+	Thread       string   `json:"thread,omitzero"` // Runtime identity; admission remains server-owned.
+	Label        string   `json:"label"`           // Display name.
 	Role         string   `json:"role,omitzero"`
 	Depth        int      `json:"depth,omitzero"`
 	State        string   `json:"state"`
@@ -315,7 +322,8 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 			DetailCode: v.DetailCode,
 			Path:       v.Path, AutoReload: v.AutoReload, Approval: v.Approval,
 			Kind: v.Kind, Verb: v.Verb, BatchExit: v.BatchExit, Label: v.Label, Code: v.Code, Lang: v.Lang, Fenced: v.Fenced, Body: v.Body,
-			Subsumed: v.Subsumed, Duration: v.Duration.Milliseconds(), Thought: v.Thought.Milliseconds(), From: v.From, To: v.To,
+			Subsumed: v.Subsumed, Effect: v.Effect, Pending: v.Pending, FoldSource: v.TemporarySource(), Duration: v.Duration.Milliseconds(), Thought: v.Thought.Milliseconds(), From: v.From, To: v.To,
+			WaitReason: v.WaitReason, WaitTimeout: v.WaitTimeout,
 			EditOutcome: v.EditOutcome, Running: v.Running, Live: v.Live, Tail: v.Tail, TailOmitted: v.TailOmitted,
 		}
 		if summaries {
@@ -347,6 +355,14 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 		}
 		out[i] = p
 	}
+	grouped := activitypresentation.GroupOperations(values)
+	for start := 0; start < len(grouped); {
+		n := activitypresentation.TemporaryEditRun(grouped[start:])
+		if hidden := n - activitypresentation.ChangeRowsShown; hidden > 0 {
+			out[start+activitypresentation.ChangeRowsShown].HiddenEdits = hidden
+		}
+		start += max(1, n)
+	}
 	return out
 }
 
@@ -360,7 +376,7 @@ func projectRoster(p *activitypresentation.Publication) roster {
 	for _, row := range p.Roster {
 		a := row.Agent
 		x := agent{
-			Name: a.Name, Label: pathdisplay.AgentDisplayName(a.Name), Depth: row.Depth,
+			Name: a.Name, Thread: a.Thread, Label: pathdisplay.AgentDisplayName(a.Name), Depth: row.Depth,
 			Turns: a.Turns, Roundtrips: a.Roundtrips, Skills: a.Skills,
 		}
 		// Main's role is implied by its name.

@@ -1,9 +1,14 @@
 package sessionapi
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/contracts/observation"
 
 	activityfeed "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -57,6 +62,73 @@ func TestEditSources(t *testing.T) {
 	edit := activitypresentation.Value{Content: activityfeed.Content{Kind: "op", Verb: "Edit", Label: "`a.go` +2 −1 · python3, gofmt", EditSource: "python3, gofmt"}}
 	if v := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{edit}}, false).Values[0]; v.Label != "`a.go` +2 −1" || strings.Join(v.Sources, "|") != "python3|gofmt" {
 		t.Fatalf("edit = %+v", v)
+	}
+}
+
+func TestWaitOutcomeProjection(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ result, reason, timeout string }{
+		{`{"id":"w","state":"registered"}`, "", "2s"},
+		{`{"id":"w","state":"timeout"}`, "timeout", ""},
+		{`{"id":"w","state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", ""},
+	} {
+		session := new(sessionpresentation.Attachment)
+		entry := session.CoordinationEntry(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Phase: "item/completed"}}, observation.Item{
+			Type: "mcpToolCall", Server: "threadcontrol", Tool: "wait_agent", Status: "completed",
+			Arguments: []byte(`{"target":"/root/child","timeout_ms":2000}`),
+			Result:    []byte(`{"content":[{"type":"text","text":` + strconv.Quote(tc.result) + `}]}`),
+		})
+		if entry.Native.Wait == nil {
+			t.Fatal("confirmed wait did not produce structured progress")
+		}
+		values := projectValues([]activitypresentation.Value{*entry.Native.Wait}, false)
+		if values[0].WaitReason != tc.reason || values[0].WaitTimeout != tc.timeout {
+			t.Fatalf("projected wait = %+v, want reason %q and timeout %q", values[0], tc.reason, tc.timeout)
+		}
+	}
+}
+
+func TestPendingCommandsAndEffects(t *testing.T) {
+	t.Parallel()
+	const source = "printf ready; printf later"
+	item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Kind: "tool"}, Command: activitypresentation.Command{Script: source, Display: source, Running: true, Segments: []activitypresentation.CommandSegment{
+		{Source: "printf ready", Text: activitypresentation.ShellSource("printf ready", ""), Running: true},
+		{Source: "printf later", Pending: true},
+	}}, Details: &activitypresentation.ItemDetails{CommandText: source}}
+	projected := projectEntry(activitypresentation.Entry{Values: item.Values()}, false)
+	if len(projected.Values) < 2 || !projected.Values[1].Pending {
+		t.Fatalf("pending command lost: %+v", projected.Values)
+	}
+	effect := activitypresentation.Value{Effect: true, Content: activityfeed.Content{Kind: "op", Verb: "Create", Label: "`a.go` +1 -0"}}
+	if !projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{effect}}, false).Values[0].Effect {
+		t.Fatal("captured effect lost its parent relationship")
+	}
+}
+
+func TestTemporaryEditDisclosure(t *testing.T) {
+	t.Parallel()
+	for _, root := range []string{"/tmp/tree", "/workspace/tree"} {
+		var records []string
+		for i := range 200 {
+			records = append(records, fmt.Sprintf("Create `%s/file%03d.go` +3 -0 · cp", root, i))
+		}
+		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Kind: "tool", Text: strings.Join(records, "\n\n")}}
+		values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false).Values
+		if len(values) != 200 || !strings.Contains(values[199].Label, "file199.go") {
+			t.Fatal("folded capture lost its original files")
+		}
+		want := 0
+		if root == "/tmp/tree" {
+			want = 200 - activitypresentation.ChangeRowsShown
+		}
+		if got := values[activitypresentation.ChangeRowsShown].HiddenEdits; got != want {
+			t.Fatalf("%s: folded files = %d, want %d", root, got, want)
+		}
+	}
+	const source = "first\nsecond\nthird\nfourth\nfifth\nsixth"
+	item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Kind: "tool", Text: "Create `/tmp/large.txt`\n```text\n" + source + "\n```"}}
+	if values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false).Values; len(values) != 1 || !values[0].FoldSource || values[0].Code != source {
+		t.Fatalf("temporary source disclosure lost original: %+v", values)
 	}
 }
 

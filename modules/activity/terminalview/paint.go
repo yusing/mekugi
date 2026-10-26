@@ -582,7 +582,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		code, body := block.Code, block.Body
 		omittedSource := 0
-		if block.Verb == "Create" && !block.Expanded && strings.HasPrefix(block.EditPath(), "/tmp/") && strings.Count(code, "\n") >= 5 {
+		if !block.Expanded && block.TemporarySource() {
 			omittedSource, code = strings.Count(code, "\n")+1, ""
 		}
 		exit := ""

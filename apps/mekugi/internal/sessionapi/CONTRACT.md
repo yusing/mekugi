@@ -491,7 +491,7 @@ capacity. Missing, oversized or non-raster sources fail explicitly. Local
 files and inline image data are supported up to the upload limit; remote URLs are
 not fetched. Browser image transfers use an independent authenticated connection.
 
-Explicit native `view/attach` may name `parent` alongside a retained child
+Explicit live `view/attach` may name `parent` alongside a retained child
 `thread`. The selected parent's prepared-runtime owner admits only its own
 descendants and resumes their runtime without submitting input or restarting
 work. Unadmitted historical identities remain observational.
