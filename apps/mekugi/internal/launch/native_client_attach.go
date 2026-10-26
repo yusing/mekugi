@@ -37,25 +37,13 @@ type nativeClientReattached struct {
 	source, connection *sessionapi.NativeConnection
 	event              sessionapi.NativeEvent
 	err                error
-	preferenceError    error
 }
 
 func (c *nativeClient) attachDestination(ctx context.Context, done chan<- nativeClientReattached) {
 	source, thread := c.connection, c.reattach
-	target := c.event.Target()
-	var preferences *sessionapi.NativePreferenceUpdate
-	var preferenceError error
-	if c.preferenceReady && target.Thread != "" {
-		u := c.renderer.terminal
-		data, err := c.preferences.Encode(u.Shell.Preferences(u.Main))
-		preferenceError = err
-		if err == nil {
-			preferences = &sessionapi.NativePreferenceUpdate{Presentation: data, Flush: true}
-		}
-	}
 	c.reattach, c.attaching = "", true
 	c.workers.Go(func() {
-		result := nativeClientReattached{owner: c, source: source, preferenceError: preferenceError}
+		result := nativeClientReattached{owner: c, source: source}
 		result.connection, result.err = source.Attach(ctx, thread)
 		if result.err == nil {
 			result.event, result.err = result.connection.Next()
@@ -65,12 +53,6 @@ func (c *nativeClient) attachDestination(ctx context.Context, done chan<- native
 				result.connection.Close()
 			}
 			result.err = fmt.Errorf("Could not attach to session %s: %w", thread, result.err)
-		} else if preferences != nil {
-			// Keep the source's writer and view alive until the destination has
-			// published, then flush the captured layout through its actual owner.
-			flush, cancel := context.WithTimeout(ctx, time.Second)
-			_, result.preferenceError = source.Send(flush, target, sessionapi.NativeOperation{Preferences: preferences})
-			cancel()
 		}
 		select {
 		case done <- result:
@@ -99,9 +81,6 @@ func (c *nativeClient) applyReattachment(result nativeClientReattached) *nativeC
 	terminal.Frame.Clipboard = c.renderer.terminal.Frame.Clipboard
 	terminal.Width, terminal.Height = c.renderer.terminal.Width, c.renderer.terminal.Height
 	next := &nativeClient{connection: result.connection, renderer: nativeClientRenderer{terminal: terminal, views: c.renderer.views}}
-	if result.preferenceError != nil {
-		next.feedback.Set("Could not save outgoing session layout: "+result.preferenceError.Error(), true, time.Now())
-	}
 	return next
 }
 

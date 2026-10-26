@@ -99,17 +99,19 @@ func (c *nativeClient) stagePreferences(flush bool) {
 	if !flush && state == c.preferenceState {
 		return
 	}
-	for _, call := range c.calls {
-		if call.operation.Preferences != nil {
-			return
-		}
-	}
 	data, err := c.preferences.Encode(state)
 	if err != nil {
 		c.notice = err.Error()
 		return
 	}
 	c.preferenceState = state
+	for _, call := range c.calls {
+		if update := call.operation.Preferences; update != nil {
+			update.Presentation = data
+			update.Flush = update.Flush || flush
+			return
+		}
+	}
 	c.enqueue(sessionapi.NativeOperation{Preferences: &sessionapi.NativePreferenceUpdate{Presentation: data, Flush: flush}}, nil, nil)
 }
 

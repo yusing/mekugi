@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	requestLimit      = 8
+	// Leave room for attachment acquisition alongside independent native lanes.
+	requestLimit      = 9
 	preparationLimit  = 4
 	subscriptionLimit = 64
 )

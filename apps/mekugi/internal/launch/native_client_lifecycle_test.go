@@ -50,16 +50,17 @@ func TestNativeReattachKeepsSourceUntilDestinationPublication(t *testing.T) {
 			u.testMainFrame(80, 24, 0)
 			scopes := make(chan context.Context, 4)
 			type savedLayout struct {
-				thread string
-				update sessionapi.NativePreferenceUpdate
+				thread  string
+				update  sessionapi.NativePreferenceUpdate
+				request sessionapi.NativeRequest
 			}
 			saves := make(chan savedLayout, 4)
+			actions := make(chan string, 4)
+			displayed := make(chan string, 4)
 			launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
 				thread := start.Resume
 				frame := sessionapi.NativeFrame{View: u.attached.presentation.View()}
-				frame.View.Main.ID = thread
-				frame.View.Input.ID = thread
-				frame.View.Displayed.ID = thread
+				frame.View.Main.ID, frame.View.Input.ID, frame.View.Displayed.ID = thread, thread, thread
 				if err := api.SetSummary(sessionapi.Summary{Thread: thread, Workspace: u.attached.cwd, Ready: true}); err != nil {
 					return err
 				}
@@ -71,13 +72,18 @@ func TestNativeReattachKeepsSourceUntilDestinationPublication(t *testing.T) {
 						if request.Attach {
 							scopes <- request.ViewContext
 						}
-						refusal := ""
-						if update := request.Operation.Preferences; update != nil {
-							saves <- savedLayout{thread, *update}
-							refusal = test.refusal
-						}
 						_ = api.Native().Publish(request.Attachment, frame)
-						request.Reply <- refusal
+						if update := request.Operation.Preferences; update != nil {
+							saves <- savedLayout{thread, *update, request}
+							continue // The test holds acknowledgement independently of navigation.
+						}
+						if request.Operation.Command != nil {
+							actions <- thread
+						}
+						if request.Operation.Display != nil {
+							displayed <- thread
+						}
+						request.Reply <- ""
 					}
 				}
 			}}
@@ -97,18 +103,13 @@ func TestNativeReattachKeepsSourceUntilDestinationPublication(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer source.Close()
-			initial, err := source.Next()
-			if err != nil {
-				t.Fatal(err)
-			}
-			sourceScope := <-scopes
-			terminal, _ := u.terminalViews.NewAttachment(u.shell.Transcript.Painter.Theme)
-			c := &nativeClient{ctx: t.Context(), connection: source, renderer: nativeClientRenderer{terminal: terminal, views: u.terminalViews}}
-			c.accept(initial)
+			r := nativeSchedulingRuntime(t, u, source)
+			c, sourceScope := r.active, <-scopes
+			initial := c.event
+			terminal := c.renderer.terminal
 			c.editor("main").InsertText("source draft")
 			c.preferenceReady = true
-			terminal.Split = 67
+			terminal.Split = 55
 			c.stagePreferences(false)
 			if len(c.calls) == 0 {
 				t.Fatal("changed layout was not staged")
@@ -123,49 +124,99 @@ func TestNativeReattachKeepsSourceUntilDestinationPublication(t *testing.T) {
 				t.Fatal("failed destination retired source")
 			}
 			if len(saves) != 0 || terminal.Transcript != sourceTranscript {
-				t.Fatal("failed destination changed the source layout or navigation")
+				t.Fatal("failed destination changed source layout or navigation")
 			}
+			terminal.Split = 67
 			c.reattach = "destination"
 			c.attachDestination(t.Context(), done)
-			ready := <-done
+			var ready nativeClientReattached
+			select {
+			case ready = <-done:
+			case <-saves:
+				t.Fatal("destination readiness waited for a duplicate attachment-local layout save")
+			case <-time.After(5 * time.Second):
+				t.Fatal("destination did not publish")
+			}
 			if ready.err != nil || sourceScope.Err() != nil || ready.event.Frame.View.Main.ID != "destination" {
 				t.Fatalf("handoff before destination snapshot: %v", ready.err)
 			}
 			destinationScope := <-scopes
-			select {
-			case saved := <-saves:
-				layout, err := terminalsession.ReadPreferences(saved.update.Presentation)
-				if err != nil || saved.thread != "main" || layout.Split != 67 || !saved.update.Flush {
-					t.Fatalf("outgoing layout was not flushed to its source owner: %+v, %v", saved, err)
-				}
-			default:
-				t.Fatal("source retired before its captured layout was flushed")
-			}
 			if ready.event.Frame.View.Version.Attachment != initial.Frame.View.Version.Attachment || ready.event.Attachment == initial.Attachment {
 				t.Fatal("fixture must use distinct streams with equal runtime-local attachment IDs")
 			}
-			destination := c.applyReattachment(ready)
-			if destination == nil {
-				t.Fatal("destination rejected")
+			r.reattach(ready, nil)
+			destination := r.active
+			if destination == c || destination.renderer.terminal.Transcript == sourceTranscript || !destination.renderer.terminal.Transcript.Following {
+				t.Fatal("destination inherited source navigation or failed to activate")
 			}
-			destination.accept(ready.event)
-			if destination.renderer.terminal.Transcript == sourceTranscript || !destination.renderer.terminal.Transcript.Following {
-				t.Fatal("destination inherited source navigation")
+			for {
+				r.schedule()
+				if call := c.request(nativePreferenceCall); call != nil {
+					break
+				}
+				nativeSchedulingStep(t, r)
+			}
+			var saved savedLayout
+			select {
+			case saved = <-saves:
+			case <-time.After(5 * time.Second):
+				t.Fatal("outgoing layout was not dispatched")
+			}
+			layout, err := terminalsession.ReadPreferences(saved.update.Presentation)
+			if err != nil || saved.thread != "main" || layout.Split != 67 || !saved.update.Flush {
+				t.Fatalf("final layout did not replace the queued unsent update: %+v, %v", saved, err)
+			}
+			r.retire()
+			if c.closed || sourceScope.Err() != nil || r.active != destination {
+				t.Fatal("pending layout retired its source or blocked destination use")
+			}
+			destination.editor("main").InsertText("destination draft")
+			destination.enqueue(sessionapi.NativeOperation{Command: new("/status")}, nil, nil)
+			r.schedule()
+			select {
+			case thread := <-actions:
+				if thread != "destination" {
+					t.Fatalf("destination control reached %q", thread)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("pending layout blocked destination control")
+			}
+			destination.displayThread(sessionpresentation.Thread{ID: "historical"})
+			deadline := time.NewTimer(5 * time.Second)
+			defer deadline.Stop()
+		awaitDisplay:
+			for {
+				r.schedule()
+				select {
+				case thread := <-displayed:
+					if thread != "destination" {
+						t.Fatalf("destination display reached %q", thread)
+					}
+					break awaitDisplay
+				case message := <-r.messages:
+					if err := r.deliver(message); err != nil {
+						t.Fatal(err)
+					}
+				case call := <-r.results:
+					call.complete = true
+				case <-deadline.C:
+					t.Fatal("pending layout blocked destination display navigation")
+				}
+				r.settle()
+			}
+			saved.request.Reply <- test.refusal
+			for !c.closed {
+				nativeSchedulingStep(t, r)
+			}
+			if len(saves) != 0 {
+				t.Fatal("outgoing layout was sent more than once")
 			}
 			if feedback := destination.renderer.frame.View.Status.Feedback; test.refusal != "" && (!feedback.Alert || !strings.Contains(feedback.Text, test.refusal)) {
-				t.Fatalf("outgoing layout failure was not visible after reattachment: %+v", feedback)
+				t.Fatalf("outgoing layout failure was not visible: %+v", feedback)
 			}
-			defer destination.connection.Close()
-			c.connection.Close()
-			select {
-			case <-sourceScope.Done():
-			case <-time.After(time.Second):
-				t.Fatal("source view retained")
+			if destinationScope.Err() != nil || c.editor("main").Text != "source draft" || destination.editor("main").Text != "destination draft" {
+				t.Fatal("destination/source ownership or drafts changed")
 			}
-			if destinationScope.Err() != nil || c.editor("main").Text != "source draft" || destination.editor("main").Text != "" {
-				t.Fatal("destination/source ownership or local drafts changed")
-			}
-			c.workers.Wait()
 		})
 	}
 }

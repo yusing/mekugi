@@ -123,6 +123,10 @@ An attached client keeps its source interaction alive while admitted input or ed
 consequences are outstanding, even after navigating to another session. Independent
 observation, attachment preparation and receipt work cannot block cancellation or
 navigation. Admitted execution and shared history outlive client disconnection.
+The destination becomes usable without waiting for the outgoing native layout
+save. The source retains its final layout until acknowledgement or failure
+settles. Dispatch failures remain visible on the active view, and uncertain outcomes are
+not automatically replayed.
 Activity catch-up uses complete source state and resets only transient reveal state;
 semantic editor and clipboard effects retain immutable identities until receipt.
 Capacity for those consequences is reserved before the originating action is admitted.

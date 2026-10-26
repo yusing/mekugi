@@ -23,6 +23,7 @@ const (
 	nativeReceiptCall
 	nativeCancellationCall
 	nativeNavigationCall
+	nativePreferenceCall
 	nativeAcquisitionCall
 	nativeCallLanes
 )
@@ -103,7 +104,9 @@ func nativeCallLane(operation sessionapi.NativeOperation) int {
 		return nativeReceiptCall
 	case operation.Interrupt != nil:
 		return nativeCancellationCall
-	case operation.Display != nil || operation.Focused != nil || operation.Preferences != nil:
+	case operation.Preferences != nil:
+		return nativePreferenceCall
+	case operation.Display != nil || operation.Focused != nil:
 		return nativeNavigationCall
 	default:
 		return nativeSemanticCall
