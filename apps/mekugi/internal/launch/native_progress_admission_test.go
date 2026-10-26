@@ -84,8 +84,11 @@ func TestNativeProgressAdmitsEffortAndReferenceAtOwner(t *testing.T) {
 			}
 		}
 		intent := sessionpresentation.ComposerIntent{Version: captured.Frame.View.Version, Thread: captured.Frame.View.Input.ID, Operation: step.operation}
-		send(captured.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: intent}})
+		send(captured.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: intent, Draft: composer.Draft{Text: "keep draft"}}})
 		await(func() bool { return event.Frame.View.Caption.Effort == step.want })
+		if event.Frame.View.Status.Feedback.Alert {
+			t.Fatalf("reasoning shortcut became an error: %+v", event.Frame.View.Status.Feedback)
+		}
 	}
 	captured := event
 	reference := sessionpresentation.ReferenceIntent{Version: captured.Frame.View.Version, Thread: captured.Frame.View.Input.ID, Displayed: captured.Frame.View.Displayed, Target: captured.Frame.View.EditorTarget(), Description: "source", Text: "selected answer"}

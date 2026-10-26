@@ -543,7 +543,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 			}
 			view.attached.presentation.BorrowExecutionStatus(attached.presentation)
 			closed, err = applyComposerCommand(&view.attached, view.shell, &control, &view.picker, &requestEditor, &questions, &approvalDock, clock, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &view.panel, &view.resume, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, &shellEdits, retained, &retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvals, generator, &view.files, &statusConfig, capture, debugDirectory, panes, &models, &modelsLoading, intent, &composerPreparation{ctx: request.Context, input: request.Prepared, side: side != nil && inputThread == cmp.Or(side.Thread, "side:"+side.Key)})
-			if !strings.HasPrefix(strings.TrimSpace(before.Text), "/") && requestEditor.Text != "" {
+			if (intent.Operation == sessionpresentation.SubmitComposer || intent.Operation == sessionpresentation.QueueComposer) && !strings.HasPrefix(strings.TrimSpace(before.Text), "/") && requestEditor.Text != "" {
 				return view.attached.feedback.Text, err
 			}
 			attached.presentation.BorrowExecutionStatus(view.attached.presentation)

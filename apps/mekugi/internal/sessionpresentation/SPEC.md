@@ -388,6 +388,9 @@ turn without marking the roster done. Cold restoration
 shows paused work without restarting its clock or subscription.
 
 Router errors remain composer feedback, not transcript or provider-response edits.
+Settings progress and successful updates remain ordinary feedback, including when
+reasoning shortcuts preserve a nonempty draft. A preserved draft alone does not
+make a non-submission control fail.
 Editing/dismissal clears actionable feedback. Elided feedback opens complete retained
 details, including an entire router-error batch. Model-visible errors retain their
 own transcript presentation. Unsupported server requests remain visibly pending and
