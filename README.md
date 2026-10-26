@@ -424,9 +424,15 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   `/oneoff`, `/fork` and `/btw`; repeat `/btw` for a follow-up. Esc on Main
   closes only that dock.
 - `/model`, `/effort` (or `/reasoning`), and `/tier` open pickers or accept values.
+  Combine choices with `/model MODEL --reasoning=high --speed=fast`; omit MODEL
+  to keep it, and use `--speed=standard` to clear the tier.
   `/tier default` clears the tier. Changes reach upcoming steps without editing config.
   Model and reasoning controls, including Shift+Up/Down, target the selected Main,
   Side or One-off conversation independently. Service-tier controls target Main.
+- `/permissions` lists Main's permission profiles. Select one, or use
+  `/permissions PROFILE --approval-policy=on-request --reviewer=user`.
+  Changes apply from the next turn, after Codex confirms them. Queued input waits
+  while choosing; Esc cancels. Running commands and existing approvals are unchanged.
 - `/compact` resets context: Enter interrupts then resets, Tab queues. `/clear` starts
   fresh while idle, preserving sessions/files. See [reset policy](#context-reset-and-recovery).
   `/btw` and `/compact` requests use low reasoning when the model advertises it,

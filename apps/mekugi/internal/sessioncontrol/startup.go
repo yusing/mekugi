@@ -233,6 +233,7 @@ func ThreadPermissions(params map[string]any, approvals bool) map[string]any {
 }
 
 type AcceptedThread struct {
+	PermissionState
 	Model             string             `json:"model"`
 	ReasoningEffort   string             `json:"reasoningEffort"`
 	ServiceTier       string             `json:"serviceTier"`

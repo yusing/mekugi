@@ -21,6 +21,7 @@ import (
 )
 
 func (p *composerPicker) openMenu(kind string) {
+	p.cancelPermissionSelection()
 	p.MenuState.Begin(sessionpresentation.MenuKind(kind))
 	p.Open = true
 }
@@ -129,6 +130,7 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 		p.Query = action.Query
 		return true
 	case sessionpresentation.MenuDismiss:
+		p.cancelPermissionSelection()
 		p.sideTask = nil
 		switch p.Kind {
 		case "menu", "manage":

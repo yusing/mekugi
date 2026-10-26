@@ -52,6 +52,7 @@ type composerPicker struct {
 	sideTaskDelivery                uint64
 	sideTarget                      string
 	settingThread                   string
+	permissionSelection             *sessioncontrol.PermissionSelection
 }
 
 // invalidateSkills is shared by the local attachment and native views after the

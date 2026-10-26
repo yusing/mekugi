@@ -26,6 +26,7 @@ import (
 // Only commands implemented by the native shell belong in this catalog.
 var nativeCommands = []completion.Choice{
 	{Name: "/model", Description: "Choose the model"},
+	{Name: "/permissions", Description: "Choose Main's permission profile for subsequent turns"},
 	{Name: "/reasoning", Description: "Choose the reasoning effort"},
 	{Name: "/effort", Description: "Choose the reasoning effort"},
 	{Name: "/live", Description: "Show or hide Live edits for this session"},

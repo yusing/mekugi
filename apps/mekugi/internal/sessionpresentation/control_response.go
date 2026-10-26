@@ -72,6 +72,9 @@ func (m *Model) SettingsAcknowledged(conversation *conversationmodel.Session, me
 		if ack.RestoreWaiting {
 			effects.Restored = conversation.RestoreInput(conversation.TakeWaiting()...)
 			effects.Notice = "Could not restore default reasoning: " + failure + " · choose /effort VALUE or restart resume"
+		} else if ack.PermissionRejected {
+			effects.Restored = conversation.RestoreInput(conversation.TakeWaiting()...)
+			effects.Notice = "Permissions unchanged: " + failure + " · waiting input restored"
 		}
 	} else if method == "turn/settings/update" {
 		switch ack.Status {

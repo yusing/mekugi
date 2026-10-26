@@ -154,12 +154,43 @@ func TestAppServerLiveSettingsNativeCodex(t *testing.T) {
 	terminal.await("gpt-6-sol (high)")
 	// Wait for the turn publication rather than just the thread's new footer.
 	terminal.await("live update published")
-	terminal.send("/model gpt-6-astra\r")
+	terminal.send("/model gpt-6-astra --reasoning=high --speed=fast\r")
 	terminal.await("gpt-6-astra (high)")
 	terminal.await("live update published")
-	terminal.send("/tier priority\r")
 	terminal.await("gpt-6-astra (high) · priority")
-	terminal.await("live update published")
+	terminal.send("/permissions\r")
+	terminal.await(":read-only")
+	terminal.send("\x1b")
+	terminal.awaitMatch("permission picker dismissed", func(content string) bool { return !strings.Contains(content, "Choose permissions") })
+	terminal.send("/permissions :read-only --reviewer=user\r")
+	terminal.await("Settings saved for next turn")
+	terminal.send("/permissions :read-only --reviewer=user\r")
+	terminal.await("Settings unchanged")
+	granular := `/permissions :read-only --approval-policy='{"granular":{"sandbox_approval":true,"rules":true,"mcp_elicitations":true}}'`
+	terminal.send(granular + "\r")
+	terminal.await("Settings saved for next turn")
+	terminal.send(granular + "\r")
+	terminal.await("Settings unchanged")
+	terminal.send("/permissions :read-only --approval-policy=null\r")
+	terminal.await("Use approval policy")
+	terminal.send("\x03")
+	terminal.awaitMatch("invalid permission draft cleared", func(content string) bool { return !strings.Contains(content, "--approval-policy=null") })
+	terminal.send("/model")
+	terminal.await("Choose the model")
+	row := -1
+	for y, line := range strings.Split(terminal.screen.String(), "\n") {
+		if strings.Contains(line, "Choose the model") {
+			row = y
+			break
+		}
+	}
+	if row < 0 {
+		t.Fatal("model completion row not rendered")
+	}
+	terminal.send("\x1b[<0;5;" + strconv.Itoa(row+1) + "M")
+	terminal.await("Choose model")
+	terminal.send("\x1b")
+	terminal.awaitMatch("model picker dismissed", func(content string) bool { return !strings.Contains(content, "Choose model") })
 	close(p.release)
 	terminal.await("completed")
 	terminal.send("Second inference uses saved settings\r")

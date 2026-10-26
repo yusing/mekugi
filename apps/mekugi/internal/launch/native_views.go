@@ -120,6 +120,7 @@ func (n *nativeViews) dispose(id string) {
 		view.stop()
 		view.files.closeOutput(view.shell)
 		view.picker.cancelScan()
+		view.picker.cancelPermissionSelection()
 		view.notices.finish(terminalsession.NoticeReceipt{})
 		view.shell.Diff.Close()
 		view.scope.Retire()
@@ -426,6 +427,7 @@ func (n *nativeViews) replacePresentation(v *nativeSessionView, execution *attac
 	n.requests.Retire(viewRequestScope(v.attached.view))
 	v.files.closeOutput(v.shell)
 	v.picker.cancelScan()
+	v.picker.cancelPermissionSelection()
 	if v.picker.sideTask != nil {
 		v.effects.restore([]conversation.Input{{Delivery: v.picker.sideTaskDelivery}}, sessionapi.NativeEffect{Thread: v.thread, Restore: v.picker.sideTask})
 	}

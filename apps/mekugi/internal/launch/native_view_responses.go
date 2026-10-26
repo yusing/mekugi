@@ -32,6 +32,9 @@ func dispatchViewResponse(attached *attachedPresentation, terminal *terminalsess
 		return true, nil
 	}
 	method := response.Method
+	if method == "permissionProfile/list" {
+		return true, picker.permissionsResponse(attached, control, response.Owner, m)
+	}
 	if response.Owner.label != "" {
 		method = response.Owner.label
 	}

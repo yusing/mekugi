@@ -1,0 +1,8 @@
+  Choose permissions
+› :read-only           Read workspace files; ask before edits                                       
+  :workspace           Edit workspace files; ask for outside access
+  :danger-full-access  Unavailable under current requirements
+
+
+
+  ↑/↓ navigate · enter apply · esc cancel

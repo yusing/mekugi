@@ -1260,6 +1260,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				return err
 			}
 			control.Thread, control.RolloutPath = result.Thread.ID, result.Thread.Path
+			control.Settings.Permissions = result.PermissionState
 			attached.inputHistory.selectThread(control.Thread)
 			for i := range attached.conversation.Editor.InputHistory {
 				entry := &attached.conversation.Editor.InputHistory[i]

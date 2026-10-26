@@ -21,6 +21,8 @@ type Settings struct {
 	change        map[string]any
 	turn          string
 	RestoreEffort bool
+	Permissions   PermissionState
+	selection     *PermissionSelection
 }
 
 type SettingsAction uint8
@@ -55,6 +57,12 @@ func (o *Settings) prepare(current preferences.Applied, change map[string]any, t
 		return SettingsPlan{Action: SettingsAlreadyPending}
 	}
 	plan := SettingsPlan{Action: SettingsThread, Change: maps.Clone(change), Turn: turn}
+	for field := range change {
+		if permissionField(field) {
+			// The host's live-turn API cannot replace its permission profile.
+			plan.Turn, turn = "", ""
+		}
+	}
 	for field, value := range change {
 		switch field {
 		case "collaborationMode":
@@ -73,6 +81,10 @@ func (o *Settings) prepare(current preferences.Applied, change map[string]any, t
 			if value != current.Tier && !(value == "fast" && current.Tier == "priority") && !(value == nil && (current.Tier == "" || current.Tier == "default")) {
 				return plan
 			}
+		default:
+			if !o.Permissions.matches(field, value) {
+				return plan
+			}
 		}
 	}
 	_, plan.ChooseTier = change["serviceTier"]
@@ -86,7 +98,9 @@ func (o *Settings) prepare(current preferences.Applied, change map[string]any, t
 	return plan
 }
 
-func (o *Settings) Pending() bool     { return o.phase != settingsIdle }
+func (o *Settings) Pending() bool {
+	return o.phase != settingsIdle || o.selection != nil && !o.selection.Closed
+}
 func (o *Settings) BlocksInput() bool { return o.Pending() || o.RestoreEffort }
 
 func (o *Settings) Admit(plan SettingsPlan) {
@@ -137,6 +151,7 @@ func (r *Requests[T]) ApplySettings(control *Live, plan SettingsPlan) error {
 
 type SettingsAcknowledgement struct {
 	Failed, RestoreWaiting bool
+	PermissionRejected     bool
 	Status                 string
 }
 
@@ -146,6 +161,9 @@ type SettingsAcknowledgement struct {
 func (o *Settings) Acknowledge(method string, result jsontext.Value, failed bool) (SettingsAcknowledgement, error) {
 	ack := SettingsAcknowledgement{Failed: failed}
 	if failed {
+		for field := range o.change {
+			ack.PermissionRejected = ack.PermissionRejected || permissionField(field)
+		}
 		o.Finish()
 		ack.RestoreWaiting = o.RestoreEffort
 	} else if method == "turn/settings/update" {

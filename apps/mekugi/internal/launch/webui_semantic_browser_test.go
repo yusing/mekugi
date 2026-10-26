@@ -413,6 +413,15 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("press", "Escape")
 	run("wait", "--fn", "!document.querySelector('[role=listbox][aria-label=Model]') && document.querySelector('#composer-text')?.value === 'kept draft' && !document.querySelector('[role=alert], #composer-hint.text-negative')")
 	run("find", "label", "Message", "fill", "")
+	message("/model fixture-a --reasoning=low --speed=standard")
+	run("wait", "--fn", `document.querySelector('button[title="Model"]')?.textContent.includes('fixture-a') && document.querySelector('button[title="Reasoning effort"]')?.textContent.includes('low') && document.querySelector('#composer-text')?.value === ''`)
+	message("/permissions")
+	run("wait", "--text", ":read-only")
+	capture("permissions")
+	run("find", "role", "button", "click", "--name", ":read-only Read workspace files", "--exact")
+	run("wait", "--text", "Settings saved for next turn")
+	message("/permissions :read-only --reviewer=user")
+	run("wait", "--text", "Settings unchanged")
 	message("/btw quick question")
 	run("wait", "--text", "By the way")
 	run("wait", "--text", "Browser host answer 2")
@@ -717,13 +726,16 @@ func serveWebUISemanticHost(t *testing.T) {
 		}
 		fmt.Fprintf(log, "%s %s\n", request.Method, request.Params)
 		var params struct {
-			Thread  string         `json:"threadId"`
-			Process string         `json:"processId"`
-			Turn    string         `json:"turnId"`
-			Input   jsontext.Value `json:"input"`
-			Model   string         `json:"model"`
-			Effort  string         `json:"effort"`
-			Tier    jsontext.Value `json:"serviceTier"`
+			Thread      string         `json:"threadId"`
+			Process     string         `json:"processId"`
+			Turn        string         `json:"turnId"`
+			Input       jsontext.Value `json:"input"`
+			Model       string         `json:"model"`
+			Effort      string         `json:"effort"`
+			Tier        jsontext.Value `json:"serviceTier"`
+			Permissions string         `json:"permissions"`
+			Approval    any            `json:"approvalPolicy"`
+			Reviewer    string         `json:"approvalsReviewer"`
 		}
 		if len(request.Params) != 0 {
 			if err := json.Unmarshal(request.Params, &params); err != nil {
@@ -740,6 +752,15 @@ func serveWebUISemanticHost(t *testing.T) {
 		case "thread/start":
 			result["thread"] = threads["main"]
 		case "thread/settings/update":
+			if params.Permissions != "" {
+				settings["activePermissionProfile"] = map[string]string{"id": params.Permissions}
+			}
+			if params.Approval != nil {
+				settings["approvalPolicy"] = params.Approval
+			}
+			if params.Reviewer != "" {
+				settings["approvalsReviewer"] = params.Reviewer
+			}
 			for field, value := range map[string]string{"model": params.Model, "effort": params.Effort} {
 				if value != "" {
 					settings[field] = value
@@ -750,6 +771,8 @@ func serveWebUISemanticHost(t *testing.T) {
 			}
 			// Codex confirms with the thread's authoritative settings.
 			confirmed = map[string]any{"method": "thread/settings/updated", "params": map[string]any{"threadId": params.Thread, "threadSettings": maps.Clone(settings)}}
+		case "permissionProfile/list":
+			result["data"] = []map[string]any{{"id": ":read-only", "description": "Read workspace files", "allowed": true}, {"id": ":workspace", "description": "Edit workspace files", "allowed": true}}
 		case "model/list":
 			efforts := []map[string]any{{"reasoningEffort": "low"}, {"reasoningEffort": "high"}}
 			result["data"] = []map[string]any{{"model": "fixture-a", "supportedReasoningEfforts": efforts}, {"model": "fixture-b", "supportedReasoningEfforts": efforts}}

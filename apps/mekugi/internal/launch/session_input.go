@@ -58,7 +58,7 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 	command := strings.Fields((*editor).Text)
 	settingsIntent := intent.Operation == sessionpresentation.IncreaseEffort || intent.Operation == sessionpresentation.DecreaseEffort
 	if len(command) > 0 && (intent.Operation == sessionpresentation.SubmitComposer || intent.Operation == sessionpresentation.QueueComposer) {
-		settingsIntent = command[0] == "/model" || command[0] == "/effort" || command[0] == "/reasoning" || command[0] == "/tier"
+		settingsIntent = command[0] == "/model" || command[0] == "/effort" || command[0] == "/reasoning" || command[0] == "/tier" || command[0] == "/permissions"
 	}
 	if settingsIntent && inputThread != attached.presentation.View().Input.ID {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings target changed · retry the control", false)

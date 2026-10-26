@@ -307,6 +307,22 @@ requested tier. Explicit confirmed choices override per-model defaults for this
 thread/model throughout the invocation, including after compaction. Children and
 persistent configuration are unchanged.
 
+`/model [MODEL] --reasoning=LEVEL --speed=TIER` combines settings in one update.
+Both `--name=value` and `--name value` are accepted, with quoted values. Omitted
+fields stay unchanged; omitting all arguments opens the picker. `--speed standard`
+clears the requested tier, while named tiers are validated by Codex. Speed controls
+remain Main-only. Invalid arguments retain the draft and issue no host request.
+
+`/permissions` lists Codex's named permission profiles for Main. An explicit
+`/permissions PROFILE [--approval-policy=POLICY] [--reviewer=user|auto_review]`
+selects a profile without opening the picker. Built-in profiles use their standard
+approval defaults; custom profiles preserve unspecified approval settings. Codex
+validates effective requirements. Changes apply to subsequent turns, preserving
+already running commands and pending approvals. Selection, discovery and host
+confirmation hold queued input; cancellation or a closed view releases selection.
+Failed updates remain visible without changing confirmed permissions. Permission
+choices are thread-local and do not write persistent configuration.
+
 Settings wait for authoritative host confirmation before publication or dependent
 input. An unchanged default does not wait for a notification the host suppresses.
 Control classifies each admitted intent as unchanged, a thread update or an

@@ -88,7 +88,7 @@ func settingsChoices(command string, models []appServerModel, applied preference
 }
 
 func refreshSettingsPicker(p *composerPicker, thread string, models []appServerModel, applied preferences.Applied, tiers *inferencegateway.Tiers, problem string) {
-	if p.Kind != "settings" {
+	if p.Kind != "settings" || p.Setting == "/permissions" {
 		return
 	}
 	if p.settingThread != thread {
@@ -219,7 +219,7 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 		return false, nil
 	}
 	command := fields[0]
-	if command != "/model" && command != "/reasoning" && command != "/effort" && command != "/tier" && command != "/live" {
+	if command != "/model" && command != "/reasoning" && command != "/effort" && command != "/tier" && command != "/permissions" && command != "/live" {
 		return false, nil
 	}
 	if control.Replacement.Pending() {
@@ -246,14 +246,29 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 	}
 	target, selected := selectedSettings(attached, control.Requests, applied)
 	applied = selected
+	if command == "/permissions" && (target != nil || attached.presentation.DisplayingSide()) {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Return to Main to change permissions", false)
+		return true, nil
+	}
+	if command == "/permissions" && control.Settings.Pending() {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings update pending", false)
+		return true, nil
+	}
 	choices, current := settingsChoices(command, models, applied, *tiers, control.Thread)
 	if len(fields) == 1 {
 		deleteDraftRange(attached, terminal, control, picker, editor, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay, owned, 0, len((*editor).Text))
 		picker.showSettingsPicker(loading, command, choices, current)
 		picker.settingThread = attached.presentation.View().Input.ID
+		if command == "/permissions" {
+			picker.permissionSelection = control.Settings.BeginPermissionSelection()
+			picker.Loading, picker.Problem = true, ""
+			if err := picker.requestPermissions(attached, control, ""); err != nil {
+				picker.Loading, picker.Problem = false, "Permission choices unavailable: "+err.Error()
+			}
+		}
 		return true, nil
 	}
-	if len(fields) != 2 {
+	if command != "/model" && command != "/permissions" && len(fields) != 2 {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Use "+command+" or "+command+" VALUE", true)
 		return true, nil
 	}
@@ -264,7 +279,23 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 	change := make(map[string]any)
 	switch command {
 	case "/model":
-		change["model"] = fields[1]
+		var err error
+		change, err = sessioncontrol.ParseModelCommand(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), command)))
+		if err != nil {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			return true, nil
+		}
+		if _, speed := change["serviceTier"]; speed && target != nil {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Return to Main to change service tier", false)
+			return true, nil
+		}
+	case "/permissions":
+		var err error
+		change, err = sessioncontrol.ParsePermissionCommand(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), command)))
+		if err != nil {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			return true, nil
+		}
 	case "/reasoning", "/effort":
 		change["effort"] = fields[1]
 	case "/tier":
@@ -350,6 +381,7 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 	var event struct {
 		ThreadID string `json:"threadId"`
 		Settings struct {
+			sessioncontrol.PermissionState
 			Provider string         `json:"modelProvider"`
 			Approval jsontext.Value `json:"approvalPolicy"`
 			Sandbox  *struct {
@@ -377,6 +409,9 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 	}
 	if len(event.Settings.Approval) > 0 {
 		status.Approval = event.Settings.Approval
+		if err := json.Unmarshal(event.Settings.Approval, &event.Settings.PermissionState.Approval); err != nil {
+			return true, err
+		}
 	}
 	if event.Settings.Sandbox != nil {
 		status.Sandbox.Type = event.Settings.Sandbox.Type
@@ -385,6 +420,7 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 		attached.cwd = event.Settings.Cwd
 	}
 	(*model), (*effort), (*tier) = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
+	control.Settings.Permissions = event.Settings.PermissionState
 	confirmation := control.Settings.Confirmed(control.Turn, (*effort))
 	if confirmation.ChooseTier {
 		(*tiers) = chooseServiceTier((*tiers), (*model), control.Thread, (*tier))
@@ -459,6 +495,10 @@ func chooseSetting(attached *attachedPresentation, terminal *terminalsession.Att
 	}
 	if picker.settingThread != "" && picker.settingThread != attached.presentation.View().Input.ID {
 		p.Problem = "Settings target changed · reopen the picker"
+		return
+	}
+	if picker.Setting == "/permissions" {
+		choosePermission(attached, terminal, control, applied, tiers, panes, restoring, clock, picker, choice)
 		return
 	}
 	field := "model"
