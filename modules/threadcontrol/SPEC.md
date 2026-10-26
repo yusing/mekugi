@@ -116,6 +116,9 @@ reconciliation confirms retained facts without silently starting paused work.
 
 The selected raw model catalog supplies model-specific role guidance for the current
 request model, including after model changes; explicit custom role hints remain frozen.
+When the catalog omits a role baseline, the corresponding stock Codex root or
+subagent usage guidance supplies the default, including message framing and
+parent delivery for delegates.
 Generated child defaults do not become configuration overrides. Named role
 settings resolve from the invoking workspace’s effective configuration layers and
 are frozen before child creation. Mekugi supplies its collaboration tool guidance;

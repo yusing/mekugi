@@ -51,9 +51,9 @@ func (d *Driver) Instructions(ctx context.Context, thread, requestModel string) 
 	}) {
 		return nil, errors.New("required native role or usage instruction provenance is unavailable")
 	}
-	var baseline string
+	baseline := defaultRootUsageHint
 	if member.Parent != "" {
-		baseline = "You are a delegated agent completing the assigned task."
+		baseline = defaultSubagentUsageHint
 	}
 	d.mu.RLock()
 	for _, model := range d.models {
@@ -121,7 +121,7 @@ func (d *Driver) Instructions(ctx context.Context, thread, requestModel string) 
 }
 
 // Feature-owned guidance describes the admitted logical tree and actual tools.
-// Model/custom role text comes from the selected invocation, never bundled copies.
+// Model/custom role text takes precedence over the stock fallback role baseline.
 func collaborationGuidance(member control.Member, baseline string) (string, error) {
 	if strings.Contains(baseline, "functions.collaboration.") || strings.Contains(baseline, "mekugi_collaboration.") {
 		return "", errors.New("configured agent guidance uses unavailable native collaboration tools")

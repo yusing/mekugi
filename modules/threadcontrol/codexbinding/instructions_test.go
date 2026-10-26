@@ -130,6 +130,8 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 		{"root custom hint", false, true, "CUSTOM_HINT"},
 		{"child model change", true, false, "NEW_CHILD_BASELINE"},
 		{"child custom hint", true, true, "CUSTOM_HINT"},
+		{"root stock fallback", false, false, defaultRootUsageHint},
+		{"child stock fallback", true, false, defaultSubagentUsageHint},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			retained, err := history.NewService(control.RecordKinds())
@@ -179,6 +181,9 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 			driver.models = []Model{
 				{Name: "old-model", Root: new("OLD_ROOT_BASELINE"), Child: new("OLD_CHILD_BASELINE")},
 				{Name: "new-model", Root: new("NEW_ROOT_BASELINE"), Child: new("NEW_CHILD_BASELINE")},
+			}
+			if strings.Contains(tc.name, "stock fallback") {
+				driver.models = nil
 			}
 			caller := control.Identity{Thread: "root", Session: "session", Turn: "root-turn", Call: "spawn", Item: "exec"}
 			if err := driver.AdmitRequest(t.Context(), session, caller, true); err != nil {
