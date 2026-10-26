@@ -1128,10 +1128,11 @@ export type Presentation_Counts = {
 };
 
 export type DetailItem = {
+  "Process"?: (Process | null);
   "OutputVersion": number;
   "Retained": boolean;
   "OutputLive": boolean;
-} & Omit<DetailPage, "OutputVersion" | "Retained" | "OutputLive">;
+} & Omit<DetailPage, "Process" | "OutputVersion" | "Retained" | "OutputLive">;
 
 export type TextUpdate = {
   "Ref": ItemRef;

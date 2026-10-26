@@ -357,6 +357,11 @@ that result. Reopening rereads without monitoring.
 HTTP(S) links copy destinations in transcripts and do nothing on dialog click.
 The application resolves and reads files; rendering receives their content or error.
 
+In `/ps`, Left/Right selects a process and `s` requests its stop when the host
+has supplied a process identity. Stopping dismisses the dialog so admission or
+host failures remain visible. A completed or replaced process cannot redirect
+the request to another invocation. Closing the dialog alone leaves work running.
+
 ## Selection and source copy
 
 Dragging across text in the displayed transcript, the composer, the

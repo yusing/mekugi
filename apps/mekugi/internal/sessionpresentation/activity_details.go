@@ -14,6 +14,7 @@ type DetailID struct{ Attachment, Selection uint64 }
 // DetailItem publishes page membership and output availability without a handle.
 type DetailItem struct {
 	activity.DetailPage
+	Process              *Process `json:",omitzero"`
 	OutputVersion        uint64
 	Retained, OutputLive bool
 }
@@ -38,6 +39,7 @@ type DetailOutput struct {
 
 type detailPage struct {
 	activity.DetailPage
+	process     *Process
 	output      *feed.Output
 	version     int
 	publication uint64
@@ -108,6 +110,16 @@ func (d *Details) RefreshDetails(id DetailID, requested []activity.DetailPage, r
 	}
 	sources := make(map[uint64]activity.DetailSource)
 	outputs := make(map[uint64]map[int]*feed.Output)
+	processes := make(map[uint64]*Process)
+	runningProcesses := make(map[[3]string]Process)
+	if d.processes {
+		for entry := range running {
+			process := processIdentity(entry)
+			if process.ID != "" {
+				runningProcesses[[3]string{process.Thread, process.Turn, process.Item}] = process
+			}
+		}
+	}
 	if d.source != nil {
 		for _, entry := range d.source.Entries {
 			if !selected[entry.Source.Seq] {
@@ -115,6 +127,9 @@ func (d *Details) RefreshDetails(id DetailID, requested []activity.DetailPage, r
 			}
 			source := activity.DetailSource{Entry: entry.Publish()}
 			if n := entry.Source.Native; n != nil {
+				if process, ok := runningProcesses[[3]string{n.Thread, n.Turn, n.Item}]; ok {
+					processes[entry.Source.Seq] = new(process)
+				}
 				if entry.Source.Kind == "tool" || entry.Source.Kind == "attachments" || n.ToolDetail != "" {
 					d.identities[entry.Source.Seq] = [2]string{n.Thread, n.Item}
 				}
@@ -176,7 +191,7 @@ func (d *Details) RefreshDetails(id DetailID, requested []activity.DetailPage, r
 			detail.Revision = d.revision
 			detail.Value = activity.CloneValues([]activity.Value{detail.Value})[0]
 		}
-		pages[i] = detailPage{detail, output, version, publication, live}
+		pages[i] = detailPage{detail, processes[detail.Source], output, version, publication, live}
 	}
 	if !reflect.DeepEqual(d.pages, pages) {
 		d.revision++
@@ -192,6 +207,9 @@ func (d *Details) DetailView(id DetailID) (DetailView, bool) {
 	view := DetailView{Revision: d.revision, ID: d.id, Processes: d.processes, Pages: make([]DetailItem, len(d.pages))}
 	for i, page := range d.pages {
 		item := DetailItem{DetailPage: page.DetailPage, Retained: page.output != nil, OutputVersion: page.publication}
+		if page.process != nil {
+			item.Process = new(*page.process)
+		}
 		if page.Prepared != nil {
 			content := *page.Prepared
 			content.Calls = slices.Clone(content.Calls)

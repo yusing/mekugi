@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
@@ -9,10 +10,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
@@ -50,10 +54,60 @@ func TestNativeProcessControlPublication(t *testing.T) {
 	if process.Thread != "main" || process.Turn != "turn" || process.Item != "command" || process.ID != "42" || process.Command != "sleep 30" {
 		t.Fatalf("published process lost host identity: %+v", process)
 	}
+	u, _ := newAppServerTestUI()
+	c := nativeTestPromptClient(u)
+	c.accept(event)
+	c.calls = nil
+	c.editor("main").InsertText("/ps")
+	_, target := c.selectedEditor()
+	c.composer(terminalsession.ComposerInput{Command: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: "main", Target: target, Operation: sessionpresentation.SubmitComposer}})
+	if len(c.calls) != 1 || c.calls[0].operation.Composer == nil {
+		t.Fatal("/ps did not use ordinary native command submission")
+	}
+	if _, err := connection.Send(ctx, c.calls[0].target, c.calls[0].operation); err != nil {
+		t.Fatal(err)
+	}
+	for event.Frame.Details == nil {
+		event, err = connection.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.accept(event)
+	c.calls = nil
+	dialog := c.renderer.terminal.Dialog
+	stop := dialog.Key("s")
+	if stop.Process == nil || stop.Process.Thread != process.Thread || stop.Process.Turn != process.Turn || stop.Process.Item != process.Item || stop.Process.ID != process.ID {
+		t.Fatalf("selected process lost its captured identity: %+v", stop)
+	}
 	stale := process
 	stale.Item = "replaced"
 	if _, err := connection.Send(ctx, event.Target(), sessionapi.NativeOperation{StopProcess: &stale}); err == nil {
 		t.Fatal("stale process reached host dispatch")
+	}
+	c.dialog(stop)
+	if len(c.calls) != 2 || c.calls[0].operation.CloseDetails == nil || c.calls[1].operation.StopProcess == nil {
+		t.Fatal("Stop did not dismiss output and submit its captured process")
+	}
+	for _, call := range c.calls {
+		if _, err := connection.Send(ctx, call.target, call.operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for event.Frame.View.Status.Feedback.Text != "Could not stop process: fixture refusal" || event.Frame.Details != nil {
+		event, err = connection.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.accept(event)
+	c.renderer.terminal.Width, c.renderer.terminal.Height = 100, 24
+	var screen bytes.Buffer
+	if _, err := c.renderer.render(ctx, &screen, time.Now(), "test"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(screen.String(), "Could not stop process: fixture refusal") || len(event.Frame.Processes) != 1 {
+		t.Fatal("host refusal was hidden or removed the running process")
 	}
 	if _, err := connection.Send(ctx, event.Target(), sessionapi.NativeOperation{StopProcess: &process}); err != nil {
 		t.Fatal(err)
@@ -67,6 +121,9 @@ func TestNativeProcessControlPublication(t *testing.T) {
 	if _, err := connection.Send(ctx, event.Target(), sessionapi.NativeOperation{StopProcess: &process}); err == nil {
 		t.Fatal("completed process retained Stop capability")
 	}
+	if event.Frame.Details != nil {
+		t.Fatal("process dialog hid stop results")
+	}
 }
 
 func serveNativeProcessHost(t *testing.T) {
@@ -78,6 +135,7 @@ func serveNativeProcessHost(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	stops := 0
 	for {
 		var request struct {
 			ID     jsontext.Value `json:"id"`
@@ -110,6 +168,11 @@ func serveNativeProcessHost(t *testing.T) {
 			}
 			if params.Thread != "main" || params.Process != "42" {
 				t.Fatalf("wrong host termination: %+v", params)
+			}
+			stops++
+			if stops == 1 {
+				write(map[string]any{"id": request.ID, "error": map[string]any{"code": -32603, "message": "fixture refusal"}})
+				continue
 			}
 			result["terminated"] = true
 		}

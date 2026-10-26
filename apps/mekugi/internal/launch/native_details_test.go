@@ -201,6 +201,31 @@ func TestNativeProcessDetailsBorrowExecutionCommands(t *testing.T) {
 	if frame.Details == nil || !frame.Details.View.Processes || len(frame.Details.View.Pages) != 1 || frame.Details.View.Pages[0].Code != "printf running" {
 		t.Fatal("process dialog read a copied or empty command owner")
 	}
+	if frame.Details.View.Pages[0].Process != nil {
+		t.Fatal("missing host identity enabled Stop")
+	}
+	processNotify(t, u, "main", "second", "sleep 30", "inProgress")
+	appServerTestNotify(t, u, "item/commandExecution/terminalInteraction", map[string]any{"threadId": "main", "turnId": "t", "itemId": "second", "processId": "42"})
+	frame = nativeDetailFrame(view)
+	c := nativeTestPromptClient(u)
+	c.accept(sessionapi.NativeEvent{Attachment: "first", Frame: frame})
+	d := c.renderer.terminal.Dialog
+	d.Paint(make([]string, 16), 80, 16)
+	d.Key("\x1b[C")
+	stop := d.Key("s")
+	if stop.Process == nil || stop.Process.Item != "second" || stop.Process.ID != "42" {
+		t.Fatal("queued navigation did not stop the selected process")
+	}
+	d.Key("/")
+	if intent := d.Key("s"); intent.Action != 0 {
+		t.Fatal("search triggered Stop")
+	}
+	d.Key("\x1b")
+	processNotify(t, u, "main", "second", "sleep 30", "completed")
+	c.accept(sessionapi.NativeEvent{Attachment: "first", Frame: nativeDetailFrame(view)})
+	if intent := d.Key("s"); intent.Action != 0 {
+		t.Fatal("completed process retained Stop")
+	}
 }
 
 func TestNativeDetailInitialPageDoesNotOverrideClientNavigation(t *testing.T) {

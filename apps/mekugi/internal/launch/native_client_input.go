@@ -547,6 +547,13 @@ func (c *nativeClient) dialog(intent terminalsession.DialogIntent) {
 		return
 	}
 	switch intent.Action {
+	case terminalsession.DialogStopProcess:
+		if intent.Process != nil {
+			// Dismiss the output overlay so admission and host failures remain visible.
+			id := u.Dialog.ID
+			c.enqueue(sessionapi.NativeOperation{CloseDetails: &id}, nil, nil)
+			c.enqueue(sessionapi.NativeOperation{StopProcess: intent.Process}, nil, nil)
+		}
 	case terminalsession.DialogClose:
 		if c.closeLocalDetails() {
 			c.refresh(time.Now())

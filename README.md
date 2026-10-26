@@ -416,7 +416,9 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   Existing Mekugi preset files remain untouched and unused. Presets contain text,
   not attachments.
 - A breathing count shows running commands from Main and its children. `/ps` opens
-  their live output, one tab per command, without interrupting work.
+  their live output, one tab per command. Select a process with Left/Right and
+  press `s` to stop it when the host provides its process identity. Viewing or
+  closing the dialog leaves work running; stopping closes it and reports failures.
 - `@` attaches files; `@!` includes ignored files. VCS metadata is excluded;
   unreadable/oversized content has omission notices. Directories attach two-level
   trees honoring `.gitignore`, bounded to 256 entries/16 KiB with truncation notices.

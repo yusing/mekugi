@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
@@ -30,23 +31,24 @@ type dialogPageState struct {
 // Dialog owns terminal navigation and frozen selection over supplied documents.
 // Source: apps/mekugi/internal/router/output_dialog.go:255:312,326:362,511:833@563f0c37.
 type Dialog struct {
-	pages        []DialogTab
-	Page, top    int
-	follow       bool
-	rows         int
-	rect         Rect
-	body         []string
-	indents      []int
-	tabs         []dialogTabHit
-	Typing       bool
-	draft, query string
-	match        int
-	missed       bool
-	Document     terminalui.DialogPage
-	Selection    *Selection
-	Navigation   string
-	ForceTabs    bool
-	OutputToggle string
+	pages         []DialogTab
+	Page, top     int
+	follow        bool
+	rows          int
+	rect          Rect
+	body          []string
+	indents       []int
+	tabs          []dialogTabHit
+	Typing        bool
+	draft, query  string
+	match         int
+	missed        bool
+	Document      terminalui.DialogPage
+	Selection     *Selection
+	Navigation    string
+	ForceTabs     bool
+	OutputToggle  string
+	StopAvailable bool
 	// FileLinks is detached local-path admission supplied by the application.
 	FileLinks       map[string]bool
 	FileLinkDemands []string
@@ -68,11 +70,13 @@ const (
 	DialogCopy
 	DialogReference
 	DialogOpenLink
+	DialogStopProcess
 )
 
 type DialogIntent struct {
-	Action DialogAction
-	Text   string
+	Action  DialogAction
+	Text    string
+	Process *sessionpresentation.Process
 }
 
 func (d *Dialog) tabbed() bool { return len(d.pages) > 1 || d.ForceTabs }
@@ -282,6 +286,9 @@ func (d *Dialog) footer(width int) string {
 		keys = append(keys, "o "+d.OutputToggle)
 	}
 	keys = append(keys, "y copy", "esc")
+	if d.StopAvailable {
+		keys = append([]string{"s stop"}, keys...)
+	}
 	if d.Document.Live && !d.follow {
 		keys = append([]string{"End follows"}, keys...)
 	}
@@ -296,6 +303,9 @@ func (d *Dialog) footer(width int) string {
 		}
 		if d.OutputToggle != "" {
 			footer = dim + "↑↓ scroll · o " + d.OutputToggle + " · y copy · esc" + undim
+		}
+		if d.StopAvailable {
+			footer = dim + "←→ process · s stop · esc" + undim
 		}
 	}
 	return footer

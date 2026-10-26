@@ -128,6 +128,14 @@ func TestRunningProcessesTrackedCompletion(t *testing.T) {
 	if runningProcessCount(&u.attached.session) != 1 {
 		t.Fatal("segments changed the host process count")
 	}
+	// Tracked output retains a copied Activity row; late host identity belongs
+	// to the canonical running operation, not that earlier display snapshot.
+	appServerTestNotify(t, u, "item/commandExecution/terminalInteraction", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "processId": "42"})
+	appServerTestKeys(t, u, "/ps\r")
+	stop := terminalTest(u).Dialog.Key("s")
+	if stop.Process == nil || stop.Process.ID != "42" || stop.Process.Item != "cmd" {
+		t.Fatal("tracked command lost late Stop identity")
+	}
 	processNotify(t, u, "main", "cmd", "/usr/bin/bash -lc "+quoteShellWord(script), "completed")
 	if runningProcessCount(&u.attached.session) != 0 {
 		t.Fatal("completed command remained listed while its segment report drained")
@@ -196,6 +204,7 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	for _, thread := range []string{"main", "child"} {
 		processNotify(t, u, thread, "cmd", "go test ./...", "inProgress")
+		appServerTestNotify(t, u, "item/commandExecution/terminalInteraction", map[string]any{"threadId": thread, "turnId": "t", "itemId": "cmd", "processId": "42"})
 		for i := range 3 {
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": fmt.Sprint("after", i), "type": "agentMessage", "text": strings.Repeat("Later transcript\n", 12) + "Last row"}})
 		}

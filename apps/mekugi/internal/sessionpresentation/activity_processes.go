@@ -74,11 +74,15 @@ type Process struct {
 	Thread, Turn, Item, ID, Agent, Command string
 }
 
+func processIdentity(entry ActivityEntry) Process {
+	n := entry.Native
+	return Process{Thread: n.Thread, Turn: n.Turn, Item: n.Item, ID: n.ProcessID, Agent: entry.Agent, Command: frontends.ShellDisplaySource(DisplayCommand(n.Command))}
+}
+
 func (s *Attachment) Processes() []Process {
 	var processes []Process
 	for entry := range s.RunningProcesses() {
-		n := entry.Native
-		processes = append(processes, Process{Thread: n.Thread, Turn: n.Turn, Item: n.Item, ID: n.ProcessID, Agent: entry.Agent, Command: frontends.ShellDisplaySource(DisplayCommand(n.Command))})
+		processes = append(processes, processIdentity(entry))
 	}
 	slices.SortFunc(processes, func(a, b Process) int {
 		return cmp.Or(cmp.Compare(a.Thread, b.Thread), cmp.Compare(a.Turn, b.Turn), cmp.Compare(a.Item, b.Item))
