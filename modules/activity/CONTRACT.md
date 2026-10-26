@@ -84,11 +84,12 @@ own verb-column row when needed. Paths give way before status and counts: remove
 whole leading directories, then elide an oversized filename's middle, and wrap
 below a readable width. Main combines repeated confirmed paths and sums their
 counts; Activity keeps invocation rows for exact cross-pane navigation.
-Large consecutive captured-file groups under `/tmp` show a bounded prefix and
-an omitted-file count. The count opens that invocation’s retained changes;
+Consecutive captured creation/deletion groups larger than ten files show the first
+ten files and an omitted-file count, regardless of directory. Other large captured-file
+groups under `/tmp` retain a bounded prefix. The count opens that invocation’s retained changes;
 expanded all restores every file row. Captures without a recognized writer label
 keep the same grouping and retained-change navigation. Source, outcome and command-directory
-boundaries remain separate, and ordinary project paths stay visible.
+boundaries remain separate; ongoing, failed and detail-bearing rows stay visible.
 Tool-managed files remain rows in their source group. Output-not-returned notes
 align with command text and stay muted in either theme.
 

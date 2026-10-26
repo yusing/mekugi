@@ -240,10 +240,10 @@ func TestUISnapshotTemporaryCapturedChanges(t *testing.T) {
 		feed := v.RenderConversation(100)
 		text := ansi.Strip(strings.Join(feed.Lines, "\n"))
 		if expansion != 2 {
-			if !strings.Contains(text, "… +188 files") || strings.Contains(text, "file012.go") || !strings.Contains(text, "after.go") || !strings.Contains(text, "project.go") {
+			if !strings.Contains(text, "… +190 files") || strings.Contains(text, "file010.go") || !strings.Contains(text, "after.go") || !strings.Contains(text, "project.go") {
 				t.Fatalf("collapsed file rows: %s", text)
 			}
-			row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "… +188 files") })
+			row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "… +190 files") })
 			if feed.Snippets[row] != (Snippet{Run: 1, Block: EditNavigationSnippet}) {
 				t.Fatalf("omitted files lost invocation navigation: %+v", feed.Snippets[row])
 			}
@@ -261,17 +261,69 @@ func TestUISnapshotTemporaryCapturedChanges(t *testing.T) {
 	}
 }
 
+func TestUISnapshotProjectCreateDeleteBatches(t *testing.T) {
+	for _, verb := range []string{"Create", "Delete"} {
+		counts, writer := "+3 -0", "cp"
+		if verb == "Delete" {
+			counts, writer = "+0 -3", "rm"
+		}
+		for _, count := range []int{10, 11, 200} {
+			t.Run(fmt.Sprintf("%s/%d", verb, count), func(t *testing.T) {
+				var records []string
+				for i := range count {
+					records = append(records, fmt.Sprintf("%s `src/file%03d.go` %s · %s", verb, i, counts, writer))
+				}
+				facts := presentation.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(records, "\n\n")}
+				item := presentation.ItemContent{Facts: facts}
+				v := NewView()
+				v.Conversation = true
+				v.Painter.Theme = diffrender.DarkTheme
+				v.Clock = func() time.Time { return time.Unix(1000, 0) }
+				v.Update(&presentation.Publication{Entries: []presentation.Entry{
+					{Facts: facts, Values: item.Values()},
+					{Facts: presentation.Facts{Seq: 2, Agent: "Main", Kind: "text", Text: "Later text stays reachable"}},
+				}}, Display{})
+				for _, expansion := range []uint8{0, 2} {
+					v.Expansion = expansion
+					feed := v.RenderConversation(100)
+					text := ansi.Strip(strings.Join(feed.Lines, "\n"))
+					if !strings.Contains(text, "Later text stays reachable") {
+						t.Fatal("later text lost")
+					}
+					if expansion == 0 && count > 10 {
+						if !strings.Contains(text, fmt.Sprintf("… +%d file", count-10)) || strings.Contains(text, "file010.go") {
+							t.Fatalf("unbounded batch: %s", text)
+						}
+						if !slices.Contains(feed.Snippets, Snippet{Run: 1, Block: EditNavigationSnippet}) {
+							t.Fatal("elision lost invocation navigation")
+						}
+					} else {
+						for i := range count {
+							if !slices.Contains(feed.Snippets, Snippet{Run: 1, Block: EditNavigationSnippet, Path: fmt.Sprintf("src/file%03d.go", i)}) {
+								t.Fatalf("file %d lost", i)
+							}
+						}
+					}
+					if expansion == 0 && count == 11 {
+						uisnapshot.AssertTerminal(t, "testdata/snapshots/project_"+strings.ToLower(verb)+"_batch.txt", append(feed.Lines, "plain after changes"), 100)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestTemporaryCapturedChangesKeepGroupBoundaries(t *testing.T) {
 	var blocks []Block
 	for source := uint64(1); source <= 2; source++ {
-		for i := range presentation.ChangeRowsShown + 1 {
+		for i := range 11 {
 			blocks = append(blocks, Block{Kind: "op", Source: source, Verb: "Create", Label: fmt.Sprintf("`/tmp/tree/file%d` +1 -0", i), EditSource: "cp"})
 		}
 	}
 	for _, boundary := range []string{"source", "directory", "outcome", "writer"} {
 		t.Run(boundary, func(t *testing.T) {
 			input := slices.Clone(blocks)
-			for i := presentation.ChangeRowsShown + 1; i < len(input); i++ {
+			for i := 11; i < len(input); i++ {
 				switch boundary {
 				case "directory":
 					input[i].Source, input[i].Workdir = 1, "/other"
@@ -281,7 +333,7 @@ func TestTemporaryCapturedChangesKeepGroupBoundaries(t *testing.T) {
 					input[i].Source, input[i].EditSource = 1, "python3"
 				}
 			}
-			shown := collapseTemporaryEdits(GroupOperations(input))
+			shown := collapseCapturedEdits(GroupOperations(input))
 			for _, b := range shown {
 				if b.HiddenEdits > 1 {
 					t.Fatalf("elision crossed %s boundary: %+v", boundary, b)
@@ -322,7 +374,7 @@ func TestTemporaryCapturedChangesRetainBatchAndOutput(t *testing.T) {
 			feed := v.RenderConversation(100)
 			text := ansi.Strip(strings.Join(feed.Lines, "\n"))
 			if output {
-				if !strings.Contains(text, "retained command output") || !strings.Contains(text, "… +187 files") || !strings.Contains(text, "file199.go") {
+				if !strings.Contains(text, "retained command output") || !strings.Contains(text, "… +189 files") || !strings.Contains(text, "file199.go") {
 					t.Fatalf("output-bearing final capture lost: %s", text)
 				}
 			} else {

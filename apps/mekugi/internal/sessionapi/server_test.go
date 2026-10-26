@@ -130,21 +130,31 @@ func TestPendingCommandsAndEffects(t *testing.T) {
 func TestTemporaryEditDisclosure(t *testing.T) {
 	t.Parallel()
 	for _, root := range []string{"/tmp/tree", "/workspace/tree"} {
-		var records []string
-		for i := range 200 {
-			records = append(records, fmt.Sprintf("Create `%s/file%03d.go` +3 -0 · cp", root, i))
-		}
-		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Kind: "tool", Text: strings.Join(records, "\n\n")}}
-		values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false).Values
-		if len(values) != 200 || !strings.Contains(values[199].Label, "file199.go") {
-			t.Fatal("folded capture lost its original files")
-		}
-		want := 0
-		if root == "/tmp/tree" {
-			want = 200 - activitypresentation.ChangeRowsShown
-		}
-		if got := values[activitypresentation.ChangeRowsShown].HiddenEdits; got != want {
-			t.Fatalf("%s: folded files = %d, want %d", root, got, want)
+		for _, verb := range []string{"Create", "Delete"} {
+			counts, writer := "+3 -0", "cp"
+			if verb == "Delete" {
+				counts, writer = "+0 -3", "rm"
+			}
+			for _, count := range []int{10, 11, 200} {
+				var records []string
+				for i := range count {
+					records = append(records, fmt.Sprintf("%s `%s/file%03d.go` %s · %s", verb, root, i, counts, writer))
+				}
+				item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Kind: "tool", Text: strings.Join(records, "\n\n")}}
+				values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false).Values
+				if len(values) != count || !strings.Contains(values[count-1].Label, fmt.Sprintf("file%03d.go", count-1)) {
+					t.Fatal("folded capture lost its original files")
+				}
+				for i, value := range values {
+					want := 0
+					if i == 10 {
+						want = count - 10
+					}
+					if value.HiddenEdits != want {
+						t.Fatalf("%s %s %d row %d: hidden %d, want %d", verb, root, count, i, value.HiddenEdits, want)
+					}
+				}
+			}
 		}
 	}
 	const source = "first\nsecond\nthird\nfourth\nfifth\nsixth"

@@ -1413,7 +1413,7 @@ func (v *View) renderRun(first uint64, agent string, observed time.Time, blocks 
 	}
 	blocks = GroupOperations(blocks)
 	if v.Expansion != 2 {
-		blocks = collapseTemporaryEdits(blocks)
+		blocks = collapseCapturedEdits(blocks)
 	}
 	blocks = AlignVerbs(blocks)
 	run.Blocks = blocks

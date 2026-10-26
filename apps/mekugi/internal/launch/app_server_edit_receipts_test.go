@@ -125,10 +125,10 @@ func TestUISnapshotAppServerTemporaryCaptureWithoutWriterLabel(t *testing.T) {
 				feed := v.RenderConversation(110)
 				text := ansi.Strip(strings.Join(feed.Lines, "\n"))
 				if expansion != 2 {
-					if !strings.Contains(text, "… +188 files") || strings.Contains(text, "file012.go") {
+					if !strings.Contains(text, "… +190 files") || strings.Contains(text, "file010.go") {
 						t.Fatalf("expansion %d left temporary capture unbounded (%d rows): %s", expansion, len(feed.Lines), text)
 					}
-					row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "… +188 files") })
+					row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "… +190 files") })
 					target := feed.Snippets[row]
 					if target.Block != activityui.EditNavigationSnippet || target.Path != "" || target.Run == 0 {
 						t.Fatalf("omission lost retained capture navigation: %+v", target)

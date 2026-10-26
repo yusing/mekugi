@@ -504,7 +504,7 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 		} else {
 			batch = ok && !unconfirmed
 			if v.Expansion != 2 {
-				laid = collapseTemporaryEdits(laid)
+				laid = collapseCapturedEdits(laid)
 			}
 		}
 		laid = AlignVerbs(laid)

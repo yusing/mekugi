@@ -74,17 +74,18 @@ func GroupOperations(blocks []Block) []Block {
 	return blocks
 }
 
-// collapseTemporaryEdits bounds captured temporary-file lists without changing
+// collapseCapturedEdits bounds captured file lists without changing
 // their retained evidence. Each elision opens one invocation's complete capture.
-func collapseTemporaryEdits(blocks []Block) []Block {
+func collapseCapturedEdits(blocks []Block) []Block {
 	values := make([]presentation.Value, len(blocks))
 	for i, block := range blocks {
 		values[i] = block.Value
 	}
 	var shown []Block
 	for start := 0; start < len(blocks); {
-		end := start + max(1, presentation.TemporaryEditRun(values[start:]))
-		keep := min(end-start, presentation.ChangeRowsShown)
+		count, keep := presentation.FoldedEditRun(values[start:])
+		end := start + max(1, count)
+		keep = max(1, keep)
 		shown = append(shown, blocks[start:start+keep]...)
 		if hidden := end - start - keep; hidden > 0 {
 			note := blocks[start+keep]

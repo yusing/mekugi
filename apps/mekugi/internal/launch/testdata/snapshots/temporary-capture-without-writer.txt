@@ -11,9 +11,7 @@
     Created /tmp/worktree/file007.go  +1    ━━━━━━━━
     Created /tmp/worktree/file008.go  +1    ━━━━━━━━
     Created /tmp/worktree/file009.go  +1    ━━━━━━━━
-    Created /tmp/worktree/file010.go  +1    ━━━━━━━━
-    Created /tmp/worktree/file011.go  +1    ━━━━━━━━
-            … +188 files
+            … +190 files
             after.go                  +1 -1 ━━━━━━━━
     Capture · incomplete evidence for 1 path (not confirmed edits): 1 × "capture budget exhausted" · mchanges
             amber1 --summary

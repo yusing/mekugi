@@ -358,9 +358,9 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 	}
 	grouped := activitypresentation.GroupOperations(values)
 	for start := 0; start < len(grouped); {
-		n := activitypresentation.TemporaryEditRun(grouped[start:])
-		if hidden := n - activitypresentation.ChangeRowsShown; hidden > 0 {
-			out[start+activitypresentation.ChangeRowsShown].HiddenEdits = hidden
+		n, shown := activitypresentation.FoldedEditRun(grouped[start:])
+		if hidden := n - shown; hidden > 0 {
+			out[start+shown].HiddenEdits = hidden
 		}
 		start += max(1, n)
 	}
