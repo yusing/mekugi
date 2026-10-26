@@ -46,8 +46,8 @@ func (p *Preparer) observeCompactionInput(ctx context.Context, request *codexres
 		return err
 	}
 	defer release()
-	workspace, valid := usableRoutingDirectory(metadata.Directories)
-	if len(metadata.Directories) != 0 && !valid {
+	workspace := p.observationDirectory(metadata.Directories, thread)
+	if len(metadata.Directories) != 0 && workspace == "" {
 		return errors.New("compaction observation requires one valid workspace")
 	}
 	if workspace == "" {

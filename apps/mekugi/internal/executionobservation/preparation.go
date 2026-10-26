@@ -327,13 +327,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	}
 
 	tools := codexresponses.DecodeToolCatalog(request.Fields)
-	directory, _ := usableRoutingDirectory(metadata.Directories)
-	if directory == "" && len(metadata.Directories) == 0 {
-		// Host workspace metadata describes Git roots, not every admitted cwd.
-		if workspace := p.review.WorkspaceForThread(threadID); workspace != "" {
-			directory, _ = usableRoutingDirectory(map[string]jsonv1.RawMessage{workspace: nil})
-		}
-	}
+	directory := p.observationDirectory(metadata.Directories, threadID)
 	responseContract := codexresponses.CaptureResponseContract(request.Fields)
 	codeModeToolName, err := binding.PrepareStockExecution(request.Fields, tools, p.registry.FrontendGuidance, p.registry.Guidance)
 	if err != nil {
