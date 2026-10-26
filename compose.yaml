@@ -1,0 +1,46 @@
+services:
+  webui:
+    image: mekugi-webui:local
+    build:
+      context: .
+    command: ["web", "--listen", "0.0.0.0:7777"]
+    ports:
+      - "${TAILNET_IP:?Set TAILNET_IP to the Docker host's Tailscale IPv4 address}:${WEBUI_PORT:-7777}:7777"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  connector:
+    image: mekugi-webui:local
+    build:
+      context: .
+    user: "${MEKUGI_UID:-1000}:${MEKUGI_GID:-1000}"
+    command:
+      - connector
+      - --listen
+      - 0.0.0.0:7778
+      - --socket
+      - /run/mekugi/server/control.sock
+      - --token-file
+      - /var/lib/mekugi/connector/token
+      - --origin
+      - "${WEBUI_ORIGIN:?Set WEBUI_ORIGIN to the exact tailnet browser page origin}"
+    ports:
+      - "${TAILNET_IP:?Set TAILNET_IP to the Docker host's Tailscale IPv4 address}:${CONNECTOR_PORT:-7778}:7778"
+    volumes:
+      - type: bind
+        source: "${MEKUGI_SERVER_DIR:?Set MEKUGI_SERVER_DIR in .env to the private server socket directory}"
+        target: /run/mekugi/server
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${CONNECTOR_STATE_DIR:-./.docker/connector}"
+        target: /var/lib/mekugi/connector
+        bind:
+          create_host_path: false
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped

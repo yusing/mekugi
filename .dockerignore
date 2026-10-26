@@ -1,0 +1,9 @@
+.git
+.env
+.env.*
+.docker
+bin
+**/node_modules
+**/__pycache__
+apps/mekugi/internal/webui/dist/app
+*.log

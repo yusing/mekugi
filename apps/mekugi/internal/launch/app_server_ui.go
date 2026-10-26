@@ -525,6 +525,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					return "", err
 				}
 			}
+			if view.remoteHuman && strings.TrimSpace(requestEditor.Text) == "/ps" {
+				view.effects.add(sessionapi.NativeEffect{Thread: inputThread, Target: new(intent.Target), Action: &composer.Action{Kind: composer.DeleteAction, Start: 0, End: len(requestEditor.Text)}})
+				setNotice(&view.attached.feedback, view.shell, presentationTime(clock), "Active processes appear above the composer.", false)
+				return "", nil
+			}
 			view.attached.presentation.BorrowExecutionStatus(attached.presentation)
 			closed, err = applyComposerCommand(&view.attached, view.shell, &control, &view.picker, &requestEditor, &questions, &approvalDock, clock, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &view.panel, &view.resume, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, &shellEdits, retained, &retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvals, generator, &view.files, &statusConfig, capture, debugDirectory, panes, &models, &modelsLoading, intent, &composerPreparation{ctx: request.Context, input: request.Prepared, side: side != nil && inputThread == cmp.Or(side.Thread, "side:"+side.Key)})
 			if !strings.HasPrefix(strings.TrimSpace(before.Text), "/") && requestEditor.Text != "" {

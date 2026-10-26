@@ -33,6 +33,8 @@ func TestWorkerArgumentsCannotSelectMCPBridge(t *testing.T) {
 		{"bridge-name", frontend, []string{"mcp-bridge"}, 1, "open tool worker manifest"},
 		{"bridge-and-operand", frontend, []string{"mcp-bridge", filepath.Join(directory, "missing.sock")}, 1, "open tool worker manifest"},
 		{"explicit-bridge", executable, []string{"mcp-bridge"}, 2, "mcp-bridge requires one socket path"},
+		{"web-help", executable, []string{"web", "--help"}, 0, "HTTP listen address for browser assets"},
+		{"worker-web", frontend, []string{"web", "--help"}, 1, "open tool worker manifest"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stderr, err := os.CreateTemp(t.TempDir(), "stderr-")

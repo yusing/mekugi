@@ -41,7 +41,6 @@ jobs:
             go.work.sum
             **/go.sum
       - uses: actions/setup-node@v7.0.0
-        if: matrix.platform == 'linux_amd64'
         with:
           node-version: '24.21.0'
       - name: Install offline-suite tools
@@ -55,6 +54,9 @@ jobs:
       - name: Check generated module reference
         if: matrix.platform == 'linux_amd64'
         run: make check-generated
+      - name: Check web UI
+        if: matrix.platform == 'linux_amd64'
+        run: make webui-check
       - name: Install lint tools
         if: matrix.platform == 'linux_amd64'
         run: |
