@@ -8,6 +8,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -293,7 +294,7 @@ func compactReaderInput(items []map[string]jsontext.Value, calls map[string]bool
 // The stock interpreter and nested readers keep the actual thread's permissions,
 // approvals and continuations. Completed results stay in native history.
 func compactReaderCall(record compact.Record, items []map[string]jsontext.Value, thread string) (jsontext.Value, []string, error) {
-	prefix := strings.TrimSuffix(compact.Name(record.Reference), ".json")[:40] + "-"
+	prefix := compactReaderPrefix(record.Reference)
 	sources, err := compact.ReloadSources(record.Selection)
 	if err != nil {
 		return nil, nil, err
@@ -362,16 +363,33 @@ func compactReaderCall(record compact.Record, items []map[string]jsontext.Value,
 	return responses.MustMarshalJSON(call), calls, nil
 }
 
+func compactReaderPrefix(reference string) string {
+	return strings.TrimSuffix(compact.Name(reference), ".json")[:40] + "-"
+}
+
 // Hydrate only authenticated completed reload results. Original host history and
 // its short retained reference remain untouched for observation and replay.
 func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, calls map[string]bool, thread string, metadata codexresponses.TurnMetadata, prewarm bool) (map[string]jsontext.Value, error) {
 	outputs := make(map[string]jsontext.Value)
-	if len(calls) == 0 {
+	if len(calls) == 0 && !bytes.Contains(input, []byte(compact.SnapshotPrefix)) {
 		return outputs, nil
 	}
 	var items []map[string]jsontext.Value
 	if err := json.Unmarshal(input, &items); err != nil {
 		return nil, err
+	}
+	// Completed preload history can outlive its logical tree in an ordinary
+	// fork. An authorized snapshot plus the exact assignment-derived reader
+	// identity permits projection, never scheduling new acquisition.
+	assignments := make(map[string]string)
+	for _, item := range items {
+		id := responses.StringField(item, "id")
+		if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "assistant" && strings.HasPrefix(id, "threadcontrol_") {
+			assignments[compactReaderPrefix(id)] = id
+		}
+	}
+	if len(calls) == 0 && len(assignments) == 0 {
+		return outputs, nil
 	}
 	namespace, err := p.retained.Store.NamespaceForThread(thread)
 	if err != nil {
@@ -392,12 +410,17 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 	defer release()
 	for _, item := range items {
 		id := responses.StringField(item, "call_id")
-		if !calls[id] || !strings.HasSuffix(responses.StringField(item, "type"), "_output") {
+		prefix, _, _ := strings.Cut(strings.TrimPrefix(id, "compact-"), "-")
+		assignment := assignments["compact-"+prefix+"-"]
+		inherited := !calls[id]
+		if inherited && assignment == "" || !strings.HasSuffix(responses.StringField(item, "type"), "_output") {
 			continue
 		}
 		result := binding.DecodeExecutionResult("exec", item["output"])
 		if result.ResumeHandle != "" {
-			outputs[id] = responses.MustMarshalJSON([]any{})
+			if !inherited {
+				outputs[id] = responses.MustMarshalJSON([]any{})
+			}
 			continue
 		}
 		var reference string
@@ -434,6 +457,16 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 		if len(selected) != len(captured.Sources) {
 			return nil, errors.New("reload snapshot source count mismatch")
 		}
+		if inherited {
+			pending, readers, err := compactReaderCall(compact.Record{Reference: assignment, Selection: captured.Selection}, items, thread)
+			if err != nil || len(pending) != 0 || !slices.Contains(readers, id) {
+				return nil, errors.New("inherited preload snapshot has no matching completed reader")
+			}
+			for _, reader := range readers {
+				calls[reader] = true
+				outputs[reader] = responses.MustMarshalJSON([]any{})
+			}
+		}
 		command := compact.CaptureCommand(captured.Selection)
 		var reloads []activity.ReloadSource
 		var parts []map[string]string
@@ -441,7 +474,7 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 			if selected[i].HostLoaded() {
 				continue
 			}
-			reloads = append(reloads, activity.ReloadSource{Command: command, Path: selected[i].Path, Skill: selected[i].Skill, ExitCode: new(source.ExitCode)})
+			reloads = append(reloads, activity.ReloadSource{Command: command, Path: selected[i].Path, Skill: selected[i].Skill, ExitCode: new(source.ExitCode), Preload: assignment != ""})
 			body := fmt.Sprintf("%s: exit_code=%d\n%s", source.Command, source.ExitCode, source.Stdout)
 			if source.Stderr != "" {
 				body += "\n" + source.Stderr

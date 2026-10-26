@@ -48,6 +48,9 @@ func (s *Service) ReserveSpawn(ctx context.Context, caller Identity, request Spa
 			}
 		}
 		result = Effect{ID: caller.Call, Caller: caller.Thread, CallerTurn: caller.Turn, CallerGeneration: member.Generation, Kind: "create", Phase: "create", State: "pending", Message: request.Message, Generation: 1, Child: &Child{Task: task, Settings: settings, Limits: limits, Arguments: request.Arguments, Import: request.Import}}
+		if request.Preload != "" {
+			result.Child.Preload = ContextPreload{Item: MessageItemID(caller.Thread + ":" + caller.Call + ":assignment"), Selection: request.Preload}
+		}
 		tree.Effects = append(tree.Effects, result)
 		return nil
 	})

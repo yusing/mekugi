@@ -38,6 +38,7 @@ type nativeThreadsProvider struct {
 	childDirectory, parent, child, waitTurn string
 	fullHistory                             bool
 	shellWait                               bool
+	preload                                 bool
 	calls                                   map[string]int
 	users                                   int
 	waiting, mailbox                        chan struct{}
@@ -106,12 +107,13 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	t.Helper()
 	body, err := io.ReadAll(r.Body)
 	var request struct {
-		Generate     *bool                       `json:"generate"`
-		Instructions string                      `json:"instructions"`
-		Tools        []jsontext.Value            `json:"tools"`
-		Input        []map[string]jsontext.Value `json:"input"`
-		Model        string                      `json:"model"`
-		Reasoning    struct {
+		Generate         *bool                       `json:"generate"`
+		Instructions     string                      `json:"instructions"`
+		Tools            []jsontext.Value            `json:"tools"`
+		Input            []map[string]jsontext.Value `json:"input"`
+		Model            string                      `json:"model"`
+		PreviousResponse string                      `json:"previous_response_id"`
+		Reasoning        struct {
 			Effort string `json:"effort"`
 		} `json:"reasoning"`
 	}
@@ -176,6 +178,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		if p.fullHistory {
 			fork = "" // Omission exercises the public default, full history.
 		}
+		if p.preload {
+			fork += `,preload:{sources:[{path:"preload.txt",ranges:[[2,2]]},{path:"missing.txt"},{path:"AGENTS.md"}]}`
+		}
 		program = `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"worker",message:"CHILD_ATTRIBUTED_ASSIGNMENT"` + fork + `,cwd:` + strconv.Quote(p.childDirectory) + `}));`
 	case parent && step == 3:
 		if !strings.Contains(string(body), "/root/worker") {
@@ -234,9 +239,21 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				}
 			}
 		}
+		wantUsers := 1
+		if p.preload {
+			wantUsers += 2 // One shared reload context message per selected reader outcome.
+		}
 		inherited := strings.Contains(string(body), "PARENT_PRIVATE_SENTINEL")
-		if inherited != p.fullHistory || !assignment || !environment || !p.fullHistory && users != 1 {
+		if inherited != p.fullHistory || !assignment || !environment || !p.fullHistory && users != wantUsers {
 			failure = fmt.Sprintf("child attribution: full_history=%v parent_input=%v assistant_assignment=%v environment=%v user_items=%d", p.fullHistory, inherited, assignment, environment, users)
+		}
+		if p.preload && (!strings.Contains(string(body), "CHILD_PRELOAD_CONTENT") || !strings.Contains(string(body), "missing.txt") || !strings.Contains(string(body), "exit_code=1") || strings.Contains(string(body), "UNSELECTED_PRELOAD_CONTENT") || strings.Contains(string(body), "PARENT_PRELOAD_CONTENT")) {
+			failure = "initial child inference did not receive selected child-cwd preload and explicit read failure"
+		}
+		if p.preload {
+			if err := os.WriteFile(filepath.Join(p.childDirectory, "preload.txt"), []byte("UNSELECTED_PRELOAD_CONTENT\nCHANGED_PRELOAD_CONTENT\n"), 0600); err != nil {
+				failure = err.Error()
+			}
 		}
 		if p.fullHistory {
 			guidance := developerText.String()
@@ -257,6 +274,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 		if !strings.Contains(string(body), p.childDirectory) {
 			failure = "stock shell did not return selected cwd"
+		}
+		if p.preload && ((!strings.Contains(string(body), "CHILD_PRELOAD_CONTENT") && request.PreviousResponse != "managed-"+metadata.ThreadID+"-1") || strings.Contains(string(body), "CHANGED_PRELOAD_CONTENT")) {
+			failure = "child continuation reread or lost its completed preload"
 		}
 		answer = "MANAGED_CHILD_FINAL"
 	case !parent && step == 3:
@@ -328,8 +348,12 @@ func TestNativeThreadsNonGitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{nonGit: true})
 }
 
+func TestNativeThreadsPreloadServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{preload: true})
+}
+
 type nativeThreadsScenario struct {
-	fullHistory, shellWait, nonGit bool
+	fullHistory, shellWait, nonGit, preload bool
 }
 
 func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
@@ -401,7 +425,18 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		childDirectory = filepath.Join(t.TempDir(), "child-worktree")
 		repository.run("worktree", "add", "-q", "--detach", childDirectory, "HEAD")
 	}
-	fixture := &nativeThreadsProvider{childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
+	if scenario.preload {
+		childDirectory = t.TempDir()
+		for path, body := range map[string]string{
+			filepath.Join(workspace, "preload.txt"):      "PARENT_PRELOAD_CONTENT\n",
+			filepath.Join(childDirectory, "preload.txt"): "UNSELECTED_PRELOAD_CONTENT\nCHILD_PRELOAD_CONTENT\n",
+		} {
+			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	fixture := &nativeThreadsProvider{preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
@@ -560,6 +595,25 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	if err != nil || childEvent.Frame.View.Main.ID != child || childEvent.Attachment == event.Attachment {
 		t.Fatalf("independent child runtime publication: child=%q attachment=%q error=%v", childEvent.Frame.View.Main.ID, childEvent.Attachment, err)
 	}
+	if scenario.preload {
+		attached, failed, internal := false, false, false
+		var operations []string
+		if childEvent.Frame.Main != nil {
+			for _, entry := range childEvent.Frame.Main.Entries {
+				for _, value := range entry.Values {
+					if value.Kind == "op" {
+						operations = append(operations, fmt.Sprintf("%s path=%q reload=%t exited=%t exit=%d code=%.180q", value.Verb, value.Path, value.AutoReload, value.Exited, value.ExitCode, value.Code))
+					}
+					attached = attached || value.Verb == "Attached" && value.Path == "preload.txt" && value.Exited && value.ExitCode == 0
+					failed = failed || value.Verb == "Attached" && value.Path == "missing.txt" && value.Exited && value.ExitCode == 1
+					internal = internal || value.Verb == "Run" && strings.Contains(value.Code, "mreload") || value.Verb == "Attached" && (len(value.Tail) > 0 || value.AutoReload)
+				}
+			}
+		}
+		if !attached || !failed || internal {
+			t.Fatalf("preload attachment presentation: attached=%t failed=%t internal=%t operations=%v", attached, failed, internal, operations)
+		}
+	}
 	if fullHistory {
 		if _, err := os.Stat(filepath.Join(workspace, "managed-child.txt")); !os.IsNotExist(err) {
 			t.Fatalf("child shell wrote in parent workspace: %v", err)
@@ -588,6 +642,10 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		if err != nil {
 			t.Fatalf("child workspace edit missing from saved Diff: %v; review=%+v", err, review)
 		}
+	}
+
+	if scenario.preload {
+		return // Preload acceptance ends after native acquisition and continuation.
 	}
 
 	// A new server and host process recover only retained identities. Attaching a
@@ -621,10 +679,11 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		t.Fatal("cold root resume:", err)
 	}
 	defer connection.Close()
+	var readiness string
 	for {
 		event, err = connection.Next()
 		if err != nil {
-			t.Fatal("cold root readiness:", err)
+			t.Fatal("cold root readiness:", err, readiness)
 		}
 		retainedChild := false
 		if family := event.Frame.Family; family != nil && family.Agents != nil {
@@ -637,6 +696,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		if event.Frame.View.Main.ID == root && event.Frame.View.Admission.Submit && retainedChild {
 			break
 		}
+		readiness = fmt.Sprintf("thread=%q submit=%t retained_child=%t", event.Frame.View.Main.ID, event.Frame.View.Admission.Submit, retainedChild)
 	}
 	childReply, childMessage = false, false
 	if event.Frame.Main != nil {

@@ -17,7 +17,7 @@ type Deps struct {
 
 var Module = module.Descriptor[Deps, *codexbinding.Driver, codexbinding.Bindings, module.NoViews]{
 	ID: "threadcontrol", Summary: "Coordinate independent Codex threads and retained targeted waits",
-	Requires: []module.ID{"sessionhistory"}, Lifetime: module.Invocation,
+	Requires: []module.ID{"sessionhistory", "agentguidance"}, Lifetime: module.Invocation,
 	Contributes: module.Contributions[*codexbinding.Driver]{RecordKinds: control.RecordKinds()},
 	Bindings:    codexbinding.Codex,
 	Start:       func(ctx context.Context, driver *codexbinding.Driver) error { return driver.Start(ctx) },

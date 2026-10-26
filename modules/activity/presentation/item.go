@@ -43,11 +43,11 @@ func (entry ItemContent) Values() (blocks []Value) {
 		defer func() { Identify(blocks, entry.Seq) }()
 		// An unsupported batch has one host clock, not a clock per classified
 		// operation. Keep that total visible and its output on one explicit row.
-		if n := entry.Details; entry.Kind == "tool" && n != nil && n.CommandText != "" &&
-			((len(entry.Command.Segments) == 0 || len(n.Reload) > 0) && (entry.Command.Running || entry.Command.Duration > 0) && command.Compound(blocks) || entry.Command.Approval != "" && len(blocks) > 1) &&
+		if n := entry.Details; entry.Kind == "tool" && n != nil && n.CommandText != "" && len(n.Reload) == 0 &&
+			(len(entry.Command.Segments) == 0 && (entry.Command.Running || entry.Command.Duration > 0) && command.Compound(blocks) || entry.Command.Approval != "" && len(blocks) > 1) &&
 			!slices.ContainsFunc(blocks, func(b Value) bool { return b.BatchExit }) {
 			batch := Value{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Running: entry.Command.Running, Output: n.Output, Tail: entry.Command.Tail, TailOmitted: entry.Command.TailOmitted}
-			if len(entry.Command.Segments) == 0 || len(n.Reload) > 0 {
+			if len(entry.Command.Segments) == 0 {
 				for i := range blocks {
 					blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = 0, nil, 0
 				}
@@ -163,14 +163,12 @@ func (entry ItemContent) Values() (blocks []Value) {
 	case "tool":
 		if n := entry.Details; n != nil && len(n.Reload) != 0 {
 			for _, source := range n.Reload {
-				block := Value{Kind: "op", Verb: "Attached", Path: source.Path, AutoReload: true}
+				block := Value{Kind: "op", Verb: "Attached", Path: source.Path, AutoReload: !source.Preload}
 				if source.Skill != "" {
 					block.Verb, block.Label, block.Path = "Attached skill", textsanitize.Safe(source.Skill, false), ""
 				}
 				blocks = append(blocks, block)
 			}
-			last := &blocks[len(blocks)-1]
-			last.Output, last.Tail, last.TailOmitted = n.Output, command.Tail, command.TailOmitted
 			return blocks
 		}
 		if command.UserShell {

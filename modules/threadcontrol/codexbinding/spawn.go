@@ -29,7 +29,7 @@ func (d *Driver) SpawnPrepared(ctx context.Context, caller control.Identity, pre
 	if prepared.FullHistory && prepared.Import == "" {
 		return SpawnResult{}, errors.New("full-history spawn requires an admitted sanitized fork import")
 	}
-	spawn, err := d.control.ReserveSpawn(ctx, caller, control.SpawnRequest{Name: prepared.TaskName, Settings: prepared.Settings, Limits: prepared.Limits, Message: prepared.Message, Arguments: prepared.Arguments, Import: prepared.Import})
+	spawn, err := d.control.ReserveSpawn(ctx, caller, control.SpawnRequest{Name: prepared.TaskName, Settings: prepared.Settings, Limits: prepared.Limits, Message: prepared.Message, Arguments: prepared.Arguments, Import: prepared.Import, Preload: prepared.Preload})
 	if err != nil {
 		return SpawnResult{}, err
 	}

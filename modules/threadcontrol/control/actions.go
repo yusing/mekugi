@@ -253,7 +253,7 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 			}
 			effect.Target, effect.Child.Session, effect.Child.Path = receipt.Thread, receipt.Session, receipt.Path
 			child := effect.Child
-			tree.Members[receipt.Thread] = &Member{Thread: receipt.Thread, Session: receipt.Session, Path: receipt.Path, Parent: caller, Task: child.Task, Generation: 1, Status: Pending, Settings: child.Settings, Limits: child.Limits}
+			tree.Members[receipt.Thread] = &Member{Thread: receipt.Thread, Session: receipt.Session, Path: receipt.Path, Parent: caller, Task: child.Task, Generation: 1, Status: Pending, Settings: child.Settings, Limits: child.Limits, Preload: child.Preload}
 			effect.Phase, effect.State = "assignment_input", "pending"
 		case "assignment_input":
 			effect.Phase, effect.State = "admit", "pending"

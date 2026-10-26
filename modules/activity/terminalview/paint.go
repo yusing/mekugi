@@ -286,7 +286,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 	}
 	if outcome := approvalLabel(block.Approval); outcome != "" && len(lines) > 0 {
-		if block.AutoReload && strings.HasPrefix(block.Approval, "Pending Approval") {
+		if (block.Verb == "Attached" || block.Verb == "Attached skill") && strings.HasPrefix(block.Approval, "Pending Approval") {
 			outcome = terminalui.Amber + "Approving" + terminalui.Reset
 		}
 		suffix := terminalui.Dim + " · " + terminalui.Undim + outcome

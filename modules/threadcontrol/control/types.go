@@ -52,7 +52,11 @@ type Member struct {
 	Instructions                                          []guidance.Fragment
 	Wait                                                  *Wait
 	Stop                                                  *LocalStop
+	Preload                                               ContextPreload `json:",omitzero"`
 }
+
+// ContextPreload binds a frozen source selection to its retained assignment.
+type ContextPreload struct{ Item, Selection string }
 
 // A paused generation retains its admitted work identity.
 func (m *Member) Reserved() bool {
@@ -119,6 +123,7 @@ type Effect struct {
 // SpawnRequest freezes one host call's preparation and assignment together.
 type SpawnRequest struct {
 	Import, Name, Message string
+	Preload               string
 	Arguments             jsontext.Value
 	Settings              Settings
 	Limits                Limits
@@ -129,6 +134,7 @@ type Child struct {
 	Arguments                   jsontext.Value
 	Settings                    Settings
 	Limits                      Limits
+	Preload                     ContextPreload `json:",omitzero"`
 }
 
 // Receipt contains only facts returned by the sole host request owner.

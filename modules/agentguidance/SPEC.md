@@ -115,6 +115,9 @@ Caller inline prompts precede prompt-file contents; otherwise the stock prompt
 applies. Provider identity and authentication stay unchanged. The handover summarizes the task;
 reload metadata contains only file paths, skill names and optional line ranges.
 Selection has no fixed source-count limit.
+Fresh delegate [context preload](../threadcontrol/SPEC.md#prepared-children-and-guidance)
+uses this same selection, source capture and retained-result delivery. Its reads
+run in the selected child's workspace with the child's native execution authority.
 Codex supplies `AGENTS.md`; automatic reload excludes it at every directory level,
 including explicit selections and previously captured results. Selection includes
 known supporting implementations, callers, tests, fixtures and procedure/skill

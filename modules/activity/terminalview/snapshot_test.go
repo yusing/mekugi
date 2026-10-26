@@ -15,6 +15,20 @@ import (
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
+func TestUISnapshotPreloadAttachments(t *testing.T) {
+	item := presentation.ItemContent{Kind: "tool", Command: presentation.Command{Exited: true}, Details: &presentation.ItemDetails{Reload: []presentation.ReloadSource{
+		{Path: "context.txt", Preload: true, ExitCode: new(0)},
+		{Skill: "guide", Preload: true, ExitCode: new(0)},
+		{Path: "missing.txt", Preload: true, ExitCode: new(1)},
+	}}}
+	p := Painter{Theme: diffrender.DarkTheme}
+	var rows []string
+	for _, value := range item.Values() {
+		rows = append(rows, p.Block(Block{Value: value}, 100)...)
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/preload-attachments-ansi.txt", append(rows, "plain after attachments"), 100)
+}
+
 func TestUISnapshotCommonPathTargets(t *testing.T) {
 	for _, tc := range []struct{ name, source, cwd, want string }{
 		{"external_search", "rg needle /home/yusing/projects/codex/codex-rs/core/src /home/yusing/projects/codex/codex-rs/tui/src/bottom_pane", "/workspace", "/home/yusing/projects/codex/codex-rs/{core/src,tui/src/bottom_pane}"},

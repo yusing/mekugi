@@ -257,6 +257,32 @@ func (s *Service) Member(thread string) (*Member, bool) {
 	return member, err == nil
 }
 
+// ContextPreloads borrows admitted ancestry without copying the logical tree or
+// its growing effect history. Consumers match the retained assignment item before
+// acquiring anything, including when a full-history child inherits that item.
+func (s *Service) ContextPreloads(thread, session string) ([]ContextPreload, error) {
+	owner, err := s.owner(thread)
+	if errors.Is(err, ErrNotAdmitted) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	tree := owner.state.Load()
+	member := tree.Members[thread]
+	if !member.AudienceAdmitted || member.Session != session {
+		return nil, errors.New("context preload requires admitted runtime identity")
+	}
+	var selections []ContextPreload
+	for member != nil {
+		if member.Preload.Selection != "" {
+			selections = append(selections, member.Preload)
+		}
+		member = tree.Members[member.Parent]
+	}
+	return selections, nil
+}
+
 // Descendants reads admitted logical members, including cold paused children.
 func (s *Service) Descendants(thread string) []Participant {
 	owner, err := s.owner(thread)

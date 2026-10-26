@@ -10,17 +10,19 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 type SpawnOptions struct {
-	TaskName        string  `json:"task_name"`
-	Message         string  `json:"message"`
-	AgentType       *string `json:"agent_type,omitempty"`
-	ForkTurns       *string `json:"fork_turns,omitempty"`
-	Model           *string `json:"model,omitempty"`
-	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
-	Cwd             *string `json:"cwd,omitempty"`
+	TaskName        string         `json:"task_name"`
+	Message         string         `json:"message"`
+	AgentType       *string        `json:"agent_type,omitempty"`
+	ForkTurns       *string        `json:"fork_turns,omitempty"`
+	Model           *string        `json:"model,omitempty"`
+	ReasoningEffort *string        `json:"reasoning_effort,omitempty"`
+	Cwd             *string        `json:"cwd,omitempty"`
+	Preload         jsontext.Value `json:"preload,omitempty"`
 }
 
 type Model struct {
@@ -37,6 +39,7 @@ type PreparedChild struct {
 	Limits            control.Limits
 	FullHistory       bool
 	TaskName, Message string
+	Preload           string
 }
 
 // prepareChild translates the selected invocation's values, leaving execution
@@ -57,6 +60,15 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	}
 	if result.FullHistory && (options.Model != nil || options.ReasoningEffort != nil) {
 		return result, errors.New("full-history forks inherit model and effort; use fork_turns=none for overrides")
+	}
+	if len(options.Preload) > 0 {
+		if result.FullHistory {
+			return result, errors.New("context preload requires fork_turns=none")
+		}
+		if _, err := compact.Sources(string(options.Preload)); err != nil {
+			return result, fmt.Errorf("context preload: %w", err)
+		}
+		result.Preload = string(options.Preload)
 	}
 	model, effort := options.Model, options.ReasoningEffort
 	// Source: codex-rs/core/src/agent/child_config.rs:52:76,204:244@0df4aa677.

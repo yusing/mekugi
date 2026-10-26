@@ -239,7 +239,7 @@ Resolve semantic definitions and references
 Coordinate independent Codex threads and retained targeted waits
 
 - Composition: selected; lifetime: `invocation`.
-- Requires: `sessionhistory`.
+- Requires: `sessionhistory`, `agentguidance`.
 - Contributes: `record-kinds`.
 - Records: `threadcontrol`, `threadcontrol-import`.
 - Codex connections: `mcp-tools`.

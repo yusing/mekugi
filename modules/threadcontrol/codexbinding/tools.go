@@ -11,6 +11,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -18,7 +19,7 @@ import (
 func (d *Driver) mcp() binding.MCPServer {
 	server := binding.MCPServer{Name: "threadcontrol", Server: mcp.NewServer(&mcp.Implementation{Name: "threadcontrol", Version: "1"}, nil)}
 	for _, entry := range []struct{ name, description, schema string }{
-		{"spawn_agent", "Create a native agent with role and optional cwd. Full-history forks inherit model and effort; fork_turns=none permits authorized overrides.", `{"type":"object","properties":{"task_name":{"type":"string"},"message":{"type":"string"},"agent_type":{"type":"string"},"fork_turns":{"type":"string","enum":["all","none"]},"model":{"type":"string"},"reasoning_effort":{"type":"string"},"cwd":{"type":"string"}},"required":["task_name","message"],"additionalProperties":false}`},
+		{"spawn_agent", "Create a native agent with role and optional cwd. Full-history forks inherit model and effort; fork_turns=none permits authorized overrides and optional preload. Preload uses the compaction sources schema: file path with optional inclusive ranges, or skill name with optional SKILL.md path. Relative paths use child cwd; AGENTS.md is host-loaded. Reads use child permissions before inference; failures remain visible.", `{"type":"object","properties":{"task_name":{"type":"string"},"message":{"type":"string"},"agent_type":{"type":"string"},"fork_turns":{"type":"string","enum":["all","none"]},"model":{"type":"string"},"reasoning_effort":{"type":"string"},"cwd":{"type":"string"},"preload":` + compact.SelectionSchema + `},"required":["task_name","message"],"additionalProperties":false}`},
 		{"list_agents", "List admitted agents and retained operations, optionally below path_prefix.", `{"type":"object","properties":{"path_prefix":{"type":"string"}},"additionalProperties":false}`},
 		{"wait_agent", "Wait for selected descendants without polling. target defaults to all; omit timeout_ms for no deadline. Returns a queued event or registers a local stop after successful enclosing execution. cancel_id cancels only the subscription and excludes other fields.", `{"type":"object","properties":{"target":{"oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"timeout_ms":{"type":"integer"},"cancel_id":{"type":"string"}},"additionalProperties":false}`},
 		{"send_message", "Queue attributed input without starting idle work.", `{"type":"object","properties":{"target":{"type":"string"},"message":{"type":"string"}},"required":["target","message"],"additionalProperties":false}`},
@@ -79,7 +80,7 @@ func (d *Driver) spawnAgent(ctx context.Context, metadata binding.MCPIdentity, c
 			return nil, errors.New("conflicting repeated spawn arguments")
 		}
 		_, name, _ := strings.CutLast(old.Child.Task, "/")
-		prepared = PreparedChild{Arguments: old.Child.Arguments, Settings: old.Child.Settings, Limits: old.Child.Limits, TaskName: name, Message: old.Message, FullHistory: old.Child.Import != "", Import: old.Child.Import}
+		prepared = PreparedChild{Arguments: old.Child.Arguments, Settings: old.Child.Settings, Limits: old.Child.Limits, TaskName: name, Message: old.Message, FullHistory: old.Child.Import != "", Import: old.Child.Import, Preload: old.Child.Preload.Selection}
 	} else {
 		d.mu.RLock()
 		models, catalogError := d.models, d.catalogError

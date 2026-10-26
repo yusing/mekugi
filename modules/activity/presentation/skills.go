@@ -89,7 +89,9 @@ func SkillLoads[S Source](record Record[S]) []string {
 			continue
 		}
 		if block.Kind == "op" && block.Verb == "Attached skill" && block.Label != "" {
-			names = append(names, block.Label)
+			if facts.Kind != "tool" || block.Exited {
+				names = append(names, block.Label)
+			}
 		}
 		if block.Kind != "reads" || block.Verb != "Skill" && block.Verb != "Read" {
 			continue

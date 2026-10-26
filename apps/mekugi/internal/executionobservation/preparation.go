@@ -195,6 +195,7 @@ func (t *mekugiResponseTransform) ObserveUsage(counts inference.Usage) {
 func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexresponses.TurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
 	var reload jsonv1.RawMessage
 	var reloadCalls map[string]bool
+	var preloadActivity []activitypresentation.Supplement
 	if bytes.Contains(request.Fields["input"], []byte(compact.Prefix)) {
 		if !metadataValid {
 			return nil, errors.New("compaction recovery requires valid metadata")
@@ -204,6 +205,29 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		if err != nil {
 			return nil, err
 		}
+	}
+	if p.threadControl != nil {
+		if !metadataValid {
+			return nil, errors.New("context preload requires valid metadata")
+		}
+		pending, calls, supplements, err := p.preparePreloadInput(request, sessionID, threadID, metadata, prewarm)
+		if err != nil {
+			return nil, err
+		}
+		if len(pending) > 0 {
+			reload = pending
+		}
+		preloadActivity = supplements
+		if reloadCalls == nil {
+			reloadCalls = calls
+		} else {
+			for id := range calls {
+				reloadCalls[id] = true
+			}
+		}
+	}
+	if reloadCalls == nil && bytes.Contains(request.Fields["input"], []byte(compact.SnapshotPrefix)) {
+		reloadCalls = make(map[string]bool)
 	}
 	reloadOutputs, err := p.compactSnapshots(ctx, request.Fields["input"], reloadCalls, threadID, metadata, prewarm)
 	if err != nil {
@@ -394,6 +418,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		}
 	}
 	if activityThreadID != "" {
+		p.activity.Collect(preloadActivity...)
 		model := request.Model()
 		p.activity.BeginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model), time.Now())
 	}

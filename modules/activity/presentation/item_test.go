@@ -6,23 +6,32 @@ import (
 )
 
 func TestCompactReloadPreservesIndependentOutcomes(t *testing.T) {
-	for _, completed := range []bool{false, true} {
-		sources := []ReloadSource{{Path: "guide.txt"}, {Skill: "loaded"}, {Skill: "denied"}}
-		if completed {
-			sources[0].ExitCode, sources[1].ExitCode, sources[2].ExitCode = new(0), new(0), new(1)
-		}
-		item := ItemContent{Seq: 12, Kind: "tool", Command: Command{Script: "mreload selection", Running: !completed, Exited: completed, Approval: "Approved"}, Details: &ItemDetails{Reload: sources, CommandText: "mreload selection"}}
-		values := item.Values()
-		if len(values) != 4 {
-			t.Fatalf("source rows and aggregate approval: %+v", values)
-		}
-		for i, value := range values[:3] {
-			code := 0
-			if completed && i == 2 {
-				code = 1
+	for _, preload := range []bool{false, true} {
+		for _, completed := range []bool{false, true} {
+			sources := []ReloadSource{{Path: "guide.txt", Preload: preload}, {Skill: "loaded", Preload: preload}, {Skill: "denied", Preload: preload}}
+			if completed {
+				sources[0].ExitCode, sources[1].ExitCode, sources[2].ExitCode = new(0), new(0), new(1)
 			}
-			if !value.AutoReload || value.Source != 12 || value.Operation != i+1 || value.Exited != completed || value.ExitCode != code || value.Running == completed {
-				t.Fatalf("source %d outcome: %+v", i, value)
+			item := ItemContent{Seq: 12, Kind: "tool", Command: Command{Script: "mreload selection", Running: !completed, Exited: completed, Approval: "Approved", Tail: []string{"Reload snapshot: mread amber"}}, Details: &ItemDetails{Reload: sources, CommandText: "mreload selection", Output: 1}}
+			values := item.Values()
+			if len(values) != 3 {
+				t.Fatalf("source rows: %+v", values)
+			}
+			for i, value := range values[:3] {
+				if value.Verb == "Run" || len(value.Tail) > 0 || value.Output != 0 {
+					t.Fatalf("internal reload command leaked into source row: %+v", value)
+				}
+				code := 0
+				if completed && i == 2 {
+					code = 1
+				}
+				if value.AutoReload == preload || value.Source != 12 || value.Operation != i+1 || value.Exited != completed || value.ExitCode != code || value.Running == completed {
+					t.Fatalf("source %d outcome: %+v", i, value)
+				}
+			}
+			loads := SkillLoads(Record[modelSource]{Source: modelSource{Kind: "tool"}, Values: values})
+			if completed && (len(loads) != 1 || loads[0] != "loaded") || !completed && len(loads) != 0 {
+				t.Fatalf("preload=%t completed=%t skill loads=%v", preload, completed, loads)
 			}
 		}
 	}

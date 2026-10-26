@@ -14,6 +14,9 @@ func takeNativeActivity(a *sessioncontrol.Audience, root string) []sessionpresen
 	var entries []sessionpresentation.ActivityEntry
 	for _, event := range events {
 		entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: event.Thread, Turn: event.Turn, Item: event.Source, Phase: "supplement", Live: true}, Agent: audience.Threads[event.Thread], Kind: event.Kind, Text: event.Text, CallID: event.CallID, Observed: event.Observed}
+		if event.Thread == root {
+			entry.Agent = "/root"
+		}
 		if event.Kind == "error" {
 			entry.ErrorDetail, entry.Text = event.Text, activityui.ErrorPreview(event.Text)
 		}

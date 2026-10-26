@@ -43,6 +43,8 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	}
 	for _, test := range []struct{ name, arguments string }{
 		{"spawn_agent", `{"task_name":"child"}`},
+		{"spawn_agent", `{"task_name":"child","message":"task","preload":{"sources":[{"unknown":"file"}]}}`},
+		{"spawn_agent", `{"task_name":"child","message":"task","preload":{"sources":[{"path":"file","ranges":[[1]]}]}}`},
 		{"list_agents", `{"unknown":true}`},
 		{"wait_agent", `{"target":[]}`},
 		{"wait_agent", `{"timeout_ms":1.5}`},

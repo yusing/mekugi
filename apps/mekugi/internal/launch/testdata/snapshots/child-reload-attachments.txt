@@ -1,0 +1,2 @@
+├ Attached guide.txt (auto reloaded)
+└ Attached skill missing · exit 1

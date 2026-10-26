@@ -17,6 +17,11 @@ preparer. Frontends supply preview timing; this workflow has no renderer.
 Independent-thread requests bind their authenticated host identity to Thread
 Control before inference. Only the confirmed successful result of a registered
 wait's enclosing execution can admit a local stop; nested MCP success alone cannot.
+Prepared child preload selections bind to retained assignment identities. The
+shared compaction reader completes acquisition before provider inference and
+projects complete retained bodies and failed reads without exposing orchestration
+calls. Prewarm and execution-free requests never start acquisition; completed
+results remain reusable across continuation and resume.
 
 One invocation window registry joins command reports and capture observations.
 Native shell operations use the same admission and completion workflow, retaining

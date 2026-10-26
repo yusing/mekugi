@@ -390,6 +390,13 @@ without transport quotes. Successful receipts open the exact submitted content;
 failures name omissions and open no invented content. Rejected submissions claim
 no success. Transport envelopes remain hidden from transcripts and recalled input.
 
+Fresh-delegate preloads and compaction reloads use the same per-source Attached
+rows, including the initial acquisition. Independent source failures stay visible;
+the internal reload command and snapshot reference stay out of the transcript.
+Original host evidence remains unchanged.
+Only successful compaction reloads carry the muted `(auto reloaded)` suffix;
+fresh-delegate preloads use plain Attached rows.
+
 Adjacent traffic between the displayed agent and one peer forms a thread. Traffic
 between other agents keeps separate route headings and sender-colored rails, so
 changing recipients cannot inherit a previous exchange's reply direction.

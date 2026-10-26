@@ -1536,6 +1536,7 @@ export type ReloadSource = {
   "Path": string;
   "Skill": string;
   "ExitCode": (number | null);
+  "Preload"?: boolean;
 };
 
 export type PreparedContent = {

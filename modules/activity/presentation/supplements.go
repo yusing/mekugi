@@ -20,6 +20,7 @@ const SupplementEditReceipt = "edit_receipt"
 type ReloadSource struct {
 	Command, Path, Skill string
 	ExitCode             *int // Present only after an authenticated per-source result.
+	Preload              bool `json:",omitzero"`
 }
 type Supplement struct {
 	ReloadSources                      []ReloadSource

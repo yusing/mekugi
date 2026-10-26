@@ -11,6 +11,9 @@ import (
 	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
+// SelectionSchema describes the shared compaction and delegate source selection.
+const SelectionSchema = `{"type":"object","properties":{"sources":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"skill":{"type":"string"},"ranges":{"type":"array","items":{"type":"array","items":{"type":"integer"},"minItems":2,"maxItems":2}}},"additionalProperties":false}}},"required":["sources"],"additionalProperties":false}`
+
 // ReadCommands interprets selection metadata, never summary prose or file content.
 func ReadCommands(selection string) ([]string, error) {
 	if selection == "" {

@@ -27,6 +27,10 @@ func TestPrepareChildModelEffortAndContext(t *testing.T) {
 		{name: "explicit settings precede configured defaults", model: "other", effort: "medium", options: SpawnOptions{ForkTurns: new("none"), Model: new("other"), ReasoningEffort: new("medium")}, defaults: [3]*string{new("parent"), new("low"), nil}},
 		{name: "full model override refused", options: SpawnOptions{Model: new("other")}, fail: true},
 		{name: "full effort override refused", options: SpawnOptions{ReasoningEffort: new("low")}, fail: true},
+		{name: "full preload refused", options: SpawnOptions{Preload: []byte(`{"sources":[]}`)}, fail: true},
+		{name: "fresh preload", model: "parent", effort: "high", options: SpawnOptions{ForkTurns: new("none"), Preload: []byte(`{"sources":[{"path":"context.go","ranges":[[2,4]]},{"skill":"review"}]}`)}},
+		{name: "malformed preload refused", options: SpawnOptions{ForkTurns: new("none"), Preload: []byte(`{"source":[]}`)}, fail: true},
+		{name: "null preload refused", options: SpawnOptions{ForkTurns: new("none"), Preload: []byte(`null`)}, fail: true},
 		{name: "unsupported effort refused", options: SpawnOptions{ForkTurns: new("none"), Model: new("other"), ReasoningEffort: new("high")}, fail: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -43,6 +47,9 @@ func TestPrepareChildModelEffortAndContext(t *testing.T) {
 			}
 			if child.FullHistory != tc.full || child.Settings.Model != tc.model || child.Settings.Effort == nil || *child.Settings.Effort != tc.effort {
 				t.Fatalf("preparation = %+v", child)
+			}
+			if child.Preload != string(tc.options.Preload) {
+				t.Fatal("preload selection was not frozen")
 			}
 			if child.Settings.Provider != parent.Provider || !reflect.DeepEqual(child.Settings.PermissionProfile, parent.PermissionProfile) || !reflect.DeepEqual(child.Settings.ApprovalPolicy, parent.ApprovalPolicy) {
 				t.Fatalf("parent execution settings lost: %+v", child.Settings)

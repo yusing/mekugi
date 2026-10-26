@@ -85,6 +85,20 @@ stock inheritance. Explicit model/effort arguments still require a fresh child.
 Stock tier precedence remains unchanged. Roles may reduce supported
 capabilities, not widen authority or replace provider credentials.
 
+Fresh children accept optional `preload:{"sources":[...]}` with the same source
+selection as [compaction reload](../agentguidance/SPEC.md#compaction-context):
+file `path`, optional inclusive `ranges`, or `skill` with an optional native
+`SKILL.md` path. A preload requires explicit `fork_turns:"none"`; an empty sources
+array is valid. Relative file paths resolve in the selected child cwd. Codex
+supplies `AGENTS.md`, which is excluded from acquisition.
+The prepared assignment freezes the selection before creation. Before the child's
+first provider inference, the shared native reload reader acquires selected
+sources under that child's permissions and approvals. Successful bodies and
+individual failures become reusable context alongside the attributed assignment;
+one failed source does not discard the others. Completed capture survives resume
+and inherited history without rereading. Compaction retires the initial preload
+when its assignment leaves context and selects subsequent reloads normally.
+
 Permission profiles remain complete, including filesystem deny rules and network
 policy. Creation that cannot express them starts no work; the first turn applies
 the captured full policy. Host-confirmed settings are compared before exposing a

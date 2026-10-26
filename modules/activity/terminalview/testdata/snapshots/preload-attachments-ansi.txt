@@ -1,0 +1,4 @@
+"\x1b[38;5;114;1mAttached\x1b[m \x1b[1mcontext.txt\x1b[m                                                                                "
+"\x1b[38;5;114;1mAttached skill\x1b[m \x1b[2mguide\x1b[m                                                                                "
+"\x1b[38;5;114;1mAttached\x1b[m \x1b[1mmissing.txt\x1b[m \x1b[2m· \x1b[38;5;203;22mexit 1\x1b[m                                                                       "
+"plain after attachments                                                                             "
