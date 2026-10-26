@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -75,6 +77,9 @@ func TestNativeViewExplicitCompletionReopensDismissedTarget(t *testing.T) {
 	v := n.views["view"]
 	input := sessionapi.NativeEditorInput{Draft: composer.Draft{Text: "/"}}
 	v.complete(input, u.clock, u.Requests, nil)
+	if !slices.ContainsFunc(v.picker.Choices, func(choice completion.Choice) bool { return choice.Name == "/detach" && choice.HideRemote }) {
+		t.Fatal("native catalog omitted detach")
+	}
 	if !v.picker.Open || len(v.picker.Choices) == 0 {
 		t.Fatal("command choices did not open")
 	}

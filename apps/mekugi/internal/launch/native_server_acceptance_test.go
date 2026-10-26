@@ -217,8 +217,8 @@ func TestNativeServerAcceptance(t *testing.T) {
 	awaitScreen("closed status panel", func(screen string) bool {
 		return !strings.Contains(screen, "Session status") && strings.Contains(screen, "offline host response 2")
 	})
-	send("/quit")
-	await("/quit")
+	send("/detach")
+	await("Leave the terminal; keep the session running")
 	send("\r")
 	select {
 	case err := <-clientDone:

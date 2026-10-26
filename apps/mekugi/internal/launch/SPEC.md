@@ -186,9 +186,11 @@ session presentation. Module state stays with its composed owner.
 Before terminal attachment, Ctrl-C cancels the client's startup wait. An already
 admitted server runtime remains independent of that wait. Attached input uses the
 existing semantic interrupt and exit controls; quitting or terminating the client
-releases its renderer without stopping execution. Native resume attaches to an
-already-active logical thread; saved-thread resume admits only durably enrolled
-Mekugi history through the
+releases its renderer without stopping execution. The terminal-only `/detach`
+command leaves the native attachment, including during active work, keeping the session
+available to `--resume` and the WebUI. `/quit` retains the same local exit behavior.
+Native resume attaches to an already-active logical thread; saved-thread resume
+admits only durably enrolled Mekugi history through the
 existing startup owner. Server shutdown cancels and joins its runtimes, allowing
 Codex to clean up owned execution processes.
 

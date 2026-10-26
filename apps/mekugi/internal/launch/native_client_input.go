@@ -498,7 +498,7 @@ func (c *nativeClient) composer(input terminalsession.ComposerInput) {
 		}
 		return
 	case sessionpresentation.SubmitComposer, sessionpresentation.QueueComposer:
-		if strings.TrimSpace(editor.Text) == "/quit" {
+		if command := strings.TrimSpace(editor.Text); command == "/quit" || command == "/detach" {
 			editor.Take()
 			c.quit = true
 			return

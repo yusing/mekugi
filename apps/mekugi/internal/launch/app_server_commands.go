@@ -51,6 +51,7 @@ var nativeCommands = []completion.Choice{
 	{Name: "/lock", HideRemote: true, Description: "Prevent accidental keyboard interruption"},
 	{Name: "/unlock", HideRemote: true, Description: "Allow keyboard interruption again"},
 	{Name: "/quit", Description: "Quit the session"},
+	{Name: "/detach", HideRemote: true, Description: "Leave the terminal; keep the session running"},
 }
 
 // Source: codex-rs/tui/src/chatwidget/slash_dispatch.rs:268:310 and
