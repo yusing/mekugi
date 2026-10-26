@@ -40,21 +40,9 @@ func (p *Pass) Text(header, body string) Result {
 	accepted := projection.Spans[:0]
 	markers := make([]string, 0, len(projection.Spans))
 	for _, span := range projection.Spans {
-		var marker strings.Builder
-		fmt.Fprintf(&marker, "[same as O%d", span.Source)
-		if !span.Whole {
-			if span.FirstLine == span.LastLine {
-				fmt.Fprintf(&marker, " L%d", span.FirstLine)
-			} else {
-				fmt.Fprintf(&marker, " L%d-%d", span.FirstLine, span.LastLine)
-			}
-		}
-		marker.WriteByte(']')
-		if body[span.End-1] == '\n' {
-			marker.WriteByte('\n')
-		}
-		reference := marker.String()
-		saved := p.savings.count(body[span.Start:span.End]) - p.savings.count(reference)
+		run := body[span.Start:span.End]
+		reference := referenceText(span, run)
+		saved := p.savings.count(run) - p.savings.count(reference)
 		if !p.savings.failed && saved >= minimumTokenSavings {
 			accepted = append(accepted, span)
 			markers = append(markers, reference)
@@ -64,19 +52,25 @@ func (p *Pass) Text(header, body string) Result {
 	if len(projection.Spans) > 0 {
 		result.Occurrences++
 	}
-	verbatim := len(body)
 	for _, span := range projection.Spans {
-		verbatim -= span.End - span.Start
 		result.RepeatedBytes += span.End - span.Start
 		result.RepeatedLines += strings.Count(strings.TrimSuffix(body[span.Start:span.End], "\n"), "\n") + 1
 	}
 	var text strings.Builder
 	text.WriteString(header)
-	if verbatim > 0 {
+	var anchor string
+	var anchorTokens int64
+	if result.RepeatedBytes < len(body) && p.index.Add(p.sources+1, projection, func(span matcher.Span, run string) bool {
+		if anchor == "" {
+			anchor = fmt.Sprintf("O%d:\n", span.Source)
+			anchorTokens = p.savings.count(anchor)
+		}
+		saved := p.savings.count(run) - p.savings.count(referenceText(span, run)) - anchorTokens
+		return !p.savings.failed && saved >= minimumTokenSavings
+	}) {
 		p.sources++
-		p.index.Add(p.sources, projection)
 		// Anchor sources before any later repeat to keep growing prefixes stable.
-		fmt.Fprintf(&text, "[O%d]\n", p.sources)
+		text.WriteString(anchor)
 	}
 	start := 0
 	for i, span := range projection.Spans {
@@ -87,4 +81,21 @@ func (p *Pass) Text(header, body string) Result {
 	text.WriteString(body[start:])
 	result.Text = text.String()
 	return result
+}
+
+// Both source admission and replacement pay for the same complete reference.
+func referenceText(span matcher.Span, run string) string {
+	var marker strings.Builder
+	fmt.Fprintf(&marker, "See O%d", span.Source)
+	if !span.Whole {
+		if span.FirstLine == span.LastLine {
+			fmt.Fprintf(&marker, ":%d", span.FirstLine)
+		} else {
+			fmt.Fprintf(&marker, ":%d-%d", span.FirstLine, span.LastLine)
+		}
+	}
+	if strings.HasSuffix(run, "\n") {
+		marker.WriteByte('\n')
+	}
+	return marker.String()
 }

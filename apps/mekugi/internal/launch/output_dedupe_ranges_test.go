@@ -31,12 +31,12 @@ func TestDuplicateOutputNativeMCatRanges(t *testing.T) {
 		number                    bool
 		edit                      bool
 	}{
-		{"trailing overlap", "1:10", "7:16", "[same as O1 L7-10]\n" + strings.Join(rows[10:], ""), false, false},
-		{"leading overlap", "7:16", "1:10", strings.Join(rows[:6], "") + "[same as O1 L1-4]\n", false, false},
-		{"contained", "1:16", "5:10", "[same as O1 L5-10]\n", false, false},
-		{"container", "5:10", "1:16", strings.Join(rows[:4], "") + "[same as O1]\n" + strings.Join(rows[10:], ""), false, false},
-		{"edited and new rows", "1:10", "5:16", "[same as O1 L5-6]\n{\"id\":7,\"description\":\"Edited after the first read.\"}\n[same as O1 L8-10]\n" + strings.Join(rows[10:], ""), false, true},
-		{"absolute numbered overlap", "7:12", "10:16", "[same as O1 L4-6]\n", true, false},
+		{"trailing overlap", "1:10", "7:16", "See O1:7-10\n" + strings.Join(rows[10:], ""), false, false},
+		{"leading overlap", "7:16", "1:10", strings.Join(rows[:6], "") + "See O1:1-4\n", false, false},
+		{"contained", "1:16", "5:10", "See O1:5-10\n", false, false},
+		{"container", "5:10", "1:16", strings.Join(rows[:4], "") + "See O1\n" + strings.Join(rows[10:], ""), false, false},
+		{"edited and new rows", "1:10", "5:16", "See O1:5-6\n{\"id\":7,\"description\":\"Edited after the first read.\"}\nSee O1:8-10\n" + strings.Join(rows[10:], ""), false, true},
+		{"absolute numbered overlap", "7:12", "10:16", "See O1:4-6\n", true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "fixture.json")
@@ -69,10 +69,10 @@ func TestDuplicateOutputNativeMCatRanges(t *testing.T) {
 			secondCommand, second := read(tc.second)
 			want := tc.want
 			if tc.name != "contained" {
-				want = "[O2]\n" + want
+				want = "O2:\n" + want
 			}
 			if tc.number {
-				// The marker's L4-6 addresses output rows, while retained rows
+				// The marker's :4-6 addresses output rows, while retained rows
 				// keep the reader's absolute source numbering (13 through 16).
 				for i := 12; i < len(rows); i++ {
 					want += fmt.Sprintf("%6d\t%s", i+1, rows[i])
@@ -86,7 +86,7 @@ func TestDuplicateOutputNativeMCatRanges(t *testing.T) {
 			if got := responses.StringField(items[3], "output"); got != duplicateTestHeader+want {
 				t.Fatalf("projected reader output = %q, want %q", got, duplicateTestHeader+want)
 			}
-			if responses.StringField(items[1], "output") != duplicateTestHeader+"[O1]\n"+first || !responses.SameJSONValue(request.OriginalField("input"), responses.MustMarshalJSON(input)) {
+			if responses.StringField(items[1], "output") != duplicateTestHeader+"O1:\n"+first || !responses.SameJSONValue(request.OriginalField("input"), responses.MustMarshalJSON(input)) {
 				t.Fatal("original reader evidence changed")
 			}
 		})
@@ -117,7 +117,7 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 	read("7:16", "second")
 	first := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 	firstItems := duplicateTestItems(t, first)
-	if got, want := responses.StringField(firstItems[3], "output"), duplicateTestHeader+"[O2]\n[same as O1 L7-10]\n"+strings.Join(rows[10:], ""); got != want {
+	if got, want := responses.StringField(firstItems[3], "output"), duplicateTestHeader+"O2:\nSee O1:7-10\n"+strings.Join(rows[10:], ""); got != want {
 		t.Fatalf("second read = %q, want %q", got, want)
 	}
 	prefix := bytes.Clone(first.Fields["input"])
@@ -129,9 +129,9 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 	read("5:14", "third")
 	grown := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 	items := duplicateTestItems(t, grown)
-	// Rows 11-14 are verbatim at L2-5 of the second projected body, after
+	// Rows 11-14 are verbatim at rows 2-5 of the second projected body, after
 	// its overlap became one marker. The third read must address those rows.
-	want := duplicateTestHeader + "[same as O1 L5-10]\n[same as O2 L2-5]\n"
+	want := duplicateTestHeader + "See O1:5-10\nSee O2:2-5\n"
 	if got := responses.StringField(items[5], "output"); got != want {
 		t.Fatalf("third read = %q, want direct verbatim references %q", got, want)
 	}

@@ -36,7 +36,7 @@ func BenchmarkDuplicateOutputProjection(b *testing.B) {
 		for b.Loop() {
 			idx := New()
 			for source, text := range history {
-				idx.Add(source, idx.Project(text))
+				idx.Add(source, idx.Project(text), nil)
 			}
 			idx.Close()
 		}
@@ -45,7 +45,7 @@ func BenchmarkDuplicateOutputProjection(b *testing.B) {
 		idx := New()
 		defer idx.Close()
 		for source, text := range history {
-			idx.Add(source, idx.Project(text))
+			idx.Add(source, idx.Project(text), nil)
 		}
 		text := history[len(history)-1][:60<<10]
 		b.ReportAllocs()
@@ -63,7 +63,7 @@ func BenchmarkDuplicateOutputProjection(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(int64(len(text)))
 		for b.Loop() {
-			idx.Add(1, idx.Project(text))
+			idx.Add(1, idx.Project(text), nil)
 		}
 	})
 	b.Run("fragmented_window", func(b *testing.B) {
@@ -72,7 +72,7 @@ func BenchmarkDuplicateOutputProjection(b *testing.B) {
 		for b.Loop() {
 			idx := New()
 			for source, text := range history {
-				idx.Add(source, idx.Project(text))
+				idx.Add(source, idx.Project(text), nil)
 			}
 			idx.Close()
 		}
@@ -86,8 +86,8 @@ func BenchmarkDuplicateOutputProjection(b *testing.B) {
 		b.SetBytes(int64(len(text)*2 + len(blank)))
 		for b.Loop() {
 			idx := New()
-			idx.Add(1, idx.Project(text))
-			idx.Add(2, idx.Project(blank))
+			idx.Add(1, idx.Project(text), nil)
+			idx.Add(2, idx.Project(blank), nil)
 			if len(idx.Project(text).Spans) == 0 {
 				b.Fatal("expected a duplicate run")
 			}

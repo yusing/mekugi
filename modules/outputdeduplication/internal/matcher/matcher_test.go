@@ -48,7 +48,7 @@ func TestMatcherRuns(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			idx := New()
 			defer idx.Close()
-			idx.Add(17, idx.Project(tt.earlier))
+			idx.Add(17, idx.Project(tt.earlier), nil)
 			for range 2 { // Project is read-only and repeatable.
 				if got := idx.Project(tt.text).Spans; !reflect.DeepEqual(got, tt.want) {
 					t.Fatalf("spans = %+v, want %+v", got, tt.want)
@@ -62,14 +62,33 @@ func TestMatcherThreshold(t *testing.T) {
 	idx := New()
 	defer idx.Close()
 	short := strings.Repeat("s", Threshold-1)
-	idx.Add(1, idx.Project(short))
+	idx.Add(1, idx.Project(short), nil)
 	if got := idx.Project(short + "\n" + testBlock("tail", 3)).Spans; len(got) != 0 {
 		t.Fatalf("below-threshold source was indexed: %+v", got)
 	}
 	exact := strings.Repeat("e", Threshold)
-	idx.Add(2, idx.Project(exact))
+	idx.Add(2, idx.Project(exact), nil)
 	if got, want := idx.Project(exact).Spans, []Span{{0, Threshold, 2, 1, 1, true}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("threshold boundary: got %+v, want %+v", got, want)
+	}
+}
+
+func TestMatcherRejectedSourcesAdvanceWindow(t *testing.T) {
+	idx := New()
+	defer idx.Close()
+	old := testBlock("old", 3)
+	idx.Add(1, idx.Project(old), nil)
+	rejected := strings.Repeat("valuable rejected text\n", WindowBytes/20)
+	if idx.Add(2, idx.Project(rejected), func(Span, string) bool { return false }) {
+		t.Fatal("rejected source was retained")
+	}
+	if len(idx.pieces) != 0 || len(idx.Project(old).Spans) != 0 {
+		t.Fatal("rejected text did not evict earlier sources")
+	}
+	idx.Add(3, idx.Project(old), nil)
+	projected := idx.Project("tiny prefix\n" + old + "tiny tail\n")
+	if idx.Add(4, projected, nil) {
+		t.Fatal("short residual runs cannot support a future match")
 	}
 }
 
@@ -77,9 +96,9 @@ func TestMatcherVisibleRows(t *testing.T) {
 	idx := New()
 	defer idx.Close()
 	a, b, c := testBlock("a", 3), testBlock("b", 3), testBlock("c", 3)
-	idx.Add(1, idx.Project(b))
+	idx.Add(1, idx.Project(b), nil)
 	projected := idx.Project(a + b + c)
-	idx.Add(2, projected)
+	idx.Add(2, projected, nil)
 	// The replaced b is not indexed under source 2. Its marker occupies row 4,
 	// so c begins at delivered row 5, rather than original row 7.
 	want := []Span{{0, len(a), 2, 1, 3, false}, {len(a), len(a) + len(b), 1, 1, 3, true}, {len(a) + len(b), len(a) + len(b) + len(c), 2, 5, 7, false}}
@@ -87,7 +106,7 @@ func TestMatcherVisibleRows(t *testing.T) {
 		t.Fatalf("visible references = %+v, want %+v", got, want)
 	}
 	// Full repeats contribute no new reference targets.
-	idx.Add(3, idx.Project(b))
+	idx.Add(3, idx.Project(b), nil)
 	if got := idx.Project(b).Spans; len(got) != 1 || got[0].Source != 1 {
 		t.Fatalf("second-hop reference: %+v", got)
 	}
@@ -97,22 +116,22 @@ func TestMatcherWindowEviction(t *testing.T) {
 	idx := New()
 	defer idx.Close()
 	old := testBlock("old", 3)
-	idx.Add(1, idx.Project(old))
+	idx.Add(1, idx.Project(old), nil)
 	// A full-window line evicts all earlier content, but remains referenceable.
 	full := strings.Repeat("w", WindowBytes)
-	idx.Add(2, idx.Project(full))
+	idx.Add(2, idx.Project(full), nil)
 	if got := idx.Project(old).Spans; len(got) != 0 {
 		t.Fatalf("evicted output matched: %+v", got)
 	}
 	if got := idx.Project(full).Spans; len(got) != 1 || got[0].Source != 2 || !got[0].Whole {
 		t.Fatalf("full window did not match: %+v", got)
 	}
-	idx.Add(3, idx.Project(strings.Repeat("z", WindowBytes+1)))
+	idx.Add(3, idx.Project(strings.Repeat("z", WindowBytes+1)), nil)
 	if got := idx.Project(strings.Repeat("z", WindowBytes+1)).Spans; len(got) != 0 {
 		t.Fatalf("oversized line was retained: %+v", got)
 	}
-	idx.Add(4, idx.Project(old))
-	idx.Add(5, idx.Project(strings.Repeat("\n", WindowBytes)))
+	idx.Add(4, idx.Project(old), nil)
+	idx.Add(5, idx.Project(strings.Repeat("\n", WindowBytes)), nil)
 	if got := idx.Project(old).Spans; len(got) != 0 {
 		t.Fatalf("seedless text did not advance the window: %+v", got)
 	}
@@ -121,7 +140,7 @@ func TestMatcherWindowEviction(t *testing.T) {
 	idx = New()
 	defer idx.Close()
 	text := strings.Repeat("p", WindowBytes-10) + "\n" + old
-	idx.Add(6, idx.Project(text))
+	idx.Add(6, idx.Project(text), nil)
 	want := []Span{{0, len(old), 6, 2, 4, false}}
 	if got := idx.Project(old).Spans; !reflect.DeepEqual(got, want) {
 		t.Fatalf("retained suffix = %+v, want %+v", got, want)
@@ -136,8 +155,8 @@ func deterministicSpans() []Span {
 	// from distinct sources exercise the tie-breaker rather than deduping history.
 	older := idx.Project("old heading\n" + b)
 	newer := idx.Project("new heading\n" + b + "tail\n")
-	idx.Add(99, older)
-	idx.Add(1, newer)
+	idx.Add(99, older, nil)
+	idx.Add(1, newer, nil)
 	tie := idx.Project(b).Spans
 	// A longer run beats a newer, shorter candidate.
 	idx.Close()
@@ -145,8 +164,8 @@ func deterministicSpans() []Span {
 	defer idx.Close()
 	longer := idx.Project(b + testBlock("suffix", 3))
 	shorter := idx.Project(b)
-	idx.Add(7, longer)
-	idx.Add(8, shorter)
+	idx.Add(7, longer, nil)
+	idx.Add(8, shorter, nil)
 	return append(tie, idx.Project(b+testBlock("suffix", 3)).Spans...)
 }
 
@@ -186,7 +205,7 @@ func TestMatcherSeedlessAllocations(t *testing.T) {
 		if len(projection.Spans) != 0 {
 			t.Fatal("seedless text matched")
 		}
-		idx.Add(1, projection)
+		idx.Add(1, projection, nil)
 	})
 	if allocations != 0 {
 		t.Fatalf("seedless scan allocated %g objects", allocations)
@@ -198,7 +217,7 @@ func TestMatcherClose(t *testing.T) {
 	defer idx.Close()
 	text := testBlock("pooled", 32)
 	projection := idx.Project(text)
-	idx.Add(1, projection)
+	idx.Add(1, projection, nil)
 	idx.Close()
 	idx.Close()
 	if got := idx.Project(text).Spans; len(got) != 0 {
@@ -206,7 +225,7 @@ func TestMatcherClose(t *testing.T) {
 	}
 	// A projection retains host text, not borrowed index buffers. It can be
 	// added after release.
-	idx.Add(3, projection)
+	idx.Add(3, projection, nil)
 	want := []Span{{0, len(text), 3, 1, 32, true}}
 	if got := idx.Project(text).Spans; !reflect.DeepEqual(got, want) {
 		t.Fatalf("projection after release = %+v, want %+v", got, want)
@@ -217,7 +236,7 @@ func TestMatcherFragmentedWindow(t *testing.T) {
 	idx := New()
 	defer idx.Close()
 	for source, text := range benchmarkFragmentedHistory() {
-		idx.Add(source, idx.Project(text))
+		idx.Add(source, idx.Project(text), nil)
 	}
 	capacity := 0
 	for _, p := range idx.pieces {

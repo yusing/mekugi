@@ -76,11 +76,11 @@ func duplicateTestItems(t *testing.T, request *codexresponses.Request) []map[str
 func TestDuplicateOutputPreparedMatching(t *testing.T) {
 	a, b, c := strings.Repeat("alpha", 42)+"\n", strings.Repeat("bravo", 42)+"\n", strings.Repeat("charlie", 30)+"\n"
 	for _, tc := range []struct{ name, command, before, after, want string }{
-		{"contained", "a; b; c", a + b + c, b, "[same as O1 L2]\n"},
-		{"container", "b", b, a + b + c, "[O2]\n" + a + "[same as O1]\n" + c},
-		{"changed batch", "a; b; c", a + b + c, "CCC2\n" + b, "[O2]\nCCC2\n[same as O1 L2]\n"},
-		{"diff headers", "mchanges amber1", "file.go\n@@ old @@\n" + a + b, "diff --git a/file.go b/file.go\nindex abc..def\n@@ new @@\n" + a + b, "[O2]\ndiff --git a/file.go b/file.go\nindex abc..def\n@@ new @@\n[same as O1 L3-4]\n"},
-		{"small edit", "cat f.go", a + b + c, a + "changed region\n" + c, "[O2]\n[same as O1 L1]\nchanged region\n[same as O1 L3]\n"},
+		{"contained", "a; b; c", a + b + c, b, "See O1:2\n"},
+		{"container", "b", b, a + b + c, "O2:\n" + a + "See O1\n" + c},
+		{"changed batch", "a; b; c", a + b + c, "CCC2\n" + b, "CCC2\nSee O1:2\n"},
+		{"diff headers", "mchanges amber1", "file.go\n@@ old @@\n" + a + b, "diff --git a/file.go b/file.go\nindex abc..def\n@@ new @@\n" + a + b, "diff --git a/file.go b/file.go\nindex abc..def\n@@ new @@\nSee O1:3-4\n"},
+		{"small edit", "cat f.go", a + b + c, a + "changed region\n" + c, "See O1:1\nchanged region\nSee O1:3\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
@@ -91,7 +91,7 @@ func TestDuplicateOutputPreparedMatching(t *testing.T) {
 			if got := responses.StringField(items[3], "output"); got != duplicateTestHeader+tc.want {
 				t.Fatalf("output = %q, want %q", got, duplicateTestHeader+tc.want)
 			}
-			if got := responses.StringField(items[1], "output"); got != duplicateTestHeader+"[O1]\n"+tc.before {
+			if got := responses.StringField(items[1], "output"); got != duplicateTestHeader+"O1:\n"+tc.before {
 				t.Fatal("source anchor or verbatim body changed")
 			}
 			if !responses.SameJSONValue(request.OriginalField("input"), responses.MustMarshalJSON(input)) {
@@ -139,10 +139,10 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 			t.Fatal("router append changed")
 		}
 	}
-	if texts := binding.ExecutionOutputTexts(got[2]["output"]); texts[0] != duplicateTestHeader || texts[1] != "[same as O1]\n" {
+	if texts := binding.ExecutionOutputTexts(got[2]["output"]); texts[0] != duplicateTestHeader || texts[1] != "See O1\n" {
 		t.Fatalf("multipart output = %q", texts)
 	}
-	if text := binding.ExecutionOutputTexts(got[3]["output"])[0]; text != "Chunk ID: xyz\nWall time: 0.2 seconds\nProcess exited with code 1\nFinal output:\n[same as O1]\n" {
+	if text := binding.ExecutionOutputTexts(got[3]["output"])[0]; text != "Chunk ID: xyz\nWall time: 0.2 seconds\nProcess exited with code 1\nFinal output:\nSee O1\n" {
 		t.Fatalf("native header changed: %q", text)
 	}
 	for at := 4; at < len(got); at++ {
@@ -160,7 +160,7 @@ func TestDuplicateOutputEvidenceConsumersReadOriginal(t *testing.T) {
 	input = append(input, continuationTestCall("exec", "failed", "broken()"), continuationTestOutput("failed", "Script failed\nWall time 0.1 seconds\nOutput:\n", failure))
 	request := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 	items := duplicateTestItems(t, request)
-	if !strings.Contains(string(items[3]["output"]), "same as") {
+	if !strings.Contains(string(items[3]["output"]), "See O") {
 		t.Fatal("failure body was not projected")
 	}
 	proxy.activity.Attach("thread")
@@ -203,10 +203,10 @@ func TestDuplicateOutputPreservesHostContinuationAcrossScopes(t *testing.T) {
 			}
 			want := "Script running with cell ID live-42\nWall time 0.1 seconds\nOutput:\n" + body
 			if scope == "compacted" {
-				want = "Script running with cell ID live-42\nWall time 0.1 seconds\nOutput:\n[O1]\n" + body
+				want = "Script running with cell ID live-42\nWall time 0.1 seconds\nOutput:\nO1:\n" + body
 			}
 			if scope == "ordinary" || scope == "fork" {
-				want = "Script running with cell ID live-42\nWall time 0.1 seconds\nOutput:\n[same as O1]\n"
+				want = "Script running with cell ID live-42\nWall time 0.1 seconds\nOutput:\nSee O1\n"
 			}
 			if texts[0] != want {
 				t.Fatalf("scoped output = %q", texts[0])
@@ -217,14 +217,19 @@ func TestDuplicateOutputPreservesHostContinuationAcrossScopes(t *testing.T) {
 
 func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	body := strings.Repeat("prefix command output ", 20) + "\n"
-	input := append(duplicateTestInput("cat file", "a", body), duplicateTestInput("cat file", "b", body)...)
+	lowValue := strings.Repeat("x", 192) + "\n"
+	input := append(duplicateTestInput("low value", "small", lowValue), duplicateTestInput("cat file", "a", body)...)
+	input = append(input, duplicateTestInput("cat file", "b", body)...)
 	project := func(input []any) *codexresponses.Request {
 		proxy := newManagedMekugiProxy(t)
 		proxy.inputProjections = testInputProjections()
 		return duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 	}
 	// The source must already have its anchor before the first repeat arrives.
-	first := project(input[:2])
+	first := project(input[:4])
+	if got := responses.StringField(duplicateTestItems(t, first)[1], "output"); got != duplicateTestHeader+lowValue {
+		t.Fatal("low-value source received an anchor")
+	}
 	var original []jsonv1.RawMessage
 	if err := json.Unmarshal(first.Fields["input"], &original); err != nil {
 		t.Fatal(err)
@@ -234,7 +239,7 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	// A later occurrence with a different part count must not change the prefix.
 	grown := project(append(grownInput, continuationTestOutput("b", duplicateTestHeader, body)))
 	items := duplicateTestItems(t, grown)
-	if got := binding.ExecutionOutputTexts(items[len(items)-1]["output"]); len(got) != 2 || got[0] != duplicateTestHeader || got[1] != "[same as O1]\n" {
+	if got := binding.ExecutionOutputTexts(items[len(items)-1]["output"]); len(got) != 2 || got[0] != duplicateTestHeader || got[1] != "See O1\n" {
 		t.Fatalf("repeated output identity used the wrong part boundary: %q", got)
 	}
 	exchange := confirmedHistoryExchange(t, original, false)
@@ -269,13 +274,13 @@ func TestDuplicateOutputSourceIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	frames, ok := attachments.Decode(parts[0].Text)
-	if !ok || len(frames) != 1 || frames[0] != header+"\n[O1]\n"+a {
+	if !ok || len(frames) != 1 || frames[0] != header+"\nO1:\n"+a {
 		t.Fatalf("attachment source = %q", frames)
 	}
-	if got, want := binding.ExecutionOutputTexts(items[1]["output"]), []string{duplicateTestHeader, "[O2]\n" + b, "[O3]\n" + c}; !slices.Equal(got, want) {
+	if got, want := binding.ExecutionOutputTexts(items[1]["output"]), []string{duplicateTestHeader, "O2:\n" + b, "O3:\n" + c}; !slices.Equal(got, want) {
 		t.Fatalf("sources with the same first line = %q, want %q", got, want)
 	}
-	if got, want := binding.ExecutionOutputTexts(items[2]["output"]), []string{"[same as O1]\n", "[same as O2]\n", "[same as O3]\n"}; !slices.Equal(got, want) {
+	if got, want := binding.ExecutionOutputTexts(items[2]["output"]), []string{"See O1\n", "See O2\n", "See O3\n"}; !slices.Equal(got, want) {
 		t.Fatalf("multipart references = %q, want %q", got, want)
 	}
 }
@@ -302,7 +307,7 @@ func TestDuplicateOutputMarkersPointToVerbatim(t *testing.T) {
 	if responses.StringField(items[7], "output") != responses.StringField(items[9], "output") || strings.Contains(responses.StringField(items[9], "output"), "combined") {
 		t.Fatal("new markers referenced a marker-only unit")
 	}
-	if responses.StringField(items[11], "output") != duplicateTestHeader+"[O4]\n"+literal || responses.StringField(items[13], "output") != duplicateTestHeader+"[same as O4]\n" {
+	if responses.StringField(items[11], "output") != duplicateTestHeader+"O4:\n"+literal || responses.StringField(items[13], "output") != duplicateTestHeader+"See O4\n" {
 		t.Fatal("literal host marker text did not remain a verbatim source")
 	}
 	request.Fields["input"] = original
@@ -365,8 +370,8 @@ func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
 				}
 				source, want := frame, frame
 				if enabled {
-					source = header + "[O1]\n" + body
-					want = header + "[same as O1]\n"
+					source = header + "O1:\n" + body
+					want = header + "See O1\n"
 				}
 				if texts(items[0]) != source || texts(items[1]) != body || texts(items[2]) != want {
 					t.Fatalf("wire content changed incorrectly: %s", request.Fields["input"])
@@ -429,11 +434,11 @@ func TestDuplicateOutputAttachmentEligibility(t *testing.T) {
 	}
 	header, _, _ := strings.Cut(frame, "\n")
 	header += "\n"
-	source := user([]any{map[string]any{"type": "input_text", "text": attachments.Encode([]string{header + "[O1]\n" + body})}})
+	source := user([]any{map[string]any{"type": "input_text", "text": attachments.Encode([]string{header + "O1:\n" + body})}})
 	if !responses.SameJSONValue(responses.MustMarshalJSON(items[5]), responses.MustMarshalJSON(source)) {
 		t.Fatal("eligible attachment source lost its anchor or verbatim body")
 	}
-	if got := responses.StringField(items[7], "output"); got != duplicateTestHeader+"[same as O1]\n" {
+	if got := responses.StringField(items[7], "output"); got != duplicateTestHeader+"See O1\n" {
 		t.Fatalf("tool did not reference the visible attachment: %q", got)
 	}
 }
@@ -463,7 +468,7 @@ func TestDuplicateOutputAttachmentDeliveredShape(t *testing.T) {
 		// envelopes move after ordinary parts, which must stay full and earlier.
 		_, array := content.([]any)
 		supported := array && len(content.([]any)) == 2
-		if strings.Contains(responses.StringField(items[len(items)-1], "output"), "[same as") != supported {
+		if strings.Contains(responses.StringField(items[len(items)-1], "output"), "See O") != supported {
 			t.Fatalf("wrong source eligibility for %T: %s", content, request.Fields["input"])
 		}
 		if supported {

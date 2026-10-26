@@ -75,7 +75,7 @@ func TestUISnapshotOutputDeduplicationAttachments(t *testing.T) {
 			if !responses.SameJSONValue(request.OriginalField("input"), responses.MustMarshalJSON(input[:2])) {
 				t.Fatal("original attachment input changed")
 			}
-			if !strings.Contains(string(request.Fields["input"]), "[same as") {
+			if !strings.Contains(string(request.Fields["input"]), "See O") {
 				t.Fatal("attachment body not deduplicated")
 			}
 			// Identity must survive model-only frame replacement before wire expansion.

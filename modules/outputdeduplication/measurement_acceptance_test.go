@@ -30,8 +30,8 @@ func TestAcceptanceMeasuredProjectionSavings(t *testing.T) {
 		output []string
 		sign   int
 	}{
-		{"repeat", []item{tool("source", body), tool("repeat", body)}, []string{"[O1]\n" + body, "[same as O1]\n"}, 1},
-		{"anchor only", []item{tool("source", body)}, []string{"[O1]\n" + body}, -1},
+		{"repeat", []item{tool("source", body), tool("repeat", body)}, []string{"O1:\n" + body, "See O1\n"}, 1},
+		{"anchor only", []item{tool("source", body)}, []string{"O1:\n" + body}, -1},
 		{"unchanged", []item{tool("small", "ok")}, []string{"ok"}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -180,7 +180,7 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			}
 			wantSource, wantRepeat := body, body
 			if tc.projected {
-				wantSource, wantRepeat = "[O1]\n"+body, "[same as O1]\n"
+				wantSource, wantRepeat = "O1:\n"+body, "See O1\n"
 			}
 			if len(modelRequest.Input) != 3 || modelRequest.Input[1].Output != wantSource || modelRequest.Input[2].Output != wantRepeat {
 				t.Fatalf("provider input = %+v", modelRequest.Input)

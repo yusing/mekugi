@@ -71,7 +71,7 @@ func TestPreparedContentRetainsActualDeduplicationAndWholeCell(t *testing.T) {
 			expected = append(expected, part.Text)
 		}
 	}
-	if !ok || !got.Altered || !strings.Contains(got.Text, "[same as") || strings.Contains(got.Text, body) || got.Text != strings.Join(expected, "\n\n") {
+	if !ok || !got.Altered || !strings.Contains(got.Text, "\nSee O") || strings.Contains(got.Text, body) || got.Text != strings.Join(expected, "\n\n") {
 		t.Fatalf("actual deduplication missing: %+v", got)
 	}
 	for _, id := range []string{"one", "two"} {

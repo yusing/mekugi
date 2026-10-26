@@ -53,22 +53,32 @@ Verbatim runs aligned to logical lines and covering at least 192 bytes may be
 replaced with a reference to earlier output still visible in the same request.
 Each replacement must save at least 32 estimated GPT-5 tokens after counting its
 complete reference, including source ID, row range and trailing newline. Smaller
-savings or an unavailable estimate leave that run verbatim and referenceable.
+savings or an unavailable estimate leave that run verbatim; source admission
+determines whether later outputs can reference it.
 The gate counts the matched run and complete reference independently. Surrounding
 BPE token boundaries can make the whole text part's savings differ from this
 standalone estimate; receipts measure the whole changed text part separately.
 Matching is content-based, without line-ending or line-number normalization.
-The bounded matching window covers the last 256 KiB of indexed verbatim text;
+The bounded matching window covers the last 256 KiB of verbatim text from eligible units;
 units below the byte threshold are neither replaced nor indexed. The longest matching run
 wins, with ties resolved in favor of the most recent source.
 
-References have the form `[same as O3]` or `[same as O3 L40-112]`; a single row
-uses `L40`. Each eligible unit with remaining verbatim text gets a source anchor
-such as `[O3]`, on its own line after the preserved execution or attachment header.
-IDs are assigned in forward order in one request-local sequence across tool text
-parts and attachment frames. Fully replaced units get no anchor. Sources get their
-anchors immediately, even before a later repeat, so extending the input preserves
-earlier projected items.
+References have the form `See O3` or `See O3:40-112`; a single row
+uses `See O3:40`. A source anchor such as `O3:` appears on its own line after
+the preserved execution or attachment header only when remaining verbatim text
+can support beneficial later reuse. At least one retained, matchable run must
+meet the byte threshold and save 32 estimated tokens after paying for both its
+complete future reference and the source anchor, including trailing newlines,
+using the same independent-string estimates as replacement admission.
+Runs that cannot meet this gate are not indexed. Rejected text remains verbatim
+and still advances the bounded window. Seedless text, short residual runs and
+unavailable estimates create no anchor.
+IDs are assigned to admitted sources in forward order in one request-local
+sequence across tool text parts and attachment frames. Fully replaced units get
+no anchor. Sources get their anchors immediately, even before a later repeat,
+so extending the input preserves
+earlier projected items. A reusable source may therefore incur anchor-only cost
+when no later repeat arrives; source eligibility does not predict future reads.
 
 The row range is omitted for an entire earlier body. Rows start at 1 after the
 anchor and count the earlier body as delivered, with each generated reference
@@ -96,9 +106,9 @@ These pinned GPT-5 estimates are never exact provider input or billed tokens.
 
 An unavailable estimate prevents further replacements in that pass and is
 counted as unmeasured; earlier replacements and their receipts remain intact.
-Tokenization is initialized only when evaluating a match or measuring changed
-input, not when composing a frontend worker. The gate and measurement share one
-request-local codec. Unchanged input has zero savings.
+Tokenization is initialized only when evaluating a match, admitting a matchable
+source, or measuring changed input, not when composing a frontend worker.
+The gate and measurement share one request-local codec. Unchanged input has zero savings.
 The [metrics contract](../transportdiagnostics/SPEC.md) owns invocation aggregation and
 presentation of these receipts.
 

@@ -216,40 +216,53 @@ func (idx *Index) Project(text string) Projection {
 
 // Add indexes only the verbatim rows of a projection made by this Index.
 // Source is returned in future spans and should identify this unit to the caller.
-// Marker rows and replaced text cannot become reference targets.
-func (idx *Index) Add(source int, projection Projection) {
+// Marker rows and replaced text cannot become reference targets. An optional
+// accept gate sees only seeded, threshold-sized runs inside the retained window.
+// Rejected text advances the window too. The result reports a retained new run.
+func (idx *Index) Add(source int, projection Projection, accept func(Span, string) bool) bool {
 	text := projection.text
 	if len(text) < Threshold {
-		return
+		return false
 	}
+	firstOrder := idx.bytes
 	rows := rowCount(text)
+	verbatim := len(text)
 	for _, span := range projection.Spans {
 		rows -= rowCount(text[span.Start:span.End]) - 1
+		verbatim -= span.End - span.Start
 	}
+	// Later runs, including rejected or seedless text, can evict earlier runs
+	// in this unit. Admit only text inside the final window, not a transient one.
+	skip := max(0, verbatim-WindowBytes)
 	start, row := 0, 1
 	for _, span := range projection.Spans {
 		if span.Start > start {
-			idx.addRun(source, rows, text[start:span.Start], row)
+			idx.addRun(source, rows, text[start:span.Start], row, skip, accept)
+			skip = max(0, skip-(span.Start-start))
 			row += rowCount(text[start:span.Start])
 		}
 		start, row = span.End, row+1
 	}
 	if start < len(text) {
-		idx.addRun(source, rows, text[start:], row)
+		idx.addRun(source, rows, text[start:], row, skip, accept)
 	}
+	return len(idx.pieces) > 0 && idx.pieces[len(idx.pieces)-1].order >= firstOrder
 }
 
-func (idx *Index) addRun(source, rows int, text string, firstRow int) {
+func (idx *Index) addRun(source, rows int, text string, firstRow, skip int, accept func(Span, string) bool) {
 	order := idx.bytes
 	idx.bytes += uint64(len(text))
 	idx.evict()
 	// Keep only whole lines within the byte window, even for an oversized run.
-	start := max(0, len(text)-WindowBytes)
+	start := min(skip, len(text))
 	if start > 0 && text[start-1] != '\n' {
 		start = lineEnd(text, start)
 	}
 	firstRow += rowCount(text[:start])
 	text = text[start:]
+	if len(text) < Threshold {
+		return
+	}
 	count := 0
 	for at := 0; at < len(text); {
 		end := lineEnd(text, at)
@@ -259,6 +272,11 @@ func (idx *Index) addRun(source, rows int, text string, firstRow int) {
 		at = end
 	}
 	if count == 0 {
+		return
+	}
+	lastRow := firstRow + rowCount(text) - 1
+	span := Span{End: len(text), Source: source, FirstLine: firstRow, LastLine: lastRow, Whole: firstRow == 1 && lastRow == rows}
+	if accept != nil && !accept(span, text) {
 		return
 	}
 	p := &piece{text: referenceBuffer(len(text)), seeds: referenceBuffer(count * seedBytes),

@@ -47,7 +47,7 @@ func decode(t *testing.T, raw []byte) []item {
 }
 
 func block(label string) string {
-	return strings.Repeat(label+strings.Repeat("x", 80)+"\n", 3)
+	return strings.Repeat(label+strings.Repeat("x", 96)+"\n", 3)
 }
 
 func tool(id, text string) item {
@@ -62,8 +62,8 @@ func TestAcceptanceVisibleSourcesAndReceipts(t *testing.T) {
 	input := encode(t, []item{tool("source", b), tool("partial", a+b+c), tool("repeat", a+b+c)})
 	result := p.Prepare(input)(input)
 	got := decode(t, result.Input)
-	want := []string{"[O1]\n" + b, "[O2]\n" + a + "[same as O1]\n" + c,
-		"[same as O2 L1-3]\n[same as O1]\n[same as O2 L5-7]\n"}
+	want := []string{"O1:\n" + b, "O2:\n" + a + "See O1\n" + c,
+		"See O2:1-3\nSee O1\nSee O2:5-7\n"}
 	for i, text := range want {
 		if got[i]["output"] != text {
 			t.Fatalf("output %d = %q, want %q", i, got[i]["output"], text)
@@ -81,7 +81,7 @@ func TestAcceptanceVisibleSourcesAndReceipts(t *testing.T) {
 		t.Fatal("fresh preparation changed projection or receipt")
 	}
 	isolated := encode(t, []item{tool("new-view", b)})
-	if got := decode(t, p.Prepare(isolated)(isolated).Input)[0]["output"]; got != "[O1]\n"+b {
+	if got := decode(t, p.Prepare(isolated)(isolated).Input)[0]["output"]; got != "O1:\n"+b {
 		t.Fatalf("fresh view retained an earlier request source: %q", got)
 	}
 }
@@ -99,7 +99,7 @@ func TestAcceptanceOriginalPartBounds(t *testing.T) {
 		unchanged := bytes.Clone(input)
 		result := prepared(input)
 		parts := decode(t, result.Input)[1]["output"].([]any)
-		if parts[0].(map[string]any)["text"] != header+"[same as O1]\n" || parts[1].(map[string]any)["text"] != body {
+		if parts[0].(map[string]any)["text"] != header+"See O1\n" || parts[1].(map[string]any)["text"] != body {
 			t.Fatalf("original/appended parts = %+v", parts)
 		}
 		if result.Receipt == nil || result.Receipt.OutputRepetitions != 1 || result.Receipt.RepeatedCalls["repeat"] != "repeated" {
@@ -122,10 +122,10 @@ func TestAcceptanceDurableAttachmentBodies(t *testing.T) {
 	got := decode(t, result.Input)
 	projected := got[0]["content"].([]any)[0].(map[string]any)["text"].(string)
 	frames, ok := attachments.Decode(projected)
-	if !ok || !reflect.DeepEqual(frames, []string{fileHeader + "[O1]\n" + body, skillHeader + "[same as O1]\n"}) {
+	if !ok || !reflect.DeepEqual(frames, []string{fileHeader + "O1:\n" + body, skillHeader + "See O1\n"}) {
 		t.Fatalf("projected attachment frames = %q, complete = %v", frames, ok)
 	}
-	if got[1]["output"] != "[same as O1]\n" || result.Receipt == nil || result.Receipt.OutputRepetitions != 2 ||
+	if got[1]["output"] != "See O1\n" || result.Receipt == nil || result.Receipt.OutputRepetitions != 2 ||
 		!reflect.DeepEqual(result.Receipt.RepeatedCalls, map[string]string{"tool-repeat": "repeated"}) || len(result.Receipt.RepeatedAttachments) != 0 {
 		t.Fatalf("tool = %+v, receipt = %+v", got[1], result.Receipt)
 	}
@@ -146,8 +146,8 @@ func TestAcceptanceTokenGateKeepsLiteralSources(t *testing.T) {
 	got := decode(t, result.Input)
 	projected := got[3]["content"].([]any)[0].(map[string]any)["text"].(string)
 	frames, ok := attachments.Decode(projected)
-	if !ok || !reflect.DeepEqual(frames, []string{header + "[O4]\n" + a + b + "[same as O1]\n"}) ||
-		got[4]["output"] != "[same as O4 L1-2]\n" {
+	if !ok || !reflect.DeepEqual(frames, []string{header + "O2:\n" + a + b + "See O1\n"}) ||
+		got[4]["output"] != "See O2:1-2\n" {
 		t.Fatalf("rejected runs lost literal rows or referenceability: frames=%q final=%q", frames, got[4]["output"])
 	}
 	if result.Receipt.OutputRepetitions != 2 || len(result.Receipt.RepeatedAttachments) != 1 ||

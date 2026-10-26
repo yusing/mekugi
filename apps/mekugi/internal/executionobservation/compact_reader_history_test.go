@@ -155,7 +155,7 @@ func TestCompactReloadDeduplicatesOrdinaryReread(t *testing.T) {
 	if err := json.Unmarshal(visible[len(visible)-1]["output"], &repeated); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(repeated, "[same as O") || strings.Contains(repeated, body) || !bytes.Contains(visible[1]["content"], []byte("[O")) {
+	if !strings.HasPrefix(repeated, "See O1") || strings.Contains(repeated, body) || !bytes.Contains(visible[1]["content"], []byte(`O1:\n`)) {
 		t.Fatalf("reload source was not reusable by deduplication: %s", request.Fields["input"])
 	}
 	if len(transform.compactReload) != 0 || !bytes.Equal(original, request.OriginalField("input")) {

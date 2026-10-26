@@ -118,7 +118,7 @@ func TestModelVisiblePreparedRequestThroughNativeDialogs(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(preparedFile, "[same as") || !strings.Contains(preparedSkill, "[same as") || preparedCell == "" {
+	if !strings.Contains(preparedFile, "\nSee O") || !strings.Contains(preparedSkill, "\nSee O") || preparedCell == "" {
 		t.Fatal("provider did not receive transformed file, skill, and cell output")
 	}
 	history = append(history, binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "echo original", AggregatedOutput: new("original command output\n"), ExitCode: new(0), Status: "completed"})
