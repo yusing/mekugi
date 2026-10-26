@@ -1,8 +1,12 @@
 package executionobservation
 
 import (
+	"bytes"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -49,8 +53,20 @@ func TestThreadInputConsumedWithoutExecution(t *testing.T) {
 				t.Fatal("invalid fixture metadata")
 			}
 			metadata.RequestKind = kind
-			_, err = proxy.prepareModelRequest(t.Context(), &request, "session", "root", metadata, true, false)
+			_, err = proxy.Prepare(t.Context(), &request, requestexecution.Preparation{Session: "session", Thread: "root", Metadata: metadata, MetadataValid: true})
 			check(err)
+			wire, err := request.WireBody(request.Fields)
+			check(err)
+			var forwarded struct {
+				Input []map[string]jsontext.Value `json:"input"`
+			}
+			check(json.Unmarshal(wire, &forwarded))
+			if len(forwarded.Input) != 1 || responses.StringField(forwarded.Input[0], "id") != "" || responses.StringField(forwarded.Input[0], "content") != "progress" {
+				t.Fatalf("invalid provider message: %s", wire)
+			}
+			if !bytes.Contains(request.OriginalField("input"), []byte(control.MessageItemID("root:message"))) {
+				t.Fatal("retained host identity changed")
+			}
 			tree, err := service.Snapshot("root")
 			check(err)
 			if !tree.Effect("root", "message").Consumed || tree.Members["root"].HostRunning || tree.Members["root"].Status != control.Completed {

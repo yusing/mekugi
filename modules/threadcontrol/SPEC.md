@@ -30,7 +30,9 @@ Missing required host semantics fail explicitly without enabling native spawning
 Independent runtime admission is established by authenticated Mekugi membership
 and host-confirmed settings. It does not require a native Codex agent-graph edge.
 Agent assignments, messages and continuations retain their source attribution
-without becoming human composer input.
+without becoming human composer input. Retained message IDs remain local to host
+history and delivery reconciliation; provider input omits those IDs while preserving
+the attributed message content, including when replaying retained sessions.
 Projected agent instructions explicitly identify root versus child membership
 and a child's parent logical task, including for independent root-shaped runtimes.
 Observation uses that admitted membership for child ancestry and attribution;

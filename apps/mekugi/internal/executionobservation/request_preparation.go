@@ -9,19 +9,38 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
 func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request, input requestexecution.Preparation) (requestexecution.Prepared, error) {
 	if input.ApprovalReview {
-		return nil, p.restoreApprovalReviewContext(ctx, request, input)
+		if err := p.restoreApprovalReviewContext(ctx, request, input); err != nil {
+			return nil, err
+		}
+		projected, err := threadbinding.ProjectMessageIDs(request.Fields["input"])
+		if err == nil {
+			request.Fields["input"] = projected
+		}
+		return nil, err
 	}
 	t, err := p.prepareModelRequest(ctx, request, input.Session, input.Thread, input.Metadata, input.MetadataValid, input.Prewarm)
 	if errors.Is(err, binding.ErrUnsupportedExecutionInterface) {
 		return nil, inferencegateway.IncompatibleRequest("unsupported_execution_interface", err.Error())
 	}
-	if err != nil || t == nil {
+	if err != nil {
 		return nil, err
+	}
+	projected, err := threadbinding.ProjectMessageIDs(request.Fields["input"])
+	if err != nil {
+		if t != nil {
+			t.Close()
+		}
+		return nil, err
+	}
+	request.Fields["input"] = projected
+	if t == nil {
+		return nil, nil
 	}
 	if input.MetadataValid {
 		observeReview(p.review, t.directory, t.threadID, input.Metadata)
