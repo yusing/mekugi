@@ -69,8 +69,11 @@ path-only moves remain effects even without changed lines.
 Grouped captures appear once on the owning invocation. They replace successful
 sibling intent in live and restored feeds. When command source, output, timing or
 failure requires retaining the action, captured effects nest beneath that action
-rather than appearing as independent operations. Multi-segment captures belong to
-the aggregate shell action, without guessing which segment caused each change.
+rather than appearing as independent operations. Multi-segment captures instead
+remain independent edit rows belonging to the invocation, without an extra shell
+action or a guess about which segment caused each change.
+When one captured segment contains several classified operations, its original
+source remains one action with that segment's output and outcome.
 Command output and timing stay with their action; effects retain their own counts
 and change navigation without borrowing the action's exit. Skipped work and sibling
 failures remain visible. Original command source stays available in the dialog.
@@ -205,8 +208,8 @@ after a later segment starts or the shell finishes, following the actual shell
 branching rather than assuming every failure stops the list. Pending and skipped
 commands have no exit or timing. Terminal completion also retains the combined host tail. Whole setup
 scripts remain one Run event, while recognized edit scripts retain classified
-rows. Missing segment boundaries produce one explicit shell-batch outcome and
-combined output rather than failures assigned to individual operations.
+rows. Missing segment boundaries retain the original invocation source, outcome
+and combined output rather than failures assigned to individual operations.
 
 Completion replaces streaming content with the host aggregate. Failure stays
 open. Successful output stays open until its agent's next standalone event,
@@ -229,8 +232,8 @@ Supported single commands and pipelines use the tracking helper's duration,
 including an EXIT boundary after `exit` or `errexit`; an untracked invocation
 uses host duration. Missing older
 segment timing stays absent. A disconnected report invents no end, and skipped
-commands have no timing. Resume/fork retain completed evidence. A batch total
-appears once on its batch row and combined-output dialog, never on every command.
+commands have no timing. Resume/fork retain completed evidence. An invocation total
+appears once on its whole-action row and combined-output dialog, never on every command.
 
 After 500 ms, a timed row may show a literal shell `timeout` bound or explicit
 `exec_command.timeout_ms`, using the same duration format. Fast/skipped rows or
@@ -382,8 +385,10 @@ projections can omit secret prompt content while terminal rows keep it. Adjacent
 decorate the associated host item, never a separate Approval/Session event:
 Pending Approval, Approved, Denied and Auto Denied remain distinct from execution
 success. External resolution and turn end say Resolved elsewhere or Turn ended
-before an answer. Command dialogs retain decision scope/denial reason; compound
-guard decisions stay on their aggregate shell row.
+before an answer. Command dialogs retain decision scope/denial reason. Captured
+effects do not create another approval action. A single action retains its own
+decision; a compound decision stays on the original invocation source, without
+assigning it to an individual segment.
 
 Attachments show one Attached or Attach failed receipt per submitted file/skill
 snapshot before agent activity, including after resume. Chunked content has one

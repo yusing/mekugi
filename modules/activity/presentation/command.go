@@ -90,7 +90,7 @@ func (c Command) Compound(values []Value) bool {
 		return compound
 	}
 	if program, err := syntax.NewParser().Parse(strings.NewReader(c.Script), ""); err == nil {
-		if len(values) == 1 && values[0].Verb == "Run" && values[0].Code == textsanitize.Safe(c.Display, false) && shellinstrumentation.HasShellSetup(program) {
+		if len(values) == 1 && values[0].Verb == "Run" && values[0].Code == textsanitize.Safe(c.Display, false) {
 			return false
 		}
 		compound = len(program.Stmts) > 1
@@ -148,7 +148,7 @@ func (c Command) SegmentValues(detail bool) []Value {
 			continue
 		}
 		operations := Operations(textsanitize.Safe(segment.Text, false))
-		retainSource := segment.Pending
+		retainSource := segment.Pending || c.CaptureText != "" && len(c.Segments) == 1 && len(operations) > 1
 		if c.Captured && !segment.Running && !segment.Skipped && !segment.Pending && segment.ExitCode == 0 {
 			removedTarget := false
 			operations = slices.DeleteFunc(operations, func(value Value) bool {
@@ -159,7 +159,7 @@ func (c Command) SegmentValues(detail bool) []Value {
 				return edit || segment.Writer && value.Verb == "Run"
 			})
 			timed := segment.Duration != 0 || !segment.Started.IsZero() || !segment.Ended.IsZero()
-			retainSource = len(operations) == 0 && (detail && (removedTarget || segment.Writer) || timed || len(segment.Tail) > 0 || segment.TailOmitted > 0 || hasOutput(segment.Output, segment.OutputContent) || c.CaptureText != "" && len(c.Segments) == 1)
+			retainSource = retainSource || len(operations) == 0 && (detail && (removedTarget || segment.Writer) || timed || len(segment.Tail) > 0 || segment.TailOmitted > 0 || hasOutput(segment.Output, segment.OutputContent) || c.CaptureText != "" && len(c.Segments) == 1)
 		}
 		if retainSource {
 			source := segment.Source
@@ -226,12 +226,6 @@ func (c Command) SegmentValues(detail bool) []Value {
 		}
 	}
 	if !detail && c.CaptureText != "" {
-		// A multi-segment capture describes the invocation, not a guessed writer.
-		if len(values) != 1 || len(c.Segments) != 1 && values[0].Segment {
-			values = append(values, Value{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Operation: len(c.Segments) + 1,
-				Running: c.Running, Exited: c.Exited, ExitCode: c.ExitCode,
-				Started: c.Started, Ended: c.Ended, Duration: c.Duration})
-		}
 		values = append(values, c.Effects()...)
 	}
 	return FoldStages(values)
@@ -241,7 +235,7 @@ func (c Command) SegmentValues(detail bool) []Value {
 func (c Command) Effects() []Value {
 	values := Operations(textsanitize.Safe(c.CaptureText, false))
 	for i := range values {
-		values[i].Effect = true
+		values[i].Effect = c.UserShell || len(c.Segments) < 2
 		values[i].Operation = len(c.Segments) + i + 2
 	}
 	return values
@@ -300,10 +294,12 @@ func (c Command) DetailValues() []Value {
 			}
 		}
 		slices.SortStableFunc(values, func(a, b Value) int { return cmp.Compare(a.Operation, b.Operation) })
+		if c.Approval != "" && len(c.Segments) > 1 {
+			values = append(values, Value{Source: c.Source, Kind: "op", Verb: "Run", BatchExit: true, Operation: len(c.Segments) + 1,
+				Code: textsanitize.Safe(cmp.Or(c.Display, c.Script), false), Lang: "bash", Fenced: true, Running: c.Running})
+		}
 	}
 	c.ApplyFacts(values)
-	if len(values) > 0 {
-		values[0].Approval = c.Approval
-	}
+	ApplyApproval(values, c.Approval)
 	return values
 }

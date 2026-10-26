@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -70,7 +71,7 @@ func TestUISnapshotCapturedEffectsUnderAction(t *testing.T) {
 					CaptureText: "Delete `old.go` · +0 −3 · rm", Exited: true, ExitCode: 1, Duration: time.Second, Tail: []string{"failure detail"}}
 				item := presentation.ItemContent{Seq: 1, Kind: "tool", Command: command, Details: &presentation.ItemDetails{CommandText: command.Script}}
 				values := item.Values()
-				values = presentation.CommandExit(values, 1, command.Tail, 0)
+				values = presentation.CommandExit(values, command.Display, 1, command.Tail, 0)
 				if len(values) != 2 || !values[1].Effect || values[1].Exited || values[1].ExitCode != 0 || values[0].Operation == values[1].Operation {
 					t.Fatalf("effect borrowed action outcome or identity: %+v", values)
 				}
@@ -107,7 +108,7 @@ func TestUISnapshotSilentCapturedWriterTiming(t *testing.T) {
 		command.Segments = append(command.Segments, segment.CommandSegment)
 	}
 	values := (presentation.ItemContent{Seq: 9, Kind: "tool", Command: command, Details: &presentation.ItemDetails{CommandText: source.Script}}).Values()
-	if len(values) != 4 || !values[0].Segment || values[0].Duration != 2*time.Second || values[0].Output != 2 || values[1].Duration != time.Second || !values[2].BatchExit || values[2].Duration != 3*time.Second || !values[3].Effect || values[3].Duration != 0 {
+	if len(values) != 3 || !values[0].Segment || values[0].Duration != 2*time.Second || values[0].Output != 2 || values[1].Duration != time.Second || values[2].Effect || values[2].BatchExit || values[2].Duration != 0 || values[2].Source != 9 || values[2].EditPath() != "file" {
 		t.Fatalf("silent writer lost individual timing or effect borrowed aggregate time: %+v", values)
 	}
 	p := Painter{Theme: diffrender.DarkTheme}
@@ -116,4 +117,52 @@ func TestUISnapshotSilentCapturedWriterTiming(t *testing.T) {
 		rows = append(rows, p.Block(Block{Value: value}, 70)...)
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/silent_captured_writer_timing.txt", append(rows, "plain"), 70)
+}
+
+func TestUISnapshotCapturedSetupKeepsObservedAction(t *testing.T) {
+	for _, tc := range []struct {
+		name, script, output string
+		exit                 int
+	}{
+		{"success", "set -e; sed -i s/old/kept/ file; cat file", "kept\n", 0},
+		{"failure", "set -e; sed -i s/old/kept/ file; cat missing", "cat: missing: No such file or directory\n", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parts, ok := shellinstrumentation.Split(tc.script)
+			if !ok || len(parts) != 1 || len(presentation.Operations(presentation.ShellSource(parts[0].Source, ""))) < 2 {
+				t.Fatal("fixture must classify several operations inside one observed segment")
+			}
+			start := time.Unix(100, 0)
+			source := presentation.CommandSource{Script: tc.script, Display: tc.script}
+			invocation := presentation.NewInvocation(source, start, new(feed.Retention))
+			invocation.ObserveSegments(presentation.SegmentReport{Ended: true, Closed: true, Done: true, ExitCode: tc.exit, Segments: []presentation.SegmentObservation{{
+				Source: parts[0].Source, Text: presentation.ShellSource(parts[0].Source, ""), Began: true, Finished: true, ExitCode: tc.exit,
+				Started: start, Ended: start.Add(time.Second), Duration: time.Second, Output: tc.output,
+			}}})
+			invocation.Complete(presentation.CommandCompletion{Source: source, Duration: time.Second, Aggregate: new(tc.output), Exit: new(tc.exit)})
+			command := invocation.Snapshot()
+			command.Source, command.Captured, command.CaptureText = 9, true, "Edit `file` · +1 −1 · bash"
+			command.Approval = "Approved"
+			command.Tail = invocation.Output().View().Lines
+			for _, part := range invocation.ReportSnapshot(true).Segments {
+				segment := part.CommandSegment
+				segment.Writer = tc.exit == 0
+				command.Segments = append(command.Segments, segment)
+			}
+			values := (presentation.ItemContent{Seq: 9, Kind: "tool", Command: command, Details: &presentation.ItemDetails{CommandText: tc.script}}).Values()
+			if len(values) != 2 || !values[0].Segment || values[0].Code != tc.script || values[0].Output != 1 || values[0].ExitCode != tc.exit || values[0].Duration != time.Second || values[0].BatchExit || values[0].Approval != "Approved" || !values[1].Effect || values[1].Exited {
+				t.Fatalf("single observed action lost source, output or effect membership: %+v", values)
+			}
+			pages := command.DetailValues()
+			if len(pages) != 1 || pages[0].Code != tc.script || pages[0].Output != 1 || strings.Join(pages[0].Tail, "\n") != strings.TrimRight(tc.output, "\n") {
+				t.Fatalf("details invented per-operation boundaries: %+v", pages)
+			}
+			p := Painter{Theme: diffrender.DarkTheme}
+			var rows []string
+			for _, value := range values {
+				rows = append(rows, p.Block(Block{Value: value}, 90)...)
+			}
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/captured_setup_"+tc.name+".txt", append(rows, "plain"), 90)
+		})
+	}
 }

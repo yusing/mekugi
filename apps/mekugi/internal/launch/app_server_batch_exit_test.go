@@ -39,7 +39,7 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 				if output := terminalTest(u).Dialog.Output; output == nil || !output.View.Exited || output.View.Exit != 1 || !strings.Contains(strings.Join(output.View.Lines, "\n"), "conflict") {
 					t.Fatal("resumed batch lost its failed command output")
 				}
-			} else if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "Ran   shell batch · exit 1") || !strings.Contains(got, "┆ conflict") {
+			} else if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, script+" · exit 1") || !strings.Contains(got, "┆ conflict") {
 				t.Fatalf("missing unique batch result:\n%s", got)
 			}
 			for _, record := range view.Entries {

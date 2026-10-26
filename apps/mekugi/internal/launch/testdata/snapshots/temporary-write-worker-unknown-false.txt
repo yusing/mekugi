@@ -4,5 +4,5 @@
 │ │     │ python3 - <<'PY'
 │ │     │ import json, os
 │ │     │ … +6 lines
-│ └ Ran shell batch · 157ms
+│ └ Ran batch_plan_dir=$(mktemp -d /tmp/mekugi-batches.XXXXXX) · 157ms
 │       ┆ /tmp/mekugi-batches.YcIbga/plan.json

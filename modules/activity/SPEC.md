@@ -183,7 +183,7 @@ Create/Edit/Delete/Move effects and counts. A transparent cell's completed recei
 describes its workspace effects without asserting nested patch success. Incomplete
 capture has unavailable counts; failed or unfinished patches have no successful
 summary. Repeated receipts deduplicate and replace intent without removing sibling
-failures, skipped work or output. Retained shell actions own nested captured effects
+failures, skipped work or output. Captured effects retain their invocation identity
 under the [presentation contract](CONTRACT.md#operation-rows), without assigning
 invocation-wide changes to individual segments. Combined output stays with its action.
 

@@ -147,8 +147,9 @@ func (v *ActivitySource) Apply(event ActivityEvent) {
 			for i, v0 := range slices.Backward(v.Entries) {
 				if v0.Source.Agent == entry.Agent && v0.Source.CallID == entry.CallID && entry.CallID != "" {
 					code, _ := strconv.Atoi(entry.Text)
-					blocks := activitypresentation.CommandExit(v.SourceValues(i), code, entry.OutputTail, entry.OutputOmit)
-					CommandPresentation(v0.Source).ApplyFacts(blocks)
+					command := CommandPresentation(v0.Source)
+					blocks := activitypresentation.CommandExit(v.SourceValues(i), command.Display, code, entry.OutputTail, entry.OutputOmit)
+					command.ApplyFacts(blocks)
 					v.Model.Replace(i, v0.Source, blocks)
 					break
 				}

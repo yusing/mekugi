@@ -138,7 +138,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 						t.Fatalf("successful intent survived receipt: %+v", block)
 					}
 				}
-				if !outputKept || !testKept || !failedKept || !skippedKept || len(view.blocks(0)) != 7 {
+				if !outputKept || !testKept || !failedKept || !skippedKept || len(view.blocks(0)) != 6 {
 					t.Fatalf("receipt lost segment output/state: %+v", view.blocks(0))
 				}
 			}
@@ -146,8 +146,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 	}
 }
 
-// Retained writer actions keep their own output and timing; invocation-wide
-// captured effects nest beneath their aggregate action.
+// Retained writer actions keep their own output and timing.
 func TestUISnapshotTrackedEditReceiptActionAndEffects(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	started := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -263,6 +262,32 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 		if last.Verb != "Run" || last.ExitCode != 2 || last.Output == 0 || strings.Join(view.RetainedOutput(last.Source, last.Output).View().Lines, "\n") != "test failed" {
 			t.Fatalf("restored neighbor lost retained failure/output: %+v", last)
 		}
+	}
+}
+
+func TestAppServerGroupedCaptureKeepsReadAction(t *testing.T) {
+	for _, tc := range []struct{ source, verb string }{
+		{"cat file", "Read"}, {"rg kept file", "Search"}, {"git show --stat HEAD", "Diff"},
+	} {
+		t.Run(tc.verb, func(t *testing.T) {
+			view := newActivityAdapter()
+			for i, source := range []string{tc.source, "cat > a.go"} {
+				item := []string{"anchor", "writer"}[i]
+				view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
+					Seq: uint64(i + 1), Agent: "Main", Kind: "tool", CallID: item, Text: toolActivityShell(source),
+					Native: &sessionpresentation.NativeItem{Thread: "main", Item: item, Command: source,
+						Segments: []sessionpresentation.ActivitySegment{{Source: source, Text: execSegmentText(source), Tail: []string{"kept"}}},
+					},
+				}}})
+			}
+			for range 2 {
+				view.ApplyCapturedEdits(trackedEditReceiptData("main", "anchor", "writer"))
+				blocks := view.blocks(0)
+				if len(blocks) != 3 || blocks[0].Verb != tc.verb || !blocks[0].Segment || blocks[0].Source != 1 || strings.Join(blocks[0].Tail, "") != "kept" {
+					t.Fatalf("grouped capture replaced the read action: %+v", blocks)
+				}
+			}
+		})
 	}
 }
 

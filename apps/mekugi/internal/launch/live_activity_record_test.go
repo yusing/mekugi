@@ -107,5 +107,5 @@ func commandSegmentBlocks(command activitypresentation.Command) []activityui.Blo
 	return activityui.Disclosure(nil).Blocks(activitypresentation.GroupOperations(command.SegmentValues(false)))
 }
 func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitted int) []activityui.Block {
-	return activityui.Disclosure(nil).Blocks(activitypresentation.CommandExit(activityui.Values(blocks), code, tail, omitted))
+	return activityui.Disclosure(nil).Blocks(activitypresentation.CommandExit(activityui.Values(blocks), "", code, tail, omitted))
 }

@@ -1,2 +1,2 @@
-  Edited source.go  +3 -1 ━━━━━━━━ via python3, gofmt
-         other.go   +3 -1 ━━━━━━━━
+Edited source.go  +3 -1 ━━━━━━━━ via python3, gofmt
+       other.go   +3 -1 ━━━━━━━━

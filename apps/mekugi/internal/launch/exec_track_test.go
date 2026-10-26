@@ -867,6 +867,116 @@ func TestAppServerTrackedCommandShowsSkippedSegments(t *testing.T) {
 	}
 }
 
+func TestAppServerTrackedCaptureLiveAndRestored(t *testing.T) {
+	t.Parallel()
+	u, hub := newTrackedAppServerUI(t)
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	setTestAppServerIntegration(u, testProxyWithStore(store))
+	script := "mrun --tail -n 8 git cherry-pick -S abc123; printf '\\nIntegrated timing-test scope\\n'; git show --stat --oneline HEAD"
+	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), Cwd: u.attached.cwd, Status: "inProgress"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	report := dialExecTrackReport(t, hub, script)
+	outputs := []string{"applied commit\n", "\nIntegrated timing-test scope\n", "commit statistics\n"}
+	for i, output := range outputs {
+		report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: i},
+			segmenttransport.Message{Type: segmenttransport.Output, Index: i, Data: output},
+			segmenttransport.Message{Type: segmenttransport.End, Index: i, Code: new(0)})
+	}
+	report.send(segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Closed})
+	report.conn.Close()
+	item.Status, item.ExitCode, item.AggregatedOutput = "completed", new(0), new(strings.Join(outputs, ""))
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	deadline := time.Now().Add(2 * time.Second)
+	for u.execTrack.Tracking([3]string{"main", "t", item.ID}) {
+		flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
+		if time.Now().After(deadline) {
+			t.Fatal("tracked command did not finalize")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	awaitCommandSegments(t, u)
+	reopened, err := openMekugiReplayStore(store.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := newAppServerSessionTestUI(t, u.attached.cwd)
+	setTestAppServerIntegration(restored, testProxyWithStore(reopened))
+	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
+	for _, ui := range []*appServerUI{u, restored} {
+		view := ui.testActivity(ui.shell.Transcript)
+		// Reconcile twice with new receipt values to cover receipt reparsing.
+		for range 2 {
+			view.ApplyCapturedEdits([]*presentation.Receipt{{Thread: "main", Calls: []string{item.ID}, Text: "Create `first.go` · +139 −0 · bash\n\nEdit `second.go` · +4 −0 · bash"}})
+		}
+		finishPacing(view)
+		entry := view.Entries[0]
+		values := view.SourceValues(0)
+		if len(values) != 4 || !values[0].Segment || !values[1].Segment {
+			t.Fatalf("capture lost individual commands: %+v", values)
+		}
+		for i, value := range values {
+			if value.BatchExit || value.Effect || value.Source != entry.Source.Seq {
+				t.Fatalf("capture invented an action or segment parent: %+v", value)
+			}
+			if i >= 2 && (value.Output != 0 || value.Exited || value.Duration != 0 || value.Operation == values[1].Operation) {
+				t.Fatalf("effect borrowed command facts or identity: %+v", value)
+			}
+		}
+		for i, output := range outputs {
+			retained := view.RetainedOutput(entry.Source.Seq, i+2)
+			if retained == nil || strings.Join(retained.View().Lines, "\n") != strings.TrimRight(output, "\n") {
+				t.Fatalf("segment %d lost independent output", i)
+			}
+		}
+		ui.shell.Transcript.Conversation = true
+		frame := ui.shell.Transcript.RenderConversation(110)
+		plain := ansi.Strip(strings.Join(frame.Lines, "\n"))
+		if strings.Contains(plain, "shell batch") || !strings.Contains(plain, "git cherry-pick") || !strings.Contains(plain, "git show") || strings.Count(plain, "first.go") != 1 || strings.Count(plain, "second.go") != 1 {
+			t.Fatalf("capture presentation:\n%s", plain)
+		}
+		for _, path := range []string{"first.go", "second.go"} {
+			if !slices.ContainsFunc(frame.Snippets, func(s activityui.Snippet) bool {
+				return s.Run == entry.Source.Seq && s.Block == activityui.EditNavigationSnippet && s.Path == path
+			}) {
+				t.Fatalf("capture lost navigation to %s", path)
+			}
+		}
+		for _, outcome := range []string{"Approved", "Denied\nCommand: git cherry-pick -S abc123"} {
+			native := *view.Entries[0].Source.Native
+			native.Phase, native.Approval = "approval/updated", outcome
+			view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: ui.attached.session.Activity().NextSequence(), Agent: entry.Source.Agent, Kind: "tool", Native: &native}}})
+			values := view.SourceValues(0)
+			approved := 0
+			for _, value := range values {
+				if value.Approval != "" {
+					approved++
+					if !value.BatchExit || value.Code != script || value.Approval != outcome || value.Output != 0 {
+						t.Fatalf("compound approval borrowed a segment or output: %+v", value)
+					}
+				}
+			}
+			if approved != 1 || strings.Contains(ansi.Strip(strings.Join(ui.shell.Transcript.RenderConversation(110).Lines, "\n")), "shell batch") {
+				t.Fatalf("compound approval lost invocation identity: %+v", values)
+			}
+			command := sessionpresentation.CommandPresentation(view.Entries[0].Source)
+			pages := activitypresentation.RefreshDetails(activitypresentation.DetailPages(values[len(values)-1:]), map[uint64]activitypresentation.DetailSource{
+				entry.Source.Seq: {Entry: activitypresentation.Entry{Values: values}, Command: &command},
+			})
+			if len(pages) != 3 || pages[2].Code != script || pages[2].Approval != outcome || pages[2].Output != 0 || pages[2].Operation != values[len(values)-1].Operation {
+				t.Fatalf("approval details lost invocation membership: %+v", pages)
+			}
+			for i, page := range pages[:2] {
+				if page.Approval != "" || page.Output != []int{2, 4}[i] {
+					t.Fatalf("approval was assigned to a segment: %+v", page)
+				}
+			}
+		}
+	}
+}
+
 func TestAppServerIncompleteReportFallsBackToHostOutput(t *testing.T) {
 	t.Parallel()
 	for _, failure := range []string{"no exit", "EOF after exit", "JSON error after exit"} {
@@ -897,7 +1007,7 @@ func TestAppServerIncompleteReportFallsBackToHostOutput(t *testing.T) {
 			item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 2, "a\nb\n"
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 			main := awaitMain(t, u, "exit 2")
-			if strings.Count(main, "exit 2") != 1 || !strings.Contains(main, "shell batch · exit 2") {
+			if strings.Count(main, "exit 2") != 1 || !strings.Contains(main, "echo a; cat b · exit 2") {
 				t.Fatalf("incomplete report attributed the batch exit to segments:\n%s", main)
 			}
 			if !strings.Contains(main, "┆ a\n") || !strings.Contains(main, "┆ b") || strings.Contains(main, "skipped") {

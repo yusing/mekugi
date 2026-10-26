@@ -1,11 +1,11 @@
 ┌ 1 Main ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │• Thought for 2s • Inspecting repaint timing                                                                          │
-│├ Ran sleep 1; printf 'captured output'                                                                               │
-│└ Ran shell batch · 2s                                                                                                │
+│└ Ran sleep 1; printf 'captured output' · 2s                                                                          │
 │      ┆ captured output                                                                                               │
 │                                                                                                                      │
 │● main                                                                                                       08:00:07 │
 │┃ Repaint diagnosis complete.                                                                                         │
+│                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │

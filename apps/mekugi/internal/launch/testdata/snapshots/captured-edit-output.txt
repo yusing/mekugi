@@ -5,6 +5,5 @@
 │ │        ┆ ./... diagnostic
 │ ├ Ran    cat > b.go · 3s
 │ │        ┆ b.go diagnostic
-│ └ Ran    shell batch
-│     Edited a.go  +3 -1 ━━━━━━━━ via cat
-│            b.go  +1 -2 ━━━━━━━━
+│ └ Edited a.go  +3 -1 ━━━━━━━━ via cat
+│          b.go  +1 -2 ━━━━━━━━

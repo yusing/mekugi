@@ -41,12 +41,19 @@ func (entry ItemContent) Values() (blocks []Value) {
 	command := entry.Command
 	defer func() {
 		defer func() { Identify(blocks, entry.Seq) }()
+		compoundApproval := command.Approval != "" && (len(command.Segments) > 1 && !command.UserShell ||
+			len(blocks) > 1 && slices.ContainsFunc(blocks[1:], func(b Value) bool { return !b.Effect }))
 		// An unsupported batch has one host clock, not a clock per classified
 		// operation. Keep that total visible and its output on one explicit row.
 		if n := entry.Details; entry.Kind == "tool" && n != nil && n.CommandText != "" && len(n.Reload) == 0 &&
-			(len(entry.Command.Segments) == 0 && (entry.Command.Running || entry.Command.Duration > 0) && command.Compound(blocks) || entry.Command.Approval != "" && len(blocks) > 1) &&
+			(len(entry.Command.Segments) == 0 && (entry.Command.Running || entry.Command.Duration > 0) && command.Compound(blocks) || compoundApproval) &&
 			!slices.ContainsFunc(blocks, func(b Value) bool { return b.BatchExit }) {
-			batch := Value{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Running: entry.Command.Running, Output: n.Output, Tail: entry.Command.Tail, TailOmitted: entry.Command.TailOmitted}
+			source, _, _ := strings.Cut(cmp.Or(command.Display, command.Script, n.CommandText), "\n")
+			batch := Value{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true,
+				BatchExit: true, Running: entry.Command.Running, Output: n.Output, Tail: entry.Command.Tail, TailOmitted: entry.Command.TailOmitted}
+			if len(command.Segments) > 0 {
+				batch.Operation = len(command.Segments) + 1
+			}
 			if len(entry.Command.Segments) == 0 {
 				for i := range blocks {
 					blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = 0, nil, 0
@@ -248,7 +255,7 @@ func ApplyApproval(blocks []Value, outcome string) {
 
 // CommandExit keeps a combined shell failure separate from classified
 // operations: without a complete segment report none owns the batch's exit.
-func CommandExit(blocks []Value, code int, tail []string, omitted int) []Value {
+func CommandExit(blocks []Value, source string, code int, tail []string, omitted int) []Value {
 	last, count, batch := -1, 0, -1
 	var output int
 	for i, block := range blocks {
@@ -276,7 +283,12 @@ func CommandExit(blocks []Value, code int, tail []string, omitted int) []Value {
 	if count > 1 || batch >= 0 {
 		if batch < 0 {
 			batch = len(blocks)
-			blocks = append(blocks, Value{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true})
+			value := Value{Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true}
+			if source != "" {
+				source, _, _ = strings.Cut(source, "\n")
+				value.Label, value.Code, value.Lang, value.Fenced = "", textsanitize.Safe(source, false), "bash", true
+			}
+			blocks = append(blocks, value)
 		}
 		// Any streamed tail was combined too; move it to the batch result.
 		for i := range blocks {

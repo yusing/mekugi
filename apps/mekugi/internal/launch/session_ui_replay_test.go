@@ -230,7 +230,7 @@ func TestSessionUIReplayBatchElapsedUsesRecordedClock(t *testing.T) {
 			t.Fatal(err)
 		}
 		frame := replayPlaybackTestPaint(t, p, 120, 28)
-		_, tail, found := strings.Cut(frame, "Running shell batch")
+		_, tail, found := strings.Cut(frame, "Running sleep 1; printf 'captured output'")
 		row, _, _ := strings.Cut(tail, "\n")
 		want := ""
 		if tc.elapsed != "" {

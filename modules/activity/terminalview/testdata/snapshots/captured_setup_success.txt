@@ -1,0 +1,4 @@
+"\x1b[38;5;214;1mRan\x1b[m    \x1b[38;2;242;192;120mset\x1b[m -e\x1b[38;2;230;237;243m;\x1b[m \x1b[38;2;210;168;255msed\x1b[m -i s/old/kept/ file\x1b[38;2;230;237;243m;\x1b[m \x1b[38;2;210;168;255mcat\x1b[m file \x1b[2m· 1s · \x1b[38;5;114;22mApproved\x1b[m                          "
+"       \x1b[2m┆\x1b[m kept                                                                             "
+"  \x1b[38;5;114;1mEdited\x1b[m \x1b[1mfile\x1b[m \x1b[38;5;114m+1\x1b[m \x1b[38;5;203m-1\x1b[m \x1b[2mvia \x1b[38;2;210;168;255;22mbash\x1b[m                                                              "
+"plain                                                                                     "

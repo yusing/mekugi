@@ -363,7 +363,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 	for range 2 {
 		v.ApplyCapturedEdits(data)
 		blocks := v.blocks(0)
-		if len(blocks) != 5 || blocks[2].ExitCode != 1 || !blocks[4].Effect || blocks[4].Verb != "Edit" || blocks[4].ExitCode != 0 {
+		if len(blocks) != 4 || blocks[2].ExitCode != 1 || blocks[3].Effect || blocks[3].Verb != "Edit" || blocks[3].ExitCode != 0 {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
 		}
 	}

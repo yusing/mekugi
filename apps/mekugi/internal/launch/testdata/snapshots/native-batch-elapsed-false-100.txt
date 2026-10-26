@@ -1,3 +1,3 @@
 Ran    make test TEST_PACKAGES=./internal/router
 Diff   amber1 · mchanges --net
-Ran    shell batch · 3m11s
+Ran    make test TEST_PACKAGES=./internal/router; mchanges amber1 --net · 3m11s

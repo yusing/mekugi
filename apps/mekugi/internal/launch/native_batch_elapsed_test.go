@@ -135,7 +135,7 @@ func TestNativeBatchElapsedFailureAndResume(t *testing.T) {
 			found := false
 			for _, entry := range view.Entries {
 				for _, block := range u.shell.Transcript.Disclosure.Blocks(entry.Values) {
-					if block.BatchExit {
+					if block.Code == item.Command {
 						if found || block.Duration != 191129*time.Millisecond || block.ExitCode != 1 {
 							t.Fatalf("incorrect batch timing or exit: %+v", block)
 						}

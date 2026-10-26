@@ -194,9 +194,9 @@ func apiIntentRefusal(attached *attachedPresentation, control *sessioncontrol.Cl
 }
 
 // Source: apps/mekugi/internal/launch/web.go:41:82@[14a6d1f3] commandFeed
-// commandFeed names compound result rows by the command that ran, which the
-// browser shows where the terminal labels a shell batch; publications carry
-// command input only on request. The detached copy and each entry's command
+// commandFeed supplies original command input for compound result rows that
+// lack source. Publications carry command input only on request. The detached
+// copy and each entry's command
 // are kept while their sources are unchanged, so an unchanged frame stays
 // identical and costs nothing to publish.
 type commandFeed struct {

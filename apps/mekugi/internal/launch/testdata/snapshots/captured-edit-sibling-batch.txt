@@ -1,2 +1,2 @@
 Search needle in src
-Ran    shell batch · 64ms
+Ran    rg needle src; python3 - <<'PY' · 64ms
