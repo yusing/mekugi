@@ -191,6 +191,9 @@ a stale stop. Stop disposition and terminal reduction serialize per work generat
 
 A local host-turn completion checkpoints logical waiting, not task completion:
 no final answer, completion event/notice, idle transition or released reservation.
+Manual compaction preserves the pending wait and logical work. Its auxiliary
+host turn neither completes the task nor starts a competing continuation; addressed
+messages and wakes queue until compaction settles.
 Selected logical child completion/failure/interruption or an addressed message may
 wake. Child questions, approvals and their human replies do not. Nested coordinators
 obey the same state machine. Events retain arrival order and are claimed once.

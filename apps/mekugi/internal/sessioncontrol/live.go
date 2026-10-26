@@ -28,6 +28,11 @@ func (h *Live) Starting() bool {
 	return h.AwaitingTurn || h.Compaction.Starting() || h.Shell.phase == shellStarting
 }
 
+// AuxiliaryTurn identifies host work that does not start or finish an assignment.
+func (h *Live) AuxiliaryTurn(turn string) bool {
+	return h.Shell.OwnsTurn(turn) || h.Compaction.OwnsTurn(turn)
+}
+
 func (h *Live) Started(turn string) {
 	if h.Turn != "" && h.Turn != turn {
 		h.startOrigin = ""
@@ -118,6 +123,7 @@ func (h *Live) PrepareEscape(hasUnsentSteer bool) bool {
 func (h *Live) Interrupt() Interrupt {
 	r := Interrupt{Turn: h.Turn, Wait: h.Waiting, Stop: h.LocalStop}
 	if h.Compaction.Cancel() {
+		r.Wait, r.Stop = "", ""
 		r.RestoreWaiting = true
 		r.Turn = h.Compaction.InterruptTarget()
 		if r.Turn == "" {

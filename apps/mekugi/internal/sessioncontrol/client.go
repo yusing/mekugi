@@ -21,10 +21,10 @@ type Client[T any] struct {
 	retired  map[string]string // Retired thread to its former session root.
 }
 
-// Calls admits feature requests only after actual user-shell execution and its
-// acknowledgement settle. The existing channel and ledger retain ownership.
+// Calls admits feature requests after auxiliary execution and acknowledgement
+// settle. The existing channel and ledger retain queued delivery ownership.
 func (u *Client[T]) Calls() <-chan *HostCall {
-	if u.Shell.BlocksInput(u.Turn) {
+	if u.Shell.BlocksInput(u.Turn) || u.Compaction.Pending() {
 		return nil
 	}
 	return u.Requests.Calls()

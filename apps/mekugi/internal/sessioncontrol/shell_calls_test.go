@@ -10,42 +10,52 @@ import (
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-func TestNativeDeliveryWaitsForShellSettlement(t *testing.T) {
-	for _, run := range []bool{false, true} {
-		t.Run(map[bool]string{false: "message", true: "wake"}[run], func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				transport := &requestTransport{id: "native"}
-				u := Client[struct{}]{Live: Live{Thread: "main"}, Requests: NewRequests[struct{}](transport)}
-				u.Shell.Begin("")
-				u.Shell.WakeAfterSettlement()
-				input := control.NativeInput{Thread: "main", ID: "message", Kind: "MESSAGE", Message: "retained payload", Run: run}
-				if run {
-					input.Wake = &control.WaitResult{ID: "wait", State: "completed"}
-				}
-				result := make(chan error, 1)
-				go func() { _, err := u.Requests.Input(t.Context(), input); result <- err }()
-				synctest.Wait()
-				for _, settle := range []func(){func() {}, func() { u.Started("shell") }, func() { u.Completed(true) }} {
-					settle()
-					if u.Calls() != nil || len(transport.sends) != 0 {
-						t.Fatal("native delivery overlapped actual shell execution or its acknowledgement")
+func TestNativeDeliveryWaitsForAuxiliarySettlement(t *testing.T) {
+	for _, compact := range []bool{false, true} {
+		for _, run := range []bool{false, true} {
+			t.Run(fmt.Sprintf("compact=%t/run=%t", compact, run), func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					transport := &requestTransport{id: "native"}
+					u := Client[struct{}]{Live: Live{Thread: "main"}, Requests: NewRequests[struct{}](transport)}
+					if compact {
+						u.Compaction.Begin(CompactIntent{})
+					} else {
+						u.Shell.Begin("")
+						u.Shell.WakeAfterSettlement()
 					}
-				}
-				u.Shell.Acknowledge(false, u.Turn)
-				u.Requests.Dispatch(<-u.Calls())
-				want := "thread/inject_items"
-				if run {
-					want = "turn/start"
-				}
-				if len(transport.sends) != 1 || transport.sends[0].method != want {
-					t.Fatalf("settled shell did not release delivery: %+v", transport.sends)
-				}
-				u.Requests.CompleteCall(appserver.Message{ID: jsontext.Value(`native`), Result: jsontext.Value(`{"turn":{"id":"continued"}}`)})
-				if err := <-result; err != nil {
-					t.Fatal(err)
-				}
+					input := control.NativeInput{Thread: "main", ID: "message", Kind: "MESSAGE", Message: "retained payload", Run: run}
+					if run {
+						input.Wake = &control.WaitResult{ID: "wait", State: "completed"}
+					}
+					result := make(chan error, 1)
+					go func() { _, err := u.Requests.Input(t.Context(), input); result <- err }()
+					synctest.Wait()
+					for _, settle := range []func(){func() {}, func() { u.Started("shell") }, func() { u.Completed(true) }} {
+						settle()
+						if u.Calls() != nil || len(transport.sends) != 0 {
+							t.Fatal("native delivery overlapped actual shell execution or its acknowledgement")
+						}
+					}
+					if compact {
+						u.CompactResponse(false)
+					} else {
+						u.Shell.Acknowledge(false, u.Turn)
+					}
+					u.Requests.Dispatch(<-u.Calls())
+					want := "thread/inject_items"
+					if run {
+						want = "turn/start"
+					}
+					if len(transport.sends) != 1 || transport.sends[0].method != want {
+						t.Fatalf("settled shell did not release delivery: %+v", transport.sends)
+					}
+					u.Requests.CompleteCall(appserver.Message{ID: jsontext.Value(`native`), Result: jsontext.Value(`{"turn":{"id":"continued"}}`)})
+					if err := <-result; err != nil {
+						t.Fatal(err)
+					}
+				})
 			})
-		})
+		}
 	}
 }
 

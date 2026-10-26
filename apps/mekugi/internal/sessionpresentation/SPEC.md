@@ -379,7 +379,9 @@ Server-coordinated logical waits update the caller's roster through
 [Activity](../../../../modules/activity/SPEC.md#records-and-codex-connection)
 and keep Main busy and interruptible after the
 host turn stops. The composer shows waiting, elapsed work continues across the
-continuation, and the local stop emits no task-completion notice. Cold restoration
+continuation, and the local stop emits no task-completion notice. Manual compaction
+preserves the logical wait, returning the composer to waiting after its auxiliary
+turn without marking the roster done. Cold restoration
 shows paused work without restarting its clock or subscription.
 
 Router errors remain composer feedback, not transcript or provider-response edits.

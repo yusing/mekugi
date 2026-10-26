@@ -94,6 +94,9 @@ compaction. Both compact acknowledgement and successful compact-turn completion
 precede continuation. The command separates text batches and never becomes model
 input. An intent admitted while busy continues with waiting input, otherwise one
 native empty-input turn. Continuation adds no user message; idle compaction stays idle.
+Compaction during a logical wait preserves that wait rather than starting an empty
+continuation. User input and attributed agent deliveries queue until both compaction
+acknowledgement and its host turn settle.
 
 With an empty draft, Ctrl-C restores queued compaction and waiting input without
 interrupting Main. Cancelling a prerequisite interrupt cannot undo its issued

@@ -93,7 +93,7 @@ func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Atta
 	event := p.Observation(method, presentationTime(clock))
 
 	facts := sessionpresentation.ObservationInput{Event: event, Text: binding.RetainedTranscript(event), Main: control.Thread, Selected: control.Turn, Start: control.InterruptTarget().Start, Workspace: attached.cwd, Tracked: tracker.Tracking(key)}
-	facts.AuxiliaryTurn = p.ThreadID == control.Thread && control.Shell.OwnsTurn(p.Turn.ID)
+	facts.AuxiliaryTurn = p.ThreadID == control.Thread && control.AuxiliaryTurn(p.Turn.ID)
 	if p.Item.Type == "commandExecution" && trace != nil {
 		if ms, known := trace.CommandTimeout(p.ThreadID, key[2]); known {
 			facts.CommandTimeout = strconv.FormatUint(ms/1000, 10)

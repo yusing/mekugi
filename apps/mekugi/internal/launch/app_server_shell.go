@@ -25,7 +25,7 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-// Standalone user-shell turns execute and retain output in Codex without
+// Auxiliary turns execute and retain output in Codex without
 // acquiring or completing logical model work.
 func observeLogicalHost(driver *threadbinding.Driver, live *sessioncontrol.Live, message appserver.Message) error {
 	if message.Method == "turn/started" || message.Method == "turn/completed" {
@@ -33,7 +33,7 @@ func observeLogicalHost(driver *threadbinding.Driver, live *sessioncontrol.Live,
 		if err != nil {
 			return err
 		}
-		if p.ThreadID == live.Thread && live.Shell.OwnsTurn(p.Turn.ID) {
+		if p.ThreadID == live.Thread && live.AuxiliaryTurn(p.Turn.ID) {
 			return nil
 		}
 	}

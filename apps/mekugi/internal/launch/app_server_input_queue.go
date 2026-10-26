@@ -129,7 +129,9 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 	defer attached.threadInput.reset()
 	defer attached.presentation.PruneInput(&control.Live, attached.conversation)
 	if len(parts) == 1 && parts[0].Text == "/compact" {
-		control.Compaction.Begin(sessioncontrol.CompactIntent(parts[0].Compact))
+		intent := sessioncontrol.CompactIntent(parts[0].Compact)
+		intent.Continue = intent.Continue && control.LocalStop == ""
+		control.Compaction.Begin(intent)
 		attached.presentation.Status.SetText("Compacting context" + "…")
 		return control.Request("thread/compact/start", map[string]any{"threadId": control.Thread})
 	}

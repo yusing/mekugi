@@ -74,6 +74,12 @@ func (c *Compaction) Starting() bool { return c.phase == compactStarting }
 func (c *Compaction) Active() bool {
 	return c.phase == compactStarting || c.phase == compactRunning
 }
+
+// OwnsTurn also recognizes the first start notification before Started runs.
+func (c *Compaction) OwnsTurn(turn string) bool {
+	return turn != "" && (c.Starting() || c.phase == compactRunning && c.turn == turn)
+}
+
 func (c *Compaction) Pending() bool { return c.ackPending || c.Active() || c.turn != "" }
 func (c *Compaction) AcknowledgementPending() bool {
 	return c.phase != compactInterrupting && c.ackPending

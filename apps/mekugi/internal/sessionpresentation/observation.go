@@ -20,7 +20,7 @@ type ObservationInput struct {
 	Main, Selected, Workspace, CommandTimeout string
 	Start                                     string // Main's admitted start origin, absent during replay.
 	Tracked                                   bool
-	AuxiliaryTurn                             bool // Standalone user-shell execution, not model work.
+	AuxiliaryTurn                             bool // Shell or manual compaction, not model work.
 }
 
 type ObservationResult struct {
