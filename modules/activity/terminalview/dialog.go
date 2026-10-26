@@ -106,6 +106,9 @@ func (p *Painter) DialogPage(block Block, width int) terminalui.DialogPage {
 	}
 	if block.Body != "" {
 		body := block.Body
+		if len(block.WaitTargets) > 0 {
+			body = block.ProgressText()
+		}
 		if block.Kind == "error" {
 			body = textsanitize.Safe(body, false)
 		}

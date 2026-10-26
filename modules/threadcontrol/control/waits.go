@@ -80,7 +80,7 @@ func selectedEvent(tree *Tree, wait *Wait) *Effect {
 }
 
 func (tree *Tree) waitResult(wait *Wait) *WaitResult {
-	result := &WaitResult{ID: wait.ID, State: wait.State, EffectiveMS: wait.EffectiveMS}
+	result := &WaitResult{ID: wait.ID, All: wait.All, State: wait.State, EffectiveMS: wait.EffectiveMS}
 	if wait.Terminal != nil {
 		result.Event = new(*wait.Terminal)
 	}
@@ -143,7 +143,7 @@ func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []s
 			result = *tree.waitResult(old)
 			return unchanged
 		}
-		wait := &Wait{Effect: Effect{ID: caller.Call, Caller: caller.Thread, Target: caller.Thread, Generation: member.Generation, Turn: caller.Turn, CallerTurn: caller.Turn, Kind: "wake", State: "registered"}, Item: caller.Item, Targets: selected}
+		wait := &Wait{Effect: Effect{ID: caller.Call, Caller: caller.Thread, Target: caller.Thread, Generation: member.Generation, Turn: caller.Turn, CallerTurn: caller.Turn, Kind: "wake", State: "registered"}, Item: caller.Item, Targets: selected, All: all}
 		if timeout != nil {
 			if *timeout > member.Limits.MaxWaitMS {
 				return errors.New("wait timeout exceeds the captured host maximum")

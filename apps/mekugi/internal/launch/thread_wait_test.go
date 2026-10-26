@@ -99,7 +99,7 @@ func TestUISnapshotLogicalWaiting(t *testing.T) {
 	}
 	assertNativeUISnapshot(t, "logical-waiting", rows)
 	u.testActivity(u.shell.Agents).publishActivity()
-	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for worker (timeout 1s)") {
+	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for all (timeout 1s)") {
 		t.Fatalf("roster lost transcript wait details: %s", text)
 	}
 	assertNativeUISnapshot(t, "logical-waiting-roster", u.shell.Agents.NativeRoster(80, 5, *at, true))
@@ -137,7 +137,7 @@ func TestLogicalWaitContinuationPreservesElapsed(t *testing.T) {
 	}
 	rows, _ := u.testMainFrame(100, 15, 0)
 	text := ansi.Strip(strings.Join(rows, "\n"))
-	if !strings.Contains(text, "Finished waiting for worker: timeout") {
+	if !strings.Contains(text, "Finished waiting for all: timeout") {
 		t.Fatalf("invisible timeout wake: %s", text)
 	}
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "continued"}})
@@ -290,39 +290,64 @@ func TestUISnapshotLogicalWaitNoTimeout(t *testing.T) {
 	if previousWait == nil || agent.Wait != previousWait {
 		t.Fatal("unchanged wait invalidated roster publication")
 	}
-	if agent.Responding || !agent.Waiting || agent.WaitingFor != "worker" {
+	if agent.Responding || !agent.Waiting || agent.WaitingFor != "all" {
 		t.Fatalf("stopped parent remained active: %+v", agent)
 	}
 	rows, _ := u.testMainFrame(100, 10, 0)
-	if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Waiting for worker") || strings.Contains(text, "timeout") {
+	if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Waiting for all") || strings.Contains(text, "timeout") {
 		t.Fatalf("deadline-free wait: %s", text)
 	}
 	assertNativeUISnapshot(t, "logical-wait-no-timeout", rows)
 	u.testActivity(u.shell.Agents).publishActivity()
-	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for worker") || strings.Contains(text, "timeout") {
+	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for all") || strings.Contains(text, "timeout") {
 		t.Fatalf("roster differs from deadline-free transcript: %s", text)
 	}
 }
 
 func TestLogicalStoppedTargetPublishesWakeReason(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, nil)
-	service := threads.shared
-	if err := service.Pause(t.Context(), "child"); err != nil {
-		t.Fatal(err)
-	}
-	wake, err := service.PrepareWake(t.Context(), "main", *at)
-	if err != nil || wake == nil {
-		t.Fatalf("stopped child did not wake: %+v %v", wake, err)
-	}
-	if _, err := service.ClaimEffect(t.Context(), "main", wake.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.EffectAcknowledged(t.Context(), "main", wake.ID, control.Receipt{Turn: "continued"}); err != nil {
-		t.Fatal(err)
-	}
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
-	rows, _ := u.testMainFrame(100, 15, 0)
-	if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Finished waiting for worker: paused") {
-		t.Fatalf("stopped-target wake was invisible: %s", text)
+	for _, status := range []control.Status{control.Paused, control.Failed, control.Completed} {
+		t.Run(string(status), func(t *testing.T) {
+			u, threads, at := logicalWaitUI(t, nil)
+			service := threads.shared
+			if status == control.Paused {
+				if err := service.Pause(t.Context(), "child"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := service.HostCompleted(t.Context(), "child", "child-turn", status, ""); err != nil {
+					t.Fatal(err)
+				}
+				tree, err := service.Snapshot("child")
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, effect := range tree.Actions() {
+					if effect.Kind != "final" || effect.Caller != "child" {
+						continue
+					}
+					if _, err := service.ClaimEffect(t.Context(), "child", effect.ID); err != nil {
+						t.Fatal(err)
+					}
+					if err := service.EffectAcknowledged(t.Context(), "child", effect.ID, control.Receipt{}); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			wake, err := service.PrepareWake(t.Context(), "main", *at)
+			if err != nil || wake == nil {
+				t.Fatalf("stopped child did not wake: %+v %v", wake, err)
+			}
+			if _, err := service.ClaimEffect(t.Context(), "main", wake.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := service.EffectAcknowledged(t.Context(), "main", wake.ID, control.Receipt{Turn: "continued"}); err != nil {
+				t.Fatal(err)
+			}
+			syncLogicalWork(&u.attached, &u.Live, threads, *at)
+			rows, _ := u.testMainFrame(100, 15, 0)
+			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Finished waiting for all: worker: "+string(status)) {
+				t.Fatalf("stopped-target wake was invisible: %s", text)
+			}
+		})
 	}
 }

@@ -1,0 +1,3 @@
+"\x1b[2m• Waiting for \x1b[38;5;99mone\x1b[39m, \x1b[38;5;170mtwo\x1b[39m \x1b[4m+3 more\x1b[m                                                                      "
+"plain after wait                                                                                    "
+"\x1b[2m• Waiting for all\x1b[m                                                                                   "

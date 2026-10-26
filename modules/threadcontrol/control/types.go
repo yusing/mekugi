@@ -73,6 +73,7 @@ type Wait struct {
 	Effect
 	Item, Stop, ResumeHandle string
 	Targets                  []string
+	All                      bool
 	RequestedMS, EffectiveMS *int64
 	Deadline                 *time.Time
 	Terminal                 *Event
@@ -146,6 +147,7 @@ type Receipt struct {
 
 type WaitResult struct {
 	ID          string   `json:"-"`
+	All         bool     `json:"-"`
 	State       string   `json:"state"`
 	Event       *Event   `json:"event,omitempty"`
 	Targets     []string `json:"targets,omitempty"`

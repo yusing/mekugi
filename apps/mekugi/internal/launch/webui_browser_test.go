@@ -398,6 +398,8 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	frame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
 		{Facts: activitypresentation.Facts{Seq: 2, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "5s"}}, Revision: 1},
 		{Facts: activitypresentation.Facts{Seq: 3, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitReason: "paused"}}, Revision: 1},
+		{Facts: activitypresentation.Facts{Seq: 4, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/one"}, {Name: "/root/two"}, {Name: "/root/three"}, {Name: "/root/four"}, {Name: "/root/five"}}}}, Revision: 1},
+		{Facts: activitypresentation.Facts{Seq: 5, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "all"}}}}, Revision: 1},
 	}}
 	for i := range frame.Main.Entries {
 		entry := &frame.Main.Entries[i]
@@ -410,6 +412,24 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--text", "Finished waiting for worker: paused")
 	run("wait", "--fn", `document.querySelector('[aria-label="Thread panel"] [title="Waiting for worker (timeout 5s)"]')`)
 	run("wait", "--text", "1 waiting")
+	run("wait", "--text", "Waiting for all")
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="4"]'); return row?.textContent.includes('+3 more') && !row.textContent.includes('three'); })()`)
+	run("find", "text", "+3 more", "click", "--exact")
+	run("wait", "--text", "Waiting for one, two, three, four, five")
+	run("find", "text", "Show fewer agents", "click", "--exact")
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		for _, palette := range []string{"Light", "Dark"} {
+			run("set", "viewport", "1280", "900")
+			theme(palette)
+			for _, width := range []string{"1280", "768", "390"} {
+				run("set", "viewport", width, "900")
+				run("wait", "--fn", `(() => { const button = document.querySelector('[data-entry="4"] button[aria-expanded]'); if (!button) return false; const rect = button.getBoundingClientRect(); return rect.left >= 0 && rect.right <= innerWidth; })()`)
+				run("screenshot", filepath.Join(artifacts, "wait-"+strings.ToLower(palette)+"-"+width+".png"))
+			}
+		}
+		run("set", "viewport", "1280", "900")
+		theme("System")
+	}
 	settled := frame.Main.Entries[1]
 	settled.Values = []activitypresentation.Value{settled.Values[0]}
 	settled.Values[0].WaitReason = "message received"

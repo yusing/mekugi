@@ -45,6 +45,30 @@ func TestWaitProgressSanitizesHostText(t *testing.T) {
 	}
 }
 
+func TestUISnapshotWaitTargetDisclosure(t *testing.T) {
+	block := activityui.Block{Kind: "progress", Body: "Waiting for"}
+	for _, name := range []string{"one", "two", "three", "four", "five"} {
+		block.WaitTargets = append(block.WaitTargets, activityui.WaitTarget{Name: "/root/" + name})
+	}
+	var view activityui.View
+	if !view.ClickTarget(&block, activityui.Snippet{}, 80) {
+		t.Fatal("omitted targets have no detail interaction")
+	}
+	page := view.Painter.DialogPage(block, 80)
+	if page.Text != "Waiting for one, two, three, four, five" {
+		t.Fatalf("target details lost full selection: %q", page.Text)
+	}
+	for _, width := range []int{28, 100} {
+		rows := view.Painter.Block(block, width)
+		if text := strings.Join(strings.Fields(ansi.Strip(strings.Join(rows, "\n"))), " "); !strings.Contains(text, "+3 more") || strings.Contains(text, "three") {
+			t.Fatalf("wait preview did not collapse: %s", text)
+		}
+		rows = append(rows, "plain after wait")
+		rows = append(rows, view.Painter.Block(activityui.Block{Kind: "progress", Body: "Waiting for", WaitTargets: []activityui.WaitTarget{{Name: "all"}}}, width)...)
+		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/wait_disclosure_%d.txt", width), rows, width)
+	}
+}
+
 func TestUISnapshotWaitingBreathing(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.TerminalTheme, diffrender.DarkTheme, diffrender.LightTheme} {
 		t.Run(fmt.Sprint(theme), func(t *testing.T) {

@@ -58,6 +58,9 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 		lifecycle.Wait = nil
 	}
 	if wait != nil {
+		if wait.All {
+			wait.Targets = []string{"all"}
+		}
 		names := make([]string, len(wait.Targets))
 		for i, target := range wait.Targets {
 			names[i] = pathdisplay.AgentDisplayName(target)
@@ -86,7 +89,7 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 			}
 			if event := wait.Event; event != nil {
 				value.WaitReason = string(event.Status)
-				if len(wait.Targets) > 1 {
+				if wait.All || len(wait.Targets) > 1 {
 					value.WaitReason = fmt.Sprintf("%s: %s", pathdisplay.AgentDisplayName(event.Task), event.Status)
 				}
 				if event.Kind == "message" {

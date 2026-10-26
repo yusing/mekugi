@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // Coordination is an observed operation, never authority to execute or deliver it.
@@ -58,7 +59,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 			_ = json.Unmarshal(args.Target, &targets)
 		}
 		if len(args.Target) == 0 || args.Target.Kind() == '"' {
-			targets = []string{"All descendants"}
+			targets = []string{"all"}
 		}
 		for _, target := range targets {
 			c.Targets = append(c.Targets, Target{Name: target})
@@ -135,7 +136,8 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		}
 	case "wait_agent":
 		c.Confirmed = slices.Contains([]string{"registered", "completed", "timeout", "canceled", "paused"}, result.State)
-		if c.Confirmed && len(result.Targets) > 0 {
+		all := len(args.Target) == 0 || args.Target.Kind() == '"'
+		if c.Confirmed && len(result.Targets) > 0 && !all {
 			c.Targets = nil
 			for _, target := range result.Targets {
 				c.Targets = append(c.Targets, Target{Name: target})
@@ -146,7 +148,11 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		}
 		if c.Confirmed && result.Event != nil {
 			c.EventKind = result.Event.Kind
-			c.Targets = []Target{{Name: result.Event.Task, Status: result.Event.Status}}
+			if all {
+				c.Targets[0].Status = pathdisplay.AgentDisplayName(result.Event.Task) + ": " + result.Event.Status
+			} else {
+				c.Targets = []Target{{Name: result.Event.Task, Status: result.Event.Status}}
+			}
 		}
 	}
 	if c.Confirmed {

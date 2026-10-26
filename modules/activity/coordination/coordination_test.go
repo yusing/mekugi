@@ -108,8 +108,9 @@ func TestProjectCoordinationWaitDispositions(t *testing.T) {
 		name, args, result, state string
 		targets                   []Target
 	}{
-		{"implicit all", `{}`, `{"state":"registered"}`, "registered", []Target{{Name: "All descendants"}}},
-		{"explicit all", `{"target":"all"}`, `{"state":"registered"}`, "registered", []Target{{Name: "All descendants"}}},
+		{"implicit all", `{}`, `{"state":"registered","targets":["/root/a","/root/b"]}`, "registered", []Target{{Name: "all"}}},
+		{"explicit all", `{"target":"all"}`, `{"state":"registered","targets":["/root/a","/root/b"]}`, "registered", []Target{{Name: "all"}}},
+		{"all failed target", `{}`, `{"state":"completed","event":{"task":"/root/child","status":"failed"}}`, "completed", []Target{{Name: "all", Status: "child: failed"}}},
 		{"completed event", `{"target":["child"]}`, `{"state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", []Target{{Name: "/root/child", Status: "completed"}}},
 		{"timeout", `{"target":["child"]}`, `{"state":"timeout"}`, "timeout", []Target{{Name: "child"}}},
 		{"paused", `{"target":["child"]}`, `{"state":"paused"}`, "paused", []Target{{Name: "child"}}},

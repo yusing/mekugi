@@ -230,7 +230,9 @@ Host lifecycle and logical working/waiting state remain separate in admission,
 elapsed timing, roster/composer publication, idle guards and cancellation. Existing
 prompt handling remains independent and responsive to unrelated storage waits.
 Activity and Session Presentation consume detached owner state and reuse existing
-terminal painting. The roster names the selected wait targets. Transcript progress
+terminal painting. Omitted or explicit all-target selection displays `all`; named
+selections show a short preview with an omitted-target count and complete detail access.
+Transcript progress
 shows `Waiting for …`, adds a muted explicit timeout when present, and records
 `Finished waiting for …: reason` when the wait settles, including timeout,
 addressed messages, completion, failure and cancellation. View switches do not transfer or stop coordination.

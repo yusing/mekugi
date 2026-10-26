@@ -97,11 +97,11 @@ func TestWaitAgentKeepsRegistrationIdentityInternal(t *testing.T) {
 	if err := json.Unmarshal(payload, &fields); err != nil {
 		t.Fatal(err)
 	}
-	if fields["id"] != nil || string(fields["state"]) != `"registered"` || string(fields["targets"]) != `["/root/child"]` {
+	if fields["id"] != nil || fields["all"] != nil || string(fields["state"]) != `"registered"` || string(fields["targets"]) != `["/root/child"]` {
 		t.Fatalf("wait result: %s", payload)
 	}
 	member, _ := driver.control.Member(caller.Thread)
-	if member.Wait == nil || member.Wait.ID != caller.Call {
+	if member.Wait == nil || member.Wait.ID != caller.Call || !member.Wait.All {
 		t.Fatal("lost internal wait correlation")
 	}
 }

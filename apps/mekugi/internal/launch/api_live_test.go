@@ -211,7 +211,7 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 	}
 	for _, agent := range state.Roster.Agents {
 		if agent.Name == "/root" {
-			if agent.State != "waiting" || agent.Wait == nil || agent.Wait.Body != "Waiting for" || agent.Wait.WaitTimeout != "1s" || len(agent.Wait.Waits) != 1 || agent.Wait.Waits[0].Name != "/root/worker" {
+			if agent.State != "waiting" || agent.Wait == nil || agent.Wait.Body != "Waiting for" || agent.Wait.WaitTimeout != "1s" || len(agent.Wait.Waits) != 1 || agent.Wait.Waits[0].Name != "all" {
 				t.Fatalf("shared roster lost canonical logical wait: %s", event.Data)
 			}
 			return

@@ -419,7 +419,7 @@ func (v *View) PointSnippet(action byte, row, column int) bool {
 // they do: operations, compact reasoning and collapsed narrative text open the shared dialog.
 // Under the pointer, the block underlines its count.
 func (v *View) ClickTarget(block *Block, snippet Snippet, width int) bool {
-	if block.Kind == "compaction" || block.DetailCode != "" {
+	if block.Kind == "compaction" || block.DetailCode != "" || len(block.WaitTargets) > 2 {
 		block.Hovered = v.Snippet == snippet
 		return true
 	}
