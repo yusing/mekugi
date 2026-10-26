@@ -11,6 +11,7 @@
   import NativeTranscript from "./NativeTranscript.svelte";
   import PlaybackBar from "./PlaybackBar.svelte";
   import Prompt from "./Prompt.svelte";
+  import ReferenceSelection from "./ReferenceSelection.svelte";
   import type { Action, Agent } from "./protocol";
   import Roster from "./Roster.svelte";
   import { semantic } from "./semantic.svelte";
@@ -22,10 +23,13 @@
   import Transcript from "./Transcript.svelte";
   import Button from "./ui/Button.svelte";
   import Dot from "./ui/Dot.svelte";
+  import Dialog from "./ui/Dialog.svelte";
   import Icon from "./ui/Icon.svelte";
   import Notice from "./ui/Notice.svelte";
+  import Field from "./ui/Field.svelte";
+  import Alert from "./ui/Alert.svelte";
   import Popover from "./ui/Popover.svelte";
-  import { floating, segment, segments, skeleton } from "./ui/styles";
+  import { floating, input as inputStyle, segment, segments, skeleton } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
   import { show, view } from "./view.svelte";
 
@@ -281,6 +285,33 @@
   }
 
   let copied = $state(false);
+  let renameEvent = $state<typeof semantic.event>();
+  let name = $state("");
+  let renameError = $state<string>();
+  let savingName = $state(false);
+  function editTitle() {
+    name = session?.title || "";
+    renameError = undefined;
+    renameEvent = semantic.event;
+  }
+  async function rename() {
+    if (!name.trim() || savingName) return;
+    savingName = true;
+    renameError = await semantic.send(
+      { command: `/title ${name.trim()}` },
+      undefined,
+      false,
+      renameEvent,
+    );
+    savingName = false;
+    if (!renameError) renameEvent = undefined;
+  }
+  function focusTitle(node: HTMLInputElement) {
+    void tick().then(() => {
+      node.focus();
+      node.select();
+    });
+  }
   async function copyResume() {
     try {
       await navigator.clipboard.writeText(`mekugi resume ${id}`);
@@ -322,6 +353,15 @@
           aria-hidden="true">&nbsp;</span
         >{/if}
     </h1>
+    {#if live && !ended && !recorded && frame}
+      <Button
+        variant="quiet"
+        icon="rename"
+        label="Rename thread"
+        disabled={side || semantic.connection !== "open" || semantic.pending > 0}
+        onclick={editTitle}
+      />
+    {/if}
     {#if session}
       <Popover label="Session details" icon="info">
         {#snippet children(close)}
@@ -510,6 +550,9 @@
         bind:this={feed}
         aria-label={shown ? `${shown.label}'s activity` : "Transcript"}
       >
+        {#if live && !ended && !recorded && frame}
+          <ReferenceSelection root={feed} />
+        {/if}
         {#if live && side && frame}
           <NativeTranscript
             publication={frame.main}
@@ -658,7 +701,13 @@
         </div>
         <div id="panel-content" role="tabpanel" class="flex min-h-0 flex-1 flex-col">
           {#if panel === "details" && details}
-            <DetailsPanel {details} onclose={closeDetails} />
+            <DetailsPanel
+              {details}
+              onclose={closeDetails}
+              onreference={() => {
+                if (!wide.matches) closePanel();
+              }}
+            />
           {:else if panel === "changes"}
             <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3.5 pb-6">
               <DiffPanel review={stream.review} {owner} />
@@ -683,4 +732,32 @@
     {/if}
   </div>
   {#if live && !ended && !recorded && frame}<SemanticDialogs />{/if}
+  {#if renameEvent}
+    <Dialog title="Rename thread" onclose={() => (renameEvent = undefined)}>
+      <form
+        class="grid gap-3"
+        onsubmit={(event) => {
+          event.preventDefault();
+          void rename();
+        }}
+      >
+        <Field label="Title"
+          ><input
+            id="thread-title"
+            class={inputStyle}
+            bind:value={name}
+            use:focusTitle
+            disabled={savingName}
+          /></Field
+        >
+        {#if renameError}<Alert>{renameError}</Alert>{/if}
+        <div class="flex justify-end gap-2">
+          <Button variant="quiet" onclick={() => (renameEvent = undefined)}>Cancel</Button>
+          <Button type="submit" variant="primary" disabled={savingName || !name.trim()}
+            >{savingName ? "Saving…" : "Save"}</Button
+          >
+        </div>
+      </form>
+    </Dialog>
+  {/if}
 </div>

@@ -81,3 +81,9 @@ export function isView(entry: Entry): boolean {
     ["View", "Generated"].includes(entry.values[0].verb ?? "")
   );
 }
+
+// Delivered replies retain their complete authored body alongside summary/details.
+export function responseText(kind?: string, text = "", body = ""): string {
+  const response = kind === "reply" ? body : kind === "text" || kind === "final" ? text : "";
+  return response.trim() ? response : "";
+}

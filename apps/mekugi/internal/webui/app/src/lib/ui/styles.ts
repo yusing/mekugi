@@ -55,6 +55,13 @@ export const segments = "gap-1 rounded-card bg-raised p-0.5";
 export const segment =
   "min-h-[30px] min-w-0 truncate rounded-control px-3 font-medium text-muted disabled:cursor-default aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:shadow-[0_0_0_1px_var(--border)] aria-selected:bg-surface aria-selected:text-ink aria-selected:shadow-[0_0_0_1px_var(--border)]";
 
+// A transcript row's action in the gutter to its right; callers place it and
+// choose when it shows, usually with revealed.
+export const rowAction =
+  "flex size-7 items-center justify-center rounded-control border border-transparent hover:border-border hover:bg-surface hover:text-ink max-sm:size-9";
+export const revealed =
+  "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 touch:opacity-100";
+
 // An empty section keeps its frame and says so in one sentence.
 export const emptyBox = "rounded-card border border-dashed border-control px-3.5 py-2.5 text-muted";
 

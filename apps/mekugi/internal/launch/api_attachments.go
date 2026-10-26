@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/backends/codex/responses"
@@ -73,8 +74,8 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 			if !isImage {
 				sources = append(sources, composer.AttachmentSource{Path: path})
 			}
-		case "upload":
-			if strings.TrimSpace(attachment.Name) == "" || attachment.Path != "" || attachment.Data == nil {
+		case "upload", "selection":
+			if strings.TrimSpace(attachment.Name) == "" || attachment.Source == "upload" && attachment.Path != "" || attachment.Data == nil {
 				return nil, invalid("An upload requires a display name and base64 data, without a host path.", false)
 			}
 			// Check the encoded bound before allocating the decoded byte slice.
@@ -88,6 +89,22 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 			total += len(data)
 			if total > sessionapi.UploadLimit {
 				return nil, invalid("Combined uploads exceed the 32 MiB decoded limit.", true)
+			}
+			if attachment.Source == "selection" {
+				if len(data) == 0 || !utf8.Valid(data) || strings.ContainsAny(attachment.Name, "\r\n]") {
+					return nil, invalid("A selection requires UTF-8 text and a single-line description.", false)
+				}
+				editor := composer.Editor{Draft: composer.Draft{Text: text.String(), Selections: draft.Selections}}
+				if text.Len() > 0 {
+					editor.InsertText("\n")
+				}
+				if err := editor.InsertSelection(attachment.Name, string(data), attachment.Path, nil); err != nil {
+					return nil, invalid(err.Error(), true)
+				}
+				draft.Selections = editor.Selections
+				text.Reset()
+				text.WriteString(editor.Text)
+				continue
 			}
 			_, format, imageErr := image.DecodeConfig(bytes.NewReader(data))
 			isImage = imageErr == nil
@@ -108,7 +125,7 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 			}
 			label = "[Uploaded " + attachment.Name + "]"
 		default:
-			return nil, invalid("Attachment source must be path or upload.", false)
+			return nil, invalid("Attachment source must be path, upload or selection.", false)
 		}
 		if text.Len() > 0 {
 			text.WriteByte('\n')

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
 
@@ -86,6 +87,10 @@ func publicCall(call prompt.CallView) prompt.CallView {
 }
 
 func (f NativeFrame) remote() NativeFrame {
+	if menu := f.View.Menu; menu != nil {
+		f.View.Menu = new(*menu)
+		f.View.Menu.Choices = slices.DeleteFunc(slices.Clone(menu.Choices), func(choice completion.Choice) bool { return choice.HideRemote })
+	}
 	f.Facts = NativeSessionFacts{Usage: f.Facts.Usage, Archived: f.Facts.Archived, ActionRequired: f.Facts.ActionRequired, Busy: f.Facts.Busy}
 	f.Effects = slices.Clone(f.Effects)
 	for i := range f.Effects {

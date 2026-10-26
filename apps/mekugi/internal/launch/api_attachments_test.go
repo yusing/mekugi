@@ -12,7 +12,42 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
+
+func TestAPISelectionReferenceSubmission(t *testing.T) {
+	workspace := t.TempDir()
+	quote := "A selected answer with Unicode: 日本語"
+	selection := sessionapi.Attachment{Source: "selection", Name: "Selected output", Path: "source.go", Data: new(base64.StdEncoding.EncodeToString([]byte(quote)))}
+	prepared, err := prepareAPIInput(t.Context(), workspace, sessionapi.InputRequest{Text: "Discuss these", Attachments: []sessionapi.Attachment{selection, selection}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prepared.Cleanup()
+	if len(prepared.Draft.Selections) != 2 || len(prepared.Draft.Files) != 0 || !strings.Contains(prepared.Draft.Text, "[Selected Selected output 2]") {
+		t.Fatalf("reference bindings: %+v", prepared.Draft)
+	}
+	u, wire := newAppServerTestUI()
+	u.startSession("main", workspace)
+	if refusal := apiTestIntent(t, u, sessionapi.Intent{Action: sessionapi.Send, Prepared: prepared, Thread: "main", Workspace: workspace, Context: t.Context()}); refusal != "" {
+		t.Fatal(refusal)
+	}
+	requests := appServerTurnRequests(t, wire)
+	var frames []string
+	for _, part := range requests[0].Params.Input {
+		if decoded, ok := attachments.Decode(part.Text); ok {
+			frames = append(frames, decoded...)
+		}
+	}
+	restored := composer.RestoreSelections(prepared.Draft.Text, frames)
+	if len(restored) != 2 || restored[0].Text != quote || restored[0].Source != "source.go" || !strings.Contains(strings.Join(frames, ""), "quoted from the user's screen, not a separate request") {
+		t.Fatalf("submitted reference framing: %q, restored=%+v", frames, restored)
+	}
+	selection.Data = new(base64.StdEncoding.EncodeToString([]byte(strings.Repeat("x", attachments.Budget))))
+	if _, err := prepareAPIInput(t.Context(), workspace, sessionapi.InputRequest{Attachments: []sessionapi.Attachment{selection}}); err == nil {
+		t.Fatal("oversized selection admitted")
+	}
+}
 
 func TestAPIAttachmentSnapshotAdmissionAndContinuation(t *testing.T) {
 	workspace := t.TempDir()

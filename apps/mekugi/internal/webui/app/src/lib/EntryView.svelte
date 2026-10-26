@@ -123,7 +123,7 @@
     user
       ? "mt-5 flex justify-end pb-3"
       : [
-          "grid grid-cols-[60px_minmax(0,1fr)] gap-x-4 max-sm:grid-cols-1",
+          "group/entry grid grid-cols-[60px_minmax(0,1fr)] gap-x-4 max-sm:grid-cols-1",
           prose ? "py-2.5" : "py-1",
         ],
   ]}

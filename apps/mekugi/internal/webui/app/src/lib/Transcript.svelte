@@ -2,12 +2,13 @@
   import { tick, untrack, type Snippet } from "svelte";
   import EntryView from "./EntryView.svelte";
   import { date, offset } from "./format";
-  import { hasDetails, isUser, isView } from "./kinds";
+  import { hasDetails, isUser, isView, responseText } from "./kinds";
+  import ResponseCopy from "./ResponseCopy.svelte";
   import type { Entry } from "./protocol";
   import { stream, type Stream } from "./stream.svelte";
   import Button from "./ui/Button.svelte";
   import Icon from "./ui/Icon.svelte";
-  import { emptyBox } from "./ui/styles";
+  import { emptyBox, revealed, rowAction } from "./ui/styles";
 
   // entries are one agent's activity, owner's; span is the recorded length,
   // so offsets keep one width; jumps counts seeks and fresh snapshots, each of
@@ -106,11 +107,11 @@
     await tick();
     if (anchor) {
       scroller.scrollTop += anchor.getBoundingClientRect().top - top;
-      anchor.focus({ preventScroll: true });
       // Focus stays on the row being read, which takes focus only for this, so
       // clicking a row's text neither focuses nor rings it.
       anchor.tabIndex = -1;
       anchor.addEventListener("blur", () => anchor.removeAttribute("tabindex"), { once: true });
+      anchor.focus({ preventScroll: true });
     }
     measure();
   }
@@ -188,10 +189,7 @@
   <!-- The rows' text shares the composer's column; recorded times sit in the
        gutter to its left, and each row's details action to its right. -->
   <div
-    class={[
-      "mx-auto max-w-[calc(var(--container-column)+184px)] pt-3 pr-23 pb-10 pl-4 max-sm:pt-2 max-sm:pb-6",
-      ondetails ? "@max-[980px]:pr-11" : "@max-[980px]:pr-4",
-    ]}
+    class="mx-auto max-w-[calc(var(--container-column)+184px)] pt-3 pr-23 pb-10 pl-4 @max-[980px]:pr-11 max-sm:pt-2 max-sm:pb-6"
     bind:this={column}
   >
     {@render header?.()}
@@ -204,6 +202,11 @@
       </div>
     {/if}
     {#each visible as row (row.entry.seq)}
+      {@const details = !!ondetails && hasDetails(row.entry)}
+      {@const response =
+        !isUser(row.entry) && !row.entry.assignment
+          ? responseText(row.entry.kind, row.entry.text, row.entry.values?.[0]?.body)
+          : ""}
       <div class="group/row relative" data-entry={row.entry.seq}>
         <EntryView
           entry={row.entry}
@@ -214,14 +217,16 @@
           {owner}
           {source}
         />
-        <!-- Shown on hover or focus, and always on touch. -->
-        {#if ondetails && hasDetails(row.entry)}<button
+        <!-- The row's actions stack in the gutter, shown on hover or focus and
+             always on touch. -->
+        {#if details}<button
             type="button"
-            class="absolute top-1 -right-9 flex size-7 items-center justify-center rounded-control border border-transparent text-muted opacity-0 group-hover/row:opacity-100 hover:border-border hover:bg-surface hover:text-ink focus-visible:opacity-100 touch:opacity-100 max-sm:-right-10 max-sm:size-9"
+            class="{rowAction} {revealed} absolute top-1 -right-9 text-muted max-sm:-right-10"
             aria-label="Details"
             title="Details"
             onclick={() => ondetails?.(row.entry.seq)}><Icon name="expand" size={14} /></button
           >{/if}
+        {#if response}<ResponseCopy text={response} gutter below={details} />{/if}
       </div>
     {:else}
       <p class="{emptyBox} mt-6 ml-17 max-sm:ml-0">{empty}</p>

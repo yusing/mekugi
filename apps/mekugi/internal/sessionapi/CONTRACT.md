@@ -425,6 +425,12 @@ never filesystem destinations; content bytes, not a browser MIME declaration,
 determine supported image/text semantics. Paths resolve on the execution machine
 against the selected thread's absolute workspace. User files are borrowed.
 
+Selected screen text uses `{"source":"selection","name":DESCRIPTION,"data":BASE64,"path":SOURCE}`.
+Its data is UTF-8 text; optional `path` is quoted provenance and is never read as a file.
+Preparation uses Conversation's selection-label and quoted-content framing, including its
+mention-size limit. These references remain separate from ordinary input text and retain
+their source through history and continuation. Selection bytes share the decoded upload budget.
+
 Combined decoded uploads are limited to 32 MiB per message. Existing composer
 text/directory framing and text-envelope limits remain in force. Oversized or
 unreadable snapshot content retains explicit omission frames and a `notice` in

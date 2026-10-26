@@ -48,6 +48,9 @@
   let progress = $state("");
   let pathing = $state(false);
   let field = $state<HTMLTextAreaElement>();
+  $effect(() => {
+    if (editor.focus) untrack(() => void tick().then(() => field?.focus()));
+  });
   let syntax = $state<HTMLElement>();
   let tray = $state<ReturnType<typeof Attachments>>();
   const touch = matchMedia("(pointer: coarse)").matches;

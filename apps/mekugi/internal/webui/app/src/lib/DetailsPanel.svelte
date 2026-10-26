@@ -3,14 +3,20 @@
   import type { NativeDetails } from "../../../../sessionapi/protocol";
   import Code from "./Code.svelte";
   import Markdown from "./Markdown.svelte";
+  import ReferenceSelection from "./ReferenceSelection.svelte";
   import { semantic } from "./semantic.svelte";
   import Button from "./ui/Button.svelte";
   import { codeBlock } from "./ui/styles";
 
   // One activity's details from the server, in the right panel.
-  let { details, onclose }: { details: NativeDetails; onclose: () => void } = $props();
+  let {
+    details,
+    onclose,
+    onreference,
+  }: { details: NativeDetails; onclose: () => void; onreference: () => void } = $props();
   const disabled = $derived(semantic.connection !== "open" || semantic.pending > 0);
   let heading = $state<HTMLElement>();
+  let content = $state<HTMLElement>();
   $effect(() => {
     void details.view.ID.Selection;
     heading?.focus({ preventScroll: true });
@@ -29,9 +35,10 @@
     >
       {details.file?.Path || "Activity details"}
     </h2>
+    <ReferenceSelection root={content} source={details.file?.Path || ""} {onreference} />
     <Button variant="quiet" icon="close" label="Close details" onclick={onclose} />
   </header>
-  <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-6">
+  <div bind:this={content} class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-6">
     {#if details.file}<pre class={block}><Code code={details.file.Source} /></pre>{/if}
     {#each details.view.Pages as page (page.ID)}
       <section class="not-first:mt-4 not-first:border-t not-first:border-rule not-first:pt-4">

@@ -1,6 +1,8 @@
 import type { Attachment } from "./protocol";
 
-export type PendingAttachment = { id: string; file: File } | { id: string; path: string };
+export type PendingAttachment =
+  | { id: string; file: File; reference?: string }
+  | { id: string; path: string };
 export type InitialInput = {
   text: string;
   items: PendingAttachment[];
@@ -48,7 +50,12 @@ export async function prepareAttachments(
       });
       reader.readAsDataURL(item.file);
     });
-    result.push({ source: "upload", name: item.file.name, data });
+    result.push({
+      source: item.reference === undefined ? "upload" : "selection",
+      name: item.file.name,
+      ...(item.reference === undefined ? {} : { path: item.reference }),
+      data,
+    });
     read += item.file.size;
     progress(read, total);
   }

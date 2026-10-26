@@ -3,6 +3,7 @@ package launch
 import (
 	"context"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -33,11 +34,23 @@ func referenceInput(attached *attachedPresentation, terminal *terminalsession.At
 		for i, input := range pending {
 			drafts[i].Text = input.Text
 		}
+		// Browser references are attachment chips until submission. Resolve their
+		// description here so later queued inputs cannot reuse a pending label.
+		selection := composer.Editor{Text: (*editor).Text}
+		if err := selection.InsertSelection(intent.Description, intent.Text, intent.Source, drafts); err != nil {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			return false
+		}
+		if len(selection.Selections) == 0 {
+			return false
+		}
+		token := selection.Selections[0]
+		description := strings.TrimSuffix(strings.TrimPrefix(selection.Text[token.Start:token.End], composer.SelectionPrefix), "]")
 		thread := intent.Thread
 		if thread == "" {
 			thread = attached.presentation.View().Input.ID
 		}
-		attached.effects.add(sessionapi.NativeEffect{Thread: thread, Target: new(intent.Target), Selection: &sessionapi.NativeSelection{Description: intent.Description, Text: intent.Text, Source: intent.Source, Pending: drafts}})
+		attached.effects.add(sessionapi.NativeEffect{Thread: thread, Target: new(intent.Target), Selection: &sessionapi.NativeSelection{Description: description, Text: intent.Text, Source: intent.Source, Pending: drafts}})
 		return true
 	}
 	if err := attached.presentation.Reference(intent, attached.conversation); err != nil {

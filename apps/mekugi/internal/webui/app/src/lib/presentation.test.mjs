@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { markedBlock, toolLabel } from "./markdown.ts";
-import { hasDetails, isView, reasoningBody } from "./kinds.ts";
+import { hasDetails, isView, reasoningBody, responseText } from "./kinds.ts";
 import { diffRows, workspacePath } from "./diff.ts";
 import { progressText } from "./format.ts";
+
+test("response copy keeps complete authored Markdown and excludes other entry kinds", () => {
+  const markdown = "## Summary\nAnswer.\n\n## Details\n**Evidence**\n";
+  assert.equal(responseText("reply", "preview", markdown), markdown);
+  assert.equal(responseText("final", markdown), markdown);
+  assert.equal(responseText("text", markdown), markdown);
+  for (const kind of ["user", "tool", "reasoning", "start", "progress"])
+    assert.equal(responseText(kind, markdown, markdown), "");
+  assert.equal(responseText("final", "  \n"), "");
+});
 
 test("progress text preserves named wait targets, optional timeout and settlement", () => {
   const labels = { "/root/worker": "worker", "/root/reader": "reader" };

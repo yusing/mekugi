@@ -858,12 +858,21 @@ test("unknown mutation outcome is visible once and never retried", async () => {
 test("repeated effect publications apply and acknowledge each receipt only once", async () => {
   const owner = machine();
   const effects = [
-    { ID: 1, Thread: "thread-one", Selection: { Text: "chosen" }, Clipboard: "copied" },
+    {
+      ID: 1,
+      Thread: "thread-one",
+      Selection: { Description: "Answer", Text: "chosen", Source: "source.go" },
+      Clipboard: "copied",
+    },
   ];
   owner.snapshot(2, effects);
   owner.snapshot(3, effects);
   await tick();
-  assert.equal(semantic.editor().text, "\nchosen");
+  assert.equal(semantic.editor().text, "");
+  assert.equal(semantic.editor().items.length, 1);
+  assert.equal(semantic.editor().items[0].reference, "source.go");
+  assert.equal(semantic.editor().items[0].file.name, "Answer");
+  assert.equal(await semantic.editor().items[0].file.text(), "chosen");
   assert.equal(semantic.editor().revision, 1);
   assert.equal(semantic.copied, "copied");
   assert.equal(owner.requests.length, 1);
@@ -874,6 +883,28 @@ test("repeated effect publications apply and acknowledge each receipt only once"
   owner.requests[0].resolve({ version: { Attachment: 1, Revision: 4 } });
   await tick();
   assert.equal(semantic.pending, 0, "quiet receipts do not wait for a publication");
+});
+
+test("a late reference refuses a changed draft and never reaches another thread", async () => {
+  const owner = machine();
+  semantic.editor().text = "newer draft";
+  semantic.editor().revision = 2;
+  owner.snapshot(2, [
+    { ID: 1, Thread: "thread-one", Target: { Revision: 1 }, Selection: { Text: "old selection" } },
+  ]);
+  assert.equal(semantic.editor().text, "newer draft");
+  assert.deepEqual(semantic.editor().items, []);
+  assert.match(semantic.error, /draft changed/);
+  owner.snapshot(3, [
+    {
+      ID: 2,
+      Thread: "other-thread",
+      Target: { Revision: 0 },
+      Selection: { Text: "other selection" },
+    },
+  ]);
+  assert.deepEqual(semantic.editor().items, []);
+  assert.equal(await semantic.editors["other-thread"].items[0].file.text(), "other selection");
 });
 
 test("completion replaces its captured text before restoring the selected command", async () => {
@@ -939,8 +970,8 @@ test("retained recovery stays separate from the editor and never retries itself"
   owner.snapshot(2, effects);
   owner.snapshot(3, effects);
   await tick();
-  assert.equal(semantic.editor().text, "new draft\nlater selection");
-  assert.deepEqual(semantic.editor().items, []);
+  assert.equal(semantic.editor().text, "new draft");
+  assert.equal(await semantic.editor().items[0].file.text(), "later selection");
   assert.equal(owner.requests.length, 1);
   assert.equal(owner.requests[0].params.body.operation.receipt.Effect, 2);
   owner.requests[0].resolve({ version: { Attachment: 1, Revision: 3 } });
@@ -955,7 +986,7 @@ test("retained recovery stays separate from the editor and never retries itself"
   owner.snapshot(4, effects);
   await tick();
   assert.equal(owner.requests.length, 2);
-  assert.equal(semantic.editor().text, "new draft\nlater selection");
+  assert.equal(semantic.editor().text, "new draft");
 });
 
 test("switching machines cancels in-flight settlement and drops old queued work", async () => {

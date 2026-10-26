@@ -23,6 +23,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -63,10 +64,35 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	settingsCommands := make(chan sessionapi.NativeRequest, 8)
 	settingsDismissal := make(chan sessionapi.NativeRequest, 1)
 	var holdSettingsDismissal atomic.Bool
+	browserCommands := make(chan sessionapi.NativeRequest, 4)
+	references := make(chan sessionapi.NativeRequest, 1)
 	var alpha *webUIBrowserMachine
 	alpha = newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Alpha", strings.Repeat("a", 64), func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
 		command := request.Operation.Command
 		menu := request.Operation.Menu
+		if request.Operation.Completion != nil || request.Operation.Reference != nil || command != nil && strings.HasPrefix(*command, "/title ") {
+			thread := sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}
+			frame := sessionapi.NativeFrame{View: sessionpresentation.View{Version: request.Version, Main: thread, Input: thread, Displayed: thread, Info: sessionpresentation.MainInfo{Workspace: request.Workspace}}}
+			frame.View.Version.Revision++
+			frame.Family, _ = alpha.hub.Family(request.Thread)
+			if input := request.Operation.Completion; input != nil {
+				frame.CompletionTarget = input.Target
+				if strings.HasPrefix(input.Draft.Text, "/") {
+					frame.View.Menu = &sessionpresentation.MenuView{ID: 99, View: completion.View{Choices: nativeCommands}}
+				}
+			} else if reference := request.Operation.Reference; reference != nil {
+				references <- request
+				frame.Effects = []sessionapi.NativeEffect{{ID: 2, Thread: reference.Thread, Target: &reference.Target, Selection: &sessionapi.NativeSelection{Description: reference.Description, Text: reference.Text, Source: reference.Source}}}
+			} else {
+				browserCommands <- request
+			}
+			if err := native.Publish(request.Attachment, frame); err != nil {
+				request.Reply <- err.Error()
+			} else {
+				request.Reply <- ""
+			}
+			return true
+		}
 		if command != nil && (*command == "/model" || *command == "/effort" || strings.HasPrefix(*command, "/tier ")) || menu != nil && menu.Kind == sessionpresentation.MenuDismiss {
 			thread := sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}
 			view := sessionpresentation.View{Version: request.Version, Main: thread, Input: thread, Displayed: thread, Info: sessionpresentation.MainInfo{Workspace: request.Workspace}}
@@ -188,6 +214,50 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("--engine", "chrome", "open", page.URL)
 	run("snapshot", "-i")
 	add(alpha, "Alpha", strings.Repeat("a", 64))
+	run("fill", "#composer-text", "/")
+	run("wait", "--fn", `document.querySelector('[aria-label="Suggestions"]')`)
+	choices := run("get", "text", "[aria-label=Suggestions]")
+	for _, command := range []string{"/model", "/effort", "/reasoning", "/tier", "/title", "/copy", "/lock", "/unlock"} {
+		if strings.Contains(choices, command) {
+			t.Fatalf("redundant command visible: %s", command)
+		}
+	}
+	if !strings.Contains(choices, "/status") {
+		t.Fatal("ordinary command missing")
+	}
+	run("fill", "#composer-text", "keep draft")
+	button("Rename thread")
+	run("fill", "#thread-title", "A useful title")
+	button("Save")
+	run("wait", "--fn", "!document.querySelector('dialog[open]')")
+	if request := <-browserCommands; *request.Operation.Command != "/title A useful title" || request.Operation.Editor != nil {
+		t.Fatal("rename changed the composer")
+	}
+	const responseMarkdown = "Response with **authored Markdown**.\n\n```go\nfmt.Println(\"complete\")\n```"
+	if err := alpha.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 99, Agent: "Main", Kind: "final", Text: responseMarkdown}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "authored Markdown")
+	run("eval", `Object.defineProperty(navigator, 'clipboard', {configurable:true, value:{writeText: async text => { window.copiedResponse = text; }}})`)
+	run("wait", "--fn", `!!document.querySelector('[data-entry] button[aria-label="Copy response"]') && !document.querySelector('header button[aria-label="Copy last response"]')`)
+	button("Copy response")
+	run("wait", "--fn", fmt.Sprintf(`window.copiedResponse === %q`, responseMarkdown))
+	select {
+	case <-browserCommands:
+		t.Fatal("message copy dispatched a semantic command")
+	default:
+	}
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("screenshot", filepath.Join(artifacts, "copy-response-desktop.png"))
+	}
+	run("wait", "--fn", `!!document.querySelector('button[aria-label="Copy response"]')`)
+	run("eval", `navigator.clipboard.writeText = async () => { throw new Error('Clipboard denied'); }`)
+	button("Copy response")
+	run("wait", "--text", "Could not copy the response")
+	run("eval", `navigator.clipboard.writeText = async text => { window.copiedResponse = text; }`)
+	if run("get", "value", "#composer-text") != "keep draft\n" {
+		t.Fatal("title or message control changed draft")
+	}
 	// Captured temporary trees fold at the same boundary as the terminal;
 	// opening them reveals retained paths without another host request.
 	var captures []string
@@ -201,6 +271,45 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "190 more files")
+	run("eval", `(() => { const row = document.querySelector('[aria-label="Transcript"] [data-entry]'); const range = document.createRange(); range.selectNodeContents(row); const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range); row.dispatchEvent(new PointerEvent('pointerup', {bubbles:true, clientX:400, clientY:300})); })()`)
+	run("wait", "--fn", `document.querySelector('button[aria-label="Copy selection to reference"]')`)
+	run("wait", "--fn", `(() => { const r = document.querySelector('button[aria-label="Copy selection to reference"]').getBoundingClientRect(); return r.bottom <= 300 && r.bottom >= 270 && r.left <= 400 && r.right >= 400; })()`)
+	run("set", "viewport", "390", "844")
+	run("wait", "--fn", `(() => { const r = document.querySelector('button[aria-label="Copy selection to reference"]').getBoundingClientRect(); return r.left >= 7.5 && r.right <= innerWidth - 7.5 && r.top >= 7.5 && r.bottom <= innerHeight - 7.5; })()`)
+	run("set", "viewport", "1280", "900")
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("set", "viewport", "1280", "900")
+		run("screenshot", filepath.Join(artifacts, "reference-desktop.png"))
+		run("set", "viewport", "390", "844")
+		run("screenshot", filepath.Join(artifacts, "reference-mobile.png"))
+		run("set", "viewport", "1280", "900")
+	}
+	run("focus", `button[aria-label="Copy selection to reference"]`)
+	run("press", "Enter")
+	run("wait", "--fn", `document.querySelector('button[aria-label="Remove Selected output"]')`)
+	if request := <-references; request.Operation.Reference.Thread != "same-thread" || !strings.Contains(request.Operation.Reference.Text, "file000.go") {
+		t.Fatal("reference lost source or destination")
+	}
+	if run("get", "value", "#composer-text") != "keep draft\n" {
+		t.Fatal("reference replaced the draft")
+	}
+	run("wait", "--fn", `document.activeElement?.id === "composer-text"`)
+	button("Remove Selected output")
+	// Removing the selected publication must dismiss its contextual action,
+	// even though both the browser selection and cloned range collapse together.
+	run("eval", `(() => { const range = document.createRange(); range.selectNodeContents(document.querySelector('[aria-label="Transcript"] [data-entry]')); getSelection().removeAllRanges(); getSelection().addRange(range); })()`)
+	run("wait", "--fn", `!!document.querySelector('button[aria-label="Copy selection to reference"]')`)
+	removed := frame
+	removed.Main = &activitypresentation.Publication{}
+	if err := alpha.publishFrame(removed); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `!document.querySelector('[aria-label="Transcript"] [data-entry]') && !document.querySelector('button[aria-label="Copy selection to reference"]')`)
+	if err := alpha.publishFrame(frame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "190 more files")
+	run("fill", "#composer-text", "")
 	if run("eval", "document.body.innerText.includes('file199.go')") != "false\n" {
 		t.Fatal("large temporary capture started expanded")
 	}
@@ -409,6 +518,8 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("wait", "--fn", `(() => { const feed = document.querySelector('[aria-label="worker\'s activity"]'); return feed?.textContent.includes('Nested review complete.') && [...feed.querySelectorAll('summary')].some(e => e.textContent === 'Full reply') && [...feed.querySelectorAll('button')].some(e => e.textContent.trim() === 'Show full reply'); })()`)
+	run("find", "first", `[data-entry]:has([data-kind="reply"]) button[aria-label="Copy response"]`, "click")
+	run("wait", "--fn", `window.copiedResponse === '## Summary\nNested review complete.\n\n[evidence]: https://example.com/evidence\n\n## Details\nNested retained details. See [evidence].'`)
 	run("wait", "--fn", `(() => { const row = document.querySelector('[data-kind="reply"]'); return row?.textContent.includes('worker/reviewer') && !row.textContent.includes('/root/') && /→\s*worker/.test(row.textContent) && !/→\s*main/.test(row.textContent); })()`)
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "child-incoming-replies.png"))

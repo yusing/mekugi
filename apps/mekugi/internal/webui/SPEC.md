@@ -78,6 +78,21 @@ per-client view API. Dialogs show loading, errors and refused stale actions with
 replacing another client's selection. Prompt drafts are keyed by question identity;
 accepted admission does not permanently disable a prompt still awaiting resolution.
 
+Slash suggestions omit controls already beside the composer (model, reasoning effort
+and service tier), terminal interruption locks, and the title and response-copy actions.
+The header's pencil opens a title editor. Assistant responses in Main, delegate and
+side conversations, including BTW answers, have a copy button beside each message.
+It copies the complete authored Markdown, including collapsed supporting details.
+Copy success or clipboard failure is shown without changing the draft.
+
+Selecting text in the live transcript or activity details offers Reference above the
+pointer, or above the selection endpoint for keyboard selection, within the viewport. It adds a
+removable reference to the captured input destination and focuses its composer without
+replacing the draft. The selected text and any file provenance travel through the same
+quoted-selection attachment framing as the terminal, rather than becoming an ordinary
+instruction. A changed draft refuses a late insertion; references stay isolated between
+threads and side-conversation inputs.
+
 While Main is displayed, the composer shows its model and reasoning effort as
 pickers. Each opens the thread's own `/model` or `/effort` menu above the composer;
 choosing applies the setting and leaves the draft unchanged.

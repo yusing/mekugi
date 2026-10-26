@@ -25,12 +25,12 @@ import (
 
 // Only commands implemented by the native shell belong in this catalog.
 var nativeCommands = []completion.Choice{
-	{Name: "/model", Description: "Choose the model"},
+	{Name: "/model", HideRemote: true, Description: "Choose the model"},
 	{Name: "/permissions", Description: "Choose Main's permission profile for subsequent turns"},
-	{Name: "/reasoning", Description: "Choose the reasoning effort"},
-	{Name: "/effort", Description: "Choose the reasoning effort"},
+	{Name: "/reasoning", HideRemote: true, Description: "Choose the reasoning effort"},
+	{Name: "/effort", HideRemote: true, Description: "Choose the reasoning effort"},
 	{Name: "/live", Description: "Show or hide Live edits for this session"},
-	{Name: "/tier", Description: "Choose the service tier"},
+	{Name: "/tier", HideRemote: true, Description: "Choose the service tier"},
 	{Name: "/skills", Description: "List or manage skills"},
 	{Name: "/presets", Description: "Save and recall numbered prompts or slash commands"},
 	{Name: "/oneoff", Description: "Run a task in an isolated work-capable fork"},
@@ -39,17 +39,17 @@ var nativeCommands = []completion.Choice{
 	{Name: "/ps", Description: "Show running processes"},
 	{Name: "/predictions", Description: "Enable or disable next-message suggestions: on|off"},
 	{Name: "/session", Description: "Show request metrics, cache and transport"},
-	{Name: "/title", Description: "Rename this session"},
+	{Name: "/title", HideRemote: true, Description: "Rename this session"},
 	{Name: "/status", Description: "Show session settings and usage limits"},
-	{Name: "/copy", Description: "Copy the last response or part of it"},
+	{Name: "/copy", HideRemote: true, Description: "Copy the last response or part of it"},
 	{Name: "/rewind", Description: "Fork before a user turn; keep or revert captured edits"},
 	{Name: "/fork", Description: "Fork this conversation and switch to the branch"},
 	{Name: "/resume", Description: "Resume a saved session"},
 	{Name: "/archive", Description: "Archive this session"},
 	{Name: "/compact", Description: "Compact context now; Tab queues while busy"},
 	{Name: "/clear", Description: "Clear the transcript and start a new session"},
-	{Name: "/lock", Description: "Prevent accidental keyboard interruption"},
-	{Name: "/unlock", Description: "Allow keyboard interruption again"},
+	{Name: "/lock", HideRemote: true, Description: "Prevent accidental keyboard interruption"},
+	{Name: "/unlock", HideRemote: true, Description: "Allow keyboard interruption again"},
 	{Name: "/quit", Description: "Quit the session"},
 }
 

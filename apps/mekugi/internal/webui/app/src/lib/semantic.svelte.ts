@@ -33,6 +33,7 @@ export type Editor = {
   cursorBack: number;
   revision: number;
   items: PendingAttachment[];
+  focus?: number;
   submission?: AbortController;
 };
 export type PromptState = {
@@ -467,8 +468,14 @@ class Semantic {
           editor.revision++;
         }
         if (effect.Selection) {
-          editor.text += `\n${effect.Selection.Text}`;
+          const selection = effect.Selection;
+          editor.items.push({
+            id: newIdentity(),
+            file: new File([selection.Text], selection.Description || "Selected output"),
+            reference: selection.Source || "",
+          });
           editor.revision++;
+          editor.focus = editor.revision;
         }
         if (effect.Recall) {
           editor.text = effect.Recall;

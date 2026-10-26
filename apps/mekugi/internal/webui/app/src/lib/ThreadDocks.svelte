@@ -1,6 +1,7 @@
 <script lang="ts">
   import Alert from "./ui/Alert.svelte";
   import RecoveryEditor from "./RecoveryEditor.svelte";
+  import ResponseCopy from "./ResponseCopy.svelte";
   import Markdown from "./Markdown.svelte";
   import { semantic } from "./semantic.svelte";
   import { stream } from "./stream.svelte";
@@ -83,10 +84,20 @@
           <div class="max-h-[24dvh] overflow-y-auto">
             {#each btw.History as exchange (exchange.ID)}
               <div class="text-muted"><Markdown text={exchange.Question} /></div>
-              {#each exchange.Answer as answer (answer.ID)}<Markdown text={answer.Text} />{/each}
+              {#each exchange.Answer as answer (answer.ID)}
+                <div class="group/entry">
+                  <Markdown text={answer.Text} />
+                  {#if answer.Text.trim()}<ResponseCopy text={answer.Text} />{/if}
+                </div>
+              {/each}
             {/each}
             <div class="text-muted"><Markdown text={btw.Question} /></div>
-            {#each btw.Answer as answer (answer.ID)}<Markdown text={answer.Text} />{/each}
+            {#each btw.Answer as answer (answer.ID)}
+              <div class="group/entry">
+                <Markdown text={answer.Text} />
+                {#if answer.Text.trim()}<ResponseCopy text={answer.Text} />{/if}
+              </div>
+            {/each}
           </div>
           {#if btw.Status}<p
               class={["text-small", btw.Alert ? "text-negative" : "text-muted"]}

@@ -36,6 +36,23 @@ afterEach(() => {
 });
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
+test("a reference keeps its selected bytes and provenance separate from uploads", async () => {
+  const result = prepareAttachments(
+    [{ id: "selection", file: new File(["selected 日本語"], "output"), reference: "source.go" }],
+    new AbortController().signal,
+    () => {},
+  );
+  await readers[0].finish();
+  assert.deepEqual(await result, [
+    {
+      source: "selection",
+      name: "output",
+      path: "source.go",
+      data: Buffer.from("selected 日本語").toString("base64"),
+    },
+  ]);
+});
+
 test("mixed File and path inputs retain order, bytes and cumulative progress", async () => {
   const progress = [];
   const result = prepareAttachments(
