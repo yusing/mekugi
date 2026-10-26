@@ -3,7 +3,8 @@
   import Button from "./Button.svelte";
 
   // A modal dialog, centred on wide screens and a sheet from the foot of a
-  // phone's screen, clear of the home indicator.
+  // phone's screen, clear of the home indicator. Opening it may focus the
+  // dialog itself, a container rather than a control, so it is never ringed.
   let {
     title,
     children,
@@ -28,7 +29,7 @@
 <dialog
   bind:this={dialog}
   class={[
-    "m-auto max-h-[calc(100dvh-32px)] rounded-sheet border bg-surface px-5 pt-4 pb-5 text-ink shadow-float wrap-anywhere backdrop:bg-scrim",
+    "m-auto max-h-[calc(100dvh-32px)] rounded-sheet border outline-none bg-surface px-5 pt-4 pb-5 text-ink shadow-float wrap-anywhere backdrop:bg-scrim",
     wide ? "w-[min(720px,calc(100vw-24px))]" : "w-[min(520px,calc(100vw-24px))]",
     "max-sm:mx-0 max-sm:mb-0 max-sm:max-h-[92dvh] max-sm:w-screen max-sm:max-w-none max-sm:rounded-b-none max-sm:pb-safe-5",
   ]}

@@ -193,6 +193,8 @@ export function diffTokens(
 
 const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
+const operation = /^(add|update|delete|move) ".*" -> ".*"$/;
+
 export function diffRows(diff: string): DiffRow[] {
   const rows: DiffRow[] = [];
   const lines = diff.split("\n");
@@ -208,7 +210,9 @@ export function diffRows(diff: string): DiffRow[] {
       now = Number(header[2]);
       rows.push({ kind: "hunk", text: line });
     } else if (!started) {
-      if (!line.startsWith("--- ") && !line.startsWith("+++ "))
+      // File headers and the review's operation line repeat what the view
+      // already says about the file.
+      if (!line.startsWith("--- ") && !line.startsWith("+++ ") && !operation.test(line))
         rows.push({ kind: "note", text: line });
     } else if (line.startsWith("+")) rows.push({ kind: "add", text: line.slice(1), new: now++ });
     else if (line.startsWith("-")) rows.push({ kind: "remove", text: line.slice(1), old: old++ });

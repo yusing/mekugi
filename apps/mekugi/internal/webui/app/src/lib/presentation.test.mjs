@@ -81,9 +81,10 @@ test("search patterns and paths retain distinct operands", () => {
   assert.match(toolLabel("`printf 'a, b'`", "Run"), /a, b/);
 });
 
-test("diff rows number each side from its hunk and skip file headers", () => {
+test("diff rows number each side from its hunk and skip file and operation headers", () => {
   const rows = diffRows(
-    "--- a/x\n+++ b/x\n@@ -1,2 +1,3 @@\n a\n+insert\n b\n@@ -20 +21 @@\n-old\n+new\n\\ No newline at end of file\n",
+    'update "x" -> "x"\n' +
+      "--- a/x\n+++ b/x\n@@ -1,2 +1,3 @@\n a\n+insert\n b\n@@ -20 +21 @@\n-old\n+new\n\\ No newline at end of file\n",
   );
   assert.deepEqual(rows, [
     { kind: "hunk", text: "@@ -1,2 +1,3 @@" },

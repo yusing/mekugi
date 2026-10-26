@@ -180,7 +180,8 @@
         <button
           type="button"
           class={[
-            "group/card relative grid w-full min-w-0 gap-1 rounded-card px-2.5 pt-2 pb-3 text-left pointer-coarse:pt-[11px] pointer-coarse:pb-[13px]",
+            "group/card relative grid w-full min-w-0 gap-1 rounded-card px-2.5 py-2 text-left pointer-coarse:py-[11px]",
+            agent.context !== undefined && agent.window && "pb-3 pointer-coarse:pb-[13px]",
             agent.name === selected ? "bg-accent-tint" : "hover:bg-raised",
           ]}
           aria-current={agent.name === selected ? "true" : undefined}

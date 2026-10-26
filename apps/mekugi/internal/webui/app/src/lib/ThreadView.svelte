@@ -678,13 +678,14 @@
         ]}
         aria-label="Thread panel"
       >
-        <div class="flex min-h-12 flex-none items-center gap-2 border-b border-rule pr-1.5 pl-3">
-          <div class="{segments} flex min-w-0" role="tablist" aria-label="Panel">
+        <!-- Tabs sit on the header's rule; the selected one underlines it. -->
+        <div class="flex min-h-12 flex-none items-center gap-2 border-b border-rule pr-1.5 pl-1.5">
+          <div class="flex min-w-0 self-stretch" role="tablist" aria-label="Panel">
             {#snippet tabButton(target: Tab, label: string)}
               <button
                 type="button"
                 role="tab"
-                class={segment}
+                class="relative min-w-0 truncate px-2.5 font-medium text-muted after:absolute after:inset-x-2.5 after:-bottom-px after:h-0.5 after:rounded-full hover:text-ink aria-selected:text-ink aria-selected:after:bg-accent"
                 aria-selected={panel === target}
                 aria-controls="panel-content"
                 onclick={() => (chosen = target)}>{label}</button

@@ -71,6 +71,15 @@
   }
 
   const hasOutput = $derived(value.tail?.some((line) => line.trim()));
+  const status = $derived(
+    hasOutput ||
+      value.running ||
+      value.pending ||
+      exited ||
+      hookFailed ||
+      !!value.editOutcome ||
+      !!value.duration,
+  );
   const code = $derived(value.code?.replace(/\n$/, ""));
   const multiline = $derived(code !== undefined && code.includes("\n"));
   // A command with no label is its own subject: its first line takes the label.
@@ -140,7 +149,12 @@
     ] ?? 'text-muted'}">{value.skipped ? "Skipped" : verb}</span
   >
   <!-- Code in a tool label is the subject itself, not an aside: mono, no chip. -->
-  <div class="min-w-0 wrap-break-word [&_code]:text-code" {@attach commandLabel(label)}>
+  <!-- Rows share their entry's columns; a row without status lends the status
+       column to its label, so paths wrap only where the row runs out. -->
+  <div
+    class={["min-w-0 wrap-break-word [&_code]:text-code", !status && "col-span-2"]}
+    {@attach commandLabel(label)}
+  >
     {#if value.reads?.length}
       {#each value.reads as read, i (i)}
         <span class="block font-mono text-code"
@@ -169,37 +183,38 @@
         >{` in `}<span class="font-mono"><Path path={value.workdir} /></span></span
       >{/if}
   </div>
-  <span
-    class="flex items-center justify-end gap-2 font-mono text-small whitespace-nowrap tabular-nums"
-  >
-    {#if hasOutput}<button
-        type="button"
-        aria-expanded={outputOpen}
-        aria-label={`Output: ${output}`}
-        title={`Output: ${output}`}
-        class="-my-1.5 inline-flex min-h-8 items-center gap-1 rounded-control px-2 font-sans text-small text-muted hover:bg-active hover:text-ink max-sm:min-h-11"
-        onclick={() => (outputOpen = !outputOpen)}
-      >
-        <span class={outputOpen ? "rotate-0" : "-rotate-90"}><Icon name="chevron" size={12} /></span
+  {#if status}<span
+      class="flex items-center justify-end gap-2 font-mono text-small whitespace-nowrap tabular-nums"
+    >
+      {#if hasOutput}<button
+          type="button"
+          aria-expanded={outputOpen}
+          aria-label={`Output: ${output}`}
+          title={`Output: ${output}`}
+          class="-my-1.5 inline-flex min-h-8 items-center gap-1 rounded-control px-2 font-sans text-small text-muted hover:bg-active hover:text-ink max-sm:min-h-11"
+          onclick={() => (outputOpen = !outputOpen)}
         >
-        <span class="max-sm:hidden">Output <span class="text-tiny">{output}</span></span><span
-          class="hidden max-sm:inline">{lines(value.tail?.length ?? 0)}</span
+          <span class={outputOpen ? "rotate-0" : "-rotate-90"}
+            ><Icon name="chevron" size={12} /></span
+          >
+          <span class="max-sm:hidden">Output <span class="text-tiny">{output}</span></span><span
+            class="hidden max-sm:inline">{lines(value.tail?.length ?? 0)}</span
+          >
+        </button>{/if}
+      {#if value.running}
+        <span class="inline-flex items-center gap-1.5 text-accent"
+          ><Dot tone="running" size={6} />running</span
         >
-      </button>{/if}
-    {#if value.running}
-      <span class="inline-flex items-center gap-1.5 text-accent"
-        ><Dot tone="running" size={6} />running</span
-      >
-    {:else if value.pending}
-      <Tag>pending</Tag>
-    {:else if exited}
-      <Tag tone="negative">exit {value.exitCode}</Tag>
-    {:else if hookFailed}
-      <Tag tone="negative">{value.hook?.status ?? "failed"}</Tag>
-    {/if}
-    {#if value.editOutcome}<Tag>{value.editOutcome}</Tag>{/if}
-    {#if value.duration}<span class="text-muted">{duration(value.duration)}</span>{/if}
-  </span>
+      {:else if value.pending}
+        <Tag>pending</Tag>
+      {:else if exited}
+        <Tag tone="negative">exit {value.exitCode}</Tag>
+      {:else if hookFailed}
+        <Tag tone="negative">{value.hook?.status ?? "failed"}</Tag>
+      {/if}
+      {#if value.editOutcome}<Tag>{value.editOutcome}</Tag>{/if}
+      {#if value.duration}<span class="text-muted">{duration(value.duration)}</span>{/if}
+    </span>{/if}
 
   {#if code && (multiline || (value.fenced && headline === undefined))}
     <div class={extra}>

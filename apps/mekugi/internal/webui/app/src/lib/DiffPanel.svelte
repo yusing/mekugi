@@ -160,7 +160,7 @@
               }}
             >
               <summary
-                class="flex min-h-9 cursor-pointer items-center gap-2 rounded-control py-1 hover:bg-active {caret}"
+                class="flex min-h-9 cursor-pointer items-center gap-2 rounded-control px-2 py-1 hover:bg-active {caret}"
               >
                 <span class="min-w-0 flex-1 font-mono text-code wrap-break-word"
                   ><Path path={workspacePath(file.path, review!.workspace)} /></span
