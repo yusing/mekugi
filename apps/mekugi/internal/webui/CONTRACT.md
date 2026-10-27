@@ -14,8 +14,13 @@ blob URLs.
 
 Browser control uses the shared JSON-RPC WebSocket protocol and generated remote
 intent types. Credentials are sent only in initialization on the selected connector.
-Attachment-bearing submissions use a separately authenticated connection so large
-messages cannot block control; originating view, target and version stay captured.
+Each machine retains one control connection and lazily opens one reusable,
+separately authenticated bulk connection for complete content, images and
+attachment-bearing submissions. Large transfers do not share the control writer;
+originating view, target and version stay captured. Canceling a bulk request leaves
+other requests and the connection available. Transfers share the bulk wire, so
+an already-sent large message can delay another bulk response. A lost bulk
+connection is replaced on the next request, without replaying failed mutations.
 Connection identities, not just logical thread IDs, scope state and routing.
 The browser retains machine identities, labels, connector URLs and credentials in
 origin-scoped local storage. Reload restores connections with those identities;
@@ -26,7 +31,8 @@ Unreadable or invalid saved data produces a visible warning; valid records still
 restore. Failed writes leave current-page connections usable and report that saved
 machines or tokens may be stale, including inside machine settings. A successful
 write for another machine does not clear an outstanding failure. Credentials are
-cleared on connection removal.
+cleared on connection removal. Removal closes both connections; replacing a token
+retires both and authenticates subsequent connections with the new credential.
 
 Publications and semantic view types mirror the shared API. Successful mutation
 responses acknowledge admission; subsequent events provide execution outcomes.

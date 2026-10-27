@@ -302,6 +302,7 @@ test("content survives the control deadline and remains explicitly cancelable", 
   handler = (socket, message) => {
     if (initialize(socket, message)) return;
     if (message.method === "session/content") requested.resolve({ socket, message });
+    else socket.reply(message, null);
   };
   const controller = new AbortController();
   const content = connector.request(
@@ -309,7 +310,7 @@ test("content survives the control deadline and remains explicitly cancelable", 
     { thread: "large" },
     { signal: controller.signal },
   );
-  const { socket } = await requested.promise;
+  const { socket, message } = await requested.promise;
   t.mock.timers.tick(60_000);
   assert.equal(socket.readyState, Socket.OPEN);
   assert.equal(
@@ -318,7 +319,10 @@ test("content survives the control deadline and remains explicitly cancelable", 
   );
   controller.abort();
   await assert.rejects(content, /canceled/);
-  assert.equal(socket.readyState, 3);
+  assert.equal(socket.readyState, Socket.OPEN);
+  assert.deepEqual(socket.sent.at(-1).params, { body: { id: message.id } });
+  await connector.request("session/image", { thread: "large", body: { path: "image.png" } });
+  assert.equal(sockets.length, 1);
 });
 
 test("timed-out subscription admission cancels its known identity and ignores late data", async (t) => {
@@ -424,7 +428,7 @@ test(
 );
 
 test(
-  "attachments use a separate authenticated connection without blocking the view",
+  "content, images and attachments reuse one bulk connection independently of control",
   { timeout: 2000 },
   async () => {
     const connector = connect("https://example.test", "token");
@@ -461,24 +465,25 @@ test(
       version: { Attachment: 1, Revision: 5 },
     });
     await submission;
-    assert.equal(sockets[1].readyState, 3);
+    assert.equal(sockets[1].readyState, 1);
     assert.equal(sockets[0].readyState, 1);
     for (const method of ["session/start", "session/input"]) {
       await connector.request(method, {
         thread: "same",
         body: { text: "", attachments: [{ source: "path", path: "notes.txt" }] },
       });
-      assert.equal(sockets.at(-1).sent[1].method, method);
-      assert.equal(sockets.at(-1).readyState, 3);
+      assert.equal(sockets[1].sent.at(-1).method, method);
+      assert.equal(sockets[1].readyState, 1);
       assert.equal(sockets[0].readyState, 1);
     }
-    assert.equal(sockets.length, 4);
+    assert.equal(sockets.length, 2);
     handler = (socket, message) => {
       if (!initialize(socket, message)) socket.reply(message, null);
     };
     for (const [method, payload] of [
       ["session/content", { attachment: "retained", kind: "main", seq: 1, revision: 1 }],
       ["session/attachment-image", { path: "image.png" }],
+      ["session/image", { path: "image.png" }],
       [
         "session/answer",
         {
@@ -506,15 +511,53 @@ test(
       ],
     ]) {
       await connector.request(method, { thread: "same", body: payload });
-      assert.equal(sockets.at(-1).sent[1].method, method);
-      assert.equal(sockets.at(-1).readyState, 3);
+      assert.equal(sockets[1].sent.at(-1).method, method);
+      assert.equal(sockets[1].readyState, 1);
       assert.equal(sockets[0].readyState, 1);
     }
-    assert.equal(sockets.length, 8);
+    assert.equal(sockets.length, 2);
     stop();
     connector.close();
   },
 );
+
+test("bulk cancellation, loss and reauthorization preserve channel ownership", async () => {
+  const connector = connect("https://example.test", "old-token");
+  const pending = [];
+  handler = (socket, message) => {
+    if (initialize(socket, message)) return;
+    if (message.method === "session/input" || message.method === "session/content")
+      pending.push({ socket, message });
+    else socket.reply(message, null);
+  };
+  await connector.request("session/options");
+  const controller = new AbortController();
+  const canceled = connector.request("session/content", {}, { signal: controller.signal });
+  const retained = connector.request("session/content");
+  await new Promise(setImmediate);
+  controller.abort();
+  await assert.rejects(canceled, { kind: "canceled" });
+  pending[1].socket.reply(pending[1].message, { complete: true });
+  assert.deepEqual(await retained, { complete: true });
+  assert.equal(sockets.length, 2);
+  const submission = connector.request("session/input", {
+    body: { attachments: [{ source: "path", path: "notes.txt" }] },
+  });
+  await new Promise(setImmediate);
+  sockets[1].close();
+  await assert.rejects(submission, { kind: "unknown" });
+  await connector.request("session/image");
+  assert.equal(sockets.length, 3);
+  assert.equal(sockets[0].readyState, Socket.OPEN);
+  assert.equal(pending.filter(({ message }) => message.method === "session/input").length, 1);
+  connector.authorize("new-token");
+  assert.ok(sockets.every((socket) => socket.readyState === 3));
+  await Promise.all([connector.request("session/options"), connector.request("session/image")]);
+  assert.equal(sockets.length, 5);
+  assert.ok(sockets.slice(3).every((socket) => socket.sent[0].params.token === "new-token"));
+  connector.close();
+  assert.ok(sockets.every((socket) => socket.readyState === 3));
+});
 
 test(
   "request cancellation addresses the dispatched request and preserves other machines",

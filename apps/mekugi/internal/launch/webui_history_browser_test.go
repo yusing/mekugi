@@ -51,6 +51,9 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	main, agents := &activity.Publication{}, &activity.Publication{}
 	for i := range 600 {
 		text := fmt.Sprintf("History entry %03d\n\n**Retained evidence** with [a link](https://example.com).\n\n```ts\nconst history = %d;\n```", i, i)
+		if i%50 == 49 {
+			text += strings.Repeat("\n\nRetained content acquired while scrolling.", 80)
+		}
 		main.Entries = append(main.Entries, activity.Entry{Facts: activity.Facts{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: text}, Revision: 1})
 		agents.Entries = append(agents.Entries, activity.Entry{Facts: activity.Facts{Seq: uint64(i + 1), Agent: fmt.Sprintf("/root/worker%d", i%4), Kind: "text", Text: text}, Revision: 1})
 	}
@@ -83,6 +86,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		return strings.TrimSpace(string(out))
 	}
 	run("open", page.URL)
+	run("eval", `window.controlSockets = []; window.contentReads = 0; const Original = WebSocket; window.WebSocket = class extends Original { constructor(...args) { super(...args); window.controlSockets.push(this); } send(text) { if (JSON.parse(text).method === 'session/content') window.contentReads++; return super.send(text); } }`)
 	run("find", "label", "Machine name", "fill", "History")
 	run("find", "label", "Connector URL", "fill", machine.remote.URL)
 	run("find", "label", "Access token", "fill", strings.Repeat("e", 64))
@@ -161,6 +165,10 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		run("wait", "--fn", `document.querySelectorAll('[aria-label="Transcript"] article').length > window.historyRows`)
 	}
 	run("wait", "--text", "History entry 000")
+	run("wait", "--fn", `window.contentReads >= 12`)
+	if counts := run("eval", `({created:window.controlSockets.length,open:window.controlSockets.filter(socket => socket.readyState === WebSocket.OPEN).length,content:window.contentReads})`); run("eval", `window.controlSockets.length === 2 && window.controlSockets.every(socket => socket.readyState === WebSocket.OPEN)`) != "true" {
+		t.Fatalf("scrolling created additional control connections: %s", counts)
+	}
 	if run("eval", `document.querySelectorAll('[aria-label="Transcript"] article').length === 601`) != "true" {
 		t.Fatal("earlier pages did not retain all available history")
 	}
@@ -191,6 +199,9 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	}
 	run("eval", `WebSocket.prototype.send = window.savedSend; window.detailReads[0]()`)
 	run("wait", "--text", "Complete retained details.")
+	if run("eval", `window.controlSockets.length === 2`) != "true" {
+		t.Fatal("opening retained details created another control connection")
+	}
 	run("eval", `window.savedDetails = document.querySelector('#details-heading').parentElement.nextElementSibling.querySelector('p')`)
 	detailFrame.View.Version.Revision++
 	if err := attachment.native.Publish(attachment.request.Attachment, detailFrame); err != nil {
@@ -241,6 +252,12 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("wait", "--fn", `!document.querySelector('dialog[open]')`)
+	// Closing the actual wire must replace it once and restore all observers.
+	run("eval", `window.controlSockets[0].close()`)
+	run("wait", "--fn", `window.controlSockets.length === 3 && document.querySelector('button[aria-label="Stop"]')?.disabled === false`)
+	if run("eval", `window.controlSockets.filter(socket => socket.readyState === WebSocket.OPEN).length === 2`) != "true" {
+		t.Fatal("reconnection did not restore the control and bulk pair")
+	}
 	// A different agent starts at its own newest page, without Main's cursor.
 	run("eval", `[...document.querySelectorAll('[aria-label="Thread panel"] button')].find(e => e.textContent.includes('worker0')).click()`)
 	run("wait", "--fn", `(() => { const count = document.querySelectorAll('[aria-label="worker0\'s activity"] article').length; return count > 13 && count <= 50; })()`)
@@ -254,4 +271,9 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 			run("screenshot", filepath.Join(directory, "history-"+size.name+".png"))
 		}
 	}
+
+	if run("eval", `window.controlSockets.length === 3`) != "true" {
+		t.Fatal("agent selection created another connection")
+	}
+	t.Log("scrolling and retained details reused two persistent connections; disconnect replaced only control; agent selection reused the pair")
 }

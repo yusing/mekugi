@@ -258,7 +258,7 @@ class Channel {
         reject(mutation ? new TransportError(unknownOutcome, "unknown") : canceled());
       };
       // Explicit content can exceed the control deadline on a healthy slow
-      // link. Its independent connection ends with the read's owner instead.
+      // link. Its owner cancels the request without retiring the bulk channel.
       const timer =
         method === "session/content" ? undefined : setTimeout(abort, mutation ? 120_000 : 15_000);
       this.#pending.set(id, {
@@ -441,7 +441,7 @@ export class Connector {
   #lifetime = new AbortController();
   #disposed = false;
   #shared?: Channel;
-  #uploads = new Set<Channel>();
+  #bulk?: Channel;
   #clock?: { server: number; received: number };
 
   get now(): number | undefined {
@@ -466,14 +466,15 @@ export class Connector {
     previous.abort();
     this.#shared?.close();
     this.#shared = undefined;
-    for (const channel of this.#uploads) channel.close();
+    this.#bulk?.close();
+    this.#bulk = undefined;
   }
   close(): void {
     this.#disposed = true;
     this.#token = "";
     this.#lifetime.abort();
     this.#shared?.close();
-    for (const channel of this.#uploads) channel.close();
+    this.#bulk?.close();
   }
   #channel(): Channel {
     if (!this.#shared || this.#shared.closed)
@@ -494,14 +495,8 @@ export class Connector {
     ]);
     if (method !== "session/content" && !attachmentBearing(method, params))
       return this.#channel().request<T>(method, params, signal);
-    const channel = new Channel(this.endpoint, this.#token);
-    this.#uploads.add(channel);
-    try {
-      return await channel.request<T>(method, params, signal);
-    } finally {
-      this.#uploads.delete(channel);
-      channel.close();
-    }
+    if (!this.#bulk || this.#bulk.closed) this.#bulk = new Channel(this.endpoint, this.#token);
+    return this.#bulk.request<T>(method, params, signal);
   }
   subscribe(
     method: SubscriptionMethod,

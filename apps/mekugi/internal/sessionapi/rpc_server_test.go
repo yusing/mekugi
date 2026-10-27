@@ -2,12 +2,15 @@ package sessionapi
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +18,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	activity "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 func rawControl(t *testing.T, handler http.Handler, native bool) *websocket.Conn {
@@ -345,6 +349,72 @@ func TestRPCRequestCancellationWhileAcknowledgementIsBlocked(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestRPCCanceledQueuedBulkReadIsNotDelivered(t *testing.T) {
+	workspace := t.TempDir()
+	image, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "image.png"), image, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{"session/content", "session/image", "session/attachment-image"} {
+		t.Run(method, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				s := NewLive()
+				if err := s.Publish(Frame{Session: Session{Thread: "thread", Workspace: workspace}, Main: &activity.Publication{Entries: []activity.Entry{{Seq: 1, Agent: "Main", Kind: "text", Text: strings.Repeat("retained ", 10000), Images: []string{"image.png"}, Revision: 1}}}}); err != nil {
+					t.Fatal(err)
+				}
+				snapshot, err := s.snapshot()
+				if err != nil {
+					t.Fatal(err)
+				}
+				var initial struct {
+					Main struct {
+						Entries []entry `json:"entries"`
+					} `json:"main"`
+				}
+				if err := json.Unmarshal(snapshot.Data, &initial); err != nil {
+					t.Fatal(err)
+				}
+				if len(initial.Main.Entries) != 1 || initial.Main.Entries[0].Content == nil {
+					t.Fatal("missing published content reference")
+				}
+				body := string(testJSON(t, initial.Main.Entries[0].Content))
+				hub := NewHub(t.Context(), nil)
+				registerTestSession(hub, "thread", s, Summary{Thread: "thread", Workspace: workspace})
+				conn := pipeControl(t, hub)
+				controlInitialize(t, conn)
+				controlWrite(t, conn, `{"jsonrpc":"2.0","id":"block","method":"session/content","params":{"thread":"thread","body":`+body+`}}`)
+				synctest.Wait() // Keep the first response blocked on the actual wire.
+				if method == "session/image" {
+					body = `{"seq":1,"agent":"Main","index":0,"image":"` + imageIdentity("image.png") + `"}`
+				}
+				if method == "session/attachment-image" {
+					body = `{"path":"image.png"}`
+				}
+				controlWrite(t, conn, `{"jsonrpc":"2.0","id":"bulk","method":"`+method+`","params":{"thread":"thread","body":`+body+`}}`)
+				synctest.Wait()
+				controlWrite(t, conn, `{"jsonrpc":"2.0","id":"cancel","method":"request/cancel","params":{"body":{"id":"bulk"}}}`)
+				synctest.Wait()
+				if len(hub.preparations) != 1 {
+					t.Fatal("canceled queued bulk read retained preparation capacity")
+				}
+				controlWrite(t, conn, `{"jsonrpc":"2.0","id":"after","method":"`+method+`","params":{"thread":"thread","body":`+body+`}}`)
+				for _, id := range []string{`"block"`, `"cancel"`, `"after"`} {
+					if reply := controlRead(t, conn); string(reply.ID) != id || reply.Error != nil {
+						t.Fatalf("expected %s, got %s (%d result bytes), error %v", id, reply.ID, len(reply.Result), reply.Error)
+					}
+				}
+				synctest.Wait()
+				if len(hub.preparations) != 0 {
+					t.Fatal("delivered content retained preparation capacity")
+				}
+			})
+		})
+	}
 }
 
 func TestRPCServerShutdownDeliversJoinedExit(t *testing.T) {

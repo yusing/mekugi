@@ -117,8 +117,8 @@ application or intentional stale discard;
 only the current ID releases the next delivery. Canceling an observation removes
 unsent work but does not acknowledge already-sent bytes. Other control replies,
 semantic effects, discovery and local native frames retain their delivery rules.
-Complete content reads use independent authenticated connections, so cancellation
-of a large read cannot hold the selected thread's connection. Content transfers
+Browser transfer connections follow the [Web UI contract](../webui/CONTRACT.md).
+Canceled content and image replies are discarded before transmission begins. Content transfers
 share the endpoint's aggregate preparation capacity through response delivery.
 Explicit content reads remain cancelable and do not inherit the ordinary
 control-read deadline, which can expire during healthy large transfers.

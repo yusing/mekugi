@@ -250,36 +250,36 @@ func (c *rpcConnection) run() {
 			return
 		}
 		if failure != nil {
-			c.reply(request.ID, nil, failure, nil)
+			c.reply(c.ctx, request.ID, nil, failure, nil)
 			continue
 		}
 		c.mu.Lock()
 		draining := c.draining
 		c.mu.Unlock()
 		if draining {
-			c.reply(request.ID, nil, rpcFailure(503, "Server stopping."), nil)
+			c.reply(c.ctx, request.ID, nil, rpcFailure(503, "Server stopping."), nil)
 			continue
 		}
 		if request.Method == "initialize" {
-			c.reply(request.ID, nil, rpcFailure(409, "Connection is already initialized."), nil)
+			c.reply(c.ctx, request.ID, nil, rpcFailure(409, "Connection is already initialized."), nil)
 			continue
 		}
 		method, known := rpcMethods[request.Method]
 		if !known {
-			c.reply(request.ID, nil, &RPCError{Code: -32601, Message: "Unknown method."}, nil)
+			c.reply(c.ctx, request.ID, nil, &RPCError{Code: -32601, Message: "Unknown method."}, nil)
 			continue
 		}
 		var params RPCParams
 		if json.Unmarshal(request.Params, &params, json.RejectUnknownMembers(true)) != nil || params.Body != nil && params.Body.Kind() != '{' {
-			c.reply(request.ID, nil, rpcFailure(400, "Invalid method parameters."), nil)
+			c.reply(c.ctx, request.ID, nil, rpcFailure(400, "Invalid method parameters."), nil)
 			continue
 		}
 		if len(params.Body) > method.limit {
-			c.reply(request.ID, nil, rpcFailure(413, "request body too large"), nil)
+			c.reply(c.ctx, request.ID, nil, rpcFailure(413, "request body too large"), nil)
 			continue
 		}
 		if method.native && c.authority != localNativeView {
-			c.reply(request.ID, nil, rpcFailure(403, "This method requires the native endpoint."), nil)
+			c.reply(c.ctx, request.ID, nil, rpcFailure(403, "This method requires the native endpoint."), nil)
 			continue
 		}
 		key, _ := requestID(request.ID)
@@ -287,7 +287,7 @@ func (c *rpcConnection) run() {
 		_, duplicate := c.requests[key]
 		c.mu.Unlock()
 		if duplicate {
-			c.reply(request.ID, nil, rpcFailure(409, "Request ID is already pending."), nil)
+			c.reply(c.ctx, request.ID, nil, rpcFailure(409, "Request ID is already pending."), nil)
 			continue
 		}
 		// Cancellation never waits behind ordinary method execution or bulk work.
@@ -307,7 +307,7 @@ func (c *rpcConnection) run() {
 				c.mu.Unlock()
 				c.signal()
 			}
-			c.reply(request.ID, nil, failure, nil)
+			c.reply(c.ctx, request.ID, nil, failure, nil)
 			continue
 		}
 		if request.Method == "request/cancel" {
@@ -332,18 +332,18 @@ func (c *rpcConnection) run() {
 				}
 				c.mu.Unlock()
 			}
-			c.reply(request.ID, nil, failure, nil)
+			c.reply(c.ctx, request.ID, nil, failure, nil)
 			continue
 		}
 		if request.Method == "subscription/cancel" {
 			c.removeSubscription(params.Subscription, nil, nil)
-			c.reply(request.ID, nil, nil, nil)
+			c.reply(c.ctx, request.ID, nil, nil, nil)
 			continue
 		}
 		select {
 		case c.slots <- struct{}{}:
 		default:
-			c.reply(request.ID, nil, rpcFailure(503, "Too many pending control requests."), nil)
+			c.reply(c.ctx, request.ID, nil, rpcFailure(503, "Too many pending control requests."), nil)
 			continue
 		}
 		ctx, cancel := context.WithCancel(c.ctx)
@@ -364,15 +364,22 @@ func (c *rpcConnection) run() {
 				c.replyPage(ctx, request.ID, value.(PageResult))
 				return
 			}
-			if sent == nil {
-				c.reply(request.ID, value, failure, nil)
+			bulkRead := failure == nil && (request.Method == "session/content" || request.Method == "session/image" || request.Method == "session/attachment-image")
+			if sent == nil && !bulkRead {
+				c.reply(c.ctx, request.ID, value, failure, nil)
 				return
 			}
-			// Subscription admission belongs to this request until its
-			// acknowledgement leaves the writer, not merely the reply queue.
+			// Admission and bulk reads belong to this request until
+			// delivery, not merely until the reply is queued.
+			replyContext := c.ctx
+			if bulkRead {
+				replyContext = ctx
+			}
 			delivered := make(chan struct{})
-			c.reply(request.ID, value, failure, func() {
-				sent()
+			c.reply(replyContext, request.ID, value, failure, func() {
+				if sent != nil {
+					sent()
+				}
 				close(delivered)
 			})
 			select {
@@ -390,7 +397,7 @@ func responseID(id jsontext.Value) jsontext.Value {
 	return id
 }
 
-func (c *rpcConnection) reply(id jsontext.Value, value any, failure *RPCError, sent func()) {
+func (c *rpcConnection) reply(ctx context.Context, id jsontext.Value, value any, failure *RPCError, sent func()) {
 	var result jsontext.Value
 	if failure == nil {
 		var err error
@@ -399,7 +406,7 @@ func (c *rpcConnection) reply(id jsontext.Value, value any, failure *RPCError, s
 			failure = rpcUnknown("Cannot encode control result.")
 		}
 	}
-	reply := rpcReply{message: RPCMessage{JSONRPC: "2.0", ID: responseID(id), Result: result, Error: failure}, sent: sent}
+	reply := rpcReply{message: RPCMessage{JSONRPC: "2.0", ID: responseID(id), Result: result, Error: failure}, sent: sent, ctx: ctx}
 	select {
 	case c.responses <- reply:
 	case <-c.ctx.Done():
@@ -434,7 +441,7 @@ func (c *rpcConnection) replyPage(ctx context.Context, id jsontext.Value, page P
 	}
 	if c.page != nil {
 		c.mu.Unlock()
-		c.reply(id, nil, rpcFailure(503, "An earlier page is still waiting for delivery."), nil)
+		c.reply(c.ctx, id, nil, rpcFailure(503, "An earlier page is still waiting for delivery."), nil)
 		return
 	}
 	c.page = &reply
@@ -539,6 +546,9 @@ func (c *rpcConnection) writer() {
 			return
 		case 1:
 			reply := value.Interface().(rpcReply)
+			if reply.ctx != nil && reply.ctx.Err() != nil {
+				continue
+			}
 			if !c.write(reply.message) {
 				return
 			}
