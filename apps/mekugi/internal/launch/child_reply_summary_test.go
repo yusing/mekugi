@@ -11,18 +11,27 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 const childReplySummaryBody = "## Summary\nFixed exact reply navigation and kept the original evidence available. Focused checks pass, while live model compliance remains unverified.\n\n## Details\n" + "The supporting explanation stays in the retained reply.\n" + "Second detail with **emphasis**.\nThird detail.\nFourth detail.\nFifth detail.\nEnd of evidence."
 
 func TestUISnapshotChildReplySummary(t *testing.T) {
-	for _, kind := range []string{"directed", "final"} {
+	for _, kind := range []string{"directed", "final", "native-directed", "native-final"} {
 		t.Run(kind, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.shell.Transcript.ChildReplySummary, u.shell.Agents.ChildReplySummary = true, true
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			send := func(id, body string) {
+				if strings.HasPrefix(kind, "native-") {
+					delivery := "MESSAGE"
+					if kind == "native-final" {
+						delivery = "FINAL_ANSWER"
+					}
+					publishNativeDelivery(&u.attached, control.NativeInput{Thread: "main", ID: id, Sender: "/root/worker", Recipient: "/root", Kind: delivery, Message: body}, time.Now())
+					return
+				}
 				var item any = map[string]any{"id": id, "type": "agentMessage", "phase": "final_answer", "text": body}
 				if kind == "directed" {
 					item = coordinationTestCall(t, id, "send_message", "main", u.attached.session.Caller("main"), body)
@@ -35,7 +44,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 			var seq uint64
 			count := 0
 			for i, record := range u.attached.source.Entries {
-				if record.Source.Native != nil && strings.HasPrefix(record.Source.Native.Item, "target") {
+				if record.Source.Text == childReplySummaryBody {
 					count++
 					seq = record.Source.Seq
 					if record.Source.ActivitySeq == 0 || record.Values[0].ReplySummary == "" {
@@ -55,7 +64,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 				if strings.Contains(plain, "supporting explanation") || strings.Contains(plain, "+") || !strings.Contains(plain, "unverified.") || !strings.Contains(plain, "↩ Open reply") {
 					t.Fatalf("summary card: %s", plain)
 				}
-				assertNativeUISnapshot(t, fmt.Sprintf("child-reply-summary-%s-%d", kind, width), feed.Lines)
+				assertNativeUISnapshot(t, fmt.Sprintf("child-reply-summary-%s-%d", strings.TrimPrefix(kind, "native-"), width), feed.Lines)
 			}
 			u.shell.Transcript.Expansion = 1
 			expanded := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 80).Lines, "\n"))
@@ -69,7 +78,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 			if !strings.Contains(ansi.Strip(strings.Join(feed.Lines, "\n")), "+") {
 				t.Fatal("disabled summary did not use excerpt")
 			}
-			assertNativeUISnapshot(t, "child-reply-summary-"+kind+"-disabled", feed.Lines)
+			assertNativeUISnapshot(t, "child-reply-summary-"+strings.TrimPrefix(kind, "native-")+"-disabled", feed.Lines)
 			if !terminalTest(u).openActivityReply(seq) {
 				t.Fatal("cannot open disabled-summary reply")
 			}
@@ -106,7 +115,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 			if rendered := screen.String(); strings.Count(rendered, "Fixed exact reply navigation") != 1 || strings.Contains(rendered, "Summary") || strings.Contains(rendered, "Details") || !strings.Contains(rendered, "End of evidence.") {
 				t.Fatalf("reply details repeated summary or delimiters: %s", rendered)
 			}
-			assertNativeUISnapshot(t, "child-reply-summary-"+kind+"-dialog", strings.Split(screen.String(), "\n"))
+			assertNativeUISnapshot(t, "child-reply-summary-"+strings.TrimPrefix(kind, "native-")+"-dialog", strings.Split(screen.String(), "\n"))
 			terminalTest(u).outputKey("\x1b")
 			if terminalTest(u).Dialog != nil {
 				t.Fatal("dialog did not dismiss")

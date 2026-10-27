@@ -294,7 +294,7 @@ func (v *View) sentMessage(index int) bool {
 	if entry.Activity == 0 || len(blocks) == 0 {
 		return false
 	}
-	return blocks[0].Kind == "start" || entry.Kind == "assignment" || blocks[0].Kind == "message" && blocks[0].To != v.conversationCaller()
+	return blocks[0].Kind == "start" || entry.Kind == "assignment" || blocks[0].Kind == "message" && !v.conversationLocal(blocks[0].To)
 }
 
 // conversationLead reports Main reasoning or commentary, which heads the
@@ -359,21 +359,27 @@ func (v *View) conversationCaller() string {
 	return "/root"
 }
 
+// Main is local to the runtime's own transcript. It is not the selected child
+// when viewing that child's entries in the shared Activity feed.
+func (v *View) conversationLocal(endpoint string) bool {
+	return endpoint == v.conversationCaller() || endpoint == "Main" && v.conversationSpeaker() == "Main"
+}
+
 // trafficAgent names the started agent or the other peer of a local message.
 // Traffic between other agents must retain its own route, outside a local thread.
 func (v *View) trafficAgent(entry activitypresentation.Entry, block Block) string {
 	agent := ""
 	switch {
 	case block.Kind == "start":
-		if block.From != "" && block.To != "" && block.From != v.conversationCaller() && block.To != v.conversationCaller() {
+		if block.From != "" && block.To != "" && !v.conversationLocal(block.From) && !v.conversationLocal(block.To) {
 			return ""
 		}
 		agent = block.To
 	case block.Kind == "message":
-		switch v.conversationCaller() {
-		case block.From:
+		switch {
+		case v.conversationLocal(block.From):
 			agent = block.To
-		case block.To:
+		case v.conversationLocal(block.To):
 			agent = block.From
 		default:
 			return ""
@@ -634,14 +640,14 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 	if agent == "" {
 		agent = entry.Agent
 	}
-	reply := block.Kind != "start" && entry.Kind != "assignment" && (block.Kind != "message" || block.To == v.conversationCaller())
+	reply := block.Kind != "start" && entry.Kind != "assignment" && (block.Kind != "message" || v.conversationLocal(block.To))
 	switch {
 	case block.Kind == "start":
 		glyph, detail = terminalui.Green+"▶"+terminalui.Reset, "started"
 		if block.Label != "" {
 			detail += " · " + ansi.Strip(p.Inline(block.Label))
 		}
-	case block.Kind == "message" && block.From == v.conversationCaller():
+	case block.Kind == "message" && v.conversationLocal(block.From):
 		glyph = terminalui.Dim + "→" + terminalui.Undim
 		if thread.Joined {
 			detail = "follow-up"

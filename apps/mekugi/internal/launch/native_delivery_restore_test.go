@@ -22,7 +22,7 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 		live := newAppServerSessionTestUI(t, t.TempDir())
 		wire := live.Host.Input.(*appServerTestInput)
 		var records []map[string]any
-		bodies := []string{"MESSAGE\nPayload:\nunaltered body\n", "## Summary\nFINAL_ANSWER result.\n\n## Details\nPayload:\nFinal evidence.\n"}
+		bodies := []string{"## Summary\nMESSAGE result.\n\n## Details\nPayload:\nMessage evidence.\n", "## Summary\nFINAL_ANSWER result.\n\n## Details\nPayload:\nFinal evidence.\n"}
 		for i, kind := range []string{"MESSAGE", "FINAL_ANSWER"} {
 			input := control.NativeInput{Thread: "main", ID: kind, Sender: "/root/worker", Recipient: "/root", Kind: kind, Message: bodies[i]}
 			wire.Reset()
@@ -89,7 +89,7 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 				if entry.Source.Kind == "reply" && (entry.Source.Message == nil || entry.Source.Message.From != "/root/worker" || entry.Source.Message.To != "Main") {
 					t.Fatalf("message lost receiver presentation: %+v", entry.Source)
 				}
-				if entry.Source.ActivitySeq == 0 || entry.Source.Kind == "final" && entry.Values[0].ReplySummary == "" {
+				if entry.Source.ActivitySeq == 0 || entry.Values[0].ReplySummary == "" {
 					t.Fatal("restored reply lost its summary or exact Activity target")
 				}
 				target = entry.Source.Seq
@@ -99,6 +99,9 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 			}
 			view := restored.testActivity(restored.shell.Transcript)
 			rendered := ansi.Strip(strings.Join(view.testRenderConversation(100).Lines, "\n"))
+			if !strings.Contains(rendered, "MESSAGE result.") || !strings.Contains(rendered, "↩ Open reply") || strings.Contains(rendered, "Summary") || strings.Contains(rendered, "Details") || strings.Contains(rendered, "Message evidence.") {
+				t.Fatalf("restored message disclosure: %s", rendered)
+			}
 			if !idle && (!strings.Contains(rendered, "FINAL_ANSWER result.") || !strings.Contains(rendered, "↩ Open reply") || strings.Contains(rendered, "Summary") || strings.Contains(rendered, "Details") || strings.Contains(rendered, "Final evidence.")) {
 				t.Fatalf("restored default disclosure: %s", rendered)
 			}

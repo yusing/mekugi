@@ -29,7 +29,6 @@
 "                                                                                                    "
 "\x1b[2m←\x1b[m \x1b[38;5;38;1mduplicate_edits\x1b[m                                                                           \x1b[2m12:00:09\x1b[m"
 "\x1b[38;5;38m│\x1b[m Review complete.                                                                                  "
-"                                                                                                    "
-"\x1b[2m✉\x1b[m \x1b[38;5;38mduplicate_edits\x1b[39;2m → \x1b[38;2;86;212;221;22mmain\x1b[m                                                                    \x1b[2m12:00:10\x1b[m"
+"\x1b[38;5;38m├─\x1b[39;2m←\x1b[m \x1b[2mreplied · 1s\x1b[m                                                                                    "
 "\x1b[38;5;38m│\x1b[m Message delivered to main.                                                                        "
 "plain after traffic                                                                                 "
