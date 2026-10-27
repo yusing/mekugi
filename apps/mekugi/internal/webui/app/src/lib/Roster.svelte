@@ -130,16 +130,17 @@
   >
 {/snippet}
 
-<div class="mt-3.5 mb-0.5 flex items-baseline gap-2.5">
+<div class="mt-3.5 mb-0.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
   <h2 class="font-semibold">Agents</h2>
-  {#if roster.next}<span class="text-small text-muted"
+  {#if roster.next}<span class="text-small whitespace-nowrap text-muted"
       >Showing {agents.length} of {roster.total}</span
     >{/if}
-  {#if !loading}
-    <span class="text-small text-muted tabular-nums">
-      {#if single}<span class={tallyInk[tallies[0].state]}>{tallies[0].text}</span
-        >{:else}{agents.length}{#each tallies as tally (tally.state)}<span
-            class="ml-2 {tallyInk[tally.state] ?? ''}">{tally.text}</span
+  {#if !loading && (!roster.next || tallies.length)}
+    <span class="flex flex-wrap gap-x-2 text-small text-muted tabular-nums">
+      {#if single}<span class={["whitespace-nowrap", tallyInk[tallies[0].state]]}
+          >{tallies[0].text}</span
+        >{:else}{#if !roster.next}{agents.length}{/if}{#each tallies as tally (tally.state)}<span
+            class="whitespace-nowrap {tallyInk[tally.state] ?? ''}">{tally.text}</span
           >{/each}{/if}
     </span>
   {/if}

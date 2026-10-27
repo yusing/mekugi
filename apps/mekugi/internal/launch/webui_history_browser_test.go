@@ -58,7 +58,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		agents.Entries = append(agents.Entries, activity.Entry{Facts: activity.Facts{Seq: uint64(i + 1), Agent: fmt.Sprintf("/root/worker%d", i%4), Kind: "text", Text: text}, Revision: 1})
 	}
 	for i := range 120 {
-		agents.Roster = append(agents.Roster, activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: fmt.Sprintf("/root/worker%d", i)}}})
+		agents.Roster = append(agents.Roster, activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: fmt.Sprintf("/root/worker%d", i), Responding: i < 2, Final: i >= 2}}})
 	}
 	frame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "History thread", Workspace: machine.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: main, Agents: agents}
 	start := time.Now()
@@ -97,6 +97,40 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		t.Fatal("opening retained history rendered more than the initial row budget")
 	}
 	run("wait", "--fn", `document.querySelector('button[aria-label="Stop"]')?.disabled === false`)
+	if run("eval", `(() => {
+		const header = document.querySelector('#panel-content h2').parentElement;
+		const showing = header.children[1], counts = header.children[2];
+		const match = showing.textContent.match(/Showing\s+(\d+)\s+of\s+(\d+)/);
+		if (!match) throw Error('Unexpected roster header: ' + header.textContent);
+		const loaded = Number(match[1]);
+		window.rosterTotal = Number(match[2]);
+		return [...counts.childNodes].every(node => node.nodeType !== Node.TEXT_NODE || !node.textContent.trim()) &&
+			counts.children[0].textContent === '2 working' && counts.children[1].textContent === (loaded - 2) + ' done';
+	})()`) != "true" {
+		t.Fatal("partial roster duplicated its loaded count or lost state counts")
+	}
+	for _, palette := range []string{"light", "dark"} {
+		run("eval", fmt.Sprintf(`document.documentElement.dataset.theme = %q`, palette))
+		for _, width := range []string{"1280", "768", "390"} {
+			run("set", "viewport", width, "900")
+			run("eval", `if (!document.querySelector('#panel-content')) document.querySelector('button[aria-label^="Agents ("]').click()`)
+			run("wait", "--fn", `!!document.querySelector('#panel-content h2')`)
+			if run("eval", `(() => {
+				const header = document.querySelector('#panel-content h2').parentElement, bounds = header.getBoundingClientRect();
+				return [header.children[1], ...header.children[2].children].every(label => {
+					const range = document.createRange(); range.selectNodeContents(label);
+					const rects = [...range.getClientRects()];
+					return rects.length === 1 && rects[0].left >= bounds.left - 1 && rects[0].right <= bounds.right + 1;
+				});
+			})()`) != "true" {
+				t.Fatalf("roster count labels wrapped internally or overflowed at %s/%s", palette, width)
+			}
+			if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
+				run("screenshot", filepath.Join(directory, "roster-count-"+palette+"-"+width+".png"))
+			}
+		}
+	}
+	run("set", "viewport", "1280", "900")
 	// The roster acquires bounded pages at its scroll edge without a loading control.
 	run("eval", `window.rosterFirst = document.querySelector('#panel-content li > button')`)
 	for range 5 {
@@ -108,6 +142,9 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	}
 	if run("eval", `window.rosterFirst.isConnected && document.querySelector('#panel-content').textContent.includes('worker119') && !document.body.innerText.includes('Load more')`) != "true" {
 		t.Fatal("roster paging lost rows, selection, or automatic demand")
+	}
+	if run("eval", `(() => { const header = document.querySelector('#panel-content h2').parentElement; return !header.textContent.includes('Showing') && [...header.lastElementChild.childNodes].some(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim() === String(window.rosterTotal)); })()`) != "true" {
+		t.Fatal("complete mixed-state roster lost its total count")
 	}
 	// A new bounded first page updates activity without hiding acquired members.
 	run("eval", `window.lastMember = [...document.querySelectorAll('#panel-content li > button')].find(row => row.textContent.includes('worker119'))`)
