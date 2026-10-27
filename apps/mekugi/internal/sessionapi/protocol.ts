@@ -1780,6 +1780,7 @@ export type Read = {
 
 export type CommandSegment = {
   "Source": string;
+  "Display": string;
   "Text": string;
   "Running": boolean;
   "Skipped": boolean;

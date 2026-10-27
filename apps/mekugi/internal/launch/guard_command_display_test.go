@@ -197,6 +197,50 @@ func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 	assertNativeUISnapshot(t, "guard-command-display", u.testActivity(u.shell.Transcript).RenderFeed(90, 12).Lines)
 }
 
+func TestUISnapshotPendingGuardCommandDisplay(t *testing.T) {
+	u, hub := newTrackedAppServerUI(t)
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
+	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	u.clock = func() time.Time { return now }
+	source := "sleep 1; git stash push -m 'temporary changes' -- go.work.sum; GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash HEAD~2; git stash pop"
+	guarded, err := shellinstrumentation.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, "", "cmd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := shellCommandString("/bin/bash", []string{"-lc", guarded})
+	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": command, "status": "inProgress"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	report := dialExecTrackReport(t, hub, guarded)
+	defer report.conn.Close()
+	report.send(
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 0},
+		segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "waiting\n"},
+	)
+	awaitMain(t, u, "waiting")
+	entry := u.testActivity(u.shell.Transcript).Entries[0].Source
+	want, _ := shellinstrumentation.Split(source)
+	original, _ := shellinstrumentation.Split(guarded)
+	presented := sessionpresentation.CommandPresentation(entry)
+	if len(presented.Segments) != len(want) {
+		t.Fatalf("presented segments = %d, want %d", len(presented.Segments), len(want))
+	}
+	for i, segment := range presented.Segments {
+		if segment.Source != original[i].Source || entry.Native.Segments[i].Source != original[i].Source {
+			t.Fatalf("segment %d: retained source changed: %q", i, segment.Source)
+		}
+	}
+	pages := activityui.Disclosure(nil).Blocks(presented.DetailValues())
+	if len(pages) != len(want) {
+		t.Fatalf("detail pages = %d, want %d", len(pages), len(want))
+	}
+	for i, page := range pages {
+		if page.Code != want[i].Source {
+			t.Fatalf("page %d source = %q, want %q", i, page.Code, want[i].Source)
+		}
+	}
+	assertNativeUISnapshot(t, "pending-guard-command-display", u.testActivity(u.shell.Transcript).RenderFeed(90, 12).Lines)
+}
+
 func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme

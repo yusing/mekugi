@@ -1,0 +1,5 @@
+├ Running sleep 1
+│         ┆ waiting
+├ Pending git stash push -m 'temporary changes' -- go.work.sum
+├ Pending GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash HEAD~2
+└ Pending git stash pop

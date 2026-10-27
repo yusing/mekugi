@@ -37,7 +37,7 @@ type Command struct {
 }
 
 type CommandSegment struct {
-	Source, Text              string
+	Source, Display, Text     string
 	Running, Skipped, Pending bool
 	ExitCode                  int
 	Started, Ended            time.Time
@@ -169,7 +169,7 @@ func (c Command) SegmentValues(detail bool) []Value {
 			retainSource = retainSource || len(operations) == 0 && (detail && (removedTarget || segment.Writer) || timed || len(segment.Tail) > 0 || segment.TailOmitted > 0 || hasOutput(segment.Output, segment.OutputContent) || c.CaptureText != "" && len(c.Segments) == 1)
 		}
 		if retainSource {
-			source := segment.Source
+			source := cmp.Or(segment.Display, segment.Source)
 			omitted := false
 			if !detail {
 				source, omitted = previewSource(source)
@@ -195,7 +195,7 @@ func (c Command) SegmentValues(detail bool) []Value {
 		}
 		last := &operations[len(operations)-1]
 		if detail && (last.EditSource != "" || last.Verb == "Run") {
-			last.Code, last.Lang, last.Fenced = textsanitize.Safe(segment.Source, false), "bash", true
+			last.Code, last.Lang, last.Fenced = textsanitize.Safe(cmp.Or(segment.Display, segment.Source), false), "bash", true
 		}
 		last.ExitCode, last.Segment = segment.ExitCode, true
 		last.Operation = segmentIndex + 1

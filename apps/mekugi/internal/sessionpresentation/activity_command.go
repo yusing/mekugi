@@ -52,7 +52,7 @@ func CommandPresentation(entry ActivityEntry) activitypresentation.Command {
 			break
 		}
 		value := activitypresentation.CommandSegment{
-			Source: segment.Source, Text: segment.Text, Running: segment.Running, Skipped: segment.Skipped, Pending: segment.Pending, ExitCode: segment.Exit,
+			Source: segment.Source, Display: frontends.ShellDisplaySource(segment.Source), Text: segment.Text, Running: segment.Running, Skipped: segment.Skipped, Pending: segment.Pending, ExitCode: segment.Exit,
 			Started: segment.Timing.Started, Ended: segment.Timing.Ended, Duration: time.Duration(segment.Timing.ElapsedNS),
 			Tail: segment.Tail, TailOmitted: segment.Omit, TailClipped: segment.Clipped, Changes: segment.Changes, Results: segment.Results,
 		}
@@ -60,7 +60,7 @@ func CommandPresentation(entry ActivityEntry) activitypresentation.Command {
 			// One observed operation in one captured invocation needs no source
 			// guess to replace its Run row. Grouped calls still keep neighbors.
 			value.Writer = len(n.CapturedEdit.Calls) == 1 && len(n.Segments) == 1 ||
-				(activitypresentation.CommandSource{Script: segment.Source, Display: frontends.ShellDisplaySource(segment.Source), Directory: ""}).WritesFilesIn(c.Script)
+				(activitypresentation.CommandSource{Script: segment.Source, Display: value.Display, Directory: ""}).WritesFilesIn(c.Script)
 		}
 		if segment.Output != nil {
 			snapshot, _ := segment.Output.Context(0)
