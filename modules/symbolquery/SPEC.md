@@ -126,6 +126,9 @@ path, source, or result content. `def` activity is labeled `Read`;
 Host-operation lifetime. Resolver sessions, pipes, deadlines, and source snapshots
 belong to one command; language workers settle before the result returns. No
 resolver survives across command invocations.
+Resolvers use a command-private temporary directory. Bounded process cleanup is
+followed by scratch removal, including temporary module copies left by forced
+language-server shutdown. Persistent resolver caches remain unchanged.
 
 Direct callers own resolver process groups. Authenticated frontends preserve the
 host process group. Only a dedicated authenticated worker may enable process-wide

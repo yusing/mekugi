@@ -162,6 +162,16 @@ func TestResolverCleanupProcess(t *testing.T) {
 	}
 	started := time.Now()
 	result, err := (Service{}).Execute(ctx, command.Request{Args: []string{"refs", name, row, "Target"}, ProcessScope: processScope})
+	scratch, readErr := os.ReadFile(filepath.Join(directory, "resolver-scratch"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(scratch) == os.TempDir() || string(scratch) == directory {
+		t.Fatal("resolver did not receive private scratch")
+	}
+	if _, statErr := os.Stat(string(scratch)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("resolver scratch remains after cleanup: %v", statErr)
+	}
 	if elapsed := time.Since(started); elapsed >= 5*time.Second {
 		t.Fatalf("cleanup exceeded bound: %s", elapsed)
 	}
@@ -205,6 +215,16 @@ func TestResolverCleanupProcess(t *testing.T) {
 }
 
 func runCleanupResolver(t *testing.T, directory string) {
+	if err := os.WriteFile(filepath.Join(directory, "resolver-scratch"), []byte(os.TempDir()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	temporary, err := os.MkdirTemp("", "gopls-tempmod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(temporary, "go.mod"), []byte("module scratch\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

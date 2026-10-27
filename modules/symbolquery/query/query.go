@@ -263,15 +263,27 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 			groups[resolver] = append(groups[resolver], q)
 		}
 	}
+	var scratch string
+	if len(groups) != 0 {
+		scratch, err = os.MkdirTemp("", "mekugi-symbol-")
+		if err != nil {
+			return failure(fmt.Errorf("create resolver scratch: %w", err), "resolver_error"), nil
+		}
+	}
 	var wg sync.WaitGroup
 	for resolver, group := range groups {
 		wg.Go(func() {
-			runLSP(ctx, request.ProcessScope, root, resolver, group)
+			runLSP(ctx, request.ProcessScope, root, resolver, scratch, group)
 		})
 	}
 	wg.Wait()
 	if dedicated {
 		cleanupFrontendOrphans()
+	}
+	if scratch != "" {
+		if err := os.RemoveAll(scratch); err != nil {
+			queries[0].stderr += fmt.Sprintf("msymbol: resolver scratch cleanup: %v\n", err)
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return command.Output{}, err

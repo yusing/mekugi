@@ -291,7 +291,7 @@ func parseLocations(raw jsontext.Value, mode string) ([]symbolLocation, error) {
 }
 
 // Source: plugins/lsp.ts:119:279@[543de4f3] runLSPQueries
-func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolver string, queries []*symbolQuery) {
+func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolver, scratch string, queries []*symbolQuery) {
 	deadline, cancel := context.WithTimeout(ctx, resolverTimeout)
 	defer cancel()
 	name, args := "tsc", []string{"--lsp", "--stdio"}
@@ -307,6 +307,7 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 		}
 	}
 	cmd := resolverCommand(deadline, processScope, root, name, args...)
+	cmd.Env = append(cmd.Environ(), "TMPDIR="+scratch, "TMP="+scratch, "TEMP="+scratch)
 	inputR, inputW, err := os.Pipe()
 	if err != nil {
 		failAll(err)
