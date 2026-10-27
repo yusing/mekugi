@@ -161,6 +161,7 @@ type entry struct {
 	Seq            uint64                          `json:"seq"`
 	Agent          string                          `json:"agent,omitzero"`
 	Kind           string                          `json:"kind,omitzero"`
+	Outcome        string                          `json:"outcome,omitzero"`
 	Text           string                          `json:"text,omitzero"`
 	Observed       int64                           `json:"observed,omitzero"`
 	Running        bool                            `json:"running,omitzero"`
@@ -294,7 +295,7 @@ func millis(t time.Time) int64 {
 func projectEntry(e activitypresentation.Entry, summaries bool) entry {
 	e = publicEntry(e)
 	p := entry{
-		Seq: e.Seq, Revision: e.Revision, Agent: e.Agent, Kind: e.Kind, Text: e.Text, Observed: millis(e.Observed), Running: e.Running,
+		Seq: e.Seq, Revision: e.Revision, Agent: e.Agent, Kind: e.Kind, Outcome: e.Outcome, Text: e.Text, Observed: millis(e.Observed), Running: e.Running,
 		Assignment: e.Assignment, AssignmentTo: e.AssignmentTo, AssignmentText: e.AssignmentText,
 		Values: projectValues(e.Values, summaries), Spans: e.Spans,
 	}

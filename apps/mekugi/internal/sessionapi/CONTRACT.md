@@ -389,7 +389,8 @@ Times are Unix milliseconds. Durations are milliseconds, and `playback.position`
 and `playback.until` are recorded milliseconds from the session start. An omitted
 field is zero, false or empty, except facts that may be unknown: a step's
 `exitCode`; an agent's `work`, `cost`, `inputTokens`, `outputTokens`, `context`,
-`added` and `removed`; and the status's `completed` are omitted when unknown.
+`added` and `removed`; an entry's `outcome`; and the status's `completed` are
+omitted when unknown.
 
 - `session`: `thread` is the Main thread ID; `title`, `workspace` and `started`
   describe the session.
@@ -434,6 +435,10 @@ field is zero, false or empty, except facts that may be unknown: a step's
   `observed` is its time and `running` marks unfinished work. A task sets
   `assignment`, with its recipient's caller path in `assignmentTo` and its
   Markdown in `assignmentText`. `values` holds the entry's presentation values.
+  For delivered agent results, optional `outcome` is the authoritative terminal
+  outcome: `completed`, `failed` or `interrupted`. It is independent of authored
+  text. Omission means no outcome is available, including historical messages
+  without retained outcome metadata; clients must not infer it from the payload.
 - `roster`: a page of `agents` in tree order, `total`, optional `next` cursor,
   and the session's net changed lines as
   `added` and `removed` when known. Each agent has its caller path as `name`,

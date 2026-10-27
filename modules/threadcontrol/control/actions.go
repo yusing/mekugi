@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"strings"
 )
 
 func (s *Service) Caller(caller Identity) (*Member, error) {
@@ -83,6 +84,7 @@ func (s *Service) PrepareAction(ctx context.Context, caller Identity, target, ki
 		}
 		receiver = tree.edit(receiver.Thread)
 		if kind != "message" {
+			tree.cancelCompletion(receiver)
 			if receiver.Wait != nil {
 				if hostOwned(receiver.Wait.State) {
 					return errors.New("wait continuation requires host reconciliation before control")
@@ -127,6 +129,12 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 	member := tree.edit(effect.Target)
 	effect = tree.Effect(caller, id)
 	if effect.Kind == "interrupt" {
+		if effect.Generation != member.Generation {
+			// The captured work has already settled. A delayed claim must not
+			// cancel or interrupt the target's successor generation.
+			effect.State = "confirmed"
+			return nil, nil
+		}
 		for i := range tree.Effects {
 			queued := &tree.Effects[i]
 			if queued.Target != effect.Target || queued.Generation != member.Generation || queued.State != "pending" {
@@ -161,6 +169,18 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 	}
 	switch effectStep(*effect) {
 	case "create", "assignment_input", "admit", "message", "final":
+	case "completion":
+		if member.HostRunning || member.Status != Working || member.Generation != effect.Generation || member.Turn != effect.CallerTurn || member.Stop == nil || member.Stop.Wait != effect.ID {
+			effect.State = "canceled"
+			return nil, nil
+		}
+		names := tree.activeDescendants(member)
+		if len(names) == 0 {
+			effect.State = "canceled"
+			tree.finish(member, Completed, member.LastAnswer)
+			return nil, nil
+		}
+		effect.Message = strings.Join(names, ", ")
 	case "wake":
 		if member.Status != Waiting || member.HostRunning || member.Generation != effect.Generation {
 			effect.State = "canceled"
@@ -236,7 +256,7 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 					}
 				}
 			}
-			if (effect.Kind == "human" || effect.Kind == "followup") && member != nil && member.Generation == effect.Generation && !member.HostRunning && member.Reserved() {
+			if (effect.Kind == "human" || effect.Kind == "followup" || effect.Kind == "completion") && member != nil && member.Generation == effect.Generation && !member.HostRunning && member.Reserved() {
 				if receipt.Uncertain {
 					member.Status = Uncertain
 				} else {
@@ -263,7 +283,7 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 			if effect.Outcome == Interrupted {
 				effect.State = "canceled"
 			}
-		case "initial", "followup", "wake", "human":
+		case "initial", "followup", "wake", "human", "completion":
 			if effect.Kind == "wake" {
 				effect.State = "completed"
 			}

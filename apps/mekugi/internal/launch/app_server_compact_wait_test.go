@@ -37,7 +37,7 @@ func TestAppServerCompactPreservesLogicalWait(t *testing.T) {
 					t.Helper()
 					message := appserver.Message{Method: method, Params: []byte(raw)}
 					syncLogicalWork(&u.attached, &u.Live, threads, *at)
-					if err := observeLogicalHost(threads.driver, &u.Live, message); err != nil {
+					if _, err := observeLogicalHost(threads.driver, &u.Live, message); err != nil {
 						t.Fatal(err)
 					}
 					if err := u.message(message); err != nil {

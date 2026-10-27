@@ -226,13 +226,23 @@ history. Direct public wait results omit the internal wait identity.
 The result identifies event/source task/thread/turn/kind/status, without fake
 human text or composer insertion. A running host turn never receives a second start.
 
+Normal completion remains blocked while any transitive descendant is working,
+waiting, or holding an admitted pending-start reservation. One retained continuation
+per attempted completed turn names the active descendants and asks the agent to wait.
+A descendant that settles before dispatch is removed from that hint; if none remain,
+the original completion proceeds without another model turn. Paused and uncertain
+retained agents do not block completion. Explicit interruption and failure keep their
+ordinary outcomes and supersede undispatched completion continuations.
+
 Ordinary successful terminal work first retains its last completed ordinary answer
 from that turn, including an empty payload when absent, then injects one attributed
 `FINAL_ANSWER` through `thread/inject_items`. Failure/interruption retains its actual
 outcome. Injection alone neither starts nor steers its receiver. A completion wake
 follows confirmed delivery and carries identity/status rather than duplicate text.
 Confirmed messages and answers appear in the receiving runtime's Main transcript
-with their original logical sender. Failed injections do not publish delivered traffic.
+with their original logical sender and terminal outcome. An interruption request
+settles when its target outcome arrives, retaining the original request evidence.
+Failed injections do not publish delivered traffic.
 Rejected delivery remains visible and may satisfy a wait as delivery failure.
 
 Stable work/event/delivery identities persist intent before dispatch and acknowledgement

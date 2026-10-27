@@ -13,11 +13,14 @@ import (
 )
 
 func TestNativeInputRetainedRunRoundtrip(t *testing.T) {
-	for _, name := range []string{"followup", "initial", "timeout"} {
+	for _, name := range []string{"followup", "initial", "timeout", "completion"} {
 		t.Run(name, func(t *testing.T) {
 			transport := &requestTransport{id: "native"}
 			requests := NewRequests[struct{}](transport)
 			input := control.NativeInput{Thread: "child", ParentTurn: "parent-turn", ID: "root:operation", Sender: "/root", Recipient: "/root/task", Kind: "NEW_TASK", Message: "same assignment", Run: true}
+			if name == "completion" {
+				input.Kind, input.Message = "COMPLETION_GUARD", "retained completion hint"
+			}
 			if name == "initial" {
 				input.Settings, input.Message = &control.Settings{}, ""
 			}
@@ -44,6 +47,9 @@ func TestNativeInputRetainedRunRoundtrip(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantName := "followup_task"
+			if name == "completion" {
+				wantName = "completion_guard"
+			}
 			if name == "initial" {
 				wantName = "spawn_agent"
 			} else if name == "timeout" {

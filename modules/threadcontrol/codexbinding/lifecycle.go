@@ -18,6 +18,7 @@ type hostObservation struct {
 	value                binding.Notification
 	session              history.Session
 	restored             chan error
+	reduced              chan error
 	inputID              string
 	receipt              control.Receipt
 }
@@ -62,22 +63,31 @@ func (d *Driver) Failures() []error {
 	clear(d.failures)
 	return result
 }
-func (d *Driver) Observe(method string, raw jsontext.Value) error {
+
+// Observe returns a completion receipt only for admitted terminal observations.
+// The host event loop can defer terminal presentation without waiting for I/O.
+func (d *Driver) Observe(method string, raw jsontext.Value) (<-chan error, error) {
 	if method != "turn/started" && method != "turn/completed" && method != "item/completed" {
-		return nil
+		return nil, nil
 	}
 	value, err := binding.DecodeNotification(method, raw)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if method == "item/completed" && !(value.Item.Type == "agentMessage" && value.Item.Phase != "commentary" || value.Item.Type == "userMessage" && value.Item.ClientID != "") {
-		return nil
+		return nil, nil
 	}
-	if _, ok := d.control.Member(value.ThreadID); ok {
-		d.enqueue(hostObservation{thread: value.ThreadID, method: method, value: value})
+	if _, ok := d.control.Member(value.ThreadID); !ok {
+		return nil, nil
 	}
-	return nil
+	var reduced chan error
+	if method == "turn/completed" {
+		reduced = make(chan error, 1)
+	}
+	d.enqueue(hostObservation{thread: value.ThreadID, method: method, value: value, reduced: reduced})
+	return reduced, nil
 }
+
 func (d *Driver) Tick(now time.Time) {
 	for _, thread := range d.control.Due(now) {
 		d.enqueue(hostObservation{thread: thread})
@@ -165,7 +175,7 @@ func (d *Driver) reduceHost() {
 		case "human/input":
 			err = d.control.EffectAcknowledged(d.lifecycle, thread, event.inputID, event.receipt)
 		case "human/interrupt":
-			if member, ok := d.control.Member(thread); !ok || member.Wait == nil || member.Wait.ID != event.wait {
+			if member, ok := d.control.Member(thread); !ok || (member.Wait == nil || member.Wait.ID != event.wait) && (member.Stop == nil || member.Stop.Wait != event.wait) {
 				continue
 			}
 			err = d.Reconcile(d.lifecycle, thread)
@@ -196,6 +206,10 @@ func (d *Driver) reduceHost() {
 				failure = p.Turn.Error.Message
 			}
 			err = d.control.HostCompleted(d.lifecycle, thread, p.Turn.ID, control.Status(p.Turn.Status), failure)
+		}
+		if event.reduced != nil {
+			event.reduced <- err
+			close(event.reduced)
 		}
 		if err == nil && (event.method == "turn/completed" || event.method == "compaction/stopped" || event.method == "human/interrupt" || event.method == "human/input" || event.method == "") {
 			err = d.DispatchPending(d.lifecycle, thread)

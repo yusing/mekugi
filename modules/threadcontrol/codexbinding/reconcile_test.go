@@ -33,10 +33,10 @@ func TestHumanChildResultUsesParentDelivery(t *testing.T) {
 			t.Fatal("human admission injected agent content")
 		}
 		driver.HumanInputAcknowledged("child", "human", "human-turn", nil)
-		if err := driver.Observe("item/completed", []byte(`{"threadId":"child","turnId":"human-turn","item":{"type":"agentMessage","text":"child result","phase":"final_answer"}}`)); err != nil {
+		if _, err := driver.Observe("item/completed", []byte(`{"threadId":"child","turnId":"human-turn","item":{"type":"agentMessage","text":"child result","phase":"final_answer"}}`)); err != nil {
 			t.Fatal(err)
 		}
-		if err := driver.Observe("turn/completed", []byte(`{"threadId":"child","turn":{"id":"human-turn","status":"completed"}}`)); err != nil {
+		if _, err := driver.Observe("turn/completed", []byte(`{"threadId":"child","turn":{"id":"human-turn","status":"completed"}}`)); err != nil {
 			t.Fatal(err)
 		}
 		synctest.Wait()
@@ -384,7 +384,7 @@ func TestRejectedFinalDeliveryWakesWithVisibleFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer driver.Stop(t.Context())
-	if err := driver.Observe("turn/completed", []byte(`{"threadId":"child","turn":{"id":"child-turn","status":"completed"}}`)); err != nil {
+	if _, err := driver.Observe("turn/completed", []byte(`{"threadId":"child","turn":{"id":"child-turn","status":"completed"}}`)); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -396,5 +396,52 @@ func TestRejectedFinalDeliveryWakesWithVisibleFailure(t *testing.T) {
 	last := host.inputs[len(host.inputs)-1]
 	if member.Wait.State != "completed" || last.Wake == nil || last.Wake.Event.Kind != "delivery_failed" || len(driver.Failures()) != 1 {
 		t.Fatal("rejected result stranded parent or hid delivery failure", member, last)
+	}
+}
+
+func TestCompletionReceiptFollowsQueuedStartCheckpoint(t *testing.T) {
+	driver, _, session, _ := reconciliationFixture(t)
+	if err := driver.control.Pause(t.Context(), "child"); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.control.HostCompleted(t.Context(), "root", "root-turn", control.Interrupted, ""); err != nil {
+		t.Fatal(err)
+	}
+	locked, release, stored := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		stored <- session.Store.Transaction(t.Context(), session.Writes, func(*history.Transaction) error {
+			close(locked)
+			<-release
+			return nil
+		})
+	}()
+	<-locked
+	if err := driver.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = driver.Stop(t.Context()) })
+	if _, err := driver.Observe("turn/started", []byte(`{"threadId":"root","turn":{"id":"next"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	reduced, err := driver.Observe("turn/completed", []byte(`{"threadId":"root","turn":{"id":"next","status":"completed"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-reduced:
+		t.Fatal("receipt preceded blocked checkpoint")
+	default:
+	}
+	close(release)
+	if err := <-stored; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-reduced:
+	case <-time.After(3 * time.Second):
+		t.Fatal("checkpoint did not release receipt")
+	}
+	if member, _ := driver.control.Member("root"); member.Turn != "next" || member.HostRunning || member.Status != control.Completed {
+		t.Fatalf("receipt preceded exact disposition: %+v", member)
 	}
 }

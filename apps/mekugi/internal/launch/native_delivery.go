@@ -15,7 +15,7 @@ func publishNativeDelivery(attached *attachedPresentation, input control.NativeI
 
 func nativeDeliveryEntry(input control.NativeInput, item string, now time.Time) sessionpresentation.ActivityEntry {
 	entry := sessionpresentation.ActivityEntry{Agent: input.Sender, Kind: "final", Text: input.Message, Observed: now, Completed: now,
-		Native: &sessionpresentation.NativeItem{Thread: input.Thread, Item: item, Phase: "item/completed"}}
+		Native: &sessionpresentation.NativeItem{Thread: input.Thread, Item: item, Phase: "item/completed", Status: string(input.Outcome)}}
 	if input.Kind == "MESSAGE" {
 		entry.Kind = "reply"
 		entry.Message = &sessionpresentation.ActivityMessage{From: input.Sender, To: "Main", Text: input.Message}

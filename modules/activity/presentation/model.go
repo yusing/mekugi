@@ -20,7 +20,7 @@ type Facts struct {
 	Retained                                              bool     // Bounded projections retired explicitly by their source owner.
 	TextRef                                               observation.ItemRef
 	Seq                                                   uint64
-	Agent, Kind, Text                                     string
+	Agent, Kind, Text, Outcome                            string
 	Observed                                              time.Time
 	Spans                                                 []TextSpan
 	InputGroup                                            string

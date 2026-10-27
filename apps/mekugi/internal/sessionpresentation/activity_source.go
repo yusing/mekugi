@@ -7,6 +7,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
@@ -16,11 +17,12 @@ import (
 type ActivitySource struct {
 	reloads map[string]reloadPlan
 	*activitypresentation.Model[ActivityEntry, ActivityAgent]
-	Audience    ActivityAudience
-	Coverage    string
-	publication *activityPublication
-	Prepared    func(thread, id string) (activitypresentation.PreparedContent, bool)
-	Repetition  func(thread, id string) string // Authenticated invocation-owned annotations.
+	Audience      ActivityAudience
+	Coverage      string
+	publication   *activityPublication
+	interruptions *control.Interruptions
+	Prepared      func(thread, id string) (activitypresentation.PreparedContent, bool)
+	Repetition    func(thread, id string) string // Authenticated invocation-owned annotations.
 }
 
 type ActivityAudience uint8
@@ -45,6 +47,7 @@ func (v *ActivitySource) Apply(event ActivityEvent) {
 		if !v.Model.Accept(entry.Seq) {
 			continue
 		}
+		entry = v.settleInterrupt(entry)
 		if entry.Kind == "compact_reload" && entry.Native != nil {
 			if v.reloads == nil {
 				v.reloads = make(map[string]reloadPlan)

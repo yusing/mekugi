@@ -14,11 +14,11 @@ import (
 // Coordination is an observed operation, never authority to execute or deliver it.
 // Confirmed distinguishes admitted traffic from queued and uncertain requests.
 type Coordination struct {
-	Action, Kind, Target, Thread, Message, State, Failure, EventKind string
-	TimeoutMS                                                        *int64
-	Confirmed                                                        bool
-	Targets                                                          []Target
-	Count                                                            int
+	Action, Kind, Target, Thread, Message, State, ID, Failure, EventKind string
+	TimeoutMS                                                            *int64
+	Confirmed                                                            bool
+	Targets                                                              []Target
+	Count                                                                int
 }
 
 type Target struct{ Name, Status string }
@@ -126,6 +126,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		result.State = "waiting"
 	}
 	c.State = cmp.Or(result.State, c.State)
+	c.ID = result.ID
 	switch item.Tool {
 	case "spawn_agent":
 		c.Confirmed = result.State == "confirmed" && result.Thread != "" && result.Task != ""

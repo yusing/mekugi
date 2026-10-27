@@ -8,6 +8,7 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/modules/activity/coordination"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // CoordinationEntry binds the first-party operation to ordinary agent traffic.
@@ -85,9 +86,44 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 			entry.Native.Wait = wait
 		case "Interrupt":
 			entry.Text = "Interrupt requested for " + target
+			entry.Native.InterruptTarget, entry.Native.InterruptID = target, c.ID
 		case "List agents":
 			entry.Text = fmt.Sprintf("Listed %d agents", c.Count)
 		}
+	}
+	return entry
+}
+
+func settledInterrupt(target, status string) string {
+	if status == "interrupted" {
+		return "Interrupted " + target
+	}
+	return "Interrupt settled for " + target + " · " + status
+}
+
+// SetInterruptions also settles non-parent requesters and outcomes observed
+// before their request rows. New rows use this same immutable publication.
+func (s *ActivitySource) SetInterruptions(publication *control.Interruptions) {
+	if s.interruptions == publication {
+		return
+	}
+	s.interruptions = publication
+	for i, previous := range s.Entries {
+		settled := s.settleInterrupt(previous.Source)
+		if settled.Native != previous.Source.Native {
+			s.Model.Replace(i, settled, ActivityContent(settled).Values())
+		}
+	}
+}
+
+func (s *ActivitySource) settleInterrupt(entry ActivityEntry) ActivityEntry {
+	if entry.Native == nil || entry.Native.InterruptID == "" {
+		return entry
+	}
+	if outcome := s.interruptions.Outcome(entry.Native.Thread, entry.Native.InterruptID); outcome != "" {
+		entry.Native = new(*entry.Native)
+		entry.Text = settledInterrupt(entry.Native.InterruptTarget, string(outcome))
+		entry.Native.InterruptID = ""
 	}
 	return entry
 }

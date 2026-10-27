@@ -68,11 +68,12 @@ func TestFollowupWaitsForCommittedLocalStop(t *testing.T) {
 		t.Fatalf("settled follow-up = %+v", dispatch)
 	}
 	hostStarted(t, s, "worker", "wt2")
+	must(t, s.HostCompleted(t.Context(), "leaf", "lt", Completed, ""))
 	must(t, s.HostCompleted(t.Context(), "worker", "wt2", Completed, ""))
 	must(t, s.EffectAcknowledged(t.Context(), caller.Thread, action.ID, Receipt{Turn: "wt2"}))
 	tree, err := s.Snapshot("root")
 	must(t, err)
-	if tree.Members["worker"].HostRunning || len(effectsOf(tree, "final")) != 1 {
+	if tree.Members["worker"].HostRunning || len(effectsOf(tree, "final")) != 2 {
 		t.Fatal("late acknowledgement revived completed work or local stop delivered a result")
 	}
 }

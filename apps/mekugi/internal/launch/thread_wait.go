@@ -11,12 +11,63 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+// Defer only successful logical completions. Other host facts, including
+// interruption/failure and auxiliary turns, keep their ordinary presentation.
+func deferLogicalCompletion(attached *attachedPresentation, live *sessioncontrol.Live, message appserver.Message, reduced <-chan error) (bool, error) {
+	if reduced == nil || message.Method != "turn/completed" {
+		return false, nil
+	}
+	p, err := binding.DecodeNotification(message.Method, message.Params)
+	if err != nil {
+		return false, err
+	}
+	if p.ThreadID != live.Thread || p.Turn.ID != live.Turn || p.Turn.Status != "completed" || live.AuxiliaryTurn(p.Turn.ID) {
+		return false, nil
+	}
+	attached.threadInput.completions = append(attached.threadInput.completions, logicalCompletion{message, reduced})
+	return true, nil
+}
+
+// Release received completions after the serialized owner has checkpointed each
+// exact observation. A preceding turn/start can still be queued when admitted.
+func (p *threadInput) flushCompletions(dispatch func(appserver.Message) error) error {
+	if p == nil {
+		return nil
+	}
+	for len(p.completions) > 0 {
+		pending := p.completions[0]
+		var failure error
+		select {
+		case failure = <-pending.reduced:
+		default:
+			return nil
+		}
+		p.completions[0] = logicalCompletion{}
+		p.completions = p.completions[1:]
+		// The logical owner's failure notice remains authoritative.
+		if failure != nil {
+			continue
+		}
+		if err := dispatch(pending.message); err != nil {
+			return err
+		}
+	}
+	p.completions = nil
+	return nil
+}
+
+type logicalCompletion struct {
+	message appserver.Message
+	reduced <-chan error
+}
 
 // Logical publications never wait for checkpoint writes on the host event loop.
 func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, threads *threadExecution, now time.Time) {
@@ -36,16 +87,21 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 	if !ok {
 		return
 	}
+	attached.threadInput.interruptions = threads.shared.Interruptions(live.Thread, attached.threadInput.interruptions)
+	attached.source.SetInterruptions(attached.threadInput.interruptions)
+	attached.childSource.SetInterruptions(attached.threadInput.interruptions)
 	// A previously claimed wake already owns the sole continuation. Shell
 	// execution gates its host dispatch, rather than creating a competing start.
 	if member.Wait != nil && (member.Wait.State == "dispatching" || member.Wait.State == "uncertain" || member.Wait.State == "completed") {
 		live.Shell.ConsumeContinuation()
 	}
-	stopped := live.LocalStop != ""
+	stopped := live.LocalStop
 	live.LocalStop, live.Waiting = "", ""
-	if stop := member.Stop; stop != nil && stop.Turn == member.Turn && stop.Generation == member.Generation && (member.Status == threadcontrol.Working || member.Status == threadcontrol.Waiting) {
-		live.LocalStop = stop.Turn
-		if member.Wait != nil {
+	// A continuation acknowledgement can precede its turn/started notification.
+	// Keep the confirmed stop until presentation has observed that next turn.
+	if stop := member.Stop; stop != nil && (stop.Turn == member.Turn || stop.Turn == live.Turn || live.Turn == "" && stop.Turn == stopped) && stop.Generation == member.Generation && (member.Status == threadcontrol.Working || member.Status == threadcontrol.Waiting) {
+		live.LocalStop, live.Waiting = stop.Turn, stop.Wait
+		if member.Wait != nil && member.Wait.State == "registered" {
 			live.Waiting = member.Wait.ID
 		}
 	}
@@ -108,11 +164,16 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 	}
 	if live.Turn == "" {
 		switch member.Status {
+		case threadcontrol.Completed:
+			if stopped != "" {
+				lifecycle.TurnCompleted(true, now)
+				attached.presentation.Status.Complete("completed", nil, now)
+			}
 		case threadcontrol.Paused, threadcontrol.Uncertain:
 			lifecycle.Final = false
 			attached.presentation.Status.Set("Paused", false)
 		case threadcontrol.Interrupted:
-			if stopped {
+			if stopped != "" {
 				attached.presentation.Status.Complete("interrupted", nil, now)
 			}
 		}
@@ -133,7 +194,9 @@ type threadInput struct {
 	caller, role      string
 	id                string
 	waitID, waitState string
+	completions       []logicalCompletion
 	effect            *threadcontrol.Effect
+	interruptions     *threadcontrol.Interruptions
 	restoration       chan error
 	restoreErr        error
 }

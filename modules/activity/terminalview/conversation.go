@@ -653,6 +653,12 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		}
 	case block.Kind == "final":
 		glyph, detail = terminalui.Green+"✓"+terminalui.Reset, "finished"
+		if entry.Outcome == "interrupted" {
+			glyph, detail = terminalui.Dim+"■"+terminalui.Undim, "interrupted"
+		}
+		if entry.Outcome == "failed" {
+			glyph, detail = terminalui.Red+"✗"+terminalui.Reset, "failed"
+		}
 	case block.Kind == "error":
 		glyph = terminalui.Red + "✗" + terminalui.Reset
 		if thread.Joined {

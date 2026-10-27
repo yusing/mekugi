@@ -5,7 +5,6 @@ package codexbinding
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -189,6 +188,9 @@ func nativeInput(tree control.Tree, effect control.Effect) control.NativeInput {
 	case "initial":
 		settings := tree.Members[effect.Target].Settings
 		input.Run, input.Settings, input.Message = true, &settings, ""
+	case "completion":
+		input.Kind, input.Run = "COMPLETION_GUARD", true
+		input.Message = completionGuardMessage(effect.Message)
 	case "wake":
 		input.Run = true
 	case "followup", "assignment_input":
@@ -197,10 +199,13 @@ func nativeInput(tree control.Tree, effect control.Effect) control.NativeInput {
 			input.ID += ":assignment"
 		}
 	case "final":
-		input.Kind, input.ID = "FINAL_ANSWER", effect.ID
-		if effect.Outcome != control.Completed {
-			input.Message = fmt.Sprintf("Status: %s\n%s", effect.Outcome, effect.Message)
-		}
+		input.Kind, input.ID, input.Outcome = "FINAL_ANSWER", effect.ID, effect.Outcome
+		input.SourceGeneration = effect.CallerGeneration
 	}
 	return input
+}
+
+// completionGuardMessage names the descendants observed at dispatch admission.
+func completionGuardMessage(names string) string {
+	return "Active descendants: " + names + ". Call wait_agent before completing."
 }

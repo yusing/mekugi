@@ -167,6 +167,7 @@ export interface Value {
 }
 
 export interface Entry {
+  outcome?: string;
   position?: number;
   turn?: number;
   revision?: number;

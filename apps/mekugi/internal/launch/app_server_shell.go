@@ -27,18 +27,18 @@ import (
 
 // Auxiliary turns execute and retain output in Codex without
 // acquiring or completing logical model work.
-func observeLogicalHost(driver *threadbinding.Driver, live *sessioncontrol.Live, message appserver.Message) error {
+func observeLogicalHost(driver *threadbinding.Driver, live *sessioncontrol.Live, message appserver.Message) (<-chan error, error) {
 	if message.Method == "turn/started" || message.Method == "turn/completed" {
 		p, err := binding.DecodeNotification(message.Method, message.Params)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if message.Method == "turn/completed" && p.ThreadID == live.Thread && live.CompactionStopsWait(p.Turn.ID) {
 			driver.CheckpointWait(p.ThreadID, p.Turn.ID)
-			return nil
+			return nil, nil
 		}
 		if p.ThreadID == live.Thread && live.AuxiliaryTurn(p.Turn.ID) {
-			return nil
+			return nil, nil
 		}
 	}
 	return driver.Observe(message.Method, message.Params)

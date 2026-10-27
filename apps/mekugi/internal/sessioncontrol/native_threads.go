@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -74,13 +75,38 @@ func (item NativeMessage) Delivery() (input control.NativeInput, ok bool) {
 	if !ok || input.Recipient == "" {
 		return input, false
 	}
-	input.Sender, input.Message, ok = strings.Cut(text, "\nPayload:\n")
-	if !ok || input.Sender == "" {
+	header, payload, ok := strings.Cut(text, "\nPayload:\n")
+	if !ok {
+		return input, false
+	}
+	input.Sender, input.Message = header, payload
+	if input.Kind == "FINAL_ANSWER" {
+		if sender, fields, structured := strings.Cut(header, "\nOutcome: "); structured {
+			outcome, fields, ok := strings.Cut(fields, "\nSource generation: ")
+			if !ok || outcome != string(control.Completed) && outcome != string(control.Interrupted) && outcome != string(control.Failed) {
+				return input, false
+			}
+			generation, turn, ok := strings.Cut(fields, "\nSource turn: ")
+			parsed, err := strconv.ParseUint(generation, 10, 64)
+			if !ok || err != nil || parsed == 0 {
+				return input, false
+			}
+			input.Sender, input.Outcome, input.SourceGeneration, input.ParentTurn = sender, control.Status(outcome), parsed, turn
+		}
+	}
+	if input.Sender == "" || strings.ContainsAny(input.Sender, "\r\n") || strings.ContainsAny(input.ParentTurn, "\r\n") {
 		return input, false
 	}
 	expected, _, _ := nativeContent(input)
 	expected.ID = item.ID
-	return input, reflect.DeepEqual(item, expected)
+	if !reflect.DeepEqual(item, expected) {
+		return input, false
+	}
+	return input, true
+}
+
+func nativeCompletionText(input control.NativeInput) string {
+	return fmt.Sprintf("Message Type: %s\nTask name: %s\nSender: %s\nOutcome: %s\nSource generation: %d\nSource turn: %s\nPayload:\n%s", input.Kind, input.Recipient, input.Sender, input.Outcome, input.SourceGeneration, input.ParentTurn, input.Message)
 }
 
 // nativeContent preserves attribution and stable retained identity for both live
@@ -93,6 +119,9 @@ func nativeContent(input control.NativeInput) (item NativeMessage, name, output 
 		metadata = "multi_agent.inter_agent_completion_message"
 	}
 	output = fmt.Sprintf("Message Type: %s\nTask name: %s\nSender: %s\nPayload:\n%s", input.Kind, input.Recipient, input.Sender, input.Message)
+	if input.Kind == "FINAL_ANSWER" && input.Outcome != "" {
+		output = nativeCompletionText(input)
+	}
 	item = NativeMessage{
 		Type: "message", ID: control.MessageItemID(input.ID), Role: "assistant", Phase: "commentary",
 		Content: []nativeMessageText{{Type: "output_text", Text: output}},
@@ -104,6 +133,9 @@ func nativeContent(input control.NativeInput) (item NativeMessage, name, output 
 		if input.Settings != nil && input.Message == "" {
 			name, output = "spawn_agent", "Assignment retained. Operation ID: "+input.ID
 		}
+	}
+	if input.Kind == "COMPLETION_GUARD" {
+		name, output = "completion_guard", "Operation ID: "+input.ID+"\n"+input.Message
 	}
 	if input.Wake != nil {
 		name, output = "wait_agent", input.RetainedWaitOutput()

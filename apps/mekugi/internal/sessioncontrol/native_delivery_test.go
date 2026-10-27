@@ -25,3 +25,22 @@ func TestNativeMessageDeliveryRequiresOwnedEnvelope(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeCompletionDeliveryRetainsOutcome(t *testing.T) {
+	for _, status := range []control.Status{control.Completed, control.Interrupted, control.Failed} {
+		body := "Status: failed\nStatus: interrupted\nfinal body"
+		item, _, _ := nativeContent(control.NativeInput{ID: string(status), Kind: "FINAL_ANSWER", Sender: "/root/child", Recipient: "/root", Message: body, Outcome: status, SourceGeneration: 2, ParentTurn: "child-turn"})
+		input, ok := item.Delivery()
+		if !ok || input.Outcome != status || input.Message != body || input.SourceGeneration != 2 || input.ParentTurn != "child-turn" {
+			t.Fatalf("retained completion outcome = %+v, valid=%t", input, ok)
+		}
+	}
+}
+
+func TestNativeLegacyCompletionDoesNotInferOutcome(t *testing.T) {
+	item, _, _ := nativeContent(control.NativeInput{ID: "old", Kind: "FINAL_ANSWER", Sender: "/root/child", Recipient: "/root", Message: "Status: interrupted\nExample"})
+	input, ok := item.Delivery()
+	if !ok || input.Outcome != "" || input.SourceGeneration != 0 || input.Message != "Status: interrupted\nExample" {
+		t.Fatalf("legacy payload acquired unsupported outcome: %+v", input)
+	}
+}

@@ -283,6 +283,9 @@ conversation waits name their targets by display name, with each target's
 status, the timeout and why the wait finished. A transcript entry that only
 waits is a compact line like a hook's, its marker pulsing while the wait lasts.
 
+Delivered agent results distinguish completed, failed and interrupted outcomes;
+interrupted results do not use successful-completion markers.
+
 The transcript shows Main's activity until a viewer selects another agent in the
 roster; it then shows that agent's own activity under its name, role and state,
 the name and role in its role colour, with a

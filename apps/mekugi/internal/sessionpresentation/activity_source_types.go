@@ -80,6 +80,9 @@ func (entry ActivityEntry) ActivityFacts() activitypresentation.Facts {
 		facts.AssignmentTo, facts.AssignmentText = entry.Assignment.To, entry.Assignment.Text
 	}
 	if n := entry.Native; n != nil {
+		if entry.Kind == "final" {
+			facts.Outcome = n.Status
+		}
 		if entry.Kind == "reasoning" {
 			facts.TextRef = observation.ItemRef{ThreadID: n.Thread, TurnID: n.Turn, ItemID: n.Item}
 		}

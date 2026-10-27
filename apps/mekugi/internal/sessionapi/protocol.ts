@@ -198,6 +198,7 @@ export type entry = {
   "seq": number;
   "agent"?: string;
   "kind"?: string;
+  "outcome"?: string;
   "text"?: string;
   "observed"?: number;
   "running"?: boolean;
@@ -1317,6 +1318,7 @@ export type Facts = {
   "Agent": string;
   "Kind": string;
   "Text": string;
+  "Outcome": string;
   "Observed": string;
   "Spans": Array<TextSpan>;
   "InputGroup": string;

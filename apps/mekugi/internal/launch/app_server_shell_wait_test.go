@@ -32,7 +32,7 @@ func TestAppServerShellWakesLogicalWait(t *testing.T) {
 					t.Helper()
 					message := appserver.Message{Method: method, Params: []byte(raw)}
 					syncLogicalWork(&u.attached, &u.Live, threads, *at)
-					if err := observeLogicalHost(threads.driver, &u.Live, message); err != nil {
+					if _, err := observeLogicalHost(threads.driver, &u.Live, message); err != nil {
 						t.Fatal(err)
 					}
 					if err := u.message(message); err != nil {
@@ -207,7 +207,7 @@ func TestAppServerShellAfterDispatchedWaitWake(t *testing.T) {
 					t.Helper()
 					msg := appserver.Message{Method: method, Params: []byte(params)}
 					syncLogicalWork(&u.attached, &u.Live, threads, *at)
-					if err := observeLogicalHost(threads.driver, &u.Live, msg); err != nil {
+					if _, err := observeLogicalHost(threads.driver, &u.Live, msg); err != nil {
 						t.Fatal(err)
 					}
 					if err := u.message(msg); err != nil {

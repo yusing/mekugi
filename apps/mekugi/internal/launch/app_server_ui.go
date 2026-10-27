@@ -212,7 +212,20 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	var latestResponse *appserver.Message
 	var restoredCoordination string
 	var dispatch func(appserver.Message) error
+	var dispatchHost func(appserver.Message, bool) error
+	flushCompletions := func() error {
+		return attached.threadInput.flushCompletions(func(m appserver.Message) error { return dispatchHost(m, false) })
+	}
 	dispatch = func(m appserver.Message) error {
+		if err := flushCompletions(); err != nil {
+			return err
+		}
+		if err := dispatchHost(m, true); err != nil {
+			return err
+		}
+		return flushCompletions()
+	}
+	dispatchHost = func(m appserver.Message, observe bool) error {
 		response, _ := control.Requests.Lookup(string(m.ID))
 		if control.CompleteCall(m) {
 			if m.Error == nil {
@@ -224,8 +237,15 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		}
 		if threads != nil {
 			syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
-			if err := observeLogicalHost(threads.driver, &control.Live, m); err != nil {
-				return err
+			if observe {
+				reduced, err := observeLogicalHost(threads.driver, &control.Live, m)
+				if err != nil {
+					return err
+				}
+				deferred, err := deferLogicalCompletion(&attached, &control.Live, m, reduced)
+				if err != nil || deferred {
+					return err
+				}
 			}
 		}
 		if m.Method == "" {
@@ -754,6 +774,9 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 				case inspection := <-control.Requests.Inspections():
 					inspection.Complete(control.Thread, threadInspection(&attached.session, control.Thread, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers))
 				case <-threadChanges:
+					if err := flushCompletions(); err != nil {
+						return err
+					}
 					syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
 					for _, failure := range threads.driver.Failures() {
 						issues.AddThreadNotice(control.Thread, control.Turn, "threadcontrol", failure.Error())

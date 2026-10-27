@@ -55,6 +55,8 @@ type ThreadInfo struct {
 // Run starts or steers work; a retained-only message leaves idle work idle.
 type NativeInput struct {
 	Thread, ParentTurn, TargetTurn, ID, Sender, Recipient, Kind, Message string
+	Outcome                                                              Status
+	SourceGeneration                                                     uint64
 	Run                                                                  bool
 	Settings                                                             *Settings
 	Wake                                                                 *WaitResult

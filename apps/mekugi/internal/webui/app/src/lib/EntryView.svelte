@@ -145,7 +145,21 @@
     // A child's answer, as Main's transcript shows it.
     const child = entry.agent !== owner && entry.agent !== "Main";
     if (child && entry.kind === "final")
-      return { glyph: "final", from: entry.agent, detail: "finished" };
+      return {
+        glyph:
+          entry.outcome === "interrupted"
+            ? "interrupted"
+            : entry.outcome === "failed"
+              ? "error"
+              : "final",
+        from: entry.agent,
+        detail:
+          entry.outcome === "interrupted"
+            ? "interrupted"
+            : entry.outcome === "failed"
+              ? "failed"
+              : "finished",
+      };
     if (child && entry.kind === "error")
       return { glyph: "error", from: entry.agent, detail: "failed" };
     return undefined;
@@ -155,7 +169,7 @@
   // Incoming replies use their summary or excerpt in the recipient's feed;
   // the displayed agent's own replies remain complete.
   const reply = $derived(
-    (traffic?.glyph === "final" || traffic?.glyph === "message") &&
+    (entry.kind === "final" || traffic?.glyph === "message") &&
       !entry.assignment &&
       entry.agent !== "Main" &&
       entry.agent !== owner,
@@ -166,12 +180,14 @@
   );
   const edges: Record<string, string> = {
     final: "border-l-positive/55",
+    interrupted: "border-l-border",
     error: "border-l-negative",
     start: "border-l-border",
     message: "border-l-border",
   };
   const glyphs: Record<string, string> = {
     final: "text-positive",
+    interrupted: "text-muted",
     error: "text-negative",
     start: "text-muted",
     message: "text-muted",
@@ -256,7 +272,9 @@
         <div class="border-l-2 py-0.5 pl-3.5 {edges[traffic.glyph]}">
           <div class="mb-1 flex flex-wrap items-baseline gap-x-1.5 text-small">
             <span class="w-3.5 {glyphs[traffic.glyph]}" aria-hidden="true"
-              >{{ start: "▶", message: "✉", final: "✓", error: "✗" }[traffic.glyph]}</span
+              >{{ start: "▶", message: "✉", final: "✓", error: "✗", interrupted: "■" }[
+                traffic.glyph
+              ]}</span
             >
             <AgentName name={traffic.from} current={owner} />
             {#if traffic.to}<span class="text-muted">→</span>

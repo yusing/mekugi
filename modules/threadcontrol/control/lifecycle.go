@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // RequestStarted authenticates a new turn or reuses an admitted provider retry.
@@ -112,6 +113,37 @@ func (s *Service) CheckpointWait(ctx context.Context, thread, turn string) error
 	})
 }
 
+// activeDescendants follows canonical admitted task ancestry. Pending includes
+// an admitted child start that has not yet acquired its host turn.
+func (tree *Tree) activeDescendants(member *Member) []string {
+	var names []string
+	for _, child := range tree.Members {
+		if strings.HasPrefix(child.Task, member.Task+"/") && (child.Status == Pending || child.Status == Working || child.Status == Waiting) {
+			names = append(names, child.Task)
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
+func (tree *Tree) completionStop(member *Member) *LocalStop {
+	if len(tree.activeDescendants(member)) == 0 {
+		return nil
+	}
+	return &LocalStop{Generation: member.Generation, Turn: member.Turn, Wait: fmt.Sprintf("%s:%d:%s:completion", member.Thread, member.Generation, member.Turn)}
+}
+
+func (tree *Tree) cancelCompletion(member *Member) {
+	if member.Stop == nil {
+		return
+	}
+	effect := tree.Effect(member.Thread, member.Stop.Wait)
+	if effect == nil || effect.Kind != "completion" || effect.State != "pending" {
+		return
+	}
+	effect.State = "canceled"
+}
+
 func (s *Service) HostCompleted(ctx context.Context, thread, turn string, status Status, failure string) error {
 	return s.update(ctx, thread, func(tree *Tree, member *Member) error {
 		if member.Turn != turn || !member.HostRunning {
@@ -135,6 +167,12 @@ func (s *Service) HostCompleted(ctx context.Context, thread, turn string, status
 			return nil
 		}
 		if status == Completed {
+			if stop := tree.completionStop(member); stop != nil {
+				member.Stop = stop
+				member.Status = Working
+				tree.Effects = append(tree.Effects, Effect{ID: stop.Wait, Caller: thread, CallerTurn: turn, Target: thread, Kind: "completion", State: "pending", Generation: member.Generation})
+				return nil
+			}
 			failure = member.LastAnswer
 		}
 		tree.finish(member, status, failure)
@@ -143,6 +181,7 @@ func (s *Service) HostCompleted(ctx context.Context, thread, turn string, status
 }
 
 func (tree *Tree) finish(member *Member, status Status, text string) {
+	tree.cancelCompletion(member)
 	member.Status = status
 	if member.Wait != nil && member.Wait.State != "completed" && !hostOwned(member.Wait.State) {
 		cancelSubscription(tree, member)
@@ -214,6 +253,7 @@ func (s *Service) HumanInput(ctx context.Context, thread, id string) (result *Ef
 		// logical waiting, without acquiring a second retained admission ledger.
 		if member.Parent == "" {
 			changed := member.Stop != nil
+			tree.cancelCompletion(member)
 			if member.Wait != nil && member.Wait.State != "canceled" && member.Wait.State != "completed" {
 				cancelSubscription(tree, member)
 				changed = true
@@ -227,6 +267,7 @@ func (s *Service) HumanInput(ctx context.Context, thread, id string) (result *Ef
 			}
 			return nil
 		}
+		tree.cancelCompletion(member)
 		previous := member.Status
 		if !member.Reserved() || member.Status == Paused {
 			if !member.Reserved() {
@@ -270,17 +311,18 @@ func (s *Service) HumanInputCommitted(ctx context.Context, thread, turn, id stri
 	})
 }
 
-// HumanInterrupt settles a stopped logical wait or returns its still-running
+// HumanInterrupt settles an exact logical stop or returns its still-running
 // host turn to the sole request owner for interruption.
 func (s *Service) HumanInterrupt(ctx context.Context, thread, wait string) (turn string, err error) {
 	err = s.update(ctx, thread, func(tree *Tree, member *Member) error {
-		if member.Wait == nil || member.Wait.ID != wait || !member.Reserved() && !member.HostRunning {
+		if (member.Wait == nil || member.Wait.ID != wait) && (member.Stop == nil || member.Stop.Wait != wait) || !member.Reserved() && !member.HostRunning {
 			return unchanged
 		}
-		if hostOwned(member.Wait.State) {
+		if member.Wait != nil && hostOwned(member.Wait.State) {
 			return errors.New("wait continuation requires host reconciliation before interruption")
 		}
 		cancelSubscription(tree, member)
+		tree.cancelCompletion(member)
 		member.Stop = nil
 		if member.HostRunning {
 			turn = member.Turn

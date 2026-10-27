@@ -39,6 +39,7 @@ type nativeThreadsProvider struct {
 	fullHistory                             bool
 	shellWait                               bool
 	compactWait                             bool
+	earlyCompletion                         bool
 	preload                                 bool
 	calls                                   map[string]int
 	users                                   int
@@ -140,7 +141,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		return
 	}
 	p.mu.Lock()
-	resumedParent := metadata.ThreadID == p.parent && p.calls[p.parent] >= 5
+	resumedParent := !p.earlyCompletion && metadata.ThreadID == p.parent && p.calls[p.parent] >= 5
 	p.mu.Unlock()
 	wantEffort := "low"
 	if resumedParent {
@@ -193,6 +194,19 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	switch {
 	case compacting:
 		answer = "Waiting for worker to finish its assignment."
+	case parent && p.earlyCompletion && step == 4:
+		answer = "PARENT_PREMATURE_FINAL"
+	case parent && p.earlyCompletion && step == 5:
+		if !strings.Contains(string(body), "completion_guard") || !strings.Contains(string(body), "Active descendants: /root/worker. Call wait_agent before completing.") {
+			failure = "early completion did not receive retained descendant hint"
+		}
+		p.waitTurn = metadata.TurnID
+		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["worker"]}));`
+	case parent && p.earlyCompletion && step == 6:
+		if metadata.TurnID == p.waitTurn || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") {
+			failure = "guarded completion lost native child wake"
+		}
+		answer = "MANAGED_PARENT_RESUMED"
 	case parent && step == 1:
 		p.users = users
 		program = `text(Object.keys(tools).filter(name => name.includes("threadcontrol"))); text(await tools.mcp__threadcontrol__list_agents({})); text(await tools.mcp__threadcontrol__inspect({target:"/root"}));`
@@ -380,6 +394,10 @@ func TestNativeThreadsCompactWaitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{compactWait: true})
 }
 
+func TestNativeThreadsCompletionGuardServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{earlyCompletion: true})
+}
+
 func TestNativeThreadsNonGitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{nonGit: true})
 }
@@ -389,7 +407,7 @@ func TestNativeThreadsPreloadServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
-	fullHistory, shellWait, compactWait, nonGit, preload bool
+	fullHistory, shellWait, compactWait, earlyCompletion, nonGit, preload bool
 }
 
 func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
@@ -477,7 +495,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 		}
 	}
-	fixture := &nativeThreadsProvider{preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
+	fixture := &nativeThreadsProvider{preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
@@ -610,6 +628,9 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		if strings.Contains(string(body), "MANAGED_PARENT_RESUMED") {
 			break
 		}
+		if scenario.earlyCompletion && event.Frame.View.Status.Session.CompletionKnown {
+			t.Fatal("early completion published a completed parent while its child was running")
+		}
 		if shellWait && waitingObserved && event.Frame.View.Status.Session.CompletionKnown {
 			t.Fatal("standalone shell marked Main done before model continuation")
 		}
@@ -641,7 +662,11 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		counts[id] = n
 	}
 	fixture.mu.Unlock()
-	if parent != root || child == "" || child == parent || len(counts) != 2 || counts[parent] != 5 || counts[child] != 2 {
+	wantParentCalls := 5
+	if scenario.earlyCompletion {
+		wantParentCalls = 6
+	}
+	if parent != root || child == "" || child == parent || len(counts) != 2 || counts[parent] != wantParentCalls || counts[child] != 2 {
 		t.Fatalf("native host identities/inferences: root=%q parent=%q child=%q calls=%v", root, parent, child, counts)
 	}
 	childView, err := connection.Attach(ctx, child)
@@ -702,7 +727,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		}
 	}
 
-	if scenario.preload || scenario.compactWait {
+	if scenario.preload || scenario.compactWait || scenario.earlyCompletion {
 		return // Acquisition and prompt projection acceptance finish before cold recovery.
 	}
 

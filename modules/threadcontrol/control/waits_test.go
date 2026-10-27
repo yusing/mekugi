@@ -296,6 +296,7 @@ func TestWakeDispatchSurvivesTerminalAndColdRestore(t *testing.T) {
 			}
 			wake.Event.Message = "caller mutation"
 			if terminal {
+				must(t, s.HostCompleted(t.Context(), "child", "ct", Completed, ""))
 				hostStarted(t, s, "root", "next")
 				must(t, s.HostCompleted(t.Context(), "root", "next", Completed, ""))
 				must(t, s.EffectAcknowledged(t.Context(), "root", wake.ID, Receipt{Uncertain: true}))
