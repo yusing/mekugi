@@ -13,30 +13,27 @@ import (
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
-	"github.com/yusing/mekugi/libraries/outputbudget"
-
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
 
 const retainedBytes = 16 << 20
 
-// Source: plugins/mcat.ts:166:310@[543de4f3] readLines
-// Scan the entire source even after admission stops. Neither an oversized row
-// nor omitted data can grow memory beyond the reader's recovery bounds.
 func scan(ctx context.Context, selection commandargs.ReadSelection, o commandargs.ReaderOptions) (command.Output, error) {
-	start, end, path := selection.Start, selection.End, selection.Path
-	fail := func(err error) (command.Output, error) {
-		class := fileClass(err)
-		message := err.Error()
-		switch {
-		case errors.Is(err, syscall.ENOENT):
-			message = "ENOENT: no such file or directory"
-		case errors.Is(err, syscall.ENOTDIR):
-			message = "ENOTDIR: not a directory"
-		case errors.Is(err, os.ErrPermission):
-			message = "EACCES: permission denied"
-		}
-		return failure(fmt.Errorf("%s: %s", quotePath(path), message), class), nil
+	outputs, err := scanSelections(ctx, []commandargs.ReadSelection{selection}, o)
+	if err != nil {
+		return command.Output{}, err
+	}
+	return outputs[0], nil
+}
+
+// scanSelections acquires one source for selections with the exact same path.
+func scanSelections(ctx context.Context, selections []commandargs.ReadSelection, o commandargs.ReaderOptions) ([]command.Output, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	path := selections[0].Path
+	fail := func(err error) ([]command.Output, error) {
+		return sourceFailures(selections, err), nil
 	}
 	// Check before opening to avoid waiting on a FIFO. Recheck the opened handle.
 	info, err := os.Stat(path)
@@ -58,71 +55,67 @@ func scan(ctx context.Context, selection commandargs.ReadSelection, o commandarg
 	if !info.Mode().IsRegular() {
 		return fail(errors.New("not a regular file"))
 	}
-	r := bufio.NewReaderSize(f, 32*1024)
-	var row, shown, retained strings.Builder
-	var tailRows []string
-	tailBytes, tailHead := 0, 0
-	line, selected := 1, 0
-	incomplete, unavailable, oversized, open, pendingCR := false, false, false, false, false
-	reason := ""
-	budget := outputbudget.Budget{}
+	return scanRows(ctx, f, selections, o)
+}
+
+// Source: plugins/mcat.ts:166:310@[543de4f3] readLines
+// Scan and validate the entire source once, sharing each selected logical row
+// while keeping admission and recovery bounds independent for every selection.
+func scanRows(ctx context.Context, source io.Reader, selections []commandargs.ReadSelection, o commandargs.ReaderOptions) ([]command.Output, error) {
+	r := bufio.NewReaderSize(source, 32*1024)
+	states := make([]selectionScan, len(selections))
+	for i, selection := range selections {
+		states[i].selection = selection
+	}
+	var row strings.Builder
+	line := 1
+	oversized, open, pendingCR := false, false, false
+	wanted := make([]*selectionScan, 0, len(states))
+	selectRow := func() {
+		wanted = wanted[:0]
+		for i := range states {
+			if states[i].wants(line, o) {
+				wanted = append(wanted, &states[i])
+			}
+		}
+	}
+	selectRow()
 	finish := func() {
-		if (start == 0 || line >= start && line <= end) && !oversized {
-			selected++
-			s := row.String() + "\n"
+		if oversized {
+			for _, state := range wanted {
+				state.rejectOversized(line, o)
+			}
+		} else if len(wanted) > 0 {
+			text := row.String() + "\n"
 			if o.Number {
-				s = fmt.Sprintf("%6d\t%s", line, s)
+				text = fmt.Sprintf("%6d\t%s", line, text)
 			}
-			if !unavailable {
-				if retained.Len()+len(s) > retainedBytes {
-					unavailable = true
-					retained.Reset()
-					reason = "result exceeds the 16 MiB recovery bound; narrow the source range\n"
-				} else {
-					retained.WriteString(s)
-				}
-			}
-			if o.Tail {
-				tailRows = append(tailRows, s)
-				tailBytes += len(s)
-				for (o.Lines > 0 && len(tailRows)-tailHead > o.Lines) || tailBytes > o.Budget*128 {
-					tailBytes -= len(tailRows[tailHead])
-					tailRows[tailHead] = ""
-					tailHead++
-					incomplete = true
-				}
-				if tailHead > 1024 {
-					tailRows = append([]string(nil), tailRows[tailHead:]...)
-					tailHead = 0
-				}
-			} else if !incomplete {
-				if o.Lines > 0 && selected > o.Lines {
-					incomplete = true
-				} else if shown.Len()+len(s) > o.Budget*128 {
-					incomplete = true
-				} else {
-					shown.WriteString(s)
-				}
+			for _, state := range wanted {
+				state.accept(text, o)
 			}
 		}
 		row.Reset()
 		line++
 		open = false
 		oversized = false
+		selectRow()
 	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return command.Output{}, err
+			return nil, err
 		}
-		ch, size, e := r.ReadRune()
-		if e == io.EOF {
+		ch, size, err := r.ReadRune()
+		if err == io.EOF {
 			break
 		}
-		if e != nil {
-			return fail(e)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return sourceFailures(selections, err), nil
 		}
 		if ch == utf8.RuneError && size == 1 {
-			return fail(errors.New("not UTF-8"))
+			return sourceFailures(selections, errors.New("not UTF-8")), nil
 		}
 		if pendingCR {
 			pendingCR = false
@@ -141,21 +134,12 @@ func scan(ctx context.Context, selection commandargs.ReadSelection, o commandarg
 			continue
 		}
 		open = true
-		if (start != 0 && (line < start || line > end)) || oversized || unavailable && !o.Tail && incomplete {
+		if len(wanted) == 0 || oversized {
 			continue
 		}
 		if row.Len()+size > commandargs.MaxOutputTokens*128 {
 			oversized = true
-			unavailable = true
-			retained.Reset()
 			row.Reset()
-			incomplete = true
-			reason = fmt.Sprintf("row %d exceeds the %d-byte inspection bound; use mrun with a byte-oriented command such as head -c\n", line, commandargs.MaxOutputTokens*128)
-			if o.Tail {
-				tailRows = nil
-				tailHead = 0
-				tailBytes = 0
-			}
 			continue
 		}
 		row.WriteRune(ch)
@@ -163,34 +147,43 @@ func scan(ctx context.Context, selection commandargs.ReadSelection, o commandarg
 	if open || pendingCR {
 		finish()
 	}
-	if start > line-1 {
-		return fail(fmt.Errorf("rows %d:%d past EOF (%d rows)", start, end, line-1))
-	}
-	current := shown.String()
-	if o.Tail {
-		current = strings.Join(tailRows[tailHead:], "")
-	}
-	bounded, err := budget.SelectRows(current, o.Budget, o.Tail)
-	if err != nil {
-		return command.Output{}, err
-	}
-	incomplete = incomplete || len(bounded) < len(current)
-	current = bounded
-	result := command.Output{Stdout: current}
-	if incomplete {
-		result.ExitCode = 1
-		result.FailureClass = "output_limit"
-		if reason != "" {
-			result.Stderr = "mcat: " + reason
+	outputs := make([]command.Output, len(states))
+	for i := range states {
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
-		if !unavailable {
-			all := retained.String()
-			omitted := strings.TrimPrefix(all, current)
-			if o.Tail {
-				omitted = strings.TrimSuffix(all, current)
-			}
-			result.OmittedOutput = &command.OmittedOutput{Stdout: omitted, StdoutKind: "rows"}
+		state := &states[i]
+		selection := state.selection
+		if selection.Start > line-1 {
+			outputs[i] = sourceFailure(selection.Path, fmt.Errorf("rows %d:%d past EOF (%d rows)", selection.Start, selection.End, line-1))
+			continue
 		}
+		output, err := state.output(o)
+		if err != nil {
+			return nil, err
+		}
+		outputs[i] = output
 	}
-	return result, nil
+	return outputs, nil
+}
+
+func sourceFailures(selections []commandargs.ReadSelection, err error) []command.Output {
+	outputs := make([]command.Output, len(selections))
+	for i, selection := range selections {
+		outputs[i] = sourceFailure(selection.Path, err)
+	}
+	return outputs
+}
+
+func sourceFailure(path string, err error) command.Output {
+	message := err.Error()
+	switch {
+	case errors.Is(err, syscall.ENOENT):
+		message = "ENOENT: no such file or directory"
+	case errors.Is(err, syscall.ENOTDIR):
+		message = "ENOTDIR: not a directory"
+	case errors.Is(err, os.ErrPermission):
+		message = "EACCES: permission denied"
+	}
+	return failure(fmt.Errorf("%s: %s", quotePath(path), message), fileClass(err))
 }

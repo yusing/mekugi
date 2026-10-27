@@ -41,13 +41,30 @@ func executeBundle(
 	}
 	share := (budget - reserve) / len(specs)
 	executions := make([]command.Output, len(specs))
-	unused, pending := budget-reserve-share*len(specs), 0
+	byPath := make(map[string][]int)
 	for i, spec := range specs {
-		execution, err := scan(ctx, spec, commandargs.ReaderOptions{Budget: share, Number: numbered})
+		byPath[spec.Path] = append(byPath[spec.Path], i)
+	}
+	for _, spec := range specs {
+		indices := byPath[spec.Path]
+		if len(indices) == 0 {
+			continue
+		}
+		selections := make([]commandargs.ReadSelection, len(indices))
+		for i, index := range indices {
+			selections[i] = specs[index]
+		}
+		outputs, err := scanSelections(ctx, selections, commandargs.ReaderOptions{Budget: share, Number: numbered})
 		if err != nil {
 			return command.Output{}, err
 		}
-		executions[i] = execution
+		for i, index := range indices {
+			executions[index] = outputs[i]
+		}
+		delete(byPath, spec.Path)
+	}
+	unused, pending := budget-reserve-share*len(specs), 0
+	for _, execution := range executions {
 		if execution.ExitCode == 0 {
 			used, err := codec.Count(execution.Stdout)
 			if err != nil {
