@@ -159,6 +159,7 @@ type nativeClient struct {
 	handoff                *nativeEditorHandoff
 	secretKey              string
 	secrets                map[string]composer.State
+	requests               [nativeCallLanes]*nativeClientCall
 	calls                  []*nativeClientCall
 	runtime                *nativeClientRuntime
 	stop                   context.CancelFunc

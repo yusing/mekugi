@@ -138,7 +138,7 @@ func TestNativeClientHydrationDoesNotHoldControl(t *testing.T) {
 }
 
 func TestNativeClientPreparationRetainsOriginalOwnerAcrossNavigation(t *testing.T) {
-	for _, test := range []struct{ name, input string }{{"ordinary", "original input"}, {"slash", "/status"}} {
+	for _, test := range []struct{ name, input string }{{"ordinary", "original input"}, {"slash", "/compact"}} {
 		t.Run(test.name, func(t *testing.T) { testNativeClientPreparationOwner(t, test.input) })
 	}
 }
@@ -154,11 +154,13 @@ func testNativeClientPreparationOwner(t *testing.T, input string) {
 	requests := make(chan sessionapi.NativeRequest, 64)
 	launcher := &nativeReattachLauncher{
 		prepare: func(ctx context.Context, workspace string, input sessionapi.InputRequest) (*sessionapi.PreparedInput, error) {
-			close(preparing)
-			select {
-			case <-release:
-			case <-ctx.Done():
-				return nil, ctx.Err()
+			if input.NativeDraft.Text != "destination draft" {
+				close(preparing)
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
 			}
 			return sessionapi.NewPreparedInput(input.NativeDraft.Clone(), nil), nil
 		},
@@ -187,7 +189,7 @@ func testNativeClientPreparationOwner(t *testing.T, input string) {
 					_ = api.Native().Publish(attachment, frame)
 				case request := <-api.Native().Requests():
 					attachment = request.Attachment
-					if request.Operation.Composer != nil {
+					if request.Operation.Composer != nil && start.Resume == "main" {
 						frame.PendingEffects = true
 					}
 					if display := request.Operation.Display; display != nil {
@@ -232,6 +234,10 @@ func testNativeClientPreparationOwner(t *testing.T, input string) {
 		t.Fatal("input preparation did not begin")
 	}
 	source.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "next draft"})
+	source.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\r"})
+	if source.editor("main").Text != "next draft" || !strings.Contains(source.feedback.Text, "Previous input is still settling") {
+		t.Fatal("same-thread pending input lost its admission gate")
+	}
 	source.enqueue(sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: source.event.Frame.View.Version, Thread: sessionpresentation.Thread{ID: "side", Caller: "child"}}}, nil, nil)
 	source.enqueue(sessionapi.NativeOperation{Interrupt: &sessionpresentation.InterruptIntent{Version: source.event.Frame.View.Version}}, nil, nil)
 	var interrupted bool
@@ -257,8 +263,21 @@ func testNativeClientPreparationOwner(t *testing.T, input string) {
 	destination.editor("main").InsertText("destination draft")
 	_, target = destination.selectedEditor()
 	destination.composer(terminalsession.ComposerInput{Command: sessionpresentation.ComposerIntent{Version: destination.event.Frame.View.Version, Thread: "destination", Target: target, Operation: sessionpresentation.SubmitComposer}})
-	if destination.editor("main").Text != "destination draft" || destination.request(nativeInputCall) != nil {
-		t.Fatal("busy input capacity consumed the destination draft")
+	var destinationSubmitted bool
+	for !destinationSubmitted {
+		nativeSchedulingStep(t, r)
+		for len(requests) > 0 {
+			request := <-requests
+			if request.Operation.Composer != nil {
+				if request.Thread != "destination" || request.Prepared.Draft.Text != "destination draft" {
+					t.Fatalf("independent input changed destination: %+v", request)
+				}
+				destinationSubmitted = true
+			}
+		}
+	}
+	if destination.editor("main").Text != "" || source.ctx.Err() != nil {
+		t.Fatal("destination input retired or reused the unsettled source")
 	}
 	close(release)
 	var submitted *sessionapi.NativeRequest
@@ -285,7 +304,7 @@ func testNativeClientPreparationOwner(t *testing.T, input string) {
 	for !source.closed {
 		nativeSchedulingStep(t, r)
 	}
-	if r.active != destination || destination.editor("main").Text != "destination draft" || strings.Count(source.editor("main").Text, input) != 1 || !strings.Contains(source.editor("main").Text, "next draft") {
+	if r.active != destination || destination.editor("main").Text != "" || strings.Count(source.editor("main").Text, input) != 1 || !strings.Contains(source.editor("main").Text, "next draft") {
 		t.Fatal("hidden restoration was lost, duplicated, or applied to the destination")
 	}
 	if !strings.Contains(destination.feedback.Text, "Session main: source input was refused") {
@@ -320,9 +339,9 @@ func TestNativeClientContinuationKeepsOriginatingEditor(t *testing.T) {
 				t.Fatal("menu did not retain the trailing key")
 			}
 			c.calls = nil
-			r := &nativeClientRuntime{active: c, editors: make(map[[2]string]*composer.Editor)}
+			r := &nativeClientRuntime{active: c, owners: []*nativeClient{c}, editors: make(map[[2]string]*composer.Editor)}
 			c.runtime = r
-			r.requests[nativeSemanticCall] = pending
+			pending.owner.requests[nativeSemanticCall] = pending
 			c.queueInput(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "y"})
 			c.drainInput()
 			c.event.Frame.View.Menu = nil

@@ -500,7 +500,7 @@ func TestNativeDetachPreservesUnknownAndUnadmittedDrafts(t *testing.T) {
 	c.calls = nil
 	submit("not dispatched")
 	c.runtime = &nativeClientRuntime{active: c, editors: make(map[[2]string]*composer.Editor)}
-	c.runtime.requests[nativeInputCall] = call
+	c.requests[nativeInputCall] = call
 	call.err = context.Canceled
 	c.finishPendingCalls()
 	if len(c.unknown) != 1 || c.unknown[0].Text != "unknown" || c.editor("main").Text != "not dispatched" || len(c.calls) != 0 {

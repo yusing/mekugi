@@ -403,7 +403,7 @@ func TestNativeClientRejectedAsyncAnswerRestoresLocalDraft(t *testing.T) {
 	call := client.calls[0]
 	client.calls = nil
 	client.runtime = &nativeClientRuntime{active: client, editors: make(map[[2]string]*composer.Editor)}
-	client.runtime.requests[nativeInputCall] = call
+	client.requests[nativeInputCall] = call
 	if refusal := nativeTestAnswers(t, u, *call.operation.Answers); refusal != "" {
 		t.Fatal(refusal)
 	}
@@ -412,7 +412,7 @@ func TestNativeClientRejectedAsyncAnswerRestoresLocalDraft(t *testing.T) {
 	client.accept(sessionapi.NativeEvent{Attachment: "client", Frame: frame})
 	sibling.accept(sessionapi.NativeEvent{Attachment: "sibling", Frame: frame})
 	call.after(nil)
-	client.runtime.requests[nativeInputCall] = nil
+	client.requests[nativeInputCall] = nil
 	if client.prompts.questions.Active != nil || sibling.prompts.questions.Active != nil {
 		t.Fatal("sent call remained actionable")
 	}
@@ -477,7 +477,7 @@ func TestNativeClientRetiredPromptPreservesUnadmittedDraft(t *testing.T) {
 				}
 				editor, _ := c.selectedEditor()
 				editor.InsertText("originating prompt draft")
-				r := &nativeClientRuntime{active: c, editors: make(map[[2]string]*composer.Editor)}
+				r := &nativeClientRuntime{active: c, owners: []*nativeClient{c}, editors: make(map[[2]string]*composer.Editor)}
 				c.runtime = r
 				var call *nativeClientCall
 				if phase != "editing" {
@@ -488,7 +488,7 @@ func TestNativeClientRetiredPromptPreservesUnadmittedDraft(t *testing.T) {
 					call = c.calls[0]
 					if phase != "queued" {
 						c.calls = nil
-						r.requests[nativeCallLane(call.operation)] = call
+						call.owner.requests[nativeCallLane(call.operation)] = call
 					}
 				}
 				frame := c.event.Frame

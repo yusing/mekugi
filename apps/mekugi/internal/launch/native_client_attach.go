@@ -116,7 +116,7 @@ func (c *nativeClient) finishPendingCalls() {
 	if c.runtime != nil {
 		for lane := range nativeCallLanes {
 			if call := c.request(lane); call != nil {
-				c.runtime.requests[lane] = nil
+				c.requests[lane] = nil
 				if call.after != nil {
 					call.after(call.err)
 				}

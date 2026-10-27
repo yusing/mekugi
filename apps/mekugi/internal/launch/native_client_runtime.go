@@ -30,8 +30,8 @@ const (
 
 // The physical terminal has one active interaction. Its source interaction stays
 // alive while an admitted request or its retained consequences are unsettled.
-// Request lanes are shared by every interaction, including hidden sources.
-// In particular, changing views cannot start a second input preparation.
+// Request lanes and input admission belong to each interaction, so a retained
+// source cannot block input in another thread.
 type nativeClientRuntime struct {
 	previews       imagePreviews
 	ctx            context.Context
@@ -40,8 +40,6 @@ type nativeClientRuntime struct {
 	messages       chan nativeClientMessage
 	results        chan *nativeClientCall
 	reattached     chan nativeClientReattached
-	requests       [nativeCallLanes]*nativeClientCall
-	inputOwner     *nativeClient
 	clipboardOwner *nativeClient
 	pasteOwner     *nativeClient
 	editors        map[[2]string]*composer.Editor
@@ -114,12 +112,7 @@ func nativeCallLane(operation sessionapi.NativeOperation) int {
 }
 
 func (c *nativeClient) request(lane int) *nativeClientCall {
-	if c.runtime != nil {
-		if call := c.runtime.requests[lane]; call != nil && call.owner == c {
-			return call
-		}
-	}
-	return nil
+	return c.requests[lane]
 }
 
 func (r *nativeClientRuntime) start(c *nativeClient, stdout *os.File) {
@@ -172,21 +165,15 @@ func (c *nativeClient) inputAvailable() bool {
 	if c.runtime == nil {
 		return true
 	}
-	r := c.runtime
-	if r.inputOwner != nil && r.inputOwner != c {
-		return false
-	}
-	if slices.ContainsFunc(r.requests[:], func(call *nativeClientCall) bool {
+	if slices.ContainsFunc(c.requests[:], func(call *nativeClientCall) bool {
 		return call != nil && (call.operation.Composer != nil || call.operation.Answers != nil)
 	}) {
 		return false
 	}
-	for _, owner := range r.owners {
-		if slices.ContainsFunc(owner.calls, func(call *nativeClientCall) bool {
-			return call.operation.Composer != nil || call.operation.Answers != nil
-		}) {
-			return false
-		}
+	if slices.ContainsFunc(c.calls, func(call *nativeClientCall) bool {
+		return call.operation.Composer != nil || call.operation.Answers != nil
+	}) {
+		return false
 	}
 	return true
 }
@@ -220,18 +207,15 @@ func (r *nativeClientRuntime) schedule() {
 			call := owner.calls[i]
 			lane := nativeCallLane(call.operation)
 			input := call.operation.Composer != nil || call.operation.Answers != nil
-			if r.requests[lane] != nil || input && (r.inputOwner != nil && r.inputOwner != owner || slices.ContainsFunc(r.requests[:], func(pending *nativeClientCall) bool {
+			if owner.requests[lane] != nil || input && slices.ContainsFunc(owner.requests[:], func(pending *nativeClientCall) bool {
 				return pending != nil && (pending.operation.Composer != nil || pending.operation.Answers != nil)
-			})) {
+			}) {
 				i++
 				continue
 			}
 			owner.calls = slices.Delete(owner.calls, i, i+1)
 			call.owner = owner
-			r.requests[lane] = call
-			if input {
-				r.inputOwner = owner
-			}
+			owner.requests[lane] = call
 			r.send(call, call.operation)
 		}
 	}
@@ -253,58 +237,57 @@ func (r *nativeClientRuntime) send(call *nativeClientCall, operation sessionapi.
 }
 
 func (r *nativeClientRuntime) settle() {
-	for lane, call := range r.requests {
-		if call == nil || !call.complete {
-			continue
-		}
-		c := call.owner
-		version := c.event.Frame.View.Version
-		settled := call.discard || call.err != nil || version.Attachment == call.result.Version.Attachment && version.Revision >= call.result.Version.Revision
-		if call.operation.Output != nil && call.err == nil && !call.hydrated && !call.discard {
-			// Only a delivered catch-up marker permits read reacquisition. Read
-			// one unresolved identity at a time so a large batch cannot repeatedly
-			// evict its own earlier results. Keep the original call and callback.
-			if settled && call.reacquire && (call.outputLost || call.reading != nil && !slices.Contains(call.unresolved, *call.reading)) {
-				call.reading = new(call.unresolved[0])
-				call.outputLost = false
-				operation := call.operation
-				output := *operation.Output
-				output.Demands = []activity.OutputDemand{*call.reading}
-				operation.Output = &output
-				r.send(call, operation)
+	for _, owner := range r.owners {
+		for lane, call := range owner.requests {
+			if call == nil || !call.complete {
+				continue
 			}
-			settled = false
-		}
-		if !settled {
-			continue
-		}
-		r.requests[lane] = nil
-		if call.discard {
-			call.err = nil
-		}
-		if call.after != nil {
-			call.after(call.err)
-		}
-		if call.err != nil {
-			c.feedback.Set(call.err.Error(), true, time.Now())
-			if c != r.active {
-				r.active.feedback.Set(fmt.Sprintf("Session %s: %v", c.event.Frame.View.Main.ID, call.err), true, time.Now())
-				r.active.refresh(time.Now())
+			c := call.owner
+			version := c.event.Frame.View.Version
+			settled := call.discard || call.err != nil || version.Attachment == call.result.Version.Attachment && version.Revision >= call.result.Version.Revision
+			if call.operation.Output != nil && call.err == nil && !call.hydrated && !call.discard {
+				// Only a delivered catch-up marker permits read reacquisition. Read
+				// one unresolved identity at a time so a large batch cannot repeatedly
+				// evict its own earlier results. Keep the original call and callback.
+				if settled && call.reacquire && (call.outputLost || call.reading != nil && !slices.Contains(call.unresolved, *call.reading)) {
+					call.reading = new(call.unresolved[0])
+					call.outputLost = false
+					operation := call.operation
+					output := *operation.Output
+					output.Demands = []activity.OutputDemand{*call.reading}
+					operation.Output = &output
+					r.send(call, operation)
+				}
+				settled = false
 			}
-		} else {
-			if receipt := call.operation.Receipt; receipt != nil {
-				c.ackEffect = max(c.ackEffect, receipt.Effect)
+			if !settled {
+				continue
 			}
-			if call.next != nil {
-				// The continuation consumes the originating editor, even when an
-				// independent display request has selected another input meanwhile.
-				c.withInput(call.nextInput, call.nextView, call.nextEditor, func() { c.continueKey(*call.next) })
+			owner.requests[lane] = nil
+			if call.discard {
+				call.err = nil
 			}
+			if call.after != nil {
+				call.after(call.err)
+			}
+			if call.err != nil {
+				c.feedback.Set(call.err.Error(), true, time.Now())
+				if c != r.active {
+					r.active.feedback.Set(fmt.Sprintf("Session %s: %v", c.event.Frame.View.Main.ID, call.err), true, time.Now())
+					r.active.refresh(time.Now())
+				}
+			} else {
+				if receipt := call.operation.Receipt; receipt != nil {
+					c.ackEffect = max(c.ackEffect, receipt.Effect)
+				}
+				if call.next != nil {
+					// The continuation consumes the originating editor, even when an
+					// independent display request has selected another input meanwhile.
+					c.withInput(call.nextInput, call.nextView, call.nextEditor, func() { c.continueKey(*call.next) })
+				}
+			}
+			c.refresh(time.Now())
 		}
-		c.refresh(time.Now())
-	}
-	if c := r.inputOwner; c != nil && c.request(nativeInputCall) == nil && (c.request(nativeSemanticCall) == nil || c.request(nativeSemanticCall).operation.Composer == nil) && c.effectsSettled() {
-		r.inputOwner = nil
 	}
 }
 
@@ -389,7 +372,7 @@ func (r *nativeClientRuntime) retire() {
 		if len(c.event.Frame.Questions) > 0 || len(c.event.Frame.Approvals) > 0 {
 			continue
 		}
-		if slices.ContainsFunc(r.requests[:], func(call *nativeClientCall) bool { return call != nil && call.owner == c }) {
+		if slices.ContainsFunc(c.requests[:], func(call *nativeClientCall) bool { return call != nil }) {
 			continue
 		}
 		r.closeOwner(c)
@@ -406,9 +389,6 @@ func (r *nativeClientRuntime) closeOwner(c *nativeClient) {
 	c.connection.Close()
 	c.workers.Wait()
 	c.finishPendingCalls()
-	if r.inputOwner == c {
-		r.inputOwner = nil
-	}
 	if r.clipboardOwner == c {
 		r.clipboardOwner = nil
 	}

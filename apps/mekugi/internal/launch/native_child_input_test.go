@@ -205,7 +205,7 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 		t.Fatalf("returning detail did not use Main's ordinary attachment: %+v", read)
 	}
 	release <- "known child refusal"
-	for runtime.inputOwner != nil || selected.editor("main").Text == "" {
+	for !selected.effectsSettled() || selected.editor("main").Text == "" {
 		nativeSchedulingStep(t, runtime)
 	}
 	if returned.editor("main").Text != "Main draft stays here" || selected.editor("main").Text != "child input" {
