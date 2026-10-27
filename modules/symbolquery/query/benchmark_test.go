@@ -19,14 +19,14 @@ func BenchmarkNativeSymbol(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	const path = "internal/router/naming_inference.go"
+	const path = "apps/mekugi/internal/requestexecution/naming_inference.go"
 	for _, mode := range []string{"cli", "lsp"} {
 		b.Run(mode, func(b *testing.B) {
 			file, err := loadSymbolSource(b.Context(), root, path, "", map[string]*symbolSource{})
 			if err != nil {
 				b.Fatal(err)
 			}
-			q := &symbolQuery{mode: "refs", path: path, name: "namingCompletion", file: file}
+			q := &symbolQuery{mode: "refs", path: path, name: "NamingCompletion", file: file}
 			if err := selectSymbol(q); err != nil {
 				b.Fatal(err)
 			}
