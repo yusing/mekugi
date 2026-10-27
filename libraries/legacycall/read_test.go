@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
+	jsonv1 "encoding/json"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -153,6 +156,16 @@ func TestReadMixedV2RequiresSnapshotDespiteValidSegments(t *testing.T) {
 			}
 			if r.History.CommandSegments == nil || r.History.CommandSegments.Output != [32]byte{7, 8} || r.History.CommandSegments.Command != "echo ok" {
 				t.Fatalf("mixed snapshot lost command evidence: %#v", r.History.CommandSegments)
+			}
+			expanded, err := json.Marshal(&r, jsonv1.DefaultOptionsV1(), jsontext.EscapeForHTML(false))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, found, err := legacycall.Read(directory, workspace, callID, false, len(expanded)); err != nil || !found {
+				t.Fatalf("exact expanded limit rejected: found=%t, %v", found, err)
+			}
+			if _, found, err := legacycall.Read(directory, workspace, callID, false, len(expanded)-1); err == nil || found {
+				t.Fatalf("oversized expanded record accepted: found=%t, %v", found, err)
 			}
 			data, exists, err := legacycall.SnapshotData(directory, name, readLimit)
 			if err != nil || !exists || !bytes.Equal(data, manifest) {

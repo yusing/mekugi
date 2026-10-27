@@ -275,12 +275,29 @@ func restoreSnapshots(directory string, r *Record, limit int) error {
 	}
 	expanded := *r
 	expanded.Version, expanded.Snapshots = 1, nil
-	data, err := json.Marshal(&expanded, jsonv1.DefaultOptionsV1(), jsontext.EscapeForHTML(false))
-	if err != nil {
+	size := expandedRecordSize{remaining: limit}
+	if err := json.MarshalWrite(&size, &expanded, jsonv1.DefaultOptionsV1(), jsontext.EscapeForHTML(false)); err != nil {
 		return err
 	}
-	if len(data) > limit {
+	if size.exceeded {
 		return errors.New("expanded replay record exceeds size limit")
 	}
 	return nil
+}
+
+// Keep validating the entire envelope after the size limit is exceeded so an
+// encoding failure retains precedence over the expanded-size error.
+type expandedRecordSize struct {
+	remaining int
+	exceeded  bool
+}
+
+func (size *expandedRecordSize) Write(data []byte) (int, error) {
+	if len(data) > size.remaining {
+		size.exceeded = true
+		size.remaining = 0
+	} else {
+		size.remaining -= len(data)
+	}
+	return len(data), nil
 }
