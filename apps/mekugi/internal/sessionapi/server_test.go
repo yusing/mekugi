@@ -69,6 +69,7 @@ func TestWaitOutcomeProjection(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ result, reason, timeout string }{
 		{`{"id":"w","state":"registered"}`, "", "2s"},
+		{`{"state":"waiting"}`, "", "2s"},
 		{`{"id":"w","state":"timeout"}`, "timeout", ""},
 		{`{"id":"w","state":"completed","event":{"task":"/root/child","status":"completed"}}`, "child: completed", ""},
 	} {

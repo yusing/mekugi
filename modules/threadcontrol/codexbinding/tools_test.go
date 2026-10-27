@@ -13,10 +13,7 @@ import (
 )
 
 func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
-	driver, err := NewDriver(control.New())
-	if err != nil {
-		t.Fatal(err)
-	}
+	driver, _, _, caller := reconciliationFixture(t)
 	contribution := Codex.MCP(driver)
 	left, right := net.Pipe()
 	server, err := contribution.Server.Connect(t.Context(), &mcp.IOTransport{Reader: left, Writer: left}, nil)
@@ -36,6 +33,9 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	var names []string
 	for _, tool := range catalog.Tools {
 		names = append(names, tool.Name)
+		if tool.Name == "wait_agent" && tool.Description != "Block-wait until a watched descendant completes, fails or is interrupted, or an addressed message arrives. The default is stop-wait with no timeout. target defaults to all descendants; timeout_ms bounds the wait." {
+			t.Fatalf("wait description: %q", tool.Description)
+		}
 	}
 	slices.Sort(names)
 	expected := []string{"followup_task", "inspect", "interrupt_agent", "list_agents", "send_message", "spawn_agent", "wait_agent"}
@@ -63,6 +63,18 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	if err != nil || !result.IsError || result.Content[0].(*mcp.TextContent).Text != "incomplete host MCP identity" {
 		t.Fatalf("missing identity: result=%+v err=%v", result, err)
 	}
+	meta := mcp.Meta{"threadId": caller.Thread, "sessionId": caller.Session, "callId": "wait", "itemId": caller.Item, "windowId": "window",
+		"x-codex-turn-metadata": map[string]any{"thread_id": caller.Thread, "session_id": caller.Session, "turn_id": caller.Turn, "codex_version": "0.163.0", "model": "model", "reasoning_effort": "low"}}
+	for _, tool := range []string{"wait_agent", "list_agents"} {
+		result, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Meta: meta, Arguments: map[string]any{}})
+		if err != nil || result.IsError || len(result.Content) != 1 {
+			t.Fatalf("%s: result=%+v err=%v", tool, result, err)
+		}
+		payload := result.Content[0].(*mcp.TextContent).Text
+		if !strings.Contains(payload, `"state":"waiting"`) || strings.Contains(payload, `"registered"`) {
+			t.Fatalf("%s public wait state: %s", tool, payload)
+		}
+	}
 }
 
 func TestControlActionReturnsCanonicalTargetForAlias(t *testing.T) {
@@ -82,7 +94,7 @@ func TestControlActionReturnsCanonicalTargetForAlias(t *testing.T) {
 	}
 }
 
-func TestWaitAgentKeepsRegistrationIdentityInternal(t *testing.T) {
+func TestWaitAgentKeepsWaitIdentityInternal(t *testing.T) {
 	driver, _, _, caller := reconciliationFixture(t)
 	caller.Call, caller.Item = "wait", "exec"
 	result, err := driver.waitAgent(t.Context(), caller, []byte(`{}`))
@@ -97,22 +109,22 @@ func TestWaitAgentKeepsRegistrationIdentityInternal(t *testing.T) {
 	if err := json.Unmarshal(payload, &fields); err != nil {
 		t.Fatal(err)
 	}
-	if fields["id"] != nil || fields["all"] != nil || string(fields["state"]) != `"registered"` || string(fields["targets"]) != `["/root/child"]` {
+	if fields["id"] != nil || fields["all"] != nil || string(fields["state"]) != `"waiting"` || string(fields["targets"]) != `["/root/child"]` {
 		t.Fatalf("wait result: %s", payload)
 	}
 	member, _ := driver.control.Member(caller.Thread)
-	if member.Wait == nil || member.Wait.ID != caller.Call || !member.Wait.All {
+	if member.Wait == nil || member.Wait.ID != caller.Call || !member.Wait.All || member.Wait.State != "registered" {
 		t.Fatal("lost internal wait correlation")
 	}
 }
 
-func TestWaitAgentRegistersAfterImmediateTimeout(t *testing.T) {
+func TestWaitAgentWaitsAfterImmediateTimeout(t *testing.T) {
 	driver, _, _, caller := reconciliationFixture(t)
-	for _, test := range []struct{ call, arguments, state, id string }{
-		{"poll", `{"timeout_ms":0}`, "timeout", "poll"},
-		{"poll", `{}`, "timeout", "poll"},
-		{"wait", `{}`, "registered", "wait"},
-		{"another", `{"timeout_ms":0}`, "registered", "wait"},
+	for _, test := range []struct{ call, arguments, state, retainedState, id string }{
+		{"poll", `{"timeout_ms":0}`, "timeout", "timeout", "poll"},
+		{"poll", `{}`, "timeout", "timeout", "poll"},
+		{"wait", `{}`, "waiting", "registered", "wait"},
+		{"another", `{"timeout_ms":0}`, "waiting", "registered", "wait"},
 	} {
 		caller.Call = test.call
 		result, err := driver.waitAgent(t.Context(), caller, []byte(test.arguments))
@@ -124,10 +136,10 @@ func TestWaitAgentRegistersAfterImmediateTimeout(t *testing.T) {
 			t.Fatalf("%s(%s) = %+v; want %s id=%s", test.call, test.arguments, wait, test.state, test.id)
 		}
 		member, _ := driver.control.Member(caller.Thread)
-		if member.Wait == nil || member.Wait.ID != test.id || member.Wait.State != test.state {
+		if member.Wait == nil || member.Wait.ID != test.id || member.Wait.State != test.retainedState {
 			t.Fatalf("retained wait = %+v", member.Wait)
 		}
-		if test.state == "registered" && (member.Wait.Deadline != nil || member.Wait.RequestedMS != nil || member.Wait.EffectiveMS != nil) {
+		if test.state == "waiting" && (member.Wait.Deadline != nil || member.Wait.RequestedMS != nil || member.Wait.EffectiveMS != nil) {
 			t.Fatalf("new indefinite wait retained the expired deadline: %+v", member.Wait)
 		}
 	}

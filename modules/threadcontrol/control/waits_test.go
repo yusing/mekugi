@@ -161,7 +161,7 @@ func TestNestedStopWaitPreservesLogicalWork(t *testing.T) {
 	for _, id := range []Identity{root, childID} {
 		r, err := s.RegisterWait(ctx, id, nil, true, nil, now)
 		must(t, err)
-		if r.State != "registered" {
+		if r.State != "waiting" {
 			t.Fatal(r)
 		}
 	}
@@ -225,7 +225,7 @@ func TestWaitAnyConsumesOnlyUnseenEvents(t *testing.T) {
 	}
 	wait, err := s.RegisterWait(t.Context(), caller, []string{"a", "b"}, false, nil, time.Now())
 	must(t, err)
-	if wait.State != "registered" || wait.Event != nil {
+	if wait.State != "waiting" || wait.Event != nil {
 		t.Fatalf("already read progress woke a new wait: %+v", wait)
 	}
 	stop(t, s, caller)
@@ -239,7 +239,7 @@ func TestWaitAnyConsumesOnlyUnseenEvents(t *testing.T) {
 	caller.Turn, caller.Call, caller.Item = "rt2", "second-wait", "second-exec"
 	wait, err = s.RegisterWait(t.Context(), caller, []string{"a", "b"}, false, nil, time.Now())
 	must(t, err)
-	if wait.State != "registered" {
+	if wait.State != "waiting" {
 		t.Fatalf("consumed event was delivered twice: %+v", wait)
 	}
 	stop(t, s, caller)
@@ -604,7 +604,7 @@ func TestStoppedTargetsSettleWaits(t *testing.T) {
 				}
 				first, err := s.RegisterWait(t.Context(), id, []string{"running"}, false, nil, now)
 				must(t, err)
-				if first.State != "registered" {
+				if first.State != "waiting" {
 					t.Fatalf("unselected target woke wait: %+v", first)
 				}
 				_, err = s.HumanInput(t.Context(), id.Thread, "new-input")

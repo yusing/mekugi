@@ -122,6 +122,9 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 	if json.Unmarshal([]byte(envelope.Content[0].Text), &result) != nil {
 		return c, true
 	}
+	if item.Tool == "wait_agent" && result.State == "registered" {
+		result.State = "waiting"
+	}
 	c.State = cmp.Or(result.State, c.State)
 	switch item.Tool {
 	case "spawn_agent":
@@ -135,7 +138,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 			c.State = "completed"
 		}
 	case "wait_agent":
-		c.Confirmed = slices.Contains([]string{"registered", "completed", "timeout", "canceled", "paused"}, result.State)
+		c.Confirmed = slices.Contains([]string{"waiting", "completed", "timeout", "canceled", "paused"}, result.State)
 		all := len(args.Target) == 0 || args.Target.Kind() == '"'
 		if c.Confirmed && len(result.Targets) > 0 && !all {
 			c.Targets = nil

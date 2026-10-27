@@ -284,7 +284,7 @@ func coordinationActivityItems(t *testing.T) []binding.ThreadItem {
 	for _, operation := range []struct{ tool, args, result string }{
 		{"followup_task", `{"target":"worker","message":"Check the tests too."}`, `{"id":"followup","state":"confirmed","thread_id":"worker-thread","task_name":"/root/worker"}`},
 		{"send_message", `{"target":"worker","message":"The parser fixture is ready."}`, `{"id":"message","state":"confirmed","thread_id":"worker-thread","task_name":"/root/worker"}`},
-		{"wait_agent", `{"target":["/root/worker"]}`, `{"id":"wait","state":"registered"}`},
+		{"wait_agent", `{"target":["/root/worker"]}`, `{"state":"waiting"}`},
 		{"interrupt_agent", `{"target":"worker"}`, `{"id":"interrupt","state":"confirmed","thread_id":"worker-thread","task_name":"/root/worker"}`},
 		{"list_agents", `{}`, `{"agents":[{"agent_name":"/root"},{"agent_name":"/root/worker"}],"effects":[]}`},
 	} {

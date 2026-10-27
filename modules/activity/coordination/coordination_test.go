@@ -30,8 +30,8 @@ func TestProjectCoordinationRoutes(t *testing.T) {
 			Coordination{Action: "Message", Kind: "reply", Target: "/root/child", Thread: "thread-1", Message: "update", State: "confirmed", Confirmed: true}},
 		{"interrupt_agent", `{"target":"child"}`, `{"id":"op-3","state":"confirmed","thread_id":"thread-1","task_name":"/root/child"}`,
 			Coordination{Action: "Interrupt", Kind: "progress", Target: "/root/child", Thread: "thread-1", State: "confirmed", Confirmed: true}},
-		{"wait_agent", `{"target":["/root/a","/root/b"]}`, `{"state":"registered"}`,
-			Coordination{Action: "Wait", Kind: "progress", State: "registered", Confirmed: true, Targets: []Target{{Name: "/root/a"}, {Name: "/root/b"}}}},
+		{"wait_agent", `{"target":["/root/a","/root/b"]}`, `{"state":"waiting"}`,
+			Coordination{Action: "Wait", Kind: "progress", State: "waiting", Confirmed: true, Targets: []Target{{Name: "/root/a"}, {Name: "/root/b"}}}},
 		{"list_agents", `{}`, `{"agents":[{"task_name":"/root/a"},{"task_name":"/root/b"}]}`,
 			Coordination{Action: "List agents", Kind: "progress", State: "completed", Confirmed: true, Count: 2}},
 		{"list_agents", `{}`, `{"agents":[]}`,
@@ -108,8 +108,8 @@ func TestProjectCoordinationWaitDispositions(t *testing.T) {
 		name, args, result, state string
 		targets                   []Target
 	}{
-		{"implicit all", `{}`, `{"state":"registered","targets":["/root/a","/root/b"]}`, "registered", []Target{{Name: "all"}}},
-		{"explicit all", `{"target":"all"}`, `{"state":"registered","targets":["/root/a","/root/b"]}`, "registered", []Target{{Name: "all"}}},
+		{"implicit all", `{}`, `{"state":"waiting","targets":["/root/a","/root/b"]}`, "waiting", []Target{{Name: "all"}}},
+		{"explicit all", `{"target":"all"}`, `{"state":"waiting","targets":["/root/a","/root/b"]}`, "waiting", []Target{{Name: "all"}}},
 		{"all failed target", `{}`, `{"state":"completed","event":{"task":"/root/child","status":"failed"}}`, "completed", []Target{{Name: "all", Status: "child: failed"}}},
 		{"completed event", `{"target":["child"]}`, `{"state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", []Target{{Name: "/root/child", Status: "completed"}}},
 		{"timeout", `{"target":["child"]}`, `{"state":"timeout"}`, "timeout", []Target{{Name: "child"}}},

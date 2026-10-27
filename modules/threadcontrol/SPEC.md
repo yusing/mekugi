@@ -188,19 +188,20 @@ Stopped selected targets settle with their terminal status, including when their
 notification was already read or their runtime was paused. Pending result delivery
 keeps its existing order. Mixed selections settle on an eligible selected outcome;
 unselected stopped targets do not wake the caller.
-One pending wait per caller is retained; distinct registrations report the existing
+One pending wait per caller is retained; distinct calls report the existing
 wait instead of replacing it. Human interruption, `interrupt_agent`, and new input
 supersede pending waits through their existing work-lifetime controls.
 
-Omitted timeout has no deadline. Explicit values above the captured host maximum
+The default is stop-wait with no timeout: logical work blocks until an eligible
+outcome or addressed message wakes the caller. Explicit timeout values above the captured host maximum
 reject and lower values clamp to its minimum. Retain requested/effective duration
-and registration-time deadline. Zero effective duration times out immediately when
+and the deadline captured when waiting begins. Zero effective duration times out immediately when
 no selected event exists. Later timeout delivery waits for host settlement.
 
-Registration persists and returns `{state:"registered"}` immediately, closing
-the MCP call. Only successful completion of that enclosing stock execution admits
+The retained wait acknowledges `{state:"waiting"}` at the MCP boundary. Only
+successful completion of that enclosing stock execution admits
 a persisted local-stop disposition. A failed enclosing execution retires its
-registration so a later execution can retry. Yielded, incomplete or unrelated calls
+wait so a later execution can retry. Yielded, incomplete or unrelated calls
 cannot arm it. Request Execution then supplies an empty completed continuation
 locally, without provider inference or usage. New input or admitted wake invalidates
 a stale stop. Stop disposition and terminal reduction serialize per work generation.
@@ -221,7 +222,7 @@ After host settlement, Session Control starts empty input with retained
 `toolOutput:{namespace:"threadcontrol",name:"wait_agent",output:...,retain:true}`.
 Retained wake output includes its dispatch identity for exact host confirmation;
 provider input omits that identity without changing the frozen metrics or saved
-history. Direct public wait results omit the internal registration identity.
+history. Direct public wait results omit the internal wait identity.
 The result identifies event/source task/thread/turn/kind/status, without fake
 human text or composer insertion. A running host turn never receives a second start.
 

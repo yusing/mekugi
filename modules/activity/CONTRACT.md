@@ -547,7 +547,7 @@ operation and remaining count. Agent colors derive solely from canonical paths.
 Thread-control operations share the existing started, follow-up and directed-message
 traffic rows. Only confirmed outcomes establish a child or delivered content.
 Pending, queued, failed and unconfirmed attempts retain explicit progress or error
-rows. Waits publish their supplied targets and distinguish registration, completion,
+rows. Waits publish their supplied targets and distinguish waiting, completion,
 timeout and cancellation. All-target selection displays `all`. Named lists show
 two targets followed by `N more`; the existing disclosure opens the complete
 selection. A waiting roster row uses the transcript's wait text,

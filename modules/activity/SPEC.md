@@ -29,9 +29,9 @@ non-text results. Failed calls remain visibly failed. Restored history and offli
 replay use the same details without restarting the operation.
 First-party threadcontrol operations use the shared agent-traffic presentation:
 confirmed spawns show the child and assignment, follow-ups show assignment traffic,
-and delivered messages show sender and recipient. Wait registration and results,
-interruption requests and agent listing use structured progress; registration is
-not wait completion, and interruption acknowledgement is not task completion.
+and delivered messages show sender and recipient. Pending waits and wait outcomes,
+interruption requests and agent listing use structured progress. A pending wait
+keeps its waiting status, and interruption acknowledgement is not task completion.
 Failed, queued and uncertain operations never invent delivery. Original tool
 evidence remains in detached details; authored traffic dialogs show and copy the
 delivered message. Live, resumed history and replay share

@@ -80,7 +80,7 @@ func selectedEvent(tree *Tree, wait *Wait) *Effect {
 }
 
 func (tree *Tree) waitResult(wait *Wait) *WaitResult {
-	result := &WaitResult{ID: wait.ID, All: wait.All, State: wait.State, EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
+	result := &WaitResult{ID: wait.ID, All: wait.All, State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
 	if wait.Terminal != nil {
 		result.Event = new(*wait.Terminal)
 	}

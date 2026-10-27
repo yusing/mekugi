@@ -85,7 +85,7 @@ func (wait *Wait) View(tree *Tree) map[string]any {
 	if wait == nil {
 		return nil
 	}
-	result := map[string]any{"id": wait.ID, "caller": wait.Caller, "generation": wait.Generation, "turn": wait.Turn, "call": wait.ID, "item": wait.Item, "targets": wait.Targets, "requested_ms": wait.RequestedMS, "effective_ms": wait.EffectiveMS, "deadline": wait.Deadline, "state": wait.State, "stop": wait.Stop, "resume_handle": wait.ResumeHandle}
+	result := map[string]any{"id": wait.ID, "caller": wait.Caller, "generation": wait.Generation, "turn": wait.Turn, "call": wait.ID, "item": wait.Item, "targets": wait.Targets, "requested_ms": wait.RequestedMS, "effective_ms": wait.EffectiveMS, "deadline": wait.Deadline, "state": wait.PublicState(), "stop": wait.Stop, "resume_handle": wait.ResumeHandle}
 	if event := tree.waitResult(wait).Event; event != nil {
 		result["event"] = event.ID
 	}
@@ -120,6 +120,14 @@ type Effect struct {
 	PreviousStatus, Outcome                                                             Status
 	Child                                                                               *Child
 	Wake                                                                                *WaitResult `json:"-"`
+}
+
+// PublicState describes pending waits without exposing their checkpoint phase.
+func (effect Effect) PublicState() string {
+	if effect.Kind == "wake" && effect.State == "registered" {
+		return "waiting"
+	}
+	return effect.State
 }
 
 // SpawnRequest freezes one host call's preparation and assignment together.
