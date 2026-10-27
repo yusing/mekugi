@@ -73,6 +73,7 @@ type nativeView struct {
 	state           []byte
 	reviewState     []byte
 	ownerBytes      [4]int
+	feeds           [2]nativeFeedState
 	reviewBytes     int
 	reviewLimited   bool
 	detailsKey      []byte
@@ -290,6 +291,21 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		}
 	}
 	sizes := v.ownerBytes
+	var feeds *nativeFeedEncoding
+	if v.authority == localNativeView {
+		feeds = new(nativeFeedEncoding)
+		for i, owner := range []*activity.Publication{frame.Main, frame.Agents} {
+			if retained&(1<<i) != 0 {
+				feeds[i].state = v.feeds[i]
+				continue
+			}
+			var err error
+			feeds[i], err = encodeNativeFeed(owner, v.feeds[i], event == "patch")
+			if err != nil {
+				return err
+			}
+		}
+	}
 	var data []byte
 	var err error
 	reviewBytes, reviewLimited := v.reviewBytes, false
@@ -298,13 +314,13 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		// it again on each frame while a consequence or hydration is pending.
 		probe := sizes
 		probe[2] = reviewBytes
-		_, err = encodeNativePrefix(id, startup, frame, retained|nativeReview, &probe)
+		_, err = encodeNativePrefix(id, startup, frame, retained|nativeReview, &probe, feeds)
 		if err == nil {
 			retained &^= nativeReview // Replace the client's failure projection.
 		}
 	}
 	if err == nil {
-		data, err = encodeNativePrefix(id, startup, frame, retained, &sizes)
+		data, err = encodeNativePrefix(id, startup, frame, retained, &sizes, feeds)
 		reviewBytes = sizes[2]
 	}
 	if errors.Is(err, errNativePublicationLimit) && frame.Review != nil && len(frame.Review.Files)+len(frame.Review.Unfiltered) > 0 {
@@ -314,7 +330,7 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		review.Publication = changes.Publication{}
 		review.Failure = "Saved Diff exceeds the native publication capacity; use mchanges with a narrower range."
 		frame.Review = &review
-		data, err = encodeNativePrefix(id, startup, frame, retained&^nativeReview, &sizes)
+		data, err = encodeNativePrefix(id, startup, frame, retained&^nativeReview, &sizes, feeds)
 		reviewLimited = true
 	}
 	if err != nil {
@@ -324,6 +340,9 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		return err
 	}
 	if v.started && bytes.Equal(v.frame, data) {
+		if feeds != nil {
+			v.feeds = [2]nativeFeedState{feeds[0].state, feeds[1].state}
+		}
 		v.main, v.agents, v.family, v.state = main, agents, family, state
 		v.reviewBytes, v.reviewLimited = reviewBytes, reviewLimited
 		return nil
@@ -332,6 +351,9 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 	if v.queue.push(notification) {
 		v.frame = data
 		v.reviewState, v.ownerBytes = reviewState, sizes
+		if feeds != nil {
+			v.feeds = [2]nativeFeedState{feeds[0].state, feeds[1].state}
+		}
 		v.reviewBytes, v.reviewLimited = reviewBytes, reviewLimited
 		v.main, v.agents, v.family, v.state = main, agents, family, state
 		v.started, v.version = true, frame.View.Version

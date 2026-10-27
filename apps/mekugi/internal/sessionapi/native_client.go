@@ -2,6 +2,7 @@ package sessionapi
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -150,12 +151,58 @@ func decodeNativeEvent(kind string, data []byte, previous NativeEvent) (NativeEv
 		return NativeEvent{}, errors.New("native stream did not provide a compatible snapshot")
 	}
 	var wire nativeWireEvent
-	if err := json.Unmarshal(data, &wire, nativeEncoding); err != nil {
+	// Inspect the transport mask before selecting the decoder. Complete feeds
+	// retain their typed path; only delta publications need raw membership.
+	var flags struct {
+		EntryDeltas nativeOwners `json:"entryDeltas"`
+	}
+	if err := json.Unmarshal(data, &flags, nativeEncoding); err != nil {
 		return NativeEvent{}, fmt.Errorf("decode native publication: %w", err)
+	}
+	if flags.EntryDeltas == 0 {
+		if err := json.Unmarshal(data, &wire, nativeEncoding); err != nil {
+			return NativeEvent{}, fmt.Errorf("decode native publication: %w", err)
+		}
+	} else {
+		var raw struct {
+			Attachment string       `json:"attachment"`
+			Startup    string       `json:"startup"`
+			Retained   nativeOwners `json:"retained"`
+			Frame      struct {
+				*NativeFrame
+				Main   jsontext.Value `json:"main"`
+				Agents jsontext.Value `json:"agents"`
+			} `json:"frame"`
+		}
+		raw.Frame.NativeFrame = &wire.Frame
+		if err := json.Unmarshal(data, &raw, nativeEncoding); err != nil {
+			return NativeEvent{}, fmt.Errorf("decode native publication: %w", err)
+		}
+		wire.Attachment, wire.Startup, wire.Retained, wire.EntryDeltas = raw.Attachment, raw.Startup, raw.Retained, flags.EntryDeltas
+		if kind == "snapshot" || first || flags.EntryDeltas & ^(nativeMain|nativeAgents) != 0 || flags.EntryDeltas&wire.Retained != 0 || wire.Frame.Switch != nil || wire.Frame.View.Version.Attachment != previous.Frame.View.Version.Attachment || wire.Frame.View.Main.ID != previous.Frame.View.Main.ID || wire.Startup != previous.Startup {
+			return NativeEvent{}, errors.New("native entry delta has no compatible owner snapshot")
+		}
+		for i, value := range []jsontext.Value{raw.Frame.Main, raw.Frame.Agents} {
+			owner, prior := &wire.Frame.Main, previous.Frame.Main
+			if i == 1 {
+				owner, prior = &wire.Frame.Agents, previous.Frame.Agents
+			}
+			if flags.EntryDeltas&(1<<i) != 0 {
+				var err error
+				*owner, err = decodeNativeFeed(value, prior)
+				if err != nil {
+					return NativeEvent{}, fmt.Errorf("decode native entry delta: %w", err)
+				}
+			} else if value != nil {
+				if err := json.Unmarshal(value, owner, nativeEncoding); err != nil {
+					return NativeEvent{}, fmt.Errorf("decode native publication: %w", err)
+				}
+			}
+		}
 	}
 	event := wire.NativeEvent
 	if wire.Retained != 0 {
-		if kind == "snapshot" || first || wire.Retained & ^(nativeMain|nativeAgents|nativeReview|nativeFamily) != 0 || event.Frame.View.Version.Attachment != previous.Frame.View.Version.Attachment || event.Frame.Switch != nil {
+		if kind == "snapshot" || first || wire.Retained & ^(nativeMain|nativeAgents|nativeReview|nativeFamily) != 0 || event.Frame.View.Version.Attachment != previous.Frame.View.Version.Attachment || event.Frame.View.Main.ID != previous.Frame.View.Main.ID || event.Startup != previous.Startup || event.Frame.Switch != nil {
 			return NativeEvent{}, errors.New("native delta has no compatible owner snapshot")
 		}
 		if wire.Retained&nativeMain != 0 {

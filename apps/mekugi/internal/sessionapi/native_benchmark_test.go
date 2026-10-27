@@ -127,7 +127,7 @@ func BenchmarkNormalizeNativeOutput(b *testing.B) {
 					View:   activityfeed.OutputView{Lines: []string{strings.Repeat("x", 1<<20)}},
 				}}
 			}
-			data, err := encodeNativePrefix("benchmark", "", frame, 0, new([4]int))
+			data, err := encodeNativePrefix("benchmark", "", frame, 0, new([4]int), nil)
 			if err != nil {
 				b.Fatal(err)
 			}

@@ -12,10 +12,11 @@ import (
 // Inspect only delivery identity. Rendering payloads remain raw, including
 // fields unknown to this queue and exact integers inside retained output.
 type nativeQueueEvent struct {
-	Retained   nativeOwners `json:"retained"`
-	Attachment string       `json:"attachment"`
-	Startup    string       `json:"startup"`
-	Frame      *struct {
+	Retained    nativeOwners `json:"retained"`
+	EntryDeltas nativeOwners `json:"entryDeltas"`
+	Attachment  string       `json:"attachment"`
+	Startup     string       `json:"startup"`
+	Frame       *struct {
 		View struct {
 			Version sessionpresentation.Version
 			Main    struct{ ID string }
@@ -43,7 +44,10 @@ func coalesceNative(previous, next publication) (publication, bool) {
 		return publication{}, false
 	}
 	old, current := before.Frame, after.Frame
-	if after.Retained != 0 && (next.Kind == "snapshot" || old.View.Version.Attachment != current.View.Version.Attachment || old.View.Main.ID != current.View.Main.ID || current.Switch != nil) {
+	if before.Retained & ^(nativeMain|nativeAgents|nativeReview|nativeFamily) != 0 || after.Retained & ^(nativeMain|nativeAgents|nativeReview|nativeFamily) != 0 || before.EntryDeltas & ^(nativeMain|nativeAgents) != 0 || after.EntryDeltas & ^(nativeMain|nativeAgents) != 0 || before.EntryDeltas&before.Retained != 0 || after.EntryDeltas&after.Retained != 0 {
+		return publication{}, false
+	}
+	if after.Retained|after.EntryDeltas != 0 && (next.Kind == "snapshot" || old.View.Version.Attachment != current.View.Version.Attachment || old.View.Main.ID != current.View.Main.ID || before.Startup != after.Startup || current.Switch != nil) {
 		return publication{}, false
 	}
 	hasOutput := len(old.MainOutput) != 0 || len(old.AgentOutput) != 0
@@ -58,14 +62,15 @@ func coalesceNative(previous, next publication) (publication, bool) {
 	if previous.Kind == "snapshot" {
 		merged.Kind = "snapshot"
 	}
-	if after.Retained & ^before.Retained == 0 && old.Switch == nil && !hasOutput && (!old.ReacquireOutput || current.ReacquireOutput) {
+	if after.EntryDeltas == 0 && before.EntryDeltas&after.Retained == 0 && after.Retained & ^before.Retained == 0 && old.Switch == nil && !hasOutput && (!old.ReacquireOutput || current.ReacquireOutput) {
 		return merged, true
 	}
 	var envelope, frame map[string]jsontext.Value
 	if json.Unmarshal(next.Data, &envelope) != nil || json.Unmarshal(envelope["frame"], &frame) != nil {
 		return publication{}, false
 	}
-	if after.Retained & ^before.Retained != 0 {
+	entryDeltas := after.EntryDeltas
+	if after.Retained & ^before.Retained != 0 || after.EntryDeltas != 0 {
 		var oldEnvelope, oldFrame map[string]jsontext.Value
 		if json.Unmarshal(previous.Data, &oldEnvelope) != nil || json.Unmarshal(oldEnvelope["frame"], &oldFrame) != nil {
 			return publication{}, false
@@ -74,9 +79,24 @@ func coalesceNative(previous, next publication) (publication, bool) {
 			bit := nativeOwners(1 << i)
 			if after.Retained&bit != 0 && before.Retained&bit == 0 {
 				frame[field] = oldFrame[field]
+				entryDeltas |= before.EntryDeltas & bit
+			} else if after.EntryDeltas&bit != 0 && before.Retained&bit == 0 {
+				value, delta, ok := coalesceNativeFeed(oldFrame[field], frame[field])
+				if !ok {
+					return publication{}, false
+				}
+				frame[field] = value
+				if !delta {
+					entryDeltas &^= bit
+				}
 			}
 		}
 		envelope["retained"], _ = json.Marshal(after.Retained&before.Retained, nativeEncoding)
+	}
+	if entryDeltas == 0 {
+		delete(envelope, "entryDeltas")
+	} else {
+		envelope["entryDeltas"], _ = json.Marshal(entryDeltas, nativeEncoding)
 	}
 	if old.Switch != nil {
 		frame["switch"], _ = json.Marshal(old.Switch, nativeEncoding)

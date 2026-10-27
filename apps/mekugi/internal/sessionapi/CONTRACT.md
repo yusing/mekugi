@@ -5,10 +5,10 @@
 Control uses JSON-RPC 2.0 text messages over WebSocket. Local native clients
 connect to `/api/native/control` over the private Unix socket; remote human
 clients use `/api/control` through the connector. Both select WebSocket
-subprotocol `mekugi.control.v5`. The socket retains kernel-confirmed same-user
+subprotocol `mekugi.control.v6`. The socket retains kernel-confirmed same-user
 peer admission, private filesystem permissions and listener/startup locks.
 
-The first request is `initialize` with `{"version":"5"}`. Remote clients also
+The first request is `initialize` with `{"version":"6"}`. Remote clients also
 supply `token`, consumed by the connector and never forwarded to the server.
 Initialization succeeds before any session data or operation is available.
 Observation requests may follow initialization on the ordered connection before
@@ -19,7 +19,7 @@ that sample to their local monotonic clock, independently of local wall time.
 The endpoint establishes authority; caller fields cannot select it. Remote
 connections cannot invoke native startup or native-only semantic operations.
 
-`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 5` on
+`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 6` on
 request and response. Missing/incompatible versions receive 409. WebSocket
 upgrades on the private socket also carry this header. Browser clients use the
 subprotocol and initialization version; the connector sets the private header.
@@ -287,6 +287,16 @@ All other frame fields remain complete replacements. A clear owner is an explici
 `null` with its bit unset. Retained owners never cross an attachment reset or thread switch, and
 reconnection starts with a complete snapshot. Queues fold retained owners into
 newer pending updates without dropping the initial snapshot or switch boundary.
+Changed Main and Agents owners may carry an `entryDeltas` mask (1 for Main,
+2 for Agents). Their `Entries` arrays retain complete membership and order;
+each element is either a complete replacement entry or an integer referencing
+the same sequence in the preceding reconstructed owner. Other publication fields
+remain complete replacements. References stay within that owner and attachment;
+missing references, duplicate membership and unknown flags fail decoding.
+Snapshots and switches use complete entries. Queues compose raw replacements and
+references against the delivered baseline, preserving exact integers and initial
+snapshots. Capacity admission still measures the reconstructed complete frame,
+so a small delta cannot admit state that cannot be sent on reconnect.
 Remote human frames remain complete projections. The current protocol version is required;
 older clients must reconnect with a matching version rather than applying deltas.
 

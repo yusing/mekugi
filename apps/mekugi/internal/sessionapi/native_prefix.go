@@ -22,7 +22,8 @@ const (
 
 type nativeWireEvent struct {
 	NativeEvent
-	Retained nativeOwners `json:"retained,omitzero"`
+	Retained    nativeOwners `json:"retained,omitzero"`
+	EntryDeltas nativeOwners `json:"entryDeltas,omitzero"`
 }
 
 // Owner values are appended from their individual encodings after prefix
@@ -46,11 +47,22 @@ var errNativePublicationLimit = errors.New("native publication exceeds the 64 Mi
 // prefix travels here; neither a shorter subsequent prefix nor queue replacement
 // acknowledges a withheld effect. A receipt for the visible prefix admits the
 // suffix on the next publication, even when changing state shrinks the window.
-func encodeNativePrefix(attachment, startup string, frame NativeFrame, retained nativeOwners, sizes *[4]int) ([]byte, error) {
+func encodeNativePrefix(attachment, startup string, frame NativeFrame, retained nativeOwners, sizes *[4]int, feeds *nativeFeedEncoding) ([]byte, error) {
 	var owners [4][]byte
+	var entryDeltas nativeOwners
 	ownerBytes, retainedBytes := 0, 0
 	for i, owner := range []any{frame.Main, frame.Agents, frame.Review, frame.Family} {
 		if retained&(1<<i) == 0 {
+			if i < 2 && feeds != nil {
+				feed := feeds[i]
+				owners[i], sizes[i] = feed.data, feed.fullBytes
+				if feed.delta {
+					entryDeltas |= 1 << i
+				}
+				retainedBytes += feed.fullBytes - len(feed.data)
+				ownerBytes += sizes[i]
+				continue
+			}
 			data, err := json.Marshal(owner, nativeEncoding)
 			if err != nil {
 				return nil, err
@@ -84,16 +96,23 @@ func encodeNativePrefix(attachment, startup string, frame NativeFrame, retained 
 	encodeFrame := func(current NativeFrame) ([]byte, error) {
 		// Frame stays last so appendOwners can splice its validated encodings.
 		encoded := struct {
-			Attachment string              `json:"attachment"`
-			Startup    string              `json:"startup,omitzero"`
-			Retained   nativeOwners        `json:"retained,omitzero"`
-			Frame      nativeFrameMetadata `json:"frame"`
-		}{attachment, startup, retained, nativeFrameMetadata{NativeFrame: &current}}
+			Attachment  string              `json:"attachment"`
+			Startup     string              `json:"startup,omitzero"`
+			Retained    nativeOwners        `json:"retained,omitzero"`
+			EntryDeltas nativeOwners        `json:"entryDeltas,omitzero"`
+			Frame       nativeFrameMetadata `json:"frame"`
+		}{attachment, startup, retained, entryDeltas, nativeFrameMetadata{NativeFrame: &current}}
 		return json.Marshal(&encoded, nativeEncoding)
 	}
 	mainOutput, agentOutput := frame.MainOutput, frame.AgentOutput
 	frame.MainOutput, frame.AgentOutput = nil, nil
 	limit := nativePublicationBytes - ownerBytes
+	deltaOverhead := 0
+	if entryDeltas != 0 {
+		// Delta flags consume wire savings, never semantic-prefix capacity.
+		deltaOverhead = len(`,"entryDeltas":1`)
+		limit += deltaOverhead
+	}
 	if len(mainOutput)+len(agentOutput) > 0 && !frame.ReacquireOutput {
 		limit -= len(`,"reacquireOutput":true`)
 	}
@@ -181,8 +200,9 @@ func encodeNativePrefix(attachment, startup string, frame NativeFrame, retained 
 		if err != nil {
 			return nil, err
 		}
-		data = normalizeNativeOutputLimit(publication{Kind: "patch", Data: appendOwners(data)}, nativePublicationBytes-retainedBytes).Data
-		if len(data) > nativePublicationBytes-retainedBytes {
+		outputLimit := nativePublicationBytes - retainedBytes + deltaOverhead
+		data = normalizeNativeOutputLimit(publication{Kind: "patch", Data: appendOwners(data)}, outputLimit).Data
+		if len(data) > outputLimit {
 			return nil, fmt.Errorf("indivisible output with complete state: %w", errNativePublicationLimit)
 		}
 		return data, nil
