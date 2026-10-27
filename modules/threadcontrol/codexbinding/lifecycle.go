@@ -89,6 +89,12 @@ func (d *Driver) Interrupt(thread, wait string) {
 	d.enqueue(hostObservation{thread: thread, method: "human/interrupt", wait: wait})
 }
 
+// CheckpointWait keeps auxiliary compaction interruption on the serialized host
+// lifecycle, without treating it as task interruption.
+func (d *Driver) CheckpointWait(thread, turn string) {
+	d.enqueue(hostObservation{thread: thread, method: "compaction/stopped", value: binding.Notification{TurnID: turn}})
+}
+
 // HumanInputAcknowledged queues the sole request owner's correlated outcome.
 func (d *Driver) HumanInputAcknowledged(thread, id, turn string, err error) {
 	receipt := control.Receipt{Turn: turn}
@@ -143,6 +149,8 @@ func (d *Driver) reduceHost() {
 		thread, p := event.thread, event.value
 		var err error
 		switch event.method {
+		case "compaction/stopped":
+			err = d.control.CheckpointWait(d.lifecycle, thread, p.TurnID)
 		case "thread/restore":
 			err = d.control.Restore(d.lifecycle, event.session)
 			if err == nil {
@@ -189,7 +197,7 @@ func (d *Driver) reduceHost() {
 			}
 			err = d.control.HostCompleted(d.lifecycle, thread, p.Turn.ID, control.Status(p.Turn.Status), failure)
 		}
-		if err == nil && (event.method == "turn/completed" || event.method == "human/interrupt" || event.method == "human/input" || event.method == "") {
+		if err == nil && (event.method == "turn/completed" || event.method == "compaction/stopped" || event.method == "human/interrupt" || event.method == "human/input" || event.method == "") {
 			err = d.DispatchPending(d.lifecycle, thread)
 			err = errors.Join(err, d.Wake(d.lifecycle, thread, time.Now()))
 			if member, ok := d.control.Member(thread); ok && member.Parent != "" {

@@ -30,7 +30,13 @@ func (h *Live) Starting() bool {
 
 // AuxiliaryTurn identifies host work that does not start or finish an assignment.
 func (h *Live) AuxiliaryTurn(turn string) bool {
-	return h.Shell.OwnsTurn(turn) || h.Compaction.OwnsTurn(turn)
+	return h.Shell.OwnsTurn(turn) || h.Compaction.OwnsTurn(turn) || h.CompactionStopsWait(turn)
+}
+
+// CompactionStopsWait distinguishes the prerequisite host interruption from
+// human cancellation of the already committed logical wait.
+func (h *Live) CompactionStopsWait(turn string) bool {
+	return turn != "" && h.LocalStop == turn && h.Compaction.phase == compactInterrupting && h.Compaction.turn == turn
 }
 
 func (h *Live) Started(turn string) {
@@ -146,6 +152,7 @@ func (h *Live) Interrupt() Interrupt {
 	h.Interruption.Target = r.Turn
 	r.Label = "turn/interrupt"
 	if h.Compaction.PreservesWaitingInput() {
+		r.Wait, r.Stop = "", ""
 		r.Label = "compact/interrupt"
 	} else if h.SendSteersAfterInterrupt {
 		h.SteerInterruptAckPending = true

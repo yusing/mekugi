@@ -22,6 +22,15 @@ import (
 )
 
 func logicalWaitUI(t *testing.T, timeout *int64) (*appServerUI, *threadExecution, *time.Time) {
+	u, threads, at := logicalWaitRunningUI(t, timeout)
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first", "status": "completed"}})
+	if err := threads.shared.HostCompleted(t.Context(), "main", "first", control.Completed, ""); err != nil {
+		t.Fatal(err)
+	}
+	return u, threads, at
+}
+
+func logicalWaitRunningUI(t *testing.T, timeout *int64) (*appServerUI, *threadExecution, *time.Time) {
 	t.Helper()
 	check := func(err error) {
 		t.Helper()
@@ -78,8 +87,6 @@ func logicalWaitUI(t *testing.T, timeout *int64) (*appServerUI, *threadExecution
 	*at = at.Add(2 * time.Second)
 	syncLogicalWork(&u.attached, &u.Live, threads, *at)
 	u.notifications = &nativeNotifications{relay: func(event, _ string) { t.Errorf("local stop emitted notification %s", event) }}
-	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first", "status": "completed"}})
-	check(service.HostCompleted(t.Context(), "main", "first", control.Completed, ""))
 	return u, threads, at
 }
 

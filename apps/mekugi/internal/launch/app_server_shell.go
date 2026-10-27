@@ -33,6 +33,10 @@ func observeLogicalHost(driver *threadbinding.Driver, live *sessioncontrol.Live,
 		if err != nil {
 			return err
 		}
+		if message.Method == "turn/completed" && p.ThreadID == live.Thread && live.CompactionStopsWait(p.Turn.ID) {
+			driver.CheckpointWait(p.ThreadID, p.Turn.ID)
+			return nil
+		}
 		if p.ThreadID == live.Thread && live.AuxiliaryTurn(p.Turn.ID) {
 			return nil
 		}

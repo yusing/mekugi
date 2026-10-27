@@ -13,20 +13,26 @@ import (
 
 func TestAppServerCompactPreservesLogicalWait(t *testing.T) {
 	for _, test := range []struct {
-		userInput  bool
-		retryAfter string
-	}{{}, {userInput: true}, {retryAfter: "failed"}, {retryAfter: "interrupted"}} {
-		t.Run(fmt.Sprintf("userInput=%t/retryAfter=%s", test.userInput, test.retryAfter), func(t *testing.T) {
+		userInput   bool
+		retryAfter  string
+		hostRunning bool
+	}{{}, {userInput: true}, {retryAfter: "failed"}, {retryAfter: "interrupted"}, {hostRunning: true}, {hostRunning: true, userInput: true}} {
+		t.Run(fmt.Sprintf("userInput=%t/retryAfter=%s/hostRunning=%t", test.userInput, test.retryAfter, test.hostRunning), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				u, threads, at := logicalWaitUI(t, nil)
+				setup := logicalWaitUI
+				if test.hostRunning {
+					setup = logicalWaitRunningUI
+				}
+				u, threads, at := setup(t, nil)
+				u.attached.interruptWait = func(thread, wait string) {
+					t.Fatalf("compaction canceled logical wait %s/%s", thread, wait)
+				}
 				if err := threads.driver.Start(t.Context()); err != nil {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { _ = threads.driver.Stop(t.Context()) })
 				wire := u.Host.Input.(*appServerTestInput)
 				wire.Reset()
-				appServerTestKeys(t, u, "/compact\r")
-				request := appServerOneRequest(t, wire, "thread/compact/start", "")
 				notify := func(method, raw string) {
 					t.Helper()
 					message := appserver.Message{Method: method, Params: []byte(raw)}
@@ -39,6 +45,17 @@ func TestAppServerCompactPreservesLogicalWait(t *testing.T) {
 					}
 					synctest.Wait()
 				}
+				appServerTestKeys(t, u, "/compact\r")
+				if test.hostRunning {
+					interrupt := appServerOneRequest(t, wire, "turn/interrupt", "")
+					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
+					notify("turn/completed", `{"threadId":"main","turn":{"id":"first","status":"interrupted"}}`)
+					member, _ := threads.shared.Member("main")
+					if member.Wait.State != "registered" || member.HostRunning || member.Status != control.Waiting {
+						t.Fatalf("prerequisite interruption canceled logical wait: %+v", member)
+					}
+				}
+				request := appServerOneRequest(t, wire, "thread/compact/start", "")
 				if test.retryAfter != "" {
 					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID))
 					notify("turn/started", `{"threadId":"main","turn":{"id":"first-compact"}}`)
@@ -95,7 +112,8 @@ func TestAppServerCompactPreservesLogicalWait(t *testing.T) {
 					}
 					wake, err := threads.shared.PrepareWake(t.Context(), "main", *at)
 					if err != nil || wake == nil {
-						t.Fatalf("child could not wake after compaction: %+v, %v", wake, err)
+						member, _ := threads.shared.Member("main")
+						t.Fatalf("child could not wake after compaction: %+v, %v, member=%+v wait=%+v", wake, err, member, member.Wait)
 					}
 				}
 				if failures := threads.driver.Failures(); len(failures) != 0 {

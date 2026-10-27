@@ -38,6 +38,7 @@ type nativeThreadsProvider struct {
 	childDirectory, parent, child, waitTurn string
 	fullHistory                             bool
 	shellWait                               bool
+	compactWait                             bool
 	preload                                 bool
 	calls                                   map[string]int
 	users                                   int
@@ -160,7 +161,10 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	if p.parent == "" {
 		p.parent = metadata.ThreadID
 	}
-	p.calls[metadata.ThreadID]++
+	compacting := bytes.Contains(body, []byte("At the end of your handover emit exactly one"))
+	if !compacting {
+		p.calls[metadata.ThreadID]++
+	}
 	step, parent := p.calls[metadata.ThreadID], metadata.ThreadID == p.parent
 	if !parent {
 		p.child = metadata.ThreadID
@@ -187,6 +191,8 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 	}
 	switch {
+	case compacting:
+		answer = "Waiting for worker to finish its assignment."
 	case parent && step == 1:
 		p.users = users
 		program = `text(Object.keys(tools).filter(name => name.includes("threadcontrol"))); text(await tools.mcp__threadcontrol__list_agents({})); text(await tools.mcp__threadcontrol__inspect({target:"/root"}));`
@@ -229,7 +235,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			if metadata.TurnID == p.waitTurn || users != p.users+1 || strings.Count(string(body), "<user_shell_command>") != 1 || !strings.Contains(string(body), "SHELL_WAIT_OUTPUT") {
 				failure = fmt.Sprintf("shell continuation: same_turn=%t user_items=%d want=%d shell_records=%d has_output=%t", metadata.TurnID == p.waitTurn, users, p.users+1, strings.Count(string(body), "<user_shell_command>"), strings.Contains(string(body), "SHELL_WAIT_OUTPUT"))
 			}
-		} else if metadata.TurnID == p.waitTurn || users != p.users || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "/root/worker") || !strings.Contains(string(body), "wait_agent") {
+		} else if metadata.TurnID == p.waitTurn || !p.compactWait && users != p.users || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "/root/worker") || !strings.Contains(string(body), "wait_agent") {
 			failure = "local stop inferred again or wake omitted retained attributed result/added human input"
 		}
 		answer = "MANAGED_PARENT_RESUMED"
@@ -370,6 +376,10 @@ func TestNativeThreadsShellWaitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{shellWait: true})
 }
 
+func TestNativeThreadsCompactWaitServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{compactWait: true})
+}
+
 func TestNativeThreadsNonGitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{nonGit: true})
 }
@@ -379,7 +389,7 @@ func TestNativeThreadsPreloadServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
-	fullHistory, shellWait, nonGit, preload bool
+	fullHistory, shellWait, compactWait, nonGit, preload bool
 }
 
 func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
@@ -467,7 +477,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 		}
 	}
-	fixture := &nativeThreadsProvider{preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
+	fixture := &nativeThreadsProvider{preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
@@ -543,7 +553,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			t.Fatal("root native readiness:", err)
 		}
 	}
-	waitingObserved := false
+	waitingObserved, compactObserved, childReleased := false, false, false
 	root := event.Frame.View.Main.ID
 	_, err = connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
 		Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: root, Operation: sessionpresentation.SubmitComposer},
@@ -563,17 +573,34 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 			if !waitingObserved {
 				waitingObserved = true
-				if shellWait {
+				if shellWait || scenario.compactWait {
+					command := "!printf SHELL_WAIT_OUTPUT"
+					if scenario.compactWait {
+						command = "/compact"
+					}
 					_, err = connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
 						Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: root, Operation: sessionpresentation.SubmitComposer},
-						Draft:  composer.Draft{Text: "!printf SHELL_WAIT_OUTPUT"},
+						Draft:  composer.Draft{Text: command},
 					}})
 					if err != nil {
-						t.Fatal("shell during logical waiting:", err)
+						t.Fatal("auxiliary operation during logical waiting:", err)
 					}
 				} else {
 					close(fixture.waiting)
 				}
+			}
+		}
+		if scenario.compactWait && waitingObserved && !childReleased {
+			fixture.mu.Lock()
+			waitTurn := fixture.waitTurn
+			fixture.mu.Unlock()
+			compactObserved = compactObserved || event.Frame.View.Interrupt.Turn != "" && event.Frame.View.Interrupt.Turn != waitTurn
+			if event.Frame.View.Status.Session.CompletionKnown {
+				t.Fatal("compaction ended the logical wait")
+			}
+			if compactObserved && event.Frame.View.Interrupt.Turn == "" && event.Frame.View.Status.Composer.Text == "Waiting for agents" {
+				close(fixture.waiting)
+				childReleased = true
 			}
 		}
 		body, err := json.Marshal(event.Frame, jsonv1.FormatDurationAsNano(true))
@@ -675,7 +702,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		}
 	}
 
-	if scenario.preload {
+	if scenario.preload || scenario.compactWait {
 		return // Acquisition and prompt projection acceptance finish before cold recovery.
 	}
 

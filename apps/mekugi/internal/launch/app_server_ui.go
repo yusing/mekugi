@@ -1436,7 +1436,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 // observedEvent retains application lifecycle and control handling for decoded
 // host facts. Offline transcript observations bypass it through their reducer.
 func observedEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retainedSession history.Session, windows *executionobservation.Windows, activityService *activitymodel.Service, streams *terminalsession.Streams, tracker *commandsegments.Observer, trace *nativetrace.Reader, usage *accounting.Service, exitUsage *binding.TokenUsage, method string, p binding.Notification) error {
-	if method == "turn/completed" && p.ThreadID == control.Thread && p.Turn.Status != "completed" && !control.Compaction.OwnsTurn(p.Turn.ID) {
+	if method == "turn/completed" && p.ThreadID == control.Thread && p.Turn.Status != "completed" && !control.Compaction.OwnsTurn(p.Turn.ID) && !control.CompactionStopsWait(p.Turn.ID) {
 		control.Waiting, control.LocalStop = "", ""
 		attached.session.Lifecycle(p.ThreadID).SetWaiting(false, presentationTime(clock))
 	}
@@ -1503,6 +1503,7 @@ func observedEvent(attached *attachedPresentation, terminal *terminalsession.Att
 		if p.ThreadID == control.Thread && p.Turn.ID == control.Turn {
 			shellTurn := control.Shell.OwnsTurn(p.Turn.ID)
 			compactTurn := control.Compaction.OwnsTurn(p.Turn.ID)
+			compactWait := control.CompactionStopsWait(p.Turn.ID)
 			if r := control.Rewind; r != nil && r.Turn == p.Turn.ID && p.Turn.Status != "completed" {
 				r.Completed, r.Failed = true, true
 			}
@@ -1512,7 +1513,7 @@ func observedEvent(attached *attachedPresentation, terminal *terminalsession.Att
 			if p.Turn.Error != nil {
 				failure = &p.Turn.Error.Message
 			}
-			localStop := control.LocalStop != "" && (compactTurn || p.Turn.Status == "completed" && (control.LocalStop == p.Turn.ID || shellTurn))
+			localStop := control.LocalStop != "" && (compactTurn || compactWait || p.Turn.Status == "completed" && (control.LocalStop == p.Turn.ID || shellTurn))
 			if localStop {
 				attached.presentation.Status.Set("Waiting for agents", false)
 			} else {

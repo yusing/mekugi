@@ -99,6 +99,19 @@ func (s *Service) InputConsumed(ctx context.Context, caller Identity, items []st
 	})
 }
 
+// CheckpointWait settles a compaction prerequisite without canceling the exact
+// wait whose enclosing execution already committed its local stop.
+func (s *Service) CheckpointWait(ctx context.Context, thread, turn string) error {
+	return s.update(ctx, thread, func(_ *Tree, member *Member) error {
+		stop := member.Stop
+		if !member.HostRunning || member.Turn != turn || stop == nil || stop.Turn != turn || stop.Generation != member.Generation {
+			return unchanged
+		}
+		member.HostRunning = false
+		return nil
+	})
+}
+
 func (s *Service) HostCompleted(ctx context.Context, thread, turn string, status Status, failure string) error {
 	return s.update(ctx, thread, func(tree *Tree, member *Member) error {
 		if member.Turn != turn || !member.HostRunning {
