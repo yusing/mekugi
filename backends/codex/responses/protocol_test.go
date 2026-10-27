@@ -7,6 +7,43 @@ import (
 	"testing"
 )
 
+func TestTranslationExecGuidance(t *testing.T) {
+	for _, tc := range []struct {
+		name, namespace string
+		additional      bool
+		want            bool
+	}{
+		{name: "bare", want: true},
+		{name: "namespaced", namespace: "functions", want: true},
+		{name: "additional", namespace: "functions", additional: true, want: true},
+		{name: "unrelated", namespace: "other"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tools := []any{map[string]any{"type": "custom", "name": "exec", "description": "original"}}
+			if tc.namespace != "" {
+				tools = []any{map[string]any{"type": "namespace", "name": tc.namespace, "tools": tools}}
+			}
+			request := map[string]any{"tools": tools, "input": []any{}}
+			if tc.additional {
+				delete(request, "tools")
+				request["input"] = []any{map[string]any{"type": "additional_tools", "tools": tools}}
+			}
+			translated, err := testTranslate(mustTestJSON(t, request))
+			if err != nil {
+				t.Fatal(err)
+			}
+			tool := translated.body["tools"].([]any)[0].(map[string]any)["function"].(map[string]any)
+			want := "original"
+			if tc.want {
+				want += "\n" + execInstruction
+			}
+			if tool["description"] != want {
+				t.Fatalf("description = %q, want %q", tool["description"], want)
+			}
+		})
+	}
+}
+
 func TestGrokTranslationPreservesToolsHistoryAndImages(t *testing.T) {
 	body := grokTestRequest(t, true)
 	var request map[string]any
