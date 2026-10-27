@@ -136,3 +136,68 @@ func TestIdleReadTimeoutRetainsErrorsAndClosesOnce(t *testing.T) {
 		})
 	}
 }
+
+func TestIdleReadResetExcludesConsumerBackpressure(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		closed := false
+		body := httptransport.IdleRead(t.Context(), responseBody{
+			Reader: readerFunc(func(p []byte) (int, error) {
+				time.Sleep(time.Second / 2)
+				return copy(p, "x"), nil
+			}),
+			close: func() error { closed = true; return nil },
+		}, time.Second)
+		defer body.Close()
+		for range 10 {
+			var buf [1]byte
+			if n, err := body.Read(buf[:]); n != 1 || err != nil || buf[0] != 'x' {
+				t.Fatalf("read = %q, %v", buf[:n], err)
+			}
+			time.Sleep(2 * time.Second)
+		}
+		if closed {
+			t.Fatal("consumer backpressure closed source")
+		}
+	})
+}
+
+func TestIdleReadWaitsForTimeoutCallback(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		closing, finish := make(chan struct{}), make(chan struct{})
+		done := make(chan error, 1)
+		body := httptransport.IdleRead(t.Context(), responseBody{
+			Reader: readerFunc(func([]byte) (int, error) { <-closing; return 0, io.EOF }),
+			close:  func() error { close(closing); <-finish; return nil },
+		}, time.Second)
+		go func() { _, err := body.Read(make([]byte, 1)); done <- err }()
+		<-closing
+		synctest.Wait()
+		select {
+		case <-done:
+			t.Fatal("read returned before timeout callback finished")
+		default:
+		}
+		close(finish)
+		if err := <-done; !errors.Is(err, httptransport.ErrStreamIdleTimeout) || !errors.Is(err, io.EOF) {
+			t.Fatalf("read error = %v", err)
+		}
+	})
+}
+
+func BenchmarkIdleRead(b *testing.B) {
+	body := httptransport.IdleRead(b.Context(), responseBody{
+		Reader: readerFunc(func(p []byte) (int, error) { return len(p), nil }),
+		close:  func() error { return nil },
+	}, time.Minute)
+	defer body.Close()
+	var buf [16]byte
+	if _, err := body.Read(buf[:]); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := body.Read(buf[:]); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

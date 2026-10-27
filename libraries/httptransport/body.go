@@ -38,6 +38,8 @@ type streamIdleReadCloser struct {
 	ctx       context.Context
 	body      io.ReadCloser
 	timeout   time.Duration
+	timer     *time.Timer
+	expired   chan struct{}
 	timedOut  atomic.Bool
 	closeOnce sync.Once
 	closeErr  error
@@ -51,15 +53,19 @@ func (r *streamIdleReadCloser) Read(buffer []byte) (int, error) {
 	if r.timedOut.Load() {
 		return 0, ErrStreamIdleTimeout
 	}
-	expired := make(chan struct{})
-	timer := time.AfterFunc(r.timeout, func() {
-		r.timedOut.Store(true)
-		_ = r.closeBody()
-		close(expired)
-	})
+	if r.timer == nil {
+		r.expired = make(chan struct{})
+		r.timer = time.AfterFunc(r.timeout, func() {
+			r.timedOut.Store(true)
+			_ = r.closeBody()
+			close(r.expired)
+		})
+	} else {
+		r.timer.Reset(r.timeout)
+	}
 	read, err := r.body.Read(buffer)
-	if !timer.Stop() {
-		<-expired
+	if !r.timer.Stop() {
+		<-r.expired
 	}
 	if r.timedOut.Load() {
 		if contextErr := r.ctx.Err(); contextErr != nil {
