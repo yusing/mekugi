@@ -20,10 +20,10 @@ type forkRecord struct {
 	Other    forkObject `json:",embed"`
 }
 
-// Source: codex-rs/core/src/agent/control/spawn.rs:83:166,1098:1326@0df4aa677
-// keep_forked_rollout_item and V2 sanitation. Generated developer content is
-// selected by native content provenance rather than stock text heuristics.
-func sanitizeFork(prefix []byte, preserve bool) ([]byte, error) {
+// Source: codex-rs/core/src/agent/control/spawn.rs:1098:1326@0df4aa677
+// V2 sanitation. Conversation items are retained without stock fork filtering;
+// only generated identity and non-transferable authority are sanitized.
+func sanitizeFork(prefix []byte) ([]byte, error) {
 	var records []forkRecord
 	for line := range bytes.SplitSeq(bytes.TrimSpace(prefix), []byte{'\n'}) {
 		var record forkRecord
@@ -39,14 +39,13 @@ func sanitizeFork(prefix []byte, preserve bool) ([]byte, error) {
 			break
 		}
 	}
-	preserve = preserve && baselines
 	var output bytes.Buffer
 	encoder := jsontext.NewEncoder(&output)
 	for _, record := range records {
 		payload := record.Payload
 		switch record.Type {
 		case "response_item":
-			keep, metadata, err := sanitizeForkItem(payload, record.Metadata, preserve, baselines)
+			keep, metadata, err := sanitizeForkItem(payload, record.Metadata, baselines)
 			if err != nil {
 				return nil, err
 			}
@@ -93,7 +92,7 @@ func sanitizeFork(prefix []byte, preserve bool) ([]byte, error) {
 				}
 				var kept, metas []forkObject
 				for i, item := range replacement.Items {
-					keep, meta, err := sanitizeForkItem(item, replacement.Metadata[i], preserve, baselines)
+					keep, meta, err := sanitizeForkItem(item, replacement.Metadata[i], baselines)
 					if err != nil {
 						return nil, err
 					}
@@ -138,29 +137,10 @@ func clearForkGrants(authority forkObject) {
 	authority["incomplete"] = jsontext.Value(`true`)
 }
 
-func sanitizeForkItem(item, metadata forkObject, preserve, baselines bool) (bool, forkObject, error) {
+func sanitizeForkItem(item, metadata forkObject, baselines bool) (bool, forkObject, error) {
 	kind, role := forkString(item, "type"), forkString(item, "role")
-	if !preserve {
-		switch kind {
-		case "message":
-			if role == "assistant" && !slices.Contains([]string{"partial_answer", "final_answer"}, forkString(item, "phase")) {
-				return false, nil, nil
-			}
-			if !slices.Contains([]string{"system", "developer", "user", "assistant"}, role) {
-				return false, nil, nil
-			}
-		case "additional_tools":
-			if !baselines {
-				return false, nil, nil
-			}
-		case "configuration_update":
-		case "function_call_output":
-			if forkString(item, "call_id") != "" {
-				return false, nil, nil
-			}
-		default:
-			return false, nil, nil
-		}
+	if kind == "additional_tools" && !baselines {
+		return false, nil, nil
 	}
 	if role == "developer" {
 		var developer struct {
@@ -185,7 +165,7 @@ func sanitizeForkItem(item, metadata forkObject, preserve, baselines bool) (bool
 				if developer.Native.Kinds[i] != nil {
 					label = *developer.Native.Kinds[i]
 				}
-				drop := slices.Contains([]string{"multi_agent.role_instructions", "multi_agent.usage_hint", "multi_agent.mode_instructions", "guardian.approved_action", "current_time.reminder", "current_time.unavailable"}, label)
+				drop := slices.Contains([]string{"multi_agent.role_instructions", "multi_agent.usage_hint", "multi_agent.mode_instructions", "guardian.approved_action"}, label)
 				drop = drop || !baselines && slices.Contains([]string{"model.base_instructions", "tools.incremental_update", "managed_config.developer_instructions", "model.instructions", "persistent_mode.instructions"}, label)
 				if !drop {
 					kept, labels = append(kept, part), append(labels, developer.Native.Kinds[i])
@@ -202,9 +182,7 @@ func sanitizeForkItem(item, metadata forkObject, preserve, baselines bool) (bool
 	if metadata == nil {
 		metadata = make(forkObject)
 	}
-	if preserve || kind == "message" && (role == "user" || role == "assistant") {
-		metadata["inherited_user_message"] = jsontext.Value(`true`)
-	}
+	metadata["inherited_user_message"] = jsontext.Value(`true`)
 	sender := metadata["sender_user_messages"]
 	if sender.Kind() != 0 && sender.Kind() != 'n' || kind != "message" || role != "user" {
 		delete(metadata, "user_input_order")

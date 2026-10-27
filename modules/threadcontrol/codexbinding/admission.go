@@ -29,7 +29,6 @@ type effectiveConfig struct {
 				ChildInstructions *string `json:"subagent_developer_instructions"`
 				ChildUsage        *string `json:"subagent_usage_hint_text"`
 				RootUsage         *string `json:"root_agent_usage_hint_text"`
-				PreservePrefix    bool    `json:"preserve_fork_prefix"`
 				Min               *int64  `json:"min_wait_timeout_ms"`
 				Max               *int64  `json:"max_wait_timeout_ms"`
 			} `json:"multi_agent_v2"`

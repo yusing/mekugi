@@ -53,7 +53,7 @@ func (d *Driver) PrepareSpawn(ctx context.Context, caller binding.MCPIdentity, o
 		if readErr != nil {
 			return prepared, readErr
 		}
-		prefix, err = sanitizeFork(prefix, config.Config.Features.MultiAgent.PreservePrefix)
+		prefix, err = sanitizeFork(prefix)
 		if err == nil {
 			prepared.Import, err = d.control.PublishImport(ctx, control.Identity{Thread: caller.Thread, Session: caller.Session, Turn: caller.Turn, Call: caller.Call, Item: caller.Item}, prefix)
 		}

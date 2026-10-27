@@ -160,13 +160,19 @@ self-contained legacy import. Authenticated observed records may complete the
 prefix; incomplete evidence rejects rather than choosing an earlier boundary.
 The original rollout and host database remain unchanged.
 
-Stock V2 sanitation annotates inherited user/assistant envelopes, clears parent
-input ordering and local authorization/review evidence, preserves incomplete
-authority and retained root provenance, and keeps tool declarations with their
-comparison baseline. Generated parent context is replaced only by content
-provenance. Ordinary conversation/unrelated developer text survives; current child
-identity/role/cwd context appears once. No process, approval or dispatch handle is
-inherited. Preserve-fork-prefix and legacy-compaction behavior remain supported.
+Full-history children inherit every conversation item in order, from the first
+message or active compaction replacement through the invoking execution item.
+This includes attributed assignments/messages, assistant commentary and reasoning,
+and tool calls/results, independently of the host's preserve-fork-prefix setting.
+Compaction replacements preserve the same complete item sequence.
+
+Import sanitation annotates inherited envelopes and clears parent input ordering
+and local authorization/review evidence, preserving incomplete authority and
+retained root provenance. Generated parent identity/role/cwd context is replaced
+only by content provenance; ordinary conversation and unrelated developer text
+survive. Current child identity/role/cwd context appears once. No process, approval
+or dispatch handle is inherited. Legacy compaction still resets obsolete context
+baselines without filtering conversation items.
 
 Session History publishes the snapshot and preparation before `thread/fork.path`.
 Its validated header establishes source identity. Confirmed child lineage, cwd and

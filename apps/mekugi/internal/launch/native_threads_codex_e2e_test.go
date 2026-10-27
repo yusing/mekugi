@@ -167,7 +167,8 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		p.calls[metadata.ThreadID]++
 	}
 	step, parent := p.calls[metadata.ThreadID], metadata.ThreadID == p.parent
-	if !parent {
+	grandchild := !parent && p.child != "" && metadata.ThreadID != p.child
+	if !parent && !grandchild {
 		p.child = metadata.ThreadID
 	}
 	var program, answer, failure string
@@ -175,6 +176,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		identity := "Your logical task is /root."
 		if !parent {
 			identity = "Your logical task is /root/worker. Your parent logical task is /root."
+		}
+		if grandchild {
+			identity = "Your logical task is /root/worker/reviewer. Your parent logical task is /root/worker."
 		}
 		if strings.Count(string(body), identity+" Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.") != 1 {
 			failure = "provider prompt omitted or duplicated the logical identity and single calling convention"
@@ -192,6 +196,27 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 	}
 	switch {
+	case grandchild:
+		inherited, assigned := false, false
+		for _, item := range request.Input {
+			if string(item["role"]) != `"assistant"` || string(item["phase"]) != `"commentary"` {
+				continue
+			}
+			var content []struct {
+				Text string `json:"text"`
+			}
+			if json.Unmarshal(item["content"], &content) != nil {
+				continue
+			}
+			for _, part := range content {
+				inherited = inherited || part.Text == "Message Type: NEW_TASK\nTask name: /root/worker\nSender: /root\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT"
+				assigned = assigned || part.Text == "Message Type: NEW_TASK\nTask name: /root/worker/reviewer\nSender: /root/worker\nPayload:\nGRANDCHILD_ATTRIBUTED_ASSIGNMENT"
+			}
+		}
+		if step != 1 || !inherited || !assigned || !strings.Contains(string(body), "PARENT_PRIVATE_SENTINEL") {
+			failure = "delegate full-history fork lost inherited assignment, own assignment or initial user context"
+		}
+		answer = "GRANDCHILD_CONTEXT_OK"
 	case compacting:
 		answer = "Waiting for worker to finish its assignment."
 	case parent && p.earlyCompletion && step == 4:
@@ -306,8 +331,19 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			if strings.Count(guidance, "NATIVE_FIXTURE_CHILD_ROLE") != 1 || strings.Count(guidance, "Your logical task is /root/worker.") != 1 || strings.Contains(guidance, "NATIVE_FIXTURE_ROOT_ROLE") {
 				failure = "full-history child guidance omitted child role or retained duplicate/parent generated role"
 			}
+			call, output := false, false
+			for _, item := range request.Input {
+				call = call || string(item["type"]) == `"custom_tool_call"` && strings.Contains(string(item["input"]), "Object.keys(tools)")
+				output = output || string(item["type"]) == `"custom_tool_call_output"` && strings.Contains(string(item["output"]), "mcp__threadcontrol__spawn_agent")
+			}
+			if !call || !output {
+				failure = "full-history child lost the parent's completed tool call or result"
+			}
 		}
 		program = `text(await tools.mcp__threadcontrol__send_message({target:"/root",message:"CHILD_PROGRESS_ALREADY_READ"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
+		if p.fullHistory {
+			program += `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"reviewer",message:"GRANDCHILD_ATTRIBUTED_ASSIGNMENT",fork_turns:"all"})); text(await tools.mcp__threadcontrol__wait_agent({target:["reviewer"]}));`
+		}
 	case !parent && step == 2:
 		receipt := false
 		for _, item := range request.Input {
@@ -663,10 +699,14 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 	fixture.mu.Unlock()
 	wantParentCalls := 5
+	wantThreads := 2
+	if fullHistory {
+		wantThreads = 3
+	}
 	if scenario.earlyCompletion {
 		wantParentCalls = 6
 	}
-	if parent != root || child == "" || child == parent || len(counts) != 2 || counts[parent] != wantParentCalls || counts[child] != 2 {
+	if parent != root || child == "" || child == parent || len(counts) != wantThreads || counts[parent] != wantParentCalls || counts[child] != 2 {
 		t.Fatalf("native host identities/inferences: root=%q parent=%q child=%q calls=%v", root, parent, child, counts)
 	}
 	childView, err := connection.Attach(ctx, child)
@@ -830,7 +870,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 	fixture.mu.Lock()
 	defer fixture.mu.Unlock()
-	if len(fixture.calls) != 2 || fixture.calls[parent] != 8 || fixture.calls[child] != 3 || fixture.child != child {
+	if len(fixture.calls) != wantThreads || fixture.calls[parent] != 8 || fixture.calls[child] != 3 || fixture.child != child {
 		t.Fatalf("cold recovery changed identity or repeated old work: %v", fixture.calls)
 	}
 }
