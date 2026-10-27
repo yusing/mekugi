@@ -182,12 +182,13 @@ type feed struct {
 // projected is one entry's encoding at the revision it was encoded from; an
 // entry's revision advances whenever anything it publishes changes.
 type projected struct {
-	revision uint64
-	data     jsontext.Value
-	agent    string
-	brief    *entry
-	turn     uint64
-	position int
+	revision  uint64
+	changedAt uint64 // History identity in which an already-published value changed.
+	data      jsontext.Value
+	agent     string
+	brief     *entry
+	turn      uint64
+	position  int
 }
 
 type feedPatch struct {
@@ -429,6 +430,19 @@ func (f *feed) delta(next *feedPatch) *feedPatch {
 		if !bytes.Equal(data, entries[next.Order[i]]) {
 			patch.Entries = append(patch.Entries, data)
 		}
+		delete(entries, next.Order[i])
+	}
+	for seq := range entries {
+		if f.entries[seq].changedAt == f.history {
+			// A queued replacement can disappear from a catch-up snapshot
+			// once this row becomes historical. Invalidate loaded copies.
+			f.history++
+			next.Revision = f.history
+			if next.Earlier != nil {
+				next.Earlier.Revision = f.history
+			}
+			return next
+		}
 	}
 	return &patch
 }
@@ -475,7 +489,10 @@ func (f *feed) update(publication *activitypresentation.Publication, keep func(a
 		if err != nil {
 			return false, err
 		}
-		stored := projected{revision: e.Revision, data: data, agent: e.Agent, turn: turn, position: position}
+		stored := projected{revision: e.Revision, changedAt: previous.changedAt, data: data, agent: e.Agent, turn: turn, position: position}
+		if ok && !bytes.Equal(previous.data, data) {
+			stored.changedAt = f.history
+		}
 		if len(data) > entryBytes {
 			brief := compactEntry(value)
 			stored.brief = &brief

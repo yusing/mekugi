@@ -370,7 +370,9 @@ A client applies a feed patch by replacing each listed entry whole, keyed by
 `seq` and entry revision within that feed, and by adopting the latest window's
 listed `order`. Explicitly loaded earlier pages survive ordinary latest updates.
 Attachment replacement or historical mutation invalidates their cursors and
-loaded history. An oversized entry preserves its compact semantic presentation
+loaded history. A revised entry leaving the latest window also advances history
+identity, so a catch-up snapshot cannot preserve an outdated loaded copy after
+discarding its queued replacement. An oversized entry preserves its compact semantic presentation
 and carries a typed reference to its complete published content. Inline content
 is acquired automatically; content behind existing disclosures is acquired when
 opened. This transport deferral is distinct from

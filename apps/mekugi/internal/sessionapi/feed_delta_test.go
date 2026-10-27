@@ -74,6 +74,49 @@ func TestFeedDeltaPreservesCompleteWindows(t *testing.T) {
 	}
 }
 
+func TestBacklogInvalidatesRevisedRowsLeavingWindow(t *testing.T) {
+	s := NewLive()
+	viewer, failure := s.subscribe(t.Context())
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	defer viewer.close()
+	f := Frame{Session: Session{Thread: "thread"}, Main: benchmarkNativeHistoryFrame(80).Main}
+	for i := range f.Main.Entries {
+		f.Main.Entries[i].Agent, f.Main.Entries[i].Kind, f.Main.Entries[i].Text = "Main", "text", strings.Repeat("x", 400)
+	}
+	if err := s.Publish(f); err != nil {
+		t.Fatal(err)
+	}
+	<-viewer.events
+	first, history := s.main.order[s.main.window], s.main.history
+	index := s.main.entries[first].position
+	f.Main = &activity.Publication{Entries: slices.Clone(f.Main.Entries)}
+	f.Main.Entries[index].Revision++
+	f.Main.Entries[index].Text = strings.Repeat("y", 400)
+	if err := s.Publish(f); err != nil {
+		t.Fatal(err)
+	}
+	// Leave the replacement queued, then move that row outside the window.
+	f.Main = &activity.Publication{Entries: slices.Clone(f.Main.Entries)}
+	f.Main.Entries[len(f.Main.Entries)-1].Revision++
+	f.Main.Entries[len(f.Main.Entries)-1].Text = strings.Repeat("z", 1500)
+	if err := s.Publish(f); err != nil {
+		t.Fatal(err)
+	}
+	event := <-viewer.events
+	var got message
+	if err := json.Unmarshal(event.Data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if event.Kind != "snapshot" || got.Main.Revision == history || got.Main.Earlier == nil || got.Main.Earlier.Revision != got.Main.Revision {
+		t.Fatalf("catch-up kept stale loaded history: kind=%s revision=%d previous=%d earlier=%+v", event.Kind, got.Main.Revision, history, got.Main.Earlier)
+	}
+	if slices.Contains(got.Main.Order, first) {
+		t.Fatal("fixture did not move the revised row out of the window")
+	}
+}
+
 func BenchmarkSharedFeedTail(b *testing.B) {
 	for _, count := range []int{50, 500, 2000} {
 		b.Run(fmt.Sprint(count), func(b *testing.B) {
