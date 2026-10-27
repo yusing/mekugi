@@ -105,7 +105,7 @@ func responsesContent(value any, role string, d Diagnostics) ([]any, error) {
 
 // Source: internal/router/opencode_stream.go:298:485@413bbaa9b9202042199c753690febe7bc1358fa6 normalizeResponsesStream
 func normalizeResponsesStream(reader io.Reader, d Diagnostics, send func(providerChunk) error) error {
-	texts := map[int]string{}
+	texts := map[int]*strings.Builder{}
 	refusals := map[int]bool{}
 	items := map[int]jsontext.Value{}
 	reasoned := map[int]bool{} // Items whose visible reasoning already streamed.
@@ -182,11 +182,11 @@ func normalizeResponsesStream(reader io.Reader, d Diagnostics, send func(provide
 					return d.streamError("invalid", fmt.Sprintf("Unsupported %s output content", d.Name))
 				}
 			}
-			if texts[index] == "" {
+			if texts[index] == nil || texts[index].Len() == 0 {
 				if err := send(providerChunkText(completed.String(), refusals[index])); err != nil {
 					return err
 				}
-			} else if texts[index] != completed.String() {
+			} else if texts[index].String() != completed.String() {
 				return d.streamError("invalid", fmt.Sprintf("%s final text differs from streamed text", d.Name))
 			}
 		default:
@@ -233,7 +233,10 @@ func normalizeResponsesStream(reader io.Reader, d Diagnostics, send func(provide
 			if _, completed := items[event.OutputIndex]; completed {
 				return false, d.streamError("invalid", fmt.Sprintf("%s text followed a completed item", d.Name))
 			}
-			texts[event.OutputIndex] += event.Delta
+			if texts[event.OutputIndex] == nil {
+				texts[event.OutputIndex] = new(strings.Builder)
+			}
+			texts[event.OutputIndex].WriteString(event.Delta)
 			refusal := event.Type == "response.refusal.delta"
 			if refusal {
 				refusals[event.OutputIndex] = true

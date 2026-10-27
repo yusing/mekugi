@@ -136,6 +136,74 @@ func BenchmarkGrokFragmentedArguments(b *testing.B) {
 	}
 }
 
+func BenchmarkResponsesFragmentedText(b *testing.B) {
+	for _, count := range []int{1024, 4096, 16384} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			const delta = "abcdefghijklmnop"
+			text := strings.Repeat(delta, count)
+			wire := strings.Repeat("data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\""+delta+"\"}\n\n", count)
+			wire += grokTestSSE(map[string]any{"type": "response.completed", "response": map[string]any{"output": []any{
+				map[string]any{"type": "message", "content": []any{map[string]string{"type": "output_text", "text": text}}},
+			}}})
+			tr, err := testTranslateFormat([]byte(`{"input":[]}`), "responses")
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			b.SetBytes(int64(len(text)))
+			for b.Loop() {
+				result, err := tr.codec.Read(strings.NewReader(wire), func(map[string]any) error { return nil }, testFailureDetail)
+				if err != nil {
+					b.Fatal(err)
+				}
+				content := result["output"].([]any)[0].(map[string]any)["content"].([]any)
+				if content[0].(map[string]any)["text"] != text {
+					b.Fatal("fragmented text changed")
+				}
+			}
+		})
+	}
+}
+
+func TestResponsesFragmentedTextIntegrity(t *testing.T) {
+	for _, kind := range []string{"output_text", "refusal"} {
+		for _, final := range []string{"answer", "different"} {
+			t.Run(kind+"/"+final, func(t *testing.T) {
+				field := "text"
+				if kind == "refusal" {
+					field = "refusal"
+				}
+				wire := grokTestSSE(
+					map[string]any{"type": "response." + kind + ".delta", "delta": ""},
+					map[string]any{"type": "response." + kind + ".delta", "delta": "ans"},
+					map[string]any{"type": "response." + kind + ".delta", "delta": "wer"},
+					map[string]any{"type": "response.completed", "response": map[string]any{"output": []any{
+						map[string]any{"type": "message", "content": []any{map[string]string{"type": kind, field: final}}},
+					}}},
+				)
+				tr, err := testTranslateFormat([]byte(`{"input":[]}`), "responses")
+				if err != nil {
+					t.Fatal(err)
+				}
+				result, err := tr.codec.Read(strings.NewReader(wire), func(map[string]any) error { return nil }, testFailureDetail)
+				if final != "answer" {
+					if err == nil || !strings.Contains(err.Error(), "final text differs") {
+						t.Fatalf("mismatched final text: %v", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				part := result["output"].([]any)[0].(map[string]any)["content"].([]any)[0].(map[string]any)
+				if part["type"] != kind || part[field] != final {
+					t.Fatalf("content changed: %v", part)
+				}
+			})
+		}
+	}
+}
+
 func TestGrokFinishEvidence(t *testing.T) {
 	for _, test := range []struct{ reason, status, detail string }{
 		{"stop", "completed", ""},
