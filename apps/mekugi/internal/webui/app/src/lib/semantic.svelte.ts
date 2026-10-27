@@ -95,6 +95,7 @@ function controlView(thread: string, machine: Machine): ControlView {
 
 class Semantic {
   event = $state.raw<NativeEvent>();
+  family = $state.raw<Pick<NonNullable<NativeEvent["frame"]["family"]>, "root" | "threads">>();
   connection = $state<Connection>("connecting");
   unavailable = $state(false);
   error = $state<string>();
@@ -246,6 +247,7 @@ class Semantic {
   connect(thread: string, machine: Machine): void {
     if (this.#source?.thread === thread && this.#source.machine === machine) return;
     if (this.#source && this.#source.machine !== machine) this.close();
+    if (!this.family?.threads.includes(thread)) this.family = undefined;
     this.cancelResume();
     let source = this.#views.get(thread);
     if (!source) {
@@ -401,6 +403,9 @@ class Semantic {
     let destination: string | undefined;
     this.ensureEditor(next.frame.view.Input.ID);
     this.event = next;
+    this.family = next.frame.family
+      ? { root: next.frame.family.root, threads: next.frame.family.threads }
+      : undefined;
     const menu = next.frame.view.Menu;
     if (menu && !menu.Loading && !menu.Problem) {
       if (menu.Kind === "settings" && ["/model", "/effort", "/reasoning"].includes(menu.Setting)) {
@@ -592,6 +597,7 @@ class Semantic {
     this.#source = undefined;
     this.event = undefined;
     this.connection = "connecting";
+    this.family = undefined;
     this.unavailable = false;
     this.error = undefined;
     this.connectionError = undefined;

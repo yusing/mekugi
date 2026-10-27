@@ -66,6 +66,8 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	settingsDismissal := make(chan sessionapi.NativeRequest, 1)
 	var holdSettingsDismissal atomic.Bool
 	browserCommands := make(chan sessionapi.NativeRequest, 4)
+	var holdRename atomic.Bool
+	renameReply := make(chan chan string, 1)
 	references := make(chan sessionapi.NativeRequest, 1)
 	var alpha *webUIBrowserMachine
 	alpha = newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Alpha", strings.Repeat("a", 64), func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
@@ -89,6 +91,8 @@ func TestWebUIBrowserMachines(t *testing.T) {
 			}
 			if err := native.Publish(request.Attachment, frame); err != nil {
 				request.Reply <- err.Error()
+			} else if command != nil && strings.HasPrefix(*command, "/title ") && holdRename.Swap(false) {
+				renameReply <- request.Reply
 			} else {
 				request.Reply <- ""
 			}
@@ -259,8 +263,10 @@ func TestWebUIBrowserMachines(t *testing.T) {
 			observations = new Set();
 			cold = new Set();
 			contents = new Set();
+			renames = new Set();
 			send(data) {
 				const request = JSON.parse(data);
+				if (request.params?.body?.operation?.command === '/title Pending parent title') this.renames.add(request.id);
 				if (request.method === 'session/subscribe' && request.params.thread) this.observations.add(request.params.subscription);
 				if (request.method === 'session/content') this.contents.add(request.id);
 				if (request.method === 'session/subscribe' && request.params.thread === 'cold') { this.cold.add(request.id); window.coldReads++; }
@@ -270,6 +276,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 				if (kind !== 'message') return super.addEventListener(kind, listener, ...options);
 				return super.addEventListener(kind, event => {
 					const message = JSON.parse(event.data);
+					if (this.renames.has(message.id)) window.pendingRenameSettled = true;
                     if (this.contents.has(message.id) && window.holdContent) {
                         window.heldContent.push((fail = false) => listener.call(this, fail ? new MessageEvent('message', {data: JSON.stringify({jsonrpc:'2.0',id:message.id,error:{code:-32000,message:'content unavailable',data:{status:503}}})}) : event));
                         return;
@@ -294,6 +301,9 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("fill", "#composer-text", "draft before cold child")
 	run("eval", `const selection = new URLSearchParams(location.hash.slice(1)); selection.set('thread', 'cold'); location.hash = selection.toString();`)
 	run("wait", "--fn", "window.coldRefused")
+	if run("eval", `document.body.innerText.includes('No such thread') || document.body.innerText.includes('Thread unavailable')`) != "false\n" {
+		t.Fatal("cold preparation was presented as a missing thread")
+	}
 	close(coldReady)
 	run("wait", "--fn", "document.querySelector('button[aria-label=Stop]')?.disabled === false && document.title === 'Alpha cold thread · Mekugi'")
 	if run("eval", "window.coldReads") != "2\n" {
@@ -374,6 +384,49 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--fn", "!document.querySelector('dialog[open]')")
 	if request := <-browserCommands; *request.Operation.Command != "/title A useful title" || request.Operation.Editor != nil {
 		t.Fatal("rename changed the composer")
+	}
+	// A rename's completion belongs to its original dialog, even after navigation.
+	holdRename.Store(true)
+	button("Rename thread")
+	run("fill", "#thread-title", "Pending parent title")
+	button("Save")
+	parentRename := <-renameReply
+	<-browserCommands
+	button("Cancel")
+	run("find", "text", "cold", "click", "--exact")
+	run("wait", "--fn", `!!document.querySelector('button[aria-label="Rename thread"]') && !document.querySelector('button[aria-label="Rename thread"]').disabled`)
+	button("Rename thread")
+	run("fill", "#thread-title", "Child title")
+	parentRename <- ""
+	run("wait", "--fn", "window.pendingRenameSettled")
+	run("wait", "--fn", `document.querySelector('#thread-title')?.value === 'Child title' && !document.querySelector('#thread-title').disabled`)
+	button("Save")
+	run("wait", "--fn", "!document.querySelector('dialog[open]')")
+	if request := <-browserCommands; request.Thread != "cold" || *request.Operation.Command != "/title Child title" {
+		t.Fatal("rename completion crossed thread dialogs")
+	}
+	button("Back to main")
+	run("wait", "--fn", `document.querySelector('#composer-text')?.value === 'keep draft'`)
+	for _, reject := range []bool{false, true} {
+		run("eval", `Object.defineProperty(navigator, 'clipboard', {configurable:true, value:{writeText: command => { window.attemptedCopy = command; return new Promise((resolve, reject) => { window.finishCopy = resolve; window.failCopy = reject; }); }}})`)
+		button("Session details")
+		button("Copy resume command")
+		run("wait", "--fn", `window.attemptedCopy === 'mekugi resume same-thread'`)
+		run("press", "Escape")
+		run("find", "text", "cold", "click", "--exact")
+		run("wait", "--fn", `document.title === 'Alpha cold thread · Mekugi'`)
+		if reject {
+			run("eval", `window.failCopy(new Error('Clipboard denied')); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`)
+		} else {
+			run("eval", `window.finishCopy(); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`)
+		}
+		button("Session details")
+		if run("eval", `document.querySelector('button[aria-label="Copy resume command"]')?.title === 'Copy' && !document.querySelector('dialog[open]')`) != "true\n" {
+			t.Fatal("clipboard completion crossed thread navigation")
+		}
+		run("press", "Escape")
+		button("Back to main")
+		run("wait", "--fn", `document.querySelector('#composer-text')?.value === 'keep draft'`)
 	}
 	responseMarkdown := "Response with **authored Markdown**.\n\n```go\nfmt.Println(\"complete\")\n```\n\n" + strings.Repeat("Oversized prose loads automatically.\n\n", 120) + "End of complete response."
 	if err := alpha.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 99, Agent: "Main", Kind: "final", Text: responseMarkdown}}}}}); err != nil {
@@ -728,12 +781,16 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("fill", "#composer-text", "main draft")
+	run("eval", `window.familyPanel = document.querySelector('[aria-label="Thread panel"]'); window.familyRow = document.querySelector('#panel-content li > button')`)
 	run("find", "text", "worker", "click", "--exact")
 	var attachment pendingAttachment
 	select {
 	case attachment = <-childAttachment:
 	case <-ctx.Done():
 		t.Fatal("child attachment was not requested")
+	}
+	if run("eval", `window.familyPanel.isConnected && window.familyRow.isConnected && !document.querySelector('[aria-label="Loading agents"]')`) != "true\n" {
+		t.Fatal("agent navigation replaced the family panel or its roster")
 	}
 	run("fill", "#composer-text", "draft while attaching")
 	if got := run("eval", "document.querySelector('#composer-text')?.value"); !strings.Contains(got, "draft while attaching") {

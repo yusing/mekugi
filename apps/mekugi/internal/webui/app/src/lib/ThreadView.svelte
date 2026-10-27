@@ -59,9 +59,16 @@
   } = $props();
 
   $effect(() => {
+    const thread = id,
+      owner = machine;
     untrack(() => {
-      stream.connect(id, machine);
-      semantic.connect(id, machine);
+      stream.connect(thread, owner, semantic.family?.threads.includes(thread));
+      semantic.connect(thread, owner);
+      renameEvent = undefined;
+      savingName = false;
+      renameError = undefined;
+      copied = failureOpen = false;
+      copyRequest = {};
     });
     return () => stream.close();
   });
@@ -92,7 +99,7 @@
   });
 
   const session = $derived(stream.session);
-  const gone = $derived(stream.gone);
+  const gone = $derived(!session && semantic.connection === "connecting" ? undefined : stream.gone);
   // A session shown here that no longer answers has ended.
   const ended = $derived(!!gone && !!session);
   const playback = $derived(stream.playback);
@@ -268,6 +275,7 @@
   const tabs = $derived(!recorded && !!sview && (!!sview.Side || side));
 
   const notice = $derived.by(() => {
+    if (!session && stream.gone && semantic.connection === "connecting") return undefined;
     if (gone) return ended ? "This thread has ended. Its last state stays here." : undefined;
     if (stream.connection === "open") return stream.controlError;
     if (stream.error) return stream.error;
@@ -325,24 +333,29 @@
   }
 
   let copied = $state(false);
-  let renameEvent = $state<typeof semantic.event>();
+  let copyRequest = {};
+  let renameEvent = $state<{ event: typeof semantic.event }>();
   let name = $state("");
   let renameError = $state<string>();
   let savingName = $state(false);
   function editTitle() {
     name = session?.title || "";
     renameError = undefined;
-    renameEvent = semantic.event;
+    savingName = false;
+    renameEvent = { event: semantic.event };
   }
   async function rename() {
     if (!name.trim() || savingName) return;
+    const target = renameEvent;
     savingName = true;
-    renameError = await semantic.send(
+    const error = await semantic.send(
       { command: `/title ${name.trim()}` },
       undefined,
       false,
-      renameEvent,
+      target?.event,
     );
+    if (renameEvent !== target) return;
+    renameError = error;
     savingName = false;
     if (!renameError) renameEvent = undefined;
   }
@@ -353,12 +366,17 @@
     });
   }
   async function copyResume() {
+    const request = (copyRequest = {}),
+      command = `mekugi resume ${id}`;
     try {
-      await navigator.clipboard.writeText(`mekugi resume ${id}`);
+      await navigator.clipboard.writeText(command);
+      if (copyRequest !== request) return;
       copied = true;
-      setTimeout(() => (copied = false), 1500);
+      setTimeout(() => {
+        if (copyRequest === request) copied = false;
+      }, 1500);
     } catch {
-      semantic.copied = `mekugi resume ${id}`;
+      if (copyRequest === request) semantic.copied = command;
     }
   }
   // Notices, tabs and the agent bar share the composer's column.
@@ -519,213 +537,219 @@
   </header>
 
   <div class="relative flex min-h-0">
-    <main class="flex min-h-0 min-w-0 flex-1 flex-col">
-      {#if opened}<Notice class="{column} mt-3">{opened}</Notice>{/if}
-      {#if notice}
-        <Notice class="{column} mt-3" role={stream.connection === "open" ? "alert" : "status"}
-          >{notice}</Notice
-        >
-      {/if}
-
-      {#if tabs && sview}
-        <div class="{column} {segments} mt-2.5 flex" role="tablist" aria-label="Conversation">
-          <button
-            type="button"
-            role="tab"
-            class="{segment} flex-1"
-            aria-selected={!side}
-            disabled={semantic.pending > 0}
-            onclick={() =>
-              !side || semantic.send({ display: { Version: sview.Version, Thread: sview.Main } })}
-            >Main</button
+    {#key id}
+      <main class="flex min-h-0 min-w-0 flex-1 flex-col">
+        {#if opened}<Notice class="{column} mt-3">{opened}</Notice>{/if}
+        {#if notice}
+          <Notice class="{column} mt-3" role={stream.connection === "open" ? "alert" : "status"}
+            >{notice}</Notice
           >
-          <span class="relative flex min-w-0 flex-1">
+        {/if}
+
+        {#if tabs && sview}
+          <div class="{column} {segments} mt-2.5 flex" role="tablist" aria-label="Conversation">
             <button
               type="button"
               role="tab"
-              class="{segment} w-full pr-8"
-              aria-selected={side}
-              disabled={semantic.pending > 0 || !sview.Side}
+              class="{segment} flex-1"
+              aria-selected={!side}
+              disabled={semantic.pending > 0}
               onclick={() =>
-                side ||
-                semantic.send({ display: { Version: sview.Version, Thread: sview.SideThread } })}
-              >{sview.Side?.Label || "Side conversation"}</button
+                !side || semantic.send({ display: { Version: sview.Version, Thread: sview.Main } })}
+              >Main</button
             >
-            {#if sview.Side}<button
+            <span class="relative flex min-w-0 flex-1">
+              <button
                 type="button"
-                class="absolute top-[3px] right-[3px] flex size-6 items-center justify-center rounded-chip text-muted hover:bg-active hover:text-ink"
-                aria-label="Close side"
-                title="Close side"
-                disabled={semantic.pending > 0}
+                role="tab"
+                class="{segment} w-full pr-8"
+                aria-selected={side}
+                disabled={semantic.pending > 0 || !sview.Side}
                 onclick={() =>
-                  semantic.send({
-                    side: {
-                      Version: sview.Version,
-                      Key: sview.Side!.Key,
-                      Exchange: sview.Side!.ID,
-                    },
-                  })}><Icon name="close" size={14} /></button
-              >{/if}
-          </span>
-        </div>
-      {/if}
-
-      {#each sections as kind (kind)}
-        {#if (kind !== "review" || panel === "changes") && (kind !== "live" || (live && !recorded && !side))}
-          <AutoPage
-            cursor={JSON.stringify(stream.deferred[kind])}
-            ready={!Object.values(stream.sectionLoading).some(Boolean) &&
-              !stream.sectionErrors[kind]}
-            onpage={(signal) => stream.loadSection(kind, signal)}
-          />
-          {#if stream.sectionErrors[kind]}<Alert class="{column} mt-2.5"
-              >{stream.sectionErrors[kind]}<Button
-                variant="quiet"
-                onclick={() => stream.loadSection(kind)}>Retry {sectionLabels[kind]}</Button
-              ></Alert
-            >{/if}
-        {/if}
-      {/each}
-      {#if shown}
-        {@const time = worked(shown, now)}
-        {@const color = stream.roleColor(shown.role)}
-        <div class="{column} mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-small">
-          <Button
-            variant="quiet"
-            size="sm"
-            icon="left"
-            label="Back to main"
-            onclick={() => select("/root")}>main</Button
-          >
-          <span class="text-control" aria-hidden="true">/</span>
-          <span class={["text-body font-semibold", color && "text-role"]} style:--role={color}
-            >{shown.label}</span
-          >
-          {#if shown.role}<Tag {color}>{shown.role}</Tag>{/if}
-          <span
-            class={shown.state === "working"
-              ? "text-accent"
-              : shown.state === "error"
-                ? "text-negative"
-                : "text-muted"}>{stateLabel[shown.state]}</span
-          >
-          {#if time !== undefined}<span class="font-mono text-muted tabular-nums"
-              >{duration(time)}</span
-            >{/if}
-        </div>
-      {/if}
-
-      <section
-        class="relative min-h-0 flex-1 focus:outline-none"
-        tabindex="-1"
-        bind:this={feed}
-        aria-label={shown ? `${shown.label}'s activity` : "Transcript"}
-      >
-        {#if live && !ended && !recorded && frame}
-          <ReferenceSelection root={feed} />
-        {/if}
-        {#if live && side && frame}
-          <NativeTranscript
-            publication={frame.main}
-            label={sview?.Side?.Label || "Side conversation"}
-          />
-        {:else if session}
-          {#key owner}
-            <Transcript
-              {entries}
-              {owner}
-              caller={recorded?.name}
-              {start}
-              span={playback?.until ?? 0}
-              jumps={stream.jumps}
-              {empty}
-              {live}
-              source={stream}
-              ondetails={live && !ended && sview
-                ? (seq) =>
-                    semantic.send({
-                      details: {
-                        Displayed: sview.Displayed,
-                        Kind: "entry",
-                        Source: seq,
-                        Output: 0,
-                        Sources: [],
-                        Agent: !!recorded,
-                        Path: "",
-                        Caller: owner,
-                      },
-                    })
-                : undefined}
-            ></Transcript>
-            {#if live && !ended && !recorded && frame}<LiveSource
-                previews={stream.live}
-                {owner}
-              />{/if}
-          {/key}
-        {:else if gone}
-          <div class="mx-auto grid max-w-column gap-1.5 px-4 py-6">
-            <p>{gone.text}</p>
-            <p class="text-small text-muted">Choose another thread, or start a new one.</p>
-          </div>
-        {:else}
-          <div class="mx-auto max-w-column px-4 py-6" aria-busy="true" aria-label="Loading thread">
-            {#each [72, 48, 88, 36] as width, i (i)}
-              <div class="{skeleton} mb-4 h-5" style:width="{width}%">&nbsp;</div>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
-      {#if playback}
-        <div class="flex-none border-t border-rule">
-          <PlaybackBar {playback} {start} entries={main} />
-        </div>
-      {:else if live && !ended}
-        <div class="flex-none pt-1">
-          {#if recorded}
-            <p class="{column} py-3 text-small text-muted">
-              This agent's retained activity is read-only.
-            </p>
-          {:else}
-            {#if frame && stream.prompts && (stream.prompts.approvals.length || stream.prompts.questions.length)}
-              <section
-                class="mx-auto flex max-h-[50dvh] w-full max-w-column flex-col gap-3 overflow-y-auto overscroll-contain px-4 pb-2"
-                aria-label="Pending prompts"
+                  side ||
+                  semantic.send({ display: { Version: sview.Version, Thread: sview.SideThread } })}
+                >{sview.Side?.Label || "Side conversation"}</button
               >
-                {#each stream.prompts.approvals.slice(0, 1) as approval (approval.id)}
-                  <Prompt
-                    item={approval}
-                    count={stream.prompts.approvals.length}
-                    unavailable={stream.connection !== "open"}
-                    source={stream}
-                  />
-                {/each}
-                {#each stream.prompts.questions as question (question.id)}
-                  <Prompt
-                    item={question}
-                    unavailable={stream.connection !== "open"}
-                    source={stream}
-                  />
-                {/each}
-              </section>
-            {/if}
-            {#if frame}<ThreadDocks />{/if}
-            <Composer
-              input={frame ? stream.input : undefined}
-              source={stream}
-              agentName={shown?.label ?? "main"}
-              role={session?.role || selected?.role}
-              machine={machine.label}
-              {initial}
-              {oninitial}
-              unavailable={frame && stream.connection === "open" && semantic.connection === "open"
-                ? undefined
-                : "Not connected to the thread."}
+              {#if sview.Side}<button
+                  type="button"
+                  class="absolute top-[3px] right-[3px] flex size-6 items-center justify-center rounded-chip text-muted hover:bg-active hover:text-ink"
+                  aria-label="Close side"
+                  title="Close side"
+                  disabled={semantic.pending > 0}
+                  onclick={() =>
+                    semantic.send({
+                      side: {
+                        Version: sview.Version,
+                        Key: sview.Side!.Key,
+                        Exchange: sview.Side!.ID,
+                      },
+                    })}><Icon name="close" size={14} /></button
+                >{/if}
+            </span>
+          </div>
+        {/if}
+
+        {#each sections as kind (kind)}
+          {#if (kind !== "review" || panel === "changes") && (kind !== "live" || (live && !recorded && !side))}
+            <AutoPage
+              cursor={JSON.stringify(stream.deferred[kind])}
+              ready={!Object.values(stream.sectionLoading).some(Boolean) &&
+                !stream.sectionErrors[kind]}
+              onpage={(signal) => stream.loadSection(kind, signal)}
             />
+            {#if stream.sectionErrors[kind]}<Alert class="{column} mt-2.5"
+                >{stream.sectionErrors[kind]}<Button
+                  variant="quiet"
+                  onclick={() => stream.loadSection(kind)}>Retry {sectionLabels[kind]}</Button
+                ></Alert
+              >{/if}
           {/if}
-        </div>
-      {/if}
-    </main>
+        {/each}
+        {#if shown}
+          {@const time = worked(shown, now)}
+          {@const color = stream.roleColor(shown.role)}
+          <div class="{column} mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-small">
+            <Button
+              variant="quiet"
+              size="sm"
+              icon="left"
+              label="Back to main"
+              onclick={() => select("/root")}>main</Button
+            >
+            <span class="text-control" aria-hidden="true">/</span>
+            <span class={["text-body font-semibold", color && "text-role"]} style:--role={color}
+              >{shown.label}</span
+            >
+            {#if shown.role}<Tag {color}>{shown.role}</Tag>{/if}
+            <span
+              class={shown.state === "working"
+                ? "text-accent"
+                : shown.state === "error"
+                  ? "text-negative"
+                  : "text-muted"}>{stateLabel[shown.state]}</span
+            >
+            {#if time !== undefined}<span class="font-mono text-muted tabular-nums"
+                >{duration(time)}</span
+              >{/if}
+          </div>
+        {/if}
+
+        <section
+          class="relative min-h-0 flex-1 focus:outline-none"
+          tabindex="-1"
+          bind:this={feed}
+          aria-label={shown ? `${shown.label}'s activity` : "Transcript"}
+        >
+          {#if live && !ended && !recorded && frame}
+            <ReferenceSelection root={feed} />
+          {/if}
+          {#if live && side && frame}
+            <NativeTranscript
+              publication={frame.main}
+              label={sview?.Side?.Label || "Side conversation"}
+            />
+          {:else if session}
+            {#key owner}
+              <Transcript
+                {entries}
+                {owner}
+                caller={recorded?.name}
+                {start}
+                span={playback?.until ?? 0}
+                jumps={stream.jumps}
+                {empty}
+                {live}
+                source={stream}
+                ondetails={live && !ended && sview
+                  ? (seq) =>
+                      semantic.send({
+                        details: {
+                          Displayed: sview.Displayed,
+                          Kind: "entry",
+                          Source: seq,
+                          Output: 0,
+                          Sources: [],
+                          Agent: !!recorded,
+                          Path: "",
+                          Caller: owner,
+                        },
+                      })
+                  : undefined}
+              ></Transcript>
+              {#if live && !ended && !recorded && frame}<LiveSource
+                  previews={stream.live}
+                  {owner}
+                />{/if}
+            {/key}
+          {:else if gone}
+            <div class="mx-auto grid max-w-column gap-1.5 px-4 py-6">
+              <p>{gone.text}</p>
+              <p class="text-small text-muted">Choose another thread, or start a new one.</p>
+            </div>
+          {:else}
+            <div
+              class="mx-auto max-w-column px-4 py-6"
+              aria-busy="true"
+              aria-label="Loading thread"
+            >
+              {#each [72, 48, 88, 36] as width, i (i)}
+                <div class="{skeleton} mb-4 h-5" style:width="{width}%">&nbsp;</div>
+              {/each}
+            </div>
+          {/if}
+        </section>
+
+        {#if playback}
+          <div class="flex-none border-t border-rule">
+            <PlaybackBar {playback} {start} entries={main} />
+          </div>
+        {:else if live && !ended}
+          <div class="flex-none pt-1">
+            {#if recorded}
+              <p class="{column} py-3 text-small text-muted">
+                This agent's retained activity is read-only.
+              </p>
+            {:else}
+              {#if frame && stream.prompts && (stream.prompts.approvals.length || stream.prompts.questions.length)}
+                <section
+                  class="mx-auto flex max-h-[50dvh] w-full max-w-column flex-col gap-3 overflow-y-auto overscroll-contain px-4 pb-2"
+                  aria-label="Pending prompts"
+                >
+                  {#each stream.prompts.approvals.slice(0, 1) as approval (approval.id)}
+                    <Prompt
+                      item={approval}
+                      count={stream.prompts.approvals.length}
+                      unavailable={stream.connection !== "open"}
+                      source={stream}
+                    />
+                  {/each}
+                  {#each stream.prompts.questions as question (question.id)}
+                    <Prompt
+                      item={question}
+                      unavailable={stream.connection !== "open"}
+                      source={stream}
+                    />
+                  {/each}
+                </section>
+              {/if}
+              {#if frame}<ThreadDocks />{/if}
+              <Composer
+                input={frame ? stream.input : undefined}
+                source={stream}
+                agentName={shown?.label ?? "main"}
+                role={session?.role || selected?.role}
+                machine={machine.label}
+                {initial}
+                {oninitial}
+                unavailable={frame && stream.connection === "open" && semantic.connection === "open"
+                  ? undefined
+                  : "Not connected to the thread."}
+              />
+            {/if}
+          </div>
+        {/if}
+      </main>
+    {/key}
 
     {#if panel}
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (Escape and the panel's close button also close it) -->
@@ -792,7 +816,7 @@
                 roster={stream.roster}
                 lines={stream.review?.counts.Callers}
                 net={stream.review?.counts.Net}
-                loading={!session}
+                loading={!session && !stream.roster.agents.length}
                 selected={owner}
                 {now}
                 {activity}
@@ -811,7 +835,9 @@
                 >{/if}
               {#if stream.roster.next}<AutoPage
                   cursor={JSON.stringify(stream.roster.next)}
-                  ready={!stream.rosterLoading && !stream.rosterError}
+                  ready={stream.connection === "open" &&
+                    !stream.rosterLoading &&
+                    !stream.rosterError}
                   onpage={(signal) => stream.moreRoster(undefined, signal)}
                 />{/if}
             </div>
@@ -820,7 +846,7 @@
       </aside>
     {/if}
   </div>
-  {#if live && !ended && !recorded && frame}<SemanticDialogs />{/if}
+  {#key id}{#if live && !ended && !recorded && frame}<SemanticDialogs />{/if}{/key}
   {#if renameEvent}
     <Dialog title="Rename thread" onclose={() => (renameEvent = undefined)}>
       <form

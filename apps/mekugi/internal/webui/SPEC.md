@@ -288,6 +288,10 @@ the name and role in its role colour, with a
 way back to Main. Live Main and delegate threads use the same selected-thread
 publication and control lifecycle. Family navigation comes from the server's
 ordinary thread publications without a retained parent view. The selected
+family's Agents panel stays mounted during thread selection; only thread-specific
+content reconnects. Selecting an admitted disconnected child prepares its runtime
+for continued interaction without restarting its previous task.
+The selected
 thread owns its composer, prompts, settings and Stop; a declared role appears
 in its composer. Per-thread drafts and unsettled input remain isolated across
 navigation. Historical agents outside the admitted runtime tree
@@ -317,6 +321,8 @@ Oversized content that belongs inline loads automatically through independent re
 controls and the initial visible view can become ready before that content finishes.
 Roster, saved-file lists and paginated dialogs acquire additional rows automatically
 as the reader approaches the end, preserving the current selection and reading position.
+Roster activity updates keep acquired members visible while current pages arrive;
+superseded page reads recover from the next publication without a manual retry.
 Existing disclosure and copy actions acquire complete retained content without
 occupying the navigation connection. Changes acquires bounded file
 metadata and loads exact composed diffs for visible or opened files. Agent return

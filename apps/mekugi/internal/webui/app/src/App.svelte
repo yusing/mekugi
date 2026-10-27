@@ -118,7 +118,7 @@
         >{hub.storageError}</Notice
       >{/if}
     {#if machine && thread}
-      {#key `${machine.id}:${thread}`}
+      {#key machine.id}
         <ThreadView
           {machine}
           id={thread}

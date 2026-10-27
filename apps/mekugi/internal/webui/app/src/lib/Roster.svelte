@@ -287,7 +287,7 @@
         </button>
         {#if agent.content}<AutoPage
             cursor={JSON.stringify(agent.content)}
-            ready={!completing && !stream.rosterError}
+            ready={stream.connection === "open" && !completing && !stream.rosterError}
             onpage={async (signal) => {
               completing = true;
               await stream.completeAgent(agent, signal);

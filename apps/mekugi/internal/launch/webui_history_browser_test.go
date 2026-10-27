@@ -14,6 +14,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
+	"github.com/yusing/mekugi/contracts/presentation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
@@ -103,6 +104,21 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	}
 	if run("eval", `window.rosterFirst.isConnected && document.querySelector('#panel-content').textContent.includes('worker119') && !document.body.innerText.includes('Load more')`) != "true" {
 		t.Fatal("roster paging lost rows, selection, or automatic demand")
+	}
+	// A new bounded first page updates activity without hiding acquired members.
+	run("eval", `window.lastMember = [...document.querySelectorAll('#panel-content li > button')].find(row => row.textContent.includes('worker119'))`)
+	for i := range 3 {
+		updated := *agents
+		updated.Roster = append([]activity.AgentRow(nil), agents.Roster...)
+		updated.Roster[0].Agent.StatusItems = []presentation.Item{{Text: fmt.Sprintf("Roster update %d", i)}}
+		frame.Agents = &updated
+		if err := machine.publishFrame(frame); err != nil {
+			t.Fatal(err)
+		}
+		run("wait", "--text", fmt.Sprintf("Roster update %d", i))
+		if run("eval", `window.lastMember.isConnected && !document.body.innerText.includes('The roster changed')`) != "true" {
+			t.Fatal("roster activity churn removed an acquired member or required manual recovery")
+		}
 	}
 	run("eval", `document.querySelector('#panel-content > div').scrollTop = 0`)
 	// Earlier pages preserve the same first visible row while prepending, and

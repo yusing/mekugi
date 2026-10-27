@@ -1,6 +1,6 @@
 import { roleColor } from "./agents";
 import type { Machine } from "./hub.svelte";
-import { errorText, type Connection, type RPCMethod } from "./transport";
+import { errorText, TransportError, type Connection, type RPCMethod } from "./transport";
 import type {
   Action,
   Decide,
@@ -58,6 +58,7 @@ export class Stream {
   rosterError = $state<string>();
   unavailableAgents = $state.raw<string[]>([]);
   #agentReads = new Set<string>();
+  #rosterNames = new Set<string>();
   review = $state.raw<SavedReview | null>(null);
   live = $state.raw<Preview[]>([]);
   deferred = $state.raw<DeferredSections>({});
@@ -84,8 +85,9 @@ export class Stream {
   #pages: Promise<unknown> = Promise.resolve();
   #historyRequests = new Map<string, AbortSignal>();
 
-  connect(id: string, machine: Machine): void {
+  connect(id: string, machine: Machine, preserveRoster = false): void {
     if (id === this.#id && machine === this.#machine && this.#source) return;
+    preserveRoster &&= machine === this.#machine;
     this.close();
     this.#id = id;
     this.#machine = machine;
@@ -98,7 +100,13 @@ export class Stream {
     this.main = this.agents = empty;
     this.histories = {};
     this.historyErrors = {};
-    this.roster = { agents: [] };
+    this.roster = preserveRoster
+      ? {
+          ...this.roster,
+          next: undefined,
+          agents: this.roster.agents.map((agent) => ({ ...agent, content: undefined })),
+        }
+      : { agents: [] };
     this.rosterRetryAgent = undefined;
     this.rosterRetryCaller = undefined;
     this.rosterError = undefined;
@@ -131,6 +139,11 @@ export class Stream {
       return;
     this.#attachment = attachment;
     this.close();
+    if (!this.session) {
+      this.gone = undefined;
+      this.error = undefined;
+      this.connection = "connecting";
+    }
     this.#requests = new AbortController();
     this.#follow(id, machine);
   }
@@ -175,6 +188,13 @@ export class Stream {
 
   #apply(message: Message, snapshot: boolean): void {
     if (snapshot) this.gone = undefined;
+    if (
+      snapshot &&
+      this.session &&
+      (message.session?.thread !== this.session.thread ||
+        message.main?.attachment !== this.main.attachment)
+    )
+      this.roster = { agents: [] };
     snapshot &&=
       message.session?.thread !== this.session?.thread ||
       message.main?.attachment !== this.main.attachment ||
@@ -202,7 +222,7 @@ export class Stream {
       this.input = message.input;
       this.prompts = message.prompts;
       this.status = message.status ?? {};
-      this.roster = message.roster ?? { agents: [] };
+      this.#updateRoster(message.roster ?? { agents: [] });
       this.unavailableAgents = [];
       this.#observeRoles();
       this.review = message.review ?? null;
@@ -219,7 +239,7 @@ export class Stream {
     if (message.prompts) this.prompts = message.prompts;
     if (message.status) this.status = message.status;
     if (message.roster) {
-      this.roster = message.roster;
+      this.#updateRoster(message.roster);
       this.unavailableAgents = [];
       this.#observeRoles();
     }
@@ -392,18 +412,23 @@ export class Stream {
       )
         return;
       const page = result.roster as Roster;
-      const byName = new Map(this.roster.agents.map((agent) => [agent.name, agent]));
-      for (const agent of page.agents) byName.set(agent.name, agent);
-      this.roster = {
-        ...this.roster,
-        agents: [...byName.values()],
-        next: caller ? this.roster.next : page.next,
-      };
+      this.#updateRoster(
+        {
+          ...this.roster,
+          agents: page.agents,
+          next: caller ? this.roster.next : page.next,
+        },
+        true,
+      );
       if (caller && !page.agents.length)
         this.unavailableAgents = [...this.unavailableAgents, caller];
       this.#observeRoles();
     } catch (error) {
-      if (!lifetime.aborted) {
+      if (
+        !lifetime.aborted &&
+        this.roster.next?.revision === cursor.revision &&
+        !(error instanceof TransportError && error.status === 409)
+      ) {
         this.rosterRetryAgent = undefined;
         this.rosterRetryCaller = caller;
         this.rosterError = errorText(error);
@@ -435,11 +460,38 @@ export class Stream {
         ),
       };
     } catch (error) {
-      if (!lifetime.aborted) {
+      if (
+        !lifetime.aborted &&
+        this.agent(agent.name)?.content === reference &&
+        !(error instanceof TransportError && error.status === 409)
+      ) {
         this.rosterRetryAgent = agent;
         this.rosterError = errorText(error);
       }
     }
+  }
+
+  // Keep acquired rows visible while the next revision's bounded pages arrive.
+  // Only a complete publication can prove that an older member disappeared.
+  #updateRoster(page: Roster, append = false): void {
+    if (!append) this.#rosterNames.clear();
+    const agents = new Map(
+      this.roster.agents.map((agent) => [
+        agent.name,
+        append ? agent : { ...agent, content: undefined },
+      ]),
+    );
+    for (const agent of page.agents) {
+      this.#rosterNames.add(agent.name);
+      agents.set(agent.name, agent);
+    }
+    this.roster = {
+      ...page,
+      agents: page.next
+        ? [...agents.values()]
+        : [...this.#rosterNames].map((name) => agents.get(name)!),
+    };
+    this.rosterError = undefined;
   }
 
   async loadSection(kind: keyof DeferredSections, signal?: AbortSignal): Promise<void> {

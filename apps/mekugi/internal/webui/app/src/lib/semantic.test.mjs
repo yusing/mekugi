@@ -232,6 +232,112 @@ test("a confirmed child attachment retries an unavailable shared read only once"
   }
 });
 
+test("family navigation keeps only the roster while the selected thread attaches", () => {
+  const owner = machine();
+  const subscribe = owner.subscribe;
+  owner.subscribe = (method, ...args) =>
+    method === "session/subscribe" ? () => {} : subscribe(method, ...args);
+  const family = {
+    root: "thread-one",
+    threads: ["thread-one", "child", "sibling"],
+    agents: {},
+    status: {},
+  };
+  owner.views[0].snapshot(1, [], { family });
+  stream.connect("thread-one", owner);
+  stream.roster = { agents: family.threads.map((thread) => ({ name: `/root/${thread}`, thread })) };
+  stream.session = { thread: "thread-one", workspace: "/parent" };
+  stream.prompts = { questions: [{ id: "parent-question" }] };
+  stream.connect("child", owner, true);
+  semantic.connect("child", owner);
+  assert.equal(stream.roster.agents.length, 3);
+  assert.equal(stream.session, undefined);
+  assert.equal(stream.prompts, undefined);
+  assert.equal(semantic.frame, undefined);
+  show("/root/sibling");
+  assert.equal(view.session, "sibling", "navigation works before the child view is ready");
+  semantic.connect("unrelated", owner);
+  assert.equal(semantic.family, undefined);
+  stream.connect("unrelated", owner);
+  assert.deepEqual(stream.roster.agents, []);
+});
+
+const rosterAgent = (name) => ({ name, label: name, state: "working" });
+const rosterCursor = (revision) => ({ attachment: "A", kind: "roster", revision, before: 1 });
+
+test("roster revisions retain visible members and recover superseded page reads", async () => {
+  const source = new Stream();
+  let publish;
+  source.connect("thread", {
+    subscribe(_method, _params, event) {
+      publish = event;
+      return () => {};
+    },
+  });
+  const snapshot = (agents, next) =>
+    publish({
+      kind: "snapshot",
+      data: {
+        session: { thread: "thread" },
+        main: { attachment: "A", revision: 1 },
+        roster: { agents, next },
+      },
+    });
+  snapshot([rosterAgent("main"), rosterAgent("worker"), rosterAgent("retired")], null);
+  let reject;
+  source.page = () =>
+    new Promise((_resolve, fail) => {
+      reject = fail;
+    });
+  snapshot([rosterAgent("main")], rosterCursor(2));
+  const pending = source.moreRoster();
+  snapshot([{ ...rosterAgent("main"), turns: 3 }], rosterCursor(3));
+  reject(new TransportError("The roster changed; read its current publication.", "refused", 409));
+  await pending;
+  assert.deepEqual(
+    source.roster.agents.map((row) => row.name),
+    ["main", "worker", "retired"],
+  );
+  assert.equal(source.roster.agents[0].turns, 3);
+  assert.equal(source.rosterError, undefined);
+  source.page = async () => {
+    throw new TransportError("The roster changed; read its current publication.", "refused", 409);
+  };
+  await source.moreRoster();
+  assert.equal(
+    source.rosterError,
+    undefined,
+    "publication races wait for the next cursor without retry chrome",
+  );
+  snapshot([rosterAgent("main")], rosterCursor(4));
+  source.page = async () => ({
+    roster: { agents: [rosterAgent("worker"), rosterAgent("new")], next: null },
+  });
+  await source.moreRoster();
+  assert.deepEqual(
+    source.roster.agents.map((row) => row.name),
+    ["main", "worker", "new"],
+    "complete current membership retires old rows",
+  );
+  publish({
+    kind: "snapshot",
+    data: {
+      session: { thread: "thread" },
+      main: { attachment: "B", revision: 1 },
+      roster: {
+        agents: [rosterAgent("replacement")],
+        next: { ...rosterCursor(1), attachment: "B" },
+      },
+    },
+  });
+  assert.deepEqual(
+    source.roster.agents.map((row) => row.name),
+    ["replacement"],
+    "attachment replacement cannot retain old membership",
+  );
+  source.close();
+});
+
 test("same-thread recovery releases aborted reads without clearing replacement gates", async () => {
   for (const caller of [undefined, "/root/worker"]) {
     const source = new Stream();
@@ -1759,7 +1865,7 @@ test("roster retries retain the failed page or agent operation", async () => {
     agents = 0;
   source.page = async () => {
     if (++pages === 1) throw new Error("page unavailable");
-    return { roster: { agents: [], next: null } };
+    return { roster: { agents: [agent], next: null } };
   };
   source.readContent = async () => {
     if (++agents === 1) throw new Error("agent unavailable");
