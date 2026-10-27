@@ -87,7 +87,8 @@ func TestShellOutputReadRejectsInvalidState(t *testing.T) {
 	if _, err := store.putShellOutput(t.Context(), "\xff", "", 0); err == nil {
 		t.Fatal("invalid UTF-8 accepted")
 	}
-	if _, err := store.putCursor(t.Context(), record.Record{Version: 1, ID: id}, [2]int{-1, 0}, ""); err == nil {
+	source := record.Record{Version: 1, ID: id}
+	if _, err := store.putCursor(t.Context(), source, record.Binding(source), [2]int{-1, 0}, ""); err == nil {
 		t.Fatal("negative cursor position accepted")
 	}
 }
@@ -178,7 +179,7 @@ func TestReadCursorRejectsAlteredPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref, err := store.putCursor(t.Context(), source, [2]int{6, 0}, "stdout")
+	ref, err := store.putCursor(t.Context(), source, record.Binding(source), [2]int{6, 0}, "stdout")
 	if err != nil {
 		t.Fatal(err)
 	}

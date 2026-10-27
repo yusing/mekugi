@@ -101,13 +101,18 @@ func (service *Service) execute(ctx context.Context, request command.Request) co
 				return err
 			}
 			source := cursor
+			binding := ""
 			stream := options.stream
 			if cursor.Source != "" {
 				source, err = store.read(ctx, cursor.Source)
 				if err != nil {
 					return err
 				}
-				if source.Source != "" || record.Binding(source) != cursor.Binding {
+				if source.Source != "" {
+					return errors.New("read snapshot changed or is invalid")
+				}
+				binding = record.Binding(source)
+				if binding != cursor.Binding {
 					return errors.New("read snapshot changed or is invalid")
 				}
 				if stream != "" && stream != cursor.Stream {
@@ -162,8 +167,11 @@ func (service *Service) execute(ctx context.Context, request command.Request) co
 			}
 			next := ""
 			if !page.Complete {
+				if binding == "" {
+					binding = record.Binding(source)
+				}
 				// Persist before exposing this page or suggesting the next operation.
-				next, err = store.putCursor(ctx, source, page.Position, stream)
+				next, err = store.putCursor(ctx, source, binding, page.Position, stream)
 				if err != nil {
 					return err
 				}

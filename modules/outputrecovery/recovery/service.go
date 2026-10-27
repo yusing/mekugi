@@ -220,8 +220,8 @@ func (s *Session) Snapshot(id string) (command.Output, error) {
 	return command.Output{Stdout: value.Stdout, Stderr: value.Stderr, ExitCode: value.ExitCode}, nil
 }
 
-func (s *Session) putCursor(ctx context.Context, source record.Record, position [2]int, stream string) (string, error) {
-	value := record.Record{Version: 1, Source: source.ID, Position: position, Stream: stream, Binding: record.Binding(source)}
+func (s *Session) putCursor(ctx context.Context, source record.Record, binding string, position [2]int, stream string) (string, error) {
+	value := record.Record{Version: 1, Source: source.ID, Position: position, Stream: stream, Binding: binding}
 	value.CursorDigest = record.CursorDigest(value)
 	err := s.store.Transaction(ctx, s.writes, func(tx *history.Transaction) error {
 		scope, _, err := s.store.ReadScope(s.scope.Namespace)
