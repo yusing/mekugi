@@ -54,3 +54,29 @@ func BenchmarkSafeTerminalText(b *testing.B) {
 		}
 	}
 }
+
+func TestSafePlainTextDoesNotAllocate(t *testing.T) {
+	text := strings.Repeat("plain text\n", 1000)
+	if got := testing.AllocsPerRun(10, func() {
+		if Safe(text, true) != text {
+			t.Fatal("plain text changed")
+		}
+	}); got != 0 {
+		t.Fatalf("plain text allocated %.0f times", got)
+	}
+}
+
+func BenchmarkSafeASCII(b *testing.B) {
+	for _, size := range []int{32, 4096, 65536} {
+		b.Run(fmt.Sprint(size), func(b *testing.B) {
+			text := strings.Repeat("a", size)
+			b.ReportAllocs()
+			b.SetBytes(int64(size))
+			for b.Loop() {
+				if Safe(text, false) != text {
+					b.Fatal("plain text changed")
+				}
+			}
+		})
+	}
+}

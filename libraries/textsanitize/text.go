@@ -13,6 +13,16 @@ import (
 // Safe preserves readable text and optional SGR colors, removing other controls
 // and expanding tabs. Input cannot emit cursor moves, clipboard writes or titles.
 func Safe(text string, colors bool) string {
+	plain := true
+	for i := 0; i < len(text); i++ {
+		if c := text[i]; (c < ' ' || c > '~') && c != '\n' {
+			plain = false
+			break
+		}
+	}
+	if plain {
+		return text
+	}
 	var local [512]byte
 	out := local[:0]
 	// Tabs are the only expansion. Bound the borrowed storage up front so
