@@ -13,7 +13,7 @@ import (
 // Large previews retain a bounded source window of the actual unified diff.
 func boundPreview(preview Preview) Preview {
 	const limit = 48 << 10
-	if len(responses.MustMarshalJSON(preview)) <= limit {
+	if !previewExceedsLimit(preview, limit) {
 		return preview
 	}
 	if len(preview.Files) != 0 {
@@ -34,7 +34,7 @@ func boundPreview(preview Preview) Preview {
 		}
 		preview.DiffText, preview.Truncated = true, true
 	}
-	for preview.Input != "" && len(responses.MustMarshalJSON(preview)) > limit {
+	for preview.Input != "" && previewExceedsLimit(preview, limit) {
 		cut := max(1, len(preview.Input)/2)
 		for cut < len(preview.Input) && !utf8.RuneStart(preview.Input[cut]) {
 			cut++
@@ -46,6 +46,22 @@ func boundPreview(preview Preview) Preview {
 		preview.Input = preview.Input[1:]
 	}
 	return preview
+}
+
+func previewExceedsLimit(preview Preview, limit int) bool {
+	// JSON cannot encode these strings in fewer bytes. Leave metadata and
+	// escaping to the encoder when this lower bound does not settle the limit.
+	if len(preview.Input) > limit {
+		return true
+	}
+	remaining := limit - len(preview.Input)
+	for _, file := range preview.Files {
+		if len(file.Diff) > remaining {
+			return true
+		}
+		remaining -= len(file.Diff)
+	}
+	return len(responses.MustMarshalJSON(preview)) > limit
 }
 
 // Keep arriving additions ahead of the not-yet-replaced baseline suffix in a
