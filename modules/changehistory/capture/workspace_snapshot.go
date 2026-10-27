@@ -47,9 +47,10 @@ const (
 	// does not become an agent edit.
 	workspaceSnapshotPlainFiles = 20000
 	workspaceSnapshotPlainAdds  = 256
-	// A private object store past workspaceSnapshotStoreBytes starts over;
-	// calls whose checkpoint it held keep only their named evidence. A
-	// workspace unused for workspaceSnapshotIdle loses its private state.
+	// A private object store still past workspaceSnapshotStoreBytes after
+	// packing starts over; calls whose checkpoint it held keep only their
+	// named evidence. A workspace unused for workspaceSnapshotIdle loses its
+	// private state.
 	workspaceSnapshotStoreBytes = 512 << 20
 	workspaceSnapshotStoreCheck = 64
 	workspaceSnapshotIdle       = 30 * 24 * time.Hour
@@ -271,13 +272,27 @@ func (r *workspaceSnapshotRepo) snapshot(ctx context.Context) (string, error) {
 		r.git = ""
 	}
 	if r.git != "" && r.snapshots >= workspaceSnapshotStoreCheck {
-		r.snapshots = 0
 		if r.storeBytes(ctx) > workspaceSnapshotStoreBytes {
-			if err := errors.Join(os.RemoveAll(r.gitDir), os.Remove(r.index)); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return "", err
+			_ = r.repack(ctx) // Best effort; the existing size cap still applies.
+			if ctx.Err() != nil {
+				return "", ctx.Err()
 			}
-			r.git = ""
+			size := r.storeBytes(ctx)
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+			}
+			if size > workspaceSnapshotStoreBytes {
+				if err := errors.Join(os.RemoveAll(r.gitDir), os.Remove(r.index)); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return "", err
+				}
+				r.git = ""
+			}
 		}
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		// Interrupted maintenance remains due for the longer background warmup.
+		r.snapshots = 0
 	}
 	if r.git == "" {
 		r.owner.pruneIdle(filepath.Dir(r.lockPath))
@@ -300,6 +315,15 @@ func (r *workspaceSnapshotRepo) snapshot(ctx context.Context) (string, error) {
 	return tree, err
 }
 
+// repack runs under the snapshot's gate and private-index lock. Checkpoint
+// trees have no refs, so cruft packing must retain every unreachable object;
+// --local also keeps borrowed alternate objects out of the private store.
+// A failed or unsupported repack leaves the existing size-cap fallback in place.
+func (r *workspaceSnapshotRepo) repack(ctx context.Context) error {
+	_, err := r.run(ctx, nil, "repack", "--cruft", "--cruft-expiration=never", "-d", "-l", "--threads=1", "--window=10", "--depth=20", "-n")
+	return err
+}
+
 // storeBytes reports the private object store's size, or zero when unknown.
 func (r *workspaceSnapshotRepo) storeBytes(ctx context.Context) int64 {
 	output, err := r.run(ctx, nil, "count-objects", "-v")
@@ -314,7 +338,39 @@ func (r *workspaceSnapshotRepo) storeBytes(ctx context.Context) int64 {
 			kib += size
 		}
 	}
-	return kib << 10
+	size := kib << 10
+	// count-objects includes pack/index bytes but omits these companions.
+	// Inspect only the private pack directory, never loose or alternate objects.
+	entries, err := os.ReadDir(filepath.Join(r.gitDir, "objects", "pack"))
+	if err != nil {
+		return 0
+	}
+	files := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		if entry.Type().IsRegular() {
+			files[entry.Name()] = true
+		}
+	}
+	for _, entry := range entries {
+		if ctx.Err() != nil {
+			return 0
+		}
+		ext := filepath.Ext(entry.Name())
+		switch ext {
+		case ".mtimes", ".rev", ".bitmap", ".keep", ".promisor":
+			base := strings.TrimSuffix(entry.Name(), ext)
+			// Orphan companions already contribute to size-garbage.
+			if !files[entry.Name()] || !files[base+".pack"] || !files[base+".idx"] {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return 0
+			}
+			size += info.Size()
+		}
+	}
+	return size
 }
 
 // pruneIdle removes other workspaces' private state that no router process
