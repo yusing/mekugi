@@ -61,6 +61,14 @@ test("inline authored content has no duplicate details action", () => {
     false,
   );
   assert.equal(hasDetails({ kind: "tool", values: [{ tail: ["", " "] }] }), false);
+  for (const evidence of [{ detailCode: '{"state":"confirmed"}' }, { detailsAvailable: true }])
+    assert.equal(
+      hasDetails({
+        kind: "progress",
+        values: [{ kind: "progress", body: "Interrupt requested for /root/worker", ...evidence }],
+      }),
+      false,
+    );
   assert.equal(
     hasDetails({
       kind: "reasoning",
@@ -109,6 +117,26 @@ test("completed questions have no duplicate details, while hidden choices remain
   };
   assert.equal(hasDetails({ kind: "question", values: [value] }), false);
   assert.equal(hasDetails({ kind: "question", values: [{ ...value, sourceOmitted: true }] }), true);
+});
+
+test("errors and hooks retain details only where their renderer omits content", () => {
+  const error = { kind: "error", agent: "/root/worker", values: [{ body: "Complete failure." }] };
+  assert.equal(hasDetails(error, "Main"), false);
+  assert.equal(hasDetails(error, "/root/worker"), true);
+  const hook = { kind: "hook", values: [{ label: "Checked", hook: { status: "completed" } }] };
+  assert.equal(hasDetails(hook), false);
+  assert.equal(hasDetails(hook, "Main", true), true);
+  assert.equal(
+    hasDetails({ ...hook, values: [{ ...hook.values[0], tail: ["Hidden result"] }] }),
+    true,
+  );
+  assert.equal(
+    hasDetails({
+      ...hook,
+      values: [{ ...hook.values[0], hook: { status: "failed" }, tail: ["Visible failure"] }],
+    }),
+    false,
+  );
 });
 
 test("search patterns and paths retain distinct operands", () => {

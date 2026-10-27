@@ -45,6 +45,7 @@
 
   let scroller = $state<HTMLElement>();
   let column = $state<HTMLElement>();
+  let clipped = $state<Record<number, boolean>>({});
   let following = $state(true);
   // Whether newer rows lie below the visible part of the feed.
   let below = $state(false);
@@ -340,7 +341,7 @@
         hydrated.reference.revision === row.entry.content.revision
           ? hydrated.entry
           : row.entry}
-      {@const details = !!ondetails && hasDetails(entry)}
+      {@const details = !!ondetails && hasDetails(entry, owner, clipped[entry.seq])}
       {@const response =
         !isUser(entry) && !entry.assignment
           ? responseText(entry.kind, entry.text, entry.values?.[0]?.body)
@@ -355,6 +356,12 @@
           {owner}
           {source}
           onload={() => void load(row.entry).catch(() => {})}
+          onclip={ondetails
+            ? (value) => {
+                if (value) clipped[entry.seq] = true;
+                else delete clipped[entry.seq];
+              }
+            : undefined}
         />
         {#if loading[entry.seq]}<p class="ml-19 text-small text-muted" role="status">
             Loading content…

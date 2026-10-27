@@ -140,8 +140,9 @@ are never submitted. Caches belong to the attached view and are discarded on
 disconnection or thread changes. Menu motion respects reduced-motion preferences.
 
 Running commands stay visible above the composer and leave when the authoritative
-host invocation completes. Each shows its first line with shell highlighting;
-hovering, focusing or pressing it shows the whole command, which stays while the
+host invocation completes. Each shows its first line with shell highlighting.
+When that preview omits lines or clips horizontally, hovering, focusing or pressing
+it shows the whole command, which stays while the
 pointer is over either or the command keeps focus. It follows the command as the
 page scrolls, resizes or reflows, staying within the viewport, and Escape hides
 it wherever focus is. Each command offers Stop when the host exposes an

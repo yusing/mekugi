@@ -7,6 +7,7 @@
   import { failed, isUser, reasoningBody } from "./kinds";
   import Markdown from "./Markdown.svelte";
   import { inline, referenceContext } from "./markdown";
+  import { observeOverflow } from "./overflow";
   import type { Entry, Value } from "./protocol";
   import { stream, type Stream } from "./stream.svelte";
   import Icon from "./ui/Icon.svelte";
@@ -27,6 +28,7 @@
     views,
     source = stream,
     onload,
+    onclip,
   }: {
     entry: Entry;
     at: string;
@@ -36,6 +38,7 @@
     views?: Entry[];
     source?: Stream;
     onload?: () => unknown;
+    onclip?: (clipped?: boolean) => void;
   } = $props();
 
   const user = $derived(isUser(entry));
@@ -107,6 +110,16 @@
       onload?.();
   });
   const hookFailed = $derived(first !== undefined && failed(first));
+  const measureHook = (node: HTMLElement) => {
+    const notify = onclip;
+    if (!notify) return;
+    void first?.label;
+    const stop = observeOverflow(node, notify);
+    return () => {
+      stop();
+      notify();
+    };
+  };
   // Main is local to an independently hosted runtime; canonical paths are global.
   const endpoint = (name?: string) => (name === "Main" ? source.session?.caller || "/root" : name);
 
@@ -296,7 +309,7 @@
           <span class={["flex flex-none", hookFailed && "text-negative"]}
             ><Icon name="hook" size={13} /></span
           >
-          <span class="min-w-0 truncate" title={first?.label ?? entry.text}
+          <span class="min-w-0 truncate" title={first?.label ?? entry.text} {@attach measureHook}
             >{@html inline(first?.label ?? entry.text ?? "")}</span
           >
           {#if hookFailed}<Tag tone="negative">{first?.hook?.status ?? "failed"}</Tag>{/if}

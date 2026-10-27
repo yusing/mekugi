@@ -1,5 +1,6 @@
 <script lang="ts">
   import Code from "./Code.svelte";
+  import { observeOverflow } from "./overflow";
   import { newIdentity } from "./transport";
   import { beside } from "./ui/place";
   import { floating } from "./ui/styles";
@@ -14,6 +15,13 @@
   const id = `command-${newIdentity()}`;
   const width = 560;
   const line = $derived(command.split("\n")[0]);
+  const multiline = $derived(command.replace(/\n$/, "").includes("\n"));
+  let clipped = $state(false);
+  const disclosure = $derived(multiline || clipped);
+  const measure = (node: HTMLElement) => {
+    void line;
+    return observeOverflow(node, (value) => (clipped = value));
+  };
   let anchor = $state<HTMLElement>();
   let tip = $state<HTMLElement>();
   let place = $state("");
@@ -62,34 +70,41 @@
   });
 </script>
 
-<button
-  bind:this={anchor}
-  type="button"
-  class="block w-full min-w-0 rounded-chip text-left text-small"
-  aria-describedby={id}
-  onmouseenter={show}
-  onmouseleave={leave}
-  onfocus={show}
-  onblur={() => tip?.matches(":hover") || hide()}
-  onclick={show}
-  ><code class="block truncate"
-    ><Code code={line} lang="bash" />{#if line !== command}<span class="text-muted">{" …"}</span
+{#snippet preview()}
+  <code class="block overflow-hidden text-ellipsis whitespace-pre" {@attach measure}
+    ><Code code={line} lang="bash" />{#if multiline}<span class="text-muted">{" …"}</span
       >{/if}</code
-  ></button
->
-<div
-  bind:this={tip}
-  {id}
-  popover="manual"
-  role="tooltip"
-  class="fixed inset-auto m-0 max-h-[min(var(--room),320px)] w-max max-w-[min(560px,calc(100vw-16px))] overflow-auto px-3 py-2 {floating}"
-  style={place}
-  onmouseenter={show}
-  onmouseleave={leave}
-  ontoggle={(event) => (open = (event as ToggleEvent).newState === "open")}
->
-  <pre class="text-small leading-[18px] whitespace-pre-wrap wrap-anywhere"><Code
-      code={command}
-      lang="bash"
-    /></pre>
-</div>
+  >
+{/snippet}
+
+{#if disclosure}
+  <button
+    bind:this={anchor}
+    type="button"
+    class="block w-full min-w-0 rounded-chip text-left text-small"
+    aria-describedby={id}
+    onmouseenter={show}
+    onmouseleave={leave}
+    onfocus={show}
+    onblur={() => tip?.matches(":hover") || hide()}
+    onclick={show}>{@render preview()}</button
+  >
+  <div
+    bind:this={tip}
+    {id}
+    popover="manual"
+    role="tooltip"
+    class="fixed inset-auto m-0 max-h-[min(var(--room),320px)] w-max max-w-[min(560px,calc(100vw-16px))] overflow-auto px-3 py-2 {floating}"
+    style={place}
+    onmouseenter={show}
+    onmouseleave={leave}
+    ontoggle={(event) => (open = (event as ToggleEvent).newState === "open")}
+  >
+    <pre class="text-small leading-[18px] whitespace-pre-wrap wrap-anywhere"><Code
+        code={command}
+        lang="bash"
+      /></pre>
+  </div>
+{:else}
+  <div class="block w-full min-w-0 text-small">{@render preview()}</div>
+{/if}
