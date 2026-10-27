@@ -63,6 +63,16 @@ func assertNativeRowBudget(t *testing.T, out command.Output, shown, omitted stri
 	}
 }
 
+func TestNativeMCatBlankRowBudget(t *testing.T) {
+	text := strings.Repeat("\n", 2000)
+	path := nativeFixture(t, "blank.txt", text)
+	out := nativeExecute(t, "mcat", "--max-tokens", "1000", path)
+	assertNativeRowBudget(t, out, text, "", 1000)
+	if out.ExitCode != 0 || out.Stderr != "" {
+		t.Fatalf("blank read failed: %+v", out)
+	}
+}
+
 func TestNativeMCatRowBudgetGreedyReference(t *testing.T) {
 	logical := []string{
 		"alpha", "", "!!!", ");", "中文 日本語 🧪", " ",
