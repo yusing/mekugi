@@ -20,7 +20,9 @@ type File struct {
 	Baseline int
 	// incomplete also covers hidden gaps and failed composition. Separate
 	// captures remain reviewable, but their sum is not a final outcome.
-	incomplete bool
+	incomplete  bool
+	netCounts   diffmodel.Counts
+	countsValid bool
 }
 type Chunk struct {
 	Key, Status  string
@@ -246,6 +248,8 @@ func (v *View) RefreshVisible() {
 		visible.Chunks = slices.DeleteFunc(visible.Chunks, func(chunk Chunk) bool {
 			return chunk.Review.Directory && chunk.Review.BeforePath == "" && chunk.Review.AfterPath == ""
 		})
+		visible.netCounts = visible.NetCounts()
+		visible.countsValid = true
 		v.Visible[file.Key()] = visible
 	}
 }
@@ -253,6 +257,9 @@ func (v *View) RefreshVisible() {
 // NetCounts reports the line counts of an already composed visible file.
 // Unknown or inconsistent evidence never becomes a cumulative-edit total.
 func (file File) NetCounts() diffmodel.Counts {
+	if file.countsValid {
+		return file.netCounts
+	}
 	if file.incomplete {
 		return diffmodel.Counts{-1, -1}
 	}

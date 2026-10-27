@@ -53,18 +53,19 @@ func CallerCounts(files []File) map[string]diffmodel.Counts {
 	counts := make(map[string]diffmodel.Counts)
 	for _, file := range files {
 		for _, chunk := range file.Chunks {
-			added, removed := chunk.Review.LineCounts()
-			if added < 0 || removed < 0 {
-				continue
-			}
-			if !projectCapture(chunk) {
-				continue
-			}
-			key := CallerKey(chunk.Caller)
-			count := counts[key]
-			count.Added, count.Removed = count.Added+added, count.Removed+removed
-			counts[key] = count
+			addCallerCounts(counts, chunk)
 		}
 	}
 	return counts
+}
+
+func addCallerCounts(counts map[string]diffmodel.Counts, chunk Chunk) {
+	added, removed := chunk.Review.LineCounts()
+	if added < 0 || removed < 0 || !projectCapture(chunk) {
+		return
+	}
+	key := CallerKey(chunk.Caller)
+	count := counts[key]
+	count.Added, count.Removed = count.Added+added, count.Removed+removed
+	counts[key] = count
 }

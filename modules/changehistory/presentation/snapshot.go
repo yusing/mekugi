@@ -135,6 +135,9 @@ type Snapshot struct {
 	order       []AttemptKey
 	receipts    []*Receipt // Immutable references, assembled only during hydration.
 	bytes       int
+	// Negative positions block paths touched by structural or colliding groups.
+	paths           map[string]int
+	maxCaptureOrder uint64
 }
 
 func (s *Snapshot) Attempts() iter.Seq[Attempt] {
@@ -258,6 +261,22 @@ func (b *Builder) Finish() *Snapshot {
 	if b.base != nil && b.base.Publication.initialized && len(b.next.order) == len(b.base.order) {
 		return b.base
 	}
+	if b.base != nil && b.base.Publication.initialized {
+		var captures []Chunk
+		for _, key := range b.next.order[len(b.base.order):] {
+			for _, chunk := range b.next.attempts[key].Chunks {
+				if changes.AuthoredReview(chunk.Review) {
+					captures = append(captures, chunk)
+				}
+			}
+		}
+		if len(captures) == 0 {
+			return &b.next
+		}
+		if b.appendCaptures(captures) {
+			return &b.next
+		}
+	}
 	var captures []Chunk
 	for _, key := range b.next.order {
 		for _, chunk := range b.next.attempts[key].Chunks {
@@ -267,6 +286,7 @@ func (b *Builder) Finish() *Snapshot {
 		}
 	}
 	b.next.Publication = b.next.Publication.With(GroupCaptures(captures))
+	b.next.indexPaths()
 	return &b.next
 }
 
