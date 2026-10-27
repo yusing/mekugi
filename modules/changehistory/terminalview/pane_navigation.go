@@ -187,6 +187,16 @@ func (c *Pane) filterCaller(caller string) {
 	c.refreshChanges()
 }
 
+// SelectCaller follows the displayed agent using the retained review evidence.
+func (c *Pane) SelectCaller(caller string) {
+	if c.view.Caller == caller {
+		return
+	}
+	c.filterCaller(caller)
+	c.back = paneBack{}
+	c.dirty = true
+}
+
 // refreshChanges rebuilds what the navigator derives from captures: the
 // Changes tab, caller marks, and the filter shown in the Files heading.
 func (c *Pane) refreshChanges() {

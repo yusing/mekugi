@@ -275,6 +275,9 @@ views stay read-only, with navigation and copying available; their Reference
 action returns to Main before insertion. Live child references target the child's own editor.
 Clicking an agent name preserves pane focus and leaves an open Diff intact;
 the Agents selector or Ctrl-B then 3 explicitly focuses the roster.
+Changing the displayed agent selects that caller's saved changes in Diff,
+including an empty result when that agent has no captures. Diff's own caller
+navigation remains available until the displayed agent changes again.
 A blank row separates the composer
 from content when height permits. Uncolored border labels use the text foreground.
 

@@ -15,20 +15,31 @@ import (
 func TestUISnapshotFamilyRosterResumedDelegates(t *testing.T) {
 	h := NewHub(t.Context(), nil)
 	frame := Frame{Session: Session{Thread: "root", Caller: "/root"}, Agents: familyActivity("root", "main")}
-	for i := range 8 {
+	frame.Members = []threadcontrol.Participant{{Thread: "root", Task: "/root", Status: threadcontrol.Working}}
+	for i := range 30 {
+		status := threadcontrol.Completed
+		if i < 3 {
+			status = threadcontrol.Working
+		}
 		frame.Members = append(frame.Members, threadcontrol.Participant{
-			Thread: fmt.Sprintf("child%d", i), Task: fmt.Sprintf("/root/child%d", i), Status: threadcontrol.Completed,
+			Thread: fmt.Sprintf("child%d", i), Task: fmt.Sprintf("/root/child%d", i), Status: status,
 		})
 	}
 	familyRuntime(h, nil, frame)
 	family, _ := h.Family("root")
 	v := terminalview.NewView()
 	v.Update(family.Agents, terminalview.Display{Caller: "/root"})
-	rows := v.NativeRoster(80, 20, time.Unix(100, 0), false)
-	if len(v.Hits) != 3 || !strings.Contains(rows[0], "8 finished") || !strings.Contains(strings.Join(rows, "\n"), "+6 more") {
+	rows := v.NativeRoster(80, 40, time.Unix(100, 0), false)
+	if len(v.Hits) != 4 || !strings.Contains(rows[0], "27 finished") || !strings.Contains(rows[0], "4 working") || !strings.Contains(strings.Join(rows, "\n"), "+27 more") {
 		t.Fatalf("finished delegates expanded on resume: %q", rows)
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/family-roster-resumed.txt", rows, 80)
+	v.ScrollRoster(1)
+	scrolled := v.NativeRoster(80, 40, time.Unix(100, 0), false)
+	if len(scrolled) != len(rows) || len(v.Hits) != 4 || v.Hits[0].Agent == "/root" {
+		t.Fatalf("scrolling expanded the resumed roster: %q", scrolled)
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/family-roster-resumed-scrolled.txt", scrolled, 80)
 	selected := frame.Members[len(frame.Members)-1].Task
 	v.Update(family.Agents, terminalview.Display{Caller: selected})
 	v.NativeRoster(80, 20, time.Unix(100, 0), false)
@@ -38,6 +49,9 @@ func TestUISnapshotFamilyRosterResumedDelegates(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("selected completed delegate %s disappeared", selected)
+	}
+	if focused := v.NativeRoster(80, 20, time.Unix(100, 0), true); len(focused) <= len(rows) {
+		t.Fatal("focusing Agents did not retain the larger roster allocation")
 	}
 }
 

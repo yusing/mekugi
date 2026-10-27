@@ -70,6 +70,37 @@ func TestUISnapshotNativeRosterOneRow(t *testing.T) {
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/native-roster-one-row.txt", rows, 64)
 }
 
+func TestUISnapshotNativeRosterScroll(t *testing.T) {
+	for _, focused := range []bool{false, true} {
+		t.Run(fmt.Sprint(focused), func(t *testing.T) {
+			v := NewView()
+			v.Painter.Theme = diffrender.DarkTheme
+			publication := &presentation.Publication{}
+			for _, name := range []string{"/root", "/root/a", "/root/b", "/root/c", "/root/d", "/root/e"} {
+				publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: presentation.Agent{AgentFacts: presentation.AgentFacts{Name: name}}})
+			}
+			v.Update(publication, Display{Caller: "/root"})
+			v.NativeRoster(64, 3, time.Unix(100, 0), focused)
+			var frames []string
+			for _, step := range []int{1, 1, 100, -1, -100} {
+				v.ScrollRoster(step)
+				rows := v.NativeRoster(64, 3, time.Unix(100, 0), focused)
+				if step == 1 && v.Hits[0].Agent == "/root" || step == 100 && v.Hits[len(v.Hits)-1].Agent != "/root/e" || step == -100 && v.Hits[0].Agent != "/root" {
+					t.Fatalf("scroll %d ignored: %+v", step, v.Hits)
+				}
+				frames = append(frames, rows...)
+			}
+			v.Update(publication, Display{Caller: "/root/e"})
+			rows := v.NativeRoster(64, 3, time.Unix(100, 0), focused)
+			if v.RosterManual || v.Hits[len(v.Hits)-1].Agent != "/root/e" {
+				t.Fatalf("selection did not reveal its row: %+v", v.Hits)
+			}
+			frames = append(frames, rows...)
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-roster-scroll-%t.txt", focused), frames, 64)
+		})
+	}
+}
+
 func TestNativeRosterKeepsSelectedFinishedChild(t *testing.T) {
 	v := NewView()
 	publication := &presentation.Publication{}
@@ -98,6 +129,38 @@ func TestNativeRosterKeepsSelectedFinishedChild(t *testing.T) {
 		if row.Agent.Name != publication.Roster[i].Agent.Name {
 			t.Fatal("display priority changed canonical navigation order")
 		}
+	}
+}
+
+func TestNativeRosterWheelKeepsCompactHeight(t *testing.T) {
+	v := NewView()
+	publication := &presentation.Publication{}
+	for i := range 8 {
+		name := fmt.Sprintf("/root/done-%d", i)
+		if i == 0 {
+			name = "/root"
+		}
+		publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: presentation.Agent{AgentFacts: presentation.AgentFacts{Name: name, Final: i > 0}, Status: "answered"}})
+	}
+	v.Update(publication, Display{Caller: "/root"})
+	before := v.NativeRoster(80, 14, time.Unix(100, 0), false)
+	if !strings.Contains(strings.Join(before, "\n"), "+5 more") {
+		t.Fatal("fixture did not collapse finished agents")
+	}
+	for range 7 {
+		v.ScrollRoster(1)
+		rows := v.NativeRoster(80, 14, time.Unix(100, 0), false)
+		if len(rows) != len(before) || len(v.Hits) != 3 {
+			t.Fatalf("wheel expanded the compact roster: %+v", v.Hits)
+		}
+	}
+	if v.Hits[2].Agent != "/root/done-7" {
+		t.Fatalf("scrolling did not reach the final finished agent: %+v", v.Hits)
+	}
+	v.ScrollRoster(-100)
+	v.NativeRoster(80, 14, time.Unix(100, 0), false)
+	if v.Hits[0].Agent != "/root" {
+		t.Fatal("upward scrolling did not return to Main")
 	}
 }
 

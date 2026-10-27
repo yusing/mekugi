@@ -295,8 +295,24 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 		await("parent-only-model")
 		write("PTY Main draft")
 		await("PTY Main draft")
-		selectChild()
-		await("child-model (low) • flex")
+		write("\x022")
+		await("No visible changes")
+		footer := strings.Split(screen.String(), "\n")[23]
+		column := strings.Index(footer, "3 Agents")
+		if column < 0 {
+			t.Fatal("Agents selector missing from terminal")
+		}
+		x := ansi.StringWidth(footer[:column]) + 1
+		write(fmt.Sprintf("\x1b[<0;%d;24M\x1b[<0;%d;24m\x1b[B", x, x))
+		await("child-model")
+		await("child.go")
+		write("\x1b[A")
+		await("PTY Main draft")
+		await("No visible changes")
+		write("\x023\x1b[B")
+		await("child-model")
+		await("child.go")
+		write("\x022")
 		write("PTY child input")
 		await("PTY child input")
 		write("\r")

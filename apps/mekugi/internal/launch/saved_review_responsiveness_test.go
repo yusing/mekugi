@@ -291,7 +291,8 @@ func TestAppServerSavedReviewHydrationKeepsTerminalResponsive(t *testing.T) {
 	if !await(5*time.Second, updated) {
 		t.Fatalf("input and host completion did not arrive after storage resumed:\n%s", screen.String())
 	}
-	if _, err := io.WriteString(master, "\x022"); err != nil {
+	// This retained capture has unknown ownership; inspect all callers.
+	if _, err := io.WriteString(master, "\x0220"); err != nil {
 		t.Fatal(err)
 	}
 	if !await(5*time.Second, func(frame string) bool { return strings.Contains(frame, "retained-after") }) {

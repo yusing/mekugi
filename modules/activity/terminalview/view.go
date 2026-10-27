@@ -823,7 +823,7 @@ func (v *View) RenderRoster(rows []activitypresentation.AgentRow, width, limit i
 }
 
 func (v *View) ScrollRoster(step int) {
-	if step > 0 && v.rosterEnd >= len(v.roster) {
+	if step > 0 && v.RosterManual && v.rosterEnd >= len(v.roster) {
 		return
 	}
 	v.RosterOffset = max(0, min(v.RosterOffset+step, len(v.roster)-1))

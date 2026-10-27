@@ -117,11 +117,22 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	if len(rows) > limit && limit > 1 {
 		count-- // Room for every hidden row, including those above selection.
 	}
+	var compact []activitypresentation.AgentRow
+	if !focused {
+		compact = v.collapsedRoster(rows, limit, selectedCaller)
+		count = len(compact)
+	}
 	start := max(0, min(selected-count+1, len(rows)-count))
+	if v.RosterSelected != selectedCaller {
+		v.RosterManual = false
+	}
+	if v.RosterManual {
+		start = min(v.RosterOffset, len(rows)-count)
+	}
 	end := start + count
 	visible := rows[start:end]
-	if !focused {
-		visible = v.collapsedRoster(rows, limit, selectedCaller)
+	if !focused && !v.RosterManual {
+		visible = compact
 	}
 	hidden := len(rows) - len(visible)
 	if hidden > 0 && limit == 1 {
@@ -208,7 +219,7 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	if legend != "" {
 		lines = append(lines, legend)
 	}
-	v.RosterOffset, v.rosterEnd = start, end
+	v.RosterOffset, v.rosterEnd, v.RosterSelected = start, end, selectedCaller
 	return lines
 }
 

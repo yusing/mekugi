@@ -1,0 +1,12 @@
+ Files  1/1 · tree · @w… │  1/1  file1.go · New file +2 -0 ──────────────────────────────────────── 
+ / filter paths          │  ┄ file1.go worker                                                       
+A file1.go ● +2 -0       │  1│+package selected                                                     
+                         │  2│+// /root/worker edit                                                 
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          

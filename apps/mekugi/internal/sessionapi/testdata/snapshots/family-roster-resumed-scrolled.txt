@@ -1,0 +1,6 @@
+"\x1b[38;2;70;70;90m─ \x1b[39;2m3 Agents · 31 · \x1b[38;5;214;22m4 working\x1b[39;2m · 27 finished\x1b[38;2;70;70;90;22m ──────────────────────────────────────\x1b[m"
+" \x1b[38;5;38;1m◐\x1b[m \x1b[38;5;38;1mchild0\x1b[m  working                                                         \x1b[2m  0%\x1b[m "
+" \x1b[38;5;37;1m◐\x1b[m \x1b[38;5;37;1mchild1\x1b[m  working                                                         \x1b[2m  0%\x1b[m "
+" \x1b[38;5;74;1m◐\x1b[m \x1b[38;5;74;1mchild2\x1b[m  working                                                         \x1b[2m  0%\x1b[m "
+" \x1b[38;5;114m✓\x1b[m \x1b[38;5;170;1mchild3\x1b[m  \x1b[2mdone\x1b[m                                                            \x1b[2m  0%\x1b[m "
+"\x1b[2m   +27 more · ^B 3 to browse\x1b[m                                                    "

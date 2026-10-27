@@ -98,7 +98,11 @@ func (c *nativeClientRenderer) update(frame sessionapi.NativeFrame, draft conver
 		painter.Painter.DeferFileLinks = true
 	}
 	if pane, ok := u.Auxiliary.(*changeui.Pane); ok && frame.Review != nil {
+		workspaceChanged := pane.Workspace() != frame.Review.Workspace
 		pane.PublishReview(*frame.Review)
+		if workspaceChanged || c.frame.Review == nil || c.frame.View.Displayed != view.Displayed || c.frame.View.Info.Caller != view.Info.Caller || c.frame.View.Version.Attachment != view.Version.Attachment {
+			pane.SelectCaller(agentDisplay.Caller)
+		}
 	}
 	for _, live := range frame.Live {
 		u.Live.Observe(live, false, now)

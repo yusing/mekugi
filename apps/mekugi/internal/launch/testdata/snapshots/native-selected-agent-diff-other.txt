@@ -1,0 +1,12 @@
+ Files  1/1 · tree · @o… │  1/1  file2.go · New file +2 -0 ──────────────────────────────────────── 
+ / filter paths          │  ┄ file2.go other                                                        
+A file2.go ● +2 -0       │  1│+package selected                                                     
+                         │  2│+// /root/other edit                                                  
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
+                         │                                                                          
