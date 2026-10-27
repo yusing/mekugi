@@ -1,12 +1,12 @@
 package execscope
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
@@ -163,23 +163,20 @@ func execFixerScope(input execProviderInput) execProviderResult {
 		if len(operands) == 0 {
 			operands = []string{root}
 		}
-		entries := 0
+		walker := execPathWalker{remaining: ListingLimit, deadline: input.deadline}
 		for _, operand := range operands {
 			matches := []string{operand}
 			if strings.ContainsAny(operand, "*?[") {
-				matches, _ = filepath.Glob(operand)
+				var err error
+				matches, err = walker.glob(operand)
+				truncated = truncated || errors.Is(err, errExecWalkIncomplete)
 			}
 			for _, path := range matches {
 				if info, err := os.Lstat(path); err == nil && !info.IsDir() {
 					paths = append(paths, path)
 					continue
 				}
-				_ = filepath.WalkDir(path, func(path string, entry fs.DirEntry, err error) error {
-					entries++
-					if entries > ListingLimit || time.Now().After(input.deadline) {
-						truncated = true
-						return filepath.SkipAll
-					}
+				err := walker.walk(path, func(path string, entry fs.DirEntry, err error) error {
 					if err != nil {
 						return nil
 					}
@@ -194,6 +191,9 @@ func execFixerScope(input execProviderInput) execProviderResult {
 					}
 					return nil
 				})
+				if err != nil {
+					truncated = true
+				}
 			}
 		}
 	}

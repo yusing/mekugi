@@ -341,13 +341,8 @@ func (s *execSourceScope) glob(root, pattern string) []string {
 	}
 	s.iterations = append(s.iterations, root)
 	var paths []string
-	entries := 0
-	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		entries++
-		if entries > ListingLimit || time.Now().After(s.input.deadline) {
-			s.result.open = true
-			return filepath.SkipAll
-		}
+	walker := execPathWalker{remaining: ListingLimit, deadline: s.input.deadline}
+	err := walker.walk(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			s.result.open = true
 			return nil
@@ -361,6 +356,9 @@ func (s *execSourceScope) glob(root, pattern string) []string {
 		}
 		return nil
 	})
+	if err != nil {
+		s.result.open = true
+	}
 	return paths
 }
 

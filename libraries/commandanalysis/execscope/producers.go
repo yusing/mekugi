@@ -254,7 +254,6 @@ func execFindPaths(input execProviderInput, args []string) ([]string, string, er
 		}
 	}
 	var paths []string
-	entries := 0
 	var pathPattern *regexp.Regexp
 	if pattern != "" {
 		expression, ok := sourceparse.GlobExpression(pattern)
@@ -269,13 +268,10 @@ func execFindPaths(input execProviderInput, args []string) ([]string, string, er
 			return nil, root, err
 		}
 	}
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+	walker := execPathWalker{remaining: ListingLimit, deadline: input.deadline}
+	err := walker.walk(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
-		}
-		entries++
-		if entries > ListingLimit || time.Now().After(input.deadline) {
-			return errors.New("find scope exceeds budget")
 		}
 		if kind == "f" && !entry.Type().IsRegular() || kind == "d" && !entry.IsDir() {
 			return nil
@@ -298,6 +294,9 @@ func execFindPaths(input execProviderInput, args []string) ([]string, string, er
 		paths = append(paths, path)
 		return nil
 	})
+	if errors.Is(err, errExecWalkIncomplete) {
+		err = errors.New("find scope exceeds budget")
+	}
 	return paths, root, err
 }
 
