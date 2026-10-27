@@ -30,9 +30,9 @@ func TestTokenUsageManualSwitch(t *testing.T) {
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 			// Manual switches retain the same stable thread and price each response
 			// using the model actually sent upstream.
-			wants := []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna"}
+			wants := []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-6.1-terra"}
 			var out bytes.Buffer
-			for i, model := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna"} {
+			for i, model := range wants {
 				req := serverRequest(t, func(f map[string]any) { f["model"] = model; f["stream"] = stream })
 				body := map[string]any{"id": fmt.Sprint("switch-", i), "status": "completed", "output": []any{},
 					"usage": map[string]any{"input_tokens": 100000, "input_tokens_details": map[string]any{"cached_tokens": 40000}, "output_tokens": 10000, "output_tokens_details": map[string]any{"reasoning_tokens": 5000}}}
@@ -59,9 +59,9 @@ func TestTokenUsageManualSwitch(t *testing.T) {
 				}
 			}
 			got, ok := proxy.usage.Snapshot("thread-1")
-			// Independent arithmetic: Astra 1.14 + Sol .456 + Luna .0248 = 1.6208.
+			// Independent arithmetic: Astra 1.14 + Sol .456 + Luna .0248 + Terra .112.
 			total := got.Cost.UncachedInput + got.Cost.CachedInput + got.Cost.Output
-			if !ok || !got.Cost.Known || got.InputTokens != 300000 || got.UncachedInputTokens != 180000 || got.OutputTokens != 30000 || got.ReasoningTokens != 15000 || math.Abs(total-1.6208) > 1e-10 {
+			if !ok || !got.Cost.Known || got.InputTokens != 400000 || got.UncachedInputTokens != 240000 || got.OutputTokens != 40000 || got.ReasoningTokens != 20000 || math.Abs(total-1.7328) > 1e-10 {
 				t.Fatalf("report=%+v total=%v valid=%v", got, total, ok)
 			}
 			if strings.Contains(out.String(), "Router session usage") {

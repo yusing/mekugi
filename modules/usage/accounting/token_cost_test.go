@@ -52,6 +52,9 @@ func TestTokenCostContextTierBoundary(t *testing.T) {
 		{"gpt-6.1-sol", 271_999, 0.2, 0.0171999, 0.1},
 		{"gpt-6.1-sol", 272_000, 0.2, 0.0172, 0.1},
 		{"gpt-6.1-sol", 272_001, 0.4, 0.0344002, 0.15},
+		{"gpt-6.1-terra", 271_999, 0.1, 0.00859995, 0.05},
+		{"gpt-6.1-terra", 272_000, 0.1, 0.0086, 0.05},
+		{"gpt-6.1-terra", 272_001, 0.2, 0.0172001, 0.075},
 		{"gpt-5.4-mini", 272_000, 0.075, 0.0129, 0.045},
 	} {
 		counts := inference.Usage{InputTokens: tc.input, UncachedInputTokens: 100_000, OutputTokens: 10_000}
