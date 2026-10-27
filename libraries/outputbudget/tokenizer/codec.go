@@ -6,6 +6,7 @@ package tokenizer
 import (
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/dlclark/regexp2/v2"
 )
@@ -75,7 +76,11 @@ type part struct {
 }
 
 func (c *Codec) mergePairs(piece string) []part {
-	parts := make([]part, len(piece)+1)
+	return c.mergePairsWithWorkspace(piece, &mergeWorkspace{})
+}
+
+func (c *Codec) mergePairsWithWorkspace(piece string, workspace *mergeWorkspace) []part {
+	parts := slices.Grow(workspace.parts[:0], len(piece)+1)[:len(piece)+1]
 	for i := range len(parts) {
 		parts[i] = part{i, math.MaxUint}
 	}
@@ -122,6 +127,7 @@ func (c *Codec) mergePairs(piece string) []part {
 		parts = append(parts[:minIndex+1], parts[minIndex+2:]...)
 	}
 
+	workspace.parts = parts
 	return parts
 }
 
@@ -129,15 +135,29 @@ func (c *Codec) mergePairs(piece string) []part {
 // remaining pair per merge, which is quadratic for long words or whitespace.
 const longPieceBytes = 4096
 
+// Row admission reuses these buffers across independent prefix counts. No
+// merge state survives a call, and the workspace is local to one SelectRows.
+type mergeWorkspace struct {
+	next, previous []int
+	pending        []uint
+	heap           []uint64
+	parts          []part
+}
+
 // mergeLongPiece selects the same lowest-rank pair as mergePairs, breaking
 // ties at the leftmost byte, using a heap and linked part offsets. This is
 // OpenAI tiktoken's _byte_pair_merge_large strategy.
 func (c *Codec) mergeLongPiece(piece string) []part {
+	return c.mergeLongPieceWithWorkspace(piece, &mergeWorkspace{})
+}
+
+func (c *Codec) mergeLongPieceWithWorkspace(piece string, workspace *mergeWorkspace) []part {
 	length := len(piece)
-	next := make([]int, length)
-	previous := make([]int, length)
-	pending := make([]uint, length)
-	var heap []uint64
+	workspace.next = slices.Grow(workspace.next[:0], length)[:length]
+	workspace.previous = slices.Grow(workspace.previous[:0], length)[:length]
+	workspace.pending = slices.Grow(workspace.pending[:0], length)[:length]
+	next, previous, pending := workspace.next, workspace.previous, workspace.pending
+	heap := workspace.heap[:0]
 	stride := uint64(length) + 1
 	push := func(key uint64) {
 		index := len(heap)
@@ -186,6 +206,7 @@ func (c *Codec) mergeLongPiece(piece string) []part {
 	}
 	for index := range length {
 		next[index], previous[index] = index+1, index-1
+		pending[index] = math.MaxUint
 	}
 	for index := range length - 1 {
 		update(index)
@@ -207,9 +228,11 @@ func (c *Codec) mergeLongPiece(piece string) []part {
 			update(previous[left])
 		}
 	}
-	var parts []part
+	parts := workspace.parts[:0]
 	for index := 0; index < length; index = next[index] {
 		parts = append(parts, part{offset: index, rank: math.MaxUint})
 	}
-	return append(parts, part{offset: length, rank: math.MaxUint})
+	workspace.heap = heap[:0]
+	workspace.parts = append(parts, part{offset: length, rank: math.MaxUint})
+	return workspace.parts
 }

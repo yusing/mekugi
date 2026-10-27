@@ -17,6 +17,7 @@ func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 	if len(value) <= limit {
 		return value, nil
 	}
+	var workspace mergeWorkspace
 	match, err := c.splitRegexp.FindStringMatch(value)
 	if err != nil {
 		return "", err
@@ -37,7 +38,7 @@ func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 			if pureCRLF {
 				tokens = crlfTokens(len(text) / 2)
 			} else if !pureLF {
-				tokens = c.countPiece(text)
+				tokens = c.countPiece(text, &workspace)
 			}
 			pieces = append(pieces, piece{offset, tokens, pureLF, pureCRLF})
 		} else {
@@ -51,7 +52,7 @@ func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 				if pureCRLF {
 					n = crlfTokens(from / 2)
 				} else if !pureLF {
-					n, err = c.Count(text[:from])
+					n, err = c.countWithWorkspace(text[:from], &workspace)
 					if err != nil {
 						return "", err
 					}
@@ -66,7 +67,7 @@ func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 			} else if pureCRLF {
 				completed += crlfTokens(len(text) / 2)
 			} else {
-				completed += c.countPiece(text)
+				completed += c.countPiece(text, &workspace)
 			}
 			if completed > limit {
 				return value[:shown], nil
@@ -111,7 +112,7 @@ func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 			if index+1 < len(pieces) {
 				n -= pieces[index+1].tokens
 			}
-			partial, err := c.Count(value[next:end])
+			partial, err := c.countWithWorkspace(value[next:end], &workspace)
 			if err != nil {
 				return "", err
 			}
@@ -151,12 +152,26 @@ func crlfTokens(pairs int) int {
 	return max(1, (pairs+2)/4)
 }
 
-func (c *Codec) countPiece(piece string) int {
+// Truncated pieces must pass through the lexer again before BPE counting.
+func (c *Codec) countWithWorkspace(value string, workspace *mergeWorkspace) (int, error) {
+	matches, err := c.splitRegexp.FindAllStringIndex(value, -1)
+	if err != nil {
+		return 0, fmt.Errorf("error matching: %v", err)
+	}
+	tokens := 0
+	for _, match := range matches {
+		tokens += c.countPiece(value[match[0]:match[1]], workspace)
+	}
+	return tokens, nil
+}
+
+func (c *Codec) countPiece(piece string, workspace *mergeWorkspace) int {
 	if _, ok := c.vocabulary[piece]; ok {
 		return 1
 	}
-	if len(piece) > longPieceBytes {
-		return len(c.mergeLongPiece(piece)) - 1
+	// Reuse makes the heap worthwhile earlier than for standalone Count.
+	if len(piece) > 256 {
+		return len(c.mergeLongPieceWithWorkspace(piece, workspace)) - 1
 	}
-	return len(c.mergePairs(piece)) - 1
+	return len(c.mergePairsWithWorkspace(piece, workspace)) - 1
 }
