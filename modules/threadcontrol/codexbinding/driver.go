@@ -59,15 +59,12 @@ func (d *Driver) Coordination() *control.Service { return d.control }
 // Claims serialize each target; an unresolved effect leaves its successors queued.
 func (d *Driver) DispatchPending(ctx context.Context, thread string) error {
 	for {
-		tree, err := d.control.Snapshot(thread)
+		pendingEffects, recoveryReady, err := d.control.PendingEffects(thread)
 		if err != nil {
 			return err
 		}
 		progressed := false
-		for _, pending := range tree.Actions() {
-			if pending.Target != thread && pending.Caller != thread || pending.State != "pending" && pending.State != "queued" {
-				continue
-			}
+		for _, pending := range pendingEffects {
 			action, err := d.control.ClaimEffect(ctx, pending.Caller, pending.ID)
 			if err != nil {
 				return err
@@ -82,8 +79,7 @@ func (d *Driver) DispatchPending(ctx context.Context, thread string) error {
 			break // Re-read to include controls queued during this dispatch.
 		}
 		if !progressed {
-			member := tree.Members[thread]
-			if member == nil || member.Wait == nil || len(member.Wait.Recovery) == 0 || member.Wait.State != "registered" {
+			if !recoveryReady {
 				return nil
 			}
 			// Settlement can promote recovery while a result was held behind
@@ -97,10 +93,6 @@ func (d *Driver) DispatchPending(ctx context.Context, thread string) error {
 }
 
 func (d *Driver) dispatchClaimedAction(ctx context.Context, effect *control.Effect) error {
-	tree, err := d.control.Snapshot(effect.Caller)
-	if err != nil {
-		return err
-	}
 	kind := effect.Kind
 	if kind == "create" {
 		kind = effect.Phase
@@ -119,16 +111,24 @@ func (d *Driver) dispatchClaimedAction(ctx context.Context, effect *control.Effe
 			receipt, callErr = d.native().Create(ctx, effect.Caller, path, effect.Child.Settings)
 		}
 	case "admit":
+		action, err := d.control.Action(*effect)
+		if err != nil {
+			return err
+		}
 		callErr = d.control.AdmitNamespace(ctx, effect.Target)
 		if callErr == nil {
 			d.mu.RLock()
 			audience := d.audience
 			d.mu.RUnlock()
-			if audience == nil || !audience.Observe(effect.Target, effect.Caller, tree.Members[effect.Target].Task, true) {
+			if audience == nil || !audience.Observe(effect.Target, effect.Caller, action.Recipient, true) {
 				callErr = &binding.DispatchError{Outcome: binding.NotDispatched, Cause: errors.New("confirmed child could not enter the application audience")}
 			}
 		}
 	default:
+		action, err := d.control.Action(*effect)
+		if err != nil {
+			return err
+		}
 		var owner control.Runtime
 		owner, callErr = d.native().Resume(ctx, effect.Target)
 		if callErr != nil {
@@ -138,7 +138,7 @@ func (d *Driver) dispatchClaimedAction(ctx context.Context, effect *control.Effe
 			if kind == "interrupt" {
 				callErr = owner.Interrupt(ctx, effect.Target, effect.Turn)
 			} else {
-				input := nativeInput(tree, *effect)
+				input := nativeInput(action)
 				if input.Wake != nil && input.Wake.Metrics == nil {
 					input.Wake = new(*input.Wake)
 					d.waitMetrics(ctx, input.Thread, input.Wake)
@@ -183,20 +183,20 @@ func (d *Driver) runtime(thread string) (control.Runtime, error) {
 	return owner, nil
 }
 
-func nativeInput(tree control.Tree, effect control.Effect) control.NativeInput {
+func nativeInput(action control.Action) control.NativeInput {
+	effect := action.Effect
 	kind := effect.Kind
 	if kind == "create" {
 		kind = effect.Phase
 	}
-	input := control.NativeInput{Thread: effect.Target, ParentTurn: effect.CallerTurn, ID: effect.Caller + ":" + effect.ID, Sender: tree.Members[effect.Caller].Task, Recipient: tree.Members[effect.Target].Task, Kind: "MESSAGE", Message: effect.Message, Wake: effect.Wake}
+	input := control.NativeInput{Thread: effect.Target, ParentTurn: effect.CallerTurn, ID: effect.Caller + ":" + effect.ID, Sender: action.Sender, Recipient: action.Recipient, Kind: "MESSAGE", Message: effect.Message, Wake: effect.Wake}
 	switch kind {
 	case "human":
 		input.Kind, input.ID, input.TargetTurn = "HUMAN_INPUT", effect.ID, effect.Turn
 	case "interrupt":
 		input.Kind, input.TargetTurn = "INTERRUPT", effect.Turn
 	case "initial":
-		settings := tree.Members[effect.Target].Settings
-		input.Run, input.Settings, input.Message = true, &settings, ""
+		input.Run, input.Settings, input.Message = true, action.Settings, ""
 	case "completion":
 		input.Kind, input.Run = "COMPLETION_GUARD", true
 		input.Message = completionGuardMessage(effect.Message)

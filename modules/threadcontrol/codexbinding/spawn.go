@@ -41,11 +41,10 @@ func (d *Driver) SpawnPrepared(ctx context.Context, caller control.Identity, pre
 	if err = d.DispatchPending(ctx, caller.Thread); err != nil {
 		return SpawnResult{}, err
 	}
-	tree, err := d.control.Snapshot(caller.Thread)
+	created, err := d.control.Effect(caller.Thread, spawn.ID)
 	if err != nil {
 		return SpawnResult{}, err
 	}
-	created := tree.Effect(caller.Thread, spawn.ID)
 	result := SpawnResult{Thread: created.Target, Task: created.Child.Task, State: created.State}
 	if result.State != "confirmed" {
 		return result, fmt.Errorf("spawn is %s; no repeated dispatch was issued", result.State)

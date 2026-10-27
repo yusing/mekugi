@@ -5,7 +5,6 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
-	"slices"
 	"strings"
 	"time"
 
@@ -76,12 +75,12 @@ func (d *Driver) spawnAgent(ctx context.Context, metadata binding.MCPIdentity, c
 	if err != nil {
 		return nil, err
 	}
-	tree, err := d.control.Snapshot(caller.Thread)
+	old, err := d.control.Effect(caller.Thread, caller.Call)
 	if err != nil {
 		return nil, err
 	}
 	var prepared PreparedChild
-	if old := tree.Effect(caller.Thread, caller.Call); old != nil {
+	if old != nil {
 		if old.Kind != "create" || !sameJSON(arguments, old.Child.Arguments) {
 			return nil, errors.New("conflicting repeated spawn arguments")
 		}
@@ -183,11 +182,11 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 	if err != nil {
 		return nil, err
 	}
-	tree, err := d.control.Snapshot(caller.Thread)
+	retained, err := d.control.Effect(caller.Thread, action.ID)
 	if err != nil {
 		return nil, err
 	}
-	action = *tree.Effect(caller.Thread, action.ID)
+	action = *retained
 	result := map[string]any{"id": action.ID, "state": action.State, "thread_id": target.Thread, "task_name": target.Task}
 	if kind == "followup" {
 		result["metrics"] = d.sessionMetrics(ctx, target.Thread)
@@ -208,36 +207,7 @@ func (d *Driver) listAgents(caller control.Identity, raw jsontext.Value) (any, e
 	if _, err := d.control.Caller(caller); err != nil {
 		return nil, err
 	}
-	tree, err := d.control.Snapshot(caller.Thread)
-	if err != nil {
-		return nil, err
-	}
-	var agents, effects []map[string]any
 	prefix := strings.TrimRight(control.TaskPath(args.Prefix), "/")
-	matches := func(task string) bool {
-		return prefix == "" || task == prefix || strings.HasPrefix(task, prefix+"/")
-	}
-	for _, m := range tree.Members {
-		if matches(m.Task) {
-			agents = append(agents, map[string]any{"agent_name": m.Task, "agent_status": m.Status, "thread_id": m.Thread, "generation": m.Generation, "wait": m.Wait.View(&tree)})
-		}
-	}
-	slices.SortFunc(agents, func(a, b map[string]any) int {
-		return strings.Compare(a["agent_name"].(string), b["agent_name"].(string))
-	})
-	for _, effect := range tree.Actions() {
-		if effect.State == "confirmed" {
-			continue
-		}
-		if !matches(tree.Members[effect.Caller].Task) && (tree.Members[effect.Target] == nil || !matches(tree.Members[effect.Target].Task)) && (effect.Child == nil || !matches(effect.Child.Task)) {
-			continue
-		}
-		row := map[string]any{"id": effect.ID, "state": effect.PublicState(), "thread_id": effect.Target}
-		if effect.Child != nil {
-			row["task"] = effect.Child.Task
-		}
-		effects = append(effects, row)
-	}
 	// Status never exposes frozen settings, credentials or message payloads.
-	return map[string]any{"agents": agents, "effects": effects}, nil
+	return d.control.Agents(caller.Thread, prefix)
 }
