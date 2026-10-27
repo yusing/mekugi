@@ -105,7 +105,7 @@ func TestInstructionsRequireAdmittedRoleOrUsageProvenance(t *testing.T) {
 			for _, replacement := range replacements {
 				switch replacement.Fragment.Kind {
 				case "multi_agent.role_instructions":
-					if replacement.Fragment.Text != "native role" || !strings.Contains(replacement.Text, "tools.mcp__threadcontrol__spawn_agent") {
+					if replacement.Fragment.Text != "native role" || !strings.Contains(replacement.Text, "tools.mcp__threadcontrol__<name>") {
 						t.Fatalf("role projection = %+v", replacement)
 					}
 				case "multi_agent.usage_hint":
@@ -130,6 +130,8 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 		{"root custom hint", false, true, "CUSTOM_HINT"},
 		{"child model change", true, false, "NEW_CHILD_BASELINE"},
 		{"child custom hint", true, true, "CUSTOM_HINT"},
+		{"root empty custom hint", false, true, ""},
+		{"child empty custom hint", true, true, ""},
 		{"root stock fallback", false, false, defaultRootUsageHint},
 		{"child stock fallback", true, false, defaultSubagentUsageHint},
 	} {
@@ -159,7 +161,10 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 `, cwd, cwd))
 			settings := control.Settings{Workspace: workspace, Model: "old-model"}
 			if tc.custom {
-				settings.Config = jsontext.Value(`{"features.multi_agent_v2.root_agent_usage_hint_text":"CUSTOM_HINT"}`)
+				settings.Config, err = json.Marshal(map[string]string{"features.multi_agent_v2.root_agent_usage_hint_text": tc.want})
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			service := control.New()
 			limits := control.Limits{}
@@ -172,7 +177,7 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 			}
 			runtime := instructionRuntime{info: control.ThreadInfo{Thread: "root", Session: "session", Path: path}}
 			if tc.custom {
-				runtime.config = jsontext.Value(`{"layers":[],"config":{"features":{"multi_agent_v2":{"root_agent_usage_hint_text":"PARENT_CUSTOM_HINT","subagent_usage_hint_text":"CUSTOM_HINT"}}}}`)
+				runtime.config = jsontext.Value(fmt.Sprintf(`{"layers":[],"config":{"features":{"multi_agent_v2":{"root_agent_usage_hint_text":"PARENT_CUSTOM_HINT","subagent_usage_hint_text":%q}}}}`, tc.want))
 			}
 			host := &reconciliationHost{}
 			if err := driver.Connect(instructionNative{Native: host, owner: runtime}, host); err != nil {
@@ -216,11 +221,11 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 			if len(replacements) != 1 || !strings.HasPrefix(replacements[0].Text, tc.want+"\n\n") {
 				t.Fatalf("current model guidance = %+v, want baseline %q", replacements, tc.want)
 			}
-			identity := "You are the root agent."
+			identity := "Your logical task is /root."
 			if tc.child {
-				identity = "You are a child agent. Your parent logical task is /root."
+				identity = "Your logical task is /root/worker. Your parent logical task is /root."
 			}
-			if !strings.Contains(replacements[0].Text, identity) {
+			if !strings.Contains(replacements[0].Text, identity+" Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.") {
 				t.Fatalf("missing logical identity: %s", replacements[0].Text)
 			}
 			member, _ = service.Member(thread)

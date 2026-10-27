@@ -33,8 +33,8 @@ Agent assignments, messages and continuations retain their source attribution
 without becoming human composer input. Retained message IDs remain local to host
 history and delivery reconciliation; provider input omits those IDs while preserving
 the attributed message content, including when replaying retained sessions.
-Projected agent instructions explicitly identify root versus child membership
-and a child's parent logical task, including for independent root-shaped runtimes.
+Projected agent instructions identify the canonical logical task and a child's
+parent task, including for independent root-shaped runtimes.
 Observation uses that admitted membership for child ancestry and attribution;
 native request metadata remains unchanged on the provider wire.
 
@@ -133,8 +133,9 @@ subagent usage guidance supplies the default, including message framing and
 parent delivery for delegates.
 Generated child defaults do not become configuration overrides. Named role
 settings resolve from the invoking workspace’s effective configuration layers and
-are frozen before child creation. Mekugi supplies its collaboration tool guidance;
-no copied stock policy catalog or host-version profile is required.
+are frozen before child creation. Mekugi supplies its calling convention and
+admitted identity; tool descriptions own each operation's arguments and behavior.
+No copied stock policy catalog or host-version profile is required.
 
 Native content-kind provenance authenticates each generated role/mode fragment by
 thread, response-item ID, content index and exact bytes. Raw host observations or
@@ -142,8 +143,8 @@ identity-validated rollout history supply it; text resemblance never does.
 Threadcontrol retains those facts before exposing references. Agent Guidance only
 projects immutable admitted fragments and logical caller values.
 
-Independent children receive the selected model’s child baseline, with Mekugi
-calling references, canonical logical identity and selected cwd/shared-filesystem
+Independent children receive the selected model’s child baseline, with one Mekugi
+namespace calling reference, canonical logical identity and selected cwd/shared-filesystem
 wording. The effective mode
 fragment stays byte-for-byte unchanged. Custom text stays verbatim outside proven
 adaptations; incompatible calling instructions fail with a configuration diagnostic.

@@ -166,6 +166,15 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		p.child = metadata.ThreadID
 	}
 	var program, answer, failure string
+	if step == 1 {
+		identity := "Your logical task is /root."
+		if !parent {
+			identity = "Your logical task is /root/worker. Your parent logical task is /root."
+		}
+		if strings.Count(string(body), identity+" Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.") != 1 {
+			failure = "provider prompt omitted or duplicated the logical identity and single calling convention"
+		}
+	}
 	if !p.fullHistory && step == 1 {
 		rootCount := strings.Count(string(body), "You are `/root`, the primary agent in a team")
 		childCount := strings.Count(string(body), "You are an agent in a team of agents collaborating to complete a task.")
