@@ -140,6 +140,9 @@ func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []s
 			return err
 		}
 		if old := member.Wait; old != nil && (old.ID == caller.Call || old.State != "canceled" && old.State != "completed" && old.State != "paused" && old.State != "timeout") {
+			if old.Turn != caller.Turn || old.Item != caller.Item || old.Generation != member.Generation {
+				return errors.New("pending wait belongs to another enclosing execution; new input must supersede it before waiting again")
+			}
 			result = *tree.waitResult(old)
 			return unchanged
 		}
@@ -174,7 +177,7 @@ func (s *Service) Execution(ctx context.Context, thread, turn, item, handle stri
 	}
 	return s.update(ctx, thread, func(tree *Tree, member *Member) error {
 		wait := member.Wait
-		if wait == nil || wait.Turn != turn || wait.Item != item || wait.Generation != member.Generation || wait.State != "registered" || wait.Stop == "committed" {
+		if wait == nil || wait.Turn != turn || wait.Item != item || wait.Generation != member.Generation || wait.State != "registered" {
 			return unchanged
 		}
 		if handle != "" {
@@ -187,6 +190,10 @@ func (s *Service) Execution(ctx context.Context, thread, turn, item, handle stri
 			wait.Stop = "eligible"
 		} else if handle == "" {
 			cancelSubscription(tree, member)
+			member.Stop = nil
+			if member.Status == Waiting {
+				member.Status = Working
+			}
 		}
 		return nil
 	})

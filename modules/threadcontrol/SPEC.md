@@ -194,8 +194,9 @@ Stopped selected targets settle with their terminal status, including when their
 notification was already read or their runtime was paused. Pending result delivery
 keeps its existing order. Mixed selections settle on an eligible selected outcome;
 unselected stopped targets do not wake the caller.
-One pending wait per caller is retained; distinct calls report the existing
-wait instead of replacing it. Human interruption, `interrupt_agent`, and new input
+One pending wait per caller is retained; calls in the same enclosing execution
+report that wait instead of replacing it. A different enclosing execution rejects
+while that subscription remains pending. Human interruption, `interrupt_agent`, and new input
 supersede pending waits through their existing work-lifetime controls.
 
 The default is stop-wait with no timeout: logical work blocks until an eligible
@@ -204,11 +205,16 @@ reject and lower values clamp to its minimum. Retain requested/effective duratio
 and the deadline captured when waiting begins. Zero effective duration times out immediately when
 no selected event exists. Later timeout delivery waits for host settlement.
 
-The retained wait acknowledges `{state:"waiting"}` at the MCP boundary. Only
+The retained wait acknowledges `{state:"waiting"}` with delivery instructions at
+the MCP boundary. Agents let that enclosing execution finish; the host turn ends
+and the outcome arrives as a later `wait_agent` output. Completion waits omit the
+timeout; explicit timeouts serve actual deadlines. Only
 successful completion of that enclosing stock execution admits
 a persisted local-stop disposition. A failed enclosing execution retires its
 wait so a later execution can retry. Yielded, incomplete or unrelated calls
-cannot arm it. Request Execution then supplies an empty completed continuation
+cannot arm it. Input arriving after a successful enclosing result retires its
+subscription and any local stop so ordinary inference can process that input.
+Request Execution then supplies an empty completed continuation
 locally, without provider inference or usage. New input or admitted wake invalidates
 a stale stop. Stop disposition and terminal reduction serialize per work generation.
 

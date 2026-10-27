@@ -55,6 +55,23 @@ func TestFailedWaitExecutionAllowsRetry(t *testing.T) {
 			if stop == nil || item != caller.Item {
 				t.Fatalf("retry did not arm its own wait: item=%q stop=%+v", item, stop)
 			}
+			// A message can arrive after registration, or after a local stop
+			// was claimed but before the host settled that turn.
+			request.Fields["input"] = mustTestJSON(t, []any{
+				map[string]any{"type": "custom_tool_call", "call_id": caller.Call, "id": caller.Item, "name": "exec"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": caller.Call, "output": state + "\nWall time 0.1 seconds\nOutput:\n"},
+				map[string]any{"type": "message", "role": "assistant", "content": "injected result"},
+			})
+			item, err = p.observeThreadWait(t.Context(), "root", "turn", "exec", &request, nil)
+			check(err)
+			member, _ := service.Member("root")
+			if item != "" || member.Wait.State != "canceled" || member.Stop != nil || member.Status != control.Working {
+				t.Fatalf("injected input retained a stale stop: item=%q member=%+v", item, member)
+			}
+			caller.Call, caller.Item = "fresh-wait", "fresh-exec"
+			if _, err := service.RegisterWait(t.Context(), caller, nil, true, nil, time.Now()); err != nil {
+				t.Fatalf("superseded input prevented a fresh wait: %v", err)
+			}
 		} else {
 			member, _ := service.Member("root")
 			if stop != nil || item != "" || member.Wait.State != "canceled" {

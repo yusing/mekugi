@@ -22,7 +22,7 @@ func (d *Driver) mcp() binding.MCPServer {
 		{"spawn_agent", "Create a native agent with role and optional cwd. Full-history forks inherit model and effort; fork_turns=none permits authorized overrides and optional preload. Preload uses the compaction sources schema: file path with optional inclusive ranges, or skill name with optional SKILL.md path. Relative paths use child cwd; AGENTS.md is host-loaded. Reads use child permissions before inference; failures remain visible.", `{"type":"object","properties":{"task_name":{"type":"string"},"message":{"type":"string"},"agent_type":{"type":"string"},"fork_turns":{"type":"string","enum":["all","none"]},"model":{"type":"string"},"reasoning_effort":{"type":"string"},"cwd":{"type":"string"},"preload":` + compact.SelectionSchema + `},"required":["task_name","message"],"additionalProperties":false}`},
 		{"list_agents", "List admitted agents and retained operations, optionally below path_prefix.", `{"type":"object","properties":{"path_prefix":{"type":"string"}},"additionalProperties":false}`},
 		{"inspect", "Inspect an admitted agent by target path, including /root and idle or completed agents: applied model, reasoning effort, service tier, context usage/window and completed compactions. Inactive agents use retained observations without starting work; unavailable observations are null.", `{"type":"object","properties":{"target":{"type":"string"}},"required":["target"],"additionalProperties":false}`},
-		{"wait_agent", "Block-wait until a watched descendant completes, fails or is interrupted, or an addressed message arrives. The default is stop-wait with no timeout. target defaults to all descendants; timeout_ms bounds the wait.", `{"type":"object","properties":{"target":{"oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"timeout_ms":{"type":"integer"}},"additionalProperties":false}`},
+		{"wait_agent", "Wait for a descendant outcome or addressed message. Call alone in functions.exec and let that execution finish. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output. Omit timeout_ms for completion waits; use it only for a real deadline. target defaults to all descendants.", `{"type":"object","properties":{"target":{"oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"timeout_ms":{"type":"integer"}},"additionalProperties":false}`},
 		{"send_message", "Queue attributed input without starting idle work.", `{"type":"object","properties":{"target":{"type":"string"},"message":{"type":"string"}},"required":["target","message"],"additionalProperties":false}`},
 		{"followup_task", "Start or steer an admitted non-root agent with a new assignment.", `{"type":"object","properties":{"target":{"type":"string"},"message":{"type":"string"}},"required":["target","message"],"additionalProperties":false}`},
 		{"interrupt_agent", "Interrupt a non-root agent, retaining it for later work.", `{"type":"object","properties":{"target":{"type":"string"}},"required":["target"],"additionalProperties":false}`},
@@ -131,6 +131,9 @@ func (d *Driver) waitAgent(ctx context.Context, caller control.Identity, raw jso
 	}
 	result, err := d.control.RegisterWait(ctx, caller, targets, all, args.Timeout, time.Now())
 	if err == nil {
+		if result.State == "waiting" {
+			result.Instructions = "Let this enclosing execution finish now. Mekugi ends the host turn and delivers the outcome as a later wait_agent output. New input supersedes this wait."
+		}
 		d.waitMetrics(ctx, caller.Thread, &result)
 	}
 	return result, err

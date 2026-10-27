@@ -108,6 +108,9 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 	lifecycle := attached.session.Lifecycle(live.Thread)
 	lifecycle.Paused = member.Status == threadcontrol.Paused || member.Status == threadcontrol.Uncertain
 	lifecycle.SetWaiting(live.LocalStop != "", now)
+	if !lifecycle.Waiting && member.HostRunning {
+		lifecycle.ObserveActive(true, now)
+	}
 	wait := threads.shared.WaitPublication(live.Thread)
 	lifecycle.WaitingFor = ""
 	if !lifecycle.Waiting || wait == nil {

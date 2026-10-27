@@ -131,7 +131,7 @@ func collaborationGuidance(member control.Member, baseline string) (string, erro
 		parent, _, _ := strings.CutLast(member.Task, "/")
 		identity += fmt.Sprintf(" Your parent logical task is %s.", parent)
 	}
-	return fmt.Sprintf("%s\n\n%s Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.\nAgents share the filesystem; this thread's working directory is %q. Override model or reasoning effort only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions.", baseline, identity, member.Settings.Workspace), nil
+	return fmt.Sprintf("%s\n\n%s Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.\nTo await delegates, call wait_agent alone and let functions.exec finish. Omit timeout_ms unless a real deadline applies. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output.\nAgents share the filesystem; this thread's working directory is %q. Override model or reasoning effort only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions.", baseline, identity, member.Settings.Workspace), nil
 }
 
 func roleGuidance(roles map[string]roleDefinition) string {

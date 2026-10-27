@@ -155,6 +155,22 @@ func TestLogicalWaitContinuationPreservesElapsed(t *testing.T) {
 	}
 }
 
+func TestSupersededLocalWaitRestoresWorkingRoster(t *testing.T) {
+	u, threads, at := logicalWaitRunningUI(t, nil)
+	if err := threads.shared.Execution(t.Context(), "main", "first", "exec", "", false); err != nil {
+		t.Fatal(err)
+	}
+	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	agent := u.attached.session.Agent("/root")
+	if agent.Waiting || agent.Wait != nil || agent.WaitingFor != "" || !agent.Responding || u.LocalStop != "" {
+		t.Fatalf("ordinary work retained a stale wait: %+v", agent)
+	}
+	u.testActivity(u.shell.Agents).publishActivity()
+	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); strings.Contains(text, "Waiting for") {
+		t.Fatalf("working roster displays stale wait: %s", text)
+	}
+}
+
 func TestLogicalWaitHumanCancellation(t *testing.T) {
 	u, threads, at := logicalWaitUI(t, nil)
 	if err := threads.driver.Start(t.Context()); err != nil {

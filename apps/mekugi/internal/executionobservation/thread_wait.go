@@ -37,7 +37,7 @@ func (p *Preparer) consumeThreadInput(ctx context.Context, thread, session strin
 }
 
 // observeThreadWait runs after the normal authenticated request/history join.
-// It admits only a trailing host result for the wait's exact enclosing exec
+// It admits only a current host result for the wait's exact enclosing exec
 // item, never a nested MCP success or a caller-authored output lookalike.
 func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName string, request *codexresponses.Request, visible map[string]mekugiHistory) (string, error) {
 	if p.threadControl == nil {
@@ -54,17 +54,14 @@ func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName
 	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 		return "", err
 	}
-	trailing := len(items)
-	for trailing > 0 && strings.HasSuffix(responses.StringField(items[trailing-1], "type"), "_output") {
-		trailing--
-	}
 	calls := make(map[string]map[string]jsontext.Value)
-	for _, item := range items[:trailing] {
+	for _, item := range items {
 		if kind := responses.StringField(item, "type"); kind == "custom_tool_call" || kind == "function_call" {
 			calls[responses.StringField(item, "call_id")] = item
 		}
 	}
-	for _, output := range items[trailing:] {
+	for index := len(items) - 1; index >= 0; index-- {
+		output := items[index]
 		kind := responses.StringField(output, "type")
 		if kind != "custom_tool_call_output" && kind != "function_call_output" {
 			continue
@@ -109,6 +106,13 @@ func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName
 		}
 		if !result.Succeeded {
 			return "", p.threadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", false)
+		}
+		for _, later := range items[index+1:] {
+			if !strings.HasSuffix(responses.StringField(later, "type"), "_output") {
+				// Input injected after the enclosing result needs inference. Retire
+				// this subscription, including a stop already claimed for it.
+				return "", p.threadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", false)
+			}
 		}
 		return wait.Item, p.threadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", true)
 	}

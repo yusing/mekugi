@@ -372,6 +372,28 @@ func TestWaitSelectionTimeoutAndExecutionAdmission(t *testing.T) {
 	}
 }
 
+func TestPendingWaitRejectsDifferentEnclosingExecution(t *testing.T) {
+	s, _ := fixture(t)
+	child(t, s, "root", "child", "/root/child", "ct")
+	caller := identity("root", "rt")
+	wait, err := s.RegisterWait(t.Context(), caller, nil, true, nil, time.Now())
+	must(t, err)
+	for _, changed := range []Identity{
+		{Thread: caller.Thread, Session: caller.Session, Turn: caller.Turn, Call: "another", Item: "another-exec"},
+		{Thread: caller.Thread, Session: caller.Session, Turn: "another-turn", Call: caller.Call, Item: caller.Item},
+	} {
+		if _, err := s.RegisterWait(t.Context(), changed, nil, true, nil, time.Now()); err == nil {
+			t.Fatalf("reused a wait that cannot arm for %+v", changed)
+		}
+	}
+	caller.Call = "same-cell"
+	repeated, err := s.RegisterWait(t.Context(), caller, nil, true, nil, time.Now())
+	must(t, err)
+	if repeated.ID != wait.ID {
+		t.Fatal("same enclosing execution replaced its wait")
+	}
+}
+
 func TestColdResumeDoesNotRearmOrRedispatch(t *testing.T) {
 	s, session := fixture(t)
 	ctx := t.Context()

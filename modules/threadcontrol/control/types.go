@@ -155,13 +155,14 @@ type Receipt struct {
 }
 
 type WaitResult struct {
-	Metrics     map[string]SessionMetrics `json:"metrics,omitempty"`
-	ID          string                    `json:"-"`
-	All         bool                      `json:"-"`
-	State       string                    `json:"state"`
-	Event       *Event                    `json:"event,omitempty"`
-	Targets     []string                  `json:"targets,omitempty"`
-	EffectiveMS *int64                    `json:"effective_ms,omitempty"`
+	Instructions string                    `json:"instructions,omitempty"`
+	Metrics      map[string]SessionMetrics `json:"metrics,omitempty"`
+	ID           string                    `json:"-"`
+	All          bool                      `json:"-"`
+	State        string                    `json:"state"`
+	Event        *Event                    `json:"event,omitempty"`
+	Targets      []string                  `json:"targets,omitempty"`
+	EffectiveMS  *int64                    `json:"effective_ms,omitempty"`
 }
 
 func (tree *Tree) Effect(caller, id string) *Effect {

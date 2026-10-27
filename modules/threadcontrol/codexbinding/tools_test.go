@@ -36,7 +36,7 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		if tool.Name == "inspect" && (!strings.Contains(tool.Description, "idle or completed agents") || !strings.Contains(tool.Description, "retained observations without starting work") || !strings.Contains(tool.Description, "unavailable observations are null")) {
 			t.Fatalf("inspect description: %q", tool.Description)
 		}
-		if tool.Name == "wait_agent" && tool.Description != "Block-wait until a watched descendant completes, fails or is interrupted, or an addressed message arrives. The default is stop-wait with no timeout. target defaults to all descendants; timeout_ms bounds the wait." {
+		if tool.Name == "wait_agent" && (!strings.Contains(tool.Description, "ends the host turn") || !strings.Contains(tool.Description, "later wait_agent output") || !strings.Contains(tool.Description, "Omit timeout_ms")) {
 			t.Fatalf("wait description: %q", tool.Description)
 		}
 	}
@@ -116,6 +116,9 @@ func TestWaitAgentKeepsWaitIdentityInternal(t *testing.T) {
 	}
 	if fields["id"] != nil || fields["all"] != nil || string(fields["state"]) != `"waiting"` || string(fields["targets"]) != `["/root/child"]` {
 		t.Fatalf("wait result: %s", payload)
+	}
+	if !strings.Contains(string(fields["instructions"]), "later wait_agent output") {
+		t.Fatalf("wait acknowledgement omitted delivery instructions: %s", payload)
 	}
 	member, _ := driver.control.Member(caller.Thread)
 	if member.Wait == nil || member.Wait.ID != caller.Call || !member.Wait.All || member.Wait.State != "registered" {
