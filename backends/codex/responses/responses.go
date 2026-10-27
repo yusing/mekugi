@@ -196,6 +196,9 @@ func normalizeResponsesStream(reader io.Reader, d Diagnostics, send func(provide
 		return nil
 	}
 	return readEndpointSSE(reader, d, func(data []byte) (bool, error) {
+		if data == nil {
+			return false, send(providerChunk{})
+		}
 		var event struct {
 			Type         string         `json:"type"`
 			OutputIndex  int            `json:"output_index"`

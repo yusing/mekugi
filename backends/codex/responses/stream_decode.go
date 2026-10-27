@@ -17,13 +17,19 @@ func readEndpointSSE(reader io.Reader, d Diagnostics, consume func([]byte) (bool
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64<<10), d.BufferBytes)
 	var data []string
+	comment := false
 	budget := 0
 	flush := func() (bool, error) {
 		if len(data) == 0 {
+			if comment {
+				comment = false
+				return consume(nil)
+			}
 			return false, nil
 		}
 		payload := []byte(strings.Join(data, "\n"))
 		data = nil
+		comment = false
 		return consume(payload)
 	}
 	for scanner.Scan() {
@@ -39,6 +45,8 @@ func readEndpointSSE(reader io.Reader, d Diagnostics, consume func([]byte) (bool
 			}
 		} else if value, ok := strings.CutPrefix(line, "data:"); ok {
 			data = append(data, strings.TrimPrefix(value, " "))
+		} else if strings.HasPrefix(line, ":") {
+			comment = true
 		}
 	}
 	if err := scanner.Err(); err != nil {

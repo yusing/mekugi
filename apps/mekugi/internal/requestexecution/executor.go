@@ -578,14 +578,24 @@ func (a *requestAttempt) finish(requestErr error) error {
 
 	a.finalization.finish(a.executionCtx, requestErr, a.executor.Output, a.executor.Issues)
 	_, compatibilityFault := errors.AsType[*inferencegateway.CompatibilityError](requestErr)
-	if (a.finalization.failurePhase == requestFailureTransform || a.finalization.failurePhase == requestFailurePrepare && compatibilityFault) &&
-		a.hooks.deliveredResponseID != "" && !a.hooks.deliveredTerminal &&
-		a.finalization.outcome == requestOutcomeFailed {
+	transformFailure := (a.finalization.failurePhase == requestFailureTransform || a.finalization.failurePhase == requestFailurePrepare && compatibilityFault) && a.finalization.outcome == requestOutcomeFailed
+	compactFailure := a.metadata.RequestKind == responses.Compaction && requestErr != nil && requestResponseStarted(a.executor.Output) &&
+		(a.finalization.outcome == requestOutcomeFailed || a.finalization.outcome == requestOutcomeTimedOut || a.finalization.outcome == requestOutcomeStreamIdleTimedOut)
+	if (transformFailure && a.hooks.deliveredResponseID != "" || compactFailure) && !a.hooks.deliveredTerminal &&
+		a.finalization.failurePhase != requestFailureWriteResponse {
+		id := a.hooks.deliveredResponseID
+		if id == "" {
+			id = "resp_mekugi_failed_" + rand.Text()
+		}
+		code := "invalid_prompt"
+		if !transformFailure {
+			code = a.finalization.diagnosticCode
+		}
 		payload := responses.MustMarshalJSON(map[string]any{
 			"type": "response.failed",
 			"response": map[string]any{
-				"id": a.hooks.deliveredResponseID, "status": "failed", "output": []any{},
-				"error": map[string]any{"code": "invalid_prompt", "message": a.finalization.diagnosticMessage},
+				"id": id, "status": "failed", "output": []any{},
+				"error": map[string]any{"code": code, "message": a.finalization.diagnosticMessage},
 			},
 		})
 		deliveryErr := codexresponses.WriteEvent(a.executor.Output, payload)

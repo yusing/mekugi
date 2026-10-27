@@ -12,6 +12,8 @@ request-wide projections. The executor replaces
 the compaction operation with one ordinary provider turn using the selected prompt
 plus reload instructions. It collects the completed assistant summary, separates
 reload metadata and returns a native compaction reference only after publication.
+While collecting a stream, provider activity reaches the host as content-free
+progress, preserving idle detection without exposing summary or reload metadata.
 [Agent guidance](../../../../modules/agentguidance/SPEC.md#compaction-context) owns
 the summary and source-snapshot contract. Provider usage and terminal failures
 retain ordinary accounting and delivery paths.

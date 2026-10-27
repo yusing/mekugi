@@ -167,6 +167,9 @@ func normalizeAnthropicStream(reader io.Reader, d Diagnostics, send func(provide
 		return nil
 	}
 	return readEndpointSSE(reader, d, func(data []byte) (bool, error) {
+		if data == nil {
+			return false, send(providerChunk{})
+		}
 		var event struct {
 			Type         string                    `json:"type"`
 			Index        int                       `json:"index"`
@@ -187,7 +190,7 @@ func normalizeAnthropicStream(reader io.Reader, d Diagnostics, send func(provide
 			return value
 		}
 		if event.Type == "ping" {
-			return false, nil
+			return false, send(providerChunk{})
 		}
 		if event.Type == "error" {
 			return false, send(providerChunk{Error: data})

@@ -118,6 +118,7 @@ func readChatChunks(reader io.Reader, d Diagnostics, consume func(providerChunk)
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64<<10), d.BufferBytes)
 	var data []string
+	comment := false
 	budget := 0
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -131,7 +132,12 @@ func readChatChunks(reader io.Reader, d Diagnostics, consume func(providerChunk)
 					return err
 				}
 				data = nil
+			} else if comment {
+				if err := consume(providerChunk{}); err != nil {
+					return err
+				}
 			}
+			comment = false
 			if done {
 				break
 			}
@@ -139,6 +145,8 @@ func readChatChunks(reader io.Reader, d Diagnostics, consume func(providerChunk)
 		}
 		if value, ok := strings.CutPrefix(line, "data:"); ok {
 			data = append(data, strings.TrimPrefix(value, " "))
+		} else if strings.HasPrefix(line, ":") {
+			comment = true
 		}
 	}
 	if err := scanner.Err(); err != nil {

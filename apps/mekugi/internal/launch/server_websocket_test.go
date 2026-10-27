@@ -3,6 +3,7 @@ package launch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -150,6 +151,133 @@ func TestResponsesWebSocketPreservesClientIdentity(t *testing.T) {
 			socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": "identity"})
 			if got := responses.StringField(socketRead(t, ctx, conn), "type"); got != "response.completed" {
 				t.Fatalf("response = %q", got)
+			}
+		})
+	}
+}
+
+func TestResponsesWebSocketCompactionProgress(t *testing.T) {
+	for _, outcome := range []string{"completed", "disconnected", "storage failure", "provider failure then invalid request", "provider error then invalid request"} {
+		t.Run(outcome, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			finish := make(chan struct{})
+			stopped := make(chan struct{})
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				conn, err := websocket.Accept(w, r, nil)
+				if err != nil {
+					return
+				}
+				defer conn.CloseNow()
+				defer close(stopped)
+				if _, err := providerSocketRead(r.Context(), conn); err != nil {
+					return
+				}
+				providerCtx := conn.CloseRead(r.Context())
+				for _, event := range []any{
+					socketEvent("response.created", "summary-response"),
+					map[string]any{"type": "response.output_text.delta", "delta": "PRIVATE summary"},
+				} {
+					if providerSocketWrite(providerCtx, conn, event) != nil {
+						return
+					}
+				}
+				select {
+				case <-finish:
+				case <-providerCtx.Done():
+					return
+				}
+				if strings.HasPrefix(outcome, "provider") {
+					event := socketEvent("response.failed", "summary-response")
+					if outcome == "provider error then invalid request" {
+						event = map[string]any{"type": "error", "error": map[string]string{"message": "provider error"}}
+					}
+					_ = providerSocketWrite(providerCtx, conn, event)
+				} else {
+					_ = providerSocketWrite(providerCtx, conn, map[string]any{"type": "response.completed", "response": map[string]any{
+						"id": "summary-response", "status": "completed", "output": []any{map[string]any{
+							"type": "message", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": "PRIVATE summary"}},
+						}},
+					}})
+				}
+				<-providerCtx.Done()
+			}))
+			defer upstream.Close()
+			provider := newTestProviderClient(upstream.URL, upstream.Client())
+			executor := testRequestExecutor(provider, nil, nil)
+			executor.CompactPrompt = func() string { return "Summarize." }
+			stored := make(chan struct{}, 1)
+			executor.CompactStore = func(context.Context, string, string, string) (string, error) {
+				stored <- struct{}{}
+				if outcome == "storage failure" {
+					return "", errors.New("storage unavailable")
+				}
+				return "retained-summary", nil
+			}
+			endpoint := inferencegateway.NewWebSocketEndpoint(ctx, time.Second, provider, executor.ExecuteWebSocket)
+			defer endpoint.Close()
+			server := httptest.NewServer(endpoint)
+			defer server.Close()
+			headers := serverCompactionMetadataHeaders(t)
+			for key, values := range codexAuthHeaders() {
+				headers[key] = values
+			}
+			conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: headers})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.CloseNow()
+			socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-6-astra", "input": []any{}, "tools": []any{}, "client_metadata": map[string]string{codexresponses.TurnMetadataHeader: headers.Get(codexresponses.TurnMetadataHeader)}})
+			for _, expected := range []string{"response.created", "response.in_progress"} {
+				event := socketRead(t, ctx, conn)
+				if responses.StringField(event, "type") != expected || strings.Contains(string(responses.MustMarshalJSON(event)), "PRIVATE") {
+					t.Fatalf("compaction progress: %s", responses.MustMarshalJSON(event))
+				}
+			}
+			select {
+			case <-stored:
+				t.Fatal("published before provider completion")
+			default:
+			}
+			if outcome == "disconnected" {
+				conn.CloseNow()
+				select {
+				case <-stopped:
+				case <-ctx.Done():
+					t.Fatal("disconnect did not cancel upstream compaction")
+				}
+				return
+			}
+			close(finish)
+			failures := 0
+			for {
+				_, payload, err := conn.Read(ctx)
+				if err != nil {
+					if outcome == "storage failure" && failures == 1 && ctx.Err() == nil {
+						return
+					}
+					t.Fatalf("compaction ended: failures=%d err=%v", failures, err)
+				}
+				var event map[string]json.RawMessage
+				if err := json.Unmarshal(payload, &event); err != nil {
+					t.Fatal(err)
+				}
+				if kind := responses.StringField(event, "type"); kind == "response.failed" || kind == "error" {
+					failures++
+					if strings.HasPrefix(outcome, "provider") {
+						socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-6-astra", "previous_response_id": "missing", "input": []any{}})
+						if next := socketRead(t, ctx, conn); responses.StringField(next, "type") != "error" {
+							t.Fatalf("prior provider failure suppressed next request error: %s", responses.MustMarshalJSON(next))
+						}
+						return
+					}
+				}
+				if responses.StringField(event, "type") == "response.completed" {
+					if !strings.Contains(string(event["response"]), `"encrypted_content":"retained-summary"`) || strings.Contains(string(event["response"]), "PRIVATE") {
+						t.Fatalf("compaction terminal: %s", event["response"])
+					}
+					break
+				}
 			}
 		})
 	}

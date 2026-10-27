@@ -2,6 +2,9 @@ package responses
 
 import (
 	"encoding/json/jsontext"
+	"io"
+	"strings"
+	"testing/synctest"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
@@ -106,6 +109,66 @@ func TestOpenCodeUsagePreservesSignedBounds(t *testing.T) {
 		counts[index] = uint64(1) << 63
 		if _, err := endpointUsage(testPolicy().Diagnostics, counts[0], counts[1], counts[2], counts[3], counts[4]); err == nil {
 			t.Fatalf("overflow accepted at count %d", index)
+		}
+	}
+}
+
+func TestEndpointHeartbeatProgress(t *testing.T) {
+	for _, format := range []string{"chat", "responses", "anthropic"} {
+		for _, heartbeat := range []string{": private keepalive\n\n", "data: {\"type\":\"ping\"}\n\n", "data:\n\n"} {
+			if format != "anthropic" && strings.Contains(heartbeat, "ping") {
+				continue
+			}
+			t.Run(format+"/"+strings.TrimSpace(heartbeat), func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					request, err := testTranslateFormat([]byte(`{"input":[],"tools":[]}`), format)
+					if err != nil {
+						t.Fatal(err)
+					}
+					reader, upstream := io.Pipe()
+					defer upstream.Close()
+					events := []map[string]any{}
+					done := make(chan error, 1)
+					go func() {
+						_, err := request.codec.Read(reader, func(event map[string]any) error {
+							events = append(events, event)
+							return nil
+						}, func([]byte) string { return "provider error" })
+						done <- err
+					}()
+					if format == "anthropic" {
+						if _, err := io.WriteString(upstream, "data: {\"type\":\"message_start\",\"message\":{\"model\":\"fixture\"}}\n\n"); err != nil {
+							t.Fatal(err)
+						}
+					}
+					synctest.Wait()
+					before := len(events)
+					if _, err := io.WriteString(upstream, heartbeat); err != nil {
+						t.Fatal(err)
+					}
+					synctest.Wait()
+					if heartbeat == "data:\n\n" {
+						if err := <-done; err == nil {
+							t.Fatal("empty data event accepted as a heartbeat")
+						}
+						return
+					}
+					if len(events) != before+1 || events[before]["type"] != "response.in_progress" || strings.Contains(string(responses.MustMarshalJSON(events[before:])), "private") {
+						t.Fatalf("heartbeat lost or leaked: %v", events[before:])
+					}
+					terminal := map[string]string{
+						"chat":      "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+						"responses": "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"status\":\"completed\",\"output\":[]}}\n\n",
+						"anthropic": "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\ndata: {\"type\":\"message_stop\"}\n\n",
+					}[format]
+					if _, err := io.WriteString(upstream, terminal); err != nil {
+						t.Fatal(err)
+					}
+					if err := <-done; err != nil {
+						t.Fatal(err)
+					}
+				})
+			})
 		}
 	}
 }

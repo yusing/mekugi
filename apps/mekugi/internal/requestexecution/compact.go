@@ -1,6 +1,7 @@
 package requestexecution
 
 import (
+	"bytes"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
@@ -21,6 +22,9 @@ type compactSummary struct {
 	assistantTextCollector
 	failure []byte
 	err     error
+	output  io.Writer
+	created []byte
+	started bool
 }
 
 func (c *compactSummary) Observe(payload []byte, stream bool) {
@@ -38,6 +42,12 @@ func (c *compactSummary) Observe(payload []byte, stream bool) {
 	}
 	if stream {
 		switch responses.StringField(fields, "type") {
+		case "response.created":
+			var response map[string]jsontext.Value
+			if c.err = json.Unmarshal(fields["response"], &response); c.err == nil {
+				c.created = responses.MustMarshalJSON(map[string]any{"type": "response.created", "response": map[string]any{"id": responses.StringField(response, "id"), "status": "in_progress", "output": []any{}}})
+			}
+			return
 		case "response.output_item.done":
 			_, c.err = c.assistantTextCollector.TransformJSON(responses.MustMarshalJSON(map[string]any{"output": []jsontext.Value{fields["item"]}}))
 			return
@@ -61,12 +71,43 @@ func (c *compactSummary) Observe(payload []byte, stream bool) {
 // Collecting provider output does not confirm delivery to the host.
 func (*compactSummary) Delivered([]byte) {}
 
+// CopyBody writes whole SSE frames and their separators. Project every upstream
+// frame, including comments, into a data event: Codex's SSE idle timer ignores
+// comments, and its WebSocket transport has no SSE comments at all. Never expose
+// provider summary/reload content before retained publication.
+func (c *compactSummary) Write(frame []byte) (int, error) {
+	if len(bytes.TrimSpace(frame)) == 0 {
+		return len(frame), nil
+	}
+	payload := []byte(`{"type":"response.in_progress"}`)
+	if !c.started && len(c.created) != 0 {
+		payload = c.created
+	}
+	if err := codexresponses.WriteEvent(c.output, payload); err != nil {
+		return 0, err
+	}
+	if len(c.created) != 0 {
+		c.started = true
+	}
+	c.ResponseHooks.Delivered(payload)
+	return len(frame), nil
+}
+
 func (a *requestAttempt) deliverCompactSummary() error {
 	a.finalization.failurePhase = requestFailureInspectResponse
-	collected := &compactSummary{ResponseHooks: a.hooks}
+	collected := &compactSummary{ResponseHooks: a.hooks, output: a.executor.Output}
 	defer a.response.Body.Close()
 	var reader io.Reader = a.response.Body
+	var collector io.Writer = io.Discard
 	if a.streamResponse {
+		collector = collected
+		if writer, ok := a.executor.Output.(http.ResponseWriter); ok {
+			writer.Header().Set("Content-Type", "text/event-stream")
+			if err := http.NewResponseController(writer).Flush(); err != nil {
+				a.finalization.failurePhase = requestFailureWriteResponse
+				return err
+			}
+		}
 		if diagnostics := a.hooks.StreamDiagnostics; diagnostics != nil {
 			diagnostics.ResponseStarted(a.response.Response, a.hooks.Transport)
 			if id := a.response.Header.Get("X-Request-Id"); responses.SafeDiagnosticIdentity(id) {
@@ -75,7 +116,7 @@ func (a *requestAttempt) deliverCompactSummary() error {
 		}
 		reader = diagnosticStreamReader{reader: reader, diagnostics: a.hooks.StreamDiagnostics, receivedAt: &a.hooks.ReceivedAt}
 	}
-	state, err := codexresponses.CopyBody(io.Discard, reader, a.streamResponse, nil, collected)
+	state, err := codexresponses.CopyBody(collector, reader, a.streamResponse, nil, collected)
 	if a.streamResponse {
 		recordStreamCopyStop(a.hooks.StreamDiagnostics, err)
 	}
@@ -83,6 +124,12 @@ func (a *requestAttempt) deliverCompactSummary() error {
 	if err != nil {
 		a.finalization.classifyCopyError(err)
 		return err
+	}
+	var producerErr error
+	if state == responses.TerminalFailed {
+		if body, ok := a.response.Body.(interface{ TerminalError() error }); ok {
+			producerErr = body.TerminalError()
+		}
 	}
 	a.finalization.failurePhase = requestFailureTransform
 	if collected.err != nil {
@@ -104,6 +151,10 @@ func (a *requestAttempt) deliverCompactSummary() error {
 			return err
 		}
 		a.hooks.Delivered(collected.failure)
+		if producerErr != nil {
+			a.finalization.classifyCopyError(producerErr)
+			return producerErr
+		}
 		a.finalization.outcome = requestOutcomeFailed
 		a.finalization.failurePhase = requestFailureTerminalValidation
 		return nil
@@ -139,8 +190,14 @@ func (a *requestAttempt) deliverCompactSummary() error {
 		writer.Header().Set("Content-Type", "text/event-stream")
 	}
 	a.finalization.failurePhase = requestFailureWriteResponse
+	if !collected.started {
+		payload := responses.MustMarshalJSON(map[string]any{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}})
+		if err := codexresponses.WriteEvent(a.executor.Output, payload); err != nil {
+			return err
+		}
+		a.hooks.Delivered(payload)
+	}
 	for _, event := range []any{
-		map[string]any{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}},
 		map[string]any{"type": "response.output_item.added", "output_index": 0, "item": message},
 		map[string]any{"type": "response.output_item.done", "output_index": 0, "item": message},
 		map[string]any{"type": "response.completed", "response": collected.response},

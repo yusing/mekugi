@@ -58,6 +58,7 @@ model aliases remain unchanged for JSON and streaming clients; refusals remain
 ordinary refusal output. Native call identities survive persisted replay.
 
 Endpoint adapters normalize their wire framing into one validated stream.
+Provider keepalives remain content-free progress through translation.
 Complete arguments for every parallel call are validated before any executable
 item is released. The first terminal choice seals content and calls; missing,
 conflicting, or malformed terminals cannot become successful execution results.

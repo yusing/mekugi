@@ -386,6 +386,9 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	exchange.ctx = executionCtx
 	output := &webSocketOutput{exchange: exchange}
 	err = s.dispatch(startCtx, executionCtx, parsed, headers, exchange, output)
+	if err != nil && output.failureDelivered {
+		s.errorDelivered = true
+	}
 	if err != nil && executionCtx.Err() == nil && !s.errorDelivered {
 		if payload, writeErr := s.writeError(executionCtx, err); writeErr == nil {
 			clientObservation.Message(payload)
@@ -621,9 +624,10 @@ func (e *Exchange) Close() error { return nil }
 // The application executor retains the normal SSE transformer composition. This final
 // adapter changes framing only, after tool restoration and replay.
 type webSocketOutput struct {
-	exchange  *Exchange
-	buffer    bytes.Buffer
-	committed bool
+	exchange         *Exchange
+	buffer           bytes.Buffer
+	committed        bool
+	failureDelivered bool
 }
 
 func (w *webSocketOutput) Write(data []byte) (int, error) {
@@ -657,11 +661,11 @@ func (w *webSocketOutput) message(payload []byte) error {
 	if err := e.State.ObserveOutput(payload); err != nil {
 		return err
 	}
-	if event.Type == responseevents.Error {
-		s.errorDelivered = true
-	}
 	if err := s.downstream.Write(e.ctx, websocket.MessageText, payload); err != nil {
 		return DownstreamDisconnectError(err)
+	}
+	if event.Type == responseevents.Error || event.Type == responseevents.Failed {
+		w.failureDelivered = true
 	}
 	w.committed = true
 	if isWebSocketSteering(payload) {
