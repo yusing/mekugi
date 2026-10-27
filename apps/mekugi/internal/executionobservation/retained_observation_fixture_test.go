@@ -155,7 +155,9 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 	if s.transaction != nil {
 		return errors.New("nested replay publication transaction")
 	}
-	return retainObservationInput(ctx, s.changeScope(), s.changes, s.recovery, workspace, raw, histories, release)
+	var items []map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &items)
+	return retainObservationInput(ctx, s.changeScope(), s.changes, s.recovery, observationRetentionInput(workspace, raw, items, release), histories)
 }
 func (s *mekugiReplayStore) putAfterMaintenance(ctx context.Context, workspace string, histories map[string]mekugiHistory) error {
 	if s == nil {

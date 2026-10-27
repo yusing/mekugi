@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
@@ -130,6 +131,11 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 	var items []map[string]json.RawMessage
 	if json.Unmarshal(raw, &items) != nil {
 		return visible, nil
+	}
+	// Retain original dependencies before projection mutates or filters the items.
+	var retentionInput recordtransactions.Input
+	if p.retained.Store != nil && observationScope(ctx, p.retained).Thread != "" {
+		retentionInput = observationRetentionInput(workspace, raw, items, releaseSnapshot)
 	}
 	// Validate this request's retained selections under one publication lock.
 	// Keep errors with their selection so input-order error handling is unchanged.
@@ -344,7 +350,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 		}
 		changed = true
 	}
-	if err := retainObservationInput(ctx, p.retained, p.changeSource, p.recovered, workspace, raw, visible, releaseSnapshot); err != nil {
+	if err := retainObservationInput(ctx, p.retained, p.changeSource, p.recovered, retentionInput, visible); err != nil {
 		return nil, err
 	}
 	releaseSnapshot()

@@ -55,33 +55,8 @@ func beginRetainedSession(ctx context.Context, store *history.Store, writes *per
 
 var retainedReadReference = regexp.MustCompile(`(?:\b|\\[nr])mread(?:[ \t]|\\t)+([a-z]+[0-9]*\b(?:(?:[ \t]|\\t)+[a-z]+[0-9]*\b)*)`)
 
-// Retain the complete visible history in one locked catalog update. A fork
-// shares immutable records with its source; removing either chat keeps facts
-// referenced by the other. Invalid input never establishes an ownership claim.
-func retainObservationInput(ctx context.Context, selected changes.Scope, source changes.Service, recovered *recovery.Service, workspace string, raw json.RawMessage, histories map[string]mekugiHistory, releaseSnapshot func()) error {
-	if selected.Store == nil {
-		return nil
-	}
-	selected = observationScope(ctx, selected)
-	if selected.Thread == "" {
-		return nil
-	}
+func observationRetentionInput(workspace string, raw json.RawMessage, items []map[string]json.RawMessage, releaseSnapshot func()) recordtransactions.Input {
 	input := recordtransactions.Input{Workspace: workspace, ReleaseSnapshot: releaseSnapshot}
-	for call, item := range histories {
-		input.Files = append(input.Files, legacycall.Name(workspace, call, false))
-		input.Changes = append(input.Changes, item.ChangeID)
-		if item.ExecObservation != nil {
-			intervals, err := readExecIntervals(ctx, selected, source, workspace, call, item.ExecObservation.CodeMode)
-			if err != nil {
-				return err
-			}
-			for _, interval := range intervals {
-				input.Changes = append(input.Changes, interval.before.ChangeID)
-			}
-		}
-	}
-	var items []map[string]json.RawMessage
-	_ = json.Unmarshal(raw, &items)
 	for _, item := range items {
 		kind, reference := responses.StringField(item, "type"), responses.StringField(item, "encrypted_content")
 		if (kind == "compaction" || kind == "compaction_summary") && strings.HasPrefix(reference, compact.Prefix) {
@@ -93,6 +68,33 @@ func retainObservationInput(ctx context.Context, selected changes.Scope, source 
 	}
 	for _, match := range retainedReadReference.FindAllStringSubmatch(string(raw), -1) {
 		input.References = append(input.References, strings.Fields(strings.ReplaceAll(match[1], `\t`, " "))...)
+	}
+	return input
+}
+
+// Retain the complete visible history in one locked catalog update. A fork
+// shares immutable records with its source; removing either chat keeps facts
+// referenced by the other. Invalid input never establishes an ownership claim.
+func retainObservationInput(ctx context.Context, selected changes.Scope, source changes.Service, recovered *recovery.Service, input recordtransactions.Input, histories map[string]mekugiHistory) error {
+	if selected.Store == nil {
+		return nil
+	}
+	selected = observationScope(ctx, selected)
+	if selected.Thread == "" {
+		return nil
+	}
+	for call, item := range histories {
+		input.Files = append(input.Files, legacycall.Name(input.Workspace, call, false))
+		input.Changes = append(input.Changes, item.ChangeID)
+		if item.ExecObservation != nil {
+			intervals, err := readExecIntervals(ctx, selected, source, input.Workspace, call, item.ExecObservation.CodeMode)
+			if err != nil {
+				return err
+			}
+			for _, interval := range intervals {
+				input.Changes = append(input.Changes, interval.before.ChangeID)
+			}
+		}
 	}
 	if identity, _ := ctx.Value(storageSessionKey{}).(storageSessionIdentity); identity.Initialize {
 		input.Initialize = &history.Scope{Thread: identity.Thread, Namespace: identity.Namespace, Parent: identity.Parent, Fork: identity.Fork}

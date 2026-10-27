@@ -77,11 +77,16 @@ func BenchmarkReconcileVisibleInput(b *testing.B) {
 					map[string]string{"type": "function_call_output", "call_id": id, "output": "done"})
 			}
 			raw := responseevents.MustMarshalJSON(items)
+			ctx, release, err := store.beginSession(b.Context(), "benchmark", "benchmark")
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer release()
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
 				request := &codexresponses.Request{Fields: map[string]json.RawMessage{"input": raw}}
-				if _, err := proxy.reconcileVisibleInput(b.Context(), request, "workspace", "session"); err != nil {
+				if _, err := proxy.reconcileVisibleInput(ctx, request, "workspace", "session"); err != nil {
 					b.Fatal(err)
 				}
 			}
