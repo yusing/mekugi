@@ -23,11 +23,12 @@ const (
 )
 
 // mrunCapture drains every write. Token-only tail mode uses a byte ring;
-// line mode retains complete lines, bounding each candidate when tokens are limited.
+// combined mode bounds both the pending line and the completed-row window.
 type mrunCapture struct {
 	maxLines     int
 	rows         []string
 	rowStart     int
+	rowBytes     int
 	pendingBytes *mrunCapture
 	pending      strings.Builder
 	buffer       []byte
@@ -71,6 +72,10 @@ func (capture *mrunCapture) Write(value []byte) (int, error) {
 // Line selection retains complete LF-delimited lines, including an unterminated
 // final line. With a token ceiling, only the admissible bytes of each line are retained.
 func (capture *mrunCapture) appendLine(line string) {
+	if len(capture.buffer) > utf8.UTFMax {
+		capture.appendBoundedLine(line)
+		return
+	}
 	if len(capture.rows) < capture.maxLines {
 		capture.rows = append(capture.rows, line)
 		return
@@ -79,6 +84,41 @@ func (capture *mrunCapture) appendLine(line string) {
 	if capture.tail {
 		capture.rows[capture.rowStart] = line
 		capture.rowStart = (capture.rowStart + 1) % capture.maxLines
+	}
+}
+
+func (capture *mrunCapture) appendBoundedLine(line string) {
+	limit := len(capture.buffer)
+	if !capture.tail {
+		accepted := min(len(line), limit-capture.rowBytes)
+		capture.omitted = capture.omitted || accepted < len(line)
+		capture.rows = append(capture.rows, line[:accepted])
+		capture.rowBytes += accepted
+		return
+	}
+
+	capture.rows = append(capture.rows, line)
+	capture.rowBytes += len(line)
+	for len(capture.rows)-capture.rowStart > capture.maxLines || capture.rowBytes > limit {
+		capture.omitted = true
+		oldest := capture.rows[capture.rowStart]
+		excess := capture.rowBytes - limit
+		if len(capture.rows)-capture.rowStart <= capture.maxLines && excess < len(oldest) {
+			// Keep the raw cutoff until the final window is trimmed. Replacing
+			// its split UTF-8 sequence here would shift subsequent byte cutoffs.
+			capture.rows[capture.rowStart] = oldest[excess:]
+			capture.rowBytes -= excess
+			break
+		}
+		capture.rowBytes -= len(oldest)
+		capture.rows[capture.rowStart] = ""
+		capture.rowStart++
+	}
+	if capture.rowStart > 0 && capture.rowStart >= len(capture.rows)/2 {
+		remaining := copy(capture.rows, capture.rows[capture.rowStart:])
+		clear(capture.rows[remaining:])
+		capture.rows = capture.rows[:remaining]
+		capture.rowStart = 0
 	}
 }
 
@@ -109,7 +149,8 @@ func (capture *mrunCapture) finishLine() {
 func (capture *mrunCapture) writeLines(value []byte) (int, error) {
 	length := len(value)
 	for len(value) > 0 {
-		if !capture.tail && len(capture.rows) == capture.maxLines {
+		if !capture.tail && (len(capture.rows) == capture.maxLines ||
+			len(capture.buffer) > utf8.UTFMax && capture.rowBytes == len(capture.buffer)) {
 			capture.omitted = true
 			break
 		}
@@ -130,44 +171,12 @@ func (capture *mrunCapture) text() string {
 		if capture.pending.Len() > 0 || (capture.pendingBytes != nil && capture.pendingBytes.size > 0) {
 			capture.finishLine()
 		}
-		// Apply the token byte reserve before joining retained rows, so the
-		// tokenizer window does not allocate the entire line selection.
 		if len(capture.buffer) > utf8.UTFMax {
-			window := mrunCapture{buffer: capture.buffer, tail: capture.tail}
-			spans := [][]string{capture.rows[capture.rowStart:], capture.rows[:capture.rowStart]}
-			total := 0
-			for _, rows := range spans {
-				for _, row := range rows {
-					total += len(row)
-				}
+			window := mrunCapture{buffer: capture.buffer, tail: capture.tail, omitted: capture.omitted}
+			for _, row := range capture.rows[capture.rowStart:] {
+				window.size += copy(window.buffer[window.size:], row)
 			}
-			window.omitted = total > len(window.buffer)
-			skip := 0
-			if capture.tail {
-				skip = max(0, total-len(window.buffer))
-			}
-			for _, rows := range spans {
-				for _, row := range rows {
-					if skip >= len(row) {
-						skip -= len(row)
-						continue
-					}
-					row = row[skip:]
-					skip = 0
-					// Copy directly into the existing byte capture rather than
-					// allocating a byte conversion for each retained row.
-					window.size += copy(window.buffer[window.size:], row)
-					if window.size == len(window.buffer) {
-						break
-					}
-				}
-				if window.size == len(window.buffer) {
-					break
-				}
-			}
-			value := window.text()
-			capture.omitted = capture.omitted || window.omitted
-			return value
+			return window.text()
 		}
 		value := strings.Join(capture.rows[capture.rowStart:], "") + strings.Join(capture.rows[:capture.rowStart], "")
 		return strings.ToValidUTF8(value, "\uFFFD")
