@@ -24,3 +24,18 @@ func TestContextUsageLatestCompleteRecord(t *testing.T) {
 		t.Fatalf("latest context: %+v, known=%t", usage, known)
 	}
 }
+
+func BenchmarkContextUsageLatestRecord(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "rollout.jsonl")
+	data := "{\"type\":\"session_meta\",\"payload\":{\"id\":\"child\"}}\n" + strings.Repeat("x", 9<<20) + "\n" +
+		"{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"total_tokens\":123}}}}\n"
+	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if usage, known := ReadContextUsage("child", path); !known || usage.Tokens != 123 {
+			b.Fatalf("latest context: %+v, known=%t", usage, known)
+		}
+	}
+}
