@@ -289,17 +289,27 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 		return command.Output{}, err
 	}
 	// Never emit a semantic result for an input that changed during resolution.
+	verified := map[*symbolSource]bool{}
+	resultCache := map[string]*symbolSource{}
 	for _, q := range queries {
 		if q.file == nil || q.err != nil {
 			continue
 		}
-		path, e := filepath.EvalSymlinks(q.file.path)
-		data, readErr := os.ReadFile(q.file.path)
-		if e != nil || readErr != nil || path != q.file.path || string(data) != q.file.parsed.Source {
+		unchanged, checked := verified[q.file]
+		if !checked {
+			path, e := filepath.EvalSymlinks(q.file.path)
+			data, readErr := os.ReadFile(q.file.path)
+			unchanged = e == nil && readErr == nil && path == q.file.path && string(data) == q.file.parsed.Source
+			verified[q.file] = unchanged
+			if unchanged {
+				resultCache[q.file.path] = q.file
+			}
+		}
+		if !unchanged {
 			q.err = errors.New("input changed during query")
 		}
 	}
-	clear(cache)
+	cache = resultCache
 	result := command.Output{}
 	counter := outputbudget.Budget{}
 	var shown, retained strings.Builder

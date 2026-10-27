@@ -396,10 +396,13 @@ func TestNativeSymbolChangedInputPreservesIndependentTuple(t *testing.T) {
 	if err := os.WriteFile(other, []byte(otherSource), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	installSymbolResolvers(t, map[string]symbolResolverFixture{"tsc": {Definitions: []symbolFixtureLocation{nativeSymbolFixtureLocation(other, 0, 16, 21)}, MutateMethod: "textDocument/definition", MutatePath: path, MutatedSource: source + "Pick();\n"}})
-	out := executeQuery(t, "def", "sample.ts", "1", "Pick", "def", "other.ts", "1", "Other")
+	installSymbolResolvers(t, map[string]symbolResolverFixture{"tsc": {Definitions: []symbolFixtureLocation{nativeSymbolFixtureLocation(other, 0, 16, 21)}, MutateMethod: "textDocument/definition", MutatePath: path, MutatedSource: strings.ReplaceAll(source, "Pick", "Gone")}})
+	out := executeQuery(t, "def", "sample.ts", "1", "Pick", "def", "sample.ts", "1", "Pick", "def", "other.ts", "1", "Other")
 	if out.ExitCode != 1 || out.Stdout != "\"other.ts\":1-1\n"+otherSource || !strings.Contains(out.Stderr, "input changed during query") {
 		t.Fatalf("changed input isolation: %+v", out)
+	}
+	if strings.Count(out.Stderr, "input changed during query") != 2 {
+		t.Fatalf("shared changed input did not fail both tuples: %s", out.Stderr)
 	}
 }
 
