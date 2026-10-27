@@ -164,6 +164,15 @@ func (s *Source) parseError(offset int) {
 
 // Parse extracts source facts without opening files or starting resolvers.
 func Parse(ctx context.Context, source string, format sourcekind.Format) (*Source, error) {
+	return parse(ctx, source, format, true)
+}
+
+// ParseOutline extracts structural facts without collecting semantic selector tokens.
+func ParseOutline(ctx context.Context, source string, format sourcekind.Format) (*Source, error) {
+	return parse(ctx, source, format, false)
+}
+
+func parse(ctx context.Context, source string, format sourcekind.Format, collectTokens bool) (*Source, error) {
 	s := &Source{Source: source, Lines: newLines(source), Format: format}
 	switch {
 	case format.Language == "go":
@@ -175,24 +184,26 @@ func Parse(ctx context.Context, source string, format sourcekind.Format) (*Sourc
 		for _, e := range doc.Errors {
 			s.parseError(e.Offset)
 		}
-		var scan scanner.Scanner
-		set := token.NewFileSet()
-		f := set.AddFile("", -1, len(source))
-		scan.Init(f, []byte(source), func(token.Position, string) {}, 0)
-		for {
-			pos, tok, lit := scan.Scan()
-			if tok == token.EOF {
-				break
-			}
-			if tok == token.IDENT {
-				from := f.Offset(pos)
-				s.Tokens = append(s.Tokens, Token{from, lit})
+		if collectTokens {
+			var scan scanner.Scanner
+			set := token.NewFileSet()
+			f := set.AddFile("", -1, len(source))
+			scan.Init(f, []byte(source), func(token.Position, string) {}, 0)
+			for {
+				pos, tok, lit := scan.Scan()
+				if tok == token.EOF {
+					break
+				}
+				if tok == token.IDENT {
+					from := f.Offset(pos)
+					s.Tokens = append(s.Tokens, Token{from, lit})
+				}
 			}
 		}
 	case format.Kind == "markdown":
 		s.markdown()
 	case format.Kind == "json":
-		if err := s.jsonDocument(ctx); err != nil {
+		if err := s.jsonDocument(ctx, collectTokens); err != nil {
 			return nil, err
 		}
 	default:
@@ -234,11 +245,14 @@ func Parse(ctx context.Context, source string, format sourcekind.Format) (*Sourc
 		s.codeOutline(tree.RootNode())
 		var visit func(*sitter.Node)
 		visit = func(n *sitter.Node) {
+			if !collectTokens && !n.HasError() && !n.IsError() && !n.IsMissing() {
+				return
+			}
 			if n.IsError() || n.IsMissing() {
 				s.parseError(int(n.StartByte()))
 			}
 			kind := n.Kind()
-			if kind == "identifier" || kind == "property_identifier" || kind == "private_property_identifier" || kind == "type_identifier" || kind == "shorthand_property_identifier" || kind == "shorthand_property_identifier_pattern" {
+			if collectTokens && (kind == "identifier" || kind == "property_identifier" || kind == "private_property_identifier" || kind == "type_identifier" || kind == "shorthand_property_identifier" || kind == "shorthand_property_identifier_pattern") {
 				s.Tokens = append(s.Tokens, Token{int(n.StartByte()), n.Utf8Text(data)})
 			}
 			for i := uint(0); i < n.ChildCount(); i++ {

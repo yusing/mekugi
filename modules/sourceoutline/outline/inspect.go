@@ -121,7 +121,7 @@ func inspectSource(ctx context.Context, data inspectionData, bytes []byte, forma
 	if !utf8.Valid(bytes) {
 		return data, &inspectFailure{"not_utf8", "supported file is not valid UTF-8"}
 	}
-	parsed, err := structure.Parse(ctx, string(bytes), format)
+	parsed, err := structure.ParseOutline(ctx, string(bytes), format)
 	if err != nil {
 		return data, &inspectFailure{"parse", err.Error()}
 	}

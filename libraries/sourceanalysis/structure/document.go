@@ -132,11 +132,11 @@ func decodeJSString(literal string) (string, bool) {
 }
 
 // Source: plugins/inspect_file_document.ts:146:210@[543de4f3] jsonOutline
-func (s *Source) jsonDocument(ctx context.Context) error {
+func (s *Source) jsonDocument(ctx context.Context, collectTokens bool) error {
 	strict := *s
 	strict.Entries = nil
 	strict.Tokens = nil
-	invalidOffset, err := strict.strictJSON(ctx)
+	invalidOffset, err := strict.strictJSON(ctx, collectTokens)
 	if err == nil {
 		s.Entries = strict.Entries
 		s.Tokens = strict.Tokens
@@ -219,19 +219,21 @@ func (s *Source) jsonDocument(ctx context.Context) error {
 			break
 		}
 	}
-	var visit func(*sitter.Node)
-	visit = func(n *sitter.Node) {
-		if n.Kind() == "string" && !n.HasError() {
-			if v, ok := decodeNativeJSONString(s.text(n)); ok {
-				s.Tokens = append(s.Tokens, Token{int(n.StartByte()) + 1, v})
+	if collectTokens {
+		var visit func(*sitter.Node)
+		visit = func(n *sitter.Node) {
+			if n.Kind() == "string" && !n.HasError() {
+				if v, ok := decodeNativeJSONString(s.text(n)); ok {
+					s.Tokens = append(s.Tokens, Token{int(n.StartByte()) + 1, v})
+				}
+				return
 			}
-			return
+			for i := uint(0); i < n.ChildCount(); i++ {
+				visit(n.Child(i))
+			}
 		}
-		for i := uint(0); i < n.ChildCount(); i++ {
-			visit(n.Child(i))
-		}
+		visit(tree.RootNode())
 	}
-	visit(tree.RootNode())
 	s.parseError(invalidOffset)
 	return nil
 }
@@ -360,7 +362,7 @@ func decodeNativeJSONString(literal string) (string, bool) {
 // Tree-sitter supplies recovery only. JSON's authoritative grammar is the
 // standard decoder, which rejects comments/multiple roots and accepts exponent
 // signs. Duplicate properties and escaped lone surrogates remain source facts.
-func (s *Source) strictJSON(ctx context.Context) (int, error) {
+func (s *Source) strictJSON(ctx context.Context, collectTokens bool) (int, error) {
 	base := 0
 	if strings.HasPrefix(s.Source, "\ufeff") {
 		base = 3
@@ -384,7 +386,9 @@ func (s *Source) strictJSON(ctx context.Context) (int, error) {
 		if !ok {
 			return "", errors.New("invalid JSON string")
 		}
-		s.Tokens = append(s.Tokens, Token{from + 1, name})
+		if collectTokens {
+			s.Tokens = append(s.Tokens, Token{from + 1, name})
+		}
 		return name, nil
 	}
 	value = func(pointer string) error {
