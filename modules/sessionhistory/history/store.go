@@ -25,6 +25,7 @@ type Store struct {
 	mu        sync.Mutex
 	revision  string
 	files     *storageFiles
+	catalog   *retainedCatalog
 }
 
 // Sizes and their derived totals are one revision-validated publication view.
@@ -132,6 +133,7 @@ func (tx *Transaction) AdvanceRevision() error {
 	}
 	s := tx.store
 	s.files = nil
+	s.catalog = nil
 	if _, err := tx.Revision(); err != nil {
 		return err
 	}
@@ -149,10 +151,12 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 	if err := tx.check(); err != nil {
 		return err
 	}
+	s := tx.store
+	catalog := s.catalog
+	s.catalog = nil
 	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
 		return errors.New("invalid managed publication name")
 	}
-	s := tx.store
 	kind, managed, kindErr := s.service.Kind(name)
 	if kindErr != nil {
 		return kindErr
@@ -176,6 +180,7 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 				return err
 			}
 			if bytes.Equal(previous, data) {
+				s.catalog = catalog
 				return nil
 			}
 		}
@@ -199,6 +204,10 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 			files.set(name, kind, int64(len(data)))
 		}
 		s.files = files
+	}
+	if catalog != nil && catalog.name != name && catalog.revision == revision {
+		catalog.revision = s.revision
+		s.catalog = catalog
 	}
 	return nil
 }

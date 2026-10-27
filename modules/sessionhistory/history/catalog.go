@@ -5,6 +5,7 @@ import (
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,6 +21,14 @@ type Catalog struct {
 	Thread   string          `json:"thread"`
 	LastUsed time.Time       `json:"last_used"`
 	Files    map[string]bool `json:"files"`
+}
+
+// Only Retain borrows this immutable decoded view, under the store lock.
+// Its revision is independent of the file-size cache's revision.
+type retainedCatalog struct {
+	name     string
+	revision string
+	value    Catalog
 }
 
 // CatalogName recognizes the session owner's existing on-disk catalog format.
@@ -107,19 +116,41 @@ func (tx *Transaction) Retain(thread string, limits Limits, names ...string) err
 		names = append(names, dependencies...)
 	}
 	name := SessionName(thread)
-	session, err := s.ReadCatalog(name)
-	if errors.Is(err, os.ErrNotExist) {
-		session = Catalog{Version: 1, Thread: thread, Files: make(map[string]bool)}
-	} else if err != nil {
+	revision, err := tx.Revision()
+	if err != nil {
+		s.catalog = nil
 		return err
 	}
+	if s.catalog != nil && (s.catalog.name != name || s.catalog.revision != revision) {
+		s.catalog = nil
+	}
+	var session Catalog
+	if s.catalog != nil {
+		session = s.catalog.value
+	} else {
+		session, err = s.ReadCatalog(name)
+		if errors.Is(err, os.ErrNotExist) {
+			session = Catalog{Version: 1, Thread: thread, Files: make(map[string]bool)}
+		} else if err != nil {
+			return err
+		} else {
+			s.catalog = &retainedCatalog{name: name, revision: revision, value: session}
+		}
+	}
 	changed := session.LastUsed.IsZero()
+	filesOwned := changed
 	for _, file := range names {
 		if !s.registered(file) {
 			return errors.New("cannot retain an invalid storage file identity")
 		}
-		changed = changed || !session.Files[file]
-		session.Files[file] = true
+		if !session.Files[file] {
+			if !filesOwned {
+				session.Files = maps.Clone(session.Files)
+				filesOwned = true
+			}
+			changed = true
+			session.Files[file] = true
+		}
 	}
 	if !changed && time.Since(session.LastUsed) < time.Minute {
 		return nil
@@ -139,7 +170,15 @@ func (tx *Transaction) Retain(thread string, limits Limits, names ...string) err
 			return err
 		}
 	}
-	return tx.Write(name, "session-pending-", data)
+	if err := tx.Write(name, "session-pending-", data); err != nil {
+		return err
+	}
+	// Cache publication is auxiliary: a revision-read failure cannot turn a
+	// successful durable publication into a failure.
+	if revision, err := tx.Revision(); err == nil {
+		s.catalog = &retainedCatalog{name: name, revision: revision, value: session}
+	}
+	return nil
 }
 
 // Only this owner's exact coordination vocabulary is exempt from unknown-record
