@@ -77,6 +77,25 @@ func TestRPCSharedBacklogResetAndOmittedOrder(t *testing.T) {
 	}
 }
 
+func TestRPCSharedBacklogPreservesFeedMetadata(t *testing.T) {
+	before := publication{Kind: "snapshot", Data: jsontext.Value(`{"main":{"attachment":"a","revision":7,"earlier":{"attachment":"a","kind":"main","revision":7,"before":1},"entries":[{"seq":1},{"seq":2}],"order":[1,2]}}`)}
+	for _, identity := range []string{`"attachment":"a","revision":7`, `"attachment":"a","revision":8`, `"attachment":"b","revision":7`} {
+		next := publication{Kind: "patch", Data: jsontext.Value(`{"main":{` + identity + `,"earlier":null,"entries":[{"seq":2,"text":"updated"}],"order":[1,2]}}`)}
+		got, ok := coalesceShared(before, next)
+		var result, expected message
+		if !ok || json.Unmarshal(got.Data, &result) != nil || json.Unmarshal(next.Data, &expected) != nil || result.Main.Earlier != nil || result.Main.Attachment != expected.Main.Attachment || result.Main.Revision != expected.Main.Revision {
+			t.Fatalf("feed metadata lost: %s", got.Data)
+		}
+		want := 1
+		if identity == `"attachment":"a","revision":7` {
+			want = 2
+		}
+		if len(result.Main.Entries) != want {
+			t.Fatalf("identity reset retained wrong entries: %s", got.Data)
+		}
+	}
+}
+
 func TestRPCSharedReplaceableBytesDoNotAccumulate(t *testing.T) {
 	payload, err := json.Marshal(map[string]any{"status": map[string]string{"text": strings.Repeat("x", 1<<20)}})
 	if err != nil {

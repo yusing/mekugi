@@ -176,6 +176,7 @@ type feed struct {
 	history     uint64
 	window      uint64
 	windowBytes int
+	latest      *feedPatch // Complete previous publication window, never a delta or an explicit read.
 }
 
 // projected is one entry's encoding at the revision it was encoded from; an
@@ -380,11 +381,13 @@ func (s *Server) Publish(f Frame) error {
 		if patch.Main, err = s.feedPage("main", &s.main, 0, ""); err != nil {
 			return err
 		}
+		patch.Main = s.main.delta(patch.Main)
 	}
 	if agentsChanged {
 		if patch.Agents, err = s.feedPage("agents", &s.agents, 0, ""); err != nil {
 			return err
 		}
+		patch.Agents = s.agents.delta(patch.Agents)
 	}
 	for kind, changed := range map[string]bool{"session": patch.Session != nil, "input": patch.Input != nil, "prompts": patch.Prompts != nil, "status": patch.Status != nil, "review-info": patch.Review != nil, "live": patch.Live != nil} {
 		if changed {
@@ -406,6 +409,28 @@ func (s *Server) Publish(f Frame) error {
 		return err
 	}
 	return s.broadcast(event, false)
+}
+
+// delta compares complete bounded windows, so an unchanged entry that reenters
+// after the window grows is sent again. Reads and snapshots never advance it.
+func (f *feed) delta(next *feedPatch) *feedPatch {
+	previous := f.latest
+	f.latest = next
+	if previous == nil || previous.Attachment != next.Attachment || previous.Revision != next.Revision {
+		return next
+	}
+	entries := make(map[uint64]jsontext.Value, len(previous.Entries))
+	for i, data := range previous.Entries {
+		entries[previous.Order[i]] = data
+	}
+	patch := *next
+	patch.Entries = nil
+	for i, data := range next.Entries {
+		if !bytes.Equal(data, entries[next.Order[i]]) {
+			patch.Entries = append(patch.Entries, data)
+		}
+	}
+	return &patch
 }
 
 // update projects the visible entries that keep admits, or all of them when

@@ -39,6 +39,9 @@ func coalesceShared(previous, next publication) (publication, bool) {
 }
 
 func coalesceFeed(previous, next feedPatch) (feedPatch, bool) {
+	if previous.Attachment != next.Attachment || previous.Revision != next.Revision {
+		return next, true
+	}
 	entries := make(map[uint64]jsontext.Value, len(previous.Entries)+len(next.Entries))
 	var sequence []uint64
 	for _, batch := range [][]jsontext.Value{previous.Entries, next.Entries} {
@@ -64,7 +67,8 @@ func coalesceFeed(previous, next feedPatch) (feedPatch, bool) {
 	if order != nil {
 		sequence = order
 	}
-	merged := feedPatch{Order: order}
+	merged := next
+	merged.Order, merged.Entries = order, nil
 	for _, seq := range sequence {
 		if entry := entries[seq]; entry != nil {
 			merged.Entries = append(merged.Entries, entry)

@@ -347,9 +347,13 @@ replacement and scope withdrawal retire the corresponding previews independently
 of saved review and host execution.
 
 A feed is an object with `entries`, `order`, a history revision and an optional
-earlier-page cursor. In a snapshot, `entries` holds the latest window and `order`
-its sequence IDs in display order. In a patch,
-`entries` and `order` replace the latest window whenever that feed changes.
+earlier-page cursor. Snapshots and explicit pages contain complete entries for
+their returned windows, with sequence IDs in display order. Ordinary feed patches
+carry the complete latest-window order and metadata, but include entry replacements
+only for changed entries and entries newly entering that window. Omitted entries
+retain their previous values subject to the latest order and explicitly loaded
+earlier pages. Attachment or history-revision replacement carries the complete new
+window. Backlog snapshots remain complete and authoritative.
 An entry's `position` preserves display order independently of sequence identity;
 its optional `turn` is the user-turn ordinal across the retained feed.
 

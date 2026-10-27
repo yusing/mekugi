@@ -1777,11 +1777,12 @@ test("pages preserve loaded history and acknowledge stale attachment replies aft
         attachment: "first",
         revision: 1,
         order: [2, 1],
-        entries: [historyRow(2, 1), historyRow(1, 2)],
+        entries: [historyRow(1, 2)],
         earlier: cursor,
       },
     },
   });
+  assert.deepEqual(source.main.entries[2], historyRow(2, 1), "omitted entries retain their values");
   let acknowledgements = 0;
   replies[0].resolve({
     entries: [historyRow(3, 0)],
@@ -1799,7 +1800,7 @@ test("pages preserve loaded history and acknowledge stale attachment replies aft
         attachment: "first",
         revision: 1,
         order: [1],
-        entries: [historyRow(1, 2)],
+        entries: [],
         earlier: cursor,
       },
     },
