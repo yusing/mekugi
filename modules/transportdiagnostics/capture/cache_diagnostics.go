@@ -2,7 +2,6 @@
 package capture
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -53,15 +52,13 @@ type cacheDiagnosis struct {
 }
 
 func (r *Recorder) fingerprint(domain string, value any) string {
-	var encoded bytes.Buffer
-	// Values come only from a successful JSON decoder or fixed scalar metadata.
-	if json.MarshalEncode(jsontext.NewEncoder(&encoded), value, jsonv1.DefaultOptionsV1(), jsontext.EscapeForHTML(false)) != nil {
-		return ""
-	}
 	hash := hmac.New(sha256.New, r.fingerprintKey[:])
 	hash.Write([]byte(domain))
 	hash.Write([]byte{0})
-	hash.Write(encoded.Bytes())
+	// Values come only from a successful JSON decoder or fixed scalar metadata.
+	if json.MarshalEncode(jsontext.NewEncoder(hash), value, jsonv1.DefaultOptionsV1(), jsontext.EscapeForHTML(false)) != nil {
+		return ""
+	}
 	return hex.EncodeToString(hash.Sum(nil)[:16])
 }
 

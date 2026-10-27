@@ -2,6 +2,9 @@ package capture
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"io"
@@ -10,6 +13,27 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestFingerprintPreservesCanonicalBytes(t *testing.T) {
+	r := diagnosticRecorder(t)
+	hash := hmac.New(sha256.New, r.fingerprintKey[:])
+	hash.Write([]byte("fixture\x00{\"a\":\"<>&\",\"n\":1000}\n"))
+	want := hex.EncodeToString(hash.Sum(nil)[:16])
+	if got := r.fingerprint("fixture", map[string]any{"n": float64(1000), "a": "<>&"}); got != want {
+		t.Fatalf("fingerprint = %s, want %s", got, want)
+	}
+}
+
+func BenchmarkRequestFingerprint(b *testing.B) {
+	r := new(Recorder)
+	input := []byte(`{"input":[{"content":"` + strings.Repeat("x", 1<<20) + `"}]}`)
+	b.ReportAllocs()
+	for b.Loop() {
+		if got := r.requestFingerprint(input); len(got.Items) != 1 {
+			b.Fatal("missing input fingerprint")
+		}
+	}
+}
 
 func diagnosticRecorder(t *testing.T) *Recorder {
 	t.Helper()
