@@ -55,7 +55,11 @@ func transformResponsesTextContent(
 	isTextPart func(string) bool,
 ) (json.RawMessage, bool, error) {
 	if text, ok := responses.DecodeString(raw); ok {
-		return responses.MustMarshalJSON(transform(text)), true, nil
+		updated := transform(text)
+		if updated == text {
+			return raw, false, nil
+		}
+		return responses.MustMarshalJSON(updated), true, nil
 	}
 	var parts []json.RawMessage
 	if json.Unmarshal(raw, &parts) != nil || parts == nil {
@@ -71,7 +75,11 @@ func transformResponsesTextContent(
 		if fields.Text == nil || !isTextPart(fields.Type) {
 			continue
 		}
-		updated, err := responses.ReplaceField(part, "text", responses.MustMarshalJSON(transform(*fields.Text)))
+		text := transform(*fields.Text)
+		if text == *fields.Text {
+			continue
+		}
+		updated, err := responses.ReplaceField(part, "text", responses.MustMarshalJSON(text))
 		if err != nil {
 			return nil, false, err
 		}
