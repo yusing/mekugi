@@ -21,6 +21,10 @@ type instructionNative struct {
 
 func (n instructionNative) Runtime(string) (control.Runtime, error) { return n.owner, nil }
 
+func (n instructionNative) Inspect(ctx context.Context, thread string) (control.SessionDetails, error) {
+	return n.owner.Inspect(ctx, thread)
+}
+
 type instructionRuntime struct {
 	control.Runtime
 	info   control.ThreadInfo

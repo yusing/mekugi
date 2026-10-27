@@ -12,6 +12,7 @@ import (
 // requests and confirms their results; collaboration never dispatches wire RPCs.
 type Native interface {
 	Runtime(string) (Runtime, error)
+	Inspect(context.Context, string) (SessionDetails, error)
 	Resume(context.Context, string) (Runtime, error)
 	Confirm(context.Context, NativeInput) error
 	Create(context.Context, string, string, Settings) (Receipt, error)
@@ -35,7 +36,7 @@ type SessionMetrics struct {
 }
 
 type SessionDetails struct {
-	Model           string  `json:"model"`
+	Model           *string `json:"model"`
 	ReasoningEffort *string `json:"reasoning_effort"`
 	ServiceTier     *string `json:"service_tier"`
 	SessionMetrics

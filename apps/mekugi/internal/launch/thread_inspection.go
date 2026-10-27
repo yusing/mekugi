@@ -9,8 +9,9 @@ import (
 )
 
 func threadInspection(session *sessionpresentation.Attachment, thread string, applied preferences.Applied, tiers *inferencegateway.Tiers) control.SessionDetails {
-	details := control.SessionDetails{Model: applied.Model, SessionMetrics: session.InspectionMetrics(thread)}
+	details := control.SessionDetails{SessionMetrics: session.InspectionMetrics(thread)}
 	if applied.Model != "" {
+		details.Model = new(applied.Model)
 		details.ReasoningEffort = new(applied.Effort)
 		details.ServiceTier = new(tiers.Effective(applied.Model, applied.Tier, thread))
 	}

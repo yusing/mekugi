@@ -33,6 +33,9 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	var names []string
 	for _, tool := range catalog.Tools {
 		names = append(names, tool.Name)
+		if tool.Name == "inspect" && (!strings.Contains(tool.Description, "idle or completed agents") || !strings.Contains(tool.Description, "retained observations without starting work") || !strings.Contains(tool.Description, "unavailable observations are null")) {
+			t.Fatalf("inspect description: %q", tool.Description)
+		}
 		if tool.Name == "wait_agent" && tool.Description != "Block-wait until a watched descendant completes, fails or is interrupted, or an addressed message arrives. The default is stop-wait with no timeout. target defaults to all descendants; timeout_ms bounds the wait." {
 			t.Fatalf("wait description: %q", tool.Description)
 		}
@@ -47,6 +50,8 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		{"spawn_agent", `{"task_name":"child","message":"task","preload":{"sources":[{"unknown":"file"}]}}`},
 		{"spawn_agent", `{"task_name":"child","message":"task","preload":{"sources":[{"path":"file","ranges":[[1]]}]}}`},
 		{"list_agents", `{"unknown":true}`},
+		{"inspect", `{}`},
+		{"inspect", `{"target":"/root","unknown":true}`},
 		{"wait_agent", `{"target":[]}`},
 		{"wait_agent", `{"timeout_ms":1.5}`},
 		{"wait_agent", `{"cancel_id":"wait"}`},

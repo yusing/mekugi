@@ -258,17 +258,24 @@ thread. Only a regular file whose initial session metadata names that thread is
 evidence. Named pipes are rejected without waiting for a writer. Metadata reads
 are bounded to 64 KiB. Invalid, missing, or mismatched evidence remains unavailable.
 
+Inactive-agent inspection reads admitted retained observations without starting
+execution. Applied settings and context usage remain unknown when absent. A
+complete history supplies the distinct completed-compaction count; incomplete or
+unavailable history leaves that count unknown.
+
 Context-usage and resume-settings readers examine complete records in the last
 8 MiB, ignoring a cut boundary fragment and an unfinished final record. Context
 usage distinguishes absent evidence from a known zero. Resume settings select
 the newest value for each supported field, preserve explicit nullable defaults,
 and may exclude records at or before an application-supplied timestamp.
 
-Resume settings also accept the host's Zstandard-compressed rollout, either
-selected directly or retained beside a missing plain rollout. An existing plain
-file takes precedence. Compressed reads validate the decompressed identity and
-select complete records from the decompressed tail without materializing or
-changing host files. Unavailable or corrupt compressed evidence supplies no settings.
+Resume settings and inactive-agent inspection accept the host's
+Zstandard-compressed rollout, either selected directly or retained beside a
+missing plain rollout. An existing plain file takes precedence. Compressed reads
+validate the decompressed identity without materializing or changing host files.
+Resume settings select complete records from the decompressed tail; inspection
+counts compactions only from complete bounded histories. Unavailable or corrupt
+compressed evidence supplies no observations.
 
 The application chooses whether restored facts may replace live state, applies
 invocation/preference precedence, and gates resumed input on host confirmation.

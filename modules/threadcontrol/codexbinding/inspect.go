@@ -19,11 +19,7 @@ func (d *Driver) inspectAgent(ctx context.Context, caller control.Identity, raw 
 	if err != nil {
 		return nil, err
 	}
-	runtime, err := d.runtime(target.Thread)
-	if err != nil {
-		return nil, err
-	}
-	details, err := runtime.Inspect(ctx, target.Thread)
+	details, err := d.native().Inspect(ctx, target.Thread)
 	if err != nil {
 		return nil, err
 	}
@@ -36,10 +32,8 @@ func (d *Driver) inspectAgent(ctx context.Context, caller control.Identity, raw 
 
 // Auxiliary metrics never change a successful operation's acknowledgement.
 func (d *Driver) sessionMetrics(ctx context.Context, thread string) control.SessionMetrics {
-	if runtime, err := d.runtime(thread); err == nil {
-		if details, err := runtime.Inspect(ctx, thread); err == nil {
-			return details.SessionMetrics
-		}
+	if details, err := d.native().Inspect(ctx, thread); err == nil {
+		return details.SessionMetrics
 	}
 	return control.SessionMetrics{}
 }

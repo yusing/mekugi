@@ -66,6 +66,10 @@ type reconciliationHost struct {
 	resumes           int
 }
 
+func (h *reconciliationHost) Inspect(ctx context.Context, thread string) (control.SessionDetails, error) {
+	return h.reconciliationRuntime.Inspect(ctx, thread)
+}
+
 func (h *reconciliationHost) Create(context.Context, string, string, control.Settings) (control.Receipt, error) {
 	return control.Receipt{Thread: "child", Session: "child-session", Path: "/child-rollout"}, nil
 }

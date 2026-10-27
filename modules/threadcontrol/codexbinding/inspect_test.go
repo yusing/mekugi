@@ -17,9 +17,37 @@ type inspectionRuntime struct {
 	err    error
 }
 
+type retainedInspectionNative struct{ control.Native }
+
+func (retainedInspectionNative) Runtime(string) (control.Runtime, error) {
+	return nil, errors.New("thread has no running native runtime")
+}
+
+func (retainedInspectionNative) Inspect(context.Context, string) (control.SessionDetails, error) {
+	return control.SessionDetails{Model: new("retained-model"), SessionMetrics: control.SessionMetrics{Compactions: new(uint64(2))}}, nil
+}
+
+func TestInspectCompletedAgentWithoutRuntime(t *testing.T) {
+	driver, host, _, caller := reconciliationFixture(t)
+	if err := driver.control.HostCompleted(t.Context(), "child", "child-turn", control.Completed, ""); err != nil {
+		t.Fatal(err)
+	}
+	driver.host = retainedInspectionNative{Native: host}
+	resumes := host.resumes
+	result, err := driver.inspectAgent(t.Context(), caller, []byte(`{"target":"/root/child"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(result)
+	want := `{"thread_id":"child","task_name":"/root/child","model":"retained-model","reasoning_effort":null,"service_tier":null,"context_tokens":null,"context_window":null,"compactions":2}`
+	if err != nil || string(data) != want || host.resumes != resumes {
+		t.Fatalf("completed agent inspection = %s, %v; resumes=%d", data, err, host.resumes)
+	}
+}
+
 func (r *inspectionRuntime) Inspect(_ context.Context, thread string) (control.SessionDetails, error) {
 	r.thread = thread
-	return control.SessionDetails{Model: "applied-model", ReasoningEffort: new("high"), ServiceTier: new("priority"), SessionMetrics: control.SessionMetrics{ContextTokens: new(uint64(123)), ContextWindow: new(uint64(1000)), Compactions: new(uint64(2))}}, r.err
+	return control.SessionDetails{Model: new("applied-model"), ReasoningEffort: new("high"), ServiceTier: new("priority"), SessionMetrics: control.SessionMetrics{ContextTokens: new(uint64(123)), ContextWindow: new(uint64(1000)), Compactions: new(uint64(2))}}, r.err
 }
 
 func TestInspectUsesAdmittedTargetAndRuntimeFacts(t *testing.T) {
@@ -47,7 +75,7 @@ func TestInspectUsesAdmittedTargetAndRuntimeFacts(t *testing.T) {
 		if bytes.Contains(encoded, []byte("_known")) || !bytes.Contains(encoded, []byte(`"context_window":1000`)) {
 			t.Fatalf("public inspection = %s", encoded)
 		}
-		if got.Task != target || got.Thread != runtime.thread || got.Model != "applied-model" || *got.ReasoningEffort != "high" || *got.ServiceTier != "priority" || got.ContextTokens == nil || *got.ContextTokens != 123 || got.Compactions == nil || *got.Compactions != 2 {
+		if got.Task != target || got.Thread != runtime.thread || (got.Model == nil || *got.Model != "applied-model") || *got.ReasoningEffort != "high" || *got.ServiceTier != "priority" || got.ContextTokens == nil || *got.ContextTokens != 123 || got.Compactions == nil || *got.Compactions != 2 {
 			t.Fatalf("inspection = %s", encoded)
 		}
 	}

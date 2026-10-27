@@ -53,7 +53,11 @@ func readReplayLines(ctx context.Context, path string, visit func([]byte) error)
 	if !info.Mode().IsRegular() || info.Size() > 64<<20 {
 		return errors.New("replay input must be a regular file at most 64 MiB")
 	}
-	bounded := &io.LimitedReader{R: f, N: (64 << 20) + 1}
+	return scanReplayLines(ctx, path, f, visit)
+}
+
+func scanReplayLines(ctx context.Context, path string, source io.Reader, visit func([]byte) error) error {
+	bounded := &io.LimitedReader{R: source, N: (64 << 20) + 1}
 	s := bufio.NewScanner(bounded)
 	s.Buffer(make([]byte, 64<<10), 16<<20)
 	for line := 1; s.Scan(); line++ {

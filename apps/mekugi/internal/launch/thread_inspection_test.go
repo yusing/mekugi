@@ -19,7 +19,7 @@ func TestThreadInspectionUsesLiveAndRestoredSessionMetrics(t *testing.T) {
 	read := func() {
 		t.Helper()
 		got := threadInspection(&u.attached.session, "main", applied, tiers)
-		if got.Model != "applied" || *got.ReasoningEffort != "high" || *got.ServiceTier != "priority" || got.Compactions == nil {
+		if (got.Model == nil || *got.Model != "applied") || *got.ReasoningEffort != "high" || *got.ServiceTier != "priority" || got.Compactions == nil {
 			t.Fatalf("applied snapshot = %+v", got)
 		}
 	}
