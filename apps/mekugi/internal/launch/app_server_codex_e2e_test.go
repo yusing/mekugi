@@ -81,12 +81,12 @@ func TestAppServerPreviewQuickSwitch(t *testing.T) {
 		write(t, outer, "/model gpt-6-sol\r")
 		await("gpt-6-sol (low)")
 		write(t, outer, "/tier priority\r")
-		await("gpt-6-sol (low) · priority")
+		await("gpt-6-sol (low) • priority")
 		write(t, outer, "/tier fast\r")
 		await("Service tier updated")
 		write(t, outer, "/tier default\r")
 		awaitFrame(func(frame string) bool {
-			return strings.Contains(frame, "gpt-6-sol (low)") && !strings.Contains(frame, "gpt-6-sol (low) · priority")
+			return strings.Contains(frame, "gpt-6-sol (low)") && !strings.Contains(frame, "gpt-6-sol (low) • priority")
 		})
 		write(t, outer, "/reasoning low\r/model gpt-6-sol\r/tier default\r")
 		// The final explicit tier choice records the invocation-local override,

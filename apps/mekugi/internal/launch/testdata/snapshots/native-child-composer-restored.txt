@@ -5,4 +5,4 @@ Mekugi dev • codex
 
 ╭─ Read-only ──────────────────────────────────────────────────────────────────────────────────────╮
 │ ❯                                                                                                │
-╰───────────────────────────────────────── /workspace reviewer · saved-child (medium) · flex • 0% ─╯
+╰─────────────────────────────────────── /workspace • reviewer • saved-child (medium) • flex • 0% ─╯

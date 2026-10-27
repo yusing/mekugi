@@ -5,4 +5,4 @@ Mekugi dev • codex
 
 ╭─ Read-only ──────────────────────────────────────────────────────────────────────────────────────╮
 │ ❯                                                                                                │
-╰──────────────────────────────────────── /workspace reviewer · actual-child (low) · default • 0% ─╯
+╰────────────────────────────────────── /workspace • reviewer • actual-child (low) • default • 0% ─╯

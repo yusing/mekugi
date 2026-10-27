@@ -128,7 +128,7 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 	first.send("/reasoning high\r")
 	first.await("gpt-6-sol (high)")
 	first.send("/tier flex\r")
-	first.await("gpt-6-sol (high) · flex")
+	first.await("gpt-6-sol (high) • flex")
 	first.send("First resume question\r")
 	first.await("Recovered after a retry.")
 	first.await("completed")

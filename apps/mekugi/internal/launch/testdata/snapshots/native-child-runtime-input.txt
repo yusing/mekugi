@@ -5,4 +5,4 @@ Mekugi  • codex
 
 ╭─ Ready ──────────────────────────────────────────────────────────────────────────────────────────╮
 │ ❯ child input                                                                                    │
-╰──────────────────────────────────────── /workspace/child worker · child-model (low) · flex • 0% ─╯
+╰────────────────────────────────────── /workspace/child • worker • child-model (low) • flex • 0% ─╯

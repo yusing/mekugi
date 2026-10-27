@@ -157,7 +157,7 @@ func TestAppServerLiveSettingsNativeCodex(t *testing.T) {
 	terminal.send("/model gpt-6-astra --reasoning=high --speed=fast\r")
 	terminal.await("gpt-6-astra (high)")
 	terminal.await("live update published")
-	terminal.await("gpt-6-astra (high) · priority")
+	terminal.await("gpt-6-astra (high) • priority")
 	terminal.send("/permissions\r")
 	terminal.await(":read-only")
 	terminal.send("\x1b")

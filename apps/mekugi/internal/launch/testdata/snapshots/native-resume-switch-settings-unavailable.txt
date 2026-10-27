@@ -9,4 +9,4 @@ Mekugi dev • codex
 
 ╭─ Ready · ✗ Saved model settings unavailable; using Codex defaults and explicit flags ────── [✓] ─╮
 │ ❯                                                                                                │
-╰─────────────────────────────────────────────────────────────────────── /work default-model • 0% ─╯
+╰───────────────────────────────────────────────────────────────────── /work • default-model • 0% ─╯

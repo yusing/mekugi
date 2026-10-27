@@ -228,18 +228,21 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 		cwd = ansi.Truncate(cwd, max(1, (width-10)/3), "…")
 		captionWidth := max(0, width-7)
 		if cwd != "" {
-			captionWidth = max(0, width-8-ansi.StringWidth(cwd))
+			captionWidth = max(0, width-10-ansi.StringWidth(cwd))
 		}
 		model := presentation.Caption.Model
 		if model != "" && presentation.Caption.Effort != "" {
 			model += " (" + presentation.Caption.Effort + ")"
 		}
 		if presentation.Caption.Tier != "" {
-			model += " · " + presentation.Caption.Tier
+			if model != "" {
+				model += " • "
+			}
+			model += presentation.Caption.Tier
 		}
 		if role := presentation.Caption.Role; role != "" {
 			if model != "" {
-				model = role + " · " + model
+				model = role + " • " + model
 			} else {
 				model = role
 			}
@@ -257,7 +260,7 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 		}
 		caption = ansi.Truncate(caption, captionWidth, "…")
 		if cwd != "" {
-			caption = cwd + " " + caption
+			caption = cwd + " • " + caption
 		}
 		caption = terminalui.Dim + caption + terminalui.Reset
 		frame = append(frame, composerBorder("╰", "╯", "", caption, width, border))

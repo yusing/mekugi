@@ -84,7 +84,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	if !strings.Contains(frame, "child result") || !strings.Contains(frame, "eta") || strings.Contains(frame, "main result") || !strings.Contains(frame, "Read-only") || u.Thread != "main" {
 		t.Fatalf("child view or input identity: %s", frame)
 	}
-	if !strings.Contains(frame, "child-model (low) · flex") || !strings.Contains(frame, "25K/100K • 25%") || strings.Contains(frame, "parent-model") || strings.Contains(frame, u.Text) {
+	if !strings.Contains(frame, "child-model (low) • flex") || !strings.Contains(frame, "25K/100K • 25%") || strings.Contains(frame, "parent-model") || strings.Contains(frame, u.Text) {
 		t.Fatalf("child composer: %s", frame)
 	}
 	keys("\x022")
@@ -174,16 +174,16 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	info.AgentNickname = "reader"
 	info.AgentRole = "reviewer"
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": info})
-	if got := caption(); !strings.Contains(got, "reviewer · saved-model (medium) · flex") {
+	if got := caption(); !strings.Contains(got, "reviewer • saved-model (medium) • flex") {
 		t.Fatalf("child metadata did not restore settings: %s", got)
 	}
 	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": info.ID, "threadSettings": map[string]any{"model": "live-model", "effort": "low", "serviceTier": nil}})
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": info})
-	if got := caption(); !strings.Contains(got, "live-model (low) · default") || strings.Contains(got, "saved-model") {
+	if got := caption(); !strings.Contains(got, "live-model (low) • default") || strings.Contains(got, "saved-model") {
 		t.Fatalf("late metadata replaced live child settings: %s", got)
 	}
 	u.serviceTiers = inferencegateway.NewTiers(map[string]string{"live-model": "priority"})
-	if got := caption(); !strings.Contains(got, "live-model (low) · priority") {
+	if got := caption(); !strings.Contains(got, "live-model (low) • priority") {
 		t.Fatalf("child tier ignored model routing: %s", got)
 	}
 	u.serviceTiers.Confirm("live-model", info.ID, "flex")
@@ -191,7 +191,7 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	if publication.Caption.Model != "live-model" || publication.Caption.Tier != "flex" || publication.Caption.Role != "reviewer" || publication.Status.Composer.Text != "Read-only" {
 		t.Fatalf("detached child caption lost confirmed thread settings: %+v", publication)
 	}
-	if got := caption(); !strings.Contains(got, "live-model (low) · flex") {
+	if got := caption(); !strings.Contains(got, "live-model (low) • flex") {
 		t.Fatalf("child caption ignored its confirmed thread tier: %s", got)
 	}
 	u.attached.session.RegisterThread(observation.Thread{ID: "spawned", Path: "/root/spawned"})

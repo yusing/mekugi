@@ -158,7 +158,7 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 	terminal.Main.Update(view)
 	painted := terminal.Main.Render(terminal.Transcript, &terminal.Transcript.Painter, terminal.Prompts, terminalsession.MainOptions{Now: now, Focused: true}, 100, 8, 0)
 	plain := ansi.Strip(strings.Join(painted.Rows, "\n"))
-	if !strings.Contains(plain, "worker · child-model (low) · flex") || strings.Contains(plain, "Read-only") || strings.Contains(plain, "parent-only-model") {
+	if !strings.Contains(plain, "worker • child-model (low) • flex") || strings.Contains(plain, "Read-only") || strings.Contains(plain, "parent-only-model") {
 		t.Fatalf("child runtime caption/input: %s", plain)
 	}
 	assertNativeUISnapshot(t, "native-child-runtime-input", painted.Rows)
@@ -296,7 +296,7 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 		write("PTY Main draft")
 		await("PTY Main draft")
 		selectChild()
-		await("child-model (low) · flex")
+		await("child-model (low) • flex")
 		write("PTY child input")
 		await("PTY child input")
 		write("\r")

@@ -13,4 +13,4 @@
 ╭─ Ready ──────────────────────────────────────────────────────────────────────╮
 │ ❯ Add narrow-screen coverage.                                                │
 │   Keep the interaction assertions.                                           │
-╰────────────────────────────── /workspace/project snapshot-model (high) • 0% ─╯
+╰──────────────────────────── /workspace/project • snapshot-model (high) • 0% ─╯

@@ -5,4 +5,4 @@ Mekugi dev • codex v0.158.0
 
 ╭─ Ready ──────────────────────────╮
 │ ❯ Explain this repository.       │
-╰─── /worksp… snapshot-model • 0% ─╯
+╰── /worksp… • snapshot-mod… • 0% ─╯
