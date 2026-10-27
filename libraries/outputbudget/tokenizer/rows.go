@@ -24,18 +24,22 @@ func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 	type piece struct {
 		start, tokens int
 		pureLF        bool
+		pureCRLF      bool
 	}
 	var pieces []piece
 	offset, completed, shown := 0, 0, 0
 	for match != nil {
 		text := match.String()
 		pureLF := strings.Trim(text, "\n") == ""
+		pureCRLF := !pureLF && len(text)%2 == 0 && strings.Count(text, "\r\n") == len(text)/2
 		if tail {
 			tokens := newlineTokens(len(text))
-			if !pureLF {
+			if pureCRLF {
+				tokens = crlfTokens(len(text) / 2)
+			} else if !pureLF {
 				tokens = c.countPiece(text)
 			}
-			pieces = append(pieces, piece{offset, tokens, pureLF})
+			pieces = append(pieces, piece{offset, tokens, pureLF, pureCRLF})
 		} else {
 			for from := 0; from < len(text); {
 				end := strings.IndexByte(text[from:], '\n')
@@ -44,7 +48,9 @@ func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 				}
 				from += end + 1
 				n := newlineTokens(from)
-				if !pureLF {
+				if pureCRLF {
+					n = crlfTokens(from / 2)
+				} else if !pureLF {
 					n, err = c.Count(text[:from])
 					if err != nil {
 						return "", err
@@ -57,6 +63,8 @@ func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 			}
 			if pureLF {
 				completed += newlineTokens(len(text))
+			} else if pureCRLF {
+				completed += crlfTokens(len(text) / 2)
 			} else {
 				completed += c.countPiece(text)
 			}
@@ -81,13 +89,17 @@ func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 			index--
 		}
 		n := following
-		if index >= 0 && pieces[index].pureLF {
-			// A suffix containing only LF cannot join the following piece.
+		if index >= 0 && (pieces[index].pureLF || pieces[index].pureCRLF) {
+			// LF and complete CRLF runs cannot join the following piece.
 			end := len(value)
 			if index+1 < len(pieces) {
 				end = pieces[index+1].start
 			}
-			n += newlineTokens(end - next)
+			if pieces[index].pureCRLF {
+				n += crlfTokens((end - next) / 2)
+			} else {
+				n += newlineTokens(end - next)
+			}
 		} else if index >= 0 {
 			// Cutting a newline/punctuation piece can let its remaining slash
 			// or space join the following word's optional leading character.
@@ -126,6 +138,17 @@ func newlineTokens(length int) int {
 		}
 	}
 	return tokens
+}
+
+// crlfTokens is exact for the vocabulary pinned by vocabularySHA256.
+// Its pure-CRLF tokens contain 1..5 pairs; ranked BPE leaves four-pair
+// blocks and a final token of up to five pairs, splitting a six-pair tail.
+// Row boundaries preserve complete pairs, so the LF+CRLF token cannot apply.
+func crlfTokens(pairs int) int {
+	if pairs == 0 {
+		return 0
+	}
+	return max(1, (pairs+2)/4)
 }
 
 func (c *Codec) countPiece(piece string) int {

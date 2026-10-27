@@ -13,7 +13,7 @@ func TestSelectRowsMatchesGreedyCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	random := rand.New(rand.NewPCG(7, 11))
-	values := []string{strings.Repeat("\n", 200), strings.Repeat(" \t\n", 100), "!!!\n/\n//\n\nhello\n"}
+	values := []string{strings.Repeat("\n", 200), strings.Repeat("\r\n", 100), strings.Repeat("\n\r\n", 100), strings.Repeat(" \t\n", 100), "!!!\n/\n//\n\nhello\n"}
 	atoms := []string{"hello", "世界🙂", " ", "\t", "\n", "/", "!!!", "'s", "UPPER", "123", "e\u0301", "\r"}
 	for range 100 {
 		var value strings.Builder
@@ -135,5 +135,45 @@ func BenchmarkSelectRows(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func TestCRLFCounts(t *testing.T) {
+	c, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lengths := []int{255, 256, 257, 1024, 4096}
+	for n := range 65 {
+		lengths = append(lengths, n)
+	}
+	for _, n := range lengths {
+		want, err := c.Count(strings.Repeat("\r\n", n))
+		if err != nil || crlfTokens(n) != want {
+			t.Fatalf("CRLF pairs %d: got %d want %d: %v", n, crlfTokens(n), want, err)
+		}
+	}
+}
+
+func BenchmarkSelectWhitespaceRows(b *testing.B) {
+	c, err := New()
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, atom := range []string{"\r\n", "\n\r\n", " \t\n"} {
+		for _, n := range []int{256, 1024} {
+			for _, tail := range []bool{false, true} {
+				b.Run(strconv.Quote(atom)+"/"+strconv.Itoa(n)+"/tail="+strconv.FormatBool(tail), func(b *testing.B) {
+					value := strings.Repeat(atom, n)
+					b.ReportAllocs()
+					for b.Loop() {
+						got, err := c.SelectRows(value, len(value)-1, tail)
+						if err != nil || got != value {
+							b.Fatal("whitespace rows lost", err)
+						}
+					}
+				})
+			}
+		}
 	}
 }
