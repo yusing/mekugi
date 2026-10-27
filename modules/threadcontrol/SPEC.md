@@ -92,7 +92,12 @@ thread/turn settings, permissions, runtime roots, model/provider, effort/summary
 tier, base/developer instructions and cwd. `config/read` alone is not live state.
 Configured subagent model and effort defaults apply to fresh and full-history
 children before role overrides. Without those defaults, children inherit the
-invoking turn's model and effort. Configured roles precede built-ins; role files
+invoking turn's model and effort, except inherited ultra becomes the selected model's
+stock ordinary equivalent so proactive delegation is not inherited automatically.
+Explicit effort settings, configured subagent defaults, fixed role effort and custom
+mode guidance retain their precedence. This applies to new children, including those
+of resumed parents; existing resumed agents keep their retained settings.
+Configured roles precede built-ins; role files
 and their resolved values are frozen before dispatch. Fresh children apply the
 default role; full-history children apply an explicitly selected role or preserve
 stock inheritance. Explicit model/effort arguments still require a fresh child.
@@ -146,7 +151,10 @@ projects immutable admitted fragments and logical caller values.
 Independent children receive the selected model’s child baseline, with one Mekugi
 namespace calling reference, canonical logical identity and selected cwd/shared-filesystem
 wording. The effective mode
-fragment stays byte-for-byte unchanged. Custom text stays verbatim outside proven
+fragment stays byte-for-byte unchanged. Child guidance recognizes explicit delegation
+requests in authenticated parent assignments as authority within that assignment and
+the parent's authority, subject to higher-priority limits. An assignment alone does
+not grant further delegation authority. Custom text stays verbatim outside proven
 adaptations; incompatible calling instructions fail with a configuration diagnostic.
 Missing/ambiguous provenance blocks only the affected preparation after bounded
 acquisition. Repeated preparation is idempotent; caller-authored lookalikes survive.

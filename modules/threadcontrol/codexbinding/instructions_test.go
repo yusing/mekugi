@@ -232,6 +232,9 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 			if !strings.Contains(replacements[0].Text, identity+" Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.") {
 				t.Fatalf("missing logical identity: %s", replacements[0].Text)
 			}
+			if strings.Contains(replacements[0].Text, "an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits") != tc.child {
+				t.Fatalf("parent delegation authority must be child-only: %s", replacements[0].Text)
+			}
 			if !strings.Contains(replacements[0].Text, "call wait_agent alone") || !strings.Contains(replacements[0].Text, "later wait_agent output") || !strings.Contains(replacements[0].Text, "Omit timeout_ms") {
 				t.Fatalf("missing wait delivery guidance: %s", replacements[0].Text)
 			}

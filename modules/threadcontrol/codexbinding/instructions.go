@@ -127,11 +127,13 @@ func collaborationGuidance(member control.Member, baseline string) (string, erro
 		return "", errors.New("configured agent guidance uses unavailable native collaboration tools")
 	}
 	identity := fmt.Sprintf("Your logical task is %s.", member.Task)
+	authority := ""
 	if member.Parent != "" {
 		parent, _, _ := strings.CutLast(member.Task, "/")
 		identity += fmt.Sprintf(" Your parent logical task is %s.", parent)
+		authority = "For the explicit-request-only delegation rule, an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits.\n"
 	}
-	return fmt.Sprintf("%s\n\n%s Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.\nTo await delegates, call wait_agent alone and let functions.exec finish. Omit timeout_ms unless a real deadline applies. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output.\nAgents share the filesystem; this thread's working directory is %q. Override model or reasoning effort only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions.", baseline, identity, member.Settings.Workspace), nil
+	return fmt.Sprintf("%s\n\n%s Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.\n%sTo await delegates, call wait_agent alone and let functions.exec finish. Omit timeout_ms unless a real deadline applies. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output.\nAgents share the filesystem; this thread's working directory is %q. Override model or reasoning effort only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions.", baseline, identity, authority, member.Settings.Workspace), nil
 }
 
 func roleGuidance(roles map[string]roleDefinition) string {

@@ -29,6 +29,7 @@ type Model struct {
 	Name                  string
 	Root, Child           *string
 	DefaultEffort         *string
+	MultiAgentEffort      *string
 	Efforts, ServiceTiers []string
 }
 
@@ -89,6 +90,7 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	if effort != nil {
 		settings.Effort = effort
 	}
+	inheritedEffort := model == nil && effort == nil
 	if defaults[2] != nil {
 		settings.DeveloperInstructions = defaults[2]
 	}
@@ -111,8 +113,15 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		if err := applyRole(&settings, selection); err != nil {
 			return result, err
 		}
+		inheritedEffort = inheritedEffort && selection.values.Effort == nil
 	}
-	if settings.Effort != nil && (model != nil || effort != nil || settings.Model != result.Settings.Model || !sameEffort(settings.Effort, result.Settings.Effort)) {
+	if inheritedEffort && settings.Effort != nil && *settings.Effort == "ultra" {
+		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == settings.Model })
+		if i < 0 {
+			return result, fmt.Errorf("inherited ultra requires the selected model catalog for %s", settings.Model)
+		}
+		settings.Effort = new(models[i].ordinaryUltraEffort())
+	} else if settings.Effort != nil && (model != nil || effort != nil || settings.Model != result.Settings.Model || !sameEffort(settings.Effort, result.Settings.Effort)) {
 		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == settings.Model })
 		if i < 0 || !slices.Contains(models[i].Efforts, *settings.Effort) {
 			return result, fmt.Errorf("unsupported reasoning effort %q for %s", *settings.Effort, settings.Model)
@@ -147,6 +156,23 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	result.Settings = settings
 	result.Arguments, err = json.Marshal(&options, json.Deterministic(true))
 	return result, err
+}
+
+// Source: codex-rs/protocol/src/openai_models/reasoning_effort.rs:10:36@0df4aa677.
+// Store the ordinary effort so inherited ultra does not activate proactive mode.
+func (m Model) ordinaryUltraEffort() string {
+	if m.MultiAgentEffort != nil && *m.MultiAgentEffort != "ultra" && slices.Contains(m.Efforts, *m.MultiAgentEffort) {
+		return *m.MultiAgentEffort
+	}
+	if slices.Contains(m.Efforts, "max") {
+		return "max"
+	}
+	for _, effort := range slices.Backward(m.Efforts) {
+		if effort != "ultra" {
+			return effort
+		}
+	}
+	return "medium"
 }
 
 // config/read includes absent TOML options as null. Omit those values when

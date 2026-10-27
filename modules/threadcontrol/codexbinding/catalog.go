@@ -12,9 +12,10 @@ import (
 func (d *Driver) CaptureCatalog(raw []byte) {
 	var catalog struct {
 		Models []struct {
-			Name   string  `json:"slug"`
-			Effort *string `json:"default_reasoning_level"`
-			Levels []struct {
+			Name             string  `json:"slug"`
+			Effort           *string `json:"default_reasoning_level"`
+			MultiAgentEffort *string `json:"multi_agent_reasoning_effort"`
+			Levels           []struct {
 				Effort string `json:"effort"`
 			} `json:"supported_reasoning_levels"`
 			Tiers []struct {
@@ -37,7 +38,7 @@ func (d *Driver) CaptureCatalog(raw []byte) {
 	var models []Model
 	if err == nil {
 		for _, entry := range catalog.Models {
-			model := Model{Name: entry.Name, DefaultEffort: entry.Effort, Root: entry.Messages.Agents.Role.Root, Child: entry.Messages.Agents.Role.Child}
+			model := Model{Name: entry.Name, DefaultEffort: entry.Effort, MultiAgentEffort: entry.MultiAgentEffort, Root: entry.Messages.Agents.Role.Root, Child: entry.Messages.Agents.Role.Child}
 			for _, level := range entry.Levels {
 				model.Efforts = append(model.Efforts, level.Effort)
 			}

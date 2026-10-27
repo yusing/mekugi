@@ -173,6 +173,17 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	}
 	var program, answer, failure string
 	if step == 1 {
+		modeAt := strings.LastIndex(string(body), "<multi_agent_mode>")
+		wantMode := "Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask"
+		if parent {
+			wantMode = "Proactive multi-agent delegation is active."
+		}
+		if modeAt < 0 || !strings.Contains(string(body)[modeAt:], wantMode) {
+			failure = "inherited ultra did not select the expected effective delegation mode"
+		}
+		if strings.Contains(string(body), "an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits") != !parent {
+			failure = "parent-assignment delegation authority is not child-only"
+		}
 		identity := "Your logical task is /root."
 		if !parent {
 			identity = "Your logical task is /root/worker. Your parent logical task is /root."
@@ -489,6 +500,9 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		if model["slug"] != "gpt-6-sol" {
 			continue
 		}
+		// Deliberately differs from max: child configuration must use the raw
+		// catalog's ordinary equivalent, not merely normalize provider requests.
+		model["multi_agent_reasoning_effort"] = "low"
 		fields := model
 		for _, key := range []string{"model_messages", "multi_agent", "role"} {
 			child, ok := fields[key].(map[string]any)
@@ -594,7 +608,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	client := &http.Client{Transport: transport}
 	connection, err := sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{
 		Workspace: workspace, RouterArgs: []string{"--shell-guard=false"},
-		Args: []string{"--yolo", "-m", "gpt-6-sol", "-c", "features.plugins=false", "-c", `model_reasoning_effort="low"`},
+		Args: []string{"--yolo", "-m", "gpt-6-sol", "-c", "features.plugins=false", "-c", `model_reasoning_effort="ultra"`},
 	})
 	if err != nil {
 		t.Fatal(err)

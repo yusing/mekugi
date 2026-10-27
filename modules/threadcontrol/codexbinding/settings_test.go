@@ -83,3 +83,64 @@ func TestPrepareChildRelativeCwdUsesSelectedWorkspace(t *testing.T) {
 		t.Fatalf("cwd = %q, want %q", child.Settings.Workspace, want)
 	}
 }
+
+func TestPrepareChildInheritedUltra(t *testing.T) {
+	driver := &Driver{}
+	driver.CaptureCatalog([]byte(`{"models":[
+		{"slug":"metadata","multi_agent_reasoning_effort":"high","supported_reasoning_levels":[{"effort":"medium"},{"effort":"high"},{"effort":"max"},{"effort":"ultra"}]},
+		{"slug":"max","multi_agent_reasoning_effort":"unknown","supported_reasoning_levels":[{"effort":"max"},{"effort":"ultra"},{"effort":"high"}]},
+		{"slug":"ordered","multi_agent_reasoning_effort":"ultra","supported_reasoning_levels":[{"effort":"high"},{"effort":"custom"},{"effort":"ultra"}]},
+		{"slug":"empty"},
+		{"slug":"default-ultra","default_reasoning_level":"ultra","supported_reasoning_levels":[{"effort":"max"},{"effort":"ultra"}]}
+	]}`))
+	if driver.catalogError != nil {
+		t.Fatal(driver.catalogError)
+	}
+	for _, tc := range []struct {
+		name, model, want, role string
+		options                 SpawnOptions
+		defaults                [3]*string
+	}{
+		{name: "full inherits model equivalent", model: "metadata", want: "high"},
+		{name: "fresh inherits model equivalent", model: "metadata", want: "high", options: SpawnOptions{ForkTurns: new("none")}},
+		{name: "invalid metadata uses max", model: "max", want: "max"},
+		{name: "ultra metadata uses last ordinary", model: "ordered", want: "custom"},
+		{name: "empty levels stock fallback", model: "empty", want: "medium"},
+		{name: "explicit ultra preserved", model: "metadata", want: "ultra", options: SpawnOptions{ForkTurns: new("none"), ReasoningEffort: new("ultra")}},
+		{name: "configured ultra preserved", model: "metadata", want: "ultra", defaults: [3]*string{nil, new("ultra"), nil}},
+		{name: "fixed role ultra preserved", model: "metadata", want: "ultra", role: "model_reasoning_effort = 'ultra'"},
+		{name: "role without effort still inherits", model: "metadata", want: "high", role: "developer_instructions = 'bounded worker'"},
+		{name: "role overrides explicit effort", model: "metadata", want: "medium", role: "model_reasoning_effort = 'medium'", options: SpawnOptions{ForkTurns: new("none"), ReasoningEffort: new("ultra")}},
+		{name: "role selected model equivalent", model: "metadata", want: "max", role: "model = 'max'"},
+		{name: "model default preserved", model: "metadata", want: "ultra", options: SpawnOptions{ForkTurns: new("none"), Model: new("default-ultra")}},
+		{name: "missing catalog rejected", model: "missing"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			parent := control.Settings{Workspace: workspace, Model: tc.model, Effort: new("ultra"), Config: []byte(`{"features.multi_agent_v2.multi_agent_mode_hint_text":"CUSTOM_MODE"}`)}
+			var layers []ConfigLayer
+			if tc.role != "" {
+				roleTestFile(t, filepath.Join(workspace, "worker.toml"), tc.role)
+				layers = []ConfigLayer{roleTestLayer(t, workspace, map[string]any{"agents": map[string]any{"worker": map[string]string{"config_file": "worker.toml"}}})}
+				tc.options.AgentType = new("worker")
+			}
+			tc.options.Message = "assignment"
+			child, err := prepareChild(parent, control.Limits{}, tc.options, driver.models, layers, tc.defaults)
+			if tc.want == "" {
+				if err == nil {
+					t.Fatal("missing normalization catalog accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if child.Settings.Effort == nil || *child.Settings.Effort != tc.want || *parent.Effort != "ultra" {
+				t.Fatalf("child effort = %v, want %s; parent = %s", child.Settings.Effort, tc.want, *parent.Effort)
+			}
+			if string(child.Settings.Config) != string(parent.Config) {
+				t.Fatalf("custom mode changed: %s", child.Settings.Config)
+			}
+		})
+	}
+}
