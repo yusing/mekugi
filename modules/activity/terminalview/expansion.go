@@ -43,25 +43,43 @@ func (v *View) discloseBlock(block Block) Block {
 
 // Keep all disclosure layouts warm, but discard stale groups, widths, themes,
 // and pointer states. Entry invalidation already removes every variant.
-func (v *View) retainRuns(used map[RunKey]Run) {
+func (v *View) retainRuns() {
 	base := func(key RunKey) RunKey {
 		key.Expansion, key.Clip, key.Tail, key.Excerpt = 0, 0, 0, false
 		return key
 	}
 	var active map[RunKey]bool
 	for key, run := range v.Runs {
+		if run.generation == v.runGeneration {
+			continue
+		}
 		if key.Expansion == v.Expansion {
+			delete(v.Runs, key)
 			continue
 		}
 		if active == nil {
-			active = make(map[RunKey]bool, len(used))
-			for key := range used {
-				active[base(key)] = true
+			active = make(map[RunKey]bool, len(v.Runs))
+			for key, run := range v.Runs {
+				if run.generation == v.runGeneration {
+					active[base(key)] = true
+				}
 			}
 		}
-		if active[base(key)] {
-			used[key] = run
+		if !active[base(key)] {
+			delete(v.Runs, key)
 		}
 	}
-	v.Runs = used
+}
+
+// Layout scratch belongs to the view; returned feed rows remain caller-owned.
+func (v *View) beginRuns() {
+	if v.Runs == nil {
+		v.Runs = make(map[RunKey]Run)
+	}
+	v.runGeneration++
+	if v.QuestionRows == nil {
+		v.QuestionRows = make(map[uint64]int)
+	} else {
+		clear(v.QuestionRows)
+	}
 }

@@ -41,6 +41,16 @@ func (v *View) conversationTool(entry activitypresentation.Entry) bool {
 	return entry.Agent == v.conversationSpeaker() && slices.Contains([]string{"tool", "command", "hook", "attachments", "question"}, entry.Kind)
 }
 
+type conversationItem struct {
+	first, last int
+	agent       string // Thread agent, or "" when the item cannot join one.
+	aside       bool   // Main reasoning, which neither starts nor ends a thread.
+	lead        int    // Entry index of the Main item a tool group continues, or -1.
+	attached    bool   // Tools branching from the reasoning directly above, with no gap.
+}
+
+type conversationPaint struct{ first, last, lead int }
+
 // RenderConversation lays messages out as a transcript rather than an activity
 // feed: prompts on a tinted band, Main's own messages without
 // author headings, and agent traffic under one-line headings. Adjacent traffic
@@ -51,14 +61,8 @@ func (v *View) conversationTool(entry activitypresentation.Entry) bool {
 // tools, a continuation row names it. It reuses Activity's block parsing,
 // painter and viewport logic.
 func (v *View) RenderConversation(width int) Feed {
-	type item struct {
-		first, last int
-		agent       string // Thread agent, or "" when the item cannot join one.
-		aside       bool   // Main reasoning, which neither starts nor ends a thread.
-		lead        int    // Entry index of the Main item a tool group continues, or -1.
-		attached    bool   // Tools branching from the reasoning directly above, with no gap.
-	}
-	items := make([]item, 0, len(v.Runs))
+	v.beginRuns()
+	items := v.conversationItems[:0]
 	// A question keeps its own rows without preventing operation groups on
 	// either side from folding out of view.
 	tools := func(entry activitypresentation.Entry) bool {
@@ -105,7 +109,7 @@ func (v *View) RenderConversation(width int) Feed {
 			break
 		}
 		entry := v.entries[i]
-		items = append(items, item{first: i, last: last, agent: v.threadAgent(i), aside: entry.Agent == v.conversationSpeaker() && entry.Kind == "reasoning", lead: -1})
+		items = append(items, conversationItem{first: i, last: last, agent: v.threadAgent(i), aside: entry.Agent == v.conversationSpeaker() && entry.Kind == "reasoning", lead: -1})
 		i = j
 	}
 	// Warm runs already know the row count. Reserve the parallel row slices
@@ -122,14 +126,12 @@ func (v *View) RenderConversation(width int) Feed {
 		Snippets:  make([]Snippet, 0, rowCapacity),
 		Questions: make([]uint64, 0, rowCapacity),
 	}
-	v.QuestionRows = make(map[uint64]int)
-	used := make(map[RunKey]Run, len(items))
 	continues := func(a, b int) bool {
 		return a >= 0 && b < len(items) && items[a].agent != "" && items[a].agent == items[b].agent
 	}
 	// Hold asides the thread continues past until the thread ends.
-	ordered := make([]item, 0, len(items))
-	var held []item
+	ordered := v.conversationOrdered[:0]
+	held := v.conversationHeld[:0]
 	previous := -1 // Latest item that is not an aside.
 	for k, it := range items {
 		next := k + 1
@@ -148,8 +150,12 @@ func (v *View) RenderConversation(width int) Feed {
 			ordered, held = append(ordered, held...), held[:0]
 		}
 	}
+	clear(items)
+	v.conversationItems = items[:0]
 	items = append(ordered, held...)
-	traffic := func(it item) bool {
+	clear(held[:cap(held)])
+	v.conversationHeld = held[:0]
+	traffic := func(it conversationItem) bool {
 		entry := v.entries[it.first]
 		return it.agent != "" || entry.Agent != v.conversationSpeaker() && entry.Agent != "You"
 	}
@@ -162,7 +168,7 @@ func (v *View) RenderConversation(width int) Feed {
 			lead, headed = k, false
 		case v.conversationTool(entry):
 			if lead >= 0 && traffic(items[k-1]) {
-				if !headed && !slices.ContainsFunc(items[lead+1:k], func(it item) bool { return !traffic(it) }) {
+				if !headed && !slices.ContainsFunc(items[lead+1:k], func(it conversationItem) bool { return !traffic(it) }) {
 					moved := items[lead]
 					copy(items[lead:k-1], items[lead+1:k])
 					items[k-1], lead = moved, k-1
@@ -209,32 +215,13 @@ func (v *View) RenderConversation(width int) Feed {
 				break
 			}
 		}
-		var render func() Run
-		if !ok || !run.Colored {
-			render = func() Run {
-				window := v.syntaxWindow
-				if window != nil && it.lead >= 0 {
-					v.syntaxWindow = &liveActivitySyntaxWindow{window.first - 1, window.last - 1}
-				}
-				run := v.ConversationItem(it.first, it.last, width, thread)
-				v.syntaxWindow = window
-				if it.lead >= 0 {
-					continuation := v.paintBlock(0, 1, func() []string { return []string{v.Continuation(it.lead, width)} })
-					run.Lines = append(continuation, run.Lines...)
-					run.Snippets = append([]Snippet{{}}, run.Snippets...)
-					run.Questions = append([]uint64{0}, run.Questions...)
-					for seq, row := range run.EntryRows {
-						run.EntryRows[seq] = row + 1
-					}
-				}
-				return run
-			}
-		}
+		paint := conversationPaint{it.first, it.last, it.lead}
 		if !ok {
-			run = render()
+			run = v.renderConversationRun(paint, key)
 			run.Colored = !v.Painter.LayoutOnly
 		}
-		used[key] = run
+		run.generation = v.runGeneration
+		v.Runs[key] = run
 		if len(feed.Lines) > 0 && !thread.Joined && !it.attached {
 			feed.separator()
 		}
@@ -243,7 +230,7 @@ func (v *View) RenderConversation(width int) Feed {
 			if feed.paints == nil {
 				feed.paints = make([]liveActivityPaint, 0, len(items)-k)
 			}
-			feed.paints = append(feed.paints, liveActivityPaint{head, key, render})
+			feed.paints = append(feed.paints, liveActivityPaint{start: head, key: key, conversation: paint})
 		}
 		// A sent message or batch shrinking above a scrolled viewport keeps its rows still.
 		if full := key; !ok && key.Excerpt && !v.Following && head < v.Offset {
@@ -283,8 +270,29 @@ func (v *View) RenderConversation(width int) Feed {
 			}
 		}
 	}
-	v.retainRuns(used)
+	v.retainRuns()
+	clear(items)
+	v.conversationOrdered = items[:0]
 	return feed
+}
+
+func (v *View) renderConversationRun(it conversationPaint, key RunKey) Run {
+	window := v.syntaxWindow
+	if window != nil && it.lead >= 0 {
+		v.syntaxWindow = &liveActivitySyntaxWindow{window.first - 1, window.last - 1}
+	}
+	run := v.ConversationItem(it.first, it.last, key.Width, key.Thread)
+	v.syntaxWindow = window
+	if it.lead >= 0 {
+		continuation := v.paintBlock(0, 1, func() []string { return []string{v.Continuation(it.lead, key.Width)} })
+		run.Lines = append(continuation, run.Lines...)
+		run.Snippets = append([]Snippet{{}}, run.Snippets...)
+		run.Questions = append([]uint64{0}, run.Questions...)
+		for seq, row := range run.EntryRows {
+			run.EntryRows[seq] = row + 1
+		}
+	}
+	return run
 }
 
 // sentMessage reports a spawn, follow-up or non-incoming message with an Activity

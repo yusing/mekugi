@@ -86,10 +86,15 @@ type View struct {
 	RosterEasing    bool                        // The last roster frame showed metrics still easing.
 	Painter         Painter
 	Runs            map[RunKey]Run
+	runGeneration   uint64
 	syntaxWindow    *liveActivitySyntaxWindow // Invocation-local rows being decorated within a run.
 	Paced           map[uint64]PaceState      // Live invocations still revealing their operations, by entry.
 	Events          map[string]Event          // Each agent's latest standalone event, which settles its output.
 	pacedSeq        uint64                    // Entries up to this sequence have been considered for pacing.
+
+	conversationItems   []conversationItem
+	conversationOrdered []conversationItem
+	conversationHeld    []conversationItem
 
 	Expansion       uint8 // 0 default, 1 expanded events, 2 expanded all.
 	FeedSpans       []Span
@@ -135,14 +140,15 @@ type Snippet struct {
 }
 
 type Run struct {
-	Colored   bool   // Syntax decoration has been materialized.
-	painted   []bool // Decorated rows in a partially visible run.
-	Lines     []string
-	Blocks    []Block        // Laid-out blocks, indexed by the snippets naming them.
-	Snippets  []Snippet      // Aligned with lines.
-	Questions []uint64       // Clickable question targets, aligned with lines.
-	EntryRows map[uint64]int // Exact Activity entry starts within a grouped run.
-	Batch     bool           // Main operations that fold into one row once out of view.
+	generation uint64 // Last layout pass that used this exact run.
+	Colored    bool   // Syntax decoration has been materialized.
+	painted    []bool // Decorated rows in a partially visible run.
+	Lines      []string
+	Blocks     []Block        // Laid-out blocks, indexed by the snippets naming them.
+	Snippets   []Snippet      // Aligned with lines.
+	Questions  []uint64       // Clickable question targets, aligned with lines.
+	EntryRows  map[uint64]int // Exact Activity entry starts within a grouped run.
+	Batch      bool           // Main operations that fold into one row once out of view.
 }
 
 // Event is an agent's latest standalone entry and when it arrived.
@@ -1143,9 +1149,10 @@ type Feed struct {
 }
 
 type liveActivityPaint struct {
-	start  int
-	key    RunKey
-	render func() Run
+	start        int
+	key          RunKey
+	render       func() Run
+	conversation conversationPaint
 }
 
 type liveActivitySyntaxWindow struct{ first, last int }
@@ -1228,7 +1235,12 @@ func (v *View) RenderFeed(width, rows int) Feed {
 				return
 			}
 			v.syntaxWindow = &liveActivitySyntaxWindow{first, last}
-			run := paint.render()
+			var run Run
+			if paint.render != nil {
+				run = paint.render()
+			} else {
+				run = v.renderConversationRun(paint.conversation, paint.key)
+			}
 			v.syntaxWindow = nil
 			copy(old.Lines[first:last], run.Lines[first:last])
 			for i := first; i < last; i++ {
@@ -1251,6 +1263,7 @@ func (v *View) LayoutFeed(width int) Feed {
 	if v.Conversation {
 		return v.RenderConversation(width)
 	}
+	v.beginRuns()
 	clip := 5
 	if v.Expansion != 0 {
 		clip = 0
@@ -1266,8 +1279,6 @@ func (v *View) LayoutFeed(width int) Feed {
 		flash = v.FlashQuestion
 	}
 	var feed Feed
-	v.QuestionRows = make(map[uint64]int)
-	used := make(map[RunKey]Run)
 	lastPreview := make(map[string]int)
 	for i, entry := range v.entries {
 		if v.Visible(entry) && len(v.LivePreviews[entry.Agent]) > 0 {
@@ -1353,7 +1364,8 @@ func (v *View) LayoutFeed(width int) Feed {
 			run = render()
 			run.Colored = !v.Painter.LayoutOnly
 		}
-		used[key] = run
+		run.generation = v.runGeneration
+		v.Runs[key] = run
 		if len(feed.Lines) > 0 {
 			feed.separator()
 		}
@@ -1365,7 +1377,7 @@ func (v *View) LayoutFeed(width int) Feed {
 			}
 		}
 		if !run.Colored {
-			feed.paints = append(feed.paints, liveActivityPaint{head, key, render})
+			feed.paints = append(feed.paints, liveActivityPaint{start: head, key: key, render: render})
 		}
 		for seq, row := range run.EntryRows {
 			v.QuestionRows[seq] = head + row
@@ -1383,7 +1395,7 @@ func (v *View) LayoutFeed(width int) Feed {
 			appendPreview(agent)
 		}
 	}
-	v.retainRuns(used)
+	v.retainRuns()
 	return feed
 }
 

@@ -2,6 +2,7 @@ package launch
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
@@ -21,17 +22,23 @@ import (
 func assertLiveActivityCacheFresh(t *testing.T, v *activityAdapter) {
 	t.Helper()
 	got := v.RenderFeed(90, 24)
-	rows := v.QuestionRows
+	rows := maps.Clone(v.QuestionRows)
 	fresh := *v
 	freshView := *v.View
 	fresh.View = &freshView
 	fresh.Runs = nil
+	fresh.QuestionRows = nil
 	want := fresh.RenderFeed(90, 24)
 	if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(rows, fresh.QuestionRows) {
 		t.Fatalf("cached feed differs from fresh render:\ngot: %#v\nwant: %#v\nrows: %v / %v", got, want, rows, fresh.QuestionRows)
 	}
 	for key, run := range v.Runs {
-		if !reflect.DeepEqual(run, fresh.Runs[key]) {
+		// Private render-pass accounting is intentionally different. Compare
+		// the cached rendering facts rather than renderer bookkeeping.
+		facts := func(r activityui.Run) activityui.Run {
+			return activityui.Run{Colored: r.Colored, Lines: r.Lines, Blocks: r.Blocks, Snippets: r.Snippets, Questions: r.Questions, EntryRows: r.EntryRows, Batch: r.Batch}
+		}
+		if !reflect.DeepEqual(facts(run), facts(fresh.Runs[key])) {
 			t.Fatalf("cached run %v has stale lines, snippets, questions, blocks or entryRows", key)
 		}
 	}

@@ -2,6 +2,7 @@ package launch
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -120,7 +121,7 @@ func TestLiveActivityExpansionViewportCache(t *testing.T) {
 				break
 			}
 		}
-		saved := v.Runs
+		saved := maps.Clone(v.Runs)
 		v.ToggleExpansion()
 		v.Viewport(v.RenderFeed(70, 9), 9)
 		if v.Following {
