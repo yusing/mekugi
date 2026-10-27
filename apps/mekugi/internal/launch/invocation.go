@@ -230,7 +230,11 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		if debug != nil {
 			axReadOutput = debug.ReadLogPath()
 		}
-		registry, err = frontends.New(ctx, frontends.Config{Commands: commands, Guidance: guidance, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput})
+		var workers *frontends.WorkerImage
+		if threads != nil {
+			workers = threads.workers
+		}
+		registry, err = frontends.New(ctx, frontends.Config{Commands: commands, Guidance: guidance, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput, WorkerImage: workers})
 		if err != nil {
 			return 1, fmt.Errorf("initialize tool registry: %w", err)
 		}

@@ -16,7 +16,9 @@ status once. Codex retains cwd, environment, permissions, sandbox, terminal,
 signals, cancellation, and yielded continuation. Observation never replays effects.
 
 Before exposing commands, the host validates the complete compiled catalog and
-pins its worker executable for the invocation. Each frontend authenticates against
+pins its worker executable for the invocation. Server invocations share one
+immutable executable image while retaining private catalogs and command paths.
+Each frontend authenticates against
 that catalog and executable. Missing, expired, altered, incompatible-version, or
 mismatched snapshots fail rather than selecting another implementation.
 
@@ -25,6 +27,7 @@ private PATH entry; Bash login startup restores that entry without changing
 Codex's login-shell setting. Global commands and persistent user configuration
 remain untouched. Cleanup removes only invocation-created frontends, snapshot
 files, and leased worker resources, preserving concurrent invocations.
+The server releases its shared image after all invocation owners have stopped.
 
 Display-source normalization uses the same authenticated invocation registry.
 Only recognized instrumentation is removed; Activity and execution observation

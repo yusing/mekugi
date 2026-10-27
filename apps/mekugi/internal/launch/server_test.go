@@ -1553,7 +1553,24 @@ func TestRunServerLifecycle(t *testing.T) {
 		failure, ok := errors.AsType[*sessionapi.RPCError](err)
 		return ok && failure.Data != nil && failure.Data.Status == 404
 	})
-	serverCLIResourcesEmpty(t)
+	// Ending an invocation releases its private resources, but the live server
+	// retains exactly one shared worker image until shutdown.
+	entries, err := os.ReadDir(os.Getenv("MEKUGI_RUNTIME_DIR"))
+	if err != nil || len(entries) != 1 || !entries[0].IsDir() || !strings.HasPrefix(entries[0].Name(), "mekugi-worker-") {
+		t.Fatalf("expected only the server-owned worker image: %v, %v", entries, err)
+	}
+	workerDirectory := filepath.Join(os.Getenv("MEKUGI_RUNTIME_DIR"), entries[0].Name())
+	workers, err := os.ReadDir(workerDirectory)
+	if err != nil || len(workers) != 1 || workers[0].Name() != ".mekugi-worker" {
+		t.Fatalf("unexpected server-owned worker image contents: %v, %v", workers, err)
+	}
+	worker, err := workers[0].Info()
+	if err != nil || !worker.Mode().IsRegular() || worker.Mode().Perm()&0111 == 0 {
+		t.Fatalf("server-owned worker image is not executable: %v, %v", worker, err)
+	}
+	if entries, err := os.ReadDir(os.Getenv("TMPDIR")); err != nil || len(entries) != 0 {
+		t.Errorf("owned TMPDIR resources survived: %v, %v", entries, err)
+	}
 	// A new live runtime proves end did not stop the server. Shutdown must join it.
 	create("server shutdown message")
 	cancel()

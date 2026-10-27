@@ -54,6 +54,11 @@ func RunServer(ctx context.Context, args []string, stderr io.Writer) int {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	launcher := &serverLauncher{threads: control.New()}
+	defer func() {
+		if err := launcher.workers.Close(); err != nil {
+			fmt.Fprintln(stderr, "mekugi server worker cleanup:", err)
+		}
+	}()
 	hub := sessionapi.NewHub(ctx, launcher)
 	launcher.hub = hub
 	fmt.Fprintln(stderr, "Mekugi server ready:", *socket)

@@ -28,6 +28,7 @@ type Config struct {
 	RuntimeDirectory string
 	ReplayDirectory  string
 	AXReadOutput     string
+	WorkerImage      *WorkerImage
 }
 
 // New authenticates and publishes one private executable catalog before exposing
@@ -59,7 +60,7 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	fail := func(cause error) (*Registry, error) {
 		return nil, errors.Join(cause, os.RemoveAll(snapshotDirectory))
 	}
-	if err := pinRunningExecutable(filepath.Join(snapshotDirectory, workerExecutableFilename)); err != nil {
+	if err := config.WorkerImage.pin(filepath.Join(snapshotDirectory, workerExecutableFilename)); err != nil {
 		return fail(err)
 	}
 	var contributions []catalogEntry

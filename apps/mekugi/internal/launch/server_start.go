@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
@@ -21,6 +22,7 @@ import (
 )
 
 type serverLauncher struct {
+	workers  frontends.WorkerImage
 	threads  *threadcontrol.Service
 	hub      *sessionapi.Hub
 	mu       sync.Mutex
@@ -166,7 +168,7 @@ func (l *serverLauncher) Run(ctx context.Context, start sessionapi.Start, api *s
 	}
 	var execution *threadExecution
 	if l.hub != nil {
-		execution = &threadExecution{hub: l.hub, shared: l.threads}
+		execution = &threadExecution{hub: l.hub, shared: l.threads, workers: &l.workers}
 	}
 	if start.Native != nil {
 		code, err := runServerSession(ctx, start.Native.RouterArgs, start.Native.Args, api, start.Workspace, execution)

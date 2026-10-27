@@ -74,7 +74,10 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
-	registry, err := New(t.Context(), Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: replayDirectory})
+	var image WorkerImage
+	defer image.Close()
+	config := Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: replayDirectory, WorkerImage: &image}
+	registry, err := New(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +85,23 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 	if stage == "after-registry" {
 		replace()
 	}
-	command := exec.CommandContext(t.Context(), registry.Frontends["mrun"], "-test.run=^TestPinnedToolWorkerProcess$")
+	peer, err := New(t.Context(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+	firstInfo, err := os.Stat(filepath.Join(registry.SnapshotDir, workerExecutableFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerInfo, err := os.Stat(filepath.Join(peer.SnapshotDir, workerExecutableFilename))
+	if err != nil || !os.SameFile(firstInfo, peerInfo) {
+		t.Fatalf("invocations did not share the pinned image: %v", err)
+	}
+	if err := registry.Close(); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.CommandContext(t.Context(), peer.Frontends["mrun"], "-test.run=^TestPinnedToolWorkerProcess$")
 	command.Env = append(os.Environ(), "MEKUGI_PIN_WORKER_TEST=worker")
 	output, err := command.CombinedOutput()
 	if err != nil || string(output) != "pinned" {

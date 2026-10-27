@@ -6,9 +6,57 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"sync"
 )
 
 const workerExecutableFilename = ".mekugi-worker"
+
+// WorkerImage pins one running executable for a server's invocation lifetimes.
+// Its zero value is ready for use. Close follows the join of all invocations.
+type WorkerImage struct {
+	mu        sync.Mutex
+	directory string
+	closed    bool
+}
+
+func (image *WorkerImage) pin(target string) error {
+	if image == nil {
+		return pinRunningExecutable(target)
+	}
+	image.mu.Lock()
+	defer image.mu.Unlock()
+	if image.closed {
+		return errors.New("worker image is closed")
+	}
+	if image.directory == "" {
+		directory, err := os.MkdirTemp(filepath.Dir(filepath.Dir(target)), "mekugi-worker-")
+		if err != nil {
+			return err
+		}
+		if err := pinRunningExecutable(filepath.Join(directory, workerExecutableFilename)); err != nil {
+			return errors.Join(err, os.RemoveAll(directory))
+		}
+		image.directory = directory
+	}
+	location := filepath.Join(image.directory, workerExecutableFilename)
+	source, err := os.Open(location)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	return pinToolWorkerExecutable(source, location, target)
+}
+
+func (image *WorkerImage) Close() error {
+	image.mu.Lock()
+	defer image.mu.Unlock()
+	image.closed = true
+	if image.directory == "" {
+		return nil
+	}
+	return os.RemoveAll(image.directory)
+}
 
 func pinRunningExecutable(target string) (err error) {
 	source, err := openRunningExecutable()
