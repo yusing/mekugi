@@ -6,10 +6,10 @@
     "dev": "vite",
     "build": "vite build",
     "test": "node --test src/lib/*.test.mjs",
-    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "check": "bun check --no-script && svelte-check --tsconfig ./tsconfig.json",
     "lint": "oxlint --deny-warnings",
-    "format": "oxfmt",
-    "format:check": "oxfmt --check"
+    "format": "bun fmt",
+    "format:check": "bun fmt --check"
   },
   "dependencies": {
     "@fontsource-variable/ibm-plex-sans": "5.3.0",
@@ -21,7 +21,6 @@
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@tailwindcss/vite": "4.3.3",
     "@tsconfig/svelte": "5.0.8",
-    "oxfmt": "0.74.0",
     "oxlint": "1.89.0",
     "svelte": "5.57.2",
     "svelte-check": "4.7.7",

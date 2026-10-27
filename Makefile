@@ -45,23 +45,24 @@ build-binaries: webui
 	$(GO_OUTPUT) build $(GO_BUILD_FLAGS) -ldflags='$(BUILD_LDFLAGS)' -o '$(BUILD_OUTPUT)/' ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
 
 # Browser assets embedded by `mekugi web`. Go tests and plain Go builds work
-# without Node.js; an unbundled UI host reports how to build its assets.
+# without Bun or Node.js; an unbundled UI host reports how to build its assets.
 WEBUI := apps/mekugi/internal/webui/app
 
-$(WEBUI)/node_modules/.package-lock.json: $(WEBUI)/package-lock.json $(WEBUI)/package.json
-	npm --prefix $(WEBUI) ci
+$(WEBUI)/node_modules/.bun-install: $(WEBUI)/bun.lock $(WEBUI)/package.json
+	cd $(WEBUI) && bun install --frozen-lockfile
+	touch $@
 
-webui: $(WEBUI)/node_modules/.package-lock.json
-	npm --prefix $(WEBUI) run build
+webui: $(WEBUI)/node_modules/.bun-install
+	cd $(WEBUI) && bun run build
 
-webui-check: $(WEBUI)/node_modules/.package-lock.json
-	npm --prefix $(WEBUI) run test
-	npm --prefix $(WEBUI) run check
-	npm --prefix $(WEBUI) run lint
-	npm --prefix $(WEBUI) run format:check
+webui-check: $(WEBUI)/node_modules/.bun-install
+	cd $(WEBUI) && bun run test
+	cd $(WEBUI) && bun run check
+	cd $(WEBUI) && bun run lint
+	cd $(WEBUI) && bun run format:check
 
-webui-fmt: $(WEBUI)/node_modules/.package-lock.json
-	npm --prefix $(WEBUI) run format
+webui-fmt: $(WEBUI)/node_modules/.bun-install
+	cd $(WEBUI) && bun run format
 
 generate: workspace-check
 	$(WORKSPACE) run $(GO) generate @workspace

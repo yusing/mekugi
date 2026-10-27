@@ -106,7 +106,8 @@ run on stock Alpine Linux; use a source build for other environments.
 
 ### Build from source
 
-Source installs require **Go 1.27+**, CGO enabled, a C toolchain, **Make**, and **Node.js 24.21+** for browser assets.
+Source installs require **Go 1.27+**, CGO enabled, a C toolchain, **Make**,
+**Bun 1.4.4+**, and **Node.js 24.21+** for browser assets.
 Build the coordinated workspace from a checkout:
 
 ```sh

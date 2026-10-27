@@ -145,11 +145,11 @@
               {:else}
                 <pre
                   class="mt-1.5 overflow-x-auto rounded-card border py-1 font-mono text-code">{#each lines(preview.Input) as line, i (i)}<span
-                      class="flex"
-                      ><span class="w-[5ch] flex-none pr-2 text-right text-muted select-none"
-                        >{i + 1}</span
-                      ><span class="pr-3 whitespace-pre">{line}</span></span
-                    >{/each}</pre>
+                    class="flex"
+                    ><span class="w-[5ch] flex-none pr-2 text-right text-muted select-none"
+                      >{i + 1}</span
+                    ><span class="pr-3 whitespace-pre">{line}</span></span
+                  >{/each}</pre>
               {/if}
             {/each}
             {#if preview.Truncated}<p class="mt-1.5 text-small text-muted">

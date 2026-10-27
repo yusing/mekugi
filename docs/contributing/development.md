@@ -14,11 +14,17 @@ make lint
 ```
 
 `make webui` builds the pinned Svelte application for embedding; `make build-binaries`
-and release recipes include it. Plain `make build` checks the Go workspace. `make webui-check` runs browser binding tests plus type, lint and formatting
-checks. Focused tests use `node --test` with the selected test file under
+and release recipes include it. Plain `make build` checks the Go workspace.
+Browser build and check recipes use **Bun 1.4.4+** on `PATH` to install pinned
+dependencies from `bun.lock` and run package scripts. Node.js remains required
+for the Vite build and browser binding tests.
+`make webui-check` runs browser binding tests, `bun check` for TypeScript,
+`svelte-check` for Svelte script/template and CSS diagnostics, lint and formatting
+checks. Focused tests use `node --test` with
+the selected test file under
 `apps/mekugi/internal/webui/app/src/lib/`.
-`make webui-fmt` formats
-the browser sources. The assets host returns 503 until assets are built.
+`make webui-fmt` formats the browser sources with `bun fmt`, using the existing
+`.oxfmtrc.json` configuration. The assets host returns 503 until assets are built.
 
 After building assets, the opt-in browser fixtures exercise the actual UI,
 connector and server with controlled execution hosts:
