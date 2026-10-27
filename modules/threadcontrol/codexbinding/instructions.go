@@ -51,6 +51,43 @@ func (d *Driver) Instructions(ctx context.Context, thread, requestModel string) 
 	}) {
 		return nil, errors.New("required native role or usage instruction provenance is unavailable")
 	}
+	text, err := d.instructionText(*member, requestModel)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := owner.Configuration(ctx, thread, member.Settings.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	var effective struct {
+		Layers []ConfigLayer `json:"layers"`
+	}
+	if err := json.Unmarshal(raw, &effective); err != nil {
+		return nil, err
+	}
+	roles, err := roleCatalog(effective.Layers)
+	if err != nil {
+		return nil, err
+	}
+	text += roleGuidance(roles)
+	return instructionReplacements(*member, text), nil
+}
+
+// RetainedInstructions projects auxiliary context without host RPCs. The host may
+// be awaiting this compaction response while holding its thread operation lock.
+func (d *Driver) RetainedInstructions(thread, requestModel string) ([]guidance.Replacement, error) {
+	member, ok := d.control.Member(thread)
+	if !ok || len(member.Instructions) == 0 {
+		return nil, nil
+	}
+	text, err := d.instructionText(*member, requestModel)
+	if err != nil {
+		return nil, err
+	}
+	return instructionReplacements(*member, text), nil
+}
+
+func (d *Driver) instructionText(member control.Member, requestModel string) (string, error) {
 	baseline := defaultRootUsageHint
 	if member.Parent != "" {
 		baseline = defaultSubagentUsageHint
@@ -70,36 +107,22 @@ func (d *Driver) Instructions(ctx context.Context, thread, requestModel string) 
 		break
 	}
 	d.mu.RUnlock()
+	baseline = visibleRoleNames(baseline)
 	var config map[string]jsontext.Value
 	if len(member.Settings.Config) > 0 {
 		if err := json.Unmarshal(member.Settings.Config, &config); err != nil {
-			return nil, err
+			return "", err
 		}
 		if raw, ok := config["features.multi_agent_v2.root_agent_usage_hint_text"]; ok {
 			if err := json.Unmarshal(raw, &baseline); err != nil {
-				return nil, err
+				return "", err
 			}
 		}
 	}
-	text, err := collaborationGuidance(*member, baseline)
-	if err != nil {
-		return nil, err
-	}
-	raw, err := owner.Configuration(ctx, thread, member.Settings.Workspace)
-	if err != nil {
-		return nil, err
-	}
-	var effective struct {
-		Layers []ConfigLayer `json:"layers"`
-	}
-	if err := json.Unmarshal(raw, &effective); err != nil {
-		return nil, err
-	}
-	roles, err := roleCatalog(effective.Layers)
-	if err != nil {
-		return nil, err
-	}
-	text += roleGuidance(roles)
+	return collaborationGuidance(member, baseline)
+}
+
+func instructionReplacements(member control.Member, text string) []guidance.Replacement {
 	roleParts := make(map[string]bool)
 	for _, part := range member.Instructions {
 		if part.Kind == "multi_agent.role_instructions" {
@@ -117,7 +140,7 @@ func (d *Driver) Instructions(ctx context.Context, thread, requestModel string) 
 		}
 		replacements = append(replacements, guidance.Replacement{Fragment: part, Text: value})
 	}
-	return replacements, nil
+	return replacements
 }
 
 // Feature-owned guidance describes the admitted logical tree and actual tools.
@@ -126,11 +149,11 @@ func collaborationGuidance(member control.Member, baseline string) (string, erro
 	if strings.Contains(baseline, "functions.collaboration.") || strings.Contains(baseline, "mekugi_collaboration.") {
 		return "", errors.New("configured agent guidance uses unavailable native collaboration tools")
 	}
-	identity := fmt.Sprintf("Your logical task is %s.", member.Task)
+	identity := fmt.Sprintf("Your logical task is %s.", control.AgentName(member.Task))
 	authority := ""
 	if member.Parent != "" {
 		parent, _, _ := strings.CutLast(member.Task, "/")
-		identity += fmt.Sprintf(" Your parent logical task is %s.", parent)
+		identity += fmt.Sprintf(" Your parent logical task is %s.", control.AgentName(parent))
 		authority = "For the explicit-request-only delegation rule, an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits.\n"
 	}
 	return fmt.Sprintf("%s\n\n%s Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.\n%sTo await delegates, call wait_agent alone and let functions.exec finish. Omit timeout_ms unless a real deadline applies. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output.\nAgents share the filesystem; this thread's working directory is %q. Override model or reasoning effort only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions.", baseline, identity, authority, member.Settings.Workspace), nil

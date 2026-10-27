@@ -134,10 +134,11 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 		{"root custom hint", false, true, "CUSTOM_HINT"},
 		{"child model change", true, false, "NEW_CHILD_BASELINE"},
 		{"child custom hint", true, true, "CUSTOM_HINT"},
+		{"custom filesystem text", false, true, "You are `/root`, the primary agent in a team of agents collaborating to fulfill the user's goals.\nKeep /root/files unchanged."},
 		{"root empty custom hint", false, true, ""},
 		{"child empty custom hint", true, true, ""},
-		{"root stock fallback", false, false, defaultRootUsageHint},
-		{"child stock fallback", true, false, defaultSubagentUsageHint},
+		{"root stock fallback", false, false, strings.ReplaceAll(defaultRootUsageHint, "/root", "agent:main")},
+		{"child stock fallback", true, false, strings.ReplaceAll(defaultSubagentUsageHint, "/root", "agent:main")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			retained, err := history.NewService(control.RecordKinds())
@@ -225,9 +226,9 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 			if len(replacements) != 1 || !strings.HasPrefix(replacements[0].Text, tc.want+"\n\n") {
 				t.Fatalf("current model guidance = %+v, want baseline %q", replacements, tc.want)
 			}
-			identity := "Your logical task is /root."
+			identity := "Your logical task is agent:main."
 			if tc.child {
-				identity = "Your logical task is /root/worker. Your parent logical task is /root."
+				identity = "Your logical task is agent:main/worker. Your parent logical task is agent:main."
 			}
 			if !strings.Contains(replacements[0].Text, identity+" Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.") {
 				t.Fatalf("missing logical identity: %s", replacements[0].Text)
@@ -237,6 +238,11 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 			}
 			if !strings.Contains(replacements[0].Text, "call wait_agent alone") || !strings.Contains(replacements[0].Text, "later wait_agent output") || !strings.Contains(replacements[0].Text, "Omit timeout_ms") {
 				t.Fatalf("missing wait delivery guidance: %s", replacements[0].Text)
+			}
+			driver.host = nil // Auxiliary projection must not call a busy host.
+			passive, err := driver.RetainedInstructions(thread, "new-model")
+			if err != nil || len(passive) != 1 || !strings.HasPrefix(passive[0].Text, tc.want+"\n\n") || !strings.Contains(passive[0].Text, identity) {
+				t.Fatalf("retained instruction projection = %+v, %v", passive, err)
 			}
 			member, _ = service.Member(thread)
 			if member.Settings.Model != "old-model" {

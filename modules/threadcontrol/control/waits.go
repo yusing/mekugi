@@ -16,7 +16,7 @@ func resolve(tree *Tree, caller *Member, target string) (*Member, error) {
 	if member := tree.Members[target]; member != nil {
 		return member, nil
 	}
-	candidate := target
+	candidate := TaskPath(target)
 	if !strings.HasPrefix(candidate, "/") {
 		candidate = caller.Task + "/" + candidate
 	}

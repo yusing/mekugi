@@ -37,7 +37,7 @@ func fixture(t *testing.T) (*Service, history.Session) {
 func TestRestoreBeforeAnyRequestLeavesChildrenCold(t *testing.T) {
 	s, session := fixture(t)
 	child(t, s, "root", "worker", "/root/child-runtime", "wt")
-	for _, target := range []string{"child-runtime", "/root/child-runtime"} {
+	for _, target := range []string{"child-runtime", "/root/child-runtime", "agent:main/child-runtime"} {
 		member, err := s.Target(identity("root", "rt"), target)
 		must(t, err)
 		if member.Thread != "worker" {

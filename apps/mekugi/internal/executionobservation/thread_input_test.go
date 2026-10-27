@@ -71,7 +71,9 @@ func TestThreadInputConsumedWithoutExecution(t *testing.T) {
 			if !bytes.Contains(request.OriginalField("input"), []byte(control.MessageItemID("root:message"))) {
 				t.Fatal("retained host identity changed")
 			}
-			if !responses.SameJSONValue([]byte(responses.StringField(forwarded.Input[1], "output")), responses.MustMarshalJSON(wake.Wake)) || !bytes.Contains(request.OriginalField("input"), []byte(wake.ID)) {
+			visibleWake := *wake.Wake
+			visibleWake.Metrics = map[string]control.SessionMetrics{"agent:main/child": wake.Wake.Metrics["/root/child"]}
+			if !responses.SameJSONValue([]byte(responses.StringField(forwarded.Input[1], "output")), responses.MustMarshalJSON(visibleWake)) || !bytes.Contains(request.OriginalField("input"), []byte(wake.ID)) || !bytes.Contains(request.OriginalField("input"), []byte("/root/child")) {
 				t.Fatal("wake projection changed metrics, exposed identity or rewrote retained input")
 			}
 			tree, err := service.Snapshot("root")

@@ -25,7 +25,8 @@ their commentary directives while retaining permission and task-steering policy.
 uninstalled-plugin advertisements are removed. Inherited delegation and custom plugin policy
 remain intact. Unrelated policy,
 system messages, user content, non-text parts, and fenced examples remain unchanged. Rewriting is
-idempotent and model-independent. Execution-free requests retain their native guidance.
+idempotent and model-independent. Execution-free and compaction requests retain native
+guidance except for admitted thread role/identity projection into the visible agent namespace.
 The pinned short-wait fragment yields to completion notifications or interruptible waits.
 Stock line and paragraph matches preserve caller-added qualifications. Planning
 guidance and the stock plan tool remain host-owned. Invocation-local Codex flags omit

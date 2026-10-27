@@ -286,7 +286,8 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		}
 	}
 	p.execWindows.markBackground(threadID, metadata.TurnID)
-	// Execution-free requests retain their native instructions, tools, and schema.
+	// Execution-free requests retain native tools and schema; admitted thread
+	// identity guidance still follows the same visible namespace as execution.
 	if codexresponses.ExecutionFree(request) {
 		if !prewarm && strings.TrimSpace(threadID) == "" {
 			return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
@@ -376,13 +377,8 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			return nil, err
 		}
 		instructions, err := p.threadControl.Instructions(ctx, threadID, request.Model())
-		if err == nil && (p.registry.Guidance == nil || p.registry.Guidance.Threads == nil) {
-			err = errors.New("independent thread instruction projection is unavailable")
-		}
 		if err == nil {
-			err = requestexecution.ProjectInstructions(request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
-				return p.registry.Guidance.Threads(input, instructions)
-			})
+			err = p.projectThreadInstructions(request, instructions)
 		}
 		if err != nil {
 			retained.Finish(false)

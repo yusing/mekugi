@@ -31,10 +31,12 @@ Independent runtime admission is established by authenticated Mekugi membership
 and host-confirmed settings. It does not require a native Codex agent-graph edge.
 Agent assignments, messages and continuations retain their source attribution
 without becoming human composer input. Retained message IDs remain local to host
-history and delivery reconciliation; provider input omits those IDs while preserving
-the attributed message content, including when replaying retained sessions.
-Projected agent instructions identify the canonical logical task and a child's
-parent task, including for independent root-shaped runtimes.
+history and delivery reconciliation; provider input omits those IDs and displays
+coordination addresses as `agent:main` and `agent:main/<descendant>`. Generated
+guidance, attributed message headers, tool results and accepted targets use that
+visible namespace, including for independent root-shaped runtimes and retained-session
+requests. Internal task paths and saved history retain their canonical `/root`
+identities. Payloads, custom instructions and arbitrary filesystem text are unchanged.
 Observation uses that admitted membership for child ancestry and attribution;
 native request metadata remains unchanged on the provider wire.
 
@@ -42,13 +44,13 @@ native request metadata remains unchanged on the provider wire.
 
 - `spawn_agent` preserves task name, assignment, role, context, model and effort
   conventions and adds optional `cwd`. It returns confirmed independent host
-  identity and canonical logical task path. Task names are nonempty and contain
+  identity and visible logical agent name. Task names are nonempty and contain
   only lowercase ASCII letters, digits, underscores and hyphens; each name forms
   one segment of its parent's logical task path.
 - `followup_task` controls an admitted non-root target: start when idle, steer its
   actual running turn, or supersede an unsent wait/wake before reconciling host
   state. Original caller attribution remains attached. Action results identify
-  the resolved target thread and canonical task, including when input used an alias.
+  the resolved target thread and visible agent name, including when input used an alias.
 - `send_message` queues attributed input without starting an idle thread. A
   matching message can satisfy an existing selected wait.
 - `interrupt_agent` interrupts the actual running turn. A waiting task without
@@ -56,7 +58,7 @@ native request metadata remains unchanged on the provider wire.
   Request acknowledgement alone is not completion.
 - `list_agents` reads admitted tree state, including pending, paused and uncertain
   work/delivery identities, with the existing `path_prefix` filter.
-- `inspect` reads an admitted agent by `target` path, including `/root` and idle
+- `inspect` reads an admitted agent by `target`, including `agent:main` and idle
   or completed agents. It reports applied model, reasoning effort and service tier, context
   usage/window, and completed compactions. Unavailable observations are `null`,
   distinct from a measured zero. Inspection uses live session facts or retained
@@ -66,7 +68,7 @@ native request metadata remains unchanged on the provider wire.
 
 Follow-up acknowledgements include the target's current context and compaction
 metrics. Immediate wait results and resumed wait outputs include those same metrics
-for each selected target, keyed by canonical task path. Unavailable observations
+for each selected target, keyed by visible agent name. Unavailable observations
 are `null` without failing an otherwise successful coordination operation.
 Dispatched wait metrics freeze with that wait's existing checkpoint so a resumed
 runtime can confirm the exact retained continuation without replacing its facts.
@@ -149,7 +151,7 @@ Threadcontrol retains those facts before exposing references. Agent Guidance onl
 projects immutable admitted fragments and logical caller values.
 
 Independent children receive the selected model’s child baseline, with one Mekugi
-namespace calling reference, canonical logical identity and selected cwd/shared-filesystem
+namespace calling reference, visible logical identity and selected cwd/shared-filesystem
 wording. The effective mode
 fragment stays byte-for-byte unchanged. Child guidance recognizes explicit delegation
 requests in authenticated parent assignments as authority within that assignment and

@@ -164,6 +164,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		p.parent = metadata.ThreadID
 	}
 	compacting := bytes.Contains(body, []byte("At the end of your handover emit exactly one"))
+	if compacting && (bytes.Contains(body, []byte("You are `/root`, the primary agent")) || bytes.Contains(body, []byte("addressed as to=/root")) || !bytes.Contains(body, []byte("Your logical task is agent:main."))) {
+		t.Error("compaction provider input omitted visible coordination identity or retained canonical generated guidance")
+	}
 	if !compacting {
 		p.calls[metadata.ThreadID]++
 	}
@@ -185,19 +188,19 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		if strings.Contains(string(body), "an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits") != !parent {
 			failure = "parent-assignment delegation authority is not child-only"
 		}
-		identity := "Your logical task is /root."
+		identity := "Your logical task is agent:main."
 		if !parent {
-			identity = "Your logical task is /root/worker. Your parent logical task is /root."
+			identity = "Your logical task is agent:main/worker. Your parent logical task is agent:main."
 		}
 		if grandchild {
-			identity = "Your logical task is /root/worker/reviewer. Your parent logical task is /root/worker."
+			identity = "Your logical task is agent:main/worker/reviewer. Your parent logical task is agent:main/worker."
 		}
 		if strings.Count(string(body), identity+" Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.") != 1 {
 			failure = "provider prompt omitted or duplicated the logical identity and single calling convention"
 		}
 	}
 	if !p.fullHistory && step == 1 {
-		rootCount := strings.Count(string(body), "You are `/root`, the primary agent in a team")
+		rootCount := strings.Count(string(body), "You are `agent:main`, the primary agent in a team")
 		childCount := strings.Count(string(body), "You are an agent in a team of agents collaborating to complete a task.")
 		wantRoot, wantChild := 0, 1
 		if parent {
@@ -221,8 +224,8 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				continue
 			}
 			for _, part := range content {
-				inherited = inherited || part.Text == "Message Type: NEW_TASK\nTask name: /root/worker\nSender: /root\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT"
-				assigned = assigned || part.Text == "Message Type: NEW_TASK\nTask name: /root/worker/reviewer\nSender: /root/worker\nPayload:\nGRANDCHILD_ATTRIBUTED_ASSIGNMENT"
+				inherited = inherited || part.Text == "Message Type: NEW_TASK\nTask name: agent:main/worker\nSender: agent:main\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT"
+				assigned = assigned || part.Text == "Message Type: NEW_TASK\nTask name: agent:main/worker/reviewer\nSender: agent:main/worker\nPayload:\nGRANDCHILD_ATTRIBUTED_ASSIGNMENT"
 			}
 		}
 		if step != 1 || !inherited || !assigned || !strings.Contains(string(body), "PARENT_PRIVATE_SENTINEL") {
@@ -234,11 +237,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	case parent && p.earlyCompletion && step == 4:
 		answer = "PARENT_PREMATURE_FINAL"
 	case parent && p.earlyCompletion && step == 5:
-		if !strings.Contains(string(body), "completion_guard") || !strings.Contains(string(body), "Active descendants: /root/worker. Call wait_agent before completing.") {
+		if !strings.Contains(string(body), "completion_guard") || !strings.Contains(string(body), "Active descendants: agent:main/worker. Call wait_agent before completing.") {
 			failure = "early completion did not receive retained descendant hint"
 		}
 		p.waitTurn = metadata.TurnID
-		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["worker"]}));`
+		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"]}));`
 	case parent && p.earlyCompletion && step == 6:
 		if metadata.TurnID == p.waitTurn || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") {
 			failure = "guarded completion lost native child wake"
@@ -246,7 +249,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		answer = "MANAGED_PARENT_RESUMED"
 	case parent && step == 1:
 		p.users = users
-		program = `text(Object.keys(tools).filter(name => name.includes("threadcontrol"))); text(await tools.mcp__threadcontrol__list_agents({})); text(await tools.mcp__threadcontrol__inspect({target:"/root"}));`
+		program = `text(Object.keys(tools).filter(name => name.includes("threadcontrol"))); text(await tools.mcp__threadcontrol__list_agents({path_prefix:"agent:main"})); text(await tools.mcp__threadcontrol__inspect({target:"agent:main"}));`
 	case parent && step == 2:
 		if !strings.Contains(string(body), "compactions") || !strings.Contains(string(body), "context_window") || !strings.Contains(string(body), "reasoning_effort") {
 			failure = "root inspection omitted applied settings or metrics"
@@ -254,7 +257,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		if strings.Contains(string(body), "context_known") || strings.Contains(string(body), "compactions_known") {
 			failure = "root inspection exposed availability flags"
 		}
-		if !strings.Contains(string(body), "mcp__threadcontrol__spawn_agent") || !strings.Contains(string(body), "/root") {
+		if !strings.Contains(string(body), "mcp__threadcontrol__spawn_agent") || !strings.Contains(string(body), "agent:main") {
 			failure = "replacement MCP discovery/list_agents omitted root or spawn tool"
 		}
 		fork := `,fork_turns:"none"`
@@ -266,7 +269,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 		program = `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"worker",message:"CHILD_ATTRIBUTED_ASSIGNMENT"` + fork + `,cwd:` + strconv.Quote(p.childDirectory) + `}));`
 	case parent && step == 3:
-		if !strings.Contains(string(body), "/root/worker") {
+		if !strings.Contains(string(body), "agent:main/worker") {
 			failure = "spawn omitted confirmed logical child"
 			for _, item := range request.Input {
 				if string(item["type"]) == `"function_call_output"` || string(item["type"]) == `"custom_tool_call_output"` {
@@ -280,20 +283,20 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			failure = "parent input omitted injected mailbox message"
 		}
 		p.waitTurn = metadata.TurnID
-		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["worker"]}));`
+		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"]}));`
 	case parent && step == 5:
 		if p.shellWait {
 			if metadata.TurnID == p.waitTurn || users != p.users+1 || strings.Count(string(body), "<user_shell_command>") != 1 || !strings.Contains(string(body), "SHELL_WAIT_OUTPUT") {
 				failure = fmt.Sprintf("shell continuation: same_turn=%t user_items=%d want=%d shell_records=%d has_output=%t", metadata.TurnID == p.waitTurn, users, p.users+1, strings.Count(string(body), "<user_shell_command>"), strings.Contains(string(body), "SHELL_WAIT_OUTPUT"))
 			}
-		} else if metadata.TurnID == p.waitTurn || !p.compactWait && users != p.users || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "/root/worker") || !strings.Contains(string(body), "wait_agent") {
-			failure = fmt.Sprintf("local stop/wake: same_turn=%t users=%d want=%d final=%t task=%t wait=%t", metadata.TurnID == p.waitTurn, users, p.users, strings.Contains(string(body), "MANAGED_CHILD_FINAL"), strings.Contains(string(body), "/root/worker"), strings.Contains(string(body), "wait_agent"))
+		} else if metadata.TurnID == p.waitTurn || !p.compactWait && users != p.users || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "agent:main/worker") || !strings.Contains(string(body), "wait_agent") {
+			failure = fmt.Sprintf("local stop/wake: same_turn=%t users=%d want=%d final=%t task=%t wait=%t", metadata.TurnID == p.waitTurn, users, p.users, strings.Contains(string(body), "MANAGED_CHILD_FINAL"), strings.Contains(string(body), "agent:main/worker"), strings.Contains(string(body), "wait_agent"))
 		}
 		answer = "MANAGED_PARENT_RESUMED"
 	case parent && step == 6:
-		program = `text(await tools.mcp__threadcontrol__list_agents({})); text(await tools.mcp__threadcontrol__followup_task({target:"worker",message:"COLD_CHILD_FOLLOWUP"}));`
+		program = `text(await tools.mcp__threadcontrol__list_agents({path_prefix:"agent:main"})); text(await tools.mcp__threadcontrol__followup_task({target:"agent:main/worker",message:"COLD_CHILD_FOLLOWUP"}));`
 	case parent && step == 7:
-		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["worker"]}));`
+		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"]}));`
 	case parent && step == 8:
 		if !strings.Contains(string(body), "MANAGED_CHILD_RECOVERED") {
 			failure = "cold recovery omitted the retained child's attributed result"
@@ -314,7 +317,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				if string(item["role"]) == `"developer"` {
 					developerText.WriteString(part.Text)
 				}
-				if part.Text == "Message Type: NEW_TASK\nTask name: /root/worker\nSender: /root\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT" && string(item["role"]) == `"assistant"` && string(item["phase"]) == `"commentary"` && part.Type == "output_text" {
+				if part.Text == "Message Type: NEW_TASK\nTask name: agent:main/worker\nSender: agent:main\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT" && string(item["role"]) == `"assistant"` && string(item["phase"]) == `"commentary"` && part.Type == "output_text" {
 					assignment = true
 				}
 				if string(item["role"]) == `"user"` && part.Type == "input_text" && strings.HasPrefix(part.Text, "<environment_context>") && strings.Contains(part.Text, "<cwd>"+p.childDirectory+"</cwd>") && !strings.Contains(part.Text, "CHILD_ATTRIBUTED_ASSIGNMENT") {
@@ -340,7 +343,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 		if p.fullHistory {
 			guidance := developerText.String()
-			if strings.Count(guidance, "NATIVE_FIXTURE_CHILD_ROLE") != 1 || strings.Count(guidance, "Your logical task is /root/worker.") != 1 || strings.Contains(guidance, "NATIVE_FIXTURE_ROOT_ROLE") {
+			if strings.Count(guidance, "NATIVE_FIXTURE_CHILD_ROLE") != 1 || strings.Count(guidance, "Your logical task is agent:main/worker.") != 1 || strings.Contains(guidance, "NATIVE_FIXTURE_ROOT_ROLE") {
 				failure = "full-history child guidance omitted child role or retained duplicate/parent generated role"
 			}
 			call, output := false, false
@@ -352,7 +355,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				failure = "full-history child lost the parent's completed tool call or result"
 			}
 		}
-		program = `text(await tools.mcp__threadcontrol__send_message({target:"/root",message:"CHILD_PROGRESS_ALREADY_READ"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
+		program = `text(await tools.mcp__threadcontrol__send_message({target:"agent:main",message:"CHILD_PROGRESS_ALREADY_READ"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
 		if p.fullHistory {
 			program += `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"reviewer",message:"GRANDCHILD_ATTRIBUTED_ASSIGNMENT",fork_turns:"all"})); text(await tools.mcp__threadcontrol__wait_agent({target:["reviewer"]}));`
 		}

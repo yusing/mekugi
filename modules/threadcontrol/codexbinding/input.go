@@ -30,13 +30,30 @@ func ProjectLocalIdentities(input []byte) ([]byte, error) {
 		if err := json.Unmarshal(raw, &item); err != nil {
 			return nil, err
 		}
-		if responses.StringField(item, "type") == "function_call_output" && (len(item["call_id"]) == 0 || item["call_id"].Kind() == 'n') && responses.StringField(item, "namespace") == "threadcontrol" && responses.StringField(item, "name") == "wait_agent" {
-			var output map[string]jsontext.Value
-			if json.Unmarshal([]byte(responses.StringField(item, "output")), &output) != nil || output["id"] == nil {
+		if responses.StringField(item, "type") == "function_call_output" && (len(item["call_id"]) == 0 || item["call_id"].Kind() == 'n') && responses.StringField(item, "namespace") == "threadcontrol" {
+			text := responses.StringField(item, "output")
+			switch responses.StringField(item, "name") {
+			case "wait_agent":
+				var output map[string]jsontext.Value
+				if json.Unmarshal([]byte(text), &output) != nil || output["id"] == nil {
+					continue
+				}
+				delete(output, "id")
+				if _, err := projectResultFields(output); err != nil {
+					return nil, err
+				}
+				text = string(responses.MustMarshalJSON(output))
+			case "followup_task":
+				text = visibleMessageNames(text)
+			case "completion_guard":
+				text = visibleCompletionNames(text)
+			default:
 				continue
 			}
-			delete(output, "id")
-			item["output"] = responses.MustMarshalJSON(string(responses.MustMarshalJSON(output)))
+			if text == responses.StringField(item, "output") {
+				continue
+			}
+			item["output"] = responses.MustMarshalJSON(text)
 		} else {
 			id, owned := strings.CutPrefix(responses.StringField(item, "id"), "threadcontrol_")
 			if !owned || len(id) != 64 || responses.StringField(item, "type") != "message" || responses.StringField(item, "role") != "assistant" {
@@ -46,6 +63,15 @@ func ProjectLocalIdentities(input []byte) ([]byte, error) {
 				continue
 			}
 			delete(item, "id")
+			var content []map[string]jsontext.Value
+			if json.Unmarshal(item["content"], &content) == nil {
+				for _, part := range content {
+					if text := responses.StringField(part, "text"); text != "" {
+						part["text"] = responses.MustMarshalJSON(visibleMessageNames(text))
+					}
+				}
+				item["content"] = responses.MustMarshalJSON(content)
+			}
 		}
 		items[i] = responses.MustMarshalJSON(item)
 		changed = true

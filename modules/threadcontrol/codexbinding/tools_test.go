@@ -71,11 +71,18 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	meta := mcp.Meta{"threadId": caller.Thread, "sessionId": caller.Session, "callId": "wait", "itemId": caller.Item, "windowId": "window",
 		"x-codex-turn-metadata": map[string]any{"thread_id": caller.Thread, "session_id": caller.Session, "turn_id": caller.Turn, "codex_version": "0.163.0", "model": "model", "reasoning_effort": "low"}}
 	for _, tool := range []string{"wait_agent", "list_agents"} {
-		result, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Meta: meta, Arguments: map[string]any{}})
+		arguments := map[string]any{"target": []string{"agent:main/child"}}
+		if tool == "list_agents" {
+			arguments = map[string]any{"path_prefix": "agent:main"}
+		}
+		result, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Meta: meta, Arguments: arguments})
 		if err != nil || result.IsError || len(result.Content) != 1 {
 			t.Fatalf("%s: result=%+v err=%v", tool, result, err)
 		}
 		payload := result.Content[0].(*mcp.TextContent).Text
+		if !strings.Contains(payload, "agent:main/child") || strings.Contains(payload, "/root") {
+			t.Fatalf("%s visible identities: %s", tool, payload)
+		}
 		if !strings.Contains(payload, `"state":"waiting"`) || strings.Contains(payload, `"registered"`) {
 			t.Fatalf("%s public wait state: %s", tool, payload)
 		}
