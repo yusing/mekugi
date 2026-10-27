@@ -120,11 +120,60 @@ func (a *Audience) Collect(events ...activitypresentation.Supplement) {
 // audienceLocked preserves unknown versus invalid ancestry for notice admission.
 func (a *Audience) audienceLocked(root string) (activitypresentation.Audience, bool) {
 	audience := activitypresentation.Audience{Root: root, Threads: make(map[string]string)}
-	if a.threads[root] != nil && a.rootLocked(root) != root {
+	var resolved map[string]string
+	var path []string
+	resolve := func(thread string, node *activityThread) string {
+		if node == nil || node.conflicted {
+			return ""
+		}
+		if !node.child || a.supplements.Attached(thread) {
+			return thread
+		}
+		if known, ok := resolved[thread]; ok {
+			return known
+		}
+		parent := a.threads[node.parent]
+		if parent == nil || parent.conflicted {
+			return ""
+		}
+		if !parent.child || a.supplements.Attached(node.parent) {
+			return node.parent
+		}
+		// Flat audiences need no ancestry cache or path allocation.
+		if resolved == nil {
+			resolved = make(map[string]string, len(a.threads))
+		}
+		path = path[:0]
+		var resolvedRoot string
+		for {
+			if known, ok := resolved[thread]; ok {
+				resolvedRoot = known
+				break
+			}
+			node := a.threads[thread]
+			if node == nil || node.conflicted {
+				break
+			}
+			// Mark the current path invalid until its root is known. Revisiting
+			// it detects a cycle without another ancestry walk or recursion.
+			resolved[thread] = ""
+			path = append(path, thread)
+			if !node.child || a.supplements.Attached(thread) {
+				resolvedRoot = thread
+				break
+			}
+			thread = node.parent
+		}
+		for _, thread := range path {
+			resolved[thread] = resolvedRoot
+		}
+		return resolvedRoot
+	}
+	if node := a.threads[root]; node != nil && resolve(root, node) != root {
 		return audience, false
 	}
 	for thread, node := range a.threads {
-		if a.rootLocked(thread) == root {
+		if resolve(thread, node) == root {
 			audience.Threads[thread] = node.name
 		}
 	}

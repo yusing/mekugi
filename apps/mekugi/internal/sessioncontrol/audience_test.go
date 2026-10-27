@@ -2,11 +2,73 @@
 package sessioncontrol
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
+
+func TestAudienceResolutionMatchesPointQueries(t *testing.T) {
+	a := NewAudience(nil)
+	a.Attach("root")
+	a.Observe("child", "missing", "/root/child", true)
+	a.Observe("cycle-a", "cycle-b", "/root/a", true)
+	a.Observe("cycle-b", "cycle-a", "/root/b", true)
+	check := func() {
+		t.Helper()
+		for _, root := range []string{"root", "missing", "child", "cycle-a", "unknown"} {
+			got, valid := a.Snapshot(root)
+			wantValid := a.threads[root] == nil || a.rootLocked(root) == root
+			if valid != wantValid {
+				t.Fatalf("root %q validity = %t, want %t", root, valid, wantValid)
+			}
+			for thread, node := range a.threads {
+				name, present := got.Threads[thread]
+				if want := wantValid && a.rootLocked(thread) == root; present != want || present && name != node.name {
+					t.Fatalf("root %q thread %q: %q, present=%t, want=%t", root, thread, name, present, want)
+				}
+			}
+		}
+	}
+	check()
+	a.Observe("missing", "root", "/root/parent", true)
+	check()
+	a.AttachRuntime("missing")
+	check()
+	a.BorrowSide("child")
+	check()
+	a.Detach()
+	check()
+	a.Invalidate("missing")
+	check()
+}
+
+func BenchmarkAudienceIdleTake(b *testing.B) {
+	for _, count := range []int{100, 1000} {
+		for _, chain := range []bool{false, true} {
+			b.Run(fmt.Sprintf("nodes=%d/chain=%t", count, chain), func(b *testing.B) {
+				a := NewAudience(nil)
+				a.Attach("root")
+				parent := "root"
+				for i := range count {
+					id := fmt.Sprint(i)
+					a.Observe(id, parent, "/root/child", true)
+					if chain {
+						parent = id
+					}
+				}
+				b.ReportAllocs()
+				for b.Loop() {
+					got, _ := a.Take("root")
+					if len(got.Threads) != count+1 {
+						b.Fatal("lost descendants")
+					}
+				}
+			})
+		}
+	}
+}
 
 func TestNativeActivityIsolatedByAncestryAndIdentity(t *testing.T) {
 	a := NewAudience(nil)
