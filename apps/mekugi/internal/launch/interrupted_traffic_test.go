@@ -98,7 +98,7 @@ func (f interruptedTrafficFixture) observe(t *testing.T, item binding.ThreadItem
 
 func (f interruptedTrafficFixture) complete(t *testing.T) {
 	t.Helper()
-	trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "worker", "turn", control.Interrupted, "Status: interrupted\n"))
+	trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "worker", "turn", control.Interrupted, control.HostFailure{Message: "Status: interrupted\n"}))
 	syncLogicalWork(&f.ui.attached, &f.ui.Live, f.threads, f.ui.clock())
 }
 
@@ -175,14 +175,14 @@ func TestInterruptedTrafficIgnoresPriorGenerationOutcome(t *testing.T) {
 	trafficCheck(t, f.threads.shared.EffectAcknowledged(t.Context(), "main", action.ID, control.Receipt{Turn: "next"}))
 	trafficCheck(t, f.threads.shared.RequestStarted(t.Context(), control.Identity{Thread: "worker", Session: "worker-session", Turn: "next"}, false))
 	f.observe(t, f.request(t, "new-interrupt"))
-	trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "worker", "turn", control.Interrupted, "old"))
+	trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "worker", "turn", control.Interrupted, control.HostFailure{Message: "old"}))
 	publishNativeDelivery(&f.ui.attached, control.NativeInput{Thread: "main", ID: "old", Sender: f.target, Recipient: "/root", Kind: "FINAL_ANSWER", Outcome: control.Interrupted, SourceGeneration: 1, ParentTurn: "turn"}, f.ui.clock())
 	syncLogicalWork(&f.ui.attached, &f.ui.Live, f.threads, f.ui.clock())
 	entry := f.ui.attached.source.Entries[1].Source
 	if entry.Text != "Interrupt requested for "+f.target {
 		t.Fatalf("old result settled new request: %s", entry.Text)
 	}
-	trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "worker", "next", control.Interrupted, ""))
+	trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "worker", "next", control.Interrupted, control.HostFailure{}))
 	syncLogicalWork(&f.ui.attached, &f.ui.Live, f.threads, f.ui.clock())
 	if entry := f.ui.attached.source.Entries[1].Source; entry.Text != "Interrupted "+f.target {
 		t.Fatalf("current result did not settle new request: %s", entry.Text)
@@ -192,10 +192,10 @@ func TestInterruptedTrafficIgnoresPriorGenerationOutcome(t *testing.T) {
 func TestCompletionGuardSkippedContinuationSettlesRoster(t *testing.T) {
 	f := interruptedTrafficUI(t, false)
 	appServerTestNotify(t, f.ui, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn"}})
-	trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "main", "turn", control.Completed, ""))
+	trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "main", "turn", control.Completed, control.HostFailure{}))
 	syncLogicalWork(&f.ui.attached, &f.ui.Live, f.threads, f.ui.clock())
 	appServerTestNotify(t, f.ui, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "completed"}})
-	trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "worker", "turn", control.Completed, ""))
+	trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "worker", "turn", control.Completed, control.HostFailure{}))
 	m, _ := f.threads.shared.Member("main")
 	_, err := f.threads.shared.ClaimEffect(t.Context(), "main", m.Stop.Wait)
 	trafficCheck(t, err)
@@ -214,11 +214,11 @@ func TestCompletionGuardWaitsForExactReduction(t *testing.T) {
 			f := interruptedTrafficUI(t, false)
 			turn := "turn"
 			if scenario != "completion-queued" {
-				trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "main", turn, control.Interrupted, ""))
+				trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "main", turn, control.Interrupted, control.HostFailure{}))
 				turn = "next"
 			}
 			if scenario == "child-already-settled" {
-				trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "worker", "turn", control.Completed, ""))
+				trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "worker", "turn", control.Completed, control.HostFailure{}))
 			}
 			appServerTestNotify(t, f.ui, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn}})
 			syncLogicalWork(&f.ui.attached, &f.ui.Live, f.threads, f.ui.clock())
@@ -246,7 +246,7 @@ func TestCompletionGuardWaitsForExactReduction(t *testing.T) {
 			if turn == "next" {
 				trafficCheck(t, f.threads.shared.RequestStarted(t.Context(), control.Identity{Thread: "main", Session: "main-session", Turn: turn}, true))
 			}
-			trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "main", turn, control.Completed, ""))
+			trafficCheck(t, f.threads.shared.HostCompleted(t.Context(), "main", turn, control.Completed, control.HostFailure{}))
 			if scenario == "continuation-acknowledged" {
 				member, _ := f.threads.shared.Member("main")
 				effect, err := f.threads.shared.ClaimEffect(t.Context(), "main", member.Stop.Wait)

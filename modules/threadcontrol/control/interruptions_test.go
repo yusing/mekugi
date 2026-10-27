@@ -20,7 +20,7 @@ func TestInterruptionsCorrelateWorkWithoutParentDelivery(t *testing.T) {
 	if before.Outcome("root", action.ID) != "" {
 		t.Fatal("acknowledgement became completion")
 	}
-	must(t, s.HostCompleted(t.Context(), "b", "bt", Interrupted, ""))
+	must(t, s.HostCompleted(t.Context(), "b", "bt", Interrupted, HostFailure{}))
 	after := s.Interruptions("root", before)
 	if after.Outcome("root", action.ID) != Interrupted || before.Outcome("root", action.ID) != "" {
 		t.Fatal("non-parent outcome missing or publication mutated")
@@ -51,11 +51,11 @@ func TestInterruptionsCorrelateWorkWithoutParentDelivery(t *testing.T) {
 	if publication.Outcome("root", action.ID) != "" {
 		t.Fatal("old generation settled new interruption")
 	}
-	must(t, s.HostCompleted(t.Context(), "b", "bt", Interrupted, ""))
+	must(t, s.HostCompleted(t.Context(), "b", "bt", Interrupted, HostFailure{}))
 	if got := s.Interruptions("root", publication); got != publication || got.Outcome("root", action.ID) != "" {
 		t.Fatal("delayed old terminal changed the new interruption")
 	}
-	must(t, s.HostCompleted(t.Context(), "b", "bt-new", Failed, "host failed"))
+	must(t, s.HostCompleted(t.Context(), "b", "bt-new", Failed, HostFailure{Message: "host failed"}))
 	settled := s.Interruptions("root", publication)
 	if settled.Outcome("root", action.ID) != Failed || settled.Outcome("root", priorID) != Interrupted || publication.Outcome("root", action.ID) != "" {
 		t.Fatal("current terminal failed to settle only its generation immutably")
@@ -115,7 +115,7 @@ func TestQueuedOldInterruptCannotCancelNewGeneration(t *testing.T) {
 	caller.Call = "old-interrupt"
 	interrupt, err := s.PrepareAction(t.Context(), caller, "worker", "interrupt", "")
 	must(t, err)
-	must(t, s.HostCompleted(t.Context(), "worker", "wt", Completed, ""))
+	must(t, s.HostCompleted(t.Context(), "worker", "wt", Completed, HostFailure{}))
 	caller.Call = "new-followup"
 	next, err := s.PrepareAction(t.Context(), caller, "worker", "followup", "new work")
 	must(t, err)

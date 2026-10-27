@@ -41,6 +41,7 @@ type nativeThreadsProvider struct {
 	compactWait                             bool
 	earlyCompletion                         bool
 	preload                                 bool
+	recoverFailure                          bool
 	calls                                   map[string]int
 	users                                   int
 	waiting, mailbox                        chan struct{}
@@ -286,7 +287,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				failure = fmt.Sprintf("shell continuation: same_turn=%t user_items=%d want=%d shell_records=%d has_output=%t", metadata.TurnID == p.waitTurn, users, p.users+1, strings.Count(string(body), "<user_shell_command>"), strings.Contains(string(body), "SHELL_WAIT_OUTPUT"))
 			}
 		} else if metadata.TurnID == p.waitTurn || !p.compactWait && users != p.users || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "/root/worker") || !strings.Contains(string(body), "wait_agent") {
-			failure = "local stop inferred again or wake omitted retained attributed result/added human input"
+			failure = fmt.Sprintf("local stop/wake: same_turn=%t users=%d want=%d final=%t task=%t wait=%t", metadata.TurnID == p.waitTurn, users, p.users, strings.Contains(string(body), "MANAGED_CHILD_FINAL"), strings.Contains(string(body), "/root/worker"), strings.Contains(string(body), "wait_agent"))
 		}
 		answer = "MANAGED_PARENT_RESUMED"
 	case parent && step == 6:
@@ -403,6 +404,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 	}
 	id := fmt.Sprintf("managed-%s-%d", metadata.ThreadID, step)
+	if parent && step == 4 && p.recoverFailure {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "data: {\"type\":\"response.failed\",\"response\":{\"id\":%q,\"status\":\"failed\",\"output\":[],\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"MANAGED_PARENT_OVERLOADED\"}}}\n\n", id)
+		return
+	}
 	item := map[string]any{"type": "message", "id": id, "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": answer}}}
 	if program != "" {
 		item = map[string]any{"type": "custom_tool_call", "id": id, "call_id": id + "-call", "name": "exec", "namespace": "functions", "input": program, "status": "completed"}
@@ -427,6 +433,10 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 // semantic controls without a terminal renderer or live provider credentials.
 func TestNativeThreadsServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{})
+}
+
+func TestNativeThreadsRecoverableParentServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{recoverFailure: true})
 }
 
 func TestNativeThreadsFullHistoryServerOwnedCodex(t *testing.T) {
@@ -454,7 +464,7 @@ func TestNativeThreadsPreloadServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
-	fullHistory, shellWait, compactWait, earlyCompletion, nonGit, preload bool
+	fullHistory, shellWait, compactWait, earlyCompletion, nonGit, preload, recoverFailure bool
 }
 
 func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
@@ -545,7 +555,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 		}
 	}
-	fixture := &nativeThreadsProvider{preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
+	fixture := &nativeThreadsProvider{recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
@@ -622,6 +632,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		}
 	}
 	waitingObserved, compactObserved, childReleased := false, false, false
+	failureObserved := false
 	root := event.Frame.View.Main.ID
 	_, err = connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
 		Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: root, Operation: sessionpresentation.SubmitComposer},
@@ -678,12 +689,16 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		if strings.Contains(string(body), "MANAGED_PARENT_RESUMED") {
 			break
 		}
+		failureObserved = failureObserved || strings.Contains(string(body), "MANAGED_PARENT_OVERLOADED") || strings.Contains(string(body), "out of capacity") || strings.Contains(string(body), "model is at capacity")
 		if scenario.earlyCompletion && event.Frame.View.Status.Session.CompletionKnown {
 			t.Fatal("early completion published a completed parent while its child was running")
 		}
 		if shellWait && waitingObserved && event.Frame.View.Status.Session.CompletionKnown {
 			t.Fatal("standalone shell marked Main done before model continuation")
 		}
+	}
+	if scenario.recoverFailure && !failureObserved {
+		t.Fatal("recovery hid the provider failure")
 	}
 	if shellWait {
 		fixture.mu.Lock()
@@ -781,7 +796,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		}
 	}
 
-	if scenario.preload || scenario.compactWait || scenario.earlyCompletion {
+	if scenario.preload || scenario.compactWait || scenario.earlyCompletion || scenario.recoverFailure {
 		return // Acquisition and prompt projection acceptance finish before cold recovery.
 	}
 

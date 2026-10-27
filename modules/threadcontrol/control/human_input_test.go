@@ -8,7 +8,7 @@ func TestHumanChildInputAdmissionAndSettlement(t *testing.T) {
 			s, _ := fixture(t)
 			child(t, s, "root", "worker", "/root/worker", "original")
 			if state != "running" {
-				must(t, s.HostCompleted(t.Context(), "worker", "original", Completed, ""))
+				must(t, s.HostCompleted(t.Context(), "worker", "original", Completed, HostFailure{}))
 			}
 			before, _ := s.Member("worker")
 			effect, err := s.HumanInput(t.Context(), "worker", "human")
@@ -65,7 +65,7 @@ func TestHumanChildInputAdmissionAndSettlement(t *testing.T) {
 				}
 			} else {
 				must(t, s.AnswerCompleted(t.Context(), "worker", turn, "human assignment result"))
-				must(t, s.HostCompleted(t.Context(), "worker", turn, Completed, ""))
+				must(t, s.HostCompleted(t.Context(), "worker", turn, Completed, HostFailure{}))
 			}
 			must(t, s.EffectAcknowledged(t.Context(), "worker", "human", receipt))
 			tree, err := s.Snapshot("worker")
@@ -102,7 +102,7 @@ func TestHumanInputPreservesMainAndOrdering(t *testing.T) {
 		t.Fatal("ordinary Main input acquired child coordination")
 	}
 	child(t, s, "root", "worker", "/root/worker", "original")
-	must(t, s.HostCompleted(t.Context(), "worker", "original", Completed, ""))
+	must(t, s.HostCompleted(t.Context(), "worker", "original", Completed, HostFailure{}))
 	caller := identity("root", "rt")
 	_, err = s.PrepareAction(t.Context(), caller, "worker", "followup", "agent assignment")
 	must(t, err)
@@ -114,7 +114,7 @@ func TestHumanInputPreservesMainAndOrdering(t *testing.T) {
 func TestRejectedIdleFollowupReleasesReservation(t *testing.T) {
 	s, _ := fixture(t)
 	child(t, s, "root", "worker", "/root/worker", "original")
-	must(t, s.HostCompleted(t.Context(), "worker", "original", Completed, ""))
+	must(t, s.HostCompleted(t.Context(), "worker", "original", Completed, HostFailure{}))
 	caller := identity("root", "rt")
 	effect, err := s.PrepareAction(t.Context(), caller, "worker", "followup", "new assignment")
 	must(t, err)

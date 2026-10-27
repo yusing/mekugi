@@ -29,7 +29,7 @@ func (retainedInspectionNative) Inspect(context.Context, string) (control.Sessio
 
 func TestInspectCompletedAgentWithoutRuntime(t *testing.T) {
 	driver, host, _, caller := reconciliationFixture(t)
-	if err := driver.control.HostCompleted(t.Context(), "child", "child-turn", control.Completed, ""); err != nil {
+	if err := driver.control.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}); err != nil {
 		t.Fatal(err)
 	}
 	driver.host = retainedInspectionNative{Native: host}
@@ -161,7 +161,7 @@ func TestMetricsCancellationSettlesUndispatchedWake(t *testing.T) {
 	if _, err := d.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, ""); err != nil {
+	if err := d.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, control.HostFailure{}); err != nil {
 		t.Fatal(err)
 	}
 	child := control.Identity{Thread: "child", Session: "child-session", Turn: "child-turn", Call: "message", Item: "child-exec"}

@@ -61,15 +61,15 @@ func TestFollowupWaitsForCommittedLocalStop(t *testing.T) {
 	if dispatch != nil {
 		t.Fatal("follow-up raced committed local stop")
 	}
-	must(t, s.HostCompleted(t.Context(), "worker", "wt", Completed, ""))
+	must(t, s.HostCompleted(t.Context(), "worker", "wt", Completed, HostFailure{}))
 	dispatch, err = s.ClaimEffect(t.Context(), caller.Thread, action.ID)
 	must(t, err)
 	if dispatch == nil || dispatch.Kind != "followup" || dispatch.Generation != 1 {
 		t.Fatalf("settled follow-up = %+v", dispatch)
 	}
 	hostStarted(t, s, "worker", "wt2")
-	must(t, s.HostCompleted(t.Context(), "leaf", "lt", Completed, ""))
-	must(t, s.HostCompleted(t.Context(), "worker", "wt2", Completed, ""))
+	must(t, s.HostCompleted(t.Context(), "leaf", "lt", Completed, HostFailure{}))
+	must(t, s.HostCompleted(t.Context(), "worker", "wt2", Completed, HostFailure{}))
 	must(t, s.EffectAcknowledged(t.Context(), caller.Thread, action.ID, Receipt{Turn: "wt2"}))
 	tree, err := s.Snapshot("root")
 	must(t, err)

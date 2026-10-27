@@ -60,7 +60,7 @@ func TestAppServerCompactPreservesLogicalWait(t *testing.T) {
 					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID))
 					notify("turn/started", `{"threadId":"main","turn":{"id":"first-compact"}}`)
 					appServerTestKeys(t, u, "/compact\t")
-					notify("turn/completed", fmt.Sprintf(`{"threadId":"main","turn":{"id":"first-compact","status":%q}}`, test.retryAfter))
+					notify("turn/completed", fmt.Sprintf(`{"threadId":"main","turn":{"id":"first-compact","status":%q,"error":{"message":"compact failed","codexErrorInfo":"serverOverloaded"}}}`, test.retryAfter))
 					if test.retryAfter == "interrupted" {
 						if u.Editor.Text != "/compact" {
 							t.Fatalf("interruption lost queued command: %q", u.Editor.Text)

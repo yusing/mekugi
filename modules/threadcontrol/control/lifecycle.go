@@ -118,12 +118,16 @@ func (s *Service) CheckpointWait(ctx context.Context, thread, turn string) error
 func (tree *Tree) activeDescendants(member *Member) []string {
 	var names []string
 	for _, child := range tree.Members {
-		if strings.HasPrefix(child.Task, member.Task+"/") && (child.Status == Pending || child.Status == Working || child.Status == Waiting) {
+		if child.activeDescendantOf(member) {
 			names = append(names, child.Task)
 		}
 	}
 	slices.Sort(names)
 	return names
+}
+
+func (member *Member) activeDescendantOf(parent *Member) bool {
+	return strings.HasPrefix(member.Task, parent.Task+"/") && (member.Status == Pending || member.Status == Working || member.Status == Waiting)
 }
 
 func (tree *Tree) completionStop(member *Member) *LocalStop {
@@ -144,7 +148,7 @@ func (tree *Tree) cancelCompletion(member *Member) {
 	effect.State = "canceled"
 }
 
-func (s *Service) HostCompleted(ctx context.Context, thread, turn string, status Status, failure string) error {
+func (s *Service) HostCompleted(ctx context.Context, thread, turn string, status Status, failure HostFailure) error {
 	return s.update(ctx, thread, func(tree *Tree, member *Member) error {
 		if member.Turn != turn || !member.HostRunning {
 			return unchanged
@@ -157,6 +161,34 @@ func (s *Service) HostCompleted(ctx context.Context, thread, turn string, status
 			effect := &tree.Effects[i]
 			if effect.Target == thread && effect.Kind == "interrupt" && effect.Turn == turn && hostOwned(effect.State) {
 				effect.State, effect.Error = "confirmed", ""
+			}
+		}
+		if status == Failed && failure.Recoverable {
+			recovery := make(map[string]uint64)
+			var targets []string
+			for id, child := range tree.Members {
+				if strings.HasPrefix(child.Task, member.Task+"/") {
+					targets = append(targets, id)
+				}
+				if child.activeDescendantOf(member) {
+					recovery[id] = child.Generation
+				}
+			}
+			if len(recovery) != 0 {
+				slices.Sort(targets)
+				tree.cancelCompletion(member)
+				id := fmt.Sprintf("%s:%d:%s:recovery", thread, member.Generation, turn)
+				wait := &Wait{Effect: Effect{ID: id, Caller: thread, Target: thread, Generation: member.Generation, Turn: turn, CallerTurn: turn, Kind: "wake", State: "registered"}, Targets: targets, All: true, Recovery: recovery, Stop: "committed"}
+				if member.Wait != nil && hostOwned(member.Wait.State) {
+					// The preceding wake still owns its dispatch/reconciliation identity.
+					member.RecoveryWait = wait
+				} else {
+					cancelSubscription(tree, member)
+					member.Wait = wait
+				}
+				member.Stop = &LocalStop{Generation: member.Generation, Turn: turn, Wait: id}
+				member.Status = Waiting
+				return nil
 			}
 		}
 		if stop := member.Stop; status == Completed && stop != nil && stop.Turn == turn && stop.Generation == member.Generation {
@@ -173,9 +205,9 @@ func (s *Service) HostCompleted(ctx context.Context, thread, turn string, status
 				tree.Effects = append(tree.Effects, Effect{ID: stop.Wait, Caller: thread, CallerTurn: turn, Target: thread, Kind: "completion", State: "pending", Generation: member.Generation})
 				return nil
 			}
-			failure = member.LastAnswer
+			failure.Message = member.LastAnswer
 		}
-		tree.finish(member, status, failure)
+		tree.finish(member, status, failure.Message)
 		return nil
 	})
 }
@@ -214,6 +246,9 @@ func pause(tree *Tree, thread string) {
 		member.HostRunning, member.Turn = false, ""
 		if member.Wait != nil {
 			member.Wait.State = pausedState(member.Wait.State)
+		}
+		if member.RecoveryWait != nil {
+			member.RecoveryWait.State = pausedState(member.RecoveryWait.State)
 		}
 	}
 	for i := range tree.Effects {

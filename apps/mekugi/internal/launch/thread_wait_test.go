@@ -24,7 +24,7 @@ import (
 func logicalWaitUI(t *testing.T, timeout *int64) (*appServerUI, *threadExecution, *time.Time) {
 	u, threads, at := logicalWaitRunningUI(t, timeout)
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first", "status": "completed"}})
-	if err := threads.shared.HostCompleted(t.Context(), "main", "first", control.Completed, ""); err != nil {
+	if err := threads.shared.HostCompleted(t.Context(), "main", "first", control.Completed, control.HostFailure{}); err != nil {
 		t.Fatal(err)
 	}
 	return u, threads, at
@@ -272,7 +272,7 @@ func TestRecoveryInputRetriesWithoutAnotherHostMessage(t *testing.T) {
 func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		u, threads, _ := logicalWaitUI(t, new(int64(1000)))
-		if err := threads.shared.HostCompleted(t.Context(), "child", "child-turn", control.Completed, ""); err != nil {
+		if err := threads.shared.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}); err != nil {
 			t.Fatal(err)
 		}
 		before, err := threads.shared.Snapshot("child")
@@ -337,7 +337,7 @@ func TestLogicalStoppedTargetPublishesWakeReason(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				if err := service.HostCompleted(t.Context(), "child", "child-turn", status, ""); err != nil {
+				if err := service.HostCompleted(t.Context(), "child", "child-turn", status, control.HostFailure{}); err != nil {
 					t.Fatal(err)
 				}
 				tree, err := service.Snapshot("child")

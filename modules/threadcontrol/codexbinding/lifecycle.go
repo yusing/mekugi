@@ -201,9 +201,9 @@ func (d *Driver) reduceHost() {
 				err = d.control.AnswerCompleted(d.lifecycle, thread, p.TurnID, p.Item.Text)
 			}
 		case "turn/completed":
-			failure := ""
+			failure := control.HostFailure{}
 			if p.Turn.Error != nil {
-				failure = p.Turn.Error.Message
+				failure.Message, failure.Recoverable = p.Turn.Error.Message, p.Turn.Error.Recoverable()
 			}
 			err = d.control.HostCompleted(d.lifecycle, thread, p.Turn.ID, control.Status(p.Turn.Status), failure)
 		}
@@ -214,7 +214,7 @@ func (d *Driver) reduceHost() {
 		if err == nil && (event.method == "turn/completed" || event.method == "compaction/stopped" || event.method == "human/interrupt" || event.method == "human/input" || event.method == "") {
 			err = d.DispatchPending(d.lifecycle, thread)
 			err = errors.Join(err, d.Wake(d.lifecycle, thread, time.Now()))
-			if member, ok := d.control.Member(thread); ok && member.Parent != "" {
+			for member, ok := d.control.Member(thread); ok && member.Parent != ""; member, ok = d.control.Member(member.Parent) {
 				err = errors.Join(err, d.Wake(d.lifecycle, member.Parent, time.Now()))
 			}
 		}

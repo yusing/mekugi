@@ -20,11 +20,40 @@ type TokenUsage struct {
 }
 
 type Turn struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Error  *struct {
-		Message string `json:"message"`
-	} `json:"error"`
+	ID     string     `json:"id"`
+	Status string     `json:"status"`
+	Error  *TurnError `json:"error"`
+}
+
+type TurnError struct {
+	Message        string         `json:"message"`
+	CodexErrorInfo jsontext.Value `json:"codexErrorInfo"`
+}
+
+// Recoverable identifies transient host failures without interpreting prose.
+func (e *TurnError) Recoverable() bool {
+	var code string
+	if e.CodexErrorInfo.Kind() == '"' {
+		_ = json.Unmarshal(e.CodexErrorInfo, &code)
+	} else if e.CodexErrorInfo.Kind() == '{' {
+		var variants map[string]struct {
+			HTTPStatusCode *int `json:"httpStatusCode"`
+		}
+		if json.Unmarshal(e.CodexErrorInfo, &variants) != nil || len(variants) != 1 {
+			return false
+		}
+		for name, details := range variants {
+			if status := details.HTTPStatusCode; status != nil && *status >= 400 && *status < 500 && *status != 408 {
+				return false
+			}
+			code = name
+		}
+	}
+	switch code {
+	case "serverOverloaded", "internalServerError", "responseStreamConnectionFailed", "responseStreamDisconnected", "responseTooManyFailedAttempts":
+		return true
+	}
+	return false
 }
 
 type Notification struct {

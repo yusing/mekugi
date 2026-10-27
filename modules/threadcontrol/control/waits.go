@@ -106,6 +106,20 @@ func (tree *Tree) selectWaitOutcome(wait *Wait) bool {
 		event.ClaimedBy = wait.ID
 		return true
 	}
+	if len(wait.Recovery) != 0 {
+		for i := range tree.Effects {
+			effect := &tree.Effects[i]
+			generation, selected := wait.Recovery[effect.Caller]
+			if selected && effect.Kind == "final" && effect.delivered() && generation == effect.CallerGeneration {
+				// A terminal coordinator cannot relay a fresh nested result. Observe
+				// the captured work's outcome without claiming its recipient's input.
+				wait.Terminal = tree.event(*effect)
+				wait.Terminal.Recipient = wait.Caller
+				return true
+			}
+		}
+		return false // Only captured active work can supply a terminal-outcome wake.
+	}
 	for _, id := range wait.Targets {
 		member := tree.Members[id]
 		if member == nil || member.HostRunning || member.Status != Completed && member.Status != Failed && member.Status != Interrupted && member.Status != Paused {
@@ -265,7 +279,11 @@ func (s *Service) WaitPublication(thread string) *WaitResult {
 		return nil
 	}
 	tree := owner.state.Load()
-	wait := tree.Members[thread].Wait
+	member := tree.Members[thread]
+	wait := member.Wait
+	if member.RecoveryWait != nil {
+		wait = member.RecoveryWait
+	}
 	if wait == nil {
 		return nil
 	}

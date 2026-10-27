@@ -263,6 +263,9 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 					tree.finish(member, Failed, receipt.Error)
 				}
 			}
+			if !receipt.Uncertain && member != nil {
+				member.settleRecovery()
+			}
 			return nil
 		}
 		effect.State = "confirmed"
@@ -304,8 +307,20 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 		if effect.Kind == "create" && effect.State == "pending" && member != nil && member.Status == Paused {
 			effect.State = "paused"
 		}
+		if member != nil {
+			member.settleRecovery()
+		}
 		return nil
 	})
+}
+
+func (member *Member) settleRecovery() {
+	if member.RecoveryWait != nil && !hostOwned(member.Wait.State) {
+		member.Wait, member.RecoveryWait = member.RecoveryWait, nil
+		if member.Status == Uncertain {
+			member.Status = Waiting
+		}
+	}
 }
 
 func effectStep(effect Effect) string {

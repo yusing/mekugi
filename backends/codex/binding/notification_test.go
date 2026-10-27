@@ -79,3 +79,26 @@ func TestNotificationControlAndHookEnvelope(t *testing.T) {
 		t.Fatalf("hook envelope lost: %+v %v", p, err)
 	}
 }
+
+func TestNotificationRecoverableTurnFailure(t *testing.T) {
+	for _, tc := range []struct {
+		info string
+		want bool
+	}{
+		{`"serverOverloaded"`, true}, {`"internalServerError"`, true},
+		{`{"responseStreamConnectionFailed":{"httpStatusCode":503}}`, true},
+		{`{"responseStreamDisconnected":{"httpStatusCode":null}}`, true},
+		{`{"responseTooManyFailedAttempts":{"httpStatusCode":502}}`, true},
+		{`{"responseStreamConnectionFailed":{"httpStatusCode":401}}`, false},
+		{`{"responseTooManyFailedAttempts":{"httpStatusCode":429}}`, false},
+		{`"unauthorized"`, false}, {`"usageLimitExceeded"`, false},
+		{`"badRequest"`, false}, {`"futureError"`, false}, {`null`, false},
+	} {
+		t.Run(tc.info, func(t *testing.T) {
+			p, err := DecodeNotification("turn/completed", []byte(`{"threadId":"thread","turn":{"id":"turn","status":"failed","error":{"message":"failure detail","codexErrorInfo":`+tc.info+`}}}`))
+			if err != nil || p.Turn.Error == nil || p.Turn.Error.Message != "failure detail" || p.Turn.Error.Recoverable() != tc.want || string(p.Turn.Error.CodexErrorInfo) != tc.info {
+				t.Fatalf("failure classification/evidence: %+v %v", p.Turn.Error, err)
+			}
+		})
+	}
+}

@@ -139,7 +139,7 @@ func stop(t *testing.T, s *Service, id Identity) {
 	if ok == nil {
 		t.Fatal("local stop not admitted")
 	}
-	must(t, s.HostCompleted(t.Context(), id.Thread, id.Turn, Completed, ""))
+	must(t, s.HostCompleted(t.Context(), id.Thread, id.Turn, Completed, HostFailure{}))
 }
 func deliver(t *testing.T, s *Service, thread string) {
 	t.Helper()
@@ -173,7 +173,7 @@ func TestNestedStopWaitPreservesLogicalWork(t *testing.T) {
 		t.Fatalf("local stop settled child: %+v", state)
 	}
 	must(t, s.AnswerCompleted(ctx, "grandchild", "gt", "grandchild result"))
-	must(t, s.HostCompleted(ctx, "grandchild", "gt", Completed, ""))
+	must(t, s.HostCompleted(ctx, "grandchild", "gt", Completed, HostFailure{}))
 	if wake, err := claimWake(t, s, ctx, "child", now); err != nil || wake != nil {
 		t.Fatalf("completion woke before result injection: %v, %v", wake, err)
 	}
@@ -188,7 +188,7 @@ func TestNestedStopWaitPreservesLogicalWork(t *testing.T) {
 		t.Fatalf("duplicate child wake: %v, %v", again, err)
 	}
 	must(t, s.AnswerCompleted(ctx, "child", "ct2", "ordinary child result"))
-	must(t, s.HostCompleted(ctx, "child", "ct2", Completed, ""))
+	must(t, s.HostCompleted(ctx, "child", "ct2", Completed, HostFailure{}))
 	deliver(t, s, "child")
 	parentWake, err := claimWake(t, s, ctx, "root", now)
 	must(t, err)
@@ -243,7 +243,7 @@ func TestWaitAnyConsumesOnlyUnseenEvents(t *testing.T) {
 		t.Fatalf("consumed event was delivered twice: %+v", wait)
 	}
 	stop(t, s, caller)
-	must(t, s.HostCompleted(t.Context(), "a", "at", Completed, ""))
+	must(t, s.HostCompleted(t.Context(), "a", "at", Completed, HostFailure{}))
 	deliver(t, s, "a")
 	wake, err = claimWake(t, s, t.Context(), "root", time.Now())
 	must(t, err)
@@ -259,7 +259,7 @@ func TestWaitAnyConsumesOnlyUnseenEvents(t *testing.T) {
 func TestStoppedTargetAfterRestartKeepsResultConsumed(t *testing.T) {
 	s, session := fixture(t)
 	child(t, s, "root", "a", "/root/a", "at")
-	must(t, s.HostCompleted(t.Context(), "a", "at", Completed, ""))
+	must(t, s.HostCompleted(t.Context(), "a", "at", Completed, HostFailure{}))
 	deliver(t, s, "a")
 	tree, err := s.Snapshot("root")
 	must(t, err)
@@ -296,9 +296,9 @@ func TestWakeDispatchSurvivesTerminalAndColdRestore(t *testing.T) {
 			}
 			wake.Event.Message = "caller mutation"
 			if terminal {
-				must(t, s.HostCompleted(t.Context(), "child", "ct", Completed, ""))
+				must(t, s.HostCompleted(t.Context(), "child", "ct", Completed, HostFailure{}))
 				hostStarted(t, s, "root", "next")
-				must(t, s.HostCompleted(t.Context(), "root", "next", Completed, ""))
+				must(t, s.HostCompleted(t.Context(), "root", "next", Completed, HostFailure{}))
 				must(t, s.EffectAcknowledged(t.Context(), "root", wake.ID, Receipt{Uncertain: true}))
 			} else {
 				tree, err := s.Snapshot("root")
@@ -404,7 +404,7 @@ func TestColdResumeDoesNotRearmOrRedispatch(t *testing.T) {
 	must(t, err)
 	stop(t, s, id)
 	must(t, s.AnswerCompleted(ctx, "a", "at", "result"))
-	must(t, s.HostCompleted(ctx, "a", "at", Completed, ""))
+	must(t, s.HostCompleted(ctx, "a", "at", Completed, HostFailure{}))
 	restored := New()
 	must(t, restored.AdmitRoot(ctx, session, &Member{Thread: "root", Session: "root-session", Task: "/root"}))
 	if d, err := claimPending(t, restored, ctx, "a"); err != nil || d != nil {
@@ -424,7 +424,7 @@ func TestUncertainResultDoesNotCreateSuccessfulWake(t *testing.T) {
 	s, _ := fixture(t)
 	ctx := context.Background()
 	child(t, s, "root", "a", "/root/a", "at")
-	must(t, s.HostCompleted(ctx, "a", "at", Completed, ""))
+	must(t, s.HostCompleted(ctx, "a", "at", Completed, HostFailure{}))
 	d, err := claimPending(t, s, ctx, "a")
 	must(t, err)
 	must(t, s.EffectAcknowledged(ctx, "a", d.ID, Receipt{Error: "acknowledgement lost", Uncertain: true}))
@@ -464,7 +464,7 @@ func TestRequestAdmissionReusesPublishedState(t *testing.T) {
 	if owner.state.Load().Members["root"].Settings.RuntimeRoots[0] == member.Settings.RuntimeRoots[0] {
 		t.Fatal("caller mutated the admitted member")
 	}
-	must(t, s.HostCompleted(t.Context(), "root", "rt", Completed, ""))
+	must(t, s.HostCompleted(t.Context(), "root", "rt", Completed, HostFailure{}))
 	caller.Turn = "next"
 	must(t, s.RequestStarted(t.Context(), caller, true))
 	if member := owner.state.Load().Members["root"]; member.Generation != 2 || member.Turn != "next" || !member.Reserved() {
@@ -585,7 +585,7 @@ func TestWaitWakeReasonSurvivesRootTurnObservation(t *testing.T) {
 	_, err := s.RegisterWait(t.Context(), id, nil, true, nil, time.Unix(100, 0))
 	must(t, err)
 	stop(t, s, id)
-	must(t, s.HostCompleted(t.Context(), "child", "ct", Completed, ""))
+	must(t, s.HostCompleted(t.Context(), "child", "ct", Completed, HostFailure{}))
 	deliver(t, s, "child")
 	wake, err := claimWake(t, s, t.Context(), "root", time.Unix(101, 0))
 	must(t, err)
@@ -593,7 +593,7 @@ func TestWaitWakeReasonSurvivesRootTurnObservation(t *testing.T) {
 		t.Fatal("no completion wake")
 	}
 	must(t, s.EffectAcknowledged(t.Context(), "root", wake.ID, Receipt{Turn: "next"}))
-	must(t, s.HostCompleted(t.Context(), "root", "next", Completed, ""))
+	must(t, s.HostCompleted(t.Context(), "root", "next", Completed, HostFailure{}))
 	must(t, s.RequestStarted(t.Context(), identity("root", "later"), true))
 	tree, err := s.Snapshot("root")
 	must(t, err)
@@ -616,7 +616,7 @@ func TestStoppedTargetsSettleWaits(t *testing.T) {
 						must(t, s.Pause(t.Context(), "stopped"))
 						return
 					}
-					must(t, s.HostCompleted(t.Context(), "stopped", "stopped-turn", status, ""))
+					must(t, s.HostCompleted(t.Context(), "stopped", "stopped-turn", status, HostFailure{}))
 					deliver(t, s, "stopped")
 					// The result was already read before this wait; its stopped
 					// state must still avoid an indefinite subscription.

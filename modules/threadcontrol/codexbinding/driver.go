@@ -82,7 +82,16 @@ func (d *Driver) DispatchPending(ctx context.Context, thread string) error {
 			break // Re-read to include controls queued during this dispatch.
 		}
 		if !progressed {
-			return nil
+			member := tree.Members[thread]
+			if member == nil || member.Wait == nil || len(member.Wait.Recovery) == 0 || member.Wait.State != "registered" {
+				return nil
+			}
+			// Settlement can promote recovery while a result was held behind
+			// the preceding dispatch. Drain that newly eligible continuation.
+			wake, err := d.control.PrepareWake(ctx, thread, time.Now())
+			if err != nil || wake == nil {
+				return err
+			}
 		}
 	}
 }

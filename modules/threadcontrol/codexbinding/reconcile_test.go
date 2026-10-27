@@ -15,7 +15,7 @@ import (
 func TestHumanChildResultUsesParentDelivery(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		driver, host, _, _ := reconciliationFixture(t)
-		if err := driver.control.HostCompleted(t.Context(), "child", "child-turn", control.Completed, ""); err != nil {
+		if err := driver.control.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}); err != nil {
 			t.Fatal(err)
 		}
 		if err := driver.DispatchPending(t.Context(), "child"); err != nil {
@@ -64,6 +64,7 @@ type reconciliationHost struct {
 	finalFailure      error
 	missing           bool
 	resumes           int
+	nextTurn          string
 }
 
 func (h *reconciliationHost) Inspect(ctx context.Context, thread string) (control.SessionDetails, error) {
@@ -90,6 +91,9 @@ func (h *reconciliationHost) Input(_ context.Context, input control.NativeInput)
 		return "", h.failure
 	}
 	if input.Run {
+		if h.nextTurn != "" {
+			return h.nextTurn, nil
+		}
 		return input.Thread + "-turn", nil
 	}
 	return "", nil
@@ -246,7 +250,7 @@ func TestColdWaitConfirmationDoesNotResumeOrDispatch(t *testing.T) {
 	if _, err := driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, ""); err != nil {
+	if err := driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, control.HostFailure{}); err != nil {
 		t.Fatal(err)
 	}
 	child := control.Identity{Thread: "child", Session: "child-session", Turn: "child-turn", Call: "message", Item: "child-exec"}
@@ -344,7 +348,7 @@ func TestQueuedHumanInterruptSettlesStoppedLogicalWait(t *testing.T) {
 	if _, err := driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, ""); err != nil {
+	if err := driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, control.HostFailure{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.Start(t.Context()); err != nil {
@@ -376,7 +380,7 @@ func TestRejectedFinalDeliveryWakesWithVisibleFailure(t *testing.T) {
 	if _, err := driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, ""); err != nil {
+	if err := driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, control.HostFailure{}); err != nil {
 		t.Fatal(err)
 	}
 	host.finalFailure = &binding.DispatchError{Outcome: binding.HostRejected, Cause: errors.New("injection rejected")}
@@ -404,7 +408,7 @@ func TestCompletionReceiptFollowsQueuedStartCheckpoint(t *testing.T) {
 	if err := driver.control.Pause(t.Context(), "child"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.control.HostCompleted(t.Context(), "root", "root-turn", control.Interrupted, ""); err != nil {
+	if err := driver.control.HostCompleted(t.Context(), "root", "root-turn", control.Interrupted, control.HostFailure{}); err != nil {
 		t.Fatal(err)
 	}
 	locked, release, stored := make(chan struct{}), make(chan struct{}), make(chan error, 1)

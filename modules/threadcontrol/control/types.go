@@ -51,6 +51,7 @@ type Member struct {
 	Limits                                                Limits
 	Instructions                                          []guidance.Fragment
 	Wait                                                  *Wait
+	RecoveryWait                                          *Wait
 	Stop                                                  *LocalStop
 	Preload                                               ContextPreload `json:",omitzero"`
 }
@@ -68,6 +69,11 @@ type LocalStop struct {
 	Turn, Item, Wait string
 }
 
+type HostFailure struct {
+	Message     string
+	Recoverable bool
+}
+
 // Wait owns its continuation intent, including dispatch and uncertainty.
 type Wait struct {
 	Effect
@@ -75,6 +81,7 @@ type Wait struct {
 	Item, Stop, ResumeHandle string
 	Targets                  []string
 	All                      bool
+	Recovery                 map[string]uint64
 	RequestedMS, EffectiveMS *int64
 	Deadline                 *time.Time
 	Terminal                 *Event
@@ -195,6 +202,9 @@ func (tree *Tree) edit(thread string) *Member {
 		member := *current
 		if current.Wait != nil {
 			member.Wait = new(*current.Wait)
+		}
+		if current.RecoveryWait != nil {
+			member.RecoveryWait = new(*current.RecoveryWait)
 		}
 		tree.Members[thread] = &member
 		return &member

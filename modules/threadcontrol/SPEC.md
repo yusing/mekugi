@@ -251,8 +251,19 @@ waiting, or holding an admitted pending-start reservation. One retained continua
 per attempted completed turn names the active descendants and asks the agent to wait.
 A descendant that settles before dispatch is removed from that hint; if none remain,
 the original completion proceeds without another model turn. Paused and uncertain
-retained agents do not block completion. Explicit interruption and failure keep their
-ordinary outcomes and supersede undispatched completion continuations.
+retained agents do not block completion. Explicit interruption and terminal failures
+keep their ordinary outcomes and supersede undispatched completion continuations.
+
+Confirmed overload, internal-server and response-stream failures retain logical
+waiting while descendants remain active. The native failure stays visible. One
+unread descendant result or addressed message can resume the parent through its
+ordinary retained wait delivery. Fresh terminal outcomes of captured transitive
+work also wake through a terminal coordinator without consuming that coordinator's
+input. Already-stopped targets alone cannot trigger recovery, and each notification
+is claimed once. An in-flight preceding wake retains its dispatch identity until
+settlement before the recovery wait can dispatch. Authentication, quota, invalid
+requests, interruption and unknown errors remain terminal. Recovery adds neither
+timer retries nor model switching; host-owned request retries remain unchanged.
 
 Ordinary successful terminal work first retains its last completed ordinary answer
 from that turn, including an empty payload when absent, then injects one attributed

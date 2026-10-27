@@ -38,7 +38,7 @@ func TestThreadInputConsumedWithoutExecution(t *testing.T) {
 			_, err = service.ClaimEffect(t.Context(), "root", "message")
 			check(err)
 			check(service.EffectAcknowledged(t.Context(), "root", "message", control.Receipt{}))
-			check(service.HostCompleted(t.Context(), "root", "work", control.Completed, ""))
+			check(service.HostCompleted(t.Context(), "root", "work", control.Completed, control.HostFailure{}))
 			driver, err := threadbinding.NewDriver(service)
 			check(err)
 			proxy := newManagedMekugiProxy(t)

@@ -60,7 +60,7 @@ func TestCompactionProviderTurnSeparatesSummaryAndMetadata(t *testing.T) {
 					item := map[string]any{"type": "message", "id": "model-summary", "role": "assistant", "status": "completed", "content": []map[string]string{{"type": "output_text", "text": summary + "<mekugi-reload-v1>" + metadata + "</mekugi-reload-v1>"}}}
 					response := map[string]any{"id": "provider-response", "status": status, "output": []any{item}, "usage": map[string]int{"output_tokens": 42}}
 					if status == "failed" {
-						response["error"] = map[string]string{"code": "fixture_failure", "message": "provider failure detail"}
+						response["error"] = map[string]string{"code": "server_is_overloaded", "message": "provider failure detail"}
 						response["output"] = []any{}
 					}
 					var wire bytes.Buffer
@@ -100,6 +100,9 @@ func TestCompactionProviderTurnSeparatesSummaryAndMetadata(t *testing.T) {
 				if status != "completed" {
 					if selections != 0 || !strings.Contains(output.Body.String(), `"type":"response.`+status+`"`) {
 						t.Fatalf("failed turn admitted metadata or lost terminal: %s (%v)", output.Body, err)
+					}
+					if status == "failed" && (!strings.Contains(output.Body.String(), `"code":"server_is_overloaded"`) || !strings.Contains(output.Body.String(), "provider failure detail")) {
+						t.Fatalf("compaction bridge lost failure classification/evidence: %s", output.Body)
 					}
 					return
 				}
