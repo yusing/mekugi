@@ -120,6 +120,7 @@ type Server struct {
 
 	mu              sync.Mutex
 	requests        threadcontrol.Runtime
+	sideThreads     func(string) bool
 	childAttachment func(context.Context, string, string) error
 	childAttach     sync.Mutex
 	published       bool

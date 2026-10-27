@@ -66,14 +66,34 @@ func (s *Side) Complete(turn string) bool {
 // Side notification routing shares the request ledger's client lifetime. Main
 // replacement does not retire it, and a thread close removes its original owner.
 func (r *Requests[T]) TrackSide(thread string, owner *Side) {
+	r.sidesMu.Lock()
+	defer r.sidesMu.Unlock()
 	if r.sides == nil {
 		r.sides = make(map[string]*Side)
 	}
 	r.sides[thread] = owner
 }
-func (r *Requests[T]) Side(thread string) *Side { return r.sides[thread] }
-func (r *Requests[T]) HasSides() bool           { return r != nil && len(r.sides) != 0 }
+func (r *Requests[T]) Side(thread string) *Side {
+	r.sidesMu.RLock()
+	defer r.sidesMu.RUnlock()
+	return r.sides[thread]
+}
+
+// HasSideThread lends admission to the runtime registry without exposing mutable
+// side state to inference workers. Cleanup retains the same correlation lifetime.
+func (r *Requests[T]) HasSideThread(thread string) bool { return r.Side(thread) != nil }
+
+func (r *Requests[T]) HasSides() bool {
+	if r == nil {
+		return false
+	}
+	r.sidesMu.RLock()
+	defer r.sidesMu.RUnlock()
+	return len(r.sides) != 0
+}
 func (r *Requests[T]) CloseSide(thread string) {
+	r.sidesMu.Lock()
+	defer r.sidesMu.Unlock()
 	owner := r.sides[thread]
 	if owner != nil && owner.Closed && owner.Thread == thread {
 		for id, side := range r.sides {
@@ -96,6 +116,8 @@ func (r *Requests[T]) SideThreads(owner *Side) []string {
 	if r == nil || owner == nil {
 		return nil
 	}
+	r.sidesMu.RLock()
+	defer r.sidesMu.RUnlock()
 	var threads []string
 	for thread, side := range r.sides {
 		if side == owner {

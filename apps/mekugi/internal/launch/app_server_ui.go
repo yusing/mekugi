@@ -151,6 +151,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	resumeArgv = slices.Clone(resumeArgv)
 	control.Startup.Config = appServerResumeConfig(cmd.Args, resumeArgv)
 	api.BindRequests(control.Requests)
+	api.BindSideThreads(control.Requests.HasSideThread)
 	var threadChanges <-chan struct{}
 	if threads != nil {
 		api.BindChildAttachment(threads.AttachChild)

@@ -44,6 +44,7 @@ type Requests[T any] struct {
 	preparation  atomic.Pointer[PreparedThread]
 	transport    Transport
 	pending      map[string]Request[T]
+	sidesMu      sync.RWMutex
 	sides        map[string]*Side
 	predictions  map[string]*Prediction
 	calls        chan *HostCall

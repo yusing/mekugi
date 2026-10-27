@@ -13,11 +13,37 @@ func (s *Server) BindRequests(requests threadcontrol.Runtime) {
 	s.requests = requests
 }
 
+// BindSideThreads borrows the request owner's concurrent-safe side admission.
+// Side forks use their existing host connection, not an independent runtime.
+func (s *Server) BindSideThreads(owns func(string) bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sideThreads = owns
+}
+
 func (h *Hub) Requests(thread string) (threadcontrol.Runtime, error) {
 	h.mu.Lock()
 	s := h.sessions[thread]
 	if s == nil || s.runtime == nil || s.runtime.ctx.Err() != nil {
+		runtimes := make([]*managedSession, 0, len(h.running))
+		for runtime := range h.running {
+			runtimes = append(runtimes, runtime)
+		}
 		h.mu.Unlock()
+		// Publication can enter Hub while holding the server lock. Resolve the
+		// borrowed request owner only after releasing the registry lock.
+		for _, runtime := range runtimes {
+			if runtime.ctx.Err() != nil {
+				continue
+			}
+			server := runtime.server
+			server.mu.Lock()
+			owns, requests := server.sideThreads, server.requests
+			server.mu.Unlock()
+			if requests != nil && owns != nil && owns(thread) {
+				return requests, nil
+			}
+		}
 		return nil, errors.New("thread has no running native runtime")
 	}
 	server := s.server

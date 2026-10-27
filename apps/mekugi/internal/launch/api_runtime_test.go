@@ -357,6 +357,16 @@ func serveAPIRuntimeHost(t *testing.T) {
 				t.Fatal(err)
 			}
 			result["thread"] = map[string]any{"id": "main", "cwd": workspace}
+		case "thread/fork":
+			result["thread"] = map[string]any{"id": "side"}
+		case "thread/read":
+			var params struct {
+				Thread string `json:"threadId"`
+			}
+			if err := json.Unmarshal(request.Params, &params); err != nil {
+				t.Fatal(err)
+			}
+			result["thread"] = map[string]any{"id": params.Thread, "sessionId": "fixture-session", "path": "/fixture/rollout.jsonl"}
 		case "turn/start":
 			starts++
 			turn = "turn-" + strconv.Itoa(starts)
@@ -371,7 +381,13 @@ func serveAPIRuntimeHost(t *testing.T) {
 			write(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": "main", "turn": map[string]any{"id": turn, "status": "completed"}}})
 		}
 		if request.Method == "turn/start" {
-			write(map[string]any{"method": "turn/started", "params": map[string]any{"threadId": "main", "turn": map[string]any{"id": turn}}})
+			var params struct {
+				Thread string `json:"threadId"`
+			}
+			if err := json.Unmarshal(request.Params, &params); err != nil {
+				t.Fatal(err)
+			}
+			write(map[string]any{"method": "turn/started", "params": map[string]any{"threadId": params.Thread, "turn": map[string]any{"id": turn}}})
 		}
 	}
 }
