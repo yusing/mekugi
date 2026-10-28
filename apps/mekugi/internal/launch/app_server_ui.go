@@ -661,6 +661,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		}
 		return "", err
 	}
+	var delegateApprovals *sessioncontrol.DelegateApprovals
+	if threads != nil {
+		delegateApprovals = sessioncontrol.NewDelegateApprovals(ctx)
+		threads.approvals = delegateApprovals
+	}
 	return func() error {
 		defer control.Requests.Close()
 		defer native.close()
@@ -679,6 +684,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		defer c.Input.Close()
 		defer func() { discardDraftImages(ownedImages) }()
 		defer c.Output.Close()
+		defer delegateApprovals.Close()
 		exited := false
 		var err error
 		runLoop := func() error {
@@ -770,6 +776,8 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					persistSessionTitle(&control, generator, &attached.feedback, shell, clock, update)
 				case request := <-guard.Requests():
 					addGuardApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, panel != nil || resumePicker != nil, notifications, reviewOwner, &receipts, request)
+				case request := <-delegateApprovals.Requests():
+					addDelegateApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, panel != nil || resumePicker != nil, notifications, reviewOwner, &receipts, request)
 				case call := <-control.Calls():
 					control.Dispatch(call)
 				case inspection := <-control.Requests.Inspections():

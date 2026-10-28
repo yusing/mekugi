@@ -2,8 +2,12 @@ package launch
 
 import (
 	"context"
+	"errors"
+	"os"
+	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -22,6 +26,13 @@ func (e *threadExecution) Inspect(ctx context.Context, thread string) (control.S
 	}
 	if err := ctx.Err(); err != nil {
 		return control.SessionDetails{}, err
+	}
+	if strings.HasPrefix(member.Settings.Model, "claude:") {
+		details, err := sessioncontrol.ReadClaudeDetails(ctx, thread, member.Path)
+		if errors.Is(err, os.ErrNotExist) {
+			err = nil
+		}
+		return details, err
 	}
 	observed := rollout.ReadObservations(ctx, thread, member.Path)
 	if err := ctx.Err(); err != nil {

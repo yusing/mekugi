@@ -48,3 +48,15 @@ func TestModuleRejectsDuplicateAndAmbiguousRecordKinds(t *testing.T) {
 		t.Fatal("ambiguous recognition accepted")
 	}
 }
+
+func TestModuleApplicationReceiptKinds(t *testing.T) {
+	match := func(name string) bool { return name == "native-receipt.json" }
+	deps := sessionhistory.Deps{RecordKinds: []recordkind.Spec{{ID: "native", Match: match}}}
+	service := moduletest.New(t, sessionhistory.Module, deps, module.Slots{}, nil)
+	if kind, found, err := service.Kind("native-receipt.json"); err != nil || !found || kind.ID != "native" {
+		t.Fatalf("application receipt: %+v, %v, %v", kind, found, err)
+	}
+	if _, err := sessionhistory.Module.New(deps, module.Slots{RecordKinds: deps.RecordKinds}); err == nil {
+		t.Fatal("application and feature record collision accepted")
+	}
+}

@@ -5,7 +5,7 @@ RTK := $(shell rtk --version >/dev/null 2>&1 && printf rtk)
 GO_OUTPUT = $(if $(filter-out go,$(GO)),,$(RTK)) $(GO)
 # Reuse compiled packages across implementation, review, and staged checkouts.
 GO_BUILD_FLAGS ?= -trimpath
-.PHONY: build build-binaries webui webui-check webui-fmt generate check-generated workspace-check install uninstall mekugi-pprof preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
+.PHONY: build build-binaries claude-worker claude-worker-check webui webui-check webui-fmt generate check-generated workspace-check install uninstall mekugi-pprof preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
 
 WORKSPACE = $(GO) run $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/workspace
 BUILD_OUTPUT ?= bin
@@ -28,7 +28,7 @@ HOST_ACCEPTANCE_TESTS := TestNativeToolFrontendCodexE2E \
 SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= @snapshots
 
-install: workspace-check webui
+install: workspace-check webui claude-worker
 	$(GO) install $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
 
 uninstall:
@@ -40,13 +40,26 @@ workspace-check:
 build: workspace-check
 	$(WORKSPACE) run $(GO_OUTPUT) build $(GO_BUILD_FLAGS) @workspace
 
-build-binaries: webui
+build-binaries: webui claude-worker
 	$(MAKE) --no-print-directory build
 	$(GO_OUTPUT) build $(GO_BUILD_FLAGS) -ldflags='$(BUILD_LDFLAGS)' -o '$(BUILD_OUTPUT)/' ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
 
 # Browser assets embedded by `mekugi web`. Go tests and plain Go builds work
 # without Bun or Node.js; an unbundled UI host reports how to build its assets.
 WEBUI := apps/mekugi/internal/webui/app
+
+CLAUDE_WORKER := backends/claude
+
+$(CLAUDE_WORKER)/node_modules/.bun-install: $(CLAUDE_WORKER)/bun.lock $(CLAUDE_WORKER)/package.json
+	cd $(CLAUDE_WORKER) && bun install --frozen-lockfile
+	touch $@
+
+claude-worker: $(CLAUDE_WORKER)/node_modules/.bun-install
+	cd $(CLAUDE_WORKER) && bun run build
+
+claude-worker-check: claude-worker
+	cd $(CLAUDE_WORKER) && bun run --bun typecheck
+	cd $(CLAUDE_WORKER) && bun run test
 
 $(WEBUI)/node_modules/.bun-install: $(WEBUI)/bun.lock $(WEBUI)/package.json
 	cd $(WEBUI) && bun install --frozen-lockfile

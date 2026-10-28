@@ -10,6 +10,10 @@ frontend and input-projection registrations use the binding package.
 
 ## Execution authority
 
+This boundary governs Codex runtimes. Independently admitted Claude delegates use
+the [Claude backend](../claude/SPEC.md) while retaining Thread Control's logical
+coordination and the parent's captured authority. The root execution interface stays unchanged.
+
 Codex owns stock `apply_patch`, `exec_command`, JavaScript `exec`, permissions,
 sandboxing, processes, yielded sessions and `write_stdin` continuation. Mekugi
 preserves nested tool names, schemas, arguments and host results. Observation,

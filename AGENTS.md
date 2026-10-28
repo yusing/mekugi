@@ -1,7 +1,8 @@
 # Agent navigation
 
 Rank tradeoffs within the requested change by stock Codex cost, AX/UX, then agent performance.
-Codex remains the execution authority.
+Codex remains the root execution authority. Admitted Claude delegates own their native
+tools under the captured child policy; Thread Control owns their coordination.
 
 ## Scope
 

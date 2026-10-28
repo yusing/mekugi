@@ -45,6 +45,8 @@ type execCompletion struct {
 	history mekugiHistory
 	result  binding.ExecutionResult
 	host    *binding.ToolResult // Native Shell Mode has an item result, not a tool-output header.
+	native  bool                // Preserve a native tool's identity and input without a stock replay carrier.
+	unknown bool                // The process joined, but no terminal native tool outcome was observed.
 }
 
 // execSiblingKey groups calls of one response. Siblings finalized in
@@ -97,6 +99,15 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		if found {
 			if retained.CorrelationID != member.callID+"\x00exec" {
 				return errors.New("retained stock exec_command observation is inconsistent")
+			}
+			if member.native && retained.ChangeID != "" {
+				completed := legacyHistory(retained)
+				completed.confirmed = true
+				updates, err := source.Repair(ctx, selected, workspace, changePublications(map[string]mekugiHistory{derived: completed}))
+				if err != nil {
+					return changeError(err)
+				}
+				notifyChanges(publish, updates)
 			}
 			if retained.ChangeID == "" && retained.Attempt > 1 {
 				completed := legacyHistory(retained)
@@ -151,7 +162,10 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		observations = append(observations, changecapture.Member{Observation: *member.history.ExecObservation, Sequence: member.history.sequence})
 	}
 	observation := changecapture.Merge(observations)
-	script := execObservationScript(observation)
+	script := first.history.Script
+	if !first.native {
+		script = execObservationScript(observation)
+	}
 	if observation.Tree != "" && selected.Store != nil {
 		// Closing, comparing, and claiming are one step per workspace, so
 		// concurrent finalizations cannot both record one effect.
@@ -194,9 +208,13 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		}
 	}
 	for index, failed := range outcome.ApplyCompletions(completions) {
-		if failed {
+		if failed && !members[index].unknown {
 			failureReports = append(failureReports, execTruncateReport(members[index].result.Text, maxExecReportBytes))
 		}
+	}
+	if len(members) == 1 && first.unknown {
+		outcome.Status, outcome.Exit = "", nil
+		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; native tool outcome unavailable after joined runtime cleanup", "; ")
 	}
 	arguments := first.history.CarrierPayload
 	if len(members) != 1 || observation.CodeMode || arguments == "" {
@@ -220,6 +238,14 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		CarrierPayload:  arguments,
 		ReplayCarrier:   true,
 		UpstreamItem:    execDerivedUpstreamItem(derivedCallID, arguments),
+	}
+	if first.native {
+		record.ToolName, record.CarrierName = first.history.ToolName, first.history.CarrierName
+		record.CarrierPayload, record.UpstreamItem = first.history.CarrierPayload, first.history.UpstreamItem
+		record.ReplayCarrier = false
+		if record.Source == nativeExecCommandToolName {
+			record.Source = first.history.ToolName
+		}
 	}
 	if len(intervals) != 0 && (len(reviews) != 0 || slices.ContainsFunc(intervals, func(interval execInterval) bool { return len(interval.before.ReviewFiles) != 0 })) {
 		record.ChangeID = intervals[0].before.ChangeID

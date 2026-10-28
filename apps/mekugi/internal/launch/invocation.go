@@ -255,6 +255,9 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}
 		retained.Writes = writes
 		retained.Limits = history.Limits{Total: history.DefaultStorageBytes, Kinds: map[string]int64{"commentary": 16 << 20}}
+		if threads != nil {
+			threads.retained = retained
+		}
 		if !options.DeduplicateOutput {
 			projections = nil
 		}

@@ -3,12 +3,14 @@ package launch
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -16,13 +18,15 @@ import (
 // threadExecution joins the supplied runtime registry and feature owner. It owns
 // no process registry, request ledger, or retained thread state.
 type threadExecution struct {
-	workers *frontends.WorkerImage
-	hub     *sessionapi.Hub
-	shared  *control.Service
-	driver  *threadbinding.Driver
-	tools   []binding.MCPServer
-	setup   *threadSetup
-	start   *sessioncontrol.PreparedThread
+	workers   *frontends.WorkerImage
+	hub       *sessionapi.Hub
+	shared    *control.Service
+	driver    *threadbinding.Driver
+	approvals *sessioncontrol.DelegateApprovals
+	retained  changes.Scope
+	tools     []binding.MCPServer
+	setup     *threadSetup
+	start     *sessioncontrol.PreparedThread
 }
 
 // The invoking runtime freezes configuration before child admission. Descendants
@@ -48,6 +52,9 @@ func (e *threadExecution) Confirm(ctx context.Context, input control.NativeInput
 	if !ok {
 		return control.ErrNotAdmitted
 	}
+	if strings.HasPrefix(member.Settings.Model, "claude:") {
+		return sessioncontrol.ConfirmClaudeInput(ctx, member.Path, input)
+	}
 	return sessioncontrol.ConfirmNativeInput(ctx, member.Path, input)
 }
 
@@ -60,6 +67,9 @@ func (e *threadExecution) Resume(ctx context.Context, thread string) (control.Ru
 	member, ok := e.shared.Member(thread)
 	if !ok || member.Parent == "" || e.setup == nil {
 		return nil, errors.New("retained child execution is unavailable")
+	}
+	if strings.HasPrefix(member.Settings.Model, "claude:") {
+		return e.resumeClaude(ctx, member)
 	}
 	canonical, err := binding.ReadAdmissionSettings(thread, member.Path)
 	if err != nil && member.AudienceAdmitted {
@@ -105,6 +115,9 @@ func (e *threadExecution) Create(ctx context.Context, parent, importPath string,
 	if e.setup == nil {
 		return control.Receipt{}, &binding.DispatchError{Outcome: binding.NotDispatched, Cause: errors.New("child execution has no captured preparation")}
 	}
+	if strings.HasPrefix(settings.Model, "claude:") {
+		return e.createClaude(ctx, parent, importPath, settings)
+	}
 	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, setup: e.setup, start: &sessioncontrol.PreparedThread{Parent: parent, Import: importPath, Settings: settings}}
 	id, err := e.hub.StartPrepared(ctx, parent, "", settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		_, err := runOwnedInvocation(runtime, nil, nil, api, settings.Workspace, child)
@@ -143,6 +156,9 @@ func (e *threadExecution) AttachChild(ctx context.Context, parent, thread string
 		}
 	}
 	member, ok := e.shared.Member(thread)
+	if ok && member.Settings.NonAttachable {
+		return errors.New("the selected child does not support attachment")
+	}
 	if !admitted || !ok || !member.AudienceAdmitted {
 		return errors.New("the selected child has no admitted resumable runtime")
 	}

@@ -683,6 +683,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root/worker", Thread: "child"}}},
 		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root/history", Thread: "old-child"}}},
 	}}
+	frame.Members = append(frame.Members, threadcontrol.Participant{Thread: "native-worker", Parent: "same-thread", Task: "/root/native-worker", NonAttachable: true})
 	frame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
 		{Facts: activitypresentation.Facts{Seq: 2, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/worker"}}, WaitTimeout: "5s"}}, Revision: 1},
 		{Facts: activitypresentation.Facts{Seq: 3, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitReason: "paused"}}, Revision: 1},
@@ -701,6 +702,37 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "Waiting for worker (timeout 5s)")
+	run("wait", "--fn", `document.querySelector('#panel-content button[title="Interactive view unavailable"]')?.disabled`)
+	run("eval", `window.nonattachableRow = document.querySelector('#panel-content button[title="Interactive view unavailable"]'); window.nonattachableURL = location.href; window.nonattachableRow.scrollIntoView({block:'center'}); window.nonattachableRow.click()`)
+	coordinates := strings.TrimSpace(run("eval", `(() => { const rect = window.nonattachableRow.getBoundingClientRect(); return Math.round(rect.x + rect.width / 2) + ' ' + Math.round(rect.y + rect.height / 2); })()`))
+	point := strings.Fields(strings.Trim(coordinates, `"`))
+	if len(point) != 2 {
+		t.Fatalf("nonattachable row geometry: %s", coordinates)
+	}
+	run("mouse", "move", point[0], point[1])
+	run("mouse", "down")
+	run("mouse", "up")
+	run("eval", `document.querySelector('#panel-content button[aria-current=true]').focus(); window.nonattachableRow.focus()`)
+	run("press", "Enter")
+	if strings.TrimSpace(run("eval", `location.href === window.nonattachableURL && document.activeElement !== window.nonattachableRow && window.nonattachableRow.textContent.includes('native-worker') && !window.nonattachableRow.textContent.includes('tokens') && !window.nonattachableRow.textContent.includes('$')`)) != "true" {
+		t.Fatal("nonattachable row navigated, acquired keyboard focus, or invented metrics")
+	}
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		for _, palette := range []string{"Light", "Dark"} {
+			run("set", "viewport", "1280", "900")
+			theme(palette)
+			for _, width := range []string{"1280", "768", "390"} {
+				run("set", "viewport", width, "900")
+				run("eval", `if (!document.querySelector('#panel-content')) document.querySelector('button[aria-label^="Agents ("]').click()`)
+				run("wait", "--fn", `!!document.querySelector('#panel-content button[title="Interactive view unavailable"]')`)
+				run("eval", `window.nonattachableRow = document.querySelector('#panel-content button[title="Interactive view unavailable"]'); window.nonattachableRow.scrollIntoView({block:'center'})`)
+				run("wait", "--fn", `(() => { const rect = window.nonattachableRow.getBoundingClientRect(); return rect.left >= 0 && rect.right <= innerWidth && rect.height > 0; })()`)
+				run("screenshot", filepath.Join(artifacts, "nonattachable-"+strings.ToLower(palette)+"-"+width+".png"))
+			}
+		}
+		run("set", "viewport", "1280", "900")
+		theme("System")
+	}
 	run("wait", "--text", "Finished waiting for worker: paused")
 	// Model-visible coordination addresses and canonical completion identities
 	// select the same roster member, retaining its role ink in both themes.

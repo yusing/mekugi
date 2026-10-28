@@ -6,6 +6,17 @@ import (
 	"slices"
 )
 
+// InheritCatalog freezes the selected provider catalog for another admitted
+// runtime. The published model values are immutable after capture.
+func (d *Driver) InheritCatalog(parent *Driver) {
+	parent.mu.RLock()
+	models, err := slices.Clone(parent.models), parent.catalogError
+	parent.mu.RUnlock()
+	d.mu.Lock()
+	d.models, d.catalogError = models, err
+	d.mu.Unlock()
+}
+
 // CaptureCatalog receives the actual selected catalog before host projection.
 // Malformed acquisition stays explicit to preparation without blocking unrelated
 // model discovery or falling back to a different catalog.

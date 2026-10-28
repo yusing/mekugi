@@ -81,6 +81,9 @@ func (s *Server) BindChildAttachment(attach func(context.Context, string, string
 }
 
 func (h *Hub) attachThread(ctx context.Context, thread string, authority viewAuthority) *RPCError {
+	if failure := h.attachmentFailure(thread); failure != nil {
+		return failure
+	}
 	if _, failure := h.lookup(thread, "", authority); failure == nil {
 		return nil
 	}
@@ -147,6 +150,32 @@ func (h *Hub) attachThread(ctx context.Context, thread string, authority viewAut
 			return runtimeStartFailure(err)
 		}
 		return rpcFailure(409, err.Error())
+	}
+	return nil
+}
+
+// Explicit roster capability precedes runtime lookup, including already-running
+// delegates. Runtime registration alone does not admit an interactive view.
+func (h *Hub) attachmentFailure(thread string) *RPCError {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, source := range h.sessions {
+		frame := source.server.frame.Load()
+		if frame == nil || frame.Session.Thread != source.entry.Thread {
+			continue
+		}
+		for _, member := range frame.Members {
+			if member.Thread == thread && member.NonAttachable {
+				return rpcFailure(403, "The selected agent does not support an interactive view.")
+			}
+		}
+		if frame.Agents != nil {
+			for _, row := range frame.Agents.Roster {
+				if row.Agent.Thread == thread && row.Agent.NonAttachable {
+					return rpcFailure(403, "The selected agent does not support an interactive view.")
+				}
+			}
+		}
 	}
 	return nil
 }

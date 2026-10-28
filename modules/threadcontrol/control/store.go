@@ -121,16 +121,8 @@ func (s *Service) admitRoot(ctx context.Context, session history.Session, root *
 	state := Tree{Version: checkpointVersion, Root: session.Thread, Members: map[string]*Member{session.Thread: root}}
 	data, err := history.ReadRecord(filepath.Join(session.Store.Directory(), recordName(session.Thread)))
 	if err == nil {
-		if err = json.Unmarshal(data, &state); err != nil {
-			return fmt.Errorf("decode thread-control checkpoint: %w", err)
-		}
-		if state.Version != checkpointVersion || state.Root != session.Thread || state.Members[session.Thread] == nil || state.Members[session.Thread].Parent != "" || state.Members[session.Thread].Task != "/root" {
-			return errors.New("thread-control checkpoint identity mismatch")
-		}
-		for id, member := range state.Members {
-			if member == nil || id != member.Thread || member.Session == "" {
-				return errors.New("invalid retained member identity")
-			}
+		if state, err = decodeTree(data, session.Thread); err != nil {
+			return err
 		}
 		pause(&state, "")
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -142,6 +134,56 @@ func (s *Service) admitRoot(ctx context.Context, session history.Session, root *
 		return err
 	}
 	return nil
+}
+
+func decodeTree(data []byte, root string) (Tree, error) {
+	var state Tree
+	if err := json.Unmarshal(data, &state); err != nil {
+		return Tree{}, fmt.Errorf("decode thread-control checkpoint: %w", err)
+	}
+	if state.Version != checkpointVersion || state.Root != root || state.Members[root] == nil || state.Members[root].Parent != "" || state.Members[root].Task != "/root" {
+		return Tree{}, errors.New("thread-control checkpoint identity mismatch")
+	}
+	for id, member := range state.Members {
+		if member == nil || id != member.Thread || member.Session == "" {
+			return Tree{}, errors.New("invalid retained member identity")
+		}
+	}
+	return state, nil
+}
+
+// ReadFamily returns detached metadata from the selected retained namespace.
+// It neither resumes coordination nor opens a writable history session.
+func ReadFamily(store *history.Store, thread string) ([]Participant, int, error) {
+	if store == nil || thread == "" {
+		return nil, 0, errors.New("retained family requires a history store and thread")
+	}
+	root, err := store.NamespaceForThread(thread)
+	if err != nil {
+		return nil, 0, err
+	}
+	data, err := history.ReadRecord(filepath.Join(store.Directory(), recordName(root)))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	state, err := decodeTree(data, root)
+	if err != nil {
+		return nil, len(data), err
+	}
+	if member := state.Members[thread]; member == nil || !member.AudienceAdmitted {
+		return nil, len(data), errors.New("selected thread is not an admitted retained family member")
+	}
+	var members []Participant
+	for _, member := range state.Members {
+		if member.AudienceAdmitted {
+			members = append(members, member.participant())
+		}
+	}
+	slices.SortFunc(members, func(a, b Participant) int { return strings.Compare(a.Task, b.Task) })
+	return members, len(data), nil
 }
 
 func (o *treeOwner) publish(ctx context.Context, state *Tree) error {
@@ -294,7 +336,7 @@ func (s *Service) Descendants(thread string) []Participant {
 	var result []Participant
 	for _, member := range tree.Members {
 		if member.AudienceAdmitted && strings.HasPrefix(member.Task, prefix) {
-			result = append(result, Participant{member.Thread, member.Parent, member.Task, member.Settings.Role, member.Status})
+			result = append(result, member.participant())
 		}
 	}
 	slices.SortFunc(result, func(a, b Participant) int { return strings.Compare(a.Task, b.Task) })
@@ -312,11 +354,18 @@ func (s *Service) Family(thread string) (string, []Participant) {
 	members := make([]Participant, 0, len(tree.Members))
 	for _, member := range tree.Members {
 		if member.AudienceAdmitted {
-			members = append(members, Participant{member.Thread, member.Parent, member.Task, member.Settings.Role, member.Status})
+			members = append(members, member.participant())
 		}
 	}
 	slices.SortFunc(members, func(a, b Participant) int { return strings.Compare(a.Task, b.Task) })
 	return tree.Root, members
+}
+
+func (m *Member) participant() Participant {
+	return Participant{
+		Thread: m.Thread, Parent: m.Parent, Task: m.Task, Role: m.Settings.Role, Status: m.Status,
+		NonAttachable: m.Settings.NonAttachable,
+	}
 }
 
 // member borrows only the current immutable publication, never the storage lock.

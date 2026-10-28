@@ -72,15 +72,30 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		result.Preload = string(options.Preload)
 	}
 	model, effort := options.Model, options.ReasoningEffort
+	claude := strings.HasPrefix(settings.Model, "claude:")
+	if model != nil {
+		claude = strings.HasPrefix(*model, "claude:")
+	}
+	if claude && effort != nil {
+		return result, fmt.Errorf("unsupported reasoning effort %q for Claude delegates", *effort)
+	}
 	// Source: codex-rs/core/src/agent/child_config.rs:52:76,204:244@0df4aa677.
 	// Configured subagent defaults precede roles, including full-history forks.
-	if model == nil {
+	if model == nil && !claude {
 		model = defaults[0]
 	}
-	if effort == nil {
+	if effort == nil && !claude {
 		effort = defaults[1]
 	}
-	if model != nil {
+	if claude {
+		if model != nil {
+			settings.Model = *model
+		}
+		if strings.TrimSpace(strings.TrimPrefix(settings.Model, "claude:")) == "" {
+			return result, errors.New("Claude model must not be empty")
+		}
+		settings.Effort, settings.Summary, settings.Tier = nil, nil, nil
+	} else if model != nil {
 		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == *model })
 		if i < 0 {
 			return result, fmt.Errorf("unknown agent model %q", *model)
@@ -90,7 +105,7 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	if effort != nil {
 		settings.Effort = effort
 	}
-	inheritedEffort := model == nil && effort == nil
+	inheritedEffort := !claude && model == nil && effort == nil
 	if defaults[2] != nil {
 		settings.DeveloperInstructions = defaults[2]
 	}
@@ -153,6 +168,7 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	if !filepath.IsAbs(settings.Workspace) || !info.IsDir() {
 		return result, errors.New("agent cwd must be an existing absolute directory")
 	}
+	settings.NonAttachable = strings.HasPrefix(settings.Model, "claude:")
 	result.Settings = settings
 	result.Arguments, err = json.Marshal(&options, json.Deterministic(true))
 	return result, err

@@ -34,7 +34,10 @@ type Event struct {
 }
 
 // Thread is admitted metadata, not a filesystem or host-request capability.
-type Thread struct{ ID, Nickname, Path, Role string }
+type Thread struct {
+	ID, Nickname, Path, Role string
+	NonAttachable            bool
+}
 
 type Context struct {
 	Tokens, Window uint64

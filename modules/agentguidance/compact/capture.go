@@ -35,13 +35,27 @@ func Capture(ctx context.Context, request command.Request) (command.Output, erro
 	if len(request.Args) != 1 {
 		return command.Output{}, errors.New("mreload requires one reload selection")
 	}
-	sources, err := Sources(request.Args[0])
+	snapshot, err := ReadSources(ctx, request.Args[0], "", nil)
 	if err != nil {
 		return command.Output{}, err
 	}
-	commands, err := ReadCommands(request.Args[0])
+	data, err := json.Marshal(snapshot)
 	if err != nil {
 		return command.Output{}, err
+	}
+	return command.Output{Delivery: capturedDelivery{string(data)}}, nil
+}
+
+// ReadSources acquires the shared selection in an admitted runtime environment.
+// The caller owns policy admission and durable context retention.
+func ReadSources(ctx context.Context, selection, directory string, environment []string) (Snapshot, error) {
+	sources, err := Sources(selection)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	commands, err := ReadCommands(selection)
+	if err != nil {
+		return Snapshot{}, err
 	}
 	// Keep original selection indices and command identity for retained history.
 	// Host-loaded instructions have no acquisition or result body.
@@ -57,6 +71,7 @@ func Capture(ctx context.Context, request command.Request) (command.Output, erro
 		readers.Go(func() {
 			var stdout, stderr bytes.Buffer
 			cmd := exec.CommandContext(ctx, "bash", "-c", script)
+			cmd.Dir, cmd.Env = directory, environment
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
 			code := 0
 			if err := cmd.Run(); err != nil {
@@ -73,13 +88,9 @@ func Capture(ctx context.Context, request command.Request) (command.Output, erro
 	}
 	readers.Wait()
 	if err := ctx.Err(); err != nil {
-		return command.Output{}, err
+		return Snapshot{}, err
 	}
-	data, err := json.Marshal(Snapshot{Selection: request.Args[0], Sources: results})
-	if err != nil {
-		return command.Output{}, err
-	}
-	return command.Output{Delivery: capturedDelivery{string(data)}}, nil
+	return Snapshot{Selection: selection, Sources: results}, nil
 }
 
 type capturedDelivery struct{ data string }

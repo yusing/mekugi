@@ -30,8 +30,9 @@ func (a *Attachment) RegisterThread(info observation.Thread) {
 	state := a.Activity()
 	if agent := state.Agent(info.ID); agent != nil {
 		agent.Name, agent.Role = name, cmp.Or(info.Role, agent.Role)
+		agent.NonAttachable = agent.NonAttachable || info.NonAttachable
 	} else {
-		state.AddAgent(ActivityAgent{Thread: info.ID, Name: name, Role: info.Role})
+		state.AddAgent(ActivityAgent{Thread: info.ID, Name: name, Role: info.Role, NonAttachable: info.NonAttachable})
 	}
 }
 

@@ -122,6 +122,13 @@ native creation/restoration facts. App-server context totals never substitute
 for provider accounting. Provider-specific price selection stays with the
 provider adapter; supplied pricing is pinned to the completed exchange.
 
+Native SDK cumulative usage enters this same accounting owner as already-priced
+totals. Repeated snapshots add nothing; advancing snapshots add only their new
+consumption and reported roundtrips. Regressing or missing evidence preserves
+earlier observations and marks incomplete coverage. Native aggregate cost remains
+separate from costs with an input/output breakdown. Fork-source consumption is
+excluded before accounting, and aggregate turn durations never become throughput.
+
 ## Records
 
 Version-1 usage records retain their existing hashed thread names and field

@@ -26,6 +26,7 @@ type threadUsageRecord struct {
 	Thread                               string
 	Counts                               inference.Usage
 	UncachedCost, CachedCost, OutputCost float64
+	ReportedCost                         float64 `json:",omitzero"`
 	CostKnown, Complete, PriorUnknown    bool
 	MissingUsage, Roundtrips             uint64
 	Models                               []string
@@ -49,16 +50,16 @@ func readThreadUsage(store *history.Store, thread string) (*threadUsageTotal, er
 		return nil, err
 	}
 	if r.Version != 1 || r.Thread != thread || r.MissingUsage > r.Roundtrips ||
-		r.UncachedCost < 0 || r.CachedCost < 0 || r.OutputCost < 0 {
+		r.UncachedCost < 0 || r.CachedCost < 0 || r.OutputCost < 0 || r.ReportedCost < 0 {
 		return nil, errors.New("invalid provider usage record")
 	}
-	return &threadUsageTotal{counts: r.Counts, cost: Cost{UncachedInput: r.UncachedCost, CachedInput: r.CachedCost, Output: r.OutputCost, Known: r.CostKnown},
+	return &threadUsageTotal{counts: r.Counts, cost: Cost{UncachedInput: r.UncachedCost, CachedInput: r.CachedCost, Output: r.OutputCost, Reported: r.ReportedCost, Known: r.CostKnown},
 		complete: r.Complete, priorUnknown: r.PriorUnknown, missingUsage: r.MissingUsage, roundtrips: r.Roundtrips, models: r.Models, roundOutput: r.RoundOutput}, nil
 }
 
 func writeThreadUsage(tx *history.Transaction, limits history.Limits, thread string, total *threadUsageTotal) error {
 	r := threadUsageRecord{Version: 1, Thread: thread, Counts: total.counts,
-		UncachedCost: total.cost.UncachedInput, CachedCost: total.cost.CachedInput, OutputCost: total.cost.Output, CostKnown: total.cost.Known,
+		UncachedCost: total.cost.UncachedInput, CachedCost: total.cost.CachedInput, OutputCost: total.cost.Output, ReportedCost: total.cost.Reported, CostKnown: total.cost.Known,
 		Complete: total.complete, PriorUnknown: total.priorUnknown, MissingUsage: total.missingUsage, Roundtrips: total.roundtrips, Models: total.models, RoundOutput: total.roundOutput}
 	data, err := json.Marshal(&r)
 	if err != nil {

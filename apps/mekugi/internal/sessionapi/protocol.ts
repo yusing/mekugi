@@ -270,6 +270,7 @@ export type agent = {
   "content"?: (ContentReference | null);
   "name": string;
   "thread"?: string;
+  "nonAttachable"?: boolean;
   "label": string;
   "role"?: string;
   "depth"?: number;
@@ -1676,6 +1677,7 @@ export type AgentFacts = {
   "Name": string;
   "Role": string;
   "Thread": string;
+  "NonAttachable": boolean;
   "WaitingFor": string;
   "Wait": (Value | null);
   "Responding": boolean;

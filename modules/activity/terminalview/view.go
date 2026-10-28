@@ -265,9 +265,9 @@ func (v *View) feedAgents() []activitypresentation.AgentRow {
 	if v.Display.SideCaller != "" {
 		rows = append([]activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: v.Display.SideCaller}}}}, rows...)
 	}
-	if v.ChildrenOnly {
-		rows = slices.DeleteFunc(rows, func(row activitypresentation.AgentRow) bool { return row.Agent.Name == "/root" })
-	}
+	rows = slices.DeleteFunc(rows, func(row activitypresentation.AgentRow) bool {
+		return row.Agent.NonAttachable || v.ChildrenOnly && row.Agent.Name == "/root"
+	})
 	return rows
 }
 
@@ -474,6 +474,11 @@ func (v *View) PointAgent(action byte, row, column int) bool {
 	v.Hovered, v.SkillsHover = "", ""
 	for _, hit := range v.Hits {
 		if hit.Row == row && column >= hit.First && column <= hit.Last {
+			if slices.ContainsFunc(v.roster, func(row activitypresentation.AgentRow) bool {
+				return row.Agent.Name == hit.Agent && row.Agent.NonAttachable
+			}) {
+				return previous != "" || previousSkills != ""
+			}
 			if hit.Skills {
 				v.SkillsHover = hit.Agent
 			} else {

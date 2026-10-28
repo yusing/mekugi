@@ -134,7 +134,7 @@
   // Live selections name ordinary thread IDs. An agent route selects only
   // retained activity within the current recording or historical publication.
   const recorded = $derived(
-    view.agent && view.agent !== "/root"
+    view.agent && view.agent !== "/root" && !stream.agent(view.agent)?.nonAttachable
       ? (stream.agent(view.agent) ??
           (stream.roster.next && !stream.unavailableAgents.includes(view.agent)
             ? {

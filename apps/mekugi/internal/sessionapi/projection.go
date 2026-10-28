@@ -257,31 +257,32 @@ type roster struct {
 }
 
 type agent struct {
-	Content      *ContentReference `json:"content,omitzero"`
-	Name         string            `json:"name"`            // Caller path, the agent's identity.
-	Thread       string            `json:"thread,omitzero"` // Runtime identity; admission remains server-owned.
-	Label        string            `json:"label"`           // Display name.
-	Role         string            `json:"role,omitzero"`
-	Depth        int               `json:"depth,omitzero"`
-	State        string            `json:"state"`
-	Wait         *value            `json:"wait,omitzero"`
-	Activity     *entry            `json:"activity,omitzero"` // Shared roster summary, without retained source/output.
-	Turns        uint64            `json:"turns,omitzero"`
-	Roundtrips   uint64            `json:"roundtrips,omitzero"`
-	Work         *int64            `json:"work,omitzero"`
-	WorkSince    int64             `json:"workSince,omitzero"`
-	LastResponse int64             `json:"lastResponse,omitzero"`
-	Cost         *float64          `json:"cost,omitzero"`
-	CostPartial  bool              `json:"costPartial,omitzero"`
-	InputTokens  *uint64           `json:"inputTokens,omitzero"`
-	OutputTokens *uint64           `json:"outputTokens,omitzero"`
-	UsagePartial bool              `json:"usagePartial,omitzero"`
-	Context      *uint64           `json:"context,omitzero"`
-	Window       uint64            `json:"window,omitzero"`
-	Added        *int              `json:"added,omitzero"`
-	Removed      *int              `json:"removed,omitzero"`
-	Skills       []string          `json:"skills,omitzero"`
-	Items        []string          `json:"items,omitzero"`
+	Content       *ContentReference `json:"content,omitzero"`
+	Name          string            `json:"name"`            // Caller path, the agent's identity.
+	Thread        string            `json:"thread,omitzero"` // Runtime identity; admission remains server-owned.
+	NonAttachable bool              `json:"nonAttachable,omitzero"`
+	Label         string            `json:"label"` // Display name.
+	Role          string            `json:"role,omitzero"`
+	Depth         int               `json:"depth,omitzero"`
+	State         string            `json:"state"`
+	Wait          *value            `json:"wait,omitzero"`
+	Activity      *entry            `json:"activity,omitzero"` // Shared roster summary, without retained source/output.
+	Turns         uint64            `json:"turns,omitzero"`
+	Roundtrips    uint64            `json:"roundtrips,omitzero"`
+	Work          *int64            `json:"work,omitzero"`
+	WorkSince     int64             `json:"workSince,omitzero"`
+	LastResponse  int64             `json:"lastResponse,omitzero"`
+	Cost          *float64          `json:"cost,omitzero"`
+	CostPartial   bool              `json:"costPartial,omitzero"`
+	InputTokens   *uint64           `json:"inputTokens,omitzero"`
+	OutputTokens  *uint64           `json:"outputTokens,omitzero"`
+	UsagePartial  bool              `json:"usagePartial,omitzero"`
+	Context       *uint64           `json:"context,omitzero"`
+	Window        uint64            `json:"window,omitzero"`
+	Added         *int              `json:"added,omitzero"`
+	Removed       *int              `json:"removed,omitzero"`
+	Skills        []string          `json:"skills,omitzero"`
+	Items         []string          `json:"items,omitzero"`
 }
 
 func millis(t time.Time) int64 {
@@ -403,7 +404,8 @@ func projectRoster(p *activitypresentation.Publication) roster {
 		a := row.Agent
 		x := agent{
 			Name: a.Name, Thread: a.Thread, Label: pathdisplay.AgentDisplayName(a.Name), Depth: row.Depth,
-			Turns: a.Turns, Roundtrips: a.Roundtrips, Skills: a.Skills,
+			NonAttachable: a.NonAttachable,
+			Turns:         a.Turns, Roundtrips: a.Roundtrips, Skills: a.Skills,
 		}
 		// Main's role is implied by its name.
 		if a.Name != "/root" {

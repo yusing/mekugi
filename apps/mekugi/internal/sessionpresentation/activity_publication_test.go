@@ -52,6 +52,7 @@ func TestActivityPublicationReusesUnchangedInputs(t *testing.T) {
 		{"completion", func() { output.Finish(nil, new(1)) }},
 		{"release", func() { segment.Release() }},
 		{"roster", func() { source.Agents[0].Role = "reviewer" }},
+		{"capability", func() { source.Agents[0].NonAttachable = true }},
 		{"metrics", func() { source.Agents[0].OutputTokens++ }},
 		{"contribution", func() { status = "updated" }},
 		{"skills", func() {

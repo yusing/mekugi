@@ -3,6 +3,8 @@
 ## Authority and continuity
 
 [Stock execution](../../backends/codex/SPEC.md#execution-authority) remains Codex-owned.
+The [Claude backend](../../backends/claude/SPEC.md) owns its native delegate tools;
+the same namespace, attribution and publication rules apply to their evidence.
 Observation resolves filesystem operands from selected request metadata, never
 the application's cwd. Relative operands require that selected directory.
 Workspace selection does not establish read authorization: evidence reads and

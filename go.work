@@ -3,6 +3,7 @@ go 1.27.0
 use (
 	./apps/mekugi
 	./backends/codex
+	./backends/claude
 	./contracts
 	./libraries/commandanalysis
 	./libraries/commandargs

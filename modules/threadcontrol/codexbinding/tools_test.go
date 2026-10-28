@@ -87,6 +87,18 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 			t.Fatalf("%s public wait state: %s", tool, payload)
 		}
 	}
+	value, err := driver.Call(t.Context(), caller, "list_agents", jsontext.Value(`{"path_prefix":"agent:main"}`))
+	if err != nil || !strings.Contains(string(value), "agent:main/child") || strings.Contains(string(value), "/root") {
+		t.Fatalf("native dispatch: %s, %v", value, err)
+	}
+	foreign := caller
+	foreign.Session = "foreign"
+	if _, err := driver.Call(t.Context(), foreign, "list_agents", jsontext.Value(`{}`)); err == nil {
+		t.Fatal("native dispatch admitted a foreign session")
+	}
+	if _, err := driver.Call(t.Context(), caller, "unknown", jsontext.Value(`{}`)); err == nil {
+		t.Fatal("native dispatch admitted an unknown tool")
+	}
 }
 
 func TestControlActionReturnsCanonicalTargetForAlias(t *testing.T) {

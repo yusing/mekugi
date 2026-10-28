@@ -190,8 +190,10 @@
           class={[
             "group/card relative grid w-full min-w-0 gap-1 rounded-card px-2.5 py-2 text-left pointer-coarse:py-[11px]",
             agent.context !== undefined && agent.window && "pb-3 pointer-coarse:pb-[13px]",
-            agent.name === selected ? "bg-accent-tint" : "hover:bg-raised",
+            agent.name === selected ? "bg-accent-tint" : !agent.nonAttachable && "hover:bg-raised",
           ]}
+          disabled={agent.nonAttachable}
+          title={agent.nonAttachable ? "Interactive view unavailable" : undefined}
           aria-current={agent.name === selected ? "true" : undefined}
           onclick={() => onselect(agent.name)}
         >

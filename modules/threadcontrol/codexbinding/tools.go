@@ -14,20 +14,31 @@ import (
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-// mcp constructs the sole collaboration catalog through stock execution.
-func (d *Driver) mcp() binding.MCPServer {
-	server := binding.MCPServer{Name: "threadcontrol", Server: mcp.NewServer(&mcp.Implementation{Name: "threadcontrol", Version: "1"}, nil)}
-	for _, entry := range []struct{ name, description, schema string }{
-		{"spawn_agent", "Create a native agent with role and optional cwd. Full-history forks inherit model and effort; fork_turns=none permits authorized overrides and optional preload. Preload uses the compaction sources schema: file path with optional inclusive ranges, or skill name with optional SKILL.md path. Relative paths use child cwd; AGENTS.md is host-loaded. Reads use child permissions before inference; failures remain visible.", `{"type":"object","properties":{"task_name":{"type":"string"},"message":{"type":"string"},"agent_type":{"type":"string"},"fork_turns":{"type":"string","enum":["all","none"]},"model":{"type":"string"},"reasoning_effort":{"type":"string"},"cwd":{"type":"string"},"preload":` + compact.SelectionSchema + `},"required":["task_name","message"],"additionalProperties":false}`},
+// ToolCatalog is shared by admitted backend transports. Calling conventions
+// and authenticated caller identity remain with each transport.
+func ToolCatalog() []*mcp.Tool {
+	entries := []struct{ name, description, schema string }{
+		{"spawn_agent", "Create a native agent with role and optional cwd. Select claude:MODEL with fork_turns=none for a Claude delegate. Full-history forks inherit model and effort; fork_turns=none permits authorized overrides and optional preload. Preload uses the compaction sources schema: file path with optional inclusive ranges, or skill name with optional SKILL.md path. Relative paths use child cwd; AGENTS.md is host-loaded. Reads use child permissions before inference; failures remain visible.", `{"type":"object","properties":{"task_name":{"type":"string"},"message":{"type":"string"},"agent_type":{"type":"string"},"fork_turns":{"type":"string","enum":["all","none"]},"model":{"type":"string"},"reasoning_effort":{"type":"string"},"cwd":{"type":"string"},"preload":` + compact.SelectionSchema + `},"required":["task_name","message"],"additionalProperties":false}`},
 		{"list_agents", "List admitted agents and retained operations, optionally below path_prefix.", `{"type":"object","properties":{"path_prefix":{"type":"string"}},"additionalProperties":false}`},
 		{"inspect", "Inspect an admitted agent by identifier, including agent:main and idle or completed agents: applied model, reasoning effort, service tier, context usage/window and completed compactions. Inactive agents use retained observations without starting work; unavailable observations are null.", `{"type":"object","properties":{"target":{"type":"string"}},"required":["target"],"additionalProperties":false}`},
-		{"wait_agent", "Wait for a descendant outcome or addressed message. Call alone in functions.exec and let that execution finish. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output. Omit timeout_ms for completion waits; use it only for a real deadline. target defaults to all descendants.", `{"type":"object","properties":{"target":{"oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"timeout_ms":{"type":"integer"}},"additionalProperties":false}`},
+		{"wait_agent", "Wait for a descendant outcome or addressed message. Call alone and let the enclosing tool execution finish. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output. Omit timeout_ms for completion waits; use it only for a real deadline. target defaults to all descendants.", `{"type":"object","properties":{"target":{"oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"timeout_ms":{"type":"integer"}},"additionalProperties":false}`},
 		{"send_message", "Queue attributed input without starting idle work.", `{"type":"object","properties":{"target":{"type":"string"},"message":{"type":"string"}},"required":["target","message"],"additionalProperties":false}`},
 		{"followup_task", "Start or steer an admitted non-root agent with a new assignment.", `{"type":"object","properties":{"target":{"type":"string"},"message":{"type":"string"}},"required":["target","message"],"additionalProperties":false}`},
 		{"interrupt_agent", "Interrupt a non-root agent, retaining it for later work.", `{"type":"object","properties":{"target":{"type":"string"}},"required":["target"],"additionalProperties":false}`},
-	} {
-		server.Tools = append(server.Tools, entry.name)
-		mcp.AddTool(server.Server, &mcp.Tool{Name: entry.name, Description: entry.description, InputSchema: jsontext.Value(entry.schema)}, func(ctx context.Context, request *mcp.CallToolRequest, _ map[string]any) (*mcp.CallToolResult, any, error) {
+	}
+	result := make([]*mcp.Tool, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, &mcp.Tool{Name: entry.name, Description: entry.description, InputSchema: jsontext.Value(entry.schema)})
+	}
+	return result
+}
+
+// mcp constructs the sole collaboration catalog through stock execution.
+func (d *Driver) mcp() binding.MCPServer {
+	server := binding.MCPServer{Name: "threadcontrol", Server: mcp.NewServer(&mcp.Implementation{Name: "threadcontrol", Version: "1"}, nil)}
+	for _, entry := range ToolCatalog() {
+		server.Tools = append(server.Tools, entry.Name)
+		mcp.AddTool(server.Server, entry, func(ctx context.Context, request *mcp.CallToolRequest, _ map[string]any) (*mcp.CallToolResult, any, error) {
 			rawMetadata, err := json.Marshal(request.Params.Meta)
 			if err != nil {
 				return nil, nil, err
@@ -37,30 +48,49 @@ func (d *Driver) mcp() binding.MCPServer {
 				return nil, nil, err
 			}
 			caller := control.Identity{Thread: metadata.Thread, Session: metadata.Session, Turn: metadata.Turn, Call: metadata.Call, Item: metadata.Item}
-			var result any
-			switch entry.name {
-			case "spawn_agent":
-				result, err = d.spawnAgent(ctx, metadata, caller, jsontext.Value(request.Params.Arguments))
-			case "list_agents":
-				result, err = d.listAgents(caller, jsontext.Value(request.Params.Arguments))
-			case "inspect":
-				result, err = d.inspectAgent(ctx, caller, jsontext.Value(request.Params.Arguments))
-			case "wait_agent":
-				result, err = d.waitAgent(ctx, caller, jsontext.Value(request.Params.Arguments))
-			default:
-				result, err = d.controlAction(ctx, caller, jsontext.Value(request.Params.Arguments), entry.name)
-			}
-			if err != nil {
-				return nil, nil, err
-			}
-			value, err := json.Marshal(result)
-			if err == nil {
-				value, err = visibleResultNames(value)
-			}
+			value, err := d.invoke(ctx, metadata, caller, entry.Name, jsontext.Value(request.Params.Arguments))
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(value)}}}, nil, err
 		})
 	}
 	return server
+}
+
+// Call accepts identity established by a backend's authenticated runtime. Model
+// arguments never select the caller or its authority.
+func (d *Driver) Call(ctx context.Context, caller control.Identity, name string, raw jsontext.Value) (jsontext.Value, error) {
+	member, err := d.control.Caller(caller)
+	if err != nil {
+		return nil, err
+	}
+	metadata := binding.MCPIdentity{Thread: caller.Thread, Session: caller.Session, Turn: caller.Turn, Call: caller.Call, Item: caller.Item, Model: member.Settings.Model}
+	return d.invoke(ctx, metadata, caller, name, raw)
+}
+
+func (d *Driver) invoke(ctx context.Context, metadata binding.MCPIdentity, caller control.Identity, name string, raw jsontext.Value) (jsontext.Value, error) {
+	var result any
+	var err error
+	switch name {
+	case "spawn_agent":
+		result, err = d.spawnAgent(ctx, metadata, caller, raw)
+	case "list_agents":
+		result, err = d.listAgents(caller, raw)
+	case "inspect":
+		result, err = d.inspectAgent(ctx, caller, raw)
+	case "wait_agent":
+		result, err = d.waitAgent(ctx, caller, raw)
+	case "send_message", "followup_task", "interrupt_agent":
+		result, err = d.controlAction(ctx, caller, raw, name)
+	default:
+		return nil, errors.New("unknown coordination tool")
+	}
+	if err != nil {
+		return nil, err
+	}
+	value, err := json.Marshal(result)
+	if err == nil {
+		value, err = visibleResultNames(value)
+	}
+	return value, err
 }
 
 func (d *Driver) spawnAgent(ctx context.Context, metadata binding.MCPIdentity, caller control.Identity, raw jsontext.Value) (any, error) {
@@ -141,7 +171,7 @@ func (d *Driver) waitAgent(ctx context.Context, caller control.Identity, raw jso
 	return result, err
 }
 
-func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw jsontext.Value, name string) (any, error) {
+func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw jsontext.Value, name string) (result any, err error) {
 	kind := map[string]string{"send_message": "message", "followup_task": "followup", "interrupt_agent": "interrupt"}[name]
 	var args struct {
 		Target  string  `json:"target"`
@@ -163,6 +193,21 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 	target, err := d.control.Target(caller, args.Target)
 	if err != nil {
 		return nil, err
+	}
+	if kind != "message" {
+		// Live backends can hold retirement across logical admission and native
+		// acknowledgement. Paused targets retain their ordinary resume path.
+		if owner, runtimeErr := d.native().Runtime(target.Thread); runtimeErr == nil {
+			if admission, ok := owner.(interface {
+				AdmitControl(context.Context) (func() error, error)
+			}); ok {
+				release, admissionErr := admission.AdmitControl(ctx)
+				if admissionErr != nil {
+					return nil, admissionErr
+				}
+				defer func() { err = errors.Join(err, release()) }()
+			}
+		}
 	}
 	if err := d.Reconcile(ctx, target.Thread); err != nil {
 		return nil, err
@@ -187,14 +232,14 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 		return nil, err
 	}
 	action = *retained
-	result := map[string]any{"id": action.ID, "state": action.State, "thread_id": target.Thread, "task_name": target.Task}
+	response := map[string]any{"id": action.ID, "state": action.State, "thread_id": target.Thread, "task_name": target.Task}
 	if kind == "followup" {
-		result["metrics"] = d.sessionMetrics(ctx, target.Thread)
+		response["metrics"] = d.sessionMetrics(ctx, target.Thread)
 	}
 	if kind == "interrupt" {
-		result["previous_status"] = action.PreviousStatus
+		response["previous_status"] = action.PreviousStatus
 	}
-	return result, nil
+	return response, nil
 }
 
 func (d *Driver) listAgents(caller control.Identity, raw jsontext.Value) (any, error) {

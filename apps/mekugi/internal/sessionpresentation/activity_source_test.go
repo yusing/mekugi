@@ -46,3 +46,31 @@ func TestActivitySourceSerializationExcludesHostHandles(t *testing.T) {
 		t.Fatalf("source serialization changed its public boundary: %s, %v", raw, err)
 	}
 }
+
+func TestActivitySourceRetainsNonAttachableRoster(t *testing.T) {
+	data, err := json.Marshal(ActivityEvent{Agents: []ActivityAgent{
+		{Name: "/root/worker", NonAttachable: true}, {Name: "/root/codex"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var retained ActivityEvent
+	if err := json.Unmarshal(data, &retained); err != nil {
+		t.Fatal(err)
+	}
+	source := &ActivitySource{Model: new(activity.Model[ActivityEntry, ActivityAgent])}
+	source.Apply(retained)
+	publication := source.Model.Publish()
+	if !publication.Roster[0].Agent.NonAttachable || publication.Roster[1].Agent.NonAttachable {
+		t.Fatalf("retained roster lost capability: %+v", publication.Roster)
+	}
+	model := new(Model)
+	model.view.Main = Thread{ID: "root", Caller: "/root"}
+	model.view.Displayed = model.view.Main
+	if got := model.ActivityTarget("/root/worker", source); got != model.view.Main {
+		t.Fatalf("replay selected nonattachable row: %+v", got)
+	}
+	if got := model.ActivityTarget("/root/codex", source); got.Caller != "/root/codex" {
+		t.Fatalf("replay lost Codex navigation: %+v", got)
+	}
+}

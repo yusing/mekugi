@@ -1,0 +1,305 @@
+package launch
+
+import (
+	"bufio"
+	"context"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
+	"fmt"
+	"io"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
+)
+
+func TestClaudeInvocationRetainedOwners(t *testing.T) {
+	for _, key := range []string{"XDG_CONFIG_HOME", "XDG_STATE_HOME", "CODEX_HOME", "MEKUGI_RUNTIME_DIR"} {
+		t.Setenv(key, t.TempDir())
+	}
+	options, err := launchoptions.Parse([]string{"--ansi-faint=off", "--shell-guard=false"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable := filepath.Join(t.TempDir(), "codex")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	threads := &threadExecution{shared: control.New(), setup: &threadSetup{options: options, executable: executable, environment: os.Environ()}}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	if code, err := runOwnedInvocation(ctx, nil, nil, nil, t.TempDir(), threads); err != nil || code != 0 {
+		t.Fatalf("invocation: code=%d error=%v", code, err)
+	}
+	directory, err := history.ReplayDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if threads.retained.Store == nil {
+		t.Fatal("invocation did not supply retained execution owners for Claude delegates")
+	}
+	if threads.retained.Store.Directory() != directory || threads.retained.Limits.Total != history.DefaultStorageBytes || threads.retained.Limits.Kinds["commentary"] != 16<<20 {
+		t.Fatalf("delegate retained scope differs from invocation storage: %+v", threads.retained)
+	}
+}
+
+type claudeNativeParent struct {
+	control.Runtime
+	final chan control.NativeInput
+}
+
+func (p *claudeNativeParent) Input(_ context.Context, input control.NativeInput) (string, error) {
+	if input.Kind == "FINAL_ANSWER" {
+		p.final <- input
+	}
+	return "parent-turn", nil
+}
+func (*claudeNativeParent) Inspect(context.Context, string) (control.SessionDetails, error) {
+	return control.SessionDetails{}, nil
+}
+
+type claudeNativeLauncher struct{ parent *claudeNativeParent }
+
+func (*claudeNativeLauncher) StartOptions(context.Context) (sessionapi.StartOptions, error) {
+	return sessionapi.StartOptions{Models: []sessionapi.ModelGroup{{Models: []sessionapi.Model{{ID: "codex"}}}}}, nil
+}
+func (*claudeNativeLauncher) PrepareInput(context.Context, string, sessionapi.InputRequest) (*sessionapi.PreparedInput, error) {
+	return nil, nil
+}
+func (l *claudeNativeLauncher) Run(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+	api.BindRequests(l.parent)
+	if err := api.Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: "parent", Workspace: start.Workspace}, FamilyRoot: "parent"}); err != nil {
+		return err
+	}
+	if err := api.SetSummary(sessionapi.Summary{Thread: "parent", Workspace: start.Workspace, Ready: true}); err != nil {
+		return err
+	}
+	<-ctx.Done()
+	return nil
+}
+
+// The installed native CLI and official SDK use the same loopback provider as
+// backend acceptance. The scripted parent only supplies rooted Hub admission.
+func TestClaudeNativePreparedRuntime(t *testing.T) {
+	if os.Getenv("MEKUGI_TEST_CLAUDE_NATIVE") != "1" {
+		t.Skip("set MEKUGI_TEST_CLAUDE_NATIVE=1 with the bundled SDK, Bun and Claude installed")
+	}
+	for _, tc := range []struct{ name, approval, reviewer string }{
+		{"user", `"on-request"`, "user"},
+		{"never_auto_review", `"never"`, "auto_review"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testClaudeNativePreparedRuntime(t, tc.approval, tc.reviewer)
+		})
+	}
+}
+
+func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	f := newClaudeHookFixture(t)
+	b := f.bridge
+	workspace := b.settings.Workspace
+	parentScope := b.selected
+	parentScope.Thread = "parent"
+	operation := executionobservation.PrepareShell(ctx, parentScope, b.owners.Changes.Service, b.checkpoints, b.owners.Recovery, nil, &executionobservation.Windows{}, nil, nil,
+		executionobservation.ShellInput{Thread: "parent", Namespace: "parent", Workspace: workspace, Caller: "/root", Command: "printf 'parent evidence\\n' > parent.txt", Shell: "bash"})
+	if operation == nil {
+		t.Fatal("parent edit was not observed")
+	}
+	operation.Begin(nil)
+	command := exec.CommandContext(ctx, "/bin/bash", "-c", "printf 'parent evidence\\n' > parent.txt")
+	command.Dir = workspace
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := operation.Complete(binding.ToolResult{Tool: "userShell", CallID: "parent-edit", Status: "completed", ExitCode: new(0)}, string(output)); err != nil {
+		t.Fatal(err)
+	}
+	list, err := b.owners.Changes.Service.Read(ctx, parentScope, changes.Query{Workspace: workspace, View: "list"})
+	if err != nil || len(strings.Fields(list)) == 0 {
+		t.Fatalf("parent receipt: %q %v", list, err)
+	}
+	parentID := strings.Fields(list)[0]
+	providerScript, err := filepath.Abs("../../../../backends/claude/testdata/mock-provider.mjs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := exec.CommandContext(ctx, "bun", providerScript)
+	stdin, err := provider.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := provider.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.Stderr = os.Stderr
+	if err := provider.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = stdin.Close()
+		if err := provider.Wait(); err != nil && ctx.Err() == nil {
+			t.Error(err)
+		}
+	}()
+	plan := map[string]any{"responses": []any{
+		map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": "parent_range", "name": "Bash", "input": map[string]string{"command": "mchanges " + parentID + "; printf '\\nTHREAD=%s\\nPATH=%s\\n' \"$CODEX_THREAD_ID\" \"$PATH\"", "description": "Read parent capture through private frontend"}}}},
+		map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": "native_write", "name": "Write", "input": map[string]string{"file_path": filepath.Join(workspace, "native-child.txt"), "content": "native child evidence\n"}}}},
+		map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": "child_list", "name": "Bash", "input": map[string]string{"command": "mchanges --list", "description": "Read child captures"}}}},
+		map[string]any{"content": []any{map[string]string{"type": "text", "text": "native child finished"}}},
+	}}
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fmt.Fprintf(stdin, "%s\n", encoded); err != nil {
+		t.Fatal(err)
+	}
+	line, err := bufio.NewReader(stdout).ReadBytes('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	var address struct {
+		Port int `json:"port"`
+	}
+	if err := json.Unmarshal(line, &address); err != nil {
+		t.Fatal(err)
+	}
+	base := fmt.Sprintf("http://127.0.0.1:%d", address.Port)
+	environment := slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, "ANTHROPIC_") || strings.HasPrefix(entry, "CLAUDE_") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, "MEKUGI_EXEC_TRACK=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=")
+	})
+	environment = append(environment, "ANTHROPIC_BASE_URL="+base, "ANTHROPIC_API_KEY=local-fixture", "ANTHROPIC_AUTH_TOKEN=", "CLAUDE_CODE_OAUTH_TOKEN=", "CLAUDE_CONFIG_DIR="+t.TempDir(), "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", "CLAUDE_CODE_USE_BEDROCK=0", "CLAUDE_CODE_USE_VERTEX=0", "CLAUDE_CODE_USE_FOUNDRY=0", routerTestWorkerEnvironment+"=1")
+	parent := &claudeNativeParent{final: make(chan control.NativeInput, 1)}
+	hub := sessionapi.NewHub(ctx, &claudeNativeLauncher{parent: parent})
+	workers := new(frontends.WorkerImage)
+	defer func() { hub.Close(); _ = workers.Close() }()
+	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
+	defer server.Close()
+	rpc, err := sessionapi.OpenRPC(ctx, server.Client(), "ws"+strings.TrimPrefix(server.URL, "http")+sessionapi.RPCPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rpc.Close()
+	start, _ := json.Marshal(sessionapi.Start{Workspace: workspace, Model: "codex"})
+	var ready struct {
+		ID string `json:"id"`
+	}
+	if err := rpc.Call(ctx, "session/start", sessionapi.RPCParams{Body: start}, &ready); err != nil || ready.ID != "parent" {
+		t.Fatalf("root readiness: %+v %v", ready, err)
+	}
+	driver, err := threadbinding.NewDriver(b.execution.shared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer driver.Stop(context.WithoutCancel(ctx))
+	approvals := sessioncontrol.NewDelegateApprovals(ctx)
+	defer approvals.Close()
+	go func() {
+		for {
+			select {
+			case request := <-approvals.Requests():
+				request.Reply(prompt.Choice{Approve: true}, "")
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	execution := &threadExecution{hub: hub, shared: b.execution.shared, driver: driver, workers: workers, retained: parentScope, approvals: approvals, setup: &threadSetup{environment: environment}}
+	audience := sessioncontrol.NewAudience(nil)
+	defer audience.Close()
+	if err := driver.Connect(execution, audience); err != nil {
+		t.Fatal(err)
+	}
+	settings := b.settings
+	settings.Model = "claude:claude-sonnet-4-6"
+	settings.ApprovalPolicy, settings.ApprovalsReviewer = jsontext.Value(approval), reviewer
+	result, err := driver.SpawnPrepared(ctx, control.Identity{Thread: "parent", Session: "parent-session", Turn: "parent-turn", Call: "native-spawn", Item: "native-spawn"}, threadbinding.PreparedChild{TaskName: "native", Message: "Execute the requested checks and finish.", Settings: settings})
+	if err != nil {
+		t.Fatalf("prepared native child: %+v %v", result, err)
+	}
+	member, ok := execution.shared.Member(result.Thread)
+	if !ok || !member.Settings.NonAttachable || member.Session == "" || member.Session == member.Thread {
+		t.Fatalf("native identity/capability: %+v", member)
+	}
+	if scope, found, err := parentScope.Store.ReadScope(result.Thread); err != nil || !found || scope.Namespace != "parent" || scope.Parent != "parent" {
+		t.Fatalf("native shared scope: %+v %v", scope, err)
+	}
+	select {
+	case final := <-parent.final:
+		if !strings.Contains(final.Message, "native child finished") {
+			t.Fatalf("native final delivery: %+v", final)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	// Final delivery precedes auxiliary context acquisition. Wait for the shared
+	// roster publication, not another model turn, to observe both producers.
+	for {
+		family, _ := hub.Family(result.Thread)
+		var metrics activitypresentation.AgentFacts
+		if family != nil && family.Agents != nil {
+			for _, row := range family.Agents.Roster {
+				if row.Agent.Thread == result.Thread {
+					metrics = row.Agent.AgentFacts
+				}
+			}
+		}
+		if metrics.ContextKnown && metrics.TokensKnown && metrics.WorkKnown {
+			if metrics.InputTokens == 0 || metrics.OutputTokens == 0 || metrics.ContextWindow == 0 || !metrics.CostKnown || metrics.Cost <= 0 || metrics.Roundtrips != 4 || metrics.Turns != 1 || !metrics.NonAttachable {
+				t.Fatalf("native SDK metrics did not reach family roster: %+v", metrics)
+			}
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("native roster metrics unavailable: %+v: %v", metrics, ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	childScope := parentScope
+	childScope.Thread = result.Thread
+	childList, err := b.owners.Changes.Service.Read(ctx, childScope, changes.Query{Workspace: workspace, View: "list"})
+	if err != nil || len(strings.Fields(childList)) == 0 {
+		t.Fatalf("native child receipts: %q %v", childList, err)
+	}
+	if content, err := os.ReadFile(filepath.Join(workspace, "native-child.txt")); err != nil || string(content) != "native child evidence\n" {
+		t.Fatalf("native Write effect: %q %v", content, err)
+	}
+	response, err := server.Client().Get(base + "/_fixture/requests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "+parent evidence") || !strings.Contains(string(body), "THREAD="+result.Thread) || !strings.Contains(string(body), "mekugi-tools-") || !strings.Contains(string(body), "mchanges "+strings.Fields(childList)[0]) {
+		t.Fatalf("native provider input omitted private frontend identity or shared receipts: %s", body)
+	}
+}

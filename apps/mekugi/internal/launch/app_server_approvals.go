@@ -115,6 +115,14 @@ func addGuardApproval(attached *attachedPresentation, terminal *terminalsession.
 	addApproval(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, reviewOwner, receipts, a)
 }
 
+func addDelegateApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, request *sessioncontrol.DelegateApprovalRequest) {
+	if request.Finished() {
+		return
+	}
+	attached.session.RegisterThread(request.Source)
+	addApproval(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, reviewOwner, receipts, &sessioncontrol.Approval{Approval: request.Approval, Delegate: request})
+}
+
 // approvalMessage answers Codex's approval requests. Resolution and turn
 // completion notifications also reach their other owners.
 func approvalMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, observations *sessioncontrol.Observations, m appserver.Message) (bool, error) {
@@ -208,6 +216,11 @@ func approvalMessage(attached *attachedPresentation, terminal *terminalsession.A
 func expireApprovals(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt) bool {
 	changed := expireSudoPasswords(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts)
 	for _, a := range slices.Clone(approvals.calls()) {
+		if a.Delegate != nil && a.Delegate.Finished() {
+			endApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, "Withdrawn: the request stopped")
+			changed = true
+			continue
+		}
 		if a.Guard != nil && a.Guard.Finished() {
 			outcome := "Auto Denied: no answer within 5 minutes"
 			if a.Guard.Outcome == "withdrawn" {

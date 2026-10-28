@@ -19,8 +19,18 @@ type hostObservation struct {
 	session              history.Session
 	restored             chan error
 	reduced              chan error
+	settled              func(error)
 	inputID              string
 	receipt              control.Receipt
+	status               control.Status
+	failure              control.HostFailure
+}
+
+// Completed queues a typed backend terminal fact on the existing lifecycle
+// owner, leaving the runtime event reader free to acknowledge later inputs.
+// settled releases native retirement before any newly eligible effects dispatch.
+func (d *Driver) Completed(thread, turn string, status control.Status, failure control.HostFailure, settled func(error)) {
+	d.enqueue(hostObservation{thread: thread, method: "runtime/completed", value: binding.Notification{TurnID: turn}, status: status, failure: failure, settled: settled})
 }
 
 func (d *Driver) Start(ctx context.Context) error {
@@ -120,8 +130,16 @@ func (d *Driver) enqueue(event hostObservation) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.lifecycle == nil || d.lifecycle.Err() != nil {
+		err := errors.New("thread lifecycle is unavailable")
 		if event.restored != nil {
-			event.restored <- errors.New("thread lifecycle is unavailable")
+			event.restored <- err
+		}
+		if event.settled != nil {
+			event.settled(err)
+		}
+		if event.reduced != nil {
+			event.reduced <- err
+			close(event.reduced)
 		}
 		return
 	}
@@ -206,12 +224,17 @@ func (d *Driver) reduceHost() {
 				failure.Message, failure.Recoverable = p.Turn.Error.Message, p.Turn.Error.Recoverable()
 			}
 			err = d.control.HostCompleted(d.lifecycle, thread, p.Turn.ID, control.Status(p.Turn.Status), failure)
+		case "runtime/completed":
+			err = d.control.HostCompleted(d.lifecycle, thread, p.TurnID, event.status, event.failure)
+		}
+		if event.settled != nil {
+			event.settled(err)
 		}
 		if event.reduced != nil {
 			event.reduced <- err
 			close(event.reduced)
 		}
-		if err == nil && (event.method == "turn/completed" || event.method == "compaction/stopped" || event.method == "human/interrupt" || event.method == "human/input" || event.method == "") {
+		if err == nil && (event.method == "turn/completed" || event.method == "runtime/completed" || event.method == "compaction/stopped" || event.method == "human/interrupt" || event.method == "human/input" || event.method == "") {
 			err = d.DispatchPending(d.lifecycle, thread)
 			err = errors.Join(err, d.Wake(d.lifecycle, thread, time.Now()))
 			for member, ok := d.control.Member(thread); ok && member.Parent != ""; member, ok = d.control.Member(member.Parent) {

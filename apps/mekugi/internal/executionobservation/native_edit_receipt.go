@@ -35,7 +35,7 @@ func publishEditReceipt(ctx context.Context, selected changes.Scope, source chan
 		if err != nil {
 			return err
 		}
-		if !found || record.History.ToolName != applyPatchToolName && (record.History.ToolName != nativeExecCommandToolName || record.History.ExecOutcome == nil) ||
+		if !found || record.History.ToolName != applyPatchToolName && record.History.ExecOutcome == nil ||
 			record.History.ExecutingThread != thread {
 			return fmt.Errorf("edit receipt not found")
 		}

@@ -74,7 +74,8 @@ removes its pane and input targets while retaining independent source consumers.
 
 Session history receives record-kind recognition, dependency enumeration,
 retention budgets and semantic retirement policy. Record meaning stays with its
-feature owner. Composition supplies the constructed history service to live
+feature owner. Native request-receipt codecs stay with Session Control and are
+supplied as typed history dependencies by composition. Composition supplies the constructed history service to live
 sessions, frontend workers and offline readers; backend-neutral descriptors need
 no Codex binding.
 

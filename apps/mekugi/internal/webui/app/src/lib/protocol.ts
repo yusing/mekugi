@@ -193,6 +193,7 @@ export interface Agent {
   content?: ContentReference | null;
   name: string;
   thread?: string;
+  nonAttachable?: boolean;
   label: string;
   role?: string;
   depth?: number;

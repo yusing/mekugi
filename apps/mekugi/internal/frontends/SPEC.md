@@ -6,9 +6,17 @@ Own invocation-private executable exposure and authenticated worker dispatch for
 `mcat`, `inspect_file`, `msymbol`, `mread`, `mrun`, `mchanges`, and the compaction
 acquisition helper `mreload`. Command modules
 own reader parsing, output budgeting, resolver orchestration, and command semantics.
-Codex owns stock execution and its process lifecycle. Passthrough exposes no frontends.
+Codex owns stock execution and its process lifecycle. Admitted Claude delegates
+receive the same authenticated catalog through their native shell environment,
+with a distinct retained child scope. Passthrough exposes no frontends.
 
 ## REQ-PLUGIN-001: Stock execution and isolation
+
+Cross-backend delegates share their admitted parent's retained namespace, not its
+caller identity. Explicit change IDs/ranges remain readable across that namespace;
+implicit selections remain caller-scoped. The frontend's legacy `CODEX_THREAD_ID`
+environment key carries the admitted caller identity for either backend. Catalog,
+lease, recovery publication and worker cleanup rules apply equally to both.
 
 Frontends run through stock `exec_command`, including JavaScript `exec` calls.
 They receive unchanged argv and caller stdin, and deliver stdout, stderr, and exit
@@ -101,7 +109,7 @@ still suppresses delivery. Neither failure nor cancellation reruns the command.
 
 ## Lifecycle and replay
 
-Frontend children stay in the stock command's process group so Codex cancellation
+Frontend children stay in the native command's process group so backend cancellation
 can terminate them. Execution scope distinguishes ordinary callers, the host
 process group, and a dedicated authenticated worker. Only the dedicated worker
 permits process-wide descendant cleanup. A dedicated Linux worker can reap

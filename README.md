@@ -31,6 +31,8 @@ sessions, and patch review. Invocation overrides leave Codex configuration uncha
   see the [projection contract](modules/outputdeduplication/SPEC.md).
 - **Session continuity.** Retained change evidence and output remain available across
   resume and forks, subject to [storage retention](#replay-storage).
+- **Claude delegates.** [Select a Claude model](#claude-delegates) through the same
+  agent coordination tools, with shared captured-change reads and parent delivery.
 
 ### User-facing
 
@@ -82,6 +84,8 @@ Requirements:
 - **Codex CLI** for tool execution in every [launch mode](#start-mekugi).
 - Built-in frontends need neither Node.js nor Bun; semantic lookup requires the language servers listed under [agent-facing tools](#agent-facing).
 - Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.
+- Claude delegates additionally need Bun and an authenticated Claude Code
+  installation on the execution machine's `PATH`.
 
 ### Release binaries
 
@@ -311,6 +315,21 @@ keys; per-service variables override it, and an empty value disables that servic
 Models/prices refresh hourly; the picker updates next launch. See
 [OpenCode](providers/opencode/SPEC.md).
 
+### Claude delegates
+
+Ask the Codex parent to use `spawn_agent` with `model:"claude:MODEL"` and
+`fork_turns:"none"`, for example `claude:opus-5.5` when available to the Claude
+account. Roles, messages, follow-ups, interruption and waits use Thread Control.
+Explicit `mchanges` IDs and ranges are shared with the parent; implicit selections
+remain scoped to the author.
+
+Claude delegates use approval handling without filesystem or network sandboxing.
+Their approval requests appear in the ordinary parent dock. Roster rows show
+available facts and cannot be opened as independent interactive sessions.
+Ordinary Codex execution does not require the optional Claude runtime.
+Source builds need `make claude-worker` before rebuilding; release and installation
+recipes bundle it automatically. See the [Claude backend](backends/claude/SPEC.md).
+
 ### Resume
 
 `resume THREAD_ID` attaches to that thread if it is still running on the local
@@ -480,7 +499,8 @@ See [saved-review controls](modules/changehistory/SPEC.md#terminal-review) and
 
 ### Agents pane
 
-Click a child to attach its runtime and read its full transcript; click Main to return.
+Click an attachable child to read its full transcript; click Main to return.
+Claude delegate rows remain noninteractive and show only available metrics.
 Each runtime keeps its own composer draft, prompts and settings. The child composer
 shows its role, model, reasoning effort and service tier. Historical views remain
 read-only. The Side tab selects a separate editable conversation.

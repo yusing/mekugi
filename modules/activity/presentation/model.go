@@ -36,6 +36,7 @@ type Facts struct {
 type AgentSource interface{ ActivityAgent() AgentFacts }
 type AgentFacts struct {
 	Name, Role, Thread                           string
+	NonAttachable                                bool
 	WaitingFor                                   string
 	Wait                                         *Value
 	Responding, Final, Waiting, Paused           bool

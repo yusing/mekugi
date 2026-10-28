@@ -34,6 +34,10 @@ MCP arguments remain available at the recorded start; results and errors appear
 only at completion.
 Thread Control preserves recorded assignment/message bodies. Activity's shared
 coordination decoder supplies confirmed child identities for corpus discovery.
+The application may supply read-only thread metadata to retain the selected
+namespace's recorded attachment capability in confirmed child rosters. Replay
+remains usable without that source. Reading metadata never resumes coordination,
+and checkpoint lifecycle status does not replace the recorded timeline.
 Only confirmed completed calls claim delivery; missing facts remain unknown.
 Unsupported item kinds are counted. Retained hooks use each loaded workspace and
 thread; unavailable or dropped history is disclosed. Unfinished hook observations

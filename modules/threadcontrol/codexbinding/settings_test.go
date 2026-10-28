@@ -84,6 +84,66 @@ func TestPrepareChildRelativeCwdUsesSelectedWorkspace(t *testing.T) {
 	}
 }
 
+func TestPrepareChildClaudeSelectionAndRole(t *testing.T) {
+	workspace := t.TempDir()
+	roleTestFile(t, filepath.Join(workspace, "worker.toml"), `model = 'codex-pinned'
+model_reasoning_effort = 'ultra'
+model_reasoning_summary = 'detailed'
+service_tier = 'priority'
+developer_instructions = 'Review the assignment'
+[features]
+shell_tool = false
+plugins = true
+`)
+	layers := []ConfigLayer{roleTestLayer(t, workspace, map[string]any{"agents": map[string]any{"worker": map[string]string{"config_file": "worker.toml"}, "default": map[string]string{"config_file": "worker.toml"}}})}
+	models := []Model{{Name: "codex", DefaultEffort: new("medium"), Efforts: []string{"medium"}}, {Name: "codex-pinned", Efforts: []string{"ultra"}, ServiceTiers: []string{"priority"}}}
+	for _, tc := range []struct {
+		name, parent, want string
+		options            SpawnOptions
+		fail               bool
+	}{
+		{name: "explicit backend survives role pins", parent: "codex", want: "claude:unlisted-model", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude:unlisted-model"), AgentType: new("worker")}},
+		{name: "fresh Claude inherits with default role", parent: "claude:parent", want: "claude:parent", options: SpawnOptions{ForkTurns: new("none")}},
+		{name: "full Claude inherits despite selected role", parent: "claude:parent", want: "claude:parent", options: SpawnOptions{AgentType: new("worker")}},
+		{name: "full Claude inherits without role", parent: "claude:parent", want: "claude:parent"},
+		{name: "explicit Codex restores stock role precedence", parent: "claude:parent", want: "codex-pinned", options: SpawnOptions{ForkTurns: new("none"), Model: new("codex"), ReasoningEffort: new("medium"), AgentType: new("worker")}},
+		{name: "empty qualified model", parent: "codex", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude:")}, fail: true},
+		{name: "blank qualified model", parent: "codex", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude: \t")}, fail: true},
+		{name: "explicit Claude effort", parent: "codex", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude:model"), ReasoningEffort: new("high")}, fail: true},
+		{name: "inherited Claude explicit effort", parent: "claude:parent", options: SpawnOptions{ForkTurns: new("none"), ReasoningEffort: new("")}, fail: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parent := control.Settings{Workspace: workspace, Model: tc.parent, Provider: "codex-provider", Effort: new("ultra"), Summary: new("auto"), Tier: new("priority"), PermissionProfile: []byte(`{"type":"managed","file_system":{"type":"restricted","entries":[{"path":{"type":"path","path":"/denied"},"access":"deny"}]},"network":"restricted"}`), ApprovalPolicy: []byte(`"on-request"`), PermissionID: "bounded", ApprovalsReviewer: "user", RuntimeRoots: []string{workspace}, Config: []byte(`{"features.plugins":false}`), NonAttachable: tc.parent != "codex"}
+			tc.options.Message = "assignment"
+			child, err := prepareChild(parent, control.Limits{}, tc.options, models, layers, [3]*string{new("codex"), new("medium"), new("default instructions")})
+			if tc.fail {
+				if err == nil {
+					t.Fatal("unsupported Claude selection admitted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if child.Settings.Model != tc.want || child.Settings.Provider != parent.Provider || !reflect.DeepEqual(child.Settings.PermissionProfile, parent.PermissionProfile) || !reflect.DeepEqual(child.Settings.ApprovalPolicy, parent.ApprovalPolicy) {
+				t.Fatalf("child selection or authority = %+v", child.Settings)
+			}
+			if child.Settings.NonAttachable != (tc.want != "codex-pinned") || child.Settings.PermissionID != parent.PermissionID || child.Settings.ApprovalsReviewer != parent.ApprovalsReviewer || !reflect.DeepEqual(child.Settings.RuntimeRoots, parent.RuntimeRoots) {
+				t.Fatalf("child capabilities or authority = %+v", child.Settings)
+			}
+			if tc.want != "codex-pinned" && (child.Settings.Effort != nil || child.Settings.Summary != nil || child.Settings.Tier != nil) {
+				t.Fatalf("Claude inherited Codex settings: %+v", child.Settings)
+			}
+			if tc.options.AgentType != nil || !child.FullHistory {
+				if child.Settings.DeveloperInstructions == nil || *child.Settings.DeveloperInstructions != "Review the assignment" || child.Settings.SelectedRole == nil {
+					t.Fatalf("role instructions lost: %+v", child.Settings)
+				}
+				assertForkJSON(t, child.Settings.Config, `{"features.plugins":false,"features.shell_tool":false}`)
+			}
+		})
+	}
+}
+
 func TestPrepareChildInheritedUltra(t *testing.T) {
 	driver := &Driver{}
 	driver.CaptureCatalog([]byte(`{"models":[

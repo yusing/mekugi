@@ -60,6 +60,7 @@ func TestAdmitRequestCodexV2Limits(t *testing.T) {
 				t.Fatal(err)
 			}
 			member, _ := service.Member("root")
+			assertForkJSON(t, member.Settings.Preparation, string(runtime.config))
 			limits := member.Limits
 			if limits.MinWaitMS != tc.min || limits.MaxWaitMS != tc.max {
 				t.Fatalf("captured limits = %+v", limits)

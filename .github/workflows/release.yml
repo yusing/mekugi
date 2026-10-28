@@ -60,6 +60,9 @@ jobs:
       - name: Check web UI
         if: matrix.platform == 'linux_amd64'
         run: make webui-check
+      - name: Check Claude worker
+        if: matrix.platform == 'linux_amd64'
+        run: make claude-worker-check
       - name: Install lint tools
         if: matrix.platform == 'linux_amd64'
         run: |

@@ -6,7 +6,9 @@ their results. Its live client binds the actual app-server connection to one
 request ledger, startup admission, Main operations and independent title saves.
 Thread retirement filters late notifications, including newly observed descendants;
 readmission restores that root and its descendants without reviving host work.
-Codex owns request identities, transport, execution, permissions and process lifetime.
+Codex owns request identities, transport, execution, permissions and process lifetime
+for its runtimes. The Claude adapter uses the [native SDK backend](../../../../backends/claude/SPEC.md)
+with its own correlated request receipts rather than Codex protocol emulation.
 
 Admission follows outstanding operations, not displayed status or elapsed time.
 Request acknowledgement, committed user input and host turn completion are separate
@@ -40,6 +42,26 @@ retains file formatting, configuration validation and persistence authority.
 Child metadata is read once per attached request scope. Its response uses the
 same request ledger; missing metadata does not block admitted Activity, and
 retiring the scope clears both correlation and read admission.
+
+## Claude execution receipts
+
+Claude's request ledger retains the exact native session, frozen preparation,
+unconsumed attributed inputs and dispatch receipts through the selected Session
+History owner. Idle messages do not start native work. Native input start confirms
+dispatch acceptance; the exact terminal input UUID confirms consumption and allows
+the retained payload to retire. A queued acknowledgement establishes neither.
+Unknown dispatch remains visible and is never automatically repeated.
+
+Runtime event processing remains independent of callers awaiting input acceptance.
+Native completion and logical settlement share an admission boundary: a follow-up
+cannot start a new native turn while the preceding logical generation still owns it.
+Transport loss releases those callers as uncertain; interruption targets the actual
+generation. Resume preserves exact native identity and reconciles retained receipts.
+The ledger does not copy the native transcript or own the logical agent tree.
+
+Delegate approvals use ordinary Conversation prompts with their original child
+identity and one live response authority. Cancellation withdraws that request;
+an answer neither starts work nor wakes a logical wait.
 
 ## Interactive operations
 

@@ -7,13 +7,19 @@ import (
 	"github.com/yusing/mekugi/contracts/inference"
 )
 
-// Cost contains estimates for disjoint billable categories. Reasoning is
-// already included in output; cached input is already included in input.
+// Cost contains already-priced estimates. Reported holds native estimates that
+// do not provide a category breakdown. Reasoning is already included in output;
+// cached input is already included in input.
 type Cost struct {
 	UncachedInput float64
 	CachedInput   float64
 	Output        float64
+	Reported      float64
 	Known         bool
+}
+
+func (cost Cost) Total() float64 {
+	return cost.UncachedInput + cost.CachedInput + cost.Output + cost.Reported
 }
 
 type Report struct {
@@ -146,6 +152,7 @@ func (cost *Cost) add(next Cost) {
 	cost.UncachedInput += next.UncachedInput
 	cost.CachedInput += next.CachedInput
 	cost.Output += next.Output
+	cost.Reported += next.Reported
 	cost.Known = cost.Known && next.Known
 }
 

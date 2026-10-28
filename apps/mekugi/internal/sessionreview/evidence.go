@@ -135,7 +135,7 @@ func CapturedReceipt(workspace string, value legacycall.History, files []diffmod
 	receipt := presentation.NewReceipt(workspace, evidence)
 	receipt.Thread = value.ExecutingThread
 	for _, result := range value.HostResults {
-		if result.Tool == "exec_command" || result.Tool == "userShell" {
+		if result.Tool == "exec_command" || result.Tool == "userShell" || result.Tool != "" && result.Tool == value.ToolName {
 			receipt.Calls = append(receipt.Calls, result.CallID)
 		}
 	}

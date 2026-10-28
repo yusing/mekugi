@@ -16,10 +16,13 @@ it starts no execution runtime and owns no connector credentials.
 [Thread Control](../../../../modules/threadcontrol/SPEC.md) creates independent
 native child runtimes through the Mekugi server. Launch reuses the captured
 provider/configuration selection and supplies each child’s actual scoped owners.
-Codex executes each thread through its own Session Control connection; logical
+Each backend executes through its own Session Control request owner; logical
 coordination, admission and retained waits belong to Thread Control. Child startup
 retains prepared authority and assignment before executing work. No client-view
 subscription is needed for child execution.
+Qualified Claude models use the [native Claude backend](../../../../backends/claude/SPEC.md),
+with approval-only execution and nonattachable roster entries. Backend startup,
+receipts and capture are reusable independently of this delegate admission path.
 After server restart, retained children remain stopped. Explicit admitted input
 can resume the same child identity using its frozen preparation and latest
 host-confirmed settings; reconciliation reads history without starting a runtime.

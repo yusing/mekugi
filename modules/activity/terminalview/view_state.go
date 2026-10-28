@@ -65,6 +65,11 @@ func (v *View) Now() time.Time {
 func (v *View) displayingChild() bool   { return v.Display.Caller != "" && v.Display.Caller != "/root" }
 func (v *View) displayedCaller() string { return v.Display.Caller }
 func (v *View) requestDisplay(caller string) {
+	if slices.ContainsFunc(v.roster, func(row presentation.AgentRow) bool {
+		return row.Agent.Name == caller && row.Agent.NonAttachable
+	}) {
+		return
+	}
 	if caller != "" && caller != "/root" {
 		v.Selected = caller
 	}
@@ -154,7 +159,7 @@ func (v *View) Update(publication *presentation.Publication, display Display) {
 // UpdateRoster binds navigation independently of the selected thread's feed.
 func (v *View) UpdateRoster(publication *presentation.Publication) {
 	if !slices.EqualFunc(v.roster, publication.Roster, func(a, b presentation.AgentRow) bool {
-		return a.Agent.Name == b.Agent.Name && a.Agent.Role == b.Agent.Role
+		return a.Agent.Name == b.Agent.Name && a.Agent.Role == b.Agent.Role && a.Agent.NonAttachable == b.Agent.NonAttachable
 	}) {
 		v.Runs = nil
 		v.Hovered = ""

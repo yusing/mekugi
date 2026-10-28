@@ -18,7 +18,7 @@ import (
 )
 
 // Family is shared navigation, independent of the selected runtime's transcript.
-// Threads includes admitted cold targets, but never history-only roster rows.
+// Threads includes attachable admitted cold targets, but never history-only roster rows.
 type Family struct {
 	Live      []preview.Preview         `json:"-"`
 	LiveScope preview.Scope             `json:"-"`
@@ -208,6 +208,11 @@ func (p *familyState) project(root *Frame, frames map[string]familySource, works
 				ancestor = parents[ancestor]
 			}
 		}
+		for _, row := range family.Agents.Roster {
+			if row.Agent.NonAttachable {
+				delete(admitted, row.Agent.Thread)
+			}
+		}
 		p.family.Threads = slices.Sorted(maps.Keys(admitted))
 	}
 	if !liveSame || !reviewSame || !rosterSame || p.family.Status != root.Status {
@@ -314,7 +319,8 @@ func familyRoster(root *Frame, frames map[string]familySource) *activity.Publica
 	rows := make(map[string]int)
 	add := func(row activity.AgentRow) {
 		key := cmp.Or(row.Agent.Thread, row.Agent.Name)
-		if _, exists := rows[key]; exists {
+		if index, exists := rows[key]; exists {
+			publication.Roster[index].Agent.NonAttachable = publication.Roster[index].Agent.NonAttachable || row.Agent.NonAttachable
 			return
 		}
 		rows[key] = len(publication.Roster)
@@ -356,6 +362,7 @@ func familyRoster(root *Frame, frames map[string]familySource) *activity.Publica
 		if frame.Agents != nil {
 			for _, own := range frame.Agents.Roster {
 				if own.Agent.Thread == id {
+					own.Agent.NonAttachable = own.Agent.NonAttachable || row.Agent.NonAttachable
 					row.Agent = own.Agent
 					break
 				}
@@ -374,6 +381,7 @@ func familyRoster(root *Frame, frames map[string]familySource) *activity.Publica
 			continue
 		}
 		row := &publication.Roster[rows[member.Thread]]
+		row.Agent.NonAttachable = member.NonAttachable
 		row.Agent.Responding = member.Status == threadcontrol.Working || member.Status == threadcontrol.Pending
 		row.Agent.Waiting = member.Status == threadcontrol.Waiting
 		row.Agent.Paused = member.Status == threadcontrol.Paused || member.Status == threadcontrol.Uncertain

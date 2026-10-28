@@ -21,6 +21,36 @@ func TestNativeColdAttachmentUsesAdmittedAncestor(t *testing.T) {
 	}
 }
 
+func TestNonAttachableRefusesColdAndRegisteredViews(t *testing.T) {
+	for _, live := range []bool{false, true} {
+		for _, native := range []bool{false, true} {
+			hub := NewHub(t.Context(), nil)
+			root, child := NewLive(), NewLive()
+			root.frame.Store(&Frame{Session: Session{Thread: "root"}, FamilyRoot: "root", Members: []threadcontrol.Participant{
+				{Thread: "child", Parent: "root", Task: "/root/worker", NonAttachable: true},
+			}})
+			registerTestSession(hub, "root", root, Summary{Thread: "root", Workspace: "/workspace"})
+			if live {
+				registerTestSession(hub, "child", child, Summary{Thread: "child", Workspace: "/workspace"})
+			}
+			if failure := hub.attachThread(t.Context(), "child", localNativeView); failure == nil || failure.Data.Status != 403 {
+				t.Fatalf("runtime attach accepted nonattachable child: %+v", failure)
+			}
+			conn := rawControl(t, hub.Handler(), native)
+			controlInitialize(t, conn)
+			controlWrite(t, conn, `{"jsonrpc":"2.0","id":"attach","method":"view/attach","params":{"thread":"child","subscription":"view"}}`)
+			if response := controlRead(t, conn); response.Error == nil || response.Error.Data.Status != 403 {
+				t.Fatalf("live=%v native=%v view attach: %+v", live, native, response)
+			}
+			select {
+			case <-child.Native().Requests():
+				t.Fatal("refused attachment reached the runtime")
+			default:
+			}
+		}
+	}
+}
+
 func testNativeColdAttachment(t *testing.T, switched bool) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()

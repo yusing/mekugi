@@ -25,6 +25,7 @@ export function select(machine: string | undefined): void {
 
 export function show(agent: string | undefined, replace = false): void {
   if (agent === "Main") agent = "/root";
+  if (agent && stream.agent(agent)?.nonAttachable) return;
   const family = !stream.playback ? semantic.family : undefined;
   const thread = !agent || agent === "/root" ? family?.root : stream.agent(agent)?.thread;
   if (thread && (!agent || agent === "/root" || family?.threads.includes(thread))) {

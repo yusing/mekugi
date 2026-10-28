@@ -27,6 +27,7 @@ type Identity struct{ Thread, Session, Turn, Call, Item string }
 type Participant struct {
 	Thread, Parent, Task, Role string
 	Status                     Status
+	NonAttachable              bool
 }
 
 type Settings struct {
@@ -34,6 +35,8 @@ type Settings struct {
 	Effort, Summary, Tier, BaseInstructions, DeveloperInstructions    *string
 	RuntimeRoots                                                      []string
 	PermissionProfile, ApprovalPolicy, Config                         jsontext.Value
+	Preparation                                                       jsontext.Value
+	NonAttachable                                                     bool
 	SelectedRole                                                      *RoleSelection
 }
 

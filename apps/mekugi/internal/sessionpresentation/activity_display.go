@@ -18,6 +18,9 @@ func (m *Model) ActivityTarget(caller string, source *ActivitySource) Thread {
 		target = Thread{ID: caller, Caller: caller}
 		for _, row := range source.Model.Roster() {
 			if row.Agent.Name == caller {
+				if row.Agent.NonAttachable {
+					return m.view.Displayed
+				}
 				target.ID = cmp.Or(row.Agent.Thread, caller)
 				break
 			}

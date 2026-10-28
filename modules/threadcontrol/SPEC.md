@@ -3,9 +3,10 @@
 ## Ownership
 
 Thread control owns admitted logical trees, work generations, admission reservations,
-attributed messages/results, targeted waits and their durable dispositions. Codex
-owns independent thread and turn execution, tools, processes, permissions, approvals
-and interruption. The Mekugi server owns each native runtime. Its Session Control retains that
+attributed messages/results, targeted waits and their durable dispositions. Each admitted
+backend owns its thread and turn execution, tools, processes, permissions, approvals
+and interruption. Codex owns root execution; qualified Claude models select the
+[Claude delegate backend](../../backends/claude/SPEC.md). The Mekugi server owns each native runtime. Its Session Control retains that
 runtime’s sole host connection and request ledger. Launch supplies the selected
 execution owners; the server admits children and joins their lifetimes.
 
@@ -91,6 +92,42 @@ work records a new generation. Stop-wait retains its reservation.
 Unknown role/settings and unavailable authority fail explicitly.
 
 ## Prepared children and guidance
+
+### Claude delegates
+
+An explicit `claude:MODEL` selection with `fork_turns:"none"` creates a Claude
+delegate. Backend selection survives role preparation: role instructions remain
+applicable, while a pinned Codex model or effort cannot replace the explicitly
+selected Claude model. Codex preparation retains its existing precedence.
+Claude model availability is validated by its runtime, with no provider fallback.
+Claude inherits approval policy and role capability limits, and runs without
+filesystem or network sandboxing. Human decisions use the ordinary approval dock
+of its nearest attachable ancestor, retaining the requesting child's attribution.
+Fresh delegates acquire selected preload bodies before inference and retain them
+with their attributed assignment. Claude full-history children fork their own
+backend session; a Codex transcript is never imported as Claude execution history.
+
+Claude receives authenticated coordination tools and invocation-private executable
+frontends. It has its own durable caller identity in the parent's namespace.
+Messages to idle work remain retained-only. Native input UUIDs and persisted
+operation receipts distinguish acceptance from uncertain dispatch. Restart restores
+paused logical work, and explicit follow-up reconciles before resuming the exact
+Claude session. Native background work and interruption settle only on observed outcomes.
+
+A direct Claude `wait_agent` call uses the existing wait state machine. Successful
+batch completion commits its exact local stop, and the backend's post-tool-batch
+hook stops before another provider request. Confirmed hook-stop completion retains
+logical waiting. A later wake appends an attributed synthetic, non-user tool-outcome
+envelope to the same session; it neither replays the original tool nor fabricates
+human input. Nested coordinators preserve descendant completion guards and ordered
+message/result delivery.
+
+Claude roster members are nonattachable. Shared presentation carries this capability
+through live, retained and historical navigation; unavailable metrics remain absent.
+Native Claude edits publish ordinary captured-change receipts through the existing
+capture owner, including observed partial effects from failed or interrupted tools.
+
+### Codex preparation
 
 The Codex binding captures configuration provenance plus actual invoking
 thread/turn settings, permissions, runtime roots, model/provider, effort/summary,
@@ -314,7 +351,7 @@ Human input keeps its native user role and serializes with agent follow-ups.
 Known refusal releases a new reservation; uncertain dispatch remains retained
 until the host's exact input identity confirms it.
 
-Exit stops owned live work through Codex and retains known outcomes, pending delivery,
+Exit stops owned live work through its native backend and retains known outcomes, pending delivery,
 wait selections and dispatch facts. Fresh resume restores paused state without child
 restart, wait rearming, deadline expiry delivery or message redispatch. Explicit work
 or a new wait may proceed after reconciliation. Forks inherit authorized history,
@@ -340,7 +377,7 @@ request. Prepared child startup is an internal typed server operation, not a new
 human-control method. Children borrow the captured provider selection and use
 their own control, approval and observation owners.
 
-Main and delegate display use the same runtime attachment and control path;
+Main and attachable delegates use the same runtime attachment and control path;
 role-declared threads additionally show their role in the composer. Detail links
 to another live runtime select it and open its ordinary detail view.
 Explicit selection of a

@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -46,6 +47,20 @@ func (d *Driver) PrepareSpawn(ctx context.Context, caller binding.MCPIdentity, o
 	}
 	prepared.Settings.Config, err = json.Marshal(overrides)
 	if err == nil && prepared.FullHistory {
+		if strings.HasPrefix(settings.Model, "claude:") {
+			// Native session identity is sufficient for a Claude fork. The retained
+			// import record carries a descriptor, never a Codex transcript.
+			var source jsontext.Value
+			source, err = json.Marshal(struct {
+				Backend string `json:"backend"`
+				Session string `json:"session"`
+				Path    string `json:"path"`
+			}{Backend: "claude", Session: caller.Session, Path: path})
+			if err == nil {
+				prepared.Import, err = d.control.PublishImport(ctx, control.Identity{Thread: caller.Thread, Session: caller.Session, Turn: caller.Turn, Call: caller.Call, Item: caller.Item}, source)
+			}
+			return prepared, err
+		}
 		source := binding.ForkSource{Thread: caller.Thread, Rollout: caller.Thread, Path: path}
 		prefix, readErr := binding.ReadForkPrefix(ctx, source, binding.ForkBoundary{Turn: caller.Turn, Item: caller.Item}, func(ctx context.Context, thread string) (binding.ForkSource, error) {
 			return d.forkSource(ctx, caller.Thread, thread)

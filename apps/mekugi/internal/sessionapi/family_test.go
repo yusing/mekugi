@@ -90,6 +90,43 @@ func TestFamilyOrdinaryPublicationsAndColdTargets(t *testing.T) {
 	}
 }
 
+func TestFamilyNonAttachableCapabilityReachesRosterConsumers(t *testing.T) {
+	for _, mode := range []string{"live", "cold", "history"} {
+		t.Run(mode, func(t *testing.T) {
+			h := NewHub(t.Context(), nil)
+			publication := familyActivity("root", "main")
+			publication.Roster = append(publication.Roster, activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{
+				Name: "/root/worker", Thread: "claude", NonAttachable: mode == "history",
+			}}})
+			frame := Frame{Session: Session{Thread: "root"}, Agents: publication}
+			if mode != "history" {
+				frame.Members = []threadcontrol.Participant{{Thread: "claude", Parent: "root", Task: "/root/worker", NonAttachable: true, Status: threadcontrol.Completed}}
+			}
+			root := familyRuntime(h, nil, frame)
+			if mode == "live" {
+				familyRuntime(h, root, Frame{Session: Session{Thread: "claude", Caller: "/root/worker"}, Agents: &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Thread: "claude"}}}}}})
+			}
+			family, _ := h.Family("root")
+			if !slices.Equal(family.Threads, []string{"root"}) {
+				t.Fatalf("nonattachable navigation admitted: %v", family.Threads)
+			}
+			roster := projectRoster(family.Agents)
+			if len(roster.Agents) != 2 {
+				t.Fatalf("nonattachable row disappeared: %+v", roster)
+			}
+			row := roster.Agents[1]
+			if row.Thread != "claude" || !row.NonAttachable || row.InputTokens != nil || row.OutputTokens != nil || row.Cost != nil || row.Context != nil || row.Work != nil || row.Added != nil {
+				t.Fatalf("capability or unknown metrics lost: %+v", row)
+			}
+			view := activityui.NewView()
+			view.UpdateRoster(family.Agents)
+			if !view.Roster()[1].Agent.NonAttachable {
+				t.Fatal("terminal roster lost shared capability")
+			}
+		})
+	}
+}
+
 func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 	h := NewHub(t.Context(), nil)
 	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root"}, Agents: familyActivity("root", "main")})

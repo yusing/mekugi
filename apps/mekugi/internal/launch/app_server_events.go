@@ -165,7 +165,7 @@ func observeCost(usage *accounting.Service, thread string, agent *sessionpresent
 	agent.OutputThroughput = report.RoundOutput.Throughput
 	agent.InputTokens, agent.OutputTokens = report.InputTokens, report.OutputTokens
 	agent.TokensKnown = observed && agent.Roundtrips > report.MissingUsage
-	agent.Cost = report.Cost.CachedInput + report.Cost.UncachedInput + report.Cost.Output
+	agent.Cost = report.Cost.Total()
 	agent.CostKnown = agent.TokensKnown && report.Cost.Known
 	agent.CostPartial = report.MissingUsage != 0 || report.PriorUnknown
 	agent.UsagePartial = agent.CostPartial

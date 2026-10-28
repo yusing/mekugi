@@ -45,6 +45,7 @@ type ActivityAgent struct {
 	SettingsLive    bool                 `json:"-"`
 	Name            string
 	Role            string `json:",omitzero"`
+	NonAttachable   bool   `json:",omitzero"`
 	// Provider requests forwarded for the agent, shown as T+N.
 	Roundtrips  uint64  `json:",omitzero"`
 	Cost        float64 `json:",omitzero"`
@@ -109,7 +110,8 @@ func (entry ActivityEntry) ActivityFacts() activitypresentation.Facts {
 // Source: apps/mekugi/internal/router/subagent_activity_pane.go:114:124@45fbe279
 func (agent ActivityAgent) ActivityAgent() activitypresentation.AgentFacts {
 	return activitypresentation.AgentFacts{
-		Name: agent.Name, Role: agent.Role, Thread: agent.Thread, Responding: agent.Responding, Final: agent.Final, Waiting: agent.Waiting, WaitingFor: agent.WaitingFor, Paused: agent.Paused,
+		NonAttachable: agent.NonAttachable,
+		Name:          agent.Name, Role: agent.Role, Thread: agent.Thread, Responding: agent.Responding, Final: agent.Final, Waiting: agent.Waiting, WaitingFor: agent.WaitingFor, Paused: agent.Paused,
 		Wait:    agent.Wait,
 		Started: agent.Started, LastResponse: agent.LastResponse,
 		WorkElapsed: time.Duration(agent.WorkTimer.ElapsedNS), WorkSince: agent.WorkTimer.Since, WorkKnown: agent.WorkTimer.Known,

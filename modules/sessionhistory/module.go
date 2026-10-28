@@ -7,7 +7,11 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-type Deps struct{}
+type Deps struct {
+	// RecordKinds are invocation-owned native receipts supplied by the
+	// application. Feature records enter through descriptor contributions.
+	RecordKinds []recordkind.Spec
+}
 
 var Module = module.Descriptor[Deps, *history.Service, module.NoBindings, module.NoViews]{
 	ID:           "sessionhistory",

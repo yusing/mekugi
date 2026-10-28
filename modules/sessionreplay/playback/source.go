@@ -76,6 +76,8 @@ type Event struct {
 type ReadOptions struct {
 	Path, HistoryDirectory, DebugDirectory string
 	Seed                                   uint64
+	// ThreadMetadata supplies optional read-only metadata for the decoded root.
+	ThreadMetadata func(*history.Store, string) ([]observation.Thread, int, error)
 }
 
 func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error) {
@@ -87,6 +89,7 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 	rng := rand.New(rand.NewPCG(options.Seed, options.Seed^0xa0761d6478bd642f))
 	queue := []string{options.Path}
 	loaded := make(map[string]bool)
+	nonAttachable := make(map[string]bool)
 	totalBytes := 0
 	for len(queue) > 0 {
 		if err := ctx.Err(); err != nil {
@@ -114,6 +117,21 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 		if r.Thread == "" {
 			r.Thread, r.Cwd = thread, decoded.Cwd
 			r.Threads[thread] = "/root"
+			if options.ThreadMetadata != nil {
+				metadata, size, err := options.ThreadMetadata(store, thread)
+				if err != nil {
+					return nil, fmt.Errorf("read retained thread metadata: %w", err)
+				}
+				totalBytes += size
+				if totalBytes > 256<<20 {
+					return nil, errors.New("replay corpus exceeds 256 MiB")
+				}
+				for _, member := range metadata {
+					if member.NonAttachable {
+						nonAttachable[member.ID] = true
+					}
+				}
+			}
 		}
 		for kind, n := range decoded.Unsupported {
 			if err := ctx.Err(); err != nil {
@@ -143,6 +161,12 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 				if c, ok := coordination.ProjectCoordination(e.Item); ok && c.Kind == "start" && c.Confirmed && r.Threads[c.Thread] == "" {
 					r.Threads[c.Thread] = c.Target
 					children = append(children, c.Thread)
+					if nonAttachable[c.Thread] {
+						r.Events = append(r.Events, Event{Event: observation.Event{
+							At: e.At, Kind: "thread/started", ThreadID: c.Thread,
+							Thread: observation.Thread{ID: c.Thread, Path: c.Target, NonAttachable: true},
+						}})
+					}
 				}
 				if e.At.After(e.Started) {
 					begin := e

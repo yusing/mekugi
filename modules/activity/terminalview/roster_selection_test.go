@@ -6,10 +6,46 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+func TestNativeRosterNonAttachableNavigation(t *testing.T) {
+	v := NewView()
+	v.ChildrenOnly = true
+	publication := &presentation.Publication{Roster: []presentation.AgentRow{
+		{Agent: presentation.Agent{AgentFacts: presentation.AgentFacts{Name: "/root"}}},
+		{Agent: presentation.Agent{AgentFacts: presentation.AgentFacts{Name: "/root/claude", NonAttachable: true}}},
+		{Agent: presentation.Agent{AgentFacts: presentation.AgentFacts{Name: "/root/codex"}}},
+	}}
+	v.Update(publication, Display{Caller: "/root"})
+	painted := ansi.Strip(strings.Join(v.NativeRoster(100, 10, time.Unix(100, 0), true), "\n"))
+	if !strings.Contains(painted, "claude") {
+		t.Fatalf("nonattachable row disappeared: %s", painted)
+	}
+	for _, hit := range v.Hits {
+		if hit.Agent == "/root/claude" {
+			v.PointAgent('m', hit.Row, hit.First)
+			v.PointAgent('\r', hit.Row, hit.First)
+			if v.Hovered != "" || v.DisplayRequest != nil {
+				t.Fatal("nonattachable row emitted a display request or hover affordance")
+			}
+		}
+	}
+	v.HandleRosterKey("n")
+	if v.DisplayRequest == nil || v.DisplayRequest.Caller != "/root/codex" {
+		t.Fatalf("keyboard did not skip nonattachable child: %+v", v.DisplayRequest)
+	}
+	v.DisplayRequest = nil
+	v.Selected = "/root/claude"
+	v.HandleRosterKey("a")
+	if v.DisplayRequest != nil {
+		t.Fatal("remembered selection reopened nonattachable child")
+	}
+}
 
 func TestUISnapshotNativeRosterDisplaySelection(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.TerminalTheme, diffrender.DarkTheme, diffrender.LightTheme} {

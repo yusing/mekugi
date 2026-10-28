@@ -10,7 +10,7 @@ proof that unobserved effects did not occur.
 
 ## Authority and publication
 
-Codex owns editing, execution, permissions and continuations. Observation never
+The admitted backend owns editing, execution, permissions and continuations. Observation never
 repeats an effect or substitutes tool arguments or host results. A yielded call
 remains unfinished until its terminal continuation. Submission acknowledgement,
 segment completion, file effects and terminal host completion are separate facts.
@@ -34,6 +34,16 @@ remain readable and retain their dependencies until their last owner expires;
 missing or corrupt evidence is unavailable, never an empty diff.
 
 ## Capture scope
+
+Claude delegate shell, Edit, Write and NotebookEdit operations retain their native tool identity.
+Pre-tool observation captures command or explicit named-target baselines before
+execution; terminal success, failure or interruption reconciles observed effects.
+Authenticated native working directories resolve operands without changing the
+admitted workspace's retained identity.
+PowerShell uses the bounded workspace fallback; its command operands do not
+establish named capture for external or ignored paths.
+Native hooks append receipts only after publication, keeping original tool results
+unchanged. Background acknowledgements do not complete a capture window.
 
 Complete stock patches and literal command operands establish pre-edit targets
 without executing source. Supported commands include text redirection and

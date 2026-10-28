@@ -5,6 +5,8 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"slices"
+	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -50,15 +52,29 @@ func (d *Driver) capture(ctx context.Context, id control.Identity) (settings con
 		return
 	}
 	path = info.Path
-	admission, err := binding.ReadAdmissionSettings(id.Thread, path)
-	if err != nil {
-		return
+	member, admitted := d.control.Member(id.Thread)
+	if admitted {
+		settings = member.Settings
 	}
-	runtime, err := binding.ReadRuntimeContext(id.Thread, path, id.Turn)
-	if err != nil {
-		return
+	if !admitted || !strings.HasPrefix(settings.Model, "claude:") {
+		admission, readErr := binding.ReadAdmissionSettings(id.Thread, path)
+		if readErr != nil {
+			err = readErr
+			return
+		}
+		runtime, readErr := binding.ReadRuntimeContext(id.Thread, path, id.Turn)
+		if readErr != nil {
+			err = readErr
+			return
+		}
+		settings.Workspace, settings.Model, settings.Provider = runtime.Workspace, runtime.Model, admission.Provider
+		settings.RuntimeRoots, settings.Effort, settings.Summary, settings.Tier = admission.RuntimeRoots, runtime.Effort, admission.Summary, admission.Tier
+		settings.PermissionProfile, settings.ApprovalPolicy, settings.ApprovalsReviewer = runtime.PermissionProfile, runtime.ApprovalPolicy, runtime.ApprovalsReviewer
+		if runtime.ActivePermissionProfile != nil {
+			settings.PermissionID = runtime.ActivePermissionProfile.ID
+		}
 	}
-	raw, err := owner.Configuration(ctx, id.Thread, runtime.Workspace)
+	raw, err := owner.Configuration(ctx, id.Thread, settings.Workspace)
 	if err != nil {
 		return
 	}
@@ -69,16 +85,10 @@ func (d *Driver) capture(ctx context.Context, id control.Identity) (settings con
 		err = errors.New("host omitted configuration-layer provenance")
 		return
 	}
-	settings = control.Settings{BaseInstructions: config.Config.Base, DeveloperInstructions: config.Config.Developer}
-	if member, ok := d.control.Member(id.Thread); ok {
-		settings = member.Settings
+	if !admitted {
+		settings.BaseInstructions, settings.DeveloperInstructions = config.Config.Base, config.Config.Developer
 	}
-	settings.Workspace, settings.Model, settings.Provider = runtime.Workspace, runtime.Model, admission.Provider
-	settings.RuntimeRoots, settings.Effort, settings.Summary, settings.Tier = admission.RuntimeRoots, runtime.Effort, admission.Summary, admission.Tier
-	settings.PermissionProfile, settings.ApprovalPolicy, settings.ApprovalsReviewer = runtime.PermissionProfile, runtime.ApprovalPolicy, runtime.ApprovalsReviewer
-	if runtime.ActivePermissionProfile != nil {
-		settings.PermissionID = runtime.ActivePermissionProfile.ID
-	}
+	settings.Preparation = slices.Clone(raw)
 	overrides := make(map[string]jsontext.Value)
 	if len(settings.Config) > 0 {
 		if err = json.Unmarshal(settings.Config, &overrides); err != nil {

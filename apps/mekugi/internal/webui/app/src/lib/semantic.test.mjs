@@ -805,6 +805,21 @@ test("inactive refusals retire while unknown mutation outcomes remain visible on
   }
 });
 
+test("nonattachable roster members cannot select live or recorded activity", () => {
+  const previousPlayback = stream.playback;
+  Object.assign(view, { machine: "machine-one", session: "root", agent: undefined });
+  stream.roster = {
+    agents: [{ name: "/root/worker", thread: "claude", nonAttachable: true }],
+  };
+  for (const playback of [undefined, { paused: true }]) {
+    stream.playback = playback;
+    show("/root/worker");
+    assert.equal(view.session, "root");
+    assert.equal(view.agent, undefined);
+  }
+  stream.playback = previousPlayback;
+});
+
 test("delegate, sibling and Main navigation retires idle views while preserving independent drafts", () => {
   const owner = machine("machine-one", "delegate");
   assert.equal(owner.views.length, 1, "cold selection needs only its ordinary thread attachment");
