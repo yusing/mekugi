@@ -3,6 +3,7 @@ package launch
 import (
 	"context"
 	"encoding/base64"
+	json "encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -985,6 +986,22 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "child-incoming-replies.png"))
 	}
+	// A real receiving-runtime publication retained this exact incoming body
+	// without a duplicate child-feed entry. Disclosure uses its own content.
+	unlinked, original := unlinkedReplyUI(t)
+	restoredReplies.attached.source.ApplyMain(unlinked.attached.source.Entries[0].Source)
+	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, ChildReplySummary: true, Main: restoredReplies.attached.source.Publication(restoredReplies.attached.presentation, nil)}); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `(() => { const row = [...document.querySelectorAll('[data-kind="reply"]')].find(row => row.textContent.includes('Confirmed the separate')); return row?.innerText.includes('Confirmed the separate Loading content… cycle') && !row.innerText.includes('A bounded temporary') && !row.querySelector('h2') && row.querySelector('summary')?.textContent === 'Details'; })()`)
+	run("eval", `[...document.querySelectorAll('[data-kind="reply"]')].find(row => row.textContent.includes('Confirmed the separate')).querySelector('details').open = true`)
+	run("wait", "--fn", `(() => { const row = [...document.querySelectorAll('[data-kind="reply"]')].find(row => row.textContent.includes('Confirmed the separate')); return row.innerText.includes('A bounded temporary') && row.innerText.split('Confirmed the separate').length === 2 && !row.querySelector('h2'); })()`)
+	run("find", "last", `[data-entry]:has([data-kind="reply"]) button[aria-label="Copy response"]`, "click")
+	quoted, err := json.Marshal(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", "window.copiedResponse === "+string(quoted))
 	run("fill", "#composer-text", "child draft")
 	button("Stop")
 	select {

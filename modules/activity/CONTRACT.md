@@ -364,6 +364,8 @@ feature selects that fallback even for retained structured replies. Root ordinar
 answers remain unchanged. Opening selects the exact retained Activity entry and
 shows its supporting details without repeating the summary or delimiter headings,
 subject to explicit retention limits. Full-copy actions preserve the original body.
+Replies remain expandable from their receiving transcript when the sender's Activity
+history is unavailable.
 No parsing, display, reopening, restoration or replay generates a model request,
 repairs a reply, changes parent input or merges messages by text.
 

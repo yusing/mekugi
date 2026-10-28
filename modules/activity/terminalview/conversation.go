@@ -723,7 +723,7 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		switch {
 		case entry.Activity != 0 && external && block.Kind == "message" && entry.Kind != "assignment":
 			v.linkedExcerpt(out, entry, "message", p.Markdown(block.Body, body, false), gutter, tail, body, limit)
-		case entry.Activity != 0 && reply:
+		case reply && (v.Conversation || entry.Activity != 0):
 			v.childReply(out, entry, block, gutter, tail, body, limit)
 		case v.excerpt(v.Passed[entry.Seq]) && v.sentExcerpt(out, entry, block, gutter, tail, body, limit):
 		case thread.Followed:
@@ -748,7 +748,7 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 						break
 					}
 				}
-				if entry.Activity != 0 {
+				if entry.Activity != 0 || v.Conversation && !v.conversationLocal(entry.Agent) {
 					v.childReply(out, entry, block, gutter, tail, body, limit)
 				} else {
 					out.hang(gutter, gutter, p.Markdown(block.Body, body, false))

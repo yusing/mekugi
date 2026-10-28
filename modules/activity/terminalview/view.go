@@ -40,7 +40,7 @@ type View struct {
 	ImagePreviews                   map[terminalui.ImageSource]*terminalui.ImagePreview
 	ImageDemands                    []terminalui.ImageSource
 	ImagePlacements                 []terminalui.ImagePlacement
-	ChildReplySummary               bool // Invocation-selected default disclosure for linked child replies.
+	ChildReplySummary               bool // Invocation-selected default disclosure for child replies.
 
 	Clock           func() time.Time // Shared with the owning replay UI, nil for live time.
 	publication     *activitypresentation.Publication
