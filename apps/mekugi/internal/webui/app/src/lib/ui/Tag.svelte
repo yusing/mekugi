@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+  import { Badge } from "./badge";
   import type { Snippet } from "svelte";
 
   // A short label beside a value: a pale tint with ink of the same hue.
@@ -20,19 +21,11 @@
     class?: string;
     children: Snippet;
   } = $props();
-  const tones: Record<Tone, string> = {
-    neutral: "bg-neutral-tint text-neutral-ink",
-    live: "bg-accent-tint text-accent-ink",
-    negative: "bg-negative-tint text-negative-ink",
-  };
+  const tones = { neutral: "default", live: "live", negative: "destructive" } as const;
 </script>
 
-<span
-  class={[
-    "inline-block flex-none rounded-chip px-[7px] text-tiny font-medium whitespace-nowrap",
-    mono ? "font-mono" : "font-sans",
-    color ? "bg-neutral-tint text-role" : tones[tone],
-    extra,
-  ]}
-  style:--role={color}>{@render children()}</span
+<Badge
+  variant={color ? "role" : tones[tone]}
+  class={[mono ? "font-mono" : "font-sans", extra]}
+  style={color ? `--role:${color}` : undefined}>{@render children()}</Badge
 >

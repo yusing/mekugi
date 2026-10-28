@@ -8,6 +8,7 @@
   import type { Start, StartOptions } from "./protocol";
   import Button from "./ui/Button.svelte";
   import ComposerCard from "./ui/ComposerCard.svelte";
+  import * as InputGroup from "./ui/input-group";
   import Icon from "./ui/Icon.svelte";
   import Menu from "./ui/Menu.svelte";
   import MenuItem from "./ui/MenuItem.svelte";
@@ -237,6 +238,7 @@
         <label class="sr-only" for="new-text">First message</label>
         <textarea
           id="new-text"
+          data-slot="input-group-control"
           class="{composerText} min-h-18 pt-3.5 pb-1"
           bind:value={text}
           {onkeydown}
@@ -257,7 +259,10 @@
           is simulated and no tools run.
         </p>
       {/if}
-      <div class="{composerTools} flex-wrap gap-1">
+      <InputGroup.Addon
+        align="block-end"
+        class="{composerTools} cursor-default flex-wrap gap-1 text-body font-normal select-auto"
+      >
         <Menu label="More ways to start" icon="plus" disabled={busy}>
           {#snippet children(close)}
             <MenuItem
@@ -384,7 +389,7 @@
               : "Start thread"}
           disabled={!ready}
         />
-      </div>
+      </InputGroup.Addon>
     </ComposerCard>
     <div class="min-h-8 px-1 pt-2 text-small" aria-live="polite">
       {#if error}<Alert>{error}</Alert>

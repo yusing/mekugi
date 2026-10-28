@@ -118,6 +118,10 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	socket := filepath.Join(directory, "control.sock")
 	serverContext, stopServer := context.WithCancel(ctx)
 	launcher := &webUISemanticLauncher{serverLauncher: new(serverLauncher), failures: make(chan error, 4)}
+	suggestionRoot := t.TempDir()
+	for i := range 37 {
+		launcher.workspaces = append(launcher.workspaces, filepath.Join(suggestionRoot, fmt.Sprintf("suggestion-%02d", i)))
+	}
 	hub := sessionapi.NewHub(serverContext, launcher)
 	listener, err := sessionapi.ListenControl(socket)
 	if err != nil {
@@ -207,7 +211,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	closeDialog := func() {
 		t.Helper()
 		button("Close dialog")
-		run("wait", "--fn", "!document.querySelector('[role=dialog],dialog[open]')")
+		run("wait", "--fn", "!document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')")
 	}
 	// Typing a trigger opens the server's completions above the composer.
 	suggest := func(text string) {
@@ -234,7 +238,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 			run("set", "viewport", size.width, size.height)
 			for _, theme := range []string{"dark", "light"} {
 				run("set", "media", theme)
-				if strings.TrimSpace(run("eval", `(() => { const cwd = document.querySelector('header #thread-workspace'); if (!cwd) return !document.querySelector('#composer-text'); const header = cwd.closest('header'), title = header.querySelector('h1'); const a = cwd.getBoundingClientRect(), b = title.getBoundingClientRect(), h = header.getBoundingClientRect(); const buttons = [...header.querySelectorAll('button')].filter(button => !button.closest('[popover]')).map(button => button.getBoundingClientRect()).filter(r => r.width); return !!cwd.title && cwd.textContent.endsWith(cwd.title) && a.width >= 16 && b.width >= 16 && b.right <= a.left && a.right <= h.right && buttons.every(r => r.left >= h.left && r.right <= h.right && r.top >= h.top && r.bottom <= h.bottom && (r.right <= b.left || r.left >= a.right)); })()`)) != "true" {
+				if strings.TrimSpace(run("eval", `(() => { const cwd = document.querySelector('header #thread-workspace'); if (!cwd) return !document.querySelector('#composer-text'); const header = cwd.closest('header'), title = header.querySelector('h1'); const a = cwd.getBoundingClientRect(), b = title.getBoundingClientRect(), h = header.getBoundingClientRect(); const buttons = [...header.querySelectorAll('button')].map(button => button.getBoundingClientRect()).filter(r => r.width); return !!cwd.title && cwd.textContent.endsWith(cwd.title) && a.width >= 16 && b.width >= 16 && b.right <= a.left && a.right <= h.right && buttons.every(r => r.left >= h.left && r.right <= h.right && r.top >= h.top && r.bottom <= h.bottom && (r.right <= b.left || r.left >= a.right)); })()`)) != "true" {
 					t.Errorf("%s %s %s: title-bar directory, title or controls collide or lose their full path", state, size.name, theme)
 				}
 				if size.name == "desktop" && strings.TrimSpace(run("eval", `(() => { const model = document.querySelector('button[title="Model"]'), add = document.querySelector('button[aria-label="Add files or paths"]'); if (!model || !add) return true; const m = model.getBoundingClientRect(), a = add.getBoundingClientRect(); return Math.abs((m.top + m.bottom - a.top - a.bottom) / 2) < 1 && !document.querySelector('#composer-workspace'); })()`)) != "true" {
@@ -276,11 +280,22 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("find", "label", "Access token", "fill", token)
 	button("Connect")
 	run("wait", "--text", "What should main work on?")
-	run("wait", "--fn", "Array.from(document.querySelectorAll('[role=option]')).some(option => option.textContent.trim() === 'Default')")
+	run("wait", "--text", "suggestion-00")
+	run("find", "role", "button", "click", "--name", "Workspace on Execution")
+	for range 22 {
+		run("press", "ArrowDown")
+	}
+	t.Log("workspace picker geometry", run("eval", `(() => { const field = document.querySelector('[aria-label="Workspace path"]'), option = document.getElementById(field?.getAttribute('aria-activedescendant')), list = document.querySelector('[role=listbox]'), viewport = document.querySelector('[data-combobox-viewport]'); return {active: document.activeElement?.getAttribute('aria-label'), item: option?.getBoundingClientRect().toJSON(), list: list?.getBoundingClientRect().toJSON(), scroll: viewport?.scrollTop}; })()`))
+	run("wait", "--fn", `(() => { const field = document.querySelector('[aria-label="Workspace path"]'), option = document.getElementById(field?.getAttribute('aria-activedescendant')); if (!option) return false; const list = document.querySelector('[role=listbox]').getBoundingClientRect(), item = option.getBoundingClientRect(); return item.top >= list.top - 1 && item.bottom <= list.bottom + 1; })()`)
+	run("press", "Enter")
 	run("find", "role", "button", "click", "--name", "Workspace on Execution")
 	run("find", "label", "Workspace path", "fill", workspace)
+	// A navigation key with no matching suggestion still accepts the typed path.
+	run("press", "ArrowDown")
 	run("press", "Enter")
-	run("find", "role", "button", "click", "--name", "Model")
+	run("wait", "--fn", `document.querySelector('button[title=`+strconv.Quote(workspace)+`]') !== null`)
+	run("find", "role", "combobox", "click", "--name", "Model", "--exact")
+	run("wait", "--fn", "Array.from(document.querySelectorAll('[role=option]')).some(option => option.textContent.trim() === 'Default')")
 	run("find", "role", "option", "click", "--name", "Default", "--exact")
 	run("find", "label", "First message", "fill", "browser first input")
 	firstUpload := filepath.Join(directory, "first.txt")
@@ -387,7 +402,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	closeDialog()
 	message("/status")
 	run("wait", "--text", "Session status")
-	if strings.TrimSpace(run("eval", `document.querySelectorAll('dialog dt, dialog dd').length > 0 && Array.from(document.querySelectorAll('dialog dt, dialog dd')).every(el => getComputedStyle(el).borderTopWidth === '0px')`)) != "true" {
+	if strings.TrimSpace(run("eval", `document.querySelectorAll('[data-slot=dialog-content] dt, [data-slot=dialog-content] dd').length > 0 && Array.from(document.querySelectorAll('[data-slot=dialog-content] dt, [data-slot=dialog-content] dd')).every(el => getComputedStyle(el).borderTopWidth === '0px')`)) != "true" {
 		t.Fatal("status retained per-line separators")
 	}
 	capture("status")
@@ -396,7 +411,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--text", "The host does not expose individual Stop.")
 	capture("processes")
 	message("/ps")
-	run("wait", "--fn", `document.querySelector('#composer-text')?.value === '' && !document.querySelector('dialog[open]') && !!document.querySelector('[aria-label="Active processes"]')`)
+	run("wait", "--fn", `document.querySelector('#composer-text')?.value === '' && !document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]') && !!document.querySelector('[aria-label="Active processes"]')`)
 	button("Stop sleep 101")
 	run("wait", "--text", "Fixture stop refused")
 	button("Stop sleep 101")
@@ -460,7 +475,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		button("Refresh")
 		run("wait", "--text", "3 of 3")
 		capture("session-exchanges")
-		if strings.Contains(run("eval", `document.querySelector('dialog').textContent`), "[ older") {
+		if strings.Contains(run("eval", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]').textContent`), "[ older") {
 			t.Fatal("browser metrics advertise terminal shortcuts")
 		}
 		t.Log("links, machine-local details, metrics views, grouped status and individual process lifecycle passed")
@@ -477,7 +492,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--fn", `document.querySelector('header h1')?.textContent.trim() === `+strconv.Quote(longTitle))
 	capture("long-header")
 	button("Session details")
-	run("wait", "--fn", `document.querySelector('[popover]:popover-open')?.textContent.includes(`+strconv.Quote(workspace)+`)`)
+	run("wait", "--fn", `document.querySelector('[data-slot=popover-content][data-state=open]')?.textContent.includes(`+strconv.Quote(workspace)+`)`)
 	run("press", "Escape")
 	run("eval", `document.querySelector('figure')?.scrollIntoView({block:'center'})`)
 	run("wait", "--fn", `document.querySelector('img[alt="Attached image 1"]')?.naturalWidth > 0`)
@@ -756,6 +771,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	// native resume of that identity must restore both publications and input.
 	address := run("get", "url")
 	button("Session details")
+	run("wait", "--fn", `!!document.querySelector('[data-slot=popover-content][data-state=open]')`)
 	button("End thread")
 	button("End")
 	run("wait", "--text", "This thread has ended. Its last state stays here.")
@@ -776,6 +792,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		return strings.Contains(string(data), "browser after native resume")
 	})
 	button("Session details")
+	run("wait", "--fn", `!!document.querySelector('[data-slot=popover-content][data-state=open]')`)
 	button("End thread")
 	button("End")
 	run("wait", "--text", "Ended")
@@ -851,7 +868,14 @@ func TestWebUISemanticBrowser(t *testing.T) {
 
 type webUISemanticLauncher struct {
 	*serverLauncher
-	failures chan error
+	failures   chan error
+	workspaces []string
+}
+
+func (l *webUISemanticLauncher) StartOptions(ctx context.Context) (sessionapi.StartOptions, error) {
+	options, err := l.serverLauncher.StartOptions(ctx)
+	options.Workspaces = l.workspaces
+	return options, err
 }
 
 func (l *webUISemanticLauncher) Run(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {

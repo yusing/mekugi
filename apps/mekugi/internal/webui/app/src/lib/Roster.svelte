@@ -5,6 +5,7 @@
   import Dot, { type Tone } from "./ui/Dot.svelte";
   import { emptyBox, skeleton } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
+  import { Progress } from "./ui/progress";
   import { stream } from "./stream.svelte";
   import Wait from "./Wait.svelte";
   import AutoPage from "./AutoPage.svelte";
@@ -280,14 +281,12 @@
           </span>
           <!-- The context bar runs along the card's foot rather than taking a row. -->
           {#if agent.context !== undefined && agent.window}
-            <span
-              class="absolute inset-x-2.5 bottom-1 h-[3px] overflow-hidden rounded-full bg-active"
+            <Progress
+              class="pointer-events-none absolute inset-x-2.5 bottom-1 h-[3px] w-auto bg-active [&_[data-slot=progress-indicator]]:bg-accent"
+              value={Math.max(0, Math.min(agent.context, agent.window))}
+              max={agent.window}
               aria-hidden="true"
-              ><span
-                class="block h-full bg-accent"
-                style:width="{Math.min(100, (agent.context / agent.window) * 100)}%"
-              ></span></span
-            >
+            />
           {/if}
         </button>
         {#if agent.content}<AutoPage

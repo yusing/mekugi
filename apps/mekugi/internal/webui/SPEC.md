@@ -12,7 +12,10 @@ connector and shared [Session API](../sessionapi/CONTRACT.md). The server owns l
 threads and recorded playback. Closing a browser, UI host or connector leaves those
 owners running. Ending a thread or replay releases its server-owned resources.
 
-The page reuses the existing transcript, roster, code rendering and visual tokens.
+The page uses locally owned shadcn-svelte components and AI Elements compositions
+for its controls, transcript and activity presentation. These consume the shared
+session projections and controls, preserving retained-content paging, streaming,
+agent navigation and the existing code rendering and visual tokens.
 It is a browser interface to shared semantic controls, not a terminal emulator.
 [DESIGN.md](DESIGN.md) owns its visual and interaction rules.
 Non-code text uses IBM Plex Sans; code uses JetBrains Mono without ligatures.

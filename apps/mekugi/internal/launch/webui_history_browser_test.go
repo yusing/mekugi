@@ -264,7 +264,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "Resume saved thread")
-	run("eval", `window.resumeFirst = document.querySelector('dialog[open] li'); const dialog = document.querySelector('dialog[open]'); dialog.scrollTop = dialog.scrollHeight; window.resumeTop = dialog.scrollTop`)
+	run("eval", `window.resumeFirst = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open] li'); const dialog = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); dialog.scrollTop = dialog.scrollHeight; window.resumeTop = dialog.scrollTop`)
 	select {
 	case action := <-resumePages:
 		if action.Kind != sessionpresentation.ResumePage || action.After != "saved-39" {
@@ -280,7 +280,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "Automatically acquired saved row")
-	if run("eval", `window.resumeFirst.isConnected && document.querySelector('dialog[open]').scrollTop >= window.resumeTop - 1 && !document.querySelector('dialog[open]').textContent.includes('Load more')`) != "true" {
+	if run("eval", `window.resumeFirst.isConnected && document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]').scrollTop >= window.resumeTop - 1 && !document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]').textContent.includes('Load more')`) != "true" {
 		t.Fatal("dialog paging changed the reading position")
 	}
 	detailFrame.View.Resume = nil
@@ -288,7 +288,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	if err := attachment.native.Publish(attachment.request.Attachment, detailFrame); err != nil {
 		t.Fatal(err)
 	}
-	run("wait", "--fn", `!document.querySelector('dialog[open]')`)
+	run("wait", "--fn", `!document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')`)
 	// Closing the actual wire must replace it once and restore all observers.
 	run("eval", `window.controlSockets[0].close()`)
 	run("wait", "--fn", `window.controlSockets.length === 3 && document.querySelector('button[aria-label="Stop"]')?.disabled === false`)

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Alert } from "./alert";
   import type { Snippet } from "svelte";
 
   // One quiet sentence about the state of what is shown: a thread whose
@@ -10,9 +11,6 @@
   }: { role?: "status" | "alert"; class?: string; children: Snippet } = $props();
 </script>
 
-<p
-  class="rounded-card border border-warning-edge bg-warning-tint px-3 py-1.5 text-small text-warning-ink {extra}"
-  {role}
->
+<Alert variant="warning" class={extra} {role}>
   {@render children()}
-</p>
+</Alert>

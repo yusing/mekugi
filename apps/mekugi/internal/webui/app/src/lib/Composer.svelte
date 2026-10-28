@@ -17,6 +17,7 @@
   import { stream, type Stream } from "./stream.svelte";
   import Button from "./ui/Button.svelte";
   import ComposerCard from "./ui/ComposerCard.svelte";
+  import * as InputGroup from "./ui/input-group";
   import Menu from "./ui/Menu.svelte";
   import MenuItem from "./ui/MenuItem.svelte";
   import { composerText, composerTools, floating } from "./ui/styles";
@@ -435,6 +436,7 @@
         </div>{/if}
       <textarea
         id="composer-text"
+        data-slot="input-group-control"
         class={[composerText, "min-h-12 pt-3 pb-1", shell && "font-mono"]}
         role="combobox"
         aria-expanded={!!completion?.Choices.length}
@@ -474,7 +476,10 @@
     </div>
     <!-- A query container: where one row cannot hold every control, the thread
       settings take their own row (ThreadSettings) and Send keeps the corner. -->
-    <div class="{composerTools} @container flex-wrap gap-x-0.5 gap-y-1">
+    <InputGroup.Addon
+      align="block-end"
+      class="{composerTools} @container cursor-default flex-wrap gap-x-0.5 gap-y-1 text-body font-normal select-auto"
+    >
       <Menu label="Add files or paths" icon="plus" disabled={!!pending || shell}>
         {#snippet children(close)}
           <MenuItem
@@ -555,7 +560,7 @@
           disabled={!!pending || !!refusal || empty}
         />
       </div>
-    </div>
+    </InputGroup.Addon>
   </ComposerCard>
   <p
     id="composer-hint"

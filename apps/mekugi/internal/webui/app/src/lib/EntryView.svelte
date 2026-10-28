@@ -11,6 +11,9 @@
   import type { Entry, Value } from "./protocol";
   import { stream, type Stream } from "./stream.svelte";
   import Icon from "./ui/Icon.svelte";
+  import Reasoning from "./ui/ai/Reasoning.svelte";
+  import * as Message from "./ui/message";
+  import * as Trace from "./ui/trace";
   import { caret } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
   import ValueRow from "./ValueRow.svelte";
@@ -211,22 +214,20 @@
 
 {#snippet thoughtRow(value: Value)}
   {@const content = reasoningBody(value.body, value.label)}
-  {#snippet thoughtHeading()}
-    <Icon name="thought" size={14} />
-    <span>{value.live ? "Thinking" : thought(value.thought)}</span>
-    {#if value.label}<span class="min-w-0 truncate text-ink">{value.label}</span>{/if}
-  {/snippet}
   {#if content}
-    <details>
-      <summary class="{summary} min-h-[26px] text-muted hover:text-ink"
-        >{@render thoughtHeading()}</summary
-      >
-      <div class="mt-1 mb-2 ml-1.5 border-l-2 border-rule pl-[15px]">
-        <Markdown text={content} quiet />
-      </div>
-    </details>
+    <Reasoning
+      heading={value.live ? "Thinking" : thought(value.thought)}
+      label={value.label}
+      running={value.live}
+    >
+      <Markdown text={content} quiet />
+    </Reasoning>
   {:else}
-    <div class="{summary} min-h-[26px] text-muted">{@render thoughtHeading()}</div>
+    <Reasoning
+      heading={value.live ? "Thinking" : thought(value.thought)}
+      label={value.label}
+      running={value.live}
+    />
   {/if}
 {/snippet}
 {#snippet wait(value: Value)}
@@ -270,28 +271,32 @@
   data-kind={entry.kind}
 >
   {#if user}
-    <div
-      class="min-w-0 max-w-[min(680px,85%)] rounded-[14px_14px_4px_14px] bg-accent-tint px-4 pt-2.5 pb-3 max-sm:max-w-[90%]"
-    >
-      <div class="mb-1 flex items-baseline gap-2.5 text-small font-semibold text-accent">
-        <span>You</span>{#if turn}<span class="font-normal text-muted tabular-nums"
-            >Turn {turn}</span
-          >{/if}
-        {#if at}<time
-            class="ml-auto pl-3 font-mono font-normal text-muted tabular-nums"
-            title={stamp}>{at}</time
-          >{/if}
-      </div>
-      {#if entry.images?.length}<div class="mb-3 flex flex-wrap gap-2">
-          {#each entry.images as image, index (`${image}:${index}`)}<UserImage
-              {entry}
-              {image}
-              {index}
-              {source}
-            />{/each}
-        </div>{/if}
-      <Markdown text={entry.text ?? ""} spans={entry.spans} />
-    </div>
+    <Message.Root align="end">
+      <Message.Content
+        class="w-auto max-w-[min(680px,85%)] gap-0 rounded-[14px_14px_4px_14px] bg-accent-tint px-4 pt-2.5 pb-3 max-sm:max-w-[90%]"
+      >
+        <Message.Header
+          class="mb-1 items-baseline gap-2.5 px-0 text-small font-semibold text-accent"
+        >
+          <span>You</span>{#if turn}<span class="font-normal text-muted tabular-nums"
+              >Turn {turn}</span
+            >{/if}
+          {#if at}<time
+              class="ml-auto pl-3 font-mono font-normal text-muted tabular-nums"
+              title={stamp}>{at}</time
+            >{/if}
+        </Message.Header>
+        {#if entry.images?.length}<div class="mb-3 flex flex-wrap gap-2">
+            {#each entry.images as image, index (`${image}:${index}`)}<UserImage
+                {entry}
+                {image}
+                {index}
+                {source}
+              />{/each}
+          </div>{/if}
+        <Markdown text={entry.text ?? ""} spans={entry.spans} />
+      </Message.Content>
+    </Message.Root>
   {:else}
     <time
       class="pt-px text-right font-mono text-small leading-[22px] text-muted tabular-nums max-sm:hidden"
@@ -299,51 +304,60 @@
     >
     <div class="min-w-0">
       {#if traffic}
-        <div class="border-l-2 py-0.5 pl-3.5 {edges[traffic.glyph]}">
-          <div class="mb-1 flex flex-wrap items-baseline gap-x-1.5 text-small">
-            <span class="w-3.5 {glyphs[traffic.glyph]}" aria-hidden="true"
-              >{{ start: "▶", message: "✉", final: "✓", error: "✗", interrupted: "■" }[
-                traffic.glyph
-              ]}</span
-            >
-            <AgentName name={traffic.from} current={owner} />
-            {#if traffic.to}<span class="text-muted">→</span>
-              <AgentName name={traffic.to} current={owner} />{/if}
-            {#if traffic.detail}<span class="text-muted">{traffic.detail}</span>{/if}
-          </div>
-          {#if body}
-            <!-- A task is long and its agent's own view leads with it; elsewhere
+        <Message.Root
+          data-ai-element="subagent"
+          class="border-l-2 py-0.5 pl-3.5 {edges[traffic.glyph]}"
+        >
+          <Message.Content class="gap-0">
+            <Message.Header class="mb-1 px-0 font-normal">
+              <Trace.Line
+                status={traffic.glyph === "error" ? "error" : undefined}
+                class="flex-wrap items-baseline gap-x-1.5 text-small"
+              >
+                <Trace.Icon class="size-3.5 {glyphs[traffic.glyph]}"
+                  >{{ start: "▶", message: "✉", final: "✓", error: "✗", interrupted: "■" }[
+                    traffic.glyph
+                  ]}</Trace.Icon
+                >
+                <AgentName name={traffic.from} current={owner} />
+                {#if traffic.to}<span class="text-muted">→</span>
+                  <AgentName name={traffic.to} current={owner} />{/if}
+                {#if traffic.detail}<Trace.Description class="text-muted"
+                    >{traffic.detail}</Trace.Description
+                  >{/if}
+              </Trace.Line>
+            </Message.Header>
+            {#if body}
+              <!-- A task is long and its agent's own view leads with it; elsewhere
                  it opens with its first lines. -->
-            {#if traffic.glyph === "start" && traffic.to !== owner}
-              <Excerpt text={body} noun="task" />
-            {:else if reply && first?.summary}
-              <Markdown text={first.summary} context={replyContext} />
-              <details class="group/disclosure">
-                <summary class="{summary} {caret} min-h-6 text-small text-muted">Details</summary>
-                <Markdown text={first.details ?? body} context={replyContext} />
-              </details>
-            {:else if reply}
-              <Excerpt text={body} />
-            {:else}
-              <Markdown text={body} />
+              {#if traffic.glyph === "start" && traffic.to !== owner}
+                <Excerpt text={body} noun="task" />
+              {:else if reply && first?.summary}
+                <Markdown text={first.summary} context={replyContext} />
+                <details class="group/disclosure">
+                  <summary class="{summary} {caret} min-h-6 text-small text-muted">Details</summary>
+                  <Markdown text={first.details ?? body} context={replyContext} />
+                </details>
+              {:else if reply}
+                <Excerpt text={body} />
+              {:else}
+                <Markdown text={body} />
+              {/if}
             {/if}
-          {/if}
-        </div>
+          </Message.Content>
+        </Message.Root>
       {:else if prose}
-        <Markdown text={entry.text ?? ""} />
+        <Message.Root>
+          <Message.Content><Markdown text={entry.text ?? ""} /></Message.Content>
+        </Message.Root>
       {:else if entry.kind === "reasoning" && reasoning.length > 1}
-        <details>
-          <summary class="{summary} min-h-[26px] text-muted hover:text-ink">
-            <Icon name="thought" size={14} />
-            <span>{latestThought?.live ? "Thinking" : thinking}</span>
-            {#if latestThought?.label}<span class="min-w-0 truncate text-ink"
-                >{latestThought.label}</span
-              >{/if}
-          </summary>
-          <div class="mt-1 mb-2 ml-1.5 border-l-2 border-rule pl-[15px]">
-            {#each reasoning as value, i (i)}{@render thoughtRow(value)}{/each}
-          </div>
-        </details>
+        <Reasoning
+          heading={latestThought?.live ? "Thinking" : thinking}
+          label={latestThought?.label}
+          running={latestThought?.live}
+        >
+          {#each reasoning as value, i (i)}{@render thoughtRow(value)}{/each}
+        </Reasoning>
       {:else if entry.kind === "reasoning"}
         {#each reasoning as value, i (i)}{@render thoughtRow(value)}{/each}
       {:else if entry.kind === "hook"}
@@ -417,9 +431,9 @@
           </p>
         {/each}
       {:else if entry.values?.length}
-        <div
+        <Trace.Root
           class={[
-            "grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 divide-y divide-rule rounded-card border px-3.5 py-1 max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:px-3",
+            "grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 gap-y-0 divide-y divide-rule rounded-card border px-3.5 py-1 max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:px-3",
             entry.running && "border-[color-mix(in_srgb,var(--accent)_45%,var(--border))]",
           ]}
         >
@@ -455,7 +469,7 @@
               <ValueRow {value} {onload} outputLang={outputLanguage(entry.values, index)} />
             {/if}
           {/each}
-        </div>
+        </Trace.Root>
       {:else if entry.text}
         <Markdown text={entry.text} />
       {/if}

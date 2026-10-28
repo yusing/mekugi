@@ -113,10 +113,18 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	// A failed MCP call states its outcome where a failed command does.
 	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="15"]'); return row?.querySelector('.bg-negative-tint')?.textContent.trim() === 'failed' && row.innerText.split('failed').length === 2; })()`)
 	// Consecutive thoughts share one collapsed row headed by the latest.
-	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="13"]'); return !document.querySelector('[data-entry="14"]') && row?.querySelector('summary')?.textContent.includes('2 thoughts') && row.innerText.includes('Choosing a fix') && !row.innerText.includes('Checking callers'); })()`)
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="13"]'); return !document.querySelector('[data-entry="14"]') && row?.querySelector('[data-slot=trace-collapsible-trigger]')?.textContent.includes('2 thoughts') && row.innerText.includes('Choosing a fix') && !row.innerText.includes('Checking callers'); })()`)
 	run("eval", `document.querySelector('[data-entry="13"]').scrollIntoView({block:'center'})`)
-	run("click", `[data-entry="13"] summary`)
+	run("click", `[data-entry="13"] [data-slot=trace-collapsible-trigger]`)
 	run("wait", "--fn", `document.querySelector('[data-entry="13"]')?.innerText.includes('Checking callers')`)
+	run("eval", `const thoughts = document.querySelector('[data-entry="13"]').querySelectorAll('[data-slot=trace-collapsible-trigger]'); window.thoughtGroup = thoughts[0]; window.thoughtChild = thoughts[1]; window.thoughtChild.focus()`)
+	run("press", "Enter")
+	run("wait", "--fn", `window.thoughtChild.getAttribute('aria-expanded') === 'true'`)
+	run("eval", `window.thoughtGroup.focus()`)
+	run("press", "Enter")
+	run("wait", "--fn", `window.thoughtGroup.getAttribute('aria-expanded') === 'false'`)
+	run("press", "Enter")
+	run("wait", "--fn", `window.thoughtChild.isConnected && window.thoughtChild.getAttribute('aria-expanded') === 'true' && window.thoughtGroup.getAttribute('aria-expanded') === 'true'`)
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "thoughts-expanded.png"))
 	}

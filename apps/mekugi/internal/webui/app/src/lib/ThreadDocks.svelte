@@ -8,6 +8,7 @@
   import { semantic } from "./semantic.svelte";
   import { stream } from "./stream.svelte";
   import Button from "./ui/Button.svelte";
+  import * as Collapsible from "./ui/collapsible";
   import Icon from "./ui/Icon.svelte";
 
   // What sits between the transcript and the composer: the side answer,
@@ -160,19 +161,25 @@
       {/each}
 
       {#if waiting.length}
-        <div class="flex items-start gap-2 rounded-float border bg-raised pr-1">
-          <details class="min-w-0 flex-1">
-            <summary
-              class="flex min-h-9 items-center gap-2 px-3.5 text-small text-muted max-sm:min-h-11"
+        <Collapsible.Root
+          class="flex items-start gap-2 rounded-float border bg-raised pr-1"
+          role="group"
+          aria-label="Waiting messages"
+        >
+          <div class="min-w-0 flex-1">
+            <Collapsible.Trigger
+              class="flex min-h-9 w-full items-center gap-2 rounded-control px-3.5 text-left text-small text-muted hover:bg-active max-sm:min-h-11"
             >
               <Icon name="history" size={14} />
               {waiting.length === 1 ? "1 message waits" : `${waiting.length} messages wait`} for main's
               next turn
-            </summary>
-            <ol class="list-decimal pr-3.5 pb-2.5 pl-9">
-              {#each waiting as item, i (i)}<li class="wrap-anywhere">{item.Text}</li>{/each}
-            </ol>
-          </details>
+            </Collapsible.Trigger>
+            <Collapsible.Content>
+              <ol class="list-decimal pr-3.5 pb-2.5 pl-9">
+                {#each waiting as item, i (i)}<li class="wrap-anywhere">{item.Text}</li>{/each}
+              </ol>
+            </Collapsible.Content>
+          </div>
           <Button
             variant="quiet"
             class="my-0.5"
@@ -187,7 +194,7 @@
             disabled={disabled || view?.Input.ID !== view?.Main.ID || !view?.Pending.CanSteer}
             onclick={() => semantic.steerWaiting()}>Steer</Button
           >
-        </div>
+        </Collapsible.Root>
       {/if}
     </div>
   {/if}

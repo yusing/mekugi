@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Alert as AlertPrimitive } from "./alert";
   import type { Snippet } from "svelte";
   import type { HTMLAttributes } from "svelte/elements";
 
@@ -14,4 +15,4 @@
   } = $props();
 </script>
 
-<p class="text-small text-negative {extra}" role="alert" {...rest}>{@render children()}</p>
+<AlertPrimitive variant="destructive" class={extra} {...rest}>{@render children()}</AlertPrimitive>

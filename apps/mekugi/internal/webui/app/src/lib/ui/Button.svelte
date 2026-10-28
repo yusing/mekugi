@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type { HTMLButtonAttributes } from "svelte/elements";
+  import { Button as ButtonPrimitive } from "./button";
   import Icon, { type IconName } from "./Icon.svelte";
-  import { button, type Shape, type Size, type Variant } from "./styles";
+  import { buttonVariant, type Shape, type Size, type Variant } from "./styles";
 
   // A button from the shared recipe. An icon without text is labelled by
   // label, which also titles it; class adds layout only.
@@ -29,13 +30,16 @@
   } = $props();
 </script>
 
-<button
-  bind:this={ref}
+<ButtonPrimitive
+  bind:ref={() => ref ?? null, (element) => (ref = element ?? undefined)}
   {type}
-  class="{button(variant, shape ?? (children ? 'text' : 'icon'), size)} {extra}"
+  variant={buttonVariant[variant]}
+  shape={shape ?? (children ? "text" : "icon")}
+  {size}
+  class={extra}
   aria-label={label}
   title={label}
   {...rest}
 >
   {#if icon}<Icon name={icon} />{/if}{@render children?.()}
-</button>
+</ButtonPrimitive>

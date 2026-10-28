@@ -1,4 +1,7 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* Framed sheet: one tinted frame holds the sidebar; the thread sits on a
    sheet with a hairline edge and soft corners. Colour goes on the data: tool
@@ -48,6 +51,11 @@
   --role-depth: 56%;
   --float-shadow: 0 8px 28px rgba(21, 20, 27, 0.12), 0 1px 3px rgba(21, 20, 27, 0.08);
   --topbar: 48px;
+  /* shadcn-svelte reads the same palette as the application compositions. */
+  --background: var(--surface);
+  --foreground: var(--text);
+  --secondary: var(--raised);
+  --radius: 0.5rem;
 }
 
 /* Until the theme owner marks the root, the page is still empty: a dark
@@ -110,6 +118,12 @@
   --text-tiny--line-height: 18px;
   --text-small: 12px;
   --text-small--line-height: 16px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-lg: 18px;
+  --text-lg--line-height: 24px;
   --text-code: 13px;
   --text-code--line-height: 20px;
   --text-body: 14px;
@@ -169,6 +183,20 @@
   --color-neutral-tint: var(--pill-neutral-bg);
   --color-neutral-ink: var(--pill-neutral-ink);
   --color-scrim: rgb(0 0 0 / 38%);
+  --color-background: var(--surface);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary-foreground: var(--on-primary);
+  --color-secondary: var(--raised);
+  --color-secondary-foreground: var(--text);
+  --color-muted-foreground: var(--muted);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--negative);
+  --color-input: var(--control);
+  --color-ring: var(--accent);
   --shadow-float: var(--float-shadow);
 }
 

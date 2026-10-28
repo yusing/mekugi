@@ -11,6 +11,7 @@
   import Icon from "./ui/Icon.svelte";
   import { codeBlock } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
+  import * as Trace from "./ui/trace";
 
   // outputLang names the grammar of the retained output, when known.
   let { value, outputLang, onload }: { value: Value; outputLang?: string; onload?: () => unknown } =
@@ -168,17 +169,26 @@
     "-my-1.5 inline-flex min-h-8 items-center gap-1 rounded-control px-2 font-sans text-small text-muted hover:bg-active hover:text-ink max-sm:min-h-11";
 </script>
 
-<div
+<Trace.Collapsible
+  bind:open={outputOpen}
+  data-ai-element="tool"
   class={[
     "col-span-full grid grid-cols-subgrid items-baseline py-[5px]",
     value.subsumed && "opacity-70",
     value.effect && "ml-3 border-l border-rule pl-3",
   ]}
 >
-  <span
+  <Trace.Line
+    status={exited || actionFailed
+      ? "error"
+      : value.running
+        ? "running"
+        : value.pending
+          ? "pending"
+          : undefined}
     class="text-small font-medium whitespace-nowrap max-sm:col-span-full {verbs[
       family(verb) ?? ''
-    ] ?? 'text-muted'}">{value.skipped ? "Skipped" : verb}</span
+    ] ?? 'text-muted'}"><Trace.Title>{value.skipped ? "Skipped" : verb}</Trace.Title></Trace.Line
   >
   <!-- Code in a tool label is the subject itself, not an aside: mono, no chip. -->
   <!-- Rows share their entry's columns; a row without status lends the status
@@ -232,21 +242,15 @@
           <span class="max-sm:hidden">{fold.name} <span class="text-tiny">{fold.lines}</span></span
           ><span class="hidden max-sm:inline">{fold.short}</span>
         </button>{/if}
-      {#if outputDisclosure}<button
-          type="button"
-          aria-expanded={outputOpen}
+      {#if outputDisclosure}<Trace.CollapsibleTrigger
           aria-label={`Output: ${output}`}
           title={`Output: ${output}`}
           class={toggle}
-          onclick={() => (outputOpen = !outputOpen)}
         >
-          <span class={outputOpen ? "rotate-0" : "-rotate-90"}
-            ><Icon name="chevron" size={12} /></span
-          >
           <span class="max-sm:hidden">Output <span class="text-tiny">{output}</span></span><span
             class="hidden max-sm:inline">{lines(tailLines)}</span
           >
-        </button>{/if}
+        </Trace.CollapsibleTrigger>{/if}
       {#if value.running}
         <span class="inline-flex items-center gap-1.5 text-accent"
           ><Dot tone="running" size={6} />running</span
@@ -340,10 +344,19 @@
 
   {#if hasOutput && (!outputDisclosure || outputOpen)}
     <div class={extra}>
-      <pre class="{scroll} whitespace-pre"><Code
-          code={value.tail?.join("\n") ?? ""}
-          lang={outputLang}
-        /></pre>
+      {#snippet outputContent()}
+        <pre class="{scroll} whitespace-pre"><Code
+            code={value.tail?.join("\n") ?? ""}
+            lang={outputLang}
+          /></pre>
+      {/snippet}
+      {#if outputDisclosure}
+        <Trace.CollapsibleContent class="m-0 border-0 p-0 text-ink"
+          >{@render outputContent()}</Trace.CollapsibleContent
+        >
+      {:else}
+        {@render outputContent()}
+      {/if}
     </div>
   {/if}
-</div>
+</Trace.Collapsible>

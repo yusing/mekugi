@@ -5,7 +5,14 @@ this file owns how it looks and responds.
 
 ## Use the kit
 
-- Build from `app/src/lib/ui/` components and the recipes in `ui/styles.ts`:
+- Build from the locally owned shadcn-svelte components in `app/src/lib/ui/`
+  and their Mekugi compositions. AI Elements compose these primitives for
+  messages, reasoning, tool output and delegated work. Session publications and
+  semantic controls remain the source of data and actions; examples' chat
+  transports and lifecycle assumptions do not define session behavior.
+  `app/components.json` selects the upstream Nova registry and local aliases;
+  copied components are maintained here with the application palette and sizing.
+- Shared controls and the recipes in `ui/styles.ts` include:
   `Button`, `Field`, `Alert`, `Notice`, `Dialog`, `Menu`, `Picker`, `Popover`,
   `Tag`, `chip`, `segments` and `segment`, `input`, `floating`, `rowAction` and
   `revealed`, `codeBlock`, `emptyBox`. Callers add layout only, never a property the recipe sets. When two

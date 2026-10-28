@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import * as InputGroup from "./input-group";
 
-  // The frame of a composer: a card that takes dropped files while accepts
-  // allows them, and submits as a form.
+  // Prompt Input's shared frame; draft, attachment and submission ownership
+  // stays with the composer rather than a separate chat transport.
   let {
     accepts,
     onfiles,
@@ -21,14 +22,7 @@
 </script>
 
 <form
-  class={[
-    "rounded-composer border transition-colors",
-    dragging
-      ? "border-dashed border-accent bg-accent-tint"
-      : invalid
-        ? "border-negative bg-surface"
-        : "border-control bg-surface focus-within:border-muted",
-  ]}
+  data-slot="prompt-input"
   onsubmit={(event) => {
     event.preventDefault();
     onsubmit();
@@ -49,5 +43,16 @@
     if (event.dataTransfer?.files) onfiles(event.dataTransfer.files);
   }}
 >
-  {@render children()}
+  <InputGroup.Root
+    class={[
+      "h-auto flex-col items-stretch rounded-composer",
+      dragging
+        ? "border-dashed border-accent bg-accent-tint"
+        : invalid
+          ? "border-negative"
+          : "focus-within:border-muted",
+    ]}
+  >
+    {@render children()}
+  </InputGroup.Root>
 </form>

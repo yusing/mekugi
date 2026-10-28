@@ -26,7 +26,7 @@
     editing = next;
     token = "";
     error = undefined;
-    tick().then(() => document.querySelector<HTMLElement>("dialog [data-first]")?.focus());
+    tick().then(() => document.querySelector<HTMLElement>("[role=dialog] [data-first]")?.focus());
   }
   function reconnect(event: SubmitEvent, machine: Machine) {
     event.preventDefault();

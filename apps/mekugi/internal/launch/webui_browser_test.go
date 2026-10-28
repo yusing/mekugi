@@ -195,7 +195,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	closeDialog := func() {
 		t.Helper()
 		button("Close dialog")
-		run("wait", "--fn", "!document.querySelector('dialog[open]')")
+		run("wait", "--fn", "!document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')")
 	}
 	// Threads from every machine are links in the sidebar, under their machine.
 	firstPublication := true
@@ -225,7 +225,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		run("find", "label", "Connector URL", "fill", machine.remote.URL)
 		run("find", "label", "Access token", "fill", token)
 		button("Connect")
-		run("wait", "--fn", "!document.querySelector('dialog[open]')")
+		run("wait", "--fn", "!document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')")
 		open(label)
 	}
 	interrupt := func(machine, other *webUIBrowserMachine) {
@@ -296,6 +296,22 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	})()`)
 	run("snapshot", "-i")
 	add(alpha, "Alpha", strings.Repeat("a", 64))
+	// Shared controls keep keyboard focus inside a modal and restore its opener.
+	button("Machines")
+	run("wait", "--fn", `document.querySelector('[data-slot=dialog-content][data-state=open]')?.contains(document.activeElement)`)
+	run("press", "Shift+Tab")
+	run("wait", "--fn", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')?.contains(document.activeElement)`)
+	run("press", "Escape")
+	run("wait", "--fn", `!document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]') && document.activeElement?.textContent.trim().startsWith('Machines')`)
+	// The attachment menu supports keyboard opening, navigation and focus return.
+	run("focus", `[aria-label="Add files or paths"]`)
+	run("press", "Enter")
+	run("wait", "--fn", `document.activeElement?.getAttribute('role') === 'menuitem'`)
+	run("eval", `window.firstAttachmentAction = document.activeElement`)
+	run("press", "ArrowDown")
+	run("wait", "--fn", `document.activeElement?.getAttribute('role') === 'menuitem' && document.activeElement !== window.firstAttachmentAction`)
+	run("press", "Escape")
+	run("wait", "--fn", `document.activeElement?.getAttribute('aria-label') === 'Add files or paths' && !document.querySelector('[role=menu][data-state=open]')`)
 	// An admitted, cold child is absent from discovery. Its successful view
 	// attachment must retry the shared read that lost the preparation race.
 	run("fill", "#composer-text", "draft before cold child")
@@ -381,7 +397,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	button("Rename thread")
 	run("fill", "#thread-title", "A useful title")
 	button("Save")
-	run("wait", "--fn", "!document.querySelector('dialog[open]')")
+	run("wait", "--fn", "!document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')")
 	if request := <-browserCommands; *request.Operation.Command != "/title A useful title" || request.Operation.Editor != nil {
 		t.Fatal("rename changed the composer")
 	}
@@ -401,7 +417,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--fn", "window.pendingRenameSettled")
 	run("wait", "--fn", `document.querySelector('#thread-title')?.value === 'Child title' && !document.querySelector('#thread-title').disabled`)
 	button("Save")
-	run("wait", "--fn", "!document.querySelector('dialog[open]')")
+	run("wait", "--fn", "!document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')")
 	if request := <-browserCommands; request.Thread != "cold" || *request.Operation.Command != "/title Child title" {
 		t.Fatal("rename completion crossed thread dialogs")
 	}
@@ -421,7 +437,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 			run("eval", `window.finishCopy(); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`)
 		}
 		button("Session details")
-		if run("eval", `document.querySelector('button[aria-label="Copy resume command"]')?.title === 'Copy' && !document.querySelector('dialog[open]')`) != "true\n" {
+		if run("eval", `document.querySelector('button[aria-label="Copy resume command"]')?.title === 'Copy' && !document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')`) != "true\n" {
 			t.Fatal("clipboard completion crossed thread navigation")
 		}
 		run("press", "Escape")
@@ -1088,7 +1104,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}
 	run("find", "label", "Access token", "fill", strings.TrimSpace(string(token)))
 	button("Reconnect")
-	run("wait", "--fn", "Array.from(document.querySelectorAll('dialog[open] li')).some(row => row.textContent.includes('Alpha') && row.textContent.includes('Connected'))")
+	run("wait", "--fn", "Array.from(document.querySelectorAll('[role=dialog][data-slot=dialog-content][data-state=open] li')).some(row => row.textContent.includes('Alpha') && row.textContent.includes('Connected'))")
 	closeDialog()
 	open("Alpha")
 	run("wait", "--text", "Alpha recovered")
@@ -1100,13 +1116,13 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	button("Machines")
 	button("Remove Alpha")
 	button("Remove")
-	run("wait", "--fn", "!Array.from(document.querySelectorAll('dialog[open] li')).some(row => row.textContent.includes('Alpha'))")
+	run("wait", "--fn", "!Array.from(document.querySelectorAll('[role=dialog][data-slot=dialog-content][data-state=open] li')).some(row => row.textContent.includes('Alpha'))")
 	closeDialog()
 	open("Beta")
 	interrupt(beta, alpha)
 	reload(betaAddress)
 	button("Machines")
-	run("wait", "--fn", "!Array.from(document.querySelectorAll('dialog[open] li')).some(row => row.textContent.includes('Alpha'))")
+	run("wait", "--fn", "!Array.from(document.querySelectorAll('[role=dialog][data-slot=dialog-content][data-state=open] li')).some(row => row.textContent.includes('Alpha'))")
 	closeDialog()
 	interrupt(beta, alpha)
 	add(alpha, "Alpha", strings.TrimSpace(string(token)))
@@ -1118,11 +1134,11 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	button("Replace token for Alpha")
 	run("find", "label", "Access token", "fill", strings.TrimSpace(string(token)))
 	button("Reconnect")
-	run("wait", "--fn", "document.querySelector('dialog[open] [role=alert]')?.textContent.includes('Reloading may restore older machines or tokens')")
-	run("wait", "--fn", "Array.from(document.querySelectorAll('dialog[open] li')).some(row => row.textContent.includes('Alpha') && row.textContent.includes('Connected'))")
+	run("wait", "--fn", "document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open] [role=alert]')?.textContent.includes('Reloading may restore older machines or tokens')")
+	run("wait", "--fn", "Array.from(document.querySelectorAll('[role=dialog][data-slot=dialog-content][data-state=open] li')).some(row => row.textContent.includes('Alpha') && row.textContent.includes('Connected'))")
 	button("Remove Alpha")
 	button("Remove")
-	run("wait", "--fn", "!Array.from(document.querySelectorAll('dialog[open] li')).some(row => row.textContent.includes('Alpha')) && document.querySelector('dialog[open] [role=alert]')?.textContent.includes('Reloading may restore older machines or tokens')")
+	run("wait", "--fn", "!Array.from(document.querySelectorAll('[role=dialog][data-slot=dialog-content][data-state=open] li')).some(row => row.textContent.includes('Alpha')) && document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open] [role=alert]')?.textContent.includes('Reloading may restore older machines or tokens')")
 	closeDialog()
 	run("wait", "--fn", "document.querySelector('[role=alert]')?.textContent.includes('Reloading may restore older machines or tokens')")
 	open("Beta")

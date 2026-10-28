@@ -7,23 +7,29 @@ import { render } from "svelte/server";
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (
-      specifier.startsWith("./") &&
-      context.parentURL?.includes("/app/src/lib/") &&
-      !/\.(?:ts|mjs|js)$/.test(specifier) &&
-      !existsSync(new URL(specifier, context.parentURL))
-    )
-      specifier += ".ts";
-    if (specifier === "../../../../sessionapi/protocol") specifier += ".ts";
+    if (specifier.startsWith("$lib/"))
+      specifier = new URL(specifier.slice(5), import.meta.url).href;
+    if (specifier.startsWith(".") || specifier.startsWith("file:")) {
+      const url = new URL(specifier, context.parentURL);
+      if (url.pathname.endsWith(".js") && !existsSync(url)) {
+        const source = new URL(url.href.replace(/\.js$/, ".ts"));
+        if (existsSync(source)) specifier = source.href;
+      } else if (!/\.(?:ts|mjs|js)$/.test(url.pathname)) {
+        const index = new URL(`${url.href}/index.ts`);
+        const source = new URL(`${url.href}.ts`);
+        if (existsSync(index)) specifier = index.href;
+        else if (existsSync(source)) specifier = source.href;
+      }
+    }
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {
-    if (url.endsWith(".svelte") || url.endsWith(".svelte.ts")) {
+    if (url.endsWith(".svelte") || /\.svelte\.(?:ts|js)$/.test(url)) {
       const source = readFileSync(new URL(url), "utf8");
       const options = { filename: new URL(url).pathname, generate: "server" };
       const result = url.endsWith(".svelte")
         ? compile(source, options)
-        : compileModule(stripTypeScriptTypes(source), options);
+        : compileModule(url.endsWith(".ts") ? stripTypeScriptTypes(source) : source, options);
       return { format: "module", source: result.js.code, shortCircuit: true };
     }
     return nextLoad(url, context);
@@ -77,6 +83,8 @@ test("deferred replies keep their authored summary and Details disclosure", () =
   }).body;
   assert.match(html, /<strong>compact summary<\/strong>/);
   assert.match(html, /<summary[^>]*>Details<\/summary>/);
+  assert.match(html, /data-slot="message"[^>]*data-ai-element="subagent"/);
+  assert.match(html, /data-slot="trace-line"/);
 });
 
 test("a run of edits names its shared programs once and keeps each edit's own", () => {
@@ -147,6 +155,9 @@ test("complete one-line output stays visible without a disclosure", () => {
   for (const extra of [{ tail: ["first", "last"] }, { tailOmitted: 2 }]) {
     const folded = render(ValueRow, { props: { value: { ...value, ...extra } } }).body;
     assert.match(folded, /aria-label="Output:/);
+    assert.match(folded, /data-slot="trace-collapsible-trigger"/);
+    assert.match(folded, /aria-expanded="false"/);
+    assert.doesNotMatch(folded, /<pre/);
   }
 });
 
@@ -164,4 +175,33 @@ test("unreached commands render Skipped while retaining their command", () => {
   const pending = render(ValueRow, { props: { value: { ...value, pending: true } } }).body;
   assert.match(pending, />pending</);
   assert.doesNotMatch(pending, />Skipped</);
+});
+
+test("user messages compose Message with right alignment and retain marked content", () => {
+  const html = render(EntryView, {
+    props: {
+      entry: { seq: 1, agent: "You", kind: "text", turn: 2, text: "A **message**." },
+      at: "12:34",
+      stamp: "Time",
+      turn: 2,
+      owner: "/root",
+    },
+  }).body;
+  assert.match(html, /data-slot="message" data-align="end"/);
+  assert.match(html, /data-slot="message-header"/);
+  assert.match(html, /<strong>message<\/strong>/);
+  assert.match(html, /Turn 2/);
+  assert.match(html, /12:34/);
+});
+
+test("reasoning composes Trace disclosure without a control for empty thoughts", () => {
+  const html = view([{ label: "A thought", body: "Reasoning body.", live: true }], "reasoning");
+  assert.match(html, /data-ai-element="reasoning"/);
+  assert.match(html, /data-slot="trace-collapsible-trigger"/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /data-slot="trace-collapsible-content"[^>]*hidden/);
+  assert.match(html, /Reasoning body/);
+  const empty = view([{ label: "A thought", body: "**A thought**" }], "reasoning");
+  assert.match(empty, /data-slot="trace-line"/);
+  assert.doesNotMatch(empty, /data-slot="trace-collapsible-trigger"/);
 });

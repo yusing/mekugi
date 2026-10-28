@@ -314,15 +314,32 @@
   function onkeydown(event: KeyboardEvent) {
     if (event.key === "Escape" && panel && !wide.matches && !event.defaultPrevented) {
       const target = event.target as HTMLElement;
-      if (!target.closest("dialog, [popover], textarea, input")) {
+      if (
+        !target.closest(
+          "[role=dialog], [role=menu], [role=listbox], [role=combobox], [popover], textarea, input",
+        )
+      ) {
         event.preventDefault();
         closePanel();
         return;
       }
     }
-    if (event.metaKey || event.ctrlKey || event.altKey || !playback || !session) return;
+    if (
+      event.defaultPrevented ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      !playback ||
+      !session
+    )
+      return;
     const target = event.target as HTMLElement;
-    if (target.closest("input, textarea, select, dialog, [contenteditable=true]")) return;
+    if (
+      target.closest(
+        "input, textarea, select, [role=dialog], [role=menu], [role=listbox], [role=combobox], [contenteditable=true]",
+      )
+    )
+      return;
     if (event.key === " " && target.closest("button, [role=slider], summary")) return;
     let action = keys[event.key];
     if (!action) return;

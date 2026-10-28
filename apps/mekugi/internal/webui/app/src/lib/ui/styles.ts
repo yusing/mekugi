@@ -1,3 +1,6 @@
+import { buttonVariants } from "./button/variants";
+import { cn } from "../utils";
+
 // Class recipes shared by the UI kit and by elements that only look like a
 // control. Each recipe owns the properties it sets; callers add layout
 // (margins, flex placement) but never restyle what a recipe sets, since two
@@ -7,34 +10,18 @@ export type Variant = "default" | "primary" | "danger" | "quiet" | "quiet-danger
 export type Shape = "text" | "icon" | "round";
 export type Size = "sm" | "md" | "lg";
 
-// One primary (near-black) action per surface; everything else is outlined
-// or quiet. Phones get 44px targets.
-const variants: Record<Variant, string> = {
-  default: "border-border bg-surface text-ink hover:enabled:border-control",
-  primary: "border-primary bg-primary text-on-primary hover:enabled:opacity-88",
-  danger: "border-border bg-surface text-negative hover:enabled:border-negative",
-  quiet:
-    "border-transparent bg-transparent text-muted hover:enabled:bg-active hover:enabled:text-ink aria-pressed:bg-active aria-pressed:text-ink aria-expanded:bg-active aria-expanded:text-ink",
-  "quiet-danger": "border-transparent bg-transparent text-negative hover:enabled:bg-active",
-};
-const heights: Record<Size, string> = {
-  sm: "min-h-7 max-sm:min-h-11",
-  md: "min-h-8 max-sm:min-h-11",
-  lg: "min-h-11",
-};
-const shapes: Record<Size, Record<Shape, string>> = {
-  sm: { text: "px-2.5", icon: "w-7 max-sm:w-11", round: "w-7 rounded-full max-sm:w-11" },
-  md: { text: "px-3", icon: "w-8 max-sm:w-11", round: "w-8 rounded-full max-sm:w-11" },
-  lg: { text: "px-3.5", icon: "w-11", round: "w-11 rounded-full" },
-};
+// The local shadcn button owns control styling; this recipe also styles
+// native controls that cannot render a component.
+export const buttonVariant = {
+  default: "outline",
+  primary: "default",
+  danger: "destructive",
+  quiet: "ghost",
+  "quiet-danger": "quiet-danger",
+} as const;
 
 export function button(variant: Variant = "default", shape: Shape = "text", size: Size = "md") {
-  return [
-    "inline-flex flex-none items-center justify-center gap-1.5 rounded-control border font-medium whitespace-nowrap disabled:opacity-45",
-    variants[variant],
-    heights[size],
-    shapes[size][shape],
-  ].join(" ");
+  return cn(buttonVariants({ variant: buttonVariant[variant], shape, size }));
 }
 
 export const input =
