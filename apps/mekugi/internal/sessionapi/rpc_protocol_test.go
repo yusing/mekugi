@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/coder/websocket"
@@ -20,10 +21,10 @@ func TestWriteMessageBoundsStallsRatherThanSlowDelivery(t *testing.T) {
 	message := bytes.Repeat([]byte("x"), 8<<20)
 	for _, test := range []struct {
 		name    string
-		receive func(*websocket.Conn) error
+		receive func(*testing.T, *websocket.Conn) error
 		fails   bool
 	}{
-		{name: "slow", receive: func(conn *websocket.Conn) error {
+		{name: "slow", receive: func(t *testing.T, conn *websocket.Conn) error {
 			_, reader, err := conn.Reader(t.Context())
 			if err != nil {
 				return err
@@ -45,57 +46,52 @@ func TestWriteMessageBoundsStallsRatherThanSlowDelivery(t *testing.T) {
 				time.Sleep(5 * time.Millisecond)
 			}
 		}},
-		{name: "stalled", fails: true, receive: func(*websocket.Conn) error { return nil }},
+		{name: "stalled", fails: true, receive: func(*testing.T, *websocket.Conn) error { return nil }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			written := make(chan error, 1)
-			server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				conn, err := websocket.Accept(w, r, nil)
+			synctest.Test(t, func(t *testing.T) {
+				written := make(chan error, 1)
+				server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					conn, err := websocket.Accept(w, r, nil)
+					if err != nil {
+						written <- err
+						return
+					}
+					defer conn.CloseNow()
+					written <- WriteMessage(r.Context(), conn, websocket.MessageText, bytes.NewReader(message), stall)
+				}))
+				// An unbuffered link avoids TCP receive-window and delayed-ACK stalls.
+				// Virtual time controls the peer's pacing and the write stall timer.
+				clientWire, serverWire := net.Pipe()
+				server.Listener.Close()
+				server.Listener = &rpcPipeListener{Conn: serverWire, done: make(chan struct{})}
+				server.Start()
+				defer server.Close()
+				dial := func(ctx context.Context, network, address string) (net.Conn, error) {
+					return clientWire, nil
+				}
+				client := &http.Client{Transport: &http.Transport{DialContext: dial}}
+				conn, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(server.URL, "http"), &websocket.DialOptions{HTTPClient: client})
 				if err != nil {
-					written <- err
-					return
+					t.Fatal(err)
 				}
 				defer conn.CloseNow()
-				written <- WriteMessage(r.Context(), conn, websocket.MessageText, bytes.NewReader(message), stall)
-			}))
-			// Small socket buffers keep the kernel from absorbing the message.
-			server.Listener = smallBuffers{server.Listener}
-			server.Start()
-			defer server.Close()
-			dial := func(ctx context.Context, network, address string) (net.Conn, error) {
-				conn, err := (&net.Dialer{}).DialContext(ctx, network, address)
-				if err == nil {
-					err = conn.(*net.TCPConn).SetReadBuffer(16 << 10)
+				conn.SetReadLimit(-1)
+				received := make(chan error, 1)
+				go func() { received <- test.receive(t, conn) }()
+				started := time.Now()
+				err = <-written
+				if test.fails != (err != nil) {
+					t.Fatalf("write error %v after %v", err, time.Since(started))
 				}
-				return conn, err
-			}
-			client := &http.Client{Transport: &http.Transport{DialContext: dial}}
-			conn, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(server.URL, "http"), &websocket.DialOptions{HTTPClient: client})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer conn.CloseNow()
-			conn.SetReadLimit(-1)
-			go test.receive(conn)
-			started := time.Now()
-			err = <-written
-			if test.fails != (err != nil) {
-				t.Fatalf("write error %v after %v", err, time.Since(started))
-			}
-			if !test.fails && time.Since(started) < stall {
-				t.Fatal("delivery finished within one stall window, so it did not exercise a slow peer")
-			}
+				if !test.fails && time.Since(started) < stall {
+					t.Fatal("delivery finished within one stall window, so it did not exercise a slow peer")
+				}
+				if err := <-received; err != nil {
+					t.Fatal(err)
+				}
+			})
 		})
 	}
-}
-
-type smallBuffers struct{ net.Listener }
-
-func (l smallBuffers) Accept() (net.Conn, error) {
-	conn, err := l.Listener.Accept()
-	if err == nil {
-		err = conn.(*net.TCPConn).SetWriteBuffer(16 << 10)
-	}
-	return conn, err
 }

@@ -34,7 +34,7 @@ func trafficCheck(t *testing.T, err error) {
 func interruptedTrafficUI(t *testing.T, nested bool) interruptedTrafficFixture {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	now := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 10, 27, 20, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
 	retained, err := history.NewService(control.RecordKinds())
 	trafficCheck(t, err)
