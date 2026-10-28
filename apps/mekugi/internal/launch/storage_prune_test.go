@@ -245,9 +245,18 @@ func TestBackgroundPruneDelayedAgeRetryPressureAndRecovery(t *testing.T) {
 					}
 				}
 				store.storageNotice = notice
+				// The worker snapshots fixture limits while pressure changes them.
+				var limitsMu sync.Mutex
+				runSweeps := func(ctx context.Context) {
+					runStorageRetention(ctx, testDiagnostics(nil, nil), func() retentionScope {
+						limitsMu.Lock()
+						defer limitsMu.Unlock()
+						return store.retentionScope(ctx)
+					}, nil)
+				}
 				ctx, cancel := context.WithCancel(t.Context())
 				done := make(chan struct{})
-				go func() { defer close(done); store.runRetentionSweeps(ctx, nil) }()
+				go func() { defer close(done); runSweeps(ctx) }()
 				defer func() { cancel(); <-done }()
 				synctest.Wait()
 				time.Sleep(5 * time.Second)
@@ -268,14 +277,16 @@ func TestBackgroundPruneDelayedAgeRetryPressureAndRecovery(t *testing.T) {
 					store.storageNotice = notice
 					ctx, cancel = context.WithCancel(t.Context())
 					done = make(chan struct{})
-					go func() { defer close(done); store.runRetentionSweeps(ctx, nil) }()
+					go func() { defer close(done); runSweeps(ctx) }()
 					synctest.Wait()
 				} else {
 					files, err := store.testFileSizes()
 					if err != nil {
 						t.Fatal(err)
 					}
+					limitsMu.Lock()
 					store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
+					limitsMu.Unlock()
 					written := make(chan error, 1)
 					go func() {
 						values := map[string]legacycall.History{"new": {ToolName: "shell", Script: "true"}}
