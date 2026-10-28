@@ -103,7 +103,7 @@
         (following = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40)}
     >
       <div
-        class="mx-auto grid w-[calc(100%-32px)] grid-cols-1 items-start gap-3 pb-6 @min-[40rem]:grid-cols-2"
+        class="mx-auto grid w-[calc(100%-32px)] grid-cols-1 items-start gap-3 pb-6 @min-[40rem]:not-has-[>article:only-child]:grid-cols-2"
         bind:this={content}
       >
         {#each shown as { preview } (preview.ID)}

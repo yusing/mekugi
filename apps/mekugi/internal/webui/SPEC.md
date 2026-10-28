@@ -209,7 +209,7 @@ screens the panel opens as a sheet over the transcript.
 Main shows live source from its admitted session family; a selected child shows
 only its own edits. Source replaces the transcript above the composer, as in the
 terminal: one card per edit call with its author, editing tool and diff or text so far.
-Live cards fill the available width in two columns, ordered left to right then
+A single live card fills the available width. Multiple cards use two columns, ordered left to right then
 top to bottom, falling back to one column in narrow panes. Lines wrap within
 each card without horizontal scrolling, and no outer frame surrounds the card.
 Prompts and docks below stay in

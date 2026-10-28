@@ -114,16 +114,17 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 				if ratio, err := strconv.ParseFloat(strings.TrimSpace(contrast), 64); err != nil || ratio < 4.5 {
 					t.Errorf("%s %s %s: syntax contrast must be at least 4.5:1, got %s", state, size.name, theme, contrast)
 				}
-				if state == "live-grid" {
+				if state == "live-grid" || state == "live-diff" {
 					t.Log(size.name, theme, run("eval", `(() => {
             const live = document.querySelector('[aria-label="Live edits"]');
             const cards = [...live.querySelectorAll('article')];
             const boxes = cards.map(e => e.getBoundingClientRect());
             const grid = cards[0].parentElement.getBoundingClientRect();
             const pane = live.getBoundingClientRect();
-            const columns = pane.width >= 640 ? 2 : 1;
+            const columns = pane.width >= 640 && cards.length > 1 ? 2 : 1;
             if (Math.abs(grid.width - (pane.width - 32)) > 2) throw Error('Live grid does not fill width');
             for (let i = 0; i < boxes.length; i++) {
+              if (Math.abs(boxes[i].width - (grid.width - (columns - 1) * 12) / columns) > 2) throw Error('Live card does not fill its available columns');
               if (getComputedStyle(cards[i]).borderTopWidth !== '0px') throw Error('Outer card frame remains');
               if (i % columns && Math.abs(boxes[i].top - boxes[i - 1].top) > 1) throw Error('Cards do not share a row');
               if (i >= columns && boxes[i].top < boxes[i - columns].bottom) throw Error('Cards overlap rows');
@@ -132,7 +133,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
             const overflowing = [...live.querySelectorAll('*')].filter(e => e.clientWidth && e.scrollWidth > e.clientWidth + 1);
             if (overflowing.length) throw Error('Horizontal live overflow: ' + overflowing.map(e => e.tagName + '.' + e.className).join(', '));
             const text = [...live.querySelectorAll('span.whitespace-pre-wrap')].find(e => e.textContent.includes('long_identifier_'));
-            if (text.getBoundingClientRect().height <= parseFloat(getComputedStyle(text).lineHeight)) throw Error('Long source did not wrap');
+            if (text && text.getBoundingClientRect().height <= parseFloat(getComputedStyle(text).lineHeight)) throw Error('Long source did not wrap');
             return boxes.map(({x, y, width, height}) => ({x, y, width, height}));
           })()`))
 				}
