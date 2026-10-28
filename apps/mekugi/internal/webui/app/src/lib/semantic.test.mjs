@@ -55,6 +55,12 @@ test("agent labels retain canonical display names before roster metadata arrives
   assert.equal(stream.label("Main"), "delegate");
   assert.equal(stream.agent("Main")?.name, "/root/delegate");
   assert.equal(stream.agent("Main")?.thread, "delegate-thread");
+  assert.equal(stream.agent("agent:main"), stream.agent("/root"));
+  assert.equal(stream.agent("agent:main/delegate"), stream.agent("/root/delegate"));
+  assert.equal(stream.label("agent:main"), "root");
+  assert.equal(stream.label("agent:main/delegate"), "delegate");
+  for (const name of ["agent:main/unknown", "agent:mainland/delegate", "delegate"])
+    assert.equal(stream.agent(name), undefined);
 });
 
 test("roster activity uses observed progress and collapsed reasoning labels", () => {

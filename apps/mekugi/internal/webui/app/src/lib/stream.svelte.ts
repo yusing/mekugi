@@ -561,10 +561,14 @@ export class Stream {
   label(name: string | undefined): string {
     if (!name) return "main";
     if (name === "Main") name = this.session?.caller || "/root";
-    return this.byName.get(name)?.label ?? agentDisplayName(name);
+    return this.agent(name)?.label ?? agentDisplayName(name);
   }
 
   agent(name: string | undefined): Agent | undefined {
+    // Coordination observations use model-visible addresses; the roster keeps
+    // canonical task paths. Resolve the address, never the shortened label.
+    if (name === "agent:main" || name?.startsWith("agent:main/"))
+      name = `/root${name.slice("agent:main".length)}`;
     return name
       ? this.byName.get(name === "Main" ? this.session?.caller || "/root" : name)
       : undefined;

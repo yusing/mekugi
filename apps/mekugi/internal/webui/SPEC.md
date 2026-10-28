@@ -310,7 +310,10 @@ to before the selected agent started returns to
 Main.
 Traffic between agents is headed by who sent it to whom: a task, a message, or
 an agent's final answer or failure in Main's transcript. Another agent's name in
-a heading selects that agent. A task shows its first lines, with the rest
+a heading selects that agent. Coordination addresses and canonical task paths
+identify the same roster member for its display name, role colour and navigation;
+their internal prefixes stay hidden. Unknown targets remain plain text.
+A task shows its first lines, with the rest
 behind a disclosure, except in its recipient's own transcript. In Main's
 transcript, an agent's answer or message shows the summary the agent wrote,
 with supporting details behind a disclosure, when

@@ -16,6 +16,9 @@ var liveAgentPalette = [...]struct{ normal, dim uint8 }{
 
 // AgentColor returns an SGR prefix; the root uses the caller's own style.
 func AgentColor(name string) string {
+	if name == "agent:main" || strings.HasPrefix(name, "agent:main/") {
+		name = "/root" + strings.TrimPrefix(name, "agent:main")
+	}
 	if name == "" || name == "/root" || name == "Main" {
 		return ""
 	}
@@ -26,8 +29,9 @@ func AgentColor(name string) string {
 
 // DimAgentColor keeps the agent foreground and marks it faint for the output policy.
 func DimAgentColor(name string) string {
-	if name == "" || name == "/root" || name == "Main" {
+	color := AgentColor(name)
+	if color == "" {
 		return Dim
 	}
-	return strings.Replace(AgentColor(name), "1;", "2;", 1)
+	return strings.Replace(color, "1;", "2;", 1)
 }

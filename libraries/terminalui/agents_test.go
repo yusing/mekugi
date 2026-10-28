@@ -52,3 +52,12 @@ func TestMutedAgentPalette(t *testing.T) {
 		})
 	}
 }
+
+func TestAgentAddressColors(t *testing.T) {
+	for _, task := range []string{"/root", "/root/worker", "/root/worker/reviewer"} {
+		address := "agent:main" + strings.TrimPrefix(task, "/root")
+		if color, dim := terminalui.AgentColor(address), terminalui.DimAgentColor(address); color != terminalui.AgentColor(task) || dim != terminalui.DimAgentColor(task) {
+			t.Fatalf("address %q differs from task %q: %q, %q", address, task, color, dim)
+		}
+	}
+}

@@ -684,20 +684,31 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root/history", Thread: "old-child"}}},
 	}}
 	frame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
-		{Facts: activitypresentation.Facts{Seq: 2, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "5s"}}, Revision: 1},
+		{Facts: activitypresentation.Facts{Seq: 2, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/worker"}}, WaitTimeout: "5s"}}, Revision: 1},
 		{Facts: activitypresentation.Facts{Seq: 3, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitReason: "paused"}}, Revision: 1},
 		{Facts: activitypresentation.Facts{Seq: 4, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/one"}, {Name: "agent:main/two"}, {Name: "agent:main/three"}, {Name: "agent:main/four"}, {Name: "agent:main/five"}}}}, Revision: 1},
 		{Facts: activitypresentation.Facts{Seq: 5, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "all"}}}}, Revision: 1},
+		{Facts: activitypresentation.Facts{Seq: 6, Agent: "Main", Kind: "reply"}, Values: []activitypresentation.Value{{Kind: "message", From: "agent:main", To: "agent:main/worker", Body: "Review the input."}}, Revision: 1},
+		{Facts: activitypresentation.Facts{Seq: 7, Agent: "/root/worker", Kind: "final", Text: "Review complete."}, Revision: 1},
 	}}
 	for i := range frame.Main.Entries {
 		entry := &frame.Main.Entries[i]
-		entry.Text = entry.Values[0].ProgressText()
+		if len(entry.Values) > 0 {
+			entry.Text = entry.Values[0].ProgressText()
+		}
 	}
 	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "Waiting for worker (timeout 5s)")
 	run("wait", "--text", "Finished waiting for worker: paused")
+	// Model-visible coordination addresses and canonical completion identities
+	// select the same roster member, retaining its role ink in both themes.
+	for _, palette := range []string{"Light", "Dark"} {
+		theme(palette)
+		run("wait", "--fn", `(() => { const links = [2,3,6,7].map(seq => document.querySelector('[data-entry="'+seq+'"] button[title="Show worker\'s activity"]')); return links.every(link => link?.classList.contains('text-role')) && new Set(links.map(link => getComputedStyle(link).color)).size === 1 && !document.querySelector('[data-entry="6"]').textContent.includes('agent:main'); })()`)
+	}
+	theme("System")
 	run("wait", "--fn", `document.querySelector('[aria-label="Thread panel"] [title="Waiting for worker (timeout 5s)"]')`)
 	run("wait", "--text", "1 waiting")
 	run("wait", "--text", "Waiting for all")
@@ -802,7 +813,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}
 	run("fill", "#composer-text", "main draft")
 	run("eval", `window.familyPanel = document.querySelector('[aria-label="Thread panel"]'); window.familyRow = document.querySelector('#panel-content li > button')`)
-	run("find", "text", "worker", "click", "--exact")
+	run("find", "first", `[data-entry="2"] button[title="Show worker's activity"]`, "click")
 	var attachment pendingAttachment
 	select {
 	case attachment = <-childAttachment:
