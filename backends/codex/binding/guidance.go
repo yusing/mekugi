@@ -20,10 +20,11 @@ type InstructionUpdate struct {
 }
 
 // FrontendGuidance separates executable capabilities from task workflow policy.
-// Both values belong to the same authenticated invocation catalog.
+// All projections belong to the same authenticated invocation catalog.
 type FrontendGuidance struct {
 	Descriptions string `json:"descriptions"`
 	Workflow     string `json:"workflow"`
+	Shell        string `json:"shell,omitempty"` // Native-shell descriptions and shared workflow, without Codex execution framing.
 }
 
 // Guidance registers the distinct existing request phases. Callbacks are

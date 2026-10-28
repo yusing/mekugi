@@ -17,6 +17,12 @@ those owners; this integration exposes Claude only through Thread Control.
 
 ## Runtime
 
+Delegates load native user, project and local Claude settings. Claude owns instruction
+discovery and exclusions, memory preferences, and commit/PR attribution. Mekugi
+appends captured custom/role instructions, coordination guidance and the authenticated
+shell frontend catalog; Codex JavaScript execution guidance stays with Codex.
+Captured approvals, role reductions and Thread Control coordination remain authoritative.
+
 On-demand model discovery reads the SDK initialization catalog without submitting
 input, with transcript persistence disabled. The application closes and joins the
 discovery process before returning qualified model identifiers. Ordinary Codex

@@ -27,6 +27,9 @@ const workflowEnd = "<!-- mekugi-workflow:end -->"
 //go:embed workflow.md
 var workflowPreamble string
 
+//go:embed workflow_codex.md
+var codexWorkflow string
+
 //go:embed workflow_macos.md
 var macOSWorkflow string
 
@@ -39,9 +42,6 @@ func frontendGuide(commands []command.Spec, sections map[string]string, childRep
 	var output, workflow strings.Builder
 	base, childRule, _ := strings.Cut(workflowPreamble, "<!-- child-reply-summary -->")
 	workflow.WriteString(workflowStart + "\n")
-	if runtime.GOOS == "darwin" {
-		workflow.WriteString(macOSWorkflow)
-	}
 	workflow.WriteString(base)
 	if childReplySummary {
 		workflow.WriteString(childRule)
@@ -67,7 +67,13 @@ func frontendGuide(commands []command.Spec, sections map[string]string, childRep
 	}
 	output.WriteString("</mekugi-frontends>\n" + frontendGuidanceEnd)
 	workflow.WriteString(workflowEnd)
-	return binding.FrontendGuidance{Descriptions: output.String(), Workflow: workflow.String()}, nil
+	shell := output.String() + "\n" + workflow.String()
+	execution := codexWorkflow
+	if runtime.GOOS == "darwin" {
+		execution = macOSWorkflow + execution
+	}
+	codex := strings.Replace(workflow.String(), workflowStart+"\n", workflowStart+"\n"+execution+"\n", 1)
+	return binding.FrontendGuidance{Descriptions: output.String(), Workflow: codex, Shell: shell}, nil
 }
 
 // Source: internal/router/frontend_guidance.go:88:125@[7a069269].

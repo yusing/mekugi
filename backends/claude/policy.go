@@ -82,7 +82,7 @@ func CompilePolicy(approval jsontext.Value, reviewer string) (*Policy, error) {
 }
 
 // Options returns a detached SDK options fragment. The worker separately owns
-// its authenticated coordination server, hooks and settingSources isolation.
+// its authenticated coordination server, hooks and native settings loading.
 func (p *Policy) Options() jsontext.Value { return bytes.Clone(p.options) }
 
 // CheckTool runs before every native tool. Native tools with no special

@@ -178,7 +178,7 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 	}
 	options["sessionId"], _ = json.Marshal(info.Session)
 	options["model"], _ = json.Marshal(strings.TrimPrefix(settings.Model, "claude:"))
-	options["systemPrompt"], err = claudeSystemPrompt(settings, control.Identity{Thread: info.Thread, Session: info.Session}, registry.FrontendGuidance.Descriptions+"\n"+registry.FrontendGuidance.Workflow)
+	options["systemPrompt"], err = claudeSystemPrompt(settings, control.Identity{Thread: info.Thread, Session: info.Session}, registry.FrontendGuidance.Shell)
 	if err != nil {
 		return err
 	}

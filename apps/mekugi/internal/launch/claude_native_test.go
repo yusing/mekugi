@@ -118,6 +118,26 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
 	f := newClaudeHookFixture(t)
 	b := f.bridge
 	workspace := b.settings.Workspace
+	claudeConfig := t.TempDir()
+	excluded := filepath.Join(workspace, "AGENTS.md")
+	nativeSettings, err := json.Marshal(map[string]any{
+		"autoMemoryEnabled": false,
+		"attribution":       map[string]string{"commit": "", "pr": ""},
+		"claudeMdExcludes":  []string{excluded, filepath.Join(claudeConfig, "CLAUDE.md")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, body := range map[string][]byte{
+		filepath.Join(claudeConfig, "settings.json"): nativeSettings,
+		filepath.Join(claudeConfig, "CLAUDE.md"):     []byte("excluded-native-instruction-fixture"),
+		excluded:                                     []byte("excluded-native-instruction-fixture"),
+		filepath.Join(workspace, "CLAUDE.md"):        []byte("included-native-instruction-fixture"),
+	} {
+		if err := os.WriteFile(path, body, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	parentScope := b.selected
 	parentScope.Thread = "parent"
 	operation := executionobservation.PrepareShell(ctx, parentScope, b.owners.Changes.Service, b.checkpoints, b.owners.Recovery, nil, &executionobservation.Windows{}, nil, nil,
@@ -190,7 +210,7 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
 	environment := slices.DeleteFunc(os.Environ(), func(entry string) bool {
 		return strings.HasPrefix(entry, "ANTHROPIC_") || strings.HasPrefix(entry, "CLAUDE_") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, "MEKUGI_EXEC_TRACK=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=")
 	})
-	environment = append(environment, "ANTHROPIC_BASE_URL="+base, "ANTHROPIC_API_KEY=local-fixture", "ANTHROPIC_AUTH_TOKEN=", "CLAUDE_CODE_OAUTH_TOKEN=", "CLAUDE_CONFIG_DIR="+t.TempDir(), "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", "CLAUDE_CODE_USE_BEDROCK=0", "CLAUDE_CODE_USE_VERTEX=0", "CLAUDE_CODE_USE_FOUNDRY=0", routerTestWorkerEnvironment+"=1")
+	environment = append(environment, "ANTHROPIC_BASE_URL="+base, "ANTHROPIC_API_KEY=local-fixture", "ANTHROPIC_AUTH_TOKEN=", "CLAUDE_CODE_OAUTH_TOKEN=", "CLAUDE_CONFIG_DIR="+claudeConfig, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", "CLAUDE_CODE_USE_BEDROCK=0", "CLAUDE_CODE_USE_VERTEX=0", "CLAUDE_CODE_USE_FOUNDRY=0", routerTestWorkerEnvironment+"=1")
 	parent := &claudeNativeParent{final: make(chan control.NativeInput, 1)}
 	hub := sessionapi.NewHub(ctx, &claudeNativeLauncher{parent: parent})
 	workers := new(frontends.WorkerImage)
@@ -237,6 +257,7 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
 	}
 	settings := b.settings
 	settings.Model = "claude:claude-sonnet-4-6"
+	settings.DeveloperInstructions = new("selected-native-role-fixture")
 	settings.ApprovalPolicy, settings.ApprovalsReviewer = jsontext.Value(approval), reviewer
 	result, err := driver.SpawnPrepared(ctx, control.Identity{Thread: "parent", Session: "parent-session", Turn: "parent-turn", Call: "native-spawn", Item: "native-spawn"}, threadbinding.PreparedChild{TaskName: "native", Message: "Execute the requested checks and finish.", Settings: settings})
 	if err != nil {
@@ -301,5 +322,15 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
 	}
 	if !strings.Contains(string(body), "+parent evidence") || !strings.Contains(string(body), "THREAD="+result.Thread) || !strings.Contains(string(body), "mekugi-tools-") || !strings.Contains(string(body), "mchanges "+strings.Fields(childList)[0]) {
 		t.Fatalf("native provider input omitted private frontend identity or shared receipts: %s", body)
+	}
+	for _, absent := range []string{"excluded-native-instruction-fixture", "# Memory", "Co-Authored-By:", "Generated with [Claude Code]", "tools.exec_command", "Promise.allSettled"} {
+		if strings.Contains(string(body), absent) {
+			t.Errorf("native provider request contains excluded guidance %q", absent)
+		}
+	}
+	for _, present := range []string{"included-native-instruction-fixture", "selected-native-role-fixture", "Reuse completed edit-receipt IDs", "mcp__threadcontrol__spawn_agent"} {
+		if !strings.Contains(string(body), present) {
+			t.Errorf("native provider request omits required guidance %q", present)
+		}
 	}
 }

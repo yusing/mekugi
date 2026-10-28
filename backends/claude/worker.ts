@@ -180,7 +180,7 @@ class Worker {
     const options: Options = {
       ...config.options,
       cwd: config.workspace, pathToClaudeCodeExecutable: config.claudePath,
-      env: process.env, settingSources: [],
+      env: process.env, settingSources: ["user", "project", "local"],
       sandbox: { enabled: false },
       disallowedTools: [...new Set([...disallowedTools, "Agent", "Task"])],
       // This is a CLI flag, not an SDK Options property in the pinned SDK.

@@ -79,6 +79,7 @@ test("real SDK streaming query authenticates parallel identical MCP calls, retai
   assert.notEqual(accepted.uuid, retained.uuid);
   const init = await worker.waitFor((event) => event.type === "system");
   assert.ok(init.fixture_args.includes("--replay-user-messages"));
+  assert.ok(init.fixture_args.includes("--setting-sources=user,project,local"));
   assert.ok(init.fixture_args.includes("--resume=b0f7cf70-0dcc-4b9d-b5ab-e6264b07bc55"));
   assert.ok(init.fixture_args.includes("--fork-session"));
   assert.ok(init.fixture_args.includes(`--session-id=${forkId}`));

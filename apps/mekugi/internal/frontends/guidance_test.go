@@ -28,6 +28,14 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	if err != nil || saved != registry.FrontendGuidance || strings.Contains(guide, "{{") || strings.Contains(guide, "<instruction id=") {
 		t.Fatalf("standalone generated frontend guidance differs from projection: %v", err)
 	}
+	for _, codeOnly := range []string{"Promise.allSettled", "tools.exec_command", "Pass `shell:"} {
+		if strings.Contains(saved.Shell, codeOnly) {
+			t.Fatalf("native shell guidance contains Codex execution instruction %q", codeOnly)
+		}
+	}
+	if !strings.Contains(saved.Workflow, "Promise.allSettled") || !strings.Contains(saved.Shell, "follow its next_call") || !strings.Contains(saved.Shell, "Reuse completed edit-receipt IDs") {
+		t.Fatal("frontend projections lost execution or shared helper workflow")
+	}
 	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, manifestFilename))
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +55,7 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 		if err := json.Unmarshal(byName[name].Specification, &specification); err != nil {
 			t.Fatal(err)
 		}
-		if specification.Description == "" || strings.Count(guide, specification.Description) != 1 {
+		if specification.Description == "" || strings.Count(guide, specification.Description) != 1 || strings.Count(saved.Shell, specification.Description) != 1 {
 			t.Fatalf("%s description is not projected exactly once", name)
 		}
 	}
