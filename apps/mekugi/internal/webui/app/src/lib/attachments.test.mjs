@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-import { prepareAttachments, uploadLimit } from "./attachments.ts";
+import {
+  activeAttachments,
+  inlineReferences,
+  prepareAttachments,
+  submissionAttachments,
+  uploadLimit,
+} from "./attachments.ts";
 
 const originalFileReader = globalThis.FileReader;
 let readers;
@@ -48,9 +54,27 @@ test("a reference keeps its selected bytes and provenance separate from uploads"
       source: "selection",
       name: "output",
       path: "source.go",
+      inline: true,
       data: Buffer.from("selected 日本語").toString("base64"),
     },
   ]);
+});
+
+test("inline references follow moved markers, retain deleted bytes for undo and refuse duplicates", () => {
+  const items = [
+    { id: "reference", file: new File(["quoted"], "message"), reference: "" },
+    { id: "file", path: "notes.md" },
+  ];
+  const text = "Why [Selected message] now?";
+  assert.deepEqual(
+    inlineReferences(text, items).map(({ start, end }) => [start, end]),
+    [[4, 22]],
+  );
+  assert.deepEqual(submissionAttachments("Why now?", items), [items[1]]);
+  assert.deepEqual(activeAttachments("Why now?", items), [items[1]]);
+  assert.deepEqual(activeAttachments(text, items), items);
+  assert.deepEqual(submissionAttachments(text, items), items);
+  assert.throws(() => submissionAttachments(text + " [Selected message]", items), /more than once/);
 });
 
 test("mixed File and path inputs retain order, bytes and cumulative progress", async () => {

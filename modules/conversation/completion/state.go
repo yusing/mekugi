@@ -15,6 +15,7 @@ type Choice struct {
 	ID                               uint64 // Distinguishes repeated labels in one immutable choice collection.
 	Name, Path, Description, Display string
 	Enabled                          bool
+	Preset                           bool
 	HideRemote                       bool `json:"-"` // A dedicated browser control replaces this completion.
 }
 
@@ -46,6 +47,7 @@ type State struct {
 	Resolved          Target
 	ResolvedCwd       string
 	Skills            []Choice
+	Presets           []Choice
 	SkillsCwd         string
 	SkillsLoaded      bool
 	SkillsProblem     string

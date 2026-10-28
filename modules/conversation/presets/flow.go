@@ -157,6 +157,25 @@ func (f *Flow) Choices() []completion.Choice {
 	return choices
 }
 
+// NamedChoices exposes saved labels without turning their input into a binding.
+func (f *Flow) NamedChoices() []completion.Choice {
+	if !f.Loaded {
+		return nil
+	}
+	var choices []completion.Choice
+	for i := range 10 {
+		slot := (i + 1) % 10
+		value := f.Slots[slot]
+		label, _, _ := strings.Cut(strings.TrimSpace(value.Label), "\n")
+		if value.Input == "" || label == "" {
+			continue
+		}
+		preview, _, _ := strings.Cut(strings.TrimSpace(value.Input), "\n")
+		choices = append(choices, completion.Choice{ID: uint64(slot + 1), Name: label, Description: fmt.Sprintf("Preset %d: %s", slot, preview), Preset: true})
+	}
+	return choices
+}
+
 // Choose returns recalled input to fill the client's composer without submitting.
 func (f *Flow) Choose(choice completion.Choice, input string) string {
 	if f.Pending {

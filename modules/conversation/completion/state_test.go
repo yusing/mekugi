@@ -74,3 +74,22 @@ func TestSkillCatalogFilteringAndAcknowledgedToggle(t *testing.T) {
 		t.Fatalf("acknowledged toggle missing: %+v", p.Choices)
 	}
 }
+
+func TestPresetChoicesStayDistinctFromSkillBindings(t *testing.T) {
+	p := State{Skills: []Choice{{Name: "review", Path: "/skills/review", Enabled: true}}, Presets: []Choice{
+		{ID: 2, Name: "review", Preset: true}, {ID: 3, Name: "review", Preset: true},
+	}}
+	p.FilterSkills("rev", false)
+	p.IncludePresets("rev")
+	p.IncludePresets("rev")
+	if len(p.Choices) != 3 || p.Choices[0].Identity() == p.Choices[1].Identity() || p.Choices[1].Identity() == p.Choices[2].Identity() {
+		t.Fatalf("preset/skill identities overlap or repeated publication duplicates them: %+v", p.Choices)
+	}
+	p.FilterSkills("rev", true)
+	if len(p.Choices) != 1 || p.Choices[0].Preset {
+		t.Fatalf("presets entered skill management: %+v", p.Choices)
+	}
+	if len(p.Skills) != 1 || p.Skills[0].Preset || p.Skills[0].Path != "/skills/review" {
+		t.Fatalf("preset displaced the binding catalog: %+v", p.Skills)
+	}
+}

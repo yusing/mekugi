@@ -40,6 +40,22 @@ func TestPresetLabelValidation(t *testing.T) {
 	}
 }
 
+func TestNamedPresetChoices(t *testing.T) {
+	f := Flow{Loaded: true, Slots: [10]Slot{
+		0: {Input: "last", Label: "review"}, 1: {Input: "first\nsecond", Label: "review"},
+		2: {Input: "unnamed"}, 3: {Input: "with spaces", Label: "Review 你好"},
+	}}
+	choices := f.NamedChoices()
+	if len(choices) != 3 || choices[0].ID != 2 || choices[2].ID != 1 || choices[1].Name != "Review 你好" || choices[0].Description != "Preset 1: first" {
+		t.Fatalf("named choices lost slot order, labels or preview: %+v", choices)
+	}
+	for _, choice := range choices {
+		if !choice.Preset || choice.Path != "" {
+			t.Fatalf("preset became a skill: %+v", choice)
+		}
+	}
+}
+
 func TestPresetFlowSaveEditRenameDeleteAndCancel(t *testing.T) {
 	store := memoryStore{1: {Input: "native prompt", Label: "Native label"}}
 	synctest.Test(t, func(t *testing.T) {

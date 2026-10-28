@@ -337,6 +337,18 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	waitRecovered()
 	run("wait", "--text", "Browser host answer 1")
 	run("find", "text", "Browser host answer 1", "text", "--exact")
+	// A cold catalog must reopen a query that is not shaped like a skill name.
+	// The shared owner replaces only that token and preserves the Unicode caret.
+	run("fill", "#composer-text", "日本語 $你好 afterwards")
+	run("eval", `(() => { const field = document.querySelector('#composer-text'); field.setSelectionRange(7, 7); field.dispatchEvent(new Event('select', {bubbles:true})); })()`)
+	run("wait", "--fn", `Array.from(document.querySelectorAll('#completions [role=option]')).some(option => option.textContent.includes('你好'))`)
+	run("eval", `Array.from(document.querySelectorAll('#completions [role=option]')).find(option => option.textContent.includes('你好')).click()`)
+	run("wait", "--fn", `document.querySelector('#composer-text').value === '日本語 Review carefully. afterwards'`)
+	if run("eval", `document.querySelector('#composer-text').selectionStart === 21 && !document.querySelector('[aria-label="Attachments"]')`) != "true\n" {
+		t.Fatal("inline preset lost its caret or created an attachment")
+	}
+	capture("inline-preset")
+	run("fill", "#composer-text", "")
 	run("wait", "--fn", `Array.from(document.querySelectorAll('[data-entry]')).some(row => row.textContent.includes('Browser host answer 1') && !row.querySelector('button[aria-label="Details"]'))`)
 	run("wait", "--fn", `Array.from(document.querySelectorAll('.prose a')).some(a => a.getAttribute('href') === 'https://example.com/auto' && a.target === '_blank' && a.rel.includes('noopener'))`)
 	run("wait", "--fn", `Array.from(document.querySelectorAll('.prose a')).some(a => a.textContent === 'Website' && a.getAttribute('href') === 'https://example.com/markdown')`)
@@ -945,6 +957,7 @@ func serveWebUISemanticHost(t *testing.T) {
 		switch request.Method {
 		case "config/read":
 			result["layers"] = []any{}
+			result["config"] = map[string]any{"tui": map[string]any{"presets": map[string]any{"1": map[string]string{"label": "你好", "input": "Review carefully."}}}}
 		case "thread/start":
 			result["thread"] = threads["main"]
 		case "thread/settings/update":

@@ -1134,7 +1134,7 @@ test("repeated effect publications apply and acknowledge each receipt only once"
   owner.snapshot(2, effects);
   owner.snapshot(3, effects);
   await tick();
-  assert.equal(semantic.editor().text, "");
+  assert.equal(semantic.editor().text, "[Selected Answer] ");
   assert.equal(semantic.editor().items.length, 1);
   assert.equal(semantic.editor().items[0].reference, "source.go");
   assert.equal(semantic.editor().items[0].file.name, "Answer");
@@ -1193,6 +1193,38 @@ test("completion replaces its captured text before restoring the selected comman
   owner.requests[0].resolve({ version: { Attachment: 1, Revision: 3 } });
 });
 
+test("references and completed presets retain the middle caret and surrounding Unicode text", () => {
+  const owner = machine();
+  const editor = semantic.editor();
+  editor.text = "日本語 Why this?";
+  editor.cursorBack = 5;
+  owner.snapshot(2, [
+    {
+      ID: 1,
+      Thread: "thread-one",
+      Target: semantic.target(),
+      Selection: { Description: "dialog", Text: "quote", Source: "file.go" },
+    },
+  ]);
+  assert.equal(editor.text, "日本語 Why [Selected dialog] this?");
+  assert.equal(editor.cursorBack, 5);
+  const before = editor.text + " $review after";
+  editor.text = before;
+  const expanded = before.replace("$review", "Review carefully.");
+  owner.snapshot(3, [
+    {
+      ID: 2,
+      Thread: "thread-one",
+      Target: semantic.target(),
+      Action: { Kind: 2, Start: 0, End: new TextEncoder().encode(before).length },
+      Restore: textDraft(expanded, 6),
+    },
+  ]);
+  assert.equal(editor.text, expanded);
+  assert.equal(editor.cursorBack, 6);
+  assert.equal(editor.items.length, 1, "preset text creates no attachment and retains the quote");
+});
+
 test("completed files, images and skills keep their text and attach host paths", async () => {
   const owner = machine();
   semantic.editor().text = "see @ma";
@@ -1236,7 +1268,7 @@ test("retained recovery stays separate from the editor and never retries itself"
   owner.snapshot(2, effects);
   owner.snapshot(3, effects);
   await tick();
-  assert.equal(semantic.editor().text, "new draft");
+  assert.equal(semantic.editor().text, "new draft[Selected output] ");
   assert.equal(await semantic.editor().items[0].file.text(), "later selection");
   assert.equal(owner.requests.length, 1);
   assert.equal(owner.requests[0].params.body.operation.receipt.Effect, 2);
@@ -1252,7 +1284,7 @@ test("retained recovery stays separate from the editor and never retries itself"
   owner.snapshot(4, effects);
   await tick();
   assert.equal(owner.requests.length, 2);
-  assert.equal(semantic.editor().text, "new draft");
+  assert.equal(semantic.editor().text, "new draft[Selected output] ");
 });
 
 test("switching machines cancels in-flight settlement and drops old queued work", async () => {

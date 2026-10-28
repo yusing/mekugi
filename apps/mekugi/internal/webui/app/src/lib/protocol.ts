@@ -276,7 +276,7 @@ export type Action = "toggle-pause" | "faster" | "slower" | "back" | "forward" |
 export type Attachment =
   | { source: "path"; path: string }
   | { source: "upload"; name: string; data: string }
-  | { source: "selection"; name: string; data: string; path?: string };
+  | { source: "selection"; name: string; data: string; path?: string; inline?: boolean };
 
 export type Start =
   | (Omit<APIStart, "text" | "attachments" | "replay"> & {

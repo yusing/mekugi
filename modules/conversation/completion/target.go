@@ -11,6 +11,18 @@ import (
 )
 
 func (p *State) FindTarget(d composer.Draft) Target {
+	target := p.FindToken(d)
+	if target.Kind == '$' && !p.SkillQueryCompletable(target.Query) && !slices.ContainsFunc(p.Presets, func(choice Choice) bool {
+		_, matched := MatchScore(choice.Name, target.Query)
+		return matched
+	}) {
+		return Target{}
+	}
+	return target
+}
+
+// FindToken retains the lexical target before catalog-specific admission.
+func (p *State) FindToken(d composer.Draft) Target {
 	at := d.Cursor()
 	if strings.HasPrefix(d.Text, "/") && at > 0 {
 		end := strings.IndexFunc(d.Text, unicode.IsSpace)
@@ -48,11 +60,7 @@ func (p *State) FindTarget(d composer.Draft) Target {
 			return Target{}
 		}
 	}
-	query := d.Text[start+1 : end]
-	if d.Text[start] == '$' && !p.SkillQueryCompletable(query) {
-		return Target{}
-	}
-	return Target{d.Text[start], start, end, query}
+	return Target{d.Text[start], start, end, d.Text[start+1 : end]}
 }
 
 func (p *State) SkillQueryCompletable(query string) bool {

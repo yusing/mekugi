@@ -52,25 +52,44 @@ func (p *State) FilterSkills(query string, managing bool) {
 		}
 	}
 	if query != "" || !managing {
-		slices.SortStableFunc(p.Choices, func(a, b Choice) int {
-			ax, am := MatchScore(a.Label(), query)
-			bx, bm := MatchScore(b.Label(), query)
-			if !am {
-				ax, _ = MatchScore(a.Name, query)
-			}
-			if !bm {
-				bx, _ = MatchScore(b.Name, query)
-			}
-			if !managing && am != bm {
-				if am {
-					return -1
-				}
-				return 1
-			}
-			if ax != bx {
-				return ax - bx
-			}
-			return strings.Compare(a.Label(), b.Label())
-		})
+		sortChoices(p.Choices, query, managing)
 	}
+}
+
+// IncludePresets merges the named slots with the current query's skill results.
+// Skill management and binding continue to use the skill catalog alone.
+func (p *State) IncludePresets(query string) {
+	p.Choices = slices.DeleteFunc(p.Choices, func(choice Choice) bool { return choice.Preset })
+	if len(p.Presets) == 0 {
+		return
+	}
+	for _, preset := range p.Presets {
+		if _, matched := MatchScore(preset.Name, query); matched {
+			p.Choices = append(p.Choices, preset)
+		}
+	}
+	sortChoices(p.Choices, query, false)
+}
+
+func sortChoices(choices []Choice, query string, managing bool) {
+	slices.SortStableFunc(choices, func(a, b Choice) int {
+		ax, am := MatchScore(a.Label(), query)
+		bx, bm := MatchScore(b.Label(), query)
+		if !am {
+			ax, _ = MatchScore(a.Name, query)
+		}
+		if !bm {
+			bx, _ = MatchScore(b.Name, query)
+		}
+		if !managing && am != bm {
+			if am {
+				return -1
+			}
+			return 1
+		}
+		if ax != bx {
+			return ax - bx
+		}
+		return strings.Compare(a.Label(), b.Label())
+	})
 }

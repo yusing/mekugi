@@ -188,6 +188,29 @@ func TestPresetRecallWaitsForSubmission(t *testing.T) {
 		}
 		return false
 	})
+	// Named completion expands only the captured token, through the same
+	// targeted editor effect consumed by terminal and browser clients.
+	c.editor("main").Replace(composer.Draft{Text: "before $Loc after", CursorBack: len(" after")})
+	metadata := &sessionapi.NativeEditorInput{Draft: c.editor("main").Draft, Target: conversationmodel.EditorTarget{Revision: c.editor("main").Revision()}}
+	send(sessionapi.NativeOperation{Completion: metadata})
+	await(func() bool {
+		menu := event.Frame.View.Menu
+		return menu != nil && !menu.Loading && len(menu.Choices) == 1 && menu.Choices[0].Name == "Locked"
+	})
+	menu = event.Frame.View.Menu
+	send(sessionapi.NativeOperation{Editor: metadata, Menu: &sessionpresentation.MenuAction{Version: event.Frame.View.Version, Menu: menu.ID, Kind: sessionpresentation.MenuAccept, Choice: menu.Choices[0].Identity()}})
+	await(func() bool {
+		for _, effect := range event.Frame.Effects {
+			if effect.Restore != nil && effect.Restore.Text == "before /lock after" {
+				return true
+			}
+		}
+		return false
+	})
+	c.accept(event)
+	if got := c.editor("main").Draft; got.Text != "before /lock after" || got.CursorBack != len(" after") || len(got.Skills) != 0 {
+		t.Fatalf("inline preset lost surrounding text, caret or attachment identity: %+v", got)
+	}
 }
 
 func servePresetHost(t *testing.T) {

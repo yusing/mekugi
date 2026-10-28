@@ -34,8 +34,8 @@ func referenceInput(attached *attachedPresentation, terminal *terminalsession.At
 		for i, input := range pending {
 			drafts[i].Text = input.Text
 		}
-		// Browser references are attachment chips until submission. Resolve their
-		// description here so later queued inputs cannot reuse a pending label.
+		// Resolve the description against this draft and pending inputs so inline
+		// references keep distinct labels through queueing and continuation.
 		selection := composer.Editor{Text: (*editor).Text}
 		if err := selection.InsertSelection(intent.Description, intent.Text, intent.Source, drafts); err != nil {
 			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)

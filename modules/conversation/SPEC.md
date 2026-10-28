@@ -117,6 +117,13 @@ Failed reads, saves and version conflicts remain visible and retryable. Existing
 Mekugi preset files are left untouched and unused, with no import, fallback or
 mirror.
 
+Named presets also appear beside skills in `$name` suggestions, distinguished as
+presets. Choosing one replaces the token at the caret with its saved text, leaving
+the rest of the prompt and its attachments in place. The inserted text remains
+editable and is not submitted or attached as a skill. Typing or pasting a preset
+name alone does not expand it. Numbered slots and `/presets` keep their existing
+management and whole-draft recall behavior.
+
 ### File and skill acquisition
 
 Completion replaces the whole token around the caret, retaining its byte span even

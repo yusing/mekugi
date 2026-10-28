@@ -64,7 +64,12 @@
     >
       {display.file?.Path || "Activity details"}
     </h2>
-    <ReferenceSelection root={content} source={display.file?.Path || ""} {onreference} />
+    <ReferenceSelection
+      root={content}
+      source={display.file?.Path || ""}
+      description="dialog"
+      {onreference}
+    />
     <Button variant="quiet" icon="close" label="Close details" onclick={onclose} />
   </header>
   <div bind:this={content} class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-6">

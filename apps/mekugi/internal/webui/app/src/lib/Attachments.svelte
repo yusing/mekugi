@@ -2,7 +2,12 @@
   import Alert from "./ui/Alert.svelte";
   import AttachmentPreview, { type PreviewTarget } from "./AttachmentPreview.svelte";
   import { tick } from "svelte";
-  import { uploadLimit, type PendingAttachment } from "./attachments";
+  import {
+    activeAttachments,
+    referenceLabel,
+    uploadLimit,
+    type PendingAttachment,
+  } from "./attachments";
   import { bytes } from "./format";
   import Button from "./ui/Button.svelte";
   import Icon from "./ui/Icon.svelte";
@@ -14,12 +19,14 @@
   // field, and hands over dropped or pasted files.
   let {
     items = $bindable([]),
+    text = "",
     pathing = $bindable(false),
     disabled = false,
     machine,
     previewTarget,
   }: {
     items?: PendingAttachment[];
+    text?: string;
     pathing?: boolean;
     disabled?: boolean;
     machine: string;
@@ -28,8 +35,12 @@
   let path = $state("");
   let picker: HTMLInputElement;
   let field = $state<HTMLInputElement>();
+  const visible = $derived(items.filter((item) => !referenceLabel(item)));
   const total = $derived(
-    items.reduce((sum, item) => sum + ("file" in item ? item.file.size : 0), 0),
+    activeAttachments(text, items).reduce(
+      (sum, item) => sum + ("file" in item ? item.file.size : 0),
+      0,
+    ),
   );
 
   export function pick() {
@@ -63,11 +74,11 @@
     picker.value = "";
   }}
 />
-{#if items.length || pathing}
+{#if visible.length || pathing}
   <div class="grid gap-2 px-2.5 pt-2.5">
-    {#if items.length}
+    {#if visible.length}
       <ul class="flex min-w-0 flex-wrap items-center gap-1.5" aria-label="Attachments">
-        {#each items as item (item.id)}
+        {#each visible as item (item.id)}
           <li
             class="inline-flex min-h-[30px] max-w-full items-center gap-1.5 rounded-control border bg-raised pr-0.5 pl-2 text-small text-muted max-sm:min-h-9"
           >

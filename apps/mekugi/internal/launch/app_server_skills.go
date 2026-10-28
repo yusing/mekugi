@@ -106,6 +106,7 @@ func (p *composerPicker) skillToggleResponse(attached *attachedPresentation, ter
 		p.FilterSkills(p.Query, true)
 	} else if p.Open && p.Target.Kind == '$' {
 		p.FilterSkills(p.Target.Query, false)
+		p.includePresets(p.Target.Query)
 	}
 }
 

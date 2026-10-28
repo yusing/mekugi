@@ -97,6 +97,7 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 			info.ApprovalCaller = caller
 		}
 	}
+	picker.refreshPresetCatalog(attached, control, restoring)
 	return m.Publish(sessionpresentation.MainInputs{
 		BTWRunning: control.BTW != nil && (control.BTW.Busy || control.BTW.Starting),
 		Info:       info, ClientEditors: clientEditors,

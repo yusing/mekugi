@@ -5,7 +5,13 @@
   import type { ChoiceID } from "../../../../sessionapi/protocol";
   import Attachments from "./Attachments.svelte";
   import { hub } from "./hub.svelte";
-  import { prepareAttachments, type InitialInput } from "./attachments";
+  import {
+    activeAttachments,
+    inlineReferences,
+    prepareAttachments,
+    submissionAttachments,
+    type InitialInput,
+  } from "./attachments";
   import type { Attachment, Input } from "./protocol";
   import { semantic, textDraft } from "./semantic.svelte";
   import { stream, type Stream } from "./stream.svelte";
@@ -54,13 +60,27 @@
   let pathing = $state(false);
   let field = $state<HTMLTextAreaElement>();
   $effect(() => {
-    if (editor.focus) untrack(() => void tick().then(() => field?.focus()));
+    if (editor.focus)
+      untrack(
+        () =>
+          void tick().then(() => {
+            field?.focus();
+            const bytes = new TextEncoder().encode(editor.text);
+            const position = new TextDecoder().decode(
+              bytes.slice(0, bytes.length - editor.cursorBack),
+            ).length;
+            field?.setSelectionRange(position, position);
+          }),
+      );
   });
+  const references = $derived(inlineReferences(editor.text, editor.items));
+  const activeItems = $derived(activeAttachments(editor.text, editor.items));
+  const painted = $derived(shell || references.length > 0);
   let syntax = $state<HTMLElement>();
   let tray = $state<ReturnType<typeof Attachments>>();
   const touch = matchMedia("(pointer: coarse)").matches;
   const running = $derived(!!input?.stoppable);
-  const empty = $derived(!editor.text.trim() && !editor.items.length);
+  const empty = $derived(!editor.text.trim() && !activeItems.length);
   const refusal = $derived(
     unavailable ??
       (shell
@@ -112,7 +132,7 @@
     const frame = semantic.frame;
     if (asking || !frame || semantic.connection !== "open") return;
     const current = semantic.editor();
-    const key = `${semantic.event?.attachment}:${frame.view.Input.ID}:${current.revision}`;
+    const key = `${semantic.event?.attachment}:${frame.view.Input.ID}:${current.revision}:${frame.completionCatalog}`;
     if (key === asked || !(/[/@$]/.test(current.text) || frame.view.Menu?.Kind === "")) return;
     asked = key;
     asking = true;
@@ -124,6 +144,7 @@
   $effect(() => {
     void editor.revision;
     void semantic.frame?.view.Input.ID;
+    void semantic.frame?.completionCatalog;
     void semantic.event?.attachment;
     untrack(refresh);
   });
@@ -172,7 +193,7 @@
     const target = semantic.target();
     // The server clears a command's text once it applies; other input leaves
     // the editor now and returns if it is refused.
-    const command = text.trimStart().startsWith("/") && !items.length;
+    const command = text.trimStart().startsWith("/") && !activeItems.length;
     let detached: number | undefined;
     try {
       if (!captured) {
@@ -184,7 +205,7 @@
         ? []
         : (initialAttachments ??
           (await prepareAttachments(
-            items,
+            submissionAttachments(text, items),
             controller.signal,
             (read, total) =>
               (progress = total
@@ -246,6 +267,20 @@
   }
   function onkeydown(event: KeyboardEvent) {
     if (event.isComposing) return;
+    if (field && !event.shiftKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      const position = field.selectionStart;
+      const token = references.find(({ start, end }) =>
+        event.key === "ArrowLeft"
+          ? position > start && position <= end
+          : position >= start && position < end,
+      );
+      if (token && position === field.selectionEnd) {
+        event.preventDefault();
+        const at = event.key === "ArrowLeft" ? token.start : token.end;
+        field.setSelectionRange(at, at);
+        return;
+      }
+    }
     const choices = completion?.Choices ?? [];
     if (completion && choices.length) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -279,6 +314,24 @@
     if (!files?.length || shell || pending) return;
     if (!event.clipboardData?.types.includes("text/plain")) event.preventDefault();
     tray?.add(files);
+  }
+  function beforeinput(event: InputEvent) {
+    if (!field || event.isComposing || event.inputType.startsWith("history")) return;
+    let start = field.selectionStart,
+      end = field.selectionEnd;
+    if (start === end) {
+      if (event.inputType === "deleteContentBackward") start--;
+      if (event.inputType === "deleteContentForward") end++;
+    }
+    for (const token of references) {
+      if (start < token.end && end > token.start) {
+        start = Math.min(start, token.start);
+        end = Math.max(end, token.end);
+      }
+    }
+    // Let the native edit run, retaining the browser's undo history.
+    if (references.some((token) => start <= token.start && end >= token.end))
+      field.setSelectionRange(Math.max(0, start), end);
   }
   const hint = $derived(
     error ||
@@ -333,8 +386,10 @@
                 >{choice.Display || choice.Name}</span
               >
               {#if choice.Description}<span
-                  class="min-w-0 truncate text-small text-muted max-sm:hidden"
-                  >{choice.Description}</span
+                  class={[
+                    "min-w-0 truncate text-small text-muted",
+                    !choice.Preset && "max-sm:hidden",
+                  ]}>{choice.Description}</span
                 >{/if}
             </li>
           {/each}
@@ -351,6 +406,7 @@
     <Attachments
       bind:this={tray}
       bind:items={editor.items}
+      text={editor.text}
       bind:pathing
       {machine}
       {previewTarget}
@@ -358,16 +414,24 @@
     />
     <label class="sr-only" for="composer-text">{shell ? "Shell command" : "Message"}</label>
     <div class="relative">
-      {#if shell}<div
+      {#if painted}<div
           class="pointer-events-none absolute inset-0 overflow-hidden"
           aria-hidden="true"
           bind:this={syntax}
         >
           <pre
-            class="{composerText} min-h-12 pt-3 pb-1 font-mono whitespace-pre-wrap wrap-break-word"><Code
+            class="{composerText} min-h-12 pt-3 pb-1 whitespace-pre-wrap wrap-break-word {shell
+              ? 'font-mono'
+              : 'font-sans'}">{#if shell}<Code
               code={editor.text + (editor.text.endsWith("\n") ? " " : "")}
               lang="bash"
-            /></pre>
+            />{:else}{#each references as token, i}{editor.text.slice(
+              i ? references[i - 1].end : 0,
+              token.start,
+            )}<span class="text-accent">{editor.text.slice(token.start, token.end)}</span
+            >{/each}{editor.text.slice(references.at(-1)?.end ?? 0)}{editor.text.endsWith("\n")
+              ? " "
+              : ""}{/if}</pre>
         </div>{/if}
       <textarea
         id="composer-text"
@@ -379,7 +443,7 @@
         aria-autocomplete="list"
         bind:this={field}
         bind:value={editor.text}
-        style:color={shell ? "transparent" : undefined}
+        style:color={painted ? "transparent" : undefined}
         style:caret-color="var(--text)"
         onscroll={() => {
           if (syntax && field) {
@@ -389,6 +453,7 @@
         }}
         {onkeydown}
         {onpaste}
+        onbeforeinput={beforeinput}
         oninput={edited}
         onselect={() => {
           const at = caret();
@@ -442,7 +507,7 @@
         label="Shell command"
         title="Run a shell command on {machine} (!)"
         aria-pressed={shell}
-        disabled={!!pending || editor.items.length > 0 || !!initial}
+        disabled={!!pending || activeItems.length > 0 || !!initial}
         onclick={() => rewrite(shell ? editor.text.slice(1) : `!${editor.text}`)}
       />
       {#if shell}<Tag mono class="ml-1.5">Shell</Tag>{/if}

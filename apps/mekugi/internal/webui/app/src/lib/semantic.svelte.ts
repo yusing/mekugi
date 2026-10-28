@@ -10,7 +10,7 @@ import type {
 import type { Machine } from "./hub.svelte";
 import { errorText, newIdentity, TransportError, type Connection } from "./transport";
 import { open, view } from "./view.svelte";
-import type { PendingAttachment } from "./attachments";
+import { referenceLabel, type PendingAttachment } from "./attachments";
 import type { Listed } from "./protocol";
 
 export function textDraft(text = "", cursorBack = 0): Draft {
@@ -476,14 +476,40 @@ class Semantic {
           for (const token of [...restored.Files, ...restored.Images])
             if (!editor.items.some((item) => "path" in item && item.path === token.Path))
               editor.items.push({ id: newIdentity(), path: token.Path });
+          if (!editor.text) {
+            const caret = bytes.length - restored.CursorBack;
+            editor.cursorBack =
+              restored.CursorBack -
+              restored.Images.reduce(
+                (removed, image) => removed + (image.Start >= caret ? image.End - image.Start : 0),
+                0,
+              );
+          }
           editor.text = [text, editor.text].filter(Boolean).join("\n");
           editor.revision++;
+          editor.focus = editor.revision;
         }
         if (effect.Selection) {
           const selection = effect.Selection;
+          const description = selection.Description || "output";
+          let name = description;
+          for (
+            let n = 2;
+            editor.text.includes(`[Selected ${name}]`) ||
+            editor.items.some((item) => referenceLabel(item) === `[Selected ${name}]`);
+            n++
+          )
+            name = `${description} ${n}`;
+          const bytes = new TextEncoder().encode(editor.text);
+          const caret = bytes.length - editor.cursorBack;
+          const decoder = new TextDecoder();
+          editor.text =
+            decoder.decode(bytes.slice(0, caret)) +
+            `[Selected ${name}] ` +
+            decoder.decode(bytes.slice(caret));
           editor.items.push({
             id: newIdentity(),
-            file: new File([selection.Text], selection.Description || "Selected output"),
+            file: new File([selection.Text], name),
             reference: selection.Source || "",
           });
           editor.revision++;

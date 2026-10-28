@@ -34,6 +34,10 @@ import (
 
 type composerPicker struct {
 	presets        *presets.Flow
+	presetCatalog  *presets.Flow
+	presetThread   string
+	presetCwd      string
+	presetAllowed  bool
 	view           string
 	skillsRevision uint64
 	*completion.State
@@ -105,6 +109,9 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal 
 	if attached.view != "" {
 		shellMode = conversationmodel.ShellDraftMode(editor.Text, false)
 	}
+	if !shellMode && p.FindToken(editor.Draft).Kind == '$' {
+		p.acquirePresetCatalog(parent, requests)
+	}
 	target := p.completionTarget(editor.Draft, shellMode)
 	bindingOnly := false
 	if target.Kind == 0 && p.Kind == "" && (!p.SkillsLoaded || p.SkillsCwd != attached.cwd) {
@@ -142,6 +149,9 @@ func (p *composerPicker) acquireTarget(attached *attachedPresentation, terminal 
 	}
 	if !wasOpen && !bindingOnly {
 		p.ID++
+	}
+	if target.Kind == '$' && !bindingOnly && p.Kind != "manage" {
+		defer p.includePresets(target.Query)
 	}
 	if target.Kind == '/' {
 		p.cancelScan()
@@ -351,6 +361,17 @@ func acceptCompletion(attached *attachedPresentation, terminal *terminalsession.
 		(*editor).InsertText(choice.Name + " ")
 		(*editor).Run, p.Open = composer.NoRun, false
 		// Enter continues through the existing local command dispatcher.
+		return true
+	}
+	if target.Kind == '$' && choice.Preset {
+		if !presetsAvailable(attached, control, restoring) || p.presetCatalog == nil || !p.presetCatalog.Loaded || choice.ID < 1 || choice.ID > 10 {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Presets are unavailable in this conversation", true)
+			return false
+		}
+		input := p.presetCatalog.Slots[choice.ID-1].Input
+		deleteDraftRange(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, target.Start, target.End)
+		(*editor).InsertText(input)
+		(*editor).Run, p.Open = composer.NoRun, false
 		return true
 	}
 	text := choice.Path

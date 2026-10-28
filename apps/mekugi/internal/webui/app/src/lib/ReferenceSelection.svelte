@@ -8,10 +8,12 @@
   let {
     root,
     source = "",
+    description = "message",
     onreference,
   }: {
     root?: HTMLElement;
     source?: string;
+    description?: string;
     onreference?: () => void;
   } = $props();
   // The event and operation stay as captured. at is the anchor point, kept
@@ -123,7 +125,7 @@
           Thread: view.Input.ID,
           Displayed: view.Displayed,
           Target: semantic.target(),
-          Description: "Selected output",
+          Description: description,
           Text: text,
           Source: source,
         },

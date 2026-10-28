@@ -10,6 +10,7 @@ import (
 	"image"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -56,6 +57,9 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		if attachment.Inline && attachment.Source != "selection" {
+			return nil, invalid("Only selection attachments support inline markers.", false)
+		}
 		var path, label string
 		var upload composer.Token
 		isImage := false
@@ -93,6 +97,25 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 			if attachment.Source == "selection" {
 				if len(data) == 0 || !utf8.Valid(data) || strings.ContainsAny(attachment.Name, "\r\n]") {
 					return nil, invalid("A selection requires UTF-8 text and a single-line description.", false)
+				}
+				if attachment.Inline {
+					// Use the selection owner for label construction and its size limit.
+					var selection composer.Editor
+					if err := selection.InsertSelection(attachment.Name, string(data), attachment.Path, nil); err != nil {
+						return nil, invalid(err.Error(), true)
+					}
+					token := selection.Selections[0]
+					label := selection.Text[token.Start:token.End]
+					start := strings.Index(input.Text, label)
+					if start < 0 || strings.Count(input.Text, label) != 1 {
+						return nil, invalid("An inline reference requires one exact selection marker in the input.", false)
+					}
+					token.Start, token.End = start, start+len(label)
+					if slices.ContainsFunc(draft.Selections, func(other composer.Token) bool { return token.Start < other.End && token.End > other.Start }) {
+						return nil, invalid("Inline selection markers must not overlap.", false)
+					}
+					draft.Selections = append(draft.Selections, token)
+					continue
 				}
 				editor := composer.Editor{Draft: composer.Draft{Text: text.String(), Selections: draft.Selections}}
 				if text.Len() > 0 {
@@ -146,6 +169,7 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 		}
 	}
 	draft.Text = text.String()
+	slices.SortFunc(draft.Selections, func(a, b composer.Token) int { return a.Start - b.Start })
 	draft.SnapshotSources(workspace, sources)
 	if err := ctx.Err(); err != nil {
 		return nil, err

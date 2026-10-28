@@ -507,6 +507,10 @@ Its data is UTF-8 text; optional `path` is quoted provenance and is never read a
 Preparation uses Conversation's selection-label and quoted-content framing, including its
 mention-size limit. These references remain separate from ordinary input text and retain
 their source through history and continuation. Selection bytes share the decoded upload budget.
+With `"inline":true`, the descriptor binds the single exact `[Selected DESCRIPTION]`
+marker already in `text`, retaining its position instead of appending another marker.
+Missing, duplicate or overlapping markers are refused. Without `inline`, preparation
+appends a uniquely named selection as usual. Other attachment sources reject `inline`.
 
 Combined decoded uploads are limited to 32 MiB per message. Existing composer
 text/directory framing and text-envelope limits remain in force. Oversized or

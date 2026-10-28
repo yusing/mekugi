@@ -23,6 +23,7 @@ type Attachment struct {
 	Path   string  `json:"path,omitempty"`
 	Name   string  `json:"name,omitempty"`
 	Data   *string `json:"data,omitzero"`
+	Inline bool    `json:"inline,omitzero"`
 }
 
 type InputRequest struct {

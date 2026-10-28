@@ -91,7 +91,9 @@ Tab queues input without a separate Queue button.
 
 The composer follows the terminal's: `/`, `@` and `$` show the server's
 completions for keyboard or pointer selection; a chosen file or image also becomes
-a host-path attachment, and a chosen skill stays a `$` mention, a leading `!` makes the input
+a host-path attachment, and a chosen skill stays a `$` mention. Named presets share
+the `$` suggestions; choosing one replaces that token inline with editable preset
+text. Typing or pasting its name alone does not expand it. A leading `!` makes the input
 shell input, Enter sends or steers and Tab queues while Main works. Ordinary
 text, shell input and slash commands reach their existing server owners. Semantic menus, settings, status, resume, rewind, side
 questions, approvals, ordinary question replies, history and details use the
@@ -113,8 +115,10 @@ Copy success or clipboard failure is shown without changing the draft.
 
 Selecting text in the live transcript or activity details offers Reference above the
 pointer, or above the selection endpoint for keyboard selection, within the viewport. It adds a
-removable reference to the captured input destination and focuses its composer without
-replacing the draft. The selected text and any file provenance travel through the same
+bound `[Selected …]` marker at the captured composer's caret and focuses it without
+replacing the surrounding draft. References appear inline, in the selection colour,
+and can be moved or deleted with the text; undo restores their binding. Duplicate
+markers must be resolved before sending. The selected text and any file provenance travel through the same
 quoted-selection attachment framing as the terminal, rather than becoming an ordinary
 instruction. A changed draft refuses a late insertion; references stay isolated between
 threads and side-conversation inputs.

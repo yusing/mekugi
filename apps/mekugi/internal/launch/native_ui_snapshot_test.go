@@ -266,6 +266,17 @@ func TestUISnapshotNativeFilePicker(t *testing.T) {
 	}
 }
 
+func TestUISnapshotNativePresetPicker(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
+	u.attached.conversation.Completion = completion.State{Open: true, Target: completion.Target{Kind: '$'}, Choices: []completion.Choice{
+		{ID: 2, Name: "review", Preset: true, Description: "Preset 1: Review carefully."},
+		{Name: "review", Path: "/skills/review/SKILL.md", Description: "Review code changes"},
+	}}
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{}, nil, "", "", false, nil, u.clock, &u.questions, &u.approvals, false)
+	assertNativeUISnapshot(t, "native-preset-picker", u.renderPicker(80, 7))
+}
+
 func TestUISnapshotNativeWaitingInputStacks(t *testing.T) {
 	for _, mode := range []string{"queued", "steering"} {
 		for _, width := range []int{36, 80} {

@@ -135,7 +135,11 @@ func Picker(p completion.View, layout *terminalui.ChoiceListLayout, options Pick
 			label = marker + label
 		} else if p.Target.Kind == '$' {
 			label = terminalui.TruncateGraphemes(label, 28)
-			description = "[Skill] " + description
+			if choice.Preset {
+				description = "[Preset] " + description
+			} else {
+				description = "[Skill] " + description
+			}
 		} else if p.Target.Kind == '@' {
 			label = fileLabel(choice.Path, max(1, width-2))
 		}

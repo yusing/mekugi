@@ -588,7 +588,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("eval", `window.referencePreviewURLs = []; window.originalCreateObjectURL = URL.createObjectURL; URL.createObjectURL = function(value) { const url = window.originalCreateObjectURL.call(URL, value); window.referencePreviewURLs.push(url); return url; };`)
 	run("focus", `button[aria-label="Copy selection to reference"]`)
 	run("press", "Enter")
-	run("wait", "--fn", `document.querySelector('button[aria-label="Remove Selected output"]')`)
+	run("wait", "--fn", `document.querySelector('#composer-text').value.includes('[Selected message]')`)
 	if run("eval", `window.referencePreviewURLs.length === 0 && !document.querySelector('[aria-label="Attachments"] img')`) != "true\n" {
 		t.Fatal("quoted text reference acquired an image preview")
 	}
@@ -596,11 +596,31 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if request := <-references; request.Operation.Reference.Thread != "same-thread" || !strings.Contains(request.Operation.Reference.Text, "file000.go") {
 		t.Fatal("reference lost source or destination")
 	}
-	if run("get", "value", "#composer-text") != "keep draft\n" {
+	if run("get", "value", "#composer-text") != "keep draft[Selected message] \n" {
 		t.Fatal("reference replaced the draft")
 	}
 	run("wait", "--fn", `document.activeElement?.id === "composer-text"`)
-	button("Remove Selected output")
+	if run("eval", `!document.querySelector('[aria-label="Attachments"]')`) != "true\n" {
+		t.Fatal("reference appeared in the attachment tray")
+	}
+	run("press", "Backspace") // trailing space
+	run("press", "Backspace") // atomic marker deletion
+	run("wait", "--fn", `document.querySelector('#composer-text').value === 'keep draft'`)
+	run("wait", "--fn", `document.querySelector('button[aria-label="Shell command"]').disabled === false`)
+	run("press", "Control+z")
+	run("wait", "--fn", `document.querySelector('#composer-text').value.includes('[Selected message]')`)
+	run("wait", "--fn", `document.querySelector('button[aria-label="Shell command"]').disabled === true`)
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		for _, theme := range []string{"light", "dark"} {
+			run("eval", fmt.Sprintf(`document.documentElement.dataset.theme = %q`, theme))
+			for _, width := range []int{1280, 768, 390} {
+				run("set", "viewport", fmt.Sprint(width), "900")
+				run("screenshot", filepath.Join(artifacts, fmt.Sprintf("inline-reference-%s-%d.png", theme, width)))
+			}
+		}
+		run("set", "viewport", "1280", "900")
+	}
+	run("fill", "#composer-text", "keep draft")
 	// Removing the selected publication must dismiss its contextual action,
 	// even though both the browser selection and cloned range collapse together.
 	run("eval", `(() => { const range = document.createRange(); range.selectNodeContents(document.querySelector('[aria-label="Transcript"] [data-entry]')); getSelection().removeAllRanges(); getSelection().addRange(range); })()`)

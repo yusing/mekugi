@@ -10,6 +10,50 @@ export type InitialInput = {
 };
 export const uploadLimit = 32 * 1024 * 1024;
 
+export function referenceLabel(item: PendingAttachment): string | undefined {
+  return "file" in item && item.reference !== undefined
+    ? `[Selected ${item.file.name}]`
+    : undefined;
+}
+
+export function activeAttachments(text: string, items: PendingAttachment[]): PendingAttachment[] {
+  return items.filter((item) => {
+    const label = referenceLabel(item);
+    return !label || text.includes(label);
+  });
+}
+
+// Retain reference bytes while editing, including after deletion for browser
+// undo. Only explicitly captured, uniquely present markers bind on submission.
+export function inlineReferences(text: string, items: PendingAttachment[]) {
+  const references = items.flatMap((item) => {
+    const label = referenceLabel(item);
+    const start = label ? text.indexOf(label) : -1;
+    return label && start >= 0 && text.indexOf(label, start + 1) < 0
+      ? [{ start, end: start + label.length, item }]
+      : [];
+  });
+  // ES2022 has no toSorted; this array belongs to this projection.
+  // oxlint-disable-next-line unicorn/no-array-sort
+  return references.sort((a, b) => a.start - b.start);
+}
+
+export function submissionAttachments(
+  text: string,
+  items: PendingAttachment[],
+): PendingAttachment[] {
+  return activeAttachments(text, items).filter((item) => {
+    const label = referenceLabel(item);
+    if (!label) return true;
+    const start = text.indexOf(label);
+    if (text.indexOf(label, start + 1) >= 0)
+      throw new Error(
+        `The reference ${label} appears more than once. Remove the duplicate before sending.`,
+      );
+    return true;
+  });
+}
+
 export async function prepareAttachments(
   items: PendingAttachment[],
   signal: AbortSignal,
@@ -53,7 +97,7 @@ export async function prepareAttachments(
     result.push({
       source: item.reference === undefined ? "upload" : "selection",
       name: item.file.name,
-      ...(item.reference === undefined ? {} : { path: item.reference }),
+      ...(item.reference === undefined ? {} : { path: item.reference, inline: true }),
       data,
     });
     read += item.file.size;

@@ -322,6 +322,7 @@ export type Attachment = {
   "path"?: string;
   "name"?: string;
   "data"?: (string | null);
+  "inline"?: boolean;
 };
 
 export type ModelGroup = {
@@ -1486,6 +1487,7 @@ export type Completion_Choice = {
   "Description": string;
   "Display": string;
   "Enabled": boolean;
+  "Preset": boolean;
 };
 
 export type OutputDeduplicationMetrics = {
