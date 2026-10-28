@@ -11,7 +11,12 @@ this file owns how it looks and responds.
   semantic controls remain the source of data and actions; examples' chat
   transports and lifecycle assumptions do not define session behavior.
   `app/components.json` selects the upstream Nova registry and local aliases;
-  copied components are maintained here with the application palette and sizing.
+  copied components are maintained here with the application palette. Buttons,
+  select triggers and menus, and content cards use the stock Nova appearance:
+  rounded rectangular controls, neutral hover fills, and softly rounded cards
+  with a subtle outline. Phone controls retain 44px touch targets. Welcome and
+  activity cards use the Card primitives; navigation rows, chat bubbles and live
+  source keep their own layout and framing.
 - Shared controls and the recipes in `ui/styles.ts` include:
   `Button`, `Field`, `Alert`, `Notice`, `Dialog`, `Menu`, `Picker`, `Popover`,
   `Tag`, `chip`, `segments` and `segment`, `input`, `floating`, `rowAction` and
@@ -19,6 +24,9 @@ this file owns how it looks and responds.
   places need the same new look, add a recipe.
 - Colours come from the semantic tokens in `app/src/app.css`. A missing role gets
   a token in both palettes; components never carry hex values.
+  Stock muted and accent surfaces map to `ui-muted` and `ui-accent`, separately
+  from the application's muted text and violet accent ink. Destructive controls
+  use their own ink token to keep text readable on tinted hover fills.
 - Tailwind sees only literal class names. Never build class names with string
   operations.
 - Page chrome uses icon buttons, chips or segments, not native form controls. The

@@ -238,6 +238,24 @@ func TestWebUISemanticBrowser(t *testing.T) {
 			run("set", "viewport", size.width, size.height)
 			for _, theme := range []string{"dark", "light"} {
 				run("set", "media", theme)
+				if state == "end-confirmation" {
+					run("hover", "[role=dialog] button.text-destructive")
+					run("wait", "--fn", `(() => {
+						const button = document.querySelector('[role=dialog] button.text-destructive');
+						if (!button || button.getAnimations().some(animation => animation.playState === 'running')) return false;
+						const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+						const ctx = canvas.getContext('2d'), ancestors = [];
+						for (let node = button; node; node = node.parentElement) ancestors.unshift(node);
+						for (const node of ancestors) { ctx.fillStyle = getComputedStyle(node).backgroundColor; ctx.fillRect(0, 0, 1, 1); }
+						const luminance = () => [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3).map(value => value / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+						const background = luminance(); ctx.fillStyle = getComputedStyle(button).color; ctx.fillRect(0, 0, 1, 1);
+						const foreground = luminance();
+						return (Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05) >= 4.5;
+					})()`)
+				}
+				if strings.TrimSpace(run("eval", `(() => { const controls = [...document.querySelectorAll('[data-slot=select-trigger]')]; const cards = [...document.querySelectorAll('[data-slot=card]')]; return [...controls, ...cards].every(element => { const r = element.getBoundingClientRect(); return !r.width || (r.left >= 0 && r.right <= innerWidth && (!controls.includes(element) || innerWidth > 640 || r.height >= 44)); }); })()`)) != "true" {
+					t.Errorf("%s %s %s: cards and select triggers must fit the viewport and preserve phone touch targets", state, size.name, theme)
+				}
 				if strings.TrimSpace(run("eval", `(() => { const cwd = document.querySelector('header #thread-workspace'); if (!cwd) return !document.querySelector('#composer-text'); const header = cwd.closest('header'), title = header.querySelector('h1'); const a = cwd.getBoundingClientRect(), b = title.getBoundingClientRect(), h = header.getBoundingClientRect(); const buttons = [...header.querySelectorAll('button')].map(button => button.getBoundingClientRect()).filter(r => r.width); return !!cwd.title && cwd.textContent.endsWith(cwd.title) && a.width >= 16 && b.width >= 16 && b.right <= a.left && a.right <= h.right && buttons.every(r => r.left >= h.left && r.right <= h.right && r.top >= h.top && r.bottom <= h.bottom && (r.right <= b.left || r.left >= a.right)); })()`)) != "true" {
 					t.Errorf("%s %s %s: title-bar directory, title or controls collide or lose their full path", state, size.name, theme)
 				}
@@ -296,6 +314,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--fn", `document.querySelector('button[title=`+strconv.Quote(workspace)+`]') !== null`)
 	run("find", "role", "combobox", "click", "--name", "Model", "--exact")
 	run("wait", "--fn", "Array.from(document.querySelectorAll('[role=option]')).some(option => option.textContent.trim() === 'Default')")
+	capture("model-picker")
 	run("find", "role", "option", "click", "--name", "Default", "--exact")
 	run("find", "label", "First message", "fill", "browser first input")
 	firstUpload := filepath.Join(directory, "first.txt")
@@ -773,6 +792,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	button("Session details")
 	run("wait", "--fn", `!!document.querySelector('[data-slot=popover-content][data-state=open]')`)
 	button("End thread")
+	capture("end-confirmation")
 	button("End")
 	run("wait", "--text", "This thread has ended. Its last state stays here.")
 	resumed, err := sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{Workspace: workspace, Args: []string{"resume", "saved"}})

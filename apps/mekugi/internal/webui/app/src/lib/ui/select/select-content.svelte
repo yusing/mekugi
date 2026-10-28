@@ -6,6 +6,7 @@
   import SelectScrollDownButton from "./select-scroll-down-button.svelte";
   import SelectScrollUpButton from "./select-scroll-up-button.svelte";
   import type { ComponentProps } from "svelte";
+  import { selectContent } from "./styles";
 
   let {
     ref = $bindable(null),
@@ -27,13 +28,14 @@
     {preventScroll}
     data-slot="select-content"
     class={cn(
-      "relative z-50 w-max min-w-(--bits-select-anchor-width) max-w-[min(360px,calc(100vw-16px))] max-h-[min(440px,var(--bits-select-content-available-height))] overflow-y-auto rounded-float border border-border bg-surface p-1 text-ink shadow-float",
+      selectContent,
+      "min-w-[min(var(--bits-select-anchor-width),360px,calc(100vw-16px))] max-h-[min(440px,var(--bits-select-content-available-height))] origin-(--bits-select-content-transform-origin)",
       className,
     )}
     {...restProps}
   >
     <SelectScrollUpButton />
-    <SelectPrimitive.Viewport class={cn("w-full min-w-(--bits-select-anchor-width) scroll-my-1")}>
+    <SelectPrimitive.Viewport class="w-full min-w-0 scroll-my-1">
       {@render children?.()}
     </SelectPrimitive.Viewport>
     <SelectScrollDownButton />

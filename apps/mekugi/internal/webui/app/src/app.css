@@ -39,6 +39,7 @@
   --marker-image: #a23c97;
   --positive: #1e7b4f;
   --negative: #c4242a;
+  --destructive: #831c1e;
   --pill-negative-bg: #ffedea;
   --pill-negative-ink: #831c1e;
   --pill-warning-bg: #fffbeb;
@@ -91,6 +92,7 @@
   --marker-image: #d98bd0;
   --positive: #58d8ad;
   --negative: #d85d5d;
+  --destructive: #fca5a5;
   --pill-negative-bg: #2e1a1f;
   --pill-negative-ink: #e07a7a;
   --pill-warning-bg: #2a2219;
@@ -193,10 +195,15 @@
   --color-secondary: var(--raised);
   --color-secondary-foreground: var(--text);
   --color-muted-foreground: var(--muted);
+  --color-ui-muted: var(--raised);
+  --color-ui-accent: var(--active);
   --color-accent-foreground: var(--text);
-  --color-destructive: var(--negative);
+  --color-destructive: var(--destructive);
   --color-input: var(--control);
   --color-ring: var(--accent);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
   --shadow-float: var(--float-shadow);
 }
 

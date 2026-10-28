@@ -10,6 +10,7 @@
   import Sidebar from "./lib/Sidebar.svelte";
   import ThreadView from "./lib/ThreadView.svelte";
   import Button from "./lib/ui/Button.svelte";
+  import * as Card from "./lib/ui/card";
   import Dialog from "./lib/ui/Dialog.svelte";
   import Notice from "./lib/ui/Notice.svelte";
   import { floating } from "./lib/ui/styles";
@@ -160,15 +161,17 @@
           class="grid min-h-0 flex-1 items-start justify-items-center overflow-y-auto px-4 pt-[10dvh] pb-6"
           aria-labelledby="welcome-heading"
         >
-          <div class="grid w-[min(100%,440px)] gap-3">
-            <Mark size={28} />
-            <h1 id="welcome-heading" class="mt-1 text-heading font-semibold">Connect a machine</h1>
-            <p class="mb-2 text-muted">
-              Threads run on your execution machines. Connect one through its connector to start a
-              thread or follow work already running there.
-            </p>
-            <MachineForm />
-          </div>
+          <Card.Root class="w-[min(100%,440px)]">
+            <Card.Header>
+              <div class="mb-2"><Mark size={28} /></div>
+              <Card.Title><h1 id="welcome-heading">Connect a machine</h1></Card.Title>
+              <Card.Description>
+                Threads run on your execution machines. Connect one through its connector to start a
+                thread or follow work already running there.
+              </Card.Description>
+            </Card.Header>
+            <Card.Content><MachineForm /></Card.Content>
+          </Card.Root>
         </section>
       {/if}
     {/if}

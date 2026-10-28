@@ -5,11 +5,13 @@
 
 <script lang="ts">
   import { Combobox } from "bits-ui";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import { cn } from "$lib/utils.js";
   import Icon, { type IconName } from "./Icon.svelte";
   import * as Select from "./select";
   import * as Popover from "./popover";
   import { Input } from "./input";
-  import { chip } from "./styles";
+  import { selectContent, selectTrigger } from "./select/styles";
 
   // Select owns choice navigation. Free-entry pickers use its matching
   // Combobox primitive, with Enter accepting typed text until an arrow key
@@ -106,16 +108,19 @@
 
 {#if entry}
   <Popover.Root bind:open onOpenChange={opened}>
-    <Popover.Trigger class="{chip} {extra}" {title} {disabled}>
+    <Popover.Trigger class={cn(selectTrigger, extra)} data-size="default" {title} {disabled}>
       {@render triggerLabel()}
-      <span class="flex flex-none"><Icon name="chevron" size={14} /></span>
+      <ChevronDownIcon class="text-muted-foreground size-4 pointer-events-none" />
     </Popover.Trigger>
     <Popover.Content
       sideOffset={6}
       align="start"
       collisionPadding={8}
       aria-label={label}
-      class="flex w-max min-w-(--bits-popover-anchor-width) max-w-[min(360px,calc(100vw-16px))] max-h-[min(440px,var(--bits-popover-content-available-height))] flex-col p-1"
+      class={cn(
+        selectContent,
+        "flex min-w-[min(var(--bits-popover-anchor-width),360px,calc(100vw-16px))] max-h-[min(440px,var(--bits-popover-content-available-height))] origin-(--bits-popover-content-transform-origin) flex-col border-0 p-0",
+      )}
       onOpenAutoFocus={(event) => {
         event.preventDefault();
         field?.select();
@@ -151,7 +156,7 @@
           }}
         >
           {#snippet child({ props })}
-            <Input class="mb-1 font-mono text-small" {...props} />
+            <Input class="m-1 w-[calc(100%-0.5rem)] font-mono text-small" {...props} />
           {/snippet}
         </Combobox.Input>
         <Combobox.ContentStatic

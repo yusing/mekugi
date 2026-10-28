@@ -19,18 +19,18 @@
   {label}
   data-slot="select-item"
   class={cn(
-    "relative grid min-h-[34px] w-full cursor-default grid-cols-[16px_minmax(0,1fr)] items-center gap-x-2 rounded-control py-1.5 pr-3 pl-2 text-left text-ink outline-none select-none data-highlighted:bg-active data-disabled:pointer-events-none data-disabled:text-muted max-sm:min-h-11",
+    "focus:bg-ui-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm [&_svg:not([class*='size-'])]:size-4 relative flex w-full cursor-default items-center text-left outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 data-highlighted:bg-ui-accent data-highlighted:text-accent-foreground max-sm:min-h-11",
     className,
   )}
   {...restProps}
 >
   {#snippet children({ selected, highlighted })}
-    <span class="pointer-events-none flex size-4 items-center justify-center text-muted">
+    <span class="pointer-events-none absolute right-2 flex size-4 items-center justify-center">
       {#if selected}
         <CheckIcon class="pointer-events-none size-4" />
       {/if}
     </span>
-    <span class="min-w-0">
+    <span class="min-w-0 flex-1">
       {#if childrenProp}
         {@render childrenProp({ selected, highlighted })}
       {:else}
