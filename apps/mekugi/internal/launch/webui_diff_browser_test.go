@@ -96,7 +96,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 				button("Changes")
 			}
 			if state == "live-grid" {
-				run("eval", `document.querySelector('[aria-label="Live edits"] > div:nth-child(2)').scrollTop = 0`)
+				run("eval", `document.querySelectorAll('[aria-label="Live edits"] article .overflow-y-auto').forEach(code => code.scrollTop = 0)`)
 			}
 			for _, theme := range []string{"light", "dark"} {
 				run("set", "media", theme)
@@ -114,7 +114,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 				if ratio, err := strconv.ParseFloat(strings.TrimSpace(contrast), 64); err != nil || ratio < 4.5 {
 					t.Errorf("%s %s %s: syntax contrast must be at least 4.5:1, got %s", state, size.name, theme, contrast)
 				}
-				if state == "live-grid" || state == "live-diff" {
+				if strings.HasPrefix(state, "live-") {
 					t.Log(size.name, theme, run("eval", `(() => {
             const live = document.querySelector('[aria-label="Live edits"]');
             const cards = [...live.querySelectorAll('article')];
@@ -123,14 +123,29 @@ func TestWebUIBrowserDiffs(t *testing.T) {
             const pane = live.getBoundingClientRect();
             const columns = pane.width >= 640 && cards.length > 1 ? 2 : 1;
             if (Math.abs(grid.width - (pane.width - 32)) > 2) throw Error('Live grid does not fill width');
+            for (const outer of [live, cards[0].parentElement.parentElement]) {
+              outer.scrollTop = 100;
+              if (outer.scrollTop || outer.scrollHeight > outer.clientHeight + 1) throw Error('Outer live view scrolls');
+            }
             for (let i = 0; i < boxes.length; i++) {
               if (Math.abs(boxes[i].width - (grid.width - (columns - 1) * 12) / columns) > 2) throw Error('Live card does not fill its available columns');
               if (getComputedStyle(cards[i]).borderTopWidth !== '0px') throw Error('Outer card frame remains');
               if (i % columns && Math.abs(boxes[i].top - boxes[i - 1].top) > 1) throw Error('Cards do not share a row');
               if (i >= columns && boxes[i].top < boxes[i - columns].bottom) throw Error('Cards overlap rows');
               if (i % columns && boxes[i].left <= boxes[i - 1].left) throw Error('Cards are not row-major');
+              if (boxes[i].bottom > pane.bottom || boxes[i].top < pane.top) throw Error('Card exceeds live viewport');
+              const heading = cards[i].querySelector('h3') ?? cards[i].firstElementChild;
+              const top = heading.getBoundingClientRect().top;
+              if (heading.tagName === 'H3' && (heading.title !== heading.textContent.trim() || heading.getBoundingClientRect().height > parseFloat(getComputedStyle(heading).lineHeight) + 1)) throw Error('Long file header lost its full path or code space');
+              if (heading.tagName === 'H3' && heading.title.includes('very-long-component-name-') && heading.lastElementChild.scrollWidth > heading.lastElementChild.clientWidth + 1) throw Error('Directory displaced the distinguishing filename');
+              for (const code of cards[i].querySelectorAll('.overflow-y-auto')) {
+                const line = code.querySelector('span.whitespace-pre-wrap');
+                if (code.clientHeight < parseFloat(getComputedStyle(line).lineHeight)) throw Error('Code cannot display a complete line: ' + JSON.stringify({height:code.clientHeight,line:getComputedStyle(line).lineHeight,heading:heading.getBoundingClientRect().height,whiteSpace:getComputedStyle(heading).whiteSpace,card:boxes[i].height}));
+                code.scrollTop = code.scrollHeight;
+                if (Math.abs(heading.getBoundingClientRect().top - top) > 1) throw Error('Code scroll moved its header');
+              }
             }
-            const overflowing = [...live.querySelectorAll('*')].filter(e => e.clientWidth && e.scrollWidth > e.clientWidth + 1);
+            const overflowing = [...live.querySelectorAll('*')].filter(e => !e.closest('h3[title]') && e.clientWidth && e.scrollWidth > e.clientWidth + 1);
             if (overflowing.length) throw Error('Horizontal live overflow: ' + overflowing.map(e => e.tagName + '.' + e.className).join(', '));
             const text = [...live.querySelectorAll('span.whitespace-pre-wrap')].find(e => e.textContent.includes('long_identifier_'));
             if (text && text.getBoundingClientRect().height <= parseFloat(getComputedStyle(text).lineHeight)) throw Error('Long source did not wrap');
@@ -255,7 +270,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	// Arrival order fills a row before starting the next, for file diffs,
 	// unparsed input and streamed unified-diff fallback alike.
 	long := strings.Repeat("long_identifier_", 24)
-	frame.Live[0].Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "const old = 1;\n", "const new = '"+long+"';\n")}
+	frame.Live[0].Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "const old = 1;\n", "const new = '"+long+"';\n"+strings.Repeat("// more source\n", 80))}
 	for i := 1; i < 4; i++ {
 		frame.Live = append(frame.Live, preview.Preview{ID: fmt.Sprint(i), Caller: "/root", Workspace: workspace, Tool: "apply_patch", Input: long})
 		if i == 2 {
@@ -267,21 +282,46 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	}
 	capture("live-grid")
 	// Readers who scroll up keep their place; returning to the end resumes
-	// following streamed growth through the shared vertical scroller.
+	// following streamed growth in that code block only.
+	run("eval", `window.liveCodes = [...document.querySelectorAll('[aria-label="Live edits"] article .overflow-y-auto')]; window.liveCodes[0].scrollTop = 0; window.liveCodes[3].scrollTop = 0`)
 	frame.Live[3].Input += strings.Repeat("\nmore source", 80)
 	publish()
 	run("wait", "--fn", `document.querySelectorAll('[aria-label="Live edits"] pre:last-child span.flex').length > 80`)
-	run("eval", `const pane = document.querySelector('[aria-label="Live edits"] > div:nth-child(2)'); if (pane.scrollTop !== 0) throw Error('Live growth moved the reader'); pane.scrollTop = pane.scrollHeight`)
-	run("wait", "--fn", `(() => { const p = document.querySelector('[aria-label="Live edits"] > div:nth-child(2)'); return p.scrollTop > 0; })()`)
+	run("eval", `new Promise(resolve => requestAnimationFrame(() => { window.liveCodes[3].scrollTop = 0; window.readerTop = 0; requestAnimationFrame(resolve); }))`)
+	frame.Live[3].Input += "\nwhile reading"
+	publish()
+	run("wait", "--text", "while reading")
+	run("eval", `if (window.liveCodes[3].scrollTop !== window.readerTop) throw Error('Live growth moved the reader'); window.liveCodes[3].scrollTop = window.liveCodes[3].scrollHeight`)
+	run("wait", "--fn", `window.liveCodes[3].scrollTop > 0`)
 	frame.Live[3].Input += strings.Repeat("\nfollow source", 40)
 	publish()
-	run("wait", "--fn", `(() => { const p = document.querySelector('[aria-label="Live edits"] > div:nth-child(2)'); return p.textContent.includes('follow source') && p.scrollHeight - p.scrollTop - p.clientHeight < 2; })()`)
+	run("wait", "--fn", `(() => { const p = window.liveCodes[3]; return p.textContent.includes('follow source') && p.scrollHeight - p.scrollTop - p.clientHeight < 2 && window.liveCodes[0].scrollTop === 0; })()`)
+	frame.Live[3].DiffText = true
+	frame.Live[3].Input = "--- a/fallback.ts\n+++ b/fallback.ts\n@@ -1 +1 @@\n-old\n" + strings.Repeat("+streamed fallback\n", 100)
+	publish()
+	run("wait", "--text", "streamed fallback")
+	frame.Live[3].Input += strings.Repeat("+continued fallback\n", 100)
+	publish()
+	run("wait", "--text", "continued fallback")
+	run("wait", "--fn", `(() => { const p = window.liveCodes[3]; return p.textContent.includes('continued fallback') && p.scrollHeight - p.scrollTop - p.clientHeight < 2; })()`)
+	for i := range frame.Live {
+		longPath := filepath.Join(workspace, "apps/mekugi/internal/webui/app/src/lib/components/session", fmt.Sprintf("very-long-component-name-%d.svelte", i))
+		frame.Live[i].Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile(longPath, longPath, "const old_name = 1;\n", "const new_name = 2;\n"+strings.Repeat("// readable code\n", 80))}
+	}
+	publish()
+	run("wait", "--fn", `document.querySelectorAll('[aria-label="Live edits"] h3').length === 4`)
+	capture("live-files")
 	button("Show transcript")
 	run("wait", "--fn", `!document.querySelector('[aria-label="Live edits"]')`)
 	frame.Live = frame.Live[:1]
 	frame.Live[0].ID = "writing-return"
 	publish()
 	run("wait", "--fn", `document.querySelectorAll('[aria-label="Live edits"] article').length === 1`)
+	// Multiple files in one call keep each path above its own scroll area.
+	frame.Live[0].Files = append(frame.Live[0].Files, diffmodel.RenderReviewFile("", filepath.Join(workspace, "second.ts"), "", strings.Repeat("const second = 1;\n", 80)))
+	publish()
+	run("wait", "--fn", `document.querySelectorAll('[aria-label="Live edits"] h3').length === 2`)
+	run("eval", `(() => { const card = document.querySelector('[aria-label="Live edits"] article'); const headings = [...card.querySelectorAll('h3')]; const codes = [...card.querySelectorAll('.overflow-y-auto')]; const tops = headings.map(h => h.getBoundingClientRect().top); codes[1].scrollTop = 0; codes[0].scrollTop = codes[0].scrollHeight; if (!codes[0].scrollTop || codes[1].scrollTop || headings.some((h, i) => h.getBoundingClientRect().top !== tops[i])) throw Error('File scroll areas are not independent'); })()`)
 	// Replacing a streaming snapshot must remove previous decorations and keep
 	// the new syntax colors and word emphasis on the same source characters.
 	frame.Live[0].Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "const old = 1;\n", "const latest = 3;\n")}

@@ -212,6 +212,9 @@ terminal: one card per edit call with its author, editing tool and diff or text 
 A single live card fills the available width. Multiple cards use two columns, ordered left to right then
 top to bottom, falling back to one column in narrow panes. Lines wrap within
 each card without horizontal scrolling, and no outer frame surrounds the card.
+The live view stays fixed within its available space. Each code block scrolls and
+follows new content independently, while its file header stays visible. Scrolling
+away from a block's end pauses following only for that block.
 Prompts and docks below stay in
 place. Each completed call stays for its own 1.5-second settling interval, and
 the transcript returns, at the place it was left, when no cards remain. Show
