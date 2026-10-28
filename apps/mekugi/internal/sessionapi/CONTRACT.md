@@ -5,10 +5,10 @@
 Control uses JSON-RPC 2.0 text messages over WebSocket. Local native clients
 connect to `/api/native/control` over the private Unix socket; remote human
 clients use `/api/control` through the connector. Both select WebSocket
-subprotocol `mekugi.control.v6`. The socket retains kernel-confirmed same-user
+subprotocol `mekugi.control.v7`. The socket retains kernel-confirmed same-user
 peer admission, private filesystem permissions and listener/startup locks.
 
-The first request is `initialize` with `{"version":"6"}`. Remote clients also
+The first request is `initialize` with `{"version":"7"}`. Remote clients also
 supply `token`, consumed by the connector and never forwarded to the server.
 Initialization succeeds before any session data or operation is available.
 Observation requests may follow initialization on the ordered connection before
@@ -19,7 +19,7 @@ that sample to their local monotonic clock, independently of local wall time.
 The endpoint establishes authority; caller fields cannot select it. Remote
 connections cannot invoke native startup or native-only semantic operations.
 
-`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 6` on
+`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 7` on
 request and response. Missing/incompatible versions receive 409. WebSocket
 upgrades on the private socket also carry this header. Browser clients use the
 subprotocol and initialization version; the connector sets the private header.
@@ -46,11 +46,8 @@ acknowledgements cannot reactivate a retired subscription.
 | --- | --- |
 | `session/options` | Execution-machine workspaces and offered models |
 | `session/list` | Current session-list value |
-| `session/image` | Read one image bound to a published user or View entry |
-| `session/attachment-image` | Preview an explicitly attached execution-machine path |
 | `session/read` | One confirmed thread's list entry |
 | `session/page` | A bounded retained-feed, roster or saved-review metadata page |
-| `session/content` | Complete content named by a published reference |
 | `session/start` | Create/resume using the creation body |
 | `session/end` | End the selected owned runtime |
 | `session/subscribe` | Session-list updates without `thread`; shared publications with `thread` |
@@ -117,11 +114,16 @@ application or intentional stale discard;
 only the current ID releases the next delivery. Canceling an observation removes
 unsent work but does not acknowledge already-sent bytes. Other control replies,
 semantic effects, discovery and local native frames retain their delivery rules.
-Browser transfer connections follow the [Web UI contract](../webui/CONTRACT.md).
-Canceled content and image replies are discarded before transmission begins. Content transfers
-share the endpoint's aggregate preparation capacity through response delivery.
-Explicit content reads remain cancelable and do not inherit the ordinary
-control-read deadline, which can expire during healthy large transfers.
+Resource transfers follow the [Web UI contract](../webui/CONTRACT.md).
+`POST /api/resources/content` accepts the same `{thread, body}` destination and
+published content reference and returns the complete content as JSON.
+`POST /api/resources/image` and `POST /api/resources/attachment-image` return
+raster bytes with their image Content-Type. These resource reads use separate
+HTTP requests, outside the control WebSocket. Private socket requests require
+`Mekugi-Protocol: 7`; connector requests also require `Authorization: Bearer TOKEN`
+and an admitted UI origin. Errors retain the RPC error shape and semantic HTTP
+status. Transfers share aggregate preparation capacity through response delivery.
+Cancellation retires only the affected read, without ending execution.
 
 Session-list data is `{"sessions":[...]}`. Entries expose `id`, `thread`,
 `workspace`, title/start/status and waiting facts when known. `starting` marks a
@@ -602,22 +604,22 @@ admission; TypeScript types do not establish authority.
 User entries carry bound token spans and opaque image identities; View and
 Generated entries carry their bound image identities, including live, restored
 and resumed history. Generated entries use the host's saved artifact path.
-`session/image`
+`POST /api/resources/image`
 takes `{seq, agent, index, image}` in its body on the selected thread. It resolves
 only an image in that current published entry, never a caller-supplied path or URL,
-and returns `{mime, data}` with base64 raster bytes. Reads use the admitted source
+and returns raster bytes. Reads use the admitted source
 and selected workspace, run outside publication locks, and share attachment-transfer
 capacity. Missing, oversized or non-raster sources fail explicitly. Local
 files and inline image data are supported up to the upload limit; remote URLs are
-not fetched. Browser image transfers use an independent authenticated connection.
+not fetched. Browser image transfers use independent authenticated HTTP requests.
 
-`session/attachment-image` takes `{path}` on a selected live thread, or
+`POST /api/resources/attachment-image` takes `{path}` on a selected live thread, or
 `{path, workspace}` without a thread before creation. The initial workspace must
 be an existing absolute directory on a machine that supports thread creation;
 live requests use the selected thread's workspace and reject workspace overrides.
-The read-only request uses the same authenticated connection, transfer capacity,
+The read-only request uses the same authentication, transfer capacity,
 regular-file bounds and raster validation as published images, and returns
-`{mime, data}`. It never fetches URLs or retains server-side drafts. Relative paths
+raster bytes. It never fetches URLs or retains server-side drafts. Relative paths
 resolve in the selected workspace. Non-raster paths return 415 and remain ordinary
 file chips; unreadable paths show a preview failure. Previewing does not change
 which source is acquired when the draft is eventually submitted.

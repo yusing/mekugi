@@ -61,7 +61,7 @@ func (s *Server) readImage(ctx context.Context, target requestTarget, body jsont
 
 // attachmentImage reads only an explicitly requested draft path. It does not
 // weaken the published-image identity check or retain any draft on the server.
-func (c *rpcConnection) attachmentImage(ctx context.Context, params RPCParams) (any, *RPCError) {
+func (e *rpcEndpoint) attachmentImage(ctx context.Context, params RPCParams) (any, *RPCError) {
 	var request struct {
 		Path      string `json:"path"`
 		Workspace string `json:"workspace,omitempty"`
@@ -74,7 +74,7 @@ func (c *rpcConnection) attachmentImage(ctx context.Context, params RPCParams) (
 	}
 	workspace := request.Workspace
 	if params.Thread != "" {
-		selected, failure := c.endpoint.hub.lookup(params.Thread, "", c.authority)
+		selected, failure := e.hub.lookup(params.Thread, "", remoteHumanView)
 		if failure != nil {
 			return nil, failure
 		}
@@ -83,7 +83,7 @@ func (c *rpcConnection) attachmentImage(ctx context.Context, params RPCParams) (
 		}
 		workspace = selected.entry.Workspace
 	} else {
-		if c.endpoint.hub.launcher == nil {
+		if e.hub.launcher == nil {
 			return nil, rpcFailure(405, "This server does not start threads.")
 		}
 		info, err := os.Stat(workspace)
@@ -91,16 +91,15 @@ func (c *rpcConnection) attachmentImage(ctx context.Context, params RPCParams) (
 			return nil, rpcFailure(400, "Choose an existing absolute workspace directory.")
 		}
 	}
-	select {
-	case c.endpoint.preparations <- struct{}{}:
-	default:
-		return nil, rpcFailure(503, "Image transfer capacity is busy.")
-	}
-	defer func() { <-c.endpoint.preparations }()
 	return readImageSource(ctx, workspace, request.Path)
 }
 
-func readImageSource(ctx context.Context, workspace, source string) (any, *RPCError) {
+type imageResource struct {
+	mime string
+	data []byte
+}
+
+func readImageSource(ctx context.Context, workspace, source string) (*imageResource, *RPCError) {
 	if ctx.Err() != nil {
 		return nil, rpcFailure(499, "Image request cancelled.")
 	}
@@ -141,8 +140,5 @@ func readImageSource(ctx context.Context, workspace, source string) (any, *RPCEr
 	default:
 		return nil, rpcFailure(415, "The attachment is not a supported raster image.")
 	}
-	return struct {
-		Mime string `json:"mime"`
-		Data string `json:"data"`
-	}{mime, base64.StdEncoding.EncodeToString(data)}, nil
+	return &imageResource{mime: mime, data: data}, nil
 }

@@ -214,7 +214,11 @@ func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// Browser WebSockets use no preflight, custom headers or URL credentials.
 	if r.URL.RawQuery != "" || r.URL.ForceQuery || r.URL.RawPath != "" || r.URL.User != nil {
-		http.Error(w, "Only the exact control endpoint is supported.", http.StatusBadRequest)
+		http.Error(w, "Only exact API endpoints are supported.", http.StatusBadRequest)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, sessionapi.ResourcePath) {
+		c.resource(w, r)
 		return
 	}
 	if r.Method != http.MethodGet || r.URL.Path != sessionapi.RPCPath {

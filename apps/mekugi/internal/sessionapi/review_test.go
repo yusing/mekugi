@@ -5,6 +5,8 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -33,14 +35,12 @@ func TestReviewPagePreservesLongPaths(t *testing.T) {
 	if len(page.Files) != 1 || len(testJSON(t, page)) > feedBytes {
 		t.Fatal("long path metadata was not bounded")
 	}
-	conn := rawControl(t, hub.Handler(), false)
-	conn.SetReadLimit(RPCMessageLimit)
-	controlInitialize(t, conn)
-	controlWrite(t, conn, `{"jsonrpc":"2.0","id":"content","method":"session/content","params":{"thread":"thread","body":`+string(testJSON(t, page.Files[0].Content))+`}}`)
-	reply := controlRead(t, conn)
+	request := httptest.NewRequest(http.MethodPost, ResourcePath+"content", bytes.NewReader(testJSON(t, RPCParams{Thread: "thread", Body: testJSON(t, page.Files[0].Content)})))
+	reply := httptest.NewRecorder()
+	hub.Handler().ServeHTTP(reply, request)
 	var content ContentResult
-	if reply.Error != nil || json.Unmarshal(reply.Result, &content) != nil || content.Review == nil {
-		t.Fatalf("content reference failed admission: %+v", reply.Error)
+	if reply.Code != 200 || json.Unmarshal(reply.Body.Bytes(), &content) != nil || content.Review == nil {
+		t.Fatalf("content reference failed admission: %s", reply.Body)
 	}
 	file := content.Review
 	if file.Path != path || file.Key != page.Files[0].Key || len(file.Chunks) != 1 {

@@ -256,19 +256,29 @@ func TestWebUIBrowserMachines(t *testing.T) {
 
 	run("--engine", "chrome", "open", page.URL)
 	run("eval", `(() => {
+        const originalFetch = window.fetch;
+        window.fetch = async (...args) => {
+            const response = await originalFetch(...args);
+            if (String(args[0]).endsWith('/api/resources/content') && window.holdContent)
+                return new Promise((resolve, reject) => {
+                    const signal = args[1]?.signal;
+                    if (signal?.aborted) { reject(signal.reason); return; }
+                    signal?.addEventListener('abort', () => reject(signal.reason), {once:true});
+                    window.heldContent.push((fail = false) => resolve(fail ? new Response(JSON.stringify({code:-32000,message:'content unavailable',data:{status:503}}), {status:503,headers:{'Content-Type':'application/json'}}) : response));
+                });
+            return response;
+        };
 		const Original = window.WebSocket;
 		window.holdShared = true; window.heldShared = []; window.liveBeforeShared = false;
 		window.coldReads = 0; window.coldRefused = false;
 		window.WebSocket = class extends Original {
 			observations = new Set();
 			cold = new Set();
-			contents = new Set();
 			renames = new Set();
 			send(data) {
 				const request = JSON.parse(data);
 				if (request.params?.body?.operation?.command === '/title Pending parent title') this.renames.add(request.id);
 				if (request.method === 'session/subscribe' && request.params.thread) this.observations.add(request.params.subscription);
-				if (request.method === 'session/content') this.contents.add(request.id);
 				if (request.method === 'session/subscribe' && request.params.thread === 'cold') { this.cold.add(request.id); window.coldReads++; }
 				return super.send(data);
 			}
@@ -277,10 +287,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 				return super.addEventListener(kind, event => {
 					const message = JSON.parse(event.data);
 					if (this.renames.has(message.id)) window.pendingRenameSettled = true;
-                    if (this.contents.has(message.id) && window.holdContent) {
-                        window.heldContent.push((fail = false) => listener.call(this, fail ? new MessageEvent('message', {data: JSON.stringify({jsonrpc:'2.0',id:message.id,error:{code:-32000,message:'content unavailable',data:{status:503}}})}) : event));
-                        return;
-                    }
+
 					if (this.cold.has(message.id) && message.error?.data?.status === 404) window.coldRefused = true;
 					if (window.holdShared && message.method === 'subscription/event') {
 						if (this.observations.has(message.params.subscription)) {

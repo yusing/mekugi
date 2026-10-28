@@ -295,36 +295,6 @@ test(
   },
 );
 
-test("content survives the control deadline and remains explicitly cancelable", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const connector = connect("https://example.test", "token");
-  const requested = Promise.withResolvers();
-  handler = (socket, message) => {
-    if (initialize(socket, message)) return;
-    if (message.method === "session/content") requested.resolve({ socket, message });
-    else socket.reply(message, null);
-  };
-  const controller = new AbortController();
-  const content = connector.request(
-    "session/content",
-    { thread: "large" },
-    { signal: controller.signal },
-  );
-  const { socket, message } = await requested.promise;
-  t.mock.timers.tick(60_000);
-  assert.equal(socket.readyState, Socket.OPEN);
-  assert.equal(
-    socket.sent.some((call) => call.method === "request/cancel"),
-    false,
-  );
-  controller.abort();
-  await assert.rejects(content, /canceled/);
-  assert.equal(socket.readyState, Socket.OPEN);
-  assert.deepEqual(socket.sent.at(-1).params, { body: { id: message.id } });
-  await connector.request("session/image", { thread: "large", body: { path: "image.png" } });
-  assert.equal(sockets.length, 1);
-});
-
 test("timed-out subscription admission cancels its known identity and ignores late data", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const connector = connect("https://example.test", "token");
@@ -428,7 +398,7 @@ test(
 );
 
 test(
-  "content, images and attachments reuse one bulk connection independently of control",
+  "attachment submissions reuse one bulk connection independently of control",
   { timeout: 2000 },
   async () => {
     const connector = connect("https://example.test", "token");
@@ -481,9 +451,6 @@ test(
       if (!initialize(socket, message)) socket.reply(message, null);
     };
     for (const [method, payload] of [
-      ["session/content", { attachment: "retained", kind: "main", seq: 1, revision: 1 }],
-      ["session/attachment-image", { path: "image.png" }],
-      ["session/image", { path: "image.png" }],
       [
         "session/answer",
         {
@@ -521,38 +488,35 @@ test(
   },
 );
 
-test("bulk cancellation, loss and reauthorization preserve channel ownership", async () => {
+test("bulk loss and reauthorization preserve channel ownership", async () => {
   const connector = connect("https://example.test", "old-token");
   const pending = [];
   handler = (socket, message) => {
     if (initialize(socket, message)) return;
-    if (message.method === "session/input" || message.method === "session/content")
-      pending.push({ socket, message });
+    if (message.method === "session/input") pending.push({ socket, message });
     else socket.reply(message, null);
   };
   await connector.request("session/options");
-  const controller = new AbortController();
-  const canceled = connector.request("session/content", {}, { signal: controller.signal });
-  const retained = connector.request("session/content");
-  await new Promise(setImmediate);
-  controller.abort();
-  await assert.rejects(canceled, { kind: "canceled" });
-  pending[1].socket.reply(pending[1].message, { complete: true });
-  assert.deepEqual(await retained, { complete: true });
-  assert.equal(sockets.length, 2);
   const submission = connector.request("session/input", {
     body: { attachments: [{ source: "path", path: "notes.txt" }] },
   });
   await new Promise(setImmediate);
   sockets[1].close();
   await assert.rejects(submission, { kind: "unknown" });
-  await connector.request("session/image");
+  handler = (socket, message) => {
+    if (!initialize(socket, message)) socket.reply(message, null);
+  };
+  const params = { body: { attachments: [{ source: "path", path: "notes.txt" }] } };
+  await connector.request("session/input", params);
   assert.equal(sockets.length, 3);
   assert.equal(sockets[0].readyState, Socket.OPEN);
   assert.equal(pending.filter(({ message }) => message.method === "session/input").length, 1);
   connector.authorize("new-token");
   assert.ok(sockets.every((socket) => socket.readyState === 3));
-  await Promise.all([connector.request("session/options"), connector.request("session/image")]);
+  await Promise.all([
+    connector.request("session/options"),
+    connector.request("session/input", params),
+  ]);
   assert.equal(sockets.length, 5);
   assert.ok(sockets.slice(3).every((socket) => socket.sent[0].params.token === "new-token"));
   connector.close();
@@ -739,4 +703,79 @@ test("delivery receipts follow application or stale discard on their originating
   sockets[1].receive(event("discarded"));
   assert.equal(received, before);
   assert.equal(sockets[1].sent.at(-1).params.body.delivery, "discarded");
+});
+
+test("HTTP resources run concurrently, survive control deadlines and cancel independently", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const connector = connect("https://example.test/prefix", "old-token");
+  const requests = [];
+  t.mock.method(globalThis, "fetch", (url, options) => {
+    const result = Promise.withResolvers();
+    requests.push({ url, options, result });
+    options.signal.addEventListener("abort", () => result.reject(options.signal.reason));
+    return result.promise;
+  });
+  handler = (socket, message) => {
+    if (!initialize(socket, message)) socket.reply(message, null);
+  };
+  const controller = new AbortController();
+  const params = {
+    thread: "same",
+    body: { attachment: "retained", kind: "main", seq: 1, revision: 1 },
+  };
+  const slow = connector.resource("content", params, { signal: controller.signal });
+  const image = connector.resource("image", { thread: "same", body: { image: "bound" } });
+  const preview = connector.resource("attachment-image", {
+    body: { path: "image.png", workspace: "/work" },
+  });
+  assert.equal(requests.length, 3);
+  assert.equal(requests[0].url, "https://example.test/prefix/api/resources/content");
+  assert.deepEqual(JSON.parse(requests[0].options.body), params);
+  for (const { url, options } of requests) {
+    assert.ok(!url.includes("token"));
+    assert.equal(options.headers.Authorization, "Bearer old-token");
+    assert.equal(options.headers["Mekugi-Protocol"], protocolVersion);
+    assert.equal(options.credentials, "omit");
+    assert.equal(options.redirect, "error");
+  }
+  await connector.request("session/options");
+  assert.equal(sockets.length, 1);
+  t.mock.timers.tick(60_000);
+  assert.equal(requests[0].options.signal.aborted, false);
+  requests[1].result.resolve(
+    new Response(new Uint8Array([1, 2, 3]), { headers: { "Content-Type": "image/png" } }),
+  );
+  assert.deepEqual(new Uint8Array(await (await image).arrayBuffer()), new Uint8Array([1, 2, 3]));
+  controller.abort();
+  await assert.rejects(slow, { kind: "canceled" });
+  assert.equal(requests[2].options.signal.aborted, false);
+  requests[2].result.resolve(new Response(new Uint8Array([4])));
+  await preview;
+  const old = connector.resource("content", params);
+  connector.authorize("new-token");
+  await assert.rejects(old, { kind: "canceled" });
+  const fresh = connector.resource("content", params);
+  assert.equal(requests.at(-1).options.headers.Authorization, "Bearer new-token");
+  requests.at(-1).result.resolve(Response.json({ entry: { text: "complete" } }));
+  assert.deepEqual(await fresh, { entry: { text: "complete" } });
+  const removed = connector.resource("content", params);
+  connector.close();
+  await assert.rejects(removed, { kind: "canceled" });
+});
+
+test("HTTP resource failures retain authentication and semantic status", async (t) => {
+  const connector = connect("https://example.test", "token");
+  t.mock.method(globalThis, "fetch", async () => new Response("unauthorized", { status: 401 }));
+  await assert.rejects(connector.resource("image", {}), { kind: "required", status: 401 });
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: -32000, message: "Entry changed", data: { status: 409, outcome: "not_admitted" } },
+      { status: 409 },
+    ),
+  );
+  await assert.rejects(connector.resource("content", {}), {
+    kind: "refused",
+    status: 409,
+    message: "Entry changed",
+  });
 });

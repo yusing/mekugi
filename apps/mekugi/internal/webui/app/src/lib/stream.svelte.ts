@@ -367,8 +367,8 @@ export class Stream {
 
   async readContent(reference: ContentReference, signal: AbortSignal): Promise<ContentResult> {
     if (!this.#machine || !this.#id) throw new Error("The content's machine is disconnected.");
-    const result = await this.#machine.request<ContentResult>(
-      "session/content",
+    const result = await this.#machine.resource<ContentResult>(
+      "content",
       { thread: this.#id, body: reference },
       { signal: AbortSignal.any([signal, this.#requests.signal]) },
     );
@@ -592,13 +592,11 @@ export class Stream {
     const machine = this.#machine,
       id = this.#id;
     if (!machine || !id) throw new Error("The image's machine is disconnected.");
-    const result = await machine.request<{ mime: string; data: string }>(
-      "session/image",
+    return machine.resource<Blob>(
+      "image",
       { thread: id, body: { seq: entry.seq, agent: entry.agent ?? "", index, image } },
       { signal: AbortSignal.any([signal, this.#requests.signal]) },
     );
-    const bytes = Uint8Array.from(atob(result.data), (c) => c.charCodeAt(0));
-    return new Blob([bytes], { type: result.mime });
   }
 
   async #request(method: RPCMethod, body: unknown): Promise<string | undefined> {

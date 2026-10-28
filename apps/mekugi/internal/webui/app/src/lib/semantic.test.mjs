@@ -367,6 +367,9 @@ test("same-thread recovery releases aborted reads without clearing replacement g
         subscriptions.push({ event, state });
         return () => {};
       },
+      resource(kind, params, options) {
+        return this.request(kind, params, options);
+      },
       request(method, _params, { signal }) {
         if (signal.aborted) return Promise.reject(signal.reason);
         const reply = Promise.withResolvers();

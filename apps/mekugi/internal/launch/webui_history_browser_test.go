@@ -86,7 +86,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		return strings.TrimSpace(string(out))
 	}
 	run("open", page.URL)
-	run("eval", `window.controlSockets = []; window.contentReads = 0; const Original = WebSocket; window.WebSocket = class extends Original { constructor(...args) { super(...args); window.controlSockets.push(this); } send(text) { if (JSON.parse(text).method === 'session/content') window.contentReads++; return super.send(text); } }`)
+	run("eval", `window.controlSockets = []; window.contentReads = 0; const Original = WebSocket; window.WebSocket = class extends Original { constructor(...args) { super(...args); window.controlSockets.push(this); } }; const originalFetch = window.fetch; window.fetch = (...args) => { if (String(args[0]).endsWith("/api/resources/content")) window.contentReads++; return originalFetch(...args); }`)
 	run("find", "label", "Machine name", "fill", "History")
 	run("find", "label", "Connector URL", "fill", machine.remote.URL)
 	run("find", "label", "Access token", "fill", strings.Repeat("e", 64))
@@ -203,7 +203,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	}
 	run("wait", "--text", "History entry 000")
 	run("wait", "--fn", `window.contentReads >= 12`)
-	if counts := run("eval", `({created:window.controlSockets.length,open:window.controlSockets.filter(socket => socket.readyState === WebSocket.OPEN).length,content:window.contentReads})`); run("eval", `window.controlSockets.length === 2 && window.controlSockets.every(socket => socket.readyState === WebSocket.OPEN)`) != "true" {
+	if counts := run("eval", `({created:window.controlSockets.length,open:window.controlSockets.filter(socket => socket.readyState === WebSocket.OPEN).length,content:window.contentReads})`); run("eval", `window.controlSockets.length === 1 && window.controlSockets.every(socket => socket.readyState === WebSocket.OPEN)`) != "true" {
 		t.Fatalf("scrolling created additional control connections: %s", counts)
 	}
 	if run("eval", `document.querySelectorAll('[aria-label="Transcript"] article').length === 601`) != "true" {
@@ -218,7 +218,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("missing live view")
 	}
-	run("eval", `window.detailReads = []; window.savedSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { if (JSON.parse(text).method === 'session/content') { window.detailReads.push(() => window.savedSend.call(this, text)); return; } return window.savedSend.call(this, text); }`)
+	run("eval", `window.detailReads = []; window.savedFetch = window.fetch; window.fetch = (...args) => { if (String(args[0]).endsWith('/api/resources/content')) return new Promise((resolve, reject) => window.detailReads.push(() => window.savedFetch(...args).then(resolve, reject))); return window.savedFetch(...args); }`)
 	thread := sessionpresentation.Thread{ID: "same-thread", Caller: "/root"}
 	detailFrame := sessionapi.NativeFrame{View: sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 2}, Main: thread, Input: thread, Displayed: thread}, Details: &sessionapi.NativeDetails{Source: thread, View: sessionpresentation.DetailView{ID: sessionpresentation.DetailID{Attachment: 1, Selection: 1}, Revision: 1, Pages: []sessionpresentation.DetailItem{{DetailPage: activity.DetailPage{ID: "retained", Value: activity.Value{Body: strings.Repeat("Complete retained details.\n\n", 120)}}}}}}}
 	detailFrame.View.Info.Workspace = machine.workdir
@@ -234,9 +234,9 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	if run("eval", `window.detailReads.length === 1`) != "true" {
 		t.Fatal("unrelated frame restarted the complete-detail read")
 	}
-	run("eval", `WebSocket.prototype.send = window.savedSend; window.detailReads[0]()`)
+	run("eval", `window.fetch = window.savedFetch; window.detailReads[0]()`)
 	run("wait", "--text", "Complete retained details.")
-	if run("eval", `window.controlSockets.length === 2`) != "true" {
+	if run("eval", `window.controlSockets.length === 1`) != "true" {
 		t.Fatal("opening retained details created another control connection")
 	}
 	run("eval", `window.savedDetails = document.querySelector('#details-heading').parentElement.nextElementSibling.querySelector('p')`)
@@ -291,9 +291,9 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	run("wait", "--fn", `!document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')`)
 	// Closing the actual wire must replace it once and restore all observers.
 	run("eval", `window.controlSockets[0].close()`)
-	run("wait", "--fn", `window.controlSockets.length === 3 && document.querySelector('button[aria-label="Stop"]')?.disabled === false`)
-	if run("eval", `window.controlSockets.filter(socket => socket.readyState === WebSocket.OPEN).length === 2`) != "true" {
-		t.Fatal("reconnection did not restore the control and bulk pair")
+	run("wait", "--fn", `window.controlSockets.length === 2 && document.querySelector('button[aria-label="Stop"]')?.disabled === false`)
+	if run("eval", `window.controlSockets.filter(socket => socket.readyState === WebSocket.OPEN).length === 1`) != "true" {
+		t.Fatal("reconnection did not restore the control connection")
 	}
 	// A different agent starts at its own newest page, without Main's cursor.
 	run("eval", `[...document.querySelectorAll('[aria-label="Thread panel"] button')].find(e => e.textContent.includes('worker0')).click()`)
@@ -309,8 +309,8 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		}
 	}
 
-	if run("eval", `window.controlSockets.length === 3`) != "true" {
+	if run("eval", `window.controlSockets.length === 2`) != "true" {
 		t.Fatal("agent selection created another connection")
 	}
-	t.Log("scrolling and retained details reused two persistent connections; disconnect replaced only control; agent selection reused the pair")
+	t.Log("scrolling and retained details reused one control connection and independent HTTP reads; disconnect replaced control; agent selection reused it")
 }

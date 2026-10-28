@@ -31,29 +31,26 @@ type rpcMethod struct {
 }
 
 var rpcMethods = map[string]rpcMethod{
-	"session/attachment-image": {limit: 64 << 10},
-	"session/image":            {limit: 1024},
-	"session/options":          {limit: 1024},
-	"session/list":             {limit: 1024},
-	"session/read":             {limit: 1024},
-	"session/page":             {limit: 1024},
-	"session/content":          {limit: 1024},
-	"session/start":            {limit: InputBodyLimit},
-	"session/end":              {limit: 1024},
-	"session/subscribe":        {limit: 1024},
-	"session/input":            {limit: InputBodyLimit},
-	"session/shell":            {limit: inputLimit},
-	"session/answer":           {limit: InputBodyLimit},
-	"session/decide":           {limit: 64 << 10},
-	"session/interrupt":        {limit: 1024},
-	"session/redraw":           {limit: 1024, native: true},
-	"session/control":          {limit: 1024},
-	"view/attach":              {limit: 1024},
-	"view/intent":              {limit: InputBodyLimit},
-	"native/start":             {limit: inputLimit, native: true},
-	"subscription/cancel":      {limit: 1024},
-	"request/cancel":           {limit: 1024},
-	"publication/ack":          {limit: 1024},
+	"session/options":     {limit: 1024},
+	"session/list":        {limit: 1024},
+	"session/read":        {limit: 1024},
+	"session/page":        {limit: 1024},
+	"session/start":       {limit: InputBodyLimit},
+	"session/end":         {limit: 1024},
+	"session/subscribe":   {limit: 1024},
+	"session/input":       {limit: InputBodyLimit},
+	"session/shell":       {limit: inputLimit},
+	"session/answer":      {limit: InputBodyLimit},
+	"session/decide":      {limit: 64 << 10},
+	"session/interrupt":   {limit: 1024},
+	"session/redraw":      {limit: 1024, native: true},
+	"session/control":     {limit: 1024},
+	"view/attach":         {limit: 1024},
+	"view/intent":         {limit: InputBodyLimit},
+	"native/start":        {limit: inputLimit, native: true},
+	"subscription/cancel": {limit: 1024},
+	"request/cancel":      {limit: 1024},
+	"publication/ack":     {limit: 1024},
 }
 
 func rpcFailure(status int, message string) *RPCError {
@@ -109,6 +106,7 @@ type rpcEndpoint struct {
 
 func (e *rpcEndpoint) handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST "+ResourcePath+"{kind}", e.resource)
 	mux.HandleFunc("GET "+RPCPath, func(w http.ResponseWriter, r *http.Request) { e.serve(w, r, remoteHumanView) })
 	mux.HandleFunc("GET "+NativeRPCPath, func(w http.ResponseWriter, r *http.Request) { e.serve(w, r, localNativeView) })
 	return mux
@@ -364,19 +362,12 @@ func (c *rpcConnection) run() {
 				c.replyPage(ctx, request.ID, value.(PageResult))
 				return
 			}
-			bulkRead := failure == nil && (request.Method == "session/content" || request.Method == "session/image" || request.Method == "session/attachment-image")
-			if sent == nil && !bulkRead {
+			if sent == nil {
 				c.reply(c.ctx, request.ID, value, failure, nil)
 				return
 			}
-			// Admission and bulk reads belong to this request until
-			// delivery, not merely until the reply is queued.
-			replyContext := c.ctx
-			if bulkRead {
-				replyContext = ctx
-			}
 			delivered := make(chan struct{})
-			c.reply(replyContext, request.ID, value, failure, func() {
+			c.reply(c.ctx, request.ID, value, failure, func() {
 				if sent != nil {
 					sent()
 				}
@@ -693,9 +684,6 @@ func (c *rpcConnection) subscribe(ctx context.Context, id string, build func(con
 func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCParams) (any, *RPCError, func()) {
 	h := c.endpoint.hub
 	switch method {
-	case "session/attachment-image":
-		value, err := c.attachmentImage(ctx, params)
-		return value, err, nil
 	case "session/options":
 		value, err := h.startOptions(ctx)
 		return value, err, nil
@@ -744,38 +732,11 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 		return nil, rpcFailure(405, "Recorded playback has no live control view."), nil
 	}
 	switch method {
-	case "session/image":
-		select {
-		case c.endpoint.preparations <- struct{}{}:
-		default:
-			return nil, rpcFailure(503, "Image transfer capacity is busy."), nil
-		}
-		defer func() { <-c.endpoint.preparations }()
-		value, err := selected.server.readImage(ctx, target, params.Body)
-		return value, err, nil
 	case "session/read":
 		return selected.entry, nil, nil
 	case "session/page":
 		value, failure := selected.server.page(params.Body)
 		return value, failure, nil
-	case "session/content":
-		select {
-		case c.endpoint.preparations <- struct{}{}:
-		default:
-			return nil, rpcFailure(503, "Content transfer capacity is busy."), nil
-		}
-		release := sync.OnceFunc(func() { <-c.endpoint.preparations })
-		stop := context.AfterFunc(ctx, release)
-		value, failure := selected.server.content(params.Body)
-		if failure != nil || ctx.Err() != nil {
-			stop()
-			release()
-			if failure == nil {
-				failure = rpcFailure(503, "Content read was canceled.")
-			}
-			return nil, failure, nil
-		}
-		return value, nil, func() { stop(); release() }
 	case "session/end":
 		if selected.runtime == nil {
 			return nil, rpcFailure(405, "This publication has no owned runtime."), nil

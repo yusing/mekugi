@@ -5,6 +5,9 @@ Session API over the execution machine's private Unix socket. It owns no
 execution, thread registry, transcript, upload files or browser assets. An
 unavailable server produces a connection failure, never an empty session list.
 
+Resource HTTP requests authenticate with an Authorization bearer header and use
+separate upstream HTTP requests. Configured UI origins receive the corresponding
+CORS preflight response; credentials are never accepted in cookies or URLs.
 Every WebSocket connection authenticates with a bearer token in its bounded first
 `initialize` message before any session data or control dispatch. The connector
 creates one persistent random token in a private local file. An exclusive
@@ -15,7 +18,7 @@ rotates and privately publishes the token before admitting its replacement;
 rotation cancels all requests and streams admitted with the old token. A failed
 publication preserves the previous token and reports a content-free error.
 
-Configured UI origins are checked before WebSocket upgrade. Other origins are
+Configured UI origins are checked before HTTP resource dispatch or WebSocket upgrade. Other origins are
 refused, and origin checks never replace authentication. Non-browser clients
 without Origin still require authentication. Initialization is bounded in bytes,
 time and concurrent unauthenticated connections.

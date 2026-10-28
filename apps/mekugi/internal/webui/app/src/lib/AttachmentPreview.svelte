@@ -21,15 +21,14 @@
       url = preview = URL.createObjectURL(file);
     } else if (path && target) {
       void target.machine
-        .request<{ mime: string; data: string }>(
-          "session/attachment-image",
+        .resource<Blob>(
+          "attachment-image",
           { thread: target.thread, body: { path, workspace: target.workspace } },
           { signal: controller.signal },
         )
         .then((result) => {
           if (controller.signal.aborted) return;
-          const bytes = Uint8Array.from(atob(result.data), (c) => c.charCodeAt(0));
-          url = preview = URL.createObjectURL(new Blob([bytes], { type: result.mime }));
+          url = preview = URL.createObjectURL(result);
         })
         .catch(() => {
           if (controller.signal.aborted) return;

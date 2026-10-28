@@ -1,7 +1,10 @@
 package sessionapi
 
 import (
+	"bytes"
 	"encoding/json/v2"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -11,7 +14,11 @@ import (
 
 func TestRemoteDetailContentRetainsPublicSelection(t *testing.T) {
 	for _, authority := range []viewAuthority{remoteHumanView, localNativeView} {
-		native := NewLive().Native()
+		server := NewLive()
+		native := server.Native()
+		hub := NewHub(t.Context(), nil)
+		defer hub.Close()
+		registerTestSession(hub, "thread", server, Summary{Thread: "thread", Workspace: "/workspace"})
 		subscription, request, failure := native.newView(t.Context(), requestTarget{"thread", "/workspace"}, "", authority)
 		if failure != nil {
 			t.Fatal(failure)
@@ -47,6 +54,13 @@ func TestRemoteDetailContentRetainsPublicSelection(t *testing.T) {
 		details := read.(ContentResult).Details
 		if details.View.Pages[0].Code != frame.Details.View.Pages[0].Code || strings.Contains(string(testJSON(t, details)), "PRIVATE") {
 			t.Fatal("detail content lost full code or exposed secret data")
+		}
+		response := httptest.NewRecorder()
+		params := testJSON(t, RPCParams{Thread: "thread", Body: testJSON(t, ref)})
+		hub.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, ResourcePath+"content", bytes.NewReader(params)))
+		expected, err := json.Marshal(read, nativeEncoding)
+		if err != nil || response.Code != 200 || !bytes.Equal(response.Body.Bytes(), expected) {
+			t.Fatalf("HTTP detail content changed its wire shape: %s, %v", response.Body, err)
 		}
 		frame.Details.View.Revision++
 		if err := native.Publish(request.Attachment, frame); err != nil {

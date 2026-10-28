@@ -18,6 +18,7 @@ export type Connection = "connecting" | "open" | "lost" | "required" | "incompat
 export interface RequestOptions {
   signal?: AbortSignal;
 }
+export type ResourceKind = "content" | "image" | "attachment-image";
 export type SubscriptionMethod = "session/subscribe" | "view/attach";
 type StateListener = (state: Connection, error?: TransportError) => void;
 
@@ -86,10 +87,7 @@ function readOnly(method: RPCMethod): boolean {
   return (
     method === "initialize" ||
     method === "session/options" ||
-    method === "session/attachment-image" ||
-    method === "session/image" ||
     method === "session/page" ||
-    method === "session/content" ||
     method === "publication/ack" ||
     method === "session/list" ||
     method === "session/read" ||
@@ -257,10 +255,7 @@ class Channel {
         finish();
         reject(mutation ? new TransportError(unknownOutcome, "unknown") : canceled());
       };
-      // Explicit content can exceed the control deadline on a healthy slow
-      // link. Its owner cancels the request without retiring the bulk channel.
-      const timer =
-        method === "session/content" ? undefined : setTimeout(abort, mutation ? 120_000 : 15_000);
+      const timer = setTimeout(abort, mutation ? 120_000 : 15_000);
       this.#pending.set(id, {
         mutation,
         result: (value) => {
@@ -418,7 +413,6 @@ function waitFor<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
 }
 
 function attachmentBearing(method: RPCMethod, params: RPCParams): boolean {
-  if (method === "session/image" || method === "session/attachment-image") return true;
   if (method === "session/start" || method === "session/input")
     return !!(params.body as InputRequest | undefined)?.attachments?.length;
   if (method === "session/answer")
@@ -493,10 +487,58 @@ export class Connector {
       this.#lifetime.signal,
       ...(options.signal ? [options.signal] : []),
     ]);
-    if (method !== "session/content" && !attachmentBearing(method, params))
+    if (!attachmentBearing(method, params))
       return this.#channel().request<T>(method, params, signal);
     if (!this.#bulk || this.#bulk.closed) this.#bulk = new Channel(this.endpoint, this.#token);
     return this.#bulk.request<T>(method, params, signal);
+  }
+  async resource<T>(
+    kind: ResourceKind,
+    params: RPCParams,
+    options: RequestOptions = {},
+  ): Promise<T> {
+    if (this.#disposed || options.signal?.aborted) throw canceled();
+    const signal = AbortSignal.any([
+      this.#lifetime.signal,
+      ...(options.signal ? [options.signal] : []),
+    ]);
+    try {
+      const response = await fetch(`${this.endpoint}/api/resources/${kind}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.#token}`,
+          "Content-Type": "application/json",
+          "Mekugi-Protocol": protocolVersion,
+        },
+        body: JSON.stringify(params),
+        credentials: "omit",
+        redirect: "error",
+        cache: "no-store",
+        signal,
+      });
+      if (!response.ok) {
+        if (response.headers.get("Content-Type")?.includes("application/json"))
+          throw remoteError((await response.json()) as RPCError);
+        if (response.status === 401)
+          throw new TransportError("This machine requires a valid bearer token.", "required", 401);
+        if (response.status === 409)
+          throw new TransportError(
+            "This connector uses an incompatible Mekugi protocol.",
+            "incompatible",
+            409,
+          );
+        throw new TransportError(
+          "The resource could not be read from this machine.",
+          "refused",
+          response.status,
+        );
+      }
+      return (await (kind === "content" ? response.json() : response.blob())) as T;
+    } catch (error) {
+      if (signal.aborted) throw canceled();
+      if (error instanceof TransportError) throw error;
+      throw new TransportError(unreachable, "network");
+    }
   }
   subscribe(
     method: SubscriptionMethod,

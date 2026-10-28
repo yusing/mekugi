@@ -1,10 +1,13 @@
 package sessionapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,9 +57,9 @@ func TestPublishedImageRead(t *testing.T) {
 		if failure != nil {
 			t.Fatal(failure)
 		}
-		encoded, _ := json.Marshal(got)
-		if !strings.Contains(string(encoded), `"mime":"image/png"`) {
-			t.Fatalf("unexpected image: %s", encoded)
+		image := got.(*imageResource)
+		if image.mime != "image/png" || !bytes.Equal(image.data, data) {
+			t.Fatal("unexpected image bytes or type")
 		}
 		for _, field := range []string{"seq", "agent", "index", "image"} {
 			bad := map[string]any{"seq": 1, "agent": tc.agent, "index": 0, "image": imageIdentity(source)}
@@ -111,13 +114,6 @@ func TestDraftPathImageAdmission(t *testing.T) {
 	hub := NewHub(t.Context(), &managedLauncher{})
 	defer hub.Close()
 	registerTestSession(hub, "selected", NewLive(), Summary{Thread: "selected", Workspace: workspace})
-	conn := rawControl(t, hub.Handler(), false)
-	controlWrite(t, conn, `{"jsonrpc":"2.0","id":"unauthorized","method":"session/attachment-image","params":{}}`)
-	if reply := controlRead(t, conn); reply.Error == nil {
-		t.Fatal("uninitialized preview admitted")
-	}
-	conn = rawControl(t, hub.Handler(), false)
-	controlInitialize(t, conn)
 	for _, tc := range []struct {
 		name, thread, path, directory string
 		status                        int
@@ -136,18 +132,20 @@ func TestDraftPathImageAdmission(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			body, _ := json.Marshal(map[string]string{"path": tc.path, "workspace": tc.directory})
 			params, _ := json.Marshal(RPCParams{Thread: tc.thread, Body: body})
-			request, _ := json.Marshal(RPCMessage{JSONRPC: "2.0", ID: jsontext.Value(`"preview"`), Method: "session/attachment-image", Params: params})
-			controlWrite(t, conn, string(request))
-			reply := controlRead(t, conn)
-			if tc.status != 0 {
-				if reply.Error == nil || reply.Error.Data.Status != tc.status {
-					t.Fatalf("preview refusal: %+v", reply)
-				}
-				return
+			request := httptest.NewRequest(http.MethodPost, ResourcePath+"attachment-image", bytes.NewReader(params))
+			reply := httptest.NewRecorder()
+			hub.Handler().ServeHTTP(reply, request)
+			status := tc.status
+			if status == 0 {
+				status = http.StatusOK
 			}
-			if reply.Error != nil || !strings.Contains(string(reply.Result), base64.StdEncoding.EncodeToString(data)) {
-				t.Fatalf("preview lost selected image: %+v", reply)
+			if reply.Code != status {
+				t.Fatalf("preview status %d: %s", reply.Code, reply.Body)
 			}
+			if tc.status == 0 && (reply.Header().Get("Content-Type") != "image/png" || !bytes.Equal(reply.Body.Bytes(), data)) {
+				t.Fatal("preview lost selected image")
+			}
+
 		})
 	}
 }

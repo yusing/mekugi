@@ -2,10 +2,13 @@
 package launch
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	json "encoding/json/v2"
 	"fmt"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -85,20 +88,17 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 	if err := json.Unmarshal(event.Data, &state); err != nil {
 		t.Fatal(err)
 	}
-	savedFile := readAPIReviewFile(t, rpc, state.Review.Page)
+	savedFile := readAPIReviewFile(t, endpoint, rpc, state.Review.Page)
 	if event.Kind != "snapshot" || len(savedFile.Chunks) != 1 || savedFile.Chunks[0].Review.Diff != file.Diff || len(state.Live) != 1 || state.Live[0].ID != "edit" || state.Live[0].Files[0].Diff != file.Diff {
 		t.Fatalf("missing review or preview: %s", event.Data)
 	}
 	for _, entry := range state.Main.Entries {
 		if len(entry.Images) == 1 {
-			body := serverRPCCall(t, rpc, "session/image", "main", map[string]any{"seq": entry.Seq, "agent": entry.Agent, "index": 0, "image": entry.Images[0]})
-			var image struct {
-				MIME string `json:"mime"`
-				Data string `json:"data"`
+			body := readAPIResource(t, endpoint, "image", "main", map[string]any{"seq": entry.Seq, "agent": entry.Agent, "index": 0, "image": entry.Images[0]})
+			if !bytes.Equal(body, data) {
+				t.Fatal("viewed image bytes changed")
 			}
-			if err := json.Unmarshal(body, &image); err != nil || image.MIME != "image/png" || image.Data != raster {
-				t.Fatalf("viewed image response: %s, %v", body, err)
-			}
+
 			return
 		}
 	}
@@ -195,14 +195,14 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 	if err := json.Unmarshal(event.Data, &state); err != nil {
 		t.Fatal(err)
 	}
-	savedFile := readAPIReviewFile(t, rpc, state.Review.Page)
+	savedFile := readAPIReviewFile(t, endpoint, rpc, state.Review.Page)
 	if len(savedFile.Origins) != 2 || len(state.Review.Callers) != 2 {
 		t.Fatalf("shared publication lost family captures: %s", event.Data)
 	}
 	for _, caller := range state.Review.Callers {
 		cursor := state.Review.Page
 		cursor.Caller = caller.Caller
-		file := readAPIReviewFile(t, rpc, cursor)
+		file := readAPIReviewFile(t, endpoint, rpc, cursor)
 		if len(file.Origins) != 1 || file.Origins[0].Caller != caller.Caller {
 			t.Fatalf("caller projection borrowed another caller's edits: %+v", caller)
 		}
@@ -223,7 +223,7 @@ type apiReviewFile struct {
 	Origins []changepresentation.Origin `json:"origins"`
 }
 
-func readAPIReviewFile(t *testing.T, rpc *sessionapi.RPCClient, cursor sessionapi.PageCursor) apiReviewFile {
+func readAPIReviewFile(t *testing.T, endpoint *httptest.Server, rpc *sessionapi.RPCClient, cursor sessionapi.PageCursor) apiReviewFile {
 	t.Helper()
 	var page sessionapi.PageResult
 	if err := json.Unmarshal(serverRPCCall(t, rpc, "session/page", "main", cursor), &page); err != nil || len(page.Files) != 1 {
@@ -232,7 +232,7 @@ func readAPIReviewFile(t *testing.T, rpc *sessionapi.RPCClient, cursor sessionap
 	var content struct {
 		Review apiReviewFile `json:"review"`
 	}
-	if err := json.Unmarshal(serverRPCCall(t, rpc, "session/content", "main", page.Files[0].Content), &content); err != nil {
+	if err := json.Unmarshal(readAPIResource(t, endpoint, "content", "main", page.Files[0].Content), &content); err != nil {
 		t.Fatal(err)
 	}
 	return content.Review
@@ -321,4 +321,31 @@ func TestAPIShellRejectionPreservesLocalDraft(t *testing.T) {
 	if len(history) != 1 || history[0].Text != "!false" {
 		t.Fatalf("rejected command history: %+v", history)
 	}
+}
+
+func readAPIResource(t *testing.T, endpoint *httptest.Server, kind, thread string, body any) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params, err := json.Marshal(sessionapi.RPCParams{Thread: thread, Body: encoded})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, endpoint.URL+sessionapi.ResourcePath+kind, bytes.NewReader(params))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set(sessionapi.ProtocolHeader, sessionapi.ProtocolVersion)
+	response, err := endpoint.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(response.Body)
+	if err != nil || response.StatusCode != 200 {
+		t.Fatalf("resource status %d: %s, %v", response.StatusCode, data, err)
+	}
+	return data
 }

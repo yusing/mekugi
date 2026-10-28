@@ -5,6 +5,7 @@ import {
   newIdentity,
   type Connection,
   type RequestOptions,
+  type ResourceKind,
   type RPCEvent,
   type RPCMethod,
   type RPCParams,
@@ -46,6 +47,10 @@ export class Machine {
 
   request<T>(method: RPCMethod, params?: RPCParams, options?: RequestOptions): Promise<T> {
     return this.#connector.request<T>(method, params, options);
+  }
+
+  resource<T>(kind: ResourceKind, params: RPCParams, options?: RequestOptions): Promise<T> {
+    return this.#connector.resource<T>(kind, params, options);
   }
 
   subscribe(
