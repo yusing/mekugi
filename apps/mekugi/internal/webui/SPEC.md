@@ -331,7 +331,8 @@ transcript reads the activity retained by its owner; activity that has aged out
 of that retention is unavailable, and an agent may have no retained activity.
 Opening a long transcript acquires its newest bounded page first. Approaching
 the top loads earlier retained entries automatically, one page at a time, while
-preserving the visible reading anchor. Loading, exhaustion and retryable failure
+preserving the visible reading anchor. Preloading starts a viewport before the top,
+with no in-flow loading row. Loading, exhaustion and retryable failure
 remain distinct. Incoming updates keep explicitly loaded pages available while reading; Latest
 returns to the newest page and resumes following.
 Transport deferral preserves compact activity rows and their existing disclosures.

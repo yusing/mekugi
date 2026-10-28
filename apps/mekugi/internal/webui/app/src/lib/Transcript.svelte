@@ -151,7 +151,13 @@
     measure();
     if (!scroller || !reading) return;
     following = !below;
-    if (scroller.scrollTop <= 80 && canEarlier && !pageError) void earlier();
+    if (
+      scroller.scrollTop < scroller.scrollHeight - scroller.clientHeight &&
+      scroller.scrollTop <= scroller.clientHeight &&
+      canEarlier &&
+      !pageError
+    )
+      void earlier();
   }
   const read = () => (reading = true);
   const scrollKeys = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
@@ -327,6 +333,7 @@
   {onscroll}
   {onclick}
   onfocusin={hold}
+  aria-busy={!!source.historyLoading[caller ?? ""]}
 >
   <!-- The rows' text shares the composer's column; recorded times sit in the
        gutter to its left, and each row's details action to its right. -->
@@ -335,9 +342,6 @@
     bind:this={column}
   >
     {@render header?.()}
-    {#if source.historyLoading[caller ?? ""]}<p class="ml-19 text-small text-muted">
-        Loading earlier entries…
-      </p>{/if}
     {#if pageError}
       <Alert
         >{pageError}<Button variant="quiet" onclick={earlier}>Retry earlier entries</Button></Alert

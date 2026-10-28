@@ -162,12 +162,16 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		}
 	}
 	run("eval", `document.querySelector('#panel-content > div').scrollTop = 0`)
+	// Following's 80px hysteresis must not prevent paging a near-fitting feed.
+	run("eval", `(() => { const s = document.querySelector('[aria-label="Transcript"] .overflow-y-auto'); window.originalHistoryStyle = s.getAttribute('style') ?? ''; const height = s.scrollHeight - 40; s.style.height = s.style.minHeight = s.style.maxHeight = height + 'px'; s.scrollTop = 40; s.dispatchEvent(new WheelEvent('wheel', {bubbles:true})); window.nearFitRows = s.querySelectorAll('article').length; if (s.scrollHeight - s.clientHeight < 1 || s.scrollHeight - s.clientHeight >= 80) throw Error('History fixture must have less than 80px overflow'); s.scrollTop = 0; })()`)
+	run("wait", "--fn", `document.querySelectorAll('[aria-label="Transcript"] article').length > window.nearFitRows`)
+	run("eval", `document.querySelector('[aria-label="Transcript"] .overflow-y-auto').setAttribute('style', window.originalHistoryStyle)`)
 	// Earlier pages preserve the same first visible row while prepending, and
 	// new publications do not take away the history being read.
-	run("eval", `(() => { const s = document.querySelector('[aria-label="Transcript"] .overflow-y-auto'); s.dispatchEvent(new WheelEvent('wheel', {bubbles:true})); s.scrollTop = 0; window.historyAnchor = s.querySelector('[data-entry]'); window.historyTop = window.historyAnchor.getBoundingClientRect().top; window.historyFocus = document.activeElement; window.historyRows = s.querySelectorAll("article").length; })()`)
+	run("eval", `(() => { const s = document.querySelector('[aria-label="Transcript"] .overflow-y-auto'); s.dispatchEvent(new WheelEvent('wheel', {bubbles:true})); s.scrollTop = s.clientHeight / 2; window.historyAnchor = s.querySelector('[data-entry]'); window.historyTop = window.historyAnchor.getBoundingClientRect().top; window.historyFocus = document.activeElement; window.historyRows = s.querySelectorAll("article").length; window.historyShifted = false; window.historyObserver = new MutationObserver(() => { if (s.textContent.includes("Loading earlier entries")) window.historyShifted = true; }); window.historyObserver.observe(s, {childList:true, subtree:true}); })()`)
 	run("wait", "--fn", `document.querySelectorAll('[aria-label="Transcript"] article').length > window.historyRows`)
 	if run("eval", `Math.abs(window.historyAnchor.getBoundingClientRect().top - window.historyTop) < 2`) != "true" {
-		t.Fatal("prepending earlier history moved the reading anchor")
+		t.Fatal("preloading history before the top moved the reading anchor")
 	}
 	if run("eval", `document.activeElement === window.historyFocus`) != "true" {
 		t.Fatal("automatic history paging moved keyboard focus")
@@ -202,6 +206,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		run("wait", "--fn", `document.querySelectorAll('[aria-label="Transcript"] article').length > window.historyRows`)
 	}
 	run("wait", "--text", "History entry 000")
+	run("eval", `window.historyObserver.disconnect(); if (window.historyShifted) throw Error("History loading inserted an in-flow row")`)
 	run("wait", "--fn", `window.contentReads >= 12`)
 	if counts := run("eval", `({created:window.controlSockets.length,open:window.controlSockets.filter(socket => socket.readyState === WebSocket.OPEN).length,content:window.contentReads})`); run("eval", `window.controlSockets.length === 1 && window.controlSockets.every(socket => socket.readyState === WebSocket.OPEN)`) != "true" {
 		t.Fatalf("scrolling created additional control connections: %s", counts)
