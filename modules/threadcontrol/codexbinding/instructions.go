@@ -156,9 +156,7 @@ func collaborationGuidance(member control.Member, baseline string) (string, erro
 		identity += fmt.Sprintf(" Your parent logical task is %s.", control.AgentName(parent))
 		authority = "For the explicit-request-only delegation rule, an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits.\n"
 	}
-	return fmt.Sprintf("%s\n\n%s Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.\n%s"+
-		"When spawning with fork_turns=none, supply preload for known files or skills the child needs to begin. Preload supplies exact source content before the first inference, avoiding discovery/read turns without inheriting unrelated parent history. Select only startup context relevant to the assignment; AGENTS.md is host-loaded. Omit preload for full-history forks or when no startup sources are known.\n"+
-		"To await delegates, call wait_agent alone and let functions.exec finish. Omit timeout_ms unless a real deadline applies. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output.\nAgents share the filesystem; this thread's working directory is %q. Override model or reasoning effort only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions.", baseline, identity, authority, member.Settings.Workspace), nil
+	return fmt.Sprintf("%s\n\n%s Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.\n%sAgents share the filesystem; this thread's working directory is %q.", baseline, identity, authority, member.Settings.Workspace), nil
 }
 
 func roleGuidance(roles map[string]roleDefinition) string {

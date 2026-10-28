@@ -236,23 +236,17 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 			if strings.Contains(replacements[0].Text, "an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits") != tc.child {
 				t.Fatalf("parent delegation authority must be child-only: %s", replacements[0].Text)
 			}
-			if !strings.Contains(replacements[0].Text, "call wait_agent alone") || !strings.Contains(replacements[0].Text, "later wait_agent output") || !strings.Contains(replacements[0].Text, "Omit timeout_ms") {
-				t.Fatalf("missing wait delivery guidance: %s", replacements[0].Text)
-			}
 			driver.host = nil // Auxiliary projection must not call a busy host.
 			passive, err := driver.RetainedInstructions(thread, "new-model")
 			if err != nil || len(passive) != 1 || !strings.HasPrefix(passive[0].Text, tc.want+"\n\n") || !strings.Contains(passive[0].Text, identity) {
 				t.Fatalf("retained instruction projection = %+v, %v", passive, err)
 			}
 			for _, projection := range []string{replacements[0].Text, passive[0].Text} {
-				for _, required := range []string{
-					"When spawning with fork_turns=none, supply preload for known files or skills the child needs to begin.",
-					"exact source content before the first inference, avoiding discovery/read turns without inheriting unrelated parent history",
-					"Select only startup context relevant to the assignment; AGENTS.md is host-loaded.",
-					"Omit preload for full-history forks or when no startup sources are known.",
+				for _, catalogGuidance := range []string{
+					"preload", "timeout_ms", "later wait_agent output", "Override model or reasoning effort",
 				} {
-					if strings.Count(projection, required) != 1 {
-						t.Fatalf("preload guidance must appear once: missing or duplicated %q in %s", required, projection)
+					if strings.Contains(projection, catalogGuidance) {
+						t.Fatalf("tool guidance duplicated outside the catalog: %q in %s", catalogGuidance, projection)
 					}
 				}
 			}

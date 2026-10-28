@@ -194,7 +194,10 @@ parent delivery for delegates.
 Generated child defaults do not become configuration overrides. Named role
 settings resolve from the invoking workspace’s effective configuration layers and
 are frozen before child creation. Mekugi supplies its calling convention and
-admitted identity; tool descriptions own each operation's arguments and behavior.
+admitted identity and shared workspace. Tool descriptions own operation lifecycles;
+field descriptions own argument formats, defaults, authorization and usage guidance.
+These descriptions are included in the initial execution catalog for roots and
+delegates, including naming constraints and preload/timeout choices.
 No copied stock policy catalog or host-version profile is required.
 
 Native content-kind provenance authenticates each generated role/mode fragment by

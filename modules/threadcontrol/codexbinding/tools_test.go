@@ -37,13 +37,27 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	var names []string
 	for _, tool := range catalog.Tools {
 		names = append(names, tool.Name)
-		if tool.Name == "spawn_agent" && !strings.Contains(tool.Description, "list_models") {
-			t.Fatal("spawn tool omitted model discovery guidance")
+		raw, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatal(err)
+		}
+		for name, field := range schema.Properties {
+			if field.Description == "" {
+				t.Errorf("%s.%s omitted field guidance", tool.Name, name)
+			}
 		}
 		if tool.Name == "inspect" && (!strings.Contains(tool.Description, "idle or completed agents") || !strings.Contains(tool.Description, "retained observations without starting work") || !strings.Contains(tool.Description, "unavailable observations are null")) {
 			t.Fatalf("inspect description: %q", tool.Description)
 		}
-		if tool.Name == "wait_agent" && (!strings.Contains(tool.Description, "ends the host turn") || !strings.Contains(tool.Description, "later wait_agent output") || !strings.Contains(tool.Description, "Omit timeout_ms")) {
+		if tool.Name == "wait_agent" && (!strings.Contains(tool.Description, "ends the host turn") || !strings.Contains(tool.Description, "later wait_agent output")) {
 			t.Fatalf("wait description: %q", tool.Description)
 		}
 	}
