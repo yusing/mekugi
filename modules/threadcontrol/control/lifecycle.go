@@ -39,14 +39,19 @@ func (s *Service) RequestStarted(ctx context.Context, caller Identity, root bool
 
 func (member *Member) start(turn string) {
 	member.Turn, member.Status, member.HostRunning, member.LastAnswer = turn, Working, true, ""
+	member.answerItems = nil
 }
 
-func (s *Service) AnswerCompleted(ctx context.Context, thread, turn, text string) error {
+func (s *Service) AnswerCompleted(ctx context.Context, thread, turn, item, text string) error {
 	return s.update(ctx, thread, func(_ *Tree, member *Member) error {
-		if !member.HostRunning || member.Turn != turn {
+		if !member.HostRunning || member.Turn != turn || text == "" || slices.Contains(member.answerItems, item) {
 			return unchanged
 		}
-		member.LastAnswer = text
+		member.answerItems = slices.Concat(member.answerItems, []string{item})
+		if member.LastAnswer != "" {
+			member.LastAnswer += "\n\n"
+		}
+		member.LastAnswer += text
 		return nil
 	})
 }

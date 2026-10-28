@@ -216,7 +216,7 @@ func (d *Driver) reduceHost() {
 			if p.Item.Type == "userMessage" {
 				err = d.control.HumanInputCommitted(d.lifecycle, thread, p.TurnID, p.Item.ClientID)
 			} else {
-				err = d.control.AnswerCompleted(d.lifecycle, thread, p.TurnID, p.Item.Text)
+				err = d.control.AnswerCompleted(d.lifecycle, thread, p.TurnID, p.Item.ID, p.Item.Text)
 			}
 		case "turn/completed":
 			failure := control.HostFailure{}

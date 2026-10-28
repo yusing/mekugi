@@ -320,7 +320,7 @@ func TestClaudeLaunchWaitStopsOnlyOnSuccessfulBatch(t *testing.T) {
 					t.Fatal("native hook stop froze logical waiting time")
 				}
 				time.Sleep(10 * time.Second)
-				if err := b.execution.shared.AnswerCompleted(t.Context(), "grandchild", "grandchild-turn", "finished child task"); err != nil {
+				if err := b.execution.shared.AnswerCompleted(t.Context(), "grandchild", "grandchild-turn", "answer", "finished child task"); err != nil {
 					t.Fatal(err)
 				}
 				b.execution.driver.Completed("grandchild", "grandchild-turn", control.Completed, control.HostFailure{}, nil)

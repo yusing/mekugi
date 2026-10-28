@@ -64,7 +64,7 @@ func TestHumanChildInputAdmissionAndSettlement(t *testing.T) {
 					t.Fatal("known refusal retained capacity")
 				}
 			} else {
-				must(t, s.AnswerCompleted(t.Context(), "worker", turn, "human assignment result"))
+				must(t, s.AnswerCompleted(t.Context(), "worker", turn, "answer", "human assignment result"))
 				must(t, s.HostCompleted(t.Context(), "worker", turn, Completed, HostFailure{}))
 			}
 			must(t, s.EffectAcknowledged(t.Context(), "worker", "human", receipt))

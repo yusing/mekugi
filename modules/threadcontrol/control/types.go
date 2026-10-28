@@ -47,6 +47,7 @@ type Limits struct {
 
 type Member struct {
 	Path, Thread, Session, Parent, Task, Turn, LastAnswer string
+	answerItems                                           []string
 	Generation                                            uint64
 	Status                                                Status
 	AudienceAdmitted, HostRunning                         bool

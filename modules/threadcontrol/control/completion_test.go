@@ -8,7 +8,7 @@ func TestCompletionGuardTransitiveAndStaleHints(t *testing.T) {
 	child(t, s, "a", "b", "/root/a/b", "bt")
 	for _, thread := range []string{"a", "root"} {
 		member, _ := s.Member(thread)
-		must(t, s.AnswerCompleted(t.Context(), thread, member.Turn, "premature final"))
+		must(t, s.AnswerCompleted(t.Context(), thread, member.Turn, "answer", "premature final"))
 		must(t, s.HostCompleted(t.Context(), thread, member.Turn, Completed, HostFailure{}))
 		must(t, s.HostCompleted(t.Context(), thread, member.Turn, Completed, HostFailure{}))
 	}

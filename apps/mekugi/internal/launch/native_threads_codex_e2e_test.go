@@ -42,6 +42,7 @@ type nativeThreadsProvider struct {
 	earlyCompletion                         bool
 	preload                                 bool
 	recoverFailure                          bool
+	multipleAnswers                         bool
 	calls                                   map[string]int
 	users                                   int
 	waiting, mailbox                        chan struct{}
@@ -321,6 +322,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			failure = fmt.Sprintf("local stop/wake: same_turn=%t users=%d want=%d final=%t task=%t wait=%t", metadata.TurnID == p.waitTurn, users, p.users, strings.Contains(string(body), "MANAGED_CHILD_FINAL"), strings.Contains(string(body), "agent:main/worker"), strings.Contains(string(body), "wait_agent"))
 		}
 		answer = "MANAGED_PARENT_RESUMED"
+		if p.multipleAnswers && (strings.Count(string(body), "MANAGED_CHILD_FINAL") != 1 || strings.Count(string(body), "LATER_CHILD_FINAL") != 1) {
+			failure = "first awakened request omitted or repeated completed child answers"
+		}
 	case parent && step == 6:
 		program = `text(await tools.mcp__threadcontrol__list_agents({path_prefix:"agent:main"})); text(await tools.mcp__threadcontrol__followup_task({target:"agent:main/worker",message:"COLD_CHILD_FOLLOWUP"}));`
 	case parent && step == 7:
@@ -445,12 +449,18 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		item = map[string]any{"type": "custom_tool_call", "id": id, "call_id": id + "-call", "name": "exec", "namespace": "functions", "input": program, "status": "completed"}
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
-	for _, event := range []map[string]any{
-		{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}},
-		{"type": "response.output_item.added", "output_index": 0, "item": item},
-		{"type": "response.output_item.done", "output_index": 0, "item": item},
-		{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": []any{item}}},
-	} {
+	items := []any{item}
+	if p.multipleAnswers && !parent && step == 2 {
+		for index, text := range []string{"LATER_CHILD_FINAL", ""} {
+			items = append(items, map[string]any{"type": "message", "id": fmt.Sprintf("%s-final-%d", id, index), "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": text}}})
+		}
+	}
+	events := []map[string]any{{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}}}
+	for index, output := range items {
+		events = append(events, map[string]any{"type": "response.output_item.added", "output_index": index, "item": output}, map[string]any{"type": "response.output_item.done", "output_index": index, "item": output})
+	}
+	events = append(events, map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": items}})
+	for _, event := range events {
 		encoded, err := json.Marshal(event)
 		if err != nil {
 			t.Error(err)
@@ -463,7 +473,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 // The public server owns both installed host processes; this client uses native
 // semantic controls without a terminal renderer or live provider credentials.
 func TestNativeThreadsServerOwnedCodex(t *testing.T) {
-	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{})
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{multipleAnswers: true})
 }
 
 func TestNativeThreadsRecoverableParentServerOwnedCodex(t *testing.T) {
@@ -495,7 +505,7 @@ func TestNativeThreadsPreloadServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
-	fullHistory, shellWait, compactWait, earlyCompletion, nonGit, preload, recoverFailure bool
+	fullHistory, shellWait, compactWait, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers bool
 }
 
 func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
@@ -587,7 +597,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 		}
 	}
-	fixture := &nativeThreadsProvider{recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
+	fixture := &nativeThreadsProvider{multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
@@ -743,9 +753,13 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		return
 	}
 	childReply, childMessage := false, false
+	wantChildReply := "MANAGED_CHILD_FINAL"
+	if scenario.multipleAnswers {
+		wantChildReply += "\n\nLATER_CHILD_FINAL"
+	}
 	if event.Frame.Main != nil {
 		for _, entry := range event.Frame.Main.Entries {
-			childReply = childReply || entry.Agent == "/root/worker" && entry.Kind == "final" && entry.Text == "MANAGED_CHILD_FINAL"
+			childReply = childReply || entry.Agent == "/root/worker" && entry.Kind == "final" && entry.Text == wantChildReply
 			childMessage = childMessage || entry.Agent == "/root/worker" && entry.Kind == "reply" && entry.Text == "CHILD_PROGRESS_ALREADY_READ"
 		}
 	}
@@ -885,7 +899,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	childReply, childMessage = false, false
 	if event.Frame.Main != nil {
 		for _, entry := range event.Frame.Main.Entries {
-			childReply = childReply || entry.Agent == "/root/worker" && entry.Kind == "final" && entry.Text == "MANAGED_CHILD_FINAL"
+			childReply = childReply || entry.Agent == "/root/worker" && entry.Kind == "final" && entry.Text == wantChildReply
 			childMessage = childMessage || entry.Agent == "/root/worker" && entry.Kind == "reply" && entry.Text == "CHILD_PROGRESS_ALREADY_READ"
 		}
 	}

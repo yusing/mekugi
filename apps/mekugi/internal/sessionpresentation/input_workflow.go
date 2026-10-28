@@ -28,7 +28,7 @@ func (m *Model) NextInput(control *sessioncontrol.Live, conversation *conversati
 		return next
 	}
 	if control.Turn == "" {
-		next.Continue = control.Compaction.Continue(len(conversation.Unsent)+len(conversation.Queued) != 0) || control.Shell.Continuation()
+		next.Continue = control.Compaction.ContinuationPending() && len(conversation.Unsent)+len(conversation.Queued) == 0 || control.Shell.Continuation()
 	}
 	next.Steer = control.Turn != ""
 	if len(conversation.Unsent) > 0 && next.Steer {
@@ -40,7 +40,7 @@ func (m *Model) NextInput(control *sessioncontrol.Live, conversation *conversati
 			return next
 		}
 	}
-	next.Batch = conversation.TakeBatch(next.Steer)
+	next.Batch = conversation.TakeBatch(next.Steer || control.LocalStop != "")
 	return next
 }
 

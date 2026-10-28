@@ -178,6 +178,9 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 		delete(owned, path)
 	}
 	attached.presentation.StageInput(&control.Live, attached.conversation, id, s, steer)
+	// Admission and skill acquisition can defer a selected continuation. Consume
+	// it only once the input request has reached the ordinary submission owner.
+	control.Compaction.Continue(len(parts) > 0)
 	control.Shell.ConsumeContinuation()
 	if !steer {
 		hook.readyThread = ""

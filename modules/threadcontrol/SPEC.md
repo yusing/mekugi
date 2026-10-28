@@ -262,8 +262,9 @@ keeps its existing order. Mixed selections settle on an eligible selected outcom
 unselected stopped targets do not wake the caller.
 One pending wait per caller is retained; calls in the same enclosing execution
 report that wait instead of replacing it. A different enclosing execution rejects
-while that subscription remains pending. Human interruption, `interrupt_agent`, and new input
-supersede pending waits through their existing work-lifetime controls.
+while that subscription remains pending. Human interruption, `interrupt_agent`, and explicit
+steering supersede pending waits through their existing work-lifetime controls.
+Queued composer input waits for logical work to resume and finish; it does not cancel a wait.
 
 The default is stop-wait with no timeout: logical work blocks until an eligible
 outcome or addressed message wakes the caller. Explicit timeout values above the captured host maximum
@@ -278,7 +279,7 @@ timeout; explicit timeouts serve actual deadlines. Only
 successful completion of that enclosing stock execution admits
 a persisted local-stop disposition. A failed enclosing execution retires its
 wait so a later execution can retry. Yielded, incomplete or unrelated calls
-cannot arm it. Input arriving after a successful enclosing result retires its
+cannot arm it. Explicit steering after a successful enclosing result retires its
 subscription and any local stop so ordinary inference can process that input.
 Request Execution then supplies an empty completed continuation
 locally, without provider inference or usage. New input or admitted wake invalidates
@@ -323,8 +324,8 @@ settlement before the recovery wait can dispatch. Authentication, quota, invalid
 requests, interruption and unknown errors remain terminal. Recovery adds neither
 timer retries nor model switching; host-owned request retries remain unchanged.
 
-Ordinary successful terminal work first retains its last completed ordinary answer
-from that turn, including an empty payload when absent, then injects one attributed
+Ordinary successful terminal work first retains its completed nonempty ordinary answers
+from that turn in order, including an empty payload when none exist, then injects one attributed
 `FINAL_ANSWER` through `thread/inject_items`. Failure/interruption retains its actual
 outcome. Injection alone neither starts nor steers its receiver. A completion wake
 follows confirmed delivery and carries identity/status rather than duplicate text.

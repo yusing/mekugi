@@ -180,7 +180,7 @@ func applyComposerCommand(attached *attachedPresentation, terminal *terminalsess
 		if text == "/compact" {
 			return false, submitCompact(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*restoring) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, true)
 		}
-		if attached.conversation.ShellMode() || text == "" || strings.HasPrefix(text, "/") || control.Turn == "" && !control.Starting() && !control.InputPending() {
+		if attached.conversation.ShellMode() || text == "" || strings.HasPrefix(text, "/") || !control.PlanInput(sessioncontrol.QueueNextTurn, false).Queued {
 			intent.Operation = sessionpresentation.SubmitComposer
 			return applyComposerCommand(attached, terminal, control, picker, editor, questions, approvals, clock, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, intent, preparation)
 		}

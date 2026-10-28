@@ -369,7 +369,7 @@ func (b *claudeBridge) reduceEvent(ctx context.Context, result sessioncontrol.Cl
 	}
 	if result.Completed {
 		if result.Answer != "" {
-			if err := b.execution.shared.AnswerCompleted(ctx, identity.Thread, identity.Turn, result.Answer); err != nil {
+			if err := b.execution.shared.AnswerCompleted(ctx, identity.Thread, identity.Turn, identity.Turn, result.Answer); err != nil {
 				return err
 			}
 		}

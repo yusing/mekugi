@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -12,7 +13,49 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+func TestAppServerCompactContinuationSurvivesDeferredAdmission(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		u, wire := newAppServerTestUI()
+		u.ctx = t.Context()
+		u.notifications = &nativeNotifications{relay: func(event, _ string) { t.Errorf("automatic compaction continuation emitted %s", event) }}
+		driver, err := threadbinding.NewDriver(control.New())
+		if err != nil {
+			t.Fatal(err)
+		}
+		u.attached.threadInput = &threadInput{driver: driver}
+		appServerTestTurn(t, u, "reasoning")
+		appServerTestKeys(t, u, "/compact\r")
+		interrupt := appServerOneRequest(t, wire, "turn/interrupt", "")
+		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
+		appServerTestTurnEnd(t, u, "reasoning", "interrupted")
+		compact := appServerOneRequest(t, wire, "thread/compact/start", "")
+		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, compact.ID))
+		appServerTestTurn(t, u, "compact")
+		appServerTestTurnEnd(t, u, "compact", "completed")
+		if !u.Compaction.ContinuationPending() || !u.attached.threadInput.preparing() || wire.Len() != 0 {
+			t.Fatal("compaction lost continuation during asynchronous admission")
+		}
+		if u.attached.presentation.View().Status.Session.CompletionKnown {
+			t.Fatal("compaction marked the task completed before continuation admission")
+		}
+		synctest.Wait()
+		if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, false, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+			t.Fatal(err)
+		}
+		start := appServerOneRequest(t, wire, "turn/start", "")
+		if len(start.Params.Input) != 0 || u.Compaction.ContinuationPending() {
+			t.Fatal("continuation added human text or remained eligible for replay")
+		}
+		appServerTestTurnEnd(t, u, "compact", "completed")
+		if wire.Len() != 0 {
+			t.Fatal("duplicate compaction completion repeated the continuation")
+		}
+	})
+}
 
 // nativeTestCancel exercises the local cancellation owner, then delivers its
 // captured interrupt to the execution owner. Server drafts seed this attachment

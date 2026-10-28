@@ -1546,13 +1546,16 @@ func observedEvent(attached *attachedPresentation, terminal *terminalsession.Att
 				failure = &p.Turn.Error.Message
 			}
 			localStop := control.LocalStop != "" && (compactTurn || compactWait || p.Turn.Status == "completed" && (control.LocalStop == p.Turn.ID || shellTurn))
+			continuing := compactTurn && control.Compaction.ContinuationPending()
 			if localStop {
 				attached.presentation.Status.Set("Waiting for agents", false)
+			} else if continuing {
+				attached.presentation.Status.Set("Working", false)
 			} else {
 				attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(clock))
 			}
 			settleInput(attached, terminal, control, picker, questions, approvals, clock, p.Turn.ID, p.Turn.Status == "interrupted")
-			if !localStop && !shellTurn && p.Turn.Status == "completed" && questions.Count(control.Thread) == 0 {
+			if !localStop && !continuing && !shellTurn && p.Turn.Status == "completed" && questions.Count(control.Thread) == 0 {
 				notifications.notify(&attached.feedback, terminal, clock, "agent-turn-complete", "Agent turn complete")
 			}
 			for _, c := range questions.calls() {

@@ -83,7 +83,9 @@ Terminal keys and contextual dismissal belong to
 ### Submission and interruption
 
 For conversation input, Enter steers an active turn; Tab queues for the next turn
-and submits while idle. Shell commands use their immediate-submission behavior below.
+and submits while idle. Logical waiting remains busy for Tab: queued composer input
+waits for the resumed work to finish, while Enter can supersede the wait.
+Shell commands use their immediate-submission behavior below.
 Alt-Up/Shift-Left restores only locally waiting input into the requesting editor,
 including input queued in another attached view; transmitted steers remain
 host-owned. Explicit queue steering promotes ordinary queued messages through

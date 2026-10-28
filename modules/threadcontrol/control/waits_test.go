@@ -172,7 +172,7 @@ func TestNestedStopWaitPreservesLogicalWork(t *testing.T) {
 	if len(effectsOf(state, "final")) != 0 || len(deliveries(state)) != 0 || state.Members["child"].Status != Waiting || !state.Members["child"].Reserved() {
 		t.Fatalf("local stop settled child: %+v", state)
 	}
-	must(t, s.AnswerCompleted(ctx, "grandchild", "gt", "grandchild result"))
+	must(t, s.AnswerCompleted(ctx, "grandchild", "gt", "answer", "grandchild result"))
 	must(t, s.HostCompleted(ctx, "grandchild", "gt", Completed, HostFailure{}))
 	if wake, err := claimWake(t, s, ctx, "child", now); err != nil || wake != nil {
 		t.Fatalf("completion woke before result injection: %v, %v", wake, err)
@@ -187,7 +187,7 @@ func TestNestedStopWaitPreservesLogicalWork(t *testing.T) {
 	if again, err := claimWake(t, s, ctx, "child", now); err != nil || again != nil {
 		t.Fatalf("duplicate child wake: %v, %v", again, err)
 	}
-	must(t, s.AnswerCompleted(ctx, "child", "ct2", "ordinary child result"))
+	must(t, s.AnswerCompleted(ctx, "child", "ct2", "answer", "ordinary child result"))
 	must(t, s.HostCompleted(ctx, "child", "ct2", Completed, HostFailure{}))
 	deliver(t, s, "child")
 	parentWake, err := claimWake(t, s, ctx, "root", now)
@@ -403,7 +403,7 @@ func TestColdResumeDoesNotRearmOrRedispatch(t *testing.T) {
 	_, err := s.RegisterWait(ctx, id, nil, true, nil, now)
 	must(t, err)
 	stop(t, s, id)
-	must(t, s.AnswerCompleted(ctx, "a", "at", "result"))
+	must(t, s.AnswerCompleted(ctx, "a", "at", "answer", "result"))
 	must(t, s.HostCompleted(ctx, "a", "at", Completed, HostFailure{}))
 	restored := New()
 	must(t, restored.AdmitRoot(ctx, session, &Member{Thread: "root", Session: "root-session", Task: "/root"}))
