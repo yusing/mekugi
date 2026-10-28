@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -67,9 +68,31 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	}
 	mcp := activity.ItemContent{Facts: activity.Facts{Seq: 15, Agent: "Main", Kind: "tool", Text: activity.MCPText(observation.Item{Server: "plane", Tool: "workitem_relation", Status: "failed"})}}
 	publication.Entries = append(publication.Entries, activity.Entry{Facts: mcp.Facts, Values: mcp.Values()})
-	if err := machine.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Disclosure thread", Workspace: machine.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: publication}); err != nil {
-		t.Fatal(err)
+	var status sessionpresentation.Label
+	publish := func() {
+		t.Helper()
+		if err := machine.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Disclosure thread", Workspace: machine.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: publication, Status: status}); err != nil {
+			t.Fatal(err)
+		}
 	}
+	// revise republishes one entry with a changed value list. A publication
+	// is immutable once published, so each revision publishes a copy.
+	revise := func(seq uint64, change func([]activity.Value) []activity.Value) {
+		t.Helper()
+		next := *publication
+		next.Entries = slices.Clone(publication.Entries)
+		publication = &next
+		for i := range publication.Entries {
+			if entry := &publication.Entries[i]; entry.Seq == seq {
+				entry.Values = change(slices.Clone(entry.Values))
+				entry.Revision++
+				publish()
+				return
+			}
+		}
+		t.Fatalf("entry %d is absent", seq)
+	}
+	publish()
 	identity, err := exec.CommandContext(ctx, browser, "session", "id", "--scope", "worktree", "--prefix", "webui-disclosure").CombinedOutput()
 	if err != nil {
 		t.Fatalf("browser identity: %v: %s", err, identity)
@@ -103,6 +126,9 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 			run("eval", `document.querySelector('[data-entry="1"]').closest('.overflow-y-auto').scrollTop = 0`)
 			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [1,2,5].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"], summary, button[aria-expanded]')) && row(1).innerText.includes('Interrupt requested for /root/worker') && row(2).innerText.includes('complete') && row(5).innerText.includes('Complete short reply.') && row(3).querySelector('button[aria-label="Output: 2 lines"]') && row(4).querySelector('button[aria-label="Script: 2 lines"]') && row(6).querySelector('button[aria-expanded]') && row(7).querySelector('button[aria-label="Details"]'); })()`)
 			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [8,9,11].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"]')) && row(8).innerText.includes('Complete short failure.') && row(11).innerText.includes('Visible hook failure') && [10,12].every(n => row(n)?.querySelector('button[aria-label="Details"]')); })()`)
+			// A tool row with nothing beneath it is a bare trace line; a row
+			// showing output keeps its card.
+			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [3,4].every(n => row(n).querySelector('[data-slot=card][data-bare] [data-ai-element=tool]')) && [2,7].every(n => row(n).querySelector('[data-slot=card]:not([data-bare]) [data-ai-element=tool]')); })()`)
 			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 				run("screenshot", filepath.Join(artifacts, "disclosures-"+width+"-"+theme+".png"))
 				run("eval", `document.querySelector('[data-entry="15"]').scrollIntoView({block:'end'})`)
@@ -130,11 +156,45 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	}
 	run("find", "role", "button", "click", "--name", "Output: 2 lines", "--exact")
 	run("wait", "--text", "second output")
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="3"]'); return !!row.querySelector('[data-slot=card][data-bare]') && row.querySelector('pre')?.textContent.includes('second output'); })()`)
 	run("find", "role", "button", "click", "--name", "Script: 2 lines", "--exact")
 	run("wait", "--text", "printf second")
 	run("focus", `[data-entry="6"] button[aria-expanded]`)
 	run("press", "Enter")
 	run("wait", "--fn", `document.querySelector('[data-entry="6"] button[aria-expanded]')?.getAttribute('aria-expanded') === 'true'`)
+	// A bare row that gains content takes the card frame in place: open
+	// disclosures, their controls and focus survive the change.
+	run("eval", `window.scriptToggle = document.querySelector('[data-entry="4"] button[aria-label="Script: 2 lines"]')`)
+	revise(4, func(values []activity.Value) []activity.Value { values[0].Running = true; return values })
+	run("wait", "--fn", `!!document.querySelector('[data-entry="4"] [data-slot=card][data-bare]') && document.querySelector('[data-entry="4"]').innerText.includes('running') && window.scriptToggle.isConnected && window.scriptToggle.getAttribute('aria-expanded') === 'true'`)
+	revise(4, func(values []activity.Value) []activity.Value {
+		values[0].Tail = []string{"first output line"}
+		return values
+	})
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="4"]'); return !!row.querySelector('[data-slot=card]:not([data-bare])') && row.innerText.includes('first output line') && row.innerText.includes('printf second') && window.scriptToggle.isConnected && window.scriptToggle.getAttribute('aria-expanded') === 'true'; })()`)
+	run("eval", `window.outputToggle = document.querySelector('[data-entry="3"] button[aria-label="Output: 2 lines"]'); window.outputToggle.focus()`)
+	run("wait", "--fn", `document.activeElement === window.outputToggle && window.outputToggle.getAttribute('aria-expanded') === 'true'`)
+	revise(3, func(values []activity.Value) []activity.Value {
+		return append(values, activity.Value{Kind: "op", Verb: "Edit", Path: "edited.txt"})
+	})
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="3"]'); return !!row.querySelector('[data-slot=card]:not([data-bare])') && row.innerText.includes('edited.txt') && row.querySelector('pre')?.textContent.includes('second output') && window.outputToggle.isConnected && document.activeElement === window.outputToggle && window.outputToggle.getAttribute('aria-expanded') === 'true'; })()`)
+	// A long status truncates in its badge without covering the title bar's
+	// other controls or collapsing the title.
+	next := *publication
+	publication = &next
+	status = sessionpresentation.Label{Text: "Waiting for worker to finish reviewing the implementation and running the remaining validation checks", Running: true}
+	publish()
+	for _, width := range []string{"768", "1280"} {
+		run("set", "viewport", width, "900")
+		run("wait", "--fn", `(() => { const header = document.querySelector('header'); const badge = [...header.querySelectorAll('[data-slot=badge]')].find(b => b.title.startsWith('Waiting for worker')); if (!badge) return false; const text = badge.querySelector('.truncate'); const parts = [...new Set([header.querySelector('h1'), header.querySelector('#thread-workspace'), ...header.querySelectorAll('button, [data-slot=badge]'), ...header.querySelectorAll('.contents > span')])].filter(e => e && e.getBoundingClientRect().width > 0).map(e => e.getBoundingClientRect()).sort((a, b) => a.left - b.left); const h = header.getBoundingClientRect(); return text.scrollWidth > text.clientWidth && header.querySelector('h1').getBoundingClientRect().width >= 16 && parts.every((r, i) => r.left >= h.left && r.right <= h.right + 0.5 && (i === 0 || parts[i - 1].right <= r.left + 0.5)); })()`)
+		if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+			run("screenshot", filepath.Join(artifacts, "long-status-"+width+".png"))
+		}
+	}
+	status = sessionpresentation.Label{}
+	next = *publication
+	publication = &next
+	publish()
 	thread := sessionpresentation.Thread{ID: "same-thread", Caller: "/root"}
 	processes := []sessionpresentation.Process{
 		{Thread: thread.ID, Item: "short", ID: "short", Command: "echo 'a  b'\n"},

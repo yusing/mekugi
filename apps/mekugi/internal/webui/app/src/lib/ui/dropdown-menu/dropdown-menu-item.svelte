@@ -20,7 +20,7 @@
   data-inset={inset}
   data-variant={variant}
   class={cn(
-    "relative flex min-h-[34px] w-full cursor-default items-center gap-2.5 rounded-control px-2.5 py-1.5 text-left text-ink outline-none select-none data-highlighted:bg-active data-disabled:pointer-events-none data-disabled:text-muted data-[variant=destructive]:text-negative data-inset:pl-7 max-sm:min-h-11",
+    "relative flex min-h-8 w-full cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm text-popover-foreground outline-hidden select-none data-highlighted:bg-ui-accent data-highlighted:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 data-[variant=destructive]:text-destructive data-[variant=destructive]:data-highlighted:bg-destructive/10 data-inset:pl-7 [&_svg:not([class*='size-'])]:size-4 max-sm:min-h-11",
     className,
   )}
   {...restProps}

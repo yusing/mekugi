@@ -12,11 +12,13 @@ this file owns how it looks and responds.
   transports and lifecycle assumptions do not define session behavior.
   `app/components.json` selects the upstream Nova registry and local aliases;
   copied components are maintained here with the application palette. Buttons,
-  select triggers and menus, and content cards use the stock Nova appearance:
+  picker and composer controls, menus, dialogs, chrome badges and content cards
+  use the stock Nova appearance:
   rounded rectangular controls, neutral hover fills, and softly rounded cards
   with a subtle outline. Phone controls retain 44px touch targets. Welcome and
-  activity cards use the Card primitives; navigation rows, chat bubbles and live
-  source keep their own layout and framing.
+  substantive activity groups use the Card primitives. Short tool summaries use
+  compact Trace/Collapsible rows; their expanded output keeps the code well.
+  Navigation rows, chat bubbles and live source keep their own layout and framing.
 - Shared controls and the recipes in `ui/styles.ts` include:
   `Button`, `Field`, `Alert`, `Notice`, `Dialog`, `Menu`, `Picker`, `Popover`,
   `Tag`, `chip`, `segments` and `segment`, `input`, `floating`, `rowAction` and
@@ -70,6 +72,12 @@ this file owns how it looks and responds.
 
 - Siblings in a row share size and weight; a text button in a row of small chips
   uses small text.
+- Composer model and effort controls use the same rounded rectangular treatment
+  as new-thread pickers. Fast uses a matching toggle with a visible pressed state.
+- Header badges share the stock compact sizing while preserving semantic status
+  colours and readable labels. Icon-only header controls expose tooltips on hover
+  and keyboard focus, as well as accessible names; diff counts keep their signed
+  numeric treatment.
 - Agent names render through `AgentName`. Its `quiet` form keeps the
   surroundings' weight and ink for secondary text such as the process dock.
 - An empty slot or state reads as empty: muted ink and the word, distinct from
@@ -91,10 +99,15 @@ this file owns how it looks and responds.
   inside content, such as Main and Side or the resume scope.
 - In dialogs, labels use `Field`. Cancel is quiet and comes first, the submit is
   primary, destructive confirmation uses `danger`, and failures use `Alert`, not
-  the warning `Notice`.
+  the warning `Notice`. Dialogs and menus share Nova corner radii, spacing and
+  highlighted rows. Phone dialogs remain safe-area-aware bottom sheets.
 - Render a server menu's structure, not a flat grid of identical rows. Presets
   list numbered slots with their key, show empty slots muted, put actions in a
   separate button row, and end each step with dialog buttons.
+- Session metrics use compact, grouped label/value tables. Measurements align
+  with tabular numerals; explanatory prose spans the section instead of leaving
+  an empty label column. Preserve zero values, units, paths and server-provided
+  details, with long content wrapping on phones.
 
 ## Content from the server
 

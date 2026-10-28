@@ -23,7 +23,7 @@
     {sideOffset}
     {align}
     class={cn(
-      "z-50 w-max min-w-50 max-w-[min(320px,calc(100vw-16px))] max-h-[min(420px,var(--bits-dropdown-menu-content-available-height))] overflow-y-auto rounded-float border border-border bg-surface p-1 text-ink shadow-float outline-none",
+      "z-50 w-max min-w-50 max-w-[min(320px,calc(100vw-16px))] max-h-[min(420px,var(--bits-dropdown-menu-content-available-height))] overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none",
       className,
     )}
     {...restProps}

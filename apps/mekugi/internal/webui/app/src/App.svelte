@@ -13,6 +13,7 @@
   import * as Card from "./lib/ui/card";
   import Dialog from "./lib/ui/Dialog.svelte";
   import Notice from "./lib/ui/Notice.svelte";
+  import * as Tooltip from "./lib/ui/tooltip";
   import { floating } from "./lib/ui/styles";
   import { view } from "./lib/view.svelte";
 
@@ -83,114 +84,118 @@
   }}
 />
 
-<div class="relative flex h-dvh">
-  {#if sidebar}
-    <div
-      bind:this={drawer}
-      class={wide
-        ? "min-h-0 w-sidebar flex-none bg-ground"
-        : "fixed inset-y-0 left-0 z-30 w-[min(var(--container-sidebar),86vw)] border-r bg-surface shadow-float"}
-    >
-      <Sidebar
-        onhide={() => (modal ? closeDrawer() : (sidebar = false))}
-        onmachines={(focus) => {
-          hide();
-          settings = { focus };
-        }}
-        onnavigate={hide}
-      />
-    </div>
-    {#if !wide}
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (the sidebar's own button also hides it) -->
-      <div class="fixed inset-0 z-29 bg-scrim" onclick={closeDrawer}></div>
-    {/if}
-  {/if}
-
-  <!-- The main area is a sheet beside the sidebar, inset by the frame. On a
-       phone the frame disappears and the sheet becomes the screen. -->
-  <div
-    class={[
-      "relative my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-sheet border bg-surface max-sm:m-0 max-sm:rounded-none max-sm:border-0",
-      sidebar && wide ? "ml-0" : "ml-2",
-    ]}
-    inert={modal}
-  >
-    {#if hub.storageError && !settings}<Notice role="alert" class="m-3 flex-none"
-        >{hub.storageError}</Notice
-      >{/if}
-    {#if machine && thread}
-      {#key machine.id}
-        <ThreadView
-          {machine}
-          id={thread}
-          {sidebar}
-          onsidebar={() => (sidebar = true)}
-          initial={firstInput?.machine === machine.id && firstInput.session === thread
-            ? firstInput.input
-            : undefined}
-          oninitial={() => (firstInput = undefined)}
-          notice={creationNotice?.machine === machine.id && creationNotice.session === thread
-            ? creationNotice.text
-            : undefined}
-          onend={(target) => (endTarget = { ...target, pending: false })}
-        />
-      {/key}
-    {:else}
-      <header class="flex h-bar flex-none items-center px-2 pt-safe">
-        {#if !sidebar}<Button
-            variant="quiet"
-            icon="sidebar"
-            label="Show sidebar"
-            onclick={() => (sidebar = true)}
-          />{/if}
-      </header>
-      {#if machine}
-        {#if view.session && !hub.selected}<Notice class="mx-auto w-[calc(100%-2rem)] max-w-column">
-            That thread's machine is not connected in this page. Add it under Machines to open the
-            thread.
-          </Notice>{/if}
-        <NewThread
-          {machine}
-          onopened={(machine, session, text, initial) => {
-            creationNotice = text ? { machine, session, text } : undefined;
-            firstInput = initial ? { machine, session, input: initial } : undefined;
-          }}
-        />
-      {:else}
-        <section
-          class="grid min-h-0 flex-1 items-start justify-items-center overflow-y-auto px-4 pt-[10dvh] pb-6"
-          aria-labelledby="welcome-heading"
-        >
-          <Card.Root class="w-[min(100%,440px)]">
-            <Card.Header>
-              <div class="mb-2"><Mark size={28} /></div>
-              <Card.Title><h1 id="welcome-heading">Connect a machine</h1></Card.Title>
-              <Card.Description>
-                Threads run on your execution machines. Connect one through its connector to start a
-                thread or follow work already running there.
-              </Card.Description>
-            </Card.Header>
-            <Card.Content><MachineForm /></Card.Content>
-          </Card.Root>
-        </section>
-      {/if}
-    {/if}
-    {#if endNotice}
+<Tooltip.Provider delayDuration={300}>
+  <div class="relative flex h-dvh">
+    {#if sidebar}
       <div
-        class="{floating} absolute top-[calc(var(--topbar)+env(safe-area-inset-top,0px)+8px)] left-1/2 z-20 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 py-1 pr-1 pl-3.5 text-small"
-        role="status"
+        bind:this={drawer}
+        class={wide
+          ? "min-h-0 w-sidebar flex-none bg-ground"
+          : "fixed inset-y-0 left-0 z-30 w-[min(var(--container-sidebar),86vw)] border-r bg-surface shadow-float"}
       >
-        <span>{endNotice}</span>
-        <Button
-          variant="quiet"
-          icon="close"
-          label="Dismiss"
-          onclick={() => (endNotice = undefined)}
+        <Sidebar
+          onhide={() => (modal ? closeDrawer() : (sidebar = false))}
+          onmachines={(focus) => {
+            hide();
+            settings = { focus };
+          }}
+          onnavigate={hide}
         />
       </div>
+      {#if !wide}
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (the sidebar's own button also hides it) -->
+        <div class="fixed inset-0 z-29 bg-scrim" onclick={closeDrawer}></div>
+      {/if}
     {/if}
+
+    <!-- The main area is a sheet beside the sidebar, inset by the frame. On a
+         phone the frame disappears and the sheet becomes the screen. -->
+    <div
+      class={[
+        "relative my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-sheet border bg-surface max-sm:m-0 max-sm:rounded-none max-sm:border-0",
+        sidebar && wide ? "ml-0" : "ml-2",
+      ]}
+      inert={modal}
+    >
+      {#if hub.storageError && !settings}<Notice role="alert" class="m-3 flex-none"
+          >{hub.storageError}</Notice
+        >{/if}
+      {#if machine && thread}
+        {#key machine.id}
+          <ThreadView
+            {machine}
+            id={thread}
+            {sidebar}
+            onsidebar={() => (sidebar = true)}
+            initial={firstInput?.machine === machine.id && firstInput.session === thread
+              ? firstInput.input
+              : undefined}
+            oninitial={() => (firstInput = undefined)}
+            notice={creationNotice?.machine === machine.id && creationNotice.session === thread
+              ? creationNotice.text
+              : undefined}
+            onend={(target) => (endTarget = { ...target, pending: false })}
+          />
+        {/key}
+      {:else}
+        <header class="flex h-bar flex-none items-center px-2 pt-safe">
+          {#if !sidebar}<Button
+              variant="quiet"
+              icon="sidebar"
+              label="Show sidebar"
+              onclick={() => (sidebar = true)}
+            />{/if}
+        </header>
+        {#if machine}
+          {#if view.session && !hub.selected}<Notice
+              class="mx-auto w-[calc(100%-2rem)] max-w-column"
+            >
+              That thread's machine is not connected in this page. Add it under Machines to open the
+              thread.
+            </Notice>{/if}
+          <NewThread
+            {machine}
+            onopened={(machine, session, text, initial) => {
+              creationNotice = text ? { machine, session, text } : undefined;
+              firstInput = initial ? { machine, session, input: initial } : undefined;
+            }}
+          />
+        {:else}
+          <section
+            class="grid min-h-0 flex-1 items-start justify-items-center overflow-y-auto px-4 pt-[10dvh] pb-6"
+            aria-labelledby="welcome-heading"
+          >
+            <Card.Root class="w-[min(100%,440px)]">
+              <Card.Header>
+                <div class="mb-2"><Mark size={28} /></div>
+                <Card.Title><h1 id="welcome-heading">Connect a machine</h1></Card.Title>
+                <Card.Description>
+                  Threads run on your execution machines. Connect one through its connector to start
+                  a thread or follow work already running there.
+                </Card.Description>
+              </Card.Header>
+              <Card.Content><MachineForm /></Card.Content>
+            </Card.Root>
+          </section>
+        {/if}
+      {/if}
+      {#if endNotice}
+        <div
+          class="{floating} absolute top-[calc(var(--topbar)+env(safe-area-inset-top,0px)+8px)] left-1/2 z-20 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 py-1 pr-1 pl-3.5 text-small"
+          role="status"
+        >
+          <span>{endNotice}</span>
+          <Button
+            variant="quiet"
+            icon="close"
+            label="Dismiss"
+            onclick={() => (endNotice = undefined)}
+          />
+        </div>
+      {/if}
+    </div>
   </div>
-</div>
+</Tooltip.Provider>
 
 {#if settings}
   <MachineSettings focus={settings.focus} onclose={() => (settings = undefined)} />

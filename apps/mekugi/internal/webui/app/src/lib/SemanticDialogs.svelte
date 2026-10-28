@@ -11,6 +11,7 @@
   import Icon from "./ui/Icon.svelte";
   import { input, segment, segments } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
+  import * as Table from "./ui/table";
 
   // The server's dialogs: menus other than inline completions, the saved
   // thread picker, the status panel and the copy fallback.
@@ -75,8 +76,9 @@
       semantic.error = "The clipboard is unavailable here. Select the text above and copy it.";
     }
   }
+  // Server menu rows highlight as the kit's menu items do.
   const row =
-    "flex min-h-11 w-full items-center justify-between gap-3 rounded-card px-2.5 py-2 text-left text-ink hover:enabled:bg-active disabled:cursor-default";
+    "flex min-h-11 w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm text-ink hover:enabled:bg-ui-accent disabled:cursor-default";
   const search = "mb-3 flex gap-2";
   // Presets list their numbered slots, then the actions; the slot steps
   // after it (editing, labelling, confirming) end in dialog buttons.
@@ -84,7 +86,7 @@
   const presetStep = $derived(!!menu?.Kind.startsWith("preset") && !presetList);
   const isSlot = (choice: { ID: number }) => choice.ID >= 1 && choice.ID <= 10;
   const slotRow =
-    "flex min-h-9 w-full items-center gap-3 rounded-control px-2 py-1.5 text-left hover:enabled:bg-active disabled:cursor-default max-sm:min-h-11";
+    "flex min-h-9 w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:enabled:bg-ui-accent disabled:cursor-default max-sm:min-h-11";
   const foot = "mt-4 flex justify-end gap-2";
 </script>
 
@@ -114,7 +116,7 @@
       title={menu.Title || menu.Setting || (menu.Kind === "manage" ? "Skills" : "Choose")}
       onclose={() => choose(1)}
     >
-      {#if menu.Explanation}<p class="mb-3 text-muted">{menu.Explanation}</p>{/if}
+      {#if menu.Explanation}<p class="mb-3 text-muted-foreground">{menu.Explanation}</p>{/if}
       {#if menu.Kind === "preset-edit"}
         <label class="mb-2 block text-small font-medium" for="preset-input"
           >Prompt or slash command</label
@@ -231,7 +233,7 @@
             <li>
               <button
                 type="button"
-                class={[row, preferred && "bg-raised"]}
+                class={[row, preferred && "bg-ui-muted"]}
                 disabled={disabled || menu.Saving || menu.Loading}
                 onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
               >
@@ -403,23 +405,42 @@
         </div>
       {/if}
     {/if}
+    <!-- Each group is a compact table; a field without a label is a note
+         that spans it. Rows keep no separators. -->
     {#each groups as [group, fields] (group)}
       <section class="not-first:mt-4">
-        {#if group}<h3 class="mb-1.5 text-small font-semibold text-muted">{group}</h3>{/if}
-        <dl class="grid grid-cols-[minmax(120px,1fr)_2fr] max-sm:grid-cols-1">
-          {#each fields as field, i (i)}
-            <dt class="py-[7px] text-muted">{field.Label}</dt>
-            <dd
-              class={[
-                "grid gap-0.5 py-[7px] wrap-anywhere max-sm:pt-0",
-                field.Alert && "text-negative",
-              ]}
-            >
-              <span class={field.Path ? "font-mono" : undefined}>{field.Value}</span>
-              {#if field.Detail}<span class="text-small text-muted">{field.Detail}</span>{/if}
-            </dd>
-          {/each}
-        </dl>
+        {#if group}<h3 class="mb-1.5 px-2 text-xs font-medium text-muted-foreground">
+            {group}
+          </h3>{/if}
+        <div class="rounded-lg p-1 ring-1 ring-foreground/10">
+          <Table.Root class="table-fixed">
+            <colgroup><col class="w-2/5 max-sm:w-[38%]" /><col /></colgroup>
+            <Table.Body>
+              {#each fields as field, i (i)}
+                <Table.Row class="border-0 hover:bg-transparent">
+                  {#if field.Label}<Table.Head
+                      scope="row"
+                      class="h-auto py-1.5 align-top font-normal whitespace-normal text-muted-foreground"
+                      >{field.Label}</Table.Head
+                    >{/if}
+                  <Table.Cell
+                    colspan={field.Label ? undefined : 2}
+                    class={[
+                      "py-1.5 align-top whitespace-normal tabular-nums wrap-anywhere",
+                      !field.Label && "text-muted-foreground",
+                      field.Alert && "text-negative",
+                    ]}
+                  >
+                    <span class={["block", field.Path && "font-mono"]}>{field.Value}</span>
+                    {#if field.Detail}<span class="mt-0.5 block text-small text-muted"
+                        >{field.Detail}</span
+                      >{/if}
+                  </Table.Cell>
+                </Table.Row>
+              {/each}
+            </Table.Body>
+          </Table.Root>
+        </div>
       </section>
     {/each}
     <div class={foot}>

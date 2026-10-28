@@ -32,6 +32,7 @@
   import Alert from "./ui/Alert.svelte";
   import Popover from "./ui/Popover.svelte";
   import { floating, input as inputStyle, segment, segments, skeleton } from "./ui/styles";
+  import { Badge } from "./ui/badge";
   import Tag from "./ui/Tag.svelte";
   import { show, view } from "./view.svelte";
 
@@ -412,6 +413,7 @@
         variant="quiet"
         icon="sidebar"
         label="Show sidebar"
+        tooltip
         onclick={onsidebar}
       />{/if}
     <div class="flex min-w-0 flex-1 items-center gap-2 max-sm:gap-1">
@@ -441,12 +443,13 @@
         variant="quiet"
         icon="rename"
         label="Rename thread"
+        tooltip
         disabled={side || semantic.connection !== "open" || semantic.pending > 0}
         onclick={editTitle}
       />
     {/if}
     {#if session}
-      <Popover label="Session details" icon="info">
+      <Popover label="Session details" icon="info" tooltip>
         {#snippet children(close)}
           <SessionInfo
             {session}
@@ -479,7 +482,10 @@
       </Popover>
     {/if}
     <span class="contents max-sm:hidden">
-      {#if playback}<Tag>Replay</Tag>{:else if live && !ended}<Tag tone="live">Live</Tag>{/if}
+      {#if playback}<Badge size="chrome">Replay</Badge>{:else if live && !ended}<Badge
+          variant="live"
+          size="chrome">Live</Badge
+        >{/if}
       <span class="flex-none text-small text-muted">{machine.label}</span>
     </span>
     <div class="ml-auto flex min-w-0 items-center justify-end gap-0.5">
@@ -505,23 +511,22 @@
           <p class="px-4 pt-1 pb-4 text-small whitespace-pre-wrap wrap-anywhere">{failure}</p>
         </div>
       {:else if session && statusLabel}
-        <span
-          class={[
-            "mr-2 inline-flex min-w-0 items-center gap-2 text-small max-sm:mr-0.5",
-            !ended && stream.status.alert
-              ? "text-negative"
-              : !ended && stream.status.running
-                ? "text-accent"
-                : "text-muted",
-          ]}
-          title={statusLabel}
-          ><Dot
-            tone={!ended && stream.status.alert
-              ? "alert"
-              : !ended && stream.status.running
-                ? "running"
-                : "idle"}
-          /><span class="truncate max-sm:hidden">{statusLabel}</span></span
+        {@const tone =
+          !ended && stream.status.alert
+            ? "alert"
+            : !ended && stream.status.running
+              ? "running"
+              : "idle"}
+        <!-- A long status shrinks and truncates within a bounded width, leaving
+             the title room; phones show the status as its dot alone. -->
+        <Badge
+          variant={tone === "alert" ? "destructive" : tone === "running" ? "live" : "quiet"}
+          size="chrome"
+          class="mr-2 max-w-64 min-w-0 flex-initial max-sm:hidden"
+          title={statusLabel}><Dot {tone} /><span class="truncate">{statusLabel}</span></Badge
+        >
+        <span class="mr-0.5 hidden flex-none max-sm:flex" title={statusLabel}
+          ><Dot {tone} /><span class="sr-only">{statusLabel}</span></span
         >
       {/if}
       {#if session || !gone}
@@ -530,6 +535,7 @@
           icon="agents"
           label="Agents ({stream.roster.agents.length})"
           title="Agents"
+          tooltip
           aria-pressed={panel === "agents"}
           onclick={() => toggle("agents")}
           ><span class="tabular-nums">{stream.roster.agents.length}</span></Button
@@ -541,6 +547,7 @@
           icon="diff"
           label="Changes"
           title="Changes"
+          tooltip
           aria-pressed={panel === "changes"}
           onclick={() => toggle("changes")}
           >{#if net && net.Added >= 0 && net.Removed >= 0 && (net.Added || net.Removed)}<span

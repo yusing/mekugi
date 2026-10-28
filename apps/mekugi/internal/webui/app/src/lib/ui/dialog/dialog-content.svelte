@@ -28,7 +28,7 @@
     bind:ref
     data-slot="dialog-content"
     class={cn(
-      "fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2 max-h-[calc(100dvh-32px)] overflow-y-auto rounded-sheet border border-border bg-surface px-5 pt-4 pb-5 text-ink shadow-float wrap-anywhere outline-none max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:w-screen max-sm:max-h-[92dvh] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none max-sm:pb-safe-5",
+      "fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2 max-h-[calc(100dvh-32px)] overflow-y-auto rounded-xl bg-popover p-4 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10 wrap-anywhere outline-none max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:w-screen max-sm:max-h-[92dvh] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none max-sm:pb-safe-4",
       className,
     )}
     {...restProps}

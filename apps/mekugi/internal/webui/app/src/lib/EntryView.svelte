@@ -4,7 +4,7 @@
   import Excerpt from "./Excerpt.svelte";
   import { basename, duration, progressText } from "./format";
   import { outputLanguage } from "./highlight";
-  import { failed, isUser, reasoningBody } from "./kinds";
+  import { failed, isUser, reasoningBody, summaryOnly } from "./kinds";
   import Markdown from "./Markdown.svelte";
   import { inline, referenceContext } from "./markdown";
   import { observeOverflow } from "./overflow";
@@ -111,6 +111,13 @@
       i += entry.content ? 1 : Math.max(1, count);
     }
     return out;
+  });
+  // A lone tool row with nothing beneath it reads as a bare trace line;
+  // anything longer keeps the card's frame.
+  const bare = $derived.by(() => {
+    if (rows.length !== 1 || edits.via.has(0)) return false;
+    const { value, hidden } = rows[0];
+    return !hidden && value.kind !== "progress" && !pending(value) && summaryOnly(value);
   });
   $effect(() => {
     if (entry.content && rows.some(({ value, index }) => value.hiddenEdits && openFiles[index]))
@@ -434,8 +441,18 @@
           </p>
         {/each}
       {:else if entry.values?.length}
-        <Card.Root size="sm" class={entry.running ? "ring-ring/45" : undefined}>
-          <Card.Content>
+        <!-- One tree whether framed or bare, so rows keep their open
+             disclosures and focus as the entry grows. -->
+        <Card.Root
+          size="sm"
+          data-bare={bare || undefined}
+          class={bare
+            ? "overflow-visible rounded-none bg-transparent py-0 ring-0"
+            : entry.running
+              ? "ring-ring/45"
+              : undefined}
+        >
+          <Card.Content class={bare ? "px-0" : undefined}>
             <Trace.Root
               class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 gap-y-0 divide-y divide-rule max-sm:grid-cols-[minmax(0,1fr)_auto]"
             >

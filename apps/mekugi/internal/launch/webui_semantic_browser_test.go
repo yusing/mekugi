@@ -253,11 +253,19 @@ func TestWebUISemanticBrowser(t *testing.T) {
 						return (Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05) >= 4.5;
 					})()`)
 				}
+				// Presets list numbered slots, empty ones muted, above a separate
+				// row of actions, all inside the dialog or phone sheet.
+				if state == "presets" && strings.TrimSpace(run("eval", `(() => { const dialog = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); const d = dialog.getBoundingClientRect(); const slots = [...dialog.querySelectorAll('ul button')]; const actions = [...dialog.querySelectorAll('ul + div button')]; const list = dialog.querySelector('ul').getBoundingClientRect(); const inside = r => r.left >= d.left && r.right <= d.right + 0.5; const empty = slots.filter(slot => slot.textContent.includes('Empty')); return d.left >= 0 && d.right <= innerWidth && d.bottom <= innerHeight + 0.5 && slots.length === 10 && empty.length === 9 && empty.every(slot => getComputedStyle(slot.querySelector('kbd + span')).color !== getComputedStyle(slots.find(other => !empty.includes(other)).querySelector('kbd + span')).color) && actions.length > 0 && actions.every(action => action.getBoundingClientRect().top >= list.bottom && inside(action.getBoundingClientRect())) && slots.every(slot => inside(slot.getBoundingClientRect()) && (innerWidth > 640 || slot.getBoundingClientRect().height >= 44)); })()`)) != "true" {
+					t.Errorf("%s %s: preset slots and actions must keep their arrangement inside the dialog", size.name, theme)
+				}
 				if strings.TrimSpace(run("eval", `(() => { const controls = [...document.querySelectorAll('[data-slot=select-trigger]')]; const cards = [...document.querySelectorAll('[data-slot=card]')]; return [...controls, ...cards].every(element => { const r = element.getBoundingClientRect(); return !r.width || (r.left >= 0 && r.right <= innerWidth && (!controls.includes(element) || innerWidth > 640 || r.height >= 44)); }); })()`)) != "true" {
 					t.Errorf("%s %s %s: cards and select triggers must fit the viewport and preserve phone touch targets", state, size.name, theme)
 				}
 				if strings.TrimSpace(run("eval", `(() => { const cwd = document.querySelector('header #thread-workspace'); if (!cwd) return !document.querySelector('#composer-text'); const header = cwd.closest('header'), title = header.querySelector('h1'); const a = cwd.getBoundingClientRect(), b = title.getBoundingClientRect(), h = header.getBoundingClientRect(); const buttons = [...header.querySelectorAll('button')].map(button => button.getBoundingClientRect()).filter(r => r.width); return !!cwd.title && cwd.textContent.endsWith(cwd.title) && a.width >= 16 && b.width >= 16 && b.right <= a.left && a.right <= h.right && buttons.every(r => r.left >= h.left && r.right <= h.right && r.top >= h.top && r.bottom <= h.bottom && (r.right <= b.left || r.left >= a.right)); })()`)) != "true" {
 					t.Errorf("%s %s %s: title-bar directory, title or controls collide or lose their full path", state, size.name, theme)
+				}
+				if strings.TrimSpace(run("eval", `(() => { const controls = ['button[title="Model"]', 'button[title="Reasoning effort"]', 'button[aria-pressed][aria-busy]'].map(selector => document.querySelector(selector)).filter(Boolean); return controls.every(control => { const r = control.getBoundingClientRect(), radius = parseFloat(getComputedStyle(control).borderTopLeftRadius); return radius > 0 && radius < r.height / 2 && (innerWidth > 640 || r.height >= 44); }); })()`)) != "true" {
+					t.Errorf("%s %s %s: composer settings must be rounded rectangles with phone touch targets", state, size.name, theme)
 				}
 				if size.name == "desktop" && strings.TrimSpace(run("eval", `(() => { const model = document.querySelector('button[title="Model"]'), add = document.querySelector('button[aria-label="Add files or paths"]'); if (!model || !add) return true; const m = model.getBoundingClientRect(), a = add.getBoundingClientRect(); return Math.abs((m.top + m.bottom - a.top - a.bottom) / 2) < 1 && !document.querySelector('#composer-workspace'); })()`)) != "true" {
 					t.Errorf("%s %s: desktop composer controls must share one row", state, theme)
@@ -383,6 +391,10 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	}
 	capture("inline-preset")
 	run("fill", "#composer-text", "")
+	button("Presets")
+	run("wait", "--fn", `(() => { const dialog = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); return !!dialog && dialog.querySelectorAll('ul kbd').length === 10 && dialog.textContent.includes('你好'); })()`)
+	capture("presets")
+	closeDialog()
 	run("wait", "--fn", `Array.from(document.querySelectorAll('[data-entry]')).some(row => row.textContent.includes('Browser host answer 1') && !row.querySelector('button[aria-label="Details"]'))`)
 	run("wait", "--fn", `Array.from(document.querySelectorAll('.prose a')).some(a => a.getAttribute('href') === 'https://example.com/auto' && a.target === '_blank' && a.rel.includes('noopener'))`)
 	run("wait", "--fn", `Array.from(document.querySelectorAll('.prose a')).some(a => a.textContent === 'Website' && a.getAttribute('href') === 'https://example.com/markdown')`)
@@ -413,6 +425,8 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	message("/session")
 	run("wait", "--text", "Session metrics")
 	run("wait", "--text", "Requests")
+	// Notes span their group; labelled values align in one tabular column.
+	run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[data-slot=dialog-content] [data-slot=table-row]')]; return rows.length > 0 && rows.some(row => !row.querySelector('th') && row.querySelector('td')?.colSpan === 2) && rows.every(row => { const label = row.querySelector('th'), value = row.querySelector('td'); return value && (label ? label.textContent.trim() !== '' && value.colSpan === 1 && getComputedStyle(value).fontVariantNumeric.includes('tabular-nums') : value.colSpan === 2); }); })()`)
 	capture("session-metrics")
 	button("Transport")
 	run("wait", "--text", "Provider requests")
@@ -421,7 +435,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	closeDialog()
 	message("/status")
 	run("wait", "--text", "Session status")
-	if strings.TrimSpace(run("eval", `document.querySelectorAll('[data-slot=dialog-content] dt, [data-slot=dialog-content] dd').length > 0 && Array.from(document.querySelectorAll('[data-slot=dialog-content] dt, [data-slot=dialog-content] dd')).every(el => getComputedStyle(el).borderTopWidth === '0px')`)) != "true" {
+	if strings.TrimSpace(run("eval", `document.querySelectorAll('[data-slot=dialog-content] [data-slot=table-row]').length > 0 && Array.from(document.querySelectorAll('[data-slot=dialog-content] [data-slot=table-row], [data-slot=dialog-content] [data-slot=table-row] > *')).every(el => getComputedStyle(el).borderTopWidth === '0px' && getComputedStyle(el).borderBottomWidth === '0px')`)) != "true" {
 		t.Fatal("status retained per-line separators")
 	}
 	capture("status")
@@ -510,6 +524,11 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	button("Save")
 	run("wait", "--fn", `document.querySelector('header h1')?.textContent.trim() === `+strconv.Quote(longTitle))
 	capture("long-header")
+	run("wait", "--fn", `(() => { const badge = document.querySelector('header [data-slot=badge]'); return badge?.textContent.trim() === 'Live' && Math.round(badge.getBoundingClientRect().height) === 20; })()`)
+	run("focus", `header button[aria-label="Session details"]`)
+	run("wait", "--fn", `(() => { const trigger = document.querySelector('header button[aria-label="Session details"]'); return !trigger.hasAttribute('title') && document.querySelector('[data-slot=tooltip-content]')?.textContent.trim() === 'Session details'; })()`)
+	run("press", "Escape")
+	run("wait", "--fn", `!document.querySelector('[data-slot=tooltip-content]')`)
 	button("Session details")
 	run("wait", "--fn", `document.querySelector('[data-slot=popover-content][data-state=open]')?.textContent.includes(`+strconv.Quote(workspace)+`)`)
 	run("press", "Escape")

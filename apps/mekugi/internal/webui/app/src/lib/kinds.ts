@@ -100,3 +100,23 @@ export function responseText(kind?: string, text = "", body = ""): string {
   const response = kind === "reply" ? body : kind === "text" || kind === "final" ? text : "";
   return response.trim() ? response : "";
 }
+
+// A tool row that states only its summary: no block of code, output, changes,
+// questions or waits shows beneath it until a disclosure opens. Its entry
+// draws it as a bare trace line instead of a card.
+export function summaryOnly(value: Value): boolean {
+  const hasOutput = !!value.tailLines || !!value.tail?.some((line) => line.trim());
+  const tailLines = value.tailLines ?? value.tail?.length ?? 0;
+  if (hasOutput && tailLines <= 1 && !value.tailOmitted) return false;
+  const code = value.code?.replace(/\n$/, "");
+  const multiline = (value.codeLines ?? 0) > 1 || (code !== undefined && code.includes("\n"));
+  const folded = multiline || (value.lang === "json" && (!!code || !!value.codeLines));
+  const headline = !value.label && !value.reads?.length && !!code;
+  if (!folded && (value.codeLines || (code && value.fenced && !headline))) return false;
+  return (
+    (value.reads?.length ?? 0) <= 1 &&
+    !value.changes?.length &&
+    !value.questions?.length &&
+    !value.waits?.length
+  );
+}

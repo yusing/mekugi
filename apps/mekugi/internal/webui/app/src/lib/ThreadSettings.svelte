@@ -2,11 +2,13 @@
   import { tick } from "svelte";
   import type { Caption, ChoiceID } from "../../../../sessionapi/protocol";
   import { semantic } from "./semantic.svelte";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import Icon from "./ui/Icon.svelte";
-  import { chip, floating } from "./ui/styles";
+  import { cn } from "./utils";
+  import { optionRow, selectContent, selectTrigger, settingToggle } from "./ui/select/styles";
 
-  // The thread's model and reasoning effort. Each chip runs the terminal's /model or
-  // /effort command, whose menu lists the thread's own choices above the chips.
+  // The thread's model and reasoning effort. Each trigger runs the terminal's /model or
+  // /effort command, whose menu lists the thread's own choices above the triggers.
   let { caption, disabled = false }: { caption: Caption; disabled?: boolean } = $props();
   let root = $state<HTMLElement>();
   let list = $state<HTMLElement>();
@@ -108,7 +110,7 @@
   }}
 />
 
-<!-- Below 560px of composer tools, the chips lead on a row of their own. -->
+<!-- Below 560px of composer tools, the settings lead on a row of their own. -->
 <span
   class="relative ml-1 flex min-w-0 gap-1 @max-[560px]:order-first @max-[560px]:ml-0 @max-[560px]:basis-full @max-[560px]:flex-wrap"
   bind:this={root}
@@ -116,7 +118,8 @@
   {#each settings as setting (setting.command)}
     <button
       type="button"
-      class="{chip} max-w-48"
+      class={cn(selectTrigger, "max-w-48")}
+      data-size="default"
       title={setting.label}
       {disabled}
       aria-haspopup="listbox"
@@ -125,32 +128,32 @@
     >
       <span class="sr-only">{setting.label}:</span>
       <span class="min-w-0 truncate text-left text-ink">{setting.value()}</span>
-      <span class="flex flex-none max-sm:hidden"><Icon name="chevron" size={14} /></span>
+      <ChevronDownIcon class="text-muted-foreground size-4 pointer-events-none max-sm:hidden" />
     </button>
   {/each}
   <button
     type="button"
-    class={[chip, "flex-none", fast && "border-warning-edge bg-warning-tint"]}
+    class={settingToggle}
     title={fast ? "Disable fast mode" : "Enable fast mode"}
     aria-pressed={fast}
     aria-busy={tierPending}
     disabled={disabled || tierPending || semantic.pending > 0}
-    onclick={toggleFast}
-    ><span class={["flex items-center gap-1.5", fast && "text-warning-ink"]}
-      ><Icon name="flash" size={14} /><span>Fast</span></span
-    ></button
+    onclick={toggleFast}><Icon name="flash" size={14} /><span>Fast</span></button
   >
   {#if menu}
     <div
-      class="menu-enter absolute bottom-[calc(100%+6px)] left-0 z-5 flex max-h-[min(360px,45dvh)] w-max max-w-[min(360px,calc(100vw-32px))] min-w-56 flex-col p-1 {floating}"
+      class={cn(
+        selectContent,
+        "menu-enter absolute bottom-[calc(100%+6px)] left-0 z-5 flex max-h-[min(360px,45dvh)] max-w-[min(360px,calc(100vw-32px))] min-w-56 flex-col p-1",
+      )}
     >
       {#if menu.Loading && !menu.Choices.length}<p
-          class="px-2.5 py-1.5 text-small text-muted"
+          class="px-1.5 py-1 text-small text-muted"
           role="status"
         >
           Loading choices…
         </p>
-      {:else if menu.Problem}<p class="px-2.5 py-1.5 text-small text-muted">
+      {:else if menu.Problem}<p class="px-1.5 py-1 text-small text-muted">
           {menu.Problem}
         </p>{/if}
       <div
@@ -166,14 +169,15 @@
             role="option"
             tabindex="-1"
             aria-selected={current}
-            class="grid min-h-[34px] w-full grid-cols-[16px_minmax(0,1fr)] items-center gap-x-2 rounded-control py-1.5 pr-3 pl-2 text-left text-ink hover:bg-active focus-visible:bg-active focus-visible:outline-none disabled:opacity-45 max-sm:min-h-11"
+            class={optionRow}
             disabled={menu.Loading || menu.Saving || semantic.pending > 0}
             onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
           >
-            <span class="flex text-muted"
-              >{#if current}<Icon name="check" />{/if}</span
-            >
-            <span class="truncate">{choice.Display || choice.Name}</span>
+            <span class="min-w-0 truncate">{choice.Display || choice.Name}</span>
+            {#if current}<span
+                class="pointer-events-none absolute right-2 flex size-4 items-center justify-center"
+                ><Icon name="check" /></span
+              >{/if}
           </button>
         {/each}
       </div>

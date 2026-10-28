@@ -8,10 +8,12 @@
   let {
     label,
     icon,
+    tooltip = false,
     children,
   }: {
     label: string;
     icon: IconName;
+    tooltip?: boolean;
     children: Snippet<[() => void]>;
   } = $props();
   let open = $state(false);
@@ -26,7 +28,7 @@
 >
   <PopoverPrimitive.Trigger>
     {#snippet child({ props })}
-      <Button variant="quiet" {icon} {label} {...props} />
+      <Button variant="quiet" {icon} {label} {tooltip} {...props} />
     {/snippet}
   </PopoverPrimitive.Trigger>
   {#if mounted}

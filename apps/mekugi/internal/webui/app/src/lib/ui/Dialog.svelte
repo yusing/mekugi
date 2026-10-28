@@ -38,11 +38,13 @@
       )?.focus();
     }}
   >
-    <header class="-mr-2 mb-3 flex items-center justify-between gap-4">
-      <DialogPrimitive.Title class="font-semibold">{title}</DialogPrimitive.Title>
+    <header class="-mt-1 -mr-1.5 mb-4 flex items-center justify-between gap-4">
+      <DialogPrimitive.Title class="text-base leading-tight font-medium"
+        >{title}</DialogPrimitive.Title
+      >
       <DialogPrimitive.Close>
         {#snippet child({ props })}
-          <Button variant="quiet" icon="close" label="Close dialog" {...props} />
+          <Button variant="quiet" size="sm" icon="close" label="Close dialog" {...props} />
         {/snippet}
       </DialogPrimitive.Close>
     </header>
