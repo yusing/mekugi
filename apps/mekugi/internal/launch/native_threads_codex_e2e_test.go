@@ -187,7 +187,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			}
 		}
 		catalog := descriptions.String()
-		for _, name := range []string{"spawn_agent", "list_agents", "inspect", "wait_agent", "send_message", "followup_task", "interrupt_agent"} {
+		for _, name := range []string{"spawn_agent", "list_agents", "list_models", "inspect", "wait_agent", "send_message", "followup_task", "interrupt_agent"} {
 			if !strings.Contains(catalog, "mcp__threadcontrol__"+name+"(args:") {
 				failure = "initial execution catalog omitted threadcontrol declaration: " + name
 			}

@@ -1,8 +1,10 @@
 package codexbinding
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"errors"
 	"net"
 	"slices"
 	"strings"
@@ -13,7 +15,9 @@ import (
 )
 
 func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
-	driver, _, _, caller := reconciliationFixture(t)
+	driver, host, _, caller := reconciliationFixture(t)
+	discovery := &modelDiscoveryHost{Native: host}
+	driver.host = discovery
 	contribution := Codex.MCP(driver)
 	left, right := net.Pipe()
 	server, err := contribution.Server.Connect(t.Context(), &mcp.IOTransport{Reader: left, Writer: left}, nil)
@@ -33,6 +37,9 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	var names []string
 	for _, tool := range catalog.Tools {
 		names = append(names, tool.Name)
+		if tool.Name == "spawn_agent" && !strings.Contains(tool.Description, "list_models") {
+			t.Fatal("spawn tool omitted model discovery guidance")
+		}
 		if tool.Name == "inspect" && (!strings.Contains(tool.Description, "idle or completed agents") || !strings.Contains(tool.Description, "retained observations without starting work") || !strings.Contains(tool.Description, "unavailable observations are null")) {
 			t.Fatalf("inspect description: %q", tool.Description)
 		}
@@ -41,7 +48,7 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		}
 	}
 	slices.Sort(names)
-	expected := []string{"followup_task", "inspect", "interrupt_agent", "list_agents", "send_message", "spawn_agent", "wait_agent"}
+	expected := []string{"followup_task", "inspect", "interrupt_agent", "list_agents", "list_models", "send_message", "spawn_agent", "wait_agent"}
 	if !slices.Equal(names, expected) {
 		t.Fatalf("catalog=%v", names)
 	}
@@ -50,6 +57,7 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		{"spawn_agent", `{"task_name":"child","message":"task","preload":{"sources":[{"unknown":"file"}]}}`},
 		{"spawn_agent", `{"task_name":"child","message":"task","preload":{"sources":[{"path":"file","ranges":[[1]]}]}}`},
 		{"list_agents", `{"unknown":true}`},
+		{"list_models", `{"backend":"codex"}`},
 		{"inspect", `{}`},
 		{"inspect", `{"target":"/root","unknown":true}`},
 		{"wait_agent", `{"target":[]}`},
@@ -70,6 +78,11 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	}
 	meta := mcp.Meta{"threadId": caller.Thread, "sessionId": caller.Session, "callId": "wait", "itemId": caller.Item, "windowId": "window",
 		"x-codex-turn-metadata": map[string]any{"thread_id": caller.Thread, "session_id": caller.Session, "turn_id": caller.Turn, "codex_version": "0.163.0", "model": "model", "reasoning_effort": "low"}}
+	modelResult, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: "list_models", Meta: meta, Arguments: map[string]any{}})
+	if err != nil || modelResult.IsError || len(modelResult.Content) != 1 {
+		t.Fatalf("model discovery: %+v, %v", modelResult, err)
+	}
+	assertDiscoveredModels(t, []byte(modelResult.Content[0].(*mcp.TextContent).Text))
 	for _, tool := range []string{"wait_agent", "list_agents"} {
 		arguments := map[string]any{"target": []string{"agent:main/child"}}
 		if tool == "list_agents" {
@@ -98,6 +111,66 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	}
 	if _, err := driver.Call(t.Context(), caller, "unknown", jsontext.Value(`{}`)); err == nil {
 		t.Fatal("native dispatch admitted an unknown tool")
+	}
+}
+
+type modelDiscoveryHost struct {
+	control.Native
+	calls int
+	err   error
+}
+
+func (h *modelDiscoveryHost) DiscoverModels(ctx context.Context, _ control.Identity) ([]control.ModelOption, error) {
+	h.calls++
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return []control.ModelOption{{ID: "claude:fixture", Name: "Fixture", Description: "Native catalog choice", ResolvedModel: "claude:fixture-version"}}, h.err
+}
+
+func assertDiscoveredModels(t *testing.T, body []byte) {
+	t.Helper()
+	var result struct {
+		Models []control.ModelOption `json:"models"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || len(result.Models) != 1 || result.Models[0].ID != "claude:fixture" || result.Models[0].Name != "Fixture" || result.Models[0].ResolvedModel != "claude:fixture-version" {
+		t.Fatalf("model identifiers or native metadata lost: %s, %v", body, err)
+	}
+}
+
+func TestNativeModelDiscoveryRequiresAdmittedCaller(t *testing.T) {
+	driver, host, _, caller := reconciliationFixture(t)
+	before, _ := driver.control.Member(caller.Thread)
+	inputs, resumes := len(host.inputs), host.resumes
+	if _, err := driver.Call(t.Context(), caller, "list_models", jsontext.Value(`{}`)); err == nil {
+		t.Fatal("missing native discovery silently succeeded")
+	}
+	discovery := &modelDiscoveryHost{Native: host}
+	driver.host = discovery
+	// Claude discovery is independent of the selected Codex provider catalog.
+	driver.CaptureCatalog([]byte(`{"models":[]}`))
+	value, err := driver.Call(t.Context(), caller, "list_models", jsontext.Value(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDiscoveredModels(t, value)
+	foreign := caller
+	foreign.Session = "other-session"
+	if _, err := driver.listModels(t.Context(), foreign, jsontext.Value(`{}`)); err == nil || discovery.calls != 1 {
+		t.Fatal("unadmitted caller reached native discovery")
+	}
+	discovery.err = errors.New("native catalog unavailable")
+	if _, err := driver.Call(t.Context(), caller, "list_models", jsontext.Value(`{}`)); !errors.Is(err, discovery.err) {
+		t.Fatalf("native catalog failure hidden: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := driver.Call(ctx, caller, "list_models", jsontext.Value(`{}`)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("discovery cancellation lost: %v", err)
+	}
+	after, _ := driver.control.Member(caller.Thread)
+	if len(host.inputs) != inputs || host.resumes != resumes || after.Generation != before.Generation || after.Turn != before.Turn || after.Status != before.Status {
+		t.Fatal("model discovery started work or changed logical admission")
 	}
 }
 

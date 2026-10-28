@@ -18,6 +18,19 @@ type Native interface {
 	Create(context.Context, string, string, Settings) (Receipt, error)
 }
 
+// ModelDiscovery is an optional application-owned native catalog acquisition.
+// It starts no logical member or work generation and returns spawn identifiers.
+type ModelDiscovery interface {
+	DiscoverModels(context.Context, Identity) ([]ModelOption, error)
+}
+
+type ModelOption struct {
+	ID            string `json:"id"`
+	Name          string `json:"name,omitempty"`
+	Description   string `json:"description,omitempty"`
+	ResolvedModel string `json:"resolved_model,omitempty"`
+}
+
 // Runtime is one admitted native execution owner's typed operations.
 type Runtime interface {
 	Thread(context.Context, string) (ThreadInfo, error)

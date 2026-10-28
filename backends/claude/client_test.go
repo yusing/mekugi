@@ -181,6 +181,10 @@ func TestClientBundledSDK(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = c.Close() })
 	params := jsontext.Value(`{"type":"user","uuid":"f3290761-830b-4720-9048-c9923e597c40","parent_tool_use_id":null,"shouldQuery":false,"message":{"role":"user","content":"retained"}}`)
+	models, err := c.Models()
+	if err != nil || len(models) != 1 || models[0].Value != "fixture-model" || models[0].DisplayName != "Fixture Model" || models[0].ResolvedModel != "fixture-resolved" {
+		t.Fatalf("SDK initialization models = %+v, %v", models, err)
+	}
 	ack, err := c.Request(ctx, "input", params)
 	if err != nil {
 		t.Fatal(err)

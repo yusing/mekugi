@@ -317,9 +317,11 @@ Models/prices refresh hourly; the picker updates next launch. See
 
 ### Claude delegates
 
-Ask the Codex parent to use `spawn_agent` with `model:"claude:MODEL"` and
-`fork_turns:"none"`, for example `claude:opus-5.5` when available to the Claude
-account. Roles, messages, follow-ups, interruption and waits use Thread Control.
+Ask the Codex parent to call `threadcontrol.list_models` with no arguments,
+then use a returned ID with `spawn_agent` and `fork_turns:"none"`. Discovery reads
+Claude's native advertised catalog without submitting model input; account access
+is still validated during execution. Roles, messages, follow-ups, interruption
+and waits use Thread Control.
 Explicit `mchanges` IDs and ranges are shared with the parent; implicit selections
 remain scoped to the author.
 

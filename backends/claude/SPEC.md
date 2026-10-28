@@ -17,6 +17,12 @@ those owners; this integration exposes Claude only through Thread Control.
 
 ## Runtime
 
+On-demand model discovery reads the SDK initialization catalog without submitting
+input, with transcript persistence disabled. The application closes and joins the
+discovery process before returning qualified model identifiers. Ordinary Codex
+startup does not acquire the optional Claude runtime. Discovery returns native
+advertised choices; provider authentication and entitlement still govern execution.
+
 A subprocess worker uses a persistent streaming-input query. Its stdout carries
 only correlated protocol messages; diagnostics remain separate. The worker supplies
 native session, input and tool-use identities. Readiness requires successful SDK

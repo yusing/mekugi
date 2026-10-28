@@ -46,6 +46,13 @@ native request metadata remains unchanged on the provider wire.
 
 ## Operations and admission
 
+- `list_models` takes no arguments and returns Claude model identifiers usable by
+  `spawn_agent`, using the native SDK initialization catalog and qualifying IDs
+  with `claude:`.
+  Discovery requires admitted caller identity, creates no logical member or work
+  generation, and submits no model input. Missing runtime/catalog acquisition
+  fails explicitly. Native catalog entries advertise supported choices, not
+  guaranteed provider access or account entitlement.
 - `spawn_agent` preserves task name, assignment, role, context, model and effort
   conventions and adds optional `cwd`. It returns confirmed independent host
   identity and visible logical agent name. Task names are nonempty and contain

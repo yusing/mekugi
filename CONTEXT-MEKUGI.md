@@ -57,7 +57,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Area | Owner |
 | --- | --- |
 | Codex RPC/processes | `backends/codex/appserver` |
-| Claude delegates | `backends/claude`: bundled Agent SDK worker and correlated process transport; Launch joins its lifetime to Thread Control |
+| Claude delegates | `backends/claude`: native model catalog, bundled Agent SDK worker and correlated process transport; Launch joins its lifetime to Thread Control |
 | Native facts | `backends/codex/binding`: notifications/items, tool results, history identity, submitted text, execution source/results, catalogs and continuation evidence; `backends/codex/nativetrace`: bounded trace correlation |
 | Rollouts | `backends/codex/rollout`: selected identity/context/resume evidence; `settings_file.go`: plain/compressed resume-settings acquisition; `{inspection,replay}.go`: logical calls/endpoints and replay observations |
 | Composer recall | `backends/codex/messagehistory`: shared Codex input-history format, locking and retention; Launch `app_server_persistent_history.go`: asynchronous reads/writes; Conversation composer: recall and restored-entry reconciliation |

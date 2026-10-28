@@ -1,10 +1,35 @@
 package codexbinding
 
 import (
+	"context"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"slices"
+
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+func (d *Driver) listModels(ctx context.Context, caller control.Identity, raw jsontext.Value) (any, error) {
+	var args struct{}
+	if err := json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err != nil {
+		return nil, err
+	}
+	if _, err := d.control.Caller(caller); err != nil {
+		return nil, err
+	}
+	discovery, ok := d.native().(control.ModelDiscovery)
+	if !ok {
+		return nil, errors.New("Claude model discovery is unavailable")
+	}
+	models, err := discovery.DiscoverModels(ctx, caller)
+	if err != nil {
+		return nil, err
+	}
+	return struct {
+		Models []control.ModelOption `json:"models"`
+	}{models}, nil
+}
 
 // InheritCatalog freezes the selected provider catalog for another admitted
 // runtime. The published model values are immutable after capture.

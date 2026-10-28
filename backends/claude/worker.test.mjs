@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -227,6 +227,43 @@ test("interrupt cancels authenticated MCP host execution", { timeout: 15_000 }, 
   await worker.request("interrupt");
   await cancellation;
   await worker.request("shutdown");
+});
+
+test("native CLI initialization discovers models without input, inference or session transcripts", { skip: process.env.MEKUGI_TEST_CLAUDE_NATIVE !== "1", timeout: 30_000 }, async (t) => {
+  const claude = Bun.which("claude");
+  assert.ok(claude, "Opted-in native acceptance requires Claude Code");
+  const directory = await mkdtemp(join(tmpdir(), "mekugi-claude-discovery-"));
+  const requests = [];
+  const provider = createMockProvider((body) => { requests.push(body); return { content: [{ type: "text", text: "Unexpected inference" }] }; });
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const effects = [];
+  const worker = start(t, async (method) => { effects.push(method); throw new Error("Discovery rejects runtime effects"); }, {
+    CLAUDE_CONFIG_DIR: join(directory, "config"), ANTHROPIC_BASE_URL: `http://127.0.0.1:${provider.address().port}`,
+    ANTHROPIC_API_KEY: "local-fixture", ANTHROPIC_AUTH_TOKEN: "", CLAUDE_CODE_OAUTH_TOKEN: "",
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", CLAUDE_CODE_USE_BEDROCK: "0", CLAUDE_CODE_USE_VERTEX: "0", CLAUDE_CODE_USE_FOUNDRY: "0",
+  });
+  t.after(async () => { worker.closeInput(); await worker.exit; await new Promise((resolve) => provider.close(resolve)); await rm(directory, { recursive: true, force: true }); });
+  const initialization = await worker.request("initialize", { workspace: directory, claudePath: claude, options: { tools: [], persistSession: false }, tools: [] });
+  assert.ok(initialization.models.length > 0);
+  for (const model of initialization.models) {
+    assert.equal(typeof model.value, "string");
+    assert.notEqual(model.value, "");
+    assert.equal(typeof model.displayName, "string");
+    assert.equal(typeof model.description, "string");
+    if (model.resolvedModel !== undefined) assert.equal(typeof model.resolvedModel, "string");
+  }
+  await worker.request("shutdown");
+  assert.equal(await worker.exit, 0);
+  assert.deepEqual(requests, [], "initialization must not make provider message requests");
+  assert.deepEqual(effects, [], "initialization must not execute runtime effects");
+  assert.equal(worker.events.some((event) => ["user", "assistant", "result", "command_lifecycle"].includes(event.type)), false);
+  const projects = await readdir(join(directory, "config", "projects"), { recursive: true }).catch((error) => { if (error.code === "ENOENT") return []; throw error; });
+  assert.equal(projects.some((path) => path.endsWith(".jsonl")), false, "discovery must not retain a session transcript");
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (error) { if (error.code === "ESRCH") return false; throw error; } };
+  assert.equal(typeof initialization.pid, "number");
+  for (let i = 0; i < 100 && alive(initialization.pid); i++) await Bun.sleep(10);
+  assert.equal(alive(initialization.pid), false, "native discovery process outlived joined shutdown");
 });
 
 test("native CLI consumes synthetic input and stops a waiting tool batch with a local mock provider", { skip: process.env.MEKUGI_TEST_CLAUDE_NATIVE !== "1", timeout: 30_000 }, async (t) => {

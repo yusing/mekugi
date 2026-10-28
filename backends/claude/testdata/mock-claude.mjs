@@ -1,5 +1,6 @@
 // A local CLI protocol peer. The real Agent SDK owns process, hooks and MCP.
 import { createInterface } from "node:readline";
+import { writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 
 const lines = createInterface({ input: process.stdin });
@@ -88,9 +89,12 @@ lines.on("line", (line) => {
   }
   if (value.type === "control_request") {
     if (value.request.subtype === "initialize") {
+      if (process.env.MEKUGI_FIXTURE_INITIALIZATION_REPORT) writeFileSync(process.env.MEKUGI_FIXTURE_INITIALIZATION_REPORT,
+        JSON.stringify({ pid: process.pid, cwd: process.cwd(), args: process.argv.slice(2), captured: process.env.MEKUGI_FIXTURE_CAPTURED }));
       if (process.env.MEKUGI_FIXTURE_INIT_ERROR) { process.stderr.write("fixture initialization failure\n"); process.exit(23); }
+      if (process.env.MEKUGI_FIXTURE_INIT_HANG) return;
       hooks = value.request.hooks;
-      response(value.request_id, { commands: [], agents: [], models: [{ value: "fixture-model" }], account: {}, output_style: "default", available_output_styles: [], hooks_applied: true, claude_code_version: "2.1.312" });
+      response(value.request_id, { commands: [], agents: [], models: [{ value: "fixture-model", displayName: "Fixture Model", description: "Native fixture choice", resolvedModel: "fixture-resolved" }], account: { email: "private@example.invalid" }, output_style: "default", available_output_styles: [], hooks_applied: true, claude_code_version: "2.1.312" });
     } else if (value.request.subtype === "interrupt") {
       interrupt?.(); releaseContext?.(); response(value.request_id, { still_queued: [], ...(value.request.cancel_queued ? { cancelled: [] } : {}) });
     } else if (value.request.subtype === "get_usage") {
