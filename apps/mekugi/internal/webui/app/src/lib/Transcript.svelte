@@ -54,12 +54,23 @@
   let reading = false;
 
   // Offsets print once per recorded second, clock times once a minute, and
-  // user messages count turns. Images one agent views in a row share a row.
+  // user messages count turns. Images one agent views in a row share a row,
+  // as do its consecutive thoughts.
   const rows = $derived.by(() => {
     let previous = "";
-    const out: { entry: Entry; at: string; turn?: number; views?: Entry[] }[] = [];
+    const out: {
+      entry: Entry;
+      at: string;
+      turn?: number;
+      views?: Entry[];
+      thoughts?: Entry[];
+    }[] = [];
     for (const entry of entries) {
       const last = out.at(-1);
+      if (last?.thoughts && entry.kind === "reasoning" && entry.agent === last.entry.agent) {
+        last.thoughts.push(entry);
+        continue;
+      }
       if (
         last?.views &&
         isView(entry) &&
@@ -80,6 +91,7 @@
         at: user || at !== previous ? at : "",
         turn: entry.turn,
         views: isView(entry) ? [entry] : undefined,
+        thoughts: entry.kind === "reasoning" ? [entry] : undefined,
       });
       previous = at;
     }
@@ -353,6 +365,7 @@
           stamp={live ? "Time" : "Recorded offset"}
           turn={row.turn}
           views={row.views}
+          thoughts={row.thoughts}
           {owner}
           {source}
           onload={() => void load(row.entry).catch(() => {})}

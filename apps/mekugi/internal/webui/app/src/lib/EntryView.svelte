@@ -18,7 +18,8 @@
 
   // at is the time stamp stamp names, empty when it repeats the previous
   // row's. owner is the agent whose activity the transcript shows. views are
-  // the images an agent viewed in a row, starting with entry.
+  // the images an agent viewed in a row, starting with entry; thoughts are its
+  // consecutive reasoning entries, likewise.
   let {
     entry,
     at,
@@ -26,6 +27,7 @@
     turn,
     owner,
     views,
+    thoughts,
     source = stream,
     onload,
     onclip,
@@ -36,6 +38,7 @@
     turn?: number;
     owner: string;
     views?: Entry[];
+    thoughts?: Entry[];
     source?: Stream;
     onload?: () => unknown;
     onclip?: (clipped?: boolean) => void;
@@ -175,6 +178,13 @@
       entry.agent !== owner,
   );
   const thought = (ms?: number) => (ms && ms >= 1000 ? `Thought for ${duration(ms)}` : "Thought");
+  // Consecutive thoughts fold into one line headed by the latest.
+  const reasoning = $derived((thoughts ?? [entry]).flatMap((e) => e.values ?? []));
+  const latestThought = $derived(reasoning.at(-1));
+  const thinking = $derived.by(() => {
+    const ms = reasoning.reduce((sum, value) => sum + (value.thought ?? 0), 0);
+    return `${reasoning.length} thoughts${ms >= 1000 ? ` for ${duration(ms)}` : ""}`;
+  });
   const prose = $derived(
     entry.kind === "text" || entry.kind === "final" || entry.kind === "message",
   );
@@ -199,6 +209,26 @@
   );
 </script>
 
+{#snippet thoughtRow(value: Value)}
+  {@const content = reasoningBody(value.body, value.label)}
+  {#snippet thoughtHeading()}
+    <Icon name="thought" size={14} />
+    <span>{value.live ? "Thinking" : thought(value.thought)}</span>
+    {#if value.label}<span class="min-w-0 truncate text-ink">{value.label}</span>{/if}
+  {/snippet}
+  {#if content}
+    <details>
+      <summary class="{summary} min-h-[26px] text-muted hover:text-ink"
+        >{@render thoughtHeading()}</summary
+      >
+      <div class="mt-1 mb-2 ml-1.5 border-l-2 border-rule pl-[15px]">
+        <Markdown text={content} quiet />
+      </div>
+    </details>
+  {:else}
+    <div class="{summary} min-h-[26px] text-muted">{@render thoughtHeading()}</div>
+  {/if}
+{/snippet}
 {#snippet wait(value: Value)}
   <Wait
     text={value.label || value.body || ""}
@@ -301,27 +331,21 @@
         </div>
       {:else if prose}
         <Markdown text={entry.text ?? ""} />
-      {:else if entry.kind === "reasoning"}
-        {#each entry.values ?? [] as value, i (i)}
-          {@const content = reasoningBody(value.body, value.label)}
-          {#snippet thoughtHeading()}
+      {:else if entry.kind === "reasoning" && reasoning.length > 1}
+        <details>
+          <summary class="{summary} min-h-[26px] text-muted hover:text-ink">
             <Icon name="thought" size={14} />
-            <span>{value.live ? "Thinking" : thought(value.thought)}</span>
-            {#if value.label}<span class="min-w-0 truncate text-ink">{value.label}</span>{/if}
-          {/snippet}
-          {#if content}
-            <details>
-              <summary class="{summary} min-h-[26px] text-muted hover:text-ink"
-                >{@render thoughtHeading()}</summary
-              >
-              <div class="mt-1 mb-2 ml-1.5 border-l-2 border-rule pl-[15px]">
-                <Markdown text={content} quiet />
-              </div>
-            </details>
-          {:else}
-            <div class="{summary} min-h-[26px] text-muted">{@render thoughtHeading()}</div>
-          {/if}
-        {/each}
+            <span>{latestThought?.live ? "Thinking" : thinking}</span>
+            {#if latestThought?.label}<span class="min-w-0 truncate text-ink"
+                >{latestThought.label}</span
+              >{/if}
+          </summary>
+          <div class="mt-1 mb-2 ml-1.5 border-l-2 border-rule pl-[15px]">
+            {#each reasoning as value, i (i)}{@render thoughtRow(value)}{/each}
+          </div>
+        </details>
+      {:else if entry.kind === "reasoning"}
+        {#each reasoning as value, i (i)}{@render thoughtRow(value)}{/each}
       {:else if entry.kind === "hook"}
         <div class="flex min-h-[26px] items-center gap-2 text-small text-muted">
           <span class={["flex flex-none", hookFailed && "text-negative"]}

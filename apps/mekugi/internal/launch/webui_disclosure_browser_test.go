@@ -52,6 +52,8 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 		{Facts: activity.Facts{Kind: "hook", Text: "Hook output"}, Details: &activity.ItemDetails{Hook: &activity.HookDetails{Status: "completed"}}, Command: activity.Command{Tail: []string{"Hidden hook output"}}},
 		{Facts: activity.Facts{Kind: "hook", Text: "Hook failure"}, Details: &activity.ItemDetails{Hook: &activity.HookDetails{Status: "failed"}}, Command: activity.Command{Tail: []string{"Visible hook failure"}}},
 		{Facts: activity.Facts{Kind: "hook", Text: strings.Repeat("Long hook label ", 20)}, Details: &activity.ItemDetails{Hook: &activity.HookDetails{Status: "completed"}}},
+		{Facts: activity.Facts{Kind: "reasoning", Text: "**Checking callers**\n\nFirst thought body."}},
+		{Facts: activity.Facts{Kind: "reasoning", Text: "**Choosing a fix**\n\nSecond thought body."}},
 	} {
 		content.Seq = uint64(i + 2)
 		if content.Kind == "tool" {
@@ -100,10 +102,18 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [8,9,11].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"]')) && row(8).innerText.includes('Complete short failure.') && row(11).innerText.includes('Visible hook failure') && [10,12].every(n => row(n)?.querySelector('button[aria-label="Details"]')); })()`)
 			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 				run("screenshot", filepath.Join(artifacts, "disclosures-"+width+"-"+theme+".png"))
-				run("eval", `document.querySelector('[data-entry="12"]').scrollIntoView({block:'end'})`)
+				run("eval", `document.querySelector('[data-entry="13"]').scrollIntoView({block:'end'})`)
 				run("screenshot", filepath.Join(artifacts, "hook-disclosures-"+width+"-"+theme+".png"))
 			}
 		}
+	}
+	// Consecutive thoughts share one collapsed row headed by the latest.
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="13"]'); return !document.querySelector('[data-entry="14"]') && row?.querySelector('summary')?.textContent.includes('2 thoughts') && row.innerText.includes('Choosing a fix') && !row.innerText.includes('Checking callers'); })()`)
+	run("eval", `document.querySelector('[data-entry="13"]').scrollIntoView({block:'center'})`)
+	run("click", `[data-entry="13"] summary`)
+	run("wait", "--fn", `document.querySelector('[data-entry="13"]')?.innerText.includes('Checking callers')`)
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("screenshot", filepath.Join(artifacts, "thoughts-expanded.png"))
 	}
 	run("find", "role", "button", "click", "--name", "Output: 2 lines", "--exact")
 	run("wait", "--text", "second output")
