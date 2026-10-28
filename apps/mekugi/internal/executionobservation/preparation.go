@@ -403,7 +403,13 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		if name == "" && metadata.SubagentKind == "" {
 			name = "/root"
 		}
-		if p.activity.Observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "") {
+		var observed bool
+		if p.threadControl != nil {
+			observed = p.threadControl.Coordination().ObserveAudience(threadID, p.activity.ObserveAdmitted)
+		} else {
+			observed = p.activity.Observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "")
+		}
+		if observed {
 			activityThreadID = threadID
 		}
 	}

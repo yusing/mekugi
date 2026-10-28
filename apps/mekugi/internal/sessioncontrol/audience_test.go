@@ -92,6 +92,26 @@ func TestNativeActivityIsolatedByAncestryAndIdentity(t *testing.T) {
 	}
 }
 
+func TestAdmittedRewindPreservesQueuedChildActivity(t *testing.T) {
+	a := NewAudience(nil)
+	a.Attach("original")
+	if !a.ObserveAdmitted("child", "original", "/root/worker", true) {
+		t.Fatal("child admission failed")
+	}
+	a.Collect(activitypresentation.Supplement{Thread: "child", Source: "pending", Kind: "error", Text: "child progress"})
+	a.Attach("rewound")
+	if !a.ObserveAdmitted("child", "rewound", "/root/worker", true) {
+		t.Fatal("authorized root replacement conflicted")
+	}
+	audience, entries := a.Take("rewound")
+	if len(entries) != 1 || audience.Threads["child"] != "/root/worker" || entries[0].Text != "child progress" {
+		t.Fatalf("rewind lost child observation state: %+v %+v", audience, entries)
+	}
+	if a.Observe("child", "foreign", "/root/worker", true) || a.ObserveAdmitted("child", "rewound", "/root/worker", true) {
+		t.Fatal("logical rebind revived a conflicted native identity")
+	}
+}
+
 func TestNativeActivityOmitsHostOwnedToolSpeech(t *testing.T) {
 	a := NewAudience(nil)
 	a.Attach("root")

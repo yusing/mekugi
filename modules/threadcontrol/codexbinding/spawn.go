@@ -14,7 +14,7 @@ import (
 // ChildAudience is the existing application audience owner. Admission precedes
 // any assignment, so provider/observation traffic cannot race logical ownership.
 type ChildAudience interface {
-	Observe(thread, parent, name string, child bool) bool
+	ObserveAdmitted(thread, parent, name string, child bool) bool
 }
 
 type SpawnResult struct {

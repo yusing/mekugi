@@ -82,7 +82,7 @@ func decodeScope(data []byte, thread string) (Scope, bool, error) {
 	}
 	if scope.NextChangeStream < 0 || scope.Version != 1 || scope.Thread != thread || thread != "" && scope.Namespace == "" ||
 		scope.Parent != "" && scope.Parent == thread || scope.Fork != "" && scope.Fork == thread ||
-		scope.Namespace != thread && (scope.Parent == "" || scope.Next != 0 || scope.NextChangeStream != 0 || len(scope.Inherited) != 0 || scope.Fork != "") {
+		scope.Namespace != thread && (scope.Parent == "" && scope.Fork == "" || scope.Parent != "" && scope.Fork != "" || scope.Next != 0 || scope.NextChangeStream != 0 || len(scope.Inherited) != 0) {
 		return scope, false, errors.New("invalid handle scope identity")
 	}
 	var end uint64
@@ -145,6 +145,24 @@ func (tx *Transaction) InitializeScope(identity Scope, inherit func(source strin
 			return errors.New("thread handle scope conflict")
 		}
 		return nil
+	}
+	if identity.Fork != "" && identity.Namespace != identity.Thread {
+		namespace, err := tx.store.NamespaceForThread(identity.Fork)
+		if err != nil {
+			return err
+		}
+		if identity.Namespace != namespace || identity.Parent != "" {
+			return errors.New("shared fork namespace conflicts with its source")
+		}
+		if err := tx.initializeRootScope(namespace, "", nil); err != nil {
+			return err
+		}
+		if inherit != nil {
+			if err := inherit(namespace); err != nil {
+				return err
+			}
+		}
+		return tx.WriteScope(Scope{Version: 1, Thread: identity.Thread, Namespace: namespace, Fork: identity.Fork})
 	}
 	if identity.Parent != "" {
 		namespace, err := tx.store.NamespaceForThread(identity.Parent)

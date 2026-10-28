@@ -157,3 +157,14 @@ func (d *Driver) Restore(session history.Session) chan error {
 	d.enqueue(hostObservation{thread: session.Thread, method: "thread/restore", session: session, restored: done})
 	return done
 }
+
+// Rewind retains the live family on the lifecycle worker before accepting input
+// on the newly selected root. Native descendants keep their independent runtimes.
+func (d *Driver) Rewind(original string, root control.ThreadInfo) chan error {
+	done := make(chan error, 1)
+	d.mu.Lock()
+	d.thread = root.Thread
+	d.mu.Unlock()
+	d.enqueue(hostObservation{thread: root.Thread, method: "thread/restore", restored: done, rewindFrom: original, rewindRoot: root})
+	return done
+}

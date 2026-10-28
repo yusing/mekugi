@@ -111,16 +111,12 @@ func (d *Driver) dispatchClaimedAction(ctx context.Context, effect *control.Effe
 			receipt, callErr = d.native().Create(ctx, effect.Caller, path, effect.Child.Settings)
 		}
 	case "admit":
-		action, err := d.control.Action(*effect)
-		if err != nil {
-			return err
-		}
 		callErr = d.control.AdmitNamespace(ctx, effect.Target)
 		if callErr == nil {
 			d.mu.RLock()
 			audience := d.audience
 			d.mu.RUnlock()
-			if audience == nil || !audience.Observe(effect.Target, effect.Caller, action.Recipient, true) {
+			if audience == nil || !d.control.ObserveAudience(effect.Target, audience.ObserveAdmitted) {
 				callErr = &binding.DispatchError{Outcome: binding.NotDispatched, Cause: errors.New("confirmed child could not enter the application audience")}
 			}
 		}

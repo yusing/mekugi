@@ -111,6 +111,7 @@ func TestAppServerForkRetainsEvidenceBeforeSwitch(t *testing.T) {
 			u.retained, u.changeSource = store.changeScope(), gate
 			u.reasoningEffort = "high"
 			if command == "/rewind" {
+				u.changeSource = store.changes
 				rewindTestTurns(t, u, w)
 				appServerTestKeys(t, u, "\r\r")
 			} else {
@@ -121,9 +122,13 @@ func TestAppServerForkRetainsEvidenceBeforeSwitch(t *testing.T) {
 			if u.Thread != "main" || u.Startup.ForkRetention == nil {
 				t.Fatal("switched before retained admission")
 			}
-			<-gate.entered
+			if command == "/fork" {
+				<-gate.entered
+			}
 			appServerTestKeys(t, u, "preserved while retaining")
-			close(gate.release)
+			if command == "/fork" {
+				close(gate.release)
+			}
 			pending := u.Startup.ForkRetention
 			pending.Err, pending.Complete = <-pending.Done, true
 			if err := u.message(pending.Message); err != nil {
@@ -133,6 +138,13 @@ func TestAppServerForkRetainsEvidenceBeforeSwitch(t *testing.T) {
 			identity, exists, err := store.publication.ReadScope("branch")
 			if err != nil || !exists || identity.Fork != "main" || u.Thread != "branch" || u.Text != "preserved while retaining" {
 				t.Fatalf("durable fork: %+v %v %v %s %q", identity, exists, err, u.Thread, u.Text)
+			}
+			wantNamespace := "branch"
+			if command == "/rewind" {
+				wantNamespace = "main"
+			}
+			if identity.Namespace != wantNamespace {
+				t.Fatalf("retained namespace: %+v", identity)
 			}
 			// A fresh store and projection need no live parent to recover inherited review.
 			fresh, err := openMekugiReplayStore(store.publication.Directory())
@@ -151,14 +163,18 @@ func TestAppServerForkRetainsEvidenceBeforeSwitch(t *testing.T) {
 			if err != nil || string(after) != string(before) {
 				t.Fatal("fork modified workspace files")
 			}
-			// Late edits on the original cannot grow the branch's frozen evidence.
+			// Rewind keeps the live family, while an ordinary fork freezes evidence.
 			liveDiffScopeCapture(t, store, workspace, "main", "later", filepath.Join(workspace, "later.go"), "a", "b")
 			liveDiffScopeCapture(t, store.scoped(child), workspace, "child", "later-child", filepath.Join(workspace, "later-child.go"), "a", "b")
 			if _, err := projection.Apply(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true}); err != nil {
 				t.Fatal(err)
 			}
-			if len(projection.Data.Publication.Files) != 3 {
-				t.Fatal("late original edits crossed fork")
+			wantFiles := 3
+			if command == "/rewind" {
+				wantFiles = 5
+			}
+			if len(projection.Data.Publication.Files) != wantFiles {
+				t.Fatalf("late family edits: got %d files, want %d", len(projection.Data.Publication.Files), wantFiles)
 			}
 			releaseParent()
 			releaseChild()

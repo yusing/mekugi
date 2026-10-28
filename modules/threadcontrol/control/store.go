@@ -92,8 +92,11 @@ func (s *Service) Restore(ctx context.Context, session history.Session) error {
 	if session.Store == nil || session.Thread == "" {
 		return errors.New("recovery requires a selected history session")
 	}
-	if _, ok := s.Member(session.Thread); ok {
-		return nil
+	if member, ok := s.Member(session.Thread); ok {
+		if member.Parent != "" || member.AudienceAdmitted {
+			return nil
+		}
+		return s.update(ctx, session.Thread, func(tree *Tree, _ *Member) error { return tree.selectRoot(session.Thread) })
 	}
 	return s.admitRoot(ctx, session, nil)
 }
@@ -119,12 +122,15 @@ func (s *Service) admitRoot(ctx context.Context, session history.Session, root *
 		}
 	}()
 	state := Tree{Version: checkpointVersion, Root: session.Thread, Members: map[string]*Member{session.Thread: root}}
-	data, err := history.ReadRecord(filepath.Join(session.Store.Directory(), recordName(session.Thread)))
+	data, err := history.ReadRecord(filepath.Join(session.Store.Directory(), recordName(session.Namespace)))
 	if err == nil {
-		if state, err = decodeTree(data, session.Thread); err != nil {
+		if state, err = decodeTree(data, session.Namespace); err != nil {
 			return err
 		}
 		pause(&state, "")
+		if err := state.selectRoot(session.Thread); err != nil {
+			return err
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	} else if root == nil {
@@ -141,7 +147,7 @@ func decodeTree(data []byte, root string) (Tree, error) {
 	if err := json.Unmarshal(data, &state); err != nil {
 		return Tree{}, fmt.Errorf("decode thread-control checkpoint: %w", err)
 	}
-	if state.Version != checkpointVersion || state.Root != root || state.Members[root] == nil || state.Members[root].Parent != "" || state.Members[root].Task != "/root" {
+	if state.Version != checkpointVersion || state.Members[root] == nil || state.Members[root].Parent != "" || state.Members[root].Task != "/root" || state.Members[state.Root] == nil || state.Members[state.Root].Parent != "" || state.Members[state.Root].Task != "/root" {
 		return Tree{}, errors.New("thread-control checkpoint identity mismatch")
 	}
 	for id, member := range state.Members {
@@ -173,13 +179,22 @@ func ReadFamily(store *history.Store, thread string) ([]Participant, int, error)
 	if err != nil {
 		return nil, len(data), err
 	}
-	if member := state.Members[thread]; member == nil || !member.AudienceAdmitted {
+	selected := state.Members[thread]
+	if selected == nil || !selected.AudienceAdmitted && (selected.Parent != "" || selected.Task != "/root") {
 		return nil, len(data), errors.New("selected thread is not an admitted retained family member")
+	}
+	root = state.Root
+	if selected.Parent == "" {
+		root = selected.Thread
 	}
 	var members []Participant
 	for _, member := range state.Members {
-		if member.AudienceAdmitted {
-			members = append(members, member.participant())
+		if member.Thread == root || member.AudienceAdmitted && member.Parent != "" {
+			participant := member.participant()
+			if participant.Parent == state.Root {
+				participant.Parent = root
+			}
+			members = append(members, participant)
 		}
 	}
 	slices.SortFunc(members, func(a, b Participant) int { return strings.Compare(a.Task, b.Task) })
@@ -194,7 +209,7 @@ func (o *treeOwner) publish(ctx context.Context, state *Tree) error {
 	if len(data) > history.MaxRecordBytes {
 		return errors.New("thread-control checkpoint exceeds retained record limit")
 	}
-	name := recordName(state.Root)
+	name := recordName(o.session.Namespace)
 	err = o.session.Store.Transaction(ctx, o.session.Writes, func(tx *history.Transaction) error {
 		if err := tx.Admit(o.session.Limits, name, int64(len(data))); err != nil {
 			return err
@@ -297,6 +312,24 @@ func (s *Service) Member(thread string) (*Member, bool) {
 	}
 	member, err := detach(member)
 	return member, err == nil
+}
+
+// ObserveAudience publishes canonical ancestry while excluding root replacement.
+// The callback must only update the audience, never call back into coordination.
+// Confirmed children can enter their audience before admission is acknowledged.
+func (s *Service) ObserveAudience(thread string, observe func(string, string, string, bool) bool) bool {
+	owner, err := s.owner(thread)
+	if err != nil {
+		return false
+	}
+	owner.mutation.Lock()
+	defer owner.mutation.Unlock()
+	tree := owner.state.Load()
+	member := tree.Members[thread]
+	if member.Parent == "" && tree.Root != thread {
+		return false
+	}
+	return observe(member.Thread, member.Parent, member.Task, member.Parent != "")
 }
 
 // ContextPreloads borrows admitted ancestry without copying the logical tree or

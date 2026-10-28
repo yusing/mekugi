@@ -39,6 +39,15 @@ func (d *Driver) Instructions(ctx context.Context, thread, requestModel string) 
 	if err != nil {
 		return nil, err
 	}
+	if !slices.ContainsFunc(member.Instructions, nativeRoleFragment) && !slices.ContainsFunc(fragments, nativeRoleFragment) {
+		inherited, err := binding.ReadReferencedInstructionFragments(ctx, thread, path, func(ctx context.Context, source string) (binding.ForkSource, error) {
+			return d.forkSource(ctx, thread, source)
+		})
+		if err != nil {
+			return nil, fmt.Errorf("read instruction provenance: %w", err)
+		}
+		fragments = append(fragments, inherited...)
+	}
 	fragments = slices.DeleteFunc(fragments, func(part guidance.Fragment) bool {
 		return part.Kind != "multi_agent.role_instructions" && part.Kind != "multi_agent.usage_hint" && part.Kind != "multi_agent.mode_instructions"
 	})
@@ -71,6 +80,10 @@ func (d *Driver) Instructions(ctx context.Context, thread, requestModel string) 
 	}
 	text += roleGuidance(roles)
 	return instructionReplacements(*member, text), nil
+}
+
+func nativeRoleFragment(part guidance.Fragment) bool {
+	return part.Kind == "multi_agent.role_instructions" || part.Kind == "multi_agent.usage_hint"
 }
 
 // RetainedInstructions projects auxiliary context without host RPCs. The host may

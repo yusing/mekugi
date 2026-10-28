@@ -213,10 +213,13 @@ incomplete reversal or rejection leave that session usable, with the command's
 output and recovery instructions; no fork or archive follows failure. Cancellation
 before dispatch changes no files. Once dispatched, interruption follows native
 shell behavior and cannot promise to undo completed effects.
-Saved change and output evidence remains available in the new namespace,
+Saved change and output evidence remains available in the shared family namespace,
 including excluded turns and any captured reversal;
 conversation restoration uses only the host's truncated branch. Inheritance restores
-no running resources or approval grants.
+no approval grants. Rewind transfers the admitted logical family to the selected
+branch without restarting or interrupting descendants. Their native session IDs,
+running work and retained states remain unchanged. Ordinary forks remain separate
+families. Selecting an earlier rewind branch moves root authority back to that branch.
 
 After the branch is usable, a separate confirmation offers to archive the exact
 original thread, initially selecting No. Cancellation before fork dispatch changes

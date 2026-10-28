@@ -105,7 +105,7 @@ func (h *reconciliationHost) Confirm(_ context.Context, input control.NativeInpu
 	}
 	return nil
 }
-func (*reconciliationHost) Observe(string, string, string, bool) bool { return true }
+func (*reconciliationHost) ObserveAdmitted(string, string, string, bool) bool { return true }
 
 func reconciliationFixture(t *testing.T) (*Driver, *reconciliationHost, history.Session, control.Identity) {
 	t.Helper()

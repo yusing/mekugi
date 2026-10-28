@@ -64,12 +64,12 @@ func (s *store) visibleIndexes(workspace string, threads map[string]bool) ([]cha
 		}
 		namespaces[identity.Namespace] = true
 		names[changeIndexName(workspace, identity.Namespace)] = true
-		if identity.Namespace == thread && identity.Fork != "" {
+		if identity.Fork != "" && threads[thread] {
 			inherited[identity.Namespace] = true
 		}
 	}
-	// A frozen fork namespace includes its inherited child workspaces. It is
-	// independent of live source-thread membership and later source indexes.
+	// Fork roots include inherited child workspaces. Shared root replacements
+	// also retain subsequent records from the same live family namespace.
 	if threads == nil || len(inherited) > 0 {
 		entries, err := os.ReadDir(s.directory)
 		if err != nil {
@@ -106,7 +106,7 @@ func (s *store) visibleIndexes(workspace string, threads map[string]bool) ([]cha
 		if err := validateChangeIndex(index); err != nil {
 			return nil, err
 		}
-		if threads != nil && !(inherited[index.Namespace] && threads[index.Namespace]) {
+		if threads != nil && !inherited[index.Namespace] {
 			for position, stream := range index.Streams {
 				for number := 1; number <= stream.Next; number++ {
 					id := changes.ID(index.streamName(position), number)

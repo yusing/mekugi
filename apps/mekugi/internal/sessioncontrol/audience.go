@@ -40,6 +40,16 @@ func NewAudience(notice func(string, string)) *Audience {
 }
 
 func (a *Audience) Observe(thread, parent, name string, child bool) bool {
+	return a.observe(thread, parent, name, child, false)
+}
+
+// ObserveAdmitted accepts logical ancestry supplied by Thread Control. A rewind
+// may replace the root without replacing the descendant's observation state.
+func (a *Audience) ObserveAdmitted(thread, parent, name string, child bool) bool {
+	return a.observe(thread, parent, name, child, true)
+}
+
+func (a *Audience) observe(thread, parent, name string, child, admitted bool) bool {
 	if a == nil || thread == "" {
 		return false
 	}
@@ -55,6 +65,9 @@ func (a *Audience) Observe(thread, parent, name string, child bool) bool {
 		return false
 	}
 	if old := a.threads[thread]; old != nil {
+		if admitted && !old.conflicted && old.name == name && old.child == child {
+			old.parent = parent
+		}
 		if old.parent != parent || old.name != name || old.child != child {
 			old.conflicted = true
 		}

@@ -45,6 +45,7 @@ import (
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 	"github.com/yusing/mekugi/providers/openai"
@@ -291,12 +292,21 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		if m.Method == "skills/changed" {
 			native.invalidateSkills(attached.executionPresentation)
 		}
+		rewindFrom := control.Startup.RewindOriginal
 		err := dispatchHostMessage(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, windows, audience, reviewSource, preparePane, approvals, generator, activity, &streams, tracker, trace, usage, &exitUsage, segments, &restoredSegments, views, &files, &statusConfig, issues, &quit, dispatch, &resumePending, &commits, terminalViews, conversation, observations, service, panes, &models, &modelsLoading, &archived, m)
 		adoptStartupChooser()
 		if err == nil && threads != nil && retainedSession.Thread != "" && retainedSession.Thread != restoredCoordination {
 			restoredCoordination = retainedSession.Thread
 			syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
-			attached.threadInput.restoration = threads.driver.Restore(retainedSession)
+			if rewindFrom != "" && rewindFrom != retainedSession.Thread {
+				var accepted sessioncontrol.AcceptedThread
+				if err := json.Unmarshal(m.Result, &accepted); err != nil {
+					return err
+				}
+				attached.threadInput.restoration = threads.driver.Rewind(rewindFrom, threadcontrol.ThreadInfo{Thread: accepted.Thread.ID, Session: accepted.Thread.SessionID, Path: accepted.Thread.Path})
+			} else {
+				attached.threadInput.restoration = threads.driver.Restore(retainedSession)
+			}
 		}
 		predictions.observe(m, control.Thread)
 		return err

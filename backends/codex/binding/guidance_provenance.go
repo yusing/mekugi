@@ -1,6 +1,7 @@
 package binding
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
@@ -9,6 +10,22 @@ import (
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/contracts/guidance"
 )
+
+func ReadReferencedInstructionFragments(ctx context.Context, thread, path string, resolve ForkResolver) ([]guidance.Fragment, error) {
+	items, err := rollout.ReferencedInstructionItems(ctx, thread, path, resolve)
+	if err != nil {
+		return nil, err
+	}
+	var fragments []guidance.Fragment
+	for _, item := range items {
+		parts, err := NativeInstructionFragments(thread, item)
+		if err != nil {
+			return nil, err
+		}
+		fragments = append(fragments, parts...)
+	}
+	return fragments, nil
+}
 
 // NativeInstructionFragments decodes content-kind provenance from an admitted
 // raw response item. The caller authenticates the containing host thread and

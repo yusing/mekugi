@@ -504,8 +504,12 @@ func TestNativeThreadsPreloadServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{preload: true})
 }
 
+func TestNativeThreadsRewindServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{rewind: true})
+}
+
 type nativeThreadsScenario struct {
-	fullHistory, shellWait, compactWait, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers bool
+	fullHistory, shellWait, compactWait, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind bool
 }
 
 func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
@@ -842,6 +846,65 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		}
 	}
 
+	if scenario.rewind {
+		for !event.Frame.View.Admission.Submit {
+			event, err = connection.Next()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		_, err = connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
+			Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: root, Operation: sessionpresentation.SubmitComposer},
+			Draft:  composer.Draft{Text: "/rewind"},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var acceptedMenu string
+		var progress string
+		for {
+			event, err = connection.Next()
+			if err != nil {
+				t.Fatal("rewind publication:", err, progress)
+			}
+			menu := event.Frame.View.Menu
+			progress = fmt.Sprintf("thread=%s submit=%t menu=%+v feedback=%s", event.Frame.View.Main.ID, event.Frame.View.Admission.Submit, menu, event.Frame.View.Status.Feedback.Text)
+			menuKey := ""
+			if menu != nil {
+				menuKey = fmt.Sprintf("%s/%d", event.Frame.View.Main.ID, menu.ID)
+			}
+			if menu != nil && menuKey != acceptedMenu && len(menu.Choices) > 0 && !menu.Loading {
+				acceptedMenu = menuKey
+				action := sessionpresentation.MenuAction{Version: event.Frame.View.Version, Menu: menu.ID, Kind: sessionpresentation.MenuAccept, Choice: menu.Choices[0].Identity()}
+				if _, err := connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Menu: &action}); err != nil {
+					t.Fatal("rewind choice:", err)
+				}
+			}
+			if event.Frame.View.Main.ID != root && event.Frame.View.Admission.Submit && menu == nil {
+				found := false
+				if family := event.Frame.Family; family != nil && family.Agents != nil {
+					for _, row := range family.Agents.Roster {
+						found = found || row.Agent.Thread == child && row.Agent.Name == "/root/worker" && row.Agent.Final
+					}
+				}
+				if !found {
+					family, _ := json.Marshal(event.Frame.Family)
+					progress += " family=" + string(family)
+					continue
+				}
+				break
+			}
+		}
+		if _, err := childView.Send(ctx, childEvent.Target(), sessionapi.NativeOperation{SaveDraft: new("Retained child draft")}); err != nil {
+			t.Fatal("rewind retired the existing descendant attachment:", err)
+		}
+		fixture.mu.Lock()
+		defer fixture.mu.Unlock()
+		if len(fixture.calls) != wantThreads || fixture.calls[parent] != counts[parent] || fixture.calls[child] != counts[child] {
+			t.Fatalf("rewind restarted native work: %v", fixture.calls)
+		}
+		return
+	}
 	if scenario.preload || scenario.compactWait || scenario.earlyCompletion || scenario.recoverFailure {
 		return // Acquisition and prompt projection acceptance finish before cold recovery.
 	}

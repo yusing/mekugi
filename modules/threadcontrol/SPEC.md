@@ -366,7 +366,12 @@ Exit stops owned live work through its native backend and retains known outcomes
 wait selections and dispatch facts. Fresh resume restores paused state without child
 restart, wait rearming, deadline expiry delivery or message redispatch. Explicit work
 or a new wait may proceed after reconciliation. Forks inherit authorized history,
-not live subscriptions, foreign-root authority or dispatch eligibility.
+not live subscriptions, foreign-root authority or dispatch eligibility. Rewind is
+an explicit root replacement within the same family: descendants keep their native
+sessions and live work, while the selected saved branch becomes their logical root.
+Previous root identities remain historical delivery endpoints, not active callers.
+Unsent addressed messages follow the new root; already-dispatched delivery keeps
+its original target and reconciliation identity.
 Resume remains product-local: Mekugi checkpoints are consumed by Mekugi, with no
 cross-product session-resume compatibility requirement for stock Codex.
 

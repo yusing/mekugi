@@ -27,12 +27,56 @@ func (n instructionNative) Inspect(ctx context.Context, thread string) (control.
 
 type instructionRuntime struct {
 	control.Runtime
-	info   control.ThreadInfo
-	config jsontext.Value
+	info    control.ThreadInfo
+	config  jsontext.Value
+	sources map[string]control.ThreadInfo
 }
 
-func (r instructionRuntime) Thread(context.Context, string) (control.ThreadInfo, error) {
+func (r instructionRuntime) Thread(_ context.Context, thread string) (control.ThreadInfo, error) {
+	if info, ok := r.sources[thread]; ok {
+		return info, nil
+	}
 	return r.info, nil
+}
+
+func TestInstructionsFollowReferencedHistoryOnce(t *testing.T) {
+	directory := t.TempDir()
+	parent := filepath.Join(directory, "parent.jsonl")
+	const prefix = `{"ordinal":0,"type":"session_meta","payload":{"id":"parent","history_mode":"paginated"}}` + "\n" +
+		`{"ordinal":1,"type":"response_item","payload":{"type":"message","id":"role","role":"developer","content":[{"type":"input_text","text":"inherited native role"}],"internal_chat_message_metadata_passthrough":{"content_item_kinds":["multi_agent.role_instructions"]}}}` + "\n"
+	roleTestFile(t, parent, prefix+`{"ordinal":2,"type":"response_item","payload":{"type":"message","id":"excluded","role":"developer","content":[{"type":"input_text","text":"after the rewind boundary"}],"internal_chat_message_metadata_passthrough":{"content_item_kinds":["multi_agent.role_instructions"]}}}`+"\n")
+	branch := filepath.Join(directory, "branch.jsonl")
+	roleTestFile(t, branch, fmt.Sprintf(`{"ordinal":2,"type":"session_meta","payload":{"id":"root","history_mode":"paginated","history_base":{"thread_id":"parent","end_ordinal_exclusive":2,"end_byte_offset":%d}}}`+"\n", len(prefix)))
+	retained, err := history.NewService(control.RecordKinds())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := retained.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	service := control.New()
+	if err := service.AdmitRoot(t.Context(), session, &control.Member{Thread: "root", Session: "session", Task: "/root", Path: branch, Settings: control.Settings{Workspace: directory}}); err != nil {
+		t.Fatal(err)
+	}
+	driver, err := NewDriver(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver.host = instructionNative{owner: instructionRuntime{sources: map[string]control.ThreadInfo{"parent": {Thread: "parent", Session: "parent-session", Path: parent}}}}
+	for attempt := range 2 {
+		replacements, err := driver.Instructions(t.Context(), "root", "")
+		if err != nil || len(replacements) != 1 || replacements[0].Fragment.Item != "role" || replacements[0].Fragment.Thread != "root" {
+			t.Fatalf("attempt %d: referenced role unavailable or boundary crossed: %+v %v", attempt, replacements, err)
+		}
+		// Retained provenance must avoid another inherited-history acquisition.
+		driver.host = instructionNative{owner: instructionRuntime{}}
+	}
 }
 
 func (r instructionRuntime) Configuration(context.Context, string, string) (jsontext.Value, error) {

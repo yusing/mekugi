@@ -81,9 +81,13 @@ func RetainInput(ctx context.Context, selected changes.Scope, owner changes.Serv
 		}
 		if identity := input.Initialize; identity != nil {
 			if err := tx.InitializeScope(*identity, func(source string) error {
-				plan, err := owner.PrepareFork(selected, source, identity.Thread, identity.Fork)
-				if err != nil {
-					return err
+				var plan changes.ForkPlan
+				if identity.Namespace == identity.Thread {
+					var err error
+					plan, err = owner.PrepareFork(selected, source, identity.Thread, identity.Fork)
+					if err != nil {
+						return err
+					}
 				}
 				entries, err := os.ReadDir(selected.Store.Directory())
 				if err != nil {
@@ -93,8 +97,10 @@ func RetainInput(ctx context.Context, selected changes.Scope, owner changes.Serv
 				for _, name := range files {
 					inherited[name] = true
 				}
-				for _, name := range plan.Dependencies() {
-					inherited[name] = true
+				if plan != nil {
+					for _, name := range plan.Dependencies() {
+						inherited[name] = true
+					}
 				}
 				for _, entry := range entries {
 					if !history.CatalogName(entry.Name()) {
@@ -116,7 +122,10 @@ func RetainInput(ctx context.Context, selected changes.Scope, owner changes.Serv
 				if err := retain(slices.Collect(maps.Keys(inherited))); err != nil {
 					return err
 				}
-				return plan.Publish(tx)
+				if plan != nil {
+					return plan.Publish(tx)
+				}
+				return nil
 			}); err != nil {
 				return err
 			}

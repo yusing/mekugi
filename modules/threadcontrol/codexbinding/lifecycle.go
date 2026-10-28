@@ -14,6 +14,8 @@ import (
 )
 
 type hostObservation struct {
+	rewindFrom           string
+	rewindRoot           control.ThreadInfo
 	thread, method, wait string
 	value                binding.Notification
 	session              history.Session
@@ -180,10 +182,14 @@ func (d *Driver) reduceHost() {
 		case "compaction/stopped":
 			err = d.control.CheckpointWait(d.lifecycle, thread, p.TurnID)
 		case "thread/restore":
-			err = d.control.Restore(d.lifecycle, event.session)
+			if event.rewindFrom != "" {
+				err = d.control.Rewind(d.lifecycle, event.rewindFrom, event.rewindRoot)
+			} else {
+				err = d.control.Restore(d.lifecycle, event.session)
+			}
 			if err == nil {
 				for _, child := range d.control.Descendants(thread) {
-					if !d.audience.Observe(child.Thread, child.Parent, child.Task, true) {
+					if !d.control.ObserveAudience(child.Thread, d.audience.ObserveAdmitted) {
 						err = errors.New("retained child could not enter the application audience")
 						break
 					}

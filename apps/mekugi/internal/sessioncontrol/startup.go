@@ -296,12 +296,21 @@ type ForkRetention struct {
 
 func (s *Startup) RetainFork(ctx context.Context, selected changes.Scope, source changes.Service, original string, message appserver.Message, accepted AcceptedThread) {
 	selected.Thread, selected.Namespace = accepted.Thread.ID, accepted.Thread.ID
+	rewind := s.RewindOriginal != ""
 	done := make(chan error, 1)
 	s.ForkRetention = &ForkRetention{Message: message, Done: done}
 	go func() {
+		if rewind {
+			var err error
+			selected.Namespace, err = selected.Store.NamespaceForThread(original)
+			if err != nil {
+				done <- err
+				return
+			}
+		}
 		done <- recordtransactions.RetainInput(ctx, selected, source, nil, recordtransactions.Input{
 			Workspace:  accepted.Thread.Cwd,
-			Initialize: &history.Scope{Thread: accepted.Thread.ID, Namespace: accepted.Thread.ID, Fork: original},
+			Initialize: &history.Scope{Thread: accepted.Thread.ID, Namespace: selected.Namespace, Fork: original},
 		})
 	}()
 }

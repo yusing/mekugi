@@ -72,6 +72,7 @@ type WebSearchAction struct {
 
 // Source: apps/mekugi/internal/router/app_server_events.go:91:104@[eaad597b] appServerThreadInfo.
 type ThreadInfo struct {
+	SessionID      string        `json:"sessionId"`
 	ThreadSource   string        `json:"threadSource"`
 	Name           string        `json:"name"`
 	ID             string        `json:"id"`

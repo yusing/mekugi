@@ -14,6 +14,9 @@ func resolve(tree *Tree, caller *Member, target string) (*Member, error) {
 		return nil, errors.New("empty task target")
 	}
 	if member := tree.Members[target]; member != nil {
+		if member.Parent == "" && member.Thread != tree.Root {
+			return nil, errors.New("target is a previous root branch")
+		}
 		return member, nil
 	}
 	candidate := TaskPath(target)
@@ -21,7 +24,7 @@ func resolve(tree *Tree, caller *Member, target string) (*Member, error) {
 		candidate = caller.Task + "/" + candidate
 	}
 	for _, member := range tree.Members {
-		if member.Task == candidate {
+		if member.Task == candidate && (member.Parent != "" || member.Thread == tree.Root) {
 			return member, nil
 		}
 	}
