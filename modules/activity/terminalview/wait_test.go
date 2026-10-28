@@ -45,6 +45,13 @@ func TestWaitProgressSanitizesHostText(t *testing.T) {
 	}
 }
 
+func TestUISnapshotAgentDisplayNames(t *testing.T) {
+	var p activityui.Painter
+	rows := []string{p.Agent("agent:main"), p.Agent("agent:main/worker/reviewer")}
+	rows = append(rows, p.Block(activityui.Block{Kind: "progress", Body: "Waiting for", WaitTargets: []activityui.WaitTarget{{Name: "agent:main/worker/reviewer"}}}, 80)...)
+	uisnapshot.Assert(t, "testdata/snapshots/agent_display_names.txt", strings.Join(rows, "\n"))
+}
+
 func TestUISnapshotWaitTargetDisclosure(t *testing.T) {
 	block := activityui.Block{Kind: "progress", Body: "Waiting for"}
 	for _, name := range []string{"one", "two", "three", "four", "five"} {

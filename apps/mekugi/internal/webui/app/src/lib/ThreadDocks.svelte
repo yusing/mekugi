@@ -53,7 +53,8 @@
                 </div>
                 {#if process.Agent && process.Agent !== "/root"}<span
                     class="min-w-0 max-w-[30%] truncate text-small text-muted"
-                    title={process.Agent}><AgentName name={process.Agent} current="" quiet /></span
+                    title={stream.label(process.Agent)}
+                    ><AgentName name={process.Agent} current="" quiet /></span
                   >{/if}
                 <Button
                   variant="quiet"

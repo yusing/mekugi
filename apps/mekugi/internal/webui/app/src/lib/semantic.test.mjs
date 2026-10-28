@@ -41,6 +41,9 @@ test("agent labels retain canonical display names before roster metadata arrives
   assert.equal(stream.label("Main"), "main");
   assert.equal(stream.label("/root"), "main");
   assert.equal(stream.label("/root/worker/reviewer"), "worker/reviewer");
+  assert.equal(stream.label("agent:main"), "main");
+  assert.equal(stream.label("agent:main/worker/reviewer"), "worker/reviewer");
+  assert.equal(stream.label("agent:mainland/worker"), "agent:mainland/worker");
   assert.equal(stream.label("unknown"), "unknown");
   stream.session = { thread: "delegate-thread", caller: "/root/delegate" };
   stream.roster = {
@@ -55,6 +58,15 @@ test("agent labels retain canonical display names before roster metadata arrives
 });
 
 test("roster activity uses observed progress and collapsed reasoning labels", () => {
+  assert.deepEqual(
+    doing({
+      kind: "progress",
+      values: [
+        { body: "Waiting for", kind: "progress", waits: [{ name: "agent:main/worker/reviewer" }] },
+      ],
+    }),
+    { verb: "", html: "Waiting for worker/reviewer" },
+  );
   assert.deepEqual(
     doing({ kind: "progress", values: [{ kind: "progress", body: "Connecting to provider" }] }),
     { verb: "", html: "Connecting to provider" },

@@ -8,8 +8,11 @@ import "strings"
 // nested). Model-visible text keeps canonical paths, since agents address
 // each other by them.
 func AgentDisplayName(name string) string {
-	if name == "/root" || name == "Main" {
+	if name == "/root" || name == "agent:main" || name == "Main" {
 		return "main"
+	}
+	if child, ok := strings.CutPrefix(name, "agent:main/"); ok {
+		return child
 	}
 	return strings.TrimPrefix(name, "/root/")
 }

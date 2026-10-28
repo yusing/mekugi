@@ -666,7 +666,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	frame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
 		{Facts: activitypresentation.Facts{Seq: 2, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "5s"}}, Revision: 1},
 		{Facts: activitypresentation.Facts{Seq: 3, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitReason: "paused"}}, Revision: 1},
-		{Facts: activitypresentation.Facts{Seq: 4, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/one"}, {Name: "/root/two"}, {Name: "/root/three"}, {Name: "/root/four"}, {Name: "/root/five"}}}}, Revision: 1},
+		{Facts: activitypresentation.Facts{Seq: 4, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/one"}, {Name: "agent:main/two"}, {Name: "agent:main/three"}, {Name: "agent:main/four"}, {Name: "agent:main/five"}}}}, Revision: 1},
 		{Facts: activitypresentation.Facts{Seq: 5, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "all"}}}}, Revision: 1},
 	}}
 	for i := range frame.Main.Entries {

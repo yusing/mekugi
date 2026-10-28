@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
-  import { stateLabel, worked } from "./agents";
+  import { agentDisplayName, stateLabel, worked } from "./agents";
   import type { InitialInput } from "./attachments";
   import Composer from "./Composer.svelte";
   import AutoPage from "./AutoPage.svelte";
@@ -139,7 +139,7 @@
           (stream.roster.next && !stream.unavailableAgents.includes(view.agent)
             ? {
                 name: view.agent,
-                label: view.agent.replace(/^\/root\//, ""),
+                label: agentDisplayName(view.agent),
                 state: "idle" as const,
                 depth: 0,
                 thread: undefined,

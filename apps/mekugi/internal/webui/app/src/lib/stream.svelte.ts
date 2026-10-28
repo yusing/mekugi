@@ -1,4 +1,4 @@
-import { roleColor } from "./agents";
+import { agentDisplayName, roleColor } from "./agents";
 import type { Machine } from "./hub.svelte";
 import { errorText, TransportError, type Connection, type RPCMethod } from "./transport";
 import type {
@@ -561,9 +561,7 @@ export class Stream {
   label(name: string | undefined): string {
     if (!name) return "main";
     if (name === "Main") name = this.session?.caller || "/root";
-    return (
-      this.byName.get(name)?.label ?? (name === "/root" ? "main" : name.replace(/^\/root\//, ""))
-    );
+    return this.byName.get(name)?.label ?? agentDisplayName(name);
   }
 
   agent(name: string | undefined): Agent | undefined {

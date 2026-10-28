@@ -111,6 +111,15 @@ func TestWaitingRosterProjection(t *testing.T) {
 	}
 }
 
+func TestRosterAgentDisplayNames(t *testing.T) {
+	for name, label := range map[string]string{"agent:main": "main", "agent:main/worker/reviewer": "worker/reviewer"} {
+		rows := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: name}}}}})
+		if got := rows.Agents[0]; got.Name != name || got.Label != label {
+			t.Fatalf("roster agent = %+v, want identity %q and label %q", got, name, label)
+		}
+	}
+}
+
 func TestRosterActivityUsesSharedSummary(t *testing.T) {
 	for _, kind := range []string{"progress", "reasoning"} {
 		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Kind: kind, Text: "Checking callers", Observed: time.Unix(100, 0)}}
