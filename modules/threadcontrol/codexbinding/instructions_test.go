@@ -244,6 +244,18 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 			if err != nil || len(passive) != 1 || !strings.HasPrefix(passive[0].Text, tc.want+"\n\n") || !strings.Contains(passive[0].Text, identity) {
 				t.Fatalf("retained instruction projection = %+v, %v", passive, err)
 			}
+			for _, projection := range []string{replacements[0].Text, passive[0].Text} {
+				for _, required := range []string{
+					"When spawning with fork_turns=none, supply preload for known files or skills the child needs to begin.",
+					"exact source content before the first inference, avoiding discovery/read turns without inheriting unrelated parent history",
+					"Select only startup context relevant to the assignment; AGENTS.md is host-loaded.",
+					"Omit preload for full-history forks or when no startup sources are known.",
+				} {
+					if strings.Count(projection, required) != 1 {
+						t.Fatalf("preload guidance must appear once: missing or duplicated %q in %s", required, projection)
+					}
+				}
+			}
 			member, _ = service.Member(thread)
 			if member.Settings.Model != "old-model" {
 				t.Fatal("instruction projection changed frozen preparation")

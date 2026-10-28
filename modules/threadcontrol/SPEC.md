@@ -120,6 +120,12 @@ one failed source does not discard the others. Completed capture survives resume
 and inherited history without rereading. Compaction retires the initial preload
 when its assignment leaves context and selects subsequent reloads normally.
 
+Collaboration guidance directs spawning agents to preload known, assignment-relevant
+startup files and skills for fresh children. This supplies exact source content at
+the first inference without child discovery/read turns or unrelated parent history.
+Agents omit preload for full-history forks or when no startup sources are known,
+and leave `AGENTS.md` to the host.
+
 Permission profiles remain complete, including filesystem deny rules and network
 policy. Creation that cannot express them starts no work; the first turn applies
 the captured full policy. Host-confirmed settings are compared before exposing a
