@@ -127,8 +127,6 @@ type workspaceSnapshotRepo struct {
 	objects  string // the real repository's object directory
 	seed     string // the real repository's index
 	gate     chan struct{}
-	// finalize serializes snapshot comparisons and their claims.
-	finalize sync.Mutex
 	// snapshots counts refreshes since the store size was last checked.
 	snapshots int
 
@@ -233,17 +231,6 @@ func (s *Workspaces) Checkpoint(ctx context.Context, workspace string) string {
 		return ""
 	}
 	return tree
-}
-
-// serialize holds the workspace's comparison step until the returned
-// function is called.
-func (s *Workspaces) Serialize(workspace string) func() {
-	repo := s.repo(workspace)
-	if repo == nil {
-		return func() {}
-	}
-	repo.finalize.Lock()
-	return repo.finalize.Unlock
 }
 
 func (r *workspaceSnapshotRepo) snapshot(ctx context.Context) (string, error) {

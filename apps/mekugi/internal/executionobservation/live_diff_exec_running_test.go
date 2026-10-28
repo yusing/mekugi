@@ -164,9 +164,9 @@ func TestExecRunningPreviewExcludesVCSScope(t *testing.T) {
 			registry.open(window)
 			defer registry.close("vcs")
 			registry.preview("vcs", *observation, broker, repo, "thread", "/root", nil)
-			registry.mu.Lock()
+			registry.state().mu.Lock()
 			watching := window.previewCancel != nil
-			registry.mu.Unlock()
+			registry.state().mu.Unlock()
 			if watching {
 				t.Fatal("diagnostic VCS scope opened a live diff watch")
 			}

@@ -46,3 +46,25 @@ func TestExecWindowDisjointRootsAndBackground(t *testing.T) {
 		t.Fatalf("running old-turn window should be a background label, not overlap: %+v", view)
 	}
 }
+
+func TestExecWindowRuntimeFamily(t *testing.T) {
+	root := t.TempDir()
+	parent := &Windows{}
+	child := parent.ForRuntime()
+	runtimes := []*Windows{parent, child, parent.ForRuntime(), child.ForRuntime()}
+	names := []string{"parent", "child", "sibling", "grandchild"}
+	for i, runtime := range runtimes {
+		runtime.open(&execWindow{ref: names[i], thread: names[i], roots: []string{root}, paths: []string{filepath.Join(root, names[i])}})
+	}
+	independent := &Windows{}
+	independent.open(&execWindow{ref: "independent", roots: []string{root}})
+	if view := independent.close("independent"); len(view.overlaps) != 0 {
+		t.Fatalf("independent family shared windows: %+v", view)
+	}
+	for i, runtime := range runtimes {
+		view := runtime.close(names[i])
+		if len(view.overlaps) != len(runtimes)-1 || len(view.excluded) != len(runtimes)-1 || slices.Contains(view.overlaps, names[i]) {
+			t.Fatalf("runtime %s lost family overlap: %+v", names[i], view)
+		}
+	}
+}

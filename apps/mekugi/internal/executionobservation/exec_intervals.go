@@ -159,13 +159,13 @@ func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, patches [
 		}
 	}
 	var candidates []execIntervalCut
-	t.execWindows.mu.Lock()
-	for _, window := range t.execWindows.windows {
+	t.execWindows.state().mu.Lock()
+	for _, window := range t.execWindows.state().windows {
 		if window.ref != patchCall && window.group != t.execGroup && window.closed.IsZero() && window.scope.Store != nil {
 			candidates = append(candidates, execIntervalCut{writer: window.ref, scope: window.scope})
 		}
 	}
-	t.execWindows.mu.Unlock()
+	t.execWindows.state().mu.Unlock()
 	for _, cut := range candidates {
 		unlock := t.execWindows.lockIntervals([]string{cut.writer})
 		err := t.splitExecInterval(patchCall, boundaries, cut)
@@ -178,10 +178,10 @@ func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, patches [
 }
 
 func (t *mekugiResponseTransform) splitExecInterval(patchCall string, boundaries []changecapture.File, cut execIntervalCut) error {
-	t.execWindows.mu.Lock()
+	t.execWindows.state().mu.Lock()
 	window := t.execWindows.find(cut.writer)
 	active := window != nil && window.closed.IsZero()
-	t.execWindows.mu.Unlock()
+	t.execWindows.state().mu.Unlock()
 	if !active {
 		return nil
 	}
@@ -225,11 +225,11 @@ func (t *mekugiResponseTransform) splitExecInterval(patchCall string, boundaries
 	}); err != nil {
 		return err
 	}
-	t.execWindows.mu.Lock()
+	t.execWindows.state().mu.Lock()
 	if window := t.execWindows.find(patchCall); window != nil {
 		window.cuts = append(window.cuts, cut)
 	}
-	t.execWindows.mu.Unlock()
+	t.execWindows.state().mu.Unlock()
 	return nil
 }
 
@@ -237,12 +237,12 @@ func (p *Preparer) resumeExecIntervals(ctx context.Context, workspace, patchCall
 	if p.execWindows == nil || len(endpoints) == 0 {
 		return nil
 	}
-	p.execWindows.mu.Lock()
+	p.execWindows.state().mu.Lock()
 	var cuts []execIntervalCut
 	if window := p.execWindows.find(patchCall); window != nil {
 		cuts = slices.Clone(window.cuts)
 	}
-	p.execWindows.mu.Unlock()
+	p.execWindows.state().mu.Unlock()
 	for _, cut := range cuts {
 		unlock := p.execWindows.lockIntervals([]string{cut.writer})
 		err := resumeExecInterval(ctx, p.changeSource, workspace, cut, endpoints)

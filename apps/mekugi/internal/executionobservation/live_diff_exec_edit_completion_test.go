@@ -83,9 +83,9 @@ func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
 	report := hub.begin(t, [3]string{"thread", "turn", "call"}, observation.Commands[0].Command)
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0})
 	hub.await(t, [3]string{"thread", "turn", "call"}, func(view segments.Report) bool { return view.LastStarted() == 0 })
-	registry.mu.Lock()
+	registry.state().mu.Lock()
 	state := registry.find("edit-then-test").tracking.state()
-	registry.mu.Unlock()
+	registry.state().mu.Unlock()
 	if !state.tracked || state.settled {
 		t.Fatalf("fixture must retain an unfinished writer report: %+v", state)
 	}
@@ -120,10 +120,10 @@ func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
 	if completed.Tool != "python3" || completed.Status != previewmodel.PreviewRunning || completed.Footer != "observed edit" || len(completed.Files) != 1 {
 		t.Fatalf("edit completion lost the observed content: %+v", completed)
 	}
-	registry.mu.Lock()
+	registry.state().mu.Lock()
 	window := registry.find("edit-then-test")
 	open := window != nil && window.closed.IsZero()
-	registry.mu.Unlock()
+	registry.state().mu.Unlock()
 	if !open {
 		t.Fatal("display completion closed the host observation window before test outcome")
 	}

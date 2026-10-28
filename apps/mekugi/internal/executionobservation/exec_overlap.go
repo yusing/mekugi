@@ -24,6 +24,7 @@ const maxExecWindows = 1024
 // after a restart, records carry no overlap tags for windows opened before it.
 type execWindow struct {
 	intervalMu sync.Mutex
+	owner      *Windows
 	scope      changes.Scope
 	cuts       []execIntervalCut
 	ref        string
@@ -49,10 +50,85 @@ type execWindow struct {
 }
 
 type Windows struct {
-	mu      sync.Mutex
-	windows []*execWindow
+	local  windowRegistry
+	shared *windowRegistry
 	// Reports is supplied during invocation setup, before observations begin.
 	Reports *segments.Observer
+}
+
+type windowRegistry struct {
+	mu         sync.Mutex
+	windows    []*execWindow
+	finalizing map[string]*workspaceFinalization
+}
+
+type workspaceFinalization struct {
+	mu    sync.Mutex
+	users int
+}
+
+// ForRuntime shares overlap exclusions, interval boundaries and snapshot claims
+// with a descendant while keeping its command-report observer runtime-local.
+func (r *Windows) ForRuntime() *Windows {
+	if r == nil {
+		return &Windows{}
+	}
+	return &Windows{shared: r.state()}
+}
+
+func (r *Windows) state() *windowRegistry {
+	if r.shared != nil {
+		return r.shared
+	}
+	return &r.local
+}
+
+// serialize coordinates close/compare/claim across runtime-local checkpoint
+// owners. Entries live only while a comparison is running or waiting.
+func (r *Windows) serialize(workspace string) func() {
+	if r == nil {
+		return func() {}
+	}
+	state := r.state()
+	state.mu.Lock()
+	if state.finalizing == nil {
+		state.finalizing = make(map[string]*workspaceFinalization)
+	}
+	lock := state.finalizing[workspace]
+	if lock == nil {
+		lock = &workspaceFinalization{}
+		state.finalizing[workspace] = lock
+	}
+	lock.users++
+	state.mu.Unlock()
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		state.mu.Lock()
+		lock.users--
+		if lock.users == 0 {
+			delete(state.finalizing, workspace)
+		}
+		state.mu.Unlock()
+	}
+}
+
+// Retire ends this runtime's observation windows after its processes and
+// observations have stopped. It does not invent terminal results or captures.
+func (r *Windows) Retire() {
+	if r == nil {
+		return
+	}
+	state := r.state()
+	state.mu.Lock()
+	var refs []string
+	for _, window := range state.windows {
+		if window.owner == r && window.closed.IsZero() {
+			refs = append(refs, window.ref)
+		}
+	}
+	state.mu.Unlock()
+	r.close(refs...)
 }
 
 // Only windows sharing a writer serialize interval publication. Never hold the
@@ -62,14 +138,14 @@ func (r *Windows) lockIntervals(refs []string) func() {
 		return func() {}
 	}
 	refs = slices.Sorted(slices.Values(refs))
-	r.mu.Lock()
+	r.state().mu.Lock()
 	var windows []*execWindow
 	for _, ref := range slices.Compact(refs) {
 		if window := r.find(ref); window != nil {
 			windows = append(windows, window)
 		}
 	}
-	r.mu.Unlock()
+	r.state().mu.Unlock()
 	for _, window := range windows {
 		window.intervalMu.Lock()
 	}
@@ -81,7 +157,7 @@ func (r *Windows) lockIntervals(refs []string) func() {
 }
 
 func (r *Windows) find(ref string) *execWindow {
-	for _, window := range r.windows {
+	for _, window := range r.state().windows {
 		if window.ref == ref {
 			return window
 		}
@@ -95,30 +171,31 @@ func (r *Windows) open(window *execWindow, commands ...commandanalysis.Command) 
 	if r == nil {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.state().mu.Lock()
+	defer r.state().mu.Unlock()
 	if r.find(window.ref) != nil {
 		return
 	}
 	window.tracking = newExecPreviewTrack(r.Reports, window.thread, window.turn, commands)
+	window.owner = r
 	window.opened = time.Now()
-	r.windows = append(r.windows, window)
+	r.state().windows = append(r.state().windows, window)
 	r.prune()
 }
 
 // prune drops closed windows that no open window can still overlap.
 func (r *Windows) prune() {
 	oldest := time.Now()
-	for _, window := range r.windows {
+	for _, window := range r.state().windows {
 		if window.closed.IsZero() && window.opened.Before(oldest) {
 			oldest = window.opened
 		}
 	}
-	r.windows = slices.DeleteFunc(r.windows, func(window *execWindow) bool {
+	r.state().windows = slices.DeleteFunc(r.state().windows, func(window *execWindow) bool {
 		return !window.closed.IsZero() && window.closed.Before(oldest)
 	})
-	if len(r.windows) > maxExecWindows {
-		for _, window := range r.windows[:len(r.windows)-maxExecWindows] {
+	if len(r.state().windows) > maxExecWindows {
+		for _, window := range r.state().windows[:len(r.state().windows)-maxExecWindows] {
 			if window.tracking != nil {
 				window.tracking.Close()
 			}
@@ -126,7 +203,7 @@ func (r *Windows) prune() {
 				window.previewCancel()
 			}
 		}
-		r.windows = r.windows[len(r.windows)-maxExecWindows:]
+		r.state().windows = r.state().windows[len(r.state().windows)-maxExecWindows:]
 	}
 }
 
@@ -135,8 +212,8 @@ func (r *Windows) setSession(ref, session string) {
 	if r == nil {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.state().mu.Lock()
+	defer r.state().mu.Unlock()
 	if window := r.find(ref); window != nil {
 		window.session = session
 	}
@@ -148,9 +225,9 @@ func (r *Windows) markBackground(thread, turn string) {
 	if r == nil || turn == "" {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, window := range r.windows {
+	r.state().mu.Lock()
+	defer r.state().mu.Unlock()
+	for _, window := range r.state().windows {
 		if window.thread == thread && window.turn != "" && window.turn != turn && window.closed.IsZero() && window.session != "" {
 			window.background = true
 			if window.previewCancel != nil {
@@ -198,8 +275,8 @@ func (r *Windows) view(refs []string, complete bool) execWindowView {
 	if r == nil {
 		return view
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.state().mu.Lock()
+	defer r.state().mu.Unlock()
 	now := time.Now()
 	var selves []*execWindow
 	for _, ref := range refs {
@@ -226,7 +303,7 @@ func (r *Windows) view(refs []string, complete bool) execWindowView {
 	// A background window, or one lost to a restart or eviction, may span
 	// unrelated work, so it takes no snapshot comparison.
 	view.snapshot = len(selves) == len(refs) && !slices.ContainsFunc(selves, func(window *execWindow) bool { return window.background })
-	for _, other := range r.windows {
+	for _, other := range r.state().windows {
 		if slices.Contains(refs, other.ref) {
 			continue
 		}
@@ -262,15 +339,15 @@ func (r *Windows) claim(refs []string, states changecapture.Claims) {
 	if r == nil || len(states) == 0 {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.state().mu.Lock()
+	defer r.state().mu.Unlock()
 	var roots []string
 	for _, ref := range refs {
 		if window := r.find(ref); window != nil {
 			roots = append(roots, window.roots...)
 		}
 	}
-	for _, other := range r.windows {
+	for _, other := range r.state().windows {
 		if slices.Contains(refs, other.ref) || !other.closed.IsZero() || !execRootsMeet(other.roots, roots) {
 			continue
 		}
@@ -292,9 +369,9 @@ func (r *Windows) StopTurnPreviews(thread, turn string) {
 	if r == nil || turn == "" {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, window := range r.windows {
+	r.state().mu.Lock()
+	defer r.state().mu.Unlock()
+	for _, window := range r.state().windows {
 		if window.thread == thread && window.turn == turn && window.previewCancel != nil {
 			window.previewCancel()
 			window.previewCancel = nil

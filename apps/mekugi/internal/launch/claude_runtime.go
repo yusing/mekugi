@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -84,7 +83,7 @@ func (e *threadExecution) resumeClaude(ctx context.Context, member *control.Memb
 }
 
 func (e *threadExecution) startClaude(ctx context.Context, parent, resume string, settings control.Settings, info control.ThreadInfo, fork *claudeFork) (control.Receipt, error) {
-	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, setup: e.setup, driver: e.driver, approvals: e.approvals, retained: e.retained}
+	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, setup: e.setup, driver: e.driver, approvals: e.approvals, retained: e.retained, windows: e.windows.ForRuntime()}
 	id, err := e.hub.StartPrepared(ctx, parent, resume, settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		return child.runClaude(runtime, api, parent, resume != "", settings, info, fork)
 	})
@@ -117,6 +116,7 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 	if e.retained.Store == nil || e.setup == nil || e.driver == nil {
 		return errors.New("Claude runtime has no admitted retained execution owners")
 	}
+	defer e.windows.Retire()
 	policy, err := claude.CompilePolicy(settings.ApprovalPolicy, settings.ApprovalsReviewer)
 	if err != nil {
 		return err
@@ -203,7 +203,7 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 	}
 	updatesCtx, stopUpdates := context.WithCancel(ctx)
 	defer stopUpdates()
-	bridge := &claudeBridge{ctx: updatesCtx, stopUpdates: stopUpdates, execution: e, info: info, settings: settings, selected: e.retained, session: selected, owners: owners, checkpoints: checkpoints, windows: &executionobservation.Windows{}, policy: policy,
+	bridge := &claudeBridge{ctx: updatesCtx, stopUpdates: stopUpdates, execution: e, info: info, settings: settings, selected: e.retained, session: selected, owners: owners, checkpoints: checkpoints, windows: e.windows, policy: policy,
 		captures: make(map[string]*claudeToolCapture), changes: make(chan []changes.Update, 64)}
 	defer bridge.discard()
 	client, err := claude.Start(ctx, claude.Config{BunPath: bun, ClaudePath: nativeExecutable, Workspace: settings.Workspace, Env: environment, Options: encodedOptions, Tools: tools, OnRequest: bridge.request})

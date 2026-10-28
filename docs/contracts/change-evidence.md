@@ -131,8 +131,10 @@ rows, never current workspace contents. Net composition and mutation grouping
 remain compact so wider review context cannot join independent replayable edits.
 
 Before/after evidence cannot separate concurrent user, hook or process writes
-without host per-write facts. Overlapping calls attribute snapshot differences
-to the first finisher; remaining calls compare only later differences, so an
+without host per-write facts. Admitted parent and descendant runtimes share
+capture coordination across backends: each overlapping call's named targets are
+excluded from the others' workspace fallback. Overlapping calls attribute unnamed
+snapshot differences to the first finisher; remaining calls compare only later differences, so an
 effect is recorded once. Siblings can share a record with overlap diagnostics.
 When a later native patch supplies an observed boundary inside an open named
 writer, capture retains separate writer-before-patch, patch, and writer-after-patch

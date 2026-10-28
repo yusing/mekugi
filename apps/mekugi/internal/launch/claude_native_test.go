@@ -249,7 +249,7 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
 			}
 		}
 	}()
-	execution := &threadExecution{hub: hub, shared: b.execution.shared, driver: driver, workers: workers, retained: parentScope, approvals: approvals, setup: &threadSetup{environment: environment}}
+	execution := &threadExecution{hub: hub, shared: b.execution.shared, driver: driver, workers: workers, retained: parentScope, windows: b.windows, approvals: approvals, setup: &threadSetup{environment: environment}}
 	audience := sessioncontrol.NewAudience(nil)
 	defer audience.Close()
 	if err := driver.Connect(execution, audience); err != nil {
@@ -259,6 +259,20 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
 	settings.Model = "claude:claude-sonnet-4-6"
 	settings.DeveloperInstructions = new("selected-native-role-fixture")
 	settings.ApprovalPolicy, settings.ApprovalsReviewer = jsontext.Value(approval), reviewer
+	// Keep a parent shell window open while the real child runtime performs its
+	// native Write. Both files exist before the parent reaches terminal capture.
+	concurrent := executionobservation.PrepareShell(ctx, parentScope, b.owners.Changes.Service, b.checkpoints, b.owners.Recovery, nil, b.windows, nil, nil,
+		executionobservation.ShellInput{Thread: "parent", Namespace: "parent", Workspace: workspace, Caller: "/root", Command: "printf 'concurrent parent\\n' > concurrent-parent.txt", Shell: "bash"})
+	if concurrent == nil {
+		t.Fatal("concurrent parent edit was not observed")
+	}
+	concurrent.Begin(nil)
+	defer concurrent.Discard()
+	command = exec.CommandContext(ctx, execTrackShellExecutable(t, "bash"), "-c", "printf 'concurrent parent\\n' > concurrent-parent.txt")
+	command.Dir = workspace
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("concurrent parent write: %s, %v", output, err)
+	}
 	result, err := driver.SpawnPrepared(ctx, control.Identity{Thread: "parent", Session: "parent-session", Turn: "parent-turn", Call: "native-spawn", Item: "native-spawn"}, threadbinding.PreparedChild{TaskName: "native", Message: "Execute the requested checks and finish.", Settings: settings})
 	if err != nil {
 		t.Fatalf("prepared native child: %+v %v", result, err)
@@ -310,6 +324,17 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
 	}
 	if content, err := os.ReadFile(filepath.Join(workspace, "native-child.txt")); err != nil || string(content) != "native child evidence\n" {
 		t.Fatalf("native Write effect: %q %v", content, err)
+	}
+	if err := concurrent.Complete(binding.ToolResult{Tool: "userShell", CallID: "concurrent-parent", Status: "completed", ExitCode: new(0)}, ""); err != nil {
+		t.Fatal(err)
+	}
+	parentDiff, err := b.owners.Changes.Service.Read(ctx, parentScope, changes.Query{Workspace: workspace, Mine: true})
+	if err != nil || !strings.Contains(parentDiff, "+concurrent parent") || strings.Contains(parentDiff, "native-child.txt") {
+		t.Fatalf("cross-runtime parent capture: %s, %v", parentDiff, err)
+	}
+	childDiff, err := b.owners.Changes.Service.Read(ctx, childScope, changes.Query{Workspace: workspace, Mine: true})
+	if err != nil || !strings.Contains(childDiff, "+native child evidence") || strings.Contains(childDiff, "concurrent-parent.txt") {
+		t.Fatalf("cross-runtime child capture: %s, %v", childDiff, err)
 	}
 	response, err := server.Client().Get(base + "/_fixture/requests")
 	if err != nil {

@@ -169,7 +169,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 	if observation.Tree != "" && selected.Store != nil {
 		// Closing, comparing, and claiming are one step per workspace, so
 		// concurrent finalizations cannot both record one effect.
-		defer snapshots.Serialize(workspace)()
+		defer windows.serialize(workspace)()
 	}
 	view := windows.close(refs...)
 	for _, path := range view.created {

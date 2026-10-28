@@ -264,6 +264,12 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		calls = service.Calls()
 		audience = sessioncontrol.NewAudience(func(category, message string) { issues.AddThreadNotice("", "", category, message) })
 		windows = &executionobservation.Windows{}
+		if threads != nil {
+			if threads.windows == nil {
+				threads.windows = windows
+			}
+			windows = threads.windows
+		}
 		if titleGenerator != nil {
 			titleGenerator.usage = usage
 		}
@@ -289,6 +295,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}
 		defer func() {
 			calls.StopAdmission()
+			windows.Retire()
 			if reportObserver != nil {
 				reportObserver.Close()
 			}

@@ -34,5 +34,13 @@ func TestExecWindowRepeatedOpenKeepsOneReportOwner(t *testing.T) {
 	if len(state.Matches) != 1 || state.Matches[0].Ambiguous {
 		t.Fatalf("repeated open changed report ownership: %+v", state)
 	}
-
+	child := registry.ForRuntime()
+	childWindow := &execWindow{ref: "child", thread: "thread", turn: "turn"}
+	child.open(childWindow, command)
+	if childWindow.tracking != nil || child.Reports != nil {
+		t.Fatal("child inherited another runtime's report subscription")
+	}
+	if state := first.tracking.State(); len(state.Matches) != 1 || state.Matches[0].Ambiguous {
+		t.Fatalf("child open changed parent report ownership: %+v", state)
+	}
 }

@@ -8,7 +8,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/activitydetail"
@@ -204,9 +206,10 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 	isolateSnapshotGit(t)
 	f := newMChangesSliceFixture(t, "snapshot-overlap")
 	proxy := testProxyWithStore(f.store, &Windows{})
+	sibling := testProxyWithStore(f.store, proxy.execWindows.ForRuntime())
 	target := filepath.Join(f.workspace, "shared.txt")
 	writeTestFile(t, target, "one\n")
-	observe := func(ref string) mekugiHistory {
+	observe := func(proxy *Preparer, ref string) mekugiHistory {
 		tree := f.store.snapshots.Checkpoint(f.ctx, f.workspace)
 		if tree == "" {
 			t.Fatal("no workspace checkpoint")
@@ -215,7 +218,7 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 		return mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
 			ExecObservation: &changecapture.Observation{Commands: []commandanalysis.Command{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
 	}
-	finalize := func(ref string, history mekugiHistory) mekugiHistory {
+	finalize := func(proxy *Preparer, ref string, history mekugiHistory) mekugiHistory {
 		if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
 			t.Fatal(err)
 		}
@@ -225,12 +228,12 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 		}
 		return record
 	}
-	long := observe("long")
-	short := observe("short")
+	long := observe(proxy, "long")
+	short := observe(sibling, "short")
 	writeTestFile(t, target, "two\n")
-	first := finalize("short", short)
+	first := finalize(sibling, "short", short)
 	writeTestFile(t, target, "three\n")
-	second := finalize("long", long)
+	second := finalize(proxy, "long", long)
 	if len(first.ReviewFiles) != 1 || !strings.Contains(first.ReviewFiles[0].Diff, "-one") || !strings.Contains(first.ReviewFiles[0].Diff, "+two") {
 		t.Fatalf("first record: %+v", first.ReviewFiles)
 	}
@@ -240,6 +243,83 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 	net, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{first.ChangeID, second.ChangeID}, View: "net"})
 	if err != nil || !strings.Contains(net, "-one") || !strings.Contains(net, "+three") {
 		t.Fatalf("overlapping records do not compose: %q, %v", net, err)
+	}
+}
+
+func TestWorkspaceSnapshotConcurrentRuntimesRecordAnEffectOnce(t *testing.T) {
+	isolateSnapshotGit(t)
+	f := newMChangesSliceFixture(t, "snapshot-runtime-overlap")
+	parent := testProxyWithStore(f.store, &Windows{})
+	child := testProxyWithStore(f.store, parent.execWindows.ForRuntime())
+	var err error
+	child.snapshots, err = testCapture(t, f.store.directory).Checkpoints(f.store.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(f.workspace, "unnamed.txt")
+	writeTestFile(t, target, "before\n")
+	proxies := []*Preparer{parent, child}
+	refs := []string{"parent", "child"}
+	histories := make([]mekugiHistory, len(proxies))
+	for i, proxy := range proxies {
+		tree := proxy.snapshots.Checkpoint(f.ctx, f.workspace)
+		if tree == "" {
+			t.Fatal("no workspace checkpoint")
+		}
+		proxy.execWindows.open(&execWindow{ref: refs[i], roots: []string{f.workspace}})
+		histories[i] = mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
+			ExecObservation: &changecapture.Observation{Commands: []commandanalysis.Command{{Command: refs[i]}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
+	}
+	writeTestFile(t, target, "after\n")
+	// Admit both finalizers before releasing their shared comparison boundary.
+	// Each uses its own checkpoint owner, as independently launched runtimes do.
+	var workers sync.WaitGroup
+	defer workers.Wait()
+	release := sync.OnceFunc(parent.execWindows.serialize(f.workspace))
+	defer release()
+	for i, proxy := range proxies {
+		workers.Go(func() {
+			if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, f.workspace,
+				[]execCompletion{{callID: refs[i], history: histories[i], result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		state := parent.execWindows.state()
+		state.mu.Lock()
+		waiting := state.finalizing[f.workspace].users == len(proxies)+1
+		state.mu.Unlock()
+		if waiting {
+			break
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("runtime finalizers did not share the workspace comparison boundary")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	release()
+	workers.Wait()
+	effects := 0
+	for _, ref := range refs {
+		record, _, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID(ref, false))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, file := range record.ReviewFiles {
+			if strings.Contains(file.Diff, "+after") {
+				effects++
+			}
+		}
+	}
+	if effects != 1 {
+		t.Fatalf("one physical edit captured %d times", effects)
+	}
+	if len(parent.execWindows.state().finalizing) != 0 {
+		t.Fatal("completed comparisons retained workspace locks")
 	}
 }
 

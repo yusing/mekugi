@@ -26,8 +26,8 @@ func (r *Windows) preview(ref string, observation changecapture.Observation, bro
 	if len(observation.Files) == 0 && r.Reports == nil {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.state().mu.Lock()
+	defer r.state().mu.Unlock()
 	window := r.find(ref)
 	if window == nil || window.previewCancel != nil || !window.closed.IsZero() || window.background {
 		return

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
@@ -24,6 +25,7 @@ type threadExecution struct {
 	driver    *threadbinding.Driver
 	approvals *sessioncontrol.DelegateApprovals
 	retained  changes.Scope
+	windows   *executionobservation.Windows
 	tools     []binding.MCPServer
 	setup     *threadSetup
 	start     *sessioncontrol.PreparedThread
@@ -92,7 +94,7 @@ func (e *threadExecution) Resume(ctx context.Context, thread string) (control.Ru
 		}
 		parent = ancestor.Parent
 	}
-	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, setup: e.setup, start: &sessioncontrol.PreparedThread{Parent: member.Parent, Settings: settings, Resume: &control.ThreadInfo{Thread: thread, Session: member.Session, Path: member.Path}}}
+	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, setup: e.setup, windows: e.windows.ForRuntime(), start: &sessioncontrol.PreparedThread{Parent: member.Parent, Settings: settings, Resume: &control.ThreadInfo{Thread: thread, Session: member.Session, Path: member.Path}}}
 	id, err := e.hub.StartPrepared(ctx, parent, thread, settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		_, err := runOwnedInvocation(runtime, nil, nil, api, settings.Workspace, child)
 		return err
@@ -118,7 +120,7 @@ func (e *threadExecution) Create(ctx context.Context, parent, importPath string,
 	if strings.HasPrefix(settings.Model, "claude:") {
 		return e.createClaude(ctx, parent, importPath, settings)
 	}
-	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, setup: e.setup, start: &sessioncontrol.PreparedThread{Parent: parent, Import: importPath, Settings: settings}}
+	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, setup: e.setup, windows: e.windows.ForRuntime(), start: &sessioncontrol.PreparedThread{Parent: parent, Import: importPath, Settings: settings}}
 	id, err := e.hub.StartPrepared(ctx, parent, "", settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		_, err := runOwnedInvocation(runtime, nil, nil, api, settings.Workspace, child)
 		return err
