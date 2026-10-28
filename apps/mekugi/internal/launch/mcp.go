@@ -36,7 +36,8 @@ func openInvocationMCP(ctx context.Context, contributions []binding.MCPServer, e
 		// These are invocation arguments, never writes to the caller's config.
 		// Explicit tool lists override a caller's stale restriction on this owned
 		// server only. Host execution/approval policy is unchanged.
-		overrides = append(overrides, "-c", fmt.Sprintf("mcp_servers.%s={command=%s,args=[\"mcp-bridge\",%s],enabled=true,required=true,enabled_tools=[%s],disabled_tools=[],default_tools_approval_mode=\"approve\"}",
+		// Declare invocation-owned tools eagerly inside the stock exec catalog.
+		overrides = append(overrides, "-c", fmt.Sprintf("mcp_servers.%s={command=%s,args=[\"mcp-bridge\",%s],enabled=true,required=true,enabled_tools=[%s],disabled_tools=[],omit_tools_from=[\"deferred\"],default_tools_approval_mode=\"approve\"}",
 			contribution.Name, strconv.Quote(executable), strconv.Quote(socket), strings.Join(names, ",")))
 	}
 	return overrides, close, nil

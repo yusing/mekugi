@@ -177,6 +177,24 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	}
 	var program, answer, failure string
 	if step == 1 {
+		var descriptions strings.Builder
+		for _, tool := range request.Tools {
+			descriptions.Write(tool)
+		}
+		for _, item := range request.Input {
+			if string(item["type"]) == `"additional_tools"` {
+				descriptions.Write(item["tools"])
+			}
+		}
+		catalog := descriptions.String()
+		for _, name := range []string{"spawn_agent", "list_agents", "inspect", "wait_agent", "send_message", "followup_task", "interrupt_agent"} {
+			if !strings.Contains(catalog, "mcp__threadcontrol__"+name+"(args:") {
+				failure = "initial execution catalog omitted threadcontrol declaration: " + name
+			}
+		}
+		if !strings.Contains(catalog, "task_name: string;") || !strings.Contains(catalog, "message: string;") {
+			failure = "initial execution catalog omitted required spawn arguments"
+		}
 		modeAt := strings.LastIndex(string(body), "<multi_agent_mode>")
 		wantMode := "Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask"
 		if parent {
@@ -516,6 +534,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		// Deliberately differs from max: child configuration must use the raw
 		// catalog's ordinary equivalent, not merely normalize provider requests.
 		model["multi_agent_reasoning_effort"] = "low"
+		model["supports_search_tool"] = true
 		fields := model
 		for _, key := range []string{"model_messages", "multi_agent", "role"} {
 			child, ok := fields[key].(map[string]any)

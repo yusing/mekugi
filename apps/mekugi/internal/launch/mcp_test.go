@@ -48,6 +48,7 @@ func TestInvocationMCPComposedEndpoint(t *testing.T) {
 			Enabled, Required bool
 			EnabledTools      []string `toml:"enabled_tools"`
 			DisabledTools     []string `toml:"disabled_tools"`
+			OmitToolsFrom     []string `toml:"omit_tools_from"`
 			Approval          string   `toml:"default_tools_approval_mode"`
 		} `toml:"mcp_servers"`
 	}
@@ -55,6 +56,9 @@ func TestInvocationMCPComposedEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	selected := config.Servers["threadcontrol"]
+	if !reflect.DeepEqual(selected.OmitToolsFrom, []string{"deferred"}) {
+		t.Fatalf("invocation tools must be declared before inference: %+v", selected)
+	}
 	if selected.Command != bridge || len(selected.Args) != 2 || selected.Args[0] != "mcp-bridge" || !selected.Enabled || !selected.Required || selected.Approval != "approve" || !reflect.DeepEqual(selected.EnabledTools, []string{"list_agents"}) || len(selected.DisabledTools) != 0 {
 		t.Fatalf("invalid invocation configuration: %+v", selected)
 	}

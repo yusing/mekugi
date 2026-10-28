@@ -16,7 +16,10 @@ uncertain operation never permits a blind retry. Session Control owns host reque
 correlation, independently of the logical checkpoint.
 
 Each runtime exposes one authenticated MCP server, `threadcontrol`, through stock
-JavaScript execution. Coordination calls the Mekugi server's typed native-thread
+JavaScript execution. Its invocation configuration requests tool declarations in the
+initial execution catalog, without a discovery turn. Codex's strict third-party
+deferral setting takes precedence when enabled. User-configured MCP servers retain
+their exposure settings. Coordination calls the Mekugi server's typed native-thread
 API for creation, attributed input, interruption and retained-outcome confirmation.
 Session Control translates those semantic operations into backend requests. Its operations replace native collaboration; no native alias or
 fallback remains callable. Only Thread Control records supply coordination history. The Codex
