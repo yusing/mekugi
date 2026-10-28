@@ -25,14 +25,19 @@
   const result = $derived(value.batchExit && !value.code);
   const verb = $derived(result ? "" : (value.verb ?? value.kind ?? ""));
   const exited = $derived(value.exitCode !== undefined && value.exitCode !== 0);
-  const hookFailed = $derived(!exited && failed(value));
+  const labelParts = $derived(parts(value.label ?? ""));
+  // A label ending in "failed", as an MCP call's does, states the outcome the
+  // status column shows for every failed action.
+  const labelFailed = $derived(labelParts.length > 1 && labelParts.at(-1) === "failed");
+  const actionFailed = $derived(!exited && (failed(value) || labelFailed));
   const changes = $derived((value.changes ?? []).filter((c) => !c.footer));
   const footer = $derived(value.changes?.find((c) => c.footer));
   // Labels join their parts with " · " and state diff counts as "+5 −3".
   // Render segments with space instead of punctuation; diff counts keep their
   // colours, while punctuation within code spans remains authored text.
   const label = $derived(
-    parts(value.label ?? "")
+    labelParts
+      .slice(0, labelFailed ? -1 : undefined)
       .map((part) =>
         breakable(toolLabel(part, verb))
           .split(/(<code>[\s\S]*?<\/code>)/)
@@ -128,7 +133,7 @@
       value.running ||
       value.pending ||
       exited ||
-      hookFailed ||
+      actionFailed ||
       !!value.editOutcome ||
       !!value.duration,
   );
@@ -250,10 +255,12 @@
         <Tag>pending</Tag>
       {:else if exited}
         <Tag tone="negative">exit {value.exitCode}</Tag>
-      {:else if hookFailed}
+      {:else if actionFailed}
         <Tag tone="negative">{value.hook?.status ?? "failed"}</Tag>
       {/if}
-      {#if value.editOutcome}<Tag>{value.editOutcome}</Tag>{/if}
+      {#if value.editOutcome}<Tag tone={value.editOutcome === "failed" ? "negative" : "neutral"}
+          >{value.editOutcome}</Tag
+        >{/if}
       {#if value.duration}<span class="text-muted">{duration(value.duration)}</span>{/if}
     </span>{/if}
 

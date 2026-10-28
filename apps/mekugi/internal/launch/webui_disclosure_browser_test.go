@@ -14,6 +14,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
+	"github.com/yusing/mekugi/contracts/observation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
@@ -64,6 +65,8 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 		}
 		publication.Entries = append(publication.Entries, activity.Entry{Facts: content.Facts, Values: content.Values()})
 	}
+	mcp := activity.ItemContent{Facts: activity.Facts{Seq: 15, Agent: "Main", Kind: "tool", Text: activity.MCPText(observation.Item{Server: "plane", Tool: "workitem_relation", Status: "failed"})}}
+	publication.Entries = append(publication.Entries, activity.Entry{Facts: mcp.Facts, Values: mcp.Values()})
 	if err := machine.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Disclosure thread", Workspace: machine.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: publication}); err != nil {
 		t.Fatal(err)
 	}
@@ -102,11 +105,13 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [8,9,11].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"]')) && row(8).innerText.includes('Complete short failure.') && row(11).innerText.includes('Visible hook failure') && [10,12].every(n => row(n)?.querySelector('button[aria-label="Details"]')); })()`)
 			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 				run("screenshot", filepath.Join(artifacts, "disclosures-"+width+"-"+theme+".png"))
-				run("eval", `document.querySelector('[data-entry="13"]').scrollIntoView({block:'end'})`)
+				run("eval", `document.querySelector('[data-entry="15"]').scrollIntoView({block:'end'})`)
 				run("screenshot", filepath.Join(artifacts, "hook-disclosures-"+width+"-"+theme+".png"))
 			}
 		}
 	}
+	// A failed MCP call states its outcome where a failed command does.
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="15"]'); return row?.querySelector('.bg-negative-tint')?.textContent.trim() === 'failed' && row.innerText.split('failed').length === 2; })()`)
 	// Consecutive thoughts share one collapsed row headed by the latest.
 	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="13"]'); return !document.querySelector('[data-entry="14"]') && row?.querySelector('summary')?.textContent.includes('2 thoughts') && row.innerText.includes('Choosing a fix') && !row.innerText.includes('Checking callers'); })()`)
 	run("eval", `document.querySelector('[data-entry="13"]').scrollIntoView({block:'center'})`)
