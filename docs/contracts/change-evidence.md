@@ -54,9 +54,13 @@ JavaScript writes, local VCS operands, and `mchanges apply`/`revert`. Recognized
 RTK wrappers and inline shells preserve the underlying source boundary.
 
 Commands use their explicit shell or the session shell. Relative targets require
-a known absolute working directory. Earlier statements that create, remove or
-fill a destination remain part of its scope. A `cd` whose failure would not stop
-later statements cannot establish their relative targets.
+a known absolute working directory or bounded directory alternatives. Earlier
+statements that create, remove or fill a destination remain part of its scope.
+An unguarded literal `cd` can retain both its success and failure directories,
+up to four alternatives, without asserting which executed. Different candidate
+targets retain ambiguous scope. Exceeding that limit, or encountering dynamic
+or complex directory changes, leaves later relative targets unknown while
+preserving acquired evidence and independently resolvable absolute targets.
 
 Named targets remain eligible despite ignore rules, file suffixes, directory
 names or generated-file banners. An input script is not itself an edit target;

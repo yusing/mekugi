@@ -18,6 +18,9 @@ func TestFormatterLiteralBraceTargets(t *testing.T) {
 		want           []string
 	}{
 		{"gofmt -w {first,second}.go", "bash", []string{"first.go", "second.go"}},
+		{"bun fmt first.go second.go", "bash", []string{"first.go", "second.go"}},
+		{"bun fmt --check first.go", "bash", nil},
+		{"bun fmt --cwd elsewhere first.go", "bash", nil},
 		{"gofmt -w {{first,second},third}.go", "bash", []string{"first.go", "second.go", "third.go"}},
 		{"gofmt -w {1..2}.go", "bash", []string{"1.go", "2.go"}},
 		{"gofmt -w '{first,second}.go'", "bash", []string{"{first,second}.go"}},

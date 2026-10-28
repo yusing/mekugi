@@ -20,7 +20,7 @@ func GoFormatterWrites(identity string, args []string) bool {
 
 func execFormatterIdentity(identity string) bool {
 	switch identity {
-	case "gofmt", "goimports", "prettier", "eslint", "ruff", "black", "rustfmt":
+	case "gofmt", "goimports", "prettier", "eslint", "ruff", "black", "rustfmt", "bun fmt":
 		return true
 	}
 	return false
@@ -54,6 +54,14 @@ func execFixerScope(input execProviderInput) execProviderResult {
 			return execProviderResult{unhandled: true}
 		}
 		extensions = []string{".js", ".jsx", ".ts", ".tsx", ".json", ".css", ".scss", ".html", ".md", ".yaml", ".yml", ".vue", ".svelte"}
+	case "bun fmt":
+		// Check/output-only forms do not establish named write scope.
+		if has("--check") || has("-c") || has("--list-different") || has("-l") || has("--list-files") || has("--debug-check") || has("--doctor") || has("--stdin-filepath") || has("--init") || has("--cwd") || slices.ContainsFunc(args, func(arg string) bool {
+			return strings.HasPrefix(arg, "--stdin-filepath=") || strings.HasPrefix(arg, "--cwd=")
+		}) {
+			return execProviderResult{unhandled: true}
+		}
+		extensions = []string{".js", ".jsx", ".ts", ".tsx", ".json", ".jsonc", ".css", ".scss", ".html", ".md", ".mdx", ".yaml", ".yml", ".vue", ".svelte"}
 	case "eslint":
 		if !has("--fix") {
 			return execProviderResult{unhandled: true}

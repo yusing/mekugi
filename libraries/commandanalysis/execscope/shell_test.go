@@ -88,6 +88,29 @@ func TestClassifyExecShellDeclaredOperations(t *testing.T) {
 	}
 }
 
+func TestSequentialDirectoryAlternatives(t *testing.T) {
+	for _, test := range []struct {
+		command string
+		want    []string
+	}{
+		{"cd a; rm target", []string{"file:target", "file:a/target"}},
+		{"cd a; cd b; rm target", []string{"file:target", "file:b/target", "file:a/target", "file:a/b/target"}},
+		{"printf x > before; cd a; cd b; cd c; rm target; rm /absolute", []string{"file:before", "file:/absolute"}},
+		{"cd \"$dir\"; rm target; rm /absolute", []string{"file:/absolute"}},
+		{"cd a && cd b; rm target; rm /absolute", []string{"file:/absolute"}},
+		{"{ cd a; cd b; }; rm target; rm /absolute", []string{"file:/absolute"}},
+		{"cd a; cd b; sh -c 'cd c; rm target'; rm /absolute", []string{"file:/absolute"}},
+	} {
+		plan := classifyExecShell(test.command, "/work", "bash")
+		if got := execPlanScope(plan, "/work"); !slices.Equal(got, test.want) || plan.Class != Opaque {
+			t.Errorf("%s: scope=%v class=%s reason=%s; want %v with opaque scope", test.command, got, plan.Class, plan.Reason, test.want)
+		}
+		if strings.HasPrefix(test.command, "printf") && !strings.Contains(plan.Reason, "alternatives exceed four") {
+			t.Errorf("directory cap lost its diagnostic: %+v", plan)
+		}
+	}
+}
+
 func TestClassifyExecShellNeutralAndOpaque(t *testing.T) {
 	const workdir = "/work"
 	for _, command := range []string{

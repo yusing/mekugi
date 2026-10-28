@@ -48,16 +48,17 @@ var execScopeProviders map[string]execScopeProvider
 
 func init() {
 	execScopeProviders = map[string]execScopeProvider{
-		"python": execPythonScope,
-		"node":   execJavaScriptScope,
-		"bun":    execJavaScriptScope,
-		"deno":   execJavaScriptScope,
-		"sh":     execInlineShellScope,
-		"bash":   execInlineShellScope,
-		"git":    execGitScope,
-		"svn":    execSVNScope,
-		"hg":     execHGScope,
-		"jj":     execJJScope,
+		"python":  execPythonScope,
+		"node":    execJavaScriptScope,
+		"bun":     execJavaScriptScope,
+		"bun fmt": execFixerScope,
+		"deno":    execJavaScriptScope,
+		"sh":      execInlineShellScope,
+		"bash":    execInlineShellScope,
+		"git":     execGitScope,
+		"svn":     execSVNScope,
+		"hg":      execHGScope,
+		"jj":      execJJScope,
 	}
 	for _, name := range []string{"gofmt", "goimports", "prettier", "eslint", "ruff", "black", "rustfmt", "cargo", "go", "npm", "pnpm", "yarn", "uv", "poetry"} {
 		execScopeProviders[name] = execFixerScope
@@ -75,6 +76,11 @@ func execInlineShellScope(input execProviderInput) execProviderResult {
 }
 
 func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
+	if identity == "bun" && len(args) > 0 {
+		if subcommand, literal := shellsyntax.Literal(args[0]); literal && subcommand == "fmt" {
+			identity, args = "bun fmt", args[1:]
+		}
+	}
 	key := identity
 	if strings.HasPrefix(key, "python") {
 		key = "python"

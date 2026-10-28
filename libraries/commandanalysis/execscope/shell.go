@@ -2,6 +2,7 @@ package execscope
 
 import (
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -160,7 +161,11 @@ func classifyExecShellSource(command, workdir, shell string, deadline time.Time,
 	}
 	walker := execShellWalker{source: command, authoredOnly: authoredOnly, cwd: filepath.Clean(workdir), plan: &plan, deadline: deadline, depth: depth, changes: changes}
 	walker.braceExpansion = shellsyntax.InterpreterIdentity(shell) == "bash"
-	walker.stmts(program.Stmts)
+	if depth == 0 {
+		walker.stmtsWithDirectoryAlternatives(program.Stmts)
+	} else {
+		walker.stmts(program.Stmts)
+	}
 	return plan
 }
 
@@ -206,15 +211,67 @@ func (w *execShellWalker) opaque(reason string) {
 	}
 }
 
-// stmts walks a list. A cd takes effect for later list items only when its
-// failure ends the shell, as in cd dir || exit; otherwise later items may run
-// in either directory.
+// Nested control constructs retain unknown-directory handling rather than
+// multiplying the outer list's candidate directories.
 func (w *execShellWalker) stmts(stmts []*syntax.Stmt) {
 	for _, stmt := range stmts {
 		moves := w.moves
 		w.stmt(stmt)
 		if w.moves != moves && !execGuardedCd(stmt) {
 			w.cwd = ""
+		}
+	}
+}
+
+// The outer list keeps at most four directory candidates across an unguarded
+// literal cd. Each statement is visited at most four times, under the original
+// scope acquisition deadline; complex changes leave its directory unknown.
+func (w *execShellWalker) stmtsWithDirectoryAlternatives(stmts []*syntax.Stmt) {
+	directories := []string{w.cwd}
+	for _, stmt := range stmts {
+		base := *w
+		var next []string
+		var firstScope []Entry
+		unknown := false
+		for index, directory := range directories {
+			branch := base
+			branch.cwd = directory
+			start := len(w.plan.Scope)
+			branch.stmt(stmt)
+			added := w.plan.Scope[start:]
+			if index == 0 {
+				firstScope = added
+			} else if reflect.DeepEqual(firstScope, added) {
+				// Identical absolute targets do not multiply with directories.
+				w.plan.Scope = w.plan.Scope[:start]
+			} else {
+				w.plan.raise(Opaque, "ambiguous working directory")
+			}
+			if branch.moves != base.moves && !execGuardedCd(stmt) {
+				if branch.moves == base.moves+1 && directory != "" && branch.cwd != "" {
+					next = append(next, directory) // cd may have failed.
+				} else {
+					unknown = true
+				}
+			}
+			next = append(next, branch.cwd)
+			*w = branch
+		}
+		directories = nil
+		for _, directory := range next {
+			if !slices.Contains(directories, directory) {
+				directories = append(directories, directory)
+			}
+		}
+		if unknown || len(directories) > 4 {
+			if len(directories) > 4 {
+				w.plan.raise(w.plan.Class, "working-directory alternatives exceed four")
+			}
+			directories = []string{""}
+		}
+		w.cwd = ""
+		if len(directories) == 1 {
+			w.cwd = directories[0]
 		}
 	}
 }
