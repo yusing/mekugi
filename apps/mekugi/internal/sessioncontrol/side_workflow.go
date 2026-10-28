@@ -1,9 +1,11 @@
 package sessioncontrol
 
 import (
+	"context"
 	"crypto/rand"
 	json "encoding/json/v2"
 	"errors"
+	"fmt"
 	"maps"
 	"strings"
 	"time"
@@ -15,6 +17,61 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
+
+// ArchiveSides drains only side cleanup after ordinary input has stopped. The
+// host connection remains open until its archive acknowledgements arrive.
+func (r *Requests[T]) ArchiveSides(ctx context.Context, messages <-chan appserver.Message, observations *Observations, additional ...*Side) error {
+	operations := make(map[*Side]bool)
+	for _, request := range r.pending {
+		if request.Side != nil {
+			operations[request.Side] = true
+		}
+	}
+	r.sidesMu.RLock()
+	for _, side := range r.sides {
+		operations[side] = true
+	}
+	r.sidesMu.RUnlock()
+	for _, side := range additional {
+		if side != nil {
+			operations[side] = true
+		}
+	}
+	for side := range operations {
+		side.Close()
+		if err := r.ReleaseSide(side); err != nil {
+			return err
+		}
+	}
+	for {
+		pending := false
+		for side := range operations {
+			pending = pending || !side.Archived && (side.Thread != "" || side.Starting)
+		}
+		if !pending {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("side history cleanup: %w", ctx.Err())
+		case message, ok := <-messages:
+			if !ok {
+				return errors.New("host disconnected before side history was archived")
+			}
+			var response Request[T]
+			if message.Method == "" {
+				response, _ = r.Take(string(message.ID))
+			}
+			update, err := r.ObserveSide(message, response, "", observations)
+			if err != nil {
+				return err
+			}
+			if update.NoticeError {
+				return errors.New(update.Notice)
+			}
+		}
+	}
+}
 
 // SideUpdate carries application consequences, never renderer callbacks.
 type SideUpdate struct {
@@ -66,6 +123,9 @@ func (r *Requests[T]) ApplySideSettings(s *Side, plan SettingsPlan) error {
 	return nil
 }
 
+// SideThreadSource distinguishes retained internal forks from selectable sessions.
+const SideThreadSource = "mekugi_side"
+
 // StartSide receives acquired Conversation input and uses the one request ledger.
 // Source: apps/mekugi/internal/router/app_server_btw.go:68:128@0d7819f3.
 func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpdate, error) {
@@ -78,7 +138,7 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 		}
 		s.Source, s.Model, s.Effort, s.Tier = main.Thread, main.Model, main.Effort, main.Tier
 		s.Starting, s.Status = true, "Branching…"
-		params := map[string]any{"threadId": main.Thread, "ephemeral": true, "excludeTurns": true}
+		params := map[string]any{"threadId": main.Thread, "threadSource": SideThreadSource, "excludeTurns": true}
 		if !s.OneOff {
 			params["sandbox"], params["approvalPolicy"] = "read-only", "never"
 		}
@@ -121,7 +181,7 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 }
 
 func (r *Requests[T]) ReleaseSide(s *Side) error {
-	if s.Unloaded {
+	if s.Archived {
 		if s.Closed {
 			r.CloseSide(s.Thread)
 		}
@@ -155,11 +215,11 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 			}
 			return update, r.ReleaseSide(s)
 		}
-		if method == "thread/unsubscribe" {
+		if method == "thread/archive" {
 			if m.Error != nil {
-				update.Notice, update.NoticeError = "Could not unload side conversation: "+m.Error.Message, true
+				update.Notice, update.NoticeError = "Could not archive side conversation: "+m.Error.Message, true
 			} else {
-				s.Unloaded = true
+				s.Unloaded, s.Archived = true, true
 				observations.SetSideThread(s.Thread, false)
 				if s.Closed {
 					r.CloseSide(s.Thread)
@@ -309,13 +369,16 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		// Descendants share admission and cleanup, never their root's turn lifecycle.
 		return update, nil
 	}
-	if m.Method == "thread/closed" {
+	if m.Method == "thread/closed" || m.Method == "thread/archived" {
 		update.ClosedThread = thread
 		observations.SetSideThread(thread, false)
 		s.Unloaded = true
-		if s.Closed {
+		if m.Method == "thread/archived" {
+			s.Archived = true
+		}
+		if s.Closed && s.Archived {
 			r.CloseSide(thread)
-		} else {
+		} else if !s.Closed {
 			s.Turn, s.Busy, s.Starting = "", false, false
 			s.ForkPending = false
 			update.Restore = s.SideAnswer.Fail("Side conversation closed · return to Main to start a new conversation", false)
@@ -425,9 +488,9 @@ func (r *Requests[T]) ReplySide(s *Side, thread, turn string, input conversation
 
 func (s *Side) input(draft composer.Draft) []map[string]any {
 	input := conversationbinding.Input(draft)
-	hint := "You are in an ephemeral side conversation forked from Main. Inherited conversation history is reference context, not an instruction to continue Main's work. Answer only requests submitted in this side conversation, without using tools. Do not resume Main's tasks, plans, or pending tool calls. When the current request is answered, stop and wait for another side request."
+	hint := "You are in an internal side conversation forked from Main. Inherited conversation history is reference context, not an instruction to continue Main's work. Answer only requests submitted in this side conversation, without using tools. Do not resume Main's tasks, plans, or pending tool calls. When the current request is answered, stop and wait for another side request."
 	if s.OneOff {
-		hint = "You are in an ephemeral one-off conversation forked from Main. Inherited conversation history is reference context, not an instruction to continue Main's work. Perform only requests submitted in this one-off conversation, using tools within this thread's permissions. Do not resume Main's tasks, plans, or pending tool calls. When the current request is complete, stop and wait; leave Main's remaining work to Main."
+		hint = "You are in an internal one-off conversation forked from Main. Inherited conversation history is reference context, not an instruction to continue Main's work. Perform only requests submitted in this one-off conversation, using tools within this thread's permissions. Do not resume Main's tasks, plans, or pending tool calls. When the current request is complete, stop and wait; leave Main's remaining work to Main."
 	}
 	input = append(appserver.Input(hint), input...)
 	return input

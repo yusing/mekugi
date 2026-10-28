@@ -233,7 +233,7 @@ or uncommitted transmitted input says outcome unknown and is never resent.
 
 Side-thread correlation outlives a closed side conversation or Main replacement until delayed
 fork/start responses and cleanup settle. A later start acknowledgement cannot revive
-a completed turn. Interruption/unsubscription targets only that side thread;
+a completed turn. Interruption/archival targets only that side thread;
 its notifications never become Main observations. Closing Side drops its
 visible exchange, not pending host correlation. Once explicit close cleanup
 completes, root and descendant notification mappings release their operation;
@@ -245,8 +245,10 @@ Side/One-off slot. Both can run concurrently, with independent follow-ups and
 cancellation. Main replacement closes both; closing either leaves the other intact.
 The existing request ledger correlates side replies and notifications to the
 side operation, independently of any renderer. An empty `/side` forks without
-starting a turn; `/oneoff TASK` creates the same owned ephemeral fork and starts
-its task. Answer-only forks retain their restricted settings; one-off forks inherit
+starting a turn; `/oneoff TASK` creates the same owned internal fork and starts
+its task. Side forks retain native history for authenticated request preparation,
+remain hidden from normal session selection, and are archived on cleanup. Their
+history remains in Codex storage. Answer-only forks retain their restricted settings; one-off forks inherit
 permissions and environments. Each new side turn carries its scoped instruction.
 One-off tool events and prompt responses retain their original thread, turn and
 request identities. Host parent identities admit descendants into the same isolated

@@ -30,7 +30,7 @@ func TestOneoffChildIsolation(t *testing.T) {
 }
 
 func TestOneoffClosedKnownChild(t *testing.T) {
-	for _, closeOrder := range []string{"unsubscribe-first", "closed-first", "unexpected"} {
+	for _, closeOrder := range []string{"archive-first", "closed-first", "unexpected"} {
 		t.Run(closeOrder, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.startSession("main", "/workspace")
@@ -69,13 +69,9 @@ func TestOneoffClosedKnownChild(t *testing.T) {
 					appServerTestNotify(t, u, "thread/closed", map[string]any{"threadId": "oneoff"})
 				}
 				btwTestReply(t, u, interrupt, `{}`)
-				if closeOrder == "unsubscribe-first" {
-					unsubscribe := btwTestRequest(t, wire, "thread/unsubscribe", "oneoff")
-					btwTestReply(t, u, unsubscribe, `{}`)
-				} else if wire.Len() != 0 {
-					t.Fatal("closed host thread received another cleanup request")
-				}
 			}
+			archive := btwTestRequest(t, wire, "thread/archive", "oneoff")
+			btwTestReply(t, u, archive, `{}`)
 
 			if u.Requests.HasSides() {
 				t.Fatal("cleanup retained root or descendant operation mappings")
@@ -117,6 +113,8 @@ func TestOneoffUnexpectedCloseRetiresRoot(t *testing.T) {
 	if err := closeSide(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
 		t.Fatal(err)
 	}
+	archive := btwTestRequest(t, wire, "thread/archive", "oneoff")
+	btwTestReply(t, u, archive, `{}`)
 	if u.questions.Count("oneoff") != 0 || len(u.approvals.calls()) != 0 || !u.RetiredThread("oneoff", "") || u.Requests.HasSides() {
 		t.Fatal("closed root retained prompts or escaped retirement")
 	}
@@ -235,7 +233,7 @@ func TestOneoffCloseRunningCommand(t *testing.T) {
 	}
 	request := btwTestRequest(t, wire, "turn/interrupt", "oneoff")
 	btwTestReply(t, u, request, `{}`)
-	request = btwTestRequest(t, wire, "thread/unsubscribe", "oneoff")
+	request = btwTestRequest(t, wire, "thread/archive", "oneoff")
 	btwTestReply(t, u, request, `{}`)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "sleep 10", "status": "completed", "exitCode": 0}})
 	for e := range u.attached.session.RunningProcesses() {

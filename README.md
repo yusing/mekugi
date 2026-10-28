@@ -450,9 +450,10 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
 - `/side` creates a fresh answer-only snapshot with a Side tab beside Main. Only one
   Side is open; repeat `/side` to choose Replace or Cancel. Select Side to read or
   reply with its own draft.
-  Esc closes it and interrupts only its answer, without archiving or deleting a thread.
-  Side is ephemeral and is not restored on resume. If compaction is needed, compact
-  Main and create a fresh side.
+  Esc closes it and interrupts only its answer. Side, One-off and BTW retain native
+  history in internal threads, hidden from normal session selection and archived
+  when their operations close. Closed slots are not restored on resume. If
+  compaction is needed, compact Main and create a fresh side.
 - `/oneoff TASK` runs isolated work in the same side slot, inheriting Main's tools
   and permissions. It selects One-off immediately and keeps the completed result
   available. Main stays usable and receives no one-off transcript; file edits and

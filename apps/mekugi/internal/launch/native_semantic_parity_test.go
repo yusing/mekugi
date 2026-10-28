@@ -346,10 +346,10 @@ func TestNativeBTWControlSocket(t *testing.T) {
 			}
 			serverCLIAwait(t, func() bool {
 				body, _ := os.ReadFile(logPath)
-				return strings.Contains(string(body), `thread/unsubscribe {"threadId":"fork-2"}`)
+				return strings.Contains(string(body), `thread/archive {"threadId":"fork-2"}`)
 			})
 			body, _ := os.ReadFile(logPath)
-			if strings.Contains(string(body), `thread/unsubscribe {"threadId":"fork-1"}`) {
+			if strings.Contains(string(body), `thread/archive {"threadId":"fork-1"}`) {
 				t.Fatal("BTW dismissal released the other side owner")
 			}
 			closeSide := sessionpresentation.CloseSideIntent{Version: event.Frame.View.Version, Key: event.Frame.View.Side.Key, Exchange: event.Frame.View.Side.ID}

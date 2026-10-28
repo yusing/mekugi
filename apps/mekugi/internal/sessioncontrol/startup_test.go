@@ -147,7 +147,7 @@ func TestStartupRejectsStockSessionAndPagesLatest(t *testing.T) {
 		t.Fatal("stock-only session reached the host")
 	}
 	startup.Thread = "--last"
-	if cursor, err := startup.Latest([]byte(`{"data":[{"id":"stock"}],"nextCursor":"older"}`)); err != nil || cursor != "older" || startup.Thread != "--last" {
+	if cursor, err := startup.Latest([]byte(`{"data":[{"id":"stock"},{"id":"saved","threadSource":"mekugi_side"}],"nextCursor":"older"}`)); err != nil || cursor != "older" || startup.Thread != "--last" {
 		t.Fatalf("filtered page: %q %v", cursor, err)
 	}
 	if cursor, err := startup.Latest([]byte(`{"data":[{"id":"stock"},{"id":"saved"}]}`)); err != nil || cursor != "" || startup.Thread != "saved" {

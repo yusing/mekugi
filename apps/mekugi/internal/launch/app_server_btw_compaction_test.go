@@ -150,7 +150,7 @@ func TestAppServerBTWCompactionCloseRecreateIgnoresLateFailure(t *testing.T) {
 	appServerTestNotify(t, u, "error", map[string]any{"threadId": "side", "error": map[string]any{"message": conversationmodel.SideCompactionRequired}})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "failed"}})
 	btwTestReply(t, u, interrupt, `{}`)
-	unload := btwTestRequest(t, w, "thread/unsubscribe", "side")
+	unload := btwTestRequest(t, w, "thread/archive", "side")
 	btwTestReply(t, u, unload, `{}`)
 	if u.BTW == old || u.BTW.Thread != "new-side" || !u.BTW.Busy || u.Text != "" || u.controlObservations.IsSideThread("side") || !u.controlObservations.IsSideThread("new-side") {
 		t.Fatalf("late events crossed lifecycle: %+v draft=%q", u.BTW, u.Text)

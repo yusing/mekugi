@@ -34,7 +34,7 @@ func TestAppServerReplacementRetiresOnlyMainRequests(t *testing.T) {
 	// The in-flight side fork still needs its own cleanup. Retiring Main must
 	// not lose the response that identifies the newly created side thread.
 	btwTestReply(t, u, side, `{"thread":{"id":"old-side"}}`)
-	unload := btwTestRequest(t, wire, "thread/unsubscribe", "old-side")
+	unload := btwTestRequest(t, wire, "thread/archive", "old-side")
 	btwTestReply(t, u, unload, `{}`)
 	btwTestReply(t, u, side, `{"thread":{"id":"duplicate-side"}}`)
 	if wire.Len() != 0 || u.side != nil || u.Thread != "fresh" {

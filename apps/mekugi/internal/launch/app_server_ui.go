@@ -924,6 +924,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 			}
 		}
 		err = runLoop()
+		if !exited {
+			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+			err = errors.Join(err, control.Requests.ArchiveSides(cleanup, c.Messages, observationInputs, side, control.BTW))
+			cancel()
+		}
 		if saveErr := panes.savePrepared(presentationTime(clock), true); saveErr != nil {
 			fmt.Fprintln(stdout, "Pane layout or settings could not be saved:", textsanitize.Safe(saveErr.Error(), false))
 		}

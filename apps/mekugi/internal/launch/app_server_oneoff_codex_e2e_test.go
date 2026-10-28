@@ -150,7 +150,11 @@ func TestAppServerOneoffNativeCodexE2E(t *testing.T) {
 	if err != nil || string(contents) != "ONEOFF_ENV_INHERITED" {
 		t.Fatalf("one-off write/environment inheritance: contents=%q err=%v", contents, err)
 	}
-	terminal.send("\x021/btw BTW_WHILE_ONEOFF\r")
+	terminal.send("\x021")
+	terminal.awaitMatch("Main selected before BTW", func(frame string) bool {
+		return strings.Contains(frame, "┌ 1 Main") && !strings.Contains(frame, "┌ 1 One-off")
+	})
+	terminal.send("/btw BTW_WHILE_ONEOFF\r")
 	question := next()
 	questionMetadata, _ := codexresponses.DecodeTurnMetadata(question.headers)
 	if questionMetadata.ThreadID == "" || questionMetadata.ThreadID == forkMetadata.ThreadID || questionMetadata.ThreadID == mainMetadata.ThreadID || bytes.Contains(question.body, []byte("ONEOFF_TASK_ONLY")) {
@@ -176,7 +180,7 @@ func TestAppServerOneoffNativeCodexE2E(t *testing.T) {
 	terminal.await("MAIN_CONTINUATION_FINISHED")
 	terminal.await("completed")
 	close(p.finish)
-	terminal.send("\x023nq")
+	terminal.send("\x1b[<0;12;30M\x1b[<0;12;30m")
 	terminal.await("ONEOFF_FINISHED")
 	terminal.awaitMatch("completed one-off retained", func(frame string) bool {
 		return strings.Contains(frame, "┌ 1 One-off") && strings.Contains(frame, "╭─ completed") &&

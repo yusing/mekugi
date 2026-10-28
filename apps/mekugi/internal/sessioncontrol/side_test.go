@@ -12,7 +12,7 @@ func TestSideCompletionAndDelayedCleanup(t *testing.T) {
 		t.Fatal("matching completion rejected")
 	}
 	side.StartAcknowledged("turn")
-	if side.Turn != "" || side.Release() != "thread/unsubscribe" || side.Release() != "" {
+	if side.Turn != "" || side.Release() != "thread/archive" || side.Release() != "" {
 		t.Fatalf("late acknowledgement revived execution or repeated cleanup: %+v", side)
 	}
 	side = Side{Thread: "side", Turn: "turn", Busy: true, Closed: true}
@@ -20,7 +20,7 @@ func TestSideCompletionAndDelayedCleanup(t *testing.T) {
 		t.Fatal("side target changed or interrupt duplicated")
 	}
 	side.InterruptAcknowledged()
-	if side.Release() != "thread/unsubscribe" {
+	if side.Release() != "thread/archive" {
 		t.Fatal("interruption did not finish cleanup")
 	}
 	ledger := new(Requests[*Side])

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	json "encoding/json/v2"
 	"fmt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,7 @@ type btwTestRPC struct {
 		ThreadID       string         `json:"threadId"`
 		TurnID         string         `json:"turnId"`
 		ExpectedTurnID string         `json:"expectedTurnId"`
+		ThreadSource   string         `json:"threadSource"`
 		Ephemeral      bool           `json:"ephemeral"`
 		ExcludeTurns   bool           `json:"excludeTurns"`
 		Config         map[string]any `json:"config"`
@@ -62,8 +64,8 @@ func btwTestStart(t *testing.T, u *appServerUI, w *appServerTestInput) {
 	t.Helper()
 	appServerTestKeys(t, u, "/btw why?\r")
 	fork := btwTestRequest(t, w, "thread/fork", "main")
-	if !fork.Params.Ephemeral || !fork.Params.ExcludeTurns {
-		t.Fatalf("fork is not ephemeral snapshot: %+v", fork.Params)
+	if fork.Params.Ephemeral || !fork.Params.ExcludeTurns || fork.Params.ThreadSource != sessioncontrol.SideThreadSource {
+		t.Fatalf("fork is not a retained internal snapshot: %+v", fork.Params)
 	}
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
 	start := btwTestRequest(t, w, "turn/start", "side")
@@ -273,7 +275,7 @@ func TestAppServerBTWCloseInFlightDoesNotAffectReplacement(t *testing.T) {
 				}
 				btwTestReply(t, u, interrupt, `{}`)
 			}
-			unload := btwTestRequest(t, w, "thread/unsubscribe", "old-side")
+			unload := btwTestRequest(t, w, "thread/archive", "old-side")
 			btwTestReply(t, u, unload, `{}`)
 			appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"old-side","turnId":"old-turn","itemId":"a","delta":"late"}}`)
 			if u.BTW != replacement || replacement.Question != "replacement" || len(replacement.Answer) != 0 || u.Turn != "main-turn" {
@@ -401,7 +403,7 @@ func TestAppServerSideFreshReplacementAndDraftIsolation(t *testing.T) {
 	}
 	btwTestReply(t, u, replacement, `{"thread":{"id":"second-side"}}`)
 	btwTestReply(t, u, interrupt, `{}`)
-	btwTestRequest(t, w, "thread/unsubscribe", "first-side")
+	btwTestRequest(t, w, "thread/archive", "first-side")
 	if u.side.Thread != "second-side" || u.Thread != "main" || u.attached.conversation.Editor.Text != "" {
 		t.Fatal("late cleanup crossed identity")
 	}
@@ -679,9 +681,9 @@ func TestSideMainForkReplacementCleanup(t *testing.T) {
 				t.Fatalf("replacement leaked Side or lost Main input: thread=%s side=%+v draft=%q", u.Thread, u.side, u.Text)
 			}
 			btwTestReply(t, u, sideFork, `{"thread":{"id":"late-side"}}`)
-			btwTestRequest(t, w, "thread/unsubscribe", "late-side")
+			btwTestRequest(t, w, "thread/archive", "late-side")
 			btwTestReply(t, u, questionFork, `{"thread":{"id":"late-question"}}`)
-			btwTestRequest(t, w, "thread/unsubscribe", "late-question")
+			btwTestRequest(t, w, "thread/archive", "late-question")
 			if command == "/rewind" {
 				menu := u.attached.presentation.View().Menu
 				if menu == nil || menu.Title != "Archive the original session?" || u.picker.archiveTarget != "main" {
@@ -757,7 +759,7 @@ func TestUISnapshotBTWAlongsideActiveSide(t *testing.T) {
 				t.Fatal("closing BTW disturbed Side")
 			}
 			btwTestReply(t, u, interrupt, `{}`)
-			btwTestRequest(t, w, "thread/unsubscribe", "question")
+			btwTestRequest(t, w, "thread/archive", "question")
 
 			// The Side operation can close while a new BTW fork is pending.
 			u.Editor.Take()

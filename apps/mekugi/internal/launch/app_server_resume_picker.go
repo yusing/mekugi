@@ -101,12 +101,13 @@ func resumePickerResponse(attached *attachedPresentation, terminal *terminalsess
 	}
 	var result struct {
 		Data []struct {
-			ID        string `json:"id"`
-			Name      string `json:"name"`
-			Preview   string `json:"preview"`
-			Cwd       string `json:"cwd"`
-			UpdatedAt int64  `json:"updatedAt"`
-			GitInfo   *struct {
+			ThreadSource string `json:"threadSource"`
+			ID           string `json:"id"`
+			Name         string `json:"name"`
+			Preview      string `json:"preview"`
+			Cwd          string `json:"cwd"`
+			UpdatedAt    int64  `json:"updatedAt"`
+			GitInfo      *struct {
 				Branch string `json:"branch"`
 			} `json:"gitInfo"`
 		} `json:"data"`
@@ -118,6 +119,9 @@ func resumePickerResponse(attached *attachedPresentation, terminal *terminalsess
 	}
 	var rows []sessionpresentation.ResumeRow
 	for _, thread := range result.Data {
+		if thread.ThreadSource == sessioncontrol.SideThreadSource {
+			continue
+		}
 		found, err := control.Startup.History.ContainsSession(thread.ID)
 		if err != nil {
 			p.failed("Could not read session membership: " + err.Error())

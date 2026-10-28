@@ -318,6 +318,7 @@ func serveAPIRuntimeHost(t *testing.T) {
 		}
 	}
 	turn, starts := "", 0
+	sideEphemeral := false
 	for {
 		var request struct {
 			ID     jsontext.Value `json:"id"`
@@ -358,6 +359,13 @@ func serveAPIRuntimeHost(t *testing.T) {
 			}
 			result["thread"] = map[string]any{"id": "main", "cwd": workspace}
 		case "thread/fork":
+			var params struct {
+				Ephemeral bool `json:"ephemeral"`
+			}
+			if err := json.Unmarshal(request.Params, &params); err != nil {
+				t.Fatal(err)
+			}
+			sideEphemeral = params.Ephemeral
 			result["thread"] = map[string]any{"id": "side"}
 		case "thread/read":
 			var params struct {
@@ -366,7 +374,11 @@ func serveAPIRuntimeHost(t *testing.T) {
 			if err := json.Unmarshal(request.Params, &params); err != nil {
 				t.Fatal(err)
 			}
-			result["thread"] = map[string]any{"id": params.Thread, "sessionId": "fixture-session", "path": "/fixture/rollout.jsonl"}
+			var path any = "/fixture/rollout.jsonl"
+			if params.Thread == "side" && sideEphemeral {
+				path = nil
+			}
+			result["thread"] = map[string]any{"id": params.Thread, "sessionId": "fixture-session", "path": path}
 		case "turn/start":
 			starts++
 			turn = "turn-" + strconv.Itoa(starts)

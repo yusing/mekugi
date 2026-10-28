@@ -16,6 +16,7 @@ type Side struct {
 	Busy, Starting, Closed      bool
 	Interrupting, Unloading     bool
 	Unloaded                    bool
+	Archived                    bool
 	Settings                    Settings
 	LowReasoning                bool
 }
@@ -35,15 +36,15 @@ func (s *Side) Close() {
 }
 
 func (s *Side) Release() string {
-	if s.Thread == "" || s.Starting || s.Interrupting || s.Unloading || s.Unloaded {
+	if s.Thread == "" || s.Starting || s.Interrupting || s.Unloading || s.Archived {
 		return ""
 	}
-	if s.Turn != "" {
+	if s.Turn != "" && !s.Unloaded {
 		s.Interrupting = true
 		return "turn/interrupt"
 	}
 	s.Unloading = true
-	return "thread/unsubscribe"
+	return "thread/archive"
 }
 
 func (s *Side) InterruptAcknowledged() { s.Turn, s.Interrupting = "", false }

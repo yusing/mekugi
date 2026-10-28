@@ -1,6 +1,7 @@
 package sessioncontrol
 
 import (
+	"context"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"testing"
@@ -9,6 +10,49 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
+
+func TestArchiveSidesDrainsClosedNativeThread(t *testing.T) {
+	transport := &requestTransport{id: "archive"}
+	requests := NewRequests[struct{}](transport)
+	side := &Side{SideAnswer: new(conversationmodel.SideAnswer), Thread: "side", Unloaded: true}
+	requests.TrackSide(side.Thread, side)
+	messages := make(chan appserver.Message, 1)
+	messages <- appserver.Message{ID: []byte("archive"), Result: []byte(`{}`)}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := requests.ArchiveSides(ctx, messages, new(Observations), side); err != nil {
+		t.Fatal(err)
+	}
+	if len(transport.sends) != 1 || transport.sends[0].method != "thread/archive" || !side.Archived || requests.HasSides() {
+		t.Fatalf("closed native history was not archived once: %+v %+v", transport.sends, side)
+	}
+}
+
+func TestArchiveSidesDrainsDismissedPendingFork(t *testing.T) {
+	transport := &requestTransport{id: "fork"}
+	requests := NewRequests[struct{}](transport)
+	side := &Side{SideAnswer: &conversationmodel.SideAnswer{Pending: conversationmodel.Input{Text: "question"}}, Busy: true}
+	if _, err := requests.StartSide(side, SideMain{Thread: "main"}, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	side.Close()
+	if err := requests.ReleaseSide(side); err != nil {
+		t.Fatal(err)
+	}
+	// The dismissed slot is gone; only the pending request owns its delayed fork.
+	transport.id = "archive"
+	messages := make(chan appserver.Message, 2)
+	messages <- appserver.Message{ID: []byte("fork"), Result: []byte(`{"thread":{"id":"side"}}`)}
+	messages <- appserver.Message{ID: []byte("archive"), Result: []byte(`{}`)}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := requests.ArchiveSides(ctx, messages, new(Observations)); err != nil {
+		t.Fatal(err)
+	}
+	if !side.Archived || requests.HasSides() || len(transport.sends) != 2 || transport.sends[1].method != "thread/archive" {
+		t.Fatalf("dismissed fork survived cleanup: %+v %+v", side, transport.sends)
+	}
+}
 
 func TestSideWorkflowWithoutRenderer(t *testing.T) {
 	for _, closed := range []bool{false, true} {
@@ -40,7 +84,7 @@ func TestSideWorkflowWithoutRenderer(t *testing.T) {
 				t.Fatalf("fork result: update=%+v err=%v", update, err)
 			}
 			if closed {
-				if transport.sends[len(transport.sends)-1].method != "thread/unsubscribe" || answer.Pending.Text != "" {
+				if transport.sends[len(transport.sends)-1].method != "thread/archive" || answer.Pending.Text != "" {
 					t.Fatal("closed fork sampled or retained its visible draft")
 				}
 				response, _ := requests.Take("next")

@@ -25,8 +25,8 @@ func oneoffTestStart(t *testing.T, u *appServerUI, wire *appServerTestInput) {
 		}
 	}
 	request := btwTestRequest(t, wire, "thread/fork", "main")
-	if !request.Params.Ephemeral || !request.Params.ExcludeTurns || !u.attached.presentation.DisplayingSide() || !u.side.OneOff {
-		t.Fatal("oneoff did not create and select ephemeral work fork")
+	if request.Params.Ephemeral || request.Params.ThreadSource != "mekugi_side" || !request.Params.ExcludeTurns || !u.attached.presentation.DisplayingSide() || !u.side.OneOff {
+		t.Fatal("oneoff did not create and select retained internal work fork")
 	}
 	btwTestReply(t, u, request, `{"thread":{"id":"oneoff"}}`)
 	if strings.Contains(wire.String(), `"environments"`) {
@@ -118,7 +118,7 @@ func TestOneoffQuestionApprovalAndClose(t *testing.T) {
 		t.Fatal("closed oneoff retained prompts")
 	}
 	btwTestReply(t, u, request, `{}`)
-	btwTestRequest(t, wire, "thread/unsubscribe", "oneoff")
+	btwTestRequest(t, wire, "thread/archive", "oneoff")
 }
 
 func TestOneoffReplacementCancelAndLateStart(t *testing.T) {
