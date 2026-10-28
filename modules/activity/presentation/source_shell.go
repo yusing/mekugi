@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
@@ -55,7 +56,7 @@ func ClassifyShell(script, cwd string) (string, bool) {
 		var timeouts []string
 		offset := 0
 		for _, statement := range program.Stmts {
-			if display, ok := sourceStatement(script, statement, cwd); ok {
+			if display, ok := sourceStatement(script, statement, cwd, nil); ok {
 				for _, paragraph := range activitymodel.Paragraphs(display) {
 					timeouts = append(timeouts, activitymodel.ParseOperation(paragraph).Timeouts...)
 				}
@@ -78,7 +79,11 @@ func ClassifyShell(script, cwd string) (string, bool) {
 	}
 	statements := make([]statementDisplay, len(program.Stmts))
 	for index, statement := range program.Stmts {
-		statements[index].display, statements[index].ok = sourceStatement(script, statement, cwd)
+		var next *syntax.Stmt
+		if index+1 < len(program.Stmts) {
+			next = program.Stmts[index+1]
+		}
+		statements[index].display, statements[index].ok = sourceStatement(script, statement, cwd, next)
 		statements[index].separator = sourceReadSeparator(statement)
 	}
 	var displays []string
@@ -147,9 +152,56 @@ func sourceStatementDisplayEnd(script string, statement *syntax.Stmt) int {
 // Keep dynamic output, redirections, and headings-only scripts visible.
 var activityPlainHeading = regexp.MustCompile(`^([A-Z][A-Za-z/-]*( [A-Za-z][A-Za-z/-]*)+|[A-Z][A-Z/-]+)$`)
 var activitySuccessMarker = regexp.MustCompile(`^[A-Z][A-Za-z/-]*( [A-Za-z][A-Za-z/-]*)* (checks passed|evidence remains available)\.$`)
+var activitySectionLabel = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9/-]*( [A-Za-z0-9][A-Za-z0-9/-]*)+$`)
+
+func sourceUnwrapCommand(statement *syntax.Stmt) *syntax.Stmt {
+	for {
+		inner := shellsyntax.UnwrapMRun(shellsyntax.UnwrapEnv(shellsyntax.UnwrapTimeout(statement)))
+		if inner == statement {
+			return statement
+		}
+		statement = inner
+	}
+}
+
+// Unframed labels need an immediate non-print command to introduce. Trailing
+// literal output or a print-only successor does not establish a section heading.
+func sourceSectionLabel(statement, next *syntax.Stmt) bool {
+	if next == nil {
+		return false
+	}
+	argv, ok := shellsyntax.PatternCall("", sourceUnwrapCommand(statement))
+	if !ok || len(argv) != 2 || argv[0] != "printf" {
+		return false
+	}
+	label, terminated := strings.CutSuffix(argv[1], `\n`)
+	if !terminated || !activitySectionLabel.MatchString(label) || !strings.ContainsFunc(label, unicode.IsLetter) {
+		return false
+	}
+	for {
+		next = sourceUnwrapCommand(next)
+		if binary, ok := next.Cmd.(*syntax.BinaryCmd); ok && binary.Op == syntax.AndStmt && len(next.Redirs) == 0 &&
+			!next.Background && !next.Negated && !next.Coprocess && !next.Disown {
+			next = binary.X
+			continue
+		}
+		break
+	}
+	call, ok := next.Cmd.(*syntax.CallExpr)
+	if !ok || len(call.Args) == 0 {
+		return false
+	}
+	index, _ := shellsyntax.ExecutableWord(call.Args)
+	if index < 0 {
+		return false
+	}
+	name, literal := shellsyntax.Literal(call.Args[index])
+	name = shellsyntax.CommandName(name)
+	return literal && name != "printf" && name != "echo" && name != "mrun"
+}
 
 func sourceReadSeparator(statement *syntax.Stmt) bool {
-	argv, ok := shellsyntax.PatternCall("", statement)
+	argv, ok := shellsyntax.PatternCall("", sourceUnwrapCommand(statement))
 	if !ok || len(argv) < 2 {
 		return false
 	}
@@ -192,7 +244,10 @@ func sourceReadSeparator(statement *syntax.Stmt) bool {
 // Recognize only transparent search bounds and executable lookups. Keep their
 // complete source, including redirections and guards, rather than implying that
 // a pipeline's stages are independent operations.
-func sourceStatement(script string, statement *syntax.Stmt, cwd string) (result string, recognized bool) {
+func sourceStatement(script string, statement *syntax.Stmt, cwd string, next *syntax.Stmt) (result string, recognized bool) {
+	if sourceSectionLabel(statement, next) {
+		return "", true
+	}
 	original := statement
 	timeouts := sourceTimeouts(statement)
 	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok && binary.Op == syntax.Pipe {
@@ -214,10 +269,10 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string) (result 
 		return "", false
 	}
 	if inner := shellsyntax.UnwrapEnv(statement); inner != statement {
-		return sourceStatement(script, inner, cwd)
+		return sourceStatement(script, inner, cwd, next)
 	}
 	if inner := shellsyntax.UnwrapMRun(statement); inner != statement {
-		return sourceStatement(script, inner, cwd)
+		return sourceStatement(script, inner, cwd, next)
 	}
 	if argv, ok := shellsyntax.PatternCall("", statement); ok && len(argv) == 3 &&
 		(argv[0] == "bash" || argv[0] == "sh" || argv[0] == "dash") && (argv[1] == "-c" || argv[1] == "-lc") {
@@ -238,8 +293,8 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string) (result 
 	}
 	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok {
 		if binary.Op == syntax.AndStmt && len(statement.Redirs) == 0 {
-			left, leftOK := sourceStatement(script, binary.X, cwd)
-			right, rightOK := sourceStatement(script, binary.Y, cwd)
+			left, leftOK := sourceStatement(script, binary.X, cwd, binary.Y)
+			right, rightOK := sourceStatement(script, binary.Y, cwd, next)
 			if leftOK || rightOK || sourceReadSeparator(binary.X) != sourceReadSeparator(binary.Y) {
 				if !leftOK && !sourceReadSeparator(binary.X) {
 					left = RunSource(sourceStatementSource(script, binary.X))
@@ -257,13 +312,13 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string) (result 
 		if !ok {
 			return "", false
 		}
-		left, ok := sourceStatement(script, binary.X, cwd)
+		left, ok := sourceStatement(script, binary.X, cwd, nil)
 		if !ok {
 			return "", false
 		}
 		label := ""
 		if binary.Op == syntax.Pipe && len(statement.Redirs) == 0 && (strings.HasPrefix(left, "Search ") || strings.HasPrefix(left, "Search\n") || strings.HasPrefix(left, "List ")) {
-			filter, search := sourceStatement(script, binary.Y, cwd)
+			filter, search := sourceStatement(script, binary.Y, cwd, nil)
 			if sourceSearchFilter(argv) {
 				return left, true
 			}
@@ -454,9 +509,16 @@ func sourceSearchFilter(argv []string) bool {
 	return false
 }
 
-// ShellSeparator reports a single display-only literal heading. Callers suppress
-// it only alongside classified operations and retain failed or skipped segments.
-func ShellSeparator(source string) bool {
+// ShellSeparator reports a literal heading, including a label introducing following.
+// Callers suppress it only beside other operations and retain failed/skipped segments.
+func ShellSeparator(source, following string) bool {
 	program, err := syntax.NewParser().Parse(strings.NewReader(source), "")
-	return err == nil && len(program.Stmts) == 1 && sourceReadSeparator(program.Stmts[0])
+	if err != nil || len(program.Stmts) != 1 {
+		return false
+	}
+	if sourceReadSeparator(program.Stmts[0]) {
+		return true
+	}
+	next, err := syntax.NewParser().Parse(strings.NewReader(following), "")
+	return err == nil && len(next.Stmts) == 1 && sourceSectionLabel(program.Stmts[0], next.Stmts[0])
 }

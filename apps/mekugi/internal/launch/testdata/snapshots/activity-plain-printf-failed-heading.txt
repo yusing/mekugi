@@ -2,7 +2,7 @@ AGENTS  1 agents · 0 responding                                                
  ✓ probe  Run printf '%s\n' 'count=42' · +4 more                                                   
 ───────────────────────────────────────────────────────────────────────────────────────────────────
 ● probe                                                                                    12:00:00
-▎ Ran  printf '\nToday session files\n' · exit 1
+▎ Ran  printf '265 status\n' · exit 1
 ▎      ┆ printf: write error
 ▎ List .codex/sessions/2026/09/30 · exit 1
 ▎      ┆ ls: cannot access '.codex/sessions/2026/09/30': No such file or directory

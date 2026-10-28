@@ -151,8 +151,14 @@ func (c Command) SegmentValues(detail bool) []Value {
 	var values []Value
 	_, classified := ClassifyShell(c.Script, "")
 	for segmentIndex, segment := range c.Segments {
-		if classified && !segment.Skipped && segment.ExitCode == 0 && ShellSeparator(segment.Source) {
-			continue
+		if classified && !segment.Skipped && segment.ExitCode == 0 {
+			following := ""
+			if segmentIndex+1 < len(c.Segments) {
+				following = c.Segments[segmentIndex+1].Source
+			}
+			if ShellSeparator(segment.Source, following) {
+				continue
+			}
 		}
 		operations := Operations(textsanitize.Safe(segment.Text, false))
 		retainSource := segment.Pending || c.CaptureText != "" && len(c.Segments) == 1 && len(operations) > 1

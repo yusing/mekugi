@@ -9,6 +9,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
@@ -16,7 +17,9 @@ import (
 func TestActivityBatchDecorativeHeadings(t *testing.T) {
 	for _, heading := range []string{`printf '\nHerdr environment: '`, `printf '\nLocal instructions:\n'`, `echo 'Local instructions:'`, `printf '%s\n' 'Local instructions:'`, `echo '--- instructions ---'`,
 		`printf '\nToday session files\n'`, `printf '\nReplay-named owned paths\n'`, `printf '\nRole recovery\n'`, `printf '\nImmediate log/snapshot directory names\n'`,
-		`printf '\nGUIDANCE\n'`, `printf '\nAPPROVAL\n'`} {
+		`printf '\nGUIDANCE\n'`, `printf '\nAPPROVAL\n'`,
+		`printf '265 status\n'`, `printf '265 integration\n'`, `printf '266 status\n'`, `printf '266 integration\n'`, `printf 'main pre-existing changes\n'`,
+		`mrun -n 5 printf '265 status\n'`, `env timeout 1 mrun -n 5 printf '265 status\n'`} {
 		t.Run(heading, func(t *testing.T) {
 			command := heading + "; printenv HERDR_ENV; cat AGENTS.md"
 			text := toolActivityShell(command)
@@ -26,6 +29,12 @@ func TestActivityBatchDecorativeHeadings(t *testing.T) {
 			chain := toolActivityShell(heading + " && cat AGENTS.md")
 			if chain != "Read `AGENTS.md`" {
 				t.Fatalf("chain preview: %q", chain)
+			}
+			if got := toolActivityShell("cat before && " + heading + " && cat AGENTS.md"); got != "Read `before`\n\nRead `AGENTS.md`" {
+				t.Fatalf("nested chain preview: %q", got)
+			}
+			if got := toolActivityShell(heading + `; cat "$file"`); got != "Read `\"$file\"`" {
+				t.Fatalf("dynamic operand preview: %q", got)
 			}
 			entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{Command: command, Segments: []sessionpresentation.ActivitySegment{
 				{Source: heading, Text: execSegmentText(heading), Tail: []string{"Local instructions:"}},
@@ -43,6 +52,10 @@ func TestActivityBatchDecorativeHeadings(t *testing.T) {
 			if blocks := parseLiveActivity(entry); len(blocks) != 3 || blocks[0].ExitCode != 1 {
 				t.Fatalf("failed heading lost: %+v", blocks)
 			}
+			entry.Native.Segments[0].Exit, entry.Native.Segments[0].Skipped = 0, true
+			if blocks := parseLiveActivity(entry); len(blocks) != 3 || !blocks[0].Skipped {
+				t.Fatalf("skipped heading lost: %+v", blocks)
+			}
 		})
 	}
 	for _, command := range []string{`printf '\nLocal instructions:\n'`, `echo 'Local instructions:'`, `cat a; echo "$heading:"`, `cat a; echo 'heading:' > out`, `cat a; printf '\theading:\n'`, `cat a; echo -n 'heading:'`,
@@ -50,6 +63,10 @@ func TestActivityBatchDecorativeHeadings(t *testing.T) {
 		`cat a; printf "$heading\n"`, `cat a; printf 'Evidence-location metadata'`, `cat a; printf 'count=42\n'`, `cat a; printf '{"result":"ok"}\n'`,
 		`cat a; printf 'PASS\n'`, `cat a; printf '42\n'`, `cat a; printf '/tmp/session.log\n'`, `cat a; printf 'Evidence-location metadata\t\n'`,
 		`printf '\nGUIDANCE\n'`, `cat a; printf 'GUIDANCE\n'`, `cat a; printf '\nAlice\n'`,
+		`printf '265 status\n'`, `cat a; printf '265 status\n'`, `printf '265 status\n'; echo done`,
+		`printf '265 status\n'; printf 'Alice Smith\n'; cat a`, `printf '12 34\n'; cat a`,
+		`printf '%s\n' '265 status'; cat a`, `printf '265 status\n' > out; cat a`, `printf "$heading\n"; cat a`,
+		`printf '265 status\t\n'; cat a`, `printf '265 status\n' | cat`,
 		`cat a; printf '\n%s\n' GUIDANCE`, `cat a; printf '\nGUIDANCE\n' > out`} {
 		if text := toolActivityShell(command); !strings.Contains(text, "Run") {
 			t.Fatalf("meaningful command hidden: %s: %s", command, text)
@@ -57,21 +74,60 @@ func TestActivityBatchDecorativeHeadings(t *testing.T) {
 	}
 }
 
+func TestActivityBatchSectionLabelSuccessors(t *testing.T) {
+	const heading = `printf '265 status\n'`
+	for _, tc := range []struct {
+		next string
+		hide bool
+	}{
+		{`cat a && cat b`, true},
+		{`env timeout 1 cat "$file"`, true},
+		{`env env printf 'Alice Smith\n'`, false},
+		{`env timeout 1 printf 'Alice Smith\n'`, false},
+		{`command printf 'Alice Smith\n'`, false},
+		{`builtin printf 'Alice Smith\n'`, false},
+		{`command echo done`, false},
+		{`mrun -n 5 env timeout 1 echo done`, false},
+		{`env "$program"`, false},
+		{`printf 'Alice Smith\n' && cat a`, false},
+	} {
+		script := heading + "; " + tc.next
+		if got := toolActivityShell(script); strings.Contains(got, heading) == tc.hide {
+			t.Fatalf("preview %q: %q", script, got)
+		}
+		segments, ok := shellinstrumentation.Split(script)
+		if !ok {
+			t.Fatalf("untrackable script: %q", script)
+		}
+		entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{Command: script}}
+		for _, segment := range segments {
+			entry.Native.Segments = append(entry.Native.Segments, sessionpresentation.ActivitySegment{Source: segment.Source, Text: execSegmentText(segment.Source)})
+		}
+		found := false
+		for _, block := range parseLiveActivity(entry) {
+			found = found || strings.Contains(block.Code, heading)
+		}
+		if found == tc.hide {
+			t.Fatalf("tracked heading hidden=%t, want %t: %q", !found, tc.hide, script)
+		}
+	}
+}
+
 func TestUISnapshotActivityPlainPrintfHeadings(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
-	const heading = `printf '\nToday session files\n'`
+	const heading = `printf '265 status\n'`
 	const label = `printf '\nGUIDANCE\n'`
 	const data = `printf 'Alice Smith\n'`
 	const ambiguous = `printf 'Evidence-location metadata\n'`
-	const command = heading + `; ` + label + `; ls .codex/sessions/2026/09/30; ` + data + `; ` + ambiguous + `; printf '%s\n' 'count=42'`
+	const command = label + `; ` + heading + `; ls .codex/sessions/2026/09/30; ` + data + `; ` + ambiguous + `; printf '%s\n' 'count=42'`
 	for _, state := range []string{"preview", "completed", "failed-heading"} {
 		t.Run(state, func(t *testing.T) {
 			entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: "/root/probe", Kind: "tool", Text: toolActivityShell(command), Observed: now,
 				Native: &sessionpresentation.NativeItem{Command: command}}
 			if state != "preview" {
 				entry.Native.Segments = []sessionpresentation.ActivitySegment{
-					{Source: heading, Text: execSegmentText(heading), Tail: []string{"Today session files"}},
 					{Source: label, Text: execSegmentText(label), Tail: []string{"GUIDANCE"}},
+					{Source: heading, Text: execSegmentText(heading), Tail: []string{"265 status"}},
 					{Source: "ls .codex/sessions/2026/09/30", Text: execSegmentText("ls .codex/sessions/2026/09/30"), Exit: 1,
 						Tail: []string{"ls: cannot access '.codex/sessions/2026/09/30': No such file or directory"}},
 					{Source: data, Text: execSegmentText(data), Tail: []string{"Alice Smith"}},
@@ -79,8 +135,8 @@ func TestUISnapshotActivityPlainPrintfHeadings(t *testing.T) {
 					{Source: `printf '%s\n' 'count=42'`, Text: execSegmentText(`printf '%s\n' 'count=42'`), Tail: []string{"count=42"}},
 				}
 				if state == "failed-heading" {
-					entry.Native.Segments[0].Exit = 1
-					entry.Native.Segments[0].Tail = []string{"printf: write error"}
+					entry.Native.Segments[1].Exit = 1
+					entry.Native.Segments[1].Tail = []string{"printf: write error"}
 				}
 			}
 			v := newActivityAdapter()

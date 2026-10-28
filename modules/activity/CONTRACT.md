@@ -136,9 +136,14 @@ weight. Per-command Run excerpts omit terminating semicolons, preserving quoted
 semicolons and other executable syntax. Literal `echo`/`printf` section headings
 beside other operations are decoration: colon-ended or bordered headings, and
 newline-framed `printf` titles using capitalized multi-word text or one uppercase
-word, with only letters, spaces, hyphens and slashes. Literal newline-terminated
-`printf` confirmations ending in `checks passed.` or `evidence remains available.`
-also qualify with that capitalized text grammar. Data-bearing formats, standalone,
+word, with only letters, spaces, hyphens and slashes. Newline-terminated multi-word
+`printf` labels immediately before a non-print command also qualify,
+including lowercase text and numeric prefixes. These labels contain letters,
+digits, spaces, hyphens and slashes. Trailing text or a print-only successor does
+not establish a heading without the explicit forms above.
+Literal newline-terminated `printf` confirmations ending in `checks passed.` or
+`evidence remains available.` also qualify with that capitalized text grammar.
+Data-bearing formats, standalone,
 redirected, escaped or dynamic headings remain Run. Live/successful tracked
 headings are omitted; failed ones stay visible.
 
