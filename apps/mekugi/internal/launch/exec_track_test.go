@@ -953,7 +953,7 @@ func TestAppServerTrackedCaptureLiveAndRestored(t *testing.T) {
 			for _, value := range values {
 				if value.Approval != "" {
 					approved++
-					if !value.BatchExit || value.Code != script || value.Approval != outcome || value.Output != 0 {
+					if !value.BatchExit || value.Code != strings.TrimPrefix(script, "mrun --tail -n 8 ") || value.Approval != outcome || value.Output != 0 {
 						t.Fatalf("compound approval borrowed a segment or output: %+v", value)
 					}
 				}

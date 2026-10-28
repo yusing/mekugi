@@ -25,6 +25,12 @@ func ClassifyShell(script, cwd string) (string, bool) {
 	if err != nil || len(program.Stmts) == 0 {
 		return "", false
 	}
+	if display := sourceWithoutMRun(script, program); display != script {
+		if classified, ok := ClassifyShell(display, cwd); ok {
+			return classified, true
+		}
+		return ShellSource(display, cwd), true
+	}
 	hasSetup := shellinstrumentation.HasShellSetup(program)
 	// Heredoc bodies may occur after another statement on the same line,
 	// outside Stmt.End(). Preserve the whole source rather than slicing them.
@@ -55,12 +61,23 @@ func ClassifyShell(script, cwd string) (string, bool) {
 		var source strings.Builder
 		var timeouts []string
 		offset := 0
-		for _, statement := range program.Stmts {
-			if display, ok := sourceStatement(script, statement, cwd, nil); ok {
+		for index, statement := range program.Stmts {
+			var next *syntax.Stmt
+			if index+1 < len(program.Stmts) {
+				next = program.Stmts[index+1]
+			}
+			separators := sourceHeadingSpans(statement, next)
+			if !hasSetup {
+				for _, span := range separators {
+					source.WriteString(script[offset:span[0]])
+					offset = span[1]
+				}
+			}
+			if display, ok := sourceStatement(script, statement, cwd, next); ok {
 				for _, paragraph := range activitymodel.Paragraphs(display) {
 					timeouts = append(timeouts, activitymodel.ParseOperation(paragraph).Timeouts...)
 				}
-				if !hasSetup && display == "" {
+				if !hasSetup && len(separators) == 0 && display == "" {
 					source.WriteString(script[offset:int(statement.Pos().Offset())])
 					offset = int(statement.End().Offset())
 				}
@@ -130,6 +147,101 @@ func ClassifyShell(script, cwd string) (string, bool) {
 	return strings.Join(displays, "\n\n"), true
 }
 
+// Strip only the frontend's validated literal bounds from display source. Keep
+// child words, quoting, redirects and surrounding shell syntax byte-for-byte.
+func shellDisplaySource(script string) string {
+	program, err := syntax.NewParser().Parse(strings.NewReader(script), "")
+	if err != nil {
+		return script
+	}
+	return sourceWithoutMRun(script, program)
+}
+
+func sourceWithoutMRun(script string, program *syntax.File) string {
+	type span struct{ start, end int }
+	var spans []span
+	syntax.Walk(program, func(node syntax.Node) bool {
+		if _, ok := node.(*syntax.FuncDecl); ok {
+			return false
+		}
+		if statement, ok := node.(*syntax.Stmt); ok {
+			for {
+				inner := shellsyntax.UnwrapMRun(statement)
+				if inner == statement {
+					inner = shellsyntax.UnwrapEnv(shellsyntax.UnwrapTimeout(statement))
+					if inner == statement {
+						break
+					}
+				} else {
+					spans = append(spans, span{int(statement.Cmd.(*syntax.CallExpr).Args[0].Pos().Offset()), int(inner.Cmd.(*syntax.CallExpr).Args[0].Pos().Offset())})
+				}
+				statement = inner
+			}
+		}
+		_, call := node.(*syntax.CallExpr)
+		return !call
+	})
+	// Deferred heredoc expansions can be visited before earlier-offset siblings.
+	slices.SortFunc(spans, func(a, b span) int { return b.start - a.start })
+	for _, span := range spans {
+		script = script[:span.start] + script[span.end:]
+	}
+	return script
+}
+
+// Remove headings and their adjacent && operator without reprinting heredoc
+// bodies or changing the source of the operations they introduce.
+func sourceHeadingSpans(statement, next *syntax.Stmt) [][2]int {
+	if sourceReadSeparator(statement) || sourceSectionLabel(statement, next) {
+		return [][2]int{{int(statement.Pos().Offset()), int(statement.End().Offset())}}
+	}
+	var leaves []*syntax.Stmt
+	var operators []int
+	var flatten func(*syntax.Stmt)
+	flatten = func(stmt *syntax.Stmt) {
+		if binary, ok := stmt.Cmd.(*syntax.BinaryCmd); ok && binary.Op == syntax.AndStmt && len(stmt.Redirs) == 0 &&
+			!stmt.Background && !stmt.Negated && !stmt.Coprocess && !stmt.Disown {
+			flatten(binary.X)
+			operators = append(operators, int(binary.OpPos.Offset()))
+			flatten(binary.Y)
+			return
+		}
+		leaves = append(leaves, stmt)
+	}
+	flatten(statement)
+	if len(leaves) < 2 {
+		return nil
+	}
+	removed := make([]bool, len(leaves))
+	for i := range leaves {
+		following := next
+		if i+1 < len(leaves) {
+			following = leaves[i+1]
+		}
+		removed[i] = sourceReadSeparator(leaves[i]) || sourceSectionLabel(leaves[i], following)
+	}
+	var spans [][2]int
+	for i := 0; i < len(leaves); {
+		if !removed[i] {
+			i++
+			continue
+		}
+		end := i + 1
+		for end < len(leaves) && removed[end] {
+			end++
+		}
+		if end < len(leaves) {
+			spans = append(spans, [2]int{int(leaves[i].Pos().Offset()), int(leaves[end].Pos().Offset())})
+		} else if i > 0 {
+			spans = append(spans, [2]int{operators[i-1], int(leaves[end-1].End().Offset())})
+		} else {
+			return [][2]int{{int(statement.Pos().Offset()), int(statement.End().Offset())}}
+		}
+		i = end
+	}
+	return spans
+}
+
 // Heredoc bodies are deferred past Stmt.End(), sometimes past a sibling on
 // the same line. Print the owning AST instead of slicing off or borrowing bodies.
 func sourceStatementSource(script string, statement *syntax.Stmt) string {
@@ -180,7 +292,7 @@ func sourceSectionLabel(statement, next *syntax.Stmt) bool {
 	}
 	for {
 		next = sourceUnwrapCommand(next)
-		if binary, ok := next.Cmd.(*syntax.BinaryCmd); ok && binary.Op == syntax.AndStmt && len(next.Redirs) == 0 &&
+		if binary, ok := next.Cmd.(*syntax.BinaryCmd); ok && (binary.Op == syntax.AndStmt || binary.Op == syntax.Pipe || binary.Op == syntax.PipeAll) && len(next.Redirs) == 0 &&
 			!next.Background && !next.Negated && !next.Coprocess && !next.Disown {
 			next = binary.X
 			continue

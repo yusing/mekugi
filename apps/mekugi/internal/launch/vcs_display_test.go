@@ -95,7 +95,7 @@ func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	u.testActivity(u.shell.Transcript).testPace(now.Add(time.Second))
 	// Staging folds into the commit; the original source owns invocation timing.
 	// The request is not yet a recorded commit.
-	if got, want := mainFeed(u, 90), "├ Check   working tree · git diff --check\n├ Commit  amend! feat(router): pin latest reply · git\n└ Running git diff --check &&\n          git add a.go b.go gone.txt &&\n          mrun --tail -n 35 timeout 90s git commit -F - <<'EOF'"; got != want {
+	if got, want := mainFeed(u, 90), "├ Check   working tree · git diff --check\n├ Commit  amend! feat(router): pin latest reply · git\n└ Running git diff --check &&\n          git add a.go b.go gone.txt &&\n          timeout 90s git commit -F - <<'EOF'"; got != want {
 		t.Fatalf("started commit =\n%s\nwant\n%s", got, want)
 	}
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output

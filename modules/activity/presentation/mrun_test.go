@@ -3,6 +3,7 @@ package presentation
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMRunSourceUsesExecutionGrammar(t *testing.T) {
@@ -56,6 +57,36 @@ func TestMRunCommitEnvironmentKeepsOutputWithoutWrongRepository(t *testing.T) {
 		rows, key := VCSOutputRows(source, "/workspace", "[main 3a1f9c2] x\n 1 file changed, 2 insertions(+)\n")
 		if len(rows) != 1 || !rows[0].Footer || rows[0].Label != "3a1f9c2" || key != (CommitKey{}) {
 			t.Errorf("%s: output=%+v key=%+v", source, rows, key)
+		}
+	}
+}
+
+func TestMRunGenericCommandDisplay(t *testing.T) {
+	for _, tc := range []struct{ source, child string }{
+		{`mrun --max-tokens 6500 -- foo 'two words'`, `foo 'two words'`},
+		{`mrun --tail -n 35 make test`, `make test`},
+		{`mrun -n 2 mrun --max-tokens=4000 -- foo "$value" > result`, `foo "$value" > result`},
+		{`env env -u BASH_ENV mrun -n 2 foo`, `env env -u BASH_ENV foo`},
+		{`mrun -n 2 foo | mrun -n 1 bar`, `foo | bar`},
+		{`mrun -n 2 foo; mrun -n 1 bar`, `foo; bar`},
+		{`mrun -n 2 foo; cat a`, `foo; cat a`},
+		{"mrun -n 2 python3 - <<'PY'\nprint('hello')\nPY", "python3 - <<'PY'\nprint('hello')\nPY"},
+		{"cat <<EOF; mrun -n 2 foo\n$(mrun -n 1 bar)\nEOF", "cat <<EOF; foo\n$(bar)\nEOF"},
+		{"cat <<EOF; mrun -n 2 foo\n$(mrun -n 1 very_long_child_name)\nEOF", "cat <<EOF; foo\n$(very_long_child_name)\nEOF"},
+	} {
+		if got, want := ShellSource(tc.source, ""), ShellSource(tc.child, ""); got != want {
+			t.Errorf("display %q = %q, want %q", tc.source, got, want)
+		}
+		content := ItemContent{Kind: "tool", Text: ShellSource(tc.source, ""),
+			Command: Command{Script: tc.source, Display: tc.source, Duration: time.Second, Exited: true},
+			Details: &ItemDetails{CommandText: tc.source}}
+		for _, value := range content.Values() {
+			if strings.Contains(value.Code, "mrun ") {
+				t.Errorf("published wrapper for %q: %+v", tc.source, value)
+			}
+		}
+		if tc.child == "foo; bar" && len(content.Values()) != 1 {
+			t.Errorf("unwrapping duplicated combined command: %+v", content.Values())
 		}
 	}
 }

@@ -139,8 +139,9 @@ newline-framed `printf` titles using capitalized multi-word text or one uppercas
 word, with only letters, spaces, hyphens and slashes. Newline-terminated multi-word
 `printf` labels immediately before a non-print command also qualify,
 including lowercase text and numeric prefixes. These labels contain letters,
-digits, spaces, hyphens and slashes. Trailing text or a print-only successor does
-not establish a heading without the explicit forms above.
+digits, spaces, hyphens and slashes. A pipeline's first command establishes its
+successor; headings outside heredoc bodies follow the same rule. Trailing text or
+a print-only successor does not establish a heading without the explicit forms above.
 Literal newline-terminated `printf` confirmations ending in `checks passed.` or
 `evidence remains available.` also qualify with that capitalized text grammar.
 Data-bearing formats, standalone,

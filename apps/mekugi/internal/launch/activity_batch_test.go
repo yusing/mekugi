@@ -113,6 +113,43 @@ func TestActivityBatchSectionLabelSuccessors(t *testing.T) {
 	}
 }
 
+func TestActivityBatchSessionDiscoveryHeadings(t *testing.T) {
+	for _, tc := range []struct{ heading, before, next, preview, target string }{
+		{`printf 'Session files\n'`, "", `rg --files --hidden sessions 2>/dev/null | rg 'session|manifest' | head -60`, "List `sessions`", "sessions"},
+		{`printf '\nState directories\n'`, "python3 - <<'PY'\nprint('session_meta')\nPY\n", `ls -d state/* share/* 2>/dev/null`, "ls -d state/* share/*", "state/*"},
+	} {
+		for _, join := range []string{"; ", " && "} {
+			t.Run(tc.heading+join, func(t *testing.T) {
+				script := tc.before + tc.heading + join + tc.next
+				if got := toolActivityShell(script); strings.Contains(got, tc.heading) || !strings.Contains(got, tc.preview) {
+					t.Fatalf("discovery preview retained heading or lost operation: %q", got)
+				}
+				segments, ok := shellinstrumentation.Split(script)
+				if !ok {
+					t.Fatalf("untrackable discovery: %q", script)
+				}
+				entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{Command: script}}
+				for _, segment := range segments {
+					entry.Native.Segments = append(entry.Native.Segments, sessionpresentation.ActivitySegment{Source: segment.Source, Text: execSegmentText(segment.Source)})
+				}
+				found := false
+				for _, block := range parseLiveActivity(entry) {
+					if strings.Contains(block.Code, tc.heading) {
+						t.Fatalf("tracked discovery retained heading: %+v", block)
+					}
+					found = found || strings.Contains(block.Code+block.Label, tc.target)
+					for _, target := range block.Reads {
+						found = found || strings.Contains(target.Path, tc.target)
+					}
+				}
+				if !found {
+					t.Fatalf("tracked discovery lost %q", tc.target)
+				}
+			})
+		}
+	}
+}
+
 func TestUISnapshotActivityPlainPrintfHeadings(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	const heading = `printf '265 status\n'`

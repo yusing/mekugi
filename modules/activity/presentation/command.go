@@ -92,7 +92,7 @@ func (c Command) Compound(values []Value) bool {
 		return compound
 	}
 	if program, err := syntax.NewParser().Parse(strings.NewReader(c.Script), ""); err == nil {
-		if len(values) == 1 && values[0].Verb == "Run" && values[0].Code == textsanitize.Safe(c.Display, false) {
+		if len(values) == 1 && values[0].Verb == "Run" && values[0].Code == textsanitize.Safe(shellDisplaySource(c.Display), false) {
 			return false
 		}
 		compound = len(program.Stmts) > 1
@@ -140,6 +140,7 @@ func hasOutput(output *feed.OutputView, content bool) bool {
 }
 
 func previewSource(source string) (string, bool) {
+	source = shellDisplaySource(source)
 	first, rest, _ := strings.Cut(source, "\n")
 	return first, strings.TrimSpace(rest) != ""
 }

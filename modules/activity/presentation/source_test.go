@@ -199,6 +199,30 @@ func TestSubagentNumberedReadDisplay(t *testing.T) {
 	}
 }
 
+func TestHeredocHeadingChainsKeepOperationsAndBody(t *testing.T) {
+	for _, tc := range []struct{ chain, child string }{
+		{"cat <<'EOF' && printf 'Section:'", "cat <<'EOF' "},
+		{"cat <<'EOF' && printf 'Section:'; echo done", "cat <<'EOF' ; echo done"},
+		{"cat <<'EOF' && printf 'Section:' && ls state/*", "cat <<'EOF' && ls state/*"},
+	} {
+		body := "\nretained body\nEOF"
+		if got, want := ShellSource(tc.chain+body, ""), ShellSource(tc.child+body, ""); got != want {
+			t.Errorf("heredoc inside chain = %q, want %q", got, want)
+		}
+	}
+	for _, chain := range []string{
+		`printf 'Section:' && printf 'Another:' && ls state/*; echo done`,
+		`cat before && printf 'Section:' && ls state/*; echo done`,
+		`ls state/* && printf 'Section:' && printf 'Another:'; echo done`,
+	} {
+		body := "cat <<'EOF'\nprintf 'literal body:'\nEOF\n"
+		got := ShellSource(body+chain, "")
+		if strings.Contains(got, "Section:") || strings.Contains(got, "Another:") || !strings.Contains(got, "ls state/*") || !strings.Contains(got, "echo done") || !strings.Contains(got, "printf 'literal body:'") {
+			t.Errorf("heredoc chain lost operations/body or retained heading: %q", got)
+		}
+	}
+}
+
 func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
 		{"cat a\ncat b > c", "Read `a`\n\nEdit `c` · cat (requested)"},

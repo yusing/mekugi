@@ -115,8 +115,10 @@ for decimal durations with optional `s`, `m`, `h` or `d`; options and dynamic bo
 remain Run. Display never changes the executed source.
 
 Valid literal `mrun` bounds preserve the child command's classification, including
-commit-message stdin. Recognition uses the executing frontend's argument grammar;
-dynamic bounds and malformed options remain Run. Output parsing still requires
+commit-message stdin. Previews show the child source without the `mrun` wrapper,
+including unclassified commands, pipelines and stdin programs; execution and
+output-window bounds remain unchanged. Recognition uses the executing frontend's
+argument grammar; dynamic bounds and malformed options remain Run. Output parsing still requires
 observed evidence, which the selected output window may omit.
 Environment-wrapped commits retain their observed output without object enrichment,
 because the wrapper may change Git repository selection independently of cwd.
