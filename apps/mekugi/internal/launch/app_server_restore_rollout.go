@@ -8,6 +8,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/rollout"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	jsonv1 "encoding/json"
 
@@ -67,6 +68,10 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 		var record struct {
 			Timestamp time.Time `json:"timestamp"`
 			Type      string    `json:"type"`
+			Metadata  struct {
+				ClientAuthored bool `json:"client_authored"`
+				Inherited      bool `json:"inherited_user_message"`
+			} `json:"metadata"`
 			// Only the fields read here; others are skipped without copying.
 			Payload struct {
 				sessioncontrol.NativeMessage
@@ -76,7 +81,7 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 				} `json:"item"`
 				Name      string            `json:"name"`
 				Namespace string            `json:"namespace"`
-				CallID    string            `json:"call_id"`
+				CallID    *string           `json:"call_id"`
 				Output    jsonv1.RawMessage `json:"output"`
 			} `json:"payload"`
 		}
@@ -101,17 +106,30 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 			}
 		case "response_item/custom_tool_call":
 			if p.Name == "exec" && (p.Namespace == "" || p.Namespace == "functions") {
-				cells[p.CallID] = true
+				if p.CallID != nil {
+					cells[*p.CallID] = true
+				}
 			}
 		case "response_item/custom_tool_call_output":
-			if text, failed := binding.CodeModeFailureText(binding.ExecutionOutputTexts(p.Output)); cells[p.CallID] && failed && turn != "" {
-				event.entry = sessionpresentation.ActivityEntry{Agent: agent, Kind: "error", Text: activityui.ErrorPreview(text), ErrorDetail: text, CallID: p.CallID}
+			if text, failed := binding.CodeModeFailureText(binding.ExecutionOutputTexts(p.Output)); p.CallID != nil && cells[*p.CallID] && failed && turn != "" {
+				event.entry = sessionpresentation.ActivityEntry{Agent: agent, Kind: "error", Text: activityui.ErrorPreview(text), ErrorDetail: text, CallID: *p.CallID}
 				r.events = append(r.events, event)
+			}
+		case "response_item/function_call_output":
+			if record.Metadata.ClientAuthored && p.CallID == nil && p.Namespace == "threadcontrol" && p.Name == "followup_task" {
+				var output string
+				if json.Unmarshal(p.Output, &output) == nil {
+					if input, ok := sessioncontrol.FollowupDelivery(output); ok {
+						input.Thread = info.ID
+						event.entry = nativeDeliveryEntry(input, control.MessageItemID(input.ID), record.Timestamp, record.Metadata.Inherited)
+						r.events = append(r.events, event)
+					}
+				}
 			}
 		case "response_item/message":
 			if input, ok := p.NativeMessage.Delivery(); ok {
 				input.Thread = info.ID
-				event.entry = nativeDeliveryEntry(input, p.ID, record.Timestamp)
+				event.entry = nativeDeliveryEntry(input, p.ID, record.Timestamp, record.Metadata.Inherited)
 				r.events = append(r.events, event)
 			}
 		}

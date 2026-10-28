@@ -3,6 +3,7 @@ package terminalview
 // Source: apps/mekugi/internal/router/live_activity_conversation.go:15:847@[29de53cc].
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 
@@ -364,7 +365,7 @@ func (v *View) conversationCaller() string {
 	if speaker := v.conversationSpeaker(); speaker != "Main" {
 		return speaker
 	}
-	return "/root"
+	return cmp.Or(v.Display.MainCaller, "/root")
 }
 
 // Main is local to the runtime's own transcript. It is not the selected child

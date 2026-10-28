@@ -40,7 +40,7 @@ func (c *nativeClientRenderer) update(frame sessionapi.NativeFrame, draft conver
 	}
 	u.Prompts.Update(view)
 	u.Main.Update(view)
-	display := activityui.Display{Caller: view.Displayed.Caller, SideCaller: view.SideThread.Caller, Attachment: view.Version.Attachment, Revision: view.Version.Revision}
+	display := activityui.Display{MainCaller: view.Info.Caller, Caller: view.Displayed.Caller, SideCaller: view.SideThread.Caller, Attachment: view.Version.Attachment, Revision: view.Version.Revision}
 	u.Transcript.StatusLabel = terminalsession.StatusText(view.Status.State)
 	main, agents := frame.Main, frame.Agents
 	if c.frame.Main != main || c.frame.Agents != agents {

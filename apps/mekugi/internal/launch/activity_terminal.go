@@ -35,7 +35,7 @@ func deliverActivity(view *activityui.View, source *sessionpresentation.Activity
 		view.MainStatus = mainView.StatusLabel
 	}
 	display := session.View()
-	view.Update(publication, activityui.Display{Caller: display.Displayed.Caller, SideCaller: display.SideThread.Caller, Attachment: display.Version.Attachment, Revision: display.Version.Revision})
+	view.Update(publication, activityui.Display{MainCaller: display.Info.Caller, Caller: display.Displayed.Caller, SideCaller: display.SideThread.Caller, Attachment: display.Version.Attachment, Revision: display.Version.Revision})
 }
 
 func publishActivity(attached *attachedPresentation, terminal *terminalsession.Attachment) {

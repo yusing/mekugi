@@ -34,7 +34,9 @@ func MainActivityEntry(entry ActivityEntry) (ActivityEntry, bool) {
 		entry.Agent = entry.Message.From
 	}
 	main = main || (entry.Kind == "final" || entry.Kind == "start") && entry.Agent != "/root"
-	if entry.Agent == "/root" {
+	// A received envelope's sender is global, while Main names this runtime.
+	incoming := entry.Message != nil && entry.Message.To == "Main" || entry.Assignment != nil && entry.Assignment.To == "Main"
+	if entry.Agent == "/root" && !incoming {
 		entry.Agent = "Main"
 	}
 	return entry, main

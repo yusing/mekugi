@@ -12,9 +12,6 @@ func TestNativeMessageDeliveryRequiresOwnedEnvelope(t *testing.T) {
 		"wrong provenance": func(item *NativeMessage) { item.Metadata.Kinds[0] = "multi_agent.inter_agent_completion_message" },
 		"foreign identity": func(item *NativeMessage) { item.ID = "ordinary-item" },
 		"human role":       func(item *NativeMessage) { item.Role = "user" },
-		"assignment": func(item *NativeMessage) {
-			*item, _, _ = nativeContent(control.NativeInput{ID: "assignment", Kind: "NEW_TASK", Sender: "/root", Recipient: "/root/child"})
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			item, _, _ := nativeContent(control.NativeInput{ID: "message", Kind: "MESSAGE", Sender: "/root/child", Recipient: "/root", Message: "body"})

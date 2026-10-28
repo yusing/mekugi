@@ -56,19 +56,52 @@ type nativeMessageText struct {
 	Text string `json:"text"`
 }
 
-// Delivery decodes only retained-only messages/results. The caller must supply
+// Delivery decodes retained assignments, messages and results. The caller must supply
 // an identity-validated host rollout; decoding grants no dispatch authority.
 func (item NativeMessage) Delivery() (input control.NativeInput, ok bool) {
 	id, owned := strings.CutPrefix(item.ID, "threadcontrol_")
 	if _, err := hex.DecodeString(id); !owned || len(id) != 64 || err != nil || len(item.Content) != 1 {
 		return input, false
 	}
-	text, ok := strings.CutPrefix(item.Content[0].Text, "Message Type: ")
+	input, ok = nativeAttributedInput(item.Content[0].Text)
+	if !ok {
+		return input, false
+	}
+	expected, _, _ := nativeContent(input)
+	expected.ID = item.ID
+	if !reflect.DeepEqual(item, expected) {
+		return input, false
+	}
+	return input, true
+}
+
+// FollowupDelivery decodes a named client-authored followup_task continuation.
+// Its caller validates the retained output's host provenance and owning thread.
+func FollowupDelivery(output string) (input control.NativeInput, ok bool) {
+	text, ok := strings.CutPrefix(output, "Operation ID: ")
+	if !ok {
+		return input, false
+	}
+	id, text, ok := strings.Cut(text, "\n")
+	if !ok || id == "" {
+		return input, false
+	}
+	input, ok = nativeAttributedInput(text)
+	if !ok || input.Kind != "NEW_TASK" {
+		return input, false
+	}
+	input.ID, input.Run = id, true
+	_, _, expected := nativeContent(input)
+	return input, output == expected
+}
+
+func nativeAttributedInput(text string) (input control.NativeInput, ok bool) {
+	text, ok = strings.CutPrefix(text, "Message Type: ")
 	if !ok {
 		return input, false
 	}
 	input.Kind, text, ok = strings.Cut(text, "\nTask name: ")
-	if !ok || input.Kind != "MESSAGE" && input.Kind != "FINAL_ANSWER" {
+	if !ok || input.Kind != "NEW_TASK" && input.Kind != "MESSAGE" && input.Kind != "FINAL_ANSWER" {
 		return input, false
 	}
 	input.Recipient, text, ok = strings.Cut(text, "\nSender: ")
@@ -95,11 +128,6 @@ func (item NativeMessage) Delivery() (input control.NativeInput, ok bool) {
 		}
 	}
 	if input.Sender == "" || strings.ContainsAny(input.Sender, "\r\n") || strings.ContainsAny(input.ParentTurn, "\r\n") {
-		return input, false
-	}
-	expected, _, _ := nativeContent(input)
-	expected.ID = item.ID
-	if !reflect.DeepEqual(item, expected) {
 		return input, false
 	}
 	return input, true

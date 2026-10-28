@@ -14,6 +14,7 @@ import (
 
 // Display carries application admission without host identity or a live owner.
 type Display struct {
+	MainCaller           string // Canonical endpoint of this runtime's Main transcript.
 	SideCaller           string
 	Caller               string
 	Attachment, Revision uint64
@@ -78,6 +79,9 @@ func (v *View) requestDisplay(caller string) {
 
 // Update consumes immutable detached input, retaining renderer-owned state between frames.
 func (v *View) Update(publication *presentation.Publication, display Display) {
+	if v.Display.MainCaller != display.MainCaller {
+		v.Runs = nil
+	}
 	v.Display = display
 	if v.publication == publication {
 		return

@@ -333,8 +333,9 @@ from that turn in order, including an empty payload when none exist, then inject
 `FINAL_ANSWER` through `thread/inject_items`. Failure/interruption retains its actual
 outcome. Injection alone neither starts nor steers its receiver. A completion wake
 follows confirmed delivery and carries identity/status rather than duplicate text.
-Confirmed messages and answers appear in the receiving runtime's Main transcript
-with their original logical sender and terminal outcome. An interruption request
+Confirmed initial assignments, follow-ups, messages and answers appear in the receiving
+runtime's Main transcript with their original logical sender and terminal outcome.
+Inherited traffic keeps its original sender and recipient. An interruption request
 settles when its target outcome arrives, retaining the original request evidence.
 Failed injections do not publish delivered traffic.
 Rejected delivery remains visible and may satisfy a wait as delivery failure.

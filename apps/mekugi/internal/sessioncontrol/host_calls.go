@@ -78,10 +78,14 @@ func (r *Requests[T]) call(ctx context.Context, scope, method string, params any
 // NativeDelivery borrows the typed attribution retained by the sole host ledger.
 // The consumer publishes it only after a successful correlated acknowledgement.
 func (request Request[T]) NativeDelivery() *control.NativeInput {
-	if request.call == nil || request.call.input == nil || request.call.input.Run || request.call.input.Kind != "FINAL_ANSWER" && request.call.input.Kind != "MESSAGE" {
+	if request.call == nil || request.call.input == nil {
 		return nil
 	}
-	return new(*request.call.input)
+	input := request.call.input
+	if input.Kind == "NEW_TASK" && input.Message != "" || !input.Run && (input.Kind == "MESSAGE" || input.Kind == "FINAL_ANSWER") {
+		return new(*input)
+	}
+	return nil
 }
 
 // Dispatch runs only on the ledger's event-loop owner. Sending failures are
