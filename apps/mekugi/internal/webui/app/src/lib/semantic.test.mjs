@@ -422,6 +422,54 @@ test("same-thread recovery releases aborted reads without clearing replacement g
   }
 });
 
+test("deferred live reads recover from supersession and retain current failures", async () => {
+  for (const replacement of ["conflict", "revision", "attachment", "none"]) {
+    const source = new Stream();
+    let publish;
+    const requests = [];
+    source.connect("thread", {
+      subscribe(_method, _params, event) {
+        publish = event;
+        return () => {};
+      },
+      resource(_kind, params) {
+        const reply = Promise.withResolvers();
+        requests.push({ reference: params.body, ...reply });
+        return reply.promise;
+      },
+    });
+    const ref = { attachment: "A", kind: "live", revision: 1 };
+    publish({ kind: "snapshot", data: { session: { thread: "thread" }, deferred: { live: ref } } });
+    const read = source.loadSection("live");
+    await source.loadSection("live");
+    assert.equal(requests.length, 1, "one outstanding read per section");
+    const next = {
+      ...ref,
+      attachment: replacement === "attachment" ? "B" : "A",
+      revision: replacement === "revision" || replacement === "conflict" ? 2 : 1,
+    };
+    if (replacement === "revision" || replacement === "attachment")
+      publish({ kind: "patch", data: { deferred: { live: next } } });
+    requests[0].reject(
+      new TransportError("Read failed", "refused", replacement === "conflict" ? 409 : 503),
+    );
+    await read;
+    assert.equal(source.sectionLoading.live, false);
+    assert.equal(source.sectionErrors.live, replacement === "none" ? "Read failed" : "");
+    assert.deepEqual(source.live, []);
+    assert.equal(requests.length, 1, "conflicts wait for publication rather than spin");
+    if (replacement === "conflict") publish({ kind: "patch", data: { deferred: { live: next } } });
+    const retry = source.loadSection("live");
+    assert.deepEqual(requests[1].reference, next);
+    requests[1].resolve({ live: [{ id: "edit", input: "latest source" }] });
+    await retry;
+    assert.equal(source.live[0].input, "latest source");
+    assert.equal(source.deferred.live, undefined);
+    assert.equal(source.sectionErrors.live, "");
+    source.close();
+  }
+});
+
 test("role colours survive roster reordering and thread navigation", () => {
   const source = new Stream();
   let publish;

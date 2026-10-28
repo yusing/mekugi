@@ -150,6 +150,18 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		}
 	}
 	run("open", page.URL)
+	run("eval", `window.heldLivePublications = []; const Original = window.WebSocket; window.WebSocket = class extends Original {
+    addEventListener(kind, listener, ...options) {
+      if (kind !== 'message') return super.addEventListener(kind, listener, ...options);
+      return super.addEventListener(kind, event => {
+        const message = JSON.parse(event.data);
+        if (window.holdLivePublications && message.method === 'subscription/event' && message.params.data.deferred?.live) {
+          window.heldLivePublications.push(() => listener.call(this, event)); return;
+        }
+        listener.call(this, event);
+      }, ...options);
+    }
+  }`)
 	run("find", "label", "Machine name", "fill", "Diffs")
 	run("find", "label", "Connector URL", "fill", machine.remote.URL)
 	run("find", "label", "Access token", "fill", strings.Repeat("d", 64))
@@ -214,6 +226,32 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	publish()
 	run("wait", "--fn", `document.querySelector('[aria-label="Live edits"] .diff-word[style*="--shiki-light"]')`)
 	capture("live-diff")
+	// The content HTTP request can reach the owner after its live revision
+	// advances but before the browser receives that revision over WebSocket.
+	run("eval", `window.liveReads = []; window.liveResponses = []; window.liveFetch = window.fetch; window.fetch = (...args) => {
+    if (!String(args[0]).endsWith('/api/resources/content') || JSON.parse(args[1].body).body.kind !== 'live') return window.liveFetch(...args);
+    return new Promise((resolve, reject) => window.liveReads.push(() => window.liveFetch(...args).then(async response => {
+      window.liveResponses.push({status:response.status, body:await response.clone().json()}); resolve(response);
+    }, reject)));
+  }`)
+	frame.Live[0].Files = nil
+	frame.Live[0].Input = strings.Repeat("streaming source\n", 4000)
+	publish()
+	run("wait", "--fn", `window.liveReads.length === 1`)
+	run("eval", `window.holdLivePublications = true`)
+	frame.Live[0].Input += "LATEST LIVE REVISION\n"
+	publish()
+	run("wait", "--fn", `window.heldLivePublications.length > 0`)
+	run("eval", `window.liveReads.shift()()`)
+	run("wait", "--fn", `window.liveResponses.length === 1`)
+	run("eval", `if (window.liveResponses[0].status !== 409 || window.liveResponses[0].body.message !== 'The referenced section changed.') throw Error('Fixture did not reach section revision rejection')`)
+	run("eval", `if (document.body.textContent.includes('The referenced section changed.')) throw Error('Live revision race surfaced as a retry error'); if (window.liveReads.length) throw Error('Obsolete live revision retried')`)
+	run("eval", `window.holdLivePublications = false; window.heldLivePublications.splice(0).forEach(deliver => deliver())`)
+	run("wait", "--fn", `window.liveReads.length === 1`)
+	run("eval", `window.liveReads.shift()()`)
+	run("wait", "--fn", `document.querySelector('[aria-label="Live edits"]')?.textContent.includes('LATEST LIVE REVISION')`)
+	run("eval", `if (window.liveResponses.length !== 2 || window.liveResponses[1].status !== 200 || document.body.textContent.includes('The referenced section changed.')) throw Error('Live revision did not recover automatically'); window.fetch = window.liveFetch`)
+	frame.Live[0].Input = ""
 	// Arrival order fills a row before starting the next, for file diffs,
 	// unparsed input and streamed unified-diff fallback alike.
 	long := strings.Repeat("long_identifier_", 24)

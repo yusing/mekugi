@@ -536,7 +536,15 @@ export class Stream {
       delete next[kind];
       this.deferred = next;
     } catch (error) {
-      if (!lifetime.aborted)
+      const current = this.deferred[kind];
+      // A newer publication supplies the next reference; retrying this one
+      // cannot recover a revision conflict.
+      if (
+        !lifetime.aborted &&
+        current?.attachment === ref.attachment &&
+        current.revision === ref.revision &&
+        !(error instanceof TransportError && error.status === 409)
+      )
         this.sectionErrors = { ...this.sectionErrors, [kind]: errorText(error) };
     } finally {
       if (!session.aborted) this.sectionLoading = { ...this.sectionLoading, [kind]: false };
