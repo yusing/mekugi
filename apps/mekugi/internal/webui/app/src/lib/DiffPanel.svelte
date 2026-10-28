@@ -22,7 +22,9 @@
   // "" is every agent; "?" is changes recorded without an agent.
   let caller = $derived(owner);
   let metadata = $state.raw<ReviewedFile[]>([]);
-  let complete = $state.raw<Record<string, ReviewedFile>>({});
+  let complete = $state.raw<
+    Record<string, { reference: ReviewedFile["content"]; file: ReviewedFile }>
+  >({});
   let pending = $state.raw<Record<string, boolean>>({});
   let failures = $state.raw<Record<string, string>>({});
   let next = $state.raw<PageCursor | null>();
@@ -31,36 +33,24 @@
   let request = new AbortController();
   let container = $state<HTMLElement>();
   let refreshing = $state(false);
+  let acquiredPage = $state.raw<PageCursor>();
   let windowOwner = "";
   let windowRows = 0;
-  let anchor: { key?: string; focus?: string; offset: number; top: number } | undefined;
   $effect(() => {
     const page = review?.page;
     const selected = caller;
     const identity = `${page?.attachment}:${selected}`;
-    const scroller = untrack(() => container?.closest<HTMLElement>(".overflow-y-auto"));
     untrack(() => {
       if (identity !== windowOwner) {
         windowRows = 0;
-        anchor = undefined;
-      } else if (!anchor && scroller) {
-        const top = scroller.getBoundingClientRect().top;
-        const row = [...container!.querySelectorAll<HTMLElement>("[data-file]")].find(
-          (node) => node.getBoundingClientRect().bottom > top,
-        );
-        anchor = {
-          key: row?.dataset.file,
-          focus: document.activeElement?.closest<HTMLElement>("[data-file]")?.dataset.file,
-          offset: (row?.getBoundingClientRect().top ?? top) - top,
-          top: scroller.scrollTop,
-        };
+        metadata = [];
+        complete = {};
+        acquiredPage = undefined;
       }
       windowOwner = identity;
     });
     request.abort();
     request = new AbortController();
-    metadata = [];
-    complete = {};
     pending = {};
     failures = {};
     pageLoading = false;
@@ -70,40 +60,81 @@
     if (page) untrack(() => void refreshPages());
     return () => request.abort();
   });
+  function captureAnchor() {
+    const scroller = container?.closest<HTMLElement>(".overflow-y-auto");
+    if (!scroller) return;
+    const top = scroller.getBoundingClientRect().top;
+    const row = [...container!.querySelectorAll<HTMLElement>("[data-file]")].find(
+      (node) => node.getBoundingClientRect().bottom > top,
+    );
+    return {
+      scroller,
+      key: row?.dataset.file,
+      focus: document.activeElement?.closest<HTMLElement>("[data-file]")?.dataset.file,
+      offset: (row?.getBoundingClientRect().top ?? top) - top,
+      top: scroller.scrollTop,
+    };
+  }
+  function restoreAnchor(anchor: ReturnType<typeof captureAnchor>) {
+    if (!anchor || container?.closest(".overflow-y-auto") !== anchor.scroller) return;
+    const { scroller } = anchor;
+    const row = [...container.querySelectorAll<HTMLElement>("[data-file]")].find(
+      (node) => node.dataset.file === anchor.key,
+    );
+    scroller.scrollTop = row
+      ? scroller.scrollTop +
+        row.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top -
+        anchor.offset
+      : anchor.top;
+    if (anchor.focus && document.activeElement === document.body) {
+      [...container.querySelectorAll<HTMLElement>("[data-file]")]
+        .find((node) => node.dataset.file === anchor.focus)
+        ?.querySelector<HTMLElement>("summary")
+        ?.focus({ preventScroll: true });
+    }
+  }
   async function refreshPages() {
     if (refreshing) return;
+    const page = review?.page;
+    if (!page) return;
     const signal = request.signal;
-    const scroller = container?.closest<HTMLElement>(".overflow-y-auto");
     // A revision refreshes only the window already acquired by this reader.
     const wanted = windowRows;
     refreshing = true;
-    do {
-      await loadPage();
-    } while (!signal.aborted && !pageError && next && metadata.length < wanted);
-    if (signal.aborted) return;
-    await tick();
-    if (signal.aborted) return;
-    if (anchor && scroller) {
-      const row = [...container!.querySelectorAll<HTMLElement>("[data-file]")].find(
-        (node) => node.dataset.file === anchor!.key,
+    pageError = undefined;
+    let cursor: PageCursor | null | undefined = { ...page, caller };
+    const updated: ReviewedFile[] = [];
+    // Keep the acquired window visible until its replacement is ready.
+    try {
+      do {
+        const result = await stream.page(cursor, signal);
+        try {
+          if (signal.aborted) return;
+          updated.push(...((result.files ?? []) as ReviewedFile[]));
+          cursor = result.next;
+        } finally {
+          result.acknowledge?.();
+        }
+      } while (cursor && updated.length < wanted);
+      const anchor = captureAnchor();
+      metadata = updated;
+      complete = Object.fromEntries(
+        updated.flatMap((file) => {
+          const cached = complete[file.key];
+          return cached ? [[file.key, cached]] : [];
+        }),
       );
-      scroller.scrollTop = row
-        ? scroller.scrollTop +
-          row.getBoundingClientRect().top -
-          scroller.getBoundingClientRect().top -
-          anchor.offset
-        : anchor.top;
-      if (anchor.focus && document.activeElement === document.body) {
-        [...container!.querySelectorAll<HTMLElement>("[data-file]")]
-          .find((node) => node.dataset.file === anchor!.focus)
-          ?.querySelector<HTMLElement>("summary")
-          ?.focus({ preventScroll: true });
-      }
-    }
-    if (!pageError) {
+      next = cursor;
+      acquiredPage = page;
+      await tick();
+      if (signal.aborted) return;
+      restoreAnchor(anchor);
       windowRows = metadata.length;
-      anchor = undefined;
+    } catch (error) {
+      if (!signal.aborted) pageError = errorText(error);
     }
+    if (signal.aborted) return;
     refreshing = false;
   }
   async function loadPage(demand?: AbortSignal) {
@@ -137,7 +168,13 @@
       const result = await stream.readContent(file.content, signal);
       if (signal.aborted) return;
       if (!result.review) throw new Error("The composed file is unavailable.");
-      complete = { ...complete, [file.key]: result.review as ReviewedFile };
+      const anchor = captureAnchor();
+      complete = {
+        ...complete,
+        [file.key]: { reference: file.content, file: result.review as ReviewedFile },
+      };
+      await tick();
+      if (!signal.aborted) restoreAnchor(anchor);
     } catch (error) {
       if (!signal.aborted) failures = { ...failures, [file.key]: errorText(error) };
     } finally {
@@ -145,11 +182,27 @@
     }
   }
   const loading = $derived(
-    !review || review.coverage === "CONNECTING" || (pageLoading && !metadata.length),
+    !review || review.coverage === "CONNECTING" || (!acquiredPage && refreshing),
   );
   // Coverage reads as its status; an empty one is complete.
   const coverage = $derived(loading ? "" : (review?.coverage ?? ""));
-  const files = $derived(metadata.map((file) => complete[file.key] ?? file));
+  function hydrated(file: ReviewedFile): boolean {
+    const reference = complete[file.key]?.reference;
+    return (
+      !!reference &&
+      reference.attachment === file.content?.attachment &&
+      reference.revision === file.content.revision
+    );
+  }
+  const files = $derived(
+    metadata.map((file) => {
+      const cached = complete[file.key];
+      if (!cached) return file;
+      return hydrated(file)
+        ? { ...cached.file, content: file.content }
+        : { ...file, chunks: cached.file.chunks, origins: cached.file.origins };
+    }),
+  );
 
   const name = (key: string) =>
     key === "" ? "All agents" : key === "?" ? "Unknown agent" : stream.label(key);
@@ -180,9 +233,17 @@
   const defaults = $derived(new Set(metadata.slice(0, 2).map((file) => file.key)));
   const open = (file: ReviewedFile) => toggled[file.key] ?? defaults.has(file.key);
   $effect(() => {
-    const visible = files.filter(
-      (file) => open(file) && file.content && !pending[file.key] && !failures[file.key],
-    );
+    if (
+      refreshing ||
+      acquiredPage?.attachment !== review?.page?.attachment ||
+      acquiredPage?.revision !== review?.page?.revision
+    )
+      return;
+    const visible = metadata.filter((file) => {
+      return (
+        open(file) && file.content && !pending[file.key] && !failures[file.key] && !hydrated(file)
+      );
+    });
     untrack(() => {
       for (const file of visible) void loadFile(file);
     });
@@ -290,12 +351,12 @@
                 {#if known(file.counts)}{@render counts(file.counts)}{/if}
               </summary>
               {#if isOpen}
-                <div class="pb-2">
+                <div class="pb-2" aria-busy={!!pending[file.key]}>
                   {#if failures[file.key]}<Alert>{failures[file.key]}</Alert><Button
                       variant="quiet"
                       onclick={() => loadFile(file)}>Retry file</Button
                     >
-                  {:else if file.content}<p class="text-small text-muted">
+                  {:else if file.content && !complete[file.key]}<p class="text-small text-muted">
                       Loading composed file…
                     </p>{/if}
                   {#each file.chunks ?? [] as chunk, i (chunk.Key || i)}

@@ -344,7 +344,8 @@ Roster activity updates keep acquired members visible while current pages arrive
 superseded page reads recover from the next publication without a manual retry.
 Existing disclosure and copy actions acquire complete retained content without
 occupying the navigation connection. Changes acquires bounded file
-metadata and loads exact composed diffs for visible or opened files. Agent return
+metadata and loads exact composed diffs for visible or opened files. Revision refreshes
+keep the acquired review visible until its replacement is ready. Agent return
 navigation uses the kit's quiet breadcrumb button.
 
 ## Delivery and acceptance

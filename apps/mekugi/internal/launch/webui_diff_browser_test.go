@@ -74,7 +74,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		out, err := exec.CommandContext(ctx, browser, append([]string{"--session", name}, args...)...).CombinedOutput()
 		if err != nil {
 			snapshot, _ := exec.CommandContext(ctx, browser, "--session", name, "snapshot", "-i").CombinedOutput()
-			details, _ := exec.CommandContext(ctx, browser, "--session", name, "eval", `document.querySelector('[aria-labelledby="saved-heading"]')?.innerHTML`).CombinedOutput()
+			details, _ := exec.CommandContext(ctx, browser, "--session", name, "eval", `document.querySelector('[aria-labelledby="saved-heading"]')?.innerHTML.slice(0, 4000)`).CombinedOutput()
 			t.Fatalf("browser %s: %v: %s\n%s\n%s", args[0], err, out, snapshot, details)
 		}
 		return string(out)
@@ -160,6 +160,55 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	run("wait", "--fn", `document.querySelector('[aria-labelledby="saved-heading"] .diff-word[style*="--shiki-light"]')`)
 	run("wait", "--fn", `(() => { const s = document.querySelector('[aria-labelledby="saved-heading"]'); const cells = [...s.querySelectorAll('span.whitespace-pre')]; const plain = cells.find(e => e.textContent === '<script>literal & text</script>'); const added = cells.find(e => e.textContent === 'const new_name = 2;'); return plain && !plain.querySelector('[style], .diff-word, script') && added && [...added.querySelectorAll('.diff-word')].map(e => e.textContent).join('') === 'new_name2' && s.querySelector('details').querySelectorAll('.border-dashed').length === 2 && !s.textContent.includes('@@') && [...s.querySelectorAll('.tabular-nums')].some(e => e.textContent === '15'); })()`)
 	capture("saved-diff")
+	// Delay each review refresh so the displayed window must survive in flight.
+	run("eval", `window.savedFile = document.querySelector('[data-file]'); window.savedDiff = window.savedFile.querySelector('.diff-word'); window.reviewFlashed = false; window.reviewObserver = new MutationObserver(() => { if (document.querySelector('[aria-label="Loading saved changes"]')) window.reviewFlashed = true; }); window.reviewObserver.observe(document.body, {childList:true, subtree:true}); window.pageReads = []; window.fileReads = []; window.originalSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { if (JSON.parse(text).method === 'session/page') { window.pageReads.push(() => window.originalSend.call(this, text)); return; } return window.originalSend.call(this, text); }; window.originalFetch = window.fetch; window.fetch = (...args) => String(args[0]).endsWith('/api/resources/content') ? new Promise((resolve, reject) => window.fileReads.push(() => window.originalFetch(...args).then(resolve, reject))) : window.originalFetch(...args)`)
+	for i := range 3 {
+		if i > 0 {
+			run("eval", `document.querySelector('#panel-content > div').scrollTop = 500`)
+		}
+		view.Revision++
+		refreshed := diffmodel.RenderReviewFile(path, path, "const previous = 1;\n", fmt.Sprintf("// refreshed review %d\n", i)+strings.Repeat("const updated = 2;\n", 200))
+		view.Publication = view.Publication.With(changes.GroupCaptures([]changes.Chunk{
+			{Key: "code", CaptureOrder: 1, Origin: changes.Origin{Caller: "/root", Source: "apply_patch"}, Review: refreshed},
+		}))
+		frame.Session.Title = fmt.Sprintf("Review refresh %d", i)
+		publish()
+		run("wait", "--text", frame.Session.Title)
+		run("wait", "--fn", `window.pageReads.length > 0`)
+		if strings.TrimSpace(run("eval", `window.savedFile.isConnected && window.savedDiff.isConnected && !window.reviewFlashed`)) != "true" {
+			t.Fatal("review refresh hid the acquired file or its composed diff")
+		}
+		if i > 0 {
+			run("eval", `(() => { const pane = document.querySelector('#panel-content > div'); pane.scrollTop = 800; window.reviewScroll = pane.scrollTop; window.reviewHeight = pane.scrollHeight; if (window.reviewScroll < 799) throw Error('Review fixture did not scroll inside the long diff'); })()`)
+		}
+		run("eval", `window.pageReads.shift()()`)
+		run("wait", "--fn", `window.fileReads.length > 0`)
+		if i > 0 {
+			run("eval", `(() => { const pane = document.querySelector('#panel-content > div'); if (!window.savedDiff.isConnected || Math.abs(pane.scrollTop - window.reviewScroll) > 1 || Math.abs(pane.scrollHeight - window.reviewHeight) > 2) throw Error('Metadata refresh changed the rendered review: ' + JSON.stringify({connected:window.savedDiff.isConnected,scroll:pane.scrollTop,expectedScroll:window.reviewScroll,height:pane.scrollHeight,expectedHeight:window.reviewHeight})); })()`)
+		}
+		run("eval", `window.fileReads.shift()()`)
+		run("wait", "--text", fmt.Sprintf("// refreshed review %d", i))
+		if i > 0 {
+			run("eval", `if (Math.abs(document.querySelector('#panel-content > div').scrollTop - window.reviewScroll) > 1) throw Error('Composed file hydration moved the reader')`)
+		}
+		run("eval", `window.savedDiff = window.savedFile.querySelector('.diff-word'); if (document.querySelector('[aria-labelledby="saved-heading"]').textContent.includes('notes.unknown')) throw Error('Refreshed review retained a removed file')`)
+	}
+	run("eval", `window.savedFile.querySelector('summary').click()`)
+	view.Revision++
+	view.Publication = view.Publication.With(changes.GroupCaptures([]changes.Chunk{
+		{Key: "code", CaptureOrder: 1, Origin: changes.Origin{Caller: "/root", Source: "apply_patch"}, Review: diffmodel.RenderReviewFile(path, path, "const previous = 1;\n", "// closed refresh\n"+strings.Repeat("const updated = 2;\n", 400))},
+	}))
+	frame.Session.Title = "Closed review refresh"
+	publish()
+	run("wait", "--text", frame.Session.Title)
+	run("wait", "--fn", `window.pageReads.length > 0`)
+	run("eval", `window.pageReads.shift()()`)
+	run("wait", "--fn", `window.savedFile.querySelector('summary').textContent.includes('+401')`)
+	run("eval", `if (window.fileReads.length) throw Error('Closed-file counts required hydration'); window.savedFile.querySelector('summary').click()`)
+	run("wait", "--fn", `window.fileReads.length > 0`)
+	run("eval", `window.fileReads.shift()()`)
+	run("wait", "--text", "// closed refresh")
+	run("eval", `WebSocket.prototype.send = window.originalSend; window.fetch = window.originalFetch; window.reviewObserver.disconnect(); if (window.reviewFlashed) throw Error('Saved changes flashed loading during refresh')`)
 	button("Changes")
 	frame.Live = []preview.Preview{{ID: "writing", Caller: "/root", Workspace: workspace, Tool: "apply_patch", Files: []diffmodel.ReviewFile{file}}}
 	publish()
@@ -213,7 +262,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	publish()
 	run("wait", "--fn", `!document.querySelector('[aria-label="Live edits"]')`)
 	openSaved()
-	run("wait", "--fn", `document.querySelector('[aria-labelledby="saved-heading"] .diff-word[style*="--shiki-light"]')`)
+	run("wait", "--text", "// closed refresh")
 	// A retained review can have hundreds of individually short files. Opening
 	// its tab must not paint and tokenize every file before accepting input.
 	button("Changes")
@@ -251,5 +300,18 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	if strings.TrimSpace(run("eval", `(() => { const pane = document.querySelector('#panel-content > div'); const row = [...pane.querySelectorAll('[data-file]')].find(node => node.dataset.file === window.reviewAnchor); return Math.abs(row.getBoundingClientRect().top - pane.getBoundingClientRect().top - window.reviewOffset) < 2 && document.activeElement.closest('[data-file]')?.dataset.file === window.reviewFocus; })()`)) != "true" {
 		t.Fatal("review refresh lost its later-page reading anchor or focus")
 	}
+	// A metadata failure must not hydrate newly opened files from old references.
+	run("eval", `window.failedContentReads = []; window.failReviewPage = true; window.originalSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { const message = JSON.parse(text); if (message.method === 'session/page' && window.failReviewPage) { window.failReview = () => this.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({jsonrpc:'2.0',id:message.id,error:{code:-32000,message:'Fixture review refresh failed'}})})); return; } return window.originalSend.call(this,text); }; window.originalFetch = window.fetch; window.fetch = (...args) => String(args[0]).endsWith('/api/resources/content') ? new Promise((resolve, reject) => window.failedContentReads.push({reference:JSON.parse(args[1].body).body,send:() => window.originalFetch(...args).then(resolve, reject)})) : window.originalFetch(...args)`)
+	view.Revision++
+	frame.Session.Title = "Review retry fixture"
+	publish()
+	run("wait", "--text", frame.Session.Title)
+	run("wait", "--fn", `!!window.failReview`)
+	run("eval", `document.querySelectorAll('[aria-labelledby="saved-heading"] li')[3].querySelector('summary').click(); window.failReview()`)
+	run("wait", "--text", "Fixture review refresh failed")
+	run("eval", `if (window.failedContentReads.length) throw Error('Metadata failure started hydration from an old revision'); window.failReviewPage = false; [...document.querySelectorAll('[aria-labelledby="saved-heading"] button')].find(button => button.textContent.trim() === 'Retry').click()`)
+	run("wait", "--fn", `window.failedContentReads.length > 0`)
+	run("eval", fmt.Sprintf(`if (window.failedContentReads.some(read => read.reference.revision !== %d)) throw Error('Retry used obsolete content references'); window.failedContentReads.splice(0).forEach(read => read.send()); WebSocket.prototype.send = window.originalSend; window.fetch = window.originalFetch`, view.Revision))
+	run("wait", "--fn", `document.querySelectorAll('[aria-labelledby="saved-heading"] li')[3].textContent.includes('const retained = true;')`)
 	t.Log("Saved/live diffs retain source, independent gutters, hunk gaps, syntax, word emphasis, streaming replacement and settling across desktop/tablet/phone in both appearances")
 }
