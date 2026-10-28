@@ -40,7 +40,7 @@ func TestWaitProgressSanitizesHostText(t *testing.T) {
 	b := activityui.Block{Kind: "progress", Body: "Waiting", WaitTargets: []activityui.WaitTarget{{Name: "/root/agent\x1b[31m", Status: "done\x1b[2J"}}}
 	p := activityui.Painter{}
 	rows := strings.Join(p.Block(b, 120), "\n")
-	if strings.Contains(rows, "\x1b[31m") || strings.Contains(rows, "\x1b[2J") || ansi.Strip(rows) != "• Waiting agent: done" {
+	if strings.Contains(rows, "\x1b[31m") || strings.Contains(rows, "\x1b[2J") || ansi.Strip(rows) != "↔ Waiting agent: done" {
 		t.Fatalf("unsafe wait: %q", rows)
 	}
 }

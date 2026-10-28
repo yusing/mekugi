@@ -436,7 +436,11 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if block.Label != "" && block.Hovered {
 			text = Underline(text)
 		}
-		return terminalui.Wrap(style+"• "+text+terminalui.Reset, width, false)
+		marker := "• "
+		if block.From != "" || len(block.WaitTargets) > 0 {
+			marker = "↔ "
+		}
+		return terminalui.Wrap(style+marker+text+terminalui.Reset, width, false)
 	case "summary":
 		// Public reasoning shares one streaming block across providers.
 		if block.Label == "" {

@@ -55,6 +55,7 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 		return entry
 	}
 	entry.Kind = "progress"
+	entry.Native.Wait = &activitypresentation.Value{Kind: "progress", From: entry.Agent}
 	entry.Text = strings.TrimSpace(c.Action+" "+target) + " · " + c.State
 	if c.Action == "Spawn" && c.State == "pending" {
 		entry.Text = "Spawning " + target
@@ -62,7 +63,7 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 	if c.Confirmed {
 		switch c.Action {
 		case "Wait":
-			wait := &activitypresentation.Value{Kind: "progress", Body: "Waiting for"}
+			wait := &activitypresentation.Value{Kind: "progress", From: entry.Agent, Body: "Waiting for"}
 			if c.State != "waiting" {
 				wait.Body = "Finished waiting for"
 				wait.WaitReason = c.State
@@ -90,6 +91,9 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 		case "List agents":
 			entry.Text = fmt.Sprintf("Listed %d agents", c.Count)
 		}
+	}
+	if len(entry.Native.Wait.WaitTargets) == 0 {
+		entry.Native.Wait.Body = entry.Text
 	}
 	return entry
 }
@@ -123,6 +127,10 @@ func (s *ActivitySource) settleInterrupt(entry ActivityEntry) ActivityEntry {
 	if outcome := s.interruptions.Outcome(entry.Native.Thread, entry.Native.InterruptID); outcome != "" {
 		entry.Native = new(*entry.Native)
 		entry.Text = settledInterrupt(entry.Native.InterruptTarget, string(outcome))
+		if entry.Native.Wait != nil {
+			entry.Native.Wait = new(*entry.Native.Wait)
+			entry.Native.Wait.Body = entry.Text
+		}
 		entry.Native.InterruptID = ""
 	}
 	return entry

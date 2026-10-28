@@ -316,6 +316,9 @@ func TestThreadControlTrafficLiveRestoredReplay(t *testing.T) {
 			if i < 3 && (entry.Values[0].From != "/root" || entry.Values[0].To != "/root/worker") {
 				t.Fatalf("%s lost canonical traffic: %+v", items[i].Tool, entry.Values)
 			}
+			if i >= 3 && entry.Values[0].From != "/root" {
+				t.Fatalf("%s lost its agent-event identity: %+v", items[i].Tool, entry.Values)
+			}
 		}
 		if wait := source.Entries[3].Values[0]; wait.Body != "Waiting for" || len(wait.WaitTargets) != 1 || wait.WaitTargets[0].Name != "/root/worker" {
 			t.Fatalf("wait acknowledgement became completion: %+v", wait)

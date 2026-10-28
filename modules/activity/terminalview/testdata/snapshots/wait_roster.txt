@@ -1,6 +1,6 @@
-"\x1b[38;2;96;96;96m• Waiting for \x1b[38;5;133;2mbackend-extraction/backend-extraction-review\x1b[m                                                              "
+"\x1b[38;2;96;96;96m↔ Waiting for \x1b[38;5;133;2mbackend-extraction/backend-extraction-review\x1b[m                                                              "
 "\x1b[38;2;96;96;96mWaiting for \x1b[38;5;133;2mbackend-extraction/backend-extraction-review\x1b[m                                                                "
 "plain after wait                                                                                                        "
-"\x1b[38;2;96;96;96m• Waiting for \x1b[38;5;133;2mbackend-extraction/backend-extraction-review\x1b[38;2;96;96;96m (timeout 10s)\x1b[m                                                "
+"\x1b[38;2;96;96;96m↔ Waiting for \x1b[38;5;133;2mbackend-extraction/backend-extraction-review\x1b[38;2;96;96;96m (timeout 10s)\x1b[m                                                "
 "\x1b[38;2;96;96;96mWaiting for \x1b[38;5;133;2mbackend-extraction/backend-extraction-review\x1b[38;2;96;96;96m (timeout 10s)\x1b[m                                                  "
 "plain after wait                                                                                                        "

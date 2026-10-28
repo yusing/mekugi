@@ -214,9 +214,11 @@
     message: "text-muted",
   };
   const summary = "flex items-center gap-2 pointer-coarse:min-h-9";
-  const waits = $derived(
+  const progress = $derived(
     !!entry.values?.length &&
-      entry.values.every((value) => value.kind === "progress" && value.waits?.length),
+      entry.values.every(
+        (value) => value.kind === "progress" && (value.from || value.waits?.length),
+      ),
   );
 </script>
 
@@ -429,11 +431,14 @@
             </div>
           </Card.Content>
         </Card.Root>
-      {:else if waits}
-        <!-- A wait is a compact line like a hook's, its marker breathing while
-             it lasts. -->
+      {:else if progress}
+        <!-- Agent operations share the compact progress row, including lists
+             and requests without wait targets. -->
         {#each entry.values ?? [] as value, i (i)}
-          <p class="flex min-h-[26px] items-start gap-2 py-[3px] text-small text-muted">
+          <p
+            data-ai-element="agent-progress"
+            class="flex min-h-[26px] items-start gap-2 py-[3px] text-small text-muted"
+          >
             <span class={["flex h-5 flex-none items-center", value.live && "animate-blink"]}
               ><Icon name="agents" size={13} /></span
             >

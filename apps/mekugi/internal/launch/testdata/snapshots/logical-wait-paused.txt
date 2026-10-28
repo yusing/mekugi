@@ -1,6 +1,6 @@
-• Waiting for all (timeout 1s)
+↔ Waiting for all (timeout 1s)
 
-• Finished waiting for all: paused
+↔ Finished waiting for all: paused
 
 
 ╭─ Paused ─────────────────────────────────────────────────────────────────────╮
