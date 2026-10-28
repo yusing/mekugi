@@ -82,10 +82,8 @@
 </script>
 
 {#if shown.length}
-  <section class="absolute inset-0 z-5 flex flex-col bg-surface" aria-label="Live edits">
-    <div
-      class="mx-auto flex w-[calc(100%-32px)] max-w-column flex-none items-center gap-2 pt-3 pb-2"
-    >
+  <section class="@container absolute inset-0 z-5 flex flex-col bg-surface" aria-label="Live edits">
+    <div class="mx-auto flex w-[calc(100%-32px)] flex-none items-center gap-2 pt-3 pb-2">
       <h2 class="flex items-center gap-2 font-semibold">
         <Dot tone={writing ? "running" : "done"} size={6} />Live
       </h2>
@@ -105,16 +103,11 @@
         (following = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40)}
     >
       <div
-        class="mx-auto grid w-[calc(100%-32px)] max-w-column grid-cols-[minmax(0,1fr)] gap-3 pb-6"
+        class="mx-auto grid w-[calc(100%-32px)] grid-cols-1 items-start gap-3 pb-6 @min-[40rem]:grid-cols-2"
         bind:this={content}
       >
         {#each shown as { preview } (preview.ID)}
-          <article
-            class={[
-              "rounded-card border px-3 pt-2 pb-2.5",
-              !preview.Complete && "border-[color-mix(in_srgb,var(--accent)_45%,var(--border))]",
-            ]}
-          >
+          <article class="min-w-0 pt-2 pb-2.5 wrap-anywhere">
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-small">
               <AgentName name={preview.Caller} current={owner} />
               {#if preview.Tool}<Tag mono>{preview.Tool}</Tag>{/if}
@@ -135,20 +128,22 @@
               <h3 class="mt-2 font-mono text-code wrap-break-word">
                 <Path path={workspacePath(file.AfterPath || file.BeforePath, preview.Workspace)} />
               </h3>
-              <DiffView {file} workspace={preview.Workspace} />
+              <DiffView {file} workspace={preview.Workspace} wrap />
             {:else}
               {#if preview.DiffText}
                 <DiffView
                   file={{ BeforePath: "", AfterPath: "", Diff: preview.Input }}
                   workspace={preview.Workspace}
+                  wrap
                 />
               {:else}
                 <pre
-                  class="mt-1.5 overflow-x-auto rounded-card border py-1 font-mono text-code">{#each lines(preview.Input) as line, i (i)}<span
+                  class="mt-1.5 rounded-card border py-1 font-mono text-code">{#each lines(preview.Input) as line, i (i)}<span
                     class="flex"
                     ><span class="w-[5ch] flex-none pr-2 text-right text-muted select-none"
                       >{i + 1}</span
-                    ><span class="pr-3 whitespace-pre">{line}</span></span
+                    ><span class="min-w-0 pr-3 whitespace-pre-wrap wrap-anywhere">{line}</span
+                    ></span
                   >{/each}</pre>
               {/if}
             {/each}

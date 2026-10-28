@@ -92,6 +92,11 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 			run("set", "viewport", size.width, size.height)
 			if state == "saved-diff" {
 				openSaved()
+			} else if strings.TrimSpace(run("eval", `document.querySelector('button[aria-label="Changes"]')?.getAttribute('aria-pressed') === 'true'`)) == "true" {
+				button("Changes")
+			}
+			if state == "live-grid" {
+				run("eval", `document.querySelector('[aria-label="Live edits"] > div:nth-child(2)').scrollTop = 0`)
 			}
 			for _, theme := range []string{"light", "dark"} {
 				run("set", "media", theme)
@@ -100,7 +105,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
           const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1; const ctx = canvas.getContext('2d');
           const rgba = color => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = color; ctx.fillRect(0, 0, 1, 1); const c = [...ctx.getImageData(0, 0, 1, 1).data]; c[3] /= 255; return c; };
           const luminance = c => c.slice(0, 3).map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }).reduce((v, c, i) => v + c * [.2126, .7152, .0722][i], 0);
-          return Math.min(...[...document.querySelectorAll('span.whitespace-pre span[style]')].filter(e => e.textContent.trim()).map(e => {
+          return Math.min(...[...document.querySelectorAll('span.whitespace-pre span[style], span.whitespace-pre-wrap span[style]')].filter(e => e.textContent.trim()).map(e => {
             let bg = [255, 255, 255]; const parents = []; for (let p = e; p; p = p.parentElement) parents.push(p);
             for (const p of parents.reverse()) { const c = rgba(getComputedStyle(p).backgroundColor); bg = bg.map((v, i) => c[i] * c[3] + v * (1 - c[3])); }
             const a = luminance(rgba(getComputedStyle(e).color)), b = luminance(bg); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
@@ -108,6 +113,28 @@ func TestWebUIBrowserDiffs(t *testing.T) {
         })()`)
 				if ratio, err := strconv.ParseFloat(strings.TrimSpace(contrast), 64); err != nil || ratio < 4.5 {
 					t.Errorf("%s %s %s: syntax contrast must be at least 4.5:1, got %s", state, size.name, theme, contrast)
+				}
+				if state == "live-grid" {
+					t.Log(size.name, theme, run("eval", `(() => {
+            const live = document.querySelector('[aria-label="Live edits"]');
+            const cards = [...live.querySelectorAll('article')];
+            const boxes = cards.map(e => e.getBoundingClientRect());
+            const grid = cards[0].parentElement.getBoundingClientRect();
+            const pane = live.getBoundingClientRect();
+            const columns = pane.width >= 640 ? 2 : 1;
+            if (Math.abs(grid.width - (pane.width - 32)) > 2) throw Error('Live grid does not fill width');
+            for (let i = 0; i < boxes.length; i++) {
+              if (getComputedStyle(cards[i]).borderTopWidth !== '0px') throw Error('Outer card frame remains');
+              if (i % columns && Math.abs(boxes[i].top - boxes[i - 1].top) > 1) throw Error('Cards do not share a row');
+              if (i >= columns && boxes[i].top < boxes[i - columns].bottom) throw Error('Cards overlap rows');
+              if (i % columns && boxes[i].left <= boxes[i - 1].left) throw Error('Cards are not row-major');
+            }
+            const overflowing = [...live.querySelectorAll('*')].filter(e => e.clientWidth && e.scrollWidth > e.clientWidth + 1);
+            if (overflowing.length) throw Error('Horizontal live overflow: ' + overflowing.map(e => e.tagName + '.' + e.className).join(', '));
+            const text = [...live.querySelectorAll('span.whitespace-pre-wrap')].find(e => e.textContent.includes('long_identifier_'));
+            if (text.getBoundingClientRect().height <= parseFloat(getComputedStyle(text).lineHeight)) throw Error('Long source did not wrap');
+            return boxes.map(({x, y, width, height}) => ({x, y, width, height}));
+          })()`))
 				}
 				if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
 					run("screenshot", filepath.Join(directory, state+"-"+size.name+"-"+theme+".png"))
@@ -117,6 +144,8 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		run("set", "viewport", "1280", "900")
 		if state == "saved-diff" {
 			openSaved()
+		} else if strings.TrimSpace(run("eval", `document.querySelector('button[aria-label="Changes"]')?.getAttribute('aria-pressed') === 'true'`)) == "true" {
+			button("Changes")
 		}
 	}
 	run("open", page.URL)
@@ -135,6 +164,36 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	publish()
 	run("wait", "--fn", `document.querySelector('[aria-label="Live edits"] .diff-word[style*="--shiki-light"]')`)
 	capture("live-diff")
+	// Arrival order fills a row before starting the next, for file diffs,
+	// unparsed input and streamed unified-diff fallback alike.
+	long := strings.Repeat("long_identifier_", 24)
+	frame.Live[0].Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "const old = 1;\n", "const new = '"+long+"';\n")}
+	for i := 1; i < 4; i++ {
+		frame.Live = append(frame.Live, preview.Preview{ID: fmt.Sprint(i), Caller: "/root", Workspace: workspace, Tool: "apply_patch", Input: long})
+		if i == 2 {
+			frame.Live[i].DiffText = true
+			frame.Live[i].Input = "--- a/raw.ts\n+++ b/raw.ts\n@@ -1 +1 @@\n-old\n+" + long + "\n"
+		}
+		publish()
+		run("wait", "--fn", fmt.Sprintf(`document.querySelectorAll('[aria-label="Live edits"] article').length === %d`, i+1))
+	}
+	capture("live-grid")
+	// Readers who scroll up keep their place; returning to the end resumes
+	// following streamed growth through the shared vertical scroller.
+	frame.Live[3].Input += strings.Repeat("\nmore source", 80)
+	publish()
+	run("wait", "--fn", `document.querySelectorAll('[aria-label="Live edits"] pre:last-child span.flex').length > 80`)
+	run("eval", `const pane = document.querySelector('[aria-label="Live edits"] > div:nth-child(2)'); if (pane.scrollTop !== 0) throw Error('Live growth moved the reader'); pane.scrollTop = pane.scrollHeight`)
+	run("wait", "--fn", `(() => { const p = document.querySelector('[aria-label="Live edits"] > div:nth-child(2)'); return p.scrollTop > 0; })()`)
+	frame.Live[3].Input += strings.Repeat("\nfollow source", 40)
+	publish()
+	run("wait", "--fn", `(() => { const p = document.querySelector('[aria-label="Live edits"] > div:nth-child(2)'); return p.textContent.includes('follow source') && p.scrollHeight - p.scrollTop - p.clientHeight < 2; })()`)
+	button("Show transcript")
+	run("wait", "--fn", `!document.querySelector('[aria-label="Live edits"]')`)
+	frame.Live = frame.Live[:1]
+	frame.Live[0].ID = "writing-return"
+	publish()
+	run("wait", "--fn", `document.querySelectorAll('[aria-label="Live edits"] article').length === 1`)
 	// Replacing a streaming snapshot must remove previous decorations and keep
 	// the new syntax colors and word emphasis on the same source characters.
 	frame.Live[0].Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "const old = 1;\n", "const latest = 3;\n")}

@@ -11,7 +11,14 @@
     workspace,
     status,
     recent = false,
-  }: { file: ReviewFile; workspace: string; status?: string; recent?: boolean } = $props();
+    wrap = false,
+  }: {
+    file: ReviewFile;
+    workspace: string;
+    status?: string;
+    recent?: boolean;
+    wrap?: boolean;
+  } = $props();
 
   const source = $derived(file.Diff ?? "");
   const beforePath = $derived(file.BeforePath);
@@ -62,14 +69,19 @@
 <div class={["mt-1.5", recent && "border-l-2 border-l-accent pl-2"]}>
   {#each notes as note, i (i)}<p class="mb-1 text-small text-muted">{note}</p>{/each}
   {#if rows.length}
-    <div class="overflow-x-auto overscroll-x-contain rounded-card border font-mono text-code">
-      <div class="min-w-max py-1">
+    <div
+      class={[
+        "rounded-card border font-mono text-code",
+        !wrap && "overflow-x-auto overscroll-x-contain",
+      ]}
+    >
+      <div class={["py-1", !wrap && "min-w-max"]}>
         {#each rows as row, i (i)}
           {#if row.kind === "hunk"}
             <!-- Line numbers place each hunk; a rule marks the lines between. -->
             <div class="my-1 border-t border-dashed border-rule first:hidden"></div>
           {:else if row.kind === "note"}
-            <div class="px-2.5 text-muted italic">{row.text}</div>
+            <div class={["px-2.5 text-muted italic", wrap && "wrap-anywhere"]}>{row.text}</div>
           {:else}
             <div class="flex {tints[row.kind] ?? ''}" class:bg-add={row.kind === "add"}>
               <span class={number} style:width="{digits + 2}ch">{row.old ?? ""}</span>
@@ -77,7 +89,11 @@
               <span class="w-[2ch] flex-none text-center select-none {signs[row.kind] ?? ''}"
                 >{row.kind === "add" ? "+" : row.kind === "remove" ? "−" : ""}</span
               >
-              <span class="pr-3 whitespace-pre"
+              <span
+                class={[
+                  "pr-3",
+                  wrap ? "min-w-0 whitespace-pre-wrap wrap-anywhere" : "whitespace-pre",
+                ]}
                 >{#each diffTokens(row.text, syntax.get(i), words.get(i)) as token, j (j)}<span
                     style={token.style}
                     class:diff-word={token.changed}>{token.text}</span
