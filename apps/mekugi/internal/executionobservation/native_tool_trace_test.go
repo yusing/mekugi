@@ -48,7 +48,7 @@ func (f *nativeTraceFixture) ref(value any) map[string]string {
 func (f *nativeTraceFixture) event(thread string, payload map[string]any) {
 	f.t.Helper()
 	f.seq++
-	b, err := json.Marshal(map[string]any{"schema_version": 1, "seq": f.seq, "thread_id": thread, "payload": payload})
+	b, err := json.Marshal(map[string]any{"schema_version": 2, "seq": f.seq, "thread_id": thread, "payload": payload})
 	if err != nil {
 		f.t.Fatal(err)
 	}

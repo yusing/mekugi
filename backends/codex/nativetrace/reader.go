@@ -171,7 +171,9 @@ func (b *bundle) update(directory string) error {
 		if err := json.Unmarshal(line, &event); err != nil {
 			return err
 		}
-		if event.Version != 1 || event.Seq != b.seq+1 {
+		// Version 2 adds trace events without changing the cell/tool evidence
+		// consumed here. Keep sequence validation across unconsumed events.
+		if (event.Version != 1 && event.Version != 2) || event.Seq != b.seq+1 {
 			return errors.New("unsupported or discontinuous native trace")
 		}
 		if err := b.event(directory, event); err != nil {
