@@ -482,11 +482,11 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "Script")
-	run("wait", "--fn", `document.querySelector('[data-entry="98"]')?.textContent.includes('202 lines') && !!document.querySelector('button[aria-label="Output: 2 lines"]')`)
+	run("wait", "--fn", `!!document.querySelector('[data-entry="98"] button[aria-label="Script: 202 lines"]') && !!document.querySelector('button[aria-label="Output: 2 lines"]')`)
 	if run("eval", `document.body.innerText.includes('script_finished') || document.body.innerText.includes('output_finished')`) != "false\n" {
 		t.Fatal("deferred command payload started expanded")
 	}
-	run("click", `[data-entry="98"] summary`)
+	button("Script: 202 lines")
 	run("wait", "--text", "script_finished")
 	button("Output: 2 lines")
 	run("wait", "--text", "output_finished")
@@ -494,8 +494,8 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if err := alpha.publishFrame(previewFrame); err != nil {
 		t.Fatal(err)
 	}
-	run("wait", "--fn", `document.querySelector('[data-entry="95"] summary')?.textContent.includes('4 lines')`)
-	run("click", `[data-entry="95"] summary`)
+	run("wait", "--fn", `!!document.querySelector('[data-entry="95"] button[aria-label="Arguments and result: 4 lines"]')`)
+	button("Arguments and result: 4 lines")
 	run("wait", "--text", "json_finished")
 	// Held independent replies exercise cancellation, late failure, retry and
 	// clipboard admission before the complete response is available.

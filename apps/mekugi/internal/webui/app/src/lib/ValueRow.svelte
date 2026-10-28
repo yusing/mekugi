@@ -9,7 +9,7 @@
   import { stream } from "./stream.svelte";
   import Dot from "./ui/Dot.svelte";
   import Icon from "./ui/Icon.svelte";
-  import { caret, codeBlock } from "./ui/styles";
+  import { codeBlock } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
 
   // outputLang names the grammar of the retained output, when known.
@@ -74,15 +74,6 @@
   const hasOutput = $derived(!!value.tailLines || value.tail?.some((line) => line.trim()));
   const tailLines = $derived(value.tailLines ?? value.tail?.length ?? 0);
   const outputDisclosure = $derived(hasOutput && (tailLines > 1 || !!value.tailOmitted));
-  const status = $derived(
-    hasOutput ||
-      value.running ||
-      value.pending ||
-      exited ||
-      hookFailed ||
-      !!value.editOutcome ||
-      !!value.duration,
-  );
   const code = $derived(value.code?.replace(/\n$/, ""));
   const multiline = $derived(
     (value.codeLines ?? 0) > 1 || (code !== undefined && code.includes("\n")),
@@ -115,6 +106,32 @@
       return code;
     }
   });
+  // Tool arguments and multi-line scripts fold behind a toggle beside the
+  // output's, so a settled call keeps to one row until opened.
+  const fold = $derived.by(() => {
+    if (json !== undefined || (value.codeLines && value.lang === "json"))
+      return {
+        name: "Arguments and result",
+        short: "Arguments",
+        json: true,
+        lines: lines(value.codeLines ?? json?.split("\n").length ?? codeLines),
+      };
+    if (multiline) {
+      const name = value.foldSource ? "Source" : "Script";
+      return { name, short: name, lines: lines(codeLines) };
+    }
+    return undefined;
+  });
+  const status = $derived(
+    !!fold ||
+      hasOutput ||
+      value.running ||
+      value.pending ||
+      exited ||
+      hookFailed ||
+      !!value.editOutcome ||
+      !!value.duration,
+  );
   const output = $derived.by(() => {
     const shown = tailLines;
     return value.tailOmitted
@@ -142,7 +159,8 @@
   const extra = "col-[2/-1] min-w-0 max-sm:col-span-full";
   const block = `${codeBlock} mt-1 mb-1.5`;
   const scroll = `${block} max-h-80 px-3 py-2.5`;
-  const disclosure = `inline-flex min-h-6 items-center gap-1 text-small text-muted hover:text-ink pointer-coarse:min-h-9 ${caret}`;
+  const toggle =
+    "-my-1.5 inline-flex min-h-8 items-center gap-1 rounded-control px-2 font-sans text-small text-muted hover:bg-active hover:text-ink max-sm:min-h-11";
 </script>
 
 <div
@@ -195,12 +213,26 @@
   {#if status}<span
       class="flex items-center justify-end gap-2 font-mono text-small whitespace-nowrap tabular-nums"
     >
+      {#if fold}<button
+          type="button"
+          aria-expanded={scriptOpen}
+          aria-label={`${fold.name}: ${fold.lines}`}
+          title={`${fold.name}: ${fold.lines}`}
+          class={toggle}
+          onclick={() => (scriptOpen = !scriptOpen)}
+        >
+          <span class={scriptOpen ? "rotate-0" : "-rotate-90"}
+            ><Icon name="chevron" size={12} /></span
+          >
+          <span class="max-sm:hidden">{fold.name} <span class="text-tiny">{fold.lines}</span></span
+          ><span class="hidden max-sm:inline">{fold.short}</span>
+        </button>{/if}
       {#if outputDisclosure}<button
           type="button"
           aria-expanded={outputOpen}
           aria-label={`Output: ${output}`}
           title={`Output: ${output}`}
-          class="-my-1.5 inline-flex min-h-8 items-center gap-1 rounded-control px-2 font-sans text-small text-muted hover:bg-active hover:text-ink max-sm:min-h-11"
+          class={toggle}
           onclick={() => (outputOpen = !outputOpen)}
         >
           <span class={outputOpen ? "rotate-0" : "-rotate-90"}
@@ -225,31 +257,15 @@
       {#if value.duration}<span class="text-muted">{duration(value.duration)}</span>{/if}
     </span>{/if}
 
-  {#if value.codeLines || (code && (multiline || (value.fenced && headline === undefined)))}
+  {#if fold ? scriptOpen : value.codeLines || (code && value.fenced && headline === undefined)}
     <div class={extra}>
-      {#if json !== undefined || (value.codeLines && value.lang === "json")}
-        <details class="group/disclosure mt-0.5" bind:open={scriptOpen}>
-          <summary class={disclosure}
-            >Arguments and result <span class="ml-2"
-              >{lines(value.codeLines ?? json?.split("\n").length ?? codeLines)}</span
-            ></summary
-          >
-          {#if scriptOpen}<pre class="{scroll} whitespace-pre-wrap wrap-anywhere"><Code
-                code={json ?? ""}
-                lang="json"
-              /></pre>{/if}
-        </details>
-      {:else if multiline}
-        <details class="group/disclosure mt-0.5" bind:open={scriptOpen}>
-          <summary class={disclosure}
-            >{value.foldSource ? "Source" : "Script"}
-            <span class="ml-2">{lines(codeLines)}</span></summary
-          >
-          {#if scriptOpen}<pre class="{scroll} whitespace-pre"><Code
-                code={code ?? ""}
-                lang={value.lang}
-              /></pre>{/if}
-        </details>
+      {#if fold?.json}
+        <pre class="{scroll} whitespace-pre-wrap wrap-anywhere"><Code
+            code={json ?? ""}
+            lang="json"
+          /></pre>
+      {:else if fold}
+        <pre class="{scroll} whitespace-pre"><Code code={code ?? ""} lang={value.lang} /></pre>
       {:else}
         <pre class="{block} px-2.5 py-1.5 whitespace-pre"><Code
             code={code ?? ""}

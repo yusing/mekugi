@@ -96,7 +96,7 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 		for _, theme := range []string{"light", "dark"} {
 			run("eval", fmt.Sprintf("document.documentElement.dataset.theme = %q", theme))
 			run("eval", `document.querySelector('[data-entry="1"]').closest('.overflow-y-auto').scrollTop = 0`)
-			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [1,2,5].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"], summary, button[aria-expanded]')) && row(1).innerText.includes('Interrupt requested for /root/worker') && row(2).innerText.includes('complete') && row(5).innerText.includes('Complete short reply.') && row(3).querySelector('button[aria-label="Output: 2 lines"]') && row(4).querySelector('summary')?.textContent.includes('Script') && row(6).querySelector('button[aria-expanded]') && row(7).querySelector('button[aria-label="Details"]'); })()`)
+			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [1,2,5].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"], summary, button[aria-expanded]')) && row(1).innerText.includes('Interrupt requested for /root/worker') && row(2).innerText.includes('complete') && row(5).innerText.includes('Complete short reply.') && row(3).querySelector('button[aria-label="Output: 2 lines"]') && row(4).querySelector('button[aria-label="Script: 2 lines"]') && row(6).querySelector('button[aria-expanded]') && row(7).querySelector('button[aria-label="Details"]'); })()`)
 			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [8,9,11].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"]')) && row(8).innerText.includes('Complete short failure.') && row(11).innerText.includes('Visible hook failure') && [10,12].every(n => row(n)?.querySelector('button[aria-label="Details"]')); })()`)
 			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 				run("screenshot", filepath.Join(artifacts, "disclosures-"+width+"-"+theme+".png"))
@@ -107,7 +107,7 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	}
 	run("find", "role", "button", "click", "--name", "Output: 2 lines", "--exact")
 	run("wait", "--text", "second output")
-	run("click", `[data-entry="4"] summary`)
+	run("find", "role", "button", "click", "--name", "Script: 2 lines", "--exact")
 	run("wait", "--text", "printf second")
 	run("focus", `[data-entry="6"] button[aria-expanded]`)
 	run("press", "Enter")
