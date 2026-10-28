@@ -41,7 +41,7 @@ func TestFailedWaitExecutionAllowsRetry(t *testing.T) {
 	p := &Preparer{threadControl: driver}
 	for _, state := range []string{"Script failed", "Script terminated", "Script completed"} {
 		caller.Call, caller.Item = state, "item-"+state
-		_, err := service.RegisterWait(t.Context(), caller, nil, true, nil, time.Now())
+		_, err := service.RegisterWait(t.Context(), caller, nil, true, "", nil, time.Now())
 		check(err)
 		request := codexresponses.Request{Fields: map[string]jsontext.Value{"input": mustTestJSON(t, []any{
 			map[string]any{"type": "custom_tool_call", "call_id": caller.Call, "id": caller.Item, "name": "exec"},
@@ -69,7 +69,7 @@ func TestFailedWaitExecutionAllowsRetry(t *testing.T) {
 				t.Fatalf("injected input retained a stale stop: item=%q member=%+v", item, member)
 			}
 			caller.Call, caller.Item = "fresh-wait", "fresh-exec"
-			if _, err := service.RegisterWait(t.Context(), caller, nil, true, nil, time.Now()); err != nil {
+			if _, err := service.RegisterWait(t.Context(), caller, nil, true, "", nil, time.Now()); err != nil {
 				t.Fatalf("superseded input prevented a fresh wait: %v", err)
 			}
 		} else {

@@ -49,6 +49,7 @@ func TestProjectRetainedAgentNames(t *testing.T) {
 	for _, tc := range []struct{ name, source, want string }{
 		{"followup_task", "Operation ID: retained\n" + source, "Operation ID: retained\n" + want},
 		{"completion_guard", "Operation ID: retained\nActive descendants: /root/a, /root/a/b. Call wait_agent before completing.", "Operation ID: retained\nActive descendants: agent:main/a, agent:main/a/b. Call wait_agent before completing."},
+		{"wait_agent", `{"id":"retained","events":[{"task":"/root/a","status":"failed"},{"task":"/root/b","status":"completed"}]}`, `{"events":[{"status":"failed","task":"agent:main/a"},{"status":"completed","task":"agent:main/b"}]}`},
 		{"wait_agent", `{"id":"retained","targets":["/root/child"],"event":{"task":"/root/child","message":"/root/file"}}`, `{"targets":["agent:main/child"],"event":{"task":"agent:main/child","message":"/root/file"}}`},
 	} {
 		item := map[string]any{"type": "function_call_output", "namespace": "threadcontrol", "name": tc.name, "output": tc.source}

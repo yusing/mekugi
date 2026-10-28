@@ -691,3 +691,17 @@ func TestClaudeAdmittedInputRetiresAfterTerminalAcknowledgement(t *testing.T) {
 		})
 	}
 }
+
+func TestClaudeAggregateWaitProjectsNamesWithoutMutatingRetention(t *testing.T) {
+	wake := &control.WaitResult{State: "completed", Mode: control.WaitAll, Targets: []string{"/root/coordinator/worker"}, Events: []control.Event{{Task: "/root/coordinator/worker", Status: control.Failed}}}
+	text, err := claudeInputText(control.NativeInput{Sender: "/root/coordinator", Wake: wake})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, `"task":"agent:main/coordinator/worker"`) {
+		t.Fatalf("aggregate task escaped visible namespace: %s", text)
+	}
+	if wake.Events[0].Task != "/root/coordinator/worker" {
+		t.Fatal("projection mutated retained event")
+	}
+}

@@ -43,7 +43,7 @@ func TestSelectedReadsDetachPayloadsAndSettings(t *testing.T) {
 func TestSelectedAgentWaitViewDetachesNestedValues(t *testing.T) {
 	s, _ := fixture(t)
 	child(t, s, "root", "worker", "/root/worker", "wt")
-	_, err := s.RegisterWait(t.Context(), identity("root", "rt"), []string{"worker"}, false, new(int64(50)), time.Now())
+	_, err := s.RegisterWait(t.Context(), identity("root", "rt"), []string{"worker"}, false, "", new(int64(50)), time.Now())
 	must(t, err)
 	tree, err := s.Snapshot("root")
 	must(t, err)

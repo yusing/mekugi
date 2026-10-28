@@ -496,6 +496,10 @@ func claudeInputText(input control.NativeInput) (string, error) {
 		for task, metrics := range input.Wake.Metrics {
 			wake.Metrics[control.AgentName(task)] = metrics
 		}
+		wake.Events = slices.Clone(wake.Events)
+		for i := range wake.Events {
+			wake.Events[i].Task = control.AgentName(wake.Events[i].Task)
+		}
 		if wake.Event != nil {
 			wake.Event = new(*wake.Event)
 			wake.Event.Task = control.AgentName(wake.Event.Task)

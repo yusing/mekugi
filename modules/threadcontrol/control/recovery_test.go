@@ -35,7 +35,7 @@ func TestPendingRecoveryRestoresWithoutRearmingDispatchedWake(t *testing.T) {
 	s, session := fixture(t)
 	child(t, s, "root", "child", "/root/child", "ct")
 	caller := identity("root", "rt")
-	_, err := s.RegisterWait(t.Context(), caller, nil, true, nil, time.Now())
+	_, err := s.RegisterWait(t.Context(), caller, nil, true, "", nil, time.Now())
 	must(t, err)
 	stop(t, s, caller)
 	message(t, s, identity("child", "ct"), "progress")

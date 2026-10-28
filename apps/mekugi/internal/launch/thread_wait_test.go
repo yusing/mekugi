@@ -64,7 +64,7 @@ func logicalWaitRunningUI(t *testing.T, timeout *int64) (*appServerUI, *threadEx
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first"}})
 	caller.Call = "wait"
-	registration, err := service.RegisterWait(t.Context(), caller, nil, true, timeout, *at)
+	registration, err := service.RegisterWait(t.Context(), caller, nil, true, "", timeout, *at)
 	check(err)
 	payload, err := json.Marshal(registration)
 	check(err)
@@ -416,6 +416,65 @@ func TestLogicalStoppedTargetPublishesWakeReason(t *testing.T) {
 			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Finished waiting for all: worker: "+string(status)) {
 				t.Fatalf("stopped-target wake was invisible: %s", text)
 			}
+		})
+	}
+}
+
+func TestUISnapshotLogicalWaitAllOutcome(t *testing.T) {
+	for _, reason := range []string{"paused", "delivery failed"} {
+		t.Run(reason, func(t *testing.T) {
+			u, threads, at := logicalWaitUI(t, nil)
+			u.attached.cwd = "/workspace"
+			service := threads.shared
+			check := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := service.HumanInput(t.Context(), "main", "next")
+			check(err)
+			caller := control.Identity{Thread: "main", Session: "session", Turn: "next", Call: "wait-all", Item: "exec"}
+			check(service.RequestStarted(t.Context(), caller, true))
+			_, err = service.RegisterWait(t.Context(), caller, nil, true, control.WaitAll, nil, *at)
+			check(err)
+			check(service.Execution(t.Context(), "main", "next", "exec", "", true))
+			_, err = service.ClaimLocalStop(t.Context(), "main", "next", "exec")
+			check(err)
+			check(service.HostCompleted(t.Context(), "main", "next", control.Completed, control.HostFailure{}))
+			if reason == "paused" {
+				check(service.Pause(t.Context(), "child"))
+			} else {
+				check(service.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}))
+				tree, err := service.Snapshot("child")
+				check(err)
+				for _, effect := range tree.Effects {
+					if effect.Kind == "final" && effect.Caller == "child" {
+						_, err := service.ClaimEffect(t.Context(), "child", effect.ID)
+						check(err)
+						check(service.EffectAcknowledged(t.Context(), "child", effect.ID, control.Receipt{Error: "injection rejected"}))
+					}
+				}
+			}
+			wake, err := service.PrepareWake(t.Context(), "main", *at)
+			check(err)
+			if wake == nil {
+				t.Fatal("all-wait did not wake")
+			}
+			_, err = service.ClaimEffect(t.Context(), "main", wake.ID)
+			check(err)
+			check(service.EffectAcknowledged(t.Context(), "main", wake.ID, control.Receipt{Turn: "continued"}))
+			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "continued"}})
+			syncLogicalWork(&u.attached, &u.Live, threads, *at)
+			rows, _ := u.testMainFrame(80, 10, 0)
+			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Finished waiting for all: worker: "+reason) {
+				t.Fatalf("aggregate wake was invisible: %s", text)
+			}
+			snapshot := "logical-wait-all-outcome"
+			if reason == "delivery failed" {
+				snapshot += "-delivery-failed"
+			}
+			assertNativeUISnapshot(t, snapshot, rows)
 		})
 	}
 }

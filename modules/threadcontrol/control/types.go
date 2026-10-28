@@ -78,6 +78,13 @@ type HostFailure struct {
 	Recoverable bool
 }
 
+type WaitMode string
+
+const (
+	WaitAny WaitMode = "any"
+	WaitAll WaitMode = "all"
+)
+
 // Wait owns its continuation intent, including dispatch and uncertainty.
 type Wait struct {
 	Effect
@@ -85,6 +92,8 @@ type Wait struct {
 	Item, Stop, ResumeHandle string
 	Targets                  []string
 	All                      bool
+	Mode                     WaitMode
+	Terminals                []Event
 	Recovery                 map[string]uint64
 	RequestedMS, EffectiveMS *int64
 	Deadline                 *time.Time
@@ -96,7 +105,7 @@ func (wait *Wait) View(tree *Tree) map[string]any {
 	if wait == nil {
 		return nil
 	}
-	result := map[string]any{"id": wait.ID, "caller": wait.Caller, "generation": wait.Generation, "turn": wait.Turn, "call": wait.ID, "item": wait.Item, "targets": wait.Targets, "requested_ms": wait.RequestedMS, "effective_ms": wait.EffectiveMS, "deadline": wait.Deadline, "state": wait.PublicState(), "stop": wait.Stop, "resume_handle": wait.ResumeHandle}
+	result := map[string]any{"id": wait.ID, "caller": wait.Caller, "generation": wait.Generation, "turn": wait.Turn, "call": wait.ID, "item": wait.Item, "targets": wait.Targets, "wait_mode": wait.Mode, "requested_ms": wait.RequestedMS, "effective_ms": wait.EffectiveMS, "deadline": wait.Deadline, "state": wait.PublicState(), "stop": wait.Stop, "resume_handle": wait.ResumeHandle}
 	if event := tree.waitResult(wait).Event; event != nil {
 		result["event"] = event.ID
 	}
@@ -171,6 +180,8 @@ type WaitResult struct {
 	ID           string                    `json:"-"`
 	All          bool                      `json:"-"`
 	State        string                    `json:"state"`
+	Mode         WaitMode                  `json:"wait_mode,omitempty"`
+	Events       []Event                   `json:"events,omitempty"`
 	Event        *Event                    `json:"event,omitempty"`
 	Targets      []string                  `json:"targets,omitempty"`
 	EffectiveMS  *int64                    `json:"effective_ms,omitempty"`

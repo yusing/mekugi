@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -159,7 +160,7 @@ func TestNestedStopWaitPreservesLogicalWork(t *testing.T) {
 	child(t, s, "child", "grandchild", "/root/child/grandchild", "gt")
 	root, childID := identity("root", "rt"), identity("child", "ct")
 	for _, id := range []Identity{root, childID} {
-		r, err := s.RegisterWait(ctx, id, nil, true, nil, now)
+		r, err := s.RegisterWait(ctx, id, nil, true, "", nil, now)
 		must(t, err)
 		if r.State != "waiting" {
 			t.Fatal(r)
@@ -223,7 +224,7 @@ func TestWaitAnyConsumesOnlyUnseenEvents(t *testing.T) {
 	if allocations := testing.AllocsPerRun(10, func() { err = s.InputConsumed(t.Context(), caller, items) }); err != nil || allocations != 0 {
 		t.Fatalf("unchanged input copied the retained tree: allocations=%v err=%v", allocations, err)
 	}
-	wait, err := s.RegisterWait(t.Context(), caller, []string{"a", "b"}, false, nil, time.Now())
+	wait, err := s.RegisterWait(t.Context(), caller, []string{"a", "b"}, false, "", nil, time.Now())
 	must(t, err)
 	if wait.State != "waiting" || wait.Event != nil {
 		t.Fatalf("already read progress woke a new wait: %+v", wait)
@@ -237,7 +238,7 @@ func TestWaitAnyConsumesOnlyUnseenEvents(t *testing.T) {
 	}
 	must(t, s.EffectAcknowledged(t.Context(), "root", wake.ID, Receipt{Turn: "rt2"}))
 	caller.Turn, caller.Call, caller.Item = "rt2", "second-wait", "second-exec"
-	wait, err = s.RegisterWait(t.Context(), caller, []string{"a", "b"}, false, nil, time.Now())
+	wait, err = s.RegisterWait(t.Context(), caller, []string{"a", "b"}, false, "", nil, time.Now())
 	must(t, err)
 	if wait.State != "waiting" {
 		t.Fatalf("consumed event was delivered twice: %+v", wait)
@@ -268,7 +269,7 @@ func TestStoppedTargetAfterRestartKeepsResultConsumed(t *testing.T) {
 	restored := New()
 	must(t, restored.Restore(t.Context(), session))
 	hostStarted(t, restored, "root", "resumed")
-	wait, err := restored.RegisterWait(t.Context(), identity("root", "resumed"), []string{"a"}, false, nil, time.Now())
+	wait, err := restored.RegisterWait(t.Context(), identity("root", "resumed"), []string{"a"}, false, "", nil, time.Now())
 	must(t, err)
 	if wait.State != "completed" || wait.Event == nil || wait.Event.Status != Completed || wait.Event.Message != "" {
 		t.Fatalf("stopped target lost its terminal status: %+v", wait)
@@ -285,7 +286,7 @@ func TestWakeDispatchSurvivesTerminalAndColdRestore(t *testing.T) {
 		t.Run(map[bool]string{false: "cold", true: "terminal_before_ack"}[terminal], func(t *testing.T) {
 			s, session := fixture(t)
 			child(t, s, "root", "child", "/root/child", "ct")
-			_, err := s.RegisterWait(t.Context(), identity("root", "rt"), nil, true, nil, time.Now())
+			_, err := s.RegisterWait(t.Context(), identity("root", "rt"), nil, true, "", nil, time.Now())
 			must(t, err)
 			stop(t, s, identity("root", "rt"))
 			message(t, s, identity("child", "ct"), "")
@@ -334,16 +335,16 @@ func TestWaitSelectionTimeoutAndExecutionAdmission(t *testing.T) {
 	child(t, s, "root", "b", "/root/b", "bt")
 	caller := identity("root", "rt")
 	for _, target := range [][]string{{}, {"missing"}, {"/root"}, {"/foreign/child"}} {
-		if _, err := s.RegisterWait(ctx, caller, target, false, nil, now); err == nil {
+		if _, err := s.RegisterWait(ctx, caller, target, false, "", nil, now); err == nil {
 			t.Fatalf("accepted invalid selection %v", target)
 		}
 	}
 	timeout := int64(101)
-	if _, err := s.RegisterWait(ctx, caller, []string{"a"}, false, &timeout, now); err == nil {
+	if _, err := s.RegisterWait(ctx, caller, []string{"a"}, false, "", &timeout, now); err == nil {
 		t.Fatal("accepted excessive timeout")
 	}
 	timeout = 1
-	r, err := s.RegisterWait(ctx, caller, []string{"a"}, false, &timeout, now)
+	r, err := s.RegisterWait(ctx, caller, []string{"a"}, false, "", &timeout, now)
 	must(t, err)
 	state, err := s.Snapshot("root")
 	must(t, err)
@@ -376,18 +377,18 @@ func TestPendingWaitRejectsDifferentEnclosingExecution(t *testing.T) {
 	s, _ := fixture(t)
 	child(t, s, "root", "child", "/root/child", "ct")
 	caller := identity("root", "rt")
-	wait, err := s.RegisterWait(t.Context(), caller, nil, true, nil, time.Now())
+	wait, err := s.RegisterWait(t.Context(), caller, nil, true, "", nil, time.Now())
 	must(t, err)
 	for _, changed := range []Identity{
 		{Thread: caller.Thread, Session: caller.Session, Turn: caller.Turn, Call: "another", Item: "another-exec"},
 		{Thread: caller.Thread, Session: caller.Session, Turn: "another-turn", Call: caller.Call, Item: caller.Item},
 	} {
-		if _, err := s.RegisterWait(t.Context(), changed, nil, true, nil, time.Now()); err == nil {
+		if _, err := s.RegisterWait(t.Context(), changed, nil, true, "", nil, time.Now()); err == nil {
 			t.Fatalf("reused a wait that cannot arm for %+v", changed)
 		}
 	}
 	caller.Call = "same-cell"
-	repeated, err := s.RegisterWait(t.Context(), caller, nil, true, nil, time.Now())
+	repeated, err := s.RegisterWait(t.Context(), caller, nil, true, "", nil, time.Now())
 	must(t, err)
 	if repeated.ID != wait.ID {
 		t.Fatal("same enclosing execution replaced its wait")
@@ -400,7 +401,7 @@ func TestColdResumeDoesNotRearmOrRedispatch(t *testing.T) {
 	now := time.Unix(100, 0)
 	child(t, s, "root", "a", "/root/a", "at")
 	id := identity("root", "rt")
-	_, err := s.RegisterWait(ctx, id, nil, true, nil, now)
+	_, err := s.RegisterWait(ctx, id, nil, true, "", nil, now)
 	must(t, err)
 	stop(t, s, id)
 	must(t, s.AnswerCompleted(ctx, "a", "at", "answer", "result"))
@@ -509,7 +510,7 @@ func claimWake(t *testing.T, s *Service, ctx context.Context, thread string, now
 func TestUnsentWakeIsSupersededByHumanAdmission(t *testing.T) {
 	s, _ := fixture(t)
 	child(t, s, "root", "child", "/root/child", "ct")
-	_, err := s.RegisterWait(t.Context(), identity("root", "rt"), nil, true, nil, time.Now())
+	_, err := s.RegisterWait(t.Context(), identity("root", "rt"), nil, true, "", nil, time.Now())
 	must(t, err)
 	stop(t, s, identity("root", "rt"))
 	message(t, s, identity("child", "ct"), "selected message")
@@ -582,7 +583,7 @@ func TestWaitWakeReasonSurvivesRootTurnObservation(t *testing.T) {
 	s, _ := fixture(t)
 	child(t, s, "root", "child", "/root/child", "ct")
 	id := identity("root", "rt")
-	_, err := s.RegisterWait(t.Context(), id, nil, true, nil, time.Unix(100, 0))
+	_, err := s.RegisterWait(t.Context(), id, nil, true, "", nil, time.Unix(100, 0))
 	must(t, err)
 	stop(t, s, id)
 	must(t, s.HostCompleted(t.Context(), "child", "ct", Completed, HostFailure{}))
@@ -625,7 +626,7 @@ func TestStoppedTargetsSettleWaits(t *testing.T) {
 				if !during {
 					settle()
 				}
-				first, err := s.RegisterWait(t.Context(), id, []string{"running"}, false, nil, now)
+				first, err := s.RegisterWait(t.Context(), id, []string{"running"}, false, "", nil, now)
 				must(t, err)
 				if first.State != "waiting" {
 					t.Fatalf("unselected target woke wait: %+v", first)
@@ -633,7 +634,7 @@ func TestStoppedTargetsSettleWaits(t *testing.T) {
 				_, err = s.HumanInput(t.Context(), id.Thread, "new-input")
 				must(t, err)
 				id.Call += "-mixed"
-				result, err := s.RegisterWait(t.Context(), id, []string{"running", "stopped"}, false, new(int64(100)), now)
+				result, err := s.RegisterWait(t.Context(), id, []string{"running", "stopped"}, false, "", new(int64(100)), now)
 				must(t, err)
 				if during {
 					stop(t, s, id)
@@ -654,5 +655,113 @@ func TestStoppedTargetsSettleWaits(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestWaitAllSettlesSelectedOutcomesTogether(t *testing.T) {
+	for _, immediate := range []bool{false, true} {
+		t.Run(fmt.Sprint(immediate), func(t *testing.T) {
+			s, session := fixture(t)
+			child(t, s, "root", "a", "/root/a", "at")
+			child(t, s, "root", "b", "/root/b", "bt")
+			child(t, s, "root", "unselected", "/root/unselected", "ut")
+			caller, now := identity("root", "rt"), time.Now()
+			if !immediate {
+				wait, err := s.RegisterWait(t.Context(), caller, []string{"a", "b"}, false, WaitAll, nil, now)
+				must(t, err)
+				if wait.State != "waiting" || wait.Mode != WaitAll {
+					t.Fatalf("registration: %+v", wait)
+				}
+				stop(t, s, caller)
+			}
+			must(t, s.HostCompleted(t.Context(), "a", "at", Failed, HostFailure{}))
+			deliver(t, s, "a")
+			if !immediate {
+				wake, err := claimWake(t, s, t.Context(), "root", now)
+				must(t, err)
+				if wake != nil {
+					t.Fatalf("first failure woke all-wait: %+v", wake)
+				}
+			}
+			must(t, s.HostCompleted(t.Context(), "b", "bt", Completed, HostFailure{}))
+			if !immediate {
+				wake, err := claimWake(t, s, t.Context(), "root", now)
+				must(t, err)
+				if wake != nil {
+					t.Fatal("pending final delivery woke all-wait")
+				}
+			}
+			deliver(t, s, "b")
+			var result *WaitResult
+			if immediate {
+				wait, err := s.RegisterWait(t.Context(), caller, []string{"a", "b"}, false, WaitAll, nil, now)
+				must(t, err)
+				result = &wait
+			} else {
+				var err error
+				result, err = claimWake(t, s, t.Context(), "root", now)
+				must(t, err)
+			}
+			if result == nil || result.State != "completed" || result.Event != nil || len(result.Events) != 2 || result.Events[0].Status != Failed || result.Events[1].Status != Completed {
+				t.Fatalf("combined outcomes: %+v", result)
+			}
+			// A restart preserves the exact retained aggregate and mode without rearming.
+			root, _ := s.Member("root")
+			restored := New()
+			must(t, restored.AdmitRoot(t.Context(), session, root))
+			publication := restored.WaitPublication("root")
+			if publication.Mode != WaitAll || !slices.Equal(publication.Events, result.Events) {
+				t.Fatalf("restored aggregate: %+v", publication)
+			}
+			tree, err := s.Snapshot("root")
+			must(t, err)
+			for _, effect := range effectsOf(tree, "final") {
+				if effect.ClaimedBy != caller.Call {
+					t.Fatalf("unclaimed result: %+v", effect)
+				}
+			}
+		})
+	}
+}
+
+func TestWaitAllMessageTimeoutAndStoppedTargets(t *testing.T) {
+	for _, reason := range []string{"message", "timeout", "stopped"} {
+		t.Run(reason, func(t *testing.T) {
+			s, _ := fixture(t)
+			child(t, s, "root", "a", "/root/a", "at")
+			child(t, s, "root", "b", "/root/b", "bt")
+			caller, now := identity("root", "rt"), time.Now()
+			must(t, s.HostCompleted(t.Context(), "a", "at", Completed, HostFailure{}))
+			deliver(t, s, "a")
+			must(t, s.InputConsumed(t.Context(), caller, []string{MessageItemID("a:1:at:final")}))
+			wait, err := s.RegisterWait(t.Context(), caller, nil, true, WaitAll, new(int64(10)), now)
+			must(t, err)
+			if wait.State != "waiting" {
+				t.Fatalf("already-read outcome woke all-wait: %+v", wait)
+			}
+			stop(t, s, caller)
+			switch reason {
+			case "message":
+				message(t, s, identity("b", "bt"), "progress")
+			case "timeout":
+				now = now.Add(time.Second)
+			case "stopped":
+				must(t, s.Pause(t.Context(), "b"))
+			}
+			wake, err := claimWake(t, s, t.Context(), "root", now)
+			must(t, err)
+			if wake == nil {
+				t.Fatal("missing wake")
+			}
+			if reason == "message" && (wake.Event == nil || wake.Event.Kind != "message" || len(wake.Events) != 0) {
+				t.Fatalf("message wake: %+v", wake)
+			}
+			if reason == "timeout" && (wake.State != "timeout" || len(wake.Events) != 0) {
+				t.Fatalf("timeout wake: %+v", wake)
+			}
+			if reason == "stopped" && (len(wake.Events) != 2 || wake.Events[1].Status != Paused) {
+				t.Fatalf("stopped outcomes: %+v", wake)
+			}
+		})
 	}
 }

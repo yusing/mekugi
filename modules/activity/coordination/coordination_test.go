@@ -34,6 +34,10 @@ func TestProjectCoordinationRoutes(t *testing.T) {
 			Coordination{Action: "Wait", Kind: "progress", State: "waiting", Confirmed: true, Targets: []Target{{Name: "/root/a"}, {Name: "/root/b"}}}},
 		{"list_agents", `{}`, `{"agents":[{"task_name":"/root/a"},{"task_name":"/root/b"}]}`,
 			Coordination{Action: "List agents", Kind: "progress", State: "completed", Confirmed: true, Count: 2}},
+		{"wait_agent", `{"wait_mode":"all"}`, `{"state":"completed","events":[{"task":"/root/a","status":"failed"},{"task":"/root/b","status":"completed"}]}`,
+			Coordination{Action: "Wait", Kind: "progress", State: "completed", Confirmed: true, Targets: []Target{{Name: "/root/a", Status: "failed"}, {Name: "/root/b", Status: "completed"}}}},
+		{"wait_agent", `{"wait_mode":"all"}`, `{"state":"completed","events":[{"task":"/root/a","status":"completed","kind":"delivery_failed"},{"task":"/root/b","status":"completed","kind":"completed"}]}`,
+			Coordination{Action: "Wait", Kind: "progress", State: "completed", Confirmed: true, Targets: []Target{{Name: "/root/a", Status: "delivery failed"}, {Name: "/root/b", Status: "completed"}}}},
 		{"list_agents", `{}`, `{"agents":[]}`,
 			Coordination{Action: "List agents", Kind: "progress", State: "completed", Confirmed: true}},
 	} {

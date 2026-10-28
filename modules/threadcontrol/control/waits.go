@@ -83,7 +83,7 @@ func selectedEvent(tree *Tree, wait *Wait) *Effect {
 }
 
 func (tree *Tree) waitResult(wait *Wait) *WaitResult {
-	result := &WaitResult{ID: wait.ID, All: wait.All, State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
+	result := &WaitResult{ID: wait.ID, All: wait.All, Mode: wait.Mode, Events: slices.Clone(wait.Terminals), State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
 	if wait.Terminal != nil {
 		result.Event = new(*wait.Terminal)
 	}
@@ -94,8 +94,12 @@ func (tree *Tree) waitResult(wait *Wait) *WaitResult {
 	}
 	for _, effect := range tree.Effects {
 		if effect.delivered() && effect.ClaimedBy == wait.ID && effect.Target == wait.Caller {
-			result.Event = tree.event(effect)
-			break
+			if wait.Mode == WaitAll && effect.Kind == "final" {
+				result.Events = append(result.Events, *tree.event(effect))
+			} else {
+				result.Event = tree.event(effect)
+				break
+			}
 		}
 	}
 	return result
@@ -105,6 +109,9 @@ func (tree *Tree) waitResult(wait *Wait) *WaitResult {
 // its notification was already read, was addressed to its own parent, or cannot
 // arrive because its runtime was paused. Pending direct delivery keeps ordering.
 func (tree *Tree) selectWaitOutcome(wait *Wait) bool {
+	if wait.Mode == WaitAll {
+		return tree.selectAllWaitOutcomes(wait)
+	}
 	if event := selectedEvent(tree, wait); event != nil {
 		event.ClaimedBy = wait.ID
 		return true
@@ -144,7 +151,59 @@ func (tree *Tree) selectWaitOutcome(wait *Wait) bool {
 	return false
 }
 
-func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []string, all bool, timeout *int64, now time.Time) (result WaitResult, err error) {
+// Select atomically: incomplete all-waits leave notifications available for
+// message wakes, cancellation and later waits. Scan retained effects once.
+func (tree *Tree) selectAllWaitOutcomes(wait *Wait) bool {
+	selected := make(map[string]bool, len(wait.Targets))
+	for _, id := range wait.Targets {
+		selected[id] = true
+	}
+	outcomes := make(map[string]*Effect, len(wait.Targets))
+	pending := make(map[string]bool)
+	for i := range tree.Effects {
+		effect := &tree.Effects[i]
+		if effect.Target != wait.Caller || !selected[effect.Caller] {
+			continue
+		}
+		if effect.Kind == "message" && effect.delivered() && !effect.Consumed && effect.ClaimedBy == "" {
+			effect.ClaimedBy = wait.ID
+			return true
+		}
+		member := tree.Members[effect.Caller]
+		if effect.Kind != "final" || member == nil || effect.CallerGeneration != member.Generation {
+			continue
+		}
+		if effect.State == "pending" || hostOwned(effect.State) {
+			pending[effect.Caller] = true
+		}
+		if effect.delivered() && !effect.Consumed && effect.ClaimedBy == "" {
+			outcomes[effect.Caller] = effect
+		}
+	}
+	for _, id := range wait.Targets {
+		member := tree.Members[id]
+		if member == nil || member.HostRunning || member.Status != Completed && member.Status != Failed && member.Status != Interrupted && member.Status != Paused || pending[id] {
+			return false
+		}
+	}
+	for _, id := range wait.Targets {
+		if effect := outcomes[id]; effect != nil {
+			effect.ClaimedBy = wait.ID
+		} else {
+			member := tree.Members[id]
+			wait.Terminals = append(wait.Terminals, Event{ID: wait.ID + ":stopped:" + id, Recipient: wait.Caller, Source: id, Task: member.Task, Turn: member.Turn, Generation: member.Generation, Kind: string(member.Status), Status: member.Status})
+		}
+	}
+	return true
+}
+
+func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time) (result WaitResult, err error) {
+	if mode == "" {
+		mode = WaitAny
+	}
+	if mode != WaitAny && mode != WaitAll {
+		return result, errors.New("wait_mode must be any or all")
+	}
 	err = s.update(ctx, caller.Thread, func(tree *Tree, member *Member) error {
 		if _, err := admitted(tree, caller); err != nil {
 			return err
@@ -163,7 +222,7 @@ func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []s
 			result = *tree.waitResult(old)
 			return unchanged
 		}
-		wait := &Wait{Effect: Effect{ID: caller.Call, Caller: caller.Thread, Target: caller.Thread, Generation: member.Generation, Turn: caller.Turn, CallerTurn: caller.Turn, Kind: "wake", State: "registered"}, Item: caller.Item, Targets: selected, All: all}
+		wait := &Wait{Effect: Effect{ID: caller.Call, Caller: caller.Thread, Target: caller.Thread, Generation: member.Generation, Turn: caller.Turn, CallerTurn: caller.Turn, Kind: "wake", State: "registered"}, Item: caller.Item, Targets: selected, All: all, Mode: mode}
 		if timeout != nil {
 			if *timeout > member.Limits.MaxWaitMS {
 				return errors.New("wait timeout exceeds the captured host maximum")
@@ -268,7 +327,7 @@ func cancelSubscription(tree *Tree, member *Member) {
 func (tree *Tree) wakeResult(wait *Wait) *WaitResult {
 	result := tree.waitResult(wait)
 	result.State = "timeout"
-	if result.Event != nil {
+	if result.Event != nil || len(result.Events) != 0 {
 		result.State = "completed"
 	}
 	return result
@@ -296,7 +355,7 @@ func (s *Service) WaitPublication(thread string) *WaitResult {
 	if wait.EffectiveMS != nil {
 		result.EffectiveMS = new(*wait.EffectiveMS)
 	}
-	if wait.State == "completed" && result.Event == nil {
+	if wait.State == "completed" && result.Event == nil && len(result.Events) == 0 {
 		result.State = "timeout"
 	}
 	return result

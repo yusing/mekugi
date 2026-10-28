@@ -146,6 +146,17 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 			for _, target := range wait.Targets {
 				value.WaitTargets = append(value.WaitTargets, activity.WaitTarget{Name: target})
 			}
+			if len(wait.Events) != 0 {
+				outcomes := make([]string, 0, len(wait.Events))
+				for _, event := range wait.Events {
+					status := string(event.Status)
+					if event.Kind == "delivery_failed" {
+						status = "delivery failed"
+					}
+					outcomes = append(outcomes, fmt.Sprintf("%s: %s", pathdisplay.AgentDisplayName(event.Task), status))
+				}
+				value.WaitReason = strings.Join(outcomes, ", ")
+			}
 			if event := wait.Event; event != nil {
 				value.WaitReason = string(event.Status)
 				if wait.All || len(wait.Targets) > 1 {

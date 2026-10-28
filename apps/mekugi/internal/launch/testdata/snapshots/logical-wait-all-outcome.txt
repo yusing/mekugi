@@ -1,0 +1,10 @@
+↔ Waiting for all
+
+↔ Finished waiting for all: worker: paused
+
+
+
+
+╭─ ◐ Working 2s ───────────────────────────────────────────────────────────────╮
+│ ❯                                                                            │
+╰──────────────────────────────────────── /workspace • test-model (high) • 0% ─╯

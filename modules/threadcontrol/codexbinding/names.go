@@ -74,7 +74,7 @@ func projectResultFields(fields map[string]jsontext.Value) (bool, error) {
 				}
 				projected = responses.MustMarshalJSON(metrics)
 			}
-		case "agents", "effects":
+		case "agents", "effects", "events":
 			var rows []jsontext.Value
 			if err = json.Unmarshal(value, &rows); err == nil {
 				for i := range rows {

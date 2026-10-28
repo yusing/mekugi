@@ -105,6 +105,11 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 	if !argumentsOK || !envelopeOK || len(envelope.Content) != 1 || envelope.Content[0].Type != "text" {
 		return c, true
 	}
+	type outcome struct {
+		Kind   string `json:"kind"`
+		Task   string `json:"task"`
+		Status string `json:"status"`
+	}
 	var result struct {
 		Targets     []string          `json:"targets"`
 		EffectiveMS *int64            `json:"effective_ms"`
@@ -113,11 +118,8 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		Thread      string            `json:"thread_id"`
 		Task        string            `json:"task_name"`
 		Agents      *[]jsontext.Value `json:"agents"`
-		Event       *struct {
-			Kind   string `json:"kind"`
-			Task   string `json:"task"`
-			Status string `json:"status"`
-		} `json:"event"`
+		Event       *outcome          `json:"event"`
+		Events      []outcome         `json:"events"`
 	}
 	if json.Unmarshal([]byte(envelope.Content[0].Text), &result) != nil {
 		return c, true
@@ -149,6 +151,16 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		}
 		if result.EffectiveMS != nil {
 			c.TimeoutMS = result.EffectiveMS
+		}
+		if c.Confirmed && len(result.Events) != 0 {
+			c.Targets = nil
+			for _, event := range result.Events {
+				status := event.Status
+				if event.Kind == "delivery_failed" {
+					status = "delivery failed"
+				}
+				c.Targets = append(c.Targets, Target{Name: event.Task, Status: status})
+			}
 		}
 		if c.Confirmed && result.Event != nil {
 			c.EventKind = result.Event.Kind

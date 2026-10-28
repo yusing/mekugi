@@ -74,8 +74,8 @@ native request metadata remains unchanged on the provider wire.
   usage/window, and completed compactions. Unavailable observations are `null`,
   distinct from a measured zero. Inspection uses live session facts or retained
   observations without starting work or restoring an inactive runtime.
-- `wait_agent` accepts `target?: string[] | "all"`, `timeout_ms?: integer`.
-  Omitted target means `"all"`.
+- `wait_agent` accepts `target?: string[] | "all"`, `wait_mode?: "any" | "all"`,
+  `timeout_ms?: integer`. Omitted target means `"all"`; omitted mode means `"any"`.
 
 Follow-up acknowledgements include the target's current context and compaction
 metrics. Immediate wait results and resumed wait outputs include those same metrics
@@ -255,10 +255,14 @@ confirmed child workspace. Directory selection grants no additional permission.
 
 Selection resolves once to immutable visible descendant identities. `"all"`
 snapshots that set; empty, unknown, ambiguous, foreign, self and ancestor selections
-reject. A selected queued event returns immediately, leaving others queued.
+reject. In `any` mode, a selected queued event returns immediately, leaving others queued.
+In `all` mode, every selected agent must settle before completion; failures and
+interruptions count as settled. Pending result deliveries finish before the wait
+returns all selected outcomes in `events`. A selected addressed message wakes either
+mode immediately as a single `event`, leaving completion notifications queued.
 Stopped selected targets settle with their terminal status, including when their
 notification was already read or their runtime was paused. Pending result delivery
-keeps its existing order. Mixed selections settle on an eligible selected outcome;
+keeps its existing order. In `any` mode, mixed selections settle on an eligible selected outcome;
 unselected stopped targets do not wake the caller.
 One pending wait per caller is retained; calls in the same enclosing execution
 report that wait instead of replacing it. A different enclosing execution rejects
