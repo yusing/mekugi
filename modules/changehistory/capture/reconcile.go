@@ -34,7 +34,10 @@ type Comparison struct {
 // Outcome holds capture facts; callers supply host status and publication references.
 type Result struct {
 	Outcome
-	Files         []diffmodel.ReviewFile
+	Files []diffmodel.ReviewFile
+	// Endpoints are the named states already read for this comparison. Other
+	// open writers can resume from this boundary without a later file read.
+	Endpoints     []File
 	Complete      bool
 	Claims        Claims
 	SnapshotError error
@@ -48,7 +51,7 @@ func Reconcile(ctx context.Context, observation Observation, comparison Comparis
 	if comparison.Workspaces != nil && observation.Tree != "" {
 		snapshot, result.Claims, result.SnapshotError = comparison.Workspaces.since(ctx, comparison.Workspace, observation.Tree, comparison.Claims)
 	}
-	result.Files, result.Complete, result.Coverage = reconcile(observation, comparison.Excluded, snapshot)
+	result.Files, result.Complete, result.Coverage, result.Endpoints = reconcile(observation, comparison.Excluded, snapshot)
 	if result.SnapshotError != nil && result.Coverage == CoverageExact {
 		result.Coverage = CoveragePartial
 	}
@@ -71,7 +74,7 @@ func Reconcile(ctx context.Context, observation Observation, comparison Comparis
 	return result
 }
 
-func reconcile(observation Observation, excluded []string, snapshot []execSnapshotChange) (reviews []diffmodel.ReviewFile, complete bool, coverage string) {
+func reconcile(observation Observation, excluded []string, snapshot []execSnapshotChange) (reviews []diffmodel.ReviewFile, complete bool, coverage string, endpoints []File) {
 	var changes []execSnapshotChange
 	complete = true
 	coverage = CoverageExact
@@ -116,6 +119,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 			// not written.
 			if info, err := os.Lstat(before.Path); err == nil && execFileStamp(info) == before.Stamp {
 				after[before.Path] = before
+				endpoints = append(endpoints, before)
 				return
 			}
 		}
@@ -124,6 +128,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 			current = ReadFile(before.Path, &budget)
 		}
 		after[before.Path] = current
+		endpoints = append(endpoints, current)
 		record(before, current)
 	}
 	for _, before := range observation.Files {
@@ -345,7 +350,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 		// readable incomplete attempt, without inventing intermediate bytes.
 		complete, coverage = false, CoveragePartial
 	}
-	return reviews, complete, coverage
+	return reviews, complete, coverage, endpoints
 }
 
 // ReviewInterval closes only named paths with supplied observed endpoints. It
@@ -371,7 +376,7 @@ func ReviewInterval(before, endpoints []File) ([]diffmodel.ReviewFile, []File) {
 			break
 		}
 	}
-	reviews, _, _ := reconcile(observation, nil, nil)
+	reviews, _, _, _ := reconcile(observation, nil, nil)
 	return reviews, boundaries
 }
 

@@ -136,10 +136,10 @@ capture coordination across backends: each overlapping call's named targets are
 excluded from the others' workspace fallback. Overlapping calls attribute unnamed
 snapshot differences to the first finisher; remaining calls compare only later differences, so an
 effect is recorded once. Siblings can share a record with overlap diagnostics.
-When a later native patch supplies an observed boundary inside an open named
-writer, capture retains separate writer-before-patch, patch, and writer-after-patch
-intervals. Each interval keeps its originating operation. Writer intervals remain
-pending until that writer's terminal result; the patch can complete independently.
+When a later named command or native patch supplies an observed boundary inside an
+open named writer, capture retains separate writer-before-edit, edit, and
+writer-after-edit intervals. Each interval keeps its originating operation. Writer intervals remain
+pending until that writer's terminal result; the intervening edit can complete independently.
 Unavailable boundaries retain incomplete evidence rather than an invented chain.
 Writes restored before return have no recoverable intermediate diff; repeated-write
 uncertainty remains diagnostic. Observation neither instruments nor reruns the

@@ -31,7 +31,16 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 	if !result.Terminal {
 		return nil
 	}
+	cuts := p.execWindows.intervalCuts([]string{callID})
+	var refs []string
+	for _, cut := range cuts {
+		refs = append(refs, cut.writer)
+	}
+	unlock := p.execWindows.lockIntervals(refs)
+	defer unlock()
 	windowFiles := changecapture.PatchWindowFiles(history.NativePatches)
+	attempts := make(map[string]mekugiHistory)
+	var receipts []string
 	var endpoints []changecapture.File
 	occurrences := make(map[string]int)
 	for index, observation := range history.NativePatches {
@@ -76,6 +85,7 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 			ChangeID:         changeID,
 			CorrelationID:    correlation,
 			Attempt:          1,
+			sequence:         uint64(index + 1),
 			AlreadySatisfied: success && len(reviews) == 0 && len(history.NativePatches) == 1,
 			ReviewFiles:      reviews,
 			Report:           result.Text,
@@ -112,16 +122,27 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 		if !complete && attempt.Report != "" {
 			attempt.Report += "\nMekugi could not capture complete file evidence."
 		}
-		if err := publishObservations(context.WithoutCancel(ctx), p.retained, p.changeSource, p.publishChanges, workspace, map[string]mekugiHistory{derivedCallID: attempt}); err != nil {
-			return changeError(err)
-		}
+		attempts[derivedCallID] = attempt
 		if len(reviews) != 0 {
-			displayID := ""
-			if history.ToolName == applyPatchToolName {
-				displayID = responses.StringField(history.UpstreamItem, "id")
-			}
-			_ = publishEditReceipt(context.WithoutCancel(ctx), p.retained, p.changeSource, workspace, thread, derivedCallID, p.activity, displayID)
+			receipts = append(receipts, derivedCallID)
 		}
 	}
-	return p.resumeExecIntervals(ctx, workspace, callID, endpoints)
+	if len(attempts) == 0 {
+		return nil
+	}
+	continuations, err := prepareExecIntervalContinuations(ctx, workspace, cuts, endpoints)
+	if err != nil {
+		return err
+	}
+	if err := publishObservations(context.WithoutCancel(ctx), p.retained, p.changeSource, p.publishChanges, workspace, attempts, continuations...); err != nil {
+		return changeError(err)
+	}
+	displayID := ""
+	if history.ToolName == applyPatchToolName {
+		displayID = responses.StringField(history.UpstreamItem, "id")
+	}
+	for _, id := range receipts {
+		_ = publishEditReceipt(context.WithoutCancel(ctx), p.retained, p.changeSource, workspace, thread, id, p.activity, displayID)
+	}
+	return nil
 }

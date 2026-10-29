@@ -34,7 +34,7 @@ func execIntervalID(call string, codeMode bool, number int) string {
 
 // Intervals are immutable observations under the original writer's correlation.
 // Membership is deferred until that writer's real terminal result. Their earlier
-// capture order still places the prefix before the independently completed patch.
+// capture order still places the prefix before the independently completed edit.
 func readExecIntervals(ctx context.Context, selected changes.Scope, source changes.Service, workspace, call string, codeMode bool) ([]execInterval, error) {
 	if selected.Store == nil {
 		return nil, nil
@@ -114,7 +114,7 @@ func rebaseExecIntervals(observation *changecapture.Observation, intervals []exe
 					continue
 				}
 				next := boundary
-				next.Error = "overlapping patch endpoint unavailable"
+				next.Error = "overlapping writer endpoint unavailable"
 				if interval.after != nil {
 					for _, endpoint := range interval.after.Files {
 						if endpoint.Path == file.Path {
@@ -135,11 +135,14 @@ func rebaseExecIntervals(observation *changecapture.Observation, intervals []exe
 	return &copy
 }
 
-func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, patches []changecapture.PatchObservation) error {
-	if len(patches) == 0 || t.execWindows == nil || t.retained.Store == nil {
+func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, observation *changecapture.Observation, patches []changecapture.PatchObservation) error {
+	if t.execWindows == nil || t.retained.Store == nil {
 		return nil
 	}
 	var boundaries []changecapture.File
+	if observation != nil {
+		boundaries = append(boundaries, observation.Files...)
+	}
 	for _, files := range changecapture.PatchWindowFiles(patches) {
 		for _, file := range files {
 			add := func(path, content string, exists bool, reason string) {
@@ -158,10 +161,17 @@ func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, patches [
 			}
 		}
 	}
+	if len(boundaries) == 0 {
+		return nil
+	}
+	paths := make(map[string]bool, len(boundaries))
+	for _, boundary := range boundaries {
+		paths[boundary.Path] = true
+	}
 	var candidates []execIntervalCut
 	t.execWindows.state().mu.Lock()
 	for _, window := range t.execWindows.state().windows {
-		if window.ref != patchCall && window.group != t.execGroup && window.closed.IsZero() && window.scope.Store != nil {
+		if window.ref != patchCall && window.group != t.execGroup && window.closed.IsZero() && window.scope.Store != nil && slices.ContainsFunc(window.paths, func(path string) bool { return paths[path] }) {
 			candidates = append(candidates, execIntervalCut{writer: window.ref, scope: window.scope})
 		}
 	}
@@ -202,6 +212,11 @@ func (t *mekugiResponseTransform) splitExecInterval(patchCall string, boundaries
 		return nil
 	}
 	observation := rebaseExecIntervals(legacyPointer(original.ExecObservation, legacyObservation), intervals)
+	// Same-cell patches own these paths. Cutting the command's excluded
+	// baseline would record those already attributed patch effects again.
+	observation.Files = slices.DeleteFunc(observation.Files, func(file changecapture.File) bool {
+		return slices.Contains(observation.Excluded, file.Path)
+	})
 	reviews, files := changecapture.ReviewInterval(observation.Files, boundaries)
 	if len(files) == 0 {
 		return nil
@@ -233,40 +248,41 @@ func (t *mekugiResponseTransform) splitExecInterval(patchCall string, boundaries
 	return nil
 }
 
-func (p *Preparer) resumeExecIntervals(ctx context.Context, workspace, patchCall string, endpoints []changecapture.File) error {
-	if p.execWindows == nil || len(endpoints) == 0 {
-		return nil
-	}
-	p.execWindows.state().mu.Lock()
-	var cuts []execIntervalCut
-	if window := p.execWindows.find(patchCall); window != nil {
-		cuts = slices.Clone(window.cuts)
-	}
-	p.execWindows.state().mu.Unlock()
-	for _, cut := range cuts {
-		unlock := p.execWindows.lockIntervals([]string{cut.writer})
-		err := resumeExecInterval(ctx, p.changeSource, workspace, cut, endpoints)
-		unlock()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+type execIntervalContinuation struct {
+	scope  changes.Scope
+	record legacycall.Record
 }
 
-func resumeExecInterval(ctx context.Context, source changes.Service, workspace string, cut execIntervalCut, endpoints []changecapture.File) error {
+func prepareExecIntervalContinuations(ctx context.Context, workspace string, cuts []execIntervalCut, endpoints []changecapture.File) ([]execIntervalContinuation, error) {
+	if len(endpoints) == 0 {
+		return nil, nil
+	}
+	var continuations []execIntervalContinuation
+	for _, cut := range cuts {
+		continuation, err := prepareExecIntervalContinuation(ctx, workspace, cut, endpoints)
+		if err != nil {
+			return nil, err
+		}
+		if continuation != nil {
+			continuations = append(continuations, *continuation)
+		}
+	}
+	return continuations, nil
+}
+
+func prepareExecIntervalContinuation(ctx context.Context, workspace string, cut execIntervalCut, endpoints []changecapture.File) (*execIntervalContinuation, error) {
 	id := execIntervalID(cut.writer, cut.codeMode, cut.number)
 	prefix, found, err := cut.scope.Store.LookupHostCall(ctx, workspace, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !found || prefix.ExecObservation == nil {
-		return errors.New("named capture boundary missing")
+		return nil, errors.New("named capture boundary missing")
 	}
 	if _, resumed, err := cut.scope.Store.LookupHostCall(ctx, workspace, id+":resume"); err != nil {
-		return err
+		return nil, err
 	} else if resumed {
-		return nil
+		return nil, nil
 	}
 	var files []changecapture.File
 	budget := changecapture.MaxContentBytes
@@ -274,7 +290,7 @@ func resumeExecInterval(ctx context.Context, source changes.Service, workspace s
 		for _, endpoint := range endpoints {
 			if boundary.Path == endpoint.Path {
 				if len(endpoint.Content) > budget {
-					endpoint.Content, endpoint.Error = "", "overlapping patch endpoint exceeds capture bound"
+					endpoint.Content, endpoint.Error = "", "overlapping writer endpoint exceeds capture bound"
 				} else {
 					budget -= len(endpoint.Content)
 				}
@@ -285,14 +301,15 @@ func resumeExecInterval(ctx context.Context, source changes.Service, workspace s
 	resume := mekugiHistory{ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: prefix.ExecutingThread,
 		ChangeID: prefix.ChangeID, CorrelationID: prefix.CorrelationID, Attempt: prefix.Attempt,
 		ExecObservation: &changecapture.Observation{Files: files, CodeMode: cut.codeMode}}
-	if err := cut.scope.Store.Transaction(ctx, cut.scope.Writes, func(tx *history.Transaction) error {
-		if err := publishObservation(tx, cut.scope, legacycall.Record{Version: 1, Workspace: workspace, CallID: id + ":resume", History: retainedHistory(resume)}); err != nil {
-			return err
-		}
-		_, err := source.Publish(tx, cut.scope, workspace, map[string]changes.Publication{id + ":resume": {ChangeID: prefix.ChangeID, CorrelationID: prefix.CorrelationID, Dependency: true}})
-		return err
-	}); err != nil {
+	return &execIntervalContinuation{scope: cut.scope, record: legacycall.Record{Version: 1, Workspace: workspace, CallID: id + ":resume", History: retainedHistory(resume)}}, nil
+}
+
+func (c execIntervalContinuation) publish(tx *history.Transaction, source changes.Service) error {
+	if err := publishObservation(tx, c.scope, c.record); err != nil {
 		return err
 	}
-	return nil
+	_, err := source.Publish(tx, c.scope, c.record.Workspace, map[string]changes.Publication{c.record.CallID: {
+		ChangeID: c.record.History.ChangeID, CorrelationID: c.record.History.CorrelationID, Dependency: true,
+	}})
+	return err
 }

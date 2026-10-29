@@ -156,6 +156,21 @@ func (r *Windows) lockIntervals(refs []string) func() {
 	})
 }
 
+func (r *Windows) intervalCuts(refs []string) []execIntervalCut {
+	if r == nil {
+		return nil
+	}
+	r.state().mu.Lock()
+	defer r.state().mu.Unlock()
+	var cuts []execIntervalCut
+	for _, ref := range refs {
+		if window := r.find(ref); window != nil {
+			cuts = append(cuts, window.cuts...)
+		}
+	}
+	return cuts
+}
+
 func (r *Windows) find(ref string) *execWindow {
 	for _, window := range r.state().windows {
 		if window.ref == ref {

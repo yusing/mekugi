@@ -128,6 +128,12 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 	for _, member := range members {
 		intervalRefs = append(intervalRefs, member.callID)
 	}
+	cuts := windows.intervalCuts(intervalRefs)
+	for _, cut := range cuts {
+		intervalRefs = append(intervalRefs, cut.writer)
+	}
+	// Every affected writer is locked before workspace comparison/publication.
+	// Resumption must not acquire another writer beneath the workspace lock.
 	unlockIntervals := windows.lockIntervals(intervalRefs)
 	defer unlockIntervals()
 	var intervals []execInterval
@@ -139,7 +145,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		}
 		if len(parts) != 0 && len(members) > 1 {
 			unlockIntervals()
-			// An independently witnessed patch boundary separates this writer
+			// An independently witnessed edit boundary separates this writer
 			// from siblings that otherwise share one coarse response window.
 			for _, single := range members {
 				if err := finalizeExecObservations(selected, source, snapshots, recovered, publish, windows, activity, notice, ctx, workspace, []execCompletion{single}); err != nil {
@@ -306,7 +312,11 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 			ReplayCarrier: true, UpstreamItem: execDerivedUpstreamItem(memberCallID, memberArguments),
 		}
 	}
-	if err := publishObservations(context.WithoutCancel(ctx), selected, source, publish, workspace, records); err != nil {
+	continuations, err := prepareExecIntervalContinuations(ctx, workspace, cuts, result.Endpoints)
+	if err != nil {
+		return err
+	}
+	if err := publishObservations(context.WithoutCancel(ctx), selected, source, publish, workspace, records, continuations...); err != nil {
 		return err
 	}
 	if record.ChangeID != "" {

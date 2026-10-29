@@ -17,12 +17,19 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-func publishObservations(ctx context.Context, selected changes.Scope, source changes.Service, publish func([]changes.Update), workspace string, histories map[string]mekugiHistory) error {
+func publishObservations(ctx context.Context, selected changes.Scope, source changes.Service, publish func([]changes.Update), workspace string, histories map[string]mekugiHistory, continuations ...execIntervalContinuation) error {
 	if selected.Store == nil {
 		return nil
 	}
 	selected = observationScope(ctx, selected)
 	updates, err := recordtransactions.PublishEvidence(ctx, selected, source, workspace, changePublications(histories), func(tx *history.Transaction) error {
+		// Required writer endpoints precede the terminal record. A retry can
+		// never find completed evidence while its continuation is still missing.
+		for _, continuation := range continuations {
+			if err := continuation.publish(tx, source); err != nil {
+				return err
+			}
+		}
 		for _, id := range slices.SortedFunc(maps.Keys(histories), func(a, b string) int {
 			return cmp.Or(cmp.Compare(histories[a].sequence, histories[b].sequence), strings.Compare(a, b))
 		}) {

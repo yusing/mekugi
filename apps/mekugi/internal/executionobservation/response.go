@@ -310,7 +310,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 		// elsewhere, including a dynamic one, is bounded by a workspace snapshot.
 		observation, observed := changecapture.Capture(t.ctx, execs, dynamic, true, executionCaptureEnvironment(t.ctx, t.directory, t.retained, t.changeSource, t.snapshots, patches))
 		previewOpened := t.openStockExecWindow(callID, observation, patches, execs, dynamic, true)
-		if err := t.splitExecIntervals(callID, patches); err != nil {
+		if err := t.splitExecIntervals(callID, observation, patches); err != nil {
 			return false, err
 		}
 		if len(patches) == 0 && !observed && !previewOpened {

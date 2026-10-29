@@ -40,7 +40,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 
 	firstPatch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+middle\n*** End Patch\n"
 	secondPatch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-middle\n+final\n*** End Patch\n"
-	firstSource := "await tools.apply_patch(" + string(responses.MustMarshalJSON(firstPatch)) + "); await tools.exec_command({cmd: 'printf command > command.txt'});"
+	firstSource := "await tools.apply_patch(" + string(responses.MustMarshalJSON(firstPatch)) + "); await tools.exec_command({cmd: 'gofmt -w file.txt; printf command > command.txt; go test ./...'});"
 	secondSource := "await tools.apply_patch(" + string(responses.MustMarshalJSON(secondPatch)) + ");"
 	codeCall := func(id, source string) map[string]any {
 		return map[string]any{
@@ -82,7 +82,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	trace.start("thread-1", "runtime-1", "first-cell", firstSource)
 	trace.tool("thread-1", "runtime-1", "first-patch", "apply_patch", firstPatch)
 	trace.result("thread-1", "first-patch", "completed", map[string]any{})
-	trace.tool("thread-1", "runtime-1", "running-command", "exec_command", `{"cmd":"printf command > command.txt"}`)
+	trace.tool("thread-1", "runtime-1", "running-command", "exec_command", `{"cmd":"gofmt -w file.txt; printf command > command.txt; go test ./..."}`)
 	trace.result("thread-1", "running-command", "completed", map[string]any{"session_id": 123})
 	trace.end("thread-1", "runtime-1")
 	if err := os.WriteFile(target, []byte("middle\n"), 0o600); err != nil {
@@ -148,13 +148,14 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	if err != nil || firstDiffAgain != firstDiff {
 		t.Fatalf("first patch snapshot drifted: before=%q after=%q err=%v", firstDiff, firstDiffAgain, err)
 	}
+	ids := []string{first.ChangeID, second.ChangeID}
 	assertNet := func() {
 		t.Helper()
 		net, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{
-			Workspace: workspace, IDs: []string{first.ChangeID, second.ChangeID}, View: "net", MaxTokens: 4000,
+			Workspace: workspace, IDs: ids, View: "net", MaxTokens: 4000,
 		})
 		if err != nil || !strings.Contains(net, "-old") || !strings.Contains(net, "+final") || strings.Contains(net, "+middle") || strings.Contains(net, "-middle") {
-			t.Fatalf("two patch captures did not compose: net=%q err=%v", net, err)
+			t.Fatalf("selected captures did not compose: net=%q err=%v", net, err)
 		}
 	}
 	assertNet()
@@ -179,6 +180,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 		len(command.ReviewFiles) != 1 || command.ReviewFiles[0].AfterPath != filepath.Join(workspace, "command.txt") {
 		t.Fatalf("terminal command did not finalize: found=%v evidence=%+v", found, command)
 	}
+	ids = append(ids, command.ChangeID)
 	firstLast, found := lookup(legacycall.PatchCallID("first-cell", 0))
 	if !found || firstLast.ChangeID != first.ChangeID {
 		t.Fatalf("first patch changed after command exit: found=%v evidence=%+v", found, firstLast)
