@@ -46,9 +46,9 @@ native request metadata remains unchanged on the provider wire.
 
 ## Operations and admission
 
-- `list_models` takes no arguments and returns Claude model identifiers usable by
-  `spawn_agent`, using the native SDK initialization catalog and qualifying IDs
-  with `claude:`.
+- `list_models` takes no arguments and returns models for the other delegate backend:
+  Codex callers receive native SDK choices qualified with `claude:`, while Claude
+  callers receive Codex identifiers from the captured selected provider catalog.
   Discovery requires admitted caller identity, creates no logical member or work
   generation, and submits no model input. Missing runtime/catalog acquisition
   fails explicitly. Native catalog entries advertise supported choices, not
@@ -109,7 +109,9 @@ Unknown role/settings and unavailable authority fail explicitly.
 An explicit `claude:MODEL` selection with `fork_turns:"none"` creates a Claude
 delegate. Backend selection survives role preparation: role instructions remain
 applicable, while a pinned Codex model or effort cannot replace the explicitly
-selected Claude model. Codex preparation retains its existing precedence.
+selected Claude model. For fresh children inheriting Claude, a pinned Codex role
+model replaces inheritance. Full-history children keep their source backend.
+Codex preparation retains its existing precedence.
 Claude model availability is validated by its runtime, with no provider fallback.
 Claude inherits approval policy and role capability limits, and runs without
 filesystem or network sandboxing. Human decisions use the ordinary approval dock

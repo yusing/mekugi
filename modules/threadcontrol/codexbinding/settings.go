@@ -76,9 +76,6 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	if model != nil {
 		claude = strings.HasPrefix(*model, "claude:")
 	}
-	if claude && effort != nil {
-		return result, fmt.Errorf("unsupported reasoning effort %q for Claude delegates", *effort)
-	}
 	// Source: codex-rs/core/src/agent/child_config.rs:52:76,204:244@0df4aa677.
 	// Configured subagent defaults precede roles, including full-history forks.
 	if model == nil && !claude {
@@ -125,10 +122,26 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		if !found {
 			return result, fmt.Errorf("unknown agent_type %q", role)
 		}
+		// An explicit Claude selection wins. Fresh children inheriting Claude
+		// may instead use the role's pinned Codex model; full-history children
+		// must keep their source backend.
+		if claude && options.Model == nil && !result.FullHistory && selection.values.Model != nil && !strings.HasPrefix(*selection.values.Model, "claude:") {
+			i := slices.IndexFunc(models, func(m Model) bool { return m.Name == *selection.values.Model })
+			if i < 0 {
+				return result, fmt.Errorf("unknown agent model %q", *selection.values.Model)
+			}
+			settings.Model, settings.Effort = *selection.values.Model, models[i].DefaultEffort
+			if effort != nil {
+				settings.Effort = effort
+			}
+		}
 		if err := applyRole(&settings, selection); err != nil {
 			return result, err
 		}
 		inheritedEffort = inheritedEffort && selection.values.Effort == nil
+	}
+	if strings.HasPrefix(settings.Model, "claude:") && effort != nil {
+		return result, fmt.Errorf("unsupported reasoning effort %q for Claude delegates", *effort)
 	}
 	if inheritedEffort && settings.Effort != nil && *settings.Effort == "ultra" {
 		ordinary, err := inheritedEffortForModel(models, settings.Model, *settings.Effort)

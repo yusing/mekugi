@@ -143,7 +143,7 @@ func newClaudeHookFixture(t *testing.T) *claudeHookFixture {
 	if err := owners.Threads.Connect(claudeHookHost{runtime: runtime}, audience); err != nil {
 		t.Fatal(err)
 	}
-	if err := shared.AdmitRoot(ctx, parent, &control.Member{Thread: "parent", Session: "parent-session", Task: "/root", Status: control.Working, AudienceAdmitted: true, Settings: control.Settings{Model: "codex"}}); err != nil {
+	if err := shared.AdmitRoot(ctx, parent, &control.Member{Thread: "parent", Session: "parent-session", Task: "/root", Status: control.Working, AudienceAdmitted: true, Settings: control.Settings{Model: "codex", Workspace: settings.Workspace}}); err != nil {
 		t.Fatal(err)
 	}
 	caller := control.Identity{Thread: "parent", Session: "parent-session", Turn: "parent-turn", Call: "spawn", Item: "spawn"}

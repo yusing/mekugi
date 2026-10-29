@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, readFile, readdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -271,6 +271,9 @@ test("native CLI consumes synthetic input and stops a waiting tool batch with a 
   const claude = Bun.which("claude");
   assert.ok(claude, "Opted-in native acceptance requires Claude Code");
   const directory = await mkdtemp(join(tmpdir(), "mekugi-claude-native-"));
+  await mkdir(join(directory, ".claude", "agents"), { recursive: true });
+  await writeFile(join(directory, ".claude", "agents", "native-role.md"), "---\nname: native-role\ndescription: native-role-catalog-marker\nmodel: haiku\n---\nnative-role-prompt-marker");
+  await writeFile(join(directory, ".claude", "settings.json"), JSON.stringify({ agent: "native-role" }));
   const requests = [];
   const providerStarts = [];
   let reportFailure;
@@ -323,6 +326,9 @@ test("native CLI consumes synthetic input and stops a waiting tool batch with a 
   const queried = await worker.input("query-fixture-fact", { isSynthetic: true, origin });
   const completion = await worker.waitFor((event) => event.type === "result" && event.user_message_uuid === queried.uuid);
   assert.equal(completion.is_error, false);
+  assert.equal(requests[0].model, "claude-sonnet-4-6", "native role must not replace the captured model");
+  assert.equal(JSON.stringify(requests[0]).includes("native-role-"), false, "native role prompts and catalogs must not reach inference");
+  assert.equal(requests[0].tools.some((tool) => ["Agent", "Task", "TeamCreate", "TeamDelete", "SendMessage"].includes(tool.name)), false);
   assert.deepEqual(Object.values(completion.modelUsage).map(({ inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens }) =>
     ({ inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens })),
   [{ inputTokens: 20, outputTokens: 5, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 }]);

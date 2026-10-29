@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -16,8 +17,29 @@ func (d *Driver) listModels(ctx context.Context, caller control.Identity, raw js
 	if err := json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err != nil {
 		return nil, err
 	}
-	if _, err := d.control.Caller(caller); err != nil {
+	member, err := d.control.Caller(caller)
+	if err != nil {
 		return nil, err
+	}
+	if strings.HasPrefix(member.Settings.Model, "claude:") {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		d.mu.RLock()
+		defer d.mu.RUnlock()
+		if d.catalogError != nil {
+			return nil, d.catalogError
+		}
+		if len(d.models) == 0 {
+			return nil, errors.New("selected Codex model catalog is unavailable")
+		}
+		models := make([]control.ModelOption, 0, len(d.models))
+		for _, model := range d.models {
+			models = append(models, control.ModelOption{ID: model.Name})
+		}
+		return struct {
+			Models []control.ModelOption `json:"models"`
+		}{models}, nil
 	}
 	discovery, ok := d.native().(control.ModelDiscovery)
 	if !ok {

@@ -70,6 +70,22 @@ func TestPrepareSpawnClaudeNativeForkAndRetainedConfiguration(t *testing.T) {
 	}
 	runtime = instructionRuntime{info: control.ThreadInfo{Thread: "claude", Session: "claude-session", Path: claudePath}, config: child.Settings.Preparation}
 	driver.host = instructionNative{Native: host, owner: runtime}
+	driver.CaptureCatalog([]byte(`{"models":[{"slug":"codex-selected"}]}`))
+	claudeDriver, err := NewDriver(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claudeDriver.InheritCatalog(driver)
+	claudeCaller := control.Identity{Thread: "claude", Session: "claude-session", Turn: "claude-turn", Call: "models", Item: "catalog-tool"}
+	catalog, err := claudeDriver.Call(t.Context(), claudeCaller, "list_models", jsontext.Value(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertForkJSON(t, catalog, `{"models":[{"id":"codex-selected"}]}`)
+	claudeDriver.CaptureCatalog([]byte(`{"models":[]}`))
+	if _, err := claudeDriver.Call(t.Context(), claudeCaller, "list_models", jsontext.Value(`{}`)); err == nil {
+		t.Fatal("missing selected Codex catalog silently succeeded")
+	}
 	fork, err := driver.PrepareSpawn(t.Context(), binding.MCPIdentity{Thread: "claude", Session: "claude-session", Turn: "claude-turn", Call: "native-fork", Item: "native-tool", Model: "claude:parent"}, SpawnOptions{TaskName: "fork", Message: "nested assignment"}, nil)
 	if err != nil {
 		t.Fatal(err)

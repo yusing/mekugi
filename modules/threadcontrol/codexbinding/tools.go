@@ -16,19 +16,25 @@ import (
 
 // ToolCatalog is shared by admitted backend transports. Calling conventions
 // and authenticated caller identity remain with each transport.
-func ToolCatalog() []*mcp.Tool {
+func ToolCatalog(claudeCaller bool) []*mcp.Tool {
+	modelGuidance := "For a Claude delegate, use list_models and pass a returned claude:MODEL unchanged."
+	modelList := "List Claude's native advertised model IDs for spawn_agent without submitting model input. Account access is validated during execution. Use a returned claude: ID unchanged as spawn_agent.model with fork_turns=none."
+	if claudeCaller {
+		modelGuidance = "Use list_models for Codex choices. An explicit claude:MODEL keeps Claude even when the role pins a Codex model."
+		modelList = "List the selected Codex catalog's model IDs for spawn_agent without submitting model input. Use a returned ID unchanged as spawn_agent.model with fork_turns=none."
+	}
 	entries := []struct{ name, description, schema string }{
 		{"spawn_agent", "Create an agent with an attributed assignment. Returns the confirmed thread identity and logical agent name.", `{"type":"object","properties":{
 			"task_name":{"type":"string","description":"Task-name segment under this agent. Use lowercase ASCII letters, digits, underscores and hyphens; for example, trace_roster_metrics. Must be nonempty and unique under this parent."},
 			"message":{"type":"string","description":"Nonempty assignment for the new agent. Include the task, constraints and expected result, especially when fork_turns=none supplies no surrounding conversation."},
 			"agent_type":{"type":"string","description":"Role from the available agent_type roles. Omit for the default role on a fresh child or inherited role on a full-history fork."},
 			"fork_turns":{"type":"string","enum":["all","none"],"description":"Conversation context to inherit: all (default) copies the full history and inherits model and effort; none starts fresh and permits authorized model/effort overrides and preload."},
-			"model":{"type":"string","description":"Model override for fork_turns=none. Set only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions. For a Claude delegate, use list_models and pass a returned claude:MODEL unchanged."},
+			"model":{"type":"string","description":"Model override for fork_turns=none. Set only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions. ` + modelGuidance + `"},
 			"reasoning_effort":{"type":"string","description":"Reasoning-effort override for fork_turns=none. Set only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions."},
 			"cwd":{"type":"string","description":"Existing authorized working directory for the child. Omit to inherit the caller's cwd; relative paths resolve there. The parent's cwd is unchanged."},
 			"preload":{"description":"Startup sources for fork_turns=none. Supply known files or skills the child needs to begin; exact source content arrives before first inference, avoiding discovery/read turns without inheriting unrelated parent history. Select only assignment-relevant sources. Omit for full-history forks or when no startup sources are known. Each source uses path with optional inclusive line ranges, or skill with optional SKILL.md path. Relative paths use child cwd; AGENTS.md is host-loaded. Reads use child permissions; failures remain visible.","allOf":[` + compact.SelectionSchema + `]}
 		},"required":["task_name","message"],"additionalProperties":false}`},
-		{"list_models", "List Claude's native advertised model IDs for spawn_agent without submitting model input. Account access is still validated during execution. Use a returned claude: ID unchanged as spawn_agent.model with fork_turns=none.", `{"type":"object","properties":{},"additionalProperties":false}`},
+		{"list_models", modelList, `{"type":"object","properties":{},"additionalProperties":false}`},
 		{"list_agents", "List admitted agents and retained operations.", `{"type":"object","properties":{"path_prefix":{"type":"string","description":"Logical agent-name prefix, such as agent:main/worker. Omit to list the whole admitted tree."}},"additionalProperties":false}`},
 		{"inspect", "Inspect an admitted agent: applied model, reasoning effort, service tier, context usage/window and completed compactions. Includes idle or completed agents; uses retained observations without starting work; unavailable observations are null.", `{"type":"object","properties":{"target":{"type":"string","description":"Agent identifier, such as agent:main, a returned agent:main/worker name, an unambiguous relative task name, or a thread ID."}},"required":["target"],"additionalProperties":false}`},
 		{"compact", "Compact your own context at a safe checkpoint, then automatically continue unfinished work. Call alone and let the enclosing execution finish. Use inspect to judge context usage.", `{"type":"object","properties":{},"additionalProperties":false}`},
@@ -47,7 +53,7 @@ func ToolCatalog() []*mcp.Tool {
 // mcp constructs the sole collaboration catalog through stock execution.
 func (d *Driver) mcp() binding.MCPServer {
 	server := binding.MCPServer{Name: "threadcontrol", Server: mcp.NewServer(&mcp.Implementation{Name: "threadcontrol", Version: "1"}, nil)}
-	for _, entry := range ToolCatalog() {
+	for _, entry := range ToolCatalog(false) {
 		server.Tools = append(server.Tools, entry.Name)
 		mcp.AddTool(server.Server, entry, func(ctx context.Context, request *mcp.CallToolRequest, _ map[string]any) (*mcp.CallToolResult, any, error) {
 			rawMetadata, err := json.Marshal(request.Params.Meta)

@@ -59,7 +59,7 @@ func claudeDiscoveryFixture(t *testing.T) (*threadExecution, *threadbinding.Driv
 	if err := driver.Connect(e, audience); err != nil {
 		t.Fatal(err)
 	}
-	member, _ := e.shared.Member("child")
+	member, _ := e.shared.Member("parent")
 	return e, driver, control.Identity{Thread: member.Thread, Session: member.Session, Turn: member.Turn, Call: "discovery", Item: "discovery"}, report
 }
 

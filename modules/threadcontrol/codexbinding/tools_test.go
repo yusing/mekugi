@@ -14,6 +14,40 @@ import (
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
+func TestToolCatalogCallerDescriptions(t *testing.T) {
+	for _, tc := range []struct {
+		claude      bool
+		model, list string
+	}{
+		{false, "For a Claude delegate", "List Claude's native advertised model IDs"},
+		{true, "Use list_models for Codex choices", "List the selected Codex catalog's model IDs"},
+	} {
+		for _, tool := range ToolCatalog(tc.claude) {
+			if tool.Name == "list_models" && !strings.HasPrefix(tool.Description, tc.list) {
+				t.Fatalf("caller claude=%t: %s", tc.claude, tool.Description)
+			}
+			if tool.Name != "spawn_agent" {
+				continue
+			}
+			raw, err := json.Marshal(tool.InputSchema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var schema struct {
+				Properties map[string]struct {
+					Description string `json:"description"`
+				} `json:"properties"`
+			}
+			if err := json.Unmarshal(raw, &schema); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(schema.Properties["model"].Description, tc.model) {
+				t.Fatalf("caller claude=%t: model description %q", tc.claude, schema.Properties["model"].Description)
+			}
+		}
+	}
+}
+
 func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	driver, host, _, caller := reconciliationFixture(t)
 	discovery := &modelDiscoveryHost{Native: host}

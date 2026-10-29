@@ -129,14 +129,16 @@ plugins = true
 		fail               bool
 	}{
 		{name: "explicit backend survives role pins", parent: "codex", want: "claude:unlisted-model", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude:unlisted-model"), AgentType: new("worker")}},
-		{name: "fresh Claude inherits with default role", parent: "claude:parent", want: "claude:parent", options: SpawnOptions{ForkTurns: new("none")}},
+		{name: "fresh Claude default role pin replaces inheritance", parent: "claude:parent", want: "codex-pinned", options: SpawnOptions{ForkTurns: new("none")}},
+		{name: "fresh Claude selected role pin replaces inheritance", parent: "claude:parent", want: "codex-pinned", options: SpawnOptions{ForkTurns: new("none"), AgentType: new("worker")}},
+		{name: "pinned Codex child admits Codex effort", parent: "claude:parent", want: "codex-pinned", options: SpawnOptions{ForkTurns: new("none"), AgentType: new("worker"), ReasoningEffort: new("ultra")}},
 		{name: "full Claude inherits despite selected role", parent: "claude:parent", want: "claude:parent", options: SpawnOptions{AgentType: new("worker")}},
 		{name: "full Claude inherits without role", parent: "claude:parent", want: "claude:parent"},
 		{name: "explicit Codex restores stock role precedence", parent: "claude:parent", want: "codex-pinned", options: SpawnOptions{ForkTurns: new("none"), Model: new("codex"), ReasoningEffort: new("medium"), AgentType: new("worker")}},
 		{name: "empty qualified model", parent: "codex", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude:")}, fail: true},
 		{name: "blank qualified model", parent: "codex", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude: \t")}, fail: true},
 		{name: "explicit Claude effort", parent: "codex", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude:model"), ReasoningEffort: new("high")}, fail: true},
-		{name: "inherited Claude explicit effort", parent: "claude:parent", options: SpawnOptions{ForkTurns: new("none"), ReasoningEffort: new("")}, fail: true},
+		{name: "unpinned inherited Claude explicit effort", parent: "claude:parent", options: SpawnOptions{ForkTurns: new("none"), AgentType: new("explorer"), ReasoningEffort: new("")}, fail: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			parent := control.Settings{Workspace: workspace, Model: tc.parent, Provider: "codex-provider", Effort: new("ultra"), Summary: new("auto"), Tier: new("priority"), PermissionProfile: []byte(`{"type":"managed","file_system":{"type":"restricted","entries":[{"path":{"type":"path","path":"/denied"},"access":"deny"}]},"network":"restricted"}`), ApprovalPolicy: []byte(`"on-request"`), PermissionID: "bounded", ApprovalsReviewer: "user", RuntimeRoots: []string{workspace}, Config: []byte(`{"features.plugins":false}`), NonAttachable: tc.parent != "codex"}

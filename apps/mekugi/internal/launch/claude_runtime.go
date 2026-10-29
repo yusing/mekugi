@@ -195,7 +195,7 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 		return err
 	}
 	var tools []claude.Tool
-	for _, tool := range threadbinding.ToolCatalog() {
+	for _, tool := range threadbinding.ToolCatalog(true) {
 		schema, err := json.Marshal(tool.InputSchema)
 		if err != nil {
 			return err

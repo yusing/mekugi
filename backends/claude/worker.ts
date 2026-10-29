@@ -40,6 +40,7 @@ const permissionSchema = z.discriminatedUnion("behavior", [
 const tokenField = "_mekugi_call_token";
 const serverName = "threadcontrol";
 const auxiliaryReadTimeoutMs = 5_000;
+const nativeDelegationTools = ["Agent", "Task", "TeamCreate", "TeamDelete", "SendMessage"];
 
 function errorText(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function send(frame: object): void { process.stdout.write(`${JSON.stringify(frame)}\n`); }
@@ -124,7 +125,7 @@ class Worker {
     try {
       const output: SyncHookJSONOutput = hookOutputSchema.parse(await this.callHost("hook", input, signal));
       if (input.hook_event_name === "PreToolUse") {
-        if (input.tool_name === "Task" || input.tool_name === "Agent") {
+        if (nativeDelegationTools.includes(input.tool_name)) {
           return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "Native delegation is disabled; use coordination tools" } };
         }
         const name = this.toolNames.get(input.tool_name);
@@ -180,9 +181,11 @@ class Worker {
     const options: Options = {
       ...config.options,
       cwd: config.workspace, pathToClaudeCodeExecutable: config.claudePath,
-      env: process.env, settingSources: ["user", "project", "local"],
+      env: { ...process.env, CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "0" }, settingSources: ["user", "project", "local"],
+      // Native main-agent settings must not replace the captured Codex role.
+      settings: { agent: "" }, agent: undefined, agents: undefined,
       sandbox: { enabled: false },
-      disallowedTools: [...new Set([...disallowedTools, "Agent", "Task"])],
+      disallowedTools: [...new Set([...disallowedTools, ...nativeDelegationTools])],
       // This is a CLI flag, not an SDK Options property in the pinned SDK.
       extraArgs: { ...extraArgs, "replay-user-messages": null },
       strictMcpConfig: true,
