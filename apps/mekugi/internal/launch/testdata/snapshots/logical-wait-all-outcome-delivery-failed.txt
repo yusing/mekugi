@@ -1,6 +1,6 @@
 ↔ Waiting for all
 
-↔ Finished waiting for all: worker: delivery failed
+↔ Finished waiting for worker: delivery failed: completed
 
 
 

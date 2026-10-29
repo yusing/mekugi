@@ -129,7 +129,7 @@ func TestProjectCoordinationWaitDispositions(t *testing.T) {
 	}{
 		{"implicit all", `{}`, `{"state":"waiting","targets":["/root/a","/root/b"]}`, "waiting", []Target{{Name: "all"}}},
 		{"explicit all", `{"target":"all"}`, `{"state":"waiting","targets":["/root/a","/root/b"]}`, "waiting", []Target{{Name: "all"}}},
-		{"all failed target", `{}`, `{"state":"completed","event":{"task":"/root/child","status":"failed"}}`, "completed", []Target{{Name: "all", Status: "child: failed"}}},
+		{"all failed target", `{}`, `{"state":"completed","event":{"task":"/root/child","status":"failed"}}`, "completed", []Target{{Name: "/root/child", Status: "failed"}}},
 		{"completed event", `{"target":["child"]}`, `{"state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", []Target{{Name: "/root/child", Status: "completed"}}},
 		{"timeout", `{"target":["child"]}`, `{"state":"timeout"}`, "timeout", []Target{{Name: "child"}}},
 		{"paused", `{"target":["child"]}`, `{"state":"paused"}`, "paused", []Target{{Name: "child"}}},

@@ -75,7 +75,7 @@ func TestWaitOutcomeProjection(t *testing.T) {
 		{`{"id":"w","state":"registered"}`, "", "2s"},
 		{`{"state":"waiting"}`, "", "2s"},
 		{`{"id":"w","state":"timeout"}`, "timeout", ""},
-		{`{"id":"w","state":"completed","event":{"task":"/root/child","status":"completed"}}`, "child: completed", ""},
+		{`{"id":"w","state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", ""},
 	} {
 		session := new(sessionpresentation.Attachment)
 		entry := session.CoordinationEntry(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Phase: "item/completed"}}, observation.Item{
@@ -318,6 +318,33 @@ func TestPathlessSkillAttachmentProjection(t *testing.T) {
 	for i, name := range []string{"review", "commit"} {
 		if v := values[i]; v.Verb != "Attached skill" || v.Label != name || v.Reads != nil || len(v.Tail) == 0 {
 			t.Fatalf("value %d = %+v", i, v)
+		}
+	}
+}
+
+func TestWaitMixedOutcomesProjection(t *testing.T) {
+	t.Parallel()
+	for _, statuses := range [][]string{{"failed", "completed", "interrupted"}, {"interrupted", "completed", "failed"}} {
+		result := `{"state":"completed","events":[`
+		for i, status := range statuses {
+			if i > 0 {
+				result += ","
+			}
+			result += fmt.Sprintf(`{"task":"/root/%s","status":%q}`, status, status)
+		}
+		result += "]}"
+		entry := new(sessionpresentation.Attachment).CoordinationEntry(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Phase: "item/completed"}}, observation.Item{
+			Type: "mcpToolCall", Server: "threadcontrol", Tool: "wait_agent", Status: "completed", Arguments: []byte(`{"target":"all"}`),
+			Result: []byte(`{"content":[{"type":"text","text":` + strconv.Quote(result) + `}]}`),
+		})
+		value := projectValues([]activitypresentation.Value{*entry.Native.Wait}, false)[0]
+		if value.WaitReason != "completed" || len(value.Waits) != len(statuses) {
+			t.Fatalf("mixed outcomes = %+v", value)
+		}
+		for i, status := range statuses {
+			if value.Waits[i].Name != "/root/"+status || value.Waits[i].Status != status {
+				t.Fatalf("target %d lost its outcome: %+v", i, value.Waits)
+			}
 		}
 	}
 }

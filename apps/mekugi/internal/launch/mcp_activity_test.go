@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
@@ -345,6 +347,45 @@ func TestThreadControlTrafficLiveRestoredReplay(t *testing.T) {
 			t.Fatalf("%s replay exposed raw MCP:\n%s", item.Tool, painted)
 		}
 	}
+}
+
+func TestThreadControlMixedWaitLiveRestoredReplay(t *testing.T) {
+	item := binding.ThreadItem{ID: "mixed-wait", Type: "mcpToolCall", Server: "threadcontrol", Tool: "wait_agent", Status: "completed",
+		Arguments: []byte(`{"target":"all"}`),
+		Result:    []byte(`{"content":[{"type":"text","text":"{\"state\":\"completed\",\"events\":[{\"task\":\"/root/worker\",\"status\":\"failed\"},{\"task\":\"/root/reader\",\"status\":\"completed\"},{\"task\":\"/root/reviewer\",\"status\":\"interrupted\"}]}"}]}`)}
+	check := func(source *sessionpresentation.ActivitySource, painted string) {
+		t.Helper()
+		wait := source.Entries[0].Values[0]
+		if wait.WaitReason != "completed" || len(wait.WaitTargets) != 3 || wait.WaitTargets[2].Name != "/root/reviewer" || wait.WaitTargets[2].Status != "interrupted" {
+			t.Fatalf("mixed wait lost its outcomes: %+v", wait)
+		}
+		if !strings.Contains(painted, "worker: failed, reader: completed") || !strings.Contains(painted, ": completed") {
+			t.Fatalf("mixed outcomes were not rendered: %s", painted)
+		}
+	}
+	for _, restored := range []bool{false, true} {
+		u := newAppServerSessionTestUI(t, t.TempDir())
+		if restored {
+			u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
+		} else {
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+		}
+		painted := strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(160).Lines, "\n")
+		check(u.attached.source, ansi.Strip(painted))
+	}
+	path := replayTestWrite(t, t.TempDir(), "mixed-wait.jsonl", replayTestMeta("main"), replayTestItem("main", "turn", replayTestEpoch, replayTestEpoch+1000, map[string]any{
+		"type": "McpToolCall", "id": item.ID, "server": item.Server, "tool": item.Tool, "status": item.Status, "arguments": item.Arguments, "result": item.Result,
+	}))
+	source, err := replayReadTest(t, nil, t.Context(), path, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	t.Cleanup(p.close)
+	if err := p.advance(p.Until); err != nil {
+		t.Fatal(err)
+	}
+	check(p.ui.source, replayPlaybackTestPaint(t, p, 160, 30))
 }
 
 func TestUISnapshotThreadControlTraffic(t *testing.T) {

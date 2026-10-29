@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/contracts/observation"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // Coordination is an observed operation, never authority to execute or deliver it.
@@ -184,11 +183,11 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		}
 		if c.Confirmed && result.Event != nil {
 			c.EventKind = result.Event.Kind
-			if all {
-				c.Targets[0].Status = pathdisplay.AgentDisplayName(result.Event.Task) + ": " + result.Event.Status
-			} else {
-				c.Targets = []Target{{Name: result.Event.Task, Status: result.Event.Status}}
+			status := result.Event.Status
+			if result.Event.Kind == "delivery_failed" {
+				status = "delivery failed"
 			}
+			c.Targets = []Target{{Name: result.Event.Task, Status: status}}
 		}
 	}
 	if c.Confirmed {

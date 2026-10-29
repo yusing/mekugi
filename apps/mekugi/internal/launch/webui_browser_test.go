@@ -861,6 +861,17 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "Finished waiting for worker ·\u00a0message received")
+	settled.Values[0].WaitTargets = []activitypresentation.WaitTarget{{Name: "/root/worker", Status: "failed"}, {Name: "/root/reader", Status: "completed"}, {Name: "/root/reviewer", Status: "interrupted"}}
+	settled.Values[0].WaitReason = "completed"
+	settled.Text = settled.Values[0].ProgressText()
+	settled.Revision++
+	frame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{frame.Main.Entries[0], settled}}
+	if err := alpha.publishFrame(frame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "Finished waiting for worker: failed, reader: completed")
+	run("find", "text", "+1 more", "click", "--exact")
+	run("wait", "--text", "reviewer: interrupted")
 	run("wait", "--fn", `(() => { const row = document.querySelector('[aria-label="Thread panel"] button[aria-current=true]'); return row?.textContent.includes('Idle') && !row.textContent.includes('Waiting'); })()`)
 	// Independent runtimes publish their own summary through the roster, without
 	// copying the child's transcript into the parent's feed.

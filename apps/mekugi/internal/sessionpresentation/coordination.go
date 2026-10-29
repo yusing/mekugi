@@ -75,10 +75,7 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 				if caller := s.KnownCaller(target.Name); caller != "" {
 					target.Name = caller
 				}
-				wait.WaitTargets = append(wait.WaitTargets, activitypresentation.WaitTarget{Name: target.Name})
-				if target.Status != "" && c.EventKind != "message" {
-					wait.WaitReason = target.Status
-				}
+				wait.WaitTargets = append(wait.WaitTargets, activitypresentation.WaitTarget{Name: target.Name, Status: target.Status})
 			}
 			if (c.State == "waiting" || c.State == "scheduled") && c.TimeoutMS != nil {
 				wait.WaitTimeout = (time.Duration(*c.TimeoutMS) * time.Millisecond).String()

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -150,27 +149,24 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 				value.WaitTargets = append(value.WaitTargets, activity.WaitTarget{Name: target})
 			}
 			if len(wait.Events) != 0 {
-				outcomes := make([]string, 0, len(wait.Events))
+				value.WaitTargets = nil
 				for _, event := range wait.Events {
 					status := string(event.Status)
 					if event.Kind == "delivery_failed" {
 						status = "delivery failed"
 					}
-					outcomes = append(outcomes, fmt.Sprintf("%s: %s", pathdisplay.AgentDisplayName(event.Task), status))
+					value.WaitTargets = append(value.WaitTargets, activity.WaitTarget{Name: event.Task, Status: status})
 				}
-				value.WaitReason = strings.Join(outcomes, ", ")
 			}
 			if event := wait.Event; event != nil {
-				value.WaitReason = string(event.Status)
-				if wait.All || len(wait.Targets) > 1 {
-					value.WaitReason = fmt.Sprintf("%s: %s", pathdisplay.AgentDisplayName(event.Task), event.Status)
-				}
+				status := string(event.Status)
 				if event.Kind == "message" {
-					value.WaitReason = "message received from " + pathdisplay.AgentDisplayName(event.Task)
+					value.WaitReason = "message received"
 				}
 				if event.Kind == "delivery_failed" {
-					value.WaitReason = "delivery failed from " + pathdisplay.AgentDisplayName(event.Task)
+					status = "delivery failed"
 				}
+				value.WaitTargets = []activity.WaitTarget{{Name: event.Task, Status: status}}
 			}
 			entry := sessionpresentation.ActivityEntry{Agent: "/root", Kind: "progress", Text: value.ProgressText(), Observed: now,
 				Native: &sessionpresentation.NativeItem{Thread: live.Thread, Turn: member.Wait.Turn, Item: "threadcontrol:wait:" + wait.ID, Phase: "supplement", Wait: value}}

@@ -11,6 +11,6 @@
 "                                      "
 "\x1b[2m↔ Listed 2 agents\x1b[m                     "
 "                                      "
-"\x1b[2m↔ Finished waiting for \x1b[38;5;37mworker\x1b[39m: message\x1b[m"
-"\x1b[2mreceived\x1b[m                              "
+"\x1b[2m↔ Finished waiting for \x1b[38;5;37mworker\x1b[39m:\x1b[m        "
+"\x1b[2mworking: message received\x1b[m             "
 "plain after traffic                   "
