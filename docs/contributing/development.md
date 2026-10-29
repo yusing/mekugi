@@ -75,6 +75,8 @@ git config --local core.hooksPath "$(git rev-parse --show-toplevel)/.githooks"
 ```
 
 The gate checks every UI snapshot against the staged source in a temporary checkout.
+It skips commits made while a rebase is in progress, including amended or reworded steps, so
+run `make test-ui-snapshots` once on the rebased tip when the rebase changed UI sources.
 The absolute hook path also applies the gate to this clone's other worktrees. To test changes
 to the hook in another worktree, use `git -c core.hooksPath="$PWD/.githooks" commit` there;
 this selects that worktree's hook without changing the clone's configuration.

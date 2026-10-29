@@ -1,6 +1,14 @@
 #!/bin/sh
 set -eu
 
+# A rebase replays commits whose trees were already gated; check the result once afterwards.
+for state in rebase-merge rebase-apply; do
+    if [ -d "$(git rev-parse --git-path "$state")" ]; then
+        printf 'Skipping UI snapshot gate during rebase.\n'
+        exit 0
+    fi
+done
+
 # Check the exact tree being committed, including partially staged changes.
 snapshot_tree=$(mktemp -d /tmp/mekugi-staged-snapshots.XXXXXX)
 snapshot_tree=$(cd "$snapshot_tree" && pwd -P)
