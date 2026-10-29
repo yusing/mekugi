@@ -13,7 +13,7 @@ func TestSelectRowsMatchesGreedyCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	random := rand.New(rand.NewPCG(7, 11))
-	values := []string{strings.Repeat("\n", 200), strings.Repeat("\r\n", 100), strings.Repeat("\n\r\n", 100), strings.Repeat(" \t\n", 100), "!!!\n/\n//\n\nhello\n"}
+	values := []string{strings.Repeat("\n", 200), strings.Repeat("\r\n", 100), strings.Repeat("\n\r\n", 100), strings.Repeat(" \t\n", 100), "!!!\n/\n//\n\nhello\n", strings.Repeat("\xff\x00\n", 50)}
 	atoms := []string{"hello", "世界🙂", " ", "\t", "\n", "/", "!!!", "'s", "UPPER", "123", "e\u0301", "\r"}
 	for range 100 {
 		var value strings.Builder
@@ -174,6 +174,49 @@ func BenchmarkSelectWhitespaceRows(b *testing.B) {
 					}
 				})
 			}
+		}
+	}
+}
+
+func BenchmarkSelectMixedRun(b *testing.B) {
+	c, err := New()
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, rows := range []int{512, 2048} {
+		value := strings.Repeat("\n\r\n", rows)
+		for _, limit := range []int{len(value) - 1, rows / 4} {
+			for _, tail := range []bool{false, true} {
+				b.Run(strconv.Itoa(rows)+"/limit="+strconv.Itoa(limit)+"/tail="+strconv.FormatBool(tail), func(b *testing.B) {
+					b.ReportAllocs()
+					for b.Loop() {
+						if _, err := c.SelectRows(value, limit, tail); err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestSelectMixedRunAllocationGrowth(t *testing.T) {
+	c, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tail := range []bool{false, true} {
+		allocations := func(rows int) float64 {
+			value := strings.Repeat("\n\r\n", rows)
+			return testing.AllocsPerRun(3, func() {
+				got, err := c.SelectRows(value, len(value)-1, tail)
+				if err != nil || got != value {
+					t.Fatalf("mixed rows lost: tail=%t: %v", tail, err)
+				}
+			})
+		}
+		if small, large := allocations(512), allocations(2048); large > small+32 {
+			t.Fatalf("allocations grew per mixed-row boundary: tail=%t: %.0f -> %.0f", tail, small, large)
 		}
 	}
 }

@@ -48,6 +48,12 @@ func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 					break
 				}
 				from += end + 1
+				// Each byte contributes at most one token. This bound admits
+				// short prefixes without repeatedly merging the growing piece.
+				if from <= limit-completed {
+					shown = offset + from
+					continue
+				}
 				n := newlineTokens(from)
 				if pureCRLF {
 					n = crlfTokens(from / 2)
@@ -111,6 +117,10 @@ func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 			}
 			if index+1 < len(pieces) {
 				n -= pieces[index+1].tokens
+			}
+			if end-next <= limit-n {
+				start = next
+				continue
 			}
 			partial, err := c.countWithWorkspace(value[next:end], &workspace)
 			if err != nil {
