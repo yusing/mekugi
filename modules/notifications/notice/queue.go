@@ -147,8 +147,12 @@ type Message struct{ ID, Text string }
 type Batch struct {
 	Messages []Message
 	owner    *Service
-	entries  []*entry
-	counts   []uint64
+	claims   []claim
+}
+
+type claim struct {
+	entry *entry
+	count uint64
 }
 
 type Delivery struct{ Errors, Progress Batch }
@@ -180,8 +184,7 @@ func (s *Service) Claim(root string, descendants map[string]string) *Delivery {
 			batch = &d.Progress
 		}
 		batch.Messages = append(batch.Messages, Message{e.ID, text})
-		batch.entries = append(batch.entries, e)
-		batch.counts = append(batch.counts, e.count)
+		batch.claims = append(batch.claims, claim{e, e.count})
 	}
 	if len(d.Errors.Messages)+len(d.Progress.Messages) == 0 {
 		return nil
@@ -196,10 +199,10 @@ func (b *Batch) Finish(visible bool) {
 	}
 	b.owner.mu.Lock()
 	defer b.owner.mu.Unlock()
-	for i, e := range b.entries {
-		e.inFlight = false
+	for _, claim := range b.claims {
+		claim.entry.inFlight = false
 		if visible {
-			e.delivered = b.counts[i]
+			claim.entry.delivered = claim.count
 		}
 	}
 }
