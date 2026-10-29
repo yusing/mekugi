@@ -38,6 +38,8 @@ sessions, and patch review. Invocation overrides leave Codex configuration uncha
   and continue unfinished work, or compact before waiting for delegates.
   [Selected files and skills reload](modules/agentguidance/SPEC.md#compaction-context)
   from source after Codex compaction.
+- **Context usage notices.** Agents receive [measured context reminders](modules/agentguidance/SPEC.md#context-usage-notices)
+  as their window fills, starting at halfway, when native measurements are available.
 - **Workspace facts up front.** Codex agents receive an [observed OS and Git snapshot](modules/agentguidance/SPEC.md#environment-snapshot),
   including branch, status and recent commits, without a separate discovery command.
 - **Claude delegates.** [Select a Claude model](#claude-delegates) through the same

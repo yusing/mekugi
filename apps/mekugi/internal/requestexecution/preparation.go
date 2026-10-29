@@ -2,6 +2,7 @@ package requestexecution
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"net/http"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -15,6 +16,7 @@ type Preparation struct {
 	Metadata                          codexresponses.TurnMetadata
 	MetadataValid, Prewarm, Automatic bool
 	ApprovalReview                    bool
+	FreshInput                        func() jsontext.Value
 	Trace                             Trace
 }
 

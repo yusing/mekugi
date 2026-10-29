@@ -250,10 +250,14 @@ func (a *requestAttempt) prepare() error {
 		a.metadata.RequestKind == responses.Prewarm && string(a.request.Fields["generate"]) == "false"
 	if a.executor.Observations != nil {
 		automatic := a.executor.Exchange != nil && a.executor.Exchange.State != nil && a.executor.Exchange.State.Automatic()
+		var freshInput func() jsontext.Value
+		if a.executor.Exchange != nil && a.executor.Exchange.State != nil {
+			freshInput = a.executor.Exchange.State.FreshInput
+		}
 		var err error
 		a.prepared, err = a.executor.Observations.Prepare(a.startCtx, &a.request, Preparation{
 			Session: a.sessionID, Thread: a.threadID, Metadata: a.metadata,
-			MetadataValid: a.metadataValid, Prewarm: a.prewarm, Automatic: automatic, Trace: a.trace,
+			MetadataValid: a.metadataValid, Prewarm: a.prewarm, Automatic: automatic, FreshInput: freshInput, Trace: a.trace,
 			ApprovalReview: a.approvalReview,
 		})
 		if err != nil {

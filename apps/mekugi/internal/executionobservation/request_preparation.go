@@ -67,6 +67,26 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 			}
 		}
 	}
+	if input.MetadataValid && input.Session != "" && input.Thread != "" && !input.Metadata.ActivityIdentityInvalid &&
+		(input.Metadata.ThreadID == "" || input.Metadata.ThreadID == input.Thread) && p.registry != nil && p.registry.Guidance != nil && p.registry.Guidance.ContextUsage != nil {
+		admitted := binding.ContextUsage{Session: input.Session, Thread: input.Thread, FreshInput: input.FreshInput}
+		if !input.Prewarm && !input.ApprovalReview && input.Metadata.RequestKind == "turn" && !input.Automatic && p.inspect != nil {
+			if details, err := p.inspect(ctx, input.Thread); err == nil && details.ContextTokens != nil && details.ContextWindow != nil {
+				admitted.Tokens, admitted.Window = *details.ContextTokens, *details.ContextWindow
+				if details.Compactions != nil {
+					admitted.Compactions = *details.Compactions
+				}
+			}
+		}
+		if err := requestexecution.ProjectInstructions(request, func(text binding.InstructionInput) (binding.InstructionUpdate, error) {
+			return p.registry.Guidance.ContextUsage(text, admitted)
+		}); err != nil {
+			if t != nil {
+				t.Close()
+			}
+			return nil, err
+		}
+	}
 	if t == nil {
 		return nil, nil
 	}

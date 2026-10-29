@@ -17,6 +17,10 @@ type inspectionResult struct {
 	err     error
 }
 
+// Target identifies the requested native thread. The owning event loop validates
+// Main or one of its admitted side threads before publishing any facts.
+func (request *Inspection) Target() string { return request.thread }
+
 // Inspections remains readable while a user shell blocks mutating host calls.
 func (r *Requests[T]) Inspections() <-chan *Inspection { return r.inspections }
 

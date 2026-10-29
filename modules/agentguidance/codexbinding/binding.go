@@ -16,6 +16,9 @@ var Codex = Bindings{
 	Frontends: true,
 	Guidance: func(service *policy.Service) binding.Guidance {
 		return binding.Guidance{
+			ContextUsage: func(input binding.InstructionInput, admitted binding.ContextUsage) (binding.InstructionUpdate, error) {
+				return projectContextUsage(input, admitted, &service.ContextNotices)
+			},
 			Environment: func(ctx context.Context, input binding.InstructionInput, admitted binding.EnvironmentContext) (binding.InstructionUpdate, error) {
 				return projectEnvironment(ctx, input, admitted, &service.Environment)
 			},

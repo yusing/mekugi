@@ -40,6 +40,7 @@ const applyPatchToolName = "apply_patch"
 
 // Config supplies borrowed invocation owners. Startup owns their lifetimes.
 type Config struct {
+	Inspect          func(context.Context, string) (threadcontrol.SessionDetails, error)
 	ThreadControl    *threadbinding.Driver
 	Registry         *frontends.Registry
 	InputProjections []binding.InputProjection
@@ -62,6 +63,7 @@ type Config struct {
 // New binds request preparation to the composed owners without acquiring resources.
 func New(config Config) *Preparer {
 	return &Preparer{
+		inspect:          config.Inspect,
 		threadControl:    config.ThreadControl,
 		registry:         config.Registry,
 		inputProjections: config.InputProjections,
@@ -83,6 +85,7 @@ func New(config Config) *Preparer {
 }
 
 type Preparer struct {
+	inspect          func(context.Context, string) (threadcontrol.SessionDetails, error)
 	threadControl    *threadbinding.Driver
 	registry         *frontends.Registry
 	inputProjections []binding.InputProjection

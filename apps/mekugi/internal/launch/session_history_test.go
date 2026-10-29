@@ -8,12 +8,15 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-func confirmedHistoryExchange(t *testing.T, input []jsontext.Value, automatic bool) *codexresponses.SessionExchange {
+func confirmedHistoryExchange(t *testing.T, input []jsontext.Value, automatic bool, project ...func(*codexresponses.Request)) *codexresponses.SessionExchange {
 	t.Helper()
 	var session codexresponses.SessionHistory
 	parent, request, err := session.Prepare(responses.MustMarshalJSON(map[string]any{"model": "gpt-test", "input": input}), nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, apply := range project {
+		apply(&request)
 	}
 	if err := parent.BeginProvider(request.Fields); err != nil {
 		t.Fatal(err)
@@ -31,9 +34,12 @@ func confirmedHistoryExchange(t *testing.T, input []jsontext.Value, automatic bo
 		command = nil
 		first = []byte(`{"type":"response.created","response":{"id":"next","previous_response_id":"parent"}}`)
 	}
-	exchange, _, err := session.Prepare(command, first)
+	exchange, request, err := session.Prepare(command, first)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, apply := range project {
+		apply(&request)
 	}
 	return exchange
 }

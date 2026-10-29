@@ -796,7 +796,15 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					}
 					control.Dispatch(call)
 				case inspection := <-control.Requests.Inspections():
-					inspection.Complete(control.Thread, threadInspection(&attached.session, control.Thread, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers))
+					target := inspection.Target()
+					switch {
+					case target == control.Thread:
+						inspection.Complete(target, threadInspection(&attached.session, target, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers))
+					case control.Requests.HasSideThread(target):
+						inspection.Complete(target, threadcontrol.SessionDetails{SessionMetrics: attached.session.InspectionMetrics(target)})
+					default:
+						inspection.Complete(control.Thread, threadcontrol.SessionDetails{})
+					}
 				case <-threadChanges:
 					if err := flushCompletions(); err != nil {
 						return err

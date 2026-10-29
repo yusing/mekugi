@@ -146,6 +146,13 @@ after caller overrides without changing unrelated shell policy. Each Mekugi chil
 its own capability. Standalone Codex launched from a tool shell keeps its original hook context.
 The capability conveys information, never execution authorization.
 
+## Context usage notices
+
+Measured notices at 50/60/70/80/90% reset after compaction and are isolated by native session/thread.
+Codex adds developer context after fresh tool results or text-only user input and replays at most five
+boundary associations, preserving native content, identities, base instructions and provider prefixes.
+Claude uses post-tool-batch context. Prewarm, approval, compaction, already-started successors and unknown usage add no notices.
+
 ## Compaction context
 
 Compaction makes one ordinary turn on the selected provider using the current

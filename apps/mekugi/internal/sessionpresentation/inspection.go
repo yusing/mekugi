@@ -8,6 +8,7 @@ import (
 type compactionMetrics struct {
 	completed map[string]struct{}
 	known     bool
+	started   string
 }
 
 var compactionMetricKey scope.Key[compactionMetrics]
@@ -24,6 +25,23 @@ func (s *Attachment) RestoreCompactions(thread string, completed []string) {
 	state.known = true
 	for _, id := range completed {
 		s.ObserveCompaction(thread, id)
+	}
+}
+
+// ObserveCompactionStart invalidates only the pre-compaction measurement. Native
+// Codex can publish the fresh measurement before the completion notification.
+func (s *Attachment) ObserveCompactionStart(thread, id string) {
+	store := s.Thread(thread)
+	if store == nil || id == "" {
+		return
+	}
+	state := compactionMetricKey.Value(store)
+	if _, completed := state.completed[id]; completed || state.started == id {
+		return
+	}
+	state.started = id
+	if name := s.KnownCaller(thread); name != "" {
+		s.Agent(name).ContextKnown = false
 	}
 }
 

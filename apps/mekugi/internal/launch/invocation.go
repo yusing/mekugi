@@ -25,6 +25,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
+	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -281,10 +282,18 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
 	defer review.Close()
 	var driver *threadbinding.Driver
+	var inspect func(context.Context, string) (threadcontrol.SessionDetails, error)
 	if threads != nil {
 		driver = threads.driver
+		inspect = func(ctx context.Context, thread string) (threadcontrol.SessionDetails, error) {
+			runtime, err := threads.Runtime(thread)
+			if err != nil {
+				return threadcontrol.SessionDetails{}, err
+			}
+			return runtime.Inspect(ctx, thread)
+		}
 	}
-	mekugiCalls = executionobservation.New(executionobservation.Config{ThreadControl: driver, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
+	mekugiCalls = executionobservation.New(executionobservation.Config{Inspect: inspect, ThreadControl: driver, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
 	usage.Configure(retained.Store, retained.Writes, retained.Limits, func(thread string, err error) {
 		issues.AddThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
 	})

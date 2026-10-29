@@ -27,6 +27,13 @@ type EnvironmentContext struct {
 	Revision                   uint64
 }
 
+// ContextUsage carries observed native context facts for an admitted request.
+type ContextUsage struct {
+	Session, Thread             string
+	Tokens, Window, Compactions uint64
+	FreshInput                  func() json.RawMessage
+}
+
 // FrontendGuidance separates executable capabilities from task workflow policy.
 // All projections belong to the same authenticated invocation catalog.
 type FrontendGuidance struct {
@@ -38,6 +45,7 @@ type FrontendGuidance struct {
 // Guidance registers the distinct existing request phases. Callbacks are
 // invocation-immutable; the application owns request copies and catalog indexing.
 type Guidance struct {
+	ContextUsage      func(InstructionInput, ContextUsage) (InstructionUpdate, error)
 	Environment       func(context.Context, InstructionInput, EnvironmentContext) (InstructionUpdate, error)
 	Threads           func(InstructionInput, []guidance.Replacement) (InstructionUpdate, error)
 	BeforePreparation func(InstructionInput) (InstructionUpdate, error)

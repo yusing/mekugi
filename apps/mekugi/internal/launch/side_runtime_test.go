@@ -74,6 +74,9 @@ func TestSideForkUsesOwningNativeRuntime(t *testing.T) {
 				if err != nil || info.Thread != "side" {
 					t.Fatalf("side request preparation cannot read its host thread: %+v, %v", info, err)
 				}
+				if _, err := owner.Inspect(ctx, "side"); err != nil {
+					t.Fatalf("side request preparation cannot inspect its own context: %v", err)
+				}
 				break
 			}
 			native.Close()

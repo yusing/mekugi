@@ -12,6 +12,7 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -143,5 +144,45 @@ func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.
 	_, err := exchange.Reconcile(request, true)
 	if err == nil || !strings.Contains(err.Error(), "cached provider history") {
 		t.Fatalf("automatic successor silently accepted a different prefix: %v", err)
+	}
+}
+
+func TestContextUsageNoticeProviderPrefix(t *testing.T) {
+	raw := json.RawMessage(`[{"role":"user","content":"task"},{"type":"function_call_output","call_id":"call","output":"done"}]`)
+	admitted := binding.ContextUsage{Session: t.Name(), Thread: "main", Tokens: 500, Window: 1000}
+	admitted.FreshInput = func() json.RawMessage { return raw }
+	project := testGuidance().ContextUsage
+	update, err := project(binding.InstructionInput{Input: raw}, admitted)
+	var sent []json.RawMessage
+	if err != nil || json.Unmarshal(update.Input, &sent) != nil || len(sent) != 3 || !bytes.Contains(sent[2], []byte("Mekugi context usage: 50%")) || !responses.SameJSONValue(sent[1], json.RawMessage(`{"type":"function_call_output","call_id":"call","output":"done"}`)) {
+		t.Fatalf("tool notice projection: %+v, %v", update, err)
+	}
+	for _, automatic := range []bool{false, true} {
+		admitted.Tokens, admitted.Window = 0, 0
+		request := new(codexresponses.Request)
+		exchange := confirmedHistoryExchange(t, sent[:2], automatic, func(next *codexresponses.Request) {
+			replayed, err := project(binding.InstructionInput{Input: next.Fields["input"]}, admitted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			next.Fields["input"] = replayed.Input
+			*request = *next
+		})
+
+		if reason, err := exchange.Reconcile(request, true); err != nil || reason != "matching_prefix" || request.CachedInput != 3 || request.RebaseInput {
+			t.Fatalf("notice prefix: %s, %v, cached=%d", reason, err, request.CachedInput)
+		}
+	}
+	admitted.Tokens, admitted.Window, admitted.Compactions = 700, 1000, 1
+	update, err = project(binding.InstructionInput{Input: raw}, admitted)
+	if err != nil || bytes.Count(update.Input, []byte("Mekugi context usage:")) != 1 || !bytes.Contains(update.Input, []byte("70%")) {
+		t.Fatalf("compaction cadence: %+v, %v", update, err)
+	}
+
+	for _, window := range []uint64{0, 1000} {
+		update, err := project(binding.InstructionInput{Input: []byte("not JSON")}, binding.ContextUsage{Session: t.Name(), Thread: "unused", Tokens: 499, Window: window, FreshInput: func() json.RawMessage { t.Fatal("unneeded fresh input encoded"); return nil }})
+		if err != nil || update.InputChanged {
+			t.Fatalf("unneeded history decoded: %v", err)
+		}
 	}
 }

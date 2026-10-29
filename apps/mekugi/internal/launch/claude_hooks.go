@@ -14,6 +14,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/claude"
 	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/modules/agentguidance/contextnotice"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -48,6 +49,7 @@ type claudeBridge struct {
 	captures        map[string]*claudeToolCapture
 	changes         chan []changes.Update
 	pendingReceipts []string
+	contextNotices  contextnotice.Store
 }
 
 type claudeHook struct {
@@ -308,6 +310,15 @@ func (b *claudeBridge) batch(ctx context.Context, hook claudeHook) (jsontext.Val
 	receipts := strings.Join(b.pendingReceipts, "\n")
 	b.pendingReceipts = nil
 	b.mu.Unlock()
+	if details, err := b.runtime.Inspect(ctx, b.info.Thread); err == nil && details.ContextTokens != nil && details.ContextWindow != nil {
+		sample := contextnotice.Sample{Tokens: *details.ContextTokens, Window: *details.ContextWindow}
+		if details.Compactions != nil {
+			sample.Compactions = *details.Compactions
+		}
+		if reminder, _ := b.contextNotices.Project(b.info.Session, b.info.Thread, sample, func(string) contextnotice.Mark { return contextnotice.Mark{Key: "claude"} }); reminder != "" {
+			receipts = strings.TrimSpace(receipts + "\n" + reminder)
+		}
+	}
 	return json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": hook.Event, "additionalContext": receipts}})
 }
 

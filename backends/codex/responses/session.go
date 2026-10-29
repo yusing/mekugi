@@ -47,6 +47,11 @@ type SessionExchange struct {
 
 func (e *SessionExchange) Automatic() bool { return e.automatic }
 
+// FreshInput excludes reconstructed cached history and is empty for automatic successors.
+func (e *SessionExchange) FreshInput() jsontext.Value {
+	return responseevents.MustMarshalJSON(e.history.input)
+}
+
 // RestoreProviderModel keeps automatic successors on their already-sent contract.
 func (e *SessionExchange) RestoreProviderModel(request *Request) error {
 	if !e.automatic {
