@@ -61,6 +61,30 @@ to stderr, including startup failures after bundle initialization.
 Paths are not printed over the active interactive session. Bundle files survive
 normal shutdown.
 
+### Detached server evidence
+
+Automatically started local servers retain private process evidence independently
+of the launching client and `--debug`, under `$XDG_STATE_HOME/mekugi/server`
+(default `~/.local/state/mekugi/server`). Each generated directory contains
+`process.jsonl` with start/exit time, server PID, socket and running build identity,
+including available revision/modified settings. Exits include status and signal
+when available. Missing exit evidence does not establish a clean shutdown.
+
+`stderr.previous.log` followed by `stderr.log` retains the latest stderr segments,
+at most 1 MiB per server. These unsanitized files may contain private content.
+They use the same private permissions, ownership leases and 14-day inactive
+retention as debug bundles, in separate storage. New detached launches attempt
+cleanup; maintenance failures are recorded without suppressing new collection.
+Copy evidence elsewhere to retain it independently. Inspect these files
+directly; session-bundle inspection does not query process evidence.
+
+A detached supervisor owns collection and process waiting after clients leave,
+including normal shutdown, panic/fatal exit and signal termination. Collection
+failures remain auxiliary: startup reports unavailability without private error
+text, and later stderr write failures are recorded with exit evidence when storage
+permits. Ordinary client output includes no retained stderr contents. Terminating
+the supervisor itself can prevent the final exit record.
+
 ### Failure references
 
 Request failures retain their time, thread, phase, diagnostic code/reference,

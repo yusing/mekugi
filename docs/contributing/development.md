@@ -94,6 +94,15 @@ prints a diagnosis command. Codex tracing uses uncapped private temporary storag
 shutdown removes it, forced kills may leave it. See [debug
 evidence](../../modules/diagnostics/SPEC.md#private-debug-bundles).
 
+Automatically started local servers also retain private stderr and start/exit
+records under `$XDG_STATE_HOME/mekugi/server` (default
+`~/.local/state/mekugi/server`), even without `--debug` and after the client exits.
+Inspect `process.jsonl` for timestamps, PID, build and exit evidence; read
+`stderr.previous.log` before `stderr.log` for the retained tail. Stderr is bounded
+to 1 MiB per server. These files are unsanitized and expire after 14 inactive days.
+See [server evidence](../../modules/diagnostics/SPEC.md#detached-server-evidence)
+for collection limits.
+
 ### Inspect a session
 
 For historical behavior, start with recorded calls/results; current code explains intended behavior.

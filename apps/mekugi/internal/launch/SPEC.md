@@ -195,6 +195,10 @@ existing semantic interrupt and exit controls; quitting or terminating the clien
 releases its renderer without stopping execution. The terminal-only `/detach`
 command leaves the native attachment, including during active work, keeping the session
 available to `--resume` and the WebUI. `/quit` retains the same local exit behavior.
+Automatically started servers retain bounded private stderr and process-exit
+evidence through a detached supervisor, independent of client lifetime. Collection
+failure does not block startup; [process diagnostics](../../../../modules/diagnostics/SPEC.md#detached-server-evidence)
+owns storage, privacy and retention.
 Native resume attaches to an already-active logical thread; saved-thread resume
 admits only durably enrolled Mekugi history through the
 existing startup owner. Server shutdown cancels and joins its runtimes, allowing

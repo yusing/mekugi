@@ -47,6 +47,9 @@ func Run() (exitCode int) {
 	if worker == nil && len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "server":
+			if os.Getenv(nativeServerSupervisorEnvironment) != "" {
+				return runNativeServerSupervisor(ctx, os.Args[2:])
+			}
 			return RunServer(ctx, os.Args[2:], os.Stderr)
 		case "connector":
 			return RunConnector(ctx, os.Args[2:], os.Stderr)

@@ -10,7 +10,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Owner | Entry points and responsibility |
 | --- | --- |
 | Composition | `composition/modules.go`: selected descriptors/bindings; `contracts`: shared interfaces; `testsupport/moduletest`: composed harness |
-| Launch | `launch/{dispatch,wrap,invocation}.go`: process lifecycle, invocation owners and host effects; executable: `apps/mekugi/cmd/mekugi` |
+| Launch | `launch/{dispatch,wrap,invocation}.go`: process lifecycle, invocation owners and host effects; `{native_process,native_process_supervisor}.go`: detached-server startup and diagnostics lifetime; executable: `apps/mekugi/cmd/mekugi` |
 | Options/catalog | `launch/options`, `launch/modelcatalog`, `launch/catalog.go`: launch/resume configuration, selected provider metadata and bundled discovery |
 | Frontends | `frontends/{registry,worker,session,recovery}.go`: authenticated catalog/PATH, dispatch, executable pinning, worker leases and retained delivery |
 | Headless | `headless`: noninteractive app-server client and JSONL evidence; Launch admits/dispatches it |
@@ -50,7 +50,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Readers | `modules/{fileread,sourceoutline,symbolquery}`: raw reads, structural inspection and semantic queries; `libraries/{commandargs,outputbudget}`: grammar/admission; `libraries/sourceanalysis/structure`: shared declarations/coordinates |
 | Command/output tools | `modules/boundedcommand`: bounded foreground execution; `modules/outputrecovery`: retained publication/paging; `modules/outputdeduplication`: duplicate-output projection/local estimates; `backends/codex/binding`: composed inputs |
 | Source/command facts | `libraries/sourceanalysis/{sourcekind,sourceparse}`: capability/parsing/literal decoding/nonblocking opens; `libraries/commandanalysis/{shellsyntax,execscope}`: shell headers and execution scopes; callers retain authorization/effects |
-| Metrics/diagnostics | `modules/usage/accounting`: provider tokens/cost/throughput; `contracts/inference`: measurement facts; `modules/transportdiagnostics/capture`: transport receipts/estimates; `modules/agentmetrics/evidence`: AX evidence; `modules/diagnostics`: debug/private failures |
+| Metrics/diagnostics | `modules/usage/accounting`: provider tokens/cost/throughput; `contracts/inference`: measurement facts; `modules/transportdiagnostics/capture`: transport receipts/estimates; `modules/agentmetrics/evidence`: AX evidence; `modules/diagnostics`: debug/private failures; `modules/diagnostics/diagnostic/process.go`: bounded detached-server stderr and exit evidence |
 | Inspection/replay | `modules/sessioninspection/{query,codexbinding}`: retained joins/findings/host evidence; `contracts/inspection`: optional AX/usage; `modules/sessionreplay/playback`: reconstruction/scheduling/controls; Launch `session_ui_replay*.go`: terminal adapter |
 
 ## Backend and providers
