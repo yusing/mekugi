@@ -275,7 +275,9 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
-			nativeTrace = nativetrace.New(traceDirectory)
+			nativeTrace = nativetrace.NewWithNotice(traceDirectory, func(message string) {
+				issues.AddNotice("", "native_trace_format", message)
+			})
 			defer func() { runErr = errors.Join(runErr, os.RemoveAll(traceDirectory)) }()
 		} else {
 			issues.AddNotice("", "native_trace", "Nested tool confirmation unavailable: "+traceErr.Error())

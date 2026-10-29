@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -26,10 +27,17 @@ type Reader struct {
 	mu        sync.Mutex
 	bundles   map[string]*bundle
 	disabled  bool
+	notice    func(string)
+	reported  bool
 }
 
 // New observes directory without taking ownership of its lifetime.
 func New(directory string) *Reader { return &Reader{directory: directory} }
+
+// NewWithNotice reports the first unsupported or discontinuous trace in an invocation.
+func NewWithNotice(directory string, notice func(string)) *Reader {
+	return &Reader{directory: directory, notice: notice}
+}
 
 // Directory is the invocation's trace location, also supplied to the host.
 func (t *Reader) Directory() string { return t.directory }
@@ -41,6 +49,15 @@ type bundle struct {
 	bytes  int
 	cells  map[string]*Cell
 	calls  map[string]*tool
+}
+
+type traceFormatError struct {
+	version       int
+	seq, expected uint64
+}
+
+func (e *traceFormatError) Error() string {
+	return fmt.Sprintf("Native trace version %d is unsupported or discontinuous (sequence %d, expected %d). Nested tool confirmation may be unavailable.", e.version, e.seq, e.expected)
 }
 
 // Cell is a detached observation correlated by thread, outer call and source.
@@ -167,14 +184,21 @@ func (b *bundle) update(directory string) error {
 		if read > readLimit {
 			return errors.New("native trace read limit exceeded")
 		}
-		var event event
-		if err := json.Unmarshal(line, &event); err != nil {
+		var envelope struct {
+			Version int    `json:"schema_version"`
+			Seq     uint64 `json:"seq"`
+		}
+		if err := json.Unmarshal(line, &envelope); err != nil {
 			return err
 		}
 		// Version 2 adds trace events without changing the cell/tool evidence
 		// consumed here. Keep sequence validation across unconsumed events.
-		if (event.Version != 1 && event.Version != 2) || event.Seq != b.seq+1 {
-			return errors.New("unsupported or discontinuous native trace")
+		if (envelope.Version != 1 && envelope.Version != 2) || envelope.Seq != b.seq+1 {
+			return &traceFormatError{envelope.Version, envelope.Seq, b.seq + 1}
+		}
+		var event event
+		if err := json.Unmarshal(line, &event); err != nil {
+			return err
 		}
 		if err := b.event(directory, event); err != nil {
 			return err
@@ -398,6 +422,10 @@ func (t *Reader) readBundles() []*bundle {
 			t.bundles[entry.Name()] = b
 		}
 		b.err = b.update(filepath.Join(t.directory, entry.Name()))
+		if formatErr, ok := errors.AsType[*traceFormatError](b.err); ok && !t.reported && t.notice != nil {
+			t.reported = true
+			t.notice(formatErr.Error())
+		}
 		bytes += b.bytes
 		if bytes > 64<<20 {
 			t.disabled = true
