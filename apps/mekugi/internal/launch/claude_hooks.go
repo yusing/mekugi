@@ -350,9 +350,9 @@ func (b *claudeBridge) event(ctx context.Context, raw jsontext.Value) error {
 	if err := b.runtime.ObserveMetrics(ctx, raw); err != nil {
 		b.owners.Notifications.Submit(notice.Input{Session: b.info.Session, Thread: b.info.Thread, Category: "claude-metrics", Text: "Claude metrics could not be retained: " + err.Error()})
 	}
-	if task.Type == "result" {
+	if task.Type == "result" || task.Type == "mekugi_live_metrics" {
 		_, report := b.runtime.Metrics()
-		if report.Roundtrips > 0 || report.TotalsKnown {
+		if (task.Type == "result" || !report.Incomplete) && (report.Roundtrips > 0 || report.TotalsKnown) {
 			b.owners.Usage.ObserveCumulative(b.info.Thread, report)
 		}
 	}

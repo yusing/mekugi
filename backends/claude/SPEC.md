@@ -90,7 +90,10 @@ Claude members use the ordinary roster but do not expose a navigable attachment.
 Roster metrics include observed model, turn counts, logical-work timing, captured
 edits, SDK-reported cumulative tokens and estimated cost, and reported model roundtrips.
 Repeated SDK totals do not add consumption, and forks exclude their source's
-consumption. Context uses the SDK's lightweight summary after generating turns,
+consumption. During work, native cumulative usage and lightweight context summaries
+become available after provider messages, without waiting for tools or the task to
+finish. Repeated content blocks from one provider message count once; terminal
+results reconcile the reported turn count. Context refreshes after generating turns,
 independently of native event delivery. Completed compaction boundaries contribute
 to inspection. Live and retained
 inspection share the latest observations without starting work. Missing facts

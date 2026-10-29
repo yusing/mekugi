@@ -32,6 +32,7 @@ export function createMockProvider(onMessage) {
     const event = (type, payload) => response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`);
     event("message_start", { message: { ...message, content: [], stop_reason: null } });
     for (const [index, block] of content.entries()) {
+      if (scripted.beforeBlock) await scripted.beforeBlock(index);
       event("content_block_start", { index, content_block: block.type === "tool_use" ? { ...block, input: {} } : { type: "text", text: "" } });
       event("content_block_delta", { index, delta: block.type === "tool_use" ? { type: "input_json_delta", partial_json: JSON.stringify(block.input) } : { type: "text_delta", text: block.text } });
       event("content_block_stop", { index });

@@ -76,6 +76,7 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
 type Authority = { name: string; toolUseID: string; arguments: Record<string, unknown> };
 type Pending = { method: string; cancel(): void; resolve(value: unknown): void; reject(error: Error): void };
 type ResultIdentity = Pick<SDKResultMessage, "session_id" | "uuid">;
+type ContextIdentity = ResultIdentity & { messageID?: string };
 
 class Worker {
   private runtime: Query | undefined;
@@ -85,7 +86,8 @@ class Worker {
   private pump: Promise<void> | undefined;
   private contextRead: Promise<void> | undefined;
   private contextTimer: ReturnType<typeof setTimeout> | undefined;
-  private pendingContext: ResultIdentity | undefined;
+  private pendingContext: ContextIdentity | undefined;
+  private lastAssistant: ContextIdentity | undefined;
   private readonly abort = new AbortController();
   private readonly inputs = new InputQueue();
   private readonly pending = new Map<string, Pending>();
@@ -185,6 +187,7 @@ class Worker {
       // Native main-agent settings must not replace the captured Codex role.
       settings: { agent: "" }, agent: undefined, agents: undefined,
       sandbox: { enabled: false },
+      includePartialMessages: true,
       disallowedTools: [...new Set([...disallowedTools, ...nativeDelegationTools])],
       // This is a CLI flag, not an SDK Options property in the pinned SDK.
       extraArgs: { ...extraArgs, "replay-user-messages": null },
@@ -245,18 +248,22 @@ class Worker {
     const result = this.pendingContext;
     this.pendingContext = undefined;
     let published = false;
-    const publish = (context?: SDKControlGetContextUsageResponse): void => {
+    const publish = (context?: SDKControlGetContextUsageResponse, usage?: SDKControlGetUsageResponse): void => {
       if (published || this.stopping) return;
       published = true;
       send({ kind: "event", event: {
-        type: "mekugi_context_usage", session_id: result.session_id, result_uuid: result.uuid,
+        type: result.messageID ? "mekugi_live_metrics" : "mekugi_context_usage", session_id: result.session_id,
+        ...(result.messageID ? { message_id: result.messageID, modelUsage: usage?.session.model_usage ?? null, total_cost_usd: usage?.session.total_cost_usd ?? null } : { result_uuid: result.uuid }),
         context_tokens: context?.totalTokens ?? null, context_window: context?.rawMaxTokens ?? null,
       } });
     };
-    this.contextTimer = setTimeout(publish, auxiliaryReadTimeoutMs);
+    this.contextTimer = setTimeout(() => publish(), auxiliaryReadTimeoutMs);
     // Expiry publishes absence but retains the in-flight request until settlement,
     // keeping later results coalesced rather than accumulating SDK controls.
-    this.contextRead = runtime.getContextUsage({ detail: "summary" }).then(publish, () => publish()).finally(() => {
+    this.contextRead = Promise.all([
+      runtime.getContextUsage({ detail: "summary" }).catch(() => undefined),
+      result.messageID ? runtime.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }).catch(() => undefined) : undefined,
+    ]).then(([context, usage]) => publish(context, usage)).finally(() => {
       clearTimeout(this.contextTimer);
       this.contextTimer = undefined;
       this.contextRead = undefined;
@@ -270,6 +277,17 @@ class Worker {
         if (event.type === "result") { this.tokens.clear(); this.tokenByID.clear(); }
         if (event.type === "system" && event.subtype === "permission_denied") this.forget(event.tool_use_id);
         send({ kind: "event", event });
+        // Start context observation with the first completed content block.
+        // Provider accounting may still be incomplete until message_stop.
+        if (event.type === "assistant" && !event.parent_tool_use_id && !event.error && event.message.id && event.message.id !== this.lastAssistant?.messageID) {
+          this.lastAssistant = { session_id: event.session_id, uuid: event.uuid, messageID: event.message.id };
+          this.pendingContext = this.lastAssistant;
+          this.scheduleContext(runtime);
+        }
+        if (event.type === "stream_event" && !event.parent_tool_use_id && event.event.type === "message_stop" && this.lastAssistant) {
+          this.pendingContext = this.lastAssistant;
+          this.scheduleContext(runtime);
+        }
         if (event.type === "result" && event.num_turns > 0) {
           this.pendingContext = { session_id: event.session_id, uuid: event.uuid };
           this.scheduleContext(runtime);

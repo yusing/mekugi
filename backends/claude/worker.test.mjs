@@ -267,6 +267,52 @@ test("native CLI initialization discovers models without input, inference or ses
   assert.equal(alive(initialization.pid), false, "native discovery process outlived joined shutdown");
 });
 
+test("native CLI publishes metrics before a tool finishes", { skip: process.env.MEKUGI_TEST_CLAUDE_NATIVE !== "1", timeout: 30_000 }, async (t) => {
+  const claude = Bun.which("claude");
+  assert.ok(claude, "Opted-in native acceptance requires Claude Code");
+  const directory = await mkdtemp(join(tmpdir(), "mekugi-claude-live-metrics-"));
+  let releaseTool;
+  const toolGate = new Promise((resolve) => { releaseTool = resolve; });
+  let releaseBlock;
+  const blockGate = new Promise((resolve) => { releaseBlock = resolve; });
+  let releaseLastBlock;
+  const lastBlockGate = new Promise((resolve) => { releaseLastBlock = resolve; });
+  let firstToolStarted;
+  const toolStarted = new Promise((resolve) => { firstToolStarted = resolve; });
+  const provider = createMockProvider(() => ({ content: [{ type: "text", text: "Starting work" },
+    { type: "tool_use", id: "tool-live", name: "mcp__threadcontrol__coordinate", input: { value: "wait" } },
+    { type: "tool_use", id: "tool-live-2", name: "mcp__threadcontrol__coordinate", input: { value: "wait again" } }],
+    beforeBlock: (index) => index === 1 ? blockGate : index === 2 ? lastBlockGate : undefined }));
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const worker = start(t, async (method) => { if (method === "tool") { firstToolStarted(); return toolGate; } return {}; }, {
+    CLAUDE_CONFIG_DIR: join(directory, "config"), ANTHROPIC_BASE_URL: `http://127.0.0.1:${provider.address().port}`,
+    ANTHROPIC_API_KEY: "local-fixture", ANTHROPIC_AUTH_TOKEN: "", CLAUDE_CODE_OAUTH_TOKEN: "",
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", CLAUDE_CODE_USE_BEDROCK: "0", CLAUDE_CODE_USE_VERTEX: "0", CLAUDE_CODE_USE_FOUNDRY: "0",
+  });
+  t.after(async () => { releaseBlock(); releaseLastBlock(); releaseTool({ content: [] }); worker.closeInput(); await worker.exit; await new Promise((resolve) => provider.close(resolve)); await rm(directory, { recursive: true, force: true }); });
+  await worker.request("initialize", { workspace: directory, claudePath: claude,
+    options: { model: "claude-sonnet-4-6", permissionMode: "bypassPermissions", allowDangerouslySkipPermissions: true, maxTurns: 1 },
+    tools: [{ name: "coordinate", description: "Wait", inputSchema: { type: "object", properties: { value: { type: "string" } }, required: ["value"] } }] });
+  await worker.input("work");
+  const partial = await worker.waitFor((event) => event.type === "mekugi_live_metrics");
+  assert.deepEqual(partial.modelUsage, {}, "first content block precedes native accounting");
+  releaseBlock();
+  await toolStarted;
+  releaseLastBlock();
+  const metrics = await worker.waitFor((event) => event.type === "mekugi_live_metrics" && Object.values(event.modelUsage ?? {}).some((usage) => usage.inputTokens === 20));
+  assert.equal(worker.events.some((event) => event.type === "result"), false);
+  assert.ok(metrics.context_tokens > 0);
+  assert.ok(metrics.context_window > 0);
+  assert.equal(Object.values(metrics.modelUsage)[0].inputTokens, 20);
+  assert.equal(Object.values(metrics.modelUsage)[0].outputTokens, 5);
+  assert.ok(metrics.total_cost_usd > 0);
+  console.log(JSON.stringify({ nativeEarlyMetrics: metrics }));
+  releaseTool({ content: [] });
+  await worker.waitFor((event) => event.type === "result");
+  await worker.request("shutdown");
+});
+
 test("native CLI consumes synthetic input and stops a waiting tool batch with a local mock provider", { skip: process.env.MEKUGI_TEST_CLAUDE_NATIVE !== "1", timeout: 30_000 }, async (t) => {
   const claude = Bun.which("claude");
   assert.ok(claude, "Opted-in native acceptance requires Claude Code");

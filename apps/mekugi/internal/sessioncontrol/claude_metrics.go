@@ -33,6 +33,9 @@ type claudeMetrics struct {
 	Partial, CompactionsKnown    bool
 	Roundtrips                   uint64
 	LastResult                   string
+	LastMessage, LiveTurn        string
+	LiveUsageMessage             string
+	LiveRoundtrips               uint64
 	ContextTokens, ContextWindow *uint64
 	Compactions                  []string
 }
@@ -68,13 +71,14 @@ func (r *ClaudeRuntime) Metrics() (activity.AgentFacts, accounting.Report) {
 	if m.ContextWindow != nil {
 		facts.ContextWindow = *m.ContextWindow
 	}
-	report := accounting.Report{Roundtrips: m.Roundtrips, PriorUnknown: m.Partial, Model: m.Native.Models}
+	report := accounting.Report{Roundtrips: m.Roundtrips + m.LiveRoundtrips, PriorUnknown: m.Partial, Model: m.Native.Models}
 	if !m.Native.TotalsKnown || !m.BaselineSet {
 		report.Incomplete = true
 		report.MissingUsage = report.Roundtrips
 		return facts, report
 	}
 	report.Usage = m.Native.Usage
+	report.Incomplete = report.Incomplete || m.LiveRoundtrips > 0 && m.LiveUsageMessage != m.LastMessage
 	for _, pair := range []struct {
 		value    *uint64
 		baseline uint64
@@ -106,6 +110,12 @@ func (r *ClaudeRuntime) ObserveMetrics(ctx context.Context, raw jsontext.Value) 
 		ResultUUID string  `json:"result_uuid"`
 		Tokens     *uint64 `json:"context_tokens"`
 		Window     *uint64 `json:"context_window"`
+		MessageID  string  `json:"message_id"`
+		ParentTool *string `json:"parent_tool_use_id"`
+		Error      string  `json:"error"`
+		Message    struct {
+			ID string `json:"id"`
+		} `json:"message"`
 	}
 	if err := json.Unmarshal(raw, &event); err != nil {
 		return err
@@ -117,6 +127,24 @@ func (r *ClaudeRuntime) ObserveMetrics(ctx context.Context, raw jsontext.Value) 
 	}
 	m := r.ledger.Metrics
 	switch {
+	case event.Type == "assistant" && r.running && event.ParentTool == nil && event.Error == "" && event.Message.ID != "" && event.Message.ID != m.LastMessage:
+		if m.LiveTurn != r.turn {
+			m.LiveTurn, m.LiveRoundtrips = r.turn, 0
+		}
+		m.LastMessage = event.Message.ID
+		m.LiveRoundtrips++
+	case event.Type == "mekugi_live_metrics" && r.running && m.LiveTurn == r.turn && event.MessageID != "" && event.MessageID == m.LastMessage:
+		m.ContextTokens, m.ContextWindow = event.Tokens, event.Window
+		if m.ContextWindow != nil && *m.ContextWindow == 0 {
+			m.ContextWindow = nil
+		}
+		if usage, err := claudeReportedUsage(raw); err == nil && (!m.Native.TotalsKnown || usage.InputTokens >= m.Native.InputTokens && usage.OutputTokens >= m.Native.OutputTokens) {
+			if !m.BaselineSet {
+				m.Baseline, m.BaselineSet, m.Partial = usage, true, true
+			}
+			m.Native = usage
+			m.LiveUsageMessage = event.MessageID
+		}
 	case event.Type == "mekugi_usage_baseline" && r.ledger.Info.Fork != nil && !m.BaselineSet:
 		baseline, err := claudeReportedUsage(raw)
 		if err != nil {
@@ -140,6 +168,7 @@ func (r *ClaudeRuntime) ObserveMetrics(ctx context.Context, raw jsontext.Value) 
 		if event.NumTurns != nil && *event.NumTurns == 0 {
 			break
 		}
+		m.LiveRoundtrips = 0
 		m.ContextTokens, m.ContextWindow = nil, nil
 		if event.NumTurns == nil || *event.NumTurns < 0 {
 			m.Partial = true

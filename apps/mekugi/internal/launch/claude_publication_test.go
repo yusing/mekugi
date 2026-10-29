@@ -76,6 +76,23 @@ func TestClaudeNativeMetricsReachCanonicalRoster(t *testing.T) {
 	uuid := f.inputs[0].UUID
 	f.mu.Unlock()
 	for _, raw := range []string{
+		`{"type":"assistant","session_id":"native-session","uuid":"block-1","message":{"id":"msg-1"},"parent_tool_use_id":null}`,
+		`{"type":"assistant","session_id":"native-session","uuid":"block-2","message":{"id":"msg-1"},"parent_tool_use_id":null}`,
+		`{"type":"mekugi_live_metrics","session_id":"native-session","message_id":"msg-1","context_tokens":null,"context_window":null,"modelUsage":null,"total_cost_usd":null}`,
+		`{"type":"mekugi_live_metrics","session_id":"native-session","message_id":"msg-1","context_tokens":41000,"context_window":200000,"modelUsage":{"native-model":{"inputTokens":10000,"cacheReadInputTokens":20000,"cacheCreationInputTokens":5000,"outputTokens":2000}},"total_cost_usd":0.25}`,
+	} {
+		if err := b.event(t.Context(), jsontext.Value(raw)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	earlyFacts, earlyReport := b.runtime.Metrics()
+	earlyAgent := sessionpresentation.ActivityAgent{}
+	observeCost(b.owners.Usage, b.info.Thread, &earlyAgent)
+	earlyUsage := earlyAgent.ActivityAgent()
+	if earlyReport.Roundtrips != 1 || !earlyFacts.ContextKnown || earlyFacts.ContextTokens != 41000 || earlyFacts.ContextWindow != 200000 || earlyUsage.InputTokens != 35000 || earlyUsage.OutputTokens != 2000 || !earlyUsage.TokensKnown || !earlyUsage.CostKnown || earlyUsage.Cost != .25 || earlyUsage.Roundtrips != 1 {
+		t.Fatalf("metrics unavailable before native terminal settlement: %+v %+v %+v", earlyFacts, earlyReport, earlyUsage)
+	}
+	for _, raw := range []string{
 		`{"type":"system","subtype":"init","session_id":"native-session","model":"native-model"}`,
 		fmt.Sprintf(`{"type":"result","subtype":"success","session_id":"native-session","uuid":"result-1","user_message_uuid":%q,"num_turns":3,"result":"done","modelUsage":{"native-model":{"inputTokens":10000,"cacheReadInputTokens":20000,"cacheCreationInputTokens":5000,"outputTokens":2000}},"total_cost_usd":0.25}`, uuid),
 		`{"type":"mekugi_context_usage","session_id":"native-session","result_uuid":"result-1","context_tokens":42000,"context_window":200000}`,
