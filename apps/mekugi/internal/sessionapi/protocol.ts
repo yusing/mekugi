@@ -188,6 +188,7 @@ export type reviewFile = {
 };
 
 export type entry = {
+  "identities"?: Array<AgentIdentity>;
   "position": number;
   "turn"?: number;
   "revision"?: number;
@@ -267,11 +268,10 @@ export type Preview = {
 };
 
 export type agent = {
+  "identities"?: Array<AgentIdentity>;
   "content"?: (ContentReference | null);
-  "name": string;
   "thread"?: string;
   "nonAttachable"?: boolean;
-  "label": string;
   "role"?: string;
   "depth"?: number;
   "state": string;
@@ -293,7 +293,7 @@ export type agent = {
   "removed"?: (number | null);
   "skills"?: Array<string>;
   "items"?: Array<string>;
-};
+} & Omit<AgentIdentity, "identities" | "content" | "thread" | "nonAttachable" | "role" | "depth" | "state" | "wait" | "activity" | "turns" | "roundtrips" | "work" | "workSince" | "lastResponse" | "cost" | "costPartial" | "inputTokens" | "outputTokens" | "usagePartial" | "context" | "window" | "added" | "removed" | "skills" | "items">;
 
 export type NativeDetails = {
   "content"?: (ContentReference | null);
@@ -449,6 +449,12 @@ export type Counts = {
   "Removed": number;
 };
 
+export type AgentIdentity = {
+  "name": string;
+  "label": string;
+  "aliases": Array<string>;
+};
+
 export type TextSpan = {
   "Start": number;
   "End": number;
@@ -466,7 +472,7 @@ export type value = {
   "approval"?: string;
   "code"?: string;
   "detailCode"?: string;
-  "detailsAvailable"?: boolean;
+  "detailsAvailable"?: (Disclosure | null);
   "lang"?: string;
   "fenced"?: boolean;
   "body"?: string;
@@ -849,6 +855,10 @@ export type NativeEffect = {
 export type NativeActivityFrame = {
   "Reset": number;
   "Effects": Array<NativeEffect>;
+};
+
+export type Disclosure = {
+  "owner"?: string;
 };
 
 export type read = {

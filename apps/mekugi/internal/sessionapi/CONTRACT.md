@@ -448,8 +448,11 @@ omitted when unknown.
   tasks and messages it received. Entries the terminal does not show as rows are
   not sent.
 - An entry's `seq` identifies it within its feed and one attachment. `agent` is
-  the caller path of the agent it belongs to; Main's own entries in `main` may
-  name it `Main`. `kind` names the item, `text` is its Markdown summary,
+  the canonical caller path of the agent it belongs to. `identities` supplies
+  each referenced agent's canonical `name`, display `label` and observed address
+  `aliases`, independently of roster paging. The local `Main` alias names the
+  session's caller. Renderers use these facts for labels and roster lookup.
+  `kind` names the item, `text` is its Markdown summary,
   `observed` is its time and `running` marks unfinished work. A task sets
   `assignment`, with its recipient's caller path in `assignmentTo` and its
   Markdown in `assignmentText`. `values` holds the entry's presentation values.
@@ -460,10 +463,12 @@ omitted when unknown.
 - `roster`: a page of `agents` in tree order, `total`, optional `next` cursor,
   and the session's net changed lines as
   `added` and `removed` when known. Each agent has its caller path as `name`,
-  its display name as `label`, `role` (absent for Main), tree `depth` and a
+  its display name as `label`, address `aliases`, `role` (absent for Main), tree `depth` and a
   `state` of `working`, `waiting`, `idle`, `done` or `error`. A waiting agent
   may publish `wait`, using the same presentation-value shape as transcript
-  progress, including its target names and effective timeout. Optional `activity`
+  progress, including its target names and effective timeout. Each settled target
+  retains its own status; the wait's aggregate reason remains independent of target
+  order and status. Optional `activity`
   carries its owning runtime's latest shared roster summary as entry-shaped
   `kind`, `observed` and `values`. It is display-only: it supplies labels, read
   paths, progress, short reasoning and a bounded code preview, without retained
@@ -482,7 +487,7 @@ renderer-neutral facts: `kind`, `verb`, `label`, `code` and its language `lang`
 `path` for an attachment source, `autoReload` for compaction reload provenance,
 `approval` for its current approval outcome, `subsumed` steps, `duration`, `thought` time, `workdir`, a message's `from` and
 `to` caller paths, `questions` with their `answer`, `waits` with each target's
-`name` and `status`, `waitReason` for a completed wait's actual outcome,
+`name` and `status`, `waitReason` for the wait's aggregate completion reason,
 `waitTimeout` for a waiting subscription's effective duration, `exitCode`,
 `editOutcome`, `running` and `live` state, the
 output `tail` with `tailOmitted` earlier lines, `changes` with their counts and
@@ -492,6 +497,10 @@ it in `summary`, alongside the whole reply in `body`, while the invocation's
 Markdown; `code` is literal text in the language `lang` names.
 `detailCode` preserves original JSON tool evidence for a semantic operation's
 content dialog, separately from its compact transcript presentation.
+`detailsAvailable` is Activity's omission fact: an object whose optional canonical
+`owner` limits it to that agent's transcript. Without `owner`, it applies to every
+transcript. Renderers add only their measured clipping to this fact. Transport
+deferral preserves it independently of removed inline bytes.
 `batchExit` marks a compound command's combined result; it carries the command that ran as `code`
 only when its entry has no other value, and otherwise no label.
 

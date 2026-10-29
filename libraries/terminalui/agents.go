@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // Source: internal/ui/activity/agents.go@[8a494004]
@@ -16,10 +18,8 @@ var liveAgentPalette = [...]struct{ normal, dim uint8 }{
 
 // AgentColor returns an SGR prefix; the root uses the caller's own style.
 func AgentColor(name string) string {
-	if name == "agent:main" || strings.HasPrefix(name, "agent:main/") {
-		name = "/root" + strings.TrimPrefix(name, "agent:main")
-	}
-	if name == "" || name == "/root" || name == "Main" {
+	name = pathdisplay.AgentCanonicalName(name)
+	if name == "" || name == "/root" {
 		return ""
 	}
 	hash := fnv.New32a()

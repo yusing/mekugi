@@ -2,10 +2,62 @@ package sessionpresentation
 
 import (
 	"cmp"
+	"slices"
+	"strings"
 
 	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
+
+// AgentIdentity is a detached display fact. Aliases retain observed addresses,
+// while Name is the canonical identity used for roster membership and navigation.
+type AgentIdentity struct {
+	Name    string   `json:"name"`
+	Label   string   `json:"label"`
+	Aliases []string `json:"aliases"`
+}
+
+func PresentAgent(name, local string) AgentIdentity {
+	observed := name
+	if name == "Main" && local != "" {
+		name = local
+	}
+	name = pathdisplay.AgentCanonicalName(name)
+	identity := AgentIdentity{Name: name, Label: pathdisplay.AgentDisplayName(name), Aliases: []string{observed}}
+	aliases := []string{name}
+	if name == "/root" || strings.HasPrefix(name, "/root/") {
+		aliases = append(aliases, "agent:main"+strings.TrimPrefix(name, "/root"))
+	}
+	for _, alias := range aliases {
+		if !slices.Contains(identity.Aliases, alias) {
+			identity.Aliases = append(identity.Aliases, alias)
+		}
+	}
+	if name == pathdisplay.AgentCanonicalName(cmp.Or(local, "/root")) && !slices.Contains(identity.Aliases, "Main") {
+		identity.Aliases = append(identity.Aliases, "Main")
+	}
+	return identity
+}
+
+func PresentEntryAgents(entry activitypresentation.Entry, local string) []AgentIdentity {
+	names := []string{entry.Agent, entry.AssignmentTo}
+	for _, value := range entry.Values {
+		names = append(names, value.From, value.To)
+		for _, target := range value.WaitTargets {
+			names = append(names, target.Name)
+		}
+	}
+	seen := make(map[string]bool, len(names))
+	var identities []AgentIdentity
+	for _, name := range names {
+		if name != "" && !seen[name] {
+			identities = append(identities, PresentAgent(name, local))
+			seen[name] = true
+		}
+	}
+	return identities
+}
 
 // Activity borrows the existing feature owner in this attachment's scope.
 func (a *Attachment) Activity() *activitypresentation.Session[ActivityEntry, ActivityAgent] {

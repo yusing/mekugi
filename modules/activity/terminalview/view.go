@@ -455,7 +455,7 @@ func OutputBlock(block Block) bool {
 	if block.Kind != "op" && block.Kind != "reads" || block.EditOperation() || len(block.Questions) > 0 {
 		return false
 	}
-	return block.Output != 0 || len(block.Tail)+block.TailOmitted > 0 || len(block.Changes) > 0 || block.Code != "" || len(block.Members) > 0
+	return block.Disclosure() != nil || block.Output != 0 || len(block.Tail)+block.TailOmitted > 0 || block.Code != "" || len(block.Members) > 0
 }
 
 // SnippetBlock is the block a snippet names in the last frame.

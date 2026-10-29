@@ -21,6 +21,7 @@ import (
 
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -171,6 +172,7 @@ func (s *Server) ReserveThread(id string) error {
 type feed struct {
 	publication *activitypresentation.Publication
 	summaries   bool
+	caller      string
 	entries     map[uint64]projected
 	order       []uint64
 	history     uint64
@@ -290,6 +292,8 @@ func (s *Server) Publish(f Frame) error {
 		s.reviewSource = nil
 	}
 	var patch message
+	previousCaller := s.session.Caller
+	f.Session.Caller = pathdisplay.AgentCanonicalName(f.Session.Caller)
 	f.Session.Title = textsanitize.Safe(f.Session.Title, false)
 	if f.Session != s.session {
 		s.session, patch.Session = f.Session, &f.Session
@@ -347,7 +351,7 @@ func (s *Server) Publish(f Frame) error {
 			s.livePreviews, patch.Live = data, data
 		}
 	}
-	mainChanged, err := s.main.update(f.Main, nil, f.ChildReplySummary)
+	mainChanged, err := s.main.update(f.Main, nil, f.ChildReplySummary, f.Session.Caller)
 	if err != nil {
 		return err
 	}
@@ -355,8 +359,8 @@ func (s *Server) Publish(f Frame) error {
 	if family != nil {
 		rosterSource = family.Agents
 	}
-	if rosterSource != nil && rosterSource != s.rosterSource {
-		value := projectRoster(rosterSource)
+	if rosterSource != nil && (rosterSource != s.rosterSource || f.Session.Caller != previousCaller) {
+		value := projectRoster(rosterSource, f.Session.Caller)
 		s.rosterRevision++
 		s.rosterValue = &value
 		page, failure := rosterPage(&value, s.readAttachment, s.rosterRevision, PageCursor{Attachment: s.readAttachment, Kind: "roster", Revision: s.rosterRevision})
@@ -374,7 +378,7 @@ func (s *Server) Publish(f Frame) error {
 	}
 	// The child feed repeats Main's activity under Main's caller path or name;
 	// viewers read that from Main's own feed.
-	agentsChanged, err := s.agents.update(f.Agents, func(e activitypresentation.Entry) bool { return e.Agent != "/root" && e.Agent != "Main" }, f.ChildReplySummary)
+	agentsChanged, err := s.agents.update(f.Agents, func(e activitypresentation.Entry) bool { return e.Agent != "/root" && e.Agent != "Main" }, f.ChildReplySummary, f.Session.Caller)
 	if err != nil {
 		return err
 	}
@@ -451,12 +455,12 @@ func (f *feed) delta(next *feedPatch) *feedPatch {
 // keep is nil, and reports whether the projection changed. An unchanged
 // publication pointer is immutable, so it is skipped without encoding, and so
 // is an entry whose revision is unchanged.
-func (f *feed) update(publication *activitypresentation.Publication, keep func(activitypresentation.Entry) bool, summaries bool) (bool, error) {
-	if publication == nil || publication == f.publication {
+func (f *feed) update(publication *activitypresentation.Publication, keep func(activitypresentation.Entry) bool, summaries bool, caller string) (bool, error) {
+	if publication == nil || publication == f.publication && caller == f.caller {
 		return false, nil
 	}
-	if f.entries == nil || f.summaries != summaries {
-		f.entries, f.summaries = map[uint64]projected{}, summaries
+	if f.entries == nil || f.summaries != summaries || f.caller != caller {
+		f.entries, f.summaries, f.caller = map[uint64]projected{}, summaries, caller
 		f.history++
 	}
 	f.publication = publication
@@ -482,14 +486,14 @@ func (f *feed) update(publication *activitypresentation.Publication, keep func(a
 		if ok && previous.position < int(f.window) {
 			historical = true
 		}
-		value := projectEntry(e, summaries)
+		value := projectEntry(e, summaries, caller)
 		value.Turn = turn
 		value.Position = position
 		data, err := json.Marshal(value, encoding)
 		if err != nil {
 			return false, err
 		}
-		stored := projected{revision: e.Revision, changedAt: previous.changedAt, data: data, agent: e.Agent, turn: turn, position: position}
+		stored := projected{revision: e.Revision, changedAt: previous.changedAt, data: data, agent: value.Agent, turn: turn, position: position}
 		if ok && !bytes.Equal(previous.data, data) {
 			stored.changedAt = f.history
 		}

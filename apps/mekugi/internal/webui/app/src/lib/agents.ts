@@ -2,25 +2,23 @@ import { duration, progressText } from "./format";
 import { inline } from "./markdown";
 import type { Agent, Entry } from "./protocol";
 
-export function agentDisplayName(name: string): string {
-  if (name === "/root" || name === "agent:main" || name === "Main") return "main";
-  return name.replace(/^(?:\/root\/|agent:main\/)/, "");
-}
-
 // What an entry shows its agent doing, as a verb and inline HTML without
 // links, since it is shown inside a control. A final answer is finished work.
-export function doing(entry: Entry): { verb: string; html: string } | undefined {
+export function doing(
+  entry: Entry,
+  label: (name: string) => string,
+): { verb: string; html: string } | undefined {
   if (entry.kind === "final") return undefined;
-  const { verb, html } = describe(entry);
+  const { verb, html } = describe(entry, label);
   return { verb, html: html.replace(/<\/?a\b[^>]*>/g, "") };
 }
 
-function describe(entry: Entry): { verb: string; html: string } {
+function describe(entry: Entry, label: (name: string) => string): { verb: string; html: string } {
   const value = entry.values?.at(-1);
   if (value?.kind === "progress")
     return {
       verb: "",
-      html: inline(progressText(value, agentDisplayName)),
+      html: inline(progressText(value, label)),
     };
   if (entry.kind === "reasoning") {
     const labels = entry.values?.filter((v) => v.kind === "summary" && v.label).map((v) => v.label);

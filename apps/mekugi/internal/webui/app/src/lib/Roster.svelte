@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { agentDisplayName, doing, since, stateLabel, worked } from "./agents";
+  import { doing, since, stateLabel, worked } from "./agents";
   import { atLeast, cost, duration, progressText, tokens } from "./format";
   import type { Agent, Counts, Entry, Roster } from "./protocol";
   import Dot, { type Tone } from "./ui/Dot.svelte";
@@ -173,10 +173,9 @@
     {#each agents as agent (agent.name)}
       {@const time = worked(agent, now)}
       {@const current = agent.state === "working" ? activity(agent) : undefined}
-      {@const what = current && doing(current)}
+      {@const what = current && doing(current, (name) => stream.label(name))}
       {@const waiting =
-        agent.wait &&
-        progressText(agent.wait, (name) => labels.get(name) ?? agentDisplayName(name))}
+        agent.wait && progressText(agent.wait, (name) => labels.get(name) ?? stream.label(name))}
       {@const replied = since(agent.lastResponse, now)}
       {@const edits = changes(agent)}
       {@const color = stream.roleColor(agent.role)}

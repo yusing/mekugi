@@ -55,33 +55,14 @@ export function reasoningBody(body = "", title?: string): string {
   return (lead && body.startsWith(lead) ? body.slice(lead.length) : body).trim();
 }
 
-export function hasDetails(entry: Entry, owner = "Main", labelClipped = false): boolean {
-  // Authored content is complete inline, or has its own measured disclosure.
-  if (
-    ["user", "text", "final", "reply", "message", "start", "assignment", "reasoning"].includes(
-      entry.kind ?? "",
-    ) ||
-    isUser(entry) ||
-    (entry.kind === "error" && entry.agent !== owner && entry.agent !== "Main")
-  )
-    return false;
-  return !!entry.values?.some(
-    (value) =>
-      // Progress renders its complete body (and owns its wait-target disclosure).
-      // Its retained tool envelope is not shown by the browser details panel.
-      (value.kind !== "progress" &&
-        (value.detailsAvailable ||
-          (value.detailCode?.trim() && value.detailCode.trim() !== value.code?.trim()))) ||
-      value.tailClipped ||
-      value.sourceOmitted ||
-      (!value.questions?.length && value.kind !== "progress" && value.body?.trim()) ||
-      (value.code?.trim() && value.label && !value.fenced && !value.code.includes("\n")) ||
-      (value.tailOmitted ?? 0) > 0 ||
-      value.changes?.length ||
-      (value.hook &&
-        (labelClipped ||
-          (!failed(value) && (value.tailLines || value.tail?.some((line) => line.trim()))))) ||
-      ["Create", "Edit", "Delete", "Move"].includes(value.verb ?? ""),
+export function hasDetails(entry: Entry, owner = "/root", labelClipped = false): boolean {
+  return (
+    labelClipped ||
+    !!entry.values?.some(
+      (value) =>
+        value.detailsAvailable &&
+        (!value.detailsAvailable.owner || value.detailsAvailable.owner === owner),
+    )
   );
 }
 

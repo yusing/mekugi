@@ -126,8 +126,7 @@
       notify();
     };
   };
-  // Main is local to an independently hosted runtime; canonical paths are global.
-  const endpoint = (name?: string) => (name === "Main" ? source.session?.caller || "/root" : name);
+  const endpoint = (name?: string) => (name ? source.address(name) : undefined);
 
   // Traffic between agents: a task, a message, or a child's answer. Like the
   // terminal, it is headed by who sent it and what happened.

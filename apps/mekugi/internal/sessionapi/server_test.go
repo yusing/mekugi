@@ -47,16 +47,20 @@ func TestBatchResultRow(t *testing.T) {
 	steps := activitypresentation.Value{Content: activityfeed.Content{Kind: "reads", Verb: "Read", Reads: []activityfeed.Read{{Path: "a.go", Ranges: []string{"1:9"}}, {Path: "b.go", Ranges: []string{"3:7"}}}}}
 	command := &activitypresentation.ItemContent{Command: activitypresentation.Command{Display: script}}
 
-	listed := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{steps, result}, Command: command}, false)
+	listed := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{steps, result}, Command: command}, false, "/root")
 	if len(listed.Values) != 2 {
 		t.Fatalf("values = %+v", listed.Values)
 	}
-	if r := listed.Values[1]; !r.BatchExit || r.Label != "" || r.Code != "" || r.Duration != 3700 || r.TailOmitted != 143 || len(r.Tail) != 1 {
+	if r := listed.Values[1]; !r.BatchExit || r.Label != "" || r.Code != "" || r.Duration != 3700 || r.TailOmitted != 143 || len(r.Tail) != 1 || r.DetailsAvailable == nil {
 		t.Fatalf("result under steps = %+v", r)
 	}
-	alone := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{result}, Command: command}, false)
+	alone := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{result}, Command: command}, false, "/root")
 	if r := alone.Values[0]; r.Label != "" || r.Code != script || r.Lang != "bash" || r.TailOmitted != 143 {
 		t.Fatalf("result alone = %+v", r)
+	}
+	merged := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{{Kind: "op", Code: script}, result}, Command: command}, false, "/root")
+	if len(merged.Values) != 1 || merged.Values[0].DetailsAvailable == nil {
+		t.Fatalf("batch merge lost output disclosure: %+v", merged.Values)
 	}
 }
 
@@ -64,7 +68,7 @@ func TestBatchResultRow(t *testing.T) {
 func TestEditSources(t *testing.T) {
 	t.Parallel()
 	edit := activitypresentation.Value{Content: activityfeed.Content{Kind: "op", Verb: "Edit", Label: "`a.go` +2 −1 · python3, gofmt", EditSource: "python3, gofmt"}}
-	if v := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{edit}}, false).Values[0]; v.Label != "`a.go` +2 −1" || strings.Join(v.Sources, "|") != "python3|gofmt" {
+	if v := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{edit}}, false, "/root").Values[0]; v.Label != "`a.go` +2 −1" || strings.Join(v.Sources, "|") != "python3|gofmt" {
 		t.Fatalf("edit = %+v", v)
 	}
 }
@@ -93,13 +97,40 @@ func TestWaitOutcomeProjection(t *testing.T) {
 	}
 }
 
+func TestWaitMixedOutcomesProjection(t *testing.T) {
+	t.Parallel()
+	for _, statuses := range [][]string{{"failed", "completed", "interrupted"}, {"interrupted", "completed", "failed"}} {
+		result := `{"state":"completed","events":[`
+		for i, status := range statuses {
+			if i > 0 {
+				result += ","
+			}
+			result += fmt.Sprintf(`{"task":"/root/%s","status":%q}`, status, status)
+		}
+		result += "]}"
+		entry := new(sessionpresentation.Attachment).CoordinationEntry(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Phase: "item/completed"}}, observation.Item{
+			Type: "mcpToolCall", Server: "threadcontrol", Tool: "wait_agent", Status: "completed", Arguments: []byte(`{"target":"all"}`),
+			Result: []byte(`{"content":[{"type":"text","text":` + strconv.Quote(result) + `}]}`),
+		})
+		value := projectValues([]activitypresentation.Value{*entry.Native.Wait}, false)[0]
+		if value.WaitReason != "completed" || len(value.Waits) != len(statuses) {
+			t.Fatalf("mixed outcomes = %+v", value)
+		}
+		for i, status := range statuses {
+			if value.Waits[i].Name != "/root/"+status || value.Waits[i].Status != status {
+				t.Fatalf("target %d lost its outcome: %+v", i, value.Waits)
+			}
+		}
+	}
+}
+
 func TestWaitingRosterProjection(t *testing.T) {
 	t.Parallel()
 	lifecycle := activitypresentation.AgentLifecycle{}
 	lifecycle.SetWaiting(true, time.Unix(100, 0))
 	wait := &activitypresentation.Value{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "1s", Live: true}
 	facts := activitypresentation.AgentFacts{Name: "/root", Waiting: lifecycle.Waiting, Responding: lifecycle.Responding, Final: lifecycle.Final, Wait: wait}
-	roster := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: facts, LatestKind: "error"}}}})
+	roster := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: facts, LatestKind: "error"}}}}, "/root")
 	got := roster.Agents[0]
 	if got.State != "waiting" || got.Wait == nil || got.Wait.Body != "Waiting for" || len(got.Wait.Waits) != 1 || got.Wait.Waits[0].Name != "/root/worker" || got.Wait.WaitTimeout != "1s" {
 		t.Fatalf("waiting lifecycle lost its publication: %+v", got)
@@ -109,18 +140,37 @@ func TestWaitingRosterProjection(t *testing.T) {
 		t.Fatal("published wait borrowed mutable owner data")
 	}
 	facts.Waiting = false
-	settled := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: facts, LatestKind: "error"}}}})
+	settled := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: facts, LatestKind: "error"}}}}, "/root")
 	if settled.Agents[0].State != "error" || settled.Agents[0].Wait != nil {
 		t.Fatal("settled agent retained its prior wait")
 	}
 }
 
 func TestRosterAgentDisplayNames(t *testing.T) {
-	for name, label := range map[string]string{"agent:main": "main", "agent:main/worker/reviewer": "worker/reviewer"} {
-		rows := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: name}}}}})
-		if got := rows.Agents[0]; got.Name != name || got.Label != label {
-			t.Fatalf("roster agent = %+v, want identity %q and label %q", got, name, label)
+	for name, want := range map[string][2]string{"agent:main": {"/root", "main"}, "agent:main/worker/reviewer": {"/root/worker/reviewer", "worker/reviewer"}} {
+		rows := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: name}}}}}, "/root")
+		if got := rows.Agents[0]; got.Name != want[0] || got.Label != want[1] || !slices.Contains(got.Aliases, name) {
+			t.Fatalf("roster agent = %+v, want identity %q and label %q", got, want[0], want[1])
 		}
+	}
+}
+
+func TestEntryAgentIdentitiesBeforeRoster(t *testing.T) {
+	entry := projectEntry(activitypresentation.Entry{Agent: "Main", Values: []activitypresentation.Value{{Kind: "progress", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/worker/reviewer"}, {Name: "unknown"}}}}}, false, "/root/delegate")
+	for i, want := range [][2]string{{"/root/delegate", "delegate"}, {"/root/worker/reviewer", "worker/reviewer"}, {"unknown", "unknown"}} {
+		if got := entry.Identities[i]; got.Name != want[0] || got.Label != want[1] {
+			t.Fatalf("entry identity %d = %+v, want %v", i, got, want)
+		}
+	}
+	if !slices.Contains(entry.Identities[0].Aliases, "Main") || !slices.Contains(entry.Identities[1].Aliases, "agent:main/worker/reviewer") {
+		t.Fatalf("observed addresses lost: %+v", entry.Identities)
+	}
+	for i := range 50 {
+		entry.Identities = append(entry.Identities, sessionpresentation.PresentAgent(fmt.Sprintf("/root/worker-%d", i), "/root/delegate"))
+	}
+	brief := compactEntry(entry)
+	if !brief.AutoContent || len(brief.Identities) >= len(entry.Identities) || brief.Identities[0].Name != "/root/delegate" {
+		t.Fatalf("identity facts escaped the bounded content channel: %+v", brief)
 	}
 }
 
@@ -130,7 +180,7 @@ func TestRosterActivityUsesSharedSummary(t *testing.T) {
 		summary := activitypresentation.Entry{Facts: item.Facts, Values: item.Values()}
 		roster := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{
 			AgentFacts: activitypresentation.AgentFacts{Name: "/root/worker", Responding: true}, Summary: []activitypresentation.Entry{summary},
-		}}}})
+		}}}}, "/root")
 		got := roster.Agents[0].Activity
 		if got == nil || got.Kind != kind || got.Observed != 100_000 || len(got.Values) != 1 {
 			t.Fatalf("%s summary unavailable without a feed entry: %+v", kind, got)
@@ -161,7 +211,7 @@ func TestSkippedCommandProjection(t *testing.T) {
 	if data := string(snapshot.Data); strings.Count(data, `"skipped":true`) != 1 || !strings.Contains(data, "unreachable") {
 		t.Fatalf("skipped command lost in browser snapshot: %s", data)
 	}
-	values := projectEntry(entry, false).Values
+	values := projectEntry(entry, false, "/root").Values
 	if len(values) < 2 || values[0].ExitCode == nil || *values[0].ExitCode != 1 || values[1].ExitCode != nil {
 		t.Fatalf("command outcomes = %+v", values)
 	}
@@ -174,12 +224,12 @@ func TestPendingCommandsAndEffects(t *testing.T) {
 		{Source: "printf ready", Text: activitypresentation.ShellSource("printf ready", ""), Running: true},
 		{Source: "printf later", Pending: true},
 	}}, Details: &activitypresentation.ItemDetails{CommandText: source}}
-	projected := projectEntry(activitypresentation.Entry{Values: item.Values()}, false)
+	projected := projectEntry(activitypresentation.Entry{Values: item.Values()}, false, "/root")
 	if len(projected.Values) < 2 || !projected.Values[1].Pending {
 		t.Fatalf("pending command lost: %+v", projected.Values)
 	}
 	effect := activitypresentation.Value{Effect: true, Content: activityfeed.Content{Kind: "op", Verb: "Create", Label: "`a.go` +1 -0"}}
-	if !projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{effect}}, false).Values[0].Effect {
+	if !projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{effect}}, false, "/root").Values[0].Effect {
 		t.Fatal("captured effect lost its parent relationship")
 	}
 }
@@ -198,7 +248,7 @@ func TestTemporaryEditDisclosure(t *testing.T) {
 					records = append(records, fmt.Sprintf("%s `%s/file%03d.go` %s · %s", verb, root, i, counts, writer))
 				}
 				item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Kind: "tool", Text: strings.Join(records, "\n\n")}}
-				values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false).Values
+				values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false, "/root").Values
 				if len(values) != count || !strings.Contains(values[count-1].Label, fmt.Sprintf("file%03d.go", count-1)) {
 					t.Fatal("folded capture lost its original files")
 				}
@@ -216,7 +266,7 @@ func TestTemporaryEditDisclosure(t *testing.T) {
 	}
 	const source = "first\nsecond\nthird\nfourth\nfifth\nsixth"
 	item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Kind: "tool", Text: "Create `/tmp/large.txt`\n```text\n" + source + "\n```"}}
-	if values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false).Values; len(values) != 1 || !values[0].FoldSource || values[0].Code != source {
+	if values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false, "/root").Values; len(values) != 1 || !values[0].FoldSource || values[0].Code != source {
 		t.Fatalf("temporary source disclosure lost original: %+v", values)
 	}
 }
@@ -318,33 +368,6 @@ func TestPathlessSkillAttachmentProjection(t *testing.T) {
 	for i, name := range []string{"review", "commit"} {
 		if v := values[i]; v.Verb != "Attached skill" || v.Label != name || v.Reads != nil || len(v.Tail) == 0 {
 			t.Fatalf("value %d = %+v", i, v)
-		}
-	}
-}
-
-func TestWaitMixedOutcomesProjection(t *testing.T) {
-	t.Parallel()
-	for _, statuses := range [][]string{{"failed", "completed", "interrupted"}, {"interrupted", "completed", "failed"}} {
-		result := `{"state":"completed","events":[`
-		for i, status := range statuses {
-			if i > 0 {
-				result += ","
-			}
-			result += fmt.Sprintf(`{"task":"/root/%s","status":%q}`, status, status)
-		}
-		result += "]}"
-		entry := new(sessionpresentation.Attachment).CoordinationEntry(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Phase: "item/completed"}}, observation.Item{
-			Type: "mcpToolCall", Server: "threadcontrol", Tool: "wait_agent", Status: "completed", Arguments: []byte(`{"target":"all"}`),
-			Result: []byte(`{"content":[{"type":"text","text":` + strconv.Quote(result) + `}]}`),
-		})
-		value := projectValues([]activitypresentation.Value{*entry.Native.Wait}, false)[0]
-		if value.WaitReason != "completed" || len(value.Waits) != len(statuses) {
-			t.Fatalf("mixed outcomes = %+v", value)
-		}
-		for i, status := range statuses {
-			if value.Waits[i].Name != "/root/"+status || value.Waits[i].Status != status {
-				t.Fatalf("target %d lost its outcome: %+v", i, value.Waits)
-			}
 		}
 	}
 }

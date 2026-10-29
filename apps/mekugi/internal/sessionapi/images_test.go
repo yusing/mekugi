@@ -28,16 +28,18 @@ func TestPublishedImageRead(t *testing.T) {
 	for _, tc := range []struct {
 		source, agent, kind string
 		child               bool
+		caller              string
 	}{
-		{"image.png", "You", "text", false},
-		{"data:image/png;base64," + base64.StdEncoding.EncodeToString(data), "You", "text", false},
-		{"image.png", "Main", "tool", false},
-		{filepath.Join(workspace, "image.png"), "/root/images", "tool", true},
+		{"image.png", "You", "text", false, ""},
+		{"data:image/png;base64," + base64.StdEncoding.EncodeToString(data), "You", "text", false, ""},
+		{"image.png", "Main", "tool", false, ""},
+		{"image.png", "Main", "tool", false, "/root/worker"},
+		{filepath.Join(workspace, "image.png"), "/root/images", "tool", true, ""},
 	} {
 		source := tc.source
 		s := New()
-		entry := activity.Entry{Facts: activity.Facts{Seq: 1, Agent: tc.agent, Kind: tc.kind, Text: "[Image 1]", Images: []string{source}}}
-		frame := Frame{Session: Session{Thread: "main", Workspace: workspace}, Main: &activity.Publication{Entries: []activity.Entry{entry}}}
+		sourceEntry := activity.Entry{Facts: activity.Facts{Seq: 1, Agent: tc.agent, Kind: tc.kind, Text: "[Image 1]", Images: []string{source}}}
+		frame := Frame{Session: Session{Thread: "main", Caller: tc.caller, Workspace: workspace}, Main: &activity.Publication{Entries: []activity.Entry{sourceEntry}}}
 		if tc.child {
 			frame.Main, frame.Agents = nil, frame.Main
 		}
@@ -51,7 +53,19 @@ func TestPublishedImageRead(t *testing.T) {
 		if strings.Contains(string(snapshot.Data), source) {
 			t.Fatal("image source leaked into publication")
 		}
-		request := map[string]any{"seq": 1, "agent": tc.agent, "index": 0, "image": imageIdentity(source)}
+		var publication message
+		if err := json.Unmarshal(snapshot.Data, &publication); err != nil {
+			t.Fatal(err)
+		}
+		feed := publication.Main
+		if tc.child {
+			feed = publication.Agents
+		}
+		var published entry
+		if err := json.Unmarshal(feed.Entries[0], &published); err != nil {
+			t.Fatal(err)
+		}
+		request := map[string]any{"seq": 1, "agent": published.Agent, "index": 0, "image": imageIdentity(source)}
 		body, _ := json.Marshal(request)
 		got, failure := s.readImage(t.Context(), requestTarget{"main", workspace}, body)
 		if failure != nil {
@@ -62,7 +76,7 @@ func TestPublishedImageRead(t *testing.T) {
 			t.Fatal("unexpected image bytes or type")
 		}
 		for _, field := range []string{"seq", "agent", "index", "image"} {
-			bad := map[string]any{"seq": 1, "agent": tc.agent, "index": 0, "image": imageIdentity(source)}
+			bad := map[string]any{"seq": 1, "agent": published.Agent, "index": 0, "image": imageIdentity(source)}
 			switch field {
 			case "seq":
 				bad[field] = 2

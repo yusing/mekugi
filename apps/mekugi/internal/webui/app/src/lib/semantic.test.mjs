@@ -37,65 +37,179 @@ const { semantic, textDraft } = await import("./semantic.svelte.ts");
 const { Stream, stream } = await import("./stream.svelte.ts");
 const { doing } = await import("./agents.ts");
 
-test("agent labels retain canonical display names before roster metadata arrives", () => {
-  assert.equal(stream.label("Main"), "main");
-  assert.equal(stream.label("/root"), "main");
-  assert.equal(stream.label("/root/worker/reviewer"), "worker/reviewer");
-  assert.equal(stream.label("agent:main"), "main");
-  assert.equal(stream.label("agent:main/worker/reviewer"), "worker/reviewer");
-  assert.equal(stream.label("agent:mainland/worker"), "agent:mainland/worker");
-  assert.equal(stream.label("unknown"), "unknown");
-  stream.session = { thread: "delegate-thread", caller: "/root/delegate" };
-  stream.roster = {
+test("agent labels and addresses consume presentation identities before roster metadata arrives", () => {
+  const source = new Stream();
+  source.main = {
+    order: [1],
+    entries: {
+      1: {
+        seq: 1,
+        identities: [
+          { name: "/root", label: "main", aliases: ["/root", "agent:main"] },
+          {
+            name: "/root/delegate",
+            label: "delegate",
+            aliases: ["/root/delegate", "agent:main/delegate", "Main"],
+          },
+        ],
+      },
+    },
+  };
+  assert.equal(source.label("agent:main/delegate"), "delegate");
+  assert.equal(source.address("agent:main/delegate"), "/root/delegate");
+  assert.equal(source.label("Main"), "delegate");
+  assert.equal(source.agent("Main"), undefined);
+  source.roster = {
     agents: [
-      { name: "/root", thread: "root-thread", label: "root", state: "working" },
-      { name: "/root/delegate", thread: "delegate-thread", label: "delegate", state: "working" },
+      { name: "/root", label: "main", aliases: ["/root", "agent:main"], state: "working" },
+      {
+        name: "/root/delegate",
+        label: "delegate",
+        aliases: ["/root/delegate", "agent:main/delegate", "Main"],
+        thread: "delegate-thread",
+        state: "working",
+      },
     ],
   };
-  assert.equal(stream.label("Main"), "delegate");
-  assert.equal(stream.agent("Main")?.name, "/root/delegate");
-  assert.equal(stream.agent("Main")?.thread, "delegate-thread");
-  assert.equal(stream.agent("agent:main"), stream.agent("/root"));
-  assert.equal(stream.agent("agent:main/delegate"), stream.agent("/root/delegate"));
-  assert.equal(stream.label("agent:main"), "root");
-  assert.equal(stream.label("agent:main/delegate"), "delegate");
+  assert.equal(source.agent("Main")?.thread, "delegate-thread");
+  assert.equal(source.agent("agent:main/delegate"), source.agent("/root/delegate"));
   for (const name of ["agent:main/unknown", "agent:mainland/delegate", "delegate"])
-    assert.equal(stream.agent(name), undefined);
+    assert.equal(source.label(name), name);
+});
+
+test("deferred identity retention follows its feed and historical entry owners", async () => {
+  const source = new Stream();
+  const attachment = "A";
+  let publish;
+  source.connect("thread", {
+    subscribe(_method, _params, event) {
+      publish = event;
+      return () => {};
+    },
+    resource(_kind, { body: ref }) {
+      return Promise.resolve({
+        entry: {
+          seq: ref.seq,
+          identities: [
+            {
+              name: `/root/${ref.kind}-${ref.seq}`,
+              label: `${ref.kind}-${ref.seq}`,
+              aliases: [`wire-${ref.kind}-${ref.seq}`],
+            },
+          ],
+        },
+      });
+    },
+  });
+  const ref = (kind, seq) => ({ attachment, kind, revision: 1, seq });
+  publish({
+    kind: "snapshot",
+    data: {
+      session: { thread: "thread" },
+      main: { attachment: "A", revision: 1, order: [], entries: [] },
+      agents: {
+        attachment: "A",
+        revision: 1,
+        order: [1],
+        entries: [{ seq: 1, content: ref("agents", 1) }],
+      },
+    },
+  });
+  await source.readContent(ref("agents", 1), new AbortController().signal);
+  for (let seq = 1; seq <= 100; seq++) {
+    publish({
+      kind: "patch",
+      data: {
+        main: {
+          attachment: "A",
+          revision: 1,
+          order: [seq],
+          entries: [{ seq, content: ref("main", seq) }],
+        },
+      },
+    });
+    await source.readContent(ref("main", seq), new AbortController().signal);
+    assert.equal(Object.keys(source.contentIdentities).length, 2);
+    assert.equal(source.label(`wire-main-${seq}`), `main-${seq}`);
+    assert.equal(source.label("wire-agents-1"), "agents-1");
+    if (seq > 1) assert.equal(source.label(`wire-main-${seq - 1}`), `wire-main-${seq - 1}`);
+  }
+  source.histories = { "/root/worker": { ...source.agents, loaded: [1] } };
+  publish({
+    kind: "patch",
+    data: { agents: { attachment: "A", revision: 1, order: [], entries: [] } },
+  });
+  assert.equal(source.label("wire-agents-1"), "agents-1", "paged history keeps its facts");
+  publish({
+    kind: "patch",
+    data: { main: { attachment: "A", revision: 1, order: [], entries: [] } },
+  });
+  assert.equal(Object.keys(source.contentIdentities).length, 1);
+  source.histories = {};
+  publish({
+    kind: "patch",
+    data: { agents: { attachment: "A", revision: 1, order: [], entries: [] } },
+  });
+  await source.readContent(ref("main", 99), new AbortController().signal);
+  assert.equal(
+    Object.keys(source.contentIdentities).length,
+    0,
+    "late reads cannot restore retired facts",
+  );
+  source.close();
 });
 
 test("roster activity uses observed progress and collapsed reasoning labels", () => {
+  const labels = { "agent:main/worker/reviewer": "worker/reviewer" };
+  const label = (name) => labels[name] ?? name;
   assert.deepEqual(
-    doing({
-      kind: "progress",
-      values: [
-        { body: "Waiting for", kind: "progress", waits: [{ name: "agent:main/worker/reviewer" }] },
-      ],
-    }),
+    doing(
+      {
+        kind: "progress",
+        values: [
+          {
+            body: "Waiting for",
+            kind: "progress",
+            waits: [{ name: "agent:main/worker/reviewer" }],
+          },
+        ],
+      },
+      label,
+    ),
     { verb: "", html: "Waiting for worker/reviewer" },
   );
   assert.deepEqual(
-    doing({ kind: "progress", values: [{ kind: "progress", body: "Connecting to provider" }] }),
+    doing(
+      { kind: "progress", values: [{ kind: "progress", body: "Connecting to provider" }] },
+      label,
+    ),
     { verb: "", html: "Connecting to provider" },
   );
   assert.deepEqual(
-    doing({
-      kind: "reasoning",
-      values: [
-        {
-          kind: "summary",
-          label: "Checking callers",
-          body: "Private to the expanded reasoning view",
-          live: true,
-        },
-      ],
-    }),
+    doing(
+      {
+        kind: "reasoning",
+        values: [
+          {
+            kind: "summary",
+            label: "Checking callers",
+            body: "Private to the expanded reasoning view",
+            live: true,
+          },
+        ],
+      },
+      label,
+    ),
     { verb: "", html: "Checking callers" },
   );
   assert.deepEqual(
-    doing({
-      kind: "reasoning",
-      values: [{ kind: "summary", body: "A long body\nwith another line", live: true }],
-    }),
+    doing(
+      {
+        kind: "reasoning",
+        values: [{ kind: "summary", body: "A long body\nwith another line", live: true }],
+      },
+      label,
+    ),
     { verb: "Thinking", html: "" },
   );
 });

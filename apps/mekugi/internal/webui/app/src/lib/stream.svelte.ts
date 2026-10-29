@@ -1,4 +1,4 @@
-import { agentDisplayName, roleColor } from "./agents";
+import { roleColor } from "./agents";
 import type { Machine } from "./hub.svelte";
 import { errorText, TransportError, type Connection, type RPCMethod } from "./transport";
 import type {
@@ -22,6 +22,7 @@ import type {
   ContentResult,
   ContentReference,
   DeferredSections,
+  AgentIdentity,
 } from "./protocol";
 
 export type { Connection } from "./transport";
@@ -66,6 +67,23 @@ export class Stream {
   sectionErrors = $state.raw<Partial<Record<keyof DeferredSections, string>>>({});
   #hydratedSections = new Map<string, ContentReference>();
   byName = $derived(new Map(this.roster.agents.map((agent) => [agent.name, agent])));
+  contentIdentities = $state.raw<Record<string, AgentIdentity[]>>({});
+  identities = $derived.by(() => {
+    const identities = new Map<string, AgentIdentity>();
+    const remember = (identity: AgentIdentity) => {
+      for (const alias of identity.aliases) identities.set(alias, identity);
+    };
+    for (const entry of Object.values(this.contentIdentities))
+      for (const identity of entry) remember(identity);
+    for (const feed of [this.main, this.agents, ...Object.values(this.histories)])
+      for (const seq of feed.order)
+        for (const identity of feed.entries[seq].identities ?? []) remember(identity);
+    for (const agent of this.roster.agents) {
+      for (const identity of agent.identities ?? []) remember(identity);
+      remember({ name: agent.name, label: agent.label, aliases: agent.aliases ?? [agent.name] });
+    }
+    return identities;
+  });
   // Roles in the order this viewer first saw them, which fixes their colours.
   // Like the terminal view's, the order outlives connections, so moving
   // between threads keeps each role's colour.
@@ -99,6 +117,7 @@ export class Stream {
     this.status = {};
     this.main = this.agents = empty;
     this.histories = {};
+    this.contentIdentities = {};
     this.historyErrors = {};
     this.roster = preserveRoster
       ? {
@@ -193,8 +212,10 @@ export class Stream {
       this.session &&
       (message.session?.thread !== this.session.thread ||
         message.main?.attachment !== this.main.attachment)
-    )
+    ) {
       this.roster = { agents: [] };
+      this.contentIdentities = {};
+    }
     snapshot &&=
       message.session?.thread !== this.session?.thread ||
       message.main?.attachment !== this.main.attachment ||
@@ -230,6 +251,7 @@ export class Stream {
       this.main = merge(empty, message.main);
       this.agents = merge(empty, message.agents);
       this.histories = {};
+      this.#pruneIdentities();
       this.jumps++;
       return;
     }
@@ -270,6 +292,20 @@ export class Stream {
       }
       this.histories = histories;
     }
+    if (message.main || message.agents) this.#pruneIdentities();
+  }
+
+  #pruneIdentities(): Set<string> {
+    const cached = Object.entries(this.contentIdentities);
+    const retained = new Set<string>();
+    for (const feed of [this.main, this.agents, ...Object.values(this.histories)])
+      for (const seq of feed.order) {
+        const ref = feed.entries[seq].content;
+        if (ref) retained.add(`${ref.attachment}:${ref.kind}:${ref.seq}`);
+      }
+    const kept = cached.filter(([key]) => retained.has(key));
+    if (kept.length !== cached.length) this.contentIdentities = Object.fromEntries(kept);
+    return retained;
   }
 
   history(caller?: string): Feed {
@@ -346,6 +382,7 @@ export class Stream {
       };
       if (caller) this.histories = { ...this.histories, [caller]: next };
       else this.main = next;
+      this.#pruneIdentities();
     } catch (error) {
       if (!lifetime.aborted)
         this.historyErrors = { ...this.historyErrors, [key]: errorText(error) };
@@ -372,6 +409,13 @@ export class Stream {
       { thread: this.#id, body: reference },
       { signal: AbortSignal.any([signal, this.#requests.signal]) },
     );
+    const key = `${reference.attachment}:${reference.kind}:${result.entry?.seq}`;
+    if (result.entry?.identities && this.#pruneIdentities().has(key)) {
+      this.contentIdentities = {
+        ...this.contentIdentities,
+        [key]: result.entry.identities,
+      };
+    }
     return result;
   }
 
@@ -580,20 +624,16 @@ export class Stream {
 
   label(name: string | undefined): string {
     if (!name) return "main";
-    if (name === "Main") name = this.session?.caller || "/root";
-    return this.agent(name)?.label ?? agentDisplayName(name);
+    return this.identities.get(name)?.label ?? name;
   }
 
   agent(name: string | undefined): Agent | undefined {
     return name ? this.byName.get(this.address(name)) : undefined;
   }
 
-  // Coordination observations use model-visible addresses; the roster keeps
-  // canonical task paths. Resolve the address, never the shortened label.
+  // Presentation supplies canonical identities independently of roster paging.
   address(name: string): string {
-    if (name === "agent:main" || name.startsWith("agent:main/"))
-      return `/root${name.slice("agent:main".length)}`;
-    return name === "Main" ? this.session?.caller || "/root" : name;
+    return this.identities.get(name)?.name ?? name;
   }
 
   async control(action: Action, position?: number): Promise<void> {

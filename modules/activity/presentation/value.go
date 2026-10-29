@@ -3,6 +3,7 @@ package presentation
 import (
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
@@ -87,6 +88,42 @@ type ChangeRow struct {
 	Added, Removed          int
 	Note                    string
 	Footer                  bool
+}
+
+// Disclosure names retained content omitted by the default inline value.
+// Owner limits it to the agent's own transcript; other transcripts show that
+// agent's complete diagnostic as incoming prose. Renderer clipping is separate.
+type Disclosure struct {
+	Owner string `json:"owner,omitzero"`
+}
+
+// Source: apps/mekugi/internal/webui/app/src/lib/kinds.ts:58@5bbc778a8 hasDetails.
+func (b Value) Disclosure() *Disclosure {
+	switch b.Kind {
+	case "text", "user", "final", "message", "start", "summary", "progress":
+		return nil // Authored prose and progress own their inline disclosures.
+	case "error":
+		if strings.TrimSpace(b.Body) != "" {
+			return &Disclosure{Owner: b.Owner}
+		}
+		return nil
+	}
+	if b.TailClipped || b.SourceOmitted || b.TailOmitted > 0 || len(b.Changes) > 0 || b.EditOperation() ||
+		strings.TrimSpace(b.DetailCode) != "" && strings.TrimSpace(b.DetailCode) != strings.TrimSpace(b.Code) {
+		return &Disclosure{}
+	}
+	if b.Hook != nil {
+		failed := b.Exited && b.ExitCode != 0 || b.Hook.HasError || b.Hook.Status == "failed"
+		if !failed && slices.ContainsFunc(b.Tail, func(line string) bool { return strings.TrimSpace(line) != "" }) {
+			return &Disclosure{}
+		}
+		return nil
+	}
+	if len(b.Questions) == 0 && strings.TrimSpace(b.Body) != "" ||
+		strings.TrimSpace(b.Code) != "" && b.Label != "" && !b.Fenced && !strings.Contains(b.Code, "\n") {
+		return &Disclosure{}
+	}
+	return nil
 }
 
 // EditOperation identifies edit rows independently of their optional writer

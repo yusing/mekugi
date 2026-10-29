@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -151,71 +150,72 @@ func projectStatus(label sessionpresentation.Label) status {
 }
 
 type entry struct {
-	Position       int                             `json:"position"`
-	Turn           uint64                          `json:"turn,omitzero"`
-	Revision       uint64                          `json:"revision,omitzero"`
-	Content        *ContentReference               `json:"content,omitzero"`
-	AutoContent    bool                            `json:"autoContent,omitzero"`
-	Spans          []activitypresentation.TextSpan `json:"spans,omitzero"`
-	Images         []string                        `json:"images,omitzero"`
-	Seq            uint64                          `json:"seq"`
-	Agent          string                          `json:"agent,omitzero"`
-	Kind           string                          `json:"kind,omitzero"`
-	Outcome        string                          `json:"outcome,omitzero"`
-	Text           string                          `json:"text,omitzero"`
-	Observed       int64                           `json:"observed,omitzero"`
-	Running        bool                            `json:"running,omitzero"`
-	Assignment     bool                            `json:"assignment,omitzero"`
-	AssignmentTo   string                          `json:"assignmentTo,omitzero"`
-	AssignmentText string                          `json:"assignmentText,omitzero"`
-	Values         []value                         `json:"values,omitzero"`
+	Identities     []sessionpresentation.AgentIdentity `json:"identities,omitzero"`
+	Position       int                                 `json:"position"`
+	Turn           uint64                              `json:"turn,omitzero"`
+	Revision       uint64                              `json:"revision,omitzero"`
+	Content        *ContentReference                   `json:"content,omitzero"`
+	AutoContent    bool                                `json:"autoContent,omitzero"`
+	Spans          []activitypresentation.TextSpan     `json:"spans,omitzero"`
+	Images         []string                            `json:"images,omitzero"`
+	Seq            uint64                              `json:"seq"`
+	Agent          string                              `json:"agent,omitzero"`
+	Kind           string                              `json:"kind,omitzero"`
+	Outcome        string                              `json:"outcome,omitzero"`
+	Text           string                              `json:"text,omitzero"`
+	Observed       int64                               `json:"observed,omitzero"`
+	Running        bool                                `json:"running,omitzero"`
+	Assignment     bool                                `json:"assignment,omitzero"`
+	AssignmentTo   string                              `json:"assignmentTo,omitzero"`
+	AssignmentText string                              `json:"assignmentText,omitzero"`
+	Values         []value                             `json:"values,omitzero"`
 }
 
 type value struct {
-	Kind             string     `json:"kind,omitzero"`
-	Verb             string     `json:"verb,omitzero"`
-	BatchExit        bool       `json:"batchExit,omitzero"` // A compound command's combined result.
-	Label            string     `json:"label,omitzero"`
-	Sources          []string   `json:"sources,omitzero"` // Programs that made a file edit, outside its label.
-	Path             string     `json:"path,omitzero"`
-	AutoReload       bool       `json:"autoReload,omitzero"`
-	Approval         string     `json:"approval,omitzero"`
-	Code             string     `json:"code,omitzero"`
-	DetailCode       string     `json:"detailCode,omitzero"`
-	DetailsAvailable bool       `json:"detailsAvailable,omitzero"`
-	Lang             string     `json:"lang,omitzero"`
-	Fenced           bool       `json:"fenced,omitzero"`
-	Body             string     `json:"body,omitzero"`
-	Details          string     `json:"details,omitzero"` // Supporting child reply content without section delimiters.
-	Summary          string     `json:"summary,omitzero"` // A child reply's own summary of Body.
-	Reads            []read     `json:"reads,omitzero"`
-	Subsumed         bool       `json:"subsumed,omitzero"`
-	Effect           bool       `json:"effect,omitzero"`
-	Pending          bool       `json:"pending,omitzero"`
-	Skipped          bool       `json:"skipped,omitzero"`
-	HiddenEdits      int        `json:"hiddenEdits,omitzero"` // Count of retained rows folded from this index.
-	CodeLines        int        `json:"codeLines,omitzero"`
-	TailLines        int        `json:"tailLines,omitzero"`
-	FoldSource       bool       `json:"foldSource,omitzero"`
-	Duration         int64      `json:"duration,omitzero"`
-	Thought          int64      `json:"thought,omitzero"`
-	Workdir          string     `json:"workdir,omitzero"`
-	From             string     `json:"from,omitzero"` // Caller paths of a message's ends.
-	To               string     `json:"to,omitzero"`
-	Questions        []question `json:"questions,omitzero"`
-	Waits            []wait     `json:"waits,omitzero"`
-	WaitReason       string     `json:"waitReason,omitzero"`
-	WaitTimeout      string     `json:"waitTimeout,omitzero"`
-	ExitCode         *int       `json:"exitCode,omitzero"`
-	EditOutcome      string     `json:"editOutcome,omitzero"`
-	Running          bool       `json:"running,omitzero"`
-	Live             bool       `json:"live,omitzero"`
-	Tail             []string   `json:"tail,omitzero"`
-	TailOmitted      int        `json:"tailOmitted,omitzero"`
-	TailClipped      bool       `json:"tailClipped,omitzero"`
-	SourceOmitted    bool       `json:"sourceOmitted,omitzero"`
-	Changes          []change   `json:"changes,omitzero"`
-	Hook             *hook      `json:"hook,omitzero"`
+	Kind             string                           `json:"kind,omitzero"`
+	Verb             string                           `json:"verb,omitzero"`
+	BatchExit        bool                             `json:"batchExit,omitzero"` // A compound command's combined result.
+	Label            string                           `json:"label,omitzero"`
+	Sources          []string                         `json:"sources,omitzero"` // Programs that made a file edit, outside its label.
+	Path             string                           `json:"path,omitzero"`
+	AutoReload       bool                             `json:"autoReload,omitzero"`
+	Approval         string                           `json:"approval,omitzero"`
+	Code             string                           `json:"code,omitzero"`
+	DetailCode       string                           `json:"detailCode,omitzero"`
+	DetailsAvailable *activitypresentation.Disclosure `json:"detailsAvailable,omitzero"`
+	Lang             string                           `json:"lang,omitzero"`
+	Fenced           bool                             `json:"fenced,omitzero"`
+	Body             string                           `json:"body,omitzero"`
+	Details          string                           `json:"details,omitzero"` // Supporting child reply content without section delimiters.
+	Summary          string                           `json:"summary,omitzero"` // A child reply's own summary of Body.
+	Reads            []read                           `json:"reads,omitzero"`
+	Subsumed         bool                             `json:"subsumed,omitzero"`
+	Effect           bool                             `json:"effect,omitzero"`
+	Pending          bool                             `json:"pending,omitzero"`
+	Skipped          bool                             `json:"skipped,omitzero"`
+	HiddenEdits      int                              `json:"hiddenEdits,omitzero"` // Count of retained rows folded from this index.
+	CodeLines        int                              `json:"codeLines,omitzero"`
+	TailLines        int                              `json:"tailLines,omitzero"`
+	FoldSource       bool                             `json:"foldSource,omitzero"`
+	Duration         int64                            `json:"duration,omitzero"`
+	Thought          int64                            `json:"thought,omitzero"`
+	Workdir          string                           `json:"workdir,omitzero"`
+	From             string                           `json:"from,omitzero"` // Caller paths of a message's ends.
+	To               string                           `json:"to,omitzero"`
+	Questions        []question                       `json:"questions,omitzero"`
+	Waits            []wait                           `json:"waits,omitzero"`
+	WaitReason       string                           `json:"waitReason,omitzero"`
+	WaitTimeout      string                           `json:"waitTimeout,omitzero"`
+	ExitCode         *int                             `json:"exitCode,omitzero"`
+	EditOutcome      string                           `json:"editOutcome,omitzero"`
+	Running          bool                             `json:"running,omitzero"`
+	Live             bool                             `json:"live,omitzero"`
+	Tail             []string                         `json:"tail,omitzero"`
+	TailOmitted      int                              `json:"tailOmitted,omitzero"`
+	TailClipped      bool                             `json:"tailClipped,omitzero"`
+	SourceOmitted    bool                             `json:"sourceOmitted,omitzero"`
+	Changes          []change                         `json:"changes,omitzero"`
+	Hook             *hook                            `json:"hook,omitzero"`
 }
 
 type read struct {
@@ -257,32 +257,32 @@ type roster struct {
 }
 
 type agent struct {
-	Content       *ContentReference `json:"content,omitzero"`
-	Name          string            `json:"name"`            // Caller path, the agent's identity.
-	Thread        string            `json:"thread,omitzero"` // Runtime identity; admission remains server-owned.
-	NonAttachable bool              `json:"nonAttachable,omitzero"`
-	Label         string            `json:"label"` // Display name.
-	Role          string            `json:"role,omitzero"`
-	Depth         int               `json:"depth,omitzero"`
-	State         string            `json:"state"`
-	Wait          *value            `json:"wait,omitzero"`
-	Activity      *entry            `json:"activity,omitzero"` // Shared roster summary, without retained source/output.
-	Turns         uint64            `json:"turns,omitzero"`
-	Roundtrips    uint64            `json:"roundtrips,omitzero"`
-	Work          *int64            `json:"work,omitzero"`
-	WorkSince     int64             `json:"workSince,omitzero"`
-	LastResponse  int64             `json:"lastResponse,omitzero"`
-	Cost          *float64          `json:"cost,omitzero"`
-	CostPartial   bool              `json:"costPartial,omitzero"`
-	InputTokens   *uint64           `json:"inputTokens,omitzero"`
-	OutputTokens  *uint64           `json:"outputTokens,omitzero"`
-	UsagePartial  bool              `json:"usagePartial,omitzero"`
-	Context       *uint64           `json:"context,omitzero"`
-	Window        uint64            `json:"window,omitzero"`
-	Added         *int              `json:"added,omitzero"`
-	Removed       *int              `json:"removed,omitzero"`
-	Skills        []string          `json:"skills,omitzero"`
-	Items         []string          `json:"items,omitzero"`
+	sessionpresentation.AgentIdentity
+	Identities    []sessionpresentation.AgentIdentity `json:"identities,omitzero"`
+	Content       *ContentReference                   `json:"content,omitzero"`
+	Thread        string                              `json:"thread,omitzero"` // Runtime identity; admission remains server-owned.
+	NonAttachable bool                                `json:"nonAttachable,omitzero"`
+	Role          string                              `json:"role,omitzero"`
+	Depth         int                                 `json:"depth,omitzero"`
+	State         string                              `json:"state"`
+	Wait          *value                              `json:"wait,omitzero"`
+	Activity      *entry                              `json:"activity,omitzero"` // Shared roster summary, without retained source/output.
+	Turns         uint64                              `json:"turns,omitzero"`
+	Roundtrips    uint64                              `json:"roundtrips,omitzero"`
+	Work          *int64                              `json:"work,omitzero"`
+	WorkSince     int64                               `json:"workSince,omitzero"`
+	LastResponse  int64                               `json:"lastResponse,omitzero"`
+	Cost          *float64                            `json:"cost,omitzero"`
+	CostPartial   bool                                `json:"costPartial,omitzero"`
+	InputTokens   *uint64                             `json:"inputTokens,omitzero"`
+	OutputTokens  *uint64                             `json:"outputTokens,omitzero"`
+	UsagePartial  bool                                `json:"usagePartial,omitzero"`
+	Context       *uint64                             `json:"context,omitzero"`
+	Window        uint64                              `json:"window,omitzero"`
+	Added         *int                                `json:"added,omitzero"`
+	Removed       *int                                `json:"removed,omitzero"`
+	Skills        []string                            `json:"skills,omitzero"`
+	Items         []string                            `json:"items,omitzero"`
 }
 
 func millis(t time.Time) int64 {
@@ -293,12 +293,18 @@ func millis(t time.Time) int64 {
 }
 
 // projectEntry carries child reply summaries only when summaries is set.
-func projectEntry(e activitypresentation.Entry, summaries bool) entry {
+func projectEntry(e activitypresentation.Entry, summaries bool, caller string) entry {
 	e = publicEntry(e)
 	p := entry{
-		Seq: e.Seq, Revision: e.Revision, Agent: e.Agent, Kind: e.Kind, Outcome: e.Outcome, Text: e.Text, Observed: millis(e.Observed), Running: e.Running,
+		Seq: e.Seq, Revision: e.Revision, Agent: sessionpresentation.PresentAgent(e.Agent, caller).Name, Kind: e.Kind, Outcome: e.Outcome, Text: e.Text, Observed: millis(e.Observed), Running: e.Running,
 		Assignment: e.Assignment, AssignmentTo: e.AssignmentTo, AssignmentText: e.AssignmentText,
 		Values: projectValues(e.Values, summaries), Spans: e.Spans,
+		Identities: sessionpresentation.PresentEntryAgents(e, caller),
+	}
+	for i := range p.Values {
+		if disclosure := p.Values[i].DetailsAvailable; disclosure != nil && disclosure.Owner != "" {
+			disclosure.Owner = sessionpresentation.PresentAgent(disclosure.Owner, caller).Name
+		}
 	}
 	for _, source := range e.Images {
 		p.Images = append(p.Images, imageIdentity(source))
@@ -324,6 +330,9 @@ func projectEntry(e activitypresentation.Entry, summaries bool) entry {
 			own, batch := &p.Values[j], p.Values[i]
 			own.Duration, own.ExitCode, own.Running = batch.Duration, batch.ExitCode, batch.Running
 			own.Tail, own.TailOmitted, own.TailClipped = batch.Tail, batch.TailOmitted, batch.TailClipped
+			if batch.DetailsAvailable != nil {
+				own.DetailsAvailable = batch.DetailsAvailable
+			}
 			p.Values = slices.Delete(p.Values, i, i+1)
 			continue
 		}
@@ -332,6 +341,9 @@ func projectEntry(e activitypresentation.Entry, summaries bool) entry {
 		} else if command != "" {
 			p.Values[i].Label, p.Values[i].Code, p.Values[i].Lang, p.Values[i].Fenced = "", command, "bash", true
 			p.Values[i].SourceOmitted = false
+			original := e.Values[i]
+			original.Code, original.SourceOmitted = command, false
+			p.Values[i].DetailsAvailable = original.Disclosure()
 		}
 	}
 	return p
@@ -346,8 +358,9 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 	out := make([]value, len(values))
 	for i, v := range values {
 		p := value{
-			DetailCode: v.DetailCode,
-			Path:       v.Path, AutoReload: v.AutoReload, Approval: v.Approval,
+			DetailsAvailable: v.Disclosure(),
+			DetailCode:       v.DetailCode,
+			Path:             v.Path, AutoReload: v.AutoReload, Approval: v.Approval,
 			Kind: v.Kind, Verb: v.Verb, BatchExit: v.BatchExit, Label: v.Label, Code: v.Code, Lang: v.Lang, Fenced: v.Fenced, Body: v.Body,
 			Subsumed: v.Subsumed, Effect: v.Effect, Pending: v.Pending, Skipped: v.Skipped, FoldSource: v.TemporarySource(), Duration: v.Duration.Milliseconds(), Thought: v.Thought.Milliseconds(), From: v.From, To: v.To,
 			WaitReason: v.WaitReason, WaitTimeout: v.WaitTimeout,
@@ -395,7 +408,7 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 
 // projectRoster follows the terminal roster's facts: display names, the
 // lifecycle state, work timers, usage and the lines each agent edited.
-func projectRoster(p *activitypresentation.Publication) roster {
+func projectRoster(p *activitypresentation.Publication, caller string) roster {
 	r := roster{Agents: make([]agent, 0, len(p.Roster))}
 	if n := p.NetCounts; n != nil && n.Added >= 0 && n.Removed >= 0 {
 		r.Added, r.Removed = n.Added, n.Removed
@@ -403,12 +416,12 @@ func projectRoster(p *activitypresentation.Publication) roster {
 	for _, row := range p.Roster {
 		a := row.Agent
 		x := agent{
-			Name: a.Name, Thread: a.Thread, Label: pathdisplay.AgentDisplayName(a.Name), Depth: row.Depth,
+			AgentIdentity: sessionpresentation.PresentAgent(a.Name, caller), Thread: a.Thread, Depth: row.Depth,
 			NonAttachable: a.NonAttachable,
 			Turns:         a.Turns, Roundtrips: a.Roundtrips, Skills: a.Skills,
 		}
 		// Main's role is implied by its name.
-		if a.Name != "/root" {
+		if x.Name != "/root" {
 			x.Role = textsanitize.Safe(a.Role, false)
 		}
 		switch {
@@ -425,6 +438,7 @@ func projectRoster(p *activitypresentation.Publication) roster {
 		}
 		if a.Waiting && a.Wait != nil {
 			x.Wait = new(projectValues([]activitypresentation.Value{*a.Wait}, false)[0])
+			x.Identities = sessionpresentation.PresentEntryAgents(activitypresentation.Entry{Values: []activitypresentation.Value{*a.Wait}}, caller)
 		}
 		if len(a.Summary) > 0 {
 			latest := publicEntry(a.Summary[len(a.Summary)-1])
@@ -450,6 +464,7 @@ func projectRoster(p *activitypresentation.Publication) roster {
 				values = append(values, item)
 			}
 			x.Activity.Values = projectValues(values, false)
+			x.Identities = append(x.Identities, sessionpresentation.PresentEntryAgents(activitypresentation.Entry{Values: values}, caller)...)
 		}
 		if !a.Started.IsZero() && a.WorkKnown {
 			x.Work, x.WorkSince = new(a.WorkElapsed.Milliseconds()), millis(a.WorkSince)

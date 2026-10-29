@@ -54,89 +54,14 @@ test("bound markers remain escaped inside code and emphasis", () => {
   assert.match(markedBlock("**[Image 1]**", [{ Start: 2, End: 11, Kind: 0 }]), /<strong><span/);
 });
 
-test("inline authored content has no duplicate details action", () => {
+test("Details uses the published omission fact and measured clipping", () => {
   assert.equal(reasoningBody("**Checking**\n\n", "Checking"), "");
-  assert.equal(
-    hasDetails({ kind: "reasoning", values: [{ label: "Checking", body: "**Checking**" }] }),
-    false,
-  );
-  assert.equal(hasDetails({ kind: "tool", values: [{ tail: ["", " "] }] }), false);
-  for (const evidence of [{ detailCode: '{"state":"confirmed"}' }, { detailsAvailable: true }])
-    assert.equal(
-      hasDetails({
-        kind: "progress",
-        values: [{ kind: "progress", body: "Interrupt requested for /root/worker", ...evidence }],
-      }),
-      false,
-    );
-  assert.equal(
-    hasDetails({
-      kind: "reasoning",
-      values: [{ label: "Checking", body: "**Checking**\nEvidence" }],
-    }),
-    false,
-  );
-  for (const kind of ["user", "text", "final", "reply", "start", "message"])
-    assert.equal(
-      hasDetails({ kind, text: "Complete text", values: [{ body: "Complete text" }] }),
-      false,
-    );
-  assert.equal(hasDetails({ kind: "tool", values: [{ code: "echo ok", tail: ["ok"] }] }), false);
-  assert.equal(
-    hasDetails({ kind: "tool", values: [{ code: "{}", detailCode: "{}", fenced: true }] }),
-    false,
-  );
-  assert.equal(
-    hasDetails({ kind: "tool", values: [{ detailCode: "original tool arguments" }] }),
-    true,
-  );
-  assert.equal(hasDetails({ kind: "tool", values: [{ tail: ["last"], tailOmitted: 5 }] }), true);
-  assert.equal(
-    hasDetails({ kind: "tool", values: [{ tail: ["bounded…"], tailClipped: true }] }),
-    true,
-  );
-  assert.equal(
-    hasDetails({
-      kind: "tool",
-      values: [{ code: "python3 - <<'PY'", fenced: true, pending: true, sourceOmitted: true }],
-    }),
-    true,
-  );
-  assert.equal(
-    hasDetails({ kind: "tool", values: [{ code: "printf ready", fenced: true, pending: true }] }),
-    false,
-  );
-});
-
-test("completed questions have no duplicate details, while hidden choices remain available", () => {
-  const value = {
-    kind: "op",
-    verb: "Asked",
-    body: "Which audience?\n└ Developers",
-    questions: [{ text: "Which audience?", answer: "Developers" }],
-  };
-  assert.equal(hasDetails({ kind: "question", values: [value] }), false);
-  assert.equal(hasDetails({ kind: "question", values: [{ ...value, sourceOmitted: true }] }), true);
-});
-
-test("errors and hooks retain details only where their renderer omits content", () => {
-  const error = { kind: "error", agent: "/root/worker", values: [{ body: "Complete failure." }] };
-  assert.equal(hasDetails(error, "Main"), false);
-  assert.equal(hasDetails(error, "/root/worker"), true);
-  const hook = { kind: "hook", values: [{ label: "Checked", hook: { status: "completed" } }] };
-  assert.equal(hasDetails(hook), false);
-  assert.equal(hasDetails(hook, "Main", true), true);
-  assert.equal(
-    hasDetails({ ...hook, values: [{ ...hook.values[0], tail: ["Hidden result"] }] }),
-    true,
-  );
-  assert.equal(
-    hasDetails({
-      ...hook,
-      values: [{ ...hook.values[0], hook: { status: "failed" }, tail: ["Visible failure"] }],
-    }),
-    false,
-  );
+  assert.equal(hasDetails({ values: [{ body: "Inline content", tailOmitted: 5 }] }), false);
+  assert.equal(hasDetails({ values: [{ detailsAvailable: {} }] }), true);
+  const own = { values: [{ detailsAvailable: { owner: "/root/worker" } }] };
+  assert.equal(hasDetails(own, "/root"), false);
+  assert.equal(hasDetails(own, "/root/worker"), true);
+  assert.equal(hasDetails({ values: [] }, "/root", true), true);
 });
 
 test("search patterns and paths retain distinct operands", () => {

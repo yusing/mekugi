@@ -110,7 +110,7 @@ func TestFamilyNonAttachableCapabilityReachesRosterConsumers(t *testing.T) {
 			if !slices.Equal(family.Threads, []string{"root"}) {
 				t.Fatalf("nonattachable navigation admitted: %v", family.Threads)
 			}
-			roster := projectRoster(family.Agents)
+			roster := projectRoster(family.Agents, "/root")
 			if len(roster.Agents) != 2 {
 				t.Fatalf("nonattachable row disappeared: %+v", roster)
 			}
@@ -166,7 +166,7 @@ func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 			host.LatestKind = tc.kind
 			child.server.frame.Store(new(childFrame))
 			family, _ := h.Family("child")
-			rows := projectRoster(family.Agents).Agents
+			rows := projectRoster(family.Agents, "/root").Agents
 			if rows[0].Thread != "root" || rows[0].Name != "/root" || rows[0].State != "working" || host.Responding != tc.host.Responding || host.Waiting != tc.host.Waiting || host.Final != tc.host.Final || host.LatestKind != tc.kind {
 				t.Fatal("family lifecycle changed the non-admitted root or runtime source")
 			}

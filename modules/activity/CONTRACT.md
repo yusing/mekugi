@@ -11,7 +11,7 @@ displayed-thread identity, input admission and bounded child history; the
 [terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns pane layout, input routing and
 dialog interaction. `presentation` owns the retained
 feed records, roster derivation, detail-page membership and neutral values;
-`terminalview` owns transcript and roster state, disclosure, pacing, geometry,
+`terminalview` owns transcript and roster state, disclosure controls, pacing, geometry,
 painting and navigation targets. Application adapters supply typed observations,
 host reconciliation and detached displayed-thread admission; the
 [module specification](SPEC.md#transcript-observations) owns transcript interpretation.
@@ -503,6 +503,13 @@ never revives them. Session switching closes the dialog. Reading or closing it
 neither interrupts work nor submits model input.
 
 ## Content dialog
+
+Activity publishes one disclosure fact for each value whose inline presentation
+omits retained source, output or diagnostic content. It may limit that fact to
+the owning agent's transcript when other transcripts show the complete content
+as incoming prose. Renderers consume that fact and add their own measured clipping;
+they do not reconstruct omission policy from producer metadata. Authored prose,
+reasoning and wait-target expansion retain their own inline disclosures.
 
 Operation and attachment dialogs offer the latest retained Mekugi-prepared content
 only when its readable content differs from the matching original request evidence.

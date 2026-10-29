@@ -168,7 +168,7 @@ func (entry ItemContent) Values() (blocks []Value) {
 		if entry.ErrorDetail != "" {
 			text = textsanitize.Safe(entry.ErrorDetail, false)
 		}
-		return []Value{{Kind: "error", Body: text, Label: entry.Agent}}
+		return []Value{{Kind: "error", Body: text, Label: entry.Agent, Owner: entry.Agent}}
 	case "compaction":
 		return []Value{{Kind: "compaction", Body: source}}
 	case "tool":

@@ -39,11 +39,11 @@ func (s *Server) readImage(ctx context.Context, target requestTarget, body jsont
 			if feed.publication == nil {
 				continue
 			}
-			if _, visible := feed.entries[request.Seq]; !visible {
+			if entry, visible := feed.entries[request.Seq]; !visible || entry.agent != request.Agent {
 				continue
 			}
 			for _, entry := range feed.publication.Entries {
-				if entry.Seq == request.Seq && entry.Agent == request.Agent && request.Index < len(entry.Images) {
+				if entry.Seq == request.Seq && request.Index < len(entry.Images) {
 					candidate := entry.Images[request.Index]
 					if imageIdentity(candidate) == request.Image {
 						source = candidate

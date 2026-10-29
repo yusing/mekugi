@@ -5,12 +5,14 @@ import type {
   ContentReference,
   PageResult as APIPageResult,
   DeferredSections,
+  AgentIdentity,
 } from "../../../../sessionapi/protocol.ts";
 export type {
   PageCursor,
   ContentReference,
   ContentResult,
   DeferredSections,
+  AgentIdentity,
 } from "../../../../sessionapi/protocol.ts";
 export type PageResult = APIPageResult & { acknowledge?: () => void };
 export type {
@@ -116,7 +118,7 @@ export interface Change {
 }
 
 export interface Value {
-  detailsAvailable?: boolean;
+  detailsAvailable?: import("../../../../sessionapi/protocol.ts").Disclosure;
   detailCode?: string;
   tailClipped?: boolean;
   sourceOmitted?: boolean;
@@ -167,6 +169,7 @@ export interface Value {
 }
 
 export interface Entry {
+  identities?: AgentIdentity[];
   outcome?: string;
   position?: number;
   turn?: number;
@@ -190,6 +193,8 @@ export interface Entry {
 export type AgentState = "working" | "waiting" | "error" | "done" | "idle";
 
 export interface Agent {
+  aliases?: string[];
+  identities?: AgentIdentity[];
   content?: ContentReference | null;
   name: string;
   thread?: string;

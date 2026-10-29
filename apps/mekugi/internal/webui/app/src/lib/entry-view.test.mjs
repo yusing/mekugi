@@ -40,6 +40,7 @@ registerHooks({
 globalThis.location ??= new URL("http://localhost/");
 globalThis.addEventListener ??= () => {};
 const { default: EntryView } = await import("./EntryView.svelte");
+const { stream } = await import("./stream.svelte.ts");
 const { default: ValueRow } = await import("./ValueRow.svelte");
 
 const view = (values, kind = "tool") =>
@@ -126,6 +127,17 @@ test("edits without a shared program keep their own", () => {
 });
 
 test("a wait reads as a collaboration line naming its targets", () => {
+  stream.roster = {
+    agents: [
+      {
+        name: "/root/detail-tests",
+        label: "detail-tests",
+        aliases: ["/root/detail-tests"],
+        state: "working",
+      },
+      { name: "/root/review", label: "review", aliases: ["/root/review"], state: "done" },
+    ],
+  };
   const html = view(
     [
       {
@@ -145,6 +157,34 @@ test("a wait reads as a collaboration line naming its targets", () => {
   assert.match(html, /\(timeout 10m0s\)/);
   assert.doesNotMatch(html, /rounded-card border/);
   assert.doesNotMatch(html, /\/root\//);
+});
+
+test("traffic resolves the local recipient from published identity facts", () => {
+  stream.main = {
+    order: [9],
+    entries: {
+      9: {
+        seq: 9,
+        identities: [{ name: "/root/worker", label: "worker", aliases: ["Main", "/root/worker"] }],
+      },
+    },
+  };
+  const html = render(EntryView, {
+    props: {
+      entry: {
+        seq: 9,
+        kind: "reply",
+        agent: "/root/sender",
+        values: [{ kind: "message", from: "/root/sender", to: "Main", body: "Incoming message" }],
+      },
+      at: "",
+      stamp: "",
+      owner: "/root/worker",
+    },
+  }).body;
+  assert.match(html, />worker</);
+  assert.doesNotMatch(html, />Main<|>\/root</);
+  stream.main = { order: [], entries: {} };
 });
 
 test("model listing and inspection render as agent progress rows without raw MCP", () => {

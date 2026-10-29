@@ -21,6 +21,17 @@ const entryBytes = 2 << 10
 func compactEntry(full entry) entry {
 	p := full
 	p.Values = nil
+	p.Identities = nil
+	identityBytes := 0
+	for _, identity := range full.Identities {
+		data, _ := json.Marshal(identity, encoding)
+		if identityBytes+len(data) > 512 {
+			p.AutoContent = true
+			break
+		}
+		p.Identities = append(p.Identities, identity)
+		identityBytes += len(data)
+	}
 	if len(p.Images) > 8 {
 		p.Images = p.Images[:8]
 		p.AutoContent = true
@@ -50,17 +61,12 @@ func compactEntry(full entry) entry {
 			i = end - 1
 		} else {
 			// These fields are dialog evidence, not transcript content.
-			if strings.TrimSpace(v.DetailCode) != "" && strings.TrimSpace(v.DetailCode) != strings.TrimSpace(v.Code) {
-				v.DetailsAvailable = true
-			}
 			v.DetailCode = ""
 			if len(v.Body) > 512 {
 				v.Body = ""
 				if !slices.Contains([]string{"op", "hook"}, v.Kind) {
 					v.Body = strings.ToValidUTF8(full.Values[i].Body[:512], "")
 					p.AutoContent = true
-				} else if len(v.Questions) == 0 && strings.TrimSpace(full.Values[i].Body) != "" {
-					v.DetailsAvailable = true
 				}
 			}
 			if len(v.Details) > 512 {
@@ -73,9 +79,6 @@ func compactEntry(full entry) entry {
 			}
 			code := strings.TrimSuffix(v.Code, "\n")
 			if len(code) > 512 {
-				if v.Label != "" && !v.Fenced && !strings.Contains(v.Code, "\n") {
-					v.DetailsAvailable = true
-				}
 				v.CodeLines = strings.Count(code, "\n") + 1
 				if v.Lang == "json" && (v.CodeLines > 1 || v.Fenced && (v.Label != "" || len(v.Reads) > 0)) {
 					var decoded any
@@ -335,7 +338,7 @@ func rosterPage(value *roster, attachment string, revision uint64, cursor PageCu
 	used := 0
 	for index := int(cursor.Before); index < len(value.Agents); index++ {
 		agent := value.Agents[index]
-		if cursor.Caller != "" && agent.Name != cursor.Caller {
+		if cursor.Caller != "" && !slices.Contains(agent.Aliases, cursor.Caller) {
 			continue
 		}
 		data, err := json.Marshal(agent, encoding)
@@ -344,6 +347,7 @@ func rosterPage(value *roster, attachment string, revision uint64, cursor PageCu
 		}
 		if len(data) > 1024 {
 			agent.Activity, agent.Wait, agent.Skills, agent.Items = nil, nil, nil, nil
+			agent.Identities = nil
 			agent.Content = &ContentReference{Attachment: attachment, Kind: "roster", Revision: revision, Seq: uint64(index + 1)}
 			data, err = json.Marshal(agent, encoding)
 			if err != nil {
