@@ -1,12 +1,10 @@
 package responses
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -103,62 +101,30 @@ func chatMessages(history []providerMessage) ([]map[string]any, error) {
 }
 
 func readChatChunks(reader io.Reader, d Diagnostics, consume func(providerChunk) error) error {
-	done := false
-	decode := func(data string) error {
-		if data == "[DONE]" {
-			done = true
+	for event, err := range scanEndpointSSE(reader, d.BufferBytes) {
+		if err == errSSEBuffer {
+			return d.streamError("buffer_budget", fmt.Sprintf("%s response exceeds the router buffer budget", d.Name))
+		}
+		if err != nil {
+			return fmt.Errorf("read %s stream: %w", d.Name, d.ForwardError(err))
+		}
+		if string(event.data) == "[DONE]" {
+			if event.readErr != nil {
+				return fmt.Errorf("read %s stream: %w", d.Name, d.ForwardError(event.readErr))
+			}
 			return nil
 		}
 		var chunk providerChunk
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			return d.streamError("invalid_json", fmt.Sprintf("invalid JSON in %s response stream", d.Name))
-		}
-		return consume(chunk)
-	}
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64<<10), d.BufferBytes)
-	var data []string
-	comment := false
-	budget := 0
-	for scanner.Scan() {
-		line := scanner.Text()
-		budget += len(line)
-		if budget > d.BufferBytes {
-			return d.streamError("buffer_budget", fmt.Sprintf("%s response exceeds the router buffer budget", d.Name))
-		}
-		if line == "" {
-			if len(data) > 0 {
-				if err := decode(strings.Join(data, "\n")); err != nil {
-					return err
-				}
-				data = nil
-			} else if comment {
-				if err := consume(providerChunk{}); err != nil {
-					return err
-				}
+		if event.data != nil {
+			if err := json.Unmarshal(event.data, &chunk); err != nil {
+				return d.streamError("invalid_json", fmt.Sprintf("invalid JSON in %s response stream", d.Name))
 			}
-			comment = false
-			if done {
-				break
-			}
-			continue
+		} else if event.final {
+			continue // Chat ignores a trailing comment without an event delimiter.
 		}
-		if value, ok := strings.CutPrefix(line, "data:"); ok {
-			data = append(data, strings.TrimPrefix(value, " "))
-		} else if strings.HasPrefix(line, ":") {
-			comment = true
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("read %s stream: %w", d.Name, d.ForwardError(err))
-	}
-	if !done && len(data) > 0 {
-		if err := decode(strings.Join(data, "\n")); err != nil {
+		if err := consume(chunk); err != nil {
 			return err
 		}
 	}
-	if !done {
-		return d.streamError("missing_done", fmt.Sprintf("%s stream ended without [DONE]", d.Name))
-	}
-	return nil
+	return d.streamError("missing_done", fmt.Sprintf("%s stream ended without [DONE]", d.Name))
 }

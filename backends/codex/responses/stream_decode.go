@@ -5,55 +5,78 @@ package responses
 import (
 	"bufio"
 	"encoding/json/jsontext"
+	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"math"
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/chat"
 )
 
-func readEndpointSSE(reader io.Reader, d Diagnostics, consume func([]byte) (bool, error)) error {
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64<<10), d.BufferBytes)
-	var data []string
-	comment := false
-	budget := 0
-	flush := func() (bool, error) {
-		if len(data) == 0 {
-			if comment {
-				comment = false
-				return consume(nil)
+var errSSEBuffer = errors.New("SSE buffer budget exceeded")
+
+type sseEvent struct {
+	readErr error
+	data    []byte
+	final   bool // EOF rather than an empty-line event delimiter.
+}
+
+// scanEndpointSSE owns framing only; adapters retain terminal and error policy.
+func scanEndpointSSE(reader io.Reader, bufferBytes int) iter.Seq2[sseEvent, error] {
+	return func(yield func(sseEvent, error) bool) {
+		scanner := bufio.NewScanner(reader)
+		scanner.Buffer(make([]byte, 64<<10), bufferBytes)
+		var data []string
+		comment, budget := false, 0
+		flush := func(final bool) bool {
+			if len(data) == 0 && !comment {
+				return true
 			}
-			return false, nil
+			event := sseEvent{final: final, readErr: scanner.Err()}
+			if len(data) != 0 {
+				event.data = []byte(strings.Join(data, "\n"))
+			}
+			data, comment = nil, false
+			return yield(event, nil)
 		}
-		payload := []byte(strings.Join(data, "\n"))
-		data = nil
-		comment = false
-		return consume(payload)
+		for scanner.Scan() {
+			line := scanner.Text()
+			budget += len(line)
+			if budget > bufferBytes {
+				yield(sseEvent{}, errSSEBuffer)
+				return
+			}
+			if line == "" {
+				if !flush(false) {
+					return
+				}
+			} else if value, ok := strings.CutPrefix(line, "data:"); ok {
+				data = append(data, strings.TrimPrefix(value, " "))
+			} else if strings.HasPrefix(line, ":") {
+				comment = true
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			yield(sseEvent{}, err)
+			return
+		}
+		flush(true)
 	}
-	for scanner.Scan() {
-		line := scanner.Text()
-		budget += len(line)
-		if budget > d.BufferBytes {
+}
+
+func readEndpointSSE(reader io.Reader, d Diagnostics, consume func([]byte) (bool, error)) error {
+	for event, err := range scanEndpointSSE(reader, d.BufferBytes) {
+		if err == errSSEBuffer {
 			return d.streamError("invalid", fmt.Sprintf("%s response exceeds the router buffer budget", d.Name))
 		}
-		if line == "" {
-			done, err := flush()
-			if err != nil || done {
-				return err
-			}
-		} else if value, ok := strings.CutPrefix(line, "data:"); ok {
-			data = append(data, strings.TrimPrefix(value, " "))
-		} else if strings.HasPrefix(line, ":") {
-			comment = true
+		if err != nil {
+			return d.ForwardError(err)
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return d.ForwardError(err)
-	}
-	if done, err := flush(); err != nil || done {
-		return err
+		if done, err := consume(event.data); err != nil || done {
+			return err
+		}
 	}
 	return d.streamError("invalid", fmt.Sprintf("%s stream ended without its terminal event", d.Name))
 }

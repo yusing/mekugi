@@ -2,6 +2,8 @@ package responses
 
 import (
 	"encoding/json/jsontext"
+	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing/synctest"
@@ -171,4 +173,85 @@ func TestEndpointHeartbeatProgress(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestEndpointSSEFramingDiagnostics(t *testing.T) {
+	for _, chat := range []bool{false, true} {
+		read := func(source io.Reader, budget int, consume func([]byte) (bool, error)) error {
+			d := testPolicy().Diagnostics
+			d.BufferBytes = budget
+			if chat {
+				return readChatChunks(source, d, func(providerChunk) error { _, err := consume(nil); return err })
+			}
+			return readEndpointSSE(source, d, consume)
+		}
+		for _, tc := range []struct {
+			name, wire, code string
+			count            int
+		}{
+			{"multiline-final", ": heartbeat\r\n\r\ndata: {\r\ndata: \"choices\": []}\r\n\r\ndata: [DONE]", "", 2},
+			{"missing-terminal", "data: {}\n\n", "invalid", 1},
+			{"trailing-comment", ": heartbeat", "invalid", 1},
+		} {
+			t.Run(fmt.Sprintf("chat=%t/%s", chat, tc.name), func(t *testing.T) {
+				count := 0
+				err := read(strings.NewReader(tc.wire), 1<<20, func(data []byte) (bool, error) {
+					if string(data) == "[DONE]" {
+						return true, nil
+					}
+					count++
+					return false, nil
+				})
+				code, wantCount := tc.code, tc.count
+				if chat && code != "" {
+					code = "missing_done"
+				}
+				if chat && tc.name == "trailing-comment" {
+					wantCount = 0
+				}
+				diagnostic, _ := errors.AsType[*testDiagnostic](err)
+				if count != wantCount || code == "" && err != nil || code != "" && (diagnostic == nil || diagnostic.code != "grok_stream_"+code) {
+					t.Fatalf("count=%d error=%v; want count=%d code=%q", count, err, wantCount, code)
+				}
+			})
+		}
+		consume := func(data []byte) (bool, error) { return string(data) == "[DONE]", nil }
+		err := read(strings.NewReader("data: {}\n\n"), 1, consume)
+		diagnostic, _ := errors.AsType[*testDiagnostic](err)
+		code := "grok_stream_invalid"
+		if chat {
+			code = "grok_stream_buffer_budget"
+		}
+		if diagnostic == nil || diagnostic.code != code {
+			t.Fatalf("chat=%t budget error=%v", chat, err)
+		}
+		tail := &sseReadFailure{err: errors.New("read beyond terminal")}
+		if err := read(io.MultiReader(strings.NewReader("data: [DONE]\n\n"), tail), 1<<20, consume); err != nil || tail.reads != 0 {
+			t.Fatalf("chat=%t terminal=%v reads=%d", chat, err, tail.reads)
+		}
+		failedTerminal := &sseReadFailure{data: "data: [DONE]\n\n", err: tail.err}
+		if err := read(failedTerminal, 1<<20, consume); chat && !errors.Is(err, tail.err) || !chat && err != nil {
+			t.Fatalf("chat=%t terminal read error=%v", chat, err)
+		}
+		if err := read(tail, 1<<20, consume); !errors.Is(err, tail.err) || chat && !strings.HasPrefix(err.Error(), "read Grok stream: ") {
+			t.Fatalf("chat=%t scanner error=%v", chat, err)
+		}
+		if err := read(strings.NewReader("data: {}\n\n"), 1<<20, func([]byte) (bool, error) { return false, tail.err }); err != tail.err {
+			t.Fatalf("chat=%t consumer error=%v", chat, err)
+		}
+	}
+}
+
+// sseReadFailure also covers readers returning terminal bytes and an error together.
+type sseReadFailure struct {
+	data  string
+	err   error
+	reads int
+}
+
+func (r *sseReadFailure) Read(p []byte) (int, error) {
+	r.reads++
+	n := copy(p, r.data)
+	r.data = r.data[n:]
+	return n, r.err
 }
