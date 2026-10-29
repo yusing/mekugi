@@ -51,7 +51,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   lines.once("line", (line) => {
     const { responses, compaction } = JSON.parse(line);
     provider = createMockProvider((body) => {
-      if (compaction && JSON.stringify(body.messages.at(-1)).includes("CRITICAL: Respond with TEXT ONLY.")) return compaction;
+      // Claude Code can append system-role reminders after the compaction prompt.
+      if (compaction && JSON.stringify(body.messages.findLast((message) => message.role === "user")).includes("CRITICAL: Respond with TEXT ONLY.")) return compaction;
       return responses.shift() ?? {
       status: 400, error: { type: "invalid_request_error", message: "Local fixture response plan exhausted" },
     }; });
