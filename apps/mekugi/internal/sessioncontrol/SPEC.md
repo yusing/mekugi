@@ -112,6 +112,12 @@ selected service tier. No second input-request map or transport retry is created
 
 ### Compaction
 
+Session control owns native compaction dispatch and correlated settlement.
+Agent checkpoints enter only after their requesting execution and host turn have
+successfully stopped. Codex uses the existing compact request ledger and requires
+both acknowledgement and matching successful compact-turn completion. The compact
+turn remains auxiliary; Thread Control owns continuation and wait delivery.
+
 Session control owns manual compaction's prerequisite interruption, cancellation
 and continuation; displayed progress does not determine its outcome.
 `/compact` with Enter interrupts busy Main before compaction; Tab waits for it.

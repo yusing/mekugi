@@ -150,7 +150,7 @@ func newClaudeHookFixture(t *testing.T) *claudeHookFixture {
 	if err := shared.RequestStarted(ctx, caller, true); err != nil {
 		t.Fatal(err)
 	}
-	spawn, err := shared.ReserveSpawn(ctx, caller, control.SpawnRequest{Name: "child", Message: "assignment", Settings: settings})
+	spawn, err := shared.ReserveSpawn(ctx, caller, control.SpawnRequest{Name: "child", Message: "assignment", Settings: settings, Limits: control.Limits{MaxWaitMS: 1000}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,13 @@ func TestClaudeLaunchWaitStopsOnlyOnSuccessfulBatch(t *testing.T) {
 					t.Fatal(err)
 				}
 				f.hook(t, "PostToolUse", "mcp__threadcontrol__wait_agent", "wait", jsontext.Value(`{}`), tool)
-				calls := []map[string]any{{"tool_name": "mcp__threadcontrol__wait_agent", "tool_use_id": "wait", "tool_response": tool}}
+				var nativeResult struct {
+					Content jsontext.Value `json:"content"`
+				}
+				if err := json.Unmarshal(tool, &nativeResult); err != nil {
+					t.Fatal(err)
+				}
+				calls := []map[string]any{{"tool_name": "mcp__threadcontrol__wait_agent", "tool_use_id": "wait", "tool_response": nativeResult.Content}}
 				if failed {
 					f.hook(t, "PreToolUse", "Read", "read", jsontext.Value(`{"file_path":"missing"}`), nil)
 					f.hook(t, "PostToolUseFailure", "Read", "read", jsontext.Value(`{"file_path":"missing"}`), nil)

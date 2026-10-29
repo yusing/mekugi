@@ -58,6 +58,9 @@ func (s *Service) PendingEffects(thread string) ([]EffectRef, bool, error) {
 	}
 	for _, member := range tree.Members {
 		if member.Wait != nil {
+			if member.Wait.Compaction != nil {
+				appendPending(*member.Wait.Compaction)
+			}
 			appendPending(member.Wait.Effect)
 		}
 	}
@@ -129,6 +132,11 @@ func (s *Service) UncertainActions(thread string) ([]Action, error) {
 	}
 	for _, member := range tree.Members {
 		if member.Wait != nil {
+			if member.Wait.Compaction != nil {
+				if err := appendUncertain(*member.Wait.Compaction); err != nil {
+					return nil, err
+				}
+			}
 			if err := appendUncertain(member.Wait.Effect); err != nil {
 				return nil, err
 			}
@@ -190,6 +198,9 @@ func (s *Service) Agents(thread, prefix string) (map[string]any, error) {
 	}
 	for _, member := range tree.Members {
 		if member.Wait != nil {
+			if member.Wait.Compaction != nil {
+				appendEffect(*member.Wait.Compaction)
+			}
 			appendEffect(member.Wait.Effect)
 		}
 	}

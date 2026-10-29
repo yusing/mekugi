@@ -1,5 +1,11 @@
 package sessioncontrol
 
+import (
+	"errors"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+)
+
 // CompactIntent travels with the composer's queued command, not its text or
 // attachments. Continuation is requested only when Main was busy at admission.
 type CompactIntent struct {
@@ -28,6 +34,8 @@ type Compaction struct {
 	ackPending   bool
 	continueTask bool
 	cancelled    bool
+	success      bool
+	call         *HostCall
 }
 
 // InterruptBefore admits one prerequisite interrupt while retaining the queued
@@ -56,18 +64,38 @@ func (c *Compaction) Completed(turn string, success bool) {
 	}
 	c.turn = ""
 	if c.phase == compactRunning {
-		c.phase = compactCompleted
+		c.phase, c.success = compactCompleted, success
 		if !success {
 			c.continueTask = false
 		}
 	}
+	c.settle()
 }
 
 func (c *Compaction) Acknowledge(failed bool) {
 	c.ackPending = false
 	if failed {
+		if c.call != nil {
+			c.call.result <- hostCallResult{err: &binding.DispatchError{Outcome: binding.HostRejected, Method: "thread/compact/start", Cause: errors.New("native compaction request failed")}}
+		}
 		*c = Compaction{}
 	}
+	c.settle()
+}
+
+func (c *Compaction) settle() {
+	if c.phase != compactCompleted || c.ackPending {
+		return
+	}
+	if c.call == nil {
+		return
+	}
+	result := hostCallResult{}
+	if !c.success || c.cancelled {
+		result.err = &binding.DispatchError{Outcome: binding.HostRejected, Method: "thread/compact/start", Cause: errors.New("native compaction failed or was interrupted")}
+	}
+	c.call.result <- result
+	c.call = nil
 }
 
 func (c *Compaction) Starting() bool { return c.phase == compactStarting }

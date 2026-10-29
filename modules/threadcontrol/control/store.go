@@ -417,7 +417,7 @@ func (s *Service) Due(now time.Time) []string {
 	for _, owner := range s.trees {
 		if state := owner.state.Load(); state != nil {
 			for thread, member := range state.Members {
-				if wait := member.Wait; wait != nil && member.Status == Waiting && !member.HostRunning && wait.State == "registered" && wait.Deadline != nil && !now.Before(*wait.Deadline) {
+				if wait := member.Wait; wait != nil && member.Status == Waiting && !member.HostRunning && wait.State == "registered" && wait.Deadline != nil && !wait.CompactionPending() && !now.Before(*wait.Deadline) {
 					threads = append(threads, thread)
 				}
 			}

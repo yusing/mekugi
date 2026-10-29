@@ -39,6 +39,8 @@ type nativeThreadsProvider struct {
 	fullHistory                             bool
 	shellWait                               bool
 	compactWait                             bool
+	agentCompact                            bool
+	compactions                             int
 	earlyCompletion                         bool
 	preload                                 bool
 	recoverFailure                          bool
@@ -54,7 +56,7 @@ type nativeThreadsProvider struct {
 func (p *nativeThreadsProvider) diagnostic() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return fmt.Sprintf("provider inference counts=%v; parent=%q child=%q wait_turn=%q; want initial parent=5 child=2, recovered parent=8 child=3", p.calls, p.parent, p.child, p.waitTurn)
+	return fmt.Sprintf("compactions=%d provider inference counts=%v; parent=%q child=%q wait_turn=%q; want initial parent=5 child=2, recovered parent=8 child=3", p.compactions, p.calls, p.parent, p.child, p.waitTurn)
 }
 
 func (p *nativeThreadsProvider) serveSocket(t *testing.T, w http.ResponseWriter, r *http.Request) {
@@ -165,8 +167,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		p.parent = metadata.ThreadID
 	}
 	compacting := bytes.Contains(body, []byte("At the end of your handover emit exactly one"))
-	if compacting && (bytes.Contains(body, []byte("You are `/root`, the primary agent")) || bytes.Contains(body, []byte("addressed as to=/root")) || !bytes.Contains(body, []byte("Your logical task is agent:main."))) {
+	if compacting && metadata.ThreadID == p.parent && (bytes.Contains(body, []byte("You are `/root`, the primary agent")) || bytes.Contains(body, []byte("addressed as to=/root")) || !bytes.Contains(body, []byte("Your logical task is agent:main."))) {
 		t.Error("compaction provider input omitted visible coordination identity or retained canonical generated guidance")
+	}
+	if compacting {
+		p.compactions++
 	}
 	if !compacting {
 		p.calls[metadata.ThreadID]++
@@ -188,7 +193,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			}
 		}
 		catalog := descriptions.String()
-		for _, name := range []string{"spawn_agent", "list_agents", "list_models", "inspect", "wait_agent", "send_message", "followup_task", "interrupt_agent"} {
+		for _, name := range []string{"spawn_agent", "list_agents", "list_models", "inspect", "compact", "wait_agent", "send_message", "followup_task", "interrupt_agent"} {
 			if !strings.Contains(catalog, "mcp__threadcontrol__"+name+"(args:") {
 				failure = "initial execution catalog omitted threadcontrol declaration: " + name
 			}
@@ -271,6 +276,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 		p.waitTurn = metadata.TurnID
 		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"]}));`
+		if p.agentCompact {
+			program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"],compact:true}));`
+		}
 	case parent && p.earlyCompletion && step == 6:
 		if metadata.TurnID == p.waitTurn || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") {
 			failure = "guarded completion lost native child wake"
@@ -313,6 +321,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 		p.waitTurn = metadata.TurnID
 		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"]}));`
+		if p.agentCompact {
+			program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"],compact:true}));`
+		}
 	case parent && step == 5:
 		if p.shellWait {
 			if metadata.TurnID == p.waitTurn || users != p.users+1 || strings.Count(string(body), "<user_shell_command>") != 1 || !strings.Contains(string(body), "SHELL_WAIT_OUTPUT") {
@@ -408,6 +419,15 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			failure = "child continuation reread or lost its completed preload"
 		}
 		answer = "MANAGED_CHILD_FINAL"
+		if p.agentCompact {
+			answer = ""
+			program = `text(await tools.mcp__threadcontrol__compact({}));`
+		}
+	case !parent && step == 3 && p.agentCompact:
+		if !strings.Contains(string(body), `"name":"compact"`) || !strings.Contains(string(body), "completed") {
+			failure = "child compaction lost standalone continuation"
+		}
+		answer = "MANAGED_CHILD_FINAL"
 	case !parent && step == 3:
 		if !strings.Contains(string(body), "COLD_CHILD_FOLLOWUP") || !strings.Contains(string(body), "CHILD_ATTRIBUTED_ASSIGNMENT") {
 			failure = "cold recovery omitted retained history or the explicit follow-up"
@@ -423,14 +443,14 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		p.stop()
 		return
 	}
-	if parent && step == 3 {
+	if !compacting && parent && step == 3 {
 		select {
 		case <-p.mailbox:
 		case <-r.Context().Done():
 			return
 		}
 	}
-	if !parent && step == 2 {
+	if !compacting && !parent && step == 2 {
 		close(p.mailbox)
 		select {
 		case <-p.waiting:
@@ -488,6 +508,10 @@ func TestNativeThreadsShellWaitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{shellWait: true})
 }
 
+func TestNativeThreadsAgentCompactWaitServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{compactWait: true, agentCompact: true})
+}
+
 func TestNativeThreadsCompactWaitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{compactWait: true})
 }
@@ -509,7 +533,7 @@ func TestNativeThreadsRewindServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
-	fullHistory, shellWait, compactWait, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind bool
+	fullHistory, shellWait, compactWait, agentCompact, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind bool
 }
 
 func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
@@ -601,7 +625,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 		}
 	}
-	fixture := &nativeThreadsProvider{multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
+	fixture := &nativeThreadsProvider{multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, agentCompact: scenario.agentCompact, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
@@ -698,7 +722,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 			if !waitingObserved {
 				waitingObserved = true
-				if shellWait || scenario.compactWait {
+				if shellWait || scenario.compactWait && !scenario.agentCompact {
 					command := "!printf SHELL_WAIT_OUTPUT"
 					if scenario.compactWait {
 						command = "/compact"
@@ -710,7 +734,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 					if err != nil {
 						t.Fatal("auxiliary operation during logical waiting:", err)
 					}
-				} else {
+				} else if !scenario.agentCompact {
 					close(fixture.waiting)
 				}
 			}
@@ -718,6 +742,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		if scenario.compactWait && waitingObserved && !childReleased {
 			fixture.mu.Lock()
 			waitTurn := fixture.waitTurn
+			compactObserved = compactObserved || fixture.compactions > 0
 			fixture.mu.Unlock()
 			compactObserved = compactObserved || event.Frame.View.Interrupt.Turn != "" && event.Frame.View.Interrupt.Turn != waitTurn
 			if event.Frame.View.Status.Session.CompletionKnown {
@@ -785,7 +810,11 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	if scenario.earlyCompletion {
 		wantParentCalls = 6
 	}
-	if parent != root || child == "" || child == parent || len(counts) != wantThreads || counts[parent] != wantParentCalls || counts[child] != 2 {
+	wantChildCalls := 2
+	if scenario.agentCompact {
+		wantChildCalls = 3
+	}
+	if parent != root || child == "" || child == parent || len(counts) != wantThreads || counts[parent] != wantParentCalls || counts[child] != wantChildCalls {
 		t.Fatalf("native host identities/inferences: root=%q parent=%q child=%q calls=%v", root, parent, child, counts)
 	}
 	childView, err := connection.Attach(ctx, child)

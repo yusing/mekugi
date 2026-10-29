@@ -129,7 +129,9 @@ func (h *Live) PrepareEscape(hasUnsentSteer bool) bool {
 func (h *Live) Interrupt() Interrupt {
 	r := Interrupt{Turn: h.Turn, Wait: h.Waiting, Stop: h.LocalStop}
 	if h.Compaction.Cancel() {
-		r.Wait, r.Stop = "", ""
+		if h.Compaction.call == nil {
+			r.Wait, r.Stop = "", ""
+		}
 		r.RestoreWaiting = true
 		r.Turn = h.Compaction.InterruptTarget()
 		if r.Turn == "" {

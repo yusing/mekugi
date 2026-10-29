@@ -34,6 +34,7 @@ type ClaudeRequester interface {
 type ClaudeEvent struct {
 	Turn, Answer, TerminalReason string
 	Started, Completed           bool
+	Auxiliary                    bool
 	Status                       control.Status
 	Failure                      control.HostFailure
 	Consumed                     []string
@@ -50,14 +51,15 @@ type claudeLedger struct {
 }
 
 type claudeReceipt struct {
-	Version                            int
-	Thread, Session, ID, Digest        string
-	UUID, Turn                         string
-	Run, Accepted, Consumed, Cancelled bool
-	Input                              *control.NativeInput `json:",omitzero"`
-	Bundled                            []string             `json:",omitzero"`
-	Context                            string               `json:",omitzero"`
-	Terminal                           *claudeTerminal      `json:",omitzero"`
+	Version                                      int
+	Thread, Session, ID, Digest                  string
+	UUID, Turn                                   string
+	Run, Accepted, Consumed, Cancelled           bool
+	Input                                        *control.NativeInput `json:",omitzero"`
+	Bundled                                      []string             `json:",omitzero"`
+	Context                                      string               `json:",omitzero"`
+	Terminal                                     *claudeTerminal      `json:",omitzero"`
+	CompactResult, CompactBoundary, CompactError string
 }
 
 type claudeTerminal struct {
@@ -371,11 +373,18 @@ func (r *ClaudeRuntime) Input(ctx context.Context, input control.NativeInput) (s
 	for {
 		r.mu.Lock()
 		accepted, cancelled, turn, changed, closed := receipt.Accepted, receipt.Cancelled, receipt.Turn, r.changed, r.closed
+		terminal, settled := receipt.Terminal, receipt.Consumed && r.turn != receipt.Turn
 		r.mu.Unlock()
 		if cancelled {
 			return "", claudeDispatchError(binding.HostRejected, "input", errors.New("Claude input was cancelled before native consumption"))
 		}
-		if accepted {
+		if input.Kind == "COMPACT" && settled && terminal != nil {
+			if terminal.Status != control.Completed {
+				return "", claudeDispatchError(binding.HostRejected, "input", errors.New(terminal.Reason))
+			}
+			return "", nil
+		}
+		if accepted && input.Kind != "COMPACT" {
 			return turn, nil
 		}
 		if closed != nil {
@@ -448,7 +457,7 @@ func (r *ClaudeRuntime) dispatchInput(ctx context.Context, input control.NativeI
 		return nil, claudeDispatchError(binding.NotDispatched, "input", err)
 	}
 	origin, _ := json.Marshal(map[string]string{"kind": "peer", "from": control.AgentName(input.Sender)})
-	if input.Wake != nil || input.Kind == "COMPLETION_GUARD" || input.Sender == "" {
+	if input.Wake != nil || input.Kind == "COMPLETION_GUARD" || input.Kind == "COMPACT" || input.Sender == "" {
 		origin = jsontext.Value(`{"kind":"coordinator"}`)
 	}
 	priority := ""
@@ -471,6 +480,9 @@ func (r *ClaudeRuntime) dispatchInput(ctx context.Context, input control.NativeI
 }
 
 func claudeInputText(input control.NativeInput) (string, error) {
+	if input.Kind == "COMPACT" {
+		return "/compact", nil
+	}
 	projected := input
 	projected.Sender, projected.Recipient = control.AgentName(input.Sender), control.AgentName(input.Recipient)
 	if input.Kind == "COMPLETION_GUARD" {
@@ -560,6 +572,9 @@ func (r *ClaudeRuntime) retainInput(ctx context.Context, input control.NativeInp
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
+	if input.Kind == "COMPACT" && r.turn != "" {
+		return nil, false, errors.New("Claude compaction requires settled host work")
+	}
 	if input.Run && r.turn != "" && !r.running {
 		return nil, false, errors.New("Claude has an unconfirmed native start")
 	}
@@ -587,7 +602,7 @@ func (r *ClaudeRuntime) retainInput(ctx context.Context, input control.NativeInp
 			}
 		}
 		for _, uuid := range r.ledger.Retained {
-			if !reserved[uuid] {
+			if input.Kind != "COMPACT" && !reserved[uuid] {
 				receipt.Bundled = append(receipt.Bundled, uuid)
 			}
 		}
@@ -764,6 +779,11 @@ func confirmClaudeReceipt(ledger claudeLedger, input control.NativeInput) error 
 	if receipt.Version != 1 || receipt.Thread != input.Thread || receipt.Session != ledger.Info.Session || receipt.ID != input.ID || receipt.Digest != digest {
 		return errors.New("Claude input receipt identity mismatch")
 	}
+	if input.Kind == "COMPACT" {
+		if !receipt.Consumed || receipt.Terminal == nil || receipt.Terminal.Status != control.Completed || receipt.CompactResult != "success" || receipt.CompactBoundary == "" {
+			return errors.New("Claude compaction has no confirmed successful settlement")
+		}
+	}
 	if !receipt.Accepted {
 		if receipt.Cancelled {
 			return errors.New("Claude input was cancelled before native acceptance")
@@ -778,15 +798,20 @@ func confirmClaudeReceipt(ledger claudeLedger, input control.NativeInput) error 
 func (r *ClaudeRuntime) HandleEvent(ctx context.Context, raw jsontext.Value) (ClaudeEvent, error) {
 	var event struct {
 		claude.Event
-		CommandUUID string   `json:"command_uuid"`
-		State       string   `json:"state"`
-		Model       string   `json:"model"`
-		Result      string   `json:"result"`
-		IsError     bool     `json:"is_error"`
-		Errors      []string `json:"errors"`
-		UserUUID    string   `json:"user_message_uuid"`
-		UserUUIDs   []string `json:"user_message_uuids"`
-		APIStatus   int      `json:"api_error_status"`
+		CommandUUID     string   `json:"command_uuid"`
+		State           string   `json:"state"`
+		Model           string   `json:"model"`
+		Result          string   `json:"result"`
+		IsError         bool     `json:"is_error"`
+		Errors          []string `json:"errors"`
+		UserUUID        string   `json:"user_message_uuid"`
+		UserUUIDs       []string `json:"user_message_uuids"`
+		APIStatus       int      `json:"api_error_status"`
+		CompactResult   string   `json:"compact_result"`
+		CompactError    string   `json:"compact_error"`
+		CompactMetadata struct {
+			Trigger string `json:"trigger"`
+		} `json:"compact_metadata"`
 	}
 	var result ClaudeEvent
 	if err := json.Unmarshal(raw, &event); err != nil {
@@ -831,6 +856,20 @@ func (r *ClaudeRuntime) HandleEvent(ctx context.Context, raw jsontext.Value) (Cl
 		}
 		return result, nil
 	}
+	if event.Type == "system" && r.running && event.SessionID != "" {
+		for uuid := range r.active {
+			receipt := r.pending[uuid]
+			if receipt == nil || receipt.Input == nil || receipt.Input.Kind != "COMPACT" {
+				continue
+			}
+			if event.Subtype == "status" && event.CompactResult != "" && receipt.CompactResult != "failed" {
+				receipt.CompactResult, receipt.CompactError = event.CompactResult, event.CompactError
+			}
+			if event.Subtype == "compact_boundary" && event.CompactMetadata.Trigger == "manual" && event.UUID != "" {
+				receipt.CompactBoundary = event.UUID
+			}
+		}
+	}
 	if event.Type == "assistant" && r.running {
 		var message struct {
 			Content []struct {
@@ -870,6 +909,9 @@ func (r *ClaudeRuntime) HandleEvent(ctx context.Context, raw jsontext.Value) (Cl
 			result.Started = result.Started || started.Started
 		}
 		matched = matched || r.active[uuid]
+		if receipt := r.pending[uuid]; receipt != nil && receipt.Input != nil && receipt.Input.Kind == "COMPACT" {
+			result.Auxiliary = true
+		}
 	}
 	if !matched {
 		return result, errors.New("Claude result has no accepted input belonging to the active turn")
@@ -890,7 +932,23 @@ func (r *ClaudeRuntime) HandleEvent(ctx context.Context, raw jsontext.Value) (Cl
 			result.Failure.Message = event.Subtype + ": " + event.TerminalReason
 		}
 	}
-	if result.Status == control.Completed {
+	if result.Auxiliary {
+		for _, uuid := range uuids {
+			receipt := r.pending[uuid]
+			if receipt == nil || receipt.Input == nil || receipt.Input.Kind != "COMPACT" {
+				continue
+			}
+			if receipt.CompactResult != "success" || receipt.CompactBoundary == "" || result.Status != control.Completed {
+				result.Status = control.Failed
+				result.Failure = control.HostFailure{Message: receipt.CompactError}
+				if result.Failure.Message == "" {
+					result.Failure.Message = "Claude compaction did not confirm success, manual boundary and terminal settlement"
+				}
+				result.TerminalReason = result.Failure.Message
+			}
+		}
+	}
+	if result.Status == control.Completed && !result.Auxiliary {
 		result.Answer = event.Result
 		if result.Answer == "" && event.TerminalReason != "hook_stopped" {
 			result.Answer = r.answer
@@ -928,7 +986,9 @@ func (r *ClaudeRuntime) HandleEvent(ctx context.Context, raw jsontext.Value) (Cl
 		r.lastTerminal = &terminal
 		return result, nil
 	}
-	r.ledger.Metrics.Lifecycle.TurnCompleted(result.Status == control.Completed, time.Now())
+	if !result.Auxiliary {
+		r.ledger.Metrics.Lifecycle.TurnCompleted(result.Status == control.Completed, time.Now())
+	}
 	if r.eventSink != nil {
 		r.retiring, r.lastTerminal = new(result), &terminal
 		r.retiring.Started, r.retiring.Consumed = false, nil
@@ -967,7 +1027,8 @@ func (r *ClaudeRuntime) started(ctx context.Context, uuid string) (ClaudeEvent, 
 		*receipt = accepted
 	}
 	result.Turn, result.Started = accepted.Turn, !r.running
-	if result.Started {
+	result.Auxiliary = receipt.Input != nil && receipt.Input.Kind == "COMPACT"
+	if result.Started && !result.Auxiliary {
 		r.ledger.Metrics.Lifecycle.TurnStarted(time.Now())
 	}
 	r.turn, r.running = accepted.Turn, true

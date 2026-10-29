@@ -31,7 +31,8 @@ func ToolCatalog() []*mcp.Tool {
 		{"list_models", "List Claude's native advertised model IDs for spawn_agent without submitting model input. Account access is still validated during execution. Use a returned claude: ID unchanged as spawn_agent.model with fork_turns=none.", `{"type":"object","properties":{},"additionalProperties":false}`},
 		{"list_agents", "List admitted agents and retained operations.", `{"type":"object","properties":{"path_prefix":{"type":"string","description":"Logical agent-name prefix, such as agent:main/worker. Omit to list the whole admitted tree."}},"additionalProperties":false}`},
 		{"inspect", "Inspect an admitted agent: applied model, reasoning effort, service tier, context usage/window and completed compactions. Includes idle or completed agents; uses retained observations without starting work; unavailable observations are null.", `{"type":"object","properties":{"target":{"type":"string","description":"Agent identifier, such as agent:main, a returned agent:main/worker name, an unambiguous relative task name, or a thread ID."}},"required":["target"],"additionalProperties":false}`},
-		{"wait_agent", "Wait for a descendant outcome or addressed message. Call alone and let the enclosing tool execution finish. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output. New input supersedes the wait.", `{"type":"object","properties":{"target":{"description":"Descendant agent identifiers to wait for. Omit or use all to select all current descendants; otherwise provide a nonempty array of logical names or thread IDs.","oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"wait_mode":{"type":"string","enum":["any","all"],"description":"Omit or use any to return on the first selected completion or failure. Use all to wait until every selected agent settles. Addressed messages wake either mode."},"timeout_ms":{"type":"integer","description":"Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline. Omission waits indefinitely. Explicit values below the host minimum are clamped; values above its maximum are rejected."}},"additionalProperties":false}`},
+		{"compact", "Compact your own context at a safe checkpoint, then automatically continue unfinished work. Call alone and let the enclosing execution finish. Use inspect to judge context usage.", `{"type":"object","properties":{},"additionalProperties":false}`},
+		{"wait_agent", "Wait for a descendant outcome or addressed message. Call alone and let the enclosing tool execution finish. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output. New input supersedes the wait.", `{"type":"object","properties":{"target":{"description":"Descendant agent identifiers to wait for. Omit or use all to select all current descendants; otherwise provide a nonempty array of logical names or thread IDs.","oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"wait_mode":{"type":"string","enum":["any","all"],"description":"Omit or use any to return on the first selected completion or failure. Use all to wait until every selected agent settles. Addressed messages wake either mode."},"compact":{"type":"boolean","description":"Compact your context before delivering this wait's outcome, including an already-ready outcome. The timeout starts at wait registration. Compaction failure is included in the eventual wait result; pending waits remain waiting."},"timeout_ms":{"type":"integer","description":"Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline. Omission waits indefinitely. Explicit values below the host minimum are clamped; values above its maximum are rejected."}},"additionalProperties":false}`},
 		{"send_message", "Queue attributed input without starting idle work.", `{"type":"object","properties":{"target":{"type":"string","description":"Recipient's returned logical agent name, unambiguous relative task name, or thread ID within the admitted tree."},"message":{"type":"string","description":"Nonempty message to deliver with the caller's attribution."}},"required":["target","message"],"additionalProperties":false}`},
 		{"followup_task", "Start or steer an admitted non-root agent with a new assignment.", `{"type":"object","properties":{"target":{"type":"string","description":"Non-root agent's returned logical name, unambiguous relative task name, or thread ID."},"message":{"type":"string","description":"Nonempty follow-up assignment. Starts idle work, steers a running turn, or supersedes a pending wait."}},"required":["target","message"],"additionalProperties":false}`},
 		{"interrupt_agent", "Interrupt a non-root agent, retaining it for later work.", `{"type":"object","properties":{"target":{"type":"string","description":"Non-root agent's returned logical name, unambiguous relative task name, or thread ID."}},"required":["target"],"additionalProperties":false}`},
@@ -88,6 +89,11 @@ func (d *Driver) invoke(ctx context.Context, metadata binding.MCPIdentity, calle
 		result, err = d.listAgents(caller, raw)
 	case "inspect":
 		result, err = d.inspectAgent(ctx, caller, raw)
+	case "compact":
+		var args struct{}
+		if err = json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err == nil {
+			result, err = d.control.RegisterCompaction(ctx, caller, nil, false, "", nil, time.Now(), true)
+		}
 	case "wait_agent":
 		result, err = d.waitAgent(ctx, caller, raw)
 	case "send_message", "followup_task", "interrupt_agent":
@@ -148,6 +154,7 @@ func (d *Driver) waitAgent(ctx context.Context, caller control.Identity, raw jso
 		Target  jsontext.Value   `json:"target"`
 		Timeout *int64           `json:"timeout_ms"`
 		Mode    control.WaitMode `json:"wait_mode"`
+		Compact bool             `json:"compact"`
 	}
 	if err := json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err != nil {
 		return nil, err
@@ -174,7 +181,13 @@ func (d *Driver) waitAgent(ctx context.Context, caller control.Identity, raw jso
 	if err := d.Reconcile(ctx, caller.Thread); err != nil {
 		return nil, err
 	}
-	result, err := d.control.RegisterWait(ctx, caller, targets, all, args.Mode, args.Timeout, time.Now())
+	var result control.WaitResult
+	var err error
+	if args.Compact {
+		result, err = d.control.RegisterCompaction(ctx, caller, targets, all, args.Mode, args.Timeout, time.Now(), false)
+	} else {
+		result, err = d.control.RegisterWait(ctx, caller, targets, all, args.Mode, args.Timeout, time.Now())
+	}
 	if err == nil {
 		if result.State == "waiting" {
 			result.Instructions = "Let this enclosing execution finish now. Mekugi ends the host turn and delivers the outcome as a later wait_agent output. New input supersedes this wait."

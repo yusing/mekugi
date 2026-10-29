@@ -26,7 +26,14 @@ type hostObservation struct {
 	receipt              control.Receipt
 	status               control.Status
 	failure              control.HostFailure
+	err                  error
 }
+
+// CompactionFailure is auxiliary: preserve logical work while displaying the failure.
+type CompactionFailure struct{ Err error }
+
+func (e *CompactionFailure) Error() string { return e.Err.Error() }
+func (e *CompactionFailure) Unwrap() error { return e.Err }
 
 // Completed queues a typed backend terminal fact on the existing lifecycle
 // owner, leaving the runtime event reader free to acknowledge later inputs.
@@ -59,6 +66,7 @@ func (d *Driver) Stop(ctx context.Context) error {
 		return ctx.Err()
 	case <-d.stopped:
 	}
+	d.auxiliary.Wait()
 	if thread == "" {
 		return nil
 	}
@@ -240,12 +248,15 @@ func (d *Driver) reduceHost() {
 			event.reduced <- err
 			close(event.reduced)
 		}
-		if err == nil && (event.method == "turn/completed" || event.method == "runtime/completed" || event.method == "compaction/stopped" || event.method == "human/interrupt" || event.method == "human/input" || event.method == "") {
+		if err == nil && (event.method == "turn/completed" || event.method == "runtime/completed" || event.method == "compaction/stopped" || event.method == "compaction/settled" || event.method == "human/interrupt" || event.method == "human/input" || event.method == "") {
 			err = d.DispatchPending(d.lifecycle, thread)
 			err = errors.Join(err, d.Wake(d.lifecycle, thread, time.Now()))
 			for member, ok := d.control.Member(thread); ok && member.Parent != ""; member, ok = d.control.Member(member.Parent) {
 				err = errors.Join(err, d.Wake(d.lifecycle, member.Parent, time.Now()))
 			}
+		}
+		if event.err != nil {
+			err = errors.Join(err, &CompactionFailure{Err: event.err})
 		}
 		d.mu.Lock()
 		if err != nil {

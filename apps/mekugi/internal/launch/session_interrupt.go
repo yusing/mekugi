@@ -44,7 +44,9 @@ func applyInterruption(attached *attachedPresentation, terminal *terminalsession
 	if intent.Stop != "" && attached.interruptWait != nil {
 		attached.interruptWait(control.Thread, intent.Wait)
 		attached.presentation.Status.SetText("Interrupting…")
-		return nil
+		if intent.Turn == "" {
+			return nil
+		}
 	}
 	if intent.Turn == "" {
 		return nil

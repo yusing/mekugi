@@ -478,3 +478,39 @@ func TestUISnapshotLogicalWaitAllOutcome(t *testing.T) {
 		})
 	}
 }
+
+func TestStandaloneCompactionOmitsAgentWaitPresentation(t *testing.T) {
+	u, threads, at := logicalWaitUI(t, nil)
+	s := threads.shared
+	ctx := t.Context()
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	caller := control.Identity{Thread: "main", Session: "session", Turn: "checkpoint-turn", Call: "compact", Item: "compact-exec"}
+	check(s.RequestStarted(ctx, caller, true))
+	_, err := s.RegisterCompaction(ctx, caller, nil, false, "", nil, *at, true)
+	check(err)
+	check(s.Execution(ctx, caller.Thread, caller.Turn, caller.Item, "", true))
+	_, err = s.ClaimLocalStop(ctx, caller.Thread, caller.Turn, caller.Item)
+	check(err)
+	check(s.HostCompleted(ctx, caller.Thread, caller.Turn, control.Completed, control.HostFailure{}))
+	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	if u.attached.session.Lifecycle("main").Wait != nil {
+		t.Fatal("standalone compact published a targetless agent wait")
+	}
+	compact, err := s.ClaimEffect(ctx, caller.Thread, caller.Call+":compact")
+	check(err)
+	check(s.EffectAcknowledged(ctx, caller.Thread, compact.ID, control.Receipt{}))
+	wake, err := s.PrepareWake(ctx, caller.Thread, *at)
+	check(err)
+	_, err = s.ClaimEffect(ctx, caller.Thread, wake.ID)
+	check(err)
+	check(s.EffectAcknowledged(ctx, caller.Thread, wake.ID, control.Receipt{Turn: "continued"}))
+	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	if u.attached.threadInput.waitID == caller.Call || u.attached.session.Lifecycle("main").Wait != nil {
+		t.Fatal("standalone continuation published an agent-wait outcome")
+	}
+}

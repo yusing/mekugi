@@ -83,7 +83,16 @@ func selectedEvent(tree *Tree, wait *Wait) *Effect {
 }
 
 func (tree *Tree) waitResult(wait *Wait) *WaitResult {
-	result := &WaitResult{ID: wait.ID, All: wait.All, Mode: wait.Mode, Events: slices.Clone(wait.Terminals), State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
+	result := &WaitResult{ID: wait.ID, Standalone: wait.Standalone, All: wait.All, Mode: wait.Mode, Events: slices.Clone(wait.Terminals), State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
+	if wait.Standalone {
+		result.Mode = ""
+	}
+	if compact := wait.Compaction; compact != nil {
+		result.Compaction = &CompactionResult{State: compact.State, Error: compact.Error}
+		if compact.State == "registered" {
+			result.State = "scheduled"
+		}
+	}
 	if wait.Terminal != nil {
 		result.Event = new(*wait.Terminal)
 	}
@@ -198,6 +207,15 @@ func (tree *Tree) selectAllWaitOutcomes(wait *Wait) bool {
 }
 
 func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time) (result WaitResult, err error) {
+	return s.registerWait(ctx, caller, targets, all, mode, timeout, now, false, false)
+}
+
+// RegisterCompaction registers the checkpoint and optional wait in one transaction.
+func (s *Service) RegisterCompaction(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time, standalone bool) (WaitResult, error) {
+	return s.registerWait(ctx, caller, targets, all, mode, timeout, now, true, standalone)
+}
+
+func (s *Service) registerWait(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time, compact, standalone bool) (result WaitResult, err error) {
 	if mode == "" {
 		mode = WaitAny
 	}
@@ -211,18 +229,32 @@ func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []s
 		if caller.Call == "" || caller.Item == "" {
 			return errors.New("wait requires enclosing host-call identity")
 		}
-		selected, err := descendants(tree, member, targets, all)
-		if err != nil {
-			return err
+		var selected []string
+		if !standalone {
+			var err error
+			selected, err = descendants(tree, member, targets, all)
+			if err != nil {
+				return err
+			}
+		}
+		if old := member.Wait; old != nil && old.Compaction != nil && hostOwned(old.Compaction.State) && (old.Turn != caller.Turn || old.Item != caller.Item) {
+			return errors.New("compaction requires native settlement or reconciliation before another checkpoint")
 		}
 		if old := member.Wait; old != nil && (old.ID == caller.Call || old.State != "canceled" && old.State != "completed" && old.State != "paused" && old.State != "timeout") {
 			if old.Turn != caller.Turn || old.Item != caller.Item || old.Generation != member.Generation {
 				return errors.New("pending wait belongs to another enclosing execution; new input must supersede it before waiting again")
 			}
+			if (old.Compaction != nil) != compact || old.Standalone != standalone {
+				return errors.New("conflicting checkpoint in the enclosing execution")
+			}
 			result = *tree.waitResult(old)
 			return unchanged
 		}
 		wait := &Wait{Effect: Effect{ID: caller.Call, Caller: caller.Thread, Target: caller.Thread, Generation: member.Generation, Turn: caller.Turn, CallerTurn: caller.Turn, Kind: "wake", State: "registered"}, Item: caller.Item, Targets: selected, All: all, Mode: mode}
+		wait.Standalone = standalone
+		if compact {
+			wait.Compaction = &Effect{ID: caller.Call + ":compact", Caller: caller.Thread, Target: caller.Thread, CallerTurn: caller.Turn, Generation: member.Generation, Kind: "compact", State: "registered"}
+		}
 		if timeout != nil {
 			if *timeout > member.Limits.MaxWaitMS {
 				return errors.New("wait timeout exceeds the captured host maximum")
@@ -233,9 +265,9 @@ func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []s
 			}
 			wait.RequestedMS, wait.EffectiveMS, wait.Deadline = new(*timeout), new(effective), new(now.Add(time.Duration(effective)*time.Millisecond))
 		}
-		if tree.selectWaitOutcome(wait) {
+		if !compact && tree.selectWaitOutcome(wait) {
 			wait.State = "completed"
-		} else if wait.EffectiveMS != nil && *wait.EffectiveMS == 0 {
+		} else if !compact && wait.EffectiveMS != nil && *wait.EffectiveMS == 0 {
 			wait.State = "timeout"
 		}
 		member.Wait = wait
@@ -299,7 +331,10 @@ func (s *Service) PrepareWake(ctx context.Context, thread string, now time.Time)
 		if wait == nil || wait.State != "registered" || wait.Stop != "committed" || member.HostRunning || member.Status != Waiting || wait.Generation != member.Generation {
 			return unchanged
 		}
-		if !tree.selectWaitOutcome(wait) && (wait.Deadline == nil || now.Before(*wait.Deadline)) {
+		if wait.CompactionPending() {
+			return unchanged
+		}
+		if !wait.Standalone && !tree.selectWaitOutcome(wait) && (wait.Deadline == nil || now.Before(*wait.Deadline)) {
 			return unchanged
 		}
 		wait.State = "queued"
@@ -321,13 +356,16 @@ func cancelSubscription(tree *Tree, member *Member) {
 			}
 		}
 	}
+	if wait.Compaction != nil && !hostOwned(wait.Compaction.State) {
+		wait.Compaction.State = "canceled"
+	}
 	wait.State, wait.Stop = "canceled", ""
 }
 
 func (tree *Tree) wakeResult(wait *Wait) *WaitResult {
 	result := tree.waitResult(wait)
 	result.State = "timeout"
-	if result.Event != nil || len(result.Events) != 0 {
+	if wait.Standalone || result.Event != nil || len(result.Events) != 0 {
 		result.State = "completed"
 	}
 	return result
@@ -355,8 +393,13 @@ func (s *Service) WaitPublication(thread string) *WaitResult {
 	if wait.EffectiveMS != nil {
 		result.EffectiveMS = new(*wait.EffectiveMS)
 	}
-	if wait.State == "completed" && result.Event == nil && len(result.Events) == 0 {
+	if !wait.Standalone && wait.State == "completed" && result.Event == nil && len(result.Events) == 0 {
 		result.State = "timeout"
 	}
 	return result
+}
+
+// CompactionPending holds deliveries from checkpoint registration through settlement.
+func (wait *Wait) CompactionPending() bool {
+	return wait != nil && wait.Compaction != nil && (hostOwned(wait.Compaction.State) || wait.Compaction.State == "registered" && wait.State == "registered" || wait.Stop == "committed" && wait.Compaction.State != "completed" && wait.Compaction.State != "failed" && wait.Compaction.State != "canceled")
 }

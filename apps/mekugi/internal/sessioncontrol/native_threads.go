@@ -167,11 +167,18 @@ func nativeContent(input control.NativeInput) (item NativeMessage, name, output 
 	}
 	if input.Wake != nil {
 		name, output = "wait_agent", input.RetainedWaitOutput()
+		if input.Kind == "COMPACT_CONTINUE" {
+			name = "compact"
+		}
 	}
 	return
 }
 
 func (r *Requests[T]) Input(ctx context.Context, input control.NativeInput) (string, error) {
+	if input.Kind == "COMPACT" {
+		_, err := r.call(ctx, input.Thread, "thread/compact/start", map[string]any{"threadId": input.Thread}, &input)
+		return "", err
+	}
 	if input.Kind == "HUMAN_INPUT" {
 		return "", &binding.DispatchError{Outcome: binding.NotDispatched, Cause: errors.New("human input belongs to the ordinary input request owner")}
 	}
@@ -238,6 +245,9 @@ func (r *Requests[T]) ConfirmPreparedInput(ctx context.Context, thread string) e
 }
 
 func (r *Requests[T]) Confirm(ctx context.Context, input control.NativeInput) error {
+	if input.Kind == "COMPACT" {
+		return errors.New("native compaction dispatch requires exact host settlement; automatic redispatch is disabled")
+	}
 	info, err := r.Thread(ctx, input.Thread)
 	if err != nil {
 		return err

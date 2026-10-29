@@ -27,6 +27,7 @@ type HostCall struct {
 	params        jsontext.Value
 	input         *control.NativeInput
 	phase         atomic.Uint32
+	sent          bool
 	result        chan hostCallResult
 }
 
@@ -104,6 +105,7 @@ func (r *Requests[T]) Dispatch(call *HostCall) {
 		call.result <- hostCallResult{err: &binding.DispatchError{Outcome: binding.Uncertain, Method: call.method, Cause: err}}
 		return
 	}
+	call.sent = true
 	request := r.pending[id]
 	request.call = call
 	r.pending[id] = request

@@ -98,6 +98,8 @@ type Wait struct {
 	RequestedMS, EffectiveMS *int64
 	Deadline                 *time.Time
 	Terminal                 *Event
+	Compaction               *Effect
+	Standalone               bool
 }
 
 // View exposes wait state without checkpoint settings or effect payloads.
@@ -174,10 +176,17 @@ type Receipt struct {
 	Reconciled                                bool
 }
 
+type CompactionResult struct {
+	State string `json:"state"`
+	Error string `json:"error,omitempty"`
+}
+
 type WaitResult struct {
 	Instructions string                    `json:"instructions,omitempty"`
+	Compaction   *CompactionResult         `json:"compaction,omitempty"`
 	Metrics      map[string]SessionMetrics `json:"metrics,omitempty"`
 	ID           string                    `json:"-"`
+	Standalone   bool                      `json:"-"`
 	All          bool                      `json:"-"`
 	State        string                    `json:"state"`
 	Mode         WaitMode                  `json:"wait_mode,omitempty"`
@@ -193,8 +202,13 @@ func (tree *Tree) Effect(caller, id string) *Effect {
 			return &tree.Effects[i]
 		}
 	}
-	if member := tree.Members[caller]; member != nil && member.Wait != nil && member.Wait.ID == id {
-		return &member.Wait.Effect
+	if member := tree.Members[caller]; member != nil && member.Wait != nil {
+		if member.Wait.ID == id {
+			return &member.Wait.Effect
+		}
+		if compact := member.Wait.Compaction; compact != nil && compact.ID == id {
+			return compact
+		}
 	}
 	return nil
 }
@@ -204,6 +218,9 @@ func (tree *Tree) Actions() []Effect {
 	actions := append([]Effect(nil), tree.Effects...)
 	for _, member := range tree.Members {
 		if member.Wait != nil {
+			if member.Wait.Compaction != nil {
+				actions = append(actions, *member.Wait.Compaction)
+			}
 			action := member.Wait.Effect
 			action.Wake = tree.wakeResult(member.Wait)
 			actions = append(actions, action)
@@ -217,6 +234,9 @@ func (tree *Tree) edit(thread string) *Member {
 		member := *current
 		if current.Wait != nil {
 			member.Wait = new(*current.Wait)
+			if current.Wait.Compaction != nil {
+				member.Wait.Compaction = new(*current.Wait.Compaction)
+			}
 		}
 		if current.RecoveryWait != nil {
 			member.RecoveryWait = new(*current.RecoveryWait)

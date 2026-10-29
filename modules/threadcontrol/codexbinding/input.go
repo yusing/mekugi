@@ -33,7 +33,7 @@ func ProjectLocalIdentities(input []byte) ([]byte, error) {
 		if responses.StringField(item, "type") == "function_call_output" && (len(item["call_id"]) == 0 || item["call_id"].Kind() == 'n') && responses.StringField(item, "namespace") == "threadcontrol" {
 			text := responses.StringField(item, "output")
 			switch responses.StringField(item, "name") {
-			case "wait_agent":
+			case "wait_agent", "compact":
 				var output map[string]jsontext.Value
 				if json.Unmarshal([]byte(text), &output) != nil || output["id"] == nil {
 					continue

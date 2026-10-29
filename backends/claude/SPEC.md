@@ -63,6 +63,15 @@ before further inference. The actual `hook_stopped` terminal result settles the
 host turn while preserving logical waiting. Wakes use synthetic non-user input
 with explicit original tool and sender attribution.
 
+Agent context checkpoints use the same successful batch stop. After its exact
+hook-stopped terminal settles, Session Control sends synthetic coordinator input
+containing exactly `/compact`, with its own UUID and no attributed-text prefix.
+Native success requires an explicit successful compaction result, a manual compact
+boundary, and terminal settlement matching that input. A failed compaction result
+overrides generic terminal success. The auxiliary command never completes the
+logical assignment or consumes retained messages; Thread Control releases the
+original continuation or wait after settlement.
+
 Private executable frontends share the parent's retained namespace under a distinct
 child identity. Native tool hooks acquire edit baselines before execution and
 publish actual terminal effects through Change History. Post-tool context carries

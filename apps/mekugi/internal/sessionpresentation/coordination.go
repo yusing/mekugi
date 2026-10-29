@@ -64,7 +64,7 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 		switch c.Action {
 		case "Wait":
 			wait := &activitypresentation.Value{Kind: "progress", From: entry.Agent, Body: "Waiting for"}
-			if c.State != "waiting" {
+			if c.State != "waiting" && c.State != "scheduled" {
 				wait.Body = "Finished waiting for"
 				wait.WaitReason = c.State
 			}
@@ -80,7 +80,7 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 					wait.WaitReason = target.Status
 				}
 			}
-			if c.State == "waiting" && c.TimeoutMS != nil {
+			if (c.State == "waiting" || c.State == "scheduled") && c.TimeoutMS != nil {
 				wait.WaitTimeout = (time.Duration(*c.TimeoutMS) * time.Millisecond).String()
 			}
 			entry.Text = wait.ProgressText()

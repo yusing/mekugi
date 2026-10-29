@@ -290,7 +290,7 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 	}()
 	for {
 		var deadline <-chan time.Time
-		if member, ok := e.shared.Member(info.Thread); ok && member.Wait != nil && member.Wait.Deadline != nil && member.Wait.State == "registered" && !member.HostRunning {
+		if member, ok := e.shared.Member(info.Thread); ok && member.Wait != nil && member.Wait.Deadline != nil && member.Wait.State == "registered" && !member.HostRunning && !member.Wait.CompactionPending() {
 			if waitTimer == nil {
 				waitTimer = time.NewTimer(time.Until(*member.Wait.Deadline))
 			} else {
@@ -306,8 +306,11 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 		case <-deadline:
 			e.driver.Tick(time.Now())
 		case <-e.driver.Changed():
-			if failures := e.driver.Failures(); len(failures) != 0 {
-				return errors.Join(failures...)
+			for _, failure := range e.driver.Failures() {
+				if _, auxiliary := errors.AsType[*threadbinding.CompactionFailure](failure); !auxiliary {
+					return failure
+				}
+				owners.Notifications.Submit(notice.Input{Session: info.Session, Thread: info.Thread, Category: "threadcontrol", Text: failure.Error()})
 			}
 		case updates := <-bridge.changes:
 			event := sessionreview.Event{Kind: "change"}

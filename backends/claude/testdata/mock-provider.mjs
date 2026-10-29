@@ -48,10 +48,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const lines = createInterface({ input: process.stdin });
   let provider;
   lines.once("line", (line) => {
-    const { responses } = JSON.parse(line);
-    provider = createMockProvider(() => responses.shift() ?? {
+    const { responses, compaction } = JSON.parse(line);
+    provider = createMockProvider((body) => {
+      if (compaction && JSON.stringify(body.messages.at(-1)).includes("CRITICAL: Respond with TEXT ONLY.")) return compaction;
+      return responses.shift() ?? {
       status: 400, error: { type: "invalid_request_error", message: "Local fixture response plan exhausted" },
-    });
+    }; });
     provider.listen(0, "127.0.0.1", () => process.stdout.write(`${JSON.stringify({ port: provider.address().port })}\n`));
   });
   const stop = () => { provider?.closeAllConnections(); provider?.close(); lines.close(); process.stdin.destroy(); };

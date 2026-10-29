@@ -275,7 +275,7 @@ func (b *claudeBridge) batch(ctx context.Context, hook claudeHook) (jsontext.Val
 	b.mu.Unlock()
 	var stopped bool
 	for _, call := range hook.Calls {
-		if call.Tool != "mcp__threadcontrol__wait_agent" {
+		if call.Tool != "mcp__threadcontrol__wait_agent" && call.Tool != "mcp__threadcontrol__compact" {
 			continue
 		}
 		identity, err := b.identity(call.ID)
@@ -285,7 +285,9 @@ func (b *claudeBridge) batch(ctx context.Context, hook claudeHook) (jsontext.Val
 		var result struct {
 			IsError bool `json:"isError"`
 		}
-		if len(call.Response) == 0 || json.Unmarshal(call.Response, &result) != nil {
+		// The native SDK flattens successful MCP results to content blocks.
+		// Terminal hook capture still authenticates the whole batch outcome.
+		if len(call.Response) == 0 || call.Response.Kind() != '[' && json.Unmarshal(call.Response, &result) != nil {
 			continue
 		}
 		if err := b.execution.shared.Execution(ctx, identity.Thread, identity.Turn, identity.Item, "", succeeded && !result.IsError); err != nil {
@@ -359,6 +361,12 @@ func (b *claudeBridge) event(ctx context.Context, raw jsontext.Value) error {
 
 func (b *claudeBridge) reduceEvent(ctx context.Context, result sessioncontrol.ClaudeEvent) error {
 	identity := control.Identity{Thread: b.info.Thread, Session: b.info.Session, Turn: result.Turn}
+	if result.Auxiliary {
+		if result.Completed {
+			b.runtime.RetireCompleted(result.Turn, nil)
+		}
+		return nil
+	}
 	if result.Started {
 		if err := b.execution.driver.AdmitRequest(ctx, b.session, identity, false); err != nil {
 			return err
@@ -368,6 +376,9 @@ func (b *claudeBridge) reduceEvent(ctx context.Context, result sessioncontrol.Cl
 		return err
 	}
 	if result.Completed {
+		if member, ok := b.execution.shared.Member(identity.Thread); ok && member.Wait != nil && member.Wait.Compaction != nil && member.Stop != nil && member.Stop.Turn == identity.Turn && result.TerminalReason != "hook_stopped" {
+			result.Status, result.Failure = control.Failed, control.HostFailure{Message: "Claude checkpoint did not settle through PostToolBatch hook-stop"}
+		}
 		if result.Answer != "" {
 			if err := b.execution.shared.AnswerCompleted(ctx, identity.Thread, identity.Turn, identity.Turn, result.Answer); err != nil {
 				return err

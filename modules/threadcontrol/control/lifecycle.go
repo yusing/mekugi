@@ -70,6 +70,9 @@ func (s *Service) InputConsumed(ctx context.Context, caller Identity, items []st
 	if err != nil {
 		return err
 	}
+	if owner.state.Load().Members[caller.Thread].Wait.CompactionPending() {
+		return nil
+	}
 	var consumed []Effect
 	for _, effect := range owner.state.Load().Effects {
 		if effect.Target != caller.Thread || effect.Kind != "message" && effect.Kind != "final" || effect.Consumed || effect.ClaimedBy != "" {
@@ -200,6 +203,9 @@ func (s *Service) HostCompleted(ctx context.Context, thread, turn string, status
 			member.Status = Working
 			if member.Wait != nil && member.Wait.State == "registered" {
 				member.Status = Waiting
+				if compact := member.Wait.Compaction; compact != nil && compact.State == "registered" {
+					compact.State = "pending"
+				}
 			}
 			return nil
 		}
@@ -251,6 +257,9 @@ func pause(tree *Tree, thread string) {
 		member.HostRunning, member.Turn = false, ""
 		if member.Wait != nil {
 			member.Wait.State = pausedState(member.Wait.State)
+			if compact := member.Wait.Compaction; compact != nil {
+				compact.State = pausedState(compact.State)
+			}
 		}
 		if member.RecoveryWait != nil {
 			member.RecoveryWait.State = pausedState(member.RecoveryWait.State)

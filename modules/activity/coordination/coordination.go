@@ -35,6 +35,8 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		c.Action, c.Kind = "Follow-up", "assignment"
 	case "send_message":
 		c.Action, c.Kind = "Message", "reply"
+	case "compact":
+		c.Action, c.Kind = "Compact", "progress"
 	case "wait_agent":
 		c.Action, c.Kind = "Wait", "progress"
 	case "interrupt_agent":
@@ -156,8 +158,10 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		if c.Confirmed {
 			c.State = "completed"
 		}
+	case "compact":
+		c.Confirmed = result.State == "scheduled"
 	case "wait_agent":
-		c.Confirmed = slices.Contains([]string{"waiting", "completed", "timeout", "canceled", "paused"}, result.State)
+		c.Confirmed = slices.Contains([]string{"scheduled", "waiting", "completed", "timeout", "canceled", "paused"}, result.State)
 		all := len(args.Target) == 0 || args.Target.Kind() == '"'
 		if c.Confirmed && len(result.Targets) > 0 && !all {
 			c.Targets = nil

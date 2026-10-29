@@ -789,6 +789,9 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 				case request := <-delegateApprovals.Requests():
 					addDelegateApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, panel != nil || resumePicker != nil, notifications, reviewOwner, &receipts, request)
 				case call := <-control.Calls():
+					if err := flushCompletions(); err != nil {
+						return err
+					}
 					control.Dispatch(call)
 				case inspection := <-control.Requests.Inspections():
 					inspection.Complete(control.Thread, threadInspection(&attached.session, control.Thread, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers))

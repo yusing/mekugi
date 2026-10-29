@@ -27,6 +27,7 @@ type Driver struct {
 	failures     map[string]error
 	changed      chan struct{}
 	stopped      chan struct{}
+	auxiliary    sync.WaitGroup
 }
 
 func NewDriver(service *control.Service) (*Driver, error) {
@@ -93,6 +94,24 @@ func (d *Driver) DispatchPending(ctx context.Context, thread string) error {
 }
 
 func (d *Driver) dispatchClaimedAction(ctx context.Context, effect *control.Effect) error {
+	if effect.Kind != "compact" {
+		return d.dispatchAction(ctx, effect)
+	}
+	// Native compaction settles asynchronously so human supersession and
+	// reviewer outcomes remain reducible while its host turn is running.
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.lifecycle == nil || d.lifecycle.Err() != nil {
+		return errors.New("compaction requires the active lifecycle owner")
+	}
+	d.auxiliary.Go(func() {
+		err := d.dispatchAction(d.lifecycle, effect)
+		d.enqueue(hostObservation{thread: effect.Target, method: "compaction/settled", err: err})
+	})
+	return nil
+}
+
+func (d *Driver) dispatchAction(ctx context.Context, effect *control.Effect) error {
 	kind := effect.Kind
 	if kind == "create" {
 		kind = effect.Phase
@@ -187,6 +206,8 @@ func nativeInput(action control.Action) control.NativeInput {
 	}
 	input := control.NativeInput{Thread: effect.Target, ParentTurn: effect.CallerTurn, ID: effect.Caller + ":" + effect.ID, Sender: action.Sender, Recipient: action.Recipient, Kind: "MESSAGE", Message: effect.Message, Wake: effect.Wake}
 	switch kind {
+	case "compact":
+		input.Kind, input.Run = "COMPACT", true
 	case "human":
 		input.Kind, input.ID, input.TargetTurn = "HUMAN_INPUT", effect.ID, effect.Turn
 	case "interrupt":
@@ -198,6 +219,9 @@ func nativeInput(action control.Action) control.NativeInput {
 		input.Message = completionGuardMessage(effect.Message)
 	case "wake":
 		input.Run = true
+		if input.Wake != nil && input.Wake.Standalone {
+			input.Kind = "COMPACT_CONTINUE"
+		}
 	case "followup", "assignment_input":
 		input.Kind, input.Run = "NEW_TASK", kind == "followup"
 		if kind == "assignment_input" {

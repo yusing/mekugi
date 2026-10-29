@@ -74,8 +74,12 @@ native request metadata remains unchanged on the provider wire.
   usage/window, and completed compactions. Unavailable observations are `null`,
   distinct from a measured zero. Inspection uses live session facts or retained
   observations without starting work or restoring an inactive runtime.
+- `compact` schedules an authenticated self-directed context checkpoint and then
+  continues unfinished work once. Agents choose safe checkpoints using judgment
+  and existing context inspection; there is no automatic threshold.
 - `wait_agent` accepts `target?: string[] | "all"`, `wait_mode?: "any" | "all"`,
-  `timeout_ms?: integer`. Omitted target means `"all"`; omitted mode means `"any"`.
+  `timeout_ms?: integer`, and `compact?: boolean`. Omitted target means `"all"`;
+  omitted mode means `"any"`; omitted compaction means false.
 
 Follow-up acknowledgements include the target's current context and compaction
 metrics. Immediate wait results and resumed wait outputs include those same metrics
@@ -291,6 +295,23 @@ a stale stop. Stop disposition and terminal reduction serialize per work generat
 
 A local host-turn completion checkpoints logical waiting, not task completion:
 no final answer, completion event/notice, idle transition or released reservation.
+Agent-requested compaction registers its intent and optional wait atomically,
+including when an outcome is already ready. Its scheduled acknowledgement requires
+the same authenticated successful enclosing execution and settled host turn as a
+local wait. Failed execution retires the checkpoint without claiming events; yielded
+execution remains pending. Results and addressed messages stay retained behind the
+compaction dispatch barrier. Standalone success continues once. Compound success
+releases only the original wait: an eligible outcome is delivered once, otherwise
+the caller stays waiting without inference. Wait deadlines run from registration
+and may expire during compaction.
+
+Compound compaction failure preserves the wait and events, surfaces an immediate
+notice, and includes the failed compaction outcome in eventual delivery. Failure
+alone does not start inference. Human input and interruption supersede undispatched
+continuations. Uncertain native dispatch pauses for reconciliation and is never
+repeated automatically. These semantics apply to Codex roots/delegates and Claude
+delegates.
+
 Manual compaction preserves the pending wait and logical work. Its auxiliary
 host turn neither completes the task nor starts a competing continuation; addressed
 messages and wakes queue until compaction settles.

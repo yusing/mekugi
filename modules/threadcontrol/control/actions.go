@@ -148,6 +148,9 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 			}
 		}
 	}
+	if member != nil && member.Wait.CompactionPending() && effect.Kind != "compact" && effect.Kind != "interrupt" {
+		return nil, nil
+	}
 	if member != nil && member.Wait != nil && effect.Kind != "wake" && hostOwned(member.Wait.State) {
 		return nil, nil
 	}
@@ -163,11 +166,15 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 		if effect.Kind == "interrupt" && member.HostRunning && effectStep(other) == "initial" {
 			continue
 		}
-		if hostOwned(other.State) || before && other.State == "pending" {
+		if hostOwned(other.State) || before && other.State == "pending" && effect.Kind != "compact" {
 			return nil, nil
 		}
 	}
 	switch effectStep(*effect) {
+	case "compact":
+		if member.HostRunning || member.Wait == nil || member.Wait.State != "registered" || member.Wait.Stop != "committed" || member.Generation != effect.Generation {
+			return nil, unchanged
+		}
 	case "create", "assignment_input", "admit", "message", "final":
 	case "completion":
 		if member.HostRunning || member.Status != Working || member.Generation != effect.Generation || member.Turn != effect.CallerTurn || member.Stop == nil || member.Stop.Wait != effect.ID {
@@ -246,7 +253,7 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 				effect.Target, effect.Child.Session, effect.Child.Path = receipt.Thread, receipt.Session, receipt.Path
 			}
 			if member != nil && member.Status != Paused {
-				if effect.Kind == "wake" && member.Reserved() && receipt.Uncertain {
+				if (effect.Kind == "wake" || effect.Kind == "compact") && member.Reserved() && receipt.Uncertain {
 					member.Status = Uncertain
 				}
 				if effect.Kind == "create" && member.Status == Pending {
@@ -270,6 +277,11 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 		}
 		effect.State = "confirmed"
 		switch step {
+		case "compact":
+			effect.State = "completed"
+			if receipt.Reconciled && member.Status == Uncertain && member.Wait.State == "registered" {
+				member.Status = Waiting
+			}
 		case "create":
 			if receipt.Thread == "" || receipt.Session == "" || tree.Members[receipt.Thread] != nil {
 				return errors.New("invalid independent child identity")

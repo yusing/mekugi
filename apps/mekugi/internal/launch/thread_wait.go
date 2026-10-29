@@ -112,6 +112,9 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 		lifecycle.ObserveActive(true, now)
 	}
 	wait := threads.shared.WaitPublication(live.Thread)
+	if wait != nil && wait.Standalone {
+		wait = nil
+	}
 	lifecycle.WaitingFor = ""
 	if !lifecycle.Waiting || wait == nil {
 		lifecycle.Wait = nil

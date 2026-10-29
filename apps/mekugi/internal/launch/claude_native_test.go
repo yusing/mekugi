@@ -106,12 +106,21 @@ func TestClaudeNativePreparedRuntime(t *testing.T) {
 		{"never_auto_review", `"never"`, "auto_review"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			testClaudeNativePreparedRuntime(t, tc.approval, tc.reviewer)
+			testClaudeNativePreparedRuntime(t, tc.approval, tc.reviewer, "")
 		})
 	}
 }
 
-func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
+func TestClaudeNativeAgentCompaction(t *testing.T) {
+	if os.Getenv("MEKUGI_TEST_CLAUDE_NATIVE") != "1" {
+		t.Skip("set MEKUGI_TEST_CLAUDE_NATIVE=1 with bundled SDK, Bun and Claude")
+	}
+	for _, outcome := range []string{"success", "failed"} {
+		t.Run(outcome, func(t *testing.T) { testClaudeNativePreparedRuntime(t, `"never"`, "auto_review", outcome) })
+	}
+}
+
+func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
@@ -189,6 +198,15 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
 		map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": "child_list", "name": "Bash", "input": map[string]string{"command": "mchanges --list", "description": "Read child captures"}}}},
 		map[string]any{"content": []any{map[string]string{"type": "text", "text": "native child finished"}}},
 	}}
+	if compact != "" {
+		responses := plan["responses"].([]any)
+		summary := map[string]any{"content": []any{map[string]string{"type": "text", "text": "<summary>Retain native child checks and continue unfinished work. All prior checks succeeded. The agent read parent captures, wrote native-child.txt and listed child captures. The only remaining task is to report native child finished.</summary>"}}}
+		if compact == "failed" {
+			summary = map[string]any{"status": 400, "error": map[string]string{"type": "invalid_request_error", "message": "fixture compaction failure"}}
+		}
+		plan["responses"] = append(append(responses[:3:3], map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": "compact_checkpoint", "name": "mcp__threadcontrol__compact", "input": map[string]any{}}}}), responses[3])
+		plan["compaction"] = summary
+	}
 	encoded, err := json.Marshal(plan)
 	if err != nil {
 		t.Fatal(err)
@@ -290,7 +308,16 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
 			t.Fatalf("native final delivery: %+v", final)
 		}
 	case <-ctx.Done():
-		t.Fatal(ctx.Err())
+		member, _ := execution.shared.Member(result.Thread)
+		var checkpoint any
+		if member.Wait != nil {
+			checkpoint = member.Wait.Compaction
+		}
+		t.Fatalf("%v: status=%s wait=%+v compact=%+v errors=%v", ctx.Err(), member.Status, member.Wait, checkpoint, driver.Failures())
+	}
+	wantRounds, wantTurns := uint64(4), uint64(1)
+	if compact != "" {
+		wantRounds, wantTurns = 6, 2
 	}
 	// Final delivery precedes auxiliary context acquisition. Wait for the shared
 	// roster publication, not another model turn, to observe both producers.
@@ -305,7 +332,7 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
 			}
 		}
 		if metrics.ContextKnown && metrics.TokensKnown && metrics.WorkKnown {
-			if metrics.InputTokens == 0 || metrics.OutputTokens == 0 || metrics.ContextWindow == 0 || !metrics.CostKnown || metrics.Cost <= 0 || metrics.Roundtrips != 4 || metrics.Turns != 1 || !metrics.NonAttachable {
+			if metrics.InputTokens == 0 || metrics.OutputTokens == 0 || metrics.ContextWindow == 0 || !metrics.CostKnown || metrics.Cost <= 0 || metrics.Roundtrips != wantRounds || metrics.Turns != wantTurns || !metrics.NonAttachable {
 				t.Fatalf("native SDK metrics did not reach family roster: %+v", metrics)
 			}
 			break
@@ -347,6 +374,31 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer string) {
 	}
 	if !strings.Contains(string(body), "+parent evidence") || !strings.Contains(string(body), "THREAD="+result.Thread) || !strings.Contains(string(body), "mekugi-tools-") || !strings.Contains(string(body), "mchanges "+strings.Fields(childList)[0]) {
 		t.Fatalf("native provider input omitted private frontend identity or shared receipts: %s", body)
+	}
+	if compact != "" {
+		var requests []struct {
+			Messages []struct {
+				Role    string         `json:"role"`
+				Content jsontext.Value `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.Unmarshal(body, &requests); err != nil {
+			t.Fatal(err)
+		}
+		generating := 0
+		for _, request := range requests {
+			raw, _ := json.Marshal(request.Messages)
+			if !strings.Contains(string(raw), "CRITICAL: Respond with TEXT ONLY.") {
+				generating++
+			}
+		}
+		if generating != 5 {
+			t.Fatalf("compaction ran unexpected inference: requests=%d", len(requests))
+		}
+		last, _ := json.Marshal(requests[len(requests)-1])
+		if !strings.Contains(string(last), "Thread Control compact") || compact == "failed" && !strings.Contains(string(last), "failed") {
+			t.Fatalf("missing retained compaction outcome: %s", last)
+		}
 	}
 	for _, absent := range []string{"excluded-native-instruction-fixture", "# Memory", "Co-Authored-By:", "Generated with [Claude Code]", "tools.exec_command", "Promise.allSettled"} {
 		if strings.Contains(string(body), absent) {

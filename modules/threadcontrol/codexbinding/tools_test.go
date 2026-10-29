@@ -57,12 +57,15 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		if tool.Name == "inspect" && (!strings.Contains(tool.Description, "idle or completed agents") || !strings.Contains(tool.Description, "retained observations without starting work") || !strings.Contains(tool.Description, "unavailable observations are null")) {
 			t.Fatalf("inspect description: %q", tool.Description)
 		}
+		if tool.Name == "compact" && (!strings.Contains(tool.Description, "safe checkpoint") || !strings.Contains(tool.Description, "automatically continue unfinished work")) {
+			t.Fatalf("compact description: %q", tool.Description)
+		}
 		if tool.Name == "wait_agent" && (!strings.Contains(tool.Description, "ends the host turn") || !strings.Contains(tool.Description, "later wait_agent output")) {
 			t.Fatalf("wait description: %q", tool.Description)
 		}
 	}
 	slices.Sort(names)
-	expected := []string{"followup_task", "inspect", "interrupt_agent", "list_agents", "list_models", "send_message", "spawn_agent", "wait_agent"}
+	expected := []string{"compact", "followup_task", "inspect", "interrupt_agent", "list_agents", "list_models", "send_message", "spawn_agent", "wait_agent"}
 	if !slices.Equal(names, expected) {
 		t.Fatalf("catalog=%v", names)
 	}
@@ -72,6 +75,8 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		{"spawn_agent", `{"task_name":"child","message":"task","preload":{"sources":[{"path":"file","ranges":[[1]]}]}}`},
 		{"list_agents", `{"unknown":true}`},
 		{"list_models", `{"backend":"codex"}`},
+		{"compact", `{"target":"other"}`},
+		{"wait_agent", `{"compact":"yes"}`},
 		{"inspect", `{}`},
 		{"inspect", `{"target":"/root","unknown":true}`},
 		{"wait_agent", `{"target":[]}`},
