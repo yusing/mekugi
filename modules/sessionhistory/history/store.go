@@ -61,9 +61,10 @@ func (s *Store) Directory() string { return s.directory }
 // retained in records or held across delivery. Participants cannot open nested
 // transactions through this handle.
 type Transaction struct {
-	store  *Store
-	writes *persistence.Counter
-	active bool
+	store   *Store
+	writes  *persistence.Counter
+	active  bool
+	revised bool
 }
 
 // Transaction serializes one operation across processes and publishes in caller
@@ -126,6 +127,9 @@ func (tx *Transaction) Revision() (string, error) {
 }
 
 // AdvanceRevision invalidates plans before any managed effect, including removal.
+// One durable revision covers the complete transaction: other transactions can
+// only sample it before or after this transaction releases store.lock. Caches
+// still invalidate before every effect, including effects after a failed write.
 // Source: internal/router/storage_prune.go:57:72@efcbf71f advanceStorageRevision.
 func (tx *Transaction) AdvanceRevision() error {
 	if err := tx.check(); err != nil {
@@ -134,6 +138,9 @@ func (tx *Transaction) AdvanceRevision() error {
 	s := tx.store
 	s.files = nil
 	s.catalog = nil
+	if tx.revised {
+		return nil
+	}
 	if _, err := tx.Revision(); err != nil {
 		return err
 	}
@@ -142,6 +149,7 @@ func (tx *Transaction) AdvanceRevision() error {
 		return err
 	}
 	s.revision = revision
+	tx.revised = true
 	return nil
 }
 

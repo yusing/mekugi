@@ -22,6 +22,64 @@ import (
 
 func managedRecord(name string) bool { return strings.HasSuffix(name, ".json") }
 
+func TestStoreTransactionSharesDurableRevision(t *testing.T) {
+	directory := t.TempDir()
+	store := fixtureStore(directory, managedRecord)
+	writes := new(persistence.Counter)
+	failure := errors.New("publication stopped after completed writes")
+	var revision string
+	err := store.Transaction(t.Context(), writes, func(tx *history.Transaction) error {
+		if err := tx.Retain("thread", history.Limits{}, "first.json", "second.json"); err != nil {
+			return err
+		}
+		var err error
+		revision, err = tx.Revision()
+		if err != nil || revision == "" {
+			t.Fatalf("ownership publication lacks revision: %q %v", revision, err)
+		}
+		for _, name := range []string{"first.json", "second.json"} {
+			if err := tx.Write(name, "payload-", []byte(name)); err != nil {
+				return err
+			}
+			// Publication remains immediate, before the callback returns.
+			if data, err := history.ReadRecord(filepath.Join(directory, name)); err != nil || string(data) != name {
+				t.Fatalf("completed payload unavailable: %q %v", data, err)
+			}
+			if got, err := tx.Revision(); err != nil || got != revision {
+				t.Fatalf("transaction rewrote revision: %q %v", got, err)
+			}
+		}
+		return failure
+	})
+	if !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	catalogName := history.SessionName("thread")
+	catalog, err := history.ReadRecord(filepath.Join(directory, catalogName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := writes.Snapshot().Bytes, uint64(len(catalog)+len("first.jsonsecond.json")+len(revision)); got != want {
+		t.Fatalf("publication bytes = %d, want %d (one revision)", got, want)
+	}
+	peer := fixtureStore(directory, managedRecord)
+	if err := peer.Transaction(t.Context(), nil, func(tx *history.Transaction) error {
+		sizes, err := tx.FileSizes()
+		if err != nil || len(sizes) != 3 || sizes["first.json"] != int64(len("first.json")) || sizes["second.json"] != int64(len("second.json")) {
+			t.Fatalf("completed effects lost after failure: %v %v", sizes, err)
+		}
+		if err := tx.Write("first.json", "payload-", []byte("changed")); err != nil {
+			return err
+		}
+		if next, err := tx.Revision(); err != nil || next == revision {
+			t.Fatalf("next transaction reused revision: %q %v", next, err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestStoreIdenticalWriteAndPeerRefresh(t *testing.T) {
 	directory := t.TempDir()
 	store := fixtureStore(directory, managedRecord)

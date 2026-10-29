@@ -54,10 +54,9 @@ func TestPersistenceUsageCoalescesBurstAndRetainsDeltas(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// The first usage publication also retains its session catalog. Each
-		// changed record advances the revision once; the burst needs only one
-		// usage record and one catalog publication.
-		if got, want := store.writes.Snapshot().Bytes, uint64(len(record)+len(catalog)+2*len(revision)); got != want {
+		// The first usage transaction publishes one revision, its usage record
+		// and the retained session catalog.
+		if got, want := store.writes.Snapshot().Bytes, uint64(len(record)+len(catalog)+len(revision)); got != want {
 			t.Fatalf("burst wrote %d bytes, want one publication of %d", got, want)
 		}
 		for range 3 {
