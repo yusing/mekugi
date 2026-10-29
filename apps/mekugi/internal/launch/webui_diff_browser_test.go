@@ -165,11 +165,13 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		}
 	}
 	run("open", page.URL)
-	run("eval", `window.heldLivePublications = []; const Original = window.WebSocket; window.WebSocket = class extends Original {
+	run("eval", `window.heldLivePublications = []; window.controlSockets = []; window.reviewSnapshots = 0; const Original = window.WebSocket; window.WebSocket = class extends Original {
+    constructor(...args) { super(...args); window.controlSockets.push(this); }
     addEventListener(kind, listener, ...options) {
       if (kind !== 'message') return super.addEventListener(kind, listener, ...options);
       return super.addEventListener(kind, event => {
         const message = JSON.parse(event.data);
+        if (message.method === 'subscription/event' && message.params.kind === 'snapshot' && message.params.data.review) window.reviewSnapshots++;
         if (window.holdLivePublications && message.method === 'subscription/event' && message.params.data.deferred?.live) {
           window.heldLivePublications.push(() => listener.call(this, event)); return;
         }
@@ -188,7 +190,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	run("wait", "--fn", `(() => { const s = document.querySelector('[aria-labelledby="saved-heading"]'); const cells = [...s.querySelectorAll('span.whitespace-pre')]; const plain = cells.find(e => e.textContent === '<script>literal & text</script>'); const added = cells.find(e => e.textContent === 'const new_name = 2;'); return plain && !plain.querySelector('[style], .diff-word, script') && added && [...added.querySelectorAll('.diff-word')].map(e => e.textContent).join('') === 'new_name2' && s.querySelector('details').querySelectorAll('.border-dashed').length === 2 && !s.textContent.includes('@@') && [...s.querySelectorAll('.tabular-nums')].some(e => e.textContent === '15'); })()`)
 	capture("saved-diff")
 	// Delay each review refresh so the displayed window must survive in flight.
-	run("eval", `window.savedFile = document.querySelector('[data-file]'); window.savedDiff = window.savedFile.querySelector('.diff-word'); window.reviewFlashed = false; window.reviewObserver = new MutationObserver(() => { if (document.querySelector('[aria-label="Loading saved changes"]')) window.reviewFlashed = true; }); window.reviewObserver.observe(document.body, {childList:true, subtree:true}); window.pageReads = []; window.fileReads = []; window.originalSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { if (JSON.parse(text).method === 'session/page') { window.pageReads.push(() => window.originalSend.call(this, text)); return; } return window.originalSend.call(this, text); }; window.originalFetch = window.fetch; window.fetch = (...args) => String(args[0]).endsWith('/api/resources/content') ? new Promise((resolve, reject) => window.fileReads.push(() => window.originalFetch(...args).then(resolve, reject))) : window.originalFetch(...args)`)
+	run("eval", `window.savedFile = document.querySelector('[data-file]'); window.savedDiff = window.savedFile.querySelector('.diff-word'); window.reviewFlashed = false; window.reviewObserver = new MutationObserver(() => { if (document.querySelector('[aria-label="Loading saved changes"]')) window.reviewFlashed = true; }); window.reviewObserver.observe(document.body, {childList:true, subtree:true}); window.pageReads = []; window.fileReads = []; window.originalSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { if (JSON.parse(text).method === 'session/page') { window.pageReads.push(() => window.originalSend.call(this, text)); return; } return window.originalSend.call(this, text); }; window.originalFetch = window.fetch; window.fetch = (...args) => String(args[0]).endsWith('/api/resources/content') ? new Promise((resolve, reject) => window.fileReads.push(Object.assign(() => window.originalFetch(...args).then(resolve, reject), {signal: args[1].signal}))) : window.originalFetch(...args)`)
 	for i := range 3 {
 		if i > 0 {
 			run("eval", `document.querySelector('#panel-content > div').scrollTop = 500`)
@@ -202,6 +204,12 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		publish()
 		run("wait", "--text", frame.Session.Title)
 		run("wait", "--fn", `window.pageReads.length > 0`)
+		if i == 0 {
+			// Metadata belongs to the failed control channel and must retry,
+			// without making independent content reads reconnect-scoped.
+			run("eval", `window.pageReads = []; window.previousReviewSnapshots = window.reviewSnapshots; window.controlSockets.forEach(socket => socket.close())`)
+			run("wait", "--fn", `window.reviewSnapshots > window.previousReviewSnapshots && window.pageReads.length === 1`)
+		}
 		if strings.TrimSpace(run("eval", `window.savedFile.isConnected && window.savedDiff.isConnected && !window.reviewFlashed`)) != "true" {
 			t.Fatal("review refresh hid the acquired file or its composed diff")
 		}
@@ -210,6 +218,17 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		}
 		run("eval", `window.pageReads.shift()()`)
 		run("wait", "--fn", `window.fileReads.length > 0`)
+		if i == 0 {
+			// A control reconnect sends the same review in a fresh snapshot.
+			// Its independent HTTP read must finish rather than restart on each
+			// snapshot, even when the resource is slower than the control link.
+			for range 3 {
+				run("eval", `window.previousReviewSnapshots = window.reviewSnapshots; window.controlSockets.forEach(socket => socket.close())`)
+				run("wait", "--fn", `window.reviewSnapshots > window.previousReviewSnapshots`)
+				run("eval", `if (window.fileReads.length !== 1 || window.fileReads[0].signal.aborted || window.pageReads.length) throw Error('Control reconnect restarted unchanged composed-file content')`)
+			}
+			t.Log("Three control reconnections retained one pending composed-file request without restarting it")
+		}
 		if i > 0 {
 			run("eval", `(() => { const pane = document.querySelector('#panel-content > div'); if (!window.savedDiff.isConnected || Math.abs(pane.scrollTop - window.reviewScroll) > 1 || Math.abs(pane.scrollHeight - window.reviewHeight) > 2) throw Error('Metadata refresh changed the rendered review: ' + JSON.stringify({connected:window.savedDiff.isConnected,scroll:pane.scrollTop,expectedScroll:window.reviewScroll,height:pane.scrollHeight,expectedHeight:window.reviewHeight})); })()`)
 		}

@@ -36,8 +36,12 @@
   let acquiredPage = $state.raw<PageCursor>();
   let windowOwner = "";
   let windowRows = 0;
+  const pageIdentity = $derived(review?.page ? JSON.stringify({ ...review.page, caller }) : "");
   $effect(() => {
-    const page = review?.page;
+    // Catch-up snapshots replace objects, not the underlying review source.
+    // Keep independent HTTP reads alive across control reconnections.
+    void pageIdentity;
+    const page = untrack(() => review?.page);
     const selected = caller;
     const identity = `${page?.attachment}:${selected}`;
     untrack(() => {
@@ -59,6 +63,14 @@
     refreshing = false;
     if (page) untrack(() => void refreshPages());
     return () => request.abort();
+  });
+  $effect(() => {
+    if (stream.connection !== "open") return;
+    // Metadata travels over the control channel, unlike file content.
+    // Reacquire a failed window after that channel reconnects.
+    untrack(() => {
+      if (pageError) void refreshPages();
+    });
   });
   function captureAnchor() {
     const scroller = container?.closest<HTMLElement>(".overflow-y-auto");
