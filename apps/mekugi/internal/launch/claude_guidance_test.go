@@ -8,6 +8,7 @@ import (
 	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/testsupport/moduletest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,18 +43,18 @@ func TestClaudeGuidanceAndPreload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prompt, err := claudeSystemPrompt(control.Settings{Workspace: child, DeveloperInstructions: new("frozen role"), Preparation: preparation}, control.Identity{Thread: "native-id"}, "private tools")
+	prompt, err := claudeSystemPrompt(control.Settings{Workspace: child, DeveloperInstructions: new("frozen role"), Preparation: preparation}, control.Identity{Thread: "native-id"})
 	var value map[string]string
 	if err != nil || json.Unmarshal(prompt, &value) != nil {
 		t.Fatalf("prompt: %s, %v", prompt, err)
 	}
-	if value["preset"] != "claude_code" || !strings.Contains(value["append"], "frozen role") || !strings.Contains(value["append"], "private tools") || strings.Contains(value["append"], "superseded rules") || strings.Contains(value["append"], "parent rules") || strings.Contains(value["append"], "child rules") {
+	if value["preset"] != "claude_code" || !strings.Contains(value["append"], "frozen role") || strings.Contains(value["append"], "superseded rules") || strings.Contains(value["append"], "parent rules") || strings.Contains(value["append"], "child rules") {
 		t.Fatalf("native guidance lost captured instructions or bypassed native project discovery: %s", prompt)
 	}
 	if !strings.Contains(value["append"], "reviewer: Review the implementation. (model: codex-pinned, role-selected) (model_reasoning_effort: high, role-selected)") {
 		t.Fatalf("native guidance omitted the selected Codex role catalog: %s", prompt)
 	}
-	if _, err := claudeSystemPrompt(control.Settings{Preparation: []byte(`{"layers":`)}, control.Identity{}, ""); err == nil {
+	if _, err := claudeSystemPrompt(control.Settings{Preparation: []byte(`{"layers":`)}, control.Identity{}); err == nil {
 		t.Fatal("invalid captured role configuration was accepted")
 	}
 	body, err := claudePreload(t.Context(), `{"sources":[{"path":"source.txt","ranges":[[2,2]]},{"path":"missing.txt"},{"path":"AGENTS.md"}]}`, child, os.Environ(), compact.ChangeReader{})
@@ -168,5 +169,34 @@ func TestContextChangesPreloadCompleteComposition(t *testing.T) {
 	isolated, err := compact.ReadSources(t.Context(), string(selection), caller, os.Environ(), reader)
 	if err != nil || isolated.Sources[0].ExitCode == 0 || strings.Contains(isolated.Sources[0].Stdout, final) {
 		t.Fatalf("foreign namespace exposed capture: %v", err)
+	}
+}
+
+func TestClaudeGuidanceSettingsHookEmitsExactContext(t *testing.T) {
+	const guidance = "use mchanges 'apple1..apple3' and 100% of \"output\"\n$HOME `pwd`"
+	raw, err := claudeGuidanceSettings(guidance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings struct {
+		Hooks struct {
+			SessionStart []struct {
+				Matcher string
+				Hooks   []struct{ Type, Command string }
+			}
+		}
+	}
+	if err := json.Unmarshal(raw, &settings, json.MatchCaseInsensitiveNames(true)); err != nil || len(settings.Hooks.SessionStart) != 1 || settings.Hooks.SessionStart[0].Matcher != "" || len(settings.Hooks.SessionStart[0].Hooks) != 1 {
+		t.Fatalf("SessionStart settings: %s, %v", raw, err)
+	}
+	output, err := exec.CommandContext(t.Context(), "bash", "-c", settings.Hooks.SessionStart[0].Hooks[0].Command).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hook struct {
+		Specific struct{ HookEventName, AdditionalContext string } `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(output, &hook, json.MatchCaseInsensitiveNames(true)); err != nil || hook.Specific.HookEventName != "SessionStart" || hook.Specific.AdditionalContext != guidance {
+		t.Fatalf("hook output %q: %v", output, err)
 	}
 }

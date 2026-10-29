@@ -191,7 +191,7 @@ class Worker {
       // Auto-memory's native prompt requires the unavailable Write tool.
       env: { ...process.env, CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "0", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" }, settingSources: ["user", "project", "local"],
       // Native main-agent settings must not replace the captured Codex role.
-      settings: { agent: "" }, agent: undefined, agents: undefined,
+      settings: { ...object.parse(config.options.settings ?? {}), agent: "" }, agent: undefined, agents: undefined,
       sandbox: { enabled: false },
       includePartialMessages: true,
       disallowedTools: [...new Set([...disallowedTools, ...nativeDelegationTools])],

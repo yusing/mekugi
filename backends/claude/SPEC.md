@@ -19,8 +19,10 @@ those owners; this integration exposes Claude only through Thread Control.
 
 Delegates load native user, project and local Claude settings. Claude owns instruction
 discovery and exclusions, and commit/PR attribution. Mekugi
-appends captured custom/role instructions, coordination guidance and the authenticated
-shell frontend catalog; Codex JavaScript execution guidance stays with Codex.
+appends captured custom/role instructions and coordination guidance to the system
+prompt. The authenticated shell frontend catalog and workflow arrive as SessionStart
+context from a settings command hook, which runs for startup, resume and compaction and
+places it in the conversation alongside Claude Code's project instructions. Codex JavaScript execution guidance stays with Codex.
 Captured approvals, role reductions and Thread Control coordination remain authoritative.
 Native delegation and team tools are disabled. The native Skill tool is
 available unless skills-mgr is on the delegate PATH, which then owns skill acquisition. Native main-agent selection cannot

@@ -452,4 +452,22 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 			t.Errorf("native provider request omits required guidance %q", present)
 		}
 	}
+	// Frontend guidance is SessionStart context, not the system tail, and is
+	// delivered again after native compaction.
+	var requests []struct {
+		System   jsontext.Value `json:"system"`
+		Messages jsontext.Value `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &requests); err != nil || len(requests) == 0 {
+		t.Fatalf("fixture requests: %v", err)
+	}
+	const workflow = "Reuse completed edit-receipt IDs"
+	for i, request := range requests {
+		if strings.Contains(string(request.System), workflow) {
+			t.Errorf("request %d carries frontend guidance in the system prompt", i)
+		}
+	}
+	if !strings.Contains(string(requests[0].Messages), workflow) || compact == "success" && !strings.Contains(string(requests[len(requests)-1].Messages), workflow) {
+		t.Error("frontend guidance missing from initial or post-compaction context")
+	}
 }

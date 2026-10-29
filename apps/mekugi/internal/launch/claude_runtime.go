@@ -185,8 +185,11 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 	if settings.Effort != nil {
 		options["effort"], _ = json.Marshal(*settings.Effort)
 	}
-	options["systemPrompt"], err = claudeSystemPrompt(settings, control.Identity{Thread: info.Thread, Session: info.Session}, registry.FrontendGuidance.Shell)
+	options["systemPrompt"], err = claudeSystemPrompt(settings, control.Identity{Thread: info.Thread, Session: info.Session})
 	if err != nil {
+		return err
+	}
+	if options["settings"], err = claudeGuidanceSettings(registry.FrontendGuidance.Shell); err != nil {
 		return err
 	}
 	if resume {
