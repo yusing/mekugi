@@ -379,7 +379,9 @@ on resume and fork, and retired with that thread's attachment. An unavailable
 history baseline remains unknown rather than reporting zero completed compactions.
 
 Compaction replaces Working with `Compacting context`, then emits `Context compacted`
-on success. Turn termination clears unfinished progress without claiming success;
+on success. Its elapsed time starts at the first matching progress observation;
+duplicate starts preserve it, while logical-work elapsed remains unchanged.
+Turn termination clears unfinished progress without claiming success;
 child compaction does not replace Main status. Empty-stdin polling uses `Still running`
 without repeated transcript rows; completion, other activity or turn end clears it.
 Compaction takes precedence. Steering returns to the active state after success.

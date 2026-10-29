@@ -269,9 +269,11 @@ func (m *Model) ObserveProgress(e observation.Event, activeTurn string, complete
 	switch e.Kind {
 	case observation.TurnStarted:
 		m.compacting, m.polling = [2]string{}, [2]string{}
+		m.compactionStarted = time.Time{}
 	case observation.TurnCompleted:
 		if e.TurnID == activeTurn {
 			m.compacting, m.polling = [2]string{}, [2]string{}
+			m.compactionStarted = time.Time{}
 		}
 	case observation.AgentDelta, observation.ReasoningDelta:
 		if e.TurnID == activeTurn {
@@ -290,9 +292,13 @@ func (m *Model) ObserveProgress(e observation.Event, activeTurn string, complete
 		m.polling = [2]string{}
 		key := [2]string{e.TurnID, e.Item.ID}
 		if e.Kind == observation.ItemStarted && !completed {
+			if m.compacting != key {
+				m.compactionStarted = e.At
+			}
 			m.compacting = key
 		} else if e.Kind == observation.ItemCompleted && m.compacting == key {
 			m.compacting = [2]string{}
+			m.compactionStarted = time.Time{}
 		}
 	}
 }
@@ -326,6 +332,7 @@ func (m *Model) sessionLabel(l Label, turn string, pending, archiving, shell boo
 				l.Text = "Running shell"
 			case m.compacting != [2]string{}:
 				l.Text = "Compacting context"
+				l.Started = m.compactionStarted
 			case m.polling != [2]string{}:
 				l.Text = "Still running"
 			}

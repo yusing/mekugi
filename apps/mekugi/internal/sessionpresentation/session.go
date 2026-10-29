@@ -5,6 +5,7 @@ package sessionpresentation
 import (
 	"errors"
 	"slices"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/contracts/presentation"
@@ -115,6 +116,7 @@ type Model struct {
 	status              []presentation.Status
 	Status              MainState
 	compacting, polling [2]string
+	compactionStarted   time.Time
 	view                View
 	destinationRevision uint64
 	ownerRevision       uint64
@@ -151,6 +153,7 @@ func (m *Model) Attach(main Thread, replay bool) {
 func (m *Model) BorrowExecutionStatus(source *Model) {
 	m.Status = source.Status
 	m.compacting, m.polling = source.compacting, source.polling
+	m.compactionStarted = source.compactionStarted
 }
 
 func (m *Model) View() View {
