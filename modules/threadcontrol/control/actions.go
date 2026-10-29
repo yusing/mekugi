@@ -84,12 +84,8 @@ func (s *Service) PrepareAction(ctx context.Context, caller Identity, target, ki
 		}
 		receiver = tree.edit(receiver.Thread)
 		if kind != "message" {
-			tree.cancelCompletion(receiver)
-			if receiver.Wait != nil {
-				if hostOwned(receiver.Wait.State) {
-					return errors.New("wait continuation requires host reconciliation before control")
-				}
-				cancelSubscription(tree, receiver)
+			if _, err := tree.transitionHost(receiver, hostEvent{kind: hostEventControl}); err != nil {
+				return err
 			}
 			if kind == "followup" && (!receiver.Reserved() || receiver.Status == Paused) {
 				if !receiver.Reserved() {

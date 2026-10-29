@@ -257,6 +257,31 @@ confirmed child workspace. Directory selection grants no additional permission.
 
 ## Logical waits and ordered delivery
 
+Host events reduce logical work and its subscription together. A registered wait
+is uncommitted until its exact enclosing execution succeeds and its local stop is
+claimed. A committed stop may precede host settlement; stopped waiting still owns
+logical work. A queued wake is undispatched; dispatching or uncertain wakes remain
+host-owned until confirmed or reconciled.
+
+| Host event | Executing, no committed stop | Committed stop / stopped waiting | Queued or host-owned wake |
+| --- | --- | --- | --- |
+| Successful host completion | Defer normal completion while active descendants remain; otherwise complete with that turn's ordinary answers. | Checkpoint waiting and keep the reservation, subscription and answers; do not publish a final result. | A matching committed stop still checkpoints; a host-owned wake keeps its dispatch identity through terminal settlement. |
+| Terminal host failure | Fail work and cancel an undispatched wait. Confirmed recoverable failures instead retain recovery waiting while active descendants remain. | Same failure policy; a committed stop does not turn failure into success. | Recovery queues behind a host-owned wake; terminal failure retains that wake's reconciliation identity. |
+| Host interruption | Settle interrupted and retire an undispatched subscription. | Same terminal outcome, retaining the actual interruption. | Retain a dispatched wake's reconciliation identity. |
+| Manual compaction | Auxiliary turns do not acquire or settle logical work. Without an exact committed stop, no wait checkpoint is taken. | Settle only the exact committed stop's host prerequisite; preserve work, wait, answers and queued events. | Hold continuation delivery until auxiliary compaction settles. |
+| Addressed input injection | Retain the notification without starting or steering the receiver, or consuming it on acknowledgement alone. | Retain it for ordered wait delivery after host settlement and any compaction barrier. | Do not replace the existing dispatch or claim a notification twice. |
+| Explicit human input or steering | Supersede an undispatched subscription and local stop so ordinary work can process input. | Same supersession; queued composer input alone does not perform it. | Release an undispatched wake's claims; require reconciliation before superseding a host-owned wake. |
+| Human interruption / interrupt_agent | Retire the wait and interrupt the actual running turn; its observed outcome settles work. | Without a running turn, settle interrupted once. | Cancel an undispatched wake; require reconciliation for a host-owned wake. |
+| Enclosing execution yields or succeeds | Yield retains the wait without arming a stop; authenticated success makes the exact wait eligible for one local stop. | Repeated evidence reuses that stop. | Evidence for an execution that no longer owns a registered wait has no effect. |
+| Enclosing execution fails | Retire its exact registered wait so another execution may retry; do not settle logical work. | Retire that wait and local stop, returning waiting work to working. | Do not retire a queued or dispatched wake using stale execution evidence. |
+| Enclosing-cell re-execution | Reuse the same subscription for the same turn, item and work generation; reject a different enclosing execution while pending. | Reuse only while the authenticated enclosing host turn still runs; stopped work has no executing caller. | A pending wake retains its identity; new input must supersede it before another execution can wait. |
+
+Unrelated or duplicate terminal observations do not settle work again. Normal
+host starts keep their existing admission controls: a new root turn supersedes a
+registered or queued wait; a child turn requires its retained work reservation.
+Observed attributed items in admitted model input consume only their exact
+unclaimed notifications, so reading input does not generate a later duplicate wake.
+
 Selection resolves once to immutable visible descendant identities. `"all"`
 snapshots that set; empty, unknown, ambiguous, foreign, self and ancestor selections
 reject. In `any` mode, a selected queued event returns immediately, leaving others queued.

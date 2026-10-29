@@ -237,18 +237,11 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, targets []s
 				return err
 			}
 		}
-		if old := member.Wait; old != nil && old.Compaction != nil && hostOwned(old.Compaction.State) && (old.Turn != caller.Turn || old.Item != caller.Item) {
-			return errors.New("compaction requires native settlement or reconciliation before another checkpoint")
-		}
-		if old := member.Wait; old != nil && (old.ID == caller.Call || old.State != "canceled" && old.State != "completed" && old.State != "paused" && old.State != "timeout") {
-			if old.Turn != caller.Turn || old.Item != caller.Item || old.Generation != member.Generation {
-				return errors.New("pending wait belongs to another enclosing execution; new input must supersede it before waiting again")
+		if _, err := tree.transitionHost(member, hostEvent{kind: hostEventWaitRegistration, turn: caller.Turn, item: caller.Item, call: caller.Call, compact: compact, standalone: standalone}); err != nil {
+			if err == unchanged {
+				result = *tree.waitResult(member.Wait)
 			}
-			if (old.Compaction != nil) != compact || old.Standalone != standalone {
-				return errors.New("conflicting checkpoint in the enclosing execution")
-			}
-			result = *tree.waitResult(old)
-			return unchanged
+			return err
 		}
 		wait := &Wait{Effect: Effect{ID: caller.Call, Caller: caller.Thread, Target: caller.Thread, Generation: member.Generation, Turn: caller.Turn, CallerTurn: caller.Turn, Kind: "wake", State: "registered"}, Item: caller.Item, Targets: selected, All: all, Mode: mode}
 		wait.Standalone = standalone
@@ -284,43 +277,16 @@ func (s *Service) Execution(ctx context.Context, thread, turn, item, handle stri
 		return errors.New("wait requires a host execution-cell handle")
 	}
 	return s.update(ctx, thread, func(tree *Tree, member *Member) error {
-		wait := member.Wait
-		if wait == nil || wait.Turn != turn || wait.Item != item || wait.Generation != member.Generation || wait.State != "registered" {
-			return unchanged
-		}
-		if handle != "" {
-			if wait.ResumeHandle != "" && wait.ResumeHandle != handle {
-				return errors.New("conflicting enclosing-cell handle")
-			}
-			wait.ResumeHandle = handle
-		}
-		if succeeded {
-			wait.Stop = "eligible"
-		} else if handle == "" {
-			cancelSubscription(tree, member)
-			member.Stop = nil
-			if member.Status == Waiting {
-				member.Status = Working
-			}
-		}
-		return nil
+		_, err := tree.transitionHost(member, hostEvent{kind: hostEventExecution, turn: turn, item: item, handle: handle, succeeded: succeeded})
+		return err
 	})
 }
 
 func (s *Service) ClaimLocalStop(ctx context.Context, thread, turn, item string) (result *LocalStop, err error) {
-	err = s.update(ctx, thread, func(_ *Tree, member *Member) error {
-		wait := member.Wait
-		if wait == nil || wait.Stop != "eligible" && wait.Stop != "committed" || wait.State != "registered" || wait.Turn != turn || item != "" && wait.Item != item || wait.Generation != member.Generation || !member.HostRunning {
-			return unchanged
-		}
-		if wait.Stop == "committed" {
-			result = new(*member.Stop)
-			return unchanged
-		}
-		wait.Stop, member.Status = "committed", Waiting
-		member.Stop = &LocalStop{Generation: member.Generation, Turn: turn, Item: wait.Item, Wait: wait.ID}
-		result = new(*member.Stop)
-		return nil
+	err = s.update(ctx, thread, func(tree *Tree, member *Member) error {
+		var transition error
+		result, transition = tree.transitionHost(member, hostEvent{kind: hostEventLocalStop, turn: turn, item: item})
+		return transition
 	})
 	return
 }
