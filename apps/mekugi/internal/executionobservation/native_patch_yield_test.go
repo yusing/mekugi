@@ -30,7 +30,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	trace := newNativeTraceFixture(t)
-	proxy.nativeTrace = nativetrace.New(trace.root)
+	proxy.nativeTrace = nativetrace.NewWithNotice(trace.root, nil)
 	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 	transform.sessionShell = "bash"
 	target := filepath.Join(workspace, "file.txt")

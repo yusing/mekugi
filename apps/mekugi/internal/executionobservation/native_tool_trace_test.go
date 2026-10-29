@@ -85,7 +85,7 @@ func (f *nativeTraceFixture) end(thread, cell string) {
 
 func TestNativeTraceConfirmsEachToolWithoutPrintedOutput(t *testing.T) {
 	f := newNativeTraceFixture(t)
-	trace := nativetrace.New(f.root)
+	trace := nativetrace.NewWithNotice(f.root, nil)
 	f.start("author", "1", "outer", "source")
 	f.tool("author", "1", "patch", "apply_patch", "patch input")
 	f.result("author", "patch", "completed", map[string]any{})
@@ -112,7 +112,7 @@ func TestNativeTraceConfirmsEachToolWithoutPrintedOutput(t *testing.T) {
 	}
 	// A new reader can recover native facts; persisted change records need not
 	// retain this disposable trace after finalization.
-	reopened := nativetrace.New(f.root)
+	reopened := nativetrace.NewWithNotice(f.root, nil)
 	if _, ok := reopened.ReadCell("author", "outer", "source").Patch("patch input", 0); !ok {
 		t.Fatal("could not reread host evidence")
 	}
@@ -120,7 +120,7 @@ func TestNativeTraceConfirmsEachToolWithoutPrintedOutput(t *testing.T) {
 
 func TestNativeTraceFailuresAndYieldAreNotSuccess(t *testing.T) {
 	f := newNativeTraceFixture(t)
-	trace := nativetrace.New(f.root)
+	trace := nativetrace.NewWithNotice(f.root, nil)
 	f.start("author", "1", "outer", "source")
 	f.tool("author", "1", "bad-patch", "apply_patch", "bad input")
 	f.result("author", "bad-patch", "failed", nil)
@@ -159,7 +159,7 @@ func TestNativeTraceTerminalPollIsThreadScoped(t *testing.T) {
 	f.result("author", "poll", "completed", map[string]any{"exit_code": 0})
 	f.end("author", "cell")
 	f.end("other", "cell")
-	trace := nativetrace.New(f.root)
+	trace := nativetrace.NewWithNotice(f.root, nil)
 	if cell := trace.ReadCell("author", "outer", "source"); cell == nil || cell.Pending() {
 		t.Fatal("terminal poll did not resolve its host process")
 	}
@@ -177,7 +177,7 @@ func TestNativeTracePatchOccurrencesKeepDistinctOutcomes(t *testing.T) {
 	f.result("author", "second", "failed", nil)
 	f.tool("author", "runtime", "third", applyPatchToolName, "same input")
 	f.end("author", "runtime")
-	cell := nativetrace.New(f.root).ReadCell("author", "outer", "source")
+	cell := nativetrace.NewWithNotice(f.root, nil).ReadCell("author", "outer", "source")
 	for index, want := range []binding.ToolResult{{CallID: "first", Status: "completed"}, {CallID: "second", Status: "failed"}} {
 		result, ok := cell.Patch("same input", index)
 		if !ok || result.CallID != want.CallID || result.Status != want.Status {
@@ -198,7 +198,7 @@ func TestNativeTraceRuntimeExitSurvivesYieldedDispatchResult(t *testing.T) {
 	f.event("t", map[string]any{"type": "tool_call_runtime_ended", "tool_call_id": "cmd", "status": "failed", "runtime_payload": f.ref(map[string]any{"exit_code": 3})})
 	f.result("t", "cmd", "completed", map[string]any{"session_id": 123})
 	f.end("t", "1")
-	trace := nativetrace.New(f.root)
+	trace := nativetrace.NewWithNotice(f.root, nil)
 	results, ok := trace.ReadCell("t", "outer", "source").Commands([]commandanalysis.Command{{Command: "exit 3"}}, "/work")
 	if !ok || len(results) != 1 || results[0].Status != "failed" || *results[0].ExitCode != 3 {
 		t.Fatalf("lost process exit: %+v, %t", results, ok)
@@ -221,7 +221,7 @@ func TestNativeTraceMissingAndCorruptEvidenceNeverConfirms(t *testing.T) {
 				f.event("t", map[string]any{"type": "tool_call_started", "tool_call_id": "other", "requester": map[string]string{"type": "code_cell", "runtime_cell_id": "1"}, "invocation_payload": map[string]string{"path": "../outside.json"}})
 			}
 			f.end("t", "1")
-			trace := nativetrace.New(f.root)
+			trace := nativetrace.NewWithNotice(f.root, nil)
 			if _, ok := trace.ReadCell("t", "outer", "source").Patch("input", 0); ok {
 				t.Fatal("ambiguous/missing evidence became success")
 			}
@@ -258,7 +258,7 @@ func TestNativeTraceCommandsMatchAuthoredShellCalls(t *testing.T) {
 				f.result("t", id, "completed", map[string]any{"exit_code": 0})
 			}
 			f.end("t", "1")
-			trace := nativetrace.New(f.root)
+			trace := nativetrace.NewWithNotice(f.root, nil)
 			results, ok := trace.ReadCell("t", "cell", source).Commands(history.ExecObservation.Commands, "/work")
 			if ok != tc.want || ok && len(results) != 2 {
 				t.Fatalf("results=%+v confirmed=%v want=%v", results, ok, tc.want)
@@ -281,7 +281,7 @@ func TestNativeTraceIncrementalBundlesStayIndependent(t *testing.T) {
 	if err := os.Truncate(path, int64(len(data)-1)); err != nil {
 		t.Fatal(err)
 	}
-	reader := nativetrace.New(first.root)
+	reader := nativetrace.NewWithNotice(first.root, nil)
 	before := reader.ReadCell("author", "outer", "source")
 	if before == nil || before.Ended() || !before.Pending() {
 		t.Fatal("unfinished final record completed a cell")
@@ -337,7 +337,7 @@ func TestNativeTraceUnusedAgentResultsDoNotExhaustToolEvidence(t *testing.T) {
 	f.tool("author", "cell", "patch", "apply_patch", "input")
 	f.result("author", "patch", "completed", nil)
 	f.end("author", "cell")
-	reader := nativetrace.New(f.root)
+	reader := nativetrace.NewWithNotice(f.root, nil)
 	if result, confirmed := reader.ReadCell("author", "outer", "source").Patch("input", 0); !confirmed || result.CallID != "patch" {
 		t.Fatal("unused agent results exhausted valid tool evidence")
 	}
@@ -363,7 +363,7 @@ func TestNativeTraceRetainedToolEvidenceRemainsBounded(t *testing.T) {
 		f.result("author", id, "completed", nil)
 	}
 	f.end("author", "cell")
-	reader := nativetrace.New(f.root)
+	reader := nativetrace.NewWithNotice(f.root, nil)
 	for range 2 {
 		if reader.ReadCell("author", "outer", "source") != nil {
 			t.Fatal("bounded-out tool evidence became available")
@@ -377,7 +377,7 @@ func TestNativeTraceReturnedExitCodeDoesNotMutateReader(t *testing.T) {
 	f.tool("author", "cell", "command", "exec_command", `{"cmd":"exit 7"}`)
 	f.result("author", "command", "completed", map[string]any{"exit_code": 7})
 	f.end("author", "cell")
-	reader := nativetrace.New(f.root)
+	reader := nativetrace.NewWithNotice(f.root, nil)
 	commands := []commandanalysis.Command{{Command: "exit 7"}}
 	results, confirmed := reader.ReadCell("author", "outer", "source").Commands(commands, "/work")
 	if !confirmed || len(results) != 1 || results[0].ExitCode == nil || *results[0].ExitCode != 7 {

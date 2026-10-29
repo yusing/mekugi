@@ -52,7 +52,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 			var trace *nativeTraceFixture
 			if tool == "exec" {
 				trace = newNativeTraceFixture(t)
-				firstProxy.nativeTrace = nativetrace.New(trace.root)
+				firstProxy.nativeTrace = nativetrace.NewWithNotice(trace.root, nil)
 				transform, _, _, workspace = newMekugiTestTransformWithProxy(t, firstProxy)
 			} else {
 				transform = prepareNativeStockTransform(t, firstProxy, workspace, "before-compaction")
@@ -111,7 +111,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 			}
 			proxy := newManagedMekugiProxy(t)
 			if trace != nil {
-				proxy.nativeTrace = nativetrace.New(trace.root)
+				proxy.nativeTrace = nativetrace.NewWithNotice(trace.root, nil)
 			}
 			var err error
 			reopenedStore, err := openMekugiReplayStore(storeDirectory)

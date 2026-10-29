@@ -33,7 +33,7 @@ func TestUISnapshotCreatedScriptCapture(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
 			trace := newNativeTraceFixture(t)
-			proxy.nativeTrace = nativetrace.New(trace.root)
+			proxy.nativeTrace = nativetrace.NewWithNotice(trace.root, nil)
 			transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 			runExecVCSTestGit(t, workspace, "init", "-q")
 			writeTestFile(t, filepath.Join(workspace, ".gitignore"), "target.txt\n")

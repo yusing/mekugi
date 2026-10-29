@@ -22,7 +22,7 @@ func TestModelVisiblePreparedRequestThroughNativeDialogs(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	proxy.inputProjections = testInputProjections()
 	trace := newNativeTraceFixture(t)
-	proxy.nativeTrace = nativetrace.New(trace.root)
+	proxy.nativeTrace = nativetrace.NewWithNotice(trace.root, nil)
 	u, writer := newAppServerTestUI()
 	u.audience = proxy.activity
 	u.attached.cwd = t.TempDir()

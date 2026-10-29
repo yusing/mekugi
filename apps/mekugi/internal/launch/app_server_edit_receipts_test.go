@@ -484,7 +484,7 @@ func TestUISnapshotCodeModeCellEditReceipt(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	trace := newNativeTraceFixture(t)
-	proxy.nativeTrace = nativetrace.New(trace.root)
+	proxy.nativeTrace = nativetrace.NewWithNotice(trace.root, nil)
 	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 	target := filepath.Join(workspace, "file.txt")
 	if err := os.WriteFile(target, []byte("old\n"), 0o600); err != nil {

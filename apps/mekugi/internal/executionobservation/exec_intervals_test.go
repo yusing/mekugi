@@ -24,7 +24,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
 			trace := newNativeTraceFixture(t)
-			proxy.nativeTrace = nativetrace.New(trace.root)
+			proxy.nativeTrace = nativetrace.NewWithNotice(trace.root, nil)
 			transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 			transform.sessionShell = "bash"
 			path := filepath.Join(workspace, "file.txt")

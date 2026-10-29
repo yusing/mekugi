@@ -214,7 +214,7 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 func TestAppServerCommandTimeoutInput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	f := newNativeTraceFixture(t)
-	setTestAppServerIntegration(u, &observationFixture{nativeTrace: nativetrace.New(f.root)})
+	setTestAppServerIntegration(u, &observationFixture{nativeTrace: nativetrace.NewWithNotice(f.root, nil)})
 	for _, thread := range []string{"main", "child"} {
 		f.start(thread, thread, "outer", "source")
 		timeoutMS, wantTimeout := 12500, "12.5s"

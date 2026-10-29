@@ -279,7 +279,7 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 				trace.result("thread", id, "completed", nil)
 			}
 			trace.end("thread", "runtime")
-			history.nativeCell = nativetrace.New(trace.root).ReadCell("thread", "cell", source.String())
+			history.nativeCell = nativetrace.NewWithNotice(trace.root, nil).ReadCell("thread", "cell", source.String())
 			proxy.activity.Attach("thread")
 			if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON("Script running with cell ID 7\nWall time 0.1 seconds\nOutput:\n"))); err != nil {
 				t.Fatal(err)

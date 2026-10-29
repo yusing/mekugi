@@ -165,7 +165,7 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	activity := sessioncontrol.NewAudience(nil)
 	activity.Attach("main")
 	trace := newNativeTraceFixture(t)
-	proxy := &observationFixture{activity: activity, nativeTrace: nativetrace.New(trace.root)}
+	proxy := &observationFixture{activity: activity, nativeTrace: nativetrace.NewWithNotice(trace.root, nil)}
 	setTestAppServerIntegration(u, proxy)
 	cells := []struct{ call, source, output string }{
 		{"silent", `await tools.exec_command({cmd: "git log"}); await tools.exec_command({cmd: "true"})`, `"Script completed\nWall time 0.1 seconds\nOutput:"`},

@@ -506,7 +506,7 @@ func TestDuplicateOutputSummary(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	proxy.inputProjections = testInputProjections()
 	trace := newNativeTraceFixture(t)
-	proxy.nativeTrace = nativetrace.New(trace.root)
+	proxy.nativeTrace = nativetrace.NewWithNotice(trace.root, nil)
 	source := `text((await tools.exec_command({cmd:"b"})).output)`
 	trace.start("thread", "runtime", "b", source)
 	trace.tool("thread", "runtime", "nested", "exec_command", `{"cmd":"b"}`)

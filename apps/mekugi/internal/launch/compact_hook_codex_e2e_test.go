@@ -96,7 +96,7 @@ func testCompactReloadNativeCodex(t *testing.T, automatic bool, promptKind strin
 	}
 	setTestProxyStore(proxy, store)
 	traceRoot := t.TempDir()
-	proxy.nativeTrace = nativetrace.New(traceRoot)
+	proxy.nativeTrace = nativetrace.NewWithNotice(traceRoot, nil)
 	executor := testRequestExecutor(provider, nil, proxy)
 	executor.CompactPrompt = func() string { return provider.prompt + agentguidance.CompactInstructions }
 	executor.CompactStore = executionobservation.New(executionobservation.Config{Retained: proxy.retained}).StoreCompact

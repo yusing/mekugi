@@ -530,7 +530,7 @@ func runMChangesNestedCodexCell(
 	t.Setenv("CODEX_ROLLOUT_TRACE_ROOT", traceRoot)
 	proxy := newProxyWithSharedTestRegistry(t, registry)
 	setTestProxyStore(proxy, store)
-	proxy.nativeTrace = nativetrace.New(traceRoot)
+	proxy.nativeTrace = nativetrace.NewWithNotice(traceRoot, nil)
 	provider.trace = proxy.nativeTrace
 	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy))
 	defer server.Close()

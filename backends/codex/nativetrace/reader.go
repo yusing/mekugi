@@ -31,9 +31,6 @@ type Reader struct {
 	reported  bool
 }
 
-// New observes directory without taking ownership of its lifetime.
-func New(directory string) *Reader { return &Reader{directory: directory} }
-
 // NewWithNotice reports the first unsupported or discontinuous trace in an invocation.
 func NewWithNotice(directory string, notice func(string)) *Reader {
 	return &Reader{directory: directory, notice: notice}
