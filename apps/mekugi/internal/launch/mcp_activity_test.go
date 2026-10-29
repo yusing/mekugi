@@ -318,6 +318,9 @@ func TestThreadControlTrafficLiveRestoredReplay(t *testing.T) {
 			if i < 3 && (entry.Values[0].From != "/root" || entry.Values[0].To != "/root/worker") {
 				t.Fatalf("%s lost canonical traffic: %+v", items[i].Tool, entry.Values)
 			}
+			if i < 3 && entry.Source.ActivitySeq == 0 {
+				t.Fatalf("%s lost its exact child-feed link", items[i].Tool)
+			}
 			if i >= 3 && entry.Values[0].From != "/root" {
 				t.Fatalf("%s lost its agent-event identity: %+v", items[i].Tool, entry.Values)
 			}
@@ -386,6 +389,25 @@ func TestThreadControlMixedWaitLiveRestoredReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(p.ui.source, replayPlaybackTestPaint(t, p, 160, 30))
+}
+
+func TestRestoredIncomingCoordinationReplyKeepsChildLink(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.attached.session.RegisterThread(observation.Thread{ID: "main", Path: "/root/worker"})
+	item := binding.ThreadItem{ID: "incoming", Type: "mcpToolCall", Server: "threadcontrol", Tool: "send_message", Status: "completed",
+		Arguments: []byte(`{"target":"/root","message":"Incoming retained reply"}`),
+		Result:    []byte(`{"content":[{"type":"text","text":"{\"state\":\"confirmed\",\"id\":\"incoming\"}"}]}`)}
+	u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", CompletedAt: 200, Items: []binding.ThreadItem{item}}})
+	main := u.attached.source.Entries[0].Source
+	if main.Message == nil || main.Message.From != "/root/worker" || main.Message.To != "/root" || main.ActivitySeq == 0 {
+		t.Fatalf("restored receiving transcript lost its incoming link: %+v", main)
+	}
+	if len(u.attached.childSource.Entries) != 1 || u.attached.childSource.Entries[0].Source.Seq != main.ActivitySeq || u.attached.childSource.Entries[0].Values[0].Body != "Incoming retained reply" {
+		t.Fatal("incoming link does not select its exact original child-feed message")
+	}
+	if main.Observed != time.Unix(200, 0) || u.attached.childSource.Entries[0].Source.Observed != main.Observed {
+		t.Fatal("linked restored reply lost its retained timestamp")
+	}
 }
 
 func TestUISnapshotThreadControlTraffic(t *testing.T) {

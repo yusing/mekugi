@@ -218,8 +218,13 @@ func restoreMainHistory(attached *attachedPresentation, terminal *terminalsessio
 		place(slots[0])
 		for i, item := range turn.Items {
 			before := attached.source.LastSeq
-			restoreHistoryItem(attached, terminal, control, picker, editor, questions, approvals, clock, panel, resumePicker, parent, notifications, retained, retainedSession, activityService, segments, restoredSegments, turn, item)
 			at := cmp.Or(itemAt[item.ID], historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt)))
+			itemClock := clock
+			if !at.IsZero() {
+				// Linked audiences must receive the retained time at admission.
+				itemClock = func() time.Time { return at }
+			}
+			restoreHistoryItem(attached, terminal, control, picker, editor, questions, approvals, itemClock, panel, resumePicker, parent, notifications, retained, retainedSession, activityService, segments, restoredSegments, turn, item)
 			if !at.IsZero() {
 				for j := len(attached.source.Entries) - 1; j >= 0 && attached.source.Entries[j].Source.Seq > before; j-- {
 					attached.source.Model.Mutate(j, func(record *sessionpresentation.ActivityRecord) { record.Source.Observed = at })
@@ -317,11 +322,10 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 			}}})
 		}
 	case "mcpToolCall":
-		entry := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: attached.session.Caller(control.Thread), CallID: item.ID, Observed: presentationTime(clock),
+		entry := sessionpresentation.ActivityEntry{Seq: attached.session.Activity().NextSequence(), Agent: attached.session.Caller(control.Thread), CallID: item.ID, Observed: presentationTime(clock),
 			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Status: item.Status, Duration: sessionpresentation.ItemDuration(facts)}}
-		if entry, visible := sessionpresentation.MainActivityEntry(attached.session.CoordinationEntry(entry, facts)); visible {
-			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
-		}
+		entry = attached.session.CoordinationEntry(entry, facts)
+		sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 	case "imageView", "imageGeneration":
 		text, images := sessionpresentation.ImagePresentation(facts, method, attached.cwd)
 		if text == "" {

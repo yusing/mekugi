@@ -47,6 +47,9 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 				t.Fatal(err)
 			}
 			publishNativeDelivery(&live.attached, *request.NativeDelivery(), time.Now())
+			if live.attached.source.Entries[len(live.attached.source.Entries)-1].Source.ActivitySeq == 0 {
+				t.Fatalf("live %s delivery lost its child-feed link", kind)
+			}
 			// Both deliveries arrive while idle, one before any host turn.
 			record := rolloutRecord(i*3+1, "response_item", sent.Params.Items[0])
 			records = append(records, record, record) // Repeated retained identity must coalesce.
