@@ -511,18 +511,31 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 			}
 		}
 		if s.python && left != nil && left.Kind() == "subscript" {
-			delete(s.pythonItems, s.text(left.ChildByFieldName("value")))
+			name := s.text(left.ChildByFieldName("value"))
+			// Preserve bounded candidates added by preparation loops. Unknown
+			// keys stay unknown; replacing an entry may over-approximate scope.
+			if items, ok := s.pythonItems[name]; ok && s.appendPythonItem(&items, left.ChildByFieldName("subscript"), right) {
+				s.pythonItems[name] = items
+			} else {
+				delete(s.pythonItems, name)
+			}
 		}
 		if s.python && right != nil && right.Kind() == "identifier" {
 			// Do not retain a snapshot once the mutable dictionary is aliased.
 			delete(s.pythonItems, s.text(right))
 		}
 	}
+	if s.python && node.Kind() == "while_statement" {
+		s.clearPythonLoopBindings(node.ChildByFieldName("body"), 0)
+	}
 	if node.Kind() == "for_statement" || node.Kind() == "for_in_statement" {
 		left, right := node.ChildByFieldName("left"), node.ChildByFieldName("right")
 		if left != nil && left.Kind() == "identifier" {
 			segments := s.literalSegments(right, 0)
 			paths := s.paths(right)
+			if s.python {
+				s.clearPythonLoopBindings(node.ChildByFieldName("body"), 0)
+			}
 			if s.state.Segments == nil {
 				s.state.Segments = make(map[string][]string)
 			}

@@ -2,6 +2,7 @@ package execscope
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,6 +39,16 @@ func TestPythonDictionaryItemsScope(t *testing.T) {
 		{"stale unpacked name", "name = 'old.txt'\nfor name, value in unknown():\n (Path('out') / name).write_text('new')", true, nil},
 		{"alias", "targets = {'a.txt': 1}\nother = targets\nother[unknown()] = 2\nfor name, value in targets.items():\n (Path('out') / name).write_text('new')", true, nil},
 		{"passed to function", "targets = {'a.txt': 1}\nmutate(targets)\nfor name, value in targets.items():\n (Path('out') / name).write_text('new')", true, nil},
+		{"accumulated keys", "targets = {}\nfor name in ['a.txt', 'b.txt']:\n targets[Path(name)] = unknown()\nfor path, text in targets.items():\n path.write_text(text)", false, []string{"a.txt", "b.txt"}},
+		{"accumulated values", "targets = {}\nfor name in ['a.txt', 'b.txt']:\n targets[name] = Path(name)\nfor name, path in targets.items():\n path.write_text('new')", false, []string{"a.txt", "b.txt"}},
+		{"unknown accumulated key", "targets = {'a.txt': 1}\ntargets[unknown()] = 2\nfor path, text in targets.items():\n Path(path).write_text(text)", true, nil},
+		{"unknown then known key", "targets = {unknown(): 1}\ntargets['a.txt'] = 2\nfor path, text in targets.items():\n Path(path).write_text(text)", true, nil},
+		{"loop carried key", "targets = {}\nname = 'a.txt'\nfor unused in [1, 2]:\n targets[name] = 'after'\n name = 'b.txt'\nfor path, text in targets.items():\n Path(path).write_text(text)", true, nil},
+		{"loop carried input", "targets = {}\nname = 'a.txt'\nfor unused in [1, 2]:\n path = Path(name)\n targets[path] = 'after'\n name = 'b.txt'\nfor path, text in targets.items():\n path.write_text(text)", true, nil},
+		{"loop carried unpacking", "targets = {}\nname = 'a.txt'\nfor unused in [1, 2]:\n targets[name] = 'after'\n for name, value in {'b.txt': 1}.items():\n  pass\nfor path, text in targets.items():\n Path(path).write_text(text)", true, nil},
+		{"loop carried assignment expression", "targets = {}\nname = 'a.txt'\nfor unused in [1, 2]:\n targets[name] = 'after'\n (name := 'b.txt')\nfor path, text in targets.items():\n Path(path).write_text(text)", true, nil},
+		{"iterable evaluated before body", "targets = {'a.txt': 'after'}\nfor name, text in targets.items():\n targets = {}\n Path(name).write_text(text)", false, []string{"a.txt"}},
+		{"candidate limit", "targets = {}\nfor name in [" + strings.Repeat("'a.txt',", ListingLimit+1) + "]:\n targets[Path(name)] = 'text'\nfor path, text in targets.items():\n path.write_text(text)", true, nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			workspace := t.TempDir()

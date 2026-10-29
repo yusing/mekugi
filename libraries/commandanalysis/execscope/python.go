@@ -9,7 +9,65 @@ import (
 )
 
 type execPythonValues struct {
-	paths, segments []string
+	paths, segments               []string
+	unknownPaths, unknownSegments bool
+}
+
+// A lexical pass cannot use pre-loop values for names changed by that loop:
+// subsequent iterations may observe the later assignment instead. Assignments
+// visited in the body can still establish fresh candidates for that iteration.
+func (s *execSourceScope) clearPythonLoopBindings(node *sitter.Node, depth int) {
+	if node == nil {
+		return
+	}
+	s.nodes++
+	if depth > 256 || s.nodes > 50_000 {
+		s.result.open = true
+		return
+	}
+	if node.Kind() == "assignment" || node.Kind() == "augmented_assignment" || node.Kind() == "for_statement" || node.Kind() == "named_expression" {
+		left := node.ChildByFieldName("left")
+		if node.Kind() == "named_expression" {
+			left = node.ChildByFieldName("name")
+		}
+		var targets []*sitter.Node
+		if left != nil {
+			targets = append(targets, left)
+		}
+		for len(targets) != 0 {
+			left, targets = targets[0], targets[1:]
+			if left.Kind() != "identifier" {
+				if left.Kind() == "pattern_list" || left.Kind() == "tuple_pattern" || left.Kind() == "list_pattern" {
+					for i := range left.NamedChildCount() {
+						targets = append(targets, left.NamedChild(uint(i)))
+					}
+				}
+				continue
+			}
+			name := s.text(left)
+			delete(s.state.Paths, name)
+			delete(s.state.Segments, name)
+			delete(s.pythonItems, name)
+		}
+	}
+	for i := range node.NamedChildCount() {
+		s.clearPythonLoopBindings(node.NamedChild(uint(i)), depth+1)
+	}
+}
+
+func (s *execSourceScope) appendPythonItem(items *[2]execPythonValues, key, value *sitter.Node) bool {
+	for column, node := range []*sitter.Node{key, value} {
+		paths, segments := s.paths(node), s.literalSegments(node, 0)
+		item := &items[column]
+		item.unknownPaths = item.unknownPaths || len(paths) == 0
+		item.unknownSegments = item.unknownSegments || len(segments) == 0
+		if len(item.paths)+len(paths) > ListingLimit || len(item.segments)+len(segments) > ListingLimit {
+			return false
+		}
+		item.paths = append(item.paths, paths...)
+		item.segments = append(item.segments, segments...)
+	}
+	return true
 }
 
 // Keep keys and values separate: an unknown value need not hide literal output
@@ -19,7 +77,6 @@ func (s *execSourceScope) pythonDictionaryItems(node *sitter.Node) ([2]execPytho
 	if node == nil || node.Kind() != "dictionary" {
 		return items, false
 	}
-	unknownPaths, unknownSegments := [2]bool{}, [2]bool{}
 	for i := range node.NamedChildCount() {
 		pair := node.NamedChild(uint(i))
 		if pair.Kind() == "comment" {
@@ -28,24 +85,8 @@ func (s *execSourceScope) pythonDictionaryItems(node *sitter.Node) ([2]execPytho
 		if pair.Kind() != "pair" || i >= ListingLimit {
 			return [2]execPythonValues{}, false
 		}
-		for column, field := range []string{"key", "value"} {
-			value := pair.ChildByFieldName(field)
-			paths, segments := s.paths(value), s.literalSegments(value, 0)
-			unknownPaths[column] = unknownPaths[column] || len(paths) == 0
-			unknownSegments[column] = unknownSegments[column] || len(segments) == 0
-			if len(items[column].paths)+len(paths) > ListingLimit || len(items[column].segments)+len(segments) > ListingLimit {
-				return [2]execPythonValues{}, false
-			}
-			items[column].paths = append(items[column].paths, paths...)
-			items[column].segments = append(items[column].segments, segments...)
-		}
-	}
-	for column := range items {
-		if unknownPaths[column] {
-			items[column].paths = nil
-		}
-		if unknownSegments[column] {
-			items[column].segments = nil
+		if !s.appendPythonItem(&items, pair.ChildByFieldName("key"), pair.ChildByFieldName("value")) {
+			return [2]execPythonValues{}, false
 		}
 	}
 	return items, true
@@ -64,6 +105,7 @@ func (s *execSourceScope) bindPythonItems(left, right *sitter.Node) {
 			items, ok = s.pythonDictionaryItems(object)
 		}
 	}
+	s.clearPythonLoopBindings(left.Parent().ChildByFieldName("body"), 0)
 	// Clear old bindings even when the new iterable cannot be resolved.
 	for i := range left.NamedChildCount() {
 		name := s.text(left.NamedChild(uint(i)))
@@ -88,6 +130,12 @@ func (s *execSourceScope) bindPythonItems(left, right *sitter.Node) {
 	}
 	for column, values := range items {
 		name := s.text(left.NamedChild(uint(column)))
+		if values.unknownPaths {
+			values.paths = nil
+		}
+		if values.unknownSegments {
+			values.segments = nil
+		}
 		s.state.Paths[name], s.state.Segments[name] = values.paths, values.segments
 	}
 }

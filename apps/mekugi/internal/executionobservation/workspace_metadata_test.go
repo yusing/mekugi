@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +14,76 @@ import (
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
+
+func TestPythonPreparedDictionaryOutsideWorkspaceRetainsComposedHistory(t *testing.T) {
+	pythonName, python := interpreterForTest("python3", "python")
+	if python == "" {
+		t.Skip("Python runtime unavailable")
+	}
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	workspace := gitTestWorkspace(t)
+	writeTestFile(t, filepath.Join(workspace, ".gitignore"), ".worktrees/\n")
+	gitTestCommit(t, workspace)
+	child := filepath.Join(workspace, ".worktrees", "child")
+	gitTestRun(t, workspace, "worktree", "add", "--quiet", "--detach", child)
+	for _, name := range []string{"one.txt", "two.txt", "three.txt", "four.txt", "five.txt"} {
+		writeTestFile(t, filepath.Join(child, name), "before\n")
+	}
+	script := `from pathlib import Path
+changes = {'one.txt': [('before', 'after')], 'two.txt': [('before', 'after')], 'three.txt': [('before', 'after')], 'four.txt': [('before', 'after')], 'five.txt': [('before', 'after')]}
+prepared = {}
+for name, replacements in changes.items():
+    path = Path(name)
+    text = path.read_text()
+    for old, new in replacements:
+        assert text.count(old) == 1, (name, old)
+        text = text.replace(old, new)
+    prepared[path] = text
+for path, text in prepared.items():
+    path.write_text(text)
+`
+	var ids []string
+	var scopeStore *mekugiReplayStore
+	for step, command := range []string{
+		pythonName + " <<'PY'\n" + script + "PY",
+		"sed -i s/after/final/ one.txt two.txt three.txt four.txt five.txt",
+	} {
+		transform := prepareNativeStockTransform(t, proxy, workspace, fmt.Sprintf("prepared-%d", step))
+		callID := fmt.Sprintf("edit-%d", step)
+		arguments := mustTestJSON(t, map[string]any{"cmd": command, "workdir": child})
+		source := "text(await tools.exec_command(" + string(arguments) + "));"
+		if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"status": "completed", "output": []any{map[string]any{
+			"type": "custom_tool_call", "name": "exec", "call_id": callID, "input": source, "status": "completed",
+		}}})); err != nil {
+			t.Fatal(err)
+		}
+		if observed := transform.local[callID].ExecObservation; observed == nil || len(observed.Files) != 5 {
+			t.Fatalf("step %d missing pre-execution named baselines: %+v", step, observed)
+		}
+		host := exec.Command("bash", "--noprofile", "--norc", "-c", command)
+		host.Dir = child
+		host.Env = append(os.Environ(), "BASH_ENV=", "MEKUGI_EXEC_TRACK=")
+		if output, err := host.CombinedOutput(); err != nil {
+			t.Fatalf("host execution: %v: %s", err, output)
+		}
+		if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, transform.ctx, transform.directory, []execCompletion{{
+			callID: callID, history: transform.local[callID], result: binding.DecodeExecutionResult(nativeExecCommandToolName, mustTestJSON(t, map[string]any{"exit_code": 0})),
+		}}); err != nil {
+			t.Fatal(err)
+		}
+		scopeStore = testProxyStore(proxy).scoped(transform.ctx)
+		record, found, err := scopeStore.lookup(transform.ctx, workspace, legacycall.ExecCallID(callID, true))
+		if err != nil || !found || record.ChangeID == "" || len(record.ReviewFiles) != 5 {
+			t.Fatalf("step %d lost captured edits: found=%v record=%+v err=%v", step, found, record, err)
+		}
+		ids = append(ids, record.ChangeID)
+	}
+	text, err := scopeStore.changes.Read(t.Context(), scopeStore.changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net"})
+	if err != nil || strings.Count(text, "-before\n+final\n") != 5 {
+		t.Fatalf("retained composition lost dictionary edits: %q, %v", text, err)
+	}
+}
 
 func TestCaptureWithoutGitWorkspaceMetadata(t *testing.T) {
 	for _, admission := range []string{"unique", "unknown", "ambiguous"} {
