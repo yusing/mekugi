@@ -265,7 +265,8 @@ audience. Activity with unresolved ancestry remains outside Main until metadata
 settles its audience. Closing the slot retires their visible activity and prompts without
 answering them or claiming that their host processes completed. Queued answers wait
 for their own thread's tool-input generation, independently of Main.
-Side and One-off forks initially preserve Main’s effective settings without changing Main.
+Side and One-off forks initially preserve Main’s effective settings without changing Main,
+except inherited ultra uses the selected model's stock ordinary equivalent, as for delegates.
 While either is selected, model and reasoning commands, pickers and shifted-arrow
 reasoning controls target that fork. Host confirmation and active-turn repair stay
 with the original fork through view switches; Main's settings remain independent.

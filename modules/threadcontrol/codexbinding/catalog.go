@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"os"
 	"slices"
 
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -29,6 +30,27 @@ func (d *Driver) listModels(ctx context.Context, caller control.Identity, raw js
 	return struct {
 		Models []control.ModelOption `json:"models"`
 	}{models}, nil
+}
+
+// CaptureConfiguredCatalog receives the host's effective config. Static
+// catalogs bypass model discovery, so capture their selected source directly.
+func (d *Driver) CaptureConfiguredCatalog(raw []byte) {
+	var response struct {
+		Config struct {
+			Path string `json:"model_catalog_json"`
+		} `json:"config"`
+	}
+	if json.Unmarshal(raw, &response) != nil || response.Config.Path == "" {
+		return
+	}
+	catalog, err := os.ReadFile(response.Config.Path)
+	if err != nil {
+		d.mu.Lock()
+		d.models, d.catalogError = nil, err
+		d.mu.Unlock()
+		return
+	}
+	d.CaptureCatalog(catalog)
 }
 
 // InheritCatalog freezes the selected provider catalog for another admitted
@@ -103,4 +125,17 @@ func (d *Driver) ReasoningChoices(name string) (string, []string) {
 		}
 	}
 	return "", nil
+}
+
+// InheritedEffort applies the same catalog policy to internal side forks.
+func (d *Driver) InheritedEffort(model, effort string) (string, error) {
+	if effort != "ultra" {
+		return effort, nil
+	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if d.catalogError != nil {
+		return "", d.catalogError
+	}
+	return inheritedEffortForModel(d.models, model, effort)
 }

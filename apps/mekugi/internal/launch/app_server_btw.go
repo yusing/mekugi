@@ -323,7 +323,8 @@ func openFreshSide(attached *attachedPresentation, terminal *terminalsession.Att
 		*editor = &answer.Drafts.Editor
 	}
 	terminal.Transcript.Follow()
-	_, err := control.Requests.StartSide(*side, sessioncontrol.SideMain{Thread: control.Thread, Model: settings.Model, Effort: settings.Effort, Tier: settings.Tier, Blocked: control.Starting() || control.InputPending() || control.Settings.Pending()}, now)
+	update, err := control.Requests.StartSide(*side, sessioncontrol.SideMain{Thread: control.Thread, Model: settings.Model, Effort: settings.Effort, Tier: settings.Tier, Blocked: control.Starting() || control.InputPending() || control.Settings.Pending()}, now)
+	applySideUpdate(attached, terminal, control, func() time.Time { return now }, update)
 	return err
 }
 

@@ -131,11 +131,11 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		inheritedEffort = inheritedEffort && selection.values.Effort == nil
 	}
 	if inheritedEffort && settings.Effort != nil && *settings.Effort == "ultra" {
-		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == settings.Model })
-		if i < 0 {
-			return result, fmt.Errorf("inherited ultra requires the selected model catalog for %s", settings.Model)
+		ordinary, err := inheritedEffortForModel(models, settings.Model, *settings.Effort)
+		if err != nil {
+			return result, err
 		}
-		settings.Effort = new(models[i].ordinaryUltraEffort())
+		settings.Effort = new(ordinary)
 	} else if settings.Effort != nil && (model != nil || effort != nil || settings.Model != result.Settings.Model || !sameEffort(settings.Effort, result.Settings.Effort)) {
 		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == settings.Model })
 		if i < 0 || !slices.Contains(models[i].Efforts, *settings.Effort) {
@@ -172,6 +172,17 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	result.Settings = settings
 	result.Arguments, err = json.Marshal(&options, json.Deterministic(true))
 	return result, err
+}
+
+func inheritedEffortForModel(models []Model, model, effort string) (string, error) {
+	if effort != "ultra" {
+		return effort, nil
+	}
+	i := slices.IndexFunc(models, func(m Model) bool { return m.Name == model })
+	if i < 0 {
+		return "", fmt.Errorf("inherited ultra requires the selected model catalog for %s", model)
+	}
+	return models[i].ordinaryUltraEffort(), nil
 }
 
 // Source: codex-rs/protocol/src/openai_models/reasoning_effort.rs:10:36@0df4aa677.

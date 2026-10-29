@@ -1,6 +1,7 @@
 package codexbinding
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -8,6 +9,31 @@ import (
 
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+func TestCaptureConfiguredCatalog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "selected catalog.json")
+	if err := os.WriteFile(path, []byte(`{"models":[{"slug":"selected","multi_agent_reasoning_effort":"high","supported_reasoning_levels":[{"effort":"high"},{"effort":"max"}]}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	driver := new(Driver)
+	driver.CaptureCatalog([]byte(`{"models":[{"slug":"other"}]}`))
+	driver.CaptureConfiguredCatalog([]byte(fmt.Sprintf(`{"config":{"model_catalog_json":%q}}`, path)))
+	if effort, err := driver.InheritedEffort("selected", "ultra"); err != nil || effort != "high" {
+		t.Fatalf("selected catalog: %q %v", effort, err)
+	}
+	if _, err := driver.InheritedEffort("other", "ultra"); err == nil {
+		t.Fatal("previous discovery catalog was retained")
+	}
+	child := new(Driver)
+	child.InheritCatalog(driver)
+	if effort, err := child.InheritedEffort("selected", "ultra"); err != nil || effort != "high" {
+		t.Fatalf("inherited catalog: %q %v", effort, err)
+	}
+	driver.CaptureConfiguredCatalog([]byte(fmt.Sprintf(`{"config":{"model_catalog_json":%q}}`, path+"-missing")))
+	if _, err := driver.InheritedEffort("selected", "ultra"); err == nil {
+		t.Fatal("unreadable selected catalog retained stale metadata")
+	}
+}
 
 func TestPrepareChildModelEffortAndContext(t *testing.T) {
 	workspace := t.TempDir()

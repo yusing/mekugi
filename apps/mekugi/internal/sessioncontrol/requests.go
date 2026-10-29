@@ -40,17 +40,20 @@ type Request[T any] struct {
 // Requests is the sole request ledger for one application client. Its event-loop
 // owner serializes issuance and response delivery; it does not execute host work.
 type Requests[T any] struct {
-	ThreadPolicy *binding.ThreadAdmissionPolicy
-	preparation  atomic.Pointer[PreparedThread]
-	transport    Transport
-	pending      map[string]Request[T]
-	sidesMu      sync.RWMutex
-	sides        map[string]*Side
-	predictions  map[string]*Prediction
-	calls        chan *HostCall
-	inspections  chan *Inspection
-	closed       chan struct{}
-	closeOnce    sync.Once
+	ThreadPolicy             *binding.ThreadAdmissionPolicy
+	InheritedEffort          func(model, effort string) (string, error)
+	CaptureConfiguredCatalog func([]byte)
+	CatalogPending           bool
+	preparation              atomic.Pointer[PreparedThread]
+	transport                Transport
+	pending                  map[string]Request[T]
+	sidesMu                  sync.RWMutex
+	sides                    map[string]*Side
+	predictions              map[string]*Prediction
+	calls                    chan *HostCall
+	inspections              chan *Inspection
+	closed                   chan struct{}
+	closeOnce                sync.Once
 }
 
 func NewRequests[T any](transport Transport) *Requests[T] {

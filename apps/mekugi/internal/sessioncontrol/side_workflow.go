@@ -136,6 +136,23 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 		if main.Blocked {
 			return SideUpdate{}, nil
 		}
+		if main.Effort == "ultra" {
+			if r.CatalogPending {
+				return SideUpdate{}, nil
+			}
+			if r.InheritedEffort == nil {
+				update := s.fail("Inherited ultra requires the selected model catalog")
+				update.Notice, update.NoticeError = s.Status, true
+				return update, nil
+			}
+			var err error
+			main.Effort, err = r.InheritedEffort(main.Model, main.Effort)
+			if err != nil {
+				update := s.fail("Could not select inherited reasoning effort: " + err.Error())
+				update.Notice, update.NoticeError = s.Status, true
+				return update, nil
+			}
+		}
 		s.Source, s.Model, s.Effort, s.Tier = main.Thread, main.Model, main.Effort, main.Tier
 		s.Starting, s.Status = true, "Branching…"
 		params := map[string]any{"threadId": main.Thread, "threadSource": SideThreadSource, "excludeTurns": true}

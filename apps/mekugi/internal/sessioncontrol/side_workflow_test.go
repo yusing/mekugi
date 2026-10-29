@@ -2,6 +2,7 @@ package sessioncontrol
 
 import (
 	"context"
+	"fmt"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"testing"
@@ -9,7 +10,50 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 )
+
+func TestSideForkInheritedEffort(t *testing.T) {
+	driver := new(threadbinding.Driver)
+	driver.CaptureCatalog([]byte(`{"models":[{"slug":"model","multi_agent_reasoning_effort":"high","supported_reasoning_levels":[{"effort":"high"},{"effort":"max"},{"effort":"ultra"}]}]}`))
+	for _, oneoff := range []bool{false, true} {
+		for _, effort := range []string{"ultra", "max"} {
+			t.Run(fmt.Sprintf("oneoff=%t/%s", oneoff, effort), func(t *testing.T) {
+				transport := &requestTransport{id: "fork"}
+				requests := NewRequests[struct{}](transport)
+				requests.InheritedEffort = driver.InheritedEffort
+				side := &Side{SideAnswer: &conversationmodel.SideAnswer{OneOff: oneoff, Pending: conversationmodel.Input{Text: "task"}}, Busy: true}
+				if _, err := requests.StartSide(side, SideMain{Thread: "main", Model: "model", Effort: effort}, time.Time{}); err != nil {
+					t.Fatal(err)
+				}
+				want := effort
+				if effort == "ultra" {
+					want = "high"
+				}
+				params := transport.sends[0].params.(map[string]any)
+				if got := params["config"].(map[string]any)["model_reasoning_effort"]; got != want || side.Effort != want {
+					t.Fatalf("fork effort=%v side=%s, want %s", got, side.Effort, want)
+				}
+			})
+		}
+	}
+}
+
+func TestSideForkWaitsForCatalogAndRestoresOnFailure(t *testing.T) {
+	transport := &requestTransport{id: "fork"}
+	requests := NewRequests[struct{}](transport)
+	requests.CatalogPending = true
+	side := &Side{SideAnswer: &conversationmodel.SideAnswer{OneOff: true, Pending: conversationmodel.Input{Text: "task"}}, Busy: true}
+	main := SideMain{Thread: "main", Model: "model", Effort: "ultra"}
+	if _, err := requests.StartSide(side, main, time.Time{}); err != nil || len(transport.sends) != 0 {
+		t.Fatalf("fork did not wait for config: %v", err)
+	}
+	requests.CatalogPending = false
+	update, err := requests.StartSide(side, main, time.Time{})
+	if err != nil || !update.NoticeError || update.Restore.Text != "task" || len(transport.sends) != 0 {
+		t.Fatalf("unavailable catalog did not restore input: %+v %v", update, err)
+	}
+}
 
 func TestArchiveSidesDrainsClosedNativeThread(t *testing.T) {
 	transport := &requestTransport{id: "archive"}

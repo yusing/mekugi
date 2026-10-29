@@ -155,6 +155,8 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	api.BindSideThreads(control.Requests.HasSideThread)
 	var threadChanges <-chan struct{}
 	if threads != nil {
+		control.Requests.InheritedEffort = threads.driver.InheritedEffort
+		control.Requests.CaptureConfiguredCatalog = threads.driver.CaptureConfiguredCatalog
 		api.BindChildAttachment(threads.AttachChild)
 		policy := binding.ThreadAdmissionPolicy{}
 		control.Requests.ThreadPolicy = &policy
@@ -1128,7 +1130,11 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		if method == "config/read" {
 			notifications.notificationConfig(&attached.feedback, terminal, clock, m)
 			attached.inputHistory.configure(m)
-			return nil
+			if m.Error == nil && control.Requests.CaptureConfiguredCatalog != nil {
+				control.Requests.CaptureConfiguredCatalog(m.Result)
+			}
+			control.Requests.CatalogPending = false
+			return flushBTW(attached, terminal, control, picker, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, side, owned, environment, hook, observations)
 		}
 		if method == "thread/list" && control.Startup.Thread == "--last" {
 			return resumeLastResponse(attached, control, picker, clock, resumePicker, approvalMode, m)
@@ -1361,6 +1367,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			retainedSession.Close()
 			(*retainedSession) = history.Session{}
 			if notifications != nil {
+				control.Requests.CatalogPending = true
 				if err := control.Request("config/read", map[string]any{"cwd": result.Thread.Cwd, "includeLayers": false}); err != nil {
 					return err
 				}

@@ -15,10 +15,34 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 
 	"github.com/charmbracelet/x/ansi"
 )
+
+func TestSideForkWaitsForEffectiveCatalog(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	path := filepath.Join(t.TempDir(), "selected.json")
+	if err := os.WriteFile(path, []byte(`{"models":[{"slug":"selected","multi_agent_reasoning_effort":"high","supported_reasoning_levels":[{"effort":"high"},{"effort":"max"}]}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	driver := new(threadbinding.Driver)
+	u.Requests.InheritedEffort = driver.InheritedEffort
+	u.Requests.CaptureConfiguredCatalog = driver.CaptureConfiguredCatalog
+	u.Requests.CatalogPending = true
+	u.model, u.reasoningEffort = "selected", "ultra"
+	appServerTestRequest(t, u, "42", "config/read")
+	appServerTestKeys(t, u, "/side\r")
+	if wire.Len() != 0 {
+		t.Fatalf("fork before config: %s", wire.String())
+	}
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":42,"result":{"config":{"model_catalog_json":%q}}}`, path))
+	fork := btwTestRequest(t, wire, "thread/fork", "main")
+	if got := fork.Params.Config["model_reasoning_effort"]; got != "high" {
+		t.Fatalf("fork effort = %v", got)
+	}
+}
 
 type btwTestRPC struct {
 	ID     int    `json:"id"`
