@@ -1,5 +1,6 @@
 import { duration, progressText } from "./format";
 import { inline, literal } from "./markdown";
+import { annotates } from "./kinds";
 import type { Agent, Entry } from "./protocol";
 
 // What an entry shows its agent doing, as a verb and inline HTML without
@@ -39,11 +40,11 @@ function describe(entry: Entry, label: (name: string) => string): { verb: string
         literal(route) + (value.kind === "start" && value.label ? ` · ${inline(value.label)}` : ""),
     };
   }
-  const subject =
-    value.label ??
-    value.reads?.map((r) => `\`${r.path}\``).join(", ") ??
-    (value.code ? `\`${value.code.split("\n")[0]}\`` : "");
-  return { verb: value.verb ?? value.kind ?? entry.kind ?? "", html: inline(subject) };
+  const code = value.code ? `<code>${literal(value.code.split("\n")[0])}</code>` : "";
+  const subject = annotates(value)
+    ? `${code} ${inline(value.label!)}`
+    : inline(value.label ?? value.reads?.map((r) => `\`${r.path}\``).join(", ") ?? "") || code;
+  return { verb: value.verb ?? value.kind ?? entry.kind ?? "", html: subject };
 }
 
 // Work time on the recorded clock, as the terminal's roster timer counts it.

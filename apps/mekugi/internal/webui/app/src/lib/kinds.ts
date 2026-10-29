@@ -42,6 +42,12 @@ export function family(verb: string | undefined): Family | undefined {
   return verb ? families[verb.toLowerCase()] : undefined;
 }
 
+// A label that begins with its separator, as "· via `python3`", annotates the
+// value's code, which is the subject.
+export function annotates(value: Value): boolean {
+  return !!value.code && !!value.label?.startsWith("· ");
+}
+
 export function failed(value: Value): boolean {
   return (value.exitCode ?? 0) !== 0 || !!value.hook?.hasError || value.hook?.status === "failed";
 }

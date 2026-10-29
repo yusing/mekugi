@@ -38,11 +38,9 @@ func ShellSource(script, cwd string) string {
 	if strings.TrimSpace(script) == "" {
 		return "Run"
 	}
-	// A multi-line program shows under the command that runs it; a one-line
-	// program reads best as the literal command.
-	if projection, ok := shellInterpreterScriptProjection(script); ok && projection.Command != "" &&
-		strings.Contains(strings.TrimRight(projection.Source, "\n"), "\n") {
-		return "Run " + SourceCode(projection.Command) + "\n" + markdownsyntax.SourceFence(projection.Language, projection.Source)
+	projection, _ := shellInterpreterScriptProjection(script)
+	if display, ok := projection.display(); ok {
+		return display
 	}
 	note := ""
 	if shellInterpreterReadsStdin(script) {
@@ -55,6 +53,20 @@ func ShellSource(script, cwd string) string {
 	}
 	language = sourceLanguage(language)
 	return "Run" + note + "\n" + markdownsyntax.SourceFence(language, script)
+}
+
+// display shows an inline program as the subject of its run, with the
+// invocation that runs it after an empty label subject: `Run · via …`.
+func (p shellScriptProjection) display() (string, bool) {
+	// The first program line is the subject, so blank lines before it go.
+	source := p.Source
+	if blank := source[:len(source)-len(strings.TrimLeft(source, " \t\r\n"))]; strings.Contains(blank, "\n") {
+		source = source[strings.LastIndexByte(blank, '\n')+1:]
+	}
+	if p.Via == "" || strings.TrimSpace(source) == "" {
+		return "", false
+	}
+	return "Run · via " + SourceCode(p.Via) + "\n" + markdownsyntax.SourceFence(p.Language, source), true
 }
 
 func sourceLanguage(interpreter string) string {

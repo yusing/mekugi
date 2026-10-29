@@ -12,39 +12,65 @@ import (
 // Most display tests compare one textual preview; delivery tests check message boundaries.
 func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 	for _, test := range []struct {
-		name, source, command, language, program string
+		name, source, via, language, program string
 	}{
 		{"python command", "python3 -I -c 'import sys\nprint(\"ok\")' arg", "python3 -I -c … arg", "python", "import sys\nprint(\"ok\")"},
-		{"pypy command", "pypy3 -c 'import sys\nprint(\"ok\")'", "pypy3 -c …", "python", "import sys\nprint(\"ok\")"},
-		{"python heredoc", "python3 - <<'PY'\nimport sys\nprint('ok')\nPY\n", "python3 -", "python", "import sys\nprint('ok')\n"},
+		{"pypy command", "pypy3 -c 'import sys\nprint(\"ok\")'", "pypy3", "python", "import sys\nprint(\"ok\")"},
+		{"python heredoc", "python3 - <<'PY'\nimport sys\nprint('ok')\nPY\n", "python3", "python", "import sys\nprint('ok')\n"},
 		{"python heredoc without dash", "python3 <<'PY'\nimport sys\nprint('ok')\nPY\n", "python3", "python", "import sys\nprint('ok')\n"},
-		{"node command", "node --input-type=module -e 'const a = 1\nconsole.log(a)'", "node --input-type=module -e …", "javascript", "const a = 1\nconsole.log(a)"},
-		{"node heredoc", "node - <<'JS'\nconst a = 1\nconsole.log(a)\nJS\n", "node -", "javascript", "const a = 1\nconsole.log(a)\n"},
-		{"bun command", "bun -e 'const a = 1\nconsole.log(a)'", "bun -e …", "javascript", "const a = 1\nconsole.log(a)"},
-		{"perl heredoc", "perl - <<'PL'\nmy $a = 1;\nprint $a;\nPL\n", "perl -", "perl", "my $a = 1;\nprint $a;\n"},
-		{"ruby command", "ruby -e 'a = 1\nputs a'", "ruby -e …", "ruby", "a = 1\nputs a"},
-		{"php command", "php -r '$a = 1;\necho $a;'", "php -r …", "php", "$a = 1;\necho $a;"},
-		{"shell combined flag", "sh -ec 'cd dir\nprintf ok'", "sh -ec …", "sh", "cd dir\nprintf ok"},
+		{"python heredoc arguments", "python3 -u - \"$dir\" out <<'PY'\nprint('ok')\nPY\n", `python3 -u - "$dir" out`, "python", "print('ok')\n"},
+		{"assignment prefix", "PROBE=\"$dir\" python3 - <<'PY'\nprint('ok')\nPY\n", `PROBE="$dir" python3`, "python", "print('ok')\n"},
+		{"node command", "node --input-type=module -e 'const a = 1\nconsole.log(a)'", "node --input-type=module", "javascript", "const a = 1\nconsole.log(a)"},
+		{"node heredoc", "node - <<'JS'\nconst a = 1\nconsole.log(a)\nJS\n", "node", "javascript", "const a = 1\nconsole.log(a)\n"},
+		{"bun command", "bun -e 'const a = 1\nconsole.log(a)'", "bun", "javascript", "const a = 1\nconsole.log(a)"},
+		{"perl heredoc", "perl - <<'PL'\nmy $a = 1;\nprint $a;\nPL\n", "perl", "perl", "my $a = 1;\nprint $a;\n"},
+		{"ruby command", "ruby -e 'a = 1\nputs a'", "ruby", "ruby", "a = 1\nputs a"},
+		{"php command", "php -r '$a = 1;\necho $a;'", "php", "php", "$a = 1;\necho $a;"},
+		{"shell combined flag", "sh -ec 'cd dir\nprintf ok'", "sh -e", "sh", "cd dir\nprintf ok"},
+		{"one-line python", `python3 -I -c 'print("ok")'`, "python3 -I", "python", `print("ok")`},
+		{"one-line sql", `psql -c 'select 1'`, "psql", "sql", "select 1"},
+		{"stdin marker argument", "python3 - - <<'PY'\nprint('ok')\nPY\n", "python3 - -", "python", "print('ok')\n"},
+		// Without stdin arguments, a `-` stays visible rather than being explained.
+		{"shell stdin marker", "bash - <<'SH'\necho ok\nSH\n", "bash -", "bash", "echo ok\n"},
+		{"php stdin marker", "php - <<'PHP'\n<?php echo 1;\nPHP\n", "php -", "php", "<?php echo 1;\n"},
+		{"leading blank lines", "python3 - <<'PY'\n\n  \n  print('ok')\nPY\n", "python3", "python", "  print('ok')\n"},
+		{"bun heredoc", "bun --no-install - <<'JS'\nconsole.log(1)\nJS\n", "bun --no-install", "javascript", "console.log(1)\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			want := "Run " + SourceCode(test.command) + "\n" + markdownsyntax.SourceFence(test.language, test.program)
+			want := "Run · via " + SourceCode(test.via) + "\n" + markdownsyntax.SourceFence(test.language, test.program)
 			if got := shellSource(test.source); got != want {
 				t.Fatalf("display = %q; want %q", got, want)
 			}
 		})
 	}
 
-	// A one-line program reads best as the literal command, which names its
-	// interpreter; a lone `-` notes that stdin supplies the program.
+	// A composed command keeps its other statements as their own operations.
+	if got, want := shellSource("printf before\npython3 -c 'print(1)'"),
+		"Run `printf before`\n\nRun · via `python3`\n"+markdownsyntax.SourceFence("python", "print(1)"); got != want {
+		t.Errorf("composed display = %q; want %q", got, want)
+	}
+	if got, want := shellSource("rg -n x a.go; python3 - <<'PY'\nprint(1)\nPY\n"),
+		"Search `x` in `a.go`\n\nRun · via `python3`\n"+markdownsyntax.SourceFence("python", "print(1)\n"); got != want {
+		t.Errorf("composed heredoc display = %q; want %q", got, want)
+	}
+	if got, want := shellSource("python3 - <<'A'; node - <<'B'\nprint(1)\nA\nconsole.log(2)\nB\n"),
+		"Run · via `python3`\n"+markdownsyntax.SourceFence("python", "print(1)\n")+
+			"\n\nRun · via `node`\n"+markdownsyntax.SourceFence("javascript", "console.log(2)\n"); got != want {
+		t.Errorf("same-line heredocs display = %q; want %q", got, want)
+	}
+	if got, want := shellSource("timeout 5 python3 - <<'PY'\nprint(1)\nPY\n"),
+		"Run · via `python3` (timeout 5)\n"+markdownsyntax.SourceFence("python", "print(1)\n"); got != want {
+		t.Errorf("timeout display = %q; want %q", got, want)
+	}
+
+	// A lone `-` notes that stdin supplies the program.
 	for source, label := range map[string]string{
-		`python3 -I -c 'print("ok")'`:         "Run",
-		"python3 - <<'PY'\nprint('ok')\nPY\n": "Run",
-		`perl -e 'print "ok"'`:                "Run",
-		"python3 -":                           "Run · program read from stdin",
-		"python3 -u -":                        "Run · program read from stdin",
-		"python3 - < script.py":               "Run",
-		"cat script.py | python3 -":           "Run",
-		"python3 - arg":                       "Run",
+		"python3 -":                 "Run · program read from stdin",
+		"python3 -u -":              "Run · program read from stdin",
+		"python3 - < script.py":     "Run",
+		"cat script.py | python3 -": "Run",
+		"python3 - arg":             "Run",
+		"python3 -c ''":             "Run",
 	} {
 		if got, want := shellSource(source), label+"\n"+markdownsyntax.SourceFence("bash", source); got != want {
 			t.Errorf("literal display = %q; want %q", got, want)
@@ -54,14 +80,49 @@ func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 	for _, source := range []string{
 		`python3 -c "$program"`,
 		`python3 -c 'print(1)' "$(touch hidden-effect)"`,
+		"python3 - \"$(touch hidden-effect)\" <<'PY'\nprint(1)\nPY\n",
+		"X=$(touch hidden-effect) python3 - <<'PY'\nprint(1)\nPY\n",
 		"python3 script.py <<'PY'\ndata\nPY\n",
-		"printf before\npython3 -c 'print(1)'",
 		"python3 -c 'print(1)' <<'DATA'\ninput\nDATA\n",
+		// Shells and php may run a file named after `-`, not the heredoc.
+		"bash - script.sh <<'SH'\necho ok\nSH\n",
+		"php - script.php <<'PHP'\n<?php echo 1;\nPHP\n",
+		`node -p 'process.version'`,
+		// env settings and enclosing commands belong to what runs.
+		"env A=1 python3 - <<'PY'\nprint(1)\nPY\n",
+		"f=$(python3 - <<'PY'\nprint(1)\nPY\n)\necho \"$f\"",
+		"if true; then python3 - <<'PY'\nprint(1)\nPY\nfi",
 		`perl -e 'print "first\n"' -e 'print "second\n"'`,
 		`perl -e 'print "first\n"' '-eprint "second\n"'`,
 	} {
 		if got, want := shellSource(source), "Run\n"+markdownsyntax.SourceFence("bash", source); got != want {
 			t.Errorf("dynamic or composed wrapper display = %q; want %q", got, want)
+		}
+	}
+}
+
+// Detail pages show each command's own source, which the annotation does not describe.
+func TestInterpreterDetailDropsAnnotation(t *testing.T) {
+	program := "python3 -c 'print(1)'"
+	command := Command{Script: program, Segments: []CommandSegment{{Source: program, Text: shellSource(program)}}}
+	for detail, want := range map[bool]Value{
+		false: {Content: feed.Content{Verb: "Run", Label: "· via `python3`", Code: "print(1)"}},
+		true:  {Content: feed.Content{Verb: "Run", Code: program}},
+	} {
+		values := command.SegmentValues(detail)
+		if len(values) != 1 || values[0].Verb != want.Verb || values[0].Label != want.Label || values[0].Code != want.Code {
+			t.Errorf("detail %v values = %+v; want %+v", detail, values, want)
+		}
+	}
+}
+
+// A created script with an unresolved target names its invocation once.
+func TestCreatedScriptUnresolvedRun(t *testing.T) {
+	script := "from pathlib import Path\nPath('known.go').write_text('x')\nPath(input()).write_text('y')\n"
+	for call, suffix := range map[string]string{"timeout 5 python3 s.py": " (timeout 5)", "python3 \\\n  s.py": ""} {
+		got := shellSource("cat > s.py <<'EOF'\n" + script + "EOF\n" + call)
+		if want := "\n\nRun · via `python3 s.py`" + suffix + "\n" + markdownsyntax.SourceFence("python", script); !strings.HasSuffix(got, want) {
+			t.Errorf("%q display = %q; want suffix %q", call, got, want)
 		}
 	}
 }

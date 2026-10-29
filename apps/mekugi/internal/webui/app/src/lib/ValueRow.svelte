@@ -2,7 +2,7 @@
   import Code from "./Code.svelte";
   import { duration } from "./format";
   import { breakable, highlightWithin } from "./highlight";
-  import { failed, family } from "./kinds";
+  import { annotates, failed, family } from "./kinds";
   import { toolLabel } from "./markdown";
   import Path from "./Path.svelte";
   import type { Value } from "./protocol";
@@ -96,9 +96,20 @@
   // An operation's label names its subject, as an attached skill's name does
   // beside its optional source path; a read's targets are its subject.
   const reads = $derived(value.kind === "op" && value.label ? [] : (value.reads ?? []));
-  // A command with no label is its own subject: its first line takes the label.
+  // A long one-line program shows an excerpt, as a longer one shows its first
+  // line, with its full source behind the Script disclosure.
+  const programExcerpt = 80;
+  const excerpt = $derived(
+    annotates(value) && !multiline && code && code.length > programExcerpt
+      ? Array.from(code).slice(0, programExcerpt).join("").trimEnd()
+      : undefined,
+  );
+  // A command with no label is its own subject: its first line takes the label,
+  // followed by any label that annotates it.
   const headline = $derived(
-    !value.label && !reads.length && code ? code.split("\n")[0] : undefined,
+    (!value.label || annotates(value)) && !reads.length && code
+      ? (excerpt ?? code.split("\n")[0])
+      : undefined,
   );
   // Tool arguments and results often carry JSON text inside a JSON string;
   // they read as one indented document.
@@ -133,7 +144,7 @@
         json: true,
         lines: lines(value.codeLines ?? json?.split("\n").length ?? codeLines),
       };
-    if (multiline) {
+    if (multiline || excerpt !== undefined) {
       const name = value.foldSource ? "Source" : "Script";
       return { name, short: name, lines: lines(codeLines) };
     }
@@ -204,10 +215,7 @@
   <!-- Code in a tool label is the subject itself, not an aside: mono, no chip. -->
   <!-- Rows share their entry's columns; a row without status lends the status
        column to its label, so paths wrap only where the row runs out. -->
-  <div
-    class={["min-w-0 wrap-break-word [&_code]:text-code", !status && "col-span-2"]}
-    {@attach commandLabel(label)}
-  >
+  <div class={["min-w-0 wrap-break-word [&_code]:text-code", !status && "col-span-2"]}>
     {#if reads.length}
       {#each reads as read, i (i)}
         <span class="block font-mono text-code"
@@ -218,14 +226,18 @@
       {/each}
     {:else if value.path}
       <span class="font-mono text-code"><Path path={value.path} /></span>
-    {:else if value.label}
-      {@html label}
     {:else if headline !== undefined}
       <code
-        ><Code code={headline} lang={value.lang} wrap />{#if multiline}<span class="text-muted"
-            >{" …"}</span
-          >{/if}</code
-      >
+        ><Code
+          code={headline}
+          lang={value.lang}
+          wrap
+        />{#if multiline || excerpt !== undefined}<span class="text-muted">{" …"}</span>{/if}</code
+      >{#if value.label}{" "}<span class="inline-block" {@attach commandLabel(label)}
+          >{#if annotates(value)}{"· "}{/if}{@html label}</span
+        >{/if}
+    {:else if value.label}
+      <span {@attach commandLabel(label)}>{@html label}</span>
     {/if}
     {#each value.sources ?? [] as source, i (i)}<Tag mono class="ml-1.5 align-[1px]">{source}</Tag
       >{/each}

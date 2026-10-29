@@ -25,7 +25,8 @@ func shellInterpreterFlag(name, flag string) (source, harmless bool) {
 	case strings.HasPrefix(name, "python"), strings.HasPrefix(name, "pypy"):
 		return flag == "-c", flag == "-I" || flag == "-u" || flag == "-B" || flag == "-E" || flag == "-s" || flag == "-S"
 	case name == "node" || name == "nodejs" || name == "bun":
-		return flag == "-e" || flag == "--eval", flag == "--input-type=module" || flag == "--input-type=commonjs" || flag == "--trace-warnings"
+		return flag == "-e" || flag == "--eval",
+			flag == "--input-type=module" || flag == "--input-type=commonjs" || flag == "--trace-warnings" || name == "bun" && flag == "--no-install"
 	case name == "bash" || name == "sh" || name == "dash" || name == "ksh" || name == "mksh" || name == "yash":
 		return shellCommandFlagPattern.MatchString(flag), flag == "-e" || flag == "-u" || flag == "-x" || flag == "-l" || flag == "-i"
 	case name == "fish":
@@ -48,8 +49,9 @@ func shellInterpreterFlag(name, flag string) (source, harmless bool) {
 type shellScriptProjection struct {
 	Source   string
 	Language string
-	// Command is the invocation around Source, as `python3 -c … arg`.
-	Command string
+	// Via names what runs Source: the invocation without its program, as
+	// `python3 -I`, keeping `…` only where arguments follow the program.
+	Via string
 }
 
 func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool) {
@@ -57,10 +59,14 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 	if !ok || len(statements) != 1 {
 		return shellScriptProjection{}, false
 	}
-	statement := statements[0]
+	return shellStatementProjection(statements[0], partialLine)
+}
+
+// shellStatementProjection projects a parsed statement, so heredoc bodies
+// stay with their own redirects; partial trims an incomplete final body line.
+func shellStatementProjection(statement *syntax.Stmt, partial bool) (shellScriptProjection, bool) {
 	call, ok := statement.Cmd.(*syntax.CallExpr)
-	if !ok || statement.Background || statement.Negated || statement.Coprocess || statement.Disown ||
-		len(call.Assigns) != 0 || len(call.Args) == 0 {
+	if !ok || statement.Background || statement.Negated || statement.Coprocess || statement.Disown || len(call.Args) == 0 {
 		return shellScriptProjection{}, false
 	}
 	interpreter, literal := shellsyntax.Literal(call.Args[0])
@@ -68,14 +74,37 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 	if !literal || !shellInterpreterPattern.MatchString(name) {
 		return shellScriptProjection{}, false
 	}
+	// Assignments prefix the invocation, so Via shows them as written.
+	assigns := ""
+	for _, assign := range call.Assigns {
+		var source strings.Builder
+		if assign.Append || assign.Naked || !shellPlainWord(assign) ||
+			syntax.NewPrinter().Print(&source, assign) != nil || strings.ContainsAny(source.String(), "\r\n") {
+			return shellScriptProjection{}, false
+		}
+		assigns += source.String() + " "
+	}
 
 	args := call.Args[1:]
+	stdin := -1
 	for index, word := range args {
+		if stdin >= 0 {
+			// After `-`, words are the program's arguments.
+			if !shellPlainWord(word) {
+				return shellScriptProjection{}, false
+			}
+			continue
+		}
 		value, static := shellsyntax.Literal(word)
 		if !static {
 			return shellScriptProjection{}, false
 		}
 		if value == "-" {
+			// Other interpreters may run a following file argument instead.
+			if index+1 < len(args) && !shellInterpreterStdinArguments(name) {
+				return shellScriptProjection{}, false
+			}
+			stdin = index
 			continue
 		}
 		if !strings.HasPrefix(value, "-") || value == "--" || strings.ContainsAny(value, " \t\r\n") {
@@ -97,7 +126,7 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 		}
 		for _, trailing := range args[index+2:] {
 			value, static := shellsyntax.Literal(trailing)
-			if !static || strings.HasPrefix(value, "-") {
+			if !shellPlainWord(trailing) || static && strings.HasPrefix(value, "-") {
 				return shellScriptProjection{}, false
 			}
 		}
@@ -105,17 +134,60 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 		words := slices.Clone(call.Args[:index+3])
 		words[index+2] = &syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{Value: "…"}}}
 		words = append(words, args[index+2:]...)
-		return shellScriptProjection{Source: program, Language: sourceLanguage(name), Command: shellWords(words)}, true
+		if index+2 == len(args) {
+			// Without arguments after the program, its flag adds nothing; a
+			// combined shell flag keeps its other options, as `sh -e`.
+			words = slices.Clone(call.Args[:index+2])
+			if options := strings.TrimSuffix(value, "c"); options != value && options != "-" {
+				words[index+1] = &syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{Value: options}}}
+			} else {
+				words = words[:index+1]
+			}
+		}
+		return shellScriptProjection{Source: program, Language: sourceLanguage(name), Via: shellViaWords(assigns, words)}, true
 	}
 
 	if len(statement.Redirs) != 1 {
 		return shellScriptProjection{}, false
 	}
-	program, ok := shellsyntax.Heredoc(statement.Redirs[0], partialLine)
+	program, ok := shellsyntax.Heredoc(statement.Redirs[0], partial)
 	if !ok {
 		return shellScriptProjection{}, false
 	}
-	return shellScriptProjection{Source: program, Language: sourceLanguage(name), Command: shellWords(call.Args)}, true
+	via := call.Args
+	if stdin >= 0 && stdin == len(args)-1 && shellInterpreterStdinArguments(name) {
+		via = via[:len(via)-1] // A final `-` only says the program is stdin.
+	}
+	return shellScriptProjection{Source: program, Language: sourceLanguage(name), Via: shellViaWords(assigns, via)}, true
+}
+
+// shellInterpreterStdinArguments reports interpreters that read their program
+// from stdin given `-` and pass the words after it to the program.
+func shellInterpreterStdinArguments(name string) bool {
+	return strings.HasPrefix(name, "python") || strings.HasPrefix(name, "pypy") || strings.HasPrefix(name, "lua") ||
+		name == "node" || name == "nodejs" || name == "bun" || name == "perl" || name == "ruby"
+}
+
+func shellViaWords(assigns string, words []*syntax.Word) string {
+	shown := shellWords(words)
+	if shown == "" {
+		return ""
+	}
+	return assigns + shown
+}
+
+// shellPlainWord reports whether a printed node shows everything it runs.
+// Parameters print as written; substitutions would hide their commands.
+func shellPlainWord(node syntax.Node) bool {
+	plain := true
+	syntax.Walk(node, func(node syntax.Node) bool {
+		switch node.(type) {
+		case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.ArithmExp:
+			plain = false
+		}
+		return plain
+	})
+	return plain
 }
 
 // shellInterpreterReadsStdin reports a lone interpreter told by `-` to read its

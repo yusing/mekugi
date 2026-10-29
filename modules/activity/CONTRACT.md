@@ -172,7 +172,7 @@ distinct from success and does not suppress observed aggregate output.
 Command previews preserve source while wrapping top-level `;`, `&&` and `||`
 statements, then unquoted blanks or pipes with an indented shell continuation.
 Oversized words break without an invented continuation. Multiline programs use
-a code gutter; JavaScript source always sits below its heading. Main limits
+a code gutter. Main limits
 wrapped previews to five rows with a hidden-line count. Tabs expand to four spaces.
 Opening source uses the dialog, not transcript expansion. Interpreter previews
 use their own language colors.
@@ -182,12 +182,23 @@ wrappers, including literal `-NoLogo`/`-NoProfile`. Outer redirects, assignments
 extra arguments or dynamic words keep the wrapper intact. The inner source keeps
 shell highlighting; live and restored display never changes execution.
 
-Literal interpreter wrappers such as `python -c`, `python - <<'PY'` and `node -e`
-show multiline programs in their own language, with source indentation intact.
-Their heading names the interpreter and replaces the program with `…`; one-line
-programs keep the literal command. A lone `-` without redirected stdin says
-`· program read from stdin`. Provisional and completed views share this projection,
-which never evaluates source or implies success.
+Literal interpreter wrappers such as `python -c`, `python - <<'PY'` and `node -e`,
+alone, under `timeout` or `mrun`, or as a top-level or `&&` statement among
+others, show their program from its first nonblank line as the row's subject in
+its own language, with source indentation intact, followed by `· via` and the
+invocation without its program: `Running print(1) · via python3`. Assignments,
+flags and stdin arguments stay in the attribution; arguments after a `-c` program
+keep `…` in its place. A final `-` is omitted only for interpreters that pass
+later words to a stdin program; other interpreters keep it and accept no words
+after it. Substitutions, `env` wrappers, pipelines and compound commands keep the
+literal command, and detail pages show each command's own source without the
+attribution. Multiline programs begin beside the verb and end with the attribution
+row; terminal previews keep the row limit, the browser shows the first line, or
+the first 80 characters of a longer one-line program, with the full source behind
+its disclosure, and details keep the full source. A lone
+`-` without redirected stdin says `· program read from stdin`. Provisional and
+completed views share this projection, which never evaluates source or implies
+success.
 
 Output has a dashed gutter distinct from source. The tail shows five nonblank
 lines, or three in panes shorter than 40 rows, and counts omitted lines in the

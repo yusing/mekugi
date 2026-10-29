@@ -29,6 +29,29 @@ func TestUISnapshotPreloadAttachments(t *testing.T) {
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/preload-attachments-ansi.txt", append(rows, "plain after attachments"), 100)
 }
 
+// An inline program heads its row in its own language, then names its
+// interpreter, on one row or after the program's last row.
+func TestUISnapshotInterpreterRun(t *testing.T) {
+	p := Painter{Theme: diffrender.DarkTheme}
+	var rows []string
+	for _, tc := range []struct {
+		source string
+		block  Block
+	}{
+		{source: `python3 -I -c 'print("ok")'`, block: Block{Exited: true, Duration: 1200 * time.Millisecond}},
+		{source: "node --input-type=module - <<'JS'\nconst items = [1, 2, 3]\nfor (const item of items) {\n  const doubled = item * 2\n  console.log(doubled)\n}\nconsole.log(\"done\")\nJS\n",
+			block: Block{Running: true, SourceRows: 4}},
+		{source: "python3 - \"$dir\" <<'PY'\nimport sys\nraise SystemExit(sys.argv[1])\nPY\n", block: Block{Exited: true, ExitCode: 1}},
+	} {
+		for _, value := range presentation.Operations(presentation.ShellSource(tc.source, "")) {
+			block := tc.block
+			block.Kind, block.Verb, block.Label, block.Code, block.Lang, block.Fenced = value.Kind, value.Verb, value.Label, value.Code, value.Lang, value.Fenced
+			rows = append(rows, p.Block(block, 60)...)
+		}
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/interpreter-run-ansi.txt", append(rows, "plain after interpreter rows"), 60)
+}
+
 func TestUISnapshotCommonPathTargets(t *testing.T) {
 	for _, tc := range []struct{ name, source, cwd, want string }{
 		{"external_search", "rg needle /home/yusing/projects/codex/codex-rs/core/src /home/yusing/projects/codex/codex-rs/tui/src/bottom_pane", "/workspace", "/home/yusing/projects/codex/codex-rs/{core/src,tui/src/bottom_pane}"},

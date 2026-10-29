@@ -226,6 +226,11 @@ func TestCompactFeedPreservesPresentation(t *testing.T) {
 				t.Fatalf("command disclosures lost: %+v", e)
 			}
 		}},
+		{"inline program", activity.Entry{Facts: activity.Facts{Seq: 1, Kind: "tool", Agent: "Main", Text: "Run program"}, Values: []activity.Value{{Kind: "op", Verb: "Run", Label: "· via `python3`", Code: command, Lang: "python", Fenced: true}}, Revision: 1}, func(t *testing.T, e entry) {
+			if e.AutoContent || len(e.Values) != 1 || e.Values[0].Label != "· via `python3`" || e.Values[0].Code != "echo first" || e.Values[0].CodeLines != 601 {
+				t.Fatalf("program headline lost: %+v", e)
+			}
+		}},
 		{"prose", activity.Entry{Facts: activity.Facts{Seq: 1, Agent: "Main", Kind: "final", Text: strings.Repeat("**authored text**\n", 1000)}, Revision: 1}, func(t *testing.T, e entry) {
 			if !e.AutoContent || len(e.Text) > 512 {
 				t.Fatal("inline prose did not request automatic completion")

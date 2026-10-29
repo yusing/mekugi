@@ -452,7 +452,12 @@ func TestActivityReadsKeepWorkdirsApart(t *testing.T) {
 }
 
 func TestAppServerWholeScriptTimeoutSuffix(t *testing.T) {
-	for _, command := range []string{"timeout 10 bash <<'EOF'\nsleep 1\nEOF", "set -e\ntimeout 10 sleep 1", "set -e\necho start && timeout 10 sleep 1"} {
+	for command, code := range map[string]string{
+		// An inline program shows its own source; the invocation keeps its bound.
+		"timeout 10 bash <<'EOF'\nsleep 1\nEOF":    "sleep 1",
+		"set -e\ntimeout 10 sleep 1":               "set -e\ntimeout 10 sleep 1",
+		"set -e\necho start && timeout 10 sleep 1": "set -e\necho start && timeout 10 sleep 1",
+	} {
 		t.Run(command, func(t *testing.T) {
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, DurationMS: new(int64(500))}
 			u := newAppServerSessionTestUI(t, t.TempDir())
@@ -467,7 +472,7 @@ func TestAppServerWholeScriptTimeoutSuffix(t *testing.T) {
 			if got := strings.Join(rows, "\n"); !strings.Contains(got, "(timeout 10s)") {
 				t.Fatalf("missing timeout suffix: %s", got)
 			}
-			if entry.Source.Native.Command != command || blocks[0].Code != command {
+			if entry.Source.Native.Command != command || blocks[0].Code != code {
 				t.Fatalf("whole script source changed: %+v", blocks[0])
 			}
 		})

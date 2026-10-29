@@ -25,7 +25,7 @@ func TestExecCompletedReceiptKeepsPythonValidation(t *testing.T) {
 	}}
 	blocks := commandSegmentBlocks(sessionpresentation.CommandPresentation(entry))
 	if !slices.ContainsFunc(blocks, func(block activityui.Block) bool {
-		return block.Code == check || strings.Contains(block.Label, "assert True")
+		return strings.Contains(block.Code, "assert True") || strings.Contains(block.Label, "assert True")
 	}) {
 		t.Fatalf("receipt removed the Python validation: %+v", blocks)
 	}

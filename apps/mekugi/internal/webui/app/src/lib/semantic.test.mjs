@@ -222,6 +222,21 @@ test("roster activity uses observed progress and collapsed reasoning labels", ()
     ),
     { verb: "Thinking", html: "" },
   );
+  const program = {
+    kind: "op",
+    verb: "Run",
+    label: "· via `python3`",
+    code: "import sys\nprint(1)",
+  };
+  assert.match(
+    doing({ kind: "tool", values: [program] }, label).html,
+    /^<code>import sys<\/code> · via <code>python3<\/code>$/,
+  );
+  // Program text is literal, even where it holds Markdown or HTML.
+  assert.equal(
+    doing({ kind: "tool", values: [{ ...program, code: "print(`<b>`)" }] }, label).html,
+    "<code>print(`&lt;b&gt;`)</code> · via <code>python3</code>",
+  );
 });
 const { view, show } = await import("./view.svelte.ts");
 const { prepareAttachments } = await import("./attachments.ts");

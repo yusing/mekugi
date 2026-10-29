@@ -116,7 +116,7 @@ func TestActivityBatchSectionLabelSuccessors(t *testing.T) {
 func TestActivityBatchSessionDiscoveryHeadings(t *testing.T) {
 	for _, tc := range []struct{ heading, before, next, preview, target string }{
 		{`printf 'Session files\n'`, "", `rg --files --hidden sessions 2>/dev/null | rg 'session|manifest' | head -60`, "List `sessions`", "sessions"},
-		{`printf '\nState directories\n'`, "python3 - <<'PY'\nprint('session_meta')\nPY\n", `ls -d state/* share/* 2>/dev/null`, "ls -d state/* share/*", "state/*"},
+		{`printf '\nState directories\n'`, "python3 - <<'PY'\nprint('session_meta')\nPY\n", `ls -d state/* share/* 2>/dev/null`, "List `state/*`", "state/*"},
 	} {
 		for _, join := range []string{"; ", " && "} {
 			t.Run(tc.heading+join, func(t *testing.T) {

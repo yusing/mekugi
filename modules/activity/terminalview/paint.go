@@ -893,6 +893,10 @@ func (p *Painter) ranRow(block Block, width int) []string {
 		return append(lines, terminalui.Hang(padding, text, width)...)
 	}
 	var lines []string
+	// A label that annotates its program follows it, as `print(1) · via python3`.
+	annotation := activitymodel.Annotates(block.Label)
+	// Beside a program's last row, a suffix would read as source.
+	sourceLast := strings.Contains(code, "\n")
 	switch {
 	case code != "" && !strings.Contains(code, "\n"):
 		lang := "bash"
@@ -905,24 +909,26 @@ func (p *Painter) ranRow(block Block, width int) []string {
 		}
 	case code != "":
 		program := liveActivityIndent(p.program(block.Lang, code, width-indent, block), padding)
-		if label != "" {
+		if label != "" && !annotation {
 			lines = terminalui.Hang(lead, label, width)
 		} else {
 			program[0] = lead + strings.TrimPrefix(program[0], padding)
 		}
 		lines = append(lines, program...)
+		if label != "" && annotation {
+			lines, sourceLast = append(lines, terminalui.Hang(padding, label, width)...), false
+		}
 	default:
 		lines = terminalui.Hang(lead, label, width)
 	}
 	switch {
-	case exit != "" && strings.Contains(code, "\n"):
-		// Beside a program's last row, the exit would read as source.
+	case exit != "" && sourceLast:
 		lines = append(lines, padding+exit)
 	case exit != "":
 		lines = suffix(lines, exit)
 	}
 	if elapsed := RunElapsed(block, p.now()); elapsed != "" {
-		if strings.Contains(code, "\n") {
+		if sourceLast {
 			lines = append(lines, padding+terminalui.Dim+"· "+elapsed+terminalui.Undim)
 		} else {
 			lines = suffix(lines, terminalui.Dim+"· "+elapsed+terminalui.Undim)
@@ -1304,7 +1310,7 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 			return p.vcsSummary(block) + more
 		}
 		detail := strings.TrimSpace(p.Label(block.Verb, block.Label))
-		if detail == "" || strings.HasPrefix(ansi.Strip(detail), "·") {
+		if detail == "" || activitymodel.Annotates(block.Label) {
 			code, _, _ := strings.Cut(block.Code, "\n")
 			if block.Fenced {
 				code = strings.Join(p.Highlight(block.Lang, code), " ")

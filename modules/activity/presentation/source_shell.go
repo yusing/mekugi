@@ -59,6 +59,20 @@ func ClassifyShell(script, cwd string) (string, bool) {
 	})
 	hasEdit := false
 	if hasHeredoc || hasSetup {
+		// An inline program sourceStatement would show is its own operation,
+		// as an edit is.
+		hasEdit = slices.ContainsFunc(shellsyntax.Sequence(program.Stmts), func(statement *syntax.Stmt) bool {
+			for {
+				inner := shellsyntax.UnwrapMRun(shellsyntax.UnwrapTimeout(statement))
+				if inner == statement {
+					break
+				}
+				statement = inner
+			}
+			projection, _ := shellStatementProjection(statement, false)
+			_, ok := projection.display()
+			return ok
+		})
 		syntax.Walk(program, func(node syntax.Node) bool {
 			if _, declaration := node.(*syntax.FuncDecl); declaration {
 				return false
@@ -403,7 +417,10 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string, next *sy
 		return "", statement == original
 	}
 	if inner := shellsyntax.UnwrapEnv(statement); inner != statement {
-		if shellsyntax.ShellOptions(inner) {
+		// env settings belong to an inline program's invocation; keep them.
+		// Wrapped shell scripts still show their own statements.
+		_, wrapped := shellsyntax.ShellScript(inner)
+		if projection, _ := shellStatementProjection(inner, false); shellsyntax.ShellOptions(inner) || projection.Via != "" && !wrapped {
 			return "", false
 		}
 		return sourceStatement(script, inner, cwd, next)
@@ -479,6 +496,9 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string, next *sy
 			return label + " " + SourceCode(script[int(statement.Pos().Offset()):int(statement.End().Offset())]), true
 		}
 		return "", false
+	}
+	if projection, _ := shellStatementProjection(statement, false); projection.Via != "" {
+		return projection.display()
 	}
 	call, ok := statement.Cmd.(*syntax.CallExpr)
 	if !ok || len(call.Args) == 0 || len(call.Assigns) != 0 {

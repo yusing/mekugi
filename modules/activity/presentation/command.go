@@ -203,6 +203,9 @@ func (c Command) SegmentValues(detail bool) []Value {
 		last := &operations[len(operations)-1]
 		if detail && (last.EditSource != "" || last.Verb == "Run") {
 			last.Code, last.Lang, last.Fenced = textsanitize.Safe(cmp.Or(segment.Display, segment.Source), false), "bash", true
+			if feed.Annotates(last.Label) {
+				last.Label = "" // It annotated the program the command replaced.
+			}
 		}
 		last.ExitCode, last.Segment = segment.ExitCode, true
 		last.Operation = segmentIndex + 1

@@ -44,6 +44,10 @@ func Paragraphs(text string) []string {
 	return paragraphs
 }
 
+// Annotates reports a label without a subject of its own, as `· via python3`:
+// it follows the operation's code, which names the subject instead.
+func Annotates(label string) bool { return strings.HasPrefix(label, "· ") }
+
 func ParseOperation(paragraph string) Content {
 	lines := strings.Split(paragraph, "\n")
 	label := lines[0]

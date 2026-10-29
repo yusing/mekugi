@@ -49,6 +49,7 @@ const view = (values, kind = "tool") =>
   }).body;
 const edit = (path, sources) => ({ kind: "op", verb: "Edit", path, sources, effect: true });
 const tags = (html, name) => html.split(`>${name}<`).length - 1;
+const text = (html) => html.replace(/<!--[^]*?-->/g, "").replace(/<[^>]+>/g, "");
 
 test("deferred JSON retains its formatted disclosure count", () => {
   const html = view([
@@ -248,6 +249,27 @@ test("complete one-line output stays visible without a disclosure", () => {
     assert.match(folded, /aria-expanded="false"/);
     assert.doesNotMatch(folded, /<pre/);
   }
+});
+
+test("an inline program heads its row, followed by its interpreter", () => {
+  const value = { kind: "op", verb: "Run", label: "· via `python3`", lang: "python", fenced: true };
+  const oneLine = render(ValueRow, { props: { value: { ...value, code: "print(1)" } } }).body;
+  assert.match(text(oneLine), /print\(1\) · via python3/);
+  assert.doesNotMatch(oneLine, /<pre/);
+
+  const program = render(ValueRow, {
+    props: { value: { ...value, code: "import sys\nprint(1)\n" } },
+  }).body;
+  assert.match(text(program), /import sys … · via python3/);
+  assert.match(program, /aria-label="Script: 2 lines"/);
+  assert.doesNotMatch(program, /<pre/);
+
+  // A long one-line program shows an excerpt, with its source behind the disclosure.
+  const source = `print(${"1 + ".repeat(40)}1)`;
+  const long = render(ValueRow, { props: { value: { ...value, code: source } } }).body;
+  assert.ok(text(long).includes(`${source.slice(0, 80).trimEnd()} … · via python3`), text(long));
+  assert.match(long, /aria-label="Script: 1 line"/);
+  assert.doesNotMatch(long, /<pre/);
 });
 
 test("unreached commands render Skipped while retaining their command", () => {

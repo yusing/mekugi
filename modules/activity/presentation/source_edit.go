@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
@@ -81,14 +79,10 @@ func sourceEditStatement(script string, statement *syntax.Stmt) (string, bool) {
 	if languageName != "python" && languageName != "javascript" {
 		return "", false
 	}
-	var source strings.Builder
-	if syntax.NewPrinter().Print(&source, statement) != nil {
-		return "", false
-	}
-	projection, ok := shellInterpreterScriptProjection(source.String())
+	projection, ok := shellStatementProjection(statement, false)
 	if !ok {
 		if content, _, created := execscope.CreatedScript(script, statement, "/"); created {
-			projection = shellScriptProjection{Source: content, Language: languageName, Command: source.String()}
+			projection = shellScriptProjection{Source: content, Language: languageName, Via: shellViaWords("", call.Args)}
 			ok = true
 		}
 	}
@@ -132,7 +126,11 @@ func sourceEditStatement(script string, statement *syntax.Stmt) (string, bool) {
 		}
 	}
 	if result.Unresolved {
-		displays = append(displays, "Run "+SourceCode(projection.Command)+"\n"+markdownsyntax.SourceFence(projection.Language, projection.Source))
+		display, ok := projection.display()
+		if !ok {
+			return "", false
+		}
+		displays = append(displays, display)
 	}
 	return strings.Join(displays, "\n\n"), true
 }

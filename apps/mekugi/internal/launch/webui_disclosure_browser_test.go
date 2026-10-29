@@ -79,6 +79,14 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	}
 	skills := activity.ItemContent{Facts: activity.Facts{Seq: 16, Agent: "Main", Kind: "attachments"}, Details: &activity.ItemDetails{Attachments: sessionpresentation.AttachmentValues(machine.workdir, skillContent)}}
 	publication.Entries = append(publication.Entries, activity.Entry{Facts: skills.Facts, Values: skills.Values()})
+	for i, command := range []string{
+		`python3 -I -c 'print("ok")'`,
+		"node --input-type=module - <<'JS'\nconst items = [1, 2, 3]\nfor (const item of items) {\n  const doubled = item * 2\n  console.log(doubled)\n}\nconsole.log(\"done\")\nJS\n",
+		`python3 -c 'import json; rows = [{"name": name, "size": len(name)} for name in ["alpha", "beta", "gamma", "delta"]]; print(json.dumps(sorted(rows, key=lambda row: row["size"]), indent=2))'`,
+	} {
+		program := activity.ItemContent{Seq: uint64(17 + i), Agent: "Main", Kind: "tool", Text: activity.ShellSource(command, ""), Command: activity.Command{Display: command, Exited: true}}
+		publication.Entries = append(publication.Entries, activity.Entry{Facts: program.Facts, Values: program.Values()})
+	}
 	var status sessionpresentation.Label
 	publish := func() {
 		t.Helper()
@@ -185,6 +193,34 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("eval", `document.querySelector('[data-entry="16"]').scrollIntoView({block:'center'})`)
 		run("screenshot", filepath.Join(artifacts, "skill-attachments.png"))
+	}
+	// An inline program heads its row, highlighted in its own language and
+	// followed by its interpreter, beside it when it fits; a longer one shows its
+	// first line or an excerpt, with the full source behind its disclosure.
+	for _, width := range []string{"1280", "390"} {
+		run("set", "viewport", width, "900")
+		for _, theme := range []string{"light", "dark"} {
+			run("eval", fmt.Sprintf("document.documentElement.dataset.theme = %q", theme))
+			run("eval", `document.querySelector('[data-entry="18"]').scrollIntoView({block:'center'})`)
+			run("wait", "--fn", `(() => { const tool = n => document.querySelector('[data-entry="'+n+'"] [data-ai-element=tool]'); return [[17, 'print("ok")', '· via python3 -I'], [18, 'const items = [1, 2, 3] …', '· via node --input-type=module']].every(([n, head, via]) => { const row = tool(n); const code = row?.querySelector('div > code'); const label = code?.nextElementSibling; if (!code || !label || code.textContent !== head || label.innerText.trim() !== via || row.querySelector('pre')) return false; const a = code.getBoundingClientRect(), b = label.getBoundingClientRect(), r = row.getBoundingClientRect(); const beside = b.top < a.bottom && b.bottom > a.top && b.left >= a.right; return code.querySelectorAll('span[style]').length > 1 && (beside || n === 18 && b.top >= a.bottom - 2) && b.right <= r.right + 0.5; }) && tool(18).querySelector('button[aria-label="Script: 6 lines"]') && !tool(17).querySelector('button[aria-label^="Script"]'); })()`)
+			run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="19"] [data-ai-element=tool]'); const code = row?.querySelector('div > code'); const label = code?.nextElementSibling; const r = row?.getBoundingClientRect(); return !!code && code.textContent === 'import json; rows = [{"name": name, "size": len(name)} for name in ["alpha", "be …' && label?.innerText.trim() === '· via python3' && !row.querySelector('pre') && !!row.querySelector('button[aria-label="Script: 1 line"]') && code.getBoundingClientRect().right <= r.right + 0.5 && label.getBoundingClientRect().right <= r.right + 0.5; })()`)
+			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+				run("screenshot", filepath.Join(artifacts, "interpreter-programs-"+width+"-"+theme+".png"))
+			}
+		}
+		run("click", `[data-entry="19"] button[aria-label="Script: 1 line"]`)
+		run("wait", "--fn", `(() => { const pre = document.querySelector('[data-entry="19"] pre'); return pre?.textContent.includes('key=lambda row: row["size"]), indent=2))') && pre.querySelectorAll('span[style]').length > 5 && pre.getBoundingClientRect().right <= document.querySelector('[data-entry="19"]').getBoundingClientRect().right + 0.5; })()`)
+		if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+			run("screenshot", filepath.Join(artifacts, "interpreter-program-long-open-"+width+".png"))
+		}
+		run("click", `[data-entry="19"] button[aria-label="Script: 1 line"]`)
+		run("wait", "--fn", `!document.querySelector('[data-entry="19"] pre')`)
+	}
+	run("set", "viewport", "1280", "900")
+	run("click", `[data-entry="18"] button[aria-label="Script: 6 lines"]`)
+	run("wait", "--fn", `(() => { const pre = document.querySelector('[data-entry="18"] pre'); return pre?.textContent.includes('console.log("done")') && pre.querySelectorAll('span[style]').length > 5; })()`)
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("screenshot", filepath.Join(artifacts, "interpreter-program-open.png"))
 	}
 	run("find", "role", "button", "click", "--name", "Output: 2 lines", "--exact")
 	run("wait", "--text", "second output")

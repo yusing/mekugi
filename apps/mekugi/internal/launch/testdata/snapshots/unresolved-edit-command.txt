@@ -1,5 +1,5 @@
-└ Ran python3 -
-      │ from pathlib import Path
+└ Ran │ from pathlib import Path
       │ name='a'
       │ name += '.txt'
       │ (Path('src') / name).write_text('new')
+      · via python3

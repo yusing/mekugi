@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	activityfeed "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -87,17 +88,19 @@ func compactEntry(full entry) entry {
 					}
 				}
 				v.Code = ""
-				if v.Label == "" && len(v.Reads) == 0 {
+				// Code without a labeled subject heads its row with its first line.
+				subject := (v.Label == "" || activityfeed.Annotates(v.Label)) && len(v.Reads) == 0
+				if subject {
 					v.Code, _, _ = strings.Cut(code, "\n")
 					if len(v.Code) > 512 {
 						v.Code = ""
 						p.AutoContent = true
 					}
 				}
-				if !strings.Contains(code, "\n") && (v.Label == "" && len(v.Reads) == 0 || v.Fenced && v.Lang != "json") {
+				if !strings.Contains(code, "\n") && (subject || v.Fenced && v.Lang != "json") {
 					p.AutoContent = true
 				}
-				if !strings.Contains(code, "\n") && (!v.Fenced || v.Label == "" && len(v.Reads) == 0) {
+				if !strings.Contains(code, "\n") && (!v.Fenced || subject) {
 					v.CodeLines = 0
 				}
 			}

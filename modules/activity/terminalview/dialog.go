@@ -275,7 +275,10 @@ func dialogTarget(p *Painter, block Block) string {
 	case block.Code != "":
 		first, _, _ := strings.Cut(textsanitize.Safe(block.Code, false), "\n")
 		if len(first) <= dialogHighlightBytes {
-			return strings.Join(p.dialogHighlight(block, first), " ")
+			first = strings.Join(p.dialogHighlight(block, first), " ")
+		}
+		if activitymodel.Annotates(block.Label) {
+			first += " " + strings.TrimSpace(p.Label(block.Verb, block.Label))
 		}
 		return first
 	}
