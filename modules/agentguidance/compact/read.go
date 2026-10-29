@@ -12,7 +12,8 @@ import (
 )
 
 // SelectionSchema describes the shared compaction and delegate source selection.
-const SelectionSchema = `{"type":"object","properties":{"sources":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"skill":{"type":"string"},"changes":{"type":"array","items":{"type":"string"},"minItems":1},"ranges":{"type":"array","items":{"type":"array","items":{"type":"integer"},"minItems":2,"maxItems":2}}},"not":{"anyOf":[{"required":["changes","path"]},{"required":["changes","skill"]},{"required":["changes","ranges"]}]},"additionalProperties":false}}},"required":["sources"],"additionalProperties":false}`
+// ReadCommands enforces exclusive changes sources; Claude's worker cannot compile `not`.
+const SelectionSchema = `{"type":"object","properties":{"sources":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"skill":{"type":"string"},"changes":{"type":"array","items":{"type":"string"},"minItems":1},"ranges":{"type":"array","items":{"type":"array","items":{"type":"integer"},"minItems":2,"maxItems":2}}},"additionalProperties":false}}},"required":["sources"],"additionalProperties":false}`
 
 // ReadCommands interprets selection metadata, never summary prose or file content.
 func ReadCommands(selection string) ([]string, error) {
