@@ -58,6 +58,9 @@ native request metadata remains unchanged on the provider wire.
   identity and visible logical agent name. Task names are nonempty and contain
   only lowercase ASCII letters, digits, underscores and hyphens; each name forms
   one segment of its parent's logical task path.
+  Claude effort choices use the native model's advertised capabilities; a
+  full-history fork inherits its selected effort. Inspection reports native
+  applied effort only after observation, leaving it absent until then.
 - `followup_task` controls an admitted non-root target: start when idle, steer its
   actual running turn, or supersede an unsent wait/wake before reconciling host
   state. Original caller attribution remains attached. Action results identify

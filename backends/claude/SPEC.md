@@ -96,7 +96,8 @@ finish. Repeated content blocks from one provider message count once; terminal
 results reconcile the reported turn count. Context refreshes after generating turns,
 independently of native event delivery. Completed compaction boundaries contribute
 to inspection. Live and retained
-inspection share the latest observations without starting work. Missing facts
+inspection share the latest observations without starting work. Applied reasoning
+effort comes from native observations, not the requested setting. Missing facts
 stay absent, and incomplete accounting stays explicit. SDK turn durations do not
 establish provider-request throughput.
 Transport loss, authentication failure, policy rejection and interruption remain

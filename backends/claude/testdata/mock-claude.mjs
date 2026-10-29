@@ -94,7 +94,7 @@ lines.on("line", (line) => {
       if (process.env.MEKUGI_FIXTURE_INIT_ERROR) { process.stderr.write("fixture initialization failure\n"); process.exit(23); }
       if (process.env.MEKUGI_FIXTURE_INIT_HANG) return;
       hooks = value.request.hooks;
-      response(value.request_id, { commands: [], agents: [], models: [{ value: "fixture-model", displayName: "Fixture Model", description: "Native fixture choice", resolvedModel: "fixture-resolved" }], account: { email: "private@example.invalid" }, output_style: "default", available_output_styles: [], hooks_applied: true, claude_code_version: "2.1.312" });
+      response(value.request_id, { commands: [], agents: [], models: [{ value: "fixture-model", displayName: "Fixture Model", description: "Native fixture choice", resolvedModel: "fixture-resolved", supportsEffort: true, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"] }], account: { email: "private@example.invalid" }, output_style: "default", available_output_styles: [], hooks_applied: true, claude_code_version: "2.1.312" });
     } else if (value.request.subtype === "interrupt") {
       interrupt?.(); releaseContext?.(); response(value.request_id, { still_queued: [], ...(value.request.cancel_queued ? { cancelled: [] } : {}) });
     } else if (value.request.subtype === "get_usage") {

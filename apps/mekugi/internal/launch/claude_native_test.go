@@ -274,7 +274,8 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 		t.Fatal(err)
 	}
 	settings := b.settings
-	settings.Model = "claude:claude-sonnet-4-6"
+	settings.Model = "claude:opus"
+	settings.Effort = new("high")
 	settings.DeveloperInstructions = new("selected-native-role-fixture")
 	settings.ApprovalPolicy, settings.ApprovalsReviewer = jsontext.Value(approval), reviewer
 	// Keep a parent shell window open while the real child runtime performs its
@@ -374,6 +375,21 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 	}
 	if !strings.Contains(string(body), "+parent evidence") || !strings.Contains(string(body), "THREAD="+result.Thread) || !strings.Contains(string(body), "mekugi-tools-") || !strings.Contains(string(body), "mchanges "+strings.Fields(childList)[0]) {
 		t.Fatalf("native provider input omitted private frontend identity or shared receipts: %s", body)
+	}
+	var effortRequests []struct {
+		Output struct {
+			Effort string `json:"effort"`
+		} `json:"output_config"`
+	}
+	if err := json.Unmarshal(body, &effortRequests); err != nil {
+		t.Fatal(err)
+	}
+	if len(effortRequests) == 0 || effortRequests[0].Output.Effort != "high" {
+		t.Fatalf("native provider effort not delivered: %+v", effortRequests)
+	}
+	details, err := execution.Inspect(ctx, result.Thread)
+	if err != nil || details.ReasoningEffort == nil || *details.ReasoningEffort != "high" {
+		t.Fatalf("applied native effort = %+v, %v", details, err)
 	}
 	if compact != "" {
 		var requests []struct {

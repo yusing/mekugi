@@ -112,8 +112,8 @@ func ReadClaudeDetails(ctx context.Context, thread, path string) (control.Sessio
 	var details control.SessionDetails
 	ledger, err := readClaudeLedger(ctx, thread, path)
 	if err == nil && ledger.Model != "" {
+		details = ledger.Metrics.inspection()
 		details.Model = new(ledger.Model)
-		details.SessionMetrics = ledger.Metrics.inspection()
 	}
 	return details, err
 }

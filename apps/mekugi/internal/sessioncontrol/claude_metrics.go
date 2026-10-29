@@ -38,13 +38,17 @@ type claudeMetrics struct {
 	LiveRoundtrips               uint64
 	ContextTokens, ContextWindow *uint64
 	Compactions                  []string
+	Effort                       *string
 }
 
-func (m *claudeMetrics) inspection() control.SessionMetrics {
+func (m *claudeMetrics) inspection() control.SessionDetails {
 	if m == nil {
-		return control.SessionMetrics{}
+		return control.SessionDetails{}
 	}
-	metrics := control.SessionMetrics{}
+	metrics := control.SessionDetails{}
+	if m.Effort != nil {
+		metrics.ReasoningEffort = new(*m.Effort)
+	}
 	if m.ContextTokens != nil {
 		metrics.ContextTokens = new(*m.ContextTokens)
 	}
@@ -113,6 +117,7 @@ func (r *ClaudeRuntime) ObserveMetrics(ctx context.Context, raw jsontext.Value) 
 		MessageID  string  `json:"message_id"`
 		ParentTool *string `json:"parent_tool_use_id"`
 		Error      string  `json:"error"`
+		Effort     *string `json:"effort"`
 		Message    struct {
 			ID string `json:"id"`
 		} `json:"message"`
@@ -127,6 +132,8 @@ func (r *ClaudeRuntime) ObserveMetrics(ctx context.Context, raw jsontext.Value) 
 	}
 	m := r.ledger.Metrics
 	switch {
+	case event.Type == "mekugi_effort" && event.Effort != nil:
+		m.Effort = event.Effort
 	case event.Type == "assistant" && r.running && event.ParentTool == nil && event.Error == "" && event.Message.ID != "" && event.Message.ID != m.LastMessage:
 		if m.LiveTurn != r.turn {
 			m.LiveTurn, m.LiveRoundtrips = r.turn, 0

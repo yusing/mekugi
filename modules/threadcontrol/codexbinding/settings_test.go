@@ -125,6 +125,7 @@ plugins = true
 	models := []Model{{Name: "codex", DefaultEffort: new("medium"), Efforts: []string{"medium"}}, {Name: "codex-pinned", Efforts: []string{"ultra"}, ServiceTiers: []string{"priority"}}}
 	for _, tc := range []struct {
 		name, parent, want string
+		wantEffort         string
 		options            SpawnOptions
 		fail               bool
 	}{
@@ -132,16 +133,19 @@ plugins = true
 		{name: "fresh Claude default role pin replaces inheritance", parent: "claude:parent", want: "codex-pinned", options: SpawnOptions{ForkTurns: new("none")}},
 		{name: "fresh Claude selected role pin replaces inheritance", parent: "claude:parent", want: "codex-pinned", options: SpawnOptions{ForkTurns: new("none"), AgentType: new("worker")}},
 		{name: "pinned Codex child admits Codex effort", parent: "claude:parent", want: "codex-pinned", options: SpawnOptions{ForkTurns: new("none"), AgentType: new("worker"), ReasoningEffort: new("ultra")}},
-		{name: "full Claude inherits despite selected role", parent: "claude:parent", want: "claude:parent", options: SpawnOptions{AgentType: new("worker")}},
-		{name: "full Claude inherits without role", parent: "claude:parent", want: "claude:parent"},
+		{name: "full Claude inherits despite selected role", parent: "claude:parent", want: "claude:parent", wantEffort: "high", options: SpawnOptions{AgentType: new("worker")}},
+		{name: "full Claude inherits without role", parent: "claude:parent", want: "claude:parent", wantEffort: "high"},
 		{name: "explicit Codex restores stock role precedence", parent: "claude:parent", want: "codex-pinned", options: SpawnOptions{ForkTurns: new("none"), Model: new("codex"), ReasoningEffort: new("medium"), AgentType: new("worker")}},
 		{name: "empty qualified model", parent: "codex", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude:")}, fail: true},
 		{name: "blank qualified model", parent: "codex", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude: \t")}, fail: true},
-		{name: "explicit Claude effort", parent: "codex", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude:model"), ReasoningEffort: new("high")}, fail: true},
-		{name: "unpinned inherited Claude explicit effort", parent: "claude:parent", options: SpawnOptions{ForkTurns: new("none"), AgentType: new("explorer"), ReasoningEffort: new("")}, fail: true},
+		{name: "explicit Claude high survives role effort", parent: "codex", want: "claude:model", wantEffort: "high", options: SpawnOptions{ForkTurns: new("none"), Model: new("claude:model"), ReasoningEffort: new("high"), AgentType: new("worker")}},
+		{name: "unpinned inherited Claude effort", parent: "claude:parent", want: "claude:parent", wantEffort: "medium", options: SpawnOptions{ForkTurns: new("none"), AgentType: new("explorer"), ReasoningEffort: new("medium")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			parent := control.Settings{Workspace: workspace, Model: tc.parent, Provider: "codex-provider", Effort: new("ultra"), Summary: new("auto"), Tier: new("priority"), PermissionProfile: []byte(`{"type":"managed","file_system":{"type":"restricted","entries":[{"path":{"type":"path","path":"/denied"},"access":"deny"}]},"network":"restricted"}`), ApprovalPolicy: []byte(`"on-request"`), PermissionID: "bounded", ApprovalsReviewer: "user", RuntimeRoots: []string{workspace}, Config: []byte(`{"features.plugins":false}`), NonAttachable: tc.parent != "codex"}
+			if tc.parent != "codex" {
+				parent.Effort = new("high")
+			}
 			tc.options.Message = "assignment"
 			child, err := prepareChild(parent, control.Limits{}, tc.options, models, layers, [3]*string{new("codex"), new("medium"), new("default instructions")})
 			if tc.fail {
@@ -159,10 +163,14 @@ plugins = true
 			if child.Settings.NonAttachable != (tc.want != "codex-pinned") || child.Settings.PermissionID != parent.PermissionID || child.Settings.ApprovalsReviewer != parent.ApprovalsReviewer || !reflect.DeepEqual(child.Settings.RuntimeRoots, parent.RuntimeRoots) {
 				t.Fatalf("child capabilities or authority = %+v", child.Settings)
 			}
-			if tc.want != "codex-pinned" && (child.Settings.Effort != nil || child.Settings.Summary != nil || child.Settings.Tier != nil) {
+			var wantEffort *string
+			if tc.wantEffort != "" {
+				wantEffort = new(tc.wantEffort)
+			}
+			if tc.want != "codex-pinned" && (!sameEffort(child.Settings.Effort, wantEffort) || child.Settings.Summary != nil || child.Settings.Tier != nil) {
 				t.Fatalf("Claude inherited Codex settings: %+v", child.Settings)
 			}
-			if tc.options.AgentType != nil || !child.FullHistory {
+			if (tc.options.AgentType != nil || !child.FullHistory) && (tc.options.AgentType == nil || *tc.options.AgentType != "explorer") {
 				if child.Settings.DeveloperInstructions == nil || *child.Settings.DeveloperInstructions != "Review the assignment" || child.Settings.SelectedRole == nil {
 					t.Fatalf("role instructions lost: %+v", child.Settings)
 				}

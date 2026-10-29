@@ -85,13 +85,16 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		effort = defaults[1]
 	}
 	if claude {
+		if model != nil || !strings.HasPrefix(settings.Model, "claude:") {
+			settings.Effort = nil
+		}
 		if model != nil {
 			settings.Model = *model
 		}
 		if strings.TrimSpace(strings.TrimPrefix(settings.Model, "claude:")) == "" {
 			return result, errors.New("Claude model must not be empty")
 		}
-		settings.Effort, settings.Summary, settings.Tier = nil, nil, nil
+		settings.Summary, settings.Tier = nil, nil
 	} else if model != nil {
 		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == *model })
 		if i < 0 {
@@ -140,19 +143,20 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		}
 		inheritedEffort = inheritedEffort && selection.values.Effort == nil
 	}
-	if strings.HasPrefix(settings.Model, "claude:") && effort != nil {
-		return result, fmt.Errorf("unsupported reasoning effort %q for Claude delegates", *effort)
-	}
-	if inheritedEffort && settings.Effort != nil && *settings.Effort == "ultra" {
-		ordinary, err := inheritedEffortForModel(models, settings.Model, *settings.Effort)
-		if err != nil {
-			return result, err
-		}
-		settings.Effort = new(ordinary)
-	} else if settings.Effort != nil && (model != nil || effort != nil || settings.Model != result.Settings.Model || !sameEffort(settings.Effort, result.Settings.Effort)) {
-		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == settings.Model })
-		if i < 0 || !slices.Contains(models[i].Efforts, *settings.Effort) {
-			return result, fmt.Errorf("unsupported reasoning effort %q for %s", *settings.Effort, settings.Model)
+	// Claude validates effort against its native initialization catalog before
+	// accepting input, independently of the Codex model catalog.
+	if !strings.HasPrefix(settings.Model, "claude:") {
+		if inheritedEffort && settings.Effort != nil && *settings.Effort == "ultra" {
+			ordinary, err := inheritedEffortForModel(models, settings.Model, *settings.Effort)
+			if err != nil {
+				return result, err
+			}
+			settings.Effort = new(ordinary)
+		} else if settings.Effort != nil && (model != nil || effort != nil || settings.Model != result.Settings.Model || !sameEffort(settings.Effort, result.Settings.Effort)) {
+			i := slices.IndexFunc(models, func(m Model) bool { return m.Name == settings.Model })
+			if i < 0 || !slices.Contains(models[i].Efforts, *settings.Effort) {
+				return result, fmt.Errorf("unsupported reasoning effort %q for %s", *settings.Effort, settings.Model)
+			}
 		}
 	}
 	// Session tier wins over role configuration, but only when the final model

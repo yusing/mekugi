@@ -38,6 +38,10 @@ func TestClaudeMetricsRetainNativeFactsWithoutDoubleCounting(t *testing.T) {
 			}
 		}
 		emit(`{"type":"system","subtype":"init","session_id":"native-session","model":"native-model"}`)
+		emit(`{"type":"mekugi_effort","session_id":"native-session","effort":"high"}`)
+		if err := runtime.ObserveMetrics(t.Context(), jsontext.Value(`{"type":"mekugi_effort","session_id":"other-session","effort":"low"}`)); err != nil {
+			t.Fatal(err)
+		}
 		for turn := 1; turn <= 2; turn++ {
 			if _, err := runtime.Input(t.Context(), control.NativeInput{Thread: "child", ID: fmt.Sprintf("turn-%d", turn), Run: true, Message: "work"}); err != nil {
 				t.Fatal(err)
@@ -65,7 +69,7 @@ func TestClaudeMetricsRetainNativeFactsWithoutDoubleCounting(t *testing.T) {
 			}
 			info, _ := runtime.Thread(t.Context(), "child")
 			details, err := ReadClaudeDetails(t.Context(), "child", info.Path)
-			if err != nil || details.ContextTokens == nil || *details.ContextTokens != 1234 || details.ContextWindow == nil || *details.ContextWindow != 200000 || details.Compactions == nil || *details.Compactions != 1 {
+			if err != nil || details.ReasoningEffort == nil || *details.ReasoningEffort != "high" || details.ContextTokens == nil || *details.ContextTokens != 1234 || details.ContextWindow == nil || *details.ContextWindow != 200000 || details.Compactions == nil || *details.Compactions != 1 {
 				t.Fatalf("retained inspection lost context or compaction identity: %+v %v", details, err)
 			}
 		}

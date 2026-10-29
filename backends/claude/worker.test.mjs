@@ -194,6 +194,43 @@ test("SDK startup failure rejects initialization", { timeout: 15_000 }, async (t
   await assert.rejects(worker.initialize(), /exited with code 23|initialization failure/);
 });
 
+test("SDK effort options reach the native CLI and reject unsupported choices", { timeout: 15_000 }, async (t) => {
+  const worker = start(t, () => ({}));
+  await worker.initialize({ model: "fixture-model", effort: "high" });
+  await worker.input("retain", { shouldQuery: false });
+  const init = await worker.waitFor((event) => event.type === "system");
+  assert.ok(init.fixture_args.includes("--effort=high"));
+  for (const options of [{ model: "fixture-model", effort: "ultra" }, { model: "unknown", effort: "high" }]) {
+    const rejected = start(t, () => assert.fail("Rejected effort must not execute hooks"));
+    await assert.rejects(rejected.initialize(options), /Unsupported reasoning effort/);
+    await rejected.request("shutdown");
+  }
+  await worker.request("shutdown");
+});
+
+test("native CLI delivers high effort to inference and reports applied effort", { skip: process.env.MEKUGI_TEST_CLAUDE_NATIVE !== "1", timeout: 30_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "mekugi-claude-effort-"));
+  const requests = [];
+  const provider = createMockProvider((body) => { requests.push(body); return { content: [{ type: "text", text: "complete" }] }; });
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const worker = start(t, () => ({}), {
+    CLAUDE_CONFIG_DIR: join(directory, "config"), ANTHROPIC_BASE_URL: `http://127.0.0.1:${provider.address().port}`,
+    ANTHROPIC_API_KEY: "local-fixture", ANTHROPIC_AUTH_TOKEN: "", CLAUDE_CODE_OAUTH_TOKEN: "",
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", CLAUDE_CODE_USE_BEDROCK: "0", CLAUDE_CODE_USE_VERTEX: "0", CLAUDE_CODE_USE_FOUNDRY: "0",
+  });
+  t.after(async () => { worker.closeInput(); await worker.exit; await new Promise((resolve) => provider.close(resolve)); await rm(directory, { recursive: true, force: true }); });
+  await worker.request("initialize", { workspace: directory, claudePath: Bun.which("claude"), options: { model: "opus", effort: "high", persistSession: false, tools: [] }, tools: [] });
+  await worker.input("Reply complete");
+  const result = await worker.waitFor((event) => event.type === "result");
+  assert.equal(result.is_error, false);
+  assert.equal(requests[0].output_config.effort, "high");
+  const applied = await worker.waitFor((event) => event.type === "mekugi_effort");
+  assert.equal(applied.effort, "high");
+  console.log(JSON.stringify({ nativeEffort: applied, providerEffort: requests[0].output_config.effort }));
+  await worker.request("shutdown");
+});
+
 test("native interrupt cancels an outstanding host approval", { timeout: 15_000 }, async (t) => {
   let asked;
   let cancelled;

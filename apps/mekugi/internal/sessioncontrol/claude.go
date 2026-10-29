@@ -240,8 +240,8 @@ func (r *ClaudeRuntime) Inspect(_ context.Context, thread string) (control.Sessi
 	defer r.mu.Unlock()
 	var details control.SessionDetails
 	if r.model != "" {
+		details = r.ledger.Metrics.inspection()
 		details.Model = new(r.model)
-		details.SessionMetrics = r.ledger.Metrics.inspection()
 	}
 	return details, r.identity(thread)
 }

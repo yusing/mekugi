@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import {
   createSdkMcpServer, query, tool,
-  type HookCallback, type Options, type Query,
+  type BaseHookInput, type HookCallback, type Options, type Query,
   type SDKControlGetContextUsageResponse, type SDKControlGetUsageResponse, type SDKResultMessage, type SDKUserMessage, type SyncHookJSONOutput,
 } from "@anthropic-ai/claude-agent-sdk";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -123,8 +123,13 @@ class Worker {
     this.tokenByID.delete(toolUseID);
   }
 
+  private observeEffort(input: BaseHookInput): void {
+    if (!input.agent_id && input.effort) send({ kind: "event", event: { type: "mekugi_effort", session_id: input.session_id, effort: input.effort.level } });
+  }
+
   private readonly hook: HookCallback = async (input, _toolUseID, { signal }) => {
     try {
+      this.observeEffort(input);
       const output: SyncHookJSONOutput = hookOutputSchema.parse(await this.callHost("hook", input, signal));
       if (input.hook_event_name === "PreToolUse") {
         if (nativeDelegationTools.includes(input.tool_name)) {
@@ -195,7 +200,10 @@ class Worker {
       mcpServers: { [serverName]: createSdkMcpServer({ name: serverName, tools }) },
       abortController: this.abort,
       stderr: (data) => { process.stderr.write(data); },
-      hooks: Object.fromEntries(["PreToolUse", "PostToolUse", "PostToolUseFailure", "PostToolBatch"].map((event) => [event, [{ hooks: [this.hook] }]])),
+      hooks: {
+        ...Object.fromEntries(["PreToolUse", "PostToolUse", "PostToolUseFailure", "PostToolBatch"].map((event) => [event, [{ hooks: [this.hook] }]])),
+        Stop: [{ hooks: [async (input) => { this.observeEffort(input); return {}; }] }],
+      },
       canUseTool: async (name, args, info) => {
         const { signal, ...metadata } = info;
         try {
@@ -220,6 +228,13 @@ class Worker {
     if (initialization.hooks_applied !== true) {
       this.stop();
       throw new Error("Claude runtime did not confirm the required native hooks");
+    }
+    if (config.options.effort !== undefined) {
+      const model = initialization.models.find((model) => model.value === (options.model ?? "default") || model.resolvedModel === options.model);
+      if (!model?.supportsEffort || !model.supportedEffortLevels?.some((effort) => effort === config.options.effort)) {
+        this.stop();
+        throw new Error(`Unsupported reasoning effort ${JSON.stringify(config.options.effort)} for Claude model ${options.model ?? "default"}; supported: ${model?.supportedEffortLevels?.join(", ") || "none advertised"}`);
+      }
     }
     if (forkSessionID) {
       let baseline: SDKControlGetUsageResponse["session"] | undefined;
