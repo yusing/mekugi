@@ -1822,6 +1822,7 @@ export type ReloadSource = {
   "Command": string;
   "Path": string;
   "Skill": string;
+  "Changes"?: string;
   "ExitCode": (number | null);
   "Preload"?: boolean;
 };

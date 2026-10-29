@@ -37,7 +37,7 @@ func TestReloadReadsFullSelectedContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	selection, _ := json.Marshal(map[string]any{"sources": []Source{{Path: path}, {Path: path + ".missing"}}})
-	output, err := Capture(t.Context(), command.Request{Args: []string{string(selection)}})
+	output, err := Capture(t.Context(), command.Request{Args: []string{string(selection)}}, ChangeReader{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestReloadExcludesHostInstructionsAndPreservesSourceOrder(t *testing.T) {
 		{Path: filepath.Join(dir, "AGENTS.md"), Ranges: [][2]int{{1, 10}}},
 		{Path: path + ".missing"}, {Path: "nested/../nested/AGENTS.md"},
 	}})
-	output, err := Capture(t.Context(), command.Request{Args: []string{string(selection)}})
+	output, err := Capture(t.Context(), command.Request{Args: []string{string(selection)}}, ChangeReader{})
 	if err != nil {
 		t.Fatal(err)
 	}

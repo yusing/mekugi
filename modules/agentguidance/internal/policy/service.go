@@ -6,9 +6,13 @@ import (
 
 	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/modules/agentguidance/environment"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 type Service struct {
+	Changes           changes.Service
+	History           *history.Service
 	Environment       environment.Store
 	ChildReplySummary bool
 	Sections          map[string]string

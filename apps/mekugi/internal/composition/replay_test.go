@@ -3,6 +3,7 @@ package composition
 import (
 	"github.com/yusing/mekugi/modules/activity"
 	"github.com/yusing/mekugi/modules/agentguidance"
+	"github.com/yusing/mekugi/modules/changehistory"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,7 +23,10 @@ func TestCompositionReplayRolloutAndOptionalTiming(t *testing.T) {
 		t.Run(map[bool]string{false: "without timing", true: "with timing"}[timing], func(t *testing.T) {
 			var c Composition
 			history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
-			c.Add(agentguidance.Module, func() agentguidance.Deps { return agentguidance.Deps{} })
+			changes := c.Add(changehistory.Module, func() changehistory.Deps { return changehistory.Deps{History: history.Value()} })
+			c.Add(agentguidance.Module, func() agentguidance.Deps {
+				return agentguidance.Deps{History: history.Value(), Changes: changes.Value().Service}
+			})
 			c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
 			replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps {
 				return sessionreplay.Deps{History: history.Value()}

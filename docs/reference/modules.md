@@ -24,7 +24,7 @@ Own host-operation feeds, roster derivation and retained output
 Assemble agent guidance without changing caller authority
 
 - Composition: selected; lifetime: `stateless`.
-- Requires: `sessionhistory`.
+- Requires: `sessionhistory`, `changehistory`.
 - Contributes: `commands`, `record-kinds`.
 - Hosts: `guidance`.
 - Commands: `mreload`.

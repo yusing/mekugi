@@ -23,6 +23,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/modules/boundedcommand/run"
@@ -108,8 +109,12 @@ func newProxyWithSharedTestRegistry(t *testing.T, registry *frontends.Registry) 
 
 func testCommands() []command.Contribution {
 	commands := []command.Contribution{moduletest.BindCommand(changes.Command, testChanges())}
+	guidance, err := agentguidance.Module.New(agentguidance.Deps{History: testHistory(), Changes: testChanges()}, module.Slots{})
+	if err != nil {
+		panic(err)
+	}
 	for _, definition := range agentguidance.Module.Contributes.Commands {
-		commands = append(commands, moduletest.BindCommand(definition, nil))
+		commands = append(commands, moduletest.BindCommand(definition, guidance))
 	}
 	return append(commands, moduletest.BindCommand(recovery.Command, testRecovery()), moduletest.BindCommand(run.Command, run.Service{}), moduletest.BindCommand(outline.Command, outline.Service{}), moduletest.BindCommand(read.Command, read.Service{}), moduletest.BindCommand(query.Command, query.Service{}))
 }

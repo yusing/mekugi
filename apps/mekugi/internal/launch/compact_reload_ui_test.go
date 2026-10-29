@@ -29,6 +29,9 @@ func compactReloadUI(t *testing.T, sources []compact.Source, child bool) (*appSe
 	t.Helper()
 	workspace := t.TempDir()
 	for i := range sources {
+		if sources[i].Changes != nil {
+			continue
+		}
 		sources[i].Path = filepath.Join(workspace, sources[i].Path)
 		if sources[i].Skill == "missing" {
 			continue
@@ -97,7 +100,7 @@ func compactReloadUI(t *testing.T, sources []compact.Source, child bool) (*appSe
 	}
 	complete := func() {
 		t.Helper()
-		captured, err := compact.Capture(t.Context(), command.Request{Args: []string{selection}})
+		captured, err := compact.Capture(t.Context(), command.Request{Args: []string{selection}}, compact.ChangeReader{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -148,7 +151,7 @@ func TestUISnapshotCompactReloadAttachments(t *testing.T) {
 }
 
 func TestUISnapshotChildReloadAttachments(t *testing.T) {
-	u, script, complete := compactReloadUI(t, []compact.Source{{Path: "guide.txt"}, {Path: "skills/missing/SKILL.md", Skill: "missing"}}, true)
+	u, script, complete := compactReloadUI(t, []compact.Source{{Path: "guide.txt"}, {Path: "skills/missing/SKILL.md", Skill: "missing"}, {Changes: []string{"amber1..3"}}}, true)
 	item := binding.ThreadItem{ID: "capture", Type: "commandExecution", Command: script, Status: "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	if got := approvalTestTranscript(t, u); !strings.Contains(got, "Attached guide.txt") || strings.Contains(got, "mreload") {

@@ -210,7 +210,7 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 			command := compact.CaptureCommand(record.Selection)
 			var reloads []activity.ReloadSource
 			for _, source := range sources {
-				reloads = append(reloads, activity.ReloadSource{Command: command, Path: source.Path, Skill: source.Skill})
+				reloads = append(reloads, activity.ReloadSource{Command: command, Path: source.Path, Skill: source.Skill, Changes: strings.Join(source.Changes, " ")})
 			}
 			turn := metadata.TurnID
 			if callErr == nil && len(call) == 0 {
@@ -286,7 +286,7 @@ func compactReaderInput(items []map[string]jsontext.Value, calls map[string]bool
 		for _, part := range content {
 			var parts []jsontext.Value
 			if !introduced {
-				parts = append(parts, responses.MustMarshalJSON(map[string]string{"type": "input_text", "text": "Reloaded context (tool output). These file and skill bodies are already read context. Reuse supplied content; read again only for missing or changed content. Failed reads are not complete context."}))
+				parts = append(parts, responses.MustMarshalJSON(map[string]string{"type": "input_text", "text": "Reloaded context (tool output). These file, skill and captured-change bodies are already read context. Reuse supplied content; read again only for missing or changed content. Failed reads are not complete context."}))
 				introduced = true
 			}
 			parts = append(parts, part)
@@ -479,7 +479,7 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 			if selected[i].HostLoaded() {
 				continue
 			}
-			reloads = append(reloads, activity.ReloadSource{Command: command, Path: selected[i].Path, Skill: selected[i].Skill, ExitCode: new(source.ExitCode), Preload: assignment != ""})
+			reloads = append(reloads, activity.ReloadSource{Command: command, Path: selected[i].Path, Skill: selected[i].Skill, Changes: strings.Join(selected[i].Changes, " "), ExitCode: new(source.ExitCode), Preload: assignment != ""})
 			body := fmt.Sprintf("%s: exit_code=%d\n%s", source.Command, source.ExitCode, source.Stdout)
 			if source.Stderr != "" {
 				body += "\n" + source.Stderr

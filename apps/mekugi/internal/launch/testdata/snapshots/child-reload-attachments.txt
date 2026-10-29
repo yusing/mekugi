@@ -1,2 +1,3 @@
 ├ Attached guide.txt (auto reloaded)
-└ Attached skill missing · exit 1
+├ Attached skill missing · exit 1
+└ Attached changes amber1..3 · exit 1

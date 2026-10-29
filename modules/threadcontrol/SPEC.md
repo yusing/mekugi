@@ -165,7 +165,9 @@ capabilities, not widen authority or replace provider credentials.
 Fresh children accept optional `preload:{"sources":[...]}` with the same source
 selection as [compaction reload](../agentguidance/SPEC.md#compaction-context):
 file `path`, optional inclusive `ranges`, or `skill` with an optional native
-`SKILL.md` path. A preload requires explicit `fork_turns:"none"`; an empty sources
+`SKILL.md` path, or `changes` with an array of explicit `mchanges` IDs/ranges
+supplying their composed retained diff. Change sources exclude file/skill fields.
+A preload requires explicit `fork_turns:"none"`; an empty sources
 array is valid. Relative file paths resolve in the selected child cwd. Codex
 supplies `AGENTS.md`, which is excluded from acquisition.
 The prepared assignment freezes the selection before creation. Before the child's
@@ -177,7 +179,7 @@ and inherited history without rereading. Compaction retires the initial preload
 when its assignment leaves context and selects subsequent reloads normally.
 
 Collaboration guidance directs spawning agents to preload known, assignment-relevant
-startup files and skills for fresh children. This supplies exact source content at
+startup files, skills and retained changes for fresh children. This supplies exact source content at
 the first inference without child discovery/read turns or unrelated parent history.
 Agents omit preload for full-history forks or when no startup sources are known,
 and leave `AGENTS.md` to the host.

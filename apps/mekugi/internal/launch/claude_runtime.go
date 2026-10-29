@@ -21,6 +21,7 @@ import (
 	"github.com/yusing/mekugi/backends/claude"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -240,7 +241,7 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 		}
 		// Inherited full-session context already belongs to the SDK transcript.
 		// Acquire only this child's selected initial sources, once in its ledger.
-		return claudePreload(ctx, member.Preload.Selection, settings.Workspace, environment)
+		return claudePreload(ctx, member.Preload.Selection, settings.Workspace, environment, compact.ChangeReader{Service: owners.Changes.Service, Scope: e.retained})
 	})
 	defer func() { runtime.TransportClosed(runErr) }()
 	audience := sessioncontrol.NewAudience(nil)

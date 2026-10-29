@@ -12,7 +12,7 @@ import (
 )
 
 // SelectionSchema describes the shared compaction and delegate source selection.
-const SelectionSchema = `{"type":"object","properties":{"sources":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"skill":{"type":"string"},"ranges":{"type":"array","items":{"type":"array","items":{"type":"integer"},"minItems":2,"maxItems":2}}},"additionalProperties":false}}},"required":["sources"],"additionalProperties":false}`
+const SelectionSchema = `{"type":"object","properties":{"sources":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"skill":{"type":"string"},"changes":{"type":"array","items":{"type":"string"},"minItems":1},"ranges":{"type":"array","items":{"type":"array","items":{"type":"integer"},"minItems":2,"maxItems":2}}},"not":{"anyOf":[{"required":["changes","path"]},{"required":["changes","skill"]},{"required":["changes","ranges"]}]},"additionalProperties":false}}},"required":["sources"],"additionalProperties":false}`
 
 // ReadCommands interprets selection metadata, never summary prose or file content.
 func ReadCommands(selection string) ([]string, error) {
@@ -35,7 +35,10 @@ func ReadCommands(selection string) ([]string, error) {
 			args = []string{"sed", "-n"}
 		}
 		valid := len(source.Path) <= 4096 && len(source.Skill) <= 256 && !strings.ContainsRune(source.Path, 0)
-		if source.Path == "" {
+		if source.Changes != nil {
+			valid = len(source.Changes) > 0 && source.Path == "" && source.Skill == "" && len(source.Ranges) == 0
+			args = append([]string{"mchanges"}, source.Changes...)
+		} else if source.Path == "" {
 			valid = valid && source.Skill != "" && !strings.ContainsAny(source.Skill, "\x00\r\n/") && !strings.HasPrefix(source.Skill, "-") && len(source.Ranges) == 0
 			args = []string{"skills-mgr", "get", "--codex", source.Skill}
 		} else if source.Skill != "" {
@@ -61,13 +64,14 @@ func ReadCommands(selection string) ([]string, error) {
 
 // Source is selected context identity, independent of its command and outcome.
 type Source struct {
-	Path   string   `json:"path"`
-	Skill  string   `json:"skill"`
-	Ranges [][2]int `json:"ranges"`
+	Path    string   `json:"path,omitempty"`
+	Skill   string   `json:"skill,omitempty"`
+	Ranges  [][2]int `json:"ranges,omitempty"`
+	Changes []string `json:"changes,omitzero"`
 }
 
 // HostLoaded sources are supplied by Codex's instruction discovery.
-func (s Source) HostLoaded() bool { return filepath.Base(s.Path) == "AGENTS.md" }
+func (s Source) HostLoaded() bool { return s.Changes == nil && filepath.Base(s.Path) == "AGENTS.md" }
 
 // ReloadSources excludes host-owned instructions while Sources preserves the
 // original order for interpreting already retained capture results.

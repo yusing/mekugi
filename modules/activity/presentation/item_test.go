@@ -30,16 +30,19 @@ func TestOrderEditDetailsMoveAndDirectory(t *testing.T) {
 func TestCompactReloadPreservesIndependentOutcomes(t *testing.T) {
 	for _, preload := range []bool{false, true} {
 		for _, completed := range []bool{false, true} {
-			sources := []ReloadSource{{Path: "guide.txt", Preload: preload}, {Skill: "loaded", Preload: preload}, {Skill: "denied", Preload: preload}}
+			sources := []ReloadSource{{Path: "guide.txt", Preload: preload}, {Skill: "loaded", Preload: preload}, {Skill: "denied", Preload: preload}, {Changes: "amber1..3", Preload: preload}}
 			if completed {
-				sources[0].ExitCode, sources[1].ExitCode, sources[2].ExitCode = new(0), new(0), new(1)
+				sources[0].ExitCode, sources[1].ExitCode, sources[2].ExitCode, sources[3].ExitCode = new(0), new(0), new(1), new(0)
 			}
 			item := ItemContent{Seq: 12, Kind: "tool", Command: Command{Script: "mreload selection", Running: !completed, Exited: completed, Approval: "Approved", Tail: []string{"Reload snapshot: mread amber"}}, Details: &ItemDetails{Reload: sources, CommandText: "mreload selection", Output: 1}}
 			values := item.Values()
-			if len(values) != 3 {
+			if len(values) != 4 {
 				t.Fatalf("source rows: %+v", values)
 			}
-			for i, value := range values[:3] {
+			if values[3].Verb != "Attached changes" || values[3].Label != "amber1..3" {
+				t.Fatalf("change identity lost: %+v", values[3])
+			}
+			for i, value := range values {
 				if value.Verb == "Run" || len(value.Tail) > 0 || value.Output != 0 {
 					t.Fatalf("internal reload command leaked into source row: %+v", value)
 				}

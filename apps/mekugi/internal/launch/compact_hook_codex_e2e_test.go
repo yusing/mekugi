@@ -28,6 +28,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/agentguidance"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
@@ -95,6 +96,26 @@ func testCompactReloadNativeCodex(t *testing.T, automatic bool, promptKind strin
 		t.Fatal(err)
 	}
 	setTestProxyStore(proxy, store)
+	provider.selectedChanges = func(thread string) ([]string, error) {
+		namespace, err := store.publication.NamespaceForThread(thread)
+		if err != nil {
+			return nil, err
+		}
+		snapshot, err := store.changes.Inspect(changes.Scope{Store: store.publication, Namespace: namespace, Thread: thread}, workspace)
+		if err != nil {
+			return nil, err
+		}
+		var ids []string
+		for id, change := range snapshot.Changes {
+			if len(change.Calls) > 0 {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) == 0 {
+			return nil, fmt.Errorf("fixture has no completed captured changes")
+		}
+		return ids, nil
+	}
 	traceRoot := t.TempDir()
 	proxy.nativeTrace = nativetrace.NewWithNotice(traceRoot, nil)
 	executor := testRequestExecutor(provider, nil, proxy)
@@ -394,7 +415,7 @@ func testCompactReloadNativeCodex(t *testing.T, automatic bool, promptKind strin
 		if !bytes.Contains(body, []byte("Goal: finish the parser fix. Completed: reproduced the failure. Next: add the regression test.")) || bytes.Contains(body, []byte("<mekugi-reload-v1>")) || bytes.Contains(body, []byte(`"sources"`)) {
 			t.Fatalf("continuation lost the substantive handover or leaked metadata: %s", body)
 		}
-		if !bytes.Contains(body, []byte("Permission denied")) || bytes.Contains(body, []byte("NEVER_ATTACH_BLOCKED")) || !bytes.Contains(body, []byte("created source body")) {
+		if !bytes.Contains(body, []byte("Permission denied")) || bytes.Contains(body, []byte("NEVER_ATTACH_BLOCKED")) || !bytes.Contains(body, []byte("created source body")) || !bytes.Contains(body, []byte("+created source body")) {
 			t.Fatalf("reader permissions or newly created source missing: %s", body)
 		}
 		if !bytes.Contains(body, []byte(wantSource)) || bytes.Contains(body, []byte("must not reread on resume")) {
@@ -444,6 +465,7 @@ type compactSelectionProvider struct {
 	socketCompactions atomic.Int32
 	reader            string
 	prompt            string
+	selectedChanges   func(string) ([]string, error)
 }
 
 func (p *compactSelectionProvider) serve(w http.ResponseWriter, r *http.Request) {
@@ -522,6 +544,15 @@ func (p *compactSelectionProvider) ForwardExecution(ctx, _ context.Context, body
 		}
 		// Exercise more than sixteen selected sources.
 		selection := `{"sources":[{"path":"selected.txt"},{"path":"blocked.txt"},{"path":"created.txt"}` + strings.Repeat(`,{"path":"selected.txt","ranges":[[1,1]]}`, 17) + `]}`
+		ids, err := p.selectedChanges(metadata.ThreadID)
+		if err != nil {
+			return nil, err
+		}
+		changeSource, err := json.Marshal(map[string][]string{"changes": ids})
+		if err != nil {
+			return nil, err
+		}
+		selection = strings.TrimSuffix(selection, "]}") + "," + string(changeSource) + "]}"
 		if p.slow {
 			selection = strings.TrimSuffix(selection, "]}") + `,{"skill":"slow-fixture"}]}`
 		}

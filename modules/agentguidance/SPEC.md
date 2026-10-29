@@ -149,7 +149,12 @@ Compaction makes one ordinary turn on the selected provider using the current
 conversation, the original compaction prompt and Mekugi's reload instructions.
 Caller inline prompts precede prompt-file contents; otherwise the stock prompt
 applies. Provider identity and authentication stay unchanged. The handover summarizes the task;
-reload metadata contains only file paths, skill names and optional line ranges.
+reload metadata selects file paths with optional line ranges, skills, or explicit
+`mchanges` IDs/ranges. A `changes` source supplies an array such as
+`["amber1..3", "birch2"]`, exclusive with file/skill fields, and captures one
+complete composed diff using retained evidence in the admitted caller namespace.
+Unavailable IDs and incomplete chains retain available output and explicit diagnostics;
+selection never includes an automatic inventory or reads the live workspace.
 Selection has no fixed source-count limit.
 Fresh delegate [context preload](../threadcontrol/SPEC.md#prepared-children-and-guidance)
 uses this same selection, source capture and retained-result delivery. Its reads
@@ -184,7 +189,7 @@ Reload text uses ordinary unnumbered
 source rows and participates in output deduplication before its context framing.
 Native history retains the complete calls
 and results; ordinary tool history is unchanged.
-Reload orchestration emits typed file/skill intents from retained selection metadata.
+Reload orchestration emits typed file, skill and captured-change intents from retained selection metadata.
 The native acquisition command retains approval and execution ownership. Captured
 per-source outcomes, rather than selection or aggregate success, determine successful loads.
 Completed reads survive resume and fork without another acquisition. A fork made

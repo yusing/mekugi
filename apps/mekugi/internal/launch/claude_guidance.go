@@ -32,11 +32,11 @@ func claudeSystemPrompt(settings control.Settings, identity control.Identity, fr
 	return json.Marshal(map[string]string{"type": "preset", "preset": "claude_code", "append": strings.Join(sections, "\n\n")})
 }
 
-func claudePreload(ctx context.Context, selection, workspace string, environment []string) (string, error) {
+func claudePreload(ctx context.Context, selection, workspace string, environment []string, changes compact.ChangeReader) (string, error) {
 	if selection == "" {
 		return "", nil
 	}
-	snapshot, err := compact.ReadSources(ctx, selection, workspace, environment)
+	snapshot, err := compact.ReadSources(ctx, selection, workspace, environment, changes)
 	if err != nil {
 		return "", err
 	}
@@ -50,6 +50,9 @@ func claudePreload(ctx context.Context, selection, workspace string, environment
 			continue
 		}
 		label := source.Path
+		if source.Changes != nil {
+			label = "mchanges:" + strings.Join(source.Changes, " ")
+		}
 		if label == "" {
 			label = "skill:" + source.Skill
 		}

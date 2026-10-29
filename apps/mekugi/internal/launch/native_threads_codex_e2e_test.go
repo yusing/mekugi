@@ -204,7 +204,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		for _, comment := range []string{
 			"// Task-name segment under this agent. Use lowercase ASCII letters, digits, underscores and hyphens; for example, trace_roster_metrics.",
 			"// Model override for fork_turns=none. Set only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions.",
-			"// Startup sources for fork_turns=none. Supply known files or skills the child needs to begin; exact source content arrives before first inference",
+			"// Startup sources for fork_turns=none. Supply known files, skills or mchanges IDs/ranges the child needs to begin; complete content arrives before first inference",
 			"// Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline.",
 		} {
 			if !strings.Contains(catalog, comment) {

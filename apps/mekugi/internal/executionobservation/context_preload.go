@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"strings"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -60,7 +61,7 @@ func (p *Preparer) preparePreloadInput(request *codexresponses.Request, session,
 			command := compact.CaptureCommand(selection.Selection)
 			var reloads []activity.ReloadSource
 			for _, source := range sources {
-				reloads = append(reloads, activity.ReloadSource{Command: command, Path: source.Path, Skill: source.Skill, Preload: true})
+				reloads = append(reloads, activity.ReloadSource{Command: command, Path: source.Path, Skill: source.Skill, Changes: strings.Join(source.Changes, " "), Preload: true})
 			}
 			supplements = append(supplements, activity.Supplement{Thread: thread, Turn: metadata.TurnID, Source: selection.Item, Kind: "compact_reload", Text: "Context preload", ReloadSources: reloads})
 		}

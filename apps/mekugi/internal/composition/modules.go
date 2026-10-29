@@ -73,16 +73,19 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps {
 		return sessionhistory.Deps{RecordKinds: sessioncontrol.ClaudeRecordKinds()}
 	})
-	c.Add(agentguidance.Module, func() agentguidance.Deps { return agentguidance.Deps{ChildReplySummary: childReplySummary} })
+	changes := c.Add(changehistory.Module, func() changehistory.Deps {
+		return changehistory.Deps{History: history.Value(), Directory: captureDirectory}
+	})
+	c.Add(agentguidance.Module, func() agentguidance.Deps {
+		return agentguidance.Deps{ChildReplySummary: childReplySummary, Changes: changes.Value().Service, History: history.Value()}
+	})
 	thread := c.Add(threadcontrol.Module, func() threadcontrol.Deps { return threadcontrol.Deps{History: history.Value(), Shared: threads} })
 	replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps {
 		return sessionreplay.Deps{History: history.Value()}
 	})
 	prefs := c.Add(sessionpreferences.Module, func() sessionpreferences.Deps { return sessionpreferences.Deps{History: history.Value()} })
 	usage := c.Add(usage.Module, func() usage.Deps { return usage.Deps{} })
-	changes := c.Add(changehistory.Module, func() changehistory.Deps {
-		return changehistory.Deps{History: history.Value(), Directory: captureDirectory}
-	})
+
 	live := c.Add(livepreview.Module, func() livepreview.Deps { return livepreview.Deps{ReadEndpoint: capture.ReadFile} })
 	segments := c.Add(commandsegments.Module, func() commandsegments.Deps { return commandsegments.Deps{History: history.Value(), Live: liveReports} })
 	recovery := c.Add(outputrecovery.Module, func() outputrecovery.Deps { return outputrecovery.Deps{History: history.Value()} })

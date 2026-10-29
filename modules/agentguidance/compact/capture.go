@@ -6,11 +6,14 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 const SnapshotPrefix = "Reload snapshot: mread "
@@ -31,11 +34,11 @@ type CapturedSource struct {
 	ExitCode int
 }
 
-func Capture(ctx context.Context, request command.Request) (command.Output, error) {
+func Capture(ctx context.Context, request command.Request, changes ChangeReader) (command.Output, error) {
 	if len(request.Args) != 1 {
 		return command.Output{}, errors.New("mreload requires one reload selection")
 	}
-	snapshot, err := ReadSources(ctx, request.Args[0], "", nil)
+	snapshot, err := ReadSources(ctx, request.Args[0], "", nil, changes)
 	if err != nil {
 		return command.Output{}, err
 	}
@@ -48,7 +51,7 @@ func Capture(ctx context.Context, request command.Request) (command.Output, erro
 
 // ReadSources acquires the shared selection in an admitted runtime environment.
 // The caller owns policy admission and durable context retention.
-func ReadSources(ctx context.Context, selection, directory string, environment []string) (Snapshot, error) {
+func ReadSources(ctx context.Context, selection, directory string, environment []string, changes ChangeReader) (Snapshot, error) {
 	sources, err := Sources(selection)
 	if err != nil {
 		return Snapshot{}, err
@@ -69,6 +72,10 @@ func ReadSources(ctx context.Context, selection, directory string, environment [
 		script := commands[commandIndex]
 		commandIndex++
 		readers.Go(func() {
+			if source.Changes != nil {
+				results[i] = changes.read(ctx, source, directory, script)
+				return
+			}
 			var stdout, stderr bytes.Buffer
 			cmd := exec.CommandContext(ctx, "bash", "-c", script)
 			cmd.Dir, cmd.Env = directory, environment
@@ -91,6 +98,51 @@ func ReadSources(ctx context.Context, selection, directory string, environment [
 		return Snapshot{}, err
 	}
 	return Snapshot{Selection: selection, Sources: results}, nil
+}
+
+// ChangeReader borrows the admitted retained owner and caller scope. It never
+// resolves storage or authority from selected IDs or workspace paths.
+type ChangeReader struct {
+	Service changes.Service
+	Scope   changes.Scope
+}
+
+func (r ChangeReader) read(ctx context.Context, source Source, directory, script string) CapturedSource {
+	result := CapturedSource{Command: script}
+	fail := func(err error) CapturedSource {
+		result.Stderr, result.ExitCode = "mchanges: "+err.Error()+"\n", 1
+		return result
+	}
+	if source.Path != "" || source.Skill != "" || len(source.Ranges) != 0 || len(source.Changes) == 0 {
+		return fail(errors.New("changes source requires only explicit IDs/ranges"))
+	}
+	if r.Service == nil || r.Scope.Store == nil || r.Scope.Namespace == "" || r.Scope.Thread == "" {
+		return fail(errors.New("change storage is unavailable"))
+	}
+	if directory == "" {
+		var err error
+		directory, err = os.Getwd()
+		if err != nil {
+			return fail(err)
+		}
+	}
+	for _, ref := range source.Changes {
+		if strings.HasPrefix(ref, "-") {
+			return fail(errors.New("changes source requires only explicit IDs/ranges"))
+		}
+	}
+	query, err := r.Service.Parse(source.Changes, directory)
+	if err != nil {
+		return fail(err)
+	}
+	if query.Mine || len(query.Paths) != 0 || query.View != "net" {
+		return fail(errors.New("changes source requires only explicit IDs/ranges"))
+	}
+	result.Stdout, err = r.Service.Read(ctx, r.Scope, query)
+	if err != nil {
+		return fail(err)
+	}
+	return result
 }
 
 type capturedDelivery struct{ data string }

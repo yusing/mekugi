@@ -21,7 +21,7 @@ func TestContextPreloadUsesNativeReloadAndRetainedResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer session.Close()
-	const selection = `{"sources":[{"path":"selected.txt"},{"path":"missing.txt"}]}`
+	const selection = `{"sources":[{"path":"selected.txt"},{"path":"missing.txt"},{"changes":["amber1..3"]}]}`
 	itemID := control.MessageItemID("parent:spawn:assignment")
 	service := control.New()
 	retained, err := history.NewService(control.RecordKinds())
@@ -96,7 +96,7 @@ func TestContextPreloadUsesNativeReloadAndRetainedResults(t *testing.T) {
 			}
 		})
 	}
-	result := compactTestSnapshot(t, p, compact.Snapshot{Selection: selection, Sources: []compact.CapturedSource{{Command: "cat selected.txt", Stdout: "complete body"}, {Command: "cat missing.txt", Stderr: "permission denied", ExitCode: 1}}})
+	result := compactTestSnapshot(t, p, compact.Snapshot{Selection: selection, Sources: []compact.CapturedSource{{Command: "cat selected.txt", Stdout: "complete body"}, {Command: "cat missing.txt", Stderr: "permission denied", ExitCode: 1}, {Command: "mchanges amber1..3", Stdout: "composed retained diff"}}})
 	items := []map[string]jsontext.Value{assignment, reader, {"type": mustTestJSON(t, "custom_tool_call_output"), "call_id": reader["call_id"], "output": mustTestJSON(t, result)}}
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": items, "tools": []any{}}))
 	if err != nil {
@@ -108,7 +108,7 @@ func TestContextPreloadUsesNativeReloadAndRetainedResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	visible := request.Fields["input"]
-	if !bytes.Contains(visible, []byte("complete body")) || !bytes.Contains(visible, []byte("permission denied")) || bytes.Contains(visible, []byte(compact.SnapshotPrefix)) || !bytes.Equal(request.OriginalField("input"), mustTestJSON(t, items)) {
+	if !bytes.Contains(visible, []byte("complete body")) || !bytes.Contains(visible, []byte("permission denied")) || !bytes.Contains(visible, []byte("composed retained diff")) || bytes.Contains(visible, []byte(compact.SnapshotPrefix)) || !bytes.Equal(request.OriginalField("input"), mustTestJSON(t, items)) {
 		t.Fatalf("lost preload context or original history: %s", visible)
 	}
 	for _, mode := range []string{"completed", "yielded", "foreign", "changed-program"} {
@@ -159,7 +159,7 @@ func TestContextPreloadUsesNativeReloadAndRetainedResults(t *testing.T) {
 				t.Fatal(err)
 			}
 			visible := forkRequest.Fields["input"]
-			if !bytes.Contains(visible, []byte("complete body")) || !bytes.Contains(visible, []byte("permission denied")) || bytes.Contains(visible, []byte(compact.SnapshotPrefix)) || bytes.Contains(visible, []byte("Script running")) {
+			if !bytes.Contains(visible, []byte("complete body")) || !bytes.Contains(visible, []byte("permission denied")) || !bytes.Contains(visible, []byte("composed retained diff")) || bytes.Contains(visible, []byte(compact.SnapshotPrefix)) || bytes.Contains(visible, []byte("Script running")) {
 				t.Fatalf("ordinary fork lost inherited preload context: %s", visible)
 			}
 		})

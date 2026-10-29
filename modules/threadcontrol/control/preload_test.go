@@ -6,7 +6,7 @@ func TestContextPreloadAdmissionAndRestore(t *testing.T) {
 	s, session := fixture(t)
 	caller := identity("root", "rt")
 	caller.Call = "spawn"
-	const selection = `{"sources":[{"path":"child.txt"}]}`
+	const selection = `{"sources":[{"path":"child.txt"},{"changes":["amber1..3","birch2"]}]}`
 	effect, err := s.ReserveSpawn(t.Context(), caller, SpawnRequest{Name: "worker", Message: "task", Settings: Settings{Workspace: t.TempDir()}, Preload: selection})
 	must(t, err)
 	for _, phase := range []string{"create", "assignment_input", "admit", "initial"} {
