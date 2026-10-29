@@ -412,7 +412,7 @@
         {#if group}<h3 class="mb-1.5 px-2 text-xs font-medium text-muted-foreground">
             {group}
           </h3>{/if}
-        <div class="rounded-lg p-1 ring-1 ring-foreground/10">
+        <div class="p-1">
           <Table.Root class="table-fixed">
             <colgroup><col class="w-2/5 max-sm:w-[38%]" /><col /></colgroup>
             <Table.Body>

@@ -3,8 +3,8 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* Framed sheet: one tinted frame holds the sidebar; the thread sits on a
-   sheet with a hairline edge and soft corners. Colour goes on the data: tool
+/* One tinted ground holds the sidebar; the thread sits on a
+   flat sheet with soft corners. Colour goes on the data: tool
    kinds, diff counts, failures and the recorded clock. The palettes below are
    the only colours; the theme maps them to utilities.
 
@@ -353,7 +353,7 @@
       @apply font-semibold;
     }
     & code {
-      @apply rounded-chip border border-rule bg-raised px-[3px] py-px text-code;
+      @apply rounded-chip bg-raised px-1 py-px text-code;
       box-decoration-break: clone;
     }
     /* Machine-local targets use the shared file details action. */

@@ -80,7 +80,7 @@
       <ul class="flex min-w-0 flex-wrap items-center gap-1.5" aria-label="Attachments">
         {#each visible as item (item.id)}
           <li
-            class="inline-flex min-h-[30px] max-w-full items-center gap-1.5 rounded-control border bg-raised pr-0.5 pl-2 text-small text-muted max-sm:min-h-9"
+            class="inline-flex min-h-[30px] max-w-full items-center gap-1.5 rounded-control bg-raised pr-0.5 pl-2 text-small text-muted max-sm:min-h-9"
           >
             {#if "file" in item && item.reference === undefined && (!item.file.type || item.file.type.startsWith("image/"))}
               <AttachmentPreview file={item.file} />

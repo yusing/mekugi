@@ -148,7 +148,7 @@
     {/each}
   </div>
 
-  <div class="border-t border-rule py-2">
+  <div class="py-2">
     <div class="flex items-center gap-1">
       <button
         type="button"

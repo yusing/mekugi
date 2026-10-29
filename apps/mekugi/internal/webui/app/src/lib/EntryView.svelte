@@ -4,7 +4,7 @@
   import Excerpt from "./Excerpt.svelte";
   import { basename, duration, progressText } from "./format";
   import { outputLanguage } from "./highlight";
-  import { failed, isUser, reasoningBody, summaryOnly } from "./kinds";
+  import { failed, isUser, reasoningBody } from "./kinds";
   import Markdown from "./Markdown.svelte";
   import { inline, referenceContext } from "./markdown";
   import { observeOverflow } from "./overflow";
@@ -14,7 +14,6 @@
   import Reasoning from "./ui/ai/Reasoning.svelte";
   import * as Message from "./ui/message";
   import * as Trace from "./ui/trace";
-  import * as Card from "./ui/card";
   import { caret } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
   import ValueRow from "./ValueRow.svelte";
@@ -111,13 +110,6 @@
       i += entry.content ? 1 : Math.max(1, count);
     }
     return out;
-  });
-  // A lone tool row with nothing beneath it reads as a bare trace line;
-  // anything longer keeps the card's frame.
-  const bare = $derived.by(() => {
-    if (rows.length !== 1 || edits.via.has(0)) return false;
-    const { value, hidden } = rows[0];
-    return !hidden && value.kind !== "progress" && !pending(value) && summaryOnly(value);
   });
   $effect(() => {
     if (entry.content && rows.some(({ value, index }) => value.hiddenEdits && openFiles[index]))
@@ -391,46 +383,44 @@
         {/if}
       {:else if views}
         {@const paths = views.map((view) => view.values?.[0]?.reads?.[0]?.path ?? "")}
-        <Card.Root size="sm">
-          <Card.Content
-            class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 max-sm:grid-cols-[minmax(0,1fr)_auto]"
-          >
-            {#if views.length === 1}
-              <ValueRow value={entry.values![0]} />
-            {:else}
-              <div class="col-span-full grid grid-cols-subgrid items-baseline py-[5px]">
-                <span class="text-small font-medium text-kind-read max-sm:col-span-full"
-                  >{first?.verb}</span
-                >
-                <span class="text-muted">{views.length} images</span>
-              </div>
-            {/if}
-            <div class="col-[2/-1] flex min-w-0 flex-wrap gap-3 pt-1 pb-2.5 max-sm:col-span-full">
-              {#each views as view, i (view.seq)}
-                {#each view.images ?? [] as image, index (`${image}:${index}`)}
-                  <div class="min-w-0">
-                    <UserImage
-                      entry={view}
-                      {image}
-                      {index}
-                      {source}
-                      label="{view.values?.[0]?.verb === 'Generated'
-                        ? 'Generated'
-                        : 'Viewed'} image {paths[i]}"
-                      small={views.length > 1}
-                    />
-                    {#if views.length > 1}<p
-                        class="mt-1 w-44 max-w-full truncate font-mono text-tiny text-muted"
-                        title={paths[i]}
-                      >
-                        {basename(paths[i])}
-                      </p>{/if}
-                  </div>
-                {/each}
-              {/each}
+        <div
+          class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 max-sm:grid-cols-[minmax(0,1fr)_auto]"
+        >
+          {#if views.length === 1}
+            <ValueRow value={entry.values![0]} />
+          {:else}
+            <div class="col-span-full grid grid-cols-subgrid items-baseline py-[5px]">
+              <span class="text-small font-medium text-kind-read max-sm:col-span-full"
+                >{first?.verb}</span
+              >
+              <span class="text-muted">{views.length} images</span>
             </div>
-          </Card.Content>
-        </Card.Root>
+          {/if}
+          <div class="col-[2/-1] flex min-w-0 flex-wrap gap-3 pt-1 pb-2.5 max-sm:col-span-full">
+            {#each views as view, i (view.seq)}
+              {#each view.images ?? [] as image, index (`${image}:${index}`)}
+                <div class="min-w-0">
+                  <UserImage
+                    entry={view}
+                    {image}
+                    {index}
+                    {source}
+                    label="{view.values?.[0]?.verb === 'Generated'
+                      ? 'Generated'
+                      : 'Viewed'} image {paths[i]}"
+                    small={views.length > 1}
+                  />
+                  {#if views.length > 1}<p
+                      class="mt-1 w-44 max-w-full truncate font-mono text-tiny text-muted"
+                      title={paths[i]}
+                    >
+                      {basename(paths[i])}
+                    </p>{/if}
+                </div>
+              {/each}
+            {/each}
+          </div>
+        </div>
       {:else if progress}
         <!-- Agent operations share the compact progress row, including lists
              and requests without wait targets. -->
@@ -446,56 +436,44 @@
           </p>
         {/each}
       {:else if entry.values?.length}
-        <!-- One tree whether framed or bare, so rows keep their open
-             disclosures and focus as the entry grows. -->
-        <Card.Root
-          size="sm"
-          data-bare={bare || undefined}
-          class={bare
-            ? "overflow-visible rounded-none bg-transparent py-0 ring-0"
-            : entry.running
-              ? "ring-ring/45"
-              : undefined}
+        <!-- Tool rows sit on the page without a frame; their output wells
+             are the only raised surface. -->
+        <Trace.Root
+          class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 gap-y-0 max-sm:grid-cols-[minmax(0,1fr)_auto]"
         >
-          <Card.Content class={bare ? "px-0" : undefined}>
-            <Trace.Root
-              class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 gap-y-0 divide-y divide-rule max-sm:grid-cols-[minmax(0,1fr)_auto]"
-            >
-              {#each rows as { value, index, hidden } (index)}
-                {#if edits.via.has(index)}{@render via(index)}{/if}
-                {#if value.kind === "progress" && value.waits?.length}
-                  <p class="col-span-full py-[5px] text-muted">{@render wait(value)}</p>
-                {:else if value.kind === "progress"}
-                  <p class="col-span-full py-[5px] text-muted">
-                    {progressText(value, (name) => source.label(name))}
-                  </p>
-                {:else if hidden}
-                  <details
-                    class="group/disclosure col-span-full py-1"
-                    ontoggle={(event) => {
-                      openFiles[index] = event.currentTarget.open;
-                    }}
-                  >
-                    <summary
-                      class="{summary} {caret} min-h-8 text-small text-muted pointer-coarse:min-h-11"
-                    >
-                      {value.hiddenEdits} more {value.hiddenEdits === 1 ? "file" : "files"}
-                    </summary>
-                    <div
-                      class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 divide-y divide-rule max-sm:grid-cols-[minmax(0,1fr)_auto]"
-                    >
-                      {#each entry.content ? [] : hidden as file, i (i)}{#if i && edits.via.has(index + i)}{@render via(
-                            index + i,
-                          )}{/if}<ValueRow value={file} {onload} />{/each}
-                    </div>
-                  </details>
-                {:else if !pending(value)}
-                  <ValueRow {value} {onload} outputLang={outputLanguage(entry.values, index)} />
-                {/if}
-              {/each}
-            </Trace.Root>
-          </Card.Content>
-        </Card.Root>
+          {#each rows as { value, index, hidden } (index)}
+            {#if edits.via.has(index)}{@render via(index)}{/if}
+            {#if value.kind === "progress" && value.waits?.length}
+              <p class="col-span-full py-[5px] text-muted">{@render wait(value)}</p>
+            {:else if value.kind === "progress"}
+              <p class="col-span-full py-[5px] text-muted">
+                {progressText(value, (name) => source.label(name))}
+              </p>
+            {:else if hidden}
+              <details
+                class="group/disclosure col-span-full py-1"
+                ontoggle={(event) => {
+                  openFiles[index] = event.currentTarget.open;
+                }}
+              >
+                <summary
+                  class="{summary} {caret} min-h-8 text-small text-muted pointer-coarse:min-h-11"
+                >
+                  {value.hiddenEdits} more {value.hiddenEdits === 1 ? "file" : "files"}
+                </summary>
+                <div
+                  class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-x-3 max-sm:grid-cols-[minmax(0,1fr)_auto]"
+                >
+                  {#each entry.content ? [] : hidden as file, i (i)}{#if i && edits.via.has(index + i)}{@render via(
+                        index + i,
+                      )}{/if}<ValueRow value={file} {onload} />{/each}
+                </div>
+              </details>
+            {:else if !pending(value)}
+              <ValueRow {value} {onload} outputLang={outputLanguage(entry.values, index)} />
+            {/if}
+          {/each}
+        </Trace.Root>
       {:else if entry.text}
         <Markdown text={entry.text} />
       {/if}

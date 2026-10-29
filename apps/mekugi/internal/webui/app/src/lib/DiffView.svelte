@@ -71,7 +71,7 @@
   {#if rows.length}
     <div
       class={[
-        "rounded-card border font-mono text-code",
+        "rounded-card bg-raised font-mono text-code",
         !wrap && "overflow-x-auto overscroll-x-contain",
       ]}
     >
@@ -114,7 +114,7 @@
     color: color-mix(in srgb, var(--shiki-light) 60%, var(--text));
   }
   :global([data-theme="dark"]) [style*="--shiki-dark"] {
-    color: color-mix(in srgb, var(--shiki-dark) 55%, var(--text));
+    color: color-mix(in srgb, var(--shiki-dark) 45%, var(--text));
   }
   .diff-word {
     background: color-mix(in srgb, var(--negative) 16%, transparent);

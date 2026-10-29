@@ -325,7 +325,7 @@
           {@const isOpen = open(file)}
           {@const fileCallers = own(callers(file), sharedCallers)}
           {@const fileSources = own(sources(file), sharedSources)}
-          <li class="border-rule py-1 not-first:border-t" data-file={file.key}>
+          <li class="py-1" data-file={file.key}>
             <details
               class="group/disclosure"
               open={isOpen}

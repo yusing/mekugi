@@ -31,7 +31,7 @@
       semantic.error
     ),
   );
-  const card = "rounded-float border px-3.5 pt-2.5 pb-3";
+  const card = "rounded-float px-3.5 pt-2.5 pb-3";
   const heading = "flex min-h-7 items-center justify-between gap-2";
 </script>
 
@@ -114,7 +114,7 @@
 
       {#each recoveries as effect (effect.ID)}
         {@const recovery = effect.Recovery!}
-        <section class="{card} border-warning-edge bg-warning-tint" aria-label="Unsent submission">
+        <section class="{card} bg-warning-tint" aria-label="Unsent submission">
           <header class={heading}>
             <h2 class="text-small font-semibold text-warning-ink">
               {recovery.shell ? "Unsent shell command" : "Unsent submission"}
@@ -162,7 +162,7 @@
 
       {#if waiting.length}
         <Collapsible.Root
-          class="flex items-start gap-2 rounded-float border bg-raised pr-1"
+          class="flex items-start gap-2 rounded-float bg-raised pr-1"
           role="group"
           aria-label="Waiting messages"
         >

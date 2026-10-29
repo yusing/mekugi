@@ -157,7 +157,7 @@
                     />
                   {:else}
                     <pre
-                      class="mt-1.5 rounded-card border py-1 font-mono text-code">{#each lines(preview.Input) as line, i (i)}<span
+                      class="mt-1.5 rounded-card bg-raised py-1 font-mono text-code">{#each lines(preview.Input) as line, i (i)}<span
                         class="flex"
                         ><span class="w-[5ch] flex-none pr-2 text-right text-muted select-none"
                           >{i + 1}</span

@@ -19,7 +19,7 @@
   <div class="mx-auto max-w-column px-4 pt-4 pb-10">
     {#each publication?.Entries ?? [] as entry (entry.Seq)}
       {@const waits = entry.Values.some((value) => value.WaitTargets?.length)}
-      <article class="group/entry border-rule py-2.5 not-first:border-t">
+      <article class="group/entry py-2.5">
         <Message.Root>
           <Message.Content class="gap-0">
             {#if entry.Text && !waits}<Markdown text={entry.Text} />{/if}

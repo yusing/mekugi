@@ -10,7 +10,6 @@
   import Sidebar from "./lib/Sidebar.svelte";
   import ThreadView from "./lib/ThreadView.svelte";
   import Button from "./lib/ui/Button.svelte";
-  import * as Card from "./lib/ui/card";
   import Dialog from "./lib/ui/Dialog.svelte";
   import Notice from "./lib/ui/Notice.svelte";
   import * as Tooltip from "./lib/ui/tooltip";
@@ -112,7 +111,7 @@
          phone the frame disappears and the sheet becomes the screen. -->
     <div
       class={[
-        "relative my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-sheet border bg-surface max-sm:m-0 max-sm:rounded-none max-sm:border-0",
+        "relative my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-sheet bg-surface max-sm:m-0 max-sm:rounded-none",
         sidebar && wide ? "ml-0" : "ml-2",
       ]}
       inert={modal}
@@ -165,17 +164,17 @@
             class="grid min-h-0 flex-1 items-start justify-items-center overflow-y-auto px-4 pt-[10dvh] pb-6"
             aria-labelledby="welcome-heading"
           >
-            <Card.Root class="w-[min(100%,440px)]">
-              <Card.Header>
+            <div class="grid w-[min(100%,440px)] gap-6">
+              <header class="grid gap-2">
                 <div class="mb-2"><Mark size={28} /></div>
-                <Card.Title><h1 id="welcome-heading">Connect a machine</h1></Card.Title>
-                <Card.Description>
+                <h1 id="welcome-heading" class="text-lg font-semibold">Connect a machine</h1>
+                <p class="text-muted">
                   Threads run on your execution machines. Connect one through its connector to start
                   a thread or follow work already running there.
-                </Card.Description>
-              </Card.Header>
-              <Card.Content><MachineForm /></Card.Content>
-            </Card.Root>
+                </p>
+              </header>
+              <MachineForm />
+            </div>
           </section>
         {/if}
       {/if}

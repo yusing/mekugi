@@ -124,6 +124,17 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 		return strings.TrimSpace(string(out))
 	}
 	run("open", page.URL)
+	for _, width := range []string{"1280", "768", "390"} {
+		run("set", "viewport", width, "900")
+		for _, theme := range []string{"light", "dark"} {
+			run("set", "media", theme)
+			run("wait", "--fn", `(() => { const welcome = document.querySelector('[aria-labelledby="welcome-heading"]'); const fields = [...welcome.querySelectorAll('input')]; return !welcome.querySelector('[data-slot="card"]') && fields.length === 3 && fields.every(field => { const box = field.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth; }); })()`)
+			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+				run("screenshot", filepath.Join(artifacts, "welcome-"+width+"-"+theme+".png"))
+			}
+		}
+	}
+	run("set", "viewport", "1280", "900")
 	run("find", "label", "Machine name", "fill", "Disclosure")
 	run("find", "label", "Connector URL", "fill", machine.remote.URL)
 	run("find", "label", "Access token", "fill", strings.Repeat("f", 64))
@@ -137,9 +148,9 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 			run("eval", `document.querySelector('[data-entry="1"]').closest('.overflow-y-auto').scrollTop = 0`)
 			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [1,2,5].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"], summary, button[aria-expanded]')) && row(1).innerText.includes('Interrupt requested for /root/worker') && row(2).innerText.includes('complete') && row(5).innerText.includes('Complete short reply.') && row(3).querySelector('button[aria-label="Output: 2 lines"]') && row(4).querySelector('button[aria-label="Script: 2 lines"]') && row(6).querySelector('button[aria-expanded]') && row(7).querySelector('button[aria-label="Details"]'); })()`)
 			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [8,9,11].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"]')) && row(8).innerText.includes('Complete short failure.') && row(11).innerText.includes('Visible hook failure') && [10,12].every(n => row(n)?.querySelector('button[aria-label="Details"]')); })()`)
-			// A tool row with nothing beneath it is a bare trace line; a row
-			// showing output keeps its card.
-			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [3,4].every(n => row(n).querySelector('[data-slot=card][data-bare] [data-ai-element=tool]')) && [2,7].every(n => row(n).querySelector('[data-slot=card]:not([data-bare]) [data-ai-element=tool]')); })()`)
+			// Tool rows sit on the page without a card frame, whether or not
+			// output shows beneath them; output keeps its raised well.
+			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [2,3,4,7].every(n => { const tool = row(n).querySelector('[data-ai-element=tool]'); const frame = tool?.closest('article > div > *'); return tool && !row(n).querySelector('[data-slot=card]') && getComputedStyle(frame).borderTopWidth === '0px' && getComputedStyle(frame).boxShadow === 'none'; }) && getComputedStyle(row(2).querySelector('pre')).backgroundColor !== 'rgba(0, 0, 0, 0)'; })()`)
 			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 				run("screenshot", filepath.Join(artifacts, "disclosures-"+width+"-"+theme+".png"))
 				run("eval", `document.querySelector('[data-entry="15"]').scrollIntoView({block:'end'})`)
@@ -177,28 +188,28 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	}
 	run("find", "role", "button", "click", "--name", "Output: 2 lines", "--exact")
 	run("wait", "--text", "second output")
-	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="3"]'); return !!row.querySelector('[data-slot=card][data-bare]') && row.querySelector('pre')?.textContent.includes('second output'); })()`)
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="3"]'); return row.querySelector('pre')?.textContent.includes('second output'); })()`)
 	run("find", "role", "button", "click", "--name", "Script: 2 lines", "--exact")
 	run("wait", "--text", "printf second")
 	run("focus", `[data-entry="6"] button[aria-expanded]`)
 	run("press", "Enter")
 	run("wait", "--fn", `document.querySelector('[data-entry="6"] button[aria-expanded]')?.getAttribute('aria-expanded') === 'true'`)
-	// A bare row that gains content takes the card frame in place: open
-	// disclosures, their controls and focus survive the change.
+	// A row that gains content keeps its tree: open disclosures, their
+	// controls and focus survive the change.
 	run("eval", `window.scriptToggle = document.querySelector('[data-entry="4"] button[aria-label="Script: 2 lines"]')`)
 	revise(4, func(values []activity.Value) []activity.Value { values[0].Running = true; return values })
-	run("wait", "--fn", `!!document.querySelector('[data-entry="4"] [data-slot=card][data-bare]') && document.querySelector('[data-entry="4"]').innerText.includes('running') && window.scriptToggle.isConnected && window.scriptToggle.getAttribute('aria-expanded') === 'true'`)
+	run("wait", "--fn", `document.querySelector('[data-entry="4"]').innerText.includes('running') && window.scriptToggle.isConnected && window.scriptToggle.getAttribute('aria-expanded') === 'true'`)
 	revise(4, func(values []activity.Value) []activity.Value {
 		values[0].Tail = []string{"first output line"}
 		return values
 	})
-	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="4"]'); return !!row.querySelector('[data-slot=card]:not([data-bare])') && row.innerText.includes('first output line') && row.innerText.includes('printf second') && window.scriptToggle.isConnected && window.scriptToggle.getAttribute('aria-expanded') === 'true'; })()`)
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="4"]'); return row.innerText.includes('first output line') && row.innerText.includes('printf second') && window.scriptToggle.isConnected && window.scriptToggle.getAttribute('aria-expanded') === 'true'; })()`)
 	run("eval", `window.outputToggle = document.querySelector('[data-entry="3"] button[aria-label="Output: 2 lines"]'); window.outputToggle.focus()`)
 	run("wait", "--fn", `document.activeElement === window.outputToggle && window.outputToggle.getAttribute('aria-expanded') === 'true'`)
 	revise(3, func(values []activity.Value) []activity.Value {
 		return append(values, activity.Value{Kind: "op", Verb: "Edit", Path: "edited.txt"})
 	})
-	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="3"]'); return !!row.querySelector('[data-slot=card]:not([data-bare])') && row.innerText.includes('edited.txt') && row.querySelector('pre')?.textContent.includes('second output') && window.outputToggle.isConnected && document.activeElement === window.outputToggle && window.outputToggle.getAttribute('aria-expanded') === 'true'; })()`)
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="3"]'); return row.innerText.includes('edited.txt') && row.querySelector('pre')?.textContent.includes('second output') && window.outputToggle.isConnected && document.activeElement === window.outputToggle && window.outputToggle.getAttribute('aria-expanded') === 'true'; })()`)
 	// A long status truncates in its badge without covering the title bar's
 	// other controls or collapsing the title.
 	next := *publication

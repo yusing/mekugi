@@ -406,9 +406,7 @@
 <div
   class="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[calc(var(--topbar)+env(safe-area-inset-top,0px))_minmax(0,1fr)]"
 >
-  <header
-    class="flex min-w-0 items-center gap-2 border-b border-rule pt-safe pr-2 pl-4 max-sm:gap-1 max-sm:px-1"
-  >
+  <header class="flex min-w-0 items-center gap-2 pt-safe pr-2 pl-4 max-sm:gap-1 max-sm:px-1">
     {#if !sidebar}<Button
         variant="quiet"
         icon="sidebar"
@@ -724,7 +722,7 @@
         </section>
 
         {#if playback}
-          <div class="flex-none border-t border-rule">
+          <div class="flex-none">
             <PlaybackBar {playback} {start} entries={main} />
           </div>
         {:else if live && !ended}
@@ -795,8 +793,8 @@
         ]}
         aria-label="Thread panel"
       >
-        <!-- Tabs sit on the header's rule; the selected one underlines it. -->
-        <div class="flex min-h-12 flex-none items-center gap-2 border-b border-rule pr-1.5 pl-1.5">
+        <!-- Text tabs; the selected one is underlined. -->
+        <div class="flex min-h-12 flex-none items-center gap-2 pr-1.5 pl-1.5">
           <div class="flex min-w-0 self-stretch" role="tablist" aria-label="Panel">
             {#snippet tabButton(target: Tab, label: string)}
               <button

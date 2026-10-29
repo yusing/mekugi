@@ -12,13 +12,14 @@ this file owns how it looks and responds.
   transports and lifecycle assumptions do not define session behavior.
   `app/components.json` selects the upstream Nova registry and local aliases;
   copied components are maintained here with the application palette. Buttons,
-  picker and composer controls, menus, dialogs, chrome badges and content cards
-  use the stock Nova appearance:
-  rounded rectangular controls, neutral hover fills, and softly rounded cards
-  with a subtle outline. Phone controls retain 44px touch targets. Welcome and
-  substantive activity groups use the Card primitives. Short tool summaries use
-  compact Trace/Collapsible rows; their expanded output keeps the code well.
-  Navigation rows, chat bubbles and live source keep their own layout and framing.
+  picker and composer controls, menus, dialogs and chrome badges retain the
+  Nova shapes with neutral fills and quiet hover states. Phone controls retain
+  44px touch targets. Use spacing, typography and surface tones for hierarchy,
+  rather than outlining every section. Welcome content and activity groups sit
+  directly on the page. Tool summaries use compact Trace/Collapsible rows;
+  expanded output keeps its code well without an enclosing card. Avoid nested
+  card frames. Borders remain for text-entry affordances, floating overlays and
+  structural pane boundaries where they clarify interaction or separation.
 - Shared controls and the recipes in `ui/styles.ts` include:
   `Button`, `Field`, `Alert`, `Notice`, `Dialog`, `Menu`, `Picker`, `Popover`,
   `Tag`, `chip`, `segments` and `segment`, `input`, `floating`, `rowAction` and
@@ -97,7 +98,7 @@ this file owns how it looks and responds.
 
 ## Tabs, dialogs and menus
 
-- Panel tabs are text tabs on the header rule; the selected tab is underlined in
+- Panel tabs are text tabs; the selected tab is underlined in
   the accent colour. A lone tab still reads as a tab. Segments are for toggles
   inside content, such as Main and Side or the resume scope.
 - In dialogs, labels use `Field`. Cancel is quiet and comes first, the submit is

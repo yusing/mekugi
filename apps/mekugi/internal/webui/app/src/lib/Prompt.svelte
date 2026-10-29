@@ -151,11 +151,7 @@
   const answerBox = `${input} resize-y`;
 </script>
 
-<article
-  class="rounded-card border bg-raised p-4 wrap-anywhere max-sm:p-3"
-  data-prompt
-  bind:this={card}
->
+<article class="rounded-card bg-raised p-4 wrap-anywhere max-sm:p-3" data-prompt bind:this={card}>
   {#if item.agent}<p class="mb-2 text-small text-muted">{source.label(item.agent)}</p>{/if}
   {#if approval}
     <div class="flex items-baseline gap-3">
