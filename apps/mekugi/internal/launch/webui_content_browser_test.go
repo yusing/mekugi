@@ -20,9 +20,10 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
-// Unrelated publications must not restart a bound image read. Responses are
-// held in front of the actual connector, so reads and browser cancellations
-// are counted where they reach the machine.
+// Unrelated publications must neither restart a bound image read nor hide
+// hydrated content while a newer revision loads. Resource responses are held
+// in front of the actual connector, so reads and browser cancellations are
+// counted where they reach the machine.
 func TestWebUIBrowserContentReads(t *testing.T) {
 	if os.Getenv("MEKUGI_TEST_WEBUI_BROWSER") != "1" {
 		t.Skip("set MEKUGI_TEST_WEBUI_BROWSER=1 after make webui")
@@ -38,10 +39,12 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	defer page.Close()
 	token := strings.Repeat("d", 64)
 	machine := newWebUIBrowserMachine(t, ctx, page.URL, "Content", token)
-	var imageReads, imageAborts atomic.Int32
+	var imageReads, imageAborts, contentReads atomic.Int32
+	var holdImage, holdContent atomic.Bool
+	holdImage.Store(true)
 	release := make(chan struct{}, 4)
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.URL.Path == "/api/resources/image" {
+		if r.Method == http.MethodPost && (r.URL.Path == "/api/resources/image" && holdImage.Load() || r.URL.Path == "/api/resources/content" && holdContent.Load()) {
 			// The server notices a canceled browser read only after the
 			// request body is consumed.
 			body, err := io.ReadAll(r.Body)
@@ -49,11 +52,18 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
-			imageReads.Add(1)
+			image := r.URL.Path == "/api/resources/image"
+			if image {
+				imageReads.Add(1)
+			} else {
+				contentReads.Add(1)
+			}
 			select {
 			case <-release:
 			case <-r.Context().Done():
-				imageAborts.Add(1)
+				if image {
+					imageAborts.Add(1)
+				}
 				return
 			case <-ctx.Done():
 				return
@@ -168,4 +178,34 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	}
 	screenshot("content-reads-image-after-window-replacement.png")
 
+	// Oversized streamed text is published as a preview and hydrated by
+	// separate reads; the tail is only visible in complete content.
+	holdImage.Store(false)
+	holdContent.Store(true)
+	stream := strings.Repeat("Streamed prose. ", 300)
+	entries = append(entries, activitypresentation.Entry{Facts: activitypresentation.Facts{Seq: 63, Agent: "Main", Kind: "text", Text: stream + "TAIL_ONE"}, Revision: 1})
+	publish()
+	run("wait", "--text", "Loading content…")
+	await("the first content read", func() bool { return contentReads.Load() == 1 })
+	release <- struct{}{}
+	run("wait", "--fn", `document.body.innerText.includes('TAIL_ONE') && !document.body.innerText.includes('Loading content')`)
+	for revision, tail := range []string{"TAIL_TWO", "TAIL_THREE"} {
+		set(63, entries[62].Text+" "+tail)
+		publish()
+		await("the newer content read", func() bool { return contentReads.Load() == int32(revision+2) })
+		if run("eval", `document.body.innerText.includes('TAIL_ONE') && !document.body.innerText.includes('Loading content')`) != "true\n" {
+			t.Fatalf("hydrated content was hidden while %s loaded", tail)
+		}
+		screenshot(fmt.Sprintf("content-reads-hydrated-while-%s.png", strings.ToLower(tail)))
+		release <- struct{}{}
+		run("wait", "--fn", fmt.Sprintf(`document.body.innerText.includes(%q) && !document.body.innerText.includes('Loading content')`, tail))
+	}
+	// Content hydrated under another read attachment is never shown.
+	frame.Attachment++
+	set(63, entries[62].Text+" TAIL_FOUR")
+	publish()
+	await("the reattached content read", func() bool { return contentReads.Load() == 4 })
+	run("wait", "--fn", `document.body.innerText.includes('Loading content') && !document.body.innerText.includes('TAIL_THREE')`)
+	release <- struct{}{}
+	run("wait", "--fn", `document.body.innerText.includes('TAIL_FOUR') && !document.body.innerText.includes('Loading content')`)
 }

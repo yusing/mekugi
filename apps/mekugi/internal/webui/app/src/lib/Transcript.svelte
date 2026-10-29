@@ -351,10 +351,10 @@
     {/if}
     {#each visible as row (row.entry.seq)}
       {@const hydrated = complete[row.entry.seq]}
+      <!-- A newer revision keeps the attachment's earlier complete content
+           readable until its own read is admitted. -->
       {@const entry =
-        row.entry.content &&
-        hydrated?.reference?.attachment === row.entry.content.attachment &&
-        hydrated.reference.revision === row.entry.content.revision
+        row.entry.content && hydrated?.reference?.attachment === row.entry.content.attachment
           ? hydrated.entry
           : row.entry}
       {@const details = !!ondetails && hasDetails(entry, owner, clipped[entry.seq])}
@@ -380,7 +380,10 @@
               }
             : undefined}
         />
-        {#if loading[entry.seq]}<p class="ml-19 text-small text-muted" role="status">
+        {#if loading[entry.seq] && entry === row.entry}<p
+            class="ml-19 text-small text-muted"
+            role="status"
+          >
             Loading content…
           </p>{/if}
         {#if contentErrors[entry.seq]?.reference?.attachment === row.entry.content?.attachment && contentErrors[entry.seq]?.reference?.revision === row.entry.content?.revision && contentErrors[entry.seq]}<Alert

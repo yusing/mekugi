@@ -343,6 +343,8 @@ returns to the newest page and resumes following.
 Transport deferral preserves compact activity rows and their existing disclosures.
 Oversized content that belongs inline loads automatically through independent reads;
 controls and the initial visible view can become ready before that content finishes.
+Within the same attachment, a newer revision keeps the earlier complete content
+readable, without a loading row, until the newest revision's content replaces it.
 Roster, saved-file lists and paginated dialogs acquire additional rows automatically
 as the reader approaches the end, preserving the current selection and reading position.
 Roster activity updates keep acquired members visible while current pages arrive;
