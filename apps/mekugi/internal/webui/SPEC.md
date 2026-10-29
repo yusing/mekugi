@@ -29,6 +29,15 @@ sessions. If browser storage is unavailable, the choice still applies for the
 current page and the page explains that it could not be saved.
 Secret prompts and native filesystem/editor integration remain native-only.
 
+## Installation
+
+The WebUI can be installed through a supporting browser's native install or
+Add to Home Screen action when hosted over HTTPS or on localhost/loopback.
+It opens as a standalone app at the UI host's root, with the Mekugi name and mark.
+Browser and operating-system support determine the available install action.
+Installation keeps the same explicit machine connections and online session
+lifecycle; it provides no offline execution, queued actions or push notifications.
+
 ## Machines and selection
 
 The page is laid out like a chat application. A sidebar lists threads grouped

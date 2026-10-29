@@ -11,9 +11,10 @@ import (
 
 func TestAssetsOnlyHost(t *testing.T) {
 	server := httptest.NewServer(assetHandler{assets: fstest.MapFS{
-		"index.html":          {Data: []byte("<!doctype html><title>Mekugi</title>")},
-		"assets/app-1234.js":  {Data: []byte("console.log('bundle')")},
-		"assets/app-1234.css": {Data: []byte("body { color: black }")},
+		"index.html":           {Data: []byte("<!doctype html><title>Mekugi</title>")},
+		"manifest.webmanifest": {Data: []byte(`{"name":"Mekugi"}`)},
+		"assets/app-1234.js":   {Data: []byte("console.log('bundle')")},
+		"assets/app-1234.css":  {Data: []byte("body { color: black }")},
 	}})
 	t.Cleanup(server.Close)
 	for _, test := range []struct {
@@ -23,6 +24,8 @@ func TestAssetsOnlyHost(t *testing.T) {
 	}{
 		{http.MethodGet, "/", "<!doctype html>", http.StatusOK, false},
 		{http.MethodHead, "/", "", http.StatusOK, false},
+		{http.MethodGet, "/manifest.webmanifest", `"name":"Mekugi"`, http.StatusOK, false},
+		{http.MethodHead, "/manifest.webmanifest", "", http.StatusOK, false},
 		{http.MethodGet, "/assets/app-1234.js", "console.log", http.StatusOK, true},
 		{http.MethodHead, "/assets/app-1234.css", "", http.StatusOK, true},
 		{http.MethodGet, "/assets/", "404", http.StatusNotFound, false},
@@ -58,6 +61,12 @@ func TestAssetsOnlyHost(t *testing.T) {
 				t.Fatal("asset host added credentials or API cross-origin admission")
 			}
 			policy := response.Header.Get("Content-Security-Policy")
+			if test.path == "/manifest.webmanifest" && response.Header.Get("Content-Type") != "application/manifest+json" {
+				t.Fatalf("manifest type = %q", response.Header.Get("Content-Type"))
+			}
+			if !strings.Contains(policy, "manifest-src 'self'") {
+				t.Fatalf("CSP blocks install manifest: %s", policy)
+			}
 			for _, directive := range []string{"img-src 'self' data: blob:", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "connect-src http: https: ws: wss:", "frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'"} {
 				if !strings.Contains(policy, directive) {
 					t.Errorf("CSP omits %q: %s", directive, policy)

@@ -52,7 +52,8 @@ sessions, and patch review. Invocation overrides leave Codex configuration uncha
   thread from a native terminal or remote client; closing either leaves work running.
 - **Browser control across machines.** [Connect from a desktop or phone](#browser-ui)
   to create, follow and control threads, or replay saved sessions. Each connection
-  keeps its own machine identity and reconnects after page reload.
+  keeps its own machine identity and reconnects after page reload. Install it as
+  a standalone app through a supporting browser.
 - **Live subagent activity.** See model, effort, progress, and child-authored reply summaries
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
   Open attachable children to read their transcripts, send input and adjust their settings.
@@ -244,6 +245,11 @@ reload reconnects them and restores the thread selected in the page address. Use
 a trusted browser. Removing a machine under **Machines** deletes its saved token;
 clearing this site's browser data forgets all machines. Browser storage failures
 show a warning while connections remain usable for the current page.
+
+Install Mekugi using your browser's **Install app**, **Add to Dock** or
+**Add to Home Screen** action, where supported. Installation requires HTTPS or
+a localhost/loopback address. The installed app still needs the UI host and its
+execution-machine connectors online.
 
 The sidebar lists each machine's threads. **New thread** starts one from its
 first message; the composer's **+** menu also resumes a saved thread or opens a

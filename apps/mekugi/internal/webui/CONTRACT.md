@@ -4,10 +4,11 @@ The UI host exposes only GET/HEAD page and embedded asset requests. Machine APIs
 authentication and recorded playback belong to the execution machine's connector
 and [Session API](../sessionapi/CONTRACT.md), never to the UI host.
 
-Without built assets, page requests receive 503 naming `make webui`. The index is
-revalidated; hashed assets may be cached indefinitely. Responses forbid framing,
-plugins and base-URL changes, restrict scripts/styles to bundled assets (plus inline
-styles), and allow connections to explicitly selected WS(S) connectors. Markdown
+Without built assets, page requests receive 503 naming `make webui`. The index and
+install manifest are revalidated; hashed assets may be cached indefinitely.
+Responses forbid framing, plugins and base-URL changes, allow the bundled install
+manifest, restrict scripts/styles to bundled assets (plus inline styles), and
+allow connections to explicitly selected WS(S) connectors. Markdown
 images remain links rather than loading untrusted remote resources. Bound user
 images load through the authenticated Session API and display as browser-owned
 blob URLs.
