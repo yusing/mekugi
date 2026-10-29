@@ -41,18 +41,12 @@ The [composition contract](docs/contracts/composition.md) owns workspace and dep
   derivations drift with each new producer shape. Measured geometry, such as actual clipping,
   stays with the renderer. Reuse admitted snapshots instead of copying whole sessions for narrow
   internal queries.
-- **Require a present consumer.** Add shared contracts, libraries or abstractions for an actual shared
-  responsibility or invariant, not speculative backends/renderers. Refactors remove superseded
-  wrappers and migrate callers in the same change; retained compatibility needs a supported contract. Moving
-  complexity into a new facade, generic bus or duplicate cache does not simplify ownership.
+- **Require a present consumer.** Do not add contracts or slots for speculative backends or
+  renderers.
 
 Keep behavioral specifications at their owners and update affected consumer checks. Workspace checks
 enforce imports and declarations; generated references derive from those declarations. Select checks
 through `CONTEXT-TESTS.md`; neither static checks nor generated indexes prove runtime behavior.
-
-## Recurring work and growing data
-
-Before choosing the implementation, apply [implementation-time performance guidance](CONTEXT-PERFORMANCE.md).
 
 ## Presentation
 
@@ -65,4 +59,5 @@ replayed; Main or child view; linked or unlinked delivery; native or thread-cont
 pending, running or settled rows and their detail pages; terminal or browser. Before fixing a
 display defect, find where the paths showing that fact converge and fix it there. Treat reported
 examples as samples of their input class, such as every chain, pipeline and heredoc position for
-shell display, so sibling paths and shapes are not reported again.
+shell display, and check each sibling path and shape the converged fix changes with one
+representative, not every combination.

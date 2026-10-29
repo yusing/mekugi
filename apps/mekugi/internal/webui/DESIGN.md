@@ -133,6 +133,9 @@ this file owns how it looks and responds.
   family navigation stay mounted.
 - A read superseded by a newer publication is not an error. Discard its result
   and wait for the current reference; show only current failures.
+- Key a read by its source identity, such as attachment, revision or index, not by
+  the object that contains it. Republishing an unchanged entry neither clears nor
+  restarts its read.
 - Loading and busy states take no in-flow row. As content arrives above or
   around the reader, keep their reading anchor and keyboard focus.
 
@@ -148,9 +151,10 @@ this file owns how it looks and responds.
 
 Source review does not prove a layout. Build with `make webui`, then run the
 browser tests in `apps/mekugi/internal/launch` with `MEKUGI_TEST_WEBUI_BROWSER=1`
-and `MEKUGI_TEST_WEBUI_ARTIFACTS=<dir>` to collect screenshots. Check desktop
-(1280px), tablet and phone (390px) widths in light and dark, with one item and
-several, and with the longest realistic content (paths, lines, lists). For a
+and `MEKUGI_TEST_WEBUI_ARTIFACTS=<dir>` to collect screenshots. Of desktop
+(1280px), tablet and phone (390px) widths, light and dark, one item and several,
+and the longest realistic content (paths, lines, lists), check the ones the change
+affects. For a
 refresh, delay the replacement and check the old content stays. Measure geometry
 with `getBoundingClientRect` in the page instead of judging spacing by eye. A
 surface that no browser fixture reaches, such as the preset dialog, needs its own

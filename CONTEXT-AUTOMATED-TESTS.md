@@ -59,6 +59,3 @@ Compile tagged Launch fixtures without running them:
 ```sh
 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^$' TEST_FLAGS='-tags=codex_e2e'
 ```
-
-For compiling or running real-provider fixtures, use the
-[live Codex request procedures](docs/contributing/testing-live-codex.md).

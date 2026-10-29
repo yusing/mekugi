@@ -115,12 +115,6 @@ they do not expand the requested scope.
 
 ## Session evidence and profiling
 
-Load the section matching the investigation:
-
-- Recorded behavior or debug bundles: [Inspect a session](docs/contributing/development.md#inspect-a-session).
-- Retained-session replay: [Replay a session](docs/contributing/development.md#replay-a-session).
-- Live CPU/RAM faults or profiling: [Profile live sessions and replay](docs/contributing/development.md#profile-live-sessions-and-replay).
-
 Contracts: `modules/{sessioninspection,diagnostics,sessionreplay}/SPEC.md`.
 Profiling implementation: `launch/{profiling,profiling_disabled}.go`.
 Controlled model comparisons live in [codex-setup-ab](https://github.com/yusing/codex-setup-ab);

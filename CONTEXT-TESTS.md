@@ -98,7 +98,12 @@ make test TEST_PACKAGES='./modules/agentguidance/... ./apps/mekugi/internal/fron
 
 `make lint` requires `golangci-lint` and `deadcode` on PATH. It uses `.golangci.yml`, checks production
 and test reachability separately (including the snapshot harness), and fails on tool errors/findings.
-Linux amd64 CI installs versions pinned in the release workflow.
+Linux amd64 CI installs versions pinned in the release workflow. Run it before committing Go
+changes: CI runs it after the offline suite, so a failing test hides its findings.
+
+`make generate` also refreshes the network-sourced OpenCode catalog snapshots; run it only for a
+catalog refresh. For workspace references or the Session API schema, run
+`go run ./apps/mekugi/cmd/workspace index-write` or `go run ./apps/mekugi/cmd/sessionapi-schema`.
 
 ## Boundary acceptance
 
@@ -116,7 +121,10 @@ Apply these routes when the requested change touches the boundary:
 - **Execution:** batching/parallelism, interpreter display, PTY/yield/`write_stdin`, bounded output
   and `mread` recovery.
 - **Producer shapes:** Chat/Responses and persisted rollout events at the consuming boundary.
-  Recheck dated host observations after Codex upgrades.
+  Recheck dated host observations after Codex upgrades. Claude Agent SDK messages and control
+  responses: build fixtures from captured SDK output, not hand-authored mock values, and run one
+  live Claude delegate turn before reporting Claude delegate metrics or presentation as working;
+  otherwise report that behavior as unverified.
 - **Logical lifecycle:** for host-turn handling or thread-control waits, cover how host completion,
   failure, interruption, manual compaction, injected input and enclosing-cell re-execution keep or
   settle pending waits and logical work, per
