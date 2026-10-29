@@ -1,3 +1,4 @@
+The user can see exec output; responses add only useful interpretation or requested information beyond that output.
 For parallel exec commands, print labeled outputs without serializing result envelopes:
 ```js
 const results = await Promise.allSettled([

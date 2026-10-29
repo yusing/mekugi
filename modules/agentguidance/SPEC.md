@@ -41,8 +41,9 @@ checked-in catalog. The application authenticates and publishes both sections
 before exposing its commands.
 
 The same catalog supplies native-shell guidance for Claude delegates. Command
-descriptions, helper workflows and child reply policy are shared; Codex JavaScript
-examples and Codex-specific shell-selection guidance appear only in Codex requests.
+descriptions, helper workflows and child reply policy are shared and backend-neutral;
+Codex JavaScript examples, exec-output visibility and Codex-specific shell-selection
+guidance appear only in Codex requests.
 
 Capability descriptions remain in the authoritative `exec` description when it
 exposes `tools.exec_command`. Workflow guidance is appended to the Responses `instructions` field, preserving

@@ -1,4 +1,4 @@
-Keep command output in tool results; redirect to a file only when the task needs that artifact, not for display preference. The user can see exec output; responses add only useful interpretation or requested information beyond that output. Disposable logs pollute change history and diff stats.
+Keep command output in tool results; redirect to a file only when the task needs that artifact, not for display preference. Disposable logs pollute change history and diff stats.
 Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution.
 An incomplete result does not establish full coverage; follow its next_call rather than rerunning the producer.
 

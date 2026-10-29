@@ -28,12 +28,12 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	if err != nil || saved != registry.FrontendGuidance || strings.Contains(guide, "{{") || strings.Contains(guide, "<instruction id=") {
 		t.Fatalf("standalone generated frontend guidance differs from projection: %v", err)
 	}
-	for _, codeOnly := range []string{"Promise.allSettled", "tools.exec_command", "Pass `shell:"} {
+	for _, codeOnly := range []string{"Promise.allSettled", "tools.exec_command", "Pass `shell:", "exec output", "write_stdin"} {
 		if strings.Contains(saved.Shell, codeOnly) {
 			t.Fatalf("native shell guidance contains Codex execution instruction %q", codeOnly)
 		}
 	}
-	if !strings.Contains(saved.Workflow, "Promise.allSettled") || !strings.Contains(saved.Shell, "follow its next_call") || !strings.Contains(saved.Shell, "Reuse completed edit-receipt IDs") {
+	if !strings.Contains(saved.Workflow, "Promise.allSettled") || !strings.Contains(saved.Workflow, "The user can see exec output") || !strings.Contains(saved.Shell, "follow its next_call") || !strings.Contains(saved.Shell, "Reuse completed edit-receipt IDs") {
 		t.Fatal("frontend projections lost execution or shared helper workflow")
 	}
 	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, manifestFilename))
