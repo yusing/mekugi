@@ -12,3 +12,4 @@ for (let i = 0; i < results.length; i++) {
   text(`${labels[i]}: ${value.session_id ? `running session_id=${value.session_id}` : `exit_code=${value.exit_code}`}\n${value.output}`);
 }
 ```
+One exec result keeps 10000 tokens unless the input's first line raises it, as in `// @exec: {"max_output_tokens": 16000}`. Larger inner `max_output_tokens` or `--max-tokens` budgets otherwise lose the middle of their output, including any next_call.
