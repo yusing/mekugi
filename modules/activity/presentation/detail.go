@@ -1,7 +1,9 @@
 package presentation
 
 import (
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/yusing/mekugi/contracts/activitydetail"
 )
@@ -11,17 +13,45 @@ import (
 func ContributedDetails(pages []activitydetail.Page) []DetailPage {
 	result := make([]DetailPage, len(pages))
 	for i, page := range pages {
-		result[i] = DetailPage{ID: page.ID, Kind: "op", Verb: page.Verb, Code: page.Code, Lang: page.Language, Fenced: true, Path: page.Path}
+		result[i] = DetailPage{ID: page.ID, DisplayPath: page.DisplayPath, Kind: "op", Verb: page.Verb, Code: page.Code, Lang: page.Language, Fenced: true, Path: page.Path}
 	}
 	return result
+}
+
+// OrderEditDetails follows the visible operation order while retaining the
+// contributed pages and their identities. Unmatched pages remain available.
+func OrderEditDetails(pages []DetailPage, values []Value) []DetailPage {
+	var rows []Value
+	for _, value := range values {
+		for _, original := range Originals(value) {
+			if original.EditOperation() && original.EditPath() != "" {
+				rows = append(rows, original)
+			}
+		}
+	}
+	ordered := slices.Clone(pages)
+	rank := func(page DetailPage) int {
+		for i, row := range rows {
+			path := row.EditPath()
+			if path == page.Path || path == page.DisplayPath || row.DirectoryDeletion() && strings.HasPrefix(page.Path, strings.TrimSuffix(path, "/")+"/") {
+				return i
+			}
+		}
+		return len(rows)
+	}
+	slices.SortStableFunc(ordered, func(a, b DetailPage) int {
+		return rank(a) - rank(b)
+	})
+	return ordered
 }
 
 // DetailPage retains original operation identity independently of feed grouping.
 // Output remains an identity within Source; the attached owner resolves its snapshot.
 type DetailPage struct {
 	Value
-	ID       string
-	Revision uint64
+	ID          string
+	DisplayPath string
+	Revision    uint64
 	// PreparedSource links frozen contributed pages to the host observation
 	// without allowing live source refresh to replace their original content.
 	PreparedSource uint64

@@ -77,6 +77,30 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 	}
 }
 
+func TestNativeEditDialogFollowsVisibleFileOrder(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	first := liveDiffCapture("z", "z.go", 1, "old\n", "first\n", presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"})
+	second := liveDiffCapture("a", "a.go", 2, "old\n", "second\n", presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"})
+	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{Key: presentation.AttemptKey{Workspace: "/w", Call: "patch"}, Operation: activitydetail.Operation{Thread: "main", Item: "patch"}, Chunks: []presentation.Chunk{second, first}})
+	publishFixtureReview(t, u)
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `z.go` +1 -1 · apply_patch\n\nEdit `a.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch"}}}})
+	if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
+		t.Fatal(err)
+	}
+	if !terminalTest(u).openActivityEdit(u.shell.Transcript, 1, "z.go") {
+		t.Fatal("edit did not open")
+	}
+	drawOutputDialog(terminalTest(u))
+	if terminalTest(u).Dialog.Page != 0 || !strings.Contains(terminalTest(u).Dialog.Document.Text, "first") {
+		t.Fatalf("wrong first page: %+v", terminalTest(u).Dialog)
+	}
+	terminalTest(u).outputKey("\x1b[C")
+	drawOutputDialog(terminalTest(u))
+	if terminalTest(u).Dialog.Page != 1 || !strings.Contains(terminalTest(u).Dialog.Document.Text, "second") {
+		t.Fatalf("right arrow did not open second file: %+v", terminalTest(u).Dialog)
+	}
+}
+
 func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		t.Run(fmt.Sprint(child), func(t *testing.T) {

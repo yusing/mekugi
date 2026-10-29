@@ -14,7 +14,7 @@ type Request struct {
 }
 
 type Page struct {
-	ID, Verb, Path, Code, Language string
+	ID, Verb, Path, DisplayPath, Code, Language string
 }
 
 type Result struct {

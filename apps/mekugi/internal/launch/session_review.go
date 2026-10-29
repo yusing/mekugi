@@ -46,6 +46,9 @@ func applyPreview(attached *attachedPresentation, terminal *terminalsession.Atta
 			}
 			receipt.Pages = append(receipt.Pages, activitydetail.Page{ID: preview.ID + "/" + strconv.Itoa(len(receipt.Pages)), Verb: file.Action().Title(),
 				Path: pathdisplay.ForWorkspace(preview.Workspace, path), Code: file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(preview.Workspace, file.BeforePath), pathdisplay.ForWorkspace(preview.Workspace, file.AfterPath)), Language: "diff"})
+			if file.Action().Title() == "Move" {
+				receipt.Pages[len(receipt.Pages)-1].DisplayPath = pathdisplay.Move(preview.Workspace, file.BeforePath, file.AfterPath)
+			}
 		}
 		if len(receipt.Pages) == 0 {
 			// Large live cards discard Files. Their receipt still carries bounded

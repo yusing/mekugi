@@ -306,6 +306,7 @@ returns to the same selection after exit; missing files/editor failures report
 notices. This explicit current-file read does not replace captured evidence.
 
 Clicking an Activity edit opens its exact-operation details in the shared dialog.
+Dialog pages follow the visible edit rows, retaining the pointed file as the selection.
 Closing preserves pane filters, scroll and focus; arriving changes remain available.
 Only the pointed edit text underlines, not its gutter, gaps or stat bar. Dialog copy/selection uses
 the shared frozen-source lifecycle.

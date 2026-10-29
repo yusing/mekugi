@@ -3,7 +3,29 @@ package presentation
 import (
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/modules/activity/feed"
 )
+
+func TestOrderEditDetailsMoveAndDirectory(t *testing.T) {
+	for _, tc := range []struct {
+		name, row string
+		page      DetailPage
+	}{
+		{"captured move", "Move `src/{old=>new}` +1 -1", DetailPage{Value: Value{Path: "src/new"}, DisplayPath: "src/{old=>new}"}},
+		{"host move", "Move `src/{old=>new}` +1 -1", DetailPage{Value: Value{Path: "src/{old=>new}", SyntaxPath: "src/new"}}},
+		{"directory", "Delete `dir/` • 2 files", DetailPage{Value: Value{Path: "dir/a"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			values := []Value{{Content: feed.ParseOperation(tc.row)}, {Content: feed.ParseOperation("Edit `b` +1 -1")}}
+			pages := []DetailPage{{Value: Value{Path: "b"}}, tc.page}
+			got := OrderEditDetails(pages, values)
+			if got[0].Path != tc.page.Path {
+				t.Fatalf("order: %+v", got)
+			}
+		})
+	}
+}
 
 func TestCompactReloadPreservesIndependentOutcomes(t *testing.T) {
 	for _, preload := range []bool{false, true} {

@@ -1240,11 +1240,12 @@ export type Option = {
 
 export type DetailPage = {
   "ID": string;
+  "DisplayPath": string;
   "Revision": number;
   "PreparedSource": number;
   "ModelVisible": boolean;
   "Prepared": (PreparedContent | null);
-} & Omit<Value, "ID" | "Revision" | "PreparedSource" | "ModelVisible" | "Prepared">;
+} & Omit<Value, "ID" | "DisplayPath" | "Revision" | "PreparedSource" | "ModelVisible" | "Prepared">;
 
 export type AnswerInput = {
   "Call": string;

@@ -44,6 +44,7 @@ func activityEditPages(attached *attachedPresentation, terminal *terminalsession
 			}
 		}
 		withPreparedSource := func(pages []activitypresentation.DetailPage) []activitypresentation.DetailPage {
+			pages = activitypresentation.OrderEditDetails(pages, entry.Values)
 			for i := range pages {
 				pages[i].PreparedSource = seq
 			}

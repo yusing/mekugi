@@ -320,6 +320,9 @@ func (s *Snapshot) ActivityDetail(request activitydetail.Request) activitydetail
 			page := activitydetail.Page{ID: "changehistory:" + cmp.Or(chunk.Key, fmt.Sprintf("%s\x00%s/%d", attempt.Key.Workspace, attempt.Key.Call, i)),
 				Verb: chunk.Review.Action().Title(), Path: target, Language: "diff",
 				Code: chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(workspace, chunk.Review.AfterPath))}
+			if page.Verb == "Move" {
+				page.DisplayPath = pathdisplay.Move(workspace, chunk.Review.BeforePath, chunk.Review.AfterPath)
+			}
 			result.Pages = append(result.Pages, page)
 			if result.Selected == "" && (request.Path == "" || request.Path == target ||
 				chunk.Review.Action().Title() == "Move" && request.Path == pathdisplay.Move(workspace, chunk.Review.BeforePath, chunk.Review.AfterPath) ||
