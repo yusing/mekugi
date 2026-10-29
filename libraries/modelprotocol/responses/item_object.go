@@ -17,10 +17,8 @@ type Item struct {
 	ID        string
 	CallID    string
 	Name      string
-	Namespace string
 	Status    string
 	Content   json.RawMessage
-	Output    json.RawMessage
 	Input     *string
 	Arguments *string
 }
@@ -37,16 +35,14 @@ func DecodeItem(raw json.RawMessage) (Item, bool) {
 // NewItem creates an Item from decoded JSON fields.
 func NewItem(fields map[string]json.RawMessage) Item {
 	item := Item{
-		Fields:    fields,
-		Type:      StringField(fields, "type"),
-		Role:      StringField(fields, "role"),
-		ID:        StringField(fields, "id"),
-		CallID:    StringField(fields, "call_id"),
-		Name:      StringField(fields, "name"),
-		Namespace: StringField(fields, "namespace"),
-		Status:    StringField(fields, "status"),
-		Content:   fields["content"],
-		Output:    fields["output"],
+		Fields:  fields,
+		Type:    StringField(fields, "type"),
+		Role:    StringField(fields, "role"),
+		ID:      StringField(fields, "id"),
+		CallID:  StringField(fields, "call_id"),
+		Name:    StringField(fields, "name"),
+		Status:  StringField(fields, "status"),
+		Content: fields["content"],
 	}
 	if value, ok := DecodeString(fields["input"]); ok {
 		item.Input = new(value)
