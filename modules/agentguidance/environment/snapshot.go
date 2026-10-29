@@ -23,6 +23,7 @@ type Snapshot struct {
 	Platform   string
 	OSName     string
 	OSRelease  string
+	UserHome   string
 	Git        Git
 	Incomplete []string
 }
@@ -49,6 +50,11 @@ func Acquire(ctx context.Context, workspace string) Snapshot {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	s := Snapshot{ObservedAt: time.Now().UTC(), Platform: runtime.GOOS, OSName: "unavailable", OSRelease: "unavailable", Git: Git{State: "unavailable", DefaultBranch: "unavailable"}}
+	if userHome, err := os.UserHomeDir(); err == nil {
+		s.UserHome = userHome
+	} else {
+		s.Incomplete = append(s.Incomplete, "user home unavailable")
+	}
 	if !filepath.IsAbs(workspace) {
 		s.Incomplete = append(s.Incomplete, "execution workspace unavailable")
 		return s
@@ -196,7 +202,11 @@ func (s Snapshot) Text(workspace string) string {
 	case "none":
 		membership = "no"
 	}
-	fmt.Fprintf(&out, "Observed at: %s\nPlatform: %s\nOS: %s\nKernel: %s\nGit repository: %s\n", s.ObservedAt.Format(time.RFC3339Nano), s.Platform, s.OSName, s.OSRelease, membership)
+	userHome := "unavailable"
+	if s.UserHome != "" {
+		userHome = strconv.Quote(s.UserHome)
+	}
+	fmt.Fprintf(&out, "Observed at: %s\nPlatform: %s\nOS: %s\nKernel: %s\nHome: %s\nGit repository: %s\n", s.ObservedAt.Format(time.RFC3339Nano), s.Platform, s.OSName, s.OSRelease, userHome, membership)
 	if s.Git.State == "repository" {
 		if s.Git.Worktree != workspace {
 			fmt.Fprintf(&out, "Git worktree: %s\n", strconv.Quote(s.Git.Worktree))

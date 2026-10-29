@@ -116,7 +116,9 @@ examples remain unchanged; Codex still owns its selection and execution.
 ## Environment snapshot
 
 Agent Guidance supplements Codex's native environment context with data-only platform and
-OS identity/version and kernel-release facts and an explicitly observed Git snapshot.
+OS identity/version, kernel release, the current user's home directory, and an explicitly observed
+Git snapshot. The home directory comes from the platform's user-home environment and remains
+explicitly unavailable when it cannot be resolved; it does not depend on workspace or Git discovery.
 Compact labeled text omits duplicate native workspace paths and empty collection diagnostics.
 Git repository membership is yes, no, or unavailable. Plain and SVN-only directories report no;
 missing Git, corrupt metadata and inspection failures remain unavailable with diagnostics.
@@ -124,7 +126,7 @@ SVN facts remain owned by the existing project hook.
 Linux identifies its distribution from the host OS release metadata; macOS includes its product
 version. Unavailable OS identity remains explicit. Repository/worktree membership,
 branch and HEAD (including detached and unborn states), locally known symbolic default branch,
-bounded status and five recent abbreviated commit IDs/subjects are included. Account identity, email and
+bounded status and five recent abbreviated commit IDs/subjects are included. Git account identity, email and
 remote URLs are excluded. Unavailable facts and truncation are explicit; acquisition neither
 fetches nor mutates a repository and optional failures do not block inference.
 The supplement is replaced in the owned base-instruction layer, preserving native

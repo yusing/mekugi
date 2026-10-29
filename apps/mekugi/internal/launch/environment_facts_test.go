@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -91,6 +92,13 @@ func TestEnvironmentFactsCompleteProviderInputLifecycle(t *testing.T) {
 	}
 	firstWire := forward(makeRequest(nil), "environment-first")
 	first := environmentFacts(t, firstWire)
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(first, "\nHome: "+strconv.Quote(userHome)+"\n") {
+		t.Fatalf("provider input omitted user home: %s", first)
+	}
 	if !strings.Contains(first, "Recent commits:\n") || !strings.Contains(first, "\nOS: ") || !strings.Contains(first, "\nPlatform: ") || strings.Contains(first, workspace) {
 		t.Fatalf("facts missing: %+v", first)
 	}

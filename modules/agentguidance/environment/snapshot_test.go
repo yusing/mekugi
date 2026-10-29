@@ -67,6 +67,31 @@ func TestSnapshotsGitStatesAndIsolation(t *testing.T) {
 	}
 }
 
+func TestSnapshotHomeDirectory(t *testing.T) {
+	userHome := filepath.Join(t.TempDir(), "user \"name\"\nnext line")
+	for _, key := range []string{"HOME", "USERPROFILE", "home"} {
+		t.Setenv(key, userHome)
+	}
+	for _, workspace := range []string{t.TempDir(), ""} {
+		snapshot := Acquire(t.Context(), workspace)
+		if snapshot.UserHome != userHome || !strings.Contains(snapshot.Text(workspace), "\nHome: "+strconv.Quote(userHome)+"\n") {
+			t.Fatalf("workspace %q: home not preserved as quoted data: %+v", workspace, snapshot)
+		}
+	}
+	for _, key := range []string{"HOME", "USERPROFILE", "home"} {
+		t.Setenv(key, "")
+	}
+	userHome, err := os.UserHomeDir()
+	snapshot := Acquire(t.Context(), "")
+	if err != nil {
+		if snapshot.UserHome != "" || !slices.Contains(snapshot.Incomplete, "user home unavailable") || !strings.Contains(snapshot.Text(""), "\nHome: unavailable\n") {
+			t.Fatalf("unavailable home not explicit: %+v", snapshot)
+		}
+	} else if snapshot.UserHome != userHome {
+		t.Fatalf("platform home default = %q, want %q", snapshot.UserHome, userHome)
+	}
+}
+
 func TestSnapshotStatusAndSubjectBounds(t *testing.T) {
 	workspace := repository(t)
 	git(t, workspace, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", strings.Repeat("界", 300))
