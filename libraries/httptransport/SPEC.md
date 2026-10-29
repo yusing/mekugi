@@ -2,7 +2,7 @@
 
 ## Purpose and scope
 
-Share HTTP client defaults and response-body lifetime mechanics across provider
+Share HTTP client defaults and body lifetime mechanics across provider
 transports. Callers own credentials, endpoints, redirects, retry policy, and
 request deadlines. The library owns no connection pool or application state.
 
@@ -11,6 +11,11 @@ request deadlines. The library owns no connection pool or application state.
 Client construction preserves a supplied transport and client configuration.
 Otherwise it clones the standard transport with a five-second dial timeout and
 30-second keepalive. The supplied client is never modified.
+
+Encoded request bodies remain replayable with their exact content length.
+Callers keep those bytes immutable while the transport owns the body. Synchronous
+observers may borrow unread bytes without copying; they retain only detached
+facts after forwarding, not the borrowed content.
 
 Response wrappers preserve bytes and the original closer. Closing a
 cancel-on-close body also cancels its request. An idle-read timeout measures

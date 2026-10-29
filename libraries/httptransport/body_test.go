@@ -26,6 +26,41 @@ type readerFunc func([]byte) (int, error)
 
 func (f readerFunc) Read(p []byte) (int, error) { return f(p) }
 
+func TestRequestBytesBorrowOnlyUnreadImmutableBody(t *testing.T) {
+	encoded := []byte(`{"input":"exact bytes"}`)
+	request, err := httptransport.NewRequest(t.Context(), http.MethodPost, "https://provider/responses", encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	borrowed, ok := httptransport.RequestBytes(request)
+	if !ok || &borrowed[0] != &encoded[0] || request.ContentLength != int64(len(encoded)) {
+		t.Fatal("request body was copied or its length changed")
+	}
+	if _, err := request.Body.Read(make([]byte, 1)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := httptransport.RequestBytes(request); ok {
+		t.Fatal("partially consumed body admitted")
+	}
+	replay, err := request.GetBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(replay)
+	if err != nil || !bytes.Equal(got, encoded) {
+		t.Fatalf("replayed bytes = %q, error %v", got, err)
+	}
+	_ = replay.Close()
+	request.Body = io.NopCloser(bytes.NewReader(encoded))
+	if _, ok := httptransport.RequestBytes(request); ok {
+		t.Fatal("replaced body admitted")
+	}
+	empty, err := httptransport.NewRequest(t.Context(), http.MethodPost, "https://provider/responses", nil)
+	if err != nil || empty.Body != http.NoBody || empty.ContentLength != 0 {
+		t.Fatalf("empty request = %#v, error %v", empty, err)
+	}
+}
+
 func TestCancelOnCloseOwnsRequestCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

@@ -1,7 +1,6 @@
 package opencode
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -31,7 +30,7 @@ func (s Service) Forward(ctx context.Context, supplied *http.Client, format, thr
 	case "responses":
 		endpoint = strings.TrimSuffix(endpoint, "/chat/completions") + "/responses"
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	request, err := httptransport.NewRequest(ctx, http.MethodPost, endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("invalid %s endpoint", s.Label)
 	}

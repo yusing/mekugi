@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/libraries/httptransport"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
@@ -263,15 +264,22 @@ func (r *Recorder) Transport(next http.RoundTripper) http.RoundTripper {
 			return next.RoundTrip(request)
 		}
 		attempt := state.beginProviderAttempt()
-		requestBody, err := snapshotRequestBody(request)
-		if err != nil {
-			return nil, fmt.Errorf("capture provider request body: %w", err)
+		requestBody, borrowed := httptransport.RequestBytes(request)
+		if !borrowed {
+			var err error
+			requestBody, err = snapshotRequestBody(request)
+			if err != nil {
+				return nil, fmt.Errorf("capture provider request body: %w", err)
+			}
 		}
+		// Materialize only sanitized facts before forwarding. Borrowed bytes need
+		// not remain immutable after the transport releases its request body.
+		observation := r.observeRequest(requestBody)
 		state.observeProviderRouting(attempt, request.Header)
 		started := time.Now()
 		response, roundTripErr := next.RoundTrip(request)
 		if roundTripErr != nil {
-			r.recordExchange(state, "provider", attempt, started, requestBody, observedPayload{}, 0, "", "", roundTripErr, providerResponseEvidence{CachedTokensState: "unavailable"})
+			r.recordObservedExchange(state, "provider", attempt, started, time.Now(), observation, observedPayload{}, 0, "", "", roundTripErr, providerResponseEvidence{CachedTokensState: "unavailable"})
 			return nil, roundTripErr
 		}
 		contentType := response.Header.Get("Content-Type")
@@ -284,7 +292,7 @@ func (r *Recorder) Transport(next http.RoundTripper) http.RoundTripper {
 		response.Body = &observedResponseBody{
 			ReadCloser: response.Body,
 			finish: func(body observedPayload, readErr error) {
-				r.recordExchange(state, "provider", attempt, started, requestBody, body, statusCode, contentType, contentEncoding, readErr, evidence)
+				r.recordObservedExchange(state, "provider", attempt, started, time.Now(), observation, body, statusCode, contentType, contentEncoding, readErr, evidence)
 			},
 		}
 		return response, nil
@@ -357,7 +365,48 @@ func (s *requestState) observedUsage(boundary string, attempt uint64) *ProviderU
 	return new(usage)
 }
 
+type requestObservation struct {
+	bytes       uint64
+	fingerprint *requestFingerprint
+	model       string
+	tools       []string
+	noGenerate  bool
+	chat        bool
+	err         string
+}
+
+func (r *Recorder) observeRequest(body []byte) requestObservation {
+	observation := requestObservation{bytes: uint64(len(body)), fingerprint: r.requestFingerprint(body)}
+	var envelope struct {
+		Generate *bool               `json:"generate"`
+		Model    string              `json:"model"`
+		Messages jsonv1.RawMessage   `json:"messages"`
+		Tools    []jsonv1.RawMessage `json:"tools"`
+	}
+	if len(body) != 0 {
+		if err := json.Unmarshal(body, &envelope, jsonv1.DefaultOptionsV1()); err != nil {
+			observation.err = "invalid request JSON"
+		} else {
+			observation.model = safeDiagnosticIdentifier(envelope.Model)
+			observation.noGenerate = envelope.Generate != nil && !*envelope.Generate
+			observation.tools = requestToolNames(envelope.Tools)
+			if strings.TrimSpace(envelope.Model) == "" {
+				observation.err = "missing request model"
+			}
+		}
+	}
+	observation.chat = len(envelope.Messages) > 0
+	return observation
+}
+
 func (r *Recorder) recordExchange(state *requestState, boundary string, attempt uint64, started time.Time, requestBody []byte, responseBody observedPayload, statusCode int, contentType, contentEncoding string, exchangeErr error, evidence providerResponseEvidence) {
+	// Completion precedes request decoding, including on raw HTTP/WebSocket
+	// paths that have not already materialized a detached observation.
+	completed := time.Now()
+	r.recordObservedExchange(state, boundary, attempt, started, completed, r.observeRequest(requestBody), responseBody, statusCode, contentType, contentEncoding, exchangeErr, evidence)
+}
+
+func (r *Recorder) recordObservedExchange(state *requestState, boundary string, attempt uint64, started, completed time.Time, request requestObservation, responseBody observedPayload, statusCode int, contentType, contentEncoding string, exchangeErr error, evidence providerResponseEvidence) {
 	record := captureRecord{
 		SchemaVersion:   schemaVersion,
 		Boundary:        boundary,
@@ -370,8 +419,8 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 		ThreadID:        state.threadID,
 		Subagent:        state.subagent,
 		StatusCode:      statusCode,
-		DurationMillis:  uint64(max(time.Since(started).Milliseconds(), 0)),
-		CapturedAt:      time.Now().UTC(),
+		DurationMillis:  uint64(max(completed.Sub(started).Milliseconds(), 0)),
+		CapturedAt:      completed.UTC(),
 		Usage:           state.observedUsage(boundary, attempt),
 	}
 	state.mu.Lock()
@@ -389,8 +438,8 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	if exchangeErr != nil {
 		record.CaptureError = "request or response stream failed"
 	}
-	record.Request.Bytes = uint64(len(requestBody))
-	record.Fingerprint = r.requestFingerprint(requestBody)
+	record.Request.Bytes = request.bytes
+	record.Fingerprint = request.fingerprint
 	if boundary == "codex" && record.Fingerprint != nil {
 		value := state.clientTurnState
 		record.Fingerprint.TurnState = &value
@@ -411,25 +460,13 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 			record.CaptureError = "missing projected request observation"
 		}
 	}
-	var requestEnvelope struct {
-		Generate *bool               `json:"generate"`
-		Model    string              `json:"model"`
-		Messages jsonv1.RawMessage   `json:"messages"`
-		Tools    []jsonv1.RawMessage `json:"tools"`
+	record.RequestModel = request.model
+	record.RequestTools = request.tools
+	if boundary == "codex" && request.noGenerate {
+		record.ProviderExpected = new(false)
 	}
-	if len(requestBody) != 0 {
-		if err := json.Unmarshal(requestBody, &requestEnvelope, jsonv1.DefaultOptionsV1()); err != nil {
-			record.CaptureError = "invalid request JSON"
-		} else {
-			record.RequestModel = safeDiagnosticIdentifier(requestEnvelope.Model)
-			if boundary == "codex" && requestEnvelope.Generate != nil && !*requestEnvelope.Generate {
-				record.ProviderExpected = new(false)
-			}
-			record.RequestTools = requestToolNames(requestEnvelope.Tools)
-			if strings.TrimSpace(requestEnvelope.Model) == "" {
-				record.CaptureError = "missing request model"
-			}
-		}
+	if request.err != "" {
+		record.CaptureError = request.err
 	}
 	record.Response.Bytes = responseBody.bytes
 	observedContent, err := decodedCapturePayload(responseBody.content, contentEncoding)
@@ -444,7 +481,7 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 			capturedPayloadLooksLikeSSE(observedContent) {
 			if evidence.wireFormat == "anthropic" {
 				observeAnthropicResponse(observedContent, &record)
-			} else if len(requestEnvelope.Messages) > 0 {
+			} else if request.chat {
 				observeChatResponse(observedContent, contentType, &record)
 			} else {
 				observeResponse(observedContent, contentType, &record)

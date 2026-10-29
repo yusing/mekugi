@@ -1,7 +1,6 @@
 package grok
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -29,7 +28,7 @@ func Forward(startCtx, requestCtx context.Context, supplied *http.Client, auth *
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	endpoint := credentials.Endpoint
 	send := func(prefix string) (*http.Response, error) {
-		request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(body))
+		request, err := httptransport.NewRequest(requestCtx, http.MethodPost, endpoint, body)
 		if err != nil {
 			return nil, errors.New("invalid Grok endpoint")
 		}

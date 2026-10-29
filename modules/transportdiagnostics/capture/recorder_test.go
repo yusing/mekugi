@@ -17,6 +17,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
 )
 
 func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
@@ -140,6 +143,100 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 		snapshot.Capture.Records != 3 || snapshot.Capture.CaptureErrors != 0 || snapshot.Capture.Incomplete != 0 ||
 		snapshot.Capture.MissingProvider != 0 || snapshot.Capture.AttemptGaps != 0 {
 		t.Fatalf("snapshot = %#v", snapshot)
+	}
+}
+
+func BenchmarkProviderRequestObservation(b *testing.B) {
+	for _, count := range []int{32, 256, 2048} {
+		b.Run(fmt.Sprintf("items_%d", count), func(b *testing.B) {
+			item := `{"role":"user","content":"` + strings.Repeat("x", 1024) + `"}`
+			body := []byte(`{"model":"model","input":[` + strings.TrimSuffix(strings.Repeat(item+",", count), ",") + `],"tools":[{"type":"custom","name":"apply_patch"}]}`)
+			recorder, err := new(Service).Open(Config{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			transport := recorder.Transport(roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+				if _, err := io.Copy(io.Discard, request.Body); err != nil {
+					return nil, err
+				}
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: http.NoBody}, nil
+			}))
+			b.ReportAllocs()
+			b.SetBytes(int64(len(body)))
+			b.ResetTimer()
+			for b.Loop() {
+				ctx := context.WithValue(b.Context(), captureKey{}, recorder.beginRequest(nil))
+				request, err := httptransport.NewRequest(ctx, http.MethodPost, "http://provider/responses", body)
+				if err != nil {
+					b.Fatal(err)
+				}
+				response, err := transport.RoundTrip(request)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := response.Body.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestRecorderBorrowsProviderBodyWithoutRetainingIt(t *testing.T) {
+	recorder := diagnosticRecorder(t)
+	body := []byte(`{"model":"model","input":["private input"],"tools":[{"type":"custom","name":"apply_patch"}]}`)
+	wantFingerprint := recorder.requestFingerprint(body)
+	state := recorder.beginRequest(nil)
+	ctx := context.WithValue(t.Context(), captureKey{}, state)
+	ObserveProjectedRequest(ctx, body)
+	request, err := httptransport.NewRequest(ctx, http.MethodPost, "https://provider/responses", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.GetBody = func() (io.ReadCloser, error) {
+		t.Error("immutable body replayed for observation")
+		return nil, errors.New("unexpected replay")
+	}
+	transport := recorder.Transport(roundTripperFunc(func(sent *http.Request) (*http.Response, error) {
+		forwarded, err := io.ReadAll(sent.Body)
+		if err != nil || !bytes.Equal(forwarded, body) || sent.ContentLength != int64(len(body)) {
+			t.Fatalf("forwarded = %q, error %v", forwarded, err)
+		}
+		_ = sent.Body.Close()
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: http.NoBody}, nil
+	}))
+	response, err := transport.RoundTrip(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The transport has released the request. Capture still awaits response
+	// completion, but must have detached all facts from the borrowed input.
+	for i := range body {
+		body[i] = 'x'
+	}
+	if err := response.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	records := state.providerRecords()
+	if len(records) != 1 {
+		t.Fatalf("provider records = %d", len(records))
+	}
+	record := records[0]
+	if record.CaptureError != "" || record.RequestModel != "model" || record.Request.Bytes != uint64(len(body)) || len(record.RequestTools) != 1 || record.RequestTools[0] != "apply_patch" || record.Fingerprint.Items[0] != wantFingerprint.Items[0] {
+		t.Fatalf("borrowed observation changed after request release: %+v", record)
+	}
+}
+
+func TestRecorderPreservesCompletionBeforeRequestObservation(t *testing.T) {
+	recorder := diagnosticRecorder(t)
+	state := recorder.beginRequest(nil)
+	started := time.Date(2026, time.October, 29, 1, 0, 0, 0, time.UTC)
+	completed := started.Add(40 * time.Millisecond)
+	observation := recorder.observeRequest([]byte(`{"model":"model"}`))
+	recorder.recordObservedExchange(state, "provider", 1, started, completed, observation, observedPayload{}, http.StatusOK, "application/json", "", nil, providerResponseEvidence{})
+	record := state.providerRecords()[0]
+	if record.DurationMillis != 40 || !record.CapturedAt.Equal(completed) {
+		t.Fatalf("completion timing changed during observation: duration %d, captured %v", record.DurationMillis, record.CapturedAt)
 	}
 }
 

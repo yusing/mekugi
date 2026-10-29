@@ -14,6 +14,38 @@ import (
 
 var ErrStreamIdleTimeout = errors.New("upstream response stream idle timeout")
 
+// NewRequest builds a replayable request over immutable encoded bytes. The
+// caller must not mutate body while the transport owns the request body.
+func NewRequest(ctx context.Context, method, url string, body []byte) (*http.Request, error) {
+	request, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+	if err != nil || request.Body == http.NoBody {
+		return request, err
+	}
+	request.Body = &immutableRequestBody{Reader: bytes.NewReader(body), content: body}
+	request.GetBody = func() (io.ReadCloser, error) {
+		return &immutableRequestBody{Reader: bytes.NewReader(body), content: body}, nil
+	}
+	return request, nil
+}
+
+type immutableRequestBody struct {
+	*bytes.Reader
+	content []byte
+}
+
+func (*immutableRequestBody) Close() error { return nil }
+
+// RequestBytes borrows an unread NewRequest body's bytes for synchronous,
+// read-only observation. The caller must neither mutate nor retain the slice.
+// Replaced or partially consumed bodies require ordinary stream observation.
+func RequestBytes(request *http.Request) ([]byte, bool) {
+	body, ok := request.Body.(*immutableRequestBody)
+	if !ok || body.Len() != len(body.content) {
+		return nil, false
+	}
+	return body.content, true
+}
+
 // CancelOnClose ties the request lifetime to its response body.
 func CancelOnClose(body io.ReadCloser, cancel context.CancelFunc) io.ReadCloser {
 	return &cancelOnCloseReadCloser{body: body, cancel: cancel}

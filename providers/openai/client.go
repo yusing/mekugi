@@ -3,7 +3,6 @@ package openai
 // Source: internal/router/client.go:53:232,329:377@49f759d6 OpenAI credentials and exchange.
 // Wire JSON retains the existing v1 acceptance and exact encoding semantics.
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -90,7 +89,7 @@ func (c *Client) Responses(startCtx, responseCtx context.Context, body []byte, h
 	requestCtx, cancelRequest := context.WithCancel(responseCtx)
 	stopStartCancellation := context.AfterFunc(startCtx, cancelRequest)
 	endpoint := strings.TrimRight(c.baseURL, "/") + "/responses"
-	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(body))
+	request, err := httptransport.NewRequest(requestCtx, http.MethodPost, endpoint, body)
 	if err != nil {
 		stopStartCancellation()
 		cancelRequest()
