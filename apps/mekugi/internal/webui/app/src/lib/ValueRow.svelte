@@ -35,7 +35,8 @@
   const footer = $derived(value.changes?.find((c) => c.footer));
   // Labels join their parts with " · " and state diff counts as "+5 −3".
   // Render segments with space instead of punctuation; diff counts keep their
-  // colours, while punctuation within code spans remains authored text.
+  // colours, while punctuation within code spans remains authored text. A
+  // tool-managed edit's "(diagnostic: +5 -3)" reads as its plain counts.
   const label = $derived(
     labelParts
       .slice(0, labelFailed ? -1 : undefined)
@@ -45,10 +46,17 @@
           .map((text, i) =>
             i % 2
               ? text
-              : text.replace(
-                  /(^|\s)\+(\d+) [−-](\d+)(?=\s|$)/g,
-                  (_, lead, added, removed) => `${lead}${count("+", added)} ${count("−", removed)}`,
-                ),
+              : text
+                  .replace(/ \(diagnostic: ([^)]*)\)/g, (_, counts) =>
+                    /^\+\d+ [−-]\d+$/.test(counts)
+                      ? ` ${counts}`
+                      : `<span class="ml-2 inline-block text-muted">${counts}</span>`,
+                  )
+                  .replace(
+                    /(^|\s)\+(\d+) [−-](\d+)(?=\s|$)/g,
+                    (_, lead, added, removed) =>
+                      `${lead}${count("+", added)} ${count("−", removed)}`,
+                  ),
           )
           .join(""),
       )

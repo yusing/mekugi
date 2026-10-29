@@ -116,7 +116,9 @@ this file owns how it looks and responds.
 
 - Show what the reader needs, not wire text. Diff views drop the review's
   `update "a" -> "b"` operation line, because the view already says whether a
-  file was created, deleted or moved.
+  file was created, deleted or moved. A tool-managed edit summary shows its
+  counts as coloured diff counts rather than the receipt's diagnostic wording,
+  and a wait's reason follows its targets as a separate clause.
 - Placeholders and failure boxes appear only where their content can appear. A
   path attachment shows a preview box only when its name is an image; other paths
   keep the plain chip.

@@ -298,6 +298,8 @@ and optional timeout, separately from idle agents. Transcript, roster and side
 conversation waits name their targets by display name, with each target's
 status, the timeout and why the wait finished. A transcript entry that only
 waits is a compact line like a hook's, its marker pulsing while the wait lasts.
+Another agent named in the transcript opens that agent's activity, including an
+agent the roster has not loaded yet.
 
 Delivered agent results distinguish completed, failed and interrupted outcomes;
 interrupted results do not use successful-completion markers.

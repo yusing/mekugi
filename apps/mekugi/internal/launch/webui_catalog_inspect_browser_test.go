@@ -49,9 +49,14 @@ func TestWebUIBrowserCatalogAndInspect(t *testing.T) {
 		appServerTestNotify(t, u, phase, map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	}
 	agents := &activity.Publication{
-		Roster:  []activity.AgentRow{{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root/worker", Responding: true}}}},
 		Entries: []activity.Entry{{Facts: activity.Facts{Seq: 1, Agent: "/root/worker", Kind: "text", Text: "Worker detail marker"}, Revision: 1}},
 	}
+	// Both inspected names start outside the first roster page. Only worker
+	// exists, so pagination must not make ghost a navigable agent.
+	for i := range 80 {
+		agents.Roster = append(agents.Roster, activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: fmt.Sprintf("/root/filler%d", i), Final: true}}})
+	}
+	agents.Roster = append(agents.Roster, activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root/worker", Responding: true}}})
 	if err := machine.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Catalog thread", Caller: "/root", Workspace: u.attached.cwd}, Input: &sessionapi.Input{}, Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: agents}); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +79,7 @@ func TestWebUIBrowserCatalogAndInspect(t *testing.T) {
 		return string(out)
 	}
 	run("open", page.URL)
+	run("eval", `window.ghostWasLinked = false; window.ghostReadCount = 0; new MutationObserver(() => { if (document.querySelector('button[title="Show ghost\'s activity"]')) window.ghostWasLinked = true; }).observe(document.body, {childList:true, subtree:true}); const send = WebSocket.prototype.send, listen = WebSocket.prototype.addEventListener; WebSocket.prototype.send = function(text) { const request = JSON.parse(text); if (request.method === 'session/page' && request.params.body?.caller === '/root/ghost') { window.ghostReadCount++; window.ghostRead = {id:request.id, release:() => send.call(this, text)}; return; } send.call(this, text); }; WebSocket.prototype.addEventListener = function(type, listener, ...options) { if (type !== 'message') return listen.call(this, type, listener, ...options); return listen.call(this, type, event => { if (window.ghostRead && JSON.parse(event.data).id === window.ghostRead.id) window.ghostLookupSettled = true; listener.call(this, event); }, ...options); };`)
 	run("find", "label", "Machine name", "fill", "Catalog")
 	run("find", "label", "Connector URL", "fill", machine.remote.URL)
 	run("find", "label", "Access token", "fill", strings.Repeat("d", 64))
@@ -81,6 +87,9 @@ func TestWebUIBrowserCatalogAndInspect(t *testing.T) {
 	run("wait", "--text", "Catalog thread")
 	run("find", "text", "Catalog thread", "click", "--exact")
 	run("wait", "--text", "Listed 2 models")
+	run("wait", "--fn", `!!window.ghostRead && !window.ghostWasLinked && !document.querySelector('button[title="Show ghost\'s activity"]')`)
+	run("eval", `window.ghostRead.release()`)
+	run("wait", "--fn", `window.ghostLookupSettled && window.ghostReadCount === 1 && !window.ghostWasLinked && document.querySelector('#panel-content')?.textContent.includes('Showing')`)
 	// An admitted agent is a navigable name; an unknown one stays plain text.
 	run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[data-ai-element="agent-progress"]')]; const known = rows.find(r => r.textContent.trim() === 'Inspected worker'); const unknown = rows.find(r => r.textContent.trim() === 'Inspected ghost'); return known?.querySelector('button[title="Show worker\'s activity"]') && unknown && !unknown.querySelector('button'); })()`)
 	for _, width := range []int{1280, 390} {

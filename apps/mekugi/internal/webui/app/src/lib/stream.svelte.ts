@@ -438,6 +438,18 @@ export class Stream {
       if (!session.aborted) {
         if (caller) this.#agentReads.delete(caller);
         else this.rosterLoading = false;
+        // A publication arriving during a targeted read cannot start its
+        // replacement while this caller is in flight. Resume it here.
+        if (
+          caller &&
+          !lifetime.aborted &&
+          this.roster.next &&
+          (this.roster.next.attachment !== cursor.attachment ||
+            this.roster.next.revision !== cursor.revision) &&
+          !this.agent(caller) &&
+          !this.unavailableAgents.includes(caller)
+        )
+          await this.moreRoster(caller, signal);
       }
     }
   }
@@ -573,13 +585,15 @@ export class Stream {
   }
 
   agent(name: string | undefined): Agent | undefined {
-    // Coordination observations use model-visible addresses; the roster keeps
-    // canonical task paths. Resolve the address, never the shortened label.
-    if (name === "agent:main" || name?.startsWith("agent:main/"))
-      name = `/root${name.slice("agent:main".length)}`;
-    return name
-      ? this.byName.get(name === "Main" ? this.session?.caller || "/root" : name)
-      : undefined;
+    return name ? this.byName.get(this.address(name)) : undefined;
+  }
+
+  // Coordination observations use model-visible addresses; the roster keeps
+  // canonical task paths. Resolve the address, never the shortened label.
+  address(name: string): string {
+    if (name === "agent:main" || name.startsWith("agent:main/"))
+      return `/root${name.slice("agent:main".length)}`;
+    return name === "Main" ? this.session?.caller || "/root" : name;
   }
 
   async control(action: Action, position?: number): Promise<void> {

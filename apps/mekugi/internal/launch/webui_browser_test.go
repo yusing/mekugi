@@ -757,7 +757,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		run("set", "viewport", "1280", "900")
 		theme("System")
 	}
-	run("wait", "--text", "Finished waiting for worker: paused")
+	run("wait", "--text", "Finished waiting for worker ·\u00a0paused")
 	// Model-visible coordination addresses and canonical completion identities
 	// select the same roster member, retaining its role ink in both themes.
 	for _, palette := range []string{"Light", "Dark"} {
@@ -797,7 +797,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
-	run("wait", "--text", "Finished waiting for worker: message received")
+	run("wait", "--text", "Finished waiting for worker ·\u00a0message received")
 	run("wait", "--fn", `(() => { const row = document.querySelector('[aria-label="Thread panel"] button[aria-current=true]'); return row?.textContent.includes('Idle') && !row.textContent.includes('Waiting'); })()`)
 	// Independent runtimes publish their own summary through the roster, without
 	// copying the child's transcript into the parent's feed.

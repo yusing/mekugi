@@ -356,6 +356,35 @@ test("roster revisions retain visible members and recover superseded page reads"
   source.close();
 });
 
+test("targeted roster reads recover a revision arriving while their caller is in flight", async () => {
+  for (const refused of [false, true]) {
+    const source = new Stream();
+    const caller = "/root/worker";
+    source.roster = { agents: [], next: rosterCursor(1) };
+    const reads = [];
+    source.page = (cursor) => {
+      const reply = Promise.withResolvers();
+      reads.push({ cursor, ...reply });
+      return reply.promise;
+    };
+    const pending = source.moreRoster(caller);
+    source.roster = { agents: [], next: rosterCursor(2) };
+    await source.moreRoster(caller);
+    assert.equal(reads.length, 1, "one request per caller remains in flight");
+    if (refused) reads[0].reject(new TransportError("Superseded roster", "refused", 409));
+    else reads[0].resolve({ roster: { agents: [rosterAgent(caller)] } });
+    await tick();
+    assert.equal(reads.length, 2, "the superseded request retries the current cursor");
+    assert.equal(source.agent(caller), undefined, "stale content stays discarded");
+    assert.equal(reads[1].cursor.revision, 2);
+    reads[1].resolve({ roster: { agents: [rosterAgent(caller)] } });
+    await pending;
+    assert.equal(source.agent(caller)?.name, caller);
+    assert.equal(source.rosterError, undefined);
+    source.close();
+  }
+});
+
 test("same-thread recovery releases aborted reads without clearing replacement gates", async () => {
   for (const caller of [undefined, "/root/worker"]) {
     const source = new Stream();

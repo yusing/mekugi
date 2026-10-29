@@ -439,7 +439,7 @@
             data-ai-element="agent-progress"
             class="flex min-h-[26px] items-start gap-2 py-[3px] text-small text-muted"
           >
-            <span class={["flex h-5 flex-none items-center", value.live && "animate-blink"]}
+            <span class={["flex h-4 flex-none items-center", value.live && "animate-blink"]}
               ><Icon name="agents" size={13} /></span
             >
             <span class="min-w-0">{@render wait(value)}</span>
