@@ -85,9 +85,12 @@
     (value.codeLines ?? 0) > 1 || (code !== undefined && code.includes("\n")),
   );
   const codeLines = $derived(value.codeLines ?? code?.split("\n").length ?? 0);
+  // An operation's label names its subject, as an attached skill's name does
+  // beside its optional source path; a read's targets are its subject.
+  const reads = $derived(value.kind === "op" && value.label ? [] : (value.reads ?? []));
   // A command with no label is its own subject: its first line takes the label.
   const headline = $derived(
-    !value.label && !value.reads?.length && code ? code.split("\n")[0] : undefined,
+    !value.label && !reads.length && code ? code.split("\n")[0] : undefined,
   );
   // Tool arguments and results often carry JSON text inside a JSON string;
   // they read as one indented document.
@@ -197,8 +200,8 @@
     class={["min-w-0 wrap-break-word [&_code]:text-code", !status && "col-span-2"]}
     {@attach commandLabel(label)}
   >
-    {#if value.reads?.length}
-      {#each value.reads as read, i (i)}
+    {#if reads.length}
+      {#each reads as read, i (i)}
         <span class="block font-mono text-code"
           ><Path path={read.path} />{#if read.ranges?.length}<span
               class="whitespace-nowrap text-muted">:{read.ranges.join(",")}</span

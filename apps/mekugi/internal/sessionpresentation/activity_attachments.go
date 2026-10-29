@@ -43,7 +43,10 @@ func AttachmentValues(cwd string, content jsontext.Value) []activitypresentation
 		if !exists {
 			index = len(blocks)
 			indexes[key] = index
-			block.Reads = []activitymodel.Read{{Path: source}}
+			// A skill's source path is optional; its label still names it.
+			if source != "" {
+				block.Reads = []activitymodel.Read{{Path: source}}
+			}
 			blocks = append(blocks, block)
 		}
 		contents[index] += body

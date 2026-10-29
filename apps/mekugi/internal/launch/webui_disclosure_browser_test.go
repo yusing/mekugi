@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -16,7 +17,9 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
 	"github.com/yusing/mekugi/contracts/observation"
+	modelattachments "github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 func TestWebUIBrowserDisclosures(t *testing.T) {
@@ -68,6 +71,14 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	}
 	mcp := activity.ItemContent{Facts: activity.Facts{Seq: 15, Agent: "Main", Kind: "tool", Text: activity.MCPText(observation.Item{Server: "plane", Tool: "workitem_relation", Status: "failed"})}}
 	publication.Entries = append(publication.Entries, activity.Entry{Facts: mcp.Facts, Values: mcp.Values()})
+	// Skills attached without source paths keep their names and outputs.
+	skillFrames := slices.Concat(composer.SkillFrames("review", "", "# Review\n\nCheck callers.\n"), composer.SkillFrames("commit", "", "# Commit\n\nUse conventional subjects.\n\nSign off.\n"))
+	skillContent, err := json.Marshal([]map[string]string{{"type": "text", "text": modelattachments.Encode(skillFrames)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	skills := activity.ItemContent{Facts: activity.Facts{Seq: 16, Agent: "Main", Kind: "attachments"}, Details: &activity.ItemDetails{Attachments: sessionpresentation.AttachmentValues(machine.workdir, skillContent)}}
+	publication.Entries = append(publication.Entries, activity.Entry{Facts: skills.Facts, Values: skills.Values()})
 	var status sessionpresentation.Label
 	publish := func() {
 		t.Helper()
@@ -153,6 +164,16 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	run("wait", "--fn", `window.thoughtChild.isConnected && window.thoughtChild.getAttribute('aria-expanded') === 'true' && window.thoughtGroup.getAttribute('aria-expanded') === 'true'`)
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "thoughts-expanded.png"))
+	}
+	run("eval", `document.querySelector('[data-entry="16"]').scrollIntoView({block:'center'})`)
+	run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[data-entry="16"] [data-ai-element=tool]')]; return rows.length === 2 && ['review', 'commit'].every((name, i) => rows[i].innerText.includes('Attached skill') && rows[i].innerText.includes(name)) && rows[0].querySelector('button[aria-label="Output: 4 lines"]') && rows[1].querySelector('button[aria-label="Output: 6 lines"]'); })()`)
+	run("click", `[data-entry="16"] button[aria-label="Output: 6 lines"]`)
+	run("wait", "--fn", `(() => { const rows = document.querySelectorAll('[data-entry="16"] [data-ai-element=tool]'); return rows[1].querySelector('pre')?.textContent.includes('Use conventional subjects.') && !rows[0].querySelector('pre'); })()`)
+	run("click", `[data-entry="16"] button[aria-label="Output: 4 lines"]`)
+	run("wait", "--fn", `document.querySelectorAll('[data-entry="16"] [data-ai-element=tool]')[0].querySelector('pre')?.textContent.includes('Check callers.')`)
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("eval", `document.querySelector('[data-entry="16"]').scrollIntoView({block:'center'})`)
+		run("screenshot", filepath.Join(artifacts, "skill-attachments.png"))
 	}
 	run("find", "role", "button", "click", "--name", "Output: 2 lines", "--exact")
 	run("wait", "--text", "second output")

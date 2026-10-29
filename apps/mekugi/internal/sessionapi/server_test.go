@@ -1,7 +1,9 @@
 package sessionapi
 
 import (
+	json "encoding/json/v2"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -9,6 +11,8 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	activityfeed "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -294,6 +298,26 @@ func TestCompactReloadPublication(t *testing.T) {
 			} else if !strings.Contains(event, `"label":"commit"`) || !strings.Contains(event, `"verb":"Attached skill"`) {
 				t.Fatalf("reload skill identity lost: %s", event)
 			}
+		}
+	}
+}
+
+func TestPathlessSkillAttachmentProjection(t *testing.T) {
+	t.Parallel()
+	frames := slices.Concat(composer.SkillFrames("review", "", "# Review\n"), composer.SkillFrames("commit", "", "# Commit\n"))
+	content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frames)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Agent: "Main", Kind: "attachments"},
+		Details: &activitypresentation.ItemDetails{Attachments: sessionpresentation.AttachmentValues("/workspace", content)}}
+	values := projectValues(item.Values(), false)
+	if len(values) != 2 {
+		t.Fatalf("values = %+v", values)
+	}
+	for i, name := range []string{"review", "commit"} {
+		if v := values[i]; v.Verb != "Attached skill" || v.Label != name || v.Reads != nil || len(v.Tail) == 0 {
+			t.Fatalf("value %d = %+v", i, v)
 		}
 	}
 }
