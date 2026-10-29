@@ -31,6 +31,15 @@ sessions, and patch review. Invocation overrides leave Codex configuration uncha
   see the [projection contract](modules/outputdeduplication/SPEC.md).
 - **Session continuity.** Retained change evidence and output remain available across
   resume and forks, subject to [storage retention](#replay-storage).
+- **Coordinated delegates.** [Start fresh agents with selected files and skills](modules/threadcontrol/SPEC.md#prepared-children-and-guidance)
+  already loaded, inspect their context and applied settings, and wait for one or
+  all selected agents without polling.
+- **Context checkpoints.** Agents can [compact at safe checkpoints](modules/threadcontrol/SPEC.md#operations-and-admission)
+  and continue unfinished work, or compact before waiting for delegates.
+  [Selected files and skills reload](modules/agentguidance/SPEC.md#compaction-context)
+  from source after Codex compaction.
+- **Workspace facts up front.** Codex agents receive an [observed OS and Git snapshot](modules/agentguidance/SPEC.md#environment-snapshot),
+  including branch, status and recent commits, without a separate discovery command.
 - **Claude delegates.** [Select a Claude model](#claude-delegates) through the same
   agent coordination tools, with shared captured-change reads and parent delivery.
 
@@ -46,6 +55,9 @@ sessions, and patch review. Invocation overrides leave Codex configuration uncha
   keeps its own machine identity and reconnects after page reload.
 - **Live subagent activity.** See model, effort, progress, and child-authored reply summaries
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
+  Open attachable children to read their transcripts, send input and adjust their settings.
+- **Conversation branches.** [Resume saved conversations, fork branches, or rewind](#resume)
+  to an earlier user turn with optional captured-edit reversal.
 - **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);
   click an Edit event to open its captured file and hunk.
 - **Readable command output.** Open [searchable retained output](#output-dialog).
@@ -54,22 +66,32 @@ sessions, and patch review. Invocation overrides leave Codex configuration uncha
   Markdown file links open local source in the same dialog.
   Supported single commands and pipelines, including Bash timed commands, show measured
   command time excluding startup and matching.
+- **Individual process control.** Follow live commands from Main and its children in
+  [`/ps`](#composer) or the [browser's process controls](#browser-ui), and stop a
+  selected command when the host exposes its process identity.
 - **Image previews.** Viewed and generated images appear in the transcript on
   Kitty- or Sixel-capable terminals. Expand activity with Ctrl-E to show viewed
   images; generated images accompany their saved paths. Unsupported terminals,
   unavailable files and terminal multiplexers retain readable text entries.
+  The [browser UI](#browser-ui) also previews attached, viewed and generated images.
 - **File, directory and skill attachments.** [Send selected contents or a bounded directory tree directly](#composer)
   without a separate agent read; unreadable or oversized attachments have explicit notices.
-- **Composer additions.** Mention selected messages or diffs, and ask
-  [side conversations](#composer) without interrupting Main.
+- **Composer additions.** Mention selected messages or diffs, ask side questions,
+  or run [one-off tasks](#composer) without interrupting Main. One-off edits still
+  affect the shared workspace.
 - **Reusable presets.** Save ten numbered prompts or slash commands and recall
   them from the shared terminal and browser [composer](#composer).
+- **Editable next-message suggestions.** [Accept a suggested follow-up for editing](#composer)
+  when supported OpenAI accounts, models and remote configuration make predictions available.
 - **Usage, throughput and cost.** See per-thread usage and estimated API costs
   in Agents, with output tokens/sec in Main's composer and child-agent rows,
   plus launch-wide average throughput, usage
   coverage, retries, and diagnostics in [`/session`](#metrics).
 - **Other providers and tiers.** Use [Grok](#grok-models) or
   [OpenCode Go and Zen](#opencode-go-and-zen), and choose [service tiers](#mekugi-settings).
+- **In-session settings and approvals.** Change [model, reasoning, tier and permission settings](#composer)
+  without rewriting configuration. Optional [remote-write and sudo guards](#approvals)
+  ask before supported sensitive commands, even with `--yolo`.
 - **Diagnostics.** [Inspect past sessions](docs/contributing/development.md#inspect-a-session), record debug evidence,
   or [replay the UI offline](docs/contributing/development.md#replay-a-session) with CPU and heap profiling.
 
@@ -428,6 +450,10 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
 ### Composer
 
 - Enter steers; Tab queues. Type `?` in an empty draft for shortcuts.
+- `/predictions on|off` controls next-message suggestions in the empty Main composer.
+  Tab accepts a suggestion for editing; typing dismisses it. Availability depends
+  on the OpenAI account, model and remote configuration, and requires Codex
+  0.162.0-alpha.20 or newer. Third-party providers are ineligible.
 - `/presets` (or Ctrl+B then P) opens slots 1–9 and 0. Recall fills the composer without sending;
   the terminal keeps the previous draft in input history. New and Edit use `$EDITOR`
   in the terminal, like Ctrl+G, then ask for an optional label; Rename changes only
