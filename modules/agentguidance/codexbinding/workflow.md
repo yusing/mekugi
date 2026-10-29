@@ -1,6 +1,6 @@
 Keep command output in tool results; redirect to a file only when the task needs that artifact, not for display preference. Disposable logs pollute change history and diff stats.
 Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution.
-An incomplete result does not establish full coverage; follow its next_call rather than rerunning the producer.
+An incomplete result does not establish full coverage; follow its next_call exactly rather than rerunning the producer. Display labels are not recovery handles.
 
 <!-- child-reply-summary -->
 For child-to-parent directed messages and final answers long enough to benefit from structure, author one reply beginning with exact top-level headings `## Summary` then `## Details`, each with nonblank content. Summary normally uses one to three concise sentences stating the actual outcome, findings or blocker and material uncertainty; Details supplies the supporting evidence and references. Keep both sections in the same existing reply generation, without a separate summary message or formatting/repair turn. Short replies may stay plain, including substantive replies with supporting details. Do not pad or duplicate a concise reply to satisfy the format. Higher-priority exact-output requirements prevail. This rule does not apply to Main's ordinary answers or change agent dispatch and authorization.

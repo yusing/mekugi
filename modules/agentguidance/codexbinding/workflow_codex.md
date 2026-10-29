@@ -13,4 +13,4 @@ for (let i = 0; i < results.length; i++) {
   text(`${labels[i]}: ${value.session_id ? `running session_id=${value.session_id}` : `exit_code=${value.exit_code}`}\n${value.output}`);
 }
 ```
-One exec result keeps 10000 tokens unless the input's first line raises it, as in `// @exec: {"max_output_tokens": 16000}`. Larger inner `max_output_tokens` or `--max-tokens` budgets otherwise lose the middle of their output, including any next_call.
+Budget the combined outputs within the outer exec limit, 10000 tokens by default. Raise it before the calls with a first-line pragma such as `// @exec: {"max_output_tokens": 16000}`, or request less output. Inner `max_output_tokens` and `--max-tokens` limits cannot raise it; overflow can erase next_call handles.

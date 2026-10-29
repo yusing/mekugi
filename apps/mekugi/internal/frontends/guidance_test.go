@@ -36,6 +36,14 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	if !strings.Contains(saved.Workflow, "Promise.allSettled") || !strings.Contains(saved.Workflow, "The user can see exec output") || !strings.Contains(saved.Shell, "follow its next_call") || !strings.Contains(saved.Shell, "Reuse completed edit-receipt IDs") {
 		t.Fatal("frontend projections lost execution or shared helper workflow")
 	}
+	for _, projection := range []string{saved.Workflow, saved.Shell} {
+		if !strings.Contains(projection, "Display labels are not recovery handles") {
+			t.Fatal("frontend projection lost recovery-handle distinction")
+		}
+	}
+	if !strings.Contains(saved.Workflow, "combined outputs within the outer exec limit") || strings.Contains(saved.Shell, "outer exec limit") {
+		t.Fatal("combined exec budget guidance must be confined to Codex")
+	}
 	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, manifestFilename))
 	if err != nil {
 		t.Fatal(err)
