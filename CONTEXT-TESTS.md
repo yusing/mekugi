@@ -117,6 +117,10 @@ Apply these routes when the requested change touches the boundary:
   and `mread` recovery.
 - **Producer shapes:** Chat/Responses and persisted rollout events at the consuming boundary.
   Recheck dated host observations after Codex upgrades.
+- **Logical lifecycle:** for host-turn handling or thread-control waits, cover how host completion,
+  failure, interruption, manual compaction, injected input and enclosing-cell re-execution keep or
+  settle pending waits and logical work, per
+  [thread control](modules/threadcontrol/SPEC.md#logical-waits-and-ordered-delivery).
 - **Instruction projection:** mixed authorization/tool text, fenced examples and idempotence through
   stock, marked, custom and multipart developer text.
 

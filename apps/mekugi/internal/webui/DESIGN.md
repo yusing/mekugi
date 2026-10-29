@@ -54,6 +54,9 @@ this file owns how it looks and responds.
   panel open, and on phones Stop and Send stay on the tools row.
 - In wrapping flex rows of mixed-height items (attachment chips), align items to
   the centre so one tall item does not stretch its neighbours.
+- Scroll the region that grows. A card with a long body keeps its header in view
+  and scrolls the body; an outer container never scrolls several cards' content
+  together. A layout for several items fills the space when only one is shown.
 
 ## Alignment
 
@@ -118,6 +121,18 @@ this file owns how it looks and responds.
   path attachment shows a preview box only when its name is an image; other paths
   keep the plain chip.
 
+## Refresh and loading
+
+- Keep shown content until its replacement arrives. A revision, refresh,
+  reconnection or navigation never returns loaded content to a skeleton, an
+  empty list or Ended.
+- Navigation replaces only what belongs to the new selection; the roster and
+  family navigation stay mounted.
+- A read superseded by a newer publication is not an error. Discard its result
+  and wait for the current reference; show only current failures.
+- Loading and busy states take no in-flow row. As content arrives above or
+  around the reader, keep their reading anchor and keyboard focus.
+
 ## Themes
 
 - Every change must work in both palettes. Text, including syntax colours on
@@ -131,7 +146,9 @@ this file owns how it looks and responds.
 Source review does not prove a layout. Build with `make webui`, then run the
 browser tests in `apps/mekugi/internal/launch` with `MEKUGI_TEST_WEBUI_BROWSER=1`
 and `MEKUGI_TEST_WEBUI_ARTIFACTS=<dir>` to collect screenshots. Check desktop
-(1280px), tablet and phone (390px) widths in light and dark. Measure geometry
+(1280px), tablet and phone (390px) widths in light and dark, with one item and
+several, and with the longest realistic content (paths, lines, lists). For a
+refresh, delay the replacement and check the old content stays. Measure geometry
 with `getBoundingClientRect` in the page instead of judging spacing by eye. A
 surface that no browser fixture reaches, such as the preset dialog, needs its own
 rendered check before it is called done.
