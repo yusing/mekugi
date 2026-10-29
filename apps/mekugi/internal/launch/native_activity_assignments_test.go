@@ -32,7 +32,7 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	u.testActivity(u.shell.Transcript).testAudience()
 	feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 40)
 	main := ansi.Strip(strings.Join(feed.Lines, "\n"))
-	if !strings.Contains(main, "▶ reviewer started") || !strings.Contains(main, "├─→ follow-up") || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
+	if !strings.Contains(main, "▶ main → reviewer started") || !strings.Contains(main, "├─✉ main → reviewer assignment") || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
 		t.Fatalf("follow-up answer was not threaded under its assignment:\n%s", main)
 	}
 	for _, entry := range u.attached.source.Entries {

@@ -60,6 +60,7 @@ export function referenceContext(text: string): Env {
 
 export const block = (text: string, context?: Env) => md.render(text, context);
 export const inline = (text: string) => md.renderInline(text);
+export const literal = (text: string) => md.utils.escapeHtml(text);
 
 // Classified labels already quote operands as Markdown code spans. Keep their
 // boundaries rather than splitting punctuation inside commands or search patterns.

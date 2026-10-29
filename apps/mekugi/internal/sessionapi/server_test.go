@@ -174,6 +174,37 @@ func TestEntryAgentIdentitiesBeforeRoster(t *testing.T) {
 	}
 }
 
+func TestCoordinationEndpointsUseRuntimeCaller(t *testing.T) {
+	session := new(sessionpresentation.Attachment)
+	entry := session.CoordinationEntry(sessionpresentation.ActivityEntry{Agent: "/root", Native: &sessionpresentation.NativeItem{Phase: "item/completed"}}, observation.Item{
+		Type: "mcpToolCall", Server: "threadcontrol", Tool: "send_message", Status: "completed",
+		Arguments: []byte(`{"target":"agent:main","message":"Evidence from the child."}`),
+		Result:    []byte(`{"content":[{"type":"text","text":"{\"state\":\"confirmed\",\"id\":\"message\",\"task_name\":\"agent:main\"}"}]}`),
+	})
+	value := projectEntry(activitypresentation.Entry{Facts: entry.ActivityFacts(), Values: sessionpresentation.ActivityContent(entry).Values()}, false, "/root/child").Values[0]
+	if value.From != "/root/child" || value.To != "/root" {
+		t.Fatalf("child outbox became a root self-message: %+v", value)
+	}
+	retained := activitypresentation.Entry{Facts: entry.ActivityFacts(), Values: sessionpresentation.ActivityContent(entry).Values()}
+	roster := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{
+		AgentFacts: activitypresentation.AgentFacts{Name: "/root/child", Responding: true}, Summary: []activitypresentation.Entry{retained},
+	}}}}, "/root/child")
+	if summary := roster.Agents[0].Activity.Values[0]; summary.From != value.From || summary.To != value.To || summary.Body != "" {
+		t.Fatalf("roster discarded direction or copied the message body: %+v", summary)
+	}
+	for _, endpoints := range [][2]string{{"/root", "Main"}, {"/root", "/root/parent"}, {"unknown", ""}} {
+		original := activitypresentation.Value{From: endpoints[0], To: endpoints[1]}
+		projected := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{original}}, false, "/root/child").Values[0]
+		wantTo := endpoints[1]
+		if wantTo == "Main" {
+			wantTo = "/root/child"
+		}
+		if projected.From != endpoints[0] || projected.To != wantTo {
+			t.Fatalf("inbox, inherited or missing endpoint retargeted: %+v", projected)
+		}
+	}
+}
+
 func TestRosterActivityUsesSharedSummary(t *testing.T) {
 	for _, kind := range []string{"progress", "reasoning"} {
 		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Kind: kind, Text: "Checking callers", Observed: time.Unix(100, 0)}}

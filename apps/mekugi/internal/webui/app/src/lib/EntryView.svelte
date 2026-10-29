@@ -137,7 +137,7 @@
       return {
         glyph: "start",
         from: endpoint(first?.from),
-        to: endpoint(first?.to ?? entry.assignmentTo),
+        to: endpoint(first?.to || entry.assignmentTo || entry.agent),
         detail: "started",
       };
     if (kind === "message" || entry.kind === "reply" || entry.assignment)
@@ -157,7 +157,8 @@
             : entry.outcome === "failed"
               ? "error"
               : "final",
-        from: entry.agent,
+        from: endpoint(first?.from) ?? entry.agent,
+        to: endpoint(first?.to),
         detail:
           entry.outcome === "interrupted"
             ? "interrupted"
@@ -320,8 +321,8 @@
                     traffic.glyph
                   ]}</Trace.Icon
                 >
-                <AgentName name={traffic.from} current={owner} />
-                {#if traffic.to}<span class="text-muted">→</span>
+                {#if traffic.from}<AgentName name={traffic.from} current={owner} />{/if}
+                {#if traffic.to}{#if traffic.from}<span class="text-muted">→</span>{/if}
                   <AgentName name={traffic.to} current={owner} />{/if}
                 {#if traffic.detail}<Trace.Description class="text-muted"
                     >{traffic.detail}</Trace.Description

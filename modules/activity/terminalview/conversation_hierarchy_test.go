@@ -70,7 +70,7 @@ func TestUISnapshotConversationHierarchy(t *testing.T) {
 					if !slices.Contains(feed.Questions, uint64(5)) || !strings.Contains(plain, "Open assignment") {
 						t.Fatalf("assignment lost source link:\n%s", plain)
 					}
-				} else if !strings.Contains(plain, "▶ duplicate_edits/correctness started") || !strings.Contains(plain, "├─→ follow-up") || !strings.Contains(plain, "← main") {
+				} else if !strings.Contains(plain, "duplicate_edits → duplicate_edits/correctness started") || !strings.Contains(plain, "duplicate_edits → duplicate_edits/correctness") || !strings.Contains(plain, "main → duplicate_edits") {
 					t.Fatalf("direction is not relative to displayed child:\n%s", plain)
 				}
 				if !slices.ContainsFunc(feed.Passing, func(p liveActivityPassing) bool { return p.seq == 7 }) {

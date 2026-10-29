@@ -162,6 +162,16 @@ test("deferred identity retention follows its feed and historical entry owners",
 test("roster activity uses observed progress and collapsed reasoning labels", () => {
   const labels = { "agent:main/worker/reviewer": "worker/reviewer" };
   const label = (name) => labels[name] ?? name;
+  for (const [from, to, html] of [
+    ["child", "main", "child → main"],
+    ["main", "child", "main → child"],
+    ["unknown_*", "", "unknown_*"],
+  ]) {
+    assert.deepEqual(doing({ kind: "reply", values: [{ kind: "message", from, to }] }, label), {
+      verb: "",
+      html,
+    });
+  }
   assert.deepEqual(
     doing(
       {

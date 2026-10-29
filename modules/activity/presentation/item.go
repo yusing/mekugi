@@ -154,7 +154,11 @@ func (entry ItemContent) Values() (blocks []Value) {
 		}
 	case "final":
 		summary, details := entry.replySections(entry.Text)
-		return []Value{{Kind: "final", Body: source, Owner: entry.Agent, ReplySummary: summary, ReplyDetails: details}}
+		block := Value{Kind: "final", Body: source, Owner: entry.Agent, ReplySummary: summary, ReplyDetails: details}
+		if entry.Message != nil {
+			block.From, block.To = entry.Message.From, entry.Message.To
+		}
+		return []Value{block}
 	case "start":
 		if entry.StartLabel != nil {
 			block := Value{Kind: "start", Label: textsanitize.Safe(*entry.StartLabel, false)}

@@ -184,6 +184,46 @@ test("traffic resolves the local recipient from published identity facts", () =>
   }).body;
   assert.match(html, />worker</);
   assert.doesNotMatch(html, />Main<|>\/root</);
+  const start = render(EntryView, {
+    props: {
+      entry: { seq: 9, kind: "start", agent: "/root/worker", values: [{ kind: "start" }] },
+      at: "",
+      stamp: "",
+      owner: "/root",
+    },
+  }).body;
+  assert.match(start, />worker</);
+  assert.doesNotMatch(start, />main<|>Main<|→/);
+  stream.main = { order: [], entries: {} };
+});
+
+test("delivered final answers retain both published endpoints", () => {
+  stream.main = {
+    order: [10],
+    entries: {
+      10: {
+        seq: 10,
+        identities: [
+          { name: "/root/reviewer", label: "reviewer", aliases: ["/root/reviewer"] },
+          { name: "/root/worker", label: "worker", aliases: ["/root/worker"] },
+        ],
+      },
+    },
+  };
+  const html = render(EntryView, {
+    props: {
+      entry: {
+        seq: 10,
+        kind: "final",
+        agent: "/root/reviewer",
+        values: [{ kind: "final", from: "/root/reviewer", to: "/root/worker", body: "Reviewed." }],
+      },
+      at: "",
+      stamp: "",
+      owner: "/root/worker",
+    },
+  }).body;
+  assert.match(html, />reviewer<.*→.*>worker</s);
   stream.main = { order: [], entries: {} };
 });
 

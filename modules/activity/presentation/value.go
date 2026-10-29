@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/modules/activity/feed"
 )
@@ -77,6 +78,19 @@ type Question struct {
 	Text, Answer, Options, State string
 	Secret                       bool
 }
+
+// Endpoints resolves a runtime-local Main without retargeting inherited traffic.
+// Other addresses retain their supplied identity, including unknown names.
+func (b Value) Endpoints(local string) (from, to string) {
+	endpoint := func(name string) string {
+		if name == "Main" && local != "" {
+			name = local
+		}
+		return pathdisplay.AgentCanonicalName(name)
+	}
+	return endpoint(b.From), endpoint(b.To)
+}
+
 type WaitTarget struct{ Name, Status string }
 type HookDetails struct {
 	HandlerType, ExecutionMode, Status string

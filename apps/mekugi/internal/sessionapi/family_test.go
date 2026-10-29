@@ -74,7 +74,7 @@ func TestFamilyOrdinaryPublicationsAndColdTargets(t *testing.T) {
 	if len(rows) != 5 || !rows["history"].Agent.Final || !rows["cold"].Agent.Final || rows["cold"].Agent.Role != "explorer" {
 		t.Fatalf("retained/cold rows = %+v", rows)
 	}
-	if row := rows["child"]; row.Agent.Name != "/root/child" || row.Agent.Role != "worker" || !row.Agent.ContextKnown || row.Agent.ContextTokens != 42 || row.Agent.Summary[0].Agent != "/root/child" || row.Agent.Summary[0].Values[0].To != "/root/child" {
+	if row := rows["child"]; row.Agent.Name != "/root/child" || row.Agent.Role != "worker" || !row.Agent.ContextKnown || row.Agent.ContextTokens != 42 || row.Agent.Summary[0].Agent != "/root/child" || row.Agent.Summary[0].Values[0].From != "/root" || row.Agent.Summary[0].Values[0].To != "/root/child" {
 		t.Fatalf("ordinary child row = %+v", row)
 	}
 	if row := rows["nested"]; row.Depth != 2 || row.Agent.Role != "reviewer" {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/modules/activity/coordination"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -29,12 +30,18 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 	} else if name := s.KnownCaller(target); name != "" {
 		target = name
 	}
+	target = pathdisplay.AgentCanonicalName(target)
 	if c.Failure != "" {
 		entry.Kind, entry.Text = "error", strings.TrimSpace(c.Action+" "+target)+" failed: "+c.Failure
 		return entry
 	}
 	if c.Confirmed && (c.Kind == "start" || c.Kind == "assignment" || c.Kind == "reply") {
 		from := entry.Agent
+		// The host root is this runtime, which may itself be a delegate.
+		// Keep its local alias until presentation supplies its admitted caller.
+		if from == "/root" {
+			from = "Main"
+		}
 		entry.Agent, entry.Kind, entry.Text = target, c.Kind, ""
 		if (c.Kind == "start" || c.Kind == "assignment") && strings.TrimSpace(c.Message) != "" {
 			entry.Assignment = &ActivityAssignment{ID: item.ID, From: from, To: target, Text: c.Message}

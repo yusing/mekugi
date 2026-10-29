@@ -26,6 +26,8 @@ func nativeDeliveryEntry(input control.NativeInput, item string, now time.Time, 
 	}
 	if input.Kind == "MESSAGE" {
 		entry.Kind = "reply"
+	}
+	if input.Kind == "MESSAGE" || input.Kind == "FINAL_ANSWER" {
 		entry.Message = &sessionpresentation.ActivityMessage{From: input.Sender, To: recipient, Text: input.Message}
 	}
 	return entry

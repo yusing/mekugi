@@ -1,5 +1,5 @@
 import { duration, progressText } from "./format";
-import { inline } from "./markdown";
+import { inline, literal } from "./markdown";
 import type { Agent, Entry } from "./protocol";
 
 // What an entry shows its agent doing, as a verb and inline HTML without
@@ -31,6 +31,14 @@ function describe(entry: Entry, label: (name: string) => string): { verb: string
   }
   if (entry.kind === "text" || entry.kind === "message") return { verb: "Writing", html: "" };
   if (!value) return { verb: entry.kind ?? "", html: "" };
+  if (value.from || value.to) {
+    const route = [value.from, value.to].flatMap((name) => (name ? [label(name)] : [])).join(" → ");
+    return {
+      verb: value.kind === "start" ? "Started" : "",
+      html:
+        literal(route) + (value.kind === "start" && value.label ? ` · ${inline(value.label)}` : ""),
+    };
+  }
   const subject =
     value.label ??
     value.reads?.map((r) => `\`${r.path}\``).join(", ") ??

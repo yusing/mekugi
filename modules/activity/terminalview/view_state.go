@@ -83,6 +83,7 @@ func (v *View) Update(publication *presentation.Publication, display Display) {
 		v.Runs = nil
 	}
 	v.Display = display
+	v.Painter.MainCaller = display.MainCaller
 	if v.publication == publication {
 		return
 	}

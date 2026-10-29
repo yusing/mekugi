@@ -43,7 +43,7 @@ func TestConversationThreadsReplyUnderAssignment(t *testing.T) {
 	v := threadTestView()
 	feed := v.RenderFeed(width, 40)
 	plain := threadPlain(feed)
-	want := []string{"▶ reviewer started · gpt-6-astra", "│ ", "│ ", "├─← replied · 58s", "│ ", "│ ", "│ ", "│ ", "╰─↩ Open reply · +"}
+	want := []string{"▶ main → reviewer started · gpt-6-astra", "│ ", "│ ", "├─✉ reviewer → main · 58s", "│ ", "│ ", "│ ", "│ ", "╰─↩ Open reply · +"}
 	if len(plain) != len(want) {
 		t.Fatalf("thread rows = %d, want %d:\n%s", len(plain), len(want), strings.Join(plain, "\n"))
 	}
@@ -95,7 +95,7 @@ func TestConversationThreadEndsAtOtherTraffic(t *testing.T) {
 		v.Entries[1],
 	}
 	text := strings.Join(threadPlain(v.RenderFeed(60, 40)), "\n")
-	if strings.Contains(text, "├─") || strings.Contains(text, " lines\n") || !strings.Contains(text, "← reviewer") {
+	if strings.Contains(text, "├─") || strings.Contains(text, " lines\n") || !strings.Contains(text, "✉ reviewer → main") {
 		t.Fatalf("non-adjacent traffic joined a thread:\n%s", text)
 	}
 }
@@ -116,7 +116,7 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 			feed := v.RenderFeed(width, 40)
 			plain := threadPlain(feed)
 			text := strings.Join(plain, "\n")
-			if !strings.Contains(text, "├─← replied · 58s") || !strings.Contains(text, " lines") || strings.Contains(text, "← reviewer") {
+			if !strings.Contains(text, "├─✉ reviewer → main · 58s") || !strings.Contains(text, " lines") || strings.Contains(text, "\n✉ reviewer → main") {
 				t.Fatalf("reasoning split the thread:\n%s", text)
 			}
 			end := slices.IndexFunc(plain, func(row string) bool { return strings.HasPrefix(row, "╰─") })

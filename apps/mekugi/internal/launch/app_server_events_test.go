@@ -119,7 +119,7 @@ func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 		t.Fatalf("elapsed time kept counting after the child finished: %q, then %q", done, later)
 	}
 	activity := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 60).Lines, "\n"))
-	for _, want := range []string{"worker · explore", "▶ worker started · gpt-6-luna", "Inspect the pane.", "├ Ran  go test ./... · exit 2", "└ Read a.go", "✓ answer", "The pane waits on its first frame."} {
+	for _, want := range []string{"worker · explore", "▶ main → worker started · gpt-6-luna", "Inspect the pane.", "├ Ran  go test ./... · exit 2", "└ Read a.go", "✓ answer", "The pane waits on its first frame."} {
 		if !strings.Contains(activity, want) {
 			t.Fatalf("Activity lacks %q:\n%s", want, activity)
 		}
@@ -127,7 +127,7 @@ func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 	u.shell.Transcript.Conversation = true
 	u.testActivity(u.shell.Transcript).testAudience()
 	main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
-	for _, want := range []string{"▶ worker started", "├─✓ finished", "The pane waits on its first frame."} {
+	for _, want := range []string{"▶ main → worker started", "├─✓ finished", "The pane waits on its first frame."} {
 		if !strings.Contains(main, want) {
 			t.Fatalf("Main lacks %q:\n%s", want, main)
 		}

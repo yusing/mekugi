@@ -417,14 +417,10 @@ func familySummary(entries []activity.Entry, caller string) []activity.Entry {
 		relabel = func(values []activity.Value) {
 			for j := range values {
 				value := &values[j]
-				for _, label := range []*string{&value.Owner, &value.From} {
-					if *label == "Main" || *label == "/root" {
-						*label = caller
-					}
+				if value.Owner == "Main" || value.Owner == "/root" {
+					value.Owner = caller
 				}
-				if value.To == "Main" {
-					value.To = caller
-				}
+				value.From, value.To = value.Endpoints(caller)
 				relabel(value.Members)
 				relabel(value.RequestedOperations)
 			}

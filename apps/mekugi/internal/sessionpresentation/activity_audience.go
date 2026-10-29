@@ -9,7 +9,7 @@ import (
 // message shows under its sender, or under its recipient when Main sent it.
 func ActivityOwner(entry ActivityEntry) string {
 	if entry.Kind == "reply" && entry.Message != nil {
-		if entry.Message.From == "/root" {
+		if entry.Message.From == "/root" || entry.Message.From == "Main" {
 			return entry.Message.To
 		}
 		return entry.Message.From
@@ -30,7 +30,7 @@ func MainActivityEntry(entry ActivityEntry) (ActivityEntry, bool) {
 		}
 	}
 	if entry.Kind == "reply" && entry.Message != nil {
-		main = entry.Message.From == "/root" || entry.Message.To == "/root" || entry.Message.To == "Main"
+		main = entry.Message.From == "/root" || entry.Message.From == "Main" || entry.Message.To == "/root" || entry.Message.To == "Main"
 		entry.Agent = entry.Message.From
 	}
 	main = main || (entry.Kind == "final" || entry.Kind == "start") && entry.Agent != "/root"

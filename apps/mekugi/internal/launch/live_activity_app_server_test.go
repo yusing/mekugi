@@ -233,7 +233,7 @@ func TestAppServerCommunicationBothAudiences(t *testing.T) {
 			t.Fatalf("communication missing from one audience: %q", body)
 		}
 	}
-	if !strings.Contains(main, "→ reviewer") || !strings.Contains(main, "├─← replied") || strings.Contains(main, "Message sent") || strings.Contains(main, "not loaded") || !strings.Contains(agents, "main → reviewer") || !strings.Contains(agents, "reviewer → main") {
+	if !strings.Contains(main, "main → reviewer") || !strings.Contains(main, "├─✉ reviewer → main") || strings.Contains(main, "Message sent") || strings.Contains(main, "not loaded") || !strings.Contains(agents, "main → reviewer") || !strings.Contains(agents, "reviewer → main") {
 		t.Fatalf("wrong message direction or assignment link:\n%s\n%s", main, agents)
 	}
 }
@@ -245,7 +245,7 @@ func TestAppServerOutgoingMessageHeader(t *testing.T) {
 	u.testActivity(u.shell.Transcript).testAudience()
 	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root", To: "/root/reviewer", Text: "Check the answer link."}}}, nil)
 	feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 20)
-	if len(feed.Lines) != 2 || !strings.HasPrefix(ansi.Strip(feed.Lines[0]), "→ reviewer") || ansi.Strip(feed.Lines[1]) != "│ Check the answer link." {
+	if len(feed.Lines) != 2 || !strings.HasPrefix(ansi.Strip(feed.Lines[0]), "✉ main → reviewer") || ansi.Strip(feed.Lines[1]) != "│ Check the answer link." {
 		t.Fatalf("outgoing recipient must head Main's message, above its body: %q", feed.Lines)
 	}
 	screen := vt.NewEmulator(90, 2)
@@ -253,7 +253,7 @@ func TestAppServerOutgoingMessageHeader(t *testing.T) {
 	if _, err := screen.Write([]byte(feed.Lines[0])); err != nil {
 		t.Fatal(err)
 	}
-	if screen.CellAt(0, 0).Content != "→" || screen.CellAt(1, 0).Content != " " || screen.CellAt(2, 0).Content != "r" {
+	if screen.CellAt(0, 0).Content != "✉" || screen.CellAt(7, 0).Content != "→" || screen.CellAt(8, 0).Content != " " || screen.CellAt(9, 0).Content != "r" {
 		t.Fatal("arrow must occupy one cell with a visible space before the recipient")
 	}
 }

@@ -22,7 +22,8 @@ import (
 // come from the same renderer and theme as the live diff pane.
 type Painter struct {
 	terminalui.Painter
-	Clock func() time.Time // Optional presentation clock, shared with replay.
+	Clock      func() time.Time // Optional presentation clock, shared with replay.
+	MainCaller string           // Admitted identity of this runtime's Main alias.
 }
 
 func (p *Painter) now() time.Time {
@@ -645,7 +646,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		return lines
 	case "message":
-		lines := []string{ansi.Truncate(p.messageDirection(block), width, "…")}
+		lines := []string{ansi.Truncate(p.Route(block), width, "…")}
 		return append(lines, p.Markdown(block.Body, width, false)...)
 	case "start":
 		head := terminalui.Green + "\x1b[1m▶ Started" + terminalui.Reset
@@ -1328,9 +1329,13 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		if text == "" {
 			text = strings.TrimSuffix(block.Verb, ":")
 		}
-		return p.messageDirection(block) + " " + text
+		return p.Route(block) + " " + text
 	case "start":
-		return terminalui.Green + "▶ Started" + terminalui.Reset + " " + p.Inline(block.Label)
+		label := p.Inline(block.Label)
+		if block.From != "" || block.To != "" {
+			label = p.Route(block) + " " + label
+		}
+		return terminalui.Green + "▶ Started" + terminalui.Reset + " " + strings.TrimSpace(label)
 	case "compaction":
 		return terminalui.Amber + "◉ Context compacted" + terminalui.Reset
 	case "error":
@@ -1341,7 +1346,14 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 
 // Route names both ends of a message, sender first.
 func (p Painter) Route(block Block) string {
-	return p.recipient(block.From) + terminalui.Dim + " → " + terminalui.Undim + p.recipient(block.To)
+	from, to := block.Endpoints(p.MainCaller)
+	if from == "" {
+		return p.recipient(to)
+	}
+	if to == "" {
+		return p.recipient(from)
+	}
+	return p.recipient(from) + terminalui.Dim + " → " + terminalui.Undim + p.recipient(to)
 }
 
 // liveActivityCard frames rows under a titled top edge. A glowing card was
@@ -1391,15 +1403,6 @@ func Tree(parts [][]string) []string {
 		}
 	}
 	return lines
-}
-
-// messageDirection is relative to the row's owner, not the transport recipient.
-func (p Painter) messageDirection(block Block) string {
-	direction, peer := "→ ", block.To
-	if block.Owner == block.To {
-		direction, peer = "← ", block.From
-	}
-	return terminalui.Dim + direction + terminalui.Undim + p.recipient(peer)
 }
 
 func ResultCount(count *int, verb string) string {

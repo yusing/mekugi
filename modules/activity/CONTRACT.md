@@ -339,12 +339,13 @@ Activity view. Expanded all and original dialog pages retain the complete source
 
 ## Authored content
 
-Messages retain authored Markdown and colored rails. Outgoing/incoming headings
-name the other peer relative to the displayed transcript. Traffic between other
-agents names both actual endpoints, sender first, using the shared colored route;
-it never appears as a reply to the displayed agent. Starts name the newly started
-agent, even without an assignment. They indent their assignment without an extra
-label and retain known sender/recipient routes outside that transcript's exchange.
+Messages retain authored Markdown and colored rails. Assignments, messages and
+delivered replies name both known endpoints, sender first, using the shared
+colored route, including within joined exchanges. Runtime-local Main resolves to
+that runtime's admitted caller; inherited traffic retains its original endpoints.
+Traffic between other agents never appears as a reply to the displayed agent.
+Starts name the newly started agent, even without an assignment. They indent
+their assignment without an extra label and retain known sender/recipient routes.
 Assignments use their host observation times. Leading/trailing blank streaming
 lines add no rows. Only exact retained
 replacement provenance can combine enriched replies; text similarity is not proof.

@@ -11,6 +11,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -96,7 +97,7 @@ func TestNativeParentInputLiveAndRestored(t *testing.T) {
 						t.Fatalf("input missing or duplicated:\n%s", rendered)
 					}
 				}
-				if !strings.Contains(rendered, "←") || strings.Contains(rendered, "→") || strings.Contains(rendered, "You") {
+				if route := pathdisplay.AgentDisplayName(sender) + " → " + pathdisplay.AgentDisplayName(sender+"/worker"); !strings.Contains(rendered, route) || strings.Contains(rendered, "You") {
 					t.Fatalf("parent input rendered as outgoing/human:\n%s", rendered)
 				}
 			}

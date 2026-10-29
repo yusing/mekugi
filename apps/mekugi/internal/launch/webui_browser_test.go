@@ -21,6 +21,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -1048,7 +1049,20 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		entry := nativeDeliveryEntry(threadcontrol.NativeInput{Thread: "main", Sender: "/root/worker/reviewer", Recipient: "/root", Kind: "MESSAGE", Message: text}, fmt.Sprint(i), time.Now(), false)
 		applyRestoredMain(&restoredReplies.attached, []*restoredPlacement{{entry: entry}})
 	}
-	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, ChildReplySummary: true, Main: restoredReplies.attached.source.Publication(restoredReplies.attached.presentation, nil)}); err != nil {
+	outgoing := restoredReplies.attached.session.CoordinationEntry(sessionpresentation.ActivityEntry{Agent: "/root", Native: &sessionpresentation.NativeItem{Phase: "item/completed"}}, observation.Item{
+		Type: "mcpToolCall", Server: "threadcontrol", Tool: "send_message", Status: "completed",
+		Arguments: []byte(`{"target":"agent:main","message":"Child outbox evidence."}`),
+		Result:    []byte(`{"content":[{"type":"text","text":"{\"state\":\"confirmed\",\"id\":\"outgoing\",\"task_name\":\"agent:main\"}"}]}`),
+	})
+	restoredReplies.attached.source.ApplyMain(outgoing)
+	final := nativeDeliveryEntry(threadcontrol.NativeInput{Thread: "main", Sender: "/root/worker/reviewer", Recipient: "/root/worker", Kind: "FINAL_ANSWER", Message: "Nested final route."}, "final-route", time.Now(), false)
+	restoredReplies.attached.source.ApplyMain(final)
+	restoredReplies.attached.source.ApplyMain(sessionpresentation.ActivityEntry{Agent: "/root/worker/new-child", Kind: "start", Start: &sessionpresentation.ActivityStart{}})
+	outbox := activitypresentation.Entry{Facts: outgoing.ActivityFacts(), Values: sessionpresentation.ActivityContent(outgoing).Values()}
+	roster := &activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{
+		AgentFacts: activitypresentation.AgentFacts{Name: "/root", Thread: "child", Responding: true}, Summary: []activitypresentation.Entry{outbox},
+	}}}}
+	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, ChildReplySummary: true, Main: restoredReplies.attached.source.Publication(restoredReplies.attached.presentation, nil), Agents: roster}); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--fn", `(() => { const feed = document.querySelector('[aria-label="worker\'s activity"]'); return feed?.textContent.includes('Nested review complete.') && [...feed.querySelectorAll('summary')].some(e => e.textContent === 'Details') && [...feed.querySelectorAll('button')].some(e => e.textContent.trim() === 'Show full reply'); })()`)
@@ -1057,6 +1071,9 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("eval", `document.querySelector('[data-kind="reply"] details').open = true`)
 	run("wait", "--fn", `(() => { const row = document.querySelector('[data-kind="reply"]'); return row.innerText.includes('Nested retained details.') && row.innerText.split('Nested review complete.').length === 2 && !row.querySelector('h2') && row.querySelector('details a[href="https://example.com/evidence"]'); })()`)
 	run("wait", "--fn", `(() => { const row = document.querySelector('[data-kind="reply"]'); return row?.textContent.includes('worker/reviewer') && !row.textContent.includes('/root/') && /→\s*worker/.test(row.textContent) && !/→\s*main/.test(row.textContent); })()`)
+	run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[data-kind="reply"], [data-kind="final"]')]; const out = rows.find(row => row.textContent.includes('Child outbox evidence.')); const final = rows.find(row => row.textContent.includes('Nested final route.')); return /worker\s*→\s*main/.test(out?.textContent ?? '') && /worker\/reviewer\s*→\s*worker/.test(final?.textContent ?? '') && !/main\s*→\s*main/.test(out?.textContent ?? ''); })()`)
+	run("wait", "--fn", `/worker\s*→\s*main/.test(document.querySelector('[aria-label="Thread panel"]')?.textContent ?? '')`)
+	run("wait", "--fn", `(() => { const row = document.querySelector('[data-kind="start"]'); return row?.textContent.includes('worker/new-child') && !row.textContent.includes('main') && !row.textContent.includes('→'); })()`)
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "child-incoming-replies.png"))
 	}

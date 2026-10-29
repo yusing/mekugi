@@ -162,7 +162,7 @@ func TestThreadControlSpawnActivityLiveAndRestored(t *testing.T) {
 						if block.Kind != "start" || block.Body != "Inspect the parser." || block.To != "/root/worker" || entry.Source.Start.Model != "" || entry.Source.Assignment == nil {
 							t.Fatalf("lost semantic spawn: %+v", entry)
 						}
-						if thread == "main" && (block.From != "/root" || entry.Source.Agent != "Main") {
+						if thread == "main" && (block.From != "Main" || entry.Source.Agent != "Main") {
 							t.Fatalf("spawn lost canonical Main attribution: %+v", entry)
 						}
 					} else if block.Kind != "error" || !strings.Contains(block.Body, "lowercase letters") || entry.Source.Start != nil || entry.Source.Assignment != nil {
@@ -315,7 +315,7 @@ func TestThreadControlTrafficLiveRestoredReplay(t *testing.T) {
 			if len(entry.Values) != 1 || entry.Values[0].Kind != kind || entry.Values[0].DetailCode == "" || entry.Publish().Hidden() {
 				t.Fatalf("%s lost agent presentation: %+v", items[i].Tool, entry)
 			}
-			if i < 3 && (entry.Values[0].From != "/root" || entry.Values[0].To != "/root/worker") {
+			if i < 3 && (entry.Values[0].From != "Main" || entry.Values[0].To != "/root/worker") {
 				t.Fatalf("%s lost canonical traffic: %+v", items[i].Tool, entry.Values)
 			}
 			if i < 3 && entry.Source.ActivitySeq == 0 {
@@ -333,6 +333,16 @@ func TestThreadControlTrafficLiveRestoredReplay(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, t.TempDir())
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: items}})
 	check(restored.attached.source)
+	// Independent delegate runtimes retain /root as their host-local owner.
+	// Their outgoing traffic must resolve against the displayed logical caller.
+	for _, current := range []*appServerUI{u, restored} {
+		current.attached.presentation.Publish(sessionpresentation.MainInputs{Feedback: &current.attached.feedback, Conversation: current.attached.conversation, Info: sessionpresentation.MainInfo{Caller: "/root/reviewer"}}, sessionpresentation.Caption{})
+		view := current.testActivity(current.shell.Transcript)
+		rendered := ansi.Strip(strings.Join(view.testRenderConversation(100).Lines, "\n"))
+		if !strings.Contains(rendered, "reviewer → worker") || strings.Contains(rendered, "main → worker") {
+			t.Fatalf("delegate outbox lost its actual sender:\n%s", rendered)
+		}
+	}
 	for _, item := range items {
 		path := replayTestWrite(t, t.TempDir(), "coordination.jsonl", replayTestMeta("main"), replayTestItem("main", "turn", replayTestEpoch, replayTestEpoch+1000, map[string]any{
 			"type": "McpToolCall", "id": item.ID, "server": item.Server, "tool": item.Tool, "status": item.Status, "arguments": item.Arguments, "result": item.Result,

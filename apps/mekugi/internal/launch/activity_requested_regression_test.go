@@ -212,7 +212,7 @@ func TestRequestedRootRosterOwnActivityAndAddressedMessage(t *testing.T) {
 		t.Fatalf("root own activity missing: %q", summary)
 	}
 	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 3, Agent: "/root/a", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/a", To: "/root", Text: "Answer"}, Observed: now}}})
-	if summary, _ := view.testCurrent(view.Agents[0], now); !strings.Contains(ansi.Strip(summary), "← a") {
+	if summary, _ := view.testCurrent(view.Agents[0], now); !strings.Contains(ansi.Strip(summary), "a → main") {
 		t.Fatalf("newer addressed message missing: %q", summary)
 	}
 }

@@ -1,0 +1,9 @@
+✓ worker → main finished
+│ An unrelated reply.
+├─✓ worker → main finished · 1s
+│ Fixed exact reply navigation
+│ and kept the original evidence
+│ available. Focused checks
+│ pass, while live model
+│ compliance remains unverified.
+╰─↩ Open reply

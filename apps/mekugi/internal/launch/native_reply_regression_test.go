@@ -191,7 +191,11 @@ func TestUISnapshotNativeStartedAgentIdentity(t *testing.T) {
 				view.Painter.Theme = diffrender.DarkTheme
 				feed := view.RenderFeed(80, 20)
 				plain := ansi.Strip(strings.Join(feed.Lines, "\n"))
-				if !strings.Contains(plain, "▶ worker started · gpt-effective") {
+				want := "▶ worker started · gpt-effective"
+				if prompt != "" {
+					want = "▶ main → worker started · gpt-effective"
+				}
+				if !strings.Contains(plain, want) {
 					t.Fatalf("child=%t: start lost recipient identity:\n%s", child, plain)
 				}
 				rows = append(rows, feed.Lines...)

@@ -302,6 +302,7 @@ func projectEntry(e activitypresentation.Entry, summaries bool, caller string) e
 		Identities: sessionpresentation.PresentEntryAgents(e, caller),
 	}
 	for i := range p.Values {
+		p.Values[i].From, p.Values[i].To = e.Values[i].Endpoints(caller)
 		if disclosure := p.Values[i].DetailsAvailable; disclosure != nil && disclosure.Owner != "" {
 			disclosure.Owner = sessionpresentation.PresentAgent(disclosure.Owner, caller).Name
 		}
@@ -447,6 +448,7 @@ func projectRoster(p *activitypresentation.Publication, caller string) roster {
 			for _, v := range latest.Values {
 				// Roster rows need labels, not another copy of retained bodies or output.
 				item := activitypresentation.Value{Kind: v.Kind, Verb: v.Verb, Label: v.Label, Reads: v.Reads, Live: v.Live}
+				item.From, item.To = v.Endpoints(caller)
 				if v.Kind == "progress" {
 					item.Body, item.WaitTargets, item.WaitTimeout, item.WaitReason = v.Body, v.WaitTargets, v.WaitTimeout, v.WaitReason
 				} else if v.Kind == "summary" && len(v.Body) <= 80 && !strings.Contains(v.Body, "\n") {

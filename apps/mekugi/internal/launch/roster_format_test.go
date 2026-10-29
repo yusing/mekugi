@@ -35,7 +35,7 @@ func TestRosterSummaryFormatting(t *testing.T) {
 			rows := strings.Join(p.Block(blocks[0], 80), "\n")
 			summary := p.Summary(blocks, 80)
 			for _, text := range []string{ansi.Strip(rows), ansi.Strip(summary)} {
-				if strings.Contains(text, "/root") || strings.Contains(text, "replier") || !strings.Contains(text, "→ "+pathdisplay.AgentDisplayName(recipient)) {
+				if strings.Contains(text, "/root") || !strings.Contains(text, "replier → "+pathdisplay.AgentDisplayName(recipient)) {
 					t.Fatalf("reply = %q", text)
 				}
 			}

@@ -656,15 +656,10 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		if block.Label != "" {
 			detail += " · " + ansi.Strip(p.Inline(block.Label))
 		}
-	case block.Kind == "message" && v.conversationLocal(block.From):
-		glyph = terminalui.Dim + "→" + terminalui.Undim
-		if thread.Joined {
-			detail = "follow-up"
-		}
 	case block.Kind == "message":
-		glyph = terminalui.Dim + "←" + terminalui.Undim
-		if thread.Joined {
-			detail = "replied"
+		glyph = terminalui.Dim + "✉" + terminalui.Undim
+		if entry.Kind == "assignment" {
+			detail = "assignment"
 		}
 	case block.Kind == "final":
 		glyph, detail = terminalui.Green+"✓"+terminalui.Reset, "finished"
@@ -681,17 +676,11 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		}
 	}
 	name := p.Agent(agent)
-	if external {
-		name = p.Route(block)
-		if block.Kind == "message" {
-			glyph = terminalui.Dim + "✉" + terminalui.Undim
-		}
-	}
 	if !v.Conversation {
 		agent = entry.Agent
 		name = p.Agent(agent)
 		if block.Kind == "message" {
-			glyph, name = terminalui.Dim+"✉"+terminalui.Undim, p.Route(block)
+			name = p.Route(block)
 		}
 		if i := slices.IndexFunc(v.roster, func(row activitypresentation.AgentRow) bool { return row.Agent.Name == entry.Agent }); i >= 0 {
 			if role := Role(v.roster[i].Agent); role != "" {
@@ -700,11 +689,17 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		}
 		detail = strings.TrimSpace(detail)
 	}
+	if block.From != "" && block.To != "" {
+		name = p.Route(block)
+	}
 	color := Gutter(agent, p.Theme)
 	if external || !v.Conversation && block.Kind == "message" {
 		color = Gutter(block.From, p.Theme)
 	}
 	if thread.Joined {
+		if block.From != "" && block.To != "" {
+			detail = strings.TrimSpace(name + " " + detail)
+		}
 		out.add(0, threadHeading(color+"├─"+terminalui.Reset+glyph, detail, entry, v.entries[thread.Previous], reply, width))
 	} else {
 		out.add(0, conversationHeading(glyph, name, detail, entry, width))

@@ -1,4 +1,4 @@
-← live-section                                                                              23:27:00
+✉ live-section → main                                                                       23:27:00
 │ Confirmed the separate Loading content… cycle in a real browser through connector/session-server
 │ routes. MEKUGI-286's live-section race is also now reproduced before the fix and passes after it.
 ╰─↩ Open reply

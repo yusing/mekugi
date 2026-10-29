@@ -19,6 +19,10 @@ const childReplySummaryBody = "## Summary\nFixed exact reply navigation and kept
 func TestUISnapshotChildReplySummary(t *testing.T) {
 	for _, kind := range []string{"directed", "final", "native-directed", "native-final"} {
 		t.Run(kind, func(t *testing.T) {
+			snapshotKind := strings.TrimPrefix(kind, "native-")
+			if kind == "native-final" {
+				snapshotKind = kind // Delivered answers retain a known recipient.
+			}
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.shell.Transcript.ChildReplySummary, u.shell.Agents.ChildReplySummary = true, true
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
@@ -64,7 +68,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 				if strings.Contains(plain, "supporting explanation") || strings.Contains(plain, "+") || !strings.Contains(plain, "unverified.") || !strings.Contains(plain, "↩ Open reply") {
 					t.Fatalf("summary card: %s", plain)
 				}
-				assertNativeUISnapshot(t, fmt.Sprintf("child-reply-summary-%s-%d", strings.TrimPrefix(kind, "native-"), width), feed.Lines)
+				assertNativeUISnapshot(t, fmt.Sprintf("child-reply-summary-%s-%d", snapshotKind, width), feed.Lines)
 			}
 			u.shell.Transcript.Expansion = 1
 			expanded := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 80).Lines, "\n"))
@@ -78,7 +82,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 			if !strings.Contains(ansi.Strip(strings.Join(feed.Lines, "\n")), "+") {
 				t.Fatal("disabled summary did not use excerpt")
 			}
-			assertNativeUISnapshot(t, "child-reply-summary-"+strings.TrimPrefix(kind, "native-")+"-disabled", feed.Lines)
+			assertNativeUISnapshot(t, "child-reply-summary-"+snapshotKind+"-disabled", feed.Lines)
 			if !terminalTest(u).openActivityReply(seq) {
 				t.Fatal("cannot open disabled-summary reply")
 			}
@@ -115,7 +119,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 			if rendered := screen.String(); strings.Count(rendered, "Fixed exact reply navigation") != 1 || strings.Contains(rendered, "Summary") || strings.Contains(rendered, "Details") || !strings.Contains(rendered, "End of evidence.") {
 				t.Fatalf("reply details repeated summary or delimiters: %s", rendered)
 			}
-			assertNativeUISnapshot(t, "child-reply-summary-"+strings.TrimPrefix(kind, "native-")+"-dialog", strings.Split(screen.String(), "\n"))
+			assertNativeUISnapshot(t, "child-reply-summary-"+snapshotKind+"-dialog", strings.Split(screen.String(), "\n"))
 			terminalTest(u).outputKey("\x1b")
 			if terminalTest(u).Dialog != nil {
 				t.Fatal("dialog did not dismiss")
