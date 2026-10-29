@@ -26,6 +26,7 @@ type vcsCall struct {
 	subject           string // A commit's first message line, when literal.
 	display           string // The operation paragraph.
 	repositoryUnknown bool   // An env wrapper may override Git repository selection.
+	commitPrefix      bool   // Successful output can safely precede a commit header.
 }
 
 const (
@@ -258,6 +259,7 @@ func vcsGit(args []string, stdin *string) (vcsCall, bool) {
 	case "add":
 		if stdin == nil {
 			call, ok = vcsGitAdd(args[1:], source)
+			call.commitPrefix = ok
 		}
 	case "diff", "show":
 		if stdin == nil {
@@ -474,7 +476,7 @@ func vcsGitDiff(show bool, args []string, source string) (vcsCall, bool) {
 	case scope == "":
 		scope = "working tree"
 	}
-	call := vcsCall{kind: vcsDiff, format: format}
+	call := vcsCall{kind: vcsDiff, format: format, commitPrefix: !show && (check || slices.Contains([]string{"stat", "numstat", "shortstat"}, format))}
 	switch {
 	case check:
 		call.kind = vcsCheck
@@ -650,22 +652,62 @@ func vcsMChanges(args []string) (vcsCall, bool) {
 	return call, true
 }
 
-// vcsChain is a statement's top-level && operands, in order.
-func vcsChain(statement *syntax.Stmt) []*syntax.Stmt {
-	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok && binary.Op == syntax.AndStmt && len(statement.Redirs) == 0 &&
-		!statement.Background && !statement.Negated && !statement.Coprocess && !statement.Disown {
-		return append(vcsChain(binary.X), vcsChain(binary.Y)...)
+// vcsOutputCall selects the sole output-producing VCS operation, or a final
+// commit whose own header separates it from preceding recognized VCS output.
+func vcsOutputCall(source string) (vcsCall, bool) {
+	program, err := syntax.NewParser().Parse(strings.NewReader(source), "")
+	if err != nil || len(program.Stmts) == 0 {
+		return vcsCall{}, false
 	}
-	return []*syntax.Stmt{statement}
+	chain := program.Stmts
+	if len(program.Stmts) == 1 {
+		chain = shellsyntax.Sequence(program.Stmts)
+	}
+	call, ok := vcsOutputStatement(chain[len(chain)-1])
+	if !ok {
+		return vcsCall{}, false
+	}
+	failFast := len(program.Stmts) == 1 // Every predecessor is joined to the commit by &&.
+	for _, statement := range chain[:len(chain)-1] {
+		if enabled, options := shellsyntax.ShellErrexit(statement); options {
+			if len(program.Stmts) != 1 {
+				failFast = enabled
+			}
+			continue
+		}
+		prior, ok := vcsStatement(statement)
+		// Name-only output can itself be a filename that looks like a commit
+		// header, as can an earlier failure's stderr. Require successful
+		// silent operations or prefixed diff stats, never git show's blob data.
+		if !ok || !failFast || call.kind != vcsCommit || !prior.commitPrefix {
+			return vcsCall{}, false
+		}
+	}
+	return call, true
+}
+
+func vcsOutputStatement(statement *syntax.Stmt) (vcsCall, bool) {
+	if statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
+		return vcsCall{}, false
+	}
+	statement = shellsyntax.UnwrapTimeout(statement)
+	if inner := shellsyntax.UnwrapEnv(statement); inner != statement {
+		call, ok := vcsOutputStatement(inner)
+		call.repositoryUnknown = true
+		return call, ok
+	}
+	if inner := shellsyntax.UnwrapMRun(statement); inner != statement {
+		return vcsOutputStatement(inner)
+	}
+	if body, ok := shellsyntax.ShellScript(statement); ok {
+		return vcsOutputCall(body)
+	}
+	return vcsStatement(statement)
 }
 
 // VCSOutputSource recognizes a tracked segment whose observed output has change rows.
 func VCSOutputSource(source string) bool {
-	program, err := syntax.NewParser().Parse(strings.NewReader(source), "")
-	if err != nil || len(program.Stmts) != 1 {
-		return false
-	}
-	call, ok := vcsStatement(program.Stmts[0])
+	call, ok := vcsOutputCall(source)
 	return ok && call.kind != vcsStage && call.kind != vcsCheck
 }
 
@@ -677,10 +719,6 @@ func VCSStatement(statement *syntax.Stmt) (string, bool) {
 
 // VCSPreservesDirectory reports a literal command that cannot change its parent shell cwd.
 func VCSPreservesDirectory(source string) bool {
-	program, err := syntax.NewParser().Parse(strings.NewReader(source), "")
-	if err != nil || len(program.Stmts) != 1 {
-		return false
-	}
-	_, ok := vcsStatement(program.Stmts[0])
+	_, ok := vcsOutputCall(source)
 	return ok
 }

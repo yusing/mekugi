@@ -4,6 +4,7 @@ package shellsyntax
 
 import (
 	"path/filepath"
+	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -89,4 +90,55 @@ func PatternWord(word *syntax.Word) bool {
 		return valid
 	})
 	return valid
+}
+
+// ShellScript recognizes a literal shell -c script without positional arguments
+// or redirects. Recognition does not execute the script or resolve executables.
+func ShellScript(statement *syntax.Stmt) (string, bool) {
+	argv, ok := PatternCall("", statement)
+	if !ok || len(argv) != 3 || (argv[0] != "bash" && argv[0] != "sh" && argv[0] != "dash") || (argv[1] != "-c" && argv[1] != "-lc") {
+		return "", false
+	}
+	return argv[2], true
+}
+
+// ShellOptions recognizes current-shell set options that neither change command
+// resolution nor select a repository or directory. External wrappers stay opaque.
+func ShellOptions(statement *syntax.Stmt) bool {
+	_, ok := ShellErrexit(statement)
+	return ok
+}
+
+// ShellErrexit reports whether validated current-shell error options explicitly
+// leave errexit enabled. Unspecified errexit is conservatively false.
+func ShellErrexit(statement *syntax.Stmt) (bool, bool) {
+	call, ok := statement.Cmd.(*syntax.CallExpr)
+	if !ok || len(call.Args) == 0 {
+		return false, false
+	}
+	if name, literal := Literal(call.Args[0]); !literal || name != "set" {
+		return false, false
+	}
+	argv, ok := PatternCall("", statement)
+	if !ok || len(argv) < 2 || argv[0] != "set" {
+		return false, false
+	}
+	errexit := false
+	for i := 1; i < len(argv); i++ {
+		option := argv[i]
+		if len(option) >= 2 && (option[0] == '-' || option[0] == '+') && strings.HasSuffix(option, "o") && strings.Trim(option[1:len(option)-1], "eu") == "" {
+			i++
+			if i >= len(argv) || (argv[i] != "errexit" && argv[i] != "nounset" && argv[i] != "pipefail") {
+				return false, false
+			}
+			if strings.Contains(option[1:], "e") || argv[i] == "errexit" {
+				errexit = option[0] == '-'
+			}
+		} else if len(option) < 2 || (option[0] != '-' && option[0] != '+') || strings.Trim(option[1:], "eu") != "" {
+			return false, false
+		} else if strings.Contains(option[1:], "e") {
+			errexit = option[0] == '-'
+		}
+	}
+	return errexit, true
 }

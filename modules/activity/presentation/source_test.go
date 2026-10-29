@@ -76,7 +76,7 @@ func TestToolActivityMultilineFence(t *testing.T) {
 func TestToolActivityShellSetupStaysTogether(t *testing.T) {
 	for _, setup := range []string{
 		"export ROOT=/tmp", "ROOT=$(mktemp -d)", "trap 'echo cleanup' EXIT",
-		"set -eu", "source setup.sh", ". setup.sh", "unset ROOT", "builtin export ROOT=/tmp",
+		"set -x", "source setup.sh", ". setup.sh", "unset ROOT", "builtin export ROOT=/tmp",
 		"f() { cat a; }",
 		"f() { timeout 10 sleep 1; }",
 		"set -e\ntimeout \"$duration\" sleep 1",
@@ -417,5 +417,42 @@ func TestShellSourceFeedPreservesOperations(t *testing.T) {
 	}
 	if search.Verb != "Search" || len(search.Reads) != 1 || search.Reads[0].Path != "refs other.go Name" {
 		t.Fatalf("symbol source = %+v", search)
+	}
+}
+
+func TestShellErrorOptionsKeepRecognizedNeighbors(t *testing.T) {
+	for _, source := range []string{
+		"set -e\ncat a.go", "set -eu; cat a.go", "set -euo pipefail && cat a.go",
+		`timeout 10 env MODE=test bash -lc 'set -e; cat a.go'`,
+	} {
+		if got := ShellSource(source, ""); !strings.Contains(got, "Read `a.go`") || strings.Contains(got, "set -") {
+			t.Errorf("source %q = %q", source, got)
+		}
+	}
+}
+
+func TestShellOptionsRetainPureRunAndExternalFailures(t *testing.T) {
+	source := "set -e\ntimeout 10 sleep 1"
+	want := "Run\n" + markdownsyntax.SourceFence("bash", source)
+	if got := ShellSource(source, ""); got != feed.AddTimeouts(want, []string{"10"}) {
+		t.Fatalf("timeout setup = %q", got)
+	}
+	for _, source := range []string{
+		"env MODE=test set -e", "timeout 1 set -e", "mrun -n 5 set -e",
+		"env MODE=test set -e; cat a.go", "timeout 1 set -e && cat a.go", "mrun -n 5 set -e; cat a.go",
+	} {
+		text := ShellSource(source, "")
+		if !strings.Contains(text, "set -e") {
+			t.Errorf("external command erased: %q = %q", source, text)
+		}
+		item := ItemContent{Kind: "tool", Text: text, Command: Command{Script: source, Display: source, Exited: true, ExitCode: 127}, Details: &ItemDetails{CommandText: source}}
+		values := CommandExit(item.Values(), source, 127, []string{"set: command not found"}, 0, false)
+		failed := false
+		for _, value := range values {
+			failed = failed || value.ExitCode == 127
+		}
+		if !failed {
+			t.Errorf("external failure erased: %q = %+v", source, values)
+		}
 	}
 }

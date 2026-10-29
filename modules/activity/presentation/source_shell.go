@@ -31,7 +31,23 @@ func ClassifyShell(script, cwd string) (string, bool) {
 		}
 		return ShellSource(display, cwd), true
 	}
+	// Error-handling options require one execution segment, but do not hide
+	// independently recognizable presentation operations.
 	hasSetup := shellinstrumentation.HasShellSetup(program)
+	if hasSetup {
+		setupProgram := *program
+		setupProgram.Stmts = slices.DeleteFunc(shellsyntax.Sequence(program.Stmts), shellsyntax.ShellOptions)
+		if len(setupProgram.Stmts) > 0 && !shellinstrumentation.HasShellSetup(&setupProgram) {
+			hasSetup = false
+			for _, statement := range setupProgram.Stmts {
+				display, ok := sourceStatement(script, statement, cwd, nil)
+				if !ok || slices.ContainsFunc(activitymodel.ParseOperations(display), func(operation activitymodel.Content) bool { return operation.Verb == "Run" }) {
+					hasSetup = true
+					break
+				}
+			}
+		}
+	}
 	// Heredoc bodies may occur after another statement on the same line,
 	// outside Stmt.End(). Preserve the whole source rather than slicing them.
 	hasHeredoc := false
@@ -167,6 +183,9 @@ func sourceWithoutMRun(script string, program *syntax.File) string {
 		if statement, ok := node.(*syntax.Stmt); ok {
 			for {
 				inner := shellsyntax.UnwrapMRun(statement)
+				if inner != statement && shellsyntax.ShellOptions(inner) {
+					break // mrun executes an external command, not a shell builtin.
+				}
 				if inner == statement {
 					inner = shellsyntax.UnwrapEnv(shellsyntax.UnwrapTimeout(statement))
 					if inner == statement {
@@ -380,17 +399,25 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string, next *sy
 	if statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 		return "", false
 	}
+	if shellsyntax.ShellOptions(statement) {
+		return "", statement == original
+	}
 	if inner := shellsyntax.UnwrapEnv(statement); inner != statement {
+		if shellsyntax.ShellOptions(inner) {
+			return "", false
+		}
 		return sourceStatement(script, inner, cwd, next)
 	}
 	if inner := shellsyntax.UnwrapMRun(statement); inner != statement {
+		if shellsyntax.ShellOptions(inner) {
+			return "", false
+		}
 		return sourceStatement(script, inner, cwd, next)
 	}
-	if argv, ok := shellsyntax.PatternCall("", statement); ok && len(argv) == 3 &&
-		(argv[0] == "bash" || argv[0] == "sh" || argv[0] == "dash") && (argv[1] == "-c" || argv[1] == "-lc") {
-		display, recognized := ClassifyShell(argv[2], cwd)
+	if body, ok := shellsyntax.ShellScript(statement); ok {
+		display, recognized := ClassifyShell(body, cwd)
 		paragraphs := activitymodel.Paragraphs(display)
-		if recognized && len(paragraphs) == 1 && activitymodel.ParseOperation(paragraphs[0]).Code == strings.Trim(argv[2], "\r\n") {
+		if recognized && len(paragraphs) == 1 && activitymodel.ParseOperation(paragraphs[0]).Code == strings.Trim(body, "\r\n") {
 			// Setup and heredoc programs must stay whole, including the wrapper.
 			innerTimeouts := activitymodel.ParseOperation(paragraphs[0]).Timeouts
 			return activitymodel.AddTimeouts("Run\n"+markdownsyntax.SourceFence("bash", sourceStatementSource(script, original)), innerTimeouts), true

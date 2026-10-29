@@ -263,3 +263,17 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	terminal.openBlocks(u.shell.Transcript, pages)
 	assertNativeUISnapshot(t, "guard-command-output-dialog", strings.Split(drawOutputDialog(terminal), "\n"))
 }
+
+func TestUISnapshotSetupHeredocCommit(t *testing.T) {
+	source := "set -e\ngit add a.go\ngit diff --cached --stat\ngit commit -F - <<'EOF'\nfix: wrapped\n\nbody\nEOF"
+	command := shellCommandString("/bin/bash", []string{"-lc", source})
+	output := " a.go | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n[main abc1234] fix: wrapped\n 1 file changed, 1 insertion(+), 1 deletion(-)\n"
+	u := vcsCommandUI(t, "")
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
+	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
+		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0),
+	}}}})
+	folded := mainFeed(u, 90)
+	u.testActivity(u.shell.Transcript).Expansion = 1
+	assertNativeUISnapshot(t, "setup-heredoc-commit", strings.Split(folded+"\n\n"+mainFeed(u, 90), "\n"))
+}

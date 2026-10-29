@@ -124,7 +124,9 @@ Environment-wrapped commits retain their observed output without object enrichme
 because the wrapper may change Git repository selection independently of cwd.
 
 Mixed scripts and `&&` chains retain classified operations and Run neighbors in
-source order, without claiming they ran. Other unsupported compounds remain Run.
+source order, without claiming they ran. Literal `set` error-handling options
+(`errexit`, `nounset`, `pipefail`) allow fully recognized sequences to retain their
+operations; other setup programs stay together. Other unsupported compounds remain Run.
 Recognized output-only search pipelines and discarded stderr for `find`, `rg`,
 `grep` and `ls` do not obscure the operation. Effectful/unknown pipeline stages and
 ambiguous abbreviated listing options remain Run. Whole setup programs retain
@@ -153,7 +155,11 @@ execution or filesystem authority. Change-history reads retain their existing
 evidence owner.
 
 Observed Git commit output may request read-only enrichment of the named immutable
-commit in its proven directory. The attached Activity session owns these bounded,
+commit in its proven directory. Staging, whitespace checks and Git diff
+stat/numstat/shortstat reads may precede the commit in a single `&&` list or a
+literal `set -e` sequence. Its output header separates its result from
+earlier output. Supported literal shell wrappers retain this interpretation.
+The attached Activity session owns these bounded,
 asynchronous reads and their cache. Main and children share that owner; replacement
 and shutdown retire it without blocking input. Pending or failed reads preserve the
 original output evidence. Offline replay interprets retained output without starting

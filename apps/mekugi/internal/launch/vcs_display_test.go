@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -320,6 +321,30 @@ func TestVCSCommandClassification(t *testing.T) {
 	} {
 		if got := toolActivityShell(source); !strings.HasPrefix(got, "Run") {
 			t.Errorf("%q classified as %q", source, got)
+		}
+	}
+}
+
+func TestVCSSetupCommitLiveAndRestored(t *testing.T) {
+	g, output := vcsCommitFixture(t, "fix: wrapped")
+	script := "set -e\ngit add a.go b.go gone.txt\ngit diff --cached --stat\ngit commit -F - <<'EOF'\nfix: wrapped\n\nbody\nEOF"
+	command := shellCommandString("/bin/bash", []string{"-lc", script})
+	output = " a.go | 99 +++++\n 1 file changed, 99 insertions(+)\n" + output
+	item := binding.ThreadItem{ID: "wrapped", Type: "commandExecution", Command: command, Cwd: g.dir, Status: "completed", ExitCode: new(0), AggregatedOutput: &output}
+	for _, restored := range []bool{false, true} {
+		u := vcsCommandUI(t, g.dir)
+		u.testActivity(u.shell.Transcript).Expansion = 1
+		if restored {
+			u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{item}}})
+		} else {
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+		}
+		got := awaitMain(t, u, "M  a.go")
+		if !strings.Contains(got, "Committed fix: wrapped") || !strings.Contains(got, "on main · 3 files +3 -2") || strings.Contains(got, "99") {
+			t.Fatalf("restored=%v: %s", restored, got)
+		}
+		if u.attached.source.Entries[0].Source.Native.Command != command {
+			t.Fatal("host command changed")
 		}
 	}
 }

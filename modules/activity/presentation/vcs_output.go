@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"mvdan.cc/sh/v3/syntax"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 )
@@ -19,23 +17,12 @@ import (
 // status's paths. The output is the evidence, except that a git commit's
 // per-file counts come from the commit object its output names, which
 // CommitReader reads without blocking; the key names that object. Staging
-// and checks, which print nothing on success, may precede a commit in one
-// output; other lists interleave output, so they keep the plain tail, as do
-// commands without a recognized row.
+// and recognized VCS reads may precede a commit in one output: its header
+// separates the commit evidence. Other lists keep their plain output tail.
 func VCSOutputRows(command, cwd, output string) ([]ChangeRow, CommitKey) {
-	program, err := syntax.NewParser().Parse(strings.NewReader(command), "")
-	if err != nil || len(program.Stmts) != 1 {
-		return nil, CommitKey{}
-	}
-	chain := vcsChain(program.Stmts[0])
-	call, ok := vcsStatement(chain[len(chain)-1])
+	call, ok := vcsOutputCall(command)
 	if !ok {
 		return nil, CommitKey{}
-	}
-	for _, statement := range chain[:len(chain)-1] {
-		if prior, ok := vcsStatement(statement); !ok || call.kind != vcsCommit || prior.kind != vcsStage && prior.kind != vcsCheck {
-			return nil, CommitKey{}
-		}
 	}
 	lines := strings.Split(strings.ReplaceAll(textsanitize.StripSequences(output), "\r\n", "\n"), "\n")
 	switch {

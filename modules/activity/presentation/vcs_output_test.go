@@ -219,3 +219,48 @@ func TestVCSSVNCommitRows(t *testing.T) {
 		t.Fatalf("svn commit rows = %+v", rows)
 	}
 }
+
+func TestVCSCompoundCommitUsesItsOwnOutput(t *testing.T) {
+	script := "set -e\ngit add a.go\ngit diff --cached --stat\ngit commit -F - <<'EOF'\nfix: wrapped\n\nbody\nEOF"
+	output := " a.go | 99 +++++\n 1 file changed, 99 insertions(+)\n" +
+		"hook output\n[main abc1234] fix: wrapped\n 1 file changed, 2 insertions(+), 1 deletion(-)\n"
+	for _, source := range []string{
+		script,
+		"set -eu && git add a.go && git diff --cached --stat && git commit -m 'fix: wrapped'",
+		`timeout 10 bash -lc 'set -e; git add a.go; git diff --cached --stat; git commit -m "fix: wrapped"'`,
+		`mrun -n 20 sh -c 'set -e; git commit -m "fix: wrapped"'`,
+	} {
+		if got := ShellSource(source, "/workspace"); !strings.Contains(got, "Commit `fix: wrapped`") {
+			t.Errorf("source %q = %q", source, got)
+		}
+		rows, key := VCSOutputRows(source, "/workspace", output)
+		if len(rows) != 1 || rows[0].Added != 2 || rows[0].Removed != 1 || key != (CommitKey{Directory: "/workspace", Hash: "abc1234"}) || !VCSOutputSource(source) || !VCSPreservesDirectory(source) {
+			t.Errorf("source %q: rows=%+v key=%+v", source, rows, key)
+		}
+	}
+	for _, source := range []string{
+		"cd other; git commit -m x", "export GIT_DIR=/other; git commit -m x",
+		"set -o; git commit -m x", "set -- args; git commit -m x",
+		"echo unknown; git commit -m x", "git commit -m first; git commit -m second",
+		"git add . || git commit -m x", "bash -c 'git commit -m x' extra",
+		"bash -c 'git commit -m x' > other",
+		"git diff --cached --name-only; git commit -m x",
+		"git diff --cached --name-only; git commit --quiet -m x",
+		"git status --short; git commit -m x",
+		"git diff --check; git commit --quiet -m x",
+		"git add 'missing\n[main dead123] filename\n'; git commit --allow-empty -m x",
+		"set -e; git show --stat HEAD; git commit -m x",
+		"git show --check HEAD && git commit -m x",
+		"set -e; set +e; git add missing; git commit -m x",
+		"set -e; git add missing && git diff --stat; git commit -m x",
+	} {
+		if rows, key := VCSOutputRows(source, "/workspace", "[main dead123] filename\n"+output); rows != nil || key != (CommitKey{}) || VCSOutputSource(source) || VCSPreservesDirectory(source) {
+			t.Errorf("opaque source %q: rows=%+v key=%+v", source, rows, key)
+		}
+	}
+	for _, source := range []string{"env GIT_DIR=/other bash -c 'set -e; git commit -m x'", "mrun -n 20 env GIT_DIR=/other sh -c 'set -e; git commit -m x'"} {
+		if rows, key := VCSOutputRows(source, "/workspace", output); len(rows) != 1 || key != (CommitKey{}) {
+			t.Errorf("env source %q: rows=%+v key=%+v", source, rows, key)
+		}
+	}
+}

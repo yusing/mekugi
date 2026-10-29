@@ -1,0 +1,6 @@
+└ Stage • Diff • Committed
+
+├ Stage a.go · git
+├ Diff  staged · git --stat
+└ Committed fix: wrapped · git
+            abc1234 on main · 1 file +1 -1

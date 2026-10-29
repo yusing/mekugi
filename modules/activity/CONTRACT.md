@@ -216,9 +216,12 @@ say `Pending`; only the segment with an observed start runs. An observed end set
 that segment without completing the invocation. Unreached commands say `Skipped`
 after a later segment starts or the shell finishes, following the actual shell
 branching rather than assuming every failure stops the list. Pending and skipped
-commands have no exit or timing. Terminal completion also retains the combined host tail. Whole setup
-scripts remain one Run event, while recognized edit scripts retain classified
-rows. Missing segment boundaries retain the original invocation source, outcome
+commands have no exit or timing. Terminal completion also retains the combined host tail.
+Whole setup scripts remain one Run event unless recognized edits or literal
+current-shell error-handling options allow a fully recognized sequence. Error-handling
+options alone do not split a Run program or its timeout metadata; external
+wrappers around `set` remain Run. Missing segment boundaries retain the original
+invocation source, outcome
 and combined output rather than failures assigned to individual operations.
 
 Completion replaces streaming content with the host aggregate. Failure stays
@@ -298,8 +301,10 @@ name-status/name-only, SVN diff-summary, status and commit rows. Hunk counts sta
 within declared extents; copies create the destination with a `copy of` note,
 not a moved source. A scaled stat graph supplies only a total, not an invented
 added/removed split. Unreadable or unattributable output keeps its ordinary tail.
-Silent successful Stage/Check commands may precede a commit in combined output;
-other mixed lists do not guess attribution. Tracked segments use their own output.
+Stage, Check and Git diff stat/numstat/shortstat reads may precede a commit in
+combined output when one `&&` list or a literal `set -e` sequence establishes
+their success. Git show is excluded because blob reads can emit arbitrary text.
+Other mixed lists do not guess attribution. Tracked segments use their own output.
 
 Observed Git commits may enrich file counts from a read-only lookup of the printed
 hash in the proven command directory. It runs independently of UI input, at most
