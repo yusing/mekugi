@@ -178,9 +178,9 @@ one failed source does not discard the others. Completed capture survives resume
 and inherited history without rereading. Compaction retires the initial preload
 when its assignment leaves context and selects subsequent reloads normally.
 
-Collaboration guidance directs spawning agents to preload known, assignment-relevant
-startup files, skills and retained changes for fresh children. This supplies exact source content at
-the first inference without child discovery/read turns or unrelated parent history.
+The spawn tool description directs agents to preload known, assignment-relevant startup
+instructions, skills, task files and retained changes for fresh children. This supplies exact source
+content at the first inference without child discovery/read turns or unrelated parent history.
 Agents omit preload for full-history forks or when no startup sources are known,
 and leave `AGENTS.md` to the host.
 

@@ -29,6 +29,9 @@ func TestToolCatalogCallerDescriptions(t *testing.T) {
 			if tool.Name != "spawn_agent" {
 				continue
 			}
+			if !strings.Contains(tool.Description, "fork_turns=none") || !strings.Contains(tool.Description, "preload") {
+				t.Fatalf("caller claude=%t: spawn description omits fresh-child preload: %s", tc.claude, tool.Description)
+			}
 			raw, err := json.Marshal(tool.InputSchema)
 			if err != nil {
 				t.Fatal(err)
@@ -43,6 +46,9 @@ func TestToolCatalogCallerDescriptions(t *testing.T) {
 			}
 			if !strings.Contains(schema.Properties["model"].Description, tc.model) {
 				t.Fatalf("caller claude=%t: model description %q", tc.claude, schema.Properties["model"].Description)
+			}
+			if !strings.Contains(schema.Properties["preload"].Description, "instruction files") {
+				t.Fatalf("caller claude=%t: preload omits instruction sources", tc.claude)
 			}
 		}
 	}
