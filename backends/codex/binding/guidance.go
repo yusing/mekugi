@@ -1,6 +1,7 @@
 package binding
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 
@@ -19,6 +20,13 @@ type InstructionUpdate struct {
 	InputChanged        bool
 }
 
+// EnvironmentContext carries admitted runtime identity and its authoritative
+// refresh revision. It conveys facts acquisition scope, never authorization.
+type EnvironmentContext struct {
+	Session, Thread, Workspace string
+	Revision                   uint64
+}
+
 // FrontendGuidance separates executable capabilities from task workflow policy.
 // All projections belong to the same authenticated invocation catalog.
 type FrontendGuidance struct {
@@ -30,6 +38,7 @@ type FrontendGuidance struct {
 // Guidance registers the distinct existing request phases. Callbacks are
 // invocation-immutable; the application owns request copies and catalog indexing.
 type Guidance struct {
+	Environment       func(context.Context, InstructionInput, EnvironmentContext) (InstructionUpdate, error)
 	Threads           func(InstructionInput, []guidance.Replacement) (InstructionUpdate, error)
 	BeforePreparation func(InstructionInput) (InstructionUpdate, error)
 	ForExecution      func(InstructionInput) (InstructionUpdate, error)

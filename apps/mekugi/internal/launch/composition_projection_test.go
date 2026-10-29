@@ -200,6 +200,11 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			if tc.withoutGuidance {
 				wantInstructions, wantContent = instructions, input[0]["content"].(string)
 			}
+			if !tc.withoutGuidance {
+				environmentFacts(t, wire)
+				before, _, _ := strings.Cut(modelRequest.Instructions, "\n\n<mekugi_environment_facts>")
+				modelRequest.Instructions = before
+			}
 			if modelRequest.Instructions != wantInstructions || modelRequest.Input[0].Content != wantContent {
 				t.Fatalf("provider guidance: instructions=%q content=%q", modelRequest.Instructions, modelRequest.Input[0].Content)
 			}

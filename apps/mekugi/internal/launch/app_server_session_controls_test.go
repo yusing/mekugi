@@ -4,6 +4,7 @@ import (
 	"bytes"
 	json "encoding/json/v2"
 	"fmt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"strings"
 	"testing"
 
@@ -102,6 +103,7 @@ func TestAppServerClearWaitsForCompactAcknowledgement(t *testing.T) {
 
 func TestAppServerClearStartsFreshThreadAndRetiresOldEvents(t *testing.T) {
 	u, w := newAppServerTestUI()
+	u.controlObservations = new(sessioncontrol.Observations)
 	u.startSession("main", "/tmp")
 	u.review.IncludeThread(u.attached.cwd, u.Thread, true)
 	file := diffmodel.RenderReviewFile("/project/source.go", "/project/source.go", "old\n", "new\n")
@@ -132,6 +134,9 @@ func TestAppServerClearStartsFreshThreadAndRetiresOldEvents(t *testing.T) {
 		t.Fatalf("clear request/state: %+v clearing=%v entries=%+v", req, u.Replacement.Pending(), u.attached.source.Entries)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/tmp"},"model":"chosen","reasoningEffort":"high","serviceTier":"priority"}}`, req.ID))
+	if u.controlObservations.ContextRevision("fresh") != 1 {
+		t.Fatal("accepted clear did not refresh context")
+	}
 	requests := appServerTurnRequests(t, w)
 	if len(requests) != 2 || requests[0].Method != "thread/unsubscribe" || requests[1].Method != "model/list" {
 		t.Fatalf("clear follow-up requests: %+v", requests)

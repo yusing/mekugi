@@ -47,6 +47,26 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 		return nil, err
 	}
 	request.Fields["input"] = projected
+	if !input.Prewarm && !input.ApprovalReview && input.MetadataValid && input.Metadata.RequestKind == "turn" && p.registry != nil && p.registry.Guidance != nil && p.registry.Guidance.Environment != nil {
+		workspace := ""
+		if t != nil {
+			workspace = t.directory
+		} else {
+			workspace = p.observationDirectory(input.Metadata.Directories, input.Thread)
+		}
+		admitted := binding.EnvironmentContext{Session: input.Session, Thread: input.Thread, Workspace: workspace, Revision: p.control.ContextRevision(input.Thread)}
+		if admitted.Session != "" && admitted.Thread != "" && !input.Metadata.ActivityIdentityInvalid && (input.Metadata.ThreadID == "" || input.Metadata.ThreadID == admitted.Thread) {
+			err := requestexecution.ProjectInstructions(request, func(text binding.InstructionInput) (binding.InstructionUpdate, error) {
+				return p.registry.Guidance.Environment(ctx, text, admitted)
+			})
+			if err != nil {
+				if t != nil {
+					t.Close()
+				}
+				return nil, err
+			}
+		}
+	}
 	if t == nil {
 		return nil, nil
 	}

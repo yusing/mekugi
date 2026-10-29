@@ -112,6 +112,37 @@ path; managed snapshots take precedence by name. Omission notices do not suppres
 Codex's available instructions. Unrelated messages and quoted
 examples remain unchanged; Codex still owns its selection and execution.
 
+## Environment snapshot
+
+Agent Guidance supplements Codex's native environment context with data-only platform and
+OS identity/version and kernel-release facts and an explicitly observed Git snapshot.
+Compact labeled text omits duplicate native workspace paths and empty collection diagnostics.
+Git repository membership is yes, no, or unavailable. Plain and SVN-only directories report no;
+missing Git, corrupt metadata and inspection failures remain unavailable with diagnostics.
+SVN facts remain owned by the existing project hook.
+Linux identifies its distribution from the host OS release metadata; macOS includes its product
+version. Unavailable OS identity remains explicit. Repository/worktree membership,
+branch and HEAD (including detached and unborn states), locally known symbolic default branch,
+bounded status and five recent abbreviated commit IDs/subjects are included. Account identity, email and
+remote URLs are excluded. Unavailable facts and truncation are explicit; acquisition neither
+fetches nor mutates a repository and optional failures do not block inference.
+The supplement is replaced in the owned base-instruction layer, preserving native
+conversation items and tool/result history boundaries.
+
+Snapshots are acquired against the admitted execution workspace before generating inference.
+Fresh, resumed, cleared, compacted and authoritatively changed workspaces refresh lazily;
+ordinary requests reuse the current snapshot and prewarm never acquires one. Each child's
+workspace has its own snapshot, replacing inherited copies. Native cwd, execution shell,
+date/timezone and permission context remain intact. Claude retains its native environment
+supply without an additional snapshot.
+
+Codex process construction establishes the invocation-local `MEKUGI_ENVIRONMENT_FACTS=1`
+capability only when this supplement owner is installed, discarding inherited values. Native
+hooks observe the app-server environment; tool-shell configuration clears this capability
+after caller overrides without changing unrelated shell policy. Each Mekugi child establishes
+its own capability. Standalone Codex launched from a tool shell keeps its original hook context.
+The capability conveys information, never execution authorization.
+
 ## Compaction context
 
 Compaction makes one ordinary turn on the selected provider using the current

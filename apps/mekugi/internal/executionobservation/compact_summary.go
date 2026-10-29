@@ -189,6 +189,7 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 		return nil, nil, err
 	}
 	var pending jsontext.Value
+	var contextReference string
 	readCalls := make(map[string]bool)
 	for _, item := range items {
 		kind, reference := responses.StringField(item, "type"), responses.StringField(item, "encrypted_content")
@@ -199,6 +200,7 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 		if err != nil {
 			return nil, nil, err
 		}
+		contextReference = record.Reference
 		call, calls, callErr := compactReaderCall(record, items, thread)
 		for _, id := range calls {
 			readCalls[id] = true
@@ -250,6 +252,9 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 		return nil, nil, errors.New("invalid compaction recovery workspace")
 	}
 	_, err = p.reconcileVisibleInput(ctx, request, workspace, workspace+"\x00"+thread)
+	if err == nil && metadata.RequestKind == responses.Turn {
+		p.control.ObserveCompactionContext(thread, contextReference)
+	}
 	return pending, readCalls, err
 }
 

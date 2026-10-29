@@ -3,6 +3,7 @@ package launch
 import (
 	json "encoding/json/v2"
 	"fmt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"os"
@@ -19,6 +20,7 @@ import (
 
 func TestUISnapshotNativeFork(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
+	u.controlObservations = new(sessioncontrol.Observations)
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local) }
 	u.model, u.reasoningEffort, u.serviceTier = "model", "high", "priority"
@@ -32,6 +34,9 @@ func TestUISnapshotNativeFork(t *testing.T) {
 	assertNativeUISnapshot(t, "native-fork-pending", rows)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","reasoningEffort":"high","serviceTier":"priority","thread":{"id":"branch","cwd":"/work","turns":[{"id":"done","status":"completed","items":[{"type":"agentMessage","id":"answer","text":"Inherited answer"}]}]}}}`, fork.ID))
 	methods := resumeTestSettle(t, u, w)
+	if u.controlObservations.ContextRevision("branch") != 1 {
+		t.Fatal("accepted fork did not refresh context")
+	}
 	if u.Thread != "branch" || u.Text != "next draft" || u.Replacement.Pending() || u.model != "model" || u.reasoningEffort != "high" || u.serviceTier != "priority" {
 		t.Fatalf("fork state: %s %q %+v", u.Thread, u.Text, u.Live)
 	}

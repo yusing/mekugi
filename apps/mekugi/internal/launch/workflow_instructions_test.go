@@ -47,8 +47,10 @@ func TestWorkflowInstructionsProviderDelivery(t *testing.T) {
 			if tc.name == "refresh" {
 				want += "trailing policy"
 			}
-			if actual := responses.StringField(got.Fields, "instructions"); actual != want {
-				t.Fatalf("base instructions = %q, want %q", actual, want)
+			environmentFacts(t, provider.forwarded[0])
+			actual, _, _ := strings.Cut(responses.StringField(got.Fields, "instructions"), "\n\n<mekugi_environment_facts>")
+			if actual != want {
+				t.Fatal("provider changed caller or workflow instruction bytes")
 			}
 			catalog := codexresponses.DecodeToolCatalog(got.Fields)
 			description := catalog.Additional[0].Tools.Tools[0].Description()
@@ -88,7 +90,9 @@ func TestWorkflowInstructionsExecutionFree(t *testing.T) {
 	if err := json.Unmarshal(provider.forwarded[0], &got); err != nil {
 		t.Fatal(err)
 	}
-	if string(got["instructions"]) != string(request.Fields["instructions"]) || bytes.Contains(provider.forwarded[0], []byte("mekugi-workflow")) {
+	environmentFacts(t, provider.forwarded[0])
+	base, _, _ := strings.Cut(responses.StringField(got, "instructions"), "\n\n<mekugi_environment_facts>")
+	if base != "Caller-owned policy." || bytes.Contains(provider.forwarded[0], []byte("mekugi-workflow")) {
 		t.Fatal("execution-free request gained workflow instructions")
 	}
 }

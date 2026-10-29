@@ -172,6 +172,7 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 		return err
 	}
 	environment = append(environment, "CODEX_THREAD_ID="+info.Thread)
+	environment = codexEnvironmentCapability(environment, false)
 	options := make(map[string]jsontext.Value)
 	if err := json.Unmarshal(policy.Options(), &options); err != nil {
 		return err

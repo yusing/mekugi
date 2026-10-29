@@ -1379,6 +1379,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				}
 			}
 			restoreContextUsage(attached.session.Agent("/root"), result.Thread)
+			observations.RefreshContext(result.Thread.ID)
 			restoreCompactionMetrics(&attached.session, result.Thread)
 			restoreUsage(usage, result.Thread)
 			observeCost(usage, control.Thread, attached.session.Agent("/root"))

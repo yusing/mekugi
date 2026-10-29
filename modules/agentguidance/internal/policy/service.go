@@ -5,9 +5,11 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/contracts/guidance"
+	"github.com/yusing/mekugi/modules/agentguidance/environment"
 )
 
 type Service struct {
+	Environment       environment.Store
 	ChildReplySummary bool
 	Sections          map[string]string
 	Conflicts         func(string) string

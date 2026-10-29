@@ -18,11 +18,57 @@ type generatingInput struct {
 // None of this state is restored, inherited or used to authorize execution.
 // Source: apps/mekugi/internal/router/{tool_input_emission,app_server_btw,mekugi_proxy}.go@d002a0dc.
 type Observations struct {
-	mu          sync.RWMutex
-	generations map[*Generation]generatingInput
-	sideThreads map[string]bool // Presence identifies answer-only forks; the value identifies /btw.
-	feedbackMu  sync.Mutex
-	feedback    map[[2]string][]string
+	mu                sync.RWMutex
+	generations       map[*Generation]generatingInput
+	sideThreads       map[string]bool // Presence identifies answer-only forks; the value identifies /btw.
+	feedbackMu        sync.Mutex
+	feedback          map[[2]string][]string
+	contextRevision   map[string]uint64
+	contextCompaction map[string]string
+}
+
+// ObserveCompactionContext consumes the latest retained, validated compaction
+// reference in native continuation history. It cannot race host event delivery.
+func (o *Observations) ObserveCompactionContext(thread, reference string) {
+	if o == nil || thread == "" || reference == "" {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.contextCompaction == nil {
+		o.contextCompaction = make(map[string]string)
+	}
+	if o.contextCompaction[thread] == reference {
+		return
+	}
+	o.contextCompaction[thread] = reference
+	if o.contextRevision == nil {
+		o.contextRevision = make(map[string]uint64)
+	}
+	o.contextRevision[thread]++
+}
+
+// RefreshContext records an authoritative fresh/resumed/replaced context or
+// completed compaction. Acquisition stays lazy until the next generating turn.
+func (o *Observations) RefreshContext(thread string) {
+	if o == nil || thread == "" {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.contextRevision == nil {
+		o.contextRevision = make(map[string]uint64)
+	}
+	o.contextRevision[thread]++
+}
+
+func (o *Observations) ContextRevision(thread string) uint64 {
+	if o == nil {
+		return 0
+	}
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.contextRevision[thread]
 }
 
 func (o *Observations) SetToolInput(generation *Generation, workspace, thread, item string, active bool) {

@@ -38,7 +38,8 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 		upstream.SetReadLimit(codexresponses.MaxResponseBytes)
 		defer upstream.CloseNow()
 		var warmedTools json.RawMessage
-		var warmedInstructions json.RawMessage
+		var warmedInstructions string
+		var observed string
 		for index, id := range ids {
 			request, err := providerSocketRead(ctx, upstream)
 			if err != nil {
@@ -48,15 +49,23 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 			if bytes.Contains(request["input"], []byte("omitted-rtk-policy")) || bytes.Contains(request["input"], []byte("mekugi:omit")) || bytes.Contains(request["input"], []byte(conflictingProgress)) || bytes.Contains(request["input"], []byte("recommended_plugins")) {
 				t.Error("provider received omitted or conflicting instructions")
 			}
-			if id != "warm" && !bytes.Equal(request["instructions"], warmedInstructions) {
-				t.Error("continuation changed or lost base workflow")
+			if id != "warm" {
+				facts := environmentFacts(t, responses.MustMarshalJSON(request))
+				base, _, _ := strings.Cut(responses.StringField(request, "instructions"), "\n\n<mekugi_environment_facts>")
+				if base != warmedInstructions {
+					t.Error("continuation changed or lost base workflow")
+				}
+				if observed != "" && observed != facts {
+					t.Error("ordinary continuation or model switch rescanned facts")
+				}
+				observed = facts
 			}
 			var input []json.RawMessage
 			_ = json.Unmarshal(request["input"], &input)
 			switch id {
 			case "warm":
 				warmedTools = bytes.Clone(request["tools"])
-				warmedInstructions = bytes.Clone(request["instructions"])
+				warmedInstructions = responses.StringField(request, "instructions")
 				if responses.StringField(request, "instructions") != proxy.registry.FrontendGuidance.Workflow {
 					t.Error("prewarm did not deliver workflow in base instructions")
 				}
@@ -117,9 +126,8 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 	}
 }
 
-// The provider can reuse a prewarm only when the first turn repeats its
-// projected instructions, tools, and leading items. Turn-only preparation after
-// the prewarm return must not rewrite that prefix.
+// Provider history reuses only confirmed leading conversation items. Lazily
+// acquired environment data stays in the independently supplied base layer.
 
 func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.T) {
 	original := json.RawMessage(`{"role":"developer","content":"rules"}`)

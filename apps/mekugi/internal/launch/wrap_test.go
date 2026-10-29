@@ -315,6 +315,10 @@ func TestWrappedCodexProcess(t *testing.T) {
 		fmt.Fprintln(os.Stdout, testNativeModelCatalog)
 		os.Exit(0)
 	}
+	if os.Getenv("MEKUGI_ENVIRONMENT_FACTS") != "1" || !slices.Contains(os.Args, `shell_environment_policy.set.MEKUGI_ENVIRONMENT_FACTS=""`) {
+		fmt.Fprintln(os.Stderr, "invocation environment facts capability was not established and isolated")
+		os.Exit(89)
+	}
 	if os.Getenv("MEKUGI_TEST_PINNED_CATALOG") == "1" {
 		var catalogPath string
 		for _, arg := range os.Args {
@@ -417,6 +421,7 @@ func TestStandaloneRunWithoutCodexLogin(t *testing.T) {
 		t.Setenv(key, "")
 	}
 	t.Setenv("XAI_API_KEY", "test")
+	t.Setenv("MEKUGI_ENVIRONMENT_FACTS", "stale-inherited")
 	t.Setenv("MEKUGI_TEST_ROUTER", "1")
 	t.Setenv("MEKUGI_TEST_CODEX", "1")
 	t.Setenv("MEKUGI_TEST_EXIT", "0")

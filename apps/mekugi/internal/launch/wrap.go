@@ -461,6 +461,9 @@ func codexArgs(baseURL string, args []string, codeMode, skillsManagerAvailable, 
 	} else {
 		overrides = append(overrides, "-c", `model_provider="mekugi_wrap"`, "-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=false,supports_websockets=false,capabilities={remote_compaction="v2"}}`, baseURL))
 	}
+	// Native hooks inherit the app-server environment independently. Tool shells
+	// and standalone Codex launched from them receive no inherited capability.
+	overrides = append(overrides, "-c", `shell_environment_policy.set.MEKUGI_ENVIRONMENT_FACTS=""`)
 	overrides = append(overrides, "-c", `include_collaboration_mode_instructions=false`)
 	if skillsManagerAvailable {
 		overrides = append(overrides, "-c", "skills.include_instructions=false")

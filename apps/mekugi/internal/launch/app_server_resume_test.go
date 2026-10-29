@@ -3,6 +3,7 @@ package launch
 import (
 	"bytes"
 	"encoding/json/jsontext"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -17,6 +18,7 @@ import (
 
 func TestAppServerResumeStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
+	u.controlObservations = new(sessioncontrol.Observations)
 	resumeTestMembers(t, u, "saved")
 	u.Thread, u.Startup.Thread = "", "saved"
 	u.Startup.Config = map[string]any{"model": "override", "model_provider": "routed"}
@@ -51,6 +53,9 @@ func TestAppServerResumeStartup(t *testing.T) {
 	}
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"saved","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, `{"id":2,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"saved","cwd":"/workspace","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`)
+	if u.controlObservations.ContextRevision("saved") != 1 {
+		t.Fatal("accepted resume did not refresh context")
+	}
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "saved", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 120000}, "modelContextWindow": 400000}})
 	appServerTestMessage(t, u, `{"id":3,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":4,"result":{"data":[],"nextCursor":null}}`)

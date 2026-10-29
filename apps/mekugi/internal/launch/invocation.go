@@ -457,7 +457,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		cmd.Args = append(cmd.Args, "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=true")
 	}
 	cmd.Dir = workspace
-	cmd.Env = append(slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
+	cmd.Env = append(slices.DeleteFunc(codexEnvironmentCapability(environment, guidance != nil && guidance.Environment != nil), func(entry string) bool {
 		return strings.HasPrefix(entry, shellhook.Environment+"=")
 	}), "MEKUGI_BASE_URL="+baseURL)
 	if nativeTrace != nil {
