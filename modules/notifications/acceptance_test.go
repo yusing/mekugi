@@ -74,6 +74,44 @@ func TestRequestOutcomeAcceptance(t *testing.T) {
 	}
 }
 
+func TestCoalescedRequestOutcomeGate(t *testing.T) {
+	for _, priorFailed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("prior_failed=%t", priorFailed), func(t *testing.T) {
+			service := newService(t)
+			input := notice.Input{ID: "request", Session: "session", Thread: "root", Turn: "first", Category: "provider", Reference: "first", Text: "failure", Request: true}
+			if priorFailed {
+				service.ObserveTurn("root", "first", "failed")
+			} else {
+				service.ObserveTurn("root", "second", "failed")
+			}
+			service.Submit(input)
+			var previous *notice.Delivery
+			if priorFailed {
+				previous = requireClaim(t, service, nil)
+			}
+			input.Turn, input.Reference = "second", "second"
+			service.Submit(input)
+			if priorFailed {
+				if service.Claim("root", nil) != nil {
+					t.Fatal("coalescing released an in-flight claim")
+				}
+				requireMessages(t, previous.Errors, notice.Message{ID: "request", Text: "failure"})
+				previous.Errors.Finish(false)
+				if service.Claim("root", nil) != nil {
+					t.Fatal("coalesced request escaped before its current turn outcome")
+				}
+				service.ObserveTurn("root", "second", "failed")
+			}
+			delivery := requireClaim(t, service, nil)
+			requireMessages(t, delivery.Errors, notice.Message{ID: "request", Text: "failure (occurred 2 times)"})
+			delivery.Errors.Finish(true)
+			if len(service.Pending()) != 0 || service.Claim("root", nil) != nil {
+				t.Fatal("acknowledged coalesced notice remained pending")
+			}
+		})
+	}
+}
+
 func TestIndependentSurfaceReceiptsAndCapturedRepeats(t *testing.T) {
 	service := newService(t)
 	err := notice.Input{ID: "error", Thread: "root", Category: "storage", Text: "storage unavailable"}

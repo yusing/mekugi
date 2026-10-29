@@ -63,7 +63,7 @@ func (s *Service) Submit(input Input) {
 		if e.Session == input.Session && e.Category == input.Category && (input.Request || e.Thread == input.Thread) {
 			e.count++
 			if input.Request {
-				e.Thread, e.Turn, e.Reference = input.Thread, input.Turn, input.Reference
+				e.Thread, e.Turn, e.Reference, e.awaitTurn = input.Thread, input.Turn, input.Reference, awaitTurn
 			}
 			return
 		}
