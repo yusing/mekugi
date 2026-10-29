@@ -147,6 +147,15 @@ test("a wait reads as a collaboration line naming its targets", () => {
   assert.doesNotMatch(html, /\/root\//);
 });
 
+test("model listing and inspection render as agent progress rows without raw MCP", () => {
+  for (const body of ["Listed 2 models", "Listed 1 model", "Inspected /root/worker"]) {
+    const html = view([{ kind: "progress", from: "/root", body }], "progress");
+    assert.match(html, /data-ai-element="agent-progress"/);
+    assert.ok(html.includes(body));
+    assert.doesNotMatch(html, /content|isError/);
+  }
+});
+
 test("complete one-line output stays visible without a disclosure", () => {
   const value = { kind: "op", verb: "Run", code: "printf ok", tail: ["ok"] };
   const html = render(ValueRow, { props: { value } }).body;

@@ -40,6 +40,12 @@ func TestProjectCoordinationRoutes(t *testing.T) {
 			Coordination{Action: "Wait", Kind: "progress", State: "completed", Confirmed: true, Targets: []Target{{Name: "/root/a", Status: "delivery failed"}, {Name: "/root/b", Status: "completed"}}}},
 		{"list_agents", `{}`, `{"agents":[]}`,
 			Coordination{Action: "List agents", Kind: "progress", State: "completed", Confirmed: true}},
+		{"list_models", `{}`, `{"models":[{"model":"a"}]}`,
+			Coordination{Action: "List models", Kind: "progress", State: "completed", Confirmed: true, Count: 1}},
+		{"list_models", `{}`, `{"models":[]}`,
+			Coordination{Action: "List models", Kind: "progress", State: "completed", Confirmed: true}},
+		{"inspect", `{"target":"worker"}`, `{"thread_id":"thread-1","task_name":"/root/worker"}`,
+			Coordination{Action: "Inspect", Kind: "progress", Target: "/root/worker", Thread: "thread-1", State: "completed", Confirmed: true}},
 	} {
 		t.Run(tt.tool+"/"+tt.result, func(t *testing.T) {
 			got, ok := ProjectCoordination(coordinationItem(tt.tool, tt.args, tt.result))
@@ -87,6 +93,11 @@ func TestProjectCoordinationAcknowledgementGuards(t *testing.T) {
 		{name: "host error", tool: "send_message", result: `{"id":"op","state":"confirmed"}`, hostError: `"host rejected"`, failure: "host rejected"},
 		{name: "wait unknown disposition", tool: "wait_agent", result: `{"id":"wait-1","state":"confirmed"}`},
 		{name: "list missing agents", tool: "list_agents", result: `{}`},
+		{name: "models failed", tool: "list_models", envelope: `{"isError":true,"content":[{"type":"text","text":"catalog unavailable"}]}`, failure: "catalog unavailable"},
+		{name: "inspect host error", tool: "inspect", result: `{}`, hostError: `"no such agent"`, failure: "no such agent"},
+		{name: "models missing", tool: "list_models", result: `{}`},
+		{name: "models null", tool: "list_models", result: `{"models":null}`},
+		{name: "inspect missing identity", tool: "inspect", result: `{"thread_id":"thread-1"}`},
 		{name: "list null agents", tool: "list_agents", result: `{"agents":null}`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

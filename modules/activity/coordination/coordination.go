@@ -41,6 +41,10 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		c.Action, c.Kind = "Interrupt", "progress"
 	case "list_agents":
 		c.Action, c.Kind = "List agents", "progress"
+	case "list_models":
+		c.Action, c.Kind = "List models", "progress"
+	case "inspect":
+		c.Action, c.Kind = "Inspect", "progress"
 	default:
 		return Coordination{}, false
 	}
@@ -118,6 +122,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		Thread      string            `json:"thread_id"`
 		Task        string            `json:"task_name"`
 		Agents      *[]jsontext.Value `json:"agents"`
+		Models      *[]jsontext.Value `json:"models"`
 		Event       *outcome          `json:"event"`
 		Events      []outcome         `json:"events"`
 	}
@@ -138,6 +143,17 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		c.Confirmed = result.Agents != nil
 		if c.Confirmed {
 			c.Count = len(*result.Agents)
+			c.State = "completed"
+		}
+	case "list_models":
+		c.Confirmed = result.Models != nil
+		if c.Confirmed {
+			c.Count = len(*result.Models)
+			c.State = "completed"
+		}
+	case "inspect":
+		c.Confirmed = result.Thread != "" && result.Task != ""
+		if c.Confirmed {
 			c.State = "completed"
 		}
 	case "wait_agent":

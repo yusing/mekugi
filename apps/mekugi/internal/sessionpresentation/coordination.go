@@ -89,13 +89,25 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 			entry.Text = "Interrupt requested for " + target
 			entry.Native.InterruptTarget, entry.Native.InterruptID = target, c.ID
 		case "List agents":
-			entry.Text = fmt.Sprintf("Listed %d agents", c.Count)
+			entry.Text = listed(c.Count, "agent")
+		case "List models":
+			entry.Text = listed(c.Count, "model")
+		case "Inspect":
+			inspected := &activitypresentation.Value{Kind: "progress", From: entry.Agent, Body: "Inspected", WaitTargets: []activitypresentation.WaitTarget{{Name: target}}}
+			entry.Text, entry.Native.Wait = inspected.ProgressText(), inspected
 		}
 	}
 	if len(entry.Native.Wait.WaitTargets) == 0 {
 		entry.Native.Wait.Body = entry.Text
 	}
 	return entry
+}
+
+func listed(count int, noun string) string {
+	if count != 1 {
+		noun += "s"
+	}
+	return fmt.Sprintf("Listed %d %s", count, noun)
 }
 
 func settledInterrupt(target, status string) string {

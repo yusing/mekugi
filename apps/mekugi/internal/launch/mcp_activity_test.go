@@ -433,3 +433,105 @@ func coordinationTestCall(t *testing.T, id, tool, thread, task, message string) 
 	}
 	return binding.ThreadItem{ID: id, Type: "mcpToolCall", Server: "threadcontrol", Tool: tool, Status: "completed", Arguments: args, Result: result}
 }
+
+func catalogInspectItems(t *testing.T) []binding.ThreadItem {
+	t.Helper()
+	var items []binding.ThreadItem
+	for _, operation := range []struct{ id, tool, args, result, status string }{
+		{"models", "list_models", `{}`, `{"models":[{"model":"a"},{"model":"b"}]}`, "completed"},
+		{"one-model", "list_models", `{}`, `{"models":[{"model":"a"}]}`, "completed"},
+		{"one-agent", "list_agents", `{}`, `{"agents":[{"agent_name":"/root"}]}`, "completed"},
+		{"no-models", "list_models", `{}`, `{"models":[]}`, "completed"},
+		{"bad-models", "list_models", `{}`, `{}`, "completed"},
+		{"inspect", "inspect", `{"target":"worker"}`, `{"thread_id":"worker-thread","task_name":"/root/worker"}`, "completed"},
+		{"bad-inspect", "inspect", `{"target":"worker"}`, `{}`, "completed"},
+		{"pending-inspect", "inspect", `{"target":"worker"}`, ``, "inProgress"},
+	} {
+		item := binding.ThreadItem{ID: operation.id, Type: "mcpToolCall", Server: "threadcontrol", Tool: operation.tool, Status: operation.status, Arguments: jsontext.Value(operation.args)}
+		if operation.result != "" {
+			result, err := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": operation.result}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			item.Result = result
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func TestUISnapshotThreadControlCatalogAndInspect(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local)
+	u.clock = func() time.Time { return now }
+	view := u.testActivity(u.shell.Transcript)
+	view.Clock, view.Painter.Theme, view.Conversation = u.clock, diffrender.DarkTheme, true
+	view.testAudience()
+	for _, item := range catalogInspectItems(t) {
+		phase := "item/completed"
+		if item.Status == "inProgress" {
+			phase = "item/started"
+		}
+		appServerTestNotify(t, u, phase, map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	}
+	now = now.Add(time.Second)
+	settleActivity(now, view)
+	for _, width := range []int{38, 80} {
+		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/threadcontrol-catalog-inspect-%d.txt", width), append(view.testRenderConversation(width).Lines, "plain after rows"), width)
+	}
+}
+
+func TestThreadControlCatalogAndInspectLiveRestoredReplay(t *testing.T) {
+	items := catalogInspectItems(t)
+	want := []string{"Listed 2 models", "Listed 1 model", "Listed 1 agent", "Listed 0 models", "List models · unconfirmed", "Inspected worker", "Inspect worker · unconfirmed", "Inspect worker · pending"}
+	check := func(source *sessionpresentation.ActivitySource) {
+		t.Helper()
+		if len(source.Entries) != len(items) {
+			t.Fatalf("missing operations: %+v", source.Entries)
+		}
+		for i, text := range want {
+			entry := source.Entries[i]
+			body, targets := text, 0
+			if items[i].ID == "inspect" {
+				body, targets = "Inspected", 1
+			}
+			if len(entry.Values) != 1 || entry.Values[0].Kind != "progress" || entry.Values[0].Body != body || entry.Values[0].From != "/root" || entry.Values[0].DetailCode == "" ||
+				len(entry.Values[0].WaitTargets) != targets || entry.Values[0].WaitReason != "" || entry.Values[0].WaitTimeout != "" || targets == 1 && entry.Values[0].WaitTargets[0].Name != "/root/worker" {
+				t.Fatalf("%s projected %+v; want progress %q with %d agent targets and no wait lifecycle", items[i].ID, entry.Values, text, targets)
+			}
+		}
+	}
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	for _, item := range items {
+		phase := "item/completed"
+		if item.Status == "inProgress" {
+			phase = "item/started"
+		}
+		appServerTestNotify(t, u, phase, map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	}
+	check(u.attached.source)
+	restored := newAppServerSessionTestUI(t, t.TempDir())
+	restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: items}})
+	check(restored.attached.source)
+	for i, item := range items {
+		if item.Status != "completed" {
+			continue
+		}
+		path := replayTestWrite(t, t.TempDir(), "catalog.jsonl", replayTestMeta("main"), replayTestItem("main", "turn", replayTestEpoch, replayTestEpoch+1000, map[string]any{
+			"type": "McpToolCall", "id": item.ID, "server": item.Server, "tool": item.Tool, "status": item.Status, "arguments": item.Arguments, "result": item.Result,
+		}))
+		source, err := replayReadTest(t, nil, t.Context(), path, "", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+		t.Cleanup(p.close)
+		if err := p.advance(p.Until); err != nil {
+			t.Fatal(err)
+		}
+		painted := replayPlaybackTestPaint(t, p, 80, 30)
+		if strings.Contains(painted, "MCP") || strings.Contains(painted, `"content"`) || !strings.Contains(painted, want[i]) {
+			t.Fatalf("%s replay rendered %q instead of %q:\n%s", item.ID, painted, want[i], painted)
+		}
+	}
+}
