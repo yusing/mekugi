@@ -1,6 +1,7 @@
 package paging
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"reflect"
@@ -12,6 +13,14 @@ import (
 
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
+
+func Page(ctx context.Context, request ReadRequest, budget int) (ReadPage, error) {
+	source, err := Admit(request.Stdout, request.Stderr, request.StdoutKind, request.StderrKind)
+	if err != nil {
+		return ReadPage{}, err
+	}
+	return source.Page(ctx, request, budget)
+}
 
 func nativeReadFixture(t *testing.T, request ReadRequest, budget int) ReadPage {
 	t.Helper()

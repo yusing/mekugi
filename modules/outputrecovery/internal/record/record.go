@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/modules/outputrecovery/internal/paging"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -45,6 +46,10 @@ func Binding(value Record) string {
 }
 func CursorDigest(value Record) string { value.ID, value.CursorDigest = "", ""; return Binding(value) }
 func Validate(record Record) error {
+	return validate(record, true)
+}
+
+func validate(record Record, validateJSON bool) error {
 	if size := len(record.Stdout) + len(record.Stderr); size > MaxOutputBytes {
 		return &history.CapacityError{Resource: "saved read output", Required: int64(size), Limit: MaxOutputBytes, Action: "Narrow the command output or split the operation before retrying."}
 	}
@@ -77,9 +82,8 @@ func Validate(record Record) error {
 		if kind == "rows" && text != "" && !strings.HasSuffix(text, "\n") {
 			return errors.New("verified rows must have complete line endings")
 		}
-		if kind == "json" {
-			var entries []jsontext.Value
-			if json.Unmarshal([]byte(text), &entries, LegacyJSON) != nil || entries == nil {
+		if kind == "json" && validateJSON {
+			if _, err := paging.CountArray(text, true); err != nil {
 				return errors.New("structured read output must be a JSON array")
 			}
 		}
@@ -89,6 +93,31 @@ func Validate(record Record) error {
 
 // Decode preserves the strict recovery and permissive historical-adoption paths.
 func Decode(data []byte, id string, strict bool, canonicalize func([]byte, bool) ([]byte, error)) (Record, error) {
+	value, err := decode(data, id, strict, canonicalize)
+	if err != nil {
+		return value, err
+	}
+	return value, Validate(value)
+}
+
+type Admitted struct {
+	Record
+	Streams *paging.Source
+}
+
+func DecodeAdmitted(data []byte, id string, canonicalize func([]byte, bool) ([]byte, error)) (Admitted, error) {
+	value, err := decode(data, id, true, canonicalize)
+	if err != nil {
+		return Admitted{}, err
+	}
+	if err := validate(value, false); err != nil {
+		return Admitted{}, err
+	}
+	streams, err := paging.Admit(value.Stdout, value.Stderr, value.StdoutKind, value.StderrKind)
+	return Admitted{Record: value, Streams: streams}, err
+}
+
+func decode(data []byte, id string, strict bool, canonicalize func([]byte, bool) ([]byte, error)) (Record, error) {
 	var value Record
 	if strict {
 		required := struct {
@@ -123,5 +152,5 @@ func Decode(data []byte, id string, strict bool, canonicalize func([]byte, bool)
 	if value.ID != id {
 		return value, errors.New("read recovery identity mismatch")
 	}
-	return value, Validate(value)
+	return value, nil
 }

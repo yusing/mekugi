@@ -2,8 +2,6 @@ package paging
 
 import (
 	"context"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -30,32 +28,19 @@ type ReadPage struct {
 }
 
 // Source: plugins/read_output.ts:44:134@[543de4f3] selectReadOutput
-func Page(ctx context.Context, req ReadRequest, budget int) (ReadPage, error) {
+func (source *Source) Page(ctx context.Context, req ReadRequest, budget int) (ReadPage, error) {
 	if err := ctx.Err(); err != nil {
 		return ReadPage{}, err
 	}
 	b := new(outputbudget.Budget)
-	values := [2]string{req.Stdout, req.Stderr}
-	kinds := [2]string{req.StdoutKind, req.StderrKind}
+	values := source.values
+	kinds := source.kinds
 	positions := req.Position
 	pages := [2]string{}
-	var entries [2][]jsontext.Value
-	for i := range 2 {
-		if kinds[i] == "json" {
-			if err := json.Unmarshal([]byte(values[i]), &entries[i], jsontext.AllowInvalidUTF8(true)); err != nil {
-				return ReadPage{}, err
-			}
-			if strings.TrimSpace(values[i]) == "null" {
-				return ReadPage{}, errors.New("structured read output must be a JSON array")
-			}
-		}
-	}
+	var entries [2][]string
 	included := func(i int) bool { return req.Stream == "" || req.Stream == [2]string{"stdout", "stderr"}[i] }
 	size := func(i int) int {
-		if kinds[i] == "json" {
-			return len(entries[i])
-		}
-		return len(values[i])
+		return source.sizes[i]
 	}
 	for i := range 2 {
 		if positions[i] < 0 || positions[i] > size(i) {
@@ -64,7 +49,7 @@ func Page(ctx context.Context, req ReadRequest, budget int) (ReadPage, error) {
 	}
 	sourceStart := req.SourceRow
 	if sourceStart > 0 {
-		sourceStart += uint64(strings.Count(req.Stdout[:req.Position[0]], "\n"))
+		sourceStart += uint64(strings.Count(values[0][:req.Position[0]], "\n"))
 	}
 	frame := func() string {
 		prefix := ""
@@ -97,7 +82,7 @@ func Page(ctx context.Context, req ReadRequest, budget int) (ReadPage, error) {
 		return ReadPage{Position: req.Position, NeededTokens: n}, e
 	}
 	for i := range 2 {
-		if included(i) && kinds[i] == "json" && len(entries[i]) == 0 {
+		if included(i) && kinds[i] == "json" && size(i) == 0 {
 			pages[i] = "[]"
 		}
 	}
@@ -109,14 +94,14 @@ func Page(ctx context.Context, req ReadRequest, budget int) (ReadPage, error) {
 		return needed()
 	}
 	advanced := false
-	arrayPage := func(i, offset, count int) string {
+	arrayPage := func(i, count int) string {
 		var v strings.Builder
 		v.WriteByte('[')
 		for j := range count {
 			if j > 0 {
 				v.WriteByte(',')
 			}
-			v.WriteString(strings.TrimSpace(string(entries[i][offset+j])))
+			v.WriteString(entries[i][j])
 		}
 		v.WriteByte(']')
 		return v.String()
@@ -127,14 +112,11 @@ func Page(ctx context.Context, req ReadRequest, budget int) (ReadPage, error) {
 		}
 		offset := positions[i]
 		if kinds[i] == "json" {
-			low, high, bytes := 0, 0, 2
-			for offset+high < len(entries[i]) && bytes <= budget*128 {
-				bytes += len(entries[i][offset+high]) + 1
-				high++
-			}
+			entries[i] = source.entries(i, offset, budget)
+			low, high := 0, len(entries[i])
 			for low < high {
 				mid := (low + high + 1) / 2
-				pages[i] = arrayPage(i, offset, mid)
+				pages[i] = arrayPage(i, mid)
 				fit, e := b.Fits(frame(), budget)
 				if e != nil {
 					return ReadPage{}, e
@@ -147,7 +129,7 @@ func Page(ctx context.Context, req ReadRequest, budget int) (ReadPage, error) {
 			}
 			pages[i] = ""
 			if low > 0 {
-				pages[i] = arrayPage(i, offset, low)
+				pages[i] = arrayPage(i, low)
 			}
 			positions[i] += low
 		} else {
@@ -190,7 +172,7 @@ func Page(ctx context.Context, req ReadRequest, budget int) (ReadPage, error) {
 		if positions[i] == offset {
 			if !advanced {
 				if kinds[i] == "json" {
-					pages[i] = arrayPage(i, offset, 1)
+					pages[i] = arrayPage(i, 1)
 				} else {
 					remaining := values[i][offset:]
 					_, end := utf8.DecodeRuneInString(remaining)

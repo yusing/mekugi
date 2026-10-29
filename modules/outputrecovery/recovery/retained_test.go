@@ -49,7 +49,7 @@ func TestRecoverySurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened := openTestRecovery(t, store.scope.Directory)
-	record, err := reopened.read(t.Context(), id)
+	record, err := reopened.read(t.Context(), id, nil)
 	if err != nil || record.Stdout != out || record.Stderr != diagnostic || record.ExitCode != 7 {
 		t.Fatalf("restart record: %#v, %v", record, err)
 	}
@@ -71,14 +71,14 @@ func TestShellOutputReadRejectsInvalidState(t *testing.T) {
 			t.Errorf("accepted %q", flags)
 		}
 	}
-	if _, err := store.read(t.Context(), "r_"+strings.Repeat("A", 22)); err == nil {
+	if _, err := store.read(t.Context(), "r_"+strings.Repeat("A", 22), nil); err == nil {
 		t.Fatal("missing record accepted")
 	}
 	name := filepath.Join(store.scope.Directory, outputName("", id))
 	if err := os.WriteFile(name, []byte(`{"version":2,"id":"`+id+`"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.read(t.Context(), id); err == nil {
+	if _, err := store.read(t.Context(), id, nil); err == nil {
 		t.Fatal("corrupt record accepted")
 	}
 	if _, err := store.putShellOutput(t.Context(), strings.Repeat("x", record.MaxOutputBytes+1), "", 0); err == nil {
@@ -88,7 +88,7 @@ func TestShellOutputReadRejectsInvalidState(t *testing.T) {
 		t.Fatal("invalid UTF-8 accepted")
 	}
 	source := record.Record{Version: 1, ID: id}
-	if _, err := store.putCursor(t.Context(), source, record.Binding(source), [2]int{-1, 0}, ""); err == nil {
+	if _, err := store.putCursor(t.Context(), source, record.Binding(source), [2]int{-1, 0}, "", nil); err == nil {
 		t.Fatal("negative cursor position accepted")
 	}
 }
@@ -132,7 +132,7 @@ func TestShellOutputStoreQuotaAndPermissions(t *testing.T) {
 	if _, err := store.putShellOutput(t.Context(), "next", "", 0); err == nil {
 		t.Fatal("quota overflow accepted")
 	}
-	if record, err := store.read(t.Context(), id); err != nil || record.Stdout != "omitted" {
+	if record, err := store.read(t.Context(), id, nil); err != nil || record.Stdout != "omitted" {
 		t.Fatalf("quota evicted prior record: %#v, %v", record, err)
 	}
 	for _, budget := range []int{1, 64, 15500} {
@@ -162,7 +162,7 @@ func TestShellOutputReadRejectsMissingAndNullFields(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(store.scope.Directory, outputName("", id)), []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.read(t.Context(), id); err == nil || !strings.Contains(err.Error(), "missing required fields") {
+		if _, err := store.read(t.Context(), id, nil); err == nil || !strings.Contains(err.Error(), "missing required fields") {
 			t.Fatalf("corrupt evidence accepted: %q, %v", fields, err)
 		}
 	}
@@ -175,11 +175,11 @@ func TestReadCursorRejectsAlteredPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := store.read(t.Context(), id)
+	source, err := store.read(t.Context(), id, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref, err := store.putCursor(t.Context(), source, record.Binding(source), [2]int{6, 0}, "stdout")
+	ref, err := store.putCursor(t.Context(), source.Record, record.Binding(source.Record), [2]int{6, 0}, "stdout", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestReadCursorRejectsAlteredPosition(t *testing.T) {
 		if err := os.WriteFile(name, []byte(altered), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.read(t.Context(), ref); err == nil {
+		if _, err := store.read(t.Context(), ref, nil); err == nil {
 			t.Fatalf("altered cursor accepted: %s", position)
 		}
 	}
@@ -216,5 +216,58 @@ func TestInlineBudgets(t *testing.T) {
 		if _, err := parseOutputRead(append(args, "amber")); err == nil || err.Error() != commandargs.MaxTokensArgumentError {
 			t.Fatalf("%v: %v", args, err)
 		}
+	}
+}
+
+func TestReadAdmissionIsOperationLocal(t *testing.T) {
+	session := openTestRecovery(t, t.TempDir())
+	id, err := session.Publish(t.Context(), command.OmittedOutput{
+		Stdout: "[" + strings.Repeat(`{"x":1},`, 1<<17) + "0]", StdoutKind: "json",
+		Stderr: "[1]", StderrKind: "json",
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := command.Request{Scope: session.scope, Args: []string{id, "--stdout", "--max-tokens", "128"}}
+	read := func() {
+		output, err := session.service.Execute(t.Context(), request)
+		if err != nil || output.Stdout == "" || !strings.Contains(output.Stderr, "next_call") {
+			t.Fatalf("read: %+v, %v", output, err)
+		}
+	}
+	read() // Warm tokenizer and publish the reusable cursor.
+	// Allocations must not grow with the number of complete JSON entries. The
+	// fixture has 131,073 entries; decoding copies of every entry costs >390,000.
+	if allocations := testing.AllocsPerRun(1, read); allocations > 2000 {
+		t.Fatalf("public bounded read allocated per entry: %.0f allocations", allocations)
+	}
+	admitted := make(map[string]record.Admitted)
+	source, err := session.read(t.Context(), id, admitted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := session.putCursor(t.Context(), source.Record, record.Binding(source.Record), [2]int{1, 0}, "stdout", admitted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.read(t.Context(), ref, admitted); err != nil {
+		t.Fatal(err)
+	}
+	if admitted[id].Streams != source.Streams || len(admitted) != 2 {
+		t.Fatal("cursor retention replaced admitted source")
+	}
+	// A later operation must revalidate the complete source, even when the
+	// malformed JSON stream is unselected and the previous operation admitted it.
+	source.Stderr = `[1,`
+	data, err := record.Encode(source.Record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(session.scope.Directory, outputName("", id)), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := session.service.Execute(t.Context(), request)
+	if err != nil || output.ExitCode != 1 || output.Stdout != "" || output.Stderr == "" || strings.Contains(output.Stderr, "next_call") {
+		t.Fatalf("unselected corrupt source accepted: %+v, %v", output, err)
 	}
 }

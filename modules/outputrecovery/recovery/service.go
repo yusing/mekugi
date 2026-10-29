@@ -131,6 +131,14 @@ func (s *Session) decode(data []byte, id string, strict bool) (record.Record, er
 	return record.Decode(data, id, strict, canonicalize)
 }
 
+func (s *Session) decodeAdmitted(data []byte, id string) (record.Admitted, error) {
+	var canonicalize func([]byte, bool) ([]byte, error)
+	if s.service.changes != nil {
+		canonicalize = s.service.changes.Canonicalize
+	}
+	return record.DecodeAdmitted(data, id, canonicalize)
+}
+
 func (s *Session) write(tx *history.Transaction, name, pattern string, data []byte) error {
 	if err := tx.Retain(s.scope.Thread, s.limits, name); err != nil {
 		return err
@@ -142,6 +150,10 @@ func (s *Session) write(tx *history.Transaction, name, pattern string, data []by
 }
 
 func (s *Session) put(ctx context.Context, value record.Record) (string, error) {
+	return s.putAdmitted(ctx, value, nil)
+}
+
+func (s *Session) putAdmitted(ctx context.Context, value record.Record, admitted map[string]record.Admitted) (string, error) {
 	if err := record.Validate(value); err != nil {
 		return "", err
 	}
@@ -161,7 +173,7 @@ func (s *Session) put(ctx context.Context, value record.Record) (string, error) 
 			if !bytes.Equal(previous, data) {
 				return errors.New("read reference conflicts with retained record")
 			}
-			return s.retain(tx, value)
+			return s.retain(tx, value, admitted)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
@@ -173,8 +185,11 @@ func (s *Session) put(ctx context.Context, value record.Record) (string, error) 
 	return value.ID, nil
 }
 
-func (s *Session) read(ctx context.Context, id string) (record.Record, error) {
-	var value record.Record
+func (s *Session) read(ctx context.Context, id string, admitted map[string]record.Admitted) (record.Admitted, error) {
+	var value record.Admitted
+	if admitted == nil {
+		admitted = make(map[string]record.Admitted)
+	}
 	if !record.ValidID(id) {
 		return value, errors.New("invalid read reference")
 	}
@@ -183,6 +198,10 @@ func (s *Session) read(ctx context.Context, id string) (record.Record, error) {
 		if err != nil {
 			return err
 		}
+		if cached, ok := admitted[id]; ok {
+			value = cached
+			return s.retain(tx, value.Record, admitted)
+		}
 		data, err := history.ReadRecord(filepath.Join(s.scope.Directory, name))
 		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("read reference %s is unavailable; session data may have been cleaned after 14 days of inactivity or storage pressure", id)
@@ -190,11 +209,12 @@ func (s *Session) read(ctx context.Context, id string) (record.Record, error) {
 		if err != nil {
 			return err
 		}
-		value, err = s.decode(data, id, true)
+		value, err = s.decodeAdmitted(data, id)
 		if err != nil {
 			return err
 		}
-		return s.retain(tx, value)
+		admitted[id] = value
+		return s.retain(tx, value.Record, admitted)
 	})
 	return value, err
 }
@@ -220,7 +240,7 @@ func (s *Session) Snapshot(id string) (command.Output, error) {
 	return command.Output{Stdout: value.Stdout, Stderr: value.Stderr, ExitCode: value.ExitCode}, nil
 }
 
-func (s *Session) putCursor(ctx context.Context, source record.Record, binding string, position [2]int, stream string) (string, error) {
+func (s *Session) putCursor(ctx context.Context, source record.Record, binding string, position [2]int, stream string, admitted map[string]record.Admitted) (string, error) {
 	value := record.Record{Version: 1, Source: source.ID, Position: position, Stream: stream, Binding: binding}
 	value.CursorDigest = record.CursorDigest(value)
 	err := s.store.Transaction(ctx, s.writes, func(tx *history.Transaction) error {
@@ -268,7 +288,7 @@ func (s *Session) putCursor(ctx context.Context, source record.Record, binding s
 	if err != nil {
 		return "", err
 	}
-	return s.put(ctx, value)
+	return s.putAdmitted(ctx, value, admitted)
 }
 
 func (s *Session) streams(ctx context.Context, value record.Record) (command.OmittedOutput, error) {
@@ -305,10 +325,10 @@ func (s *Session) Dependencies(id string) ([]string, error) {
 	if err != nil {
 		return nil, errors.New("invalid inherited read recovery record")
 	}
-	return s.dependencies(value)
+	return s.dependencies(value, nil)
 }
 
-func (s *Session) dependencies(value record.Record) ([]string, error) {
+func (s *Session) dependencies(value record.Record, admitted map[string]record.Admitted) ([]string, error) {
 	var names []string
 	seen := make(map[string]bool)
 	for {
@@ -335,6 +355,10 @@ func (s *Session) dependencies(value record.Record) ([]string, error) {
 			return names, nil
 		}
 		id := value.Source
+		if cached, ok := admitted[id]; ok {
+			value = cached.Record
+			continue
+		}
 		name, err := s.name(id)
 		if err != nil {
 			return nil, err
@@ -343,14 +367,23 @@ func (s *Session) dependencies(value record.Record) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read recovery source is unavailable: %w", err)
 		}
-		value, err = s.decode(data, id, false)
+		if admitted != nil {
+			var source record.Admitted
+			source, err = s.decodeAdmitted(data, id)
+			if err == nil {
+				admitted[id] = source
+				value = source.Record
+			}
+		} else {
+			value, err = s.decode(data, id, false)
+		}
 		if err != nil {
 			return nil, errors.New("invalid read recovery source")
 		}
 	}
 }
-func (s *Session) retain(tx *history.Transaction, value record.Record) error {
-	names, err := s.dependencies(value)
+func (s *Session) retain(tx *history.Transaction, value record.Record, admitted map[string]record.Admitted) error {
+	names, err := s.dependencies(value, admitted)
 	if err != nil {
 		return err
 	}

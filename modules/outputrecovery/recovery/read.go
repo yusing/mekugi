@@ -94,9 +94,11 @@ func (service *Service) execute(ctx context.Context, request command.Request) co
 	var nextHandles []string
 	used := 0
 	var diagnostics strings.Builder
+	// Admissions belong only to this invocation, never to a Session or global cache.
+	admitted := make(map[string]record.Admitted)
 	for _, id := range options.ids {
 		err := func() error {
-			cursor, err := store.read(ctx, id)
+			cursor, err := store.read(ctx, id, admitted)
 			if err != nil {
 				return err
 			}
@@ -104,14 +106,14 @@ func (service *Service) execute(ctx context.Context, request command.Request) co
 			binding := ""
 			stream := options.stream
 			if cursor.Source != "" {
-				source, err = store.read(ctx, cursor.Source)
+				source, err = store.read(ctx, cursor.Source, admitted)
 				if err != nil {
 					return err
 				}
 				if source.Source != "" {
 					return errors.New("read snapshot changed or is invalid")
 				}
-				binding = record.Binding(source)
+				binding = record.Binding(source.Record)
 				if binding != cursor.Binding {
 					return errors.New("read snapshot changed or is invalid")
 				}
@@ -130,16 +132,22 @@ func (service *Service) execute(ctx context.Context, request command.Request) co
 				nextHandles = append(nextHandles, id)
 				return nil
 			}
-			output, err := store.streams(ctx, source)
-			if err != nil {
-				return err
+			streams := source.Streams
+			if len(source.Changes) != 0 {
+				output, err := store.streams(ctx, source.Record)
+				if err != nil {
+					return err
+				}
+				streams, err = paging.Admit(output.Stdout, output.Stderr, output.StdoutKind, output.StderrKind)
+				if err != nil {
+					return err
+				}
 			}
-			request := paging.ReadRequest{Stdout: output.Stdout, Stderr: output.Stderr, StdoutKind: output.StdoutKind, StderrKind: output.StderrKind,
-				Position: cursor.Position, Stream: stream, SourceRow: source.SourceRow}
+			request := paging.ReadRequest{Position: cursor.Position, Stream: stream, SourceRow: source.SourceRow}
 			if len(options.ids) > 1 {
 				request.Label = id
 			}
-			page, err := paging.Page(ctx, request, remaining)
+			page, err := streams.Page(ctx, request, remaining)
 			if err != nil {
 				return err
 			}
@@ -168,10 +176,10 @@ func (service *Service) execute(ctx context.Context, request command.Request) co
 			next := ""
 			if !page.Complete {
 				if binding == "" {
-					binding = record.Binding(source)
+					binding = record.Binding(source.Record)
 				}
 				// Persist before exposing this page or suggesting the next operation.
-				next, err = store.putCursor(ctx, source, binding, page.Position, stream)
+				next, err = store.putCursor(ctx, source.Record, binding, page.Position, stream, admitted)
 				if err != nil {
 					return err
 				}
