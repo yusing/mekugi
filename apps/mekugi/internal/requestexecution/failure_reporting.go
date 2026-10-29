@@ -25,17 +25,6 @@ func (c *Failures) Configure(storage FailureStorage) {
 	c.diagnostics, c.failureStore, c.failureLimits, c.writes = storage.Diagnostics, storage.Store, storage.Limits, storage.Writes
 }
 
-// Storage returns the current store, including a lazily opened failure store,
-// for the invocation's existing maintenance worker.
-func (c *Failures) Storage() FailureStorage {
-	if c == nil {
-		return FailureStorage{}
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return FailureStorage{c.diagnostics, c.failureStore, c.failureLimits, c.writes}
-}
-
 // Diagnostic contains the published classification and private reference.
 type Diagnostic struct{ Code, Reference, Error, Message string }
 

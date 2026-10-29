@@ -153,7 +153,7 @@ func testCompactReloadNativeCodex(t *testing.T, automatic bool, promptKind strin
 	environment = append(environment, routerTestWorkerEnvironment+"=1", "CODEX_ROLLOUT_TRACE_ROOT="+traceRoot)
 	newCommand := func(hostCtx context.Context) *exec.Cmd {
 		t.Helper()
-		cmd := exec.CommandContext(hostCtx, codex, codexArgs(server.URL+"/v1", []string{"app-server", "-c", fmt.Sprintf("model=%q", model), "-c", "features.plugins=false", "-c", "model_auto_compact_token_limit=100000"}, true, false, true)...)
+		cmd := exec.CommandContext(hostCtx, codex, codexArgs(server.URL+"/v1", []string{"app-server", "-c", fmt.Sprintf("model=%q", model), "-c", "features.plugins=false", "-c", "model_auto_compact_token_limit=100000"}, false, true)...)
 		cmd.Args = append(cmd.Args, promptArgs...)
 		cmd.Args = append(cmd.Args, "-c", "features.code_mode=true", "-c", "features.code_mode_only=true", "-c", `default_permissions="reload-fixture"`, "-c", fmt.Sprintf(`permissions.reload-fixture.filesystem={"/"="read",%q="write",%q="write",%q="deny"}`, workspace, registry.ReplayDirectory, blocked), "-c", "permissions.reload-fixture.network.enabled=false")
 		if !terminalMode {

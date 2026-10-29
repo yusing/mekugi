@@ -104,7 +104,7 @@ func TestThirdPartyOpenCodeDefault(t *testing.T) {
 }
 
 func TestCodexArgsThirdPartyAuthentication(t *testing.T) {
-	args := codexArgs("http://127.0.0.1:12345/v1", []string{"exec", "hello"}, false, false, false)
+	args := codexArgs("http://127.0.0.1:12345/v1", []string{"exec", "hello"}, false, false)
 	var overrides []string
 	for i := 0; i < len(args); i++ {
 		if args[i] == "-c" {

@@ -99,9 +99,6 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if diagnostics == nil && options.CaptureOutput != "" {
 		return 1, errors.New("transport diagnostics are unavailable")
 	}
-	if options.Mode == "" {
-		return 1, errors.New("session configuration has not been parsed")
-	}
 	if !options.ShellGuard {
 		guards = nil
 	}
@@ -162,7 +159,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	var capture *transportcapture.Recorder
 	if diagnostics != nil {
-		capture, err = diagnostics.Open(transportcapture.Config{Output: capturePath, Mode: options.Mode, Writes: writes})
+		capture, err = diagnostics.Open(transportcapture.Config{Output: capturePath, Mode: "mekugi", Writes: writes})
 		if err != nil {
 			return 1, fmt.Errorf("initialize capture: %w", err)
 		}
@@ -221,92 +218,91 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if issues != nil {
 		issues.Configure(requestexecution.FailureStorage{Diagnostics: diagnosis, Writes: writes})
 	}
-	if options.Mode == "mekugi" {
-		replayDirectory, err := history.ReplayDirectory()
-		if err != nil {
-			return 1, fmt.Errorf("initialize replay storage: %w", err)
-		}
-		var axReadOutput string
-		if debug != nil {
-			axReadOutput = debug.ReadLogPath()
-		}
-		var workers *frontends.WorkerImage
-		if threads != nil {
-			workers = threads.workers
-		}
-		registry, err = frontends.New(ctx, frontends.Config{Commands: commands, Guidance: guidance, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput, WorkerImage: workers})
-		if err != nil {
-			return 1, fmt.Errorf("initialize tool registry: %w", err)
-		}
-		defer func() {
-			runErr = errors.Join(runErr, registry.Close())
-		}()
-		frontendDirectory = registry.FrontendDirectory
-		retained.Store, err = service.Open(ctx, replayDirectory)
-		if err != nil {
-			return 1, fmt.Errorf("initialize replay storage: %w", err)
-		}
-		checkpoints, err = changes.Checkpoints(retained.Store.Directory())
-		if err != nil {
-			return 1, fmt.Errorf("initialize replay checkpoints: %w", err)
-		}
-		if changes != nil {
-			changeSource = changes.Service
-		}
-		retained.Writes = writes
-		retained.Limits = history.Limits{Total: history.DefaultStorageBytes, Kinds: map[string]int64{"commentary": 16 << 20}}
-		if threads != nil {
-			threads.retained = retained
-		}
-		if !options.DeduplicateOutput {
-			projections = nil
-		}
-		calls = service.Calls()
-		audience = sessioncontrol.NewAudience(func(category, message string) { issues.AddThreadNotice("", "", category, message) })
-		windows = &executionobservation.Windows{}
-		if threads != nil {
-			if threads.windows == nil {
-				threads.windows = windows
-			}
-			windows = threads.windows
-		}
-		if titleGenerator != nil {
-			titleGenerator.usage = usage
-		}
-		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
-		if traceErr == nil {
-			nativeTrace = nativetrace.NewWithNotice(traceDirectory, func(message string) {
-				issues.AddNotice("", "native_trace_format", message)
-			})
-			defer func() { runErr = errors.Join(runErr, os.RemoveAll(traceDirectory)) }()
-		} else {
-			issues.AddNotice("", "native_trace", "Nested tool confirmation unavailable: "+traceErr.Error())
-		}
-		review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
-		defer review.Close()
-		var driver *threadbinding.Driver
-		if threads != nil {
-			driver = threads.driver
-		}
-		mekugiCalls = executionobservation.New(executionobservation.Config{ThreadControl: driver, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
-		usage.Configure(retained.Store, retained.Writes, retained.Limits, func(thread string, err error) {
-			issues.AddThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
-		})
-		if issues != nil {
-			issues.Configure(requestexecution.FailureStorage{Diagnostics: diagnosis, Writes: writes, Store: retained.Store, Limits: retained.Limits})
-		}
-		defer func() {
-			calls.StopAdmission()
-			windows.Retire()
-			if reportObserver != nil {
-				reportObserver.Close()
-			}
-			guardServer.Close()
-			calls.Close()
-			audience.Close()
-		}()
+	replayDirectory, err := history.ReplayDirectory()
+	if err != nil {
+		return 1, fmt.Errorf("initialize replay storage: %w", err)
 	}
-	skillsManagerAvailable := mekugiCalls != nil && skillsManagerInPath(frontendDirectory)
+	var axReadOutput string
+	if debug != nil {
+		axReadOutput = debug.ReadLogPath()
+	}
+	var workers *frontends.WorkerImage
+	if threads != nil {
+		workers = threads.workers
+	}
+	registry, err = frontends.New(ctx, frontends.Config{Commands: commands, Guidance: guidance, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput, WorkerImage: workers})
+	if err != nil {
+		return 1, fmt.Errorf("initialize tool registry: %w", err)
+	}
+	defer func() {
+		runErr = errors.Join(runErr, registry.Close())
+	}()
+	frontendDirectory = registry.FrontendDirectory
+	retained.Store, err = service.Open(ctx, replayDirectory)
+	if err != nil {
+		return 1, fmt.Errorf("initialize replay storage: %w", err)
+	}
+	checkpoints, err = changes.Checkpoints(retained.Store.Directory())
+	if err != nil {
+		return 1, fmt.Errorf("initialize replay checkpoints: %w", err)
+	}
+	if changes != nil {
+		changeSource = changes.Service
+	}
+	retained.Writes = writes
+	retained.Limits = history.Limits{Total: history.DefaultStorageBytes, Kinds: map[string]int64{"commentary": 16 << 20}}
+	if threads != nil {
+		threads.retained = retained
+	}
+	if !options.DeduplicateOutput {
+		projections = nil
+	}
+	calls = service.Calls()
+	audience = sessioncontrol.NewAudience(func(category, message string) { issues.AddThreadNotice("", "", category, message) })
+	windows = &executionobservation.Windows{}
+	if threads != nil {
+		if threads.windows == nil {
+			threads.windows = windows
+		}
+		windows = threads.windows
+	}
+	if titleGenerator != nil {
+		titleGenerator.usage = usage
+	}
+	traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
+	if traceErr == nil {
+		nativeTrace = nativetrace.NewWithNotice(traceDirectory, func(message string) {
+			issues.AddNotice("", "native_trace_format", message)
+		})
+		defer func() { runErr = errors.Join(runErr, os.RemoveAll(traceDirectory)) }()
+	} else {
+		issues.AddNotice("", "native_trace", "Nested tool confirmation unavailable: "+traceErr.Error())
+	}
+	review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
+	defer review.Close()
+	var driver *threadbinding.Driver
+	if threads != nil {
+		driver = threads.driver
+	}
+	mekugiCalls = executionobservation.New(executionobservation.Config{ThreadControl: driver, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
+	usage.Configure(retained.Store, retained.Writes, retained.Limits, func(thread string, err error) {
+		issues.AddThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
+	})
+	if issues != nil {
+		issues.Configure(requestexecution.FailureStorage{Diagnostics: diagnosis, Writes: writes, Store: retained.Store, Limits: retained.Limits})
+	}
+	defer func() {
+		calls.StopAdmission()
+		windows.Retire()
+		if reportObserver != nil {
+			reportObserver.Close()
+		}
+		guardServer.Close()
+		calls.Close()
+		audience.Close()
+	}()
+
+	skillsManagerAvailable := skillsManagerInPath(frontendDirectory)
 
 	listener, err := net.Listen("tcp", defaultListenAddress)
 	if err != nil {
@@ -314,26 +310,20 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	defer listener.Close()
 	address := listener.Addr().String()
-	if mekugiCalls != nil || issues != nil {
-		retentionCtx, stopRetention := context.WithCancel(ctx)
-		retentionDone := make(chan struct{})
-		go func() {
-			defer close(retentionDone)
-			runStorageRetention(retentionCtx, diagnosis, func() retentionScope {
-				if mekugiCalls != nil {
-					return retentionScope{store: retained.Store, writes: retained.Writes, limits: retained.Limits, thread: retained.Thread, notice: func(phase, message string) { issues.CleanupNotice("", "", phase, message) }}
-				}
-				storage := issues.Storage()
-				return retentionScope{store: storage.Store, writes: storage.Writes, limits: storage.Limits, notice: func(phase, message string) { issues.CleanupNotice("", "", phase, message) }}
-			}, func(err error) {
-				issues.AddNotice("", "storage_cleanup_failure", fmt.Sprintf("Mekugi could not complete background storage cleanup: %v. Session requests continue unless storage reaches its limit.", err))
-			})
-		}()
-		defer func() {
-			stopRetention()
-			<-retentionDone
-		}()
-	}
+	retentionCtx, stopRetention := context.WithCancel(ctx)
+	retentionDone := make(chan struct{})
+	go func() {
+		defer close(retentionDone)
+		runStorageRetention(retentionCtx, diagnosis, func() retentionScope {
+			return retentionScope{store: retained.Store, writes: retained.Writes, limits: retained.Limits, thread: retained.Thread, notice: func(phase, message string) { issues.CleanupNotice("", "", phase, message) }}
+		}, func(err error) {
+			issues.AddNotice("", "storage_cleanup_failure", fmt.Sprintf("Mekugi could not complete background storage cleanup: %v. Session requests continue unless storage reaches its limit.", err))
+		})
+	}()
+	defer func() {
+		stopRetention()
+		<-retentionDone
+	}()
 
 	// Hosted sessions borrow their server's process-wide profiling lifetime.
 	if api == nil {
@@ -360,17 +350,16 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		executor.ReasoningChoices = threads.driver.ReasoningChoices
 	}
 	var compactPrompt atomic.Pointer[string]
-	if mekugiCalls != nil {
-		executor.Observations, executor.Guidance = mekugiCalls, registry.Guidance
-		executor.SkillsManager, executor.Control, executor.Usage = skillsManagerAvailable, &control, usage
-		executor.CompactStore = mekugiCalls.StoreCompact
-		executor.CompactPrompt = func() string {
-			if prompt := compactPrompt.Load(); prompt != nil {
-				return *prompt
-			}
-			return ""
+	executor.Observations, executor.Guidance = mekugiCalls, registry.Guidance
+	executor.SkillsManager, executor.Control, executor.Usage = skillsManagerAvailable, &control, usage
+	executor.CompactStore = mekugiCalls.StoreCompact
+	executor.CompactPrompt = func() string {
+		if prompt := compactPrompt.Load(); prompt != nil {
+			return *prompt
 		}
+		return ""
 	}
+
 	webSocketEndpoint := inferencegateway.NewWebSocketEndpoint(ctx, options.Timeout, provider, executor.ExecuteWebSocket)
 	defer webSocketEndpoint.Close()
 	mux.Handle("GET /v1/responses", webSocketEndpoint)
@@ -444,7 +433,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, args, options.Mode == "mekugi", skillsManagerAvailable, !provider.ThirdPartyOnly)...)
+	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, args, skillsManagerAvailable, !provider.ThirdPartyOnly)...)
 	if threads != nil {
 		self, err := os.Executable()
 		if err != nil {
@@ -472,78 +461,74 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		guards = nil
 	}
 	guard := len(guards) != 0
-	if guard && frontendDirectory == "" {
-		return stopFailedStartup(errors.New("Shell guard requires Mekugi mode; use --shell-guard=false to disable it"))
+	helper := ""
+	if appUI {
+		helper = execTrackHelper()
 	}
-	if frontendDirectory != "" {
-		helper := ""
-		if appUI {
-			helper = execTrackHelper()
+	var reportEndpoints segmenttransport.Endpoints
+	if segments.Live != nil {
+		reportEndpoints = segments.Live.Endpoints()
+	}
+	cmd.Env, err = frontendShellEnvironment(cmd.Env, frontendDirectory, helper, guards, reportEndpoints)
+	if err != nil {
+		return stopFailedStartup(err)
+	}
+	// Resolve caller configuration once, using the final frontend environment.
+	var prior shellhook.Invocation
+	var disabled []string
+	compact := guidance != nil && (appUI || headless)
+	if guard {
+		prior, disabled, err = shellhook.Discover(ctx, cmd)
+	} else if compact {
+		prior, err = shellhook.DiscoverCompact(ctx, cmd)
+	}
+	if err != nil {
+		return stopFailedStartup(err)
+	}
+	if compact {
+		prompt := prior.CompactPrompt + agentguidance.CompactInstructions
+		compactPrompt.Store(new(prompt))
+		cmd.Args = append(cmd.Args, "-c", fmt.Sprintf("compact_prompt=%q", prompt))
+	}
+	if helper != "" {
+		guardDirectory := ""
+		for _, registration := range guards {
+			if registration.Kind == binding.RemoteWrite {
+				guardDirectory, _ = shellapproval.Paths(frontendDirectory)
+			}
 		}
-		var reportEndpoints segmenttransport.Endpoints
-		if segments.Live != nil {
-			reportEndpoints = segments.Live.Endpoints()
+		sudoDirectory, tracker := "", ""
+		for _, entry := range cmd.Env {
+			if value, ok := strings.CutPrefix(entry, shellapproval.DirectoryEnvironment+"="); ok {
+				sudoDirectory = value
+			}
+			if value, ok := strings.CutPrefix(entry, shellinstrumentation.ShTrackerEnvironment+"="); ok {
+				tracker = value
+			}
 		}
-		cmd.Env, err = frontendShellEnvironment(cmd.Env, frontendDirectory, helper, guards, reportEndpoints)
-		if err != nil {
-			return stopFailedStartup(err)
-		}
-		// Resolve caller configuration once, using the final frontend environment.
-		var prior shellhook.Invocation
-		var disabled []string
-		compact := guidance != nil && (appUI || headless)
+		var hash string
 		if guard {
-			prior, disabled, err = shellhook.Discover(ctx, cmd)
-		} else if compact {
-			prior, err = shellhook.DiscoverCompact(ctx, cmd)
+			var config, state string
+			config, state, hash, err = shellhook.Config(helper, guardDirectory, sudoDirectory, tracker, prior, disabled)
+			if err == nil {
+				cmd.Args = append(cmd.Args, "-c", config, "-c", state)
+				for _, key := range disabled {
+					fmt.Fprintf(stderr, "mekugi: shell guard replaces incompatible hook %q for this invocation\n", key)
+				}
+			}
+		} else if tracker != "" {
+			cmd.Args, hash, err = optionalTrackingHookArgs(cmd.Args, helper, tracker)
 		}
 		if err != nil {
-			return stopFailedStartup(err)
-		}
-		if compact {
-			prompt := prior.CompactPrompt + agentguidance.CompactInstructions
-			compactPrompt.Store(new(prompt))
-			cmd.Args = append(cmd.Args, "-c", fmt.Sprintf("compact_prompt=%q", prompt))
-		}
-		if helper != "" {
-			guardDirectory := ""
-			for _, registration := range guards {
-				if registration.Kind == binding.RemoteWrite {
-					guardDirectory, _ = shellapproval.Paths(frontendDirectory)
-				}
-			}
-			sudoDirectory, tracker := "", ""
-			for _, entry := range cmd.Env {
-				if value, ok := strings.CutPrefix(entry, shellapproval.DirectoryEnvironment+"="); ok {
-					sudoDirectory = value
-				}
-				if value, ok := strings.CutPrefix(entry, shellinstrumentation.ShTrackerEnvironment+"="); ok {
-					tracker = value
-				}
-			}
-			var hash string
 			if guard {
-				var config, state string
-				config, state, hash, err = shellhook.Config(helper, guardDirectory, sudoDirectory, tracker, prior, disabled)
-				if err == nil {
-					cmd.Args = append(cmd.Args, "-c", config, "-c", state)
-					for _, key := range disabled {
-						fmt.Fprintf(stderr, "mekugi: shell guard replaces incompatible hook %q for this invocation\n", key)
-					}
-				}
-			} else if tracker != "" {
-				cmd.Args, hash, err = optionalTrackingHookArgs(cmd.Args, helper, tracker)
+				return stopFailedStartup(err)
 			}
-			if err != nil {
-				if guard {
-					return stopFailedStartup(err)
-				}
-				fmt.Fprintln(stderr, "mekugi: sh segment tracking unavailable:", err)
-			} else if guard {
-				cmd.Env = append(cmd.Env, shellhook.Environment+"="+hash)
-			}
+			fmt.Fprintln(stderr, "mekugi: sh segment tracking unavailable:", err)
+		} else if guard {
+			cmd.Env = append(cmd.Env, shellhook.Environment+"="+hash)
 		}
 	}
+
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 5 * time.Second
@@ -557,19 +542,14 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	err = ctx.Err()
 	if err == nil {
 		if headless {
-			if options.Mode != "mekugi" {
-				err = errors.New("headless requires Mekugi mode")
-			} else {
-				waitCodex, err = headlessclient.Start(ctx, cmd, stdin, stdout, issues.Notices)
-			}
+			waitCodex, err = headlessclient.Start(ctx, cmd, stdin, stdout, issues.Notices)
 		} else if appUI {
-			if mekugiCalls != nil && frontendDirectory != "" {
-				guardServer, reportObserver, err = openShellObservation(ctx, frontendDirectory, guards, segments, issues)
-				if err != nil {
-					return stopFailedStartup(err)
-				}
-				windows.Reports = reportObserver
+			guardServer, reportObserver, err = openShellObservation(ctx, frontendDirectory, guards, segments, issues)
+			if err != nil {
+				return stopFailedStartup(err)
 			}
+			windows.Reports = reportObserver
+
 			debugDirectory := ""
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])

@@ -124,7 +124,7 @@ func TestShellGuardFlagAndStandaloneSplit(t *testing.T) {
 
 func TestPublicOptionsExposeOneInterface(t *testing.T) {
 	config, err := Parse(nil)
-	if err != nil || !config.FrontendsEnabled() {
+	if err != nil {
 		t.Fatalf("default interface: config=%+v err=%v", config, err)
 	}
 	for _, mode := range []string{"mekugi", "passthrough", "direct"} {

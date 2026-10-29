@@ -187,12 +187,9 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 		stdin, stdout = streams, streams
 		environment = serverEnvironment(environment)
 	}
-	var captureDirectory string
-	if options.FrontendsEnabled() {
-		captureDirectory, err = history.ReplayDirectory()
-		if err != nil {
-			return 1, fmt.Errorf("initialize replay storage: %w", err)
-		}
+	captureDirectory, err := history.ReplayDirectory()
+	if err != nil {
+		return 1, fmt.Errorf("initialize replay storage: %w", err)
 	}
 	var shared *threadcontrol.Service
 	if threads != nil {
@@ -201,7 +198,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 			threads.setup = &threadSetup{options: options, settings: settings, executable: executable, args: slices.Clone(args), environment: slices.Clone(environment), approvals: approvals}
 		}
 	}
-	frontends, err := composition.Frontends(ctx, appUI && options.FrontendsEnabled(), options.ChildReplySummary, captureDirectory, shared)
+	frontends, err := composition.Frontends(ctx, appUI, options.ChildReplySummary, captureDirectory, shared)
 	if err != nil {
 		return 1, err
 	}
@@ -423,32 +420,29 @@ func watchStartupInterrupts(ctx context.Context, cancel context.CancelFunc, inte
 	})
 }
 
-func codexArgs(baseURL string, args []string, codeMode, skillsManagerAvailable, openAIAuth bool) []string {
-	if codeMode {
-		args = slices.Clone(args)
-		// Codex applies feature toggles after -c overrides. Normalize conflicting
-		// toggles too, without interpreting prompt operands after --.
-		for i := 0; i < len(args) && args[i] != "--"; i++ {
-			switch args[i] {
-			case "--disable":
-				if i+1 < len(args) && (args[i+1] == "code_mode" || args[i+1] == "code_mode_only") {
-					args[i] = "--enable"
-				}
-			case "--disable=code_mode", "--disable=code_mode_only":
-				args[i] = strings.Replace(args[i], "--disable=", "--enable=", 1)
+func codexArgs(baseURL string, args []string, skillsManagerAvailable, openAIAuth bool) []string {
+	args = slices.Clone(args)
+	// Codex applies feature toggles after -c overrides. Normalize conflicting
+	// toggles too, without interpreting prompt operands after --.
+	for i := 0; i < len(args) && args[i] != "--"; i++ {
+		switch args[i] {
+		case "--disable":
+			if i+1 < len(args) && (args[i+1] == "code_mode" || args[i+1] == "code_mode_only") {
+				args[i] = "--enable"
 			}
+		case "--disable=code_mode", "--disable=code_mode_only":
+			args[i] = strings.Replace(args[i], "--disable=", "--enable=", 1)
 		}
 	}
+
 	// Keep overrides in the final command's config layer: Codex subcommands
 	// can replace pre-subcommand -c settings with their own. Never cross --.
 	index := slices.Index(args, "--")
 	if index < 0 {
 		index = len(args)
 	}
-	if codeMode {
-		args = slices.Insert(slices.Clone(args), index, "-c", "features.code_mode=true", "-c", "features.code_mode_only=true")
-		index += 4
-	}
+	args = slices.Insert(args, index, "-c", "features.code_mode=true", "-c", "features.code_mode_only=true")
+	index += 4
 	overrides := []string{
 		"--disable", "goals",
 		"-c", "features.goals=false",
@@ -468,7 +462,7 @@ func codexArgs(baseURL string, args []string, codeMode, skillsManagerAvailable, 
 	if skillsManagerAvailable {
 		overrides = append(overrides, "-c", "skills.include_instructions=false")
 	}
-	return slices.Insert(slices.Clone(args), index, overrides...)
+	return slices.Insert(args, index, overrides...)
 }
 
 func validateCodexArgs(args []string) error {

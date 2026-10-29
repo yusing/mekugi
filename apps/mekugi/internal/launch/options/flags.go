@@ -20,7 +20,6 @@ const DefaultRequestTimeout = 10 * time.Minute
 type Config struct {
 	Timeout           time.Duration
 	StreamIdleTimeout time.Duration
-	Mode              string
 	ANSIFaint         string
 	ShellGuard        bool
 	DeduplicateOutput bool
@@ -37,12 +36,9 @@ type Config struct {
 	debugSet             bool
 }
 
-// FrontendsEnabled reports whether this parsed invocation exposes native helpers.
-func (c Config) FrontendsEnabled() bool { return c.Mode == "mekugi" }
-
 // Parse selects the launch scope without opening resources.
 func Parse(args []string) (Config, error) {
-	config := Config{Mode: "mekugi"}
+	var config Config
 	flags := newFlags(io.Discard, &config)
 	if err := flags.Parse(args); err != nil {
 		return Config{}, fmt.Errorf("parse flags: %w", err)

@@ -112,7 +112,7 @@ func TestEnvironmentFactsNativeCodex(t *testing.T) {
 	args = append(args, "exec", "--skip-git-repo-check", "--json", "--color", "never", "-C", workspace, "Environment acceptance fixture")
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, codex, codexArgs(server.URL+"/v1", args, true, false, false)...)
+	command := exec.CommandContext(ctx, codex, codexArgs(server.URL+"/v1", args, false, false)...)
 	command.Dir, command.Env = workspace, codexEnvironmentCapability(os.Environ(), true)
 	output, err := command.CombinedOutput()
 	if err != nil {

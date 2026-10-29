@@ -148,7 +148,7 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 		"-c", "chatgpt_base_url=" + strconv.Quote(router.URL),
 		"-c", "model_reasoning_effort=" + strconv.Quote("low"),
 		"Run the execution interface fixture.",
-	}, true, false, true)
+	}, false, true)
 	cmd := exec.CommandContext(ctx, codex, args...)
 	cmd.Env, cmd.Dir = environment, filepath.Dir(workspace)
 	var stdout, stderr bytes.Buffer

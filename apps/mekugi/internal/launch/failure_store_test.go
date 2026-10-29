@@ -203,11 +203,11 @@ func TestFailurePersistenceLazilyOpensStateDirectory(t *testing.T) {
 
 	result := issues.Report(failure, requestexecution.ForwardError(errors.New("retained test failure")))
 
-	store := issues.Storage().Store
-	if store == nil {
-		t.Fatal("failure persistence did not lazily open the configured state directory")
+	directory, err := history.ReplayDirectory()
+	if err != nil {
+		t.Fatal(err)
 	}
-	files, err := failureRecordFiles(store.Directory())
+	files, err := failureRecordFiles(directory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,10 +235,6 @@ func TestFailurePersistenceOpenFailureRetainsOnlyNotice(t *testing.T) {
 
 	issues.Report(failure, requestexecution.ForwardError(errors.New("retained test failure")))
 
-	store := issues.Storage().Store
-	if store != nil {
-		t.Fatal("failed state-directory open was cached as a usable failure store")
-	}
 	if pending := strings.Join(issues.Notices.Pending(), "\n"); !strings.Contains(pending, "could not retain the failure reference") {
 		t.Fatalf("failure-store notice missing: %s", pending)
 	}
