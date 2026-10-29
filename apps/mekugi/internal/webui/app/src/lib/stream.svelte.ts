@@ -596,7 +596,12 @@ export class Stream {
     return this.#request("session/decide", body);
   }
 
-  async image(entry: Entry, index: number, image: string, signal: AbortSignal): Promise<Blob> {
+  async image(
+    entry: Pick<Entry, "seq" | "agent">,
+    index: number,
+    image: string,
+    signal: AbortSignal,
+  ): Promise<Blob> {
     const machine = this.#machine,
       id = this.#id;
     if (!machine || !id) throw new Error("The image's machine is disconnected.");

@@ -25,9 +25,15 @@
   let url = $state<string>();
   let error = $state<string>();
   let retry = $state(0);
+  // The read is keyed by the published image's identity, not the entry object,
+  // which shared snapshots and window replacements recreate unchanged.
+  const seq = $derived(entry.seq);
+  const agent = $derived(entry.agent);
+  const attachment = $derived(source.main.attachment);
   $effect(() => {
     if (!element) return;
-    const request = { entry, index, image, retry, source };
+    void attachment;
+    const request = { seq, agent, index, image, retry, source };
     const controller = new AbortController();
     let objectURL: string | undefined;
     url = error = undefined;
@@ -36,7 +42,7 @@
         if (!entries.some((e) => e.isIntersecting)) return;
         observer.disconnect();
         void request.source
-          .image(request.entry, request.index, request.image, controller.signal)
+          .image(request, request.index, request.image, controller.signal)
           .then((blob) => {
             if (!controller.signal.aborted) url = objectURL = URL.createObjectURL(blob);
           })

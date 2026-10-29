@@ -249,7 +249,9 @@ disclosure for the rest, following Activity's shared folding policy. Opening the
 disclosure preserves every retained file and its edit metadata. Large temporary
 Create sources start behind a source disclosure; original details remain complete.
 Attached images appear above the message, with a visible unavailable state if their source
-cannot be read. An image an agent views appears under its View row; consecutive
+cannot be read. An image keeps its in-progress or loaded display through unrelated
+publications and reloads only when its published identity or the read attachment changes.
+An image an agent views appears under its View row; consecutive
 images one agent views share one row of captioned thumbnails. Empty items have no expansion control. Attachment events show their paths or skill
 names and auto-reload state, with columns sized to the visible verbs. Questions
 show identical heading and body text only once. Output counts share the
