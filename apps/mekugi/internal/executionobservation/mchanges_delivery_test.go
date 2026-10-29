@@ -76,7 +76,7 @@ func TestMChangesDeliveryReadPreparationUsesReservedReferencesRepeatably(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := f.store.changes.Execute(f.ctx, command.Request{Args: []string{"--workspace", f.workspace, "--history", "--max-tokens", "12", id}, Scope: retainedScope(f.ctx, f.store.directory)})
+	output, err := f.store.changes.Execute(f.ctx, command.Request{Args: []string{"--history", "--max-tokens", "12", id}, Scope: retainedScope(f.ctx, f.store.directory)})
 	if err != nil || output.Delivery == nil {
 		t.Fatalf("no frozen read delivery: %+v %v", output, err)
 	}
@@ -172,7 +172,7 @@ func TestMChangesDeliveryWorkerPrepublicationFailureAndCancellation(t *testing.T
 			}
 			var out, diag bytes.Buffer
 			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, ctx, f.registry.Frontends["mchanges"],
-				[]string{"revert", "--workspace", f.workspace, id, "--max-tokens", "12"}, nil, &out, &diag)
+				[]string{"revert", id, "--max-tokens", "12"}, nil, &out, &diag)
 			if !handled || calls != 1 || plan == nil {
 				t.Fatalf("worker did not execute exactly once: handled=%t calls=%d", handled, calls)
 			}

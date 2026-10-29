@@ -21,6 +21,9 @@ import (
 )
 
 type changeReadSnapshot struct {
+	ResolvedPaths []string          `json:"resolved_paths,omitempty"`
+	Workspaces    map[string]string `json:"workspaces,omitempty"`
+
 	OverlapLabels map[string]string        `json:"overlap_labels,omitempty"`
 	Selected      map[string]trackedChange `json:"selected,omitempty"`
 	Streams       []changeStream           `json:"streams,omitempty"`
@@ -65,15 +68,17 @@ func validateChangeSelection(selection *changeReadSnapshot) error {
 			ids[id] = true
 		}
 		calls := make(map[string]bool)
+		index := changeIndex{Workspace: selection.Workspace, workspaces: selection.Workspaces}
 		for id, change := range selection.Selected {
 			if !ids[id] || change.Correlation == "" || change.RetiredCalls < 0 {
 				return errors.New("invalid frozen change selection")
 			}
 			for _, call := range change.Calls {
-				if call.ID == "" || calls[call.ID] {
+				name := legacycall.Name(index.workspaceFor(id), call.ID, false)
+				if call.ID == "" || calls[name] {
 					return errors.New("invalid frozen change attempt")
 				}
-				calls[call.ID] = true
+				calls[name] = true
 			}
 		}
 	}
@@ -88,11 +93,11 @@ func resolveChangeSelection(ctx context.Context, view reference.View, data []byt
 		return command.OmittedOutput{}, err
 	}
 	store := changeSelectionStore(view.Scope)
-	options := changeReadOptions{workspace: selection.Workspace, ids: selection.IDs, paths: selection.Paths, view: selection.View, mine: selection.Mine, overlapLabels: selection.OverlapLabels}
+	options := changeReadOptions{workspace: selection.Workspace, ids: selection.IDs, paths: selection.Paths, resolvedPaths: selection.ResolvedPaths, view: selection.View, mine: selection.Mine, overlapLabels: selection.OverlapLabels}
 	var text string
 	var err error
 	if selection.Frozen {
-		text, err = store.renderChanges(ctx, options, changeIndex{Workspace: selection.Workspace, Changes: selection.Selected, Streams: selection.Streams})
+		text, err = store.renderChanges(ctx, options, changeIndex{Workspace: selection.Workspace, workspaces: selection.Workspaces, Changes: selection.Selected, Streams: selection.Streams})
 	} else {
 		text, _, err = store.readChangeViewLocked(ctx, options, view.Retain)
 	}
@@ -119,7 +124,8 @@ func changeSelectionDependencies(selected scope.Retained, data []byte) ([]string
 	var names []string
 	for _, id := range selection.IDs {
 		for _, call := range selection.Selected[id].Calls {
-			names = append(names, legacycall.Name(selection.Workspace, call.ID, false))
+			index := changeIndex{Workspace: selection.Workspace, workspaces: selection.Workspaces}
+			names = append(names, legacycall.Name(index.workspaceFor(id), call.ID, false))
 		}
 	}
 	return names, nil

@@ -1,37 +1,18 @@
 package retained
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestChangeWorkspaceMissingSuffix(t *testing.T) {
+func TestChangeReadOperands(t *testing.T) {
 	t.Parallel()
-	root, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+	options, err := parseChangeRead([]string{"amber1..2", "bar/baz1", "baz2", "--summary"}, "/caller")
+	if err != nil || len(options.ids) != 2 || len(options.paths) != 2 || options.cwd != "/caller" {
+		t.Fatalf("operands: %+v, %v", options, err)
 	}
-	alias := filepath.Join(t.TempDir(), "alias")
-	if err := os.Symlink(root, alias); err != nil {
-		t.Skipf("symlink unavailable: %v", err)
-	}
-	for _, suffix := range []string{"", "removed", filepath.Join("removed", "workspace")} {
-		options, err := parseChangeRead([]string{"amber1", "--workspace", filepath.Join(alias, suffix)}, root)
-		if err != nil || options.workspace != filepath.Join(root, suffix) {
-			t.Fatalf("suffix %q: workspace=%q error=%v", suffix, options.workspace, err)
-		}
-	}
-	for _, operation := range []string{"revert", "apply"} {
-		if _, err := parseChangeRead([]string{operation, "amber1", "--workspace", filepath.Join(alias, "removed")}, root); err == nil {
-			t.Fatalf("%s accepted a missing workspace", operation)
-		}
-	}
-	if err := os.Remove(root); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := parseChangeRead([]string{"amber1", "--workspace", alias}, filepath.Dir(alias)); err == nil {
-		t.Fatal("dangling symlink accepted as a lexical workspace")
+	if _, err := parseChangeRead([]string{"amber1", "--workspace", "/owner"}, "/caller"); err == nil {
+		t.Fatal("removed workspace option accepted")
 	}
 }
 
@@ -56,11 +37,14 @@ func TestChangePathSpellings(t *testing.T) {
 	if changePathMatches(changeReadOptions{paths: []string{"./file.txt", "/file.txt"}}, "file.txt") {
 		t.Fatal("no-directory selection must not invent a path base")
 	}
-	options, err := parseChangeRead([]string{"amber1", "--workspace", ""}, workspace)
-	if err != nil || options.workspace != "" {
-		t.Fatalf("no-directory selection: %+v, %v", options, err)
-	}
-	if changePathMatches(options, "file.txt") {
-		t.Fatal("empty selection unexpectedly matched")
+}
+
+func TestAbsoluteChangeFiltersSkipEvidenceScan(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "file")
+	options := changeReadOptions{ids: []string{"amber1"}, paths: []string{path}}
+	index := changeIndex{Changes: map[string]trackedChange{"amber1": {Correlation: "missing", Calls: []trackedCall{{ID: "missing"}}}}}
+	if err := (&store{directory: t.TempDir()}).resolveChangePaths(&options, index); err != nil || len(options.resolvedPaths) != 1 || options.resolvedPaths[0] != path {
+		t.Fatalf("absolute filter scanned evidence: %+v, %v", options, err)
 	}
 }

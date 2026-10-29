@@ -13,24 +13,24 @@ func (s *store) dependencies(workspace string, ids []string, existingOnly bool) 
 func changeDependencies(index changeIndex, ids []string, existingOnly bool) ([]string, error) {
 	var names []string
 	if !existingOnly {
-		names = append(names, changeIndexName(index.Workspace, index.Namespace))
+		names = append(names, index.indexNames(ids)...)
 	}
-	for _, id := range ids {
-		change, exists := index.Changes[id]
+	for _, changeID := range ids {
+		change, exists := index.Changes[changeID]
 		if !exists {
 			if existingOnly {
 				continue
 			}
-			return nil, missingChangeError(index, id)
+			return nil, missingChangeError(index, changeID)
 		}
 		if existingOnly && len(names) == 0 {
-			names = append(names, changeIndexName(index.Workspace, index.Namespace))
+			names = append(names, index.indexNames(ids)...)
 		}
 		for _, id := range change.Dependencies {
-			names = append(names, legacycall.Name(index.Workspace, id, false))
+			names = append(names, legacycall.Name(index.workspaceFor(changeID), id, false))
 		}
 		for _, call := range change.Calls {
-			names = append(names, legacycall.Name(index.Workspace, call.ID, false))
+			names = append(names, legacycall.Name(index.workspaceFor(changeID), call.ID, false))
 		}
 	}
 	return names, nil

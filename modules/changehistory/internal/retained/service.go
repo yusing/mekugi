@@ -67,7 +67,7 @@ func (o changeReadOptions) query() changes.Query {
 	return changes.Query{Workspace: o.workspace, IDs: o.ids, Paths: o.paths, View: o.view, Mine: o.mine, MaxTokens: o.maxTokens}
 }
 func options(q changes.Query) changeReadOptions {
-	return changeReadOptions{workspace: q.Workspace, ids: q.IDs, paths: q.Paths, view: q.View, mine: q.Mine, maxTokens: q.MaxTokens}
+	return changeReadOptions{workspace: q.Workspace, cwd: q.Workspace, ids: q.IDs, paths: q.Paths, view: q.View, mine: q.Mine, maxTokens: q.MaxTokens}
 }
 
 func (service *service) Execute(ctx context.Context, request command.Request) (command.Output, error) {

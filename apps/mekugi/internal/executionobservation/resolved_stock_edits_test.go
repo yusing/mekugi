@@ -148,10 +148,6 @@ func TestMChangesReadContextDistinguishesMissingEmptyAndPathScope(t *testing.T) 
 	if status != 0 || stderr != "" || !strings.Contains(output, "no captured files match") {
 		t.Fatalf("path mismatch became empty net: %q, %q, %d", output, stderr, status)
 	}
-	output, stderr, status = f.run(t, "mchanges "+id+" --net --workspace "+t.TempDir())
-	if status == 0 || !strings.Contains(stderr, "check --workspace") || strings.Contains(output, "no net changes") {
-		t.Fatalf("unavailable selection became empty net: %q, %q, %d", output, stderr, status)
-	}
 	gap := f.reserve(t, f.thread, "gap")
 	f.publish(t, gap, "gap", "gap-call", mekugiHistory{ExecOutcome: &changecapture.Outcome{Coverage: changecapture.CoveragePartial, ScopeReason: "host inputs missing"}})
 	output, stderr, status = f.run(t, "mchanges "+gap+" --net")

@@ -120,7 +120,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"cd child\nmchanges --workspace .. --summary "+id, nil, invocation)
+		"cd child\nmchanges --summary "+id, nil, invocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, "A\t12\t0\tfile.txt\n") || strings.Contains(stdout, "+line") {
 		t.Fatalf("summary from subdirectory: %q, %q, %d", stdout, stderr, status)
 	}
@@ -180,7 +180,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	if status != 0 || stderr != "" || stdout != "add \"\" -> \"--summary\"\nadd \"\" -> \"apple2\"\n" {
 		t.Fatalf("literal flag and ID paths: %q, %q, %d", stdout, stderr, status)
 	}
-	for _, arguments := range []string{"read " + id, id + " --path file.txt", "amber1..apple2", "--max-tokens 0 amber1", "--history --summary amber1"} {
+	for _, arguments := range []string{id + " --path file.txt", "amber1..apple2", "--max-tokens 0 amber1", "--history --summary amber1"} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "mchanges "+arguments, nil, invocation)
 		if status == 0 || stdout != "" || stderr == "" {
 			t.Fatalf("%q did not reject: %q, %q, %d", arguments, stdout, stderr, status)
@@ -218,9 +218,9 @@ func TestParseChangeRead(t *testing.T) {
 		t.Fatalf("range and flags: %+v, %v", options, err)
 	}
 	for _, arguments := range [][]string{
-		{"read", "amber1"}, {"amber1", "--path", "file"}, {"amber1", "--", ""},
+		{"amber1", "--path", "file"}, {"amber1", "--", ""},
 		{"--summary", "--summary", "amber1"}, {"--max-tokens", "01", "amber1"},
-		{"--workspace", workspace, "--workspace", workspace, "amber1"},
+		{"--workspace", workspace, "amber1"},
 		{"--cursor"}, {"--cursor", "", "amber1"}, {"--unknown", "amber1"},
 		{"--list", "--", "file"}, {"--list", "--summary"},
 	} {

@@ -188,7 +188,7 @@ func (p *composerPicker) readRewindSource(control *sessioncontrol.Client[appServ
 				if !exists {
 					index = len(commands)
 					workspaces[change.Workspace] = index
-					commands = append(commands, "mchanges revert --workspace "+commandargs.Quote(change.Workspace))
+					commands = append(commands, "mchanges revert")
 				}
 				commands[index] += " " + commandargs.Quote(change.ID)
 			}

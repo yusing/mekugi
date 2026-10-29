@@ -93,7 +93,6 @@ func (f *fixture) publish(t *testing.T, id, correlation, call, thread string, fi
 
 func (f *fixture) execute(t *testing.T, thread string, args ...string) command.Output {
 	t.Helper()
-	args = append(slices.Clone(args), "--workspace", f.workspace)
 	output, err := f.run.Run(t.Context(), command.Request{Args: args, Scope: scope.Retained{Directory: f.selected.Store.Directory(), Namespace: f.selected.Namespace, Thread: thread}})
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +128,7 @@ func TestModulePublicationScopedReadAndFrozenRecovery(t *testing.T) {
 	if partial.ExitCode != 1 || !strings.Contains(partial.Stdout, "first.txt") || !strings.Contains(partial.Stderr, "amber999") {
 		t.Fatalf("partial read: %+v", partial)
 	}
-	query, err := f.service.Parse([]string{"--mine", "--history", "--workspace", f.workspace}, f.workspace)
+	query, err := f.service.Parse([]string{"--mine", "--history"}, f.workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +227,7 @@ func TestModuleMutationScopeAndPureReportRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.publish(t, id, "edit", "edit-call", "owner", []legacycall.ReviewFile{review(path, "old", "new")})
-	query, err := f.service.Parse([]string{"revert", id, "--workspace", f.workspace}, f.workspace)
+	query, err := f.service.Parse([]string{"revert", id}, f.workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,5 +414,269 @@ func TestInspectVisibleFiltersCallsAtOwner(t *testing.T) {
 	unfiltered, err := f.service.Inspect(f.selected, f.workspace)
 	if err != nil || len(unfiltered.Changes[other].Calls) != 1 {
 		t.Fatal("visible inspection changed retained membership", err)
+	}
+}
+
+func TestModuleWorkspaceIndependentSelectionAndMutation(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	root := f.workspace
+	f.workspace = filepath.Join(root, "bar")
+	if err := os.Mkdir(f.workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	first := f.reserve(t, "owner", "first")
+	firstPath := filepath.Join(f.workspace, "baz1")
+	f.publish(t, first, "first", "first-call", "owner", []legacycall.ReviewFile{review("baz1", "old", "new")})
+	second := f.reserve(t, "owner", "second")
+	secondPath := filepath.Join(f.workspace, "baz2")
+	f.publish(t, second, "second", "second-call", "owner", []legacycall.ReviewFile{review("baz2", "before", "after")})
+	for _, view := range []string{"", "--summary", "--history"} {
+		var expected string
+		for _, paths := range [][]string{nil, {"bar/baz1", "bar/baz2"}, {"baz1", "baz2"}, {firstPath, secondPath}} {
+			args := []string{first + ".." + second}
+			if view != "" {
+				args = append(args, view)
+			}
+			args = append(args, paths...)
+			query, err := f.service.Parse(args, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text, err := f.service.Read(t.Context(), f.selected, query)
+			if err != nil || text == "" {
+				t.Fatalf("%s %v: %q, %v", view, paths, text, err)
+			}
+			if expected != "" && text != expected {
+				t.Fatalf("%s %v: %q; want %q", view, paths, text, expected)
+			}
+			expected = text
+		}
+	}
+	// Authored-relative paths win when the cwd spelling names another captured file.
+	ambiguous := f.reserve(t, "sibling", "ambiguous")
+	f.publish(t, ambiguous, "ambiguous", "ambiguous-call", "sibling", []legacycall.ReviewFile{review("bar/baz1", "inside", "preferred")})
+	precedence, err := f.service.Parse([]string{first, ambiguous, "bar/baz1"}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preferred, err := f.service.Read(t.Context(), f.selected, precedence)
+	if err != nil || !strings.Contains(preferred, "+preferred") || strings.Contains(preferred, "+new") {
+		t.Fatalf("authored path precedence: %q, %v", preferred, err)
+	}
+	// A shared name selects the matching files in both authored workspaces.
+	f.workspace = root
+	other := f.reserve(t, "owner", "other")
+	// Call identity is workspace-qualified, so this root may reuse first-call.
+	f.publish(t, other, "other", "first-call", "owner", []legacycall.ReviewFile{review("baz1", "outside", "changed")})
+	query, err := f.service.Parse([]string{first, other, "--summary", "baz1"}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := f.service.Read(t.Context(), f.selected, query)
+	if err != nil || !strings.Contains(text, "bar/baz1") || !strings.Contains(text, "\tbaz1\n") {
+		t.Fatalf("same spelling in two authored workspaces: %q, %v", text, err)
+	}
+	sibling := f.reserve(t, "sibling", "sibling")
+	f.publish(t, sibling, "sibling", "sibling-call", "sibling", []legacycall.ReviewFile{review("private", "a", "b")})
+	// Reopen storage and select from unrelated cwd, using only retained caller evidence.
+	reopened := f.history.Attach(f.selected.Store.Directory())
+	selected := f.selected
+	selected.Store = reopened
+	query, err = f.service.Parse([]string{"--list"}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err = f.service.Read(t.Context(), selected, query)
+	if err != nil || !strings.Contains(text, first+".."+second) || !strings.Contains(text, other) || strings.Contains(text, sibling) || strings.Contains(text, ambiguous) {
+		t.Fatalf("retained caller workspaces: %q, %v", text, err)
+	}
+	// Frozen continuation retains each authored workspace and resolved filter.
+	full := f.execute(t, "owner", first, other, "--history", "baz1")
+	paged := f.execute(t, "owner", first, other, "--history", "--max-tokens", "10", "baz1")
+	if full.ExitCode != 0 || paged.Delivery == nil {
+		t.Fatalf("mixed-workspace paging: full=%+v, paged=%+v", full, paged)
+	}
+	prepared, err := paged.Delivery.Prepare([]string{"mixed-read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := changehistory.Module.Contributes.References[0]
+	selection, err := resolver.Canonicalize(prepared.Recovery[0].ChangeSelection, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frozen struct {
+		Streams    []changes.Stream  `json:"streams"`
+		Workspaces map[string]string `json:"workspaces"`
+	}
+	if err := json.Unmarshal(selection, &frozen); err != nil || len(frozen.Streams) != 2 || len(frozen.Workspaces) != 2 {
+		t.Fatalf("frozen selection retained unrelated streams: %+v, %v", frozen, err)
+	}
+	retainedScope := scope.Retained{Directory: reopened.Directory(), Namespace: "owner", Thread: "owner"}
+	names, err := resolver.Dependencies(retainedScope, selection)
+	if err != nil || !slices.Contains(names, legacycall.Name(filepath.Join(root, "bar"), "first-call", false)) || !slices.Contains(names, legacycall.Name(root, "first-call", false)) {
+		t.Fatalf("mixed-workspace frozen dependencies: %v, %v", names, err)
+	}
+	omitted, err := resolver.Resolve(t.Context(), reference.View{Scope: retainedScope}, selection)
+	if err != nil || prepared.Referenced.Stdout+omitted.Stdout != full.Stdout {
+		t.Fatalf("mixed-workspace frozen continuation: %+v, %v", omitted, err)
+	}
+	for path, content := range map[string]string{firstPath: "new\n", secondPath: "after\n", filepath.Join(root, "baz1"): "changed\n"} {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	query, err = f.service.Parse([]string{"revert", first, other}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := f.service.MutationPaths(t.Context(), selected, query)
+	if err != nil || !slices.Contains(paths, firstPath) || !slices.Contains(paths, filepath.Join(root, "baz1")) {
+		t.Fatalf("mixed-workspace declared scope: %v, %v", paths, err)
+	}
+	for _, operation := range []string{"revert", "apply"} {
+		output := f.execute(t, "owner", operation, first, other)
+		want := "old\n"
+		if operation == "apply" {
+			want = "new\n"
+		}
+		data, err := os.ReadFile(firstPath)
+		otherData, otherErr := os.ReadFile(filepath.Join(root, "baz1"))
+		otherWant := "outside\n"
+		if operation == "apply" {
+			otherWant = "changed\n"
+		}
+		if err != nil || otherErr != nil || output.ExitCode != 0 || string(data) != want || string(otherData) != otherWant {
+			t.Fatalf("mixed-workspace %s: %+v, %q, %v", operation, output, data, err)
+		}
+	}
+	f.workspace = t.TempDir()
+	missing := f.reserve(t, "owner", "missing-workspace")
+	f.publish(t, missing, "missing-workspace", "missing-call", "owner", []legacycall.ReviewFile{review("gone", "a", "b")})
+	if err := os.Remove(f.workspace); err != nil {
+		t.Fatal(err)
+	}
+	failed := f.execute(t, "owner", "revert", first, missing)
+	data, err := os.ReadFile(firstPath)
+	if err != nil || failed.ExitCode != 1 || string(data) != "new\n" || !strings.Contains(failed.Stderr, "authored workspace") {
+		t.Fatalf("missing authored workspace allowed partial writes: %+v, %q, %v", failed, data, err)
+	}
+}
+
+func TestModuleReadIsolatesCorruptIndexes(t *testing.T) {
+	t.Parallel()
+	for _, namespace := range []string{"owner", "foreign"} {
+		t.Run(namespace, func(t *testing.T) {
+			f := newFixture(t)
+			id := f.reserve(t, "owner", "good")
+			f.publish(t, id, "good", "good-call", "owner", []legacycall.ReviewFile{review("good.txt", "old", "new")})
+			name := fmt.Sprintf("changes-v3-%x.json", sha256.Sum256([]byte(namespace+"\x00"+t.TempDir())))
+			data := fmt.Sprintf(`{"Namespace":%q,"Version":"broken-schema"}`, namespace)
+			if namespace == "foreign" {
+				data = `{"Namespace":`
+			}
+			if err := os.WriteFile(filepath.Join(f.selected.Store.Directory(), name), []byte(data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			out := f.execute(t, "owner", id, "--summary")
+			if out.ExitCode != 0 || !strings.Contains(out.Stdout, "good.txt") {
+				t.Fatalf("unrelated index suppressed healthy selection: %+v", out)
+			}
+			unknown := changes.ID("z", 1)
+			for _, args := range [][]string{{id, unknown, "--summary"}, {"--mine", "--summary"}} {
+				out = f.execute(t, "owner", args...)
+				if out.ExitCode != 1 || !strings.Contains(out.Stdout, "good.txt") || !strings.Contains(out.Stderr, "discovery") {
+					t.Fatalf("incomplete discovery lost healthy evidence or diagnostic: %+v", out)
+				}
+			}
+			path := filepath.Join(f.workspace, "good.txt")
+			if err := os.WriteFile(path, []byte("new\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if out = f.execute(t, "owner", "revert", id); out.ExitCode != 0 {
+				t.Fatalf("unrelated corrupt index blocked a resolved mutation: %+v", out)
+			}
+			out = f.execute(t, "owner", "apply", id, unknown)
+			content, err := os.ReadFile(path)
+			if err != nil || out.ExitCode != 1 || string(content) != "old\n" {
+				t.Fatalf("unresolved ownership allowed partial mutation: %+v, %q, %v", out, content, err)
+			}
+		})
+	}
+}
+
+func TestModuleSymlinkCallerFilters(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	root := f.workspace
+	f.workspace = filepath.Join(root, "bar")
+	if err := os.Mkdir(f.workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	id := f.reserve(t, "owner", "good")
+	f.publish(t, id, "good", "good-call", "owner", []legacycall.ReviewFile{review("baz", "old", "new")})
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	query, err := f.service.Parse([]string{id, "bar/baz"}, alias)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := f.service.Read(t.Context(), f.selected, query)
+	if err != nil || !strings.Contains(text, "+new") {
+		t.Fatalf("cwd-relative filter through symlink lost evidence: %q, %v", text, err)
+	}
+}
+
+func TestModuleReadIsolatesAmbiguousOwnership(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	firstRoot := f.workspace
+	first := f.reserve(t, "owner", "one")
+	f.publish(t, first, "one", "one-call", "owner", []legacycall.ReviewFile{review("one.txt", "a", "b")})
+	f.workspace = t.TempDir()
+	secondRoot := f.workspace
+	second := f.reserve(t, "owner", "two")
+	f.publish(t, second, "two", "two-call", "owner", []legacycall.ReviewFile{review("two.txt", "c", "d")})
+	f.workspace = t.TempDir()
+	healthy := f.reserve(t, "owner", "healthy")
+	f.publish(t, healthy, "healthy", "healthy-call", "owner", []legacycall.ReviewFile{review("healthy.txt", "x", "y")})
+	index, err := f.service.Inspect(f.selected, firstRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index.Workspace = secondRoot
+	data, err := json.Marshal(struct {
+		Version int
+		changes.Snapshot
+	}{Version: 1, Snapshot: index}, jsonv1.DefaultOptionsV1())
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := fmt.Sprintf("changes-v3-%x.json", sha256.Sum256([]byte("owner\x00"+secondRoot)))
+	if err := os.WriteFile(filepath.Join(f.selected.Store.Directory(), name), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	out := f.execute(t, "owner", healthy, "--summary")
+	if out.ExitCode != 0 || !strings.Contains(out.Stdout, "healthy.txt") {
+		t.Fatalf("unselected ambiguity suppressed healthy ownership: %+v", out)
+	}
+	out = f.execute(t, "owner", first, healthy, "--summary")
+	if out.ExitCode != 1 || !strings.Contains(out.Stdout, "healthy.txt") || strings.Contains(out.Stdout, "one.txt") || !strings.Contains(out.Stderr, "ambiguous") {
+		t.Fatalf("ambiguous ownership lost independent result or remained usable: %+v", out)
+	}
+	path := filepath.Join(f.workspace, "healthy.txt")
+	if err := os.WriteFile(path, []byte("y\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out = f.execute(t, "owner", "revert", first, healthy)
+	content, err := os.ReadFile(path)
+	if err != nil || out.ExitCode != 1 || string(content) != "y\n" {
+		t.Fatalf("ambiguous ownership allowed partial writes: %+v, %q, %v", out, content, err)
+	}
+	if out = f.execute(t, "owner", "revert", healthy); out.ExitCode != 0 {
+		t.Fatalf("unrelated ambiguity blocked healthy mutation: %+v", out)
 	}
 }

@@ -26,7 +26,7 @@ compaction. Missing workspace metadata permits only the thread's unique retained
 workspace; ambiguity cannot establish scope.
 An admitted workspace remains the capture identity after its directory is removed.
 Commands with an explicit surviving working directory can still capture named
-edits under that identity; reads select the original workspace with `--workspace`.
+edits under that identity; change IDs resolve the original workspace for retained reads.
 
 New records retain bounded inline file evidence. Private workspace checkpoints
 are comparison state, not record evidence. Historical snapshot-backed records

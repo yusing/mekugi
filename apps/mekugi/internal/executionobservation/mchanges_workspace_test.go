@@ -18,16 +18,9 @@ func TestMChangesFrontendReadsDeletedWorkspace(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "deleted-workspace")
 	root := f.workspace
-	if err := os.MkdirAll(filepath.Join(root, "real", "child"), 0700); err != nil {
-		t.Fatal(err)
-	}
 	f.workspace = filepath.Join(root, "real", "workspace")
-	if err := os.Mkdir(f.workspace, 0700); err != nil {
+	if err := os.MkdirAll(f.workspace, 0700); err != nil {
 		t.Fatal(err)
-	}
-	alias := filepath.Join(root, "alias")
-	if err := os.Symlink(filepath.Join(root, "real", "child"), alias); err != nil {
-		t.Skipf("symlink unavailable: %v", err)
 	}
 	id := f.reserve(t, f.thread, "edit")
 	f.publish(t, id, "edit", "edit-call", mekugiHistory{
@@ -35,7 +28,7 @@ func TestMChangesFrontendReadsDeletedWorkspace(t *testing.T) {
 	})
 	// Execute from a surviving directory while selecting the historical owner.
 	f.invocation = f.invocationFor(t.TempDir(), f.thread)
-	listed, stderr, status := f.run(t, fmt.Sprintf("mchanges --list --workspace %q", f.workspace))
+	listed, stderr, status := f.run(t, "mchanges --list")
 	ids := strings.Fields(listed)
 	if status != 0 || stderr != "" || len(ids) == 0 || ids[0] != id {
 		t.Fatalf("owning-workspace discovery: stdout=%q stderr=%q status=%d", listed, stderr, status)
@@ -44,7 +37,7 @@ func TestMChangesFrontendReadsDeletedWorkspace(t *testing.T) {
 	views := []string{"", "--summary", "--history", "--list", "--net"}
 	want := make([]string, len(views))
 	for i, view := range views {
-		stdout, stderr, status := f.run(t, fmt.Sprintf("mchanges %s %s --workspace %q", view, id, f.workspace))
+		stdout, stderr, status := f.run(t, fmt.Sprintf("mchanges %s %s", view, id))
 		if status != 0 || stderr != "" || stdout == "" {
 			t.Fatalf("before deletion %s: stdout=%q stderr=%q status=%d", view, stdout, stderr, status)
 		}
@@ -54,11 +47,9 @@ func TestMChangesFrontendReadsDeletedWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, view := range views {
-		for _, workspace := range []string{f.workspace, alias + string(os.PathSeparator) + ".." + string(os.PathSeparator) + "workspace"} {
-			stdout, stderr, status := f.run(t, fmt.Sprintf("mchanges %s %s --workspace %q", view, id, workspace))
-			if status != 0 || stderr != "" || stdout != want[i] {
-				t.Errorf("after deletion %s workspace=%q: stdout=%q stderr=%q status=%d; want %q", view, workspace, stdout, stderr, status, want[i])
-			}
+		stdout, stderr, status := f.run(t, fmt.Sprintf("mchanges %s %s", view, id))
+		if status != 0 || stderr != "" || stdout != want[i] {
+			t.Errorf("after deletion %s: stdout=%q stderr=%q status=%d; want %q", view, stdout, stderr, status, want[i])
 		}
 	}
 }
@@ -181,7 +172,7 @@ func TestMChangesLegacyPositionalStreamsSeedNewWorkspaceID(t *testing.T) {
 	}
 }
 
-func TestMChangesWrongWorkspaceReadKeepsValidTargets(t *testing.T) {
+func TestMChangesCrossWorkspacePendingReadKeepsValidTargets(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "workspace-partial")
 	other := t.TempDir()
@@ -200,13 +191,20 @@ func TestMChangesWrongWorkspaceReadKeepsValidTargets(t *testing.T) {
 		if view == "" || view == "--net" || view == "--summary" {
 			marker = "file.txt"
 		}
-		if status == 0 || !strings.Contains(stdout, marker) || !strings.Contains(stderr, foreign) {
-			t.Errorf("%q lost partial result or error: stdout=%q stderr=%q status=%d", command, stdout, stderr, status)
+		if !strings.Contains(stdout, marker) {
+			t.Errorf("%q lost valid target: stdout=%q stderr=%q status=%d", command, stdout, stderr, status)
+		}
+		if view == "" || view == "--net" {
+			if status != 1 || !strings.Contains(stderr, foreign) {
+				t.Errorf("%q lost pending error: stdout=%q stderr=%q status=%d", command, stdout, stderr, status)
+			}
+		} else if status != 0 || stderr != "" || !strings.Contains(stdout, foreign+" pending") {
+			t.Errorf("%q lost pending marker: stdout=%q stderr=%q status=%d", command, stdout, stderr, status)
 		}
 	}
 }
 
-func TestMChangesWrongWorkspaceMutationIsAtomic(t *testing.T) {
+func TestMChangesCrossWorkspacePendingMutationIsAtomic(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "workspace-mutation")
 	other := t.TempDir()

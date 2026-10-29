@@ -23,6 +23,10 @@ import (
 // The index contains identities and application receipts, not another copy of
 // scripts or diffs. Replay records remain immutable translation facts.
 type changeIndex struct {
+	// Transient stream ownership for namespace-wide command selections.
+	workspaces   map[string]string
+	discoveryErr error
+
 	Sequence  uint64 `json:",omitzero"`
 	Version   int
 	Workspace string

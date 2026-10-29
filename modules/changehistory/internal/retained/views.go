@@ -61,7 +61,7 @@ changes:
 		default:
 			hasFiles := false
 			for _, call := range change.Calls {
-				record, err := s.readChangeRecord(options.workspace, id, change.Correlation, call.ID)
+				record, err := s.readChangeRecord(index.workspaceFor(id), id, change.Correlation, call.ID)
 				if err != nil {
 					if options.unavailable.skip(id, err) {
 						continue changes
@@ -137,7 +137,11 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 		}
 	}
 	var paths []string
-	for _, path := range options.paths {
+	filters := options.paths
+	if options.resolvedPaths != nil {
+		filters = options.resolvedPaths
+	}
+	for _, path := range filters {
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(options.workspace, path)
 		}

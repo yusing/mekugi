@@ -75,7 +75,7 @@ func (s *store) loadChangeCaptures(ctx context.Context, workspace string, index 
 		return nil
 	}
 	read := func(id string, call string) (capturedRecord, error) {
-		record, err := s.readChangeRecord(workspace, id, index.Changes[id].Correlation, call)
+		record, err := s.readChangeRecord(index.workspaceFor(id), id, index.Changes[id].Correlation, call)
 		if err != nil {
 			return capturedRecord{}, err
 		}
@@ -88,12 +88,13 @@ func (s *store) loadChangeCaptures(ctx context.Context, workspace string, index 
 	dropped := make(map[[2]int]bool)
 changes:
 	for _, id := range ids {
+		workspace = index.workspaceFor(id)
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		change, exists := index.Changes[id]
 		if !exists {
-			return nil, fmt.Errorf("change %s is missing in workspace %q; check --workspace; session data may have expired after 14 days of inactivity or been removed under storage pressure", id, workspace)
+			return nil, fmt.Errorf("change %s is missing in workspace %q; session data may have expired after 14 days of inactivity or been removed under storage pressure", id, workspace)
 		}
 		start, startBytes := len(captures), bytes
 		var limitErr error
@@ -208,7 +209,7 @@ func (s *store) selectedChangeCaptures(ctx context.Context, options changeReadOp
 func (s *store) changeMutationPaths(ctx context.Context, options changeReadOptions) ([]string, error) {
 	var paths []string
 	err := s.locked(ctx, func(s *store) error {
-		index, err := s.readChangeIndex(options.workspace)
+		index, err := s.selectChangeIndex(&options)
 		if err != nil {
 			return err
 		}
@@ -556,7 +557,7 @@ func (s *store) mutateChanges(ctx context.Context, options changeReadOptions) (s
 	var selected, history []changeCapture
 	var historyErr error
 	err := s.locked(ctx, func(s *store) error {
-		index, err := s.readChangeIndex(options.workspace)
+		index, err := s.selectChangeIndex(&options)
 		if err != nil {
 			return err
 		}
@@ -567,6 +568,9 @@ func (s *store) mutateChanges(ctx context.Context, options changeReadOptions) (s
 		if err := s.retainFiles(names...); err != nil {
 			return err
 		}
+		if err := s.resolveChangePaths(&options, index); err != nil {
+			return err
+		}
 		if selected, err = s.selectedChangeCaptures(ctx, options, index); err != nil {
 			return err
 		}
@@ -574,6 +578,15 @@ func (s *store) mutateChanges(ctx context.Context, options changeReadOptions) (s
 		for _, capture := range selected {
 			for _, file := range capture.files {
 				paths = append(paths, file.BeforePath, file.AfterPath)
+			}
+		}
+		for _, workspace := range index.authoredWorkspaces(options.ids) {
+			info, err := os.Stat(workspace)
+			if err != nil {
+				return fmt.Errorf("resolve authored workspace: %w", err)
+			}
+			if !info.IsDir() {
+				return fmt.Errorf("authored workspace %q is not a directory", workspace)
 			}
 		}
 		// History only explains the report; an unreadable record degrades the

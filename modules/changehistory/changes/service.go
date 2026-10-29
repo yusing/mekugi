@@ -12,7 +12,7 @@ import (
 const MaxReadBytes = 64 << 20
 
 // Scope carries authenticated retained ownership and the existing publication
-// handle. Workspace operands remain explicit, separate from namespace identity.
+// handle, separate from the working directory used to spell path filters.
 type Scope struct {
 	Store             *history.Store
 	Namespace, Thread string
@@ -21,6 +21,7 @@ type Scope struct {
 }
 
 type Query struct {
+	// Workspace is the caller directory for path resolution/display, not an ownership selector.
 	Workspace  string
 	IDs, Paths []string
 	View       string

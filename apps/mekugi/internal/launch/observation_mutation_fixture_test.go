@@ -45,7 +45,7 @@ func mutateTestChanges(t *testing.T, ctx context.Context, store *mekugiReplaySto
 }
 
 func mutateChangeFixture(store *mekugiReplayStore, ctx context.Context, query changes.Query) (string, int, error) {
-	args := append([]string{query.View, "--workspace", query.Workspace, "--max-tokens", "15500"}, query.IDs...)
+	args := append([]string{query.View, "--max-tokens", "15500"}, query.IDs...)
 	if len(query.Paths) > 0 {
 		args = append(append(args, "--"), query.Paths...)
 	}

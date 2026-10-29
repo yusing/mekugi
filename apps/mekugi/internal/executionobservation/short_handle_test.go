@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -103,7 +104,7 @@ func TestShortHandlesRejectLegacyReferences(t *testing.T) {
 	if _, ok := history.ParseHandle("r_AAAAAAAAAAAAAAAAAAAAAA"); ok {
 		t.Fatal("accepted legacy read reference")
 	}
-	if _, err := testChanges().Parse([]string{"hp_a1"}, t.TempDir()); err == nil {
+	if _, _, err := changes.ParseID("hp_a1"); err == nil {
 		t.Fatal("accepted legacy change reference")
 	}
 }

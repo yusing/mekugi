@@ -49,13 +49,14 @@ The session-private `mchanges` executable lists the current thread's change
 IDs or reads selected IDs and ranges:
 
 ```text
-mchanges --list [ID[..ID] ...] [--workspace DIR] [--max-tokens N]
-mchanges [--mine | ID[..ID] ...] [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]
-mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]
+mchanges --list [ID[..ID] ...] [--max-tokens N]
+mchanges [--mine | ID[..ID] ...] [--summary|--history] [--max-tokens N] [PATH ...]
+mchanges revert|apply ID[..ID] ... [--max-tokens N] [PATH ...]
 ```
 
 A bare `mchanges` or `--mine` selects every allocated ID owned by the calling
-thread, including explicit markers for retired evidence. Forked threads inherit
+thread across its retained authored workspaces, including explicit markers for
+retired evidence. Forked threads inherit
 their visible stream under the fork's identity; resume uses the durable identity.
 `--list` without operands selects the calling thread; explicit IDs and ranges may
 select captured changes across agents. It shows IDs and counts, without execution outcomes or capture diagnostics.
@@ -73,7 +74,9 @@ Counts come from the composed file differences, not the sum of repeated attempts
 Only authored evidence participates in this composition; historical managed
 records remain diagnostic history rather than authored edits. Inconsistent chains have unknown counts and a retained reason.
 A created-then-deleted file has no summary row, matching the empty saved diff.
-Paths inside the selected workspace are shortened. Pending selections get per-ID status rows. Unavailable selections, including
+Paths inside a single authored workspace are shortened; mixed-workspace reads
+use the caller directory as their display base. Pending selections get per-ID
+status rows. Unavailable selections, including
 retired or never-allocated IDs, report target-qualified stderr and nonzero status
 without suppressing available results in any read mode. Explicit ranges extending
 past the latest ID still return available IDs. When no selected ID is readable and
@@ -92,11 +95,12 @@ changes. Native edit receipts show incomplete named targets separately from
 confirmed edits and link to `mchanges --summary` for their retained reasons.
 Changing admission rules does not recover missing historical baselines.
 Numeric range ends such as
-`amber1..3` are equivalent to `amber1..amber3`. A path operand belongs after `--`;
-unknown options are diagnosed as options. Missing-ID errors distinguish retired
+`amber1..3` are equivalent to `amber1..amber3`. Path operands may follow IDs
+directly; `--` disambiguates paths that resemble IDs or options. Unknown options
+are diagnosed as options. Missing-ID errors distinguish retired
 from never allocated and give the latest allocation for a never-allocated ID in a
-known stream. If the stream is unknown, the error identifies the selected
-workspace so callers can correct `--workspace`. Consecutive missing IDs in one
+known stream. Unknown streams are reported as unavailable in the authenticated
+session. Consecutive missing IDs in one
 stream with the same failure reason share one range-qualified diagnostic.
 Ranges do not bridge available IDs, unselected IDs, or different failure reasons.
 
@@ -131,12 +135,15 @@ that failure is reported.
 An empty own-thread selection names the workspace and suggests explicit IDs for
 other agents; it does not imply that their captures are missing.
 Mutations still require explicit IDs; `--mine` never selects writes. `--history` includes the original observed patch or command input, the
-host result, and for a command the observed scope. Paths after `--` filter review files without re-reading the
-current filesystem. `--workspace ..` selects the owning workspace index when
-the command runs from a subdirectory; paths after `--` only filter entries in
-the selected record. Read-only views remain available after that workspace is
-deleted; select its canonical path. Apply and revert require the workspace to
-exist. `--max-tokens` bounds displayed output. When output is
+host result, and for a command the observed scope. Explicit IDs resolve each
+record's authored workspace, including selections spanning workspaces. Path filters
+match retained names without reading the current filesystem. Relative operands
+first match against selected authored workspaces, then against the caller
+directory; absolute operands match directly. When the same relative name exists
+in multiple selected authored workspaces, it selects each matching captured path.
+Read-only views remain available after an authored workspace is deleted. Apply
+and revert require the selected authored workspaces to exist and validate every
+selected dependency before writing. `--max-tokens` bounds displayed output. When output is
 omitted, an `mread` reference retrieves the retained remainder on complete-row
 boundaries. The receipt freezes the selected attempts, allocation state and view
 under the read lock, and retains those exact attempt dependencies. Appended

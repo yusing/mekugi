@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -24,7 +23,7 @@ import (
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
-const changesReadUsage = "mchanges --list [ID[..ID] ...] [--workspace DIR] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]"
+const changesReadUsage = "mchanges --list [ID[..ID] ...] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history] [--max-tokens N] [PATH ...] | mchanges revert|apply ID[..ID] ... [--max-tokens N] [PATH ...]"
 
 type changeReadOptions struct {
 	// Only initial reads collect unavailable targets; frozen recovery stays strict.
@@ -32,8 +31,10 @@ type changeReadOptions struct {
 	overlapLabels map[string]string
 	mine          bool
 	view          string
+	resolvedPaths []string
 	paths         []string
 	workspace     string
+	cwd           string
 	maxTokens     int
 	ids           []string
 }
@@ -61,7 +62,7 @@ func (s *store) readChangeRecord(workspace, id, correlation, call string) (captu
 }
 
 func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) {
-	options := changeReadOptions{workspace: cwd, maxTokens: 4000}
+	options := changeReadOptions{workspace: cwd, cwd: cwd, maxTokens: 4000}
 	seen := make(map[string]bool)
 	var refs []string
 	if len(arguments) > 0 && (arguments[0] == "revert" || arguments[0] == "apply") {
@@ -71,6 +72,9 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		arguments = commandargs.ExpandMaxTokensOption(arguments)
 		flag := arguments[0]
 		arguments = arguments[1:]
+		if flag == "" {
+			return options, errors.New("paths must be nonempty")
+		}
 		if flag == "--" {
 			if slices.Contains(arguments, "") {
 				return options, errors.New("paths after -- must be nonempty")
@@ -81,7 +85,8 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		if !strings.HasPrefix(flag, "-") {
 			start, _, _ := strings.Cut(flag, "..")
 			if _, _, err := changes.ParseID(start); err != nil {
-				return options, fmt.Errorf("invalid change operand %q; paths belong after -- PATH", flag)
+				options.paths = append(options.paths, flag)
+				continue
 			}
 			refs = append(refs, flag)
 			continue
@@ -107,25 +112,16 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 				return options, errors.New("choose only one review view")
 			}
 			options.view = strings.TrimPrefix(flag, "--")
-		case "--workspace", "--max-tokens":
+		case "--max-tokens":
 			if len(arguments) == 0 {
-				if flag == "--max-tokens" {
-					return options, errors.New(commandargs.MaxTokensArgumentError)
-				}
-				return options, fmt.Errorf("%s requires a value", flag)
+				return options, errors.New(commandargs.MaxTokensArgumentError)
 			}
-			value := arguments[0]
+			number, err := commandargs.ParseMaxTokens(arguments[0])
+			if err != nil {
+				return options, err
+			}
 			arguments = arguments[1:]
-			switch flag {
-			case "--workspace":
-				options.workspace = value
-			case "--max-tokens":
-				number, err := commandargs.ParseMaxTokens(value)
-				if err != nil {
-					return options, err
-				}
-				options.maxTokens = number
-			}
+			options.maxTokens = number
 		default:
 			return options, fmt.Errorf("unknown option %s; %s", flag, changesReadUsage)
 		}
@@ -149,48 +145,12 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			return options, err
 		}
 	}
-	if options.workspace != "" {
-		if !filepath.IsAbs(options.workspace) {
-			options.workspace = filepath.Join(cwd, options.workspace)
-		}
-		options.workspace, err = resolveChangeWorkspace(options.workspace, options.view != "revert" && options.view != "apply")
-		if err != nil {
-			return options, fmt.Errorf("resolve workspace: %w", err)
-		}
-	}
 	// New commands compose captures; retained empty-view selections keep their
 	// original per-attempt rendering for digest-checked recovery.
 	if options.view == "" {
 		options.view = "net"
 	}
 	return options, nil
-}
-
-func resolveChangeWorkspace(path string, allowMissing bool) (string, error) {
-	var suffix string
-	for {
-		resolved, err := filepath.EvalSymlinks(path)
-		if err == nil {
-			return filepath.Join(resolved, suffix), nil
-		}
-		if !allowMissing || !errors.Is(err, os.ErrNotExist) || filepath.Dir(path) == path {
-			return "", err
-		}
-		// Only absent components can be reconstructed. An existing dangling
-		// symlink must not become a different lexical workspace identity.
-		if _, statErr := os.Lstat(path); !errors.Is(statErr, os.ErrNotExist) {
-			return "", err
-		}
-		// Split without cleaning: a surviving symlink/.. prefix must be
-		// resolved by the filesystem before the absent suffix is appended.
-		parent, name := filepath.Split(path)
-		if name == "" {
-			path = path[:len(path)-1]
-			continue
-		}
-		suffix = filepath.Join(name, suffix)
-		path = parent
-	}
 }
 
 func (s *store) readChanges(ctx context.Context, options changeReadOptions) (string, error) {
@@ -220,23 +180,17 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 	var snapshot *changeReadSnapshot
 	var targetErrors []error
 	err := func() error {
-		index, err := s.readChangeIndex(options.workspace)
+		index, err := s.selectChangeIndex(&options)
 		if err != nil {
 			return err
 		}
-		if options.mine {
-			if s.session.Thread == "" {
-				return errors.New("own-thread reads require a Codex thread identity")
-			}
-			options.ids, err = threadChangeIDs(index, s.session.Thread)
-			if err != nil {
-				return err
-			}
+		if options.mine && index.discoveryErr != nil {
+			targetErrors = append(targetErrors, fmt.Errorf("caller-owned capture discovery is incomplete: %w", index.discoveryErr))
 		}
 		snapshot = &changeReadSnapshot{Workspace: options.workspace, IDs: options.ids, Paths: options.paths, View: options.view, Frozen: true,
-			Selected: make(map[string]trackedChange), Streams: index.Streams, Mine: options.mine, OverlapLabels: make(map[string]string)}
+			Selected: make(map[string]trackedChange), Mine: options.mine, OverlapLabels: make(map[string]string)}
 		options.overlapLabels = snapshot.OverlapLabels
-		names := []string{changeIndexName(options.workspace, index.Namespace)}
+		names := index.indexNames(options.ids)
 		var readable []string
 		missingStreams := make(map[string]bool)
 		for position := 0; position < len(options.ids); position++ {
@@ -282,6 +236,10 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 		}
 		options.ids = readable
 		options.unavailable = make(changeReadFailures)
+		if err := s.resolveChangePaths(&options, index); err != nil {
+			return err
+		}
+		snapshot.ResolvedPaths = options.resolvedPaths
 		output, err = s.renderChanges(ctx, options, index)
 		for _, id := range readable {
 			if failure := options.unavailable[id]; failure != nil {
@@ -290,9 +248,19 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 			}
 		}
 		snapshot.IDs = slices.DeleteFunc(readable, func(id string) bool { return options.unavailable[id] != nil })
+		selectedStreams := make(map[string]bool)
 		for _, id := range snapshot.IDs {
+			stream, _, _ := changes.ParseID(id)
+			selectedStreams[stream] = true
 			for _, call := range snapshot.Selected[id].Calls {
-				names = append(names, legacycall.Name(options.workspace, call.ID, false))
+				names = append(names, legacycall.Name(index.workspaceFor(id), call.ID, false))
+			}
+		}
+		snapshot.Workspaces = make(map[string]string)
+		for _, stream := range index.Streams {
+			if selectedStreams[stream.Name] {
+				snapshot.Streams = append(snapshot.Streams, stream)
+				snapshot.Workspaces[stream.Name] = index.workspaces[stream.Name]
 			}
 		}
 		if retainErr := retain(names...); retainErr != nil {
@@ -314,20 +282,19 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 }
 
 func threadChangeIDs(index changeIndex, thread string) ([]string, error) {
+	var ids []string
 	for position, stream := range index.Streams {
 		if stream.Thread != thread {
 			continue
 		}
-		if stream.Next > changes.MaxReadBytes/32 {
+		if stream.Next > changes.MaxReadBytes/32-len(ids) {
 			return nil, errors.New("change list exceeds 64 MiB; select explicit IDs")
 		}
-		ids := make([]string, stream.Next)
 		for number := 1; number <= stream.Next; number++ {
-			ids[number-1] = changes.ID(index.streamName(position), number)
+			ids = append(ids, changes.ID(index.streamName(position), number))
 		}
-		return ids, nil
 	}
-	return nil, nil
+	return ids, nil
 }
 
 func missingChangeState(index changeIndex, id string) (string, string) {
@@ -340,6 +307,9 @@ func missingChangeState(index changeIndex, id string) (string, string) {
 			return "retired", changes.ID(name, stream.Next)
 		}
 		return "unknown", changes.ID(name, stream.Next)
+	}
+	if index.discoveryErr != nil {
+		return "unavailable", "none in this stream"
 	}
 	return "unknown", "none in this stream"
 }
@@ -359,8 +329,11 @@ func missingChangeRangeError(index changeIndex, first, last string) error {
 	if state == "unknown" {
 		reason = "never allocated (latest is " + latest + ")"
 	}
+	if state == "unavailable" {
+		reason = fmt.Sprintf("unavailable because change-index discovery failed: %v", index.discoveryErr)
+	}
 	if latest == "none in this stream" {
-		return fmt.Errorf("%s %s in workspace %q; check --workspace", subject, reason, index.Workspace)
+		return fmt.Errorf("%s %s in this session", subject, reason)
 	}
 	return fmt.Errorf("%s %s", subject, reason)
 }
@@ -444,7 +417,7 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 		excludedOnly := len(change.Calls) != 0
 		var readErr error
 		for i, call := range change.Calls {
-			record, err := s.readChangeRecord(options.workspace, id, change.Correlation, call.ID)
+			record, err := s.readChangeRecord(index.workspaceFor(id), id, change.Correlation, call.ID)
 			if err != nil {
 				readErr = err
 				break
@@ -544,6 +517,12 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 				}
 			}
 			for _, file := range history.ReviewFiles {
+				if file.BeforePath != "" && !filepath.IsAbs(file.BeforePath) {
+					file.BeforePath = filepath.Join(index.workspaceFor(id), file.BeforePath)
+				}
+				if file.AfterPath != "" && !filepath.IsAbs(file.AfterPath) {
+					file.AfterPath = filepath.Join(index.workspaceFor(id), file.AfterPath)
+				}
 				if options.view != "history" && !changes.AuthoredReview(file) {
 					continue
 				}
@@ -686,7 +665,11 @@ func changePathMatches(options changeReadOptions, recorded string) bool {
 		}
 		return filepath.Clean(path)
 	}
-	for _, path := range options.paths {
+	paths := options.paths
+	if options.resolvedPaths != nil {
+		paths = options.resolvedPaths
+	}
+	for _, path := range paths {
 		if path == recorded || (options.workspace != "" && resolve(path) == resolve(recorded)) {
 			return true
 		}

@@ -59,7 +59,7 @@ func TestMChangesRecoveryPublicationFailurePreservesOutput(t *testing.T) {
 				}
 				return out.String(), diag.String(), status
 			}
-			base := []string{"--workspace", f.workspace, id}
+			base := []string{id}
 			full, diag, status := run(append(append([]string{}, base...), "--max-tokens", "15500"))
 			if status != 0 || full == "" || diag != "" {
 				t.Fatalf("complete read: status=%d stdout=%q stderr=%q", status, full, diag)

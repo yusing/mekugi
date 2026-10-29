@@ -212,7 +212,6 @@ func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 		message string
 	}{
 		{"mchanges -n 5", "option"},
-		{"mchanges " + ids[0] + " file.txt", "-- PATH"},
 	} {
 		stdout, stderr, status = f.run(t, test.command)
 		if status == 0 || stdout != "" || !strings.Contains(stderr, test.message) {
@@ -233,17 +232,17 @@ func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 	childInvocation := f.invocationFor(child, f.thread)
 	stdout, stderr, status = runShellWorkerTest(t, f.registry, "bash", nil,
 		"mchanges "+ids[0], nil, childInvocation)
-	if status == 0 || stdout != "" || !strings.Contains(stderr, "--workspace") {
-		t.Fatalf("wrong-workspace hint: %q, %q, %d", stdout, stderr, status)
+	if status != 0 || !strings.Contains(stdout, "file.txt") || stderr != "" {
+		t.Fatalf("read from subdirectory: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = runShellWorkerTest(t, f.registry, "bash", nil,
-		"mchanges amber5 --workspace ..", nil, childInvocation)
+		"mchanges amber5", nil, childInvocation)
 	if status == 0 || stdout != "available IDs: amber1..amber2\navailable IDs: amber4\n" || !strings.Contains(stderr, "never allocated") ||
 		!strings.Contains(stderr, "amber4") {
 		t.Fatalf("never-allocated diagnostic: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = runShellWorkerTest(t, f.registry, "bash", nil,
-		"mchanges "+retired+" --workspace ..", nil, childInvocation)
+		"mchanges "+retired, nil, childInvocation)
 	if status == 0 || stdout != "available IDs: amber1..amber2\navailable IDs: amber4\n" || !strings.Contains(stderr, "retired") {
 		t.Fatalf("retired diagnostic: %q, %q, %d", stdout, stderr, status)
 	}
@@ -750,7 +749,7 @@ func TestMChangesMissingRangeDiagnostics(t *testing.T) {
 			selection, diagnostic string
 			available             bool
 		}{
-			{"apple1..apple12", fmt.Sprintf("changes apple1..apple12 are never allocated (latest is none in this stream) in workspace %q; check --workspace", f.workspace), false},
+			{"apple1..apple12", "changes apple1..apple12 are never allocated (latest is none in this stream) in this session", false},
 			{"amber1..amber7", "changes amber2..amber3 are retired by session retention\nchange amber5 is retired by session retention\nchanges amber6..amber7 are never allocated (latest is amber5)", true},
 			{"amber6 amber8", "change amber6 is never allocated (latest is amber5)\nchange amber8 is never allocated (latest is amber5)", false},
 		} {
