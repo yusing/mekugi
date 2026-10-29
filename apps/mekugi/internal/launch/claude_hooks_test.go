@@ -93,7 +93,7 @@ func newClaudeHookFixture(t *testing.T) *claudeHookFixture {
 	}
 	t.Cleanup(selected.Close)
 	settings := control.Settings{Workspace: t.TempDir(), Model: "claude:test", ApprovalPolicy: jsontext.Value(`"on-request"`), Preparation: jsontext.Value(`{"config":{},"layers":[]}`), NonAttachable: true}
-	policy, err := claude.CompilePolicy(settings.ApprovalPolicy, "")
+	policy, err := claude.CompilePolicy(settings.ApprovalPolicy, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

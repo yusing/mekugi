@@ -29,11 +29,15 @@ type Policy struct {
 // CompilePolicy maps captured approval modes to the Claude worker. Unknown
 // modes, categories and reviewers reject before startup rather than broadening
 // permission. The SDK's native permission requests remain host-mediated.
-func CompilePolicy(approval jsontext.Value, reviewer string) (*Policy, error) {
+// nativeSkills exposes Skill; callers disable it when skills-mgr owns skills.
+func CompilePolicy(approval jsontext.Value, reviewer string, nativeSkills bool) (*Policy, error) {
 	p := &Policy{
 		// Names are from the pinned SDK's BUILTIN_TOOL_NAMES. Keep the visible
 		// native surface and its hook admission at the same owner.
 		nativeTools: []string{"Bash", "PowerShell", "Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "WebFetch", "WebSearch", "TaskStop", "TodoWrite", "Monitor"},
+	}
+	if nativeSkills {
+		p.nativeTools = append(p.nativeTools, "Skill")
 	}
 	if err := json.Unmarshal(approval, &p.mode); err == nil {
 		switch p.mode {

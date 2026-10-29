@@ -16,7 +16,7 @@ func TestPolicyApprovalModes(t *testing.T) {
 	} {
 		t.Run(tc.mode+"/"+tc.reviewer, func(t *testing.T) {
 			mode := tc.mode
-			p, err := CompilePolicy(jsontext.Value(`"`+mode+`"`), tc.reviewer)
+			p, err := CompilePolicy(jsontext.Value(`"`+mode+`"`), tc.reviewer, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -71,7 +71,7 @@ func TestPolicyNeverBundledSDKOptions(t *testing.T) {
 	if _, err := bundle.ReadFile("dist/worker.mjs"); err != nil {
 		t.Skip("optional Claude SDK bundle has not been built")
 	}
-	p, err := CompilePolicy(jsontext.Value(`"never"`), "auto_review")
+	p, err := CompilePolicy(jsontext.Value(`"never"`), "auto_review", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestPolicyRejectsUnsupportedAdmission(t *testing.T) {
 		`{"granular":{"sandbox_approval":true,"rules":true,"mcp_elicitations":true,"future_flag":true}}`,
 		`{"granular":{"sandbox_approval":true,"rules":true,"mcp_elicitations":true},"extra":true}`,
 	} {
-		if _, err := CompilePolicy(jsontext.Value(raw), "user"); err == nil {
+		if _, err := CompilePolicy(jsontext.Value(raw), "user", false); err == nil {
 			t.Errorf("admitted unsupported policy %s", raw)
 		}
 	}
@@ -136,14 +136,14 @@ func TestPolicyRejectsUnsupportedAdmission(t *testing.T) {
 		{`"untrusted"`, "auto_review"},
 		{`{"granular":{"sandbox_approval":true,"rules":true,"mcp_elicitations":true}}`, "auto_review"},
 	} {
-		if _, err := CompilePolicy(jsontext.Value(tc.approval), tc.reviewer); err == nil {
+		if _, err := CompilePolicy(jsontext.Value(tc.approval), tc.reviewer, false); err == nil {
 			t.Errorf("unsupported reviewer %q admitted for %s", tc.reviewer, tc.approval)
 		}
 	}
 }
 
 func TestPolicyNativeToolBoundary(t *testing.T) {
-	p, err := CompilePolicy(jsontext.Value(`"on-request"`), "user")
+	p, err := CompilePolicy(jsontext.Value(`"on-request"`), "user", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,6 +160,28 @@ func TestPolicyNativeToolBoundary(t *testing.T) {
 	for _, raw := range []string{`null`, `[]`, `{"broken":`, `{"duplicate":1,"duplicate":2}`} {
 		if _, err := p.CheckTool("Bash", jsontext.Value(raw)); err == nil {
 			t.Errorf("admitted invalid tool input %s", raw)
+		}
+	}
+}
+
+func TestPolicyNativeSkillsFollowSkillManager(t *testing.T) {
+	for _, nativeSkills := range []bool{false, true} {
+		p, err := CompilePolicy(jsontext.Value(`"on-request"`), "user", nativeSkills)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var options struct {
+			Tools []string `json:"tools"`
+		}
+		if err := json.Unmarshal(p.Options(), &options); err != nil {
+			t.Fatal(err)
+		}
+		if slices.Contains(options.Tools, "Skill") != nativeSkills {
+			t.Fatalf("native skills %v exposed tools %v", nativeSkills, options.Tools)
+		}
+		d, err := p.CheckTool("Skill", jsontext.Value(`{"skill":"fixture"}`))
+		if err != nil || (d == Decision{}) != nativeSkills {
+			t.Fatalf("native skills %v Skill admission: %+v %v", nativeSkills, d, err)
 		}
 	}
 }

@@ -118,7 +118,9 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 		return errors.New("Claude runtime has no admitted retained execution owners")
 	}
 	defer e.windows.Retire()
-	policy, err := claude.CompilePolicy(settings.ApprovalPolicy, settings.ApprovalsReviewer)
+	// skills-mgr on the delegate PATH owns skill acquisition, as it does for Codex.
+	_, noSkillsManager := managedSkillsExecutable(settings.Workspace, e.setup.environment)
+	policy, err := claude.CompilePolicy(settings.ApprovalPolicy, settings.ApprovalsReviewer, noSkillsManager != nil)
 	if err != nil {
 		return err
 	}

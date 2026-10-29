@@ -20,7 +20,7 @@ func TestClaudeGranularPromptRejectsWithoutCategory(t *testing.T) {
 		`{"granular":{"sandbox_approval":false,"rules":false,"mcp_elicitations":false}}`,
 	} {
 		var err error
-		b.policy, err = claude.CompilePolicy(jsontext.Value(raw), "user")
+		b.policy, err = claude.CompilePolicy(jsontext.Value(raw), "user", false)
 		if err != nil {
 			t.Fatal(err)
 		}

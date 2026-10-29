@@ -22,7 +22,8 @@ discovery and exclusions, memory preferences, and commit/PR attribution. Mekugi
 appends captured custom/role instructions, coordination guidance and the authenticated
 shell frontend catalog; Codex JavaScript execution guidance stays with Codex.
 Captured approvals, role reductions and Thread Control coordination remain authoritative.
-Native delegation and team tools are disabled. Native main-agent selection cannot
+Native delegation and team tools are disabled. The native Skill tool is
+available unless skills-mgr is on the delegate PATH, which then owns skill acquisition. Native main-agent selection cannot
 replace the captured Codex role or model, and native role catalogs stay out of
 provider requests. Claude receives the captured Codex agent catalog for Thread
 Control admission.
