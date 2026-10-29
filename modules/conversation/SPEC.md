@@ -236,8 +236,9 @@ bounds attachment growth, not the context size of an existing conversation.
 
 ## Questions and approvals
 
-Main-thread questions and approvals belong to one attached session, with stable
-host identities and detached views. Restored questions retain their identities and
+Questions retain their originating session and host identities while sharing one
+question channel across the admitted session family. Approvals belong to their
+attached session. Both publish detached views. Restored questions retain their identities and
 resolution rules without opening an editor or issuing a request. Views and replay
 facts cannot revive live requests.
 
@@ -250,7 +251,9 @@ Admitting the first host identity preserves that state. Successful Main replacem
 retires it; unresolved local authentication requests are explicitly reattached with
 their original identities, while host questions from the retired thread stay retired.
 
-Questions prefer waiting synchronous requests before asynchronous calls. Approvals
+Questions prefer waiting synchronous requests before asynchronous calls. Family
+question navigation keeps each call's response authority and answer drafts separate;
+a reply returns directly to the originating runtime without relaying through its parent. Approvals
 are ordered oldest first and take precedence when explicitly opened. Opening either
 prompt parks Main's text, caret, undo/redo and history navigation. Hiding, answering
 or switching prompts restores Main without merging answer text. Every non-secret

@@ -2,15 +2,20 @@ package launch
 
 import (
 	"errors"
+	"fmt"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -518,5 +523,97 @@ func TestNativeClientRetiredPromptPreservesUnadmittedDraft(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestUISnapshotNativeClientFamilyQuestions(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
+	u.clock = func() time.Time { return now }
+	u.startSession("main", "/workspace")
+	questionTestSync(t, u, "main-question", false)
+	client := nativeTestPromptClient(u)
+	frame := client.event.Frame
+	for _, thread := range []string{"child-a", "child-b"} {
+		frame.Questions = append(frame.Questions, prompt.CallView{ID: thread, Thread: thread, Sync: true, Questions: []prompt.QuestionView{{ID: thread + "/0", Header: thread, Text: "Which release scope for " + thread + "?", Pending: true, Choices: []prompt.Option{{Label: "Focused"}, {Label: "Full"}}}}})
+	}
+	client.prompts.update(&frame)
+	client.refresh(now)
+	nativeTestPromptKey(t, client, "\x1b[C")
+	if client.prompts.questions.Active.ID != "child-a" {
+		t.Fatal("next question stayed inside the main call")
+	}
+	nativeTestPromptKey(t, client, "\t")
+	editor, _ := client.selectedEditor()
+	editor.InsertText("Keep this child note")
+	nativeTestPromptKey(t, client, "\x1b")
+	nativeTestPromptKey(t, client, "\x1b[C")
+	nativeTestPromptKey(t, client, "\x1b[D")
+	if editor, _ := client.selectedEditor(); editor.Text != "Keep this child note" {
+		t.Fatal("cross-agent navigation lost answer draft")
+	}
+	terminal := client.renderer.terminal
+	painted := terminal.Main.Render(terminal.Transcript, &terminal.Transcript.Painter, terminal.Prompts, terminalsession.MainOptions{Now: now, Focused: true, Version: mekugiVersion()}, 80, 18, 0)
+	assertNativeUISnapshot(t, "native-client-family-questions", painted.Rows)
+	if client.renderer.frame.View.Questions.Total != 3 || wire.Len() != 0 {
+		t.Fatal("shared navigation changed host state or omitted questions")
+	}
+}
+
+// Async replies may resume their asking child, but are not input to its waiting parent.
+func TestNativeChildAsyncAnswersKeepParentWait(t *testing.T) {
+	for _, idle := range []bool{false, true} {
+		t.Run(fmt.Sprint("idle=", idle), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				u, threads, _ := logicalWaitUI(t, nil)
+				if idle {
+					if err := threads.shared.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				u.notifications = new(nativeNotifications)
+				u.Thread, u.Turn, u.LocalStop, u.Waiting = "child", "", "", ""
+				u.startSession("child", u.attached.cwd)
+				if !idle {
+					u.Turn = "child-turn"
+				}
+				u.attached.threadInput = &threadInput{driver: threads.driver, caller: "/root/worker", admitted: true}
+				questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{
+					"id": "child-async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which scope?", "questions": []any{map[string]any{"title": "Which scope?", "options": []string{"Narrow", "Broad"}}},
+				}})
+				calls := nativePendingQuestions(u.attached.conversation)
+				if len(calls) != 1 {
+					t.Fatalf("child question not admitted: %+v", calls)
+				}
+				before, _ := threads.shared.Member("main")
+				wire := u.Host.Input.(*appServerTestInput)
+				wire.Reset()
+				if refusal := nativeTestAnswers(t, u, nativeTestAnswerBatch(calls[0])); refusal != "" {
+					t.Fatal(refusal)
+				}
+				for range 2 {
+					synctest.Wait()
+					if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, t.Context(), false, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+						t.Fatal(err)
+					}
+				}
+				method := "turn/steer"
+				if idle {
+					method = "turn/start"
+				}
+				requests := appServerTurnRequests(t, wire)
+				if len(requests) != 1 || requests[0].Method != method || requests[0].Params.ThreadID != "child" {
+					t.Fatalf("reply left its child or used the wrong operation: %+v", requests)
+				}
+				replies := binding.QuestionReplies(requests[0].text())
+				if len(replies) != 1 || replies[0].Answer != "Narrow" {
+					t.Fatalf("child answer payload = %+v", replies)
+				}
+				after, _ := threads.shared.Member("main")
+				if before.Generation != after.Generation || before.Status != after.Status || !reflect.DeepEqual(before.Wait, after.Wait) {
+					t.Fatalf("child answer changed parent wait: before=%+v after=%+v", before, after)
+				}
+			})
+		})
 	}
 }

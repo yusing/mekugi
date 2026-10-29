@@ -13,6 +13,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -20,12 +21,14 @@ import (
 // Family is shared navigation, independent of the selected runtime's transcript.
 // Threads includes attachable admitted cold targets, but never history-only roster rows.
 type Family struct {
-	Live      []preview.Preview         `json:"-"`
-	LiveScope preview.Scope             `json:"-"`
-	Root      string                    `json:"root"`
-	Threads   []string                  `json:"threads"`
-	Agents    *activity.Publication     `json:"agents"`
-	Status    sessionpresentation.Label `json:"status"`
+	Questions map[string][]prompt.CallView `json:"-"`
+	Prompts   []QuestionCall               `json:"-"`
+	Live      []preview.Preview            `json:"-"`
+	LiveScope preview.Scope                `json:"-"`
+	Root      string                       `json:"root"`
+	Threads   []string                     `json:"threads"`
+	Agents    *activity.Publication        `json:"agents"`
+	Status    sessionpresentation.Label    `json:"status"`
 }
 
 // Family borrows ordinary raw publications in the selected logical family.
@@ -137,8 +140,10 @@ func (p *familyState) project(root *Frame, frames map[string]familySource, works
 	rosterSame := p.family != nil && p.family.Root == root.Session.Thread && len(p.sources) == len(frames) && slices.Equal(p.members, root.Members)
 	reviewSame := p.family != nil && len(p.sources) == len(frames)
 	liveSame := reviewSame
+	questionsSame := reviewSame
 	for id, frame := range frames {
 		old := p.sources[id]
+		questionsSame = questionsSame && old.Frame != nil && old.owner == frame.owner && old.Attachment == frame.Attachment && old.Session.Caller == frame.Session.Caller && reflect.DeepEqual(old.Questions, frame.Questions) && reflect.DeepEqual(old.Prompts, frame.Prompts)
 		liveSame = liveSame && old.Frame != nil && old.owner == frame.owner && old.Attachment == frame.Attachment && reflect.DeepEqual(old.Live, frame.Live) && reflect.DeepEqual(old.LiveScope, frame.LiveScope)
 		rosterSame = rosterSame && old.Frame != nil && old.Agents == frame.Agents &&
 			old.Session.Caller == frame.Session.Caller && old.Session.Role == frame.Session.Role
@@ -185,6 +190,7 @@ func (p *familyState) project(root *Frame, frames map[string]familySource, works
 		family := &Family{Root: root.Session.Thread, Agents: familyRoster(root, frames)}
 		if p.family != nil {
 			family.Live, family.LiveScope = p.family.Live, p.family.LiveScope
+			family.Questions, family.Prompts = p.family.Questions, p.family.Prompts
 		}
 		p.family = family
 		admitted := make(map[string]bool, len(frames)+len(root.Members))
@@ -215,9 +221,29 @@ func (p *familyState) project(root *Frame, frames map[string]familySource, works
 		}
 		p.family.Threads = slices.Sorted(maps.Keys(admitted))
 	}
-	if !liveSame || !reviewSame || !rosterSame || p.family.Status != root.Status {
+	if !liveSame || !reviewSame || !rosterSame || !questionsSame || p.family.Status != root.Status {
 		family := *p.family
 		family.Status = root.Status
+		if !questionsSame {
+			family.Questions, family.Prompts = make(map[string][]prompt.CallView), nil
+			ids := slices.Sorted(maps.Keys(frames))
+			ids = append([]string{root.Session.Thread}, slices.DeleteFunc(ids, func(id string) bool { return id == root.Session.Thread })...)
+			for _, id := range ids {
+				source := frames[id]
+				if source.Frame == nil {
+					continue
+				}
+				family.Questions[id] = source.Questions
+				if source.Prompts != nil {
+					for _, call := range source.Prompts.Questions {
+						if id != root.Session.Thread && call.Agent == "" {
+							call.Agent = source.Session.Caller
+						}
+						family.Prompts = append(family.Prompts, call)
+					}
+				}
+			}
+		}
 		if !liveSame {
 			previous := family.Live
 			family.Live = nil

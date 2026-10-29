@@ -9,6 +9,7 @@ import (
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -17,10 +18,11 @@ import (
 // the server derives snapshots and patches from consecutive frames.
 type Frame struct {
 	Session    Session
-	Playback   *Playback // Absent for a live attachment.
-	Input      *Input    // Absent for a replay.
-	Prompts    *Prompts  // Absent for a replay.
-	Attachment uint64    // A change restarts entry sequences.
+	Playback   *Playback         // Absent for a live attachment.
+	Input      *Input            // Absent for a replay.
+	Prompts    *Prompts          // Absent for a replay.
+	Questions  []prompt.CallView // Detached live questions, including native-only metadata.
+	Attachment uint64            // A change restarts entry sequences.
 	Status     sessionpresentation.Label
 	FamilyRoot string                      // Admitted logical family, independent of runtime lifetime.
 	Members    []threadcontrol.Participant // Admitted coordination facts, never transcript history.

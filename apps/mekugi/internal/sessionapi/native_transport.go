@@ -8,6 +8,8 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"maps"
+	"slices"
 	"sync"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -21,12 +23,13 @@ import (
 // remain on the runtime's existing owner loop. Route authority seals each view;
 // public control views share this queue without gaining native capabilities.
 type Native struct {
-	mu       sync.Mutex
-	requests chan NativeRequest
-	views    map[string]*nativeView
-	prepare  func(context.Context, string, InputRequest) (*PreparedInput, error)
-	done     chan struct{}
-	exit     *NativeExit
+	questionOwner func(string) *Server
+	mu            sync.Mutex
+	requests      chan NativeRequest
+	views         map[string]*nativeView
+	prepare       func(context.Context, string, InputRequest) (*PreparedInput, error)
+	done          chan struct{}
+	exit          *NativeExit
 }
 
 // NativeExit is the joined runtime outcome, distinct from a disconnected client.
@@ -160,7 +163,7 @@ func (s *Server) Native() *Native {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.native == nil {
-		s.native = &Native{requests: make(chan NativeRequest), views: make(map[string]*nativeView), done: make(chan struct{}), prepare: s.prepare}
+		s.native = &Native{requests: make(chan NativeRequest), views: make(map[string]*nativeView), done: make(chan struct{}), prepare: s.prepare, questionOwner: s.questionOwner}
 	}
 	return s.native
 }
@@ -232,6 +235,26 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 	// their identity, plus encoded non-feed facts, before serializing history.
 	// Keep mutable caller values detached through bytes, not retained aliases.
 	main, agents, family := frame.Main, frame.Agents, frame.Family
+	if frame.Family != nil {
+		local := frame.Questions
+		frame.Questions = nil
+		ids := slices.Sorted(maps.Keys(frame.Family.Questions))
+		// Keep the same channel order in every view, using fresh local values
+		// rather than this runtime's throttled ordinary publication.
+		ids = append([]string{frame.Family.Root}, slices.DeleteFunc(ids, func(id string) bool { return id == frame.Family.Root })...)
+		seenLocal := false
+		for _, owner := range ids {
+			if owner == thread {
+				frame.Questions = append(frame.Questions, local...)
+				seenLocal = true
+			} else {
+				frame.Questions = append(frame.Questions, frame.Family.Questions[owner]...)
+			}
+		}
+		if !seenLocal {
+			frame.Questions = append(frame.Questions, local...)
+		}
+	}
 	frame = frame.withoutEditors()
 	if v.authority == remoteHumanView {
 		frame = frame.remote()
@@ -437,6 +460,19 @@ func (n *Native) request(ctx context.Context, target requestTarget, startup stri
 	if reason := mutation.Operation.routeRefusal(authority); reason != "" {
 		return NativeResult{}, rpcFailure(400, reason)
 	}
+	if answers := mutation.Operation.Answers; answers != nil && n.questionOwner != nil {
+		if owner := n.questionOwner(answers.Call); owner != nil && owner.Native() != n {
+			ctx, cancel := context.WithCancel(ctx)
+			stop := context.AfterFunc(viewContext, cancel)
+			defer stop()
+			defer cancel()
+			_, failure := owner.answerFromFamily(ctx, authority, mutation.Operation, preparations)
+			n.mu.Lock()
+			result := NativeResult{Version: v.version}
+			n.mu.Unlock()
+			return result, failure
+		}
+	}
 	if answers := mutation.Operation.Answers; answers != nil && answers.public != nil {
 		if err := answers.public.validate(); err != nil {
 			return NativeResult{}, inputError(err)
@@ -569,4 +605,46 @@ func (n *Native) prepareAnswers(ctx context.Context, workspace string, answers *
 		return nil, err
 	}
 	return joinPreparedInputs(prepared), nil
+}
+
+// answerFromFamily borrows an ordinary owner view. The original route's authority
+// and lifetime remain intact; only that runtime admits and delivers the answer.
+func (s *Server) answerFromFamily(ctx context.Context, authority viewAuthority, operation NativeOperation, preparations chan struct{}) (NativeResult, *RPCError) {
+	frame := s.frame.Load()
+	if frame == nil {
+		return NativeResult{}, rpcFailure(409, "The question owner is unavailable.")
+	}
+	target := requestTarget{thread: frame.Session.Thread, workspace: frame.Session.Workspace}
+	n := s.Native()
+	waiting, stop := context.WithTimeout(ctx, answerWithin)
+	defer stop()
+	subscription, failure := n.attach(waiting, ctx, target, "", authority)
+	if failure != nil {
+		return NativeResult{}, failure
+	}
+	defer subscription.close()
+	for {
+		if publication, ok := subscription.native.pop(); ok {
+			event, err := decodeNativeEvent(publication.Kind, publication.Data, NativeEvent{})
+			if err != nil {
+				return NativeResult{}, rpcFailure(409, "The question owner is unavailable.")
+			}
+			var body []byte
+			if authority == remoteHumanView {
+				body, err = json.Marshal(RemoteMutation{Attachment: event.Attachment, Version: event.Frame.View.Version, Operation: RemoteOperation{Answers: operation.Answers.public}}, nativeEncoding)
+			} else {
+				body, err = json.Marshal(NativeMutation{Attachment: event.Attachment, Version: event.Frame.View.Version, Operation: operation}, nativeEncoding)
+			}
+			if err != nil {
+				return NativeResult{}, rpcFailure(400, err.Error())
+			}
+			stop()
+			return n.request(ctx, target, "", authority, body, preparations)
+		}
+		select {
+		case <-subscription.native.ready:
+		case <-waiting.Done():
+			return NativeResult{}, rpcFailure(503, "The question owner is unavailable.")
+		}
+	}
 }

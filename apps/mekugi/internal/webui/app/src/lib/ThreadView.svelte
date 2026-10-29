@@ -1,4 +1,17 @@
 <script lang="ts">
+  let selectedQuestion = $state("");
+  const questionChannel = $derived(
+    (stream.prompts?.questions ?? []).flatMap((call) =>
+      call.questions.map((question, index) => ({ call, question, index })),
+    ),
+  );
+  const questionPosition = $derived(
+    Math.max(
+      0,
+      questionChannel.findIndex((item) => item.question.id === selectedQuestion),
+    ),
+  );
+  const currentQuestion = $derived(questionChannel[questionPosition]);
   import { tick, untrack } from "svelte";
   import { stateLabel, worked } from "./agents";
   import type { InitialInput } from "./attachments";
@@ -745,9 +758,23 @@
                       source={stream}
                     />
                   {/each}
-                  {#each stream.prompts.questions as question (question.id)}
+                  {#each currentQuestion ? [currentQuestion] : [] as current (current.call.id)}
                     <Prompt
-                      item={question}
+                      item={current.call}
+                      questionIndex={current.index}
+                      position={questionPosition}
+                      total={questionChannel.length}
+                      onquestion={(index) => {
+                        selectedQuestion = current.call.questions[index].id;
+                      }}
+                      onprevious={() => {
+                        selectedQuestion =
+                          questionChannel[questionPosition - 1]?.question.id ?? current.question.id;
+                      }}
+                      onnext={() => {
+                        selectedQuestion =
+                          questionChannel[questionPosition + 1]?.question.id ?? current.question.id;
+                      }}
                       unavailable={stream.connection !== "open"}
                       source={stream}
                     />

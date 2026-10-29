@@ -4,6 +4,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
+	"fmt"
 	"net/http"
 	"runtime"
 	"strings"
@@ -423,5 +424,88 @@ func TestNativePublicationMetadataCostDoesNotScaleWithOwners(t *testing.T) {
 				t.Fatalf("publication bytes scale with history for authority %d (changing=%v): small=%d large=%d", authority, changing, small, large)
 			}
 		}
+	}
+}
+
+func TestNativeFamilyQuestionRoutingKeepsAuthorityAndWorkspace(t *testing.T) {
+	for _, authority := range []viewAuthority{localNativeView, remoteHumanView} {
+		t.Run(fmt.Sprint(authority), func(t *testing.T) {
+			root, child := NewLive(), NewPreparedLive(func(_ context.Context, workspace string, input InputRequest) (*PreparedInput, error) {
+				if workspace != "/child" {
+					return nil, fmt.Errorf("prepared in %q", workspace)
+				}
+				return NewPreparedInput(input.NativeDraft.Clone(), nil), nil
+			})
+			child.frame.Store(&Frame{Session: Session{Thread: "child", Workspace: "/child"}})
+			root.questionOwner = func(call string) *Server {
+				if call == "child-call" {
+					return child
+				}
+				return nil
+			}
+			owner := child.Native()
+			received := make(chan NativeRequest, 1)
+			go func() {
+				for {
+					select {
+					case <-t.Context().Done():
+						return
+					case request := <-owner.Requests():
+						if request.Attach {
+							frame := nativeTestFrame("child", 9)
+							frame.View.Info.Workspace = "/child"
+							if err := owner.Publish(request.Attachment, frame); err != nil {
+								request.Reply <- err.Error()
+								continue
+							}
+						} else {
+							received <- request
+						}
+						request.Reply <- ""
+					}
+				}
+			}()
+			n := root.Native()
+			sub, attach, failure := n.newView(t.Context(), requestTarget{"root", "/workspace"}, "", authority)
+			if failure != nil {
+				t.Fatal(failure)
+			}
+			defer sub.close()
+			frame := nativeTestFrame("root", 1)
+			frame.Questions = []prompt.CallView{{ID: "root-call", Thread: "root"}}
+			frame.Family = &Family{Root: "root", Questions: map[string][]prompt.CallView{"root": {{ID: "stale-root", Thread: "root"}}, "child": {{ID: "child-call", Thread: "child", Questions: []prompt.QuestionView{{ID: "child-call/0", Pending: true, Secret: true, Text: "private"}}}}}}
+			if err := n.Publish(attach.Attachment, frame); err != nil {
+				t.Fatal(err)
+			}
+			publication, _ := sub.native.pop()
+			event, err := decodeNativeEvent(publication.Kind, publication.Data, NativeEvent{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(event.Frame.Questions) != 2 || event.Frame.Questions[0].ID != "root-call" || (authority == remoteHumanView && event.Frame.Questions[1].Questions[0].Text != "") {
+				t.Fatalf("shared/redacted inventory: %+v", event.Frame.Questions)
+			}
+			operation := NativeOperation{Answers: &NativeAnswers{Call: "child-call", Answers: []NativeQuestionAnswer{{AnswerInput: prompt.AnswerInput{Call: "child-call", Question: "child-call/0", Draft: composer.Draft{Text: "answer"}}}}}}
+			var body []byte
+			if authority == remoteHumanView {
+				body, err = json.Marshal(RemoteMutation{Attachment: event.Attachment, Version: event.Frame.View.Version, Operation: RemoteOperation{Answers: &Answer{Call: "child-call", Answers: []QuestionAnswer{{Question: "child-call/0", Text: "answer"}}}}}, nativeEncoding)
+			} else {
+				body, err = json.Marshal(NativeMutation{Attachment: event.Attachment, Version: event.Frame.View.Version, Operation: operation}, nativeEncoding)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, failure := n.request(t.Context(), requestTarget{"root", "/workspace"}, "", authority, body, make(chan struct{}, 1))
+			if failure != nil {
+				t.Fatal(failure)
+			}
+			request := <-received
+			if request.Thread != "child" || request.Workspace != "/child" || request.RemoteHuman() != (authority == remoteHumanView) || result.Version.Attachment != 1 {
+				t.Fatalf("routed response lost origin or destination: %+v %+v", request, result)
+			}
+			if authority == remoteHumanView && request.Operation.Answers.PublicAnswer() == nil {
+				t.Fatal("public answer gained native authority")
+			}
+		})
 	}
 }

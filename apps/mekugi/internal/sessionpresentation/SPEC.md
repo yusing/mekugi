@@ -62,8 +62,9 @@ remaining caption and roster values; replacement and backward replay use the
 new attachment's facts.
 
 Displaying a live admitted child attaches its actual runtime without starting or
-canceling work. Its composer, questions, approvals and settings belong to that
-child. Main and child drafts remain isolated; returning to either restores its
+canceling work. Its composer, approvals and settings belong to that
+child. Questions from every admitted family runtime share one channel in every
+view, while replies retain the originating runtime's authority. Main and child drafts remain isolated; returning to either restores its
 existing draft. Explicit selection can resume an admitted cold child runtime without starting
 work; historical and replay-only views remain read-only.
 The single side

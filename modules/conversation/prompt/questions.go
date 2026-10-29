@@ -245,6 +245,7 @@ type CallView struct {
 // QuestionDockView excludes parked and active draft contents, including secrets.
 type QuestionDockView struct {
 	Count, Index, Gaps int
+	Position, Total    int
 	Confirm            bool
 	Call               *CallView
 }
@@ -306,4 +307,54 @@ func (c *Call) Submitted() {
 			c.Resolved = false
 		}
 	}
+}
+
+// MoveChannel navigates pending calls without merging their answer authority.
+func (m *Questions) MoveChannel(step int) {
+	type position struct {
+		call  *Call
+		index int
+	}
+	var positions []position
+	current := 0
+	for _, call := range m.Calls {
+		if call.Sent || call.Resolved {
+			continue
+		}
+		for index, question := range call.Questions {
+			if question.Outcome != "" {
+				continue
+			}
+			if call == m.Active && index == m.Index {
+				current = len(positions)
+			}
+			positions = append(positions, position{call, index})
+		}
+	}
+	if len(positions) == 0 {
+		return
+	}
+	next := positions[(current+step+len(positions))%len(positions)]
+	m.Active, m.Index, m.Confirm = next.call, next.index, false
+}
+
+// ChannelView adds the shared question position while retaining the active call.
+func (m *Questions) ChannelView(thread string) QuestionDockView {
+	view := m.View(thread)
+	for _, call := range m.Calls {
+		if call.Sent || call.Resolved {
+			continue
+		}
+		for index, question := range call.Questions {
+			if question.Outcome != "" {
+				continue
+			}
+			if call == m.Active && index == m.Index {
+				view.Position = view.Total
+			}
+			view.Total++
+		}
+	}
+	view.Count = view.Total
+	return view
 }

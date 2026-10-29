@@ -1063,6 +1063,8 @@ export type QuestionDockView = {
   "Count": number;
   "Index": number;
   "Gaps": number;
+  "Position": number;
+  "Total": number;
   "Confirm": boolean;
   "Call": (CallView | null);
 };

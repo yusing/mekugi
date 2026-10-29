@@ -118,6 +118,7 @@ type Server struct {
 	activeThread  func(string) bool
 	reserveThread func(string) error
 	family        func() (*Family, *changes.ReviewView)
+	questionOwner func(string) *Server
 
 	mu              sync.Mutex
 	requests        threadcontrol.Runtime
@@ -273,6 +274,11 @@ func (s *Server) Publish(f Frame) error {
 		family, review = s.family()
 		if family != nil {
 			f.Review = review
+			prompts := Prompts{Questions: family.Prompts}
+			if f.Prompts != nil {
+				prompts.Approvals = f.Prompts.Approvals
+			}
+			f.Prompts = &prompts
 			if f.Session.Thread == family.Root {
 				f.Live = family.Live
 			}
@@ -697,6 +703,15 @@ func (s *Server) request(ctx context.Context, target requestTarget, method strin
 			return nil, inputError(err)
 		}
 		intent.Action = AnswerQuestions
+		if s.questionOwner != nil {
+			if owner := s.questionOwner(intent.Answer.Call); owner != nil && owner != s {
+				frame := owner.frame.Load()
+				if frame == nil {
+					return nil, rpcFailure(409, "The question owner is unavailable.")
+				}
+				return owner.request(ctx, requestTarget{thread: frame.Session.Thread, workspace: frame.Session.Workspace}, method, body, preparations)
+			}
+		}
 		if intent.Answer.hasAttachments() {
 			prepared, failure := acquireInput(preparations, func() (*PreparedInput, error) { return intent.Answer.prepare(ctx, target.workspace, s.prepare) })
 			if failure != nil {

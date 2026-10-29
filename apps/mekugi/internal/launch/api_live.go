@@ -56,6 +56,7 @@ func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsess
 			Session:    sessionapi.Session{Thread: control.Thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started.UnixMilli(), Caller: caller, Role: role},
 			Input:      &sessionapi.Input{Reason: apiInputRefusal(attached, control, restoring), Stoppable: sessionpresentation.MainInterruptible(&control.Live, attached.conversation), Waiting: waiting},
 			Prompts:    apiPrompts(attached, control),
+			Questions:  nativePendingQuestions(attached.conversation),
 			Attachment: view.Version.Attachment,
 			Status:     view.Status.Session,
 			Main:       w.main.publication(attached.source, attached.source.Publication(attached.presentation, nil)),

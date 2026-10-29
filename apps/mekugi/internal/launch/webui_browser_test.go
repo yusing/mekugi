@@ -43,7 +43,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if browser == "" {
 		browser = "agent-browser"
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 180*time.Second)
 	defer cancel()
 	page := httptest.NewServer(webui.Handler())
 	defer page.Close()
@@ -71,8 +71,14 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	var holdRename atomic.Bool
 	renameReply := make(chan chan string, 1)
 	references := make(chan sessionapi.NativeRequest, 1)
+	questionAnswers := make(chan sessionapi.NativeRequest, 1)
 	var alpha *webUIBrowserMachine
 	alpha = newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Alpha", strings.Repeat("a", 64), func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
+		if request.Operation.Answers != nil {
+			questionAnswers <- request
+			request.Reply <- ""
+			return true
+		}
 		command := request.Operation.Command
 		menu := request.Operation.Menu
 		if request.Operation.Completion != nil || request.Operation.Reference != nil || command != nil && strings.HasPrefix(*command, "/title ") {
@@ -938,7 +944,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		Review: diffmodel.RenderReviewFile("", filepath.Join(alpha.workdir, "child.go"), "", "package child\n// child saved capture\n"),
 	}}))
 	frame.Review = &review
-	frame.Prompts = &sessionapi.Prompts{Questions: []sessionapi.QuestionCall{{ID: "parent-question", Questions: []sessionapi.Question{{ID: "q", Text: "Parent-only question"}}}}}
+	frame.Prompts = &sessionapi.Prompts{Questions: []sessionapi.QuestionCall{{ID: "parent-question", Questions: []sessionapi.Question{{ID: "q", Text: "Shared parent question"}}}}}
 	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
@@ -958,7 +964,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if got := run("eval", "document.querySelector('#composer-text')?.value"); !strings.Contains(got, "draft while attaching") {
 		t.Fatalf("destination draft was not editable during attachment: %s", got)
 	}
-	run("wait", "--fn", "!document.body.innerText.includes('Parent-only question') && !document.querySelector('button[aria-label=Details]')")
+	run("wait", "--fn", "!document.querySelector('button[aria-label=Details]')")
 	thread := sessionpresentation.Thread{ID: "child", Caller: "/root"}
 	childFrame := sessionapi.NativeFrame{View: sessionpresentation.View{
 		Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Main: thread, Input: thread, Displayed: thread,
@@ -977,6 +983,11 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	button("Changes")
 	run("wait", "--fn", `document.querySelector('[aria-labelledby="saved-heading"]')?.textContent.includes('child saved capture')`)
 	run("find", "role", "tab", "click", "--name", "Agents", "--exact")
+	run("wait", "--text", "Shared parent question")
+	frame.Prompts = nil
+	if err := alpha.publishFrame(frame); err != nil {
+		t.Fatal(err)
+	}
 	// A child's own feed resolves images against that runtime, not Main's
 	// unrelated sequence namespace.
 	_, ok = alpha.sessions.Load("child")
@@ -1105,6 +1116,58 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}
 	button("Back to main")
 	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'main draft'")
+	// Questions from the root and independent child share one question dialog.
+	frame.Prompts = &sessionapi.Prompts{Questions: []sessionapi.QuestionCall{{ID: "parent-question", Questions: []sessionapi.Question{{ID: "q", Text: "Shared parent question"}, {ID: "q2", Text: "Second parent question"}}}}}
+
+	childQuestions, _ := alpha.frames.Load("child")
+	sharedChild := childQuestions.(sessionapi.Frame)
+	sharedChild.Prompts = &sessionapi.Prompts{Questions: []sessionapi.QuestionCall{{ID: "child-question", Questions: []sessionapi.Question{{ID: "child-q", Header: "Worker scope", Text: "Child release scope"}}}}}
+	sharedChild.Questions = []prompt.CallView{{ID: "child-question", Thread: "child", Questions: []prompt.QuestionView{{ID: "child-q", Pending: true, Text: "Child release scope"}}}}
+	if err := alpha.publishFrame(sharedChild); err != nil {
+		t.Fatal(err)
+	}
+	if err := alpha.publishFrame(frame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `document.querySelectorAll('[data-prompt]').length === 1 && document.querySelector('[data-prompt]').textContent.includes('1 of 3')`)
+	button("Next question")
+	run("wait", "--fn", `document.querySelector('[data-prompt]').textContent.includes('Second parent question') && document.querySelector('[data-prompt]').textContent.includes('2 of 3')`)
+	button("Next question")
+	run("wait", "--fn", `document.querySelector('[data-prompt]').textContent.includes('Child release scope') && document.querySelector('[data-prompt]').textContent.includes('3 of 3')`)
+	run("find", "label", "Other", "check", "--exact")
+	run("fill", `[name="child-q-answer"]`, "Retain this worker answer")
+	button("Previous question")
+	run("wait", "--fn", `document.querySelector('[data-prompt]').textContent.includes('Second parent question') && document.querySelector('[data-prompt]').textContent.includes('2 of 3')`)
+	button("Next question")
+	run("wait", "--fn", `document.querySelector('[name="child-q-answer"]')?.value === 'Retain this worker answer'`)
+	run("set", "viewport", "390", "844")
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("screenshot", filepath.Join(artifacts, "family-questions-phone.png"))
+		run("eval", `document.documentElement.dataset.theme = "dark"`)
+		run("screenshot", filepath.Join(artifacts, "family-questions-phone-dark.png"))
+		run("eval", `document.documentElement.dataset.theme = "light"`)
+	}
+	run("wait", "--fn", `(() => { const box = document.querySelector('[data-prompt]').getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth; })()`)
+	run("set", "viewport", "1280", "720")
+	button("Submit answers")
+	select {
+	case answer := <-questionAnswers:
+		if answer.Thread != "child" || answer.Operation.Answers.PublicAnswer().Call != "child-question" || !answer.RemoteHuman() {
+			t.Fatal("family answer did not reach its original child authority")
+		}
+	case <-ctx.Done():
+		t.Fatal("family answer was not delivered")
+	}
+	sharedChild.Questions = nil
+	sharedChild.Prompts = nil
+	if err := alpha.publishFrame(sharedChild); err != nil {
+		t.Fatal(err)
+	}
+	frame.Prompts = nil
+	if err := alpha.publishFrame(frame); err != nil {
+		t.Fatal(err)
+	}
+
 	run("find", "text", "worker", "click", "--exact")
 	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'child draft'")
 	button("Back to main")

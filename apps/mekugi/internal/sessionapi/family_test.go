@@ -15,6 +15,7 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/changehistory/capture"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -570,5 +571,34 @@ func TestFamilyPreviewCapacityKeepsNativeAttached(t *testing.T) {
 	next, _ := h.Family("thread")
 	if len(next.Live) != 2*preview.MaxPreviews || next.Live[0].Thread == first {
 		t.Fatal("retired source retained bounded slots")
+	}
+}
+
+func TestFamilyQuestionChannelAndResponseAuthority(t *testing.T) {
+	h := NewHub(t.Context(), nil)
+	frame := func(thread, call string) Frame {
+		return Frame{Session: Session{Thread: thread, Caller: "/root/" + thread, Workspace: "/" + thread}, Agents: familyActivity(thread, thread), Questions: []prompt.CallView{{ID: call, Thread: thread, Questions: []prompt.QuestionView{{ID: call + "/0", Text: thread, Pending: true}}}}, Prompts: &Prompts{Questions: []QuestionCall{{ID: call, Questions: []Question{{ID: call + "/0", Text: thread}}}}}}
+	}
+	root := familyRuntime(h, nil, frame("root", "root-call"))
+	child := familyRuntime(h, root, frame("child", "child-call"))
+	familyRuntime(h, child, frame("nested", "nested-call"))
+	familyRuntime(h, nil, frame("other", "other-call"))
+	family, _ := h.Family("child")
+	if len(family.Questions) != 3 || len(family.Prompts) != 3 || family.Prompts[1].Agent == "" {
+		t.Fatalf("shared questions = %+v", family)
+	}
+	if h.questionOwner(root.server, "child-call") != child.server || h.questionOwner(child.server, "other-call") != nil {
+		t.Fatal("question response authority crossed family membership")
+	}
+	next := *child.server.frame.Load()
+	next.Questions = nil
+	next.Prompts = &Prompts{}
+	child.server.frame.Store(&next)
+	changed, _ := h.Family("root")
+	if changed == family || len(changed.Prompts) != 2 || len(family.Prompts) != 3 || h.questionOwner(root.server, "child-call") != nil {
+		t.Fatal("resolved question remained actionable or mutated earlier publication")
+	}
+	if unchanged, _ := h.Family("root"); unchanged != changed {
+		t.Fatal("unchanged question channel was recomposed")
 	}
 }

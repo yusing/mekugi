@@ -168,6 +168,7 @@ func collaborationGuidance(member control.Member, baseline string) (string, erro
 		parent, _, _ := strings.CutLast(member.Task, "/")
 		identity += fmt.Sprintf(" Your parent logical task is %s.", control.AgentName(parent))
 		authority = "For the explicit-request-only delegation rule, an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits.\n"
+		authority += "Ask the user directly for clarification with request_user_input_async, or request_user_input in Plan mode. Questions share the session family's question dialog. Route assignment changes and blockers to your parent.\n"
 	}
 	return fmt.Sprintf("%s\n\n%s Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.\n%sAgents share the filesystem; this thread's working directory is %q.", baseline, identity, authority, member.Settings.Workspace), nil
 }

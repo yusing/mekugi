@@ -1,0 +1,18 @@
+└ Asked  1 question · waiting
+    Which release scope?
+    Narrow · Broad
+
+
+
+  ? 2 of 3 · child-a                                                   waiting
+  Which release scope for child-a?
+  › 1. Focused                                                                
+    2. Full     
+    3. Other    Type your answer
+  
+  1–3 choose · type answer · tab note · enter next · ←/→ question · ctrl+]
+  skip · esc hide
+
+╭─ answering · turn waiting ───────────────────────────────────────────────────╮
+│ ❯ Keep this child note                                                       │
+╰──────────────────────────────────────────────────────────── /workspace • 0% ─╯

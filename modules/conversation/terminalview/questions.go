@@ -38,7 +38,11 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 	if view.Sync || view.Local {
 		state = "waiting"
 	}
-	head := fmt.Sprintf("? %d of %d", d.Index+1, len(view.Questions))
+	position, total := d.Index, len(view.Questions)
+	if d.Total > 0 {
+		position, total = d.Position, d.Total
+	}
+	head := fmt.Sprintf("? %d of %d", position+1, total)
 	if question.Header != question.Text && ansi.StringWidth(head)+ansi.StringWidth(question.Header)+len(state)+6 <= inner {
 		head += " · " + promptText(question.Header)
 	}
@@ -62,7 +66,7 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 	if view.Sync {
 		keys = append(keys, [2]string{"tab", "note"})
 	}
-	if len(view.Questions) > 1 {
+	if total > 1 {
 		keys = append(keys, [2]string{"enter", "next"}, [2]string{"←/→", arrows})
 	}
 	keys = append(keys, [2]string{"ctrl+]", "skip"}, [2]string{"esc", "hide"})
@@ -76,7 +80,7 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 	foot := hints(keys)
 	if len(foot) > max(2, height/3) {
 		compact := [][2]string{{"↑↓", "pick"}}
-		if len(view.Questions) > 1 {
+		if total > 1 {
 			compact = append(compact, [2]string{"↵", "next"}, [2]string{"←→", arrows})
 		}
 		foot = hints(append(compact, [2]string{"^]", "skip"}, [2]string{"esc", "hide"}))

@@ -418,7 +418,7 @@ omitted when unknown.
   cannot take input now; `stoppable` means Main has work to interrupt; `waiting`
   counts the questions and approvals Main waits on. All
   describe Main, whichever thread the terminal displays.
-- `prompts`: `questions` holds pending calls (`id`, optional `agent`, and
+- `prompts`: `questions` holds pending calls from the admitted session family (`id`, optional `agent`, and
   `questions`). Calls contain only unanswered questions, with IDs stable when
   another client answers part of a call. Each question has `id`, `header`, `text`, and `options` with
   `label` and `description`; a secret question carries only `id` and `secret`.
@@ -580,7 +580,11 @@ acquired images together at admission. Images follow the existing host answer
 delivery, with numbered image markers in the corresponding answer. Offered choices
 reject attachments; skipped answers do not acquire them. Preparation or admission
 failure releases unadmitted uploads without changing authoritative answer drafts.
-Secret questions cannot be answered through this endpoint.
+Secret questions cannot be answered through this endpoint. Family question replies
+resolve the call's current originating runtime, including attachment preparation
+in that runtime's workspace. Selecting another family view does not retarget a
+reply or wake ancestor or unrelated logical waits. An async reply may resume its
+asking child through that child's authenticated ordinary input ledger.
 
 `session/decide` takes `{"approval": ID, "choice": CHOICE_ID,
 "reason": TEXT}`. The choice must be offered by that approval; only a denial
@@ -641,7 +645,8 @@ Unadmitted historical identities remain observational.
 Every ordinary view includes `family`: its `root` thread, admitted `threads`,
 navigation `agents` and root `status`. Navigation contains roster summaries and
 aggregate change counts, not another thread's transcript. Each selected thread
-retains its own feed, workspace, settings, prompts and effects. The server derives
+retains its own feed, workspace, settings, approvals and effects; questions share
+the admitted family channel. The server derives
 family values from ordinary runtime publications and retained membership,
 independently of connected viewers. Shared publication rosters use that same
 family value. Admitted logical membership owns each agent's lifecycle status;

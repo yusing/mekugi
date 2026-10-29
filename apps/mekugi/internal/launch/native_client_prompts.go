@@ -79,7 +79,7 @@ func (p *nativeClientPrompts) update(frame *sessionapi.NativeFrame) {
 
 func (p *nativeClientPrompts) overlay(view *sessionpresentation.View) {
 	count := view.Questions.Count
-	view.Questions = p.questions.View(view.Main.ID)
+	view.Questions = p.questions.ChannelView(view.Main.ID)
 	view.Questions.Count = max(count, view.Questions.Count)
 	view.Approvals = p.approvals.View()
 	view.PromptDraft = conversation.PromptDraftView{}
@@ -200,9 +200,9 @@ func (c *nativeClient) prompt(input terminalsession.PromptInput, next *terminals
 		p.questions.Hide()
 		p.questions.AutoOpen = false
 	case conversationui.PromptPrevious:
-		p.questions.Move(-1)
+		p.questions.MoveChannel(-1)
 	case conversationui.PromptNext:
-		p.questions.Move(1)
+		p.questions.MoveChannel(1)
 	case conversationui.PromptAttach:
 		_, target := c.selectedEditor()
 		c.composer(terminalsession.ComposerInput{Command: sessionpresentation.ComposerIntent{Version: input.Version, Target: target, Operation: sessionpresentation.AttachClipboard}})

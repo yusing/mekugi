@@ -18,6 +18,7 @@ import (
 	json "encoding/json/v2"
 
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
 
 type requestTarget struct{ thread, workspace string }
@@ -257,6 +258,7 @@ func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start St
 	}
 	m := &managedSession{parent: parentRuntime, parentThread: parent, run: run, operation: rand.Text(), resume: requestedThread, ctx: ctx, server: server, initial: prepared, inputContext: ctx, inputWorkspace: start.Workspace, cancel: cancel, done: make(chan struct{}), ready: make(chan string, 1)}
 	m.server.activeThread = h.activeThread
+	m.server.questionOwner = func(call string) *Server { return h.questionOwner(m.server, call) }
 	m.server.family = func() (*Family, *changes.ReviewView) {
 		if frame := m.server.frame.Load(); frame != nil {
 			return h.Family(frame.Session.Thread)
@@ -525,4 +527,26 @@ func (h *Hub) Close() {
 		connection.beginDrain()
 	}
 	h.connectionWG.Wait()
+}
+
+// questionOwner resolves only current live requests inside the admitted family.
+// Runtime lifetime ancestry and unrelated session membership grant no authority.
+func (h *Hub) questionOwner(selected *Server, call string) *Server {
+	origin := selected.frame.Load()
+	if origin == nil {
+		return nil
+	}
+	root := cmp.Or(origin.FamilyRoot, origin.Session.Thread)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for runtime := range h.running {
+		frame := runtime.server.frame.Load()
+		if frame == nil || cmp.Or(frame.FamilyRoot, frame.Session.Thread) != root {
+			continue
+		}
+		if slices.ContainsFunc(frame.Questions, func(q prompt.CallView) bool { return q.ID == call && !q.Resolved && !q.Sent }) {
+			return runtime.server
+		}
+	}
+	return nil
 }

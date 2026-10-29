@@ -12,11 +12,23 @@
   let {
     item,
     count = 1,
+    position = 0,
+    questionIndex = 0,
+    onquestion,
+    total = 0,
+    onprevious,
+    onnext,
     unavailable = false,
     source = stream,
   }: {
     item: Approval | QuestionCall;
     count?: number;
+    position?: number;
+    questionIndex?: number;
+    onquestion?: (index: number) => void;
+    total?: number;
+    onprevious?: () => void;
+    onnext?: () => void;
     unavailable?: boolean;
     source?: Stream;
   } = $props();
@@ -63,13 +75,14 @@
   async function answer() {
     if (!call || disabled) return;
     if (
-      call.questions.some((q) => {
+      call.questions.some((q, index) => {
         const d = promptState.drafts[q.id];
-        return (
+        const missing =
           !d ||
           d.choice === undefined ||
-          (d.choice === (q.options?.length ?? 0) && !d.text.trim() && !d.items.length)
-        );
+          (d.choice === (q.options?.length ?? 0) && !d.text.trim() && !d.items.length);
+        if (missing) onquestion?.(index);
+        return missing;
       })
     ) {
       promptState.error = "Answer every question or skip it.";
@@ -95,9 +108,9 @@
           choice: typeof draft.choice === "number" ? draft.choice : undefined,
           text: written ? draft.text : "",
           attachments: written
-            ? await prepareAttachments(draft.items, controller.signal, (read, total) => {
-                progress = total
-                  ? `Reading images: ${Math.round((read / total) * 100)}%`
+            ? await prepareAttachments(draft.items, controller.signal, (read, size) => {
+                progress = size
+                  ? `Reading images: ${Math.round((read / size) * 100)}%`
                   : "Preparing answers…";
               })
             : [],
@@ -208,7 +221,24 @@
         answer();
       }}
     >
-      {#each call.questions as question (question.id)}
+      <div class="mb-3 flex items-center gap-3">
+        <Button
+          variant="quiet"
+          aria-label="Previous question"
+          disabled={disabled || position === 0}
+          onclick={onprevious}>Previous</Button
+        >
+        <span class="text-small text-muted" aria-live="polite"
+          >{position + 1} of {total || call.questions.length}</span
+        >
+        <Button
+          variant="quiet"
+          aria-label="Next question"
+          disabled={disabled || position + 1 >= (total || call.questions.length)}
+          onclick={onnext}>Next</Button
+        >
+      </div>
+      {#each call.questions.slice(questionIndex, questionIndex + 1) as question (question.id)}
         {#if question.secret}
           <p class={text}>Answer this secret prompt in the terminal.</p>
         {:else if promptState.drafts[question.id]}
