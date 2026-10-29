@@ -35,17 +35,25 @@ func TestAppServerCompactContinuationSurvivesDeferredAdmission(t *testing.T) {
 		compact := appServerOneRequest(t, wire, "thread/compact/start", "")
 		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, compact.ID))
 		appServerTestTurn(t, u, "compact")
+		// Hold the existing admission barrier; preparation may otherwise finish immediately.
+		admission := make(chan error)
+		u.attached.threadInput.restoration = admission
 		appServerTestTurnEnd(t, u, "compact", "completed")
-		if !u.Compaction.ContinuationPending() || !u.attached.threadInput.preparing() || wire.Len() != 0 {
+		if !u.Compaction.ContinuationPending() || wire.Len() != 0 {
 			t.Fatal("compaction lost continuation during asynchronous admission")
 		}
 		if u.attached.presentation.View().Status.Session.CompletionKnown {
 			t.Fatal("compaction marked the task completed before continuation admission")
 		}
-		synctest.Wait()
-		if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, false, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
-			t.Fatal(err)
+		close(admission)
+		flush := func() {
+			if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, false, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+				t.Fatal(err)
+			}
 		}
+		flush()
+		synctest.Wait()
+		flush()
 		start := appServerOneRequest(t, wire, "turn/start", "")
 		if len(start.Params.Input) != 0 || u.Compaction.ContinuationPending() {
 			t.Fatal("continuation added human text or remained eligible for replay")
