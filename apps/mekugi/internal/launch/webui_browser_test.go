@@ -583,6 +583,69 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--fn", `window.heldContent.length === 1`)
 	run("eval", `window.heldContent.shift()(); window.holdContent = false`)
 	run("wait", "--text", "STREAM_CONTENT")
+	// Reasoning must consume complete content for every grouped member, not
+	// the compact published values, including the first hydrated revision.
+	publishThoughts := func(revision uint64, count int, suffix string) {
+		t.Helper()
+		entries := make([]activitypresentation.Entry, count)
+		for i := range entries {
+			item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: uint64(90 + i), Agent: "Main", Kind: "reasoning", Text: fmt.Sprintf("**Thought %d**\n\n", i+1) + strings.Repeat("Complete deferred reasoning. ", 160) + fmt.Sprintf("THOUGHT_%d_%s", i+1, suffix)}}
+			entries[i] = activitypresentation.Entry{Facts: item.Facts, Values: item.Values(), Revision: revision}
+		}
+		previewFrame.Main = &activitypresentation.Publication{Entries: entries}
+		if err := alpha.publishFrame(previewFrame); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expandThoughts := func() {
+		t.Helper()
+		run("eval", `document.querySelectorAll('[data-entry="90"] [data-slot=trace-collapsible-trigger][aria-expanded=false]').forEach(button => button.click())`)
+	}
+	publishThoughts(1, 1, "SINGLE")
+	run("wait", "--text", "Thought 1")
+	expandThoughts()
+	run("wait", "--text", "THOUGHT_1_SINGLE")
+	run("eval", `window.holdContent = true; window.heldContent = []`)
+	publishThoughts(2, 2, "GROUP")
+	run("wait", "--text", "2 thoughts")
+	run("wait", "--fn", `window.heldContent.length === 1`)
+	if run("eval", `document.querySelector('[data-entry="90"]').innerText.includes('Loading content')`) != "false\n" {
+		t.Fatal("pending thought member added loading text outside its disclosure")
+	}
+	run("eval", `window.heldContent.shift()(); window.holdContent = false`)
+	expandThoughts()
+	expandThoughts()
+	run("wait", "--fn", `document.body.innerText.includes('THOUGHT_1_GROUP') && document.body.innerText.includes('THOUGHT_2_GROUP') && !document.querySelector('[data-entry="91"]')`)
+	run("eval", `window.holdContent = true; window.heldContent = []`)
+	publishThoughts(3, 2, "SUPERSEDED")
+	run("wait", "--fn", `window.heldContent.length === 1`)
+	if run("eval", `document.body.innerText.includes('THOUGHT_1_GROUP') && document.body.innerText.includes('THOUGHT_2_GROUP')`) != "true\n" {
+		t.Fatal("reasoning refresh replaced acquired member content with previews")
+	}
+	publishThoughts(4, 2, "CURRENT")
+	run("wait", "--fn", `window.heldContent.length === 2`)
+	run("eval", `window.heldContent.shift()(); window.heldContent.shift()()`)
+	run("wait", "--fn", `window.heldContent.length === 1`)
+	run("eval", `window.heldContent.shift()(); window.holdContent = false`)
+	run("wait", "--fn", `document.body.innerText.includes('THOUGHT_1_CURRENT') && document.body.innerText.includes('THOUGHT_2_CURRENT') && !document.body.innerText.includes('SUPERSEDED')`)
+	// Reused sequence numbers on a new attachment cannot show old bodies.
+	run("eval", `window.holdContent = true; window.heldContent = []`)
+	previewFrame.Attachment++
+	publishThoughts(1, 2, "REATTACHED")
+	run("wait", "--fn", `window.heldContent.length === 1`)
+	if run("eval", `document.body.innerText.includes('THOUGHT_1_CURRENT') || document.body.innerText.includes('THOUGHT_2_CURRENT')`) != "false\n" {
+		t.Fatal("reasoning reused content across attachments")
+	}
+	run("eval", `window.heldContent.shift()()`)
+	run("wait", "--fn", `window.heldContent.length === 1`)
+	run("eval", `window.heldContent.shift()(true)`)
+	run("wait", "--text", "content unavailable")
+	button("Retry")
+	run("wait", "--fn", `window.heldContent.length === 1`)
+	run("eval", `window.heldContent.shift()(); window.holdContent = false`)
+	expandThoughts()
+	expandThoughts()
+	run("wait", "--fn", `document.body.innerText.includes('THOUGHT_1_REATTACHED') && document.body.innerText.includes('THOUGHT_2_REATTACHED') && !document.body.innerText.includes('content unavailable')`)
 	// Captured temporary trees fold at the same boundary as the terminal;
 	// opening them reveals retained paths without another host request.
 	var captures []string

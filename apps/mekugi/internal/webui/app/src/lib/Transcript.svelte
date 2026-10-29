@@ -241,7 +241,7 @@
   });
   $effect(() => {
     const changed = visible
-      .map((row) => row.entry)
+      .flatMap((row) => row.thoughts ?? [row.entry])
       .filter((entry) => {
         const prior = complete[entry.seq]?.reference;
         return (
@@ -269,6 +269,14 @@
       }
     });
   });
+  // A revision keeps the attachment's acquired content readable until its
+  // replacement is admitted. Apply this to every member of a thought group.
+  function resolved(entry: Entry): Entry {
+    const hydrated = complete[entry.seq];
+    return entry.content && hydrated?.reference?.attachment === entry.content.attachment
+      ? hydrated.entry
+      : entry;
+  }
   function load(entry: Entry): Promise<Entry> {
     const cached = complete[entry.seq];
     if (!entry.content) return Promise.resolve(entry);
@@ -350,13 +358,7 @@
       <p class="ml-19 text-small text-muted">Beginning of retained history</p>
     {/if}
     {#each visible as row (row.entry.seq)}
-      {@const hydrated = complete[row.entry.seq]}
-      <!-- A newer revision keeps the attachment's earlier complete content
-           readable until its own read is admitted. -->
-      {@const entry =
-        row.entry.content && hydrated?.reference?.attachment === row.entry.content.attachment
-          ? hydrated.entry
-          : row.entry}
+      {@const entry = resolved(row.entry)}
       {@const details = !!ondetails && hasDetails(entry, owner, clipped[entry.seq])}
       {@const response =
         !isUser(entry) && !entry.assignment
@@ -369,7 +371,7 @@
           stamp={live ? "Time" : "Recorded offset"}
           turn={row.turn}
           views={row.views}
-          thoughts={row.thoughts}
+          thoughts={row.thoughts?.map(resolved)}
           {owner}
           {source}
           onload={() => void load(row.entry).catch(() => {})}
@@ -380,18 +382,20 @@
               }
             : undefined}
         />
-        {#if loading[entry.seq] && entry === row.entry}<p
-            class="ml-19 text-small text-muted"
-            role="status"
-          >
-            Loading content…
-          </p>{/if}
-        {#if contentErrors[entry.seq]?.reference?.attachment === row.entry.content?.attachment && contentErrors[entry.seq]?.reference?.revision === row.entry.content?.revision && contentErrors[entry.seq]}<Alert
-            >{contentErrors[entry.seq]!.text}<Button
-              variant="quiet"
-              onclick={() => void load(row.entry).catch(() => {})}>Retry</Button
-            ></Alert
-          >{/if}
+        {#each row.thoughts ?? [row.entry] as member (member.seq)}
+          {#if !row.thoughts && loading[member.seq] && resolved(member) === member}<p
+              class="ml-19 text-small text-muted"
+              role="status"
+            >
+              Loading content…
+            </p>{/if}
+          {#if contentErrors[member.seq]?.reference?.attachment === member.content?.attachment && contentErrors[member.seq]?.reference?.revision === member.content?.revision && contentErrors[member.seq]}<Alert
+              >{contentErrors[member.seq]!.text}<Button
+                variant="quiet"
+                onclick={() => void load(member).catch(() => {})}>Retry</Button
+              ></Alert
+            >{/if}
+        {/each}
         <!-- The row's actions stack in the gutter, shown on hover or focus and
              always on touch. -->
         {#if details}<button
