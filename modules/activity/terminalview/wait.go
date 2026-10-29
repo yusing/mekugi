@@ -41,8 +41,8 @@ func (b Block) progressText(style string) string {
 	if b.WaitTimeout != "" {
 		text.WriteString(terminalui.Dim + " (timeout " + textsanitize.Safe(b.WaitTimeout, false) + ")" + terminalui.Reset + style)
 	}
-	if b.WaitReason != "" {
-		text.WriteString(": " + textsanitize.Safe(b.WaitReason, false))
+	if reason := b.ProgressReason(); reason != "" {
+		text.WriteString(": " + textsanitize.Safe(reason, false))
 	}
 	return text.String()
 }

@@ -868,7 +868,12 @@ func lineRanges(ranges []string) string {
 // the verb, or a program beside its gutter, then any failure's exit and the
 // live or failed output tail.
 func (p *Painter) ranRow(block Block, width int) []string {
-	code, label := sourceTabs(block.Code), strings.TrimSpace(p.Label(block.Verb, block.Label)+ResultCount(block.Results, block.Verb))
+	code := block.Code
+	if block.SourceRows > 0 {
+		code = block.PreviewCode()
+	}
+	code = sourceTabs(code)
+	label := strings.TrimSpace(p.Label(block.Verb, block.Label) + ResultCount(block.Results, block.Verb))
 	if code == "" {
 		if span, end, ok := markdownsyntax.CodeSpan(block.Label, 0); ok && end == len(block.Label) {
 			code, label = span, ""

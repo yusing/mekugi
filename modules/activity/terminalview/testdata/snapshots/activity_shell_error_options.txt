@@ -1,0 +1,3 @@
+Ran    │ plane comment ITEM --body - <<'EOF'
+       │ A retained comment.
+       │ … +2 lines

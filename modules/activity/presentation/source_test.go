@@ -9,6 +9,27 @@ import (
 	"github.com/yusing/mekugi/modules/activity/feed"
 )
 
+func TestShellPreviewSkipsErrorOptions(t *testing.T) {
+	for _, source := range []string{
+		"set -e\nplane comment ITEM --body - <<'EOF'\nbody\nEOF\nplane update ITEM",
+		"# setup\nset -eu; set -o pipefail; plane update ITEM",
+		"set -e && plane update ITEM | cat",
+	} {
+		block := Value{Kind: "op", Verb: "Run", Lang: "bash", Code: source}
+		if preview := block.PreviewCode(); !strings.HasPrefix(preview, "plane ") || block.Code != source {
+			t.Fatalf("preview=%q, retained=%q", preview, block.Code)
+		}
+		if first, omitted := previewSource(source); !strings.HasPrefix(first, "plane ") || !omitted {
+			t.Fatalf("compact preview=%q, omitted=%v", first, omitted)
+		}
+	}
+	for _, source := range []string{"set -e", "set -x\nplane update ITEM", "set -e | cat", "! set -e\nplane update ITEM", "set -e\nbroken '"} {
+		if got := shellPreviewSource(source); got != source {
+			t.Fatalf("changed opaque source: %q -> %q", source, got)
+		}
+	}
+}
+
 // Most display tests compare one textual preview; delivery tests check message boundaries.
 func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 	for _, test := range []struct {

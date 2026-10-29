@@ -114,6 +114,8 @@ type Disclosure struct {
 // Source: apps/mekugi/internal/webui/app/src/lib/kinds.ts:58@5bbc778a8 hasDetails.
 func (b Value) Disclosure() *Disclosure {
 	switch b.Kind {
+	case "compaction":
+		return &Disclosure{}
 	case "text", "user", "final", "message", "start", "summary", "progress":
 		return nil // Authored prose and progress own their inline disclosures.
 	case "error":

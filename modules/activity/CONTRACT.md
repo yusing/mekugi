@@ -132,7 +132,10 @@ content dialog, including after restoration and in replay. Missing or unauthoriz
 summary evidence is explicit. Opening a summary starts no model request or reload.
 
 Skill rows emphasize the skill name; reference paths and run arguments keep normal
-weight. Per-command Run excerpts omit terminating semicolons, preserving quoted
+weight. Shell Run previews skip leading error-handling `set` options to reveal
+the command; standalone options and unknown setup remain visible. Full source
+stays available in disclosures and details.
+Per-command Run excerpts omit terminating semicolons, preserving quoted
 semicolons and other executable syntax. Literal `echo`/`printf` section headings
 beside other operations are decoration: colon-ended or bordered headings, and
 newline-framed `printf` titles using capitalized multi-word text or one uppercase
@@ -581,7 +584,9 @@ traffic rows. Only confirmed outcomes establish a child or delivered content.
 Pending, queued, failed and unconfirmed attempts retain explicit progress or error
 rows. Agent progress uses a shared compact row with an agent-traffic marker,
 distinct from reasoning and generic tool cards. Waits publish their supplied
-targets and distinguish waiting, completion, timeout and cancellation. All-target
+targets and distinguish waiting, completion, timeout and cancellation. Aggregate
+completion reasons already stated by every target are omitted from display;
+mixed target outcomes keep their independent aggregate reason. All-target
 selection displays `all`. Named lists show
 two targets followed by `N more`; the existing disclosure opens the complete
 selection. A waiting roster row uses the transcript's wait text,

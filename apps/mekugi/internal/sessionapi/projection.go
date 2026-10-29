@@ -183,6 +183,7 @@ type value struct {
 	AutoReload       bool                             `json:"autoReload,omitzero"`
 	Approval         string                           `json:"approval,omitzero"`
 	Code             string                           `json:"code,omitzero"`
+	CodePreview      string                           `json:"codePreview,omitzero"`
 	DetailCode       string                           `json:"detailCode,omitzero"`
 	DetailsAvailable *activitypresentation.Disclosure `json:"detailsAvailable,omitzero"`
 	Lang             string                           `json:"lang,omitzero"`
@@ -345,7 +346,9 @@ func projectEntry(e activitypresentation.Entry, summaries bool, caller string) e
 			p.Values[i].Label, p.Values[i].Code, p.Values[i].Lang, p.Values[i].Fenced = "", command, "bash", true
 			p.Values[i].SourceOmitted = false
 			original := e.Values[i]
-			original.Code, original.SourceOmitted = command, false
+			original.Code, original.Lang, original.SourceOmitted = command, "bash", false
+			preview, _, _ := strings.Cut(original.PreviewCode(), "\n")
+			p.Values[i].CodePreview = preview
 			p.Values[i].DetailsAvailable = original.Disclosure()
 		}
 	}
@@ -366,8 +369,11 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 			Path:             v.Path, AutoReload: v.AutoReload, Approval: v.Approval,
 			Kind: v.Kind, Verb: v.Verb, BatchExit: v.BatchExit, Label: v.Label, Code: v.Code, Lang: v.Lang, Fenced: v.Fenced, Body: v.Body,
 			Subsumed: v.Subsumed, Effect: v.Effect, Pending: v.Pending, Skipped: v.Skipped, FoldSource: v.TemporarySource(), Duration: v.Duration.Milliseconds(), Thought: v.Thought.Milliseconds(), From: v.From, To: v.To,
-			WaitReason: v.WaitReason, WaitTimeout: v.WaitTimeout,
+			WaitReason: v.ProgressReason(), WaitTimeout: v.WaitTimeout,
 			EditOutcome: v.EditOutcome, Running: v.Running, Live: v.Live, Tail: v.Tail, TailOmitted: v.TailOmitted, TailClipped: v.TailClipped, SourceOmitted: v.SourceOmitted,
+		}
+		if preview := v.PreviewCode(); preview != v.Code {
+			p.CodePreview, _, _ = strings.Cut(preview, "\n")
 		}
 		if summaries {
 			p.Summary, p.Details = v.ReplySummary, v.ReplyDetails

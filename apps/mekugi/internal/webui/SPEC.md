@@ -264,8 +264,11 @@ An image an agent views appears under its View row; consecutive
 images one agent views share one row of captioned thumbnails. Empty items have no expansion control. Attachment events show their paths or skill
 names and auto-reload state, with columns sized to the visible verbs. Questions
 show identical heading and body text only once. Output counts share the
-event heading instead of occupying a separate collapsed row. Search patterns use accent ink, separate from their path operands. Compound
-labels use spaced segments and command chips instead of separator punctuation;
+event heading instead of occupying a separate collapsed row. Search patterns use accent ink, separate from their path operands.
+Completed compaction appears as a warning-coloured `Context compacted` link;
+choosing it opens the retained summary in Details.
+Recorded and ended views disclose their published summary inline.
+Compound labels use spaced segments and command chips instead of separator punctuation;
 the programs that made an edit show as chips after its path. A run of edits,
 including folded ones, names the programs behind all of them once above the run,
 and each edit keeps only the programs the others did not share. A command's own

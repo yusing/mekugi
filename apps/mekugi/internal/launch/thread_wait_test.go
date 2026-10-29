@@ -413,7 +413,11 @@ func TestLogicalStoppedTargetPublishesWakeReason(t *testing.T) {
 			}
 			syncLogicalWork(&u.attached, &u.Live, threads, *at)
 			rows, _ := u.testMainFrame(100, 15, 0)
-			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Finished waiting for worker: "+string(status)+": completed") {
+			want := "Finished waiting for worker: " + string(status)
+			if status != control.Completed {
+				want += ": completed"
+			}
+			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, want) || strings.Contains(text, "completed: completed") {
 				t.Fatalf("stopped-target wake was invisible: %s", text)
 			}
 		})

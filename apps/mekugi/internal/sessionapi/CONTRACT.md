@@ -497,6 +497,8 @@ it in `summary`, alongside the whole reply in `body`, while the invocation's
 Markdown; `code` is literal text in the language `lang` names.
 `detailCode` preserves original JSON tool evidence for a semantic operation's
 content dialog, separately from its compact transcript presentation.
+`codePreview`, when present, supplies the command's headline without shell
+error-option setup; `code` retains the complete source.
 `detailsAvailable` is Activity's omission fact: an object whose optional canonical
 `owner` limits it to that agent's transcript. Without `owner`, it applies to every
 transcript. Renderers add only their measured clipping to this fact. Transport

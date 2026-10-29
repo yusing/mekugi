@@ -1,11 +1,21 @@
 package presentation
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 )
+
+// ProgressReason omits an aggregate reason already stated by every target.
+// Mixed outcomes keep their independent aggregate completion reason.
+func (b Value) ProgressReason() string {
+	if len(b.WaitTargets) > 0 && !slices.ContainsFunc(b.WaitTargets, func(target WaitTarget) bool { return target.Status != b.WaitReason }) {
+		return ""
+	}
+	return b.WaitReason
+}
 
 // Source: modules/activity/terminalview/wait.go:17:40@7166de95.
 func (b Value) ProgressText() string {
@@ -30,8 +40,8 @@ func (b Value) ProgressText() string {
 	if b.WaitTimeout != "" {
 		text.WriteString(" (timeout " + b.WaitTimeout + ")")
 	}
-	if b.WaitReason != "" {
-		text.WriteString(": " + textsanitize.Safe(b.WaitReason, false))
+	if reason := b.ProgressReason(); reason != "" {
+		text.WriteString(": " + textsanitize.Safe(reason, false))
 	}
 	return text.String()
 }

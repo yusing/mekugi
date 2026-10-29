@@ -1,3 +1,2 @@
 ● child                                                       20:00:00
-│ └ Running │ set -e (timeout 10s)
-│           │ timeout 10 sleep 1
+│ └ Running timeout 10 sleep 1 (timeout 10s)

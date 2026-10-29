@@ -7,7 +7,35 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+	"mvdan.cc/sh/v3/syntax"
 )
+
+// PreviewCode skips shell error-option preambles without changing retained source.
+// Unknown setup and standalone option commands remain visible.
+func (b Value) PreviewCode() string {
+	if b.Verb != "Run" || b.Lang != "bash" && b.Lang != "sh" {
+		return b.Code
+	}
+	return shellPreviewSource(b.Code)
+}
+
+func shellPreviewSource(source string) string {
+	program, err := syntax.NewParser().Parse(strings.NewReader(source), "")
+	if err != nil {
+		return source
+	}
+	skipped := false
+	for _, statement := range shellsyntax.Sequence(program.Stmts) {
+		if !shellsyntax.ShellOptions(statement) {
+			if skipped {
+				return source[statement.Pos().Offset():]
+			}
+			return source
+		}
+		skipped = true
+	}
+	return source
+}
 
 // ShellSource interprets unevaluated command source as Activity content. The caller
 // supplies its selected directory and removes only authenticated host wrappers.

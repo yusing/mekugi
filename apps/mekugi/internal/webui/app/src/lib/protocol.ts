@@ -130,6 +130,7 @@ export interface Value {
   // Programs that made a file edit, outside its label.
   sources?: string[];
   code?: string;
+  codePreview?: string;
   lang?: string;
   fenced?: boolean;
   body?: string;

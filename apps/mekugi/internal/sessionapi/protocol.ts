@@ -471,6 +471,7 @@ export type value = {
   "autoReload"?: boolean;
   "approval"?: string;
   "code"?: string;
+  "codePreview"?: string;
   "detailCode"?: string;
   "detailsAvailable"?: (Disclosure | null);
   "lang"?: string;

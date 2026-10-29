@@ -168,6 +168,15 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 			}},
 		},
 		{
+			name: "wait_completed", width: 80,
+			block: Block{Kind: "progress", Body: "Finished waiting for", WaitTargets: []WaitTarget{{Name: "/root/review", Status: "completed"}}, WaitReason: "completed"},
+		},
+		{
+			name: "shell_error_options", width: 80,
+			block: Block{Kind: "op", Verb: "Run", Lang: "bash", Fenced: true, SourceRows: 3,
+				Code: "set -e\nset -u\nset -o pipefail\nplane comment ITEM --body - <<'EOF'\nA retained comment.\nEOF\nplane update ITEM"},
+		},
+		{
 			name: "collapsed_batch", width: 72,
 			block: func() Block {
 				batch, _ := CollapseBatch(GroupOperations([]Block{

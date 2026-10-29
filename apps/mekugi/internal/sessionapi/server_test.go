@@ -42,7 +42,7 @@ func TestChildReplySummaryFollowsFeature(t *testing.T) {
 // show, and names the command only when no step is listed.
 func TestBatchResultRow(t *testing.T) {
 	t.Parallel()
-	const script = "mcat a.go 1:9; mcat b.go 3:7"
+	const script = "set -e\nmcat a.go 1:9; mcat b.go 3:7"
 	result := activitypresentation.Value{Content: activityfeed.Content{Kind: "op", Verb: "Run", Label: "shell batch"}, BatchExit: true, Duration: 3700 * time.Millisecond, Tail: []string{"}"}, TailOmitted: 143}
 	steps := activitypresentation.Value{Content: activityfeed.Content{Kind: "reads", Verb: "Read", Reads: []activityfeed.Read{{Path: "a.go", Ranges: []string{"1:9"}}, {Path: "b.go", Ranges: []string{"3:7"}}}}}
 	command := &activitypresentation.ItemContent{Command: activitypresentation.Command{Display: script}}
@@ -55,7 +55,7 @@ func TestBatchResultRow(t *testing.T) {
 		t.Fatalf("result under steps = %+v", r)
 	}
 	alone := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{result}, Command: command}, false, "/root")
-	if r := alone.Values[0]; r.Label != "" || r.Code != script || r.Lang != "bash" || r.TailOmitted != 143 {
+	if r := alone.Values[0]; r.Label != "" || r.Code != script || r.CodePreview != "mcat a.go 1:9; mcat b.go 3:7" || r.Lang != "bash" || r.TailOmitted != 143 {
 		t.Fatalf("result alone = %+v", r)
 	}
 	merged := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{{Kind: "op", Code: script}, result}, Command: command}, false, "/root")
@@ -79,7 +79,7 @@ func TestWaitOutcomeProjection(t *testing.T) {
 		{`{"id":"w","state":"registered"}`, "", "2s"},
 		{`{"state":"waiting"}`, "", "2s"},
 		{`{"id":"w","state":"timeout"}`, "timeout", ""},
-		{`{"id":"w","state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", ""},
+		{`{"id":"w","state":"completed","event":{"task":"/root/child","status":"completed"}}`, "", ""},
 	} {
 		session := new(sessionpresentation.Attachment)
 		entry := session.CoordinationEntry(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Phase: "item/completed"}}, observation.Item{

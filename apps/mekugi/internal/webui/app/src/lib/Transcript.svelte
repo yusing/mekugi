@@ -374,6 +374,7 @@
           thoughts={row.thoughts?.map(resolved)}
           {owner}
           {source}
+          ondetails={ondetails ? () => ondetails?.(row.entry.seq) : undefined}
           onload={() => void load(row.entry).catch(() => {})}
           onclip={ondetails
             ? (value) => {

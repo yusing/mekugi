@@ -34,6 +34,7 @@
     source = stream,
     onload,
     onclip,
+    ondetails,
   }: {
     entry: Entry;
     at: string;
@@ -45,6 +46,7 @@
     source?: Stream;
     onload?: () => unknown;
     onclip?: (clipped?: boolean) => void;
+    ondetails?: () => unknown;
   } = $props();
 
   const user = $derived(isUser(entry));
@@ -206,6 +208,8 @@
     message: "text-muted",
   };
   const summary = "flex items-center gap-2 pointer-coarse:min-h-9";
+  const compactionLink =
+    "flex min-h-[26px] items-center gap-2 text-small text-warning-ink underline underline-offset-4 max-sm:min-h-11 pointer-coarse:min-h-11";
   const progress = $derived(
     !!entry.values?.length &&
       entry.values.every(
@@ -348,6 +352,19 @@
             {/if}
           </Message.Content>
         </Message.Root>
+      {:else if first?.kind === "compaction"}
+        {#if ondetails}
+          <button type="button" class={compactionLink} onclick={ondetails}>
+            <span aria-hidden="true">◉</span>{first.label}
+          </button>
+        {:else}
+          <details>
+            <summary class="{compactionLink} cursor-pointer list-none">
+              <span aria-hidden="true">◉</span>{first.label}
+            </summary>
+            <Markdown text={first.body || "Compaction summary unavailable."} />
+          </details>
+        {/if}
       {:else if prose}
         <Message.Root>
           <Message.Content><Markdown text={entry.text ?? ""} /></Message.Content>

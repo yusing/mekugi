@@ -11,6 +11,20 @@ import (
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
+func TestShellPreviewPreservesFullScript(t *testing.T) {
+	source := "set -e\nplane comment ITEM --body - <<'EOF'\n" + strings.Repeat("retained summary\n", 100) + "EOF\nplane update ITEM"
+	item := activity.ItemContent{Kind: "tool", Text: activity.ShellSource(source, "")}
+	full := projectEntry(activity.Entry{Facts: item.Facts, Values: item.Values()}, false, "/root")
+	for _, entry := range []entry{full, compactEntry(full)} {
+		if v := entry.Values[0]; v.CodePreview != "plane comment ITEM --body - <<'EOF'" {
+			t.Fatalf("preview=%+v", v)
+		}
+	}
+	if full.Values[0].Code != source {
+		t.Fatalf("full script changed: %q", full.Values[0].Code)
+	}
+}
+
 func readSharedLive(t *testing.T, server *Server, event map[string]jsontext.Value) jsontext.Value {
 	t.Helper()
 	var refs DeferredSections

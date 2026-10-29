@@ -45,6 +45,14 @@ func TestWaitProgressSanitizesHostText(t *testing.T) {
 	}
 }
 
+func TestCompletedWaitReasonNotRepeated(t *testing.T) {
+	block := activityui.Block{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activityui.WaitTarget{{Name: "/root/review", Status: "completed"}}, WaitReason: "completed"}
+	want := "Finished waiting for review: completed"
+	if got := block.ProgressText(); got != want {
+		t.Fatalf("plain progress=%q", got)
+	}
+}
+
 func TestUISnapshotAgentDisplayNames(t *testing.T) {
 	var p activityui.Painter
 	rows := []string{p.Agent("agent:main"), p.Agent("agent:main/worker/reviewer")}

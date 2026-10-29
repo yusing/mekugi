@@ -108,7 +108,7 @@
   // followed by any label that annotates it.
   const headline = $derived(
     (!value.label || annotates(value)) && !reads.length && code
-      ? (excerpt ?? code.split("\n")[0])
+      ? (value.codePreview ?? excerpt ?? code.split("\n")[0])
       : undefined,
   );
   // Tool arguments and results often carry JSON text inside a JSON string;
@@ -144,7 +144,7 @@
         json: true,
         lines: lines(value.codeLines ?? json?.split("\n").length ?? codeLines),
       };
-    if (multiline || excerpt !== undefined) {
+    if (multiline || excerpt !== undefined || (value.codePreview && value.codePreview !== code)) {
       const name = value.foldSource ? "Source" : "Script";
       return { name, short: name, lines: lines(codeLines) };
     }

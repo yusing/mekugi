@@ -141,8 +141,9 @@ func hasOutput(output *feed.OutputView, content bool) bool {
 
 func previewSource(source string) (string, bool) {
 	source = shellDisplaySource(source)
-	first, rest, _ := strings.Cut(source, "\n")
-	return first, strings.TrimSpace(rest) != ""
+	preview := shellPreviewSource(source)
+	first, rest, _ := strings.Cut(preview, "\n")
+	return first, preview != source || strings.TrimSpace(rest) != ""
 }
 
 // SegmentValues uses observed boundaries, retaining output and honest outcomes

@@ -26,12 +26,14 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/connector"
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -764,7 +766,9 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		run("eval", `document.querySelector('[data-prompt] img[alt="Preview of answer.png"]').scrollIntoView({block:'center'})`)
 		run("screenshot", filepath.Join(artifacts, "question-preview.png"))
 	}
-	run("fill", `[data-prompt] fieldset:nth-of-type(2) textarea`, "separate browser answer")
+	button("Next question")
+	run("fill", `[data-prompt] textarea`, "separate browser answer")
+	button("Previous question")
 	capture("question-images")
 	narrowAttachment("[data-prompt] textarea", "question")
 	// An acquisition refusal preserves the first image and both question drafts.
@@ -772,7 +776,9 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	button("Submit answers")
 	run("wait", "--text", "Uploads exceed the 32 MiB limit")
 	button("Remove oversize.png")
-	run("wait", "--fn", `document.querySelector('[data-prompt] img[alt="Preview of answer.png"]')?.naturalWidth > 0 && document.querySelectorAll('[data-prompt] textarea')[1].value === 'separate browser answer'`)
+	run("wait", "--fn", `document.querySelector('[data-prompt] img[alt="Preview of answer.png"]')?.naturalWidth > 0`)
+	button("Next question")
+	run("wait", "--fn", `document.querySelector('[data-prompt] textarea').value === 'separate browser answer'`)
 	button("Submit answers")
 	run("wait", "--fn", `!document.querySelector('[data-prompt]')`)
 	serverCLIAwait(t, func() bool {
@@ -840,12 +846,24 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	if err := os.MkdirAll(sessions, 0700); err != nil {
 		t.Fatal(err)
 	}
-	replayTestWrite(t, sessions, "rollout-recorded.jsonl", replayTestMeta("recorded"), replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}), replayTestItem("recorded", "turn", replayTestEpoch+1, replayTestEpoch+2, map[string]any{"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "Browser recorded answer\n\n[Recorded file](notes.md)"}}}), replayTestRecord("event_msg", replayTestEpoch+100, map[string]any{"type": "task_complete", "turn_id": "turn"}))
+	compactOwner := executionobservation.New(executionobservation.Config{Retained: changes.Scope{Store: retained}})
+	compactRef, err := compactOwner.StoreCompact(ctx, "recorded", "Browser retained compaction summary.", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayTestWrite(t, sessions, "rollout-recorded.jsonl", replayTestMeta("recorded"),
+		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
+		replayTestRecord("compacted", replayTestEpoch+1, map[string]any{"replacement_history": []any{map[string]any{"type": "compaction", "encrypted_content": compactRef}}}),
+		replayTestItem("recorded", "turn", replayTestEpoch+2, replayTestEpoch+3, map[string]any{"type": "ContextCompaction", "id": "compact"}),
+		replayTestItem("recorded", "turn", replayTestEpoch+4, replayTestEpoch+5, map[string]any{"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "Browser recorded answer\n\n[Recorded file](notes.md)"}}}),
+		replayTestRecord("event_msg", replayTestEpoch+100, map[string]any{"type": "task_complete", "turn_id": "turn"}))
 	button("More ways to start")
 	run("find", "role", "menuitem", "click", "--name", "Open replay")
 	run("find", "label", "Saved session ID", "fill", "recorded")
 	button("Open replay")
 	run("wait", "--text", "Browser recorded answer")
+	run("eval", `document.querySelector('[data-kind="compaction"] summary').click()`)
+	run("wait", "--text", "Browser retained compaction summary.")
 	run("find", "role", "link", "click", "--name", "Recorded file", "--exact")
 	run("wait", "--text", "File details are available on a connected live thread.")
 	button("Restart")

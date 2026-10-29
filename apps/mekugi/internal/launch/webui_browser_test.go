@@ -81,7 +81,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		}
 		command := request.Operation.Command
 		menu := request.Operation.Menu
-		if request.Operation.Completion != nil || request.Operation.Reference != nil || command != nil && strings.HasPrefix(*command, "/title ") {
+		if request.Operation.Completion != nil || request.Operation.Reference != nil || request.Operation.CloseDetails != nil || command != nil && strings.HasPrefix(*command, "/title ") {
 			thread := sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}
 			frame := sessionapi.NativeFrame{View: sessionpresentation.View{Version: request.Version, Main: thread, Input: thread, Displayed: thread, Info: sessionpresentation.MainInfo{Workspace: request.Workspace}}}
 			frame.View.Version.Revision++
@@ -94,7 +94,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 			} else if reference := request.Operation.Reference; reference != nil {
 				references <- request
 				frame.Effects = []sessionapi.NativeEffect{{ID: 2, Thread: reference.Thread, Target: &reference.Target, Selection: &sessionapi.NativeSelection{Description: reference.Description, Text: reference.Text, Source: reference.Source}}}
-			} else {
+			} else if request.Operation.CloseDetails == nil {
 				browserCommands <- request
 			}
 			if err := native.Publish(request.Attachment, frame); err != nil {
@@ -135,6 +135,18 @@ func TestWebUIBrowserMachines(t *testing.T) {
 			return true
 		}
 		if request.Operation.Details != nil {
+			if request.Operation.Details.Source == 94 {
+				thread := sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}
+				frame := sessionapi.NativeFrame{View: sessionpresentation.View{Version: request.Version, Main: thread, Input: thread, Displayed: thread, Info: sessionpresentation.MainInfo{Workspace: request.Workspace}}}
+				frame.View.Version.Revision++
+				frame.Details = &sessionapi.NativeDetails{Source: thread, View: sessionpresentation.DetailView{ID: sessionpresentation.DetailID{Attachment: request.Version.Attachment, Selection: 1}, Pages: []sessionpresentation.DetailItem{{DetailPage: activitypresentation.DetailPage{ID: "compaction", Value: activitypresentation.Value{Kind: "compaction", Label: "Context compacted", Body: "Retained compacted summary."}}}}}}
+				if err := native.Publish(request.Attachment, frame); err != nil {
+					request.Reply <- err.Error()
+				} else {
+					request.Reply <- ""
+				}
+				return true
+			}
 			childFile <- request
 			request.Reply <- "Child file target reached its runtime."
 			return true
@@ -508,6 +520,46 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		run("set", "viewport", "1280", "900")
 		theme("System")
 	}
+	// Source semantics reach both the compact feed and its retained disclosures.
+	shell := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 92, Agent: "Main", Kind: "tool", Text: activitypresentation.ShellSource("set -e\nset -u\nset -o pipefail\nplane comment ITEM --body - <<'EOF'\nA retained comment.\nEOF\nplane update ITEM", "")}}
+	single := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 91, Agent: "Main", Kind: "tool", Text: activitypresentation.ShellSource("set -e; plane update ITEM", "")}}
+	compaction := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 94, Agent: "Main", Kind: "compaction", Text: "Retained compacted summary."}}
+	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
+		{Facts: single.Facts, Values: single.Values(), Revision: 1},
+		{Facts: shell.Facts, Values: shell.Values(), Revision: 1},
+		{Facts: activitypresentation.Facts{Seq: 93, Agent: "Main", Kind: "progress"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/review", Status: "completed"}}, WaitReason: "completed"}}, Revision: 1},
+		{Facts: compaction.Facts, Values: compaction.Values(), Revision: 1},
+	}}
+	if err := alpha.publishFrame(previewFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "Context compacted")
+	if run("eval", `(() => { const shell = document.querySelector('[data-entry="92"]'); const wait = document.querySelector('[data-entry="93"]'); return shell?.querySelector('code')?.textContent.includes('plane comment ITEM') && !shell.innerText.includes('set -e') && wait?.innerText.split('completed').length === 2 && !document.body.innerText.includes('Retained compacted summary.'); })()`) != "true\n" {
+		t.Fatal("activity previews lost their shared source semantics")
+	}
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		for _, palette := range []string{"Light", "Dark"} {
+			run("set", "viewport", "1280", "900")
+			theme(palette)
+			for _, width := range []string{"1280", "390"} {
+				run("set", "viewport", width, "900")
+				if run("eval", `(() => { const row = document.querySelector('[data-entry="94"] button'); const r = row.getBoundingClientRect(); return r.width > 44 && r.height >= (innerWidth < 640 ? 44 : 26) && r.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth; })()`) != "true\n" {
+					t.Fatalf("compaction geometry in %s at %s: %s", palette, width, run("eval", `(() => { const r = document.querySelector('[data-entry="94"] button').getBoundingClientRect(); return {width:r.width, height:r.height, right:r.right, viewport:innerWidth, scroll:document.documentElement.scrollWidth}; })()`))
+				}
+				run("screenshot", filepath.Join(artifacts, "activity-events-"+strings.ToLower(palette)+"-"+width+".png"))
+			}
+		}
+		run("set", "viewport", "1280", "900")
+		theme("System")
+	}
+	button("Script: 7 lines")
+	run("wait", "--text", "set -e")
+	button("Script: 1 line")
+	run("wait", "--fn", `document.querySelector('[data-entry="91"]').innerText.includes('set -e; plane update ITEM')`)
+	button("Context compacted")
+	run("wait", "--text", "Retained compacted summary.")
+	button("Close details")
+	run("wait", "--fn", `!document.querySelector('[aria-labelledby="details-heading"]')`)
 	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 98, Agent: "Main", Kind: "tool", Text: "Run command"}, Values: []activitypresentation.Value{{Kind: "op", Verb: "Run", Code: "echo begin\n" + strings.Repeat("echo middle\n", 200) + "echo script_finished", Lang: "bash", Fenced: true, Tail: []string{strings.Repeat("output ", 200), "output_finished"}}}, Revision: 1}}}
 	if err := alpha.publishFrame(previewFrame); err != nil {
 		t.Fatal(err)

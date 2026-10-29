@@ -150,7 +150,7 @@ func TestUISnapshotCapturedSetupKeepsObservedAction(t *testing.T) {
 				command.Segments = append(command.Segments, segment)
 			}
 			values := (presentation.ItemContent{Seq: 9, Kind: "tool", Command: command, Details: &presentation.ItemDetails{CommandText: tc.script}}).Values()
-			if len(values) != 2 || !values[0].Segment || values[0].Code != tc.script || values[0].Output != 1 || values[0].ExitCode != tc.exit || values[0].Duration != time.Second || values[0].BatchExit || values[0].Approval != "Approved" || !values[1].Effect || values[1].Exited {
+			if len(values) != 2 || !values[0].Segment || values[0].Code != strings.TrimPrefix(tc.script, "set -e; ") || !values[0].SourceOmitted || values[0].Output != 1 || values[0].ExitCode != tc.exit || values[0].Duration != time.Second || values[0].BatchExit || values[0].Approval != "Approved" || !values[1].Effect || values[1].Exited {
 				t.Fatalf("single observed action lost source, output or effect membership: %+v", values)
 			}
 			pages := command.DetailValues()
