@@ -4,6 +4,8 @@ package responses
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
+	"errors"
 )
 
 // Input keeps provider-owned JSON raw while exposing its two standard
@@ -28,11 +30,8 @@ func DecodeInput(raw json.RawMessage) (Input, error) {
 		input.array = true
 		return input, nil
 	}
-	var value any
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if err := decoder.Decode(&value); err != nil {
-		return Input{}, err
+	if !jsontext.Value(raw).IsValid(jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)) {
+		return Input{}, errors.New("invalid JSON in Responses input")
 	}
 	return input, nil
 }

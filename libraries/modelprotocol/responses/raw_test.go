@@ -90,7 +90,7 @@ func TestRawInputKnownShapes(t *testing.T) {
 }
 
 func TestRawInputOpaqueBytes(t *testing.T) {
-	for _, raw := range []string{` { "future" : [1.00, 9007199254740993] } `, ` 1e20 `, ` true `} {
+	for _, raw := range []string{` { "future" : [1.00, 9007199254740993] } `, ` 1e20 `, ` true `, ` 1e1000000 `, ` {"x":1,"x":2} `, " {\"future\":\"\xff\"} "} {
 		t.Run(raw, func(t *testing.T) {
 			source := []byte(raw)
 			input, err := responses.DecodeInput(source)
@@ -133,5 +133,15 @@ func TestRawDecodeCompatibility(t *testing.T) {
 		if (err != nil) != wantError {
 			t.Fatalf("DecodeInput(%q) error=%v", raw, err)
 		}
+	}
+}
+
+func TestRawInputRejectsTrailingValues(t *testing.T) {
+	for _, raw := range []string{`true false`, `{} garbage`, `1 2`, `[] []`, `"text" {}`, `null true`} {
+		t.Run(raw, func(t *testing.T) {
+			if _, err := responses.DecodeInput([]byte(raw)); err == nil {
+				t.Fatal("accepted input after the first JSON value")
+			}
+		})
 	}
 }
