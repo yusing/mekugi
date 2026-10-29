@@ -192,8 +192,8 @@ func (f *claudeHookFixture) hook(t *testing.T, event, tool, id string, input, re
 func TestClaudeLaunchHooksPublishSharedNativeEvidence(t *testing.T) {
 	f := newClaudeHookFixture(t)
 	b := f.bridge
-	for _, test := range []struct{ tool, event, path string }{{"Write", "PostToolUse", "success.txt"}, {"Edit", "PostToolUseFailure", "failed.txt"}} {
-		args, _ := json.Marshal(map[string]string{"file_path": test.path, "content": "observed\n", "old_string": "old", "new_string": "observed"})
+	for _, test := range []struct{ tool, event, path string }{{"Bash", "PostToolUse", "success.txt"}, {"Bash", "PostToolUseFailure", "failed.txt"}} {
+		args, _ := json.Marshal(map[string]string{"command": "printf 'observed\\n' > " + test.path})
 		f.hook(t, "PreToolUse", test.tool, test.path, args, nil)
 		if err := os.WriteFile(filepath.Join(b.settings.Workspace, test.path), []byte("observed\n"), 0600); err != nil {
 			t.Fatal(err)
@@ -431,7 +431,7 @@ func TestClaudeLaunchJoinedCloseCapturesUnknownOutcome(t *testing.T) {
 		t.Fatal(err)
 	}
 	toolCtx, cancel := context.WithCancel(t.Context())
-	pre := jsontext.Value(`{"session_id":"native-session","hook_event_name":"PreToolUse","tool_name":"Write","tool_use_id":"joined","tool_input":{"file_path":"joined.txt","content":"after joined close\n"}}`)
+	pre := jsontext.Value(`{"session_id":"native-session","hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"joined","tool_input":{"command":"printf 'after joined close\\n' > joined.txt"}}`)
 	if _, err := b.request(toolCtx, "hook", pre); err != nil {
 		t.Fatal(err)
 	}

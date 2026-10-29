@@ -188,7 +188,8 @@ class Worker {
     const options: Options = {
       ...config.options,
       cwd: config.workspace, pathToClaudeCodeExecutable: config.claudePath,
-      env: { ...process.env, CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "0" }, settingSources: ["user", "project", "local"],
+      // Auto-memory's native prompt requires the unavailable Write tool.
+      env: { ...process.env, CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "0", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" }, settingSources: ["user", "project", "local"],
       // Native main-agent settings must not replace the captured Codex role.
       settings: { agent: "" }, agent: undefined, agents: undefined,
       sandbox: { enabled: false },

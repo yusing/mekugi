@@ -16,7 +16,7 @@ func TestClaudeLaunchNativeCaptureWorkingDirectories(t *testing.T) {
 	for _, scenario := range []struct {
 		tool             string
 		removedWorkspace bool
-	}{{tool: "Bash"}, {tool: "Write"}, {tool: "Edit"}, {tool: "NotebookEdit"}, {tool: "PowerShell"}, {tool: "Bash", removedWorkspace: true}} {
+	}{{tool: "Bash"}, {tool: "PowerShell"}, {tool: "Bash", removedWorkspace: true}} {
 		name := scenario.tool
 		if scenario.removedWorkspace {
 			name += "/removed-workspace"
@@ -48,14 +48,9 @@ func TestClaudeLaunchNativeCaptureWorkingDirectories(t *testing.T) {
 				if err := os.WriteFile(path, []byte("before\n"), 0600); err != nil {
 					t.Fatal(err)
 				}
-				args := map[string]string{"file_path": "target.ipynb", "content": "after", "old_string": "before", "new_string": "after"}
-				switch scenario.tool {
-				case "Bash":
-					args = map[string]string{"command": "printf 'after\\n' > target.ipynb"}
-				case "PowerShell":
+				args := map[string]string{"command": "printf 'after\\n' > target.ipynb"}
+				if scenario.tool == "PowerShell" {
 					args = map[string]string{"command": "Set-Content target.ipynb 'after'"}
-				case "NotebookEdit":
-					args = map[string]string{"notebook_path": path, "new_source": "after", "cell_type": "code", "edit_mode": "replace"}
 				}
 				var err error
 				arguments[i], err = json.Marshal(args)

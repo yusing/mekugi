@@ -38,8 +38,8 @@ func TestPolicyApprovalModes(t *testing.T) {
 			if options.PermissionMode != wantPermission || options.AllowDangerouslySkipPermissions != (mode == "never") || options.Sandbox.Enabled == nil || *options.Sandbox.Enabled {
 				t.Fatalf("unexpected SDK options: %s", p.Options())
 			}
-			if len(options.Tools) == 0 {
-				t.Fatal("native tools missing")
+			if !slices.Equal(options.Tools, []string{"Bash", "PowerShell", "WebFetch", "WebSearch", "TaskStop", "TodoWrite", "Monitor"}) {
+				t.Fatalf("unexpected native tool surface: %v", options.Tools)
 			}
 			for _, tool := range options.Tools {
 				d, err := p.CheckTool(tool, jsontext.Value(`{"command":"echo test"}`))
@@ -147,7 +147,7 @@ func TestPolicyNativeToolBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"Agent", "Task", "Skill", "UnknownTool", "mcp__external__execute"} {
+	for _, name := range []string{"Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "Agent", "Task", "Skill", "UnknownTool", "mcp__external__execute"} {
 		d, err := p.CheckTool(name, jsontext.Value(`{}`))
 		if err != nil || d.Allow || d.Ask || d.Reason == "" {
 			t.Errorf("unsupported tool %q: %+v, %v", name, d, err)

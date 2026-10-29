@@ -34,7 +34,7 @@ func CompilePolicy(approval jsontext.Value, reviewer string, nativeSkills bool) 
 	p := &Policy{
 		// Names are from the pinned SDK's BUILTIN_TOOL_NAMES. Keep the visible
 		// native surface and its hook admission at the same owner.
-		nativeTools: []string{"Bash", "PowerShell", "Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "WebFetch", "WebSearch", "TaskStop", "TodoWrite", "Monitor"},
+		nativeTools: []string{"Bash", "PowerShell", "WebFetch", "WebSearch", "TaskStop", "TodoWrite", "Monitor"},
 	}
 	if nativeSkills {
 		p.nativeTools = append(p.nativeTools, "Skill")

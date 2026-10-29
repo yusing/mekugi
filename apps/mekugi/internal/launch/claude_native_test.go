@@ -130,7 +130,7 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 	claudeConfig := t.TempDir()
 	excluded := filepath.Join(workspace, "AGENTS.md")
 	nativeSettings, err := json.Marshal(map[string]any{
-		"autoMemoryEnabled": false,
+		"autoMemoryEnabled": true,
 		"attribution":       map[string]string{"commit": "", "pr": ""},
 		"claudeMdExcludes":  []string{excluded, filepath.Join(claudeConfig, "CLAUDE.md")},
 	})
@@ -194,7 +194,7 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 	}()
 	plan := map[string]any{"responses": []any{
 		map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": "parent_range", "name": "Bash", "input": map[string]string{"command": "mchanges " + parentID + "; printf '\\nTHREAD=%s\\nPATH=%s\\n' \"$CODEX_THREAD_ID\" \"$PATH\"", "description": "Read parent capture through private frontend"}}}},
-		map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": "native_write", "name": "Write", "input": map[string]string{"file_path": filepath.Join(workspace, "native-child.txt"), "content": "native child evidence\n"}}}},
+		map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": "native_write", "name": "Bash", "input": map[string]string{"command": "printf 'native child evidence\\n' > native-child.txt", "description": "Write child evidence through the shell"}}}},
 		map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": "child_list", "name": "Bash", "input": map[string]string{"command": "mchanges --list", "description": "Read child captures"}}}},
 		map[string]any{"content": []any{map[string]string{"type": "text", "text": "native child finished"}}},
 	}}
@@ -228,7 +228,7 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 	environment := slices.DeleteFunc(os.Environ(), func(entry string) bool {
 		return strings.HasPrefix(entry, "ANTHROPIC_") || strings.HasPrefix(entry, "CLAUDE_") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, "MEKUGI_EXEC_TRACK=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=")
 	})
-	environment = append(environment, "ANTHROPIC_BASE_URL="+base, "ANTHROPIC_API_KEY=local-fixture", "ANTHROPIC_AUTH_TOKEN=", "CLAUDE_CODE_OAUTH_TOKEN=", "CLAUDE_CONFIG_DIR="+claudeConfig, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", "CLAUDE_CODE_USE_BEDROCK=0", "CLAUDE_CODE_USE_VERTEX=0", "CLAUDE_CODE_USE_FOUNDRY=0", routerTestWorkerEnvironment+"=1")
+	environment = append(environment, "ANTHROPIC_BASE_URL="+base, "ANTHROPIC_API_KEY=local-fixture", "ANTHROPIC_AUTH_TOKEN=", "CLAUDE_CODE_OAUTH_TOKEN=", "CLAUDE_CONFIG_DIR="+claudeConfig, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=0", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", "CLAUDE_CODE_USE_BEDROCK=0", "CLAUDE_CODE_USE_VERTEX=0", "CLAUDE_CODE_USE_FOUNDRY=0", routerTestWorkerEnvironment+"=1")
 	parent := &claudeNativeParent{final: make(chan control.NativeInput, 1)}
 	hub := sessionapi.NewHub(ctx, &claudeNativeLauncher{parent: parent})
 	workers := new(frontends.WorkerImage)
@@ -279,7 +279,7 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 	settings.DeveloperInstructions = new("selected-native-role-fixture")
 	settings.ApprovalPolicy, settings.ApprovalsReviewer = jsontext.Value(approval), reviewer
 	// Keep a parent shell window open while the real child runtime performs its
-	// native Write. Both files exist before the parent reaches terminal capture.
+	// shell edit. Both files exist before the parent reaches terminal capture.
 	concurrent := executionobservation.PrepareShell(ctx, parentScope, b.owners.Changes.Service, b.checkpoints, b.owners.Recovery, nil, b.windows, nil, nil,
 		executionobservation.ShellInput{Thread: "parent", Namespace: "parent", Workspace: workspace, Caller: "/root", Command: "printf 'concurrent parent\\n' > concurrent-parent.txt", Shell: "bash"})
 	if concurrent == nil {
@@ -351,7 +351,7 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 		t.Fatalf("native child receipts: %q %v", childList, err)
 	}
 	if content, err := os.ReadFile(filepath.Join(workspace, "native-child.txt")); err != nil || string(content) != "native child evidence\n" {
-		t.Fatalf("native Write effect: %q %v", content, err)
+		t.Fatalf("native shell edit effect: %q %v", content, err)
 	}
 	if err := concurrent.Complete(binding.ToolResult{Tool: "userShell", CallID: "concurrent-parent", Status: "completed", ExitCode: new(0)}, ""); err != nil {
 		t.Fatal(err)
@@ -380,12 +380,38 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 		Output struct {
 			Effort string `json:"effort"`
 		} `json:"output_config"`
+		System []struct {
+			Text string `json:"text"`
+		} `json:"system"`
+		Tools []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		} `json:"tools"`
 	}
 	if err := json.Unmarshal(body, &effortRequests); err != nil {
 		t.Fatal(err)
 	}
 	if len(effortRequests) == 0 || effortRequests[0].Output.Effort != "high" {
 		t.Fatalf("native provider effort not delivered: %+v", effortRequests)
+	}
+	for _, request := range effortRequests {
+		var guidance strings.Builder
+		for _, block := range request.System {
+			guidance.WriteString(block.Text)
+		}
+		for _, tool := range request.Tools {
+			if slices.Contains([]string{"Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit"}, tool.Name) {
+				t.Errorf("native provider exposes overlapping tool %q", tool.Name)
+			}
+			if tool.Name == "Bash" {
+				guidance.WriteString(tool.Description)
+			}
+		}
+		for _, advice := range []string{"Read tool", "Glob tool", "Grep tool", "Write tool", "Edit tool", "NotebookEdit tool"} {
+			if strings.Contains(guidance.String(), advice) {
+				t.Errorf("native provider retains unavailable-tool advice %q", advice)
+			}
+		}
 	}
 	details, err := execution.Inspect(ctx, result.Thread)
 	if err != nil || details.ReasoningEffort == nil || *details.ReasoningEffort != "high" {

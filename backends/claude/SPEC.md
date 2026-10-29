@@ -18,7 +18,7 @@ those owners; this integration exposes Claude only through Thread Control.
 ## Runtime
 
 Delegates load native user, project and local Claude settings. Claude owns instruction
-discovery and exclusions, memory preferences, and commit/PR attribution. Mekugi
+discovery and exclusions, and commit/PR attribution. Mekugi
 appends captured custom/role instructions, coordination guidance and the authenticated
 shell frontend catalog; Codex JavaScript execution guidance stays with Codex.
 Captured approvals, role reductions and Thread Control coordination remain authoritative.
@@ -27,6 +27,13 @@ available unless skills-mgr is on the delegate PATH, which then owns skill acqui
 replace the captured Codex role or model, and native role catalogs stay out of
 provider requests. Claude receives the captured Codex agent catalog for Thread
 Control admission.
+
+Read, Glob, Grep, Write, Edit and NotebookEdit are unavailable. File inspection
+and editing use shell commands and the authenticated frontends. SDK tool selection
+omits their tool descriptions and tool-preference guidance. Automatic memory is
+disabled, including when native settings enable it, because its prompt requires
+Write. The native Claude baseline and ordinary instruction-file discovery remain
+in effect.
 
 On-demand model discovery reads the SDK initialization catalog without submitting
 input, with transcript persistence disabled. The application closes and joins the
