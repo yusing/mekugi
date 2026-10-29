@@ -39,3 +39,14 @@ func TestClaudeGranularPromptRejectsWithoutCategory(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudeRoleShellReductionCoversShellTools(t *testing.T) {
+	f := newClaudeHookFixture(t)
+	f.bridge.settings.Config = jsontext.Value(`{"features.shell_tool":false}`)
+	for _, tool := range []string{"Bash", "PowerShell", "Monitor"} {
+		result := f.hook(t, "PreToolUse", tool, "reduced-"+tool, jsontext.Value(`{"description":"watch","command":"printf denied > denied.txt"}`), nil)
+		if !strings.Contains(string(result), `"permissionDecision":"deny"`) || !strings.Contains(string(result), "Shell tools are disabled") {
+			t.Fatalf("%s bypassed the captured role shell reduction: %s", tool, result)
+		}
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/backends/claude"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -52,7 +53,7 @@ type ClaudeToolOperation struct {
 // capture window. Unsupported tools need no observation and return nil, nil.
 func PrepareClaudeTool(ctx context.Context, retained changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publish func([]changes.Update), windows *Windows, audience *sessioncontrol.Audience, notice func(string, string, string, string), input ClaudeToolInput) (*ClaudeToolOperation, error) {
 	switch input.ToolName {
-	case "Bash", "PowerShell", "Edit", "Write", "NotebookEdit":
+	case "Bash", "PowerShell", "Monitor", "Edit", "Write", "NotebookEdit":
 	default:
 		return nil, nil
 	}
@@ -74,13 +75,17 @@ func PrepareClaudeTool(ctx context.Context, retained changes.Scope, source chang
 	if err := json.Unmarshal(input.Arguments, &args); err != nil {
 		return nil, fmt.Errorf("decode native %s input: %w", input.ToolName, err)
 	}
+	// A WebSocket monitor runs no local command.
+	if input.ToolName == "Monitor" && args.Command == "" {
+		return nil, nil
+	}
 	ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: input.Thread, Namespace: input.Namespace})
 	options := executionCaptureEnvironment(ctx, input.Workspace, retained, source, snapshots, nil)
 	var observation *changecapture.Observation
 	// The retained input field also carries patch/native source. Keep named
 	// edits as their original JSON instead of constructing a shell command.
 	script := string(input.Arguments)
-	if input.ToolName == "Bash" || input.ToolName == "PowerShell" {
+	if claude.IsShellTool(input.ToolName) {
 		if args.Command == "" {
 			return nil, fmt.Errorf("native %s input has no command", input.ToolName)
 		}

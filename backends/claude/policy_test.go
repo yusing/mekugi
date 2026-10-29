@@ -46,7 +46,7 @@ func TestPolicyApprovalModes(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if mode == "untrusted" && (tool == "Bash" || tool == "PowerShell") {
+				if mode == "untrusted" && IsShellTool(tool) {
 					if !d.Ask || d.Allow || d.Reason == "" {
 						t.Fatalf("untrusted shell did not require approval: %+v", d)
 					}

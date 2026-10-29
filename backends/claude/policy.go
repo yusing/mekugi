@@ -33,7 +33,7 @@ func CompilePolicy(approval jsontext.Value, reviewer string) (*Policy, error) {
 	p := &Policy{
 		// Names are from the pinned SDK's BUILTIN_TOOL_NAMES. Keep the visible
 		// native surface and its hook admission at the same owner.
-		nativeTools: []string{"Bash", "PowerShell", "Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "WebFetch", "WebSearch", "TaskStop", "TodoWrite"},
+		nativeTools: []string{"Bash", "PowerShell", "Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "WebFetch", "WebSearch", "TaskStop", "TodoWrite", "Monitor"},
 	}
 	if err := json.Unmarshal(approval, &p.mode); err == nil {
 		switch p.mode {
@@ -81,6 +81,12 @@ func CompilePolicy(approval jsontext.Value, reviewer string) (*Policy, error) {
 	return p, nil
 }
 
+// IsShellTool reports native tools that run model-supplied shell commands.
+// Monitor runs its command as a background task, settled by task notification.
+func IsShellTool(name string) bool {
+	return name == "Bash" || name == "PowerShell" || name == "Monitor"
+}
+
 // Options returns a detached SDK options fragment. The worker separately owns
 // its authenticated coordination server, hooks and native settings loading.
 func (p *Policy) Options() jsontext.Value { return bytes.Clone(p.options) }
@@ -99,7 +105,7 @@ func (p *Policy) CheckTool(name string, args jsontext.Value) (Decision, error) {
 	if !slices.Contains(p.nativeTools, name) {
 		return Decision{Reason: fmt.Sprintf("Native tool %q has no Claude approval mapping", name)}, nil
 	}
-	if p.mode == "untrusted" && (name == "Bash" || name == "PowerShell") {
+	if p.mode == "untrusted" && IsShellTool(name) {
 		return Decision{Ask: true, Reason: "Untrusted Claude commands require approval; no captured command trust rule authorizes this command"}, nil
 	}
 	return Decision{}, nil

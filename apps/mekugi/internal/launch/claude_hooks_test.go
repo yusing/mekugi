@@ -222,27 +222,34 @@ func TestClaudeLaunchHooksPublishSharedNativeEvidence(t *testing.T) {
 			t.Fatalf("child changes leaked into parent implicit list: %q %v", own, err)
 		}
 	}
-	args := jsontext.Value(`{"command":"printf done > background.txt","run_in_background":true}`)
-	f.hook(t, "PreToolUse", "Bash", "background", args, nil)
-	ack := f.hook(t, "PostToolUse", "Bash", "background", args, jsontext.Value(`{"backgroundTaskId":"task","stdout":"","stderr":"","interrupted":false}`))
-	if strings.Contains(string(ack), "mchanges") {
-		t.Fatalf("background acknowledgement finalized: %s", ack)
-	}
-	if err := os.WriteFile(filepath.Join(b.settings.Workspace, "background.txt"), []byte("done\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := b.event(t.Context(), jsontext.Value(`{"type":"system","subtype":"task_notification","session_id":"native-session","tool_use_id":"background","task_id":"task","status":"failed","summary":"background failed after writing"}`)); err != nil {
-		t.Fatal(err)
-	}
-	flushed := f.hook(t, "PostToolBatch", "", "", nil, nil)
-	if !strings.Contains(string(flushed), "mchanges") || !strings.Contains(string(flushed), "background.txt") {
-		t.Fatalf("settled background receipt not delivered to next hook: %s", flushed)
-	}
-	b.mu.Lock()
-	_, pending := b.captures["background"]
-	b.mu.Unlock()
-	if pending {
-		t.Fatal("settled background capture leaked")
+	// Acknowledgements and notifications are captured SDK 0.3.312 output.
+	for _, background := range []struct{ tool, id, file, args, ack, status string }{
+		{"Bash", "background", "background.txt", `{"command":"printf done > background.txt","run_in_background":true}`, `{"backgroundTaskId":"task","stdout":"","stderr":"","interrupted":false}`, "failed"},
+		{"Monitor", "monitor", "monitored.txt", `{"description":"watch","timeout_ms":20000,"command":"printf done > monitored.txt"}`, `{"taskId":"b57221pi8","timeoutMs":20000,"persistent":false}`, "completed"},
+	} {
+		args := jsontext.Value(background.args)
+		f.hook(t, "PreToolUse", background.tool, background.id, args, nil)
+		ack := f.hook(t, "PostToolUse", background.tool, background.id, args, jsontext.Value(background.ack))
+		if strings.Contains(string(ack), "mchanges") {
+			t.Fatalf("%s acknowledgement finalized: %s", background.tool, ack)
+		}
+		if err := os.WriteFile(filepath.Join(b.settings.Workspace, background.file), []byte("done\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		notification, _ := json.Marshal(map[string]string{"type": "system", "subtype": "task_notification", "session_id": "native-session", "tool_use_id": background.id, "task_id": "task", "status": background.status, "summary": "background settled after writing"})
+		if err := b.event(t.Context(), notification); err != nil {
+			t.Fatal(err)
+		}
+		flushed := f.hook(t, "PostToolBatch", "", "", nil, nil)
+		if !strings.Contains(string(flushed), "mchanges") || !strings.Contains(string(flushed), background.file) {
+			t.Fatalf("settled %s receipt not delivered to next hook: %s", background.tool, flushed)
+		}
+		b.mu.Lock()
+		_, pending := b.captures[background.id]
+		b.mu.Unlock()
+		if pending {
+			t.Fatalf("settled %s capture leaked", background.tool)
+		}
 	}
 	if err := b.execution.AttachChild(t.Context(), "parent", "child"); err == nil {
 		t.Fatal("Claude child was attachable")

@@ -149,7 +149,7 @@ func (b *claudeBridge) request(ctx context.Context, method string, raw jsontext.
 			if len(b.settings.Config) != 0 && json.Unmarshal(b.settings.Config, &config) != nil {
 				return nil, errors.New("invalid frozen Claude capability configuration")
 			}
-			if (hook.Tool == "Bash" || hook.Tool == "PowerShell") && string(config["features.shell_tool"]) == "false" {
+			if claude.IsShellTool(hook.Tool) && string(config["features.shell_tool"]) == "false" {
 				decision = claude.Decision{Reason: "Shell tools are disabled by the captured role"}
 			}
 			if hook.Tool == "WebSearch" && string(config["web_search"]) == `"disabled"` {
@@ -235,10 +235,12 @@ func (b *claudeBridge) complete(hook claudeHook) (string, error) {
 	}
 	var output struct {
 		Background  string `json:"backgroundTaskId"`
+		// Monitor acknowledges its background task under this name.
+		Task        string `json:"taskId"`
 		Interrupted bool   `json:"interrupted"`
 	}
 	_ = json.Unmarshal(hook.Response, &output)
-	capture.background = capture.background || output.Background != ""
+	capture.background = capture.background || output.Background != "" || output.Task != ""
 	background := capture.background
 	b.mu.Unlock()
 	status, success := "completed", hook.Event == "PostToolUse"

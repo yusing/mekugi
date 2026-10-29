@@ -80,7 +80,9 @@ Private executable frontends share the parent's retained namespace under a disti
 child identity. Native tool hooks acquire edit baselines before execution and
 publish actual terminal effects through Change History. Post-tool context carries
 durable receipts separately from the original native result, including failures.
-Pending/background tools retain their capture until actual settlement.
+Pending/background tools retain their capture until actual settlement. Monitor, the
+native condition wait, follows Bash's approval, role reduction and background capture;
+its task notification settles the capture.
 If joined runtime shutdown leaves a tool without a terminal hook, observed file
 effects remain capturable with an unknown outcome and no invented exit status.
 
