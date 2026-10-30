@@ -112,6 +112,7 @@ type Recorder struct {
 
 type requestState struct {
 	requestKind          string
+	providerNotExpected  bool
 	predecessorSequence  uint64
 	recorder             *Recorder
 	projectedObserved    bool
@@ -133,6 +134,18 @@ type requestState struct {
 type requestRouting struct {
 	sessionKey string
 	turnState  string
+}
+
+// ObserveLocalResponse records the router's decision to answer without a
+// provider invocation. Actual provider attempts remain independently captured.
+func ObserveLocalResponse(ctx context.Context) {
+	state, ok := ctx.Value(captureKey{}).(*requestState)
+	if !ok {
+		return
+	}
+	state.mu.Lock()
+	state.providerNotExpected = true
+	state.mu.Unlock()
 }
 
 // ObserveRequestKind records only the router's validated, content-free request kind.
@@ -425,6 +438,9 @@ func (r *Recorder) recordObservedExchange(state *requestState, boundary string, 
 	}
 	state.mu.Lock()
 	record.RequestKind = state.requestKind
+	if boundary == "codex" && state.providerNotExpected {
+		record.ProviderExpected = new(false)
+	}
 	state.mu.Unlock()
 	if contentType == webSocketContentType {
 		record.Transport = "websocket"

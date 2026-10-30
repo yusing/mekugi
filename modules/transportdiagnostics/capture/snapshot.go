@@ -187,6 +187,7 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 		Sequence:       front.RequestSequence, ThreadID: front.ThreadID, PredecessorSequence: front.PredecessorSequence,
 		Status: front.ResponseStatus, ClientRequest: front.Request, ClientResponse: front.Response,
 		ClientFingerprint: front.Fingerprint,
+		ProviderAttempts:  make([]providerAttemptMetrics, 0, len(providers)),
 	}
 	var exchangeUsage usageMetrics
 	r.metrics.Requests.Logical++

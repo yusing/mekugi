@@ -8,6 +8,7 @@ import (
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 // completeLocalWait closes a successfully registered logical wait without
@@ -24,6 +25,7 @@ func (a *requestAttempt) completeLocalWait() (bool, error) {
 	if err != nil || stop == nil {
 		return false, err
 	}
+	transportcapture.ObserveLocalResponse(a.startCtx)
 	if a.prepared != nil {
 		if err := a.prepared.Finish(false); err != nil {
 			return true, err

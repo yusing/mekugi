@@ -159,10 +159,12 @@ responses.
 
 Application control payloads are counted separately by boundary and direction,
 even when steering fails or the connection closes. They contribute neither
-logical requests nor provider usage and are not counted twice. Explicit local
-`generate:false` prewarm retains that no provider was expected; missing legacy
-expectation still means a provider was expected. Any actual traffic remains
-measured. Reconciliation excludes only explicitly provider-free exchanges.
+logical requests nor provider usage and are not counted twice. Explicit
+`generate:false` prewarm, local logical-wait completion and context reload retain
+that no provider was expected. Metrics publish their provider attempts as an
+empty array. Missing legacy expectation still means a provider was expected.
+Any actual traffic remains measured. Reconciliation excludes only explicitly
+provider-free exchanges.
 
 ### Replay timing
 

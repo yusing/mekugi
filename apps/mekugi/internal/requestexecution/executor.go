@@ -150,6 +150,7 @@ func (a *requestAttempt) run() error {
 		return err
 	}
 	if local, ok := a.prepared.(interface{ CompactReload() jsontext.Value }); ok && len(local.CompactReload()) > 0 {
+		transportcapture.ObserveLocalResponse(a.startCtx)
 		var body bytes.Buffer
 		item := local.CompactReload()
 		id := "resp_mekugi_reload_" + rand.Text()

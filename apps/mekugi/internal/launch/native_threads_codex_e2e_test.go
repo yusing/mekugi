@@ -32,6 +32,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 type nativeThreadsProvider struct {
@@ -661,7 +662,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	socket := filepath.Join(socketDirectory, "s")
 	stateDirectory := t.TempDir()
 	capturePath := ""
-	if scenario.headless && scenario.preload {
+	if scenario.headless {
 		capturePath = filepath.Join(t.TempDir(), "capture.jsonl")
 	}
 	environment = append(environment, "XDG_STATE_HOME="+stateDirectory,
@@ -738,6 +739,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 					t.Fatalf("missing runtime capture %q: %v", capture, err)
 				}
 				paired := false
+				var metrics []byte
 				err = filepath.WalkDir(stateDirectory, func(path string, entry os.DirEntry, err error) error {
 					if err != nil {
 						return err
@@ -750,7 +752,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 						return err
 					}
 					if target == capture {
-						_, err = os.Stat(filepath.Join(filepath.Dir(path), "metrics.json"))
+						metrics, err = os.ReadFile(filepath.Join(filepath.Dir(path), "metrics.json"))
 						paired = err == nil
 						return err
 					}
@@ -758,6 +760,59 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 				})
 				if err != nil || !paired {
 					t.Fatalf("runtime capture has no joined metrics bundle: %q, %v", capture, err)
+				}
+				var snapshot transportcapture.MetricsSnapshot
+				if err := json.Unmarshal(metrics, &snapshot); err != nil {
+					t.Fatal(err)
+				}
+				if snapshot.Capture.MissingProvider != 0 {
+					t.Fatalf("completed headless runtime lost provider evidence: %+v", snapshot.Capture)
+				}
+				raw, err := os.ReadFile(capture)
+				if err != nil {
+					t.Fatal(err)
+				}
+				local := make(map[uint64]bool)
+				for row := range bytes.SplitSeq(bytes.TrimSpace(raw), []byte("\n")) {
+					var record struct {
+						Boundary         string `json:"boundary"`
+						Sequence         uint64 `json:"request_sequence"`
+						ProviderExpected *bool  `json:"provider_expected"`
+					}
+					if err := json.Unmarshal(row, &record); err != nil {
+						t.Fatal(err)
+					}
+					if record.Boundary == "codex" && record.ProviderExpected != nil && !*record.ProviderExpected {
+						local[record.Sequence] = true
+					}
+				}
+				localTurns := 0
+				for _, exchange := range snapshot.Exchanges {
+					if exchange.ProviderAttempts == nil || exchange.Status == "completed" && len(exchange.ProviderAttempts) == 0 && !local[exchange.Sequence] {
+						t.Fatalf("headless exchange has no provider decision: %+v", exchange)
+					}
+					if exchange.RequestKind == "turn" && exchange.Status == "completed" && len(exchange.ProviderAttempts) == 0 && local[exchange.Sequence] {
+						localTurns++
+					}
+				}
+				if localTurns == 0 && (capture == capturePath || scenario.preload) {
+					t.Fatalf("headless fixture did not exercise local completion: %s", capture)
+				}
+				if export := os.Getenv("MEKUGI_TEST_LIFECYCLE_EXPORT"); export != "" {
+					relative, err := filepath.Rel(filepath.Dir(capturePath), capture)
+					if err != nil {
+						t.Fatal(err)
+					}
+					destination := filepath.Join(export, t.Name(), relative)
+					if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(destination, raw, 0600); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(destination+".metrics.json", metrics, 0600); err != nil {
+						t.Fatal(err)
+					}
 				}
 			}
 		}

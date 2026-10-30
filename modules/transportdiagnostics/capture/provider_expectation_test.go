@@ -24,11 +24,15 @@ func TestRecorderDistinguishesNoGenerateFromMissingProvider(t *testing.T) {
 
 	terminal := []byte(`{"status":"completed","output":[]}`)
 	observedTerminal := observedPayload{content: terminal, bytes: uint64(len(terminal))}
-	recordClient := func(body []byte, withProvider bool) {
+	recordClient := func(body []byte, withProvider, local bool) {
 		t.Helper()
 		state := recorder.beginRequest(nil)
+		ctx := context.WithValue(t.Context(), captureKey{}, state)
+		if local {
+			ObserveLocalResponse(ctx)
+		}
 		if withProvider {
-			ObserveProjectedRequest(context.WithValue(t.Context(), captureKey{}, state), body)
+			ObserveProjectedRequest(ctx, body)
 			attempt := state.beginProviderAttempt()
 			recorder.recordExchange(state, "provider", attempt, time.Now(), body, observedTerminal, http.StatusOK, "application/json", "", nil, providerResponseEvidence{})
 		}
@@ -36,14 +40,22 @@ func TestRecorderDistinguishesNoGenerateFromMissingProvider(t *testing.T) {
 	}
 
 	noGenerate := []byte(`{"model":"grok","generate":false,"input":[]}`)
-	recordClient(noGenerate, false)
-	recordClient([]byte(`{"model":"grok","input":[]}`), false)
-	recordClient(noGenerate, true)
+	ordinaryBody := []byte(`{"model":"grok","input":[]}`)
+	recordClient(noGenerate, false, false)
+	recordClient(ordinaryBody, false, false)
+	recordClient(noGenerate, true, false)
+	recordClient(ordinaryBody, false, true)
+	recordClient(ordinaryBody, true, true)
 
 	snapshot := recorder.snapshot()
-	if snapshot.Requests.Logical != 3 || snapshot.Requests.ProviderAttempts != 1 ||
-		snapshot.Requests.Completed != 3 || snapshot.Capture.MissingProvider != 1 {
+	if snapshot.Requests.Logical != 5 || snapshot.Requests.ProviderAttempts != 2 ||
+		snapshot.Requests.Completed != 5 || snapshot.Capture.MissingProvider != 1 {
 		t.Fatalf("provider expectation metrics = %+v", snapshot)
+	}
+	for _, exchange := range snapshot.Exchanges {
+		if exchange.ProviderAttempts == nil {
+			t.Fatal("provider attempts must serialize as an array, including missing evidence")
+		}
 	}
 
 	file, err := os.Open(capturePath)
@@ -63,7 +75,7 @@ func TestRecorderDistinguishesNoGenerateFromMissingProvider(t *testing.T) {
 		}
 		records = append(records, record)
 	}
-	if len(records) != 4 {
+	if len(records) != 7 {
 		t.Fatalf("records = %#v", records)
 	}
 	first, ordinary, provider, third := records[0], records[1], records[2], records[3]
@@ -72,6 +84,11 @@ func TestRecorderDistinguishesNoGenerateFromMissingProvider(t *testing.T) {
 		provider.Boundary != "provider" || provider.ProviderAttempt != 1 ||
 		third.ProviderExpected == nil || *third.ProviderExpected {
 		t.Fatalf("provider expectation evidence = first %#v ordinary %#v provider %#v third %#v", first.ProviderExpected, ordinary.ProviderExpected, provider, third.ProviderExpected)
+	}
+	for _, index := range []int{4, 6} {
+		if record := records[index]; record.ProviderExpected == nil || *record.ProviderExpected {
+			t.Fatalf("local response lost its provider decision: %+v", record)
+		}
 	}
 	rebuilt, err := metricsFromRecords(recorder.mode, records)
 	if err != nil {
