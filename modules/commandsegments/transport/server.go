@@ -58,12 +58,14 @@ func Listen(ctx context.Context) (*Server, error) {
 		os.RemoveAll(root)
 		return nil, &os.PathError{Op: "mkfifo", Path: endpoints.Requests, Err: err}
 	}
-	// Holding the write end prevents idle EOF.
-	requests, err := os.OpenFile(endpoints.Requests, os.O_RDWR, 0)
+	// Holding the write end prevents idle EOF. NewFile keeps the nonblocking
+	// descriptor pollable on Darwin, so cancellation interrupts an idle read.
+	fd, err := unix.Open(endpoints.Requests, unix.O_RDWR|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
 		os.RemoveAll(root)
 		return nil, err
 	}
+	requests := os.NewFile(uintptr(fd), endpoints.Requests)
 	ctx, cancel := context.WithCancel(ctx)
 	s := &Server{endpoints: endpoints, ctx: ctx, cancel: cancel, done: make(chan struct{})}
 	stop := context.AfterFunc(ctx, func() { requests.Close() })
