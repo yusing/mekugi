@@ -170,6 +170,14 @@ func TestSupersededLocalWaitRestoresWorkingRoster(t *testing.T) {
 	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); strings.Contains(text, "Waiting for") {
 		t.Fatalf("working roster displays stale wait: %s", text)
 	}
+	// Each owner-loop pass observes the running host again. Unchanged work
+	// must reuse the roster publication, whose identity versions roster pages.
+	published := u.attached.childSource.Publication(u.attached.presentation, u.attached.source)
+	*at = at.Add(time.Second)
+	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	if u.attached.childSource.Publication(u.attached.presentation, u.attached.source) != published {
+		t.Fatal("unchanged running work republished the roster")
+	}
 }
 
 func TestLogicalWaitHumanCancellation(t *testing.T) {

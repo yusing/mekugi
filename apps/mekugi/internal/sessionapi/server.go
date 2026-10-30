@@ -10,6 +10,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -366,19 +367,22 @@ func (s *Server) Publish(f Frame) error {
 		rosterSource = family.Agents
 	}
 	if rosterSource != nil && (rosterSource != s.rosterSource || f.Session.Caller != previousCaller) {
-		value := projectRoster(rosterSource, f.Session.Caller)
-		s.rosterRevision++
-		s.rosterValue = &value
-		page, failure := rosterPage(&value, s.readAttachment, s.rosterRevision, PageCursor{Attachment: s.readAttachment, Kind: "roster", Revision: s.rosterRevision})
-		if failure != nil {
-			return failure
-		}
-		data, err := json.Marshal(page.Roster, encoding)
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal(data, s.roster) {
-			s.roster, patch.Roster = data, data
+		// Transcript and output changes republish unchanged rows. Keep their
+		// revision so page reads in flight remain valid.
+		if value := projectRoster(rosterSource, f.Session.Caller); s.rosterValue == nil || !reflect.DeepEqual(value, *s.rosterValue) {
+			s.rosterRevision++
+			s.rosterValue = &value
+			page, failure := rosterPage(&value, s.readAttachment, s.rosterRevision, PageCursor{Attachment: s.readAttachment, Kind: "roster", Revision: s.rosterRevision})
+			if failure != nil {
+				return failure
+			}
+			data, err := json.Marshal(page.Roster, encoding)
+			if err != nil {
+				return err
+			}
+			if !bytes.Equal(data, s.roster) {
+				s.roster, patch.Roster = data, data
+			}
 		}
 		s.rosterSource = rosterSource
 	}

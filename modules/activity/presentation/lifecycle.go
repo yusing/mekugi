@@ -28,6 +28,11 @@ func (a *AgentLifecycle) ObserveActive(active bool, at time.Time) {
 	if active && a.Started.IsZero() {
 		return
 	}
+	// Repeated observations of running work keep its anchor, so unchanged work
+	// publishes unchanged facts.
+	if active && a.Responding && !a.WorkTimer.Since.IsZero() {
+		return
+	}
 	a.WorkTimer.update(active, at)
 	a.Responding = active
 	if active {

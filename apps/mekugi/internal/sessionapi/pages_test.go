@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -87,6 +88,24 @@ func TestRosterAndAuxiliaryContentRemainReadable(t *testing.T) {
 	}
 	if seen != 120 {
 		t.Fatalf("roster retained %d agents", seen)
+	}
+	// Republishing unchanged rows keeps pages readable; changed rows replace them.
+	frame.Agents = new(*agents)
+	if err := s.Publish(frame); err != nil {
+		t.Fatal(err)
+	}
+	if _, failure := s.page(testJSON(t, initial.Roster.Next)); failure != nil {
+		t.Fatalf("unchanged roster invalidated its pages: %+v", failure)
+	}
+	changed := *agents
+	changed.Roster = slices.Clone(agents.Roster)
+	changed.Roster[119].Agent.Responding = true
+	frame.Agents = &changed
+	if err := s.Publish(frame); err != nil {
+		t.Fatal(err)
+	}
+	if _, failure := s.page(testJSON(t, initial.Roster.Next)); failure == nil || failure.Data.Status != 409 {
+		t.Fatal("changed roster kept stale pages readable")
 	}
 	frame.Session.Title = "small"
 	frame.Input = &Input{}

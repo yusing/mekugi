@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -133,7 +134,10 @@ console.log('ready');`, strings.TrimSpace(run("get", "cdp-url")))
 	run("find", "text", "+2 more", "click", "--exact")
 	run("wait", "--fn", `window.targetRosterReads.length === 1`)
 	run("wait", "--fn", `!document.querySelector('[data-ai-element="agent-progress"] button[title="Show worker119\'s activity"]')`)
-	frame.Agents = &activity.Publication{Roster: agents.Roster}
+	// Only changed rows supersede the pages being read.
+	revised := slices.Clone(agents.Roster)
+	revised[0].Agent.Responding = true
+	frame.Agents = &activity.Publication{Roster: revised}
 	frame.Session.Title = "Wait roster revised"
 	if err := machine.publishFrame(frame); err != nil {
 		t.Fatal(err)
@@ -149,4 +153,106 @@ console.log('ready');`, strings.TrimSpace(run("get", "cdp-url")))
 	}
 	run("click", `[data-ai-element="agent-progress"] button[title="Show worker119's activity"]`)
 	run("wait", "--fn", `!!document.querySelector('[aria-label="worker119\'s activity"]') && document.querySelector('#panel-content')?.textContent.includes('worker119')`)
+}
+
+// A running agent named by Main's wait sits beyond the first roster page while
+// owner-loop passes keep republishing the family. Its targeted roster read must
+// succeed over a slow connection, so the name gains its role colour and the
+// roster gains its row without waiting for unrelated activity.
+func TestWebUIBrowserWaitTargetDuringRepublication(t *testing.T) {
+	if os.Getenv("MEKUGI_TEST_WEBUI_BROWSER") != "1" {
+		t.Skip("set MEKUGI_TEST_WEBUI_BROWSER=1 after make webui")
+	}
+	t.Setenv("AGENT_BROWSER_ENGINE", "chrome")
+	browser := os.Getenv("MEKUGI_TEST_AGENT_BROWSER")
+	if browser == "" {
+		browser = "agent-browser"
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	page := httptest.NewServer(webui.Handler())
+	defer page.Close()
+	machine := newWebUIBrowserMachine(t, ctx, page.URL, "Running", strings.Repeat("d", 64))
+	u, threads, at := logicalWaitRunningUI(t, nil)
+	if err := threads.shared.Execution(t.Context(), "main", "first", "exec", "", false); err != nil {
+		t.Fatal(err)
+	}
+	wait := activity.Value{Kind: "progress", Body: "Waiting for", WaitTargets: []activity.WaitTarget{{Name: "agent:main/target"}}}
+	main := &activity.Publication{Entries: []activity.Entry{{Seq: 1, Agent: "Main", Kind: "tool", Text: wait.ProgressText(), Values: []activity.Value{wait}, Revision: 1}}}
+	var fillers []activity.AgentRow
+	for i := range 60 {
+		fillers = append(fillers, activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: fmt.Sprintf("/root/filler%d", i), Final: true}}})
+	}
+	target := activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root/target", Role: "worker", Responding: true}}}
+	// Each pass observes the running host as the owner loop does, and
+	// publishes a new roster publication as transcript or output changes do.
+	publish := func() error {
+		syncLogicalWork(&u.attached, &u.Live, threads, *at)
+		live := u.attached.childSource.Publication(u.attached.presentation, u.attached.source)
+		agents := new(*live)
+		agents.Roster = append(append(slices.Clone(live.Roster), fillers...), target)
+		return machine.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Running thread", Caller: "/root", Workspace: machine.workdir}, Input: &sessionapi.Input{}, Main: main, Agents: agents})
+	}
+	if err := publish(); err != nil {
+		t.Fatal(err)
+	}
+	identity, err := exec.CommandContext(ctx, browser, "session", "id", "--scope", "worktree", "--prefix", "webui-running").CombinedOutput()
+	if err != nil {
+		t.Fatalf("browser identity: %v %s", err, identity)
+	}
+	name := strings.TrimSpace(string(identity))
+	defer func() {
+		cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stop()
+		_ = exec.CommandContext(cleanup, browser, "--session", name, "close").Run()
+	}()
+	run := func(args ...string) string {
+		t.Helper()
+		out, err := exec.CommandContext(ctx, browser, append([]string{"--session", name}, args...)...).CombinedOutput()
+		if err != nil {
+			state, _ := exec.CommandContext(ctx, browser, "--session", name, "eval", `document.body.innerText.slice(0, 1500)`).CombinedOutput()
+			t.Fatalf("browser %s: %v %s\n%s", args[0], err, out, state)
+		}
+		return string(out)
+	}
+	run("open", page.URL)
+	run("set", "viewport", "1280", "900")
+	// A remote connection delays each page read by more than one publication
+	// interval, so a read survives only while the roster keeps its revision.
+	run("eval", `const send = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { if (JSON.parse(text).method === 'session/page') { setTimeout(() => send.call(this, text), 250); return; } send.call(this, text); };`)
+	run("find", "label", "Machine name", "fill", "Running")
+	run("find", "label", "Connector URL", "fill", machine.remote.URL)
+	run("find", "label", "Access token", "fill", strings.Repeat("d", 64))
+	run("find", "role", "button", "click", "--name", "Connect", "--exact")
+	run("wait", "--text", "Running thread")
+	done := make(chan error, 1)
+	go func() {
+		ticker := time.NewTicker(apiFrameInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				done <- nil
+				return
+			case <-ticker.C:
+				*at = at.Add(apiFrameInterval)
+				if err := publish(); err != nil {
+					done <- err
+					return
+				}
+			}
+		}
+	}()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	run("find", "text", "Running thread", "click", "--exact")
+	run("wait", "--text", "Waiting for")
+	run("wait", "--fn", `(() => { const link = document.querySelector('[data-ai-element="agent-progress"] button[title="Show target\'s activity"]'); return !!link && link.classList.contains('text-role') && [...document.querySelectorAll('#panel-content li')].some(row => row.textContent.includes('target') && row.textContent.includes('worker')); })()`)
+	if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
+		run("screenshot", filepath.Join(directory, "wait-target-republication.png"))
+	}
 }
