@@ -150,6 +150,8 @@ func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.
 func TestContextUsageNoticeProviderPrefix(t *testing.T) {
 	raw := json.RawMessage(`[{"role":"user","content":"task"},{"type":"function_call_output","call_id":"call","output":"done"}]`)
 	admitted := binding.ContextUsage{Session: t.Name(), Thread: "main", Tokens: 500, Window: 1000}
+	var warnings []string
+	admitted.Notify = func(text string) { warnings = append(warnings, text) }
 	admitted.FreshInput = func() json.RawMessage { return raw }
 	project := testGuidance().ContextUsage
 	update, err := project(binding.InstructionInput{Input: raw}, admitted)
@@ -177,6 +179,9 @@ func TestContextUsageNoticeProviderPrefix(t *testing.T) {
 	update, err = project(binding.InstructionInput{Input: raw}, admitted)
 	if err != nil || bytes.Count(update.Input, []byte("Mekugi context usage:")) != 1 || !bytes.Contains(update.Input, []byte("70%")) {
 		t.Fatalf("compaction cadence: %+v, %v", update, err)
+	}
+	if len(warnings) != 2 || warnings[0] != "Mekugi context usage: 50% (500/1000 tokens)." || warnings[1] != "Mekugi context usage: 70% (700/1000 tokens)." {
+		t.Fatalf("fresh warnings or silent replay: %v", warnings)
 	}
 
 	for _, window := range []uint64{0, 1000} {

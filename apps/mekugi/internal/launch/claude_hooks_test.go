@@ -398,6 +398,30 @@ func TestClaudeLaunchApprovalAndRetainedInspection(t *testing.T) {
 
 type claudeJoinedWriter struct{ command *exec.Cmd }
 
+func TestClaudeContextWarningSharesToolBatchMilestone(t *testing.T) {
+	b := newClaudeHookFixture(t).bridge
+	// Existing SDK/worker event shapes, with usage at the 60% milestone.
+	for _, raw := range []string{
+		`{"type":"system","subtype":"init","session_id":"native-session","model":"native-model"}`,
+		`{"type":"assistant","session_id":"native-session","uuid":"block-1","message":{"id":"msg-1"},"parent_tool_use_id":null}`,
+		`{"type":"mekugi_live_metrics","session_id":"native-session","message_id":"msg-1","context_tokens":120000,"context_window":200000,"modelUsage":null,"total_cost_usd":null}`,
+	} {
+		if err := b.event(t.Context(), jsontext.Value(raw)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, wantReminder := range []bool{true, false} {
+		result, err := b.batch(t.Context(), claudeHook{Event: "PostToolUse"})
+		if err != nil || strings.Contains(string(result), "Mekugi context usage: 60%") != wantReminder {
+			t.Fatalf("tool batch milestone: %s, %v", result, err)
+		}
+	}
+	pending := b.owners.Notifications.Pending()
+	if len(pending) != 1 || !strings.Contains(pending[0], "Mekugi context usage: 60% (120000/200000 tokens).") || strings.Contains(pending[0], "occurred") {
+		t.Fatalf("user warning missing or duplicated: %v", pending)
+	}
+}
+
 func TestClaudeLaunchInterruptReceiptReducesTerminal(t *testing.T) {
 	f := newClaudeHookFixture(t)
 	b := f.bridge

@@ -28,6 +28,7 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
+	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -1099,6 +1100,24 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "process-feedback-phone.png"))
 	}
+	issues := testCriticalErrors()
+	queueContextWarning(t, issues, "child")
+	claim := issues.Notices.Claim("child", nil)
+	if claim == nil {
+		t.Fatal("context milestone did not reach the browser's thread")
+	}
+	var feedback noticepresentation.Model
+	feedback.Receive(claim, time.Now())
+	childFrame.View.Status.SetFeedback(sessionpresentation.Label{Text: feedback.Text, Alert: feedback.Alert}, feedback.Revision)
+	childFrame.View.Version.Revision++
+	if err := attachment.native.Publish(attachment.request.Attachment, childFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `(() => { const note = document.querySelector('[aria-label="Thread feedback"]'); if (!note?.textContent.includes('Mekugi context usage: 60% (600/1000 tokens).')) return false; const r = note.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; })()`)
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("screenshot", filepath.Join(artifacts, "context-warning-phone.png"))
+	}
+	claim.Errors.Finish(true)
 	childFrame.Processes = nil
 	childFrame.View.Status.Feedback.Text = ""
 	childFrame.View.Version.Revision++

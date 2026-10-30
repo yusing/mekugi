@@ -32,6 +32,7 @@ type ContextUsage struct {
 	Session, Thread             string
 	Tokens, Window, Compactions uint64
 	FreshInput                  func() json.RawMessage
+	Notify                      func(string)
 }
 
 // FrontendGuidance separates executable capabilities from task workflow policy.

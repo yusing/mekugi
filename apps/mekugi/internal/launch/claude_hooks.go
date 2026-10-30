@@ -315,8 +315,9 @@ func (b *claudeBridge) batch(ctx context.Context, hook claudeHook) (jsontext.Val
 		if details.Compactions != nil {
 			sample.Compactions = *details.Compactions
 		}
-		if reminder, _ := b.contextNotices.Project(b.info.Session, b.info.Thread, sample, func(string) contextnotice.Mark { return contextnotice.Mark{Key: "claude"} }); reminder != "" {
-			receipts = strings.TrimSpace(receipts + "\n" + reminder)
+		if warning, _ := b.contextNotices.Project(b.info.Session, b.info.Thread, sample, func(string) contextnotice.Mark { return contextnotice.Mark{Key: "claude"} }); warning.Text != "" {
+			receipts = strings.TrimSpace(receipts + "\n" + warning.Reminder)
+			b.owners.Notifications.Submit(notice.Input{Session: b.info.Session, Thread: b.info.Thread, Category: fmt.Sprintf("context-usage:%d:%s", sample.Compactions, warning.Text), Text: warning.Text})
 		}
 	}
 	return json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": hook.Event, "additionalContext": receipts}})

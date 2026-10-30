@@ -23,7 +23,7 @@ func projectContextUsage(input binding.InstructionInput, admitted binding.Contex
 	update := binding.InstructionUpdate{InstructionInput: input}
 	var items []map[string]jsonv1.RawMessage
 	var err error
-	_, marks := store.Project(admitted.Session, admitted.Thread, contextnotice.Sample{Tokens: admitted.Tokens, Window: admitted.Window, Compactions: admitted.Compactions}, func(last string) contextnotice.Mark {
+	notice, marks := store.Project(admitted.Session, admitted.Thread, contextnotice.Sample{Tokens: admitted.Tokens, Window: admitted.Window, Compactions: admitted.Compactions}, func(last string) contextnotice.Mark {
 		target := contextnotice.Mark{Index: -1}
 		if err = json.Unmarshal(input.Input, &items); err != nil {
 			return target
@@ -78,6 +78,9 @@ func projectContextUsage(input binding.InstructionInput, admitted binding.Contex
 	}
 	if update.InputChanged {
 		update.Input = responses.MustMarshalJSON(projected)
+	}
+	if notice.Text != "" && admitted.Notify != nil {
+		admitted.Notify(notice.Text)
 	}
 	return update, nil
 }

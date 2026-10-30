@@ -3,6 +3,7 @@ package executionobservation
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -77,6 +78,9 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 					admitted.Compactions = *details.Compactions
 				}
 			}
+		}
+		admitted.Notify = func(text string) {
+			p.notice(input.Session, input.Thread, fmt.Sprintf("context-usage:%d:%s", admitted.Compactions, text), text)
 		}
 		if err := requestexecution.ProjectInstructions(request, func(text binding.InstructionInput) (binding.InstructionUpdate, error) {
 			return p.registry.Guidance.ContextUsage(text, admitted)
