@@ -132,7 +132,8 @@ content dialog, including after restoration and in replay. Missing or unauthoriz
 summary evidence is explicit. Opening a summary starts no model request or reload.
 
 Skill rows emphasize the skill name; reference paths and run arguments keep normal
-weight. Shell Run previews skip leading error-handling `set` options to reveal
+weight. Roster Skill summaries preserve the complete skill reference identity.
+Shell Run previews skip leading error-handling `set` options to reveal
 the command; standalone options and unknown setup remain visible. Full source
 stays available in disclosures and details.
 Per-command Run excerpts omit terminating semicolons, preserving quoted

@@ -29,6 +29,23 @@ func TestUISnapshotPreloadAttachments(t *testing.T) {
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/preload-attachments-ansi.txt", append(rows, "plain after attachments"), 100)
 }
 
+func TestUISnapshotSkillRosterIdentity(t *testing.T) {
+	p := Painter{Theme: diffrender.DarkTheme}
+	values := presentation.Operations(presentation.ShellSource("skills-mgr get commit/references/fix.md", ""))
+	blocks := make([]Block, len(values))
+	var rows []string
+	for i, value := range values {
+		blocks[i] = Block{Value: value}
+		rows = append(rows, p.Block(blocks[i], 100)...)
+	}
+	summary := p.Summary(blocks, 100)
+	if !strings.Contains(ansi.Strip(summary), "commit/references/fix.md") {
+		t.Fatalf("skill identity truncated: %s", summary)
+	}
+	rows = append(rows, summary, "plain after skill rows")
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/skill-roster-identity-ansi.txt", rows, 100)
+}
+
 // An inline program heads its row in its own language, then names its
 // interpreter, on one row or after the program's last row.
 func TestUISnapshotInterpreterRun(t *testing.T) {

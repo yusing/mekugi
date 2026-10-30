@@ -1302,7 +1302,7 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		var names []string
 		for _, read := range block.Reads {
 			name := read.Path
-			if block.Verb != "Search" && block.Verb != "Web Search" {
+			if block.Verb != "Search" && block.Verb != "Web Search" && block.Verb != "Skill" {
 				name = name[strings.LastIndex(name, "/")+1:]
 			}
 			names = append(names, name)

@@ -1,0 +1,3 @@
+"\x1b[38;5;141;1mSkill\x1b[m  \x1b[1mcommit\x1b[m/references/fix.md                                                                     "
+"\x1b[38;5;141mSkill\x1b[m commit/references/fix.md                                                                      "
+"plain after skill rows                                                                              "
