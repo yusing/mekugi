@@ -68,6 +68,11 @@ Unconsumed attributed inputs remain in the host request ledger until native
 consumption is confirmed; non-querying SDK input alone does not prove durability.
 Forks use the backend's session-fork operation without replaying tools.
 
+Agent side questions use the pinned SDK's native `askSideQuestion` control path
+on the live runtime. Questions carry no previous side history, execute no tools,
+and do not enter the native transcript. Native requests may retain tool declarations
+for source context; side responses do not enter the primary tool-execution loop.
+
 ## Tools and coordination
 
 Authenticated MCP calls bind identity to the admitted runtime and current turn,

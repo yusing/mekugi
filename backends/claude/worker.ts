@@ -11,6 +11,15 @@ import { z } from "zod";
 const object = z.record(z.string(), z.unknown());
 const requestSchema = z.object({ kind: z.literal("request"), id: z.string(), method: z.string(), params: z.unknown().optional() });
 const responseSchema = z.object({ kind: z.literal("response"), id: z.string(), result: z.unknown().optional(), error: z.string().optional() });
+const sideQuestionSchema = z.object({ question: z.string().refine((question) => question.trim() !== "") });
+const sideAnswerSchema = z.object({ response: z.string() }).nullable();
+
+// SDK 0.3.312 implements this correlated control request but omits its declaration.
+function supportsSideQuestion(runtime: Query): runtime is Query & {
+  askSideQuestion(question: string): Promise<unknown>;
+} {
+  return "askSideQuestion" in runtime && typeof runtime.askSideQuestion === "function";
+}
 const initializeSchema = z.object({
   workspace: z.string(), claudePath: z.string(), options: object.default({}),
   tools: z.array(z.object({ name: z.string(), description: z.string(), inputSchema: object })).default([]),
@@ -340,6 +349,14 @@ class Worker {
           throw new Error("Claude did not confirm queued input cancellation; native runtime stopped");
         }
         return { ...receipt, worker_cancelled: workerCancelled };
+      }
+      case "side_question": {
+        // Each question is independent: no side history, tools or transcript entry.
+        const { question } = sideQuestionSchema.parse(params);
+        if (!supportsSideQuestion(this.runtime)) throw new Error("Claude SDK does not support native side questions");
+        const answer = sideAnswerSchema.parse(await this.runtime.askSideQuestion(question));
+        if (!answer) throw new Error("Claude returned no side answer");
+        return answer.response;
       }
       default: throw new Error(`Unknown Claude worker method ${method}`);
     }

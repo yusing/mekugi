@@ -66,7 +66,9 @@ native request metadata remains unchanged on the provider wire.
   state. Original caller attribution remains attached. Action results identify
   the resolved target thread and visible agent name, including when input used an alias.
 - `send_message` queues attributed input without starting an idle thread. A
-  matching message can satisfy an existing selected wait.
+  matching message can satisfy an existing selected wait. Optional `btw:true`
+  instead returns an independent side answer without delivering primary input.
+  Omitted or false retains ordinary message behavior.
 - `interrupt_agent` interrupts the actual running turn. A waiting task without
   one cancels its wait and settles interrupted, retaining the thread for later work.
   Request acknowledgement alone is not completion.
@@ -104,6 +106,22 @@ setting does not constrain its logical tree. Admission records work before dispa
 and releases that identity only on confirmed logical settlement; restarting idle
 work records a new generation. Stop-wait retains its reservation.
 Unknown role/settings and unavailable authority fail explicitly.
+
+### Independent side questions
+
+Side questions resolve authenticated caller and target before executing outside
+ordinary message reconciliation, assignment dispatch and wake handling. The target's
+live runtime answers without starting logical work, satisfying waits, changing drafts
+or occupying a human side-question slot; a target without one fails rather than
+being resumed. Each question is independent; prior side-question exchanges are not
+supplied. Codex uses its restricted answer-only /btw fork; Claude uses its native
+side-question control request, never a session fork. A caller that stops waiting
+abandons the answer; its auxiliary work finishes and cleans up independently.
+
+The result carries the target thread, task name and answer. An answer whose target
+work generation changed meanwhile is rejected. Failures return explicitly, without
+delivering the question as a message or steering the target. `followup_task` retains
+its assignment/start/steer semantics.
 
 ## Prepared children and guidance
 

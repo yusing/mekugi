@@ -55,12 +55,13 @@ type Requests[T any] struct {
 	predictions              map[string]*Prediction
 	calls                    chan *HostCall
 	inspections              chan *Inspection
+	questions                chan *AgentQuestion
 	closed                   chan struct{}
 	closeOnce                sync.Once
 }
 
 func NewRequests[T any](transport Transport) *Requests[T] {
-	return &Requests[T]{transport: transport, pending: make(map[string]Request[T]), calls: make(chan *HostCall), inspections: make(chan *Inspection), closed: make(chan struct{})}
+	return &Requests[T]{transport: transport, pending: make(map[string]Request[T]), calls: make(chan *HostCall), inspections: make(chan *Inspection), questions: make(chan *AgentQuestion), closed: make(chan struct{})}
 }
 
 func (r *Requests[T]) Initialize(owner T) (string, error) {

@@ -19,6 +19,7 @@ type Side struct {
 	Archived                    bool
 	Settings                    Settings
 	LowReasoning                bool
+	question                    *AgentQuestion
 }
 
 func (s *Side) PrepareSettings(change map[string]any) SettingsPlan {

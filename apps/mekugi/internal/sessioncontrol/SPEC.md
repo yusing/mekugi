@@ -22,6 +22,10 @@ dispatch it releases observation with an uncertain outcome. Shutdown releases
 waiting callers without replaying their operations.
 Coordination inspection uses the same event-loop handoff to read current applied
 settings and session metrics, without issuing a host request or copying a UI frame.
+Agent side questions reuse the restricted side fork through the same request owner,
+without a human dock, and settle on the answer before fork cleanup. Claude runtimes
+use native correlated side requests. Neither enters primary submission, draft,
+assignment or wait handling.
 Prepared-child resume preserves retained host identity and checks canonical
 authority before execution. History confirmation can read the retained source
 without a live host connection. Ordinary child input waits for logical admission

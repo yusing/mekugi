@@ -841,6 +841,8 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					default:
 						inspection.Complete(control.Thread, threadcontrol.SessionDetails{})
 					}
+				case question := <-control.Requests.Questions():
+					control.Requests.DispatchQuestion(question)
 				case <-threadChanges:
 					if err := flushCompletions(); err != nil {
 						return err
@@ -1100,6 +1102,9 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 	}
 	if handled, err := control.ObservePrediction(m, response, observations); handled {
 		return err
+	}
+	if control.Requests.ObserveAgentQuestion(m, response, observations) {
+		return nil
 	}
 	if sessionTitleMessage(control, generator, &attached.feedback, terminal, clock, title, m, response.Owner.title) {
 		return nil

@@ -58,8 +58,77 @@ function start(t, onRequest, env = {}, onCancel = () => {}) {
   const initialize = (options = {}) => request("initialize", { workspace: root, claudePath: fileURLToPath(new URL("testdata/mock-claude.mjs", import.meta.url)), options,
     tools: [{ name: "coordinate", description: "fixture", inputSchema: { type: "object", properties: { value: { type: "string" } }, required: ["value"], additionalProperties: false } }] });
   const input = (content, extra = {}) => request("input", { type: "user", uuid: randomUUID(), parent_tool_use_id: null, message: { role: "user", content }, ...extra });
-  return { request, initialize, input, waitFor, events, exit, closeInput: () => child.stdin.end() };
+  const sideQuestion = (question) => request("side_question", { question });
+  return { request, initialize, input, sideQuestion, waitFor, events, exit, closeInput: () => child.stdin.end() };
 }
+
+test("native side questions isolate concurrent answers from primary work", { skip: process.env.MEKUGI_TEST_CLAUDE_NATIVE !== "1", timeout: 45_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "mekugi-claude-side-"));
+  const sessionId = randomUUID();
+  let toolStarted, releaseTool, releaseResponse;
+  const responseGate = new Promise((resolve) => { releaseResponse = resolve; });
+  const toolReady = new Promise((resolve) => { toolStarted = resolve; });
+  const toolGate = new Promise((resolve) => { releaseTool = resolve; });
+  const requests = [];
+  const provider = createMockProvider(async (body) => {
+    requests.push(body);
+    const last = JSON.stringify(body.messages.at(-1));
+    if (last.includes("SIDE-")) return { content: [{ type: "text", text: last.includes("SIDE-TWO") ? "ANSWER-TWO" : "ANSWER-ONE" },
+      ...(last.includes("SIDE-TOOL") ? [{ type: "tool_use", id: "side-tool", name: "mcp__threadcontrol__coordinate", input: { value: "must not run" } }] : [])] };
+    if (last.includes("tool_result")) return { content: [{ type: "text", text: "PRIMARY-COMPLETED" }] };
+    return { content: [{ type: "text", text: "PRIMARY-RESPONSE" }, { type: "tool_use", id: "held-tool", name: "mcp__threadcontrol__coordinate", input: { value: "hold" } }], beforeBlock: (index) => index === 1 ? responseGate : undefined };
+  });
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const environment = { CLAUDE_CONFIG_DIR: join(directory, "config"), ANTHROPIC_BASE_URL: `http://127.0.0.1:${provider.address().port}`,
+    ANTHROPIC_API_KEY: "local-fixture", ANTHROPIC_AUTH_TOKEN: "", CLAUDE_CODE_OAUTH_TOKEN: "",
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", CLAUDE_CODE_USE_BEDROCK: "0", CLAUDE_CODE_USE_VERTEX: "0", CLAUDE_CODE_USE_FOUNDRY: "0" };
+  let toolCalls = 0;
+  const worker = start(t, async (method) => {
+    if (method === "tool") { toolCalls++; toolStarted(); await toolGate; return { content: [] }; }
+    return {};
+  }, environment);
+  t.after(async () => { releaseResponse(); releaseTool(); worker.closeInput(); await worker.exit; provider.closeAllConnections(); await new Promise((resolve) => provider.close(resolve)); await rm(directory, { recursive: true, force: true }); });
+  const startup = { workspace: directory, claudePath: Bun.which("claude"),
+    options: { sessionId, model: "claude-sonnet-4-6", permissionMode: "bypassPermissions", allowDangerouslySkipPermissions: true, maxTurns: 3 },
+    tools: [{ name: "coordinate", description: "Wait", inputSchema: { type: "object", properties: { value: { type: "string" } }, required: ["value"] } }] };
+  await worker.request("initialize", startup);
+  await worker.input("PRIMARY-CONTEXT");
+  await worker.waitFor((event) => event.type === "assistant" && JSON.stringify(event).includes("PRIMARY-RESPONSE"));
+  assert.equal(await worker.sideQuestion("SIDE-STREAMING"), "ANSWER-ONE");
+  console.log(JSON.stringify({ nativeSideCapture: { inProgressAssistantIncluded: JSON.stringify(requests.at(-1).messages).includes("PRIMARY-RESPONSE") } }));
+  assert.equal(JSON.stringify(requests.at(-1).messages).includes("PRIMARY-RESPONSE"), false, "native capture must exclude the response still being written");
+  releaseResponse();
+  await toolReady;
+  const one = worker.sideQuestion(" \nSIDE-ONE\n "), two = worker.sideQuestion("SIDE-TWO");
+  assert.equal(await one, "ANSWER-ONE");
+  assert.equal(await two, "ANSWER-TWO");
+  assert.ok(requests.some((body) => body.messages.at(-1).content.some((block) => block.type === "text" && block.text === " \nSIDE-ONE\n ")), "question validation must preserve the submitted text");
+  assert.equal(worker.events.some((event) => event.type === "result"), false, "side answers must finish while the primary tool remains blocked");
+  const beforeToolQuestion = requests.length;
+  assert.equal(await worker.sideQuestion("SIDE-TOOL"), "ANSWER-ONE");
+  assert.equal(requests.length, beforeToolQuestion + 1, "native side tool output must not continue an inference loop");
+  assert.equal(toolCalls, 1, "side inference must not execute primary tools");
+  assert.equal(worker.events.some((event) => JSON.stringify(event).includes("ANSWER-")), false);
+  for (const body of requests.slice(1)) {
+    assert.ok(JSON.stringify(body.messages).includes("PRIMARY-CONTEXT"));
+    assert.equal(JSON.stringify(body.messages.slice(0, -1)).includes("SIDE-"), false, "side question history leaked into another question");
+    assert.equal(JSON.stringify(body.messages).includes("ANSWER-"), false);
+    assert.equal(JSON.stringify(body.messages).includes("PRIMARY-COMPLETED"), false);
+  }
+  releaseTool();
+  const completed = await worker.waitFor((event) => event.type === "result");
+  assert.equal(completed.is_error, false, "primary work must continue successfully after side questions");
+  await worker.request("shutdown");
+  assert.equal(await worker.exit, 0);
+  const files = await readdir(join(directory, "config", "projects"), { recursive: true });
+  for (const file of files.filter((file) => file.endsWith(".jsonl"))) {
+    const transcript = await readFile(join(directory, "config", "projects", file), "utf8");
+    assert.equal(transcript.includes("SIDE-"), false);
+    assert.equal(transcript.includes("ANSWER-"), false);
+  }
+  console.log(JSON.stringify({ nativeSideQuestions: { sessionId, requests: requests.length, primaryToolCalls: toolCalls, transcriptLeak: false } }));
+});
 
 test("real SDK streaming query authenticates parallel identical MCP calls, retains receipts and stop reasons", { timeout: 15_000 }, async (t) => {
   const calls = [];

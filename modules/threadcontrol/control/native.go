@@ -39,6 +39,8 @@ type Runtime interface {
 	Input(context.Context, NativeInput) (string, error)
 	Interrupt(context.Context, string, string) error
 	Confirm(context.Context, NativeInput) error
+	// SideQuestion answers from the live context without input, work or history changes.
+	SideQuestion(context.Context, *Member, string) (string, error)
 }
 
 // SessionMetrics are current runtime observations, not cumulative provider usage.

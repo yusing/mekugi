@@ -5,6 +5,7 @@ package launch
 import (
 	"bytes"
 	"context"
+	"fmt"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
@@ -20,13 +21,110 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 type btwCodexRequest struct {
 	body    []byte
 	key     string
 	headers http.Header
+}
+
+func TestAgentQuestionNativeCodex(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	codex, err := exec.LookPath("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &btwCodexProvider{requests: make(chan btwCodexRequest, 12), mainGate: make(chan struct{}), sideGate: make(chan struct{}), cancelGate: make(chan struct{}), canceled: make(chan struct{})}
+	defer func() {
+		for _, gate := range []chan struct{}{p.mainGate, p.sideGate, p.cancelGate} {
+			select {
+			case <-gate:
+			default:
+				close(gate)
+			}
+		}
+	}()
+	proxy := newManagedMekugiProxy(t)
+	server := httptest.NewServer(inferencegateway.ResponsesHandler(t.Context(), time.Minute, testRequestExecutor(p, nil, proxy).ExecuteHTTP))
+	defer server.Close()
+	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
+	integration := testAppServerIntegration(proxy)
+	hubs := make(chan *sessionapi.Hub, 1)
+	integration.nativeHub = func(hub *sessionapi.Hub) { hubs <- hub }
+	terminal := startAppResumeTerminalWithIntegration(t, func(ctx context.Context) *exec.Cmd {
+		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd.Env, cmd.Dir = environment, workspace
+		return cmd
+	}, "", integration)
+	hub := <-hubs
+	next := func() btwCodexRequest {
+		t.Helper()
+		select {
+		case request := <-p.requests:
+			return request
+		case <-terminal.ctx.Done():
+			t.Fatal(terminal.ctx.Err())
+			return btwCodexRequest{}
+		}
+	}
+	terminal.await("Ready")
+	terminal.send("Main seed\r")
+	sourceRequest := next()
+	terminal.await("completed")
+	metadata, _ := codexresponses.DecodeTurnMetadata(sourceRequest.headers)
+	target := &control.Member{Thread: metadata.ThreadID, Session: metadata.ThreadID, Settings: control.Settings{Model: "gpt-6-astra"}}
+	owner, err := hub.Requests(target.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminal.send("Main running\r")
+	next()
+	terminal.await("Working")
+	terminal.send("/btw Side question\r")
+	human := next()
+	terminal.await("Side streaming answer")
+	done := make(chan error, 1)
+	go func() {
+		answer, err := owner.SideQuestion(terminal.ctx, target, "Side followup AGENT-QUESTION")
+		if err == nil && answer != "Side followup answer" {
+			err = fmt.Errorf("unexpected side answer: %q", answer)
+		}
+		done <- err
+	}()
+	agent := next()
+	if !bytes.Contains(agent.body, []byte("Main seed")) || !bytes.Contains(agent.body, []byte("Main running")) || bytes.Contains(agent.body, []byte("Side streaming answer")) {
+		t.Fatal("agent question captured the wrong primary context")
+	}
+	agentMetadata, _ := codexresponses.DecodeTurnMetadata(agent.headers)
+	humanMetadata, _ := codexresponses.DecodeTurnMetadata(human.headers)
+	if agentMetadata.ThreadID == humanMetadata.ThreadID {
+		t.Fatal("agent question occupied the human BTW slot")
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-terminal.ctx.Done():
+		t.Fatal(terminal.ctx.Err())
+	}
+	close(p.sideGate)
+	terminal.await("/btw · completed")
+	terminal.send("\x1b")
+	close(p.mainGate)
+	terminal.await("completed")
+	terminal.send("Main after question\r")
+	after := next()
+	if bytes.Contains(after.body, []byte("AGENT-QUESTION")) || bytes.Contains(after.body, []byte("Side followup answer")) {
+		t.Fatal("question polluted target primary history")
+	}
+	terminal.await("Main after question")
+	terminal.await("completed")
+	terminal.quit()
 }
 
 type btwCodexProvider struct {

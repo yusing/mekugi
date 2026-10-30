@@ -125,6 +125,8 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		{"wait_agent", `{"wait_mode":"invalid"}`},
 		{"wait_agent", `{"wait_mode":""}`},
 		{"send_message", `{"message":"hello"}`},
+		{"send_message", `{"target":"child","message":"question","btw":"true"}`},
+		{"followup_task", `{"target":"child","message":"task","btw":false}`},
 		{"followup_task", `{"target":"child","message":3}`},
 		{"interrupt_agent", `{"target":"child","message":"extra"}`},
 	} {
@@ -144,6 +146,16 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		t.Fatalf("model discovery: %+v, %v", modelResult, err)
 	}
 	assertDiscoveredModels(t, []byte(modelResult.Content[0].(*mcp.TextContent).Text))
+	host.ask = func(_ context.Context, target *control.Member, text string) (string, error) {
+		if target.Thread != "child" || text != "question" {
+			t.Fatal("MCP question lost its admitted target or text")
+		}
+		return "side answer", nil
+	}
+	question, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: "send_message", Meta: meta, Arguments: map[string]any{"target": "agent:main/child", "message": "question", "btw": true}})
+	if err != nil || question.IsError || len(question.Content) != 1 || !strings.Contains(question.Content[0].(*mcp.TextContent).Text, `"answer":"side answer"`) {
+		t.Fatalf("MCP question result=%+v error=%v", question, err)
+	}
 	for _, tool := range []string{"wait_agent", "list_agents"} {
 		arguments := map[string]any{"target": []string{"agent:main/child"}}
 		if tool == "list_agents" {

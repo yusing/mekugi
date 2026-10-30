@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -39,7 +40,7 @@ func ToolCatalog(claudeCaller bool) []*mcp.Tool {
 		{"inspect", "Inspect an admitted agent: applied model, reasoning effort, service tier, context usage/window and completed compactions. Includes idle or completed agents; uses retained observations without starting work; unavailable observations are null.", `{"type":"object","properties":{"target":{"type":"string","description":"Agent identifier, such as agent:main, a returned agent:main/worker name, an unambiguous relative task name, or a thread ID."}},"required":["target"],"additionalProperties":false}`},
 		{"compact", "Compact your own context at a safe checkpoint, then automatically continue unfinished work. Call alone and let the enclosing execution finish. Use inspect to judge context usage.", `{"type":"object","properties":{},"additionalProperties":false}`},
 		{"wait_agent", "Wait for a descendant outcome or addressed message. Call alone and let the enclosing tool execution finish. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output. New input supersedes the wait.", `{"type":"object","properties":{"target":{"description":"Descendant agent identifiers to wait for. Omit or use all to select all current descendants; otherwise provide a nonempty array of logical names or thread IDs.","oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"wait_mode":{"type":"string","enum":["any","all"],"description":"Omit or use any to return on the first selected completion or failure. Use all to wait until every selected agent settles. Addressed messages wake either mode."},"compact":{"type":"boolean","description":"Compact your context before delivering this wait's outcome, including an already-ready outcome. The timeout starts at wait registration. Compaction failure is included in the eventual wait result; pending waits remain waiting."},"timeout_ms":{"type":"integer","description":"Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline. Omission waits indefinitely. Explicit values below the host minimum are clamped; values above its maximum are rejected."}},"additionalProperties":false}`},
-		{"send_message", "Queue attributed input without starting idle work.", `{"type":"object","properties":{"target":{"type":"string","description":"Recipient's returned logical agent name, unambiguous relative task name, or thread ID within the admitted tree."},"message":{"type":"string","description":"Nonempty message to deliver with the caller's attribution."}},"required":["target","message"],"additionalProperties":false}`},
+		{"send_message", "Queue attributed input without starting idle work. Set btw=true to ask an independent side question and return its answer.", `{"type":"object","properties":{"target":{"type":"string","description":"Recipient's returned logical agent name, unambiguous relative task name, or thread ID within the admitted tree."},"message":{"type":"string","description":"Nonempty attributed message or independent side question."},"btw":{"type":"boolean","description":"Ask from the running or waiting target's context without changing its conversation or work. Defaults to false."}},"required":["target","message"],"additionalProperties":false}`},
 		{"followup_task", "Start or steer an admitted non-root agent with a new assignment.", `{"type":"object","properties":{"target":{"type":"string","description":"Non-root agent's returned logical name, unambiguous relative task name, or thread ID."},"message":{"type":"string","description":"Nonempty follow-up assignment. Starts idle work, steers a running turn, or supersedes a pending wait."}},"required":["target","message"],"additionalProperties":false}`},
 		{"interrupt_agent", "Interrupt a non-root agent, retaining it for later work.", `{"type":"object","properties":{"target":{"type":"string","description":"Non-root agent's returned logical name, unambiguous relative task name, or thread ID."}},"required":["target"],"additionalProperties":false}`},
 	}
@@ -208,12 +209,16 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 	var args struct {
 		Target  string  `json:"target"`
 		Message *string `json:"message"`
+		BTW     *bool   `json:"btw"`
 	}
 	if err := json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err != nil {
 		return nil, err
 	}
 	if kind == "interrupt" && args.Message != nil {
 		return nil, errors.New("interrupt_agent accepts only target")
+	}
+	if kind != "message" && args.BTW != nil {
+		return nil, errors.New("btw is supported only by send_message")
 	}
 	if kind != "interrupt" && (args.Message == nil || strings.TrimSpace(*args.Message) == "") {
 		return nil, errors.New("empty message cannot be sent to an agent")
@@ -225,6 +230,25 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 	target, err := d.control.Target(caller, args.Target)
 	if err != nil {
 		return nil, err
+	}
+	if args.BTW != nil && *args.BTW {
+		owner, err := d.native().Runtime(target.Thread)
+		if err != nil {
+			return nil, fmt.Errorf("btw needs the target's live runtime: %w", err)
+		}
+		answer, err := owner.SideQuestion(ctx, target, message)
+		if err != nil {
+			return nil, err
+		}
+		current, err := d.control.Target(caller, target.Thread)
+		if err != nil || current.Session != target.Session || current.Generation != target.Generation {
+			return nil, errors.Join(err, errors.New("side-question target generation changed"))
+		}
+		return struct {
+			Thread string `json:"thread_id"`
+			Task   string `json:"task_name"`
+			Answer string `json:"answer"`
+		}{target.Thread, target.Task, answer}, nil
 	}
 	if kind != "message" {
 		// Live backends can hold retirement across logical admission and native

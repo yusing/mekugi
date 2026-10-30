@@ -65,6 +65,7 @@ type reconciliationHost struct {
 	missing           bool
 	resumes           int
 	nextTurn          string
+	ask               func(context.Context, *control.Member, string) (string, error)
 }
 
 func (h *reconciliationHost) Inspect(ctx context.Context, thread string) (control.SessionDetails, error) {
@@ -79,6 +80,9 @@ func (h *reconciliationHost) Resume(context.Context, string) (control.Runtime, e
 	return h, nil
 }
 func (h *reconciliationHost) Runtime(string) (control.Runtime, error) { return h, nil }
+func (h *reconciliationHost) SideQuestion(ctx context.Context, target *control.Member, text string) (string, error) {
+	return h.ask(ctx, target, text)
+}
 func (h *reconciliationHost) Input(_ context.Context, input control.NativeInput) (string, error) {
 	h.inputs = append(h.inputs, input)
 	if input.Kind == "FINAL_ANSWER" && h.finalFailure != nil {
