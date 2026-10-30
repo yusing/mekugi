@@ -70,6 +70,7 @@ type ControlView = {
   effect: number;
   acknowledged: number;
   receipt: number;
+  noticeReceipt?: string;
   applied?: string;
   prompts: Record<string, PromptState>;
 };
@@ -116,6 +117,35 @@ class Semantic {
   get frame() {
     return this.event?.frame;
   }
+
+  async noticePainted(event: NativeEvent): Promise<void> {
+    const source = this.#source;
+    const { frame } = event;
+    if (!source || this.event !== event || !frame.notice || !frame.view.Status.Feedback.Text)
+      return;
+    const identity = `${event.attachment}:${frame.view.Version.Attachment}:${frame.view.Status.FeedbackRevision}`;
+    if (source.noticeReceipt === identity) return;
+    source.noticeReceipt = identity;
+    const error = await this.send(
+      {
+        receipt: {
+          Effect: source.effect,
+          Notice: {
+            Attachment: frame.view.Version.Attachment,
+            Claim: frame.notice,
+            Feedback: frame.view.Status.FeedbackRevision,
+            Composer: true,
+            Content: false,
+          },
+        },
+      },
+      undefined,
+      true,
+      event,
+    );
+    if (error && source.noticeReceipt === identity) source.noticeReceipt = undefined;
+  }
+
   // Cached menus are presentation only. Actions always use the live frame.
   get settingsMenu() {
     const shown = this.frame?.view;

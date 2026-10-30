@@ -28,7 +28,7 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
-	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -72,8 +72,17 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	renameReply := make(chan chan string, 1)
 	references := make(chan sessionapi.NativeRequest, 1)
 	questionAnswers := make(chan sessionapi.NativeRequest, 1)
+	var noticeView atomic.Pointer[nativeSessionView]
+	noticeReceipts := make(chan sessionapi.NativeReceipt, 4)
 	var alpha *webUIBrowserMachine
 	alpha = newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Alpha", strings.Repeat("a", 64), func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
+		if receipt := request.Operation.Receipt; receipt != nil && receipt.Notice.Claim != "" {
+			if target := noticeView.Load(); target != nil {
+				request.Reply <- target.applyView(request.Operation)
+				noticeReceipts <- *receipt
+				return true
+			}
+		}
 		if request.Operation.Answers != nil {
 			questionAnswers <- request
 			request.Reply <- ""
@@ -1100,24 +1109,63 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "process-feedback-phone.png"))
 	}
-	issues := testCriticalErrors()
-	queueContextWarning(t, issues, "child")
-	claim := issues.Notices.Claim("child", nil)
-	if claim == nil {
-		t.Fatal("context milestone did not reach the browser's thread")
+	warningUI, _ := newAppServerTestUI()
+	warningUI.Client.Thread = "child"
+	defer terminalTest(warningUI).Diff.Close()
+	queueContextWarning(t, warningUI.issues, "child")
+	publishWarning := func() *nativeCriticalNoticeDelivery {
+		delivery := applyCriticalNotices(&warningUI.attached, warningUI.shell, &warningUI.Client, &warningUI.picker, &warningUI.Editor, warningUI.clock, preferences.Applied{}, warningUI.serviceTiers, "", "", &warningUI.restoring, &warningUI.side, warningUI.audience, warningUI.issues)
+		if delivery == nil {
+			t.Fatal("context milestone did not reach the browser's thread")
+		}
+		noticeView.Store(&nativeSessionView{notices: delivery})
+		childFrame.Notice = delivery.id
+		childFrame.View.Version.Attachment = delivery.attachment
+		childFrame.View.Status.SetFeedback(sessionpresentation.Label{Text: warningUI.attached.feedback.Text, Alert: warningUI.attached.feedback.Alert}, delivery.feedback)
+		childFrame.View.Version.Revision++
+		if err := attachment.native.Publish(attachment.request.Attachment, childFrame); err != nil {
+			t.Fatal(err)
+		}
+		return delivery
 	}
-	var feedback noticepresentation.Model
-	feedback.Receive(claim, time.Now())
-	childFrame.View.Status.SetFeedback(sessionpresentation.Label{Text: feedback.Text, Alert: feedback.Alert}, feedback.Revision)
-	childFrame.View.Version.Revision++
-	if err := attachment.native.Publish(attachment.request.Attachment, childFrame); err != nil {
-		t.Fatal(err)
+	awaitWarningReceipt := func(delivery *nativeCriticalNoticeDelivery) {
+		select {
+		case receipt := <-noticeReceipts:
+			if receipt.Notice.Claim != delivery.id || receipt.Notice.Attachment != delivery.attachment || receipt.Notice.Feedback != delivery.feedback || !receipt.Notice.Composer || receipt.Notice.Content {
+				t.Fatalf("browser notice receipt lost its painted identity: %+v", receipt)
+			}
+		case <-ctx.Done():
+			t.Fatal("browser did not acknowledge its painted warning")
+		}
+		if pending := warningUI.issues.Notices.Pending(); len(pending) != 0 || noticeView.Load().notices != nil {
+			t.Fatalf("production browser receipt did not settle the warning: %v", pending)
+		}
 	}
+	// Hidden feedback and a covering modal retain the claim until actual paint.
+	run("eval", `document.querySelector('[aria-label="Thread feedback"]').style.display = 'none'`)
+	delivery := publishWarning()
+	run("wait", "--fn", `document.querySelector('[aria-label="Thread feedback"]')?.textContent.includes('Mekugi context usage: 60%')`)
+	paintedFrames := `new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))))`
+	assertPending := func() {
+		run("eval", paintedFrames)
+		if len(noticeReceipts) != 0 || len(warningUI.issues.Notices.Pending()) != 1 {
+			t.Fatal("hidden or covered warning was acknowledged")
+		}
+	}
+	assertPending()
+	run("eval", `document.querySelector('[aria-label="Thread feedback"]').style.display = ''; const cover = document.createElement('dialog'); cover.id = 'notice-cover'; cover.textContent = 'Covering feedback'; document.body.append(cover); cover.showModal()`)
+	assertPending()
+	run("eval", `document.querySelector('#notice-cover').remove()`)
 	run("wait", "--fn", `(() => { const note = document.querySelector('[aria-label="Thread feedback"]'); if (!note?.textContent.includes('Mekugi context usage: 60% (600/1000 tokens).')) return false; const r = note.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; })()`)
+	awaitWarningReceipt(delivery)
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "context-warning-phone.png"))
 	}
-	claim.Errors.Finish(true)
+	warningUI.issues.AddThreadNotice(t.Name(), "child", "next-notice", strings.Repeat("Another browser warning. ", 300))
+	longDelivery := publishWarning()
+	run("wait", "--fn", `document.querySelector('[aria-label="Thread feedback"] p[role="alert"]')?.getBoundingClientRect().height > innerHeight`)
+	awaitWarningReceipt(longDelivery)
+	childFrame.Notice = ""
 	childFrame.Processes = nil
 	childFrame.View.Status.Feedback.Text = ""
 	childFrame.View.Version.Revision++

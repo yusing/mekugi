@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { NativeEvent } from "../../../../sessionapi/protocol";
   import AgentName from "./AgentName.svelte";
   import Alert from "./ui/Alert.svelte";
   import ProcessCommand from "./ProcessCommand.svelte";
@@ -33,6 +34,55 @@
   );
   const card = "rounded-float px-3.5 pt-2.5 pb-3";
   const heading = "flex min-h-7 items-center justify-between gap-2";
+
+  const noticePainted = (event: NativeEvent | undefined) => (node: HTMLElement) => {
+    if (!event?.frame.notice) return;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      if (
+        document.visibilityState !== "visible" ||
+        !node.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+      )
+        return;
+      const rect = node.getBoundingClientRect();
+      const region = node.parentElement?.getBoundingClientRect();
+      if (!region) return;
+      const left = Math.max(rect.left, region.left, 0);
+      const right = Math.min(rect.right, region.right, innerWidth);
+      const top = Math.max(rect.top, region.top, 0);
+      const bottom = Math.min(rect.bottom, region.bottom, innerHeight);
+      if (right <= left || bottom <= top) return;
+      const front = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
+      if (front && node.contains(front)) void semantic.noticePainted(event);
+    };
+    // Wait through a paint, and retry only when visibility or covering DOM changes.
+    const schedule = () => {
+      if (!frame)
+        frame = requestAnimationFrame(() => {
+          frame = requestAnimationFrame(check);
+        });
+    };
+    const intersection = new IntersectionObserver(schedule, { threshold: 1 });
+    intersection.observe(node);
+    const covered = new MutationObserver(schedule);
+    covered.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["inert", "aria-hidden", "data-state"],
+    });
+    document.addEventListener("visibilitychange", schedule);
+    window.addEventListener("scroll", schedule, true);
+    schedule();
+    return () => {
+      cancelAnimationFrame(frame);
+      intersection.disconnect();
+      covered.disconnect();
+      document.removeEventListener("visibilitychange", schedule);
+      window.removeEventListener("scroll", schedule, true);
+    };
+  };
 </script>
 
 <div
@@ -220,6 +270,7 @@
       {#if feedback?.Text}<p
           class={["mx-1 text-small", feedback.Alert && "text-negative"]}
           role={feedback.Alert ? "alert" : "status"}
+          {@attach noticePainted(semantic.event)}
         >
           {feedback.Text}
         </p>{/if}

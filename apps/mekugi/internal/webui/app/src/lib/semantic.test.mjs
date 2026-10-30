@@ -1391,6 +1391,38 @@ test("repeated effect publications apply and acknowledge each receipt only once"
   assert.equal(semantic.pending, 0, "quiet receipts do not wait for a publication");
 });
 
+test("painted feedback receipts retain identity without effects or duplicate acknowledgement", async () => {
+  const owner = machine();
+  const warning = (revision, claim, feedback = 5) =>
+    owner.views[0].snapshot(revision, [], {
+      notice: claim,
+      view: { Status: { FeedbackRevision: feedback, Feedback: { Text: "Context usage: 60%" } } },
+    });
+  warning(2, "claim-one");
+  const painted = semantic.event;
+  const acknowledgement = semantic.noticePainted(painted);
+  void semantic.noticePainted(painted);
+  await tick();
+  assert.equal(owner.requests.length, 1);
+  assert.deepEqual(owner.requests[0].params.body.operation.receipt, {
+    Effect: 0,
+    Notice: { Attachment: 1, Claim: "claim-one", Feedback: 5, Composer: true, Content: false },
+  });
+  owner.requests[0].resolve({ version: { Attachment: 1, Revision: 2 } });
+  await acknowledgement;
+  warning(3, "progress-only-claim");
+  await semantic.noticePainted(semantic.event);
+  assert.equal(owner.requests.length, 1, "unchanged feedback cannot acknowledge another surface");
+  warning(4, "claim-two", 6);
+  await semantic.noticePainted(painted);
+  assert.equal(owner.requests.length, 1, "a stale paint cannot acknowledge a new frame");
+  const next = semantic.noticePainted(semantic.event);
+  await tick();
+  assert.equal(owner.requests[1].params.body.operation.receipt.Notice.Claim, "claim-two");
+  owner.requests[1].resolve({ version: { Attachment: 1, Revision: 4 } });
+  await next;
+});
+
 test("a late reference refuses a changed draft and never reaches another thread", async () => {
   const owner = machine();
   semantic.editor().text = "newer draft";
