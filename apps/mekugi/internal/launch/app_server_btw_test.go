@@ -59,6 +59,7 @@ type btwTestRPC struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"input"`
+		Environments []any `json:"environments"`
 	} `json:"params"`
 }
 
@@ -169,6 +170,96 @@ func TestAppServerBTWBusyRetainsDraft(t *testing.T) {
 	appServerTestKeys(t, u, "/btw next question\r")
 	if u.Text != "/btw next question" || w.Len() != 0 || u.BTW.Question != "why?" {
 		t.Fatalf("busy submission lost draft or sent: draft=%q wire=%s", u.Text, w.String())
+	}
+}
+
+func TestSideRunningComposerSteersOwnTurn(t *testing.T) {
+	for _, command := range []string{"/side", "/oneoff question"} {
+		t.Run(command, func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			u.Turn = "main-turn"
+			appServerTestKeys(t, u, command+"\r")
+			fork := btwTestRequest(t, w, "thread/fork", "main")
+			btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
+			if command == "/side" {
+				appServerTestKeys(t, u, "question\r")
+			}
+			start := btwTestRequest(t, w, "turn/start", "work-side")
+			appServerTestKeys(t, u, "start draft\r")
+			if u.Text != "start draft" || w.Len() != 0 {
+				t.Fatal("start admission consumed the draft")
+			}
+			u.Editor.Take()
+			btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
+			appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"work-side","turnId":"side-turn","itemId":"answer","delta":"partial"}}`)
+			appServerTestKeys(t, u, "change direction\r")
+			steer := btwTestRequest(t, w, "turn/steer", "work-side")
+			if steer.Params.ExpectedTurnID != "side-turn" || u.Text != "" || u.Turn != "main-turn" {
+				t.Fatalf("wrong steering target or draft: %+v, %q", steer, u.Text)
+			}
+			if got := steer.Params.Input; len(got) != 1 || got[0].Text != "change direction" {
+				t.Fatalf("steering input = %+v", got)
+			}
+			btwTestReply(t, u, steer, `{}`)
+			if !u.side.OneOff && (u.side.Question != "question\n\nchange direction" || len(u.side.Answer) != 1 || u.side.Answer[0].Text != "partial") {
+				t.Fatalf("steering reset the exchange: %+v", u.side.SideAnswer)
+			}
+			if !u.side.OneOff {
+				frame := strings.Join(u.sideFrame(100, 24), "\n")
+				if !strings.Contains(frame, "change direction") || !strings.Contains(frame, "partial") {
+					t.Fatalf("steering absent from Side transcript: %s", frame)
+				}
+			}
+			appServerTestKeys(t, u, "rejected steer\r")
+			rejected := btwTestRequest(t, w, "turn/steer", "work-side")
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"turn changed"}}`, rejected.ID))
+			if u.Text != "rejected steer" || !u.side.Busy || u.side.Turn != "side-turn" {
+				t.Fatal("rejected steer lost its draft or ended the turn")
+			}
+			u.Editor.Take()
+			appServerTestKeys(t, u, "late steer\r")
+			late := btwTestRequest(t, w, "turn/steer", "work-side")
+			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"work-side","turn":{"id":"side-turn","status":"completed"}}}`)
+			appServerTestKeys(t, u, "new question\r")
+			_ = btwTestRequest(t, w, "turn/start", "work-side")
+			btwTestReply(t, u, late, `{}`)
+			if !u.side.OneOff && (u.side.Question != "new question" || !strings.Contains(u.side.History[0].Question, "late steer")) {
+				t.Fatal("late steering acknowledgement changed a newer exchange")
+			}
+			if u.Turn != "main-turn" {
+				t.Fatal("side input changed Main's turn")
+			}
+		})
+	}
+}
+
+func TestSideDeferredSteerStartsOwnExchangeBeforeNewerInput(t *testing.T) {
+	u, w := newAppServerTestUI()
+	u.attached.cwd = t.TempDir()
+	appServerTestKeys(t, u, "/side\r")
+	fork := btwTestRequest(t, w, "thread/fork", "main")
+	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
+	appServerTestKeys(t, u, "original question\r")
+	start := btwTestRequest(t, w, "turn/start", "side")
+	btwTestReply(t, u, start, `{"turn":{"id":"first-turn"}}`)
+	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r")
+	skills := btwTestRequest(t, w, "skills/list", "")
+	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"first-turn","status":"completed"}}}`)
+	appServerTestKeys(t, u, "newer question\r")
+	btwTestReply(t, u, skills, fmt.Sprintf(`{"data":[{"cwd":%q,"skills":[]}]}`, u.attached.cwd))
+	deferred := btwTestRequest(t, w, "turn/start", "side")
+	if deferred.Params.Environments == nil || len(deferred.Params.Environments) != 0 || u.side.Question != "use $review please" || len(u.side.History) != 1 {
+		t.Fatalf("deferred input bypassed Side start lifecycle: %+v, %+v", deferred.Params, u.side.SideAnswer)
+	}
+	btwTestReply(t, u, deferred, `{"turn":{"id":"second-turn"}}`)
+	newer := btwTestRequest(t, w, "turn/steer", "side")
+	if len(newer.Params.Input) != 1 || newer.Params.Input[0].Text != "newer question" {
+		t.Fatalf("newer input lost or reordered: %+v", newer.Params.Input)
+	}
+	btwTestReply(t, u, newer, `{}`)
+	frame := strings.Join(u.sideFrame(100, 24), "\n")
+	if !strings.Contains(frame, "use $review please") || !strings.Contains(frame, "newer question") {
+		t.Fatalf("deferred questions missing from transcript: %s", frame)
 	}
 }
 

@@ -94,7 +94,7 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the conversation to load before asking a side question", false)
 		return nil
 	}
-	if (*owner) != nil && ((*owner).Busy || (*owner).Starting) {
+	if (*owner) != nil && ((*owner).Starting || (*owner).Busy && (command || (*owner).Turn == "")) {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Side answer still running · wait for it or Esc to close", false)
 		return nil
 	}
@@ -131,7 +131,11 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 	pending := prepareDraft(picker, terminal, attached.cwd, environment, preparation.take(*editor))
 	pending.Origin = attached.view
 	pending.Delivery = attached.effects.input()
-	b.Begin(question, pending)
+	if b.Busy || len(b.Drafts.Unsent) > 0 {
+		b.Drafts.Unsent = append(b.Drafts.Unsent, pending)
+	} else {
+		b.Begin(question, pending)
+	}
 	b.Busy = true
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
 	return flushBTW(attached, terminal, control, picker, questions, approvals, clock, settings, side, owned, environment, hook, observations)
@@ -149,8 +153,8 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 	if b != nil && b.Settings.Pending() {
 		return nil
 	}
-	if b != nil && b.OneOff && !b.Closed && !b.Unloaded && !b.Starting {
-		for len(b.Drafts.Unsent) > 0 {
+	if b != nil && !b.LowReasoning && !b.Closed && !b.Unloaded && !b.Starting {
+		for len(b.Drafts.Unsent) > 0 && (b.Turn != "" || b.Pending.Text == "") {
 			input := b.Drafts.Unsent[0]
 			thread, turn := b.Thread, b.Turn
 			if input.Question != nil && input.Question.Thread != b.Thread {
@@ -161,18 +165,42 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 					turn = ""
 				}
 			}
-			if control.Requests.SideReplyStarting(thread) || observations != nil && observations.EmittingToolInput(attached.cwd, thread) {
+			if input.Question == nil && turn == "" {
+				b.Begin(input.Text, input)
+				b.Busy = true
+				b.Drafts.Unsent = b.Drafts.Unsent[1:]
+				break
+			}
+			if control.Requests.SideReplyStarting(thread) {
 				return nil
 			}
-			if turn == "" {
+			if input.Question != nil && observations != nil && observations.EmittingToolInput(attached.cwd, thread) {
+				if b.Drafts.AdvancePrompt() {
+					continue
+				}
+				return nil
+			}
+			parts := []conversationmodel.Input{input}
+			if picker.waitForSkillBindings(attached, terminal, clock, control.Requests, parts) {
+				return nil
+			}
+			picker.bindSkills(attached.cwd, &parts[0], true)
+			snapshotDraftSkills(attached.cwd, environment, &parts[0])
+			input = parts[0]
+			if turn == "" && b.OneOff {
 				if ready, err := hook.checkThread(control.Requests, thread, attached.cwd, func() { b.Status = "Checking approval guard…" }); !ready || err != nil {
 					return err
 				}
 			}
-			if err := control.Requests.ReplySide(b, thread, turn, input); err != nil {
+			update, err := control.Requests.ReplySide(b, thread, turn, input)
+			if err != nil {
 				return err
 			}
 			b.Drafts.Unsent = b.Drafts.Unsent[1:]
+			if update.Handled {
+				applySideUpdate(attached, terminal, control, clock, update)
+				return nil
+			}
 			for _, image := range input.Images {
 				delete(*owned, image.Path)
 			}

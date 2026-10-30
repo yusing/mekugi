@@ -178,17 +178,9 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 	if s.OneOff {
 		s.Status = "Working"
 	}
-	if err := s.Pending.Draft.IdentifyAttachments(rand.Text()); err != nil {
+	input, err := s.prepareInput(&s.Pending.Draft, rand.Text(), true)
+	if err != nil {
 		return s.fail(err.Error()), nil
-	}
-	input := s.input(s.Pending.Draft)
-	textBytes := 0
-	for _, part := range input {
-		text, _ := part["text"].(string)
-		textBytes += len(text)
-	}
-	if (len(s.Pending.Attachments) > 0 || len(s.Pending.Skills) > 0) && textBytes > codexresponses.UserTextLimit {
-		return s.fail("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry."), nil
 	}
 	params := map[string]any{"threadId": s.Thread, "input": input}
 	if !s.OneOff {
@@ -279,6 +271,8 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 				if root && method == "turn/start" {
 					s.Busy = false
 				}
+			} else if method == "turn/steer" && root && !s.OneOff && !s.Closed {
+				s.AppendQuestion(response.SideExchange, *input)
 			} else if method == "turn/start" {
 				var result struct {
 					Turn struct {
@@ -476,31 +470,53 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 	return update, nil
 }
 
-// ReplySide delivers question companion input through the same input request ledger.
-func (r *Requests[T]) ReplySide(s *Side, thread, turn string, input conversationmodel.Input) error {
-	if s == nil || !s.OneOff || s.Closed || s.Unloaded {
-		return errors.New("one-off conversation is no longer available")
+// ReplySide delivers side input through the same input request ledger.
+func (r *Requests[T]) ReplySide(s *Side, thread, turn string, input conversationmodel.Input) (SideUpdate, error) {
+	if s == nil || s.LowReasoning || s.Closed || s.Unloaded {
+		return SideUpdate{}, errors.New("side conversation is no longer available")
 	}
 	var owner T
 	submission := rand.Text()
-	prepared := conversationbinding.Input(input.Draft)
-	if turn == "" {
-		prepared = s.input(input.Draft)
+	prepared, err := s.prepareInput(&input.Draft, submission, turn == "")
+	if err != nil {
+		return SideUpdate{Handled: true, Side: s, Restore: input, Notice: err.Error(), NoticeError: true}, nil
 	}
 	id, err := r.SendInput(InputRequest{Thread: thread, Turn: turn, ID: submission, Input: prepared}, owner)
 	if err != nil {
-		return err
+		return SideUpdate{}, err
 	}
 	if input.Question != nil {
 		input.Question.SubmissionID = submission
 	}
 	request := r.pending[id]
 	request.Scope, request.Side, request.SideInput = "", s, &input
+	request.SideExchange = s.ID
 	r.pending[id] = request
 	if thread == s.Thread && turn == "" {
 		s.Starting, s.Busy = true, true
 	}
-	return nil
+	return SideUpdate{}, nil
+}
+
+func (s *Side) prepareInput(draft *composer.Draft, id string, scoped bool) ([]map[string]any, error) {
+	if err := draft.IdentifyAttachments(id); err != nil {
+		return nil, err
+	}
+	var input []map[string]any
+	if scoped {
+		input = s.input(*draft)
+	} else {
+		input = conversationbinding.Input(*draft)
+	}
+	textBytes := 0
+	for _, part := range input {
+		text, _ := part["text"].(string)
+		textBytes += len(text)
+	}
+	if (len(draft.Attachments) > 0 || len(draft.Skills) > 0) && textBytes > codexresponses.UserTextLimit {
+		return nil, errors.New("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.")
+	}
+	return input, nil
 }
 
 func (s *Side) input(draft composer.Draft) []map[string]any {

@@ -72,6 +72,23 @@ func (s *SideAnswer) Fail(message string, closed bool) Input {
 	return Input{}
 }
 
+// AppendQuestion retains accepted steering without resetting the streamed answer.
+func (s *SideAnswer) AppendQuestion(exchange uint64, input Input) {
+	question, notice := &s.Question, &s.AttachmentNotice
+	if exchange != s.ID {
+		i := slices.IndexFunc(s.History, func(h SideExchange) bool { return h.ID == exchange })
+		if i < 0 {
+			return
+		}
+		question, notice = &s.History[i].Question, &s.History[i].AttachmentNotice
+	}
+	*question += "\n\n" + input.Text
+	if input.AttachmentNotice != "" {
+		*notice += "\n" + input.AttachmentNotice
+	}
+	s.bound()
+}
+
 func (s *SideAnswer) Complete(status, failure string) {
 	s.Pending = Input{}
 	s.Status, s.Alert = status, status == "failed"

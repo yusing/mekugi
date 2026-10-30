@@ -213,6 +213,12 @@ func TestOneoffAnswerDuringToolInput(t *testing.T) {
 	// Main remains independently usable while this one-off answer is held.
 	appServerTestKeys(t, u, "main request\r")
 	_ = btwTestRequest(t, wire, "turn/start", "main")
+	selectSideThread(t, u, u.attached.presentation.View().SideThread)
+	appServerTestKeys(t, u, "stop this approach\r")
+	steer := btwTestRequest(t, wire, "turn/steer", "oneoff")
+	if len(steer.Params.Input) != 1 || steer.Params.Input[0].Text != "stop this approach" || len(u.side.Drafts.Unsent) != 1 || u.side.Drafts.Unsent[0].Question == nil {
+		t.Fatalf("ordinary steering did not pass the waiting companion: %+v", steer)
+	}
 	emissionTestEvent(t, transform, map[string]any{"type": "response.function_call_arguments.done", "item_id": "emitting"})
 	if err := flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
 		t.Fatal(err)

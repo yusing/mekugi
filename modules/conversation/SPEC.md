@@ -362,7 +362,8 @@ Selecting Side displays its conversation through the shared Main-pane transcript
 and routes ordinary composer input to Side. Main and Side retain separate drafts;
 selecting a subagent remains read-only. Side settings are the effective model,
 reasoning effort and service tier captured from Main when its snapshot is created.
-Settings and Main-only commands require returning to Main. `/side`, `/oneoff`,
+Model and reasoning settings target the selected fork; Main-only commands require
+returning to Main. `/side`, `/oneoff`,
 `/fork` and `/btw` are unavailable in Side and One-off, including command completion.
 
 Pending Main input settles before the snapshot; already-running Main work continues.
@@ -378,8 +379,9 @@ independently usable, and no one-off result is submitted back to Main. Tool edit
 and other external effects remain real and may affect their shared workspace.
 
 Completed Side and One-off results remain selectable while idle. One-off supports
-host compaction independently of Main. A running answer refuses another submission
-without consuming its draft. Failures remain visible and rejected input retains
+host compaction independently of Main. Composer input steers a running Side or
+One-off turn through its own host identity. Input during fork/start admission stays
+in the draft until its turn is ready. Failures remain visible and rejected input retains
 attachments for retry in the same conversation. Rejected attachment companions
 for a One-off descendant retain their original recipient in the waiting queue.
 Enter in an empty One-off composer retries one companion; closing the slot cancels
@@ -388,7 +390,7 @@ If an answer-only Side requires compaction, Main stays
 untouched: compact Main and create a fresh side snapshot.
 The selected side composer shows loading, answering and failure state. Escape closes
 Side after dismissing selection or menus, interrupting only its running turn and
-unloading its host thread, without archiving or deleting it.
+archiving its host thread while retaining its history in Codex storage.
 
 [Session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md#session-replacement-and-exit)
 retains delayed fork/start correlation and cleanup after close or Main replacement.
