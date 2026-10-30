@@ -340,7 +340,7 @@ func TestVCSSetupCommitLiveAndRestored(t *testing.T) {
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 		}
 		got := awaitMain(t, u, "M  a.go")
-		if !strings.Contains(got, "Committed fix: wrapped") || !strings.Contains(got, "on main · 3 files +3 -2") || strings.Contains(got, "99") {
+		if !strings.Contains(got, "Committed fix: wrapped") || !strings.Contains(got, "on main · 3 files +3 -2") || strings.Contains(got, "99 +++++") || strings.Contains(got, "99 insertions") {
 			t.Fatalf("restored=%v: %s", restored, got)
 		}
 		if u.attached.source.Entries[0].Source.Native.Command != command {
