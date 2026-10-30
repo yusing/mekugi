@@ -41,8 +41,10 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 			t.Fatal("frontend projection lost recovery-handle distinction")
 		}
 	}
-	if !strings.Contains(saved.Workflow, "combined outputs within the outer exec limit") || strings.Contains(saved.Shell, "outer exec limit") {
-		t.Fatal("combined exec budget guidance must be confined to Codex")
+	for _, instruction := range []string{"Print each exec_command result's output once", "Sum every command's output budget", "within the outer exec limit"} {
+		if !strings.Contains(saved.Workflow, instruction) || strings.Contains(saved.Shell, instruction) {
+			t.Fatalf("exec output guidance must be confined to Codex: %q", instruction)
+		}
 	}
 	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, manifestFilename))
 	if err != nil {
