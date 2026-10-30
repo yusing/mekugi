@@ -1,14 +1,43 @@
 package sessionpresentation
 
 // Source: apps/mekugi/internal/router/app_server_transcript.go:18:26,41:64@7166de95.
-import "github.com/yusing/mekugi/contracts/observation"
+import (
+	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
+)
+
+type completionStreams map[string]*compact.ReloadStream
+
+// ProjectCompletionText keeps terminal protocol metadata out of retained and
+// live answer projections without modifying native control/evidence payloads.
+func ProjectCompletionText(e observation.TextEvent) observation.TextEvent {
+	if e.Item.Type == "agentMessage" && e.Kind == observation.ItemCompleted {
+		e.Item.Text = compact.ReloadText(e.Item.Text)
+	}
+	return e
+}
 
 func (s *Attachment) ObserveText(transcript observation.Transcript, e observation.TextEvent, main bool) []observation.TextUpdate {
 	ref := e.Item.Ref
 	if ref.ThreadID == "" || ref.TurnID == "" || ref.ItemID == "" {
 		return nil
 	}
-	return transcript.Observe(e, main, s.Transcript(ref.ThreadID, ref.TurnID))
+	stores := s.Transcript(ref.ThreadID, ref.TurnID)
+	if stores.Turn != nil {
+		streams := s.completion.Value(stores.Turn)
+		if e.Kind == observation.AgentDelta && main {
+			if *streams == nil {
+				*streams = make(completionStreams)
+			}
+			if (*streams)[ref.ItemID] == nil {
+				(*streams)[ref.ItemID] = new(compact.ReloadStream)
+			}
+			e.Delta = (*streams)[ref.ItemID].Push(e.Delta)
+		} else if e.Kind == observation.ItemCompleted {
+			delete(*streams, ref.ItemID)
+		}
+	}
+	return transcript.Observe(ProjectCompletionText(e), main, stores)
 }
 
 func (s *Attachment) AdmitText(updates []observation.TextUpdate, main string) []ActivityEntry {

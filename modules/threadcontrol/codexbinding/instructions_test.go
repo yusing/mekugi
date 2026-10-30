@@ -289,6 +289,9 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 				t.Fatalf("retained instruction projection = %+v, %v", passive, err)
 			}
 			for _, projection := range []string{replacements[0].Text, passive[0].Text} {
+				if strings.Contains(projection, CompletionChangesGuidance) != tc.child {
+					t.Fatal("completion selection guidance did not follow child admission")
+				}
 				for _, catalogGuidance := range []string{
 					"preload", "timeout_ms", "later wait_agent output", "Override model or reasoning effort",
 				} {

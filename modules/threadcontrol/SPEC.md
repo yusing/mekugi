@@ -386,6 +386,16 @@ from that turn in order, including an empty payload when none exist, then inject
 `FINAL_ANSWER` through `thread/inject_items`. Failure/interruption retains its actual
 outcome. Injection alone neither starts nor steers its receiver. A completion wake
 follows confirmed delivery and carries identity/status rather than duplicate text.
+Delegates may select explicit `mchanges` IDs/ranges in the existing reload block
+at the end of their ordinary final answer, submitting answer and selection together.
+After successful logical settlement, the receiving parent's reload pipeline acquires
+the complete composed retained diff, or available content with explicit failure
+diagnostics, before its next inference. Existing reload history retains the captured
+results; the original completion selection remains available for reconciliation.
+Reload metadata stays out of displayed live, restored and replayed answers.
+Ordinary text and quoted examples remain unchanged. Selection neither completes
+work nor bypasses descendant guards. Failed or interrupted work never acquires a
+successful attachment; later work inherits no pending selection.
 Confirmed initial assignments, follow-ups, messages and answers appear in the receiving
 runtime's Main transcript with their original logical sender and terminal outcome.
 Inherited traffic keeps its original sender and recipient. An interruption request

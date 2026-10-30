@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -14,6 +15,9 @@ func publishNativeDelivery(attached *attachedPresentation, input control.NativeI
 }
 
 func nativeDeliveryEntry(input control.NativeInput, item string, now time.Time, inherited bool) sessionpresentation.ActivityEntry {
+	if input.Kind == "FINAL_ANSWER" {
+		input.Message = compact.ReloadText(input.Message)
+	}
 	entry := sessionpresentation.ActivityEntry{Agent: input.Sender, Kind: "final", Text: input.Message, Observed: now, Completed: now,
 		Native: &sessionpresentation.NativeItem{Thread: input.Thread, Item: item, Phase: "item/completed", Status: string(input.Outcome)}}
 	recipient := "Main"

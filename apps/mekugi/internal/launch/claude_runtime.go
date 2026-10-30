@@ -244,6 +244,23 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 		if !ok || member.Session != info.Session || !member.AudienceAdmitted {
 			return "", control.ErrNotAdmitted
 		}
+		if input.Kind == "FINAL_ANSWER" {
+			_, selection, found := compact.SplitCompactReload(input.Message)
+			if !found {
+				if compact.ReloadText(input.Message) != input.Message {
+					return "Completion changes unavailable: incomplete reload metadata", nil
+				}
+				return "", nil
+			}
+			if err := compact.CompletionSources(selection); err != nil {
+				return "Completion changes unavailable: " + err.Error(), nil
+			}
+			body, err := claudePreload(ctx, selection, settings.Workspace, environment, compact.ChangeReader{Service: owners.Changes.Service, Scope: e.retained})
+			if err != nil {
+				return "Completion changes unavailable: " + err.Error(), nil
+			}
+			return body, nil
+		}
 		// Inherited full-session context already belongs to the SDK transcript.
 		// Acquire only this child's selected initial sources, once in its ledger.
 		return claudePreload(ctx, member.Preload.Selection, settings.Workspace, environment, compact.ChangeReader{Service: owners.Changes.Service, Scope: e.retained})

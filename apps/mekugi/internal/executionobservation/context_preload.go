@@ -7,10 +7,12 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // Prepared children reuse the compaction reader's native scheduling, continuation
@@ -24,7 +26,7 @@ func (p *Preparer) preparePreloadInput(request *codexresponses.Request, session,
 		return nil, nil, nil, errors.New("context preload requires matching runtime identity")
 	}
 	selections, err := p.threadControl.Coordination().ContextPreloads(thread, session)
-	if err != nil || len(selections) == 0 {
+	if err != nil {
 		return nil, nil, nil, err
 	}
 	var items []map[string]jsontext.Value
@@ -35,6 +37,18 @@ func (p *Preparer) preparePreloadInput(request *codexresponses.Request, session,
 	for _, item := range items {
 		if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "assistant" {
 			assignments[responses.StringField(item, "id")] = true
+			// Retained final envelopes use the same message-bound reload as
+			// assignments, including when followed by a wait_agent wake.
+			var envelope sessioncontrol.NativeMessage
+			if !bytes.Contains(item["content"], []byte(strings.Trim(compact.CompactMetadataStart, "<>"))) || json.Unmarshal(responses.MustMarshalJSON(item), &envelope) != nil {
+				continue
+			}
+			if delivery, ok := envelope.Delivery(); ok && delivery.Kind == "FINAL_ANSWER" && delivery.Outcome == control.Completed {
+				_, selection, found := compact.SplitCompactReload(delivery.Message)
+				if found && compact.CompletionSources(selection) == nil {
+					selections = append(selections, control.ContextPreload{Item: envelope.ID, Selection: selection})
+				}
+			}
 		}
 	}
 	var pending jsontext.Value

@@ -12,6 +12,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/guidance"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -158,6 +159,8 @@ func instructionReplacements(member control.Member, text string) []guidance.Repl
 
 // Feature-owned guidance describes the admitted logical tree and actual tools.
 // Model/custom role text takes precedence over the stock fallback role baseline.
+const CompletionChangesGuidance = "To attach retained changes to your parent, end your ordinary final answer with a new-line " + compact.CompactMetadataStart + "{\"sources\":[{\"changes\":[\"blue1..blue10\"]}]}" + compact.CompactMetadataEnd + " block using your selected mchanges IDs/ranges. Submit answer and selection together; omit the block when no attachment is needed.\n"
+
 func collaborationGuidance(member control.Member, baseline string) (string, error) {
 	if strings.Contains(baseline, "functions.collaboration.") || strings.Contains(baseline, "mekugi_collaboration.") {
 		return "", errors.New("configured agent guidance uses unavailable native collaboration tools")
@@ -169,6 +172,7 @@ func collaborationGuidance(member control.Member, baseline string) (string, erro
 		identity += fmt.Sprintf(" Your parent logical task is %s.", control.AgentName(parent))
 		authority = "For the explicit-request-only delegation rule, an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits.\n"
 		authority += "Ask the user directly for clarification with request_user_input_async, or request_user_input in Plan mode. Questions share the session family's question dialog. Route assignment changes and blockers to your parent.\n"
+		authority += CompletionChangesGuidance
 	}
 	return fmt.Sprintf("%s\n\n%s Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.\n%sAgents share the filesystem; this thread's working directory is %q.", baseline, identity, authority, member.Settings.Workspace), nil
 }

@@ -1439,6 +1439,11 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--fn", "document.querySelector('[role=alert]')?.textContent.includes('Reloading may restore older machines or tokens')")
 	open("Beta")
 	interrupt(beta, alpha)
+	testCompletionMetadataBrowser(t, func(main *activitypresentation.Publication) {
+		if err := beta.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Beta attached completion", Workspace: beta.workdir}, Input: &sessionapi.Input{}, Main: main}); err != nil {
+			t.Fatal(err)
+		}
+	}, func(args ...string) string { return strings.TrimSpace(run(args...)) })
 	t.Log("Built UI passed two-machine identity, routing, reconnect, reload persistence, token replacement, and disconnect acceptance")
 }
 

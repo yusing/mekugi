@@ -8,6 +8,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"maps"
 	"os"
 	"path/filepath"
@@ -409,7 +410,7 @@ func (r *ClaudeRuntime) dispatchInput(ctx context.Context, input control.NativeI
 	valid := r.identity(input.Thread) == nil && input.ID != "" && r.closed == nil
 	r.mu.Unlock()
 	var inputContext string
-	if valid && input.Run && input.Settings != nil && acquire != nil {
+	if valid && acquire != nil && (input.Run && input.Settings != nil || input.Kind == "FINAL_ANSWER" && input.Outcome == control.Completed) {
 		var previous claudeReceipt
 		if err := r.read(claudeRecordName(input.Thread, "input", input.ID), &previous); errors.Is(err, os.ErrNotExist) {
 			var err error
@@ -443,6 +444,9 @@ func (r *ClaudeRuntime) dispatchInput(ctx context.Context, input control.NativeI
 			return nil, claudeDispatchError(binding.NotDispatched, "input", err)
 		}
 		fragments = append(fragments, text)
+		if pending.Context != "" {
+			fragments = append(fragments, pending.Context)
+		}
 	}
 	if receipt.Context != "" {
 		fragments = append(fragments, receipt.Context)
@@ -485,6 +489,9 @@ func claudeInputText(input control.NativeInput) (string, error) {
 		return "/compact", nil
 	}
 	projected := input
+	if input.Kind == "FINAL_ANSWER" {
+		projected.Message = compact.ReloadText(input.Message)
+	}
 	projected.Sender, projected.Recipient = control.AgentName(input.Sender), control.AgentName(input.Recipient)
 	if input.Kind == "COMPLETION_GUARD" {
 		const prefix, suffix = "Active descendants: ", ". Call wait_agent before completing."
@@ -1058,7 +1065,7 @@ func (r *ClaudeRuntime) consume(ctx context.Context, uuid string, terminal claud
 			return nil, errors.New("Claude carrier has an unavailable retained input receipt")
 		}
 		copy := *pending
-		copy.Input, copy.Consumed = nil, true
+		copy.Input, copy.Context, copy.Consumed = nil, "", true
 		cleared[bundled], names[bundled] = copy, r.ledger.Pending[bundled]
 		consumed = append(consumed, control.MessageItemID(copy.ID))
 	}

@@ -5,13 +5,13 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"io"
 	"net/http"
 	"strings"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/modules/agentguidance"
 )
 
 // compactSummary observes the ordinary provider turn. It retains the model's
@@ -163,7 +163,7 @@ func (a *requestAttempt) deliverCompactSummary() error {
 	if responses.StringField(collected.response, "status") != "completed" {
 		return errors.New("invalid compaction provider completion")
 	}
-	summary, metadata, selected := agentguidance.SplitCompactReload(collected.text)
+	summary, metadata, selected := compact.SplitCompactReload(collected.text)
 	if strings.TrimSpace(summary) == "" {
 		return errors.New("provider returned an empty compaction summary")
 	}

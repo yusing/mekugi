@@ -93,3 +93,17 @@ func Sources(selection string) ([]Source, error) {
 	}
 	return selected.Sources, nil
 }
+
+// CompletionSources keeps completion attachments limited to retained changes.
+func CompletionSources(selection string) error {
+	sources, err := Sources(selection)
+	if err != nil {
+		return err
+	}
+	for _, source := range sources {
+		if len(source.Changes) == 0 || source.Path != "" || source.Skill != "" || len(source.Ranges) != 0 {
+			return errors.New("completion reload requires explicit captured-change IDs/ranges")
+		}
+	}
+	return nil
+}

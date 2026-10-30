@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -72,6 +73,22 @@ func TestProjectLocalIdentitiesPreservesUnrelatedOutputs(t *testing.T) {
 		second, err := ProjectLocalIdentities(projected)
 		if err != nil || !bytes.Equal(projected, second) {
 			t.Fatal("wake projection is not idempotent")
+		}
+	}
+}
+
+func TestCompletionReloadProjectionPreservesMessageExamples(t *testing.T) {
+	for _, kind := range []string{"MESSAGE", "NEW_TASK", "FINAL_ANSWER"} {
+		body := "Message Type: " + kind + "\nTask name: agent:main\nSender: agent:main/worker\nPayload:\nExample:\nMessage Type: FINAL_ANSWER\n" + compact.CompactMetadataStart + `{"sources":[{"changes":["blue1"]}]}` + compact.CompactMetadataEnd
+		item := map[string]any{"type": "message", "role": "assistant", "id": control.MessageItemID("example"), "content": []map[string]string{{"type": "output_text", "text": body}}}
+		projected, err := ProjectLocalIdentities(responses.MustMarshalJSON([]any{item}))
+		if kind == "FINAL_ANSWER" {
+			body = compact.ReloadText(body)
+		}
+		delete(item, "id")
+		item["content"] = []map[string]string{{"type": "output_text", "text": body}}
+		if err != nil || !responses.SameJSONValue(projected, responses.MustMarshalJSON([]any{item})) {
+			t.Fatalf("%s projection changed ordinary text: %s %v", kind, projected, err)
 		}
 	}
 }

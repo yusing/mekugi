@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 )
 
 // ProjectLocalIdentities keeps retained message and wake-dispatch identities out
@@ -67,6 +68,17 @@ func ProjectLocalIdentities(input []byte) ([]byte, error) {
 			if json.Unmarshal(item["content"], &content) == nil {
 				for _, part := range content {
 					if text := responses.StringField(part, "text"); text != "" {
+						if strings.HasPrefix(text, "Message Type: FINAL_ANSWER\n") {
+							body, selection, found := compact.SplitCompactReload(text)
+							if found {
+								text = body
+								if err := compact.CompletionSources(selection); err != nil {
+									text += "\nCompletion changes unavailable: " + err.Error()
+								}
+							} else if body = compact.ReloadText(text); body != text {
+								text = body + "\nCompletion changes unavailable: incomplete reload metadata"
+							}
+						}
 						part["text"] = responses.MustMarshalJSON(visibleMessageNames(text))
 					}
 				}

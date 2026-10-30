@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -50,6 +51,9 @@ func TestClaudeGuidanceAndPreload(t *testing.T) {
 	}
 	if value["preset"] != "claude_code" || !strings.Contains(value["append"], "frozen role") || strings.Contains(value["append"], "superseded rules") || strings.Contains(value["append"], "parent rules") || strings.Contains(value["append"], "child rules") {
 		t.Fatalf("native guidance lost captured instructions or bypassed native project discovery: %s", prompt)
+	}
+	if !strings.Contains(value["append"], threadbinding.CompletionChangesGuidance) {
+		t.Fatal("Claude prompt omitted completion selection guidance")
 	}
 	if !strings.Contains(value["append"], "reviewer: Review the implementation. (model: codex-pinned, role-selected) (model_reasoning_effort: high, role-selected)") {
 		t.Fatalf("native guidance omitted the selected Codex role catalog: %s", prompt)

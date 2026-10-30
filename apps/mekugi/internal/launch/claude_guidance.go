@@ -25,6 +25,7 @@ func claudeSystemPrompt(settings control.Settings, identity control.Identity) (j
 			sections = append(sections, *custom)
 		}
 	}
+	sections = append(sections, threadbinding.CompletionChangesGuidance)
 	sections = append(sections, fmt.Sprintf("Mekugi owns coordination for this Claude runtime. Use the threadcontrol MCP tools for agents, messages and waits. For a Codex child, use fork_turns=none and a Codex model or a role with a pinned Codex model; list_models returns the selected Codex catalog. Assignments and messages retain their original sender and authority. Your native session identity is %s. Your working directory is %s; agents share the filesystem. Call wait_agent alone to wait for completion; its successful tool batch ends this turn, and an attributed continuation delivers the outcome. Omit timeout_ms unless there is a real deadline. Native tools follow the captured approval policy; filesystem and network sandboxing are disabled. Invocation-private executable frontends are available on PATH; explicit mchanges IDs and ranges read the shared retained namespace, while implicit selections remain caller-scoped.", identity.Thread, settings.Workspace), roles)
 	return json.Marshal(map[string]string{"type": "preset", "preset": "claude_code", "append": strings.Join(sections, "\n\n")})
 }

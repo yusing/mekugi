@@ -8,6 +8,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"fmt"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -556,7 +557,7 @@ func (p *compactSelectionProvider) ForwardExecution(ctx, _ context.Context, body
 		if p.slow {
 			selection = strings.TrimSuffix(selection, "]}") + `,{"skill":"slow-fixture"}]}`
 		}
-		text = "Goal: finish the parser fix. Completed: reproduced the failure. Next: add the regression test.\n" + agentguidance.CompactMetadataStart + selection + agentguidance.CompactMetadataEnd
+		text = "Goal: finish the parser fix. Completed: reproduced the failure. Next: add the regression test.\n" + compact.CompactMetadataStart + selection + compact.CompactMetadataEnd
 	}
 	item := map[string]any{"type": "message", "id": "msg-compact-fixture", "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": text, "annotations": []any{}}}}
 	if count == 1 {

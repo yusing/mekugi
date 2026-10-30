@@ -25,6 +25,9 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 		bodies := []string{"## Summary\nMESSAGE result.\n\n## Details\nPayload:\nMessage evidence.\n", "## Summary\nFINAL_ANSWER result.\n\n## Details\nPayload:\nFinal evidence.\n"}
 		for i, kind := range []string{"MESSAGE", "FINAL_ANSWER"} {
 			input := control.NativeInput{Thread: "main", ID: kind, Sender: "/root/worker", Recipient: "/root", Kind: kind, Message: bodies[i]}
+			if kind == "FINAL_ANSWER" {
+				input.Message += completionTestTrailer
+			}
 			wire.Reset()
 			result := make(chan error, 1)
 			go func() { _, err := live.Requests.Input(t.Context(), input); result <- err }()
@@ -47,6 +50,10 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 				t.Fatal(err)
 			}
 			publishNativeDelivery(&live.attached, *request.NativeDelivery(), time.Now())
+			entry := live.attached.source.Entries[len(live.attached.source.Entries)-1].Source
+			if entry.Text != bodies[i] || entry.Message.Text != bodies[i] || request.NativeDelivery().Message != input.Message {
+				t.Fatal("presentation exposed reload metadata or changed retained delivery")
+			}
 			if live.attached.source.Entries[len(live.attached.source.Entries)-1].Source.ActivitySeq == 0 {
 				t.Fatalf("live %s delivery lost its child-feed link", kind)
 			}

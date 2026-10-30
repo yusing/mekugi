@@ -14,6 +14,7 @@ import (
 	"github.com/yusing/mekugi/backends/claude"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/recordkind"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -409,6 +410,47 @@ func TestClaudeInitialContextSurvivesStartedUntilNativeConsumption(t *testing.T)
 	receipt = claudeReceipt{}
 	if err := runtime.read(name, &receipt); err != nil || receipt.Input != nil || receipt.Context != "" || !receipt.Consumed {
 		t.Fatalf("consumed context duplicated native transcript: %+v %v", receipt, err)
+	}
+}
+
+func TestClaudeCompletionReloadUsesRetainedInputContext(t *testing.T) {
+	var runtime *ClaudeRuntime
+	reads, requests := 0, 0
+	native := claudeRequestFunc(func(_ context.Context, _ string, raw jsontext.Value) (jsontext.Value, error) {
+		requests++
+		var wire claude.Input
+		if err := json.Unmarshal(raw, &wire); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(wire.Message), "frozen captured diff") || strings.Contains(string(wire.Message), "mekugi-reload") {
+			t.Fatal("completion context was missing or exposed metadata")
+		}
+		claudeStarted(t, runtime, wire)
+		return jsontext.Value(`{"status":"queued"}`), nil
+	})
+	runtime, selected, settings := claudeFixture(t, native)
+	runtime.SetInputContext(func(context.Context, control.NativeInput) (string, error) {
+		reads++
+		return "frozen captured diff", nil
+	})
+	input := control.NativeInput{Thread: "child", ID: "final", Sender: "/root/child/nested", Kind: "FINAL_ANSWER", Outcome: control.Completed,
+		Message: "finished\n" + compact.CompactMetadataStart + `{"sources":[{"changes":["blue1"]}]}` + compact.CompactMetadataEnd}
+	for range 2 {
+		if _, err := runtime.Input(t.Context(), input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	info, _ := runtime.Thread(t.Context(), "child")
+	var err error
+	runtime, err = NewClaudeRuntime(t.Context(), selected, info, settings, native)
+	if err != nil || runtime.Confirm(t.Context(), input) != nil {
+		t.Fatalf("restore lost completion: %v", err)
+	}
+	if _, err := runtime.Input(t.Context(), control.NativeInput{Thread: "child", ID: "wake", Kind: "MESSAGE", Run: true}); err != nil {
+		t.Fatal(err)
+	}
+	if reads != 1 || requests != 1 {
+		t.Fatalf("reads=%d requests=%d", reads, requests)
 	}
 }
 

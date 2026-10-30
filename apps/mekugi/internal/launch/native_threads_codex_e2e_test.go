@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"io"
 	"net"
@@ -23,6 +24,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +34,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
@@ -45,6 +48,7 @@ type nativeThreadsProvider struct {
 	compactions                             int
 	earlyCompletion                         bool
 	preload                                 bool
+	attachChanges                           bool
 	recoverFailure                          bool
 	multipleAnswers                         bool
 	calls                                   map[string]int
@@ -327,12 +331,19 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"],compact:true}));`
 		}
 	case parent && step == 5:
+		expectedUsers := p.users
+		if p.attachChanges {
+			expectedUsers++ // The shared reload consumer introduces captured context.
+		}
+		if p.attachChanges && (strings.Contains(string(body), compact.CompactMetadataStart) || strings.Contains(string(body), "mcp__threadcontrol__attach_changes") || !strings.Contains(string(body), "Reloaded context (tool output)") || !strings.Contains(string(body), "+managed-child-write") || !strings.Contains(string(body), "managed-child.txt")) {
+			failure = "parent completion omitted the delegate's explicitly selected retained diff"
+		}
 		if p.shellWait {
 			if metadata.TurnID == p.waitTurn || users != p.users+1 || strings.Count(string(body), "<user_shell_command>") != 1 || !strings.Contains(string(body), "SHELL_WAIT_OUTPUT") {
 				failure = fmt.Sprintf("shell continuation: same_turn=%t user_items=%d want=%d shell_records=%d has_output=%t", metadata.TurnID == p.waitTurn, users, p.users+1, strings.Count(string(body), "<user_shell_command>"), strings.Contains(string(body), "SHELL_WAIT_OUTPUT"))
 			}
-		} else if metadata.TurnID == p.waitTurn || !p.compactWait && users != p.users || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "agent:main/worker") || !strings.Contains(string(body), "wait_agent") {
-			failure = fmt.Sprintf("local stop/wake: same_turn=%t users=%d want=%d final=%t task=%t wait=%t", metadata.TurnID == p.waitTurn, users, p.users, strings.Contains(string(body), "MANAGED_CHILD_FINAL"), strings.Contains(string(body), "agent:main/worker"), strings.Contains(string(body), "wait_agent"))
+		} else if metadata.TurnID == p.waitTurn || !p.compactWait && users != expectedUsers || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "agent:main/worker") || !strings.Contains(string(body), "wait_agent") {
+			failure = fmt.Sprintf("local stop/wake: same_turn=%t users=%d want=%d final=%t task=%t wait=%t", metadata.TurnID == p.waitTurn, users, expectedUsers, strings.Contains(string(body), "MANAGED_CHILD_FINAL"), strings.Contains(string(body), "agent:main/worker"), strings.Contains(string(body), "wait_agent"))
 		}
 		answer = "MANAGED_PARENT_RESUMED"
 		if p.multipleAnswers && (strings.Count(string(body), "MANAGED_CHILD_FINAL") != 1 || strings.Count(string(body), "LATER_CHILD_FINAL") != 1) {
@@ -371,6 +382,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			}
 		}
 		wantUsers := 1
+		if !strings.Contains(developerText.String(), threadbinding.CompletionChangesGuidance) {
+			failure = "initial child inference omitted completion selection guidance"
+		}
 		if p.preload {
 			wantUsers += 2 // One shared reload context message per selected reader outcome.
 		}
@@ -406,9 +420,13 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 	case !parent && step == 2:
 		receipt := false
+		changeID := ""
 		for _, item := range request.Input {
 			if string(item["type"]) == `"function_call_output"` || string(item["type"]) == `"custom_tool_call_output"` {
 				receipt = receipt || strings.Contains(string(item["output"]), "mchanges ")
+				if selected := regexp.MustCompile(`mchanges ([a-z]+[1-9][0-9]*)`).FindStringSubmatch(string(item["output"])); len(selected) == 2 {
+					changeID = selected[1]
+				}
 			}
 		}
 		if !receipt {
@@ -424,6 +442,12 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		if p.agentCompact {
 			answer = ""
 			program = `text(await tools.mcp__threadcontrol__compact({}));`
+		}
+		if p.attachChanges {
+			if changeID == "" {
+				failure = "child capture omitted an explicit selectable ID"
+			}
+			answer += "\n" + compact.CompactMetadataStart + "{\"sources\":[{\"changes\":[" + strconv.Quote(changeID) + "]}]}" + compact.CompactMetadataEnd
 		}
 	case !parent && step == 3 && p.agentCompact:
 		if !strings.Contains(string(body), `"name":"compact"`) || !strings.Contains(string(body), "completed") {
@@ -534,6 +558,10 @@ func TestHeadlessThreadsPreloadServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{headless: true, preload: true})
 }
 
+func TestHeadlessThreadsAttachedChangesServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{headless: true, attachChanges: true})
+}
+
 func TestHeadlessThreadsCompactWaitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{headless: true, agentCompact: true})
 }
@@ -547,7 +575,7 @@ func TestNativeThreadsRewindServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
-	fullHistory, shellWait, compactWait, agentCompact, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind, headless bool
+	fullHistory, shellWait, compactWait, agentCompact, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind, headless, attachChanges bool
 }
 
 func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
@@ -639,7 +667,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 		}
 	}
-	fixture := &nativeThreadsProvider{multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, agentCompact: scenario.agentCompact, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
+	fixture := &nativeThreadsProvider{attachChanges: scenario.attachChanges, multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, agentCompact: scenario.agentCompact, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
