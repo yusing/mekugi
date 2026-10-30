@@ -1,14 +1,56 @@
 package launch
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"errors"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/claude"
+	"github.com/yusing/mekugi/backends/codex/binding"
 )
+
+func TestClaudeLaunchPolicyRejectionNotDispatched(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	b := newClaudeHookFixture(t).bridge
+	hub := sessionapi.NewHub(ctx, &claudeNativeLauncher{parent: &claudeNativeParent{}})
+	defer hub.Close()
+	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
+	defer server.Close()
+	rpc, err := sessionapi.OpenRPC(ctx, server.Client(), "ws"+strings.TrimPrefix(server.URL, "http")+sessionapi.RPCPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rpc.Close()
+	start, err := json.Marshal(sessionapi.Start{Workspace: b.settings.Workspace, Model: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ready struct {
+		ID string `json:"id"`
+	}
+	if err := rpc.Call(ctx, "session/start", sessionapi.RPCParams{Body: start}, &ready); err != nil || ready.ID != "parent" {
+		t.Fatalf("root readiness: %+v %v", ready, err)
+	}
+	b.execution.hub, b.execution.setup, b.execution.windows = hub, &threadSetup{}, b.windows
+	settings := b.settings
+	settings.ApprovalsReviewer = "auto_review"
+	receipt, err := b.execution.createClaude(ctx, "parent", "", settings)
+	dispatch, ok := errors.AsType[*binding.DispatchError](err)
+	if !ok || dispatch.Outcome != binding.NotDispatched || receipt.Uncertain {
+		t.Fatalf("pre-start policy refusal lost definite outcome: receipt=%+v err=%v", receipt, err)
+	}
+	if !strings.Contains(err.Error(), `does not support reviewer "auto_review"`) {
+		t.Fatalf("creation failed outside captured policy admission: %v", err)
+	}
+}
 
 func TestClaudeGranularPromptRejectsWithoutCategory(t *testing.T) {
 	f := newClaudeHookFixture(t)

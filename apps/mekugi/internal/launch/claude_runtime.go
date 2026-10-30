@@ -122,7 +122,7 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 	_, noSkillsManager := managedSkillsExecutable(settings.Workspace, e.setup.environment)
 	policy, err := claude.CompilePolicy(settings.ApprovalPolicy, settings.ApprovalsReviewer, noSkillsManager != nil)
 	if err != nil {
-		return err
+		return errors.Join(sessionapi.ErrPreparedNotStarted, err)
 	}
 	bun, err := exec.LookPath("bun")
 	if err != nil {
