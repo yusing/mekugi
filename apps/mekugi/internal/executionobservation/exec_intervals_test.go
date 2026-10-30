@@ -18,15 +18,31 @@ import (
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
+func TestExecCompletionOrderingSkipsUninterruptedHistory(t *testing.T) {
+	windows := &Windows{}
+	members := make([]execCompletion, 1000)
+	if allocations := testing.AllocsPerRun(10, func() {
+		ordered := orderExecCompletions(windows, members)
+		if len(ordered) != len(members) || &ordered[0] != &members[0] {
+			t.Fatal("uninterrupted history was rebuilt")
+		}
+	}); allocations != 0 {
+		t.Fatalf("uninterrupted history allocated %g objects", allocations)
+	}
+}
+
 func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
-	for _, scenario := range []string{"completed", "failed", "no-continuation", "missing-boundary", "missing-prefix", "no-effect", "exec-overlap", "gofmt-cell-yield"} {
+	for _, scenario := range []string{"completed", "failed", "no-continuation", "missing-boundary", "missing-prefix", "no-effect", "exec-overlap", "gofmt-cell-yield", "writer-first-command", "writer-first-patch"} {
 		t.Run(scenario, func(t *testing.T) {
+			execOverlap := scenario == "exec-overlap" || scenario == "writer-first-command"
+			writerFirst := strings.HasPrefix(scenario, "writer-first-")
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
 			trace := newNativeTraceFixture(t)
@@ -70,6 +86,8 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 			writerCommand := "printf 'B\\n' > file.txt"
 			if scenario == "gofmt-cell-yield" {
 				writerCommand = "gofmt -w file.txt; go test ./..."
+			} else if scenario == "writer-first-command" || scenario == "no-continuation" {
+				writerCommand = "printf 'B\\n' > file.txt; gofmt -w file.txt; go test ./..."
 			}
 			writerSource := "await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(writerCommand)) + "});"
 			writer := call("writer", writerSource)
@@ -100,7 +118,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 			transform.sessionShell = "bash"
 			patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-B\n+C\n*** End Patch\n"
 			patchSource := "await tools.apply_patch(" + string(responses.MustMarshalJSON(patch)) + ");"
-			if scenario == "exec-overlap" {
+			if execOverlap {
 				patchSource = `await tools.exec_command({cmd: "printf 'C\\n' > file.txt"});`
 			}
 			patchCall := call("patch", patchSource)
@@ -119,7 +137,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 				}
 			}
 			trace.start("thread-1", "patch-runtime", "patch", patchSource)
-			if scenario == "exec-overlap" {
+			if execOverlap {
 				trace.tool("thread-1", "patch-runtime", "patch-command", "exec_command", `{"cmd":"printf 'C\\n' > file.txt"}`)
 			} else {
 				trace.tool("thread-1", "patch-runtime", "patch-command", "apply_patch", patch)
@@ -128,14 +146,44 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 			trace.end("thread-1", "patch-runtime")
 			writeTestFile(t, path, "C\n")
 			items = append(items, patchCall, output("patch"))
+			if writerFirst {
+				// The yielded process exits before the next request observes
+				// either terminal result. Input order still lists it first.
+				trace.event("thread-1", map[string]any{"type": "tool_call_runtime_ended", "tool_call_id": "writer-command", "status": "completed", "runtime_payload": trace.ref(map[string]any{"exit_code": 0})})
+			}
 			reconcile(proxy)
 			patchID := legacycall.PatchCallID("patch", 0)
-			if scenario == "exec-overlap" {
+			if execOverlap {
 				patchID = legacycall.ExecCallID("patch", true)
 			}
 			patchHistory := lookup(patchID)
 			if len(patchHistory.ReviewFiles) != 1 || !strings.Contains(patchHistory.ReviewFiles[0].Diff, "-B\n+C") || strings.Contains(patchHistory.ReviewFiles[0].Diff, "-A") {
 				t.Fatalf("later operation stole writer attribution: %+v", patchHistory)
+			}
+			if writerFirst {
+				terminal := lookup(legacycall.ExecCallID("writer", true))
+				if terminal.ChangeID != prefix.ChangeID || len(terminal.ReviewFiles) != 0 {
+					t.Fatalf("completed writer captured the intervening edit: %+v", terminal)
+				}
+				query.IDs = []string{terminal.ChangeID, patchHistory.ChangeID}
+				resumed, err := openMekugiReplayStore(store.directory)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(resumed.snapshots.Close)
+				writeTestFile(t, path, "unrelated live bytes\n")
+				for _, retained := range []*mekugiReplayStore{store, resumed} {
+					net, err := retained.changes.Read(transform.ctx, retained.scoped(transform.ctx).changeScope(), query)
+					if err != nil || !strings.Contains(net, "-A\n+C") || strings.Contains(net, "unrelated live") {
+						t.Fatalf("writer-first composition lost endpoints: %q, %v", net, err)
+					}
+					selection := string(responses.MustMarshalJSON(map[string]any{"sources": []any{map[string]any{"changes": query.IDs}}}))
+					preload, err := compact.ReadSources(transform.ctx, selection, workspace, nil, compact.ChangeReader{Service: retained.changes, Scope: retained.scoped(transform.ctx).changeScope()})
+					if err != nil || len(preload.Sources) != 1 || preload.Sources[0].ExitCode != 0 || preload.Sources[0].Stderr != "" || preload.Sources[0].Stdout != net {
+						t.Fatalf("composed change preload lost evidence or status: %+v, %v", preload, err)
+					}
+				}
+				return
 			}
 			if _, found, err := store.lookup(transform.ctx, workspace, legacycall.ExecCallID("writer", true)); found || err != nil {
 				t.Fatalf("writer prematurely terminal: %v %v", found, err)
@@ -230,6 +278,9 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 				exit = 1
 			}
 			trace.event("thread-1", map[string]any{"type": "tool_call_runtime_ended", "tool_call_id": "writer-command", "status": "completed", "runtime_payload": trace.ref(map[string]any{"exit_code": exit})})
+			if scenario == "no-continuation" {
+				items = append(items, map[string]any{"type": "function_call", "call_id": "writer-stdin", "name": "write_stdin", "arguments": `{"session_id":101,"chars":""}`}, map[string]any{"type": "function_call_output", "call_id": "writer-stdin", "output": nativeExecOutput("Process exited with code 0")})
+			}
 			if scenario == "gofmt-cell-yield" {
 				items = append(items, map[string]any{"type": "function_call", "call_id": "writer-wait", "name": "wait", "arguments": `{"cell_id":"writer-cell"}`}, map[string]any{"type": "function_call_output", "call_id": "writer-wait", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n"})
 			}
@@ -273,6 +324,10 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 				if scenario == "missing-boundary" {
 					if err == nil || !strings.Contains(err.Error(), "unavailable") && !strings.Contains(err.Error(), "partial") || !strings.Contains(net, "+C") {
 						t.Fatalf("missing boundary invented a chain: %q, %v", net, err)
+					}
+					endpoint, err := s.changes.Read(transform.ctx, s.scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{terminal.ChangeID}, View: "history", Paths: []string{path}})
+					if err != nil || !strings.Contains(endpoint, "+D\n") || !strings.Contains(endpoint, "overlapping writer endpoint unavailable") {
+						t.Fatalf("named endpoint recovery lost observed bytes or uncertainty: %q, %v", endpoint, err)
 					}
 				} else if err != nil || strings.Count(net, "-A\n+"+last) != 1 || strings.Contains(net, "+B") {
 					t.Fatalf("net intervals: %q, %v", net, err)
@@ -365,8 +420,9 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 }
 
 func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
-	for _, kind := range []string{"command", "patch"} {
+	for _, kind := range []string{"command", "patch", "writer-first-command", "writer-first-patch"} {
 		t.Run(kind, func(t *testing.T) {
+			writerFirst, patch := strings.HasPrefix(kind, "writer-first-"), strings.HasSuffix(kind, "patch")
 			isolateSnapshotGit(t)
 			f := newMChangesSliceFixture(t, "named-runtime-overlap")
 			parent := testProxyWithStore(f.store, &Windows{})
@@ -391,7 +447,7 @@ func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
 				t.Fatal(err)
 			}
 			transform := &mekugiResponseTransform{ctx: f.ctx, directory: f.workspace, retained: selected, changeSource: parent.changeSource, execWindows: parent.execWindows, execGroup: "later"}
-			if kind == "patch" {
+			if patch {
 				later.NativePatches = changecapture.Patches([]string{"*** Begin Patch\n*** Update File: file.txt\n@@\n-B\n+C\n*** End Patch\n"}, f.workspace)
 			}
 			if err := transform.splitExecIntervals("later", later.ExecObservation, later.NativePatches); err != nil {
@@ -399,53 +455,64 @@ func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
 			}
 			writeTestFile(t, path, "C\n")
 			finalize := func(ctx context.Context, ref string, proxy *Preparer, h mekugiHistory, publish func([]changes.Update)) error {
-				if ref == "later" && kind == "patch" {
+				if ref == "later" && patch {
 					proxy.publishChanges = publish
 					return proxy.finalizeNativePatches(ctx, f.workspace, f.thread, ref, h, binding.ExecutionResult{Terminal: true, Succeeded: true})
 				}
 				return finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, publish, proxy.execWindows, proxy.activity, proxy.noticeSink, ctx, f.workspace,
 					[]execCompletion{{callID: ref, history: h, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}})
 			}
-			ctx, cancel := context.WithCancel(f.ctx)
-			defer cancel()
-			published, release := make(chan struct{}), make(chan struct{})
-			laterDone, earlierDone := make(chan error, 1), make(chan error, 1)
-			go func() {
-				laterDone <- finalize(ctx, "later", child, later, func([]changes.Update) {
-					cancel() // Publication must already include the continuation endpoint.
-					close(published)
-					<-release
-				})
-			}()
-			select {
-			case <-published:
-			case <-time.After(5 * time.Second):
-				t.Fatal("later publication not reached")
-			}
-			parent.execWindows.state().mu.Lock()
-			window := parent.execWindows.find("earlier")
-			parent.execWindows.state().mu.Unlock()
-			if window.intervalMu.TryLock() {
-				window.intervalMu.Unlock()
-				close(release)
-				<-laterDone
-				t.Fatal("later finalizer must lock the interrupted writer before workspace publication")
-			}
-			resumeID := execIntervalID("earlier", false, 0) + ":resume"
-			resume, found, err := selected.Store.LookupHostCall(f.ctx, f.workspace, resumeID)
-			if err != nil || !found || resume.ExecObservation == nil || len(resume.ExecObservation.Files) != 1 || resume.ExecObservation.Files[0].Content != "C\n" {
-				t.Errorf("terminal publication lost its endpoint: found=%v error=%v", found, err)
-			}
-			go func() { earlierDone <- finalize(f.ctx, "earlier", parent, earlier, nil) }()
-			close(release)
-			for _, done := range []<-chan error{laterDone, earlierDone} {
+			if writerFirst {
+				// The later edit has no witnessed endpoint when the earlier
+				// runtime finishes. Keep the endpoint, not invented attribution.
+				if err := finalize(f.ctx, "earlier", parent, earlier, nil); err != nil {
+					t.Fatal(err)
+				}
+				if err := finalize(f.ctx, "later", child, later, nil); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				ctx, cancel := context.WithCancel(f.ctx)
+				defer cancel()
+				published, release := make(chan struct{}), make(chan struct{})
+				laterDone, earlierDone := make(chan error, 1), make(chan error, 1)
+				go func() {
+					laterDone <- finalize(ctx, "later", child, later, func([]changes.Update) {
+						cancel() // Publication must already include the continuation endpoint.
+						close(published)
+						<-release
+					})
+				}()
 				select {
-				case err := <-done:
-					if err != nil {
-						t.Fatal(err)
-					}
+				case <-published:
 				case <-time.After(5 * time.Second):
-					t.Fatal("overlapping finalizers deadlocked")
+					t.Fatal("later publication not reached")
+				}
+				parent.execWindows.state().mu.Lock()
+				window := parent.execWindows.find("earlier")
+				parent.execWindows.state().mu.Unlock()
+				if window.intervalMu.TryLock() {
+					window.intervalMu.Unlock()
+					close(release)
+					<-laterDone
+					t.Fatal("later finalizer must lock the interrupted writer before workspace publication")
+				}
+				resumeID := execIntervalID("earlier", false, 0) + ":resume"
+				resume, found, err := selected.Store.LookupHostCall(f.ctx, f.workspace, resumeID)
+				if err != nil || !found || resume.ExecObservation == nil || len(resume.ExecObservation.Files) != 1 || resume.ExecObservation.Files[0].Content != "C\n" {
+					t.Errorf("terminal publication lost its endpoint: found=%v error=%v", found, err)
+				}
+				go func() { earlierDone <- finalize(f.ctx, "earlier", parent, earlier, nil) }()
+				close(release)
+				for _, done := range []<-chan error{laterDone, earlierDone} {
+					select {
+					case err := <-done:
+						if err != nil {
+							t.Fatal(err)
+						}
+					case <-time.After(5 * time.Second):
+						t.Fatal("overlapping finalizers deadlocked")
+					}
 				}
 			}
 			writeTestFile(t, path, "unrelated live bytes\n")
@@ -455,7 +522,7 @@ func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
 			var ids []string
 			for _, ref := range []string{"earlier", "later"} {
 				id := legacycall.ExecCallID(ref, false)
-				if ref == "later" && kind == "patch" {
+				if ref == "later" && patch {
 					id = legacycall.PatchCallID(ref, 0)
 				}
 				record, found, err := selected.Store.LookupHostCall(f.ctx, f.workspace, id)
@@ -465,6 +532,16 @@ func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
 				ids = append(ids, record.ChangeID)
 			}
 			net, err := parent.changeSource.Read(f.ctx, selected, changes.Query{Workspace: f.workspace, IDs: ids, View: "net"})
+			if writerFirst {
+				if err == nil || !strings.Contains(err.Error(), "partial captured effects") {
+					t.Fatalf("unwitnessed overlap claimed complete attribution: %q, %v", net, err)
+				}
+				endpoint, err := parent.changeSource.Read(f.ctx, selected, changes.Query{Workspace: f.workspace, IDs: ids[:1], View: "history", Paths: []string{path}})
+				if err != nil || !strings.Contains(endpoint, "+C\n") || !strings.Contains(endpoint, "overlapping writer endpoint unavailable") || strings.Contains(endpoint, "unrelated live") {
+					t.Fatalf("writer-first endpoint is not independently recoverable: %q, %v", endpoint, err)
+				}
+				return
+			}
 			if err != nil || !strings.Contains(net, "-A\n+C") || strings.Contains(net, "unrelated live") {
 				t.Fatalf("retained concurrent composition: %q, %v", net, err)
 			}

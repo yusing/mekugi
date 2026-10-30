@@ -26,6 +26,9 @@ type Comparison struct {
 	Workspaces *Workspaces
 	Workspace  string
 	Claims     Claims
+	// PriorChanges means this writer already has a captured changed interval.
+	// An unchanged suffix must not turn the whole writer into an unknown no-op.
+	PriorChanges bool
 }
 
 // Result separates file evidence from an unavailable optional workspace comparison.
@@ -51,7 +54,11 @@ func Reconcile(ctx context.Context, observation Observation, comparison Comparis
 	if comparison.Workspaces != nil && observation.Tree != "" {
 		snapshot, result.Claims, result.SnapshotError = comparison.Workspaces.since(ctx, comparison.Workspace, observation.Tree, comparison.Claims)
 	}
-	result.Files, result.Complete, result.Coverage, result.Endpoints = reconcile(observation, comparison.Excluded, snapshot)
+	interval := observation
+	if comparison.PriorChanges {
+		interval.RepeatedPaths = false
+	}
+	result.Files, result.Complete, result.Coverage, result.Endpoints = reconcile(interval, comparison.Excluded, snapshot)
 	if result.SnapshotError != nil && result.Coverage == CoverageExact {
 		result.Coverage = CoveragePartial
 	}
@@ -93,7 +100,13 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 				afterPath = ""
 			}
 			reason := strings.Trim(strings.Join([]string{before.Error, current.Error}, "; "), "; ")
-			reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(beforePath, afterPath, reason))
+			review := diffmodel.RenderIncompleteReviewFile(beforePath, afterPath, reason)
+			if before.Error != "" && current.Error == "" && current.Kind == Text {
+				// Keep the witnessed endpoint recoverable without presenting it
+				// as an authored diff from an unknown before-state.
+				review = diffmodel.RenderUnbasedReviewFile(current.Path, current.Content, reason)
+			}
+			reviews = append(reviews, review)
 			complete = false
 			return
 		}

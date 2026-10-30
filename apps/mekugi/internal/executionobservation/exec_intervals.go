@@ -32,6 +32,79 @@ func execIntervalID(call string, codeMode bool, number int) string {
 	return fmt.Sprintf("%s:interval:%d", legacycall.ExecCallID(call, codeMode), number)
 }
 
+// An intervening edit publishes the interrupted writer's continuation endpoint.
+// When both results first arrive together, host input order can put the yielded
+// writer first. Finish the edit before reconciling that writer, keeping sibling
+// groups together just as ordinary completion does.
+func orderExecCompletions(windows *Windows, members []execCompletion) []execCompletion {
+	if windows == nil || len(members) < 2 {
+		return members
+	}
+	// Most requests contain only already-completed history. Scan the bounded
+	// window registry once, without allocating per retained historical call.
+	type interruption struct{ writer, edit string }
+	var cuts []interruption
+	windows.state().mu.Lock()
+	for _, window := range windows.state().windows {
+		for _, cut := range window.cuts {
+			cuts = append(cuts, interruption{writer: cut.writer, edit: window.ref})
+		}
+	}
+	windows.state().mu.Unlock()
+	if len(cuts) == 0 {
+		return members
+	}
+	groups := make(map[string][]execCompletion)
+	callGroups := make(map[string]string)
+	var keys []string
+	for _, member := range members {
+		key := "group:" + execSiblingKey(member.history)
+		if key == "group:" {
+			key = "call:" + member.callID
+		}
+		if _, exists := groups[key]; !exists {
+			keys = append(keys, key)
+		}
+		groups[key] = append(groups[key], member)
+		callGroups[member.callID] = key
+	}
+	dependencies := make(map[string][]string)
+	for _, cut := range cuts {
+		edit, ready := callGroups[cut.edit]
+		if writer, writerReady := callGroups[cut.writer]; ready && writerReady && writer != edit {
+			dependencies[writer] = append(dependencies[writer], edit)
+		}
+	}
+	if len(dependencies) == 0 {
+		return members
+	}
+	var ordered []execCompletion
+	state := make(map[string]uint8)
+	var visit func(string) bool
+	visit = func(key string) bool {
+		if state[key] != 0 {
+			return state[key] == 2
+		}
+		state[key] = 1
+		for _, dependency := range dependencies[key] {
+			if !visit(dependency) {
+				return false
+			}
+		}
+		state[key] = 2
+		ordered = append(ordered, groups[key]...)
+		return true
+	}
+	for _, key := range keys {
+		if !visit(key) {
+			// Conflicting group order cannot establish an endpoint. Preserve
+			// the original incomplete-evidence behavior rather than invent it.
+			return members
+		}
+	}
+	return ordered
+}
+
 // Intervals are immutable observations under the original writer's correlation.
 // Membership is deferred until that writer's real terminal result. Their earlier
 // capture order still places the prefix before the independently completed edit.

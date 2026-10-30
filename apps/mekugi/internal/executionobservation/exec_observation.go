@@ -183,6 +183,17 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 	}
 	background := slices.Compact(slices.Sorted(slices.Values(view.background)))
 	comparison := changecapture.Comparison{Excluded: view.excluded, Workspace: workspace, Claims: view.claims}
+	for _, interval := range intervals {
+		for _, file := range interval.before.ReviewFiles {
+			if file.Incomplete == "" {
+				comparison.PriorChanges = true
+				break
+			}
+		}
+		if comparison.PriorChanges {
+			break
+		}
+	}
 	if view.snapshot && selected.Store != nil {
 		comparison.Workspaces = snapshots
 	}

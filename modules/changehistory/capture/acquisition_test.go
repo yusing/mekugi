@@ -94,3 +94,20 @@ func TestReconcileAssessesCapturedOutcome(t *testing.T) {
 		t.Fatalf("capture assessment changed host or publication facts: %+v", result.Outcome)
 	}
 }
+
+func TestReconcileRepeatedWritesKeepPriorChangedIntervals(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "source.txt")
+	writeTestFile(t, path, "unchanged suffix\n")
+	observation := Observation{Files: []File{ReadFile(path, nil)}, RepeatedPaths: true}
+	for _, prior := range []bool{false, true} {
+		result := Reconcile(t.Context(), observation, Comparison{PriorChanges: prior})
+		if result.Complete != prior || (result.Coverage == CoverageExact) != prior || len(result.Files) != 0 || !strings.Contains(result.ScopeReason, "intermediate writes unobserved") {
+			t.Fatalf("prior changes=%v: %+v", prior, result)
+		}
+	}
+	observation.Files[0].Error = "missing boundary"
+	result := Reconcile(t.Context(), observation, Comparison{PriorChanges: true})
+	if result.Complete || result.Coverage != CoveragePartial || len(result.Files) != 1 || result.Files[0].Incomplete != "missing boundary" {
+		t.Fatalf("prior changes hid unavailable evidence: %+v", result)
+	}
+}

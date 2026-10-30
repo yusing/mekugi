@@ -142,6 +142,9 @@ open named writer, capture retains separate writer-before-edit, edit, and
 writer-after-edit intervals. Each interval keeps its originating operation. Writer intervals remain
 pending until that writer's terminal result; the intervening edit can complete independently.
 Unavailable boundaries retain incomplete evidence rather than an invented chain.
+Known text endpoints remain recoverable with `mchanges ID --history PATH` even
+when their preceding boundary is unavailable; those rows establish neither
+authored changes nor complete counts, composition, apply or revert evidence.
 Writes restored before return have no recoverable intermediate diff; repeated-write
 uncertainty remains diagnostic. Observation neither instruments nor reruns the
 process to reconstruct those bytes.

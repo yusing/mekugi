@@ -367,6 +367,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 			resolveStockEdits(&completed.history, workspace)
 		}
 	}
+	completedCalls = orderExecCompletions(p.execWindows, completedCalls)
 	execGroups := make(map[string][]execCompletion)
 	for _, completed := range completedCalls {
 		// A yielded command owns its continuing process, not the completed
