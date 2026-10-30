@@ -179,8 +179,8 @@ func TestWebUIBrowserSlowHistory(t *testing.T) {
 		if i == 599 {
 			text.WriteString("\n\nLARGE-LATEST")
 		}
-		main.Entries = append(main.Entries, activity.Entry{Facts: activity.Facts{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: text.String()}, Revision: 1})
-		agents.Entries = append(agents.Entries, activity.Entry{Facts: activity.Facts{Seq: uint64(i + 1), Agent: "/root/history", Kind: "text", Text: text.String()}, Revision: 1})
+		main.Entries = append(main.Entries, activity.Entry{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: text.String(), Revision: 1})
+		agents.Entries = append(agents.Entries, activity.Entry{Seq: uint64(i + 1), Agent: "/root/history", Kind: "text", Text: text.String(), Revision: 1})
 	}
 	// The newest oversized text starts with its visible preview and completes
 	// automatically, independently of readiness and navigation.
@@ -189,7 +189,7 @@ func TestWebUIBrowserSlowHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	machine.start("small")
-	if err := machine.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "small", Caller: "/root", Title: "Small thread", Workspace: machine.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Seq: 1, Agent: "Main", Kind: "text", Text: "SMALL-LATEST"}, Revision: 1}}}}); err != nil {
+	if err := machine.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "small", Caller: "/root", Title: "Small thread", Workspace: machine.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activity.Publication{Entries: []activity.Entry{{Seq: 1, Agent: "Main", Kind: "text", Text: "SMALL-LATEST", Revision: 1}}}}); err != nil {
 		t.Fatal(err)
 	}
 	identity, err := exec.CommandContext(ctx, browser, "session", "id", "--scope", "worktree", "--prefix", "slow-history").CombinedOutput()

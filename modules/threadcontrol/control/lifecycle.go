@@ -354,7 +354,7 @@ func (tree *Tree) transitionHost(member *Member, event hostEvent) (*LocalStop, e
 				slices.Sort(targets)
 				tree.cancelCompletion(member)
 				id := fmt.Sprintf("%s:%d:%s:recovery", member.Thread, member.Generation, turn)
-				wait := &Wait{Effect: Effect{ID: id, Caller: member.Thread, Target: member.Thread, Generation: member.Generation, Turn: turn, CallerTurn: turn, Kind: "wake", State: "registered"}, Targets: targets, All: true, Recovery: recovery, Stop: "committed"}
+				wait := &Wait{ID: id, Caller: member.Thread, Target: member.Thread, Generation: member.Generation, Turn: turn, CallerTurn: turn, Kind: "wake", State: "registered", Targets: targets, All: true, Recovery: recovery, Stop: "committed"}
 				if member.Wait != nil && hostOwned(member.Wait.State) {
 					// The preceding wake still owns its dispatch/reconciliation identity.
 					member.RecoveryWait = wait

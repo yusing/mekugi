@@ -133,8 +133,8 @@ func coalesceNativeOutput(previous, current []jsontext.Value) ([]jsontext.Value,
 	seen := make(map[activity.OutputDemand]bool, len(previous)+len(current))
 	merged := make([]jsontext.Value, 0, len(previous)+len(current))
 	for _, batch := range [][]jsontext.Value{current, previous} {
-		for i := len(batch) - 1; i >= 0; i-- {
-			result := batch[i]
+		for _, result := range slices.Backward(batch) {
+
 			var identity struct{ Demand activity.OutputDemand }
 			if json.Unmarshal(result, &identity) != nil {
 				return nil, false

@@ -279,7 +279,7 @@ func TestUISnapshotTemporaryCapturedChanges(t *testing.T) {
 	v.Conversation = true
 	v.Painter.Theme = diffrender.DarkTheme
 	v.Clock = func() time.Time { return time.Unix(1000, 0) }
-	v.Update(&presentation.Publication{Entries: []presentation.Entry{{Facts: presentation.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: "captured changes"}, Values: values}}}, Display{})
+	v.Update(&presentation.Publication{Entries: []presentation.Entry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "captured changes", Values: values}}}, Display{})
 	for _, expansion := range []uint8{0, 1, 2} {
 		v.Expansion = expansion
 		feed := v.RenderConversation(100)
@@ -326,7 +326,7 @@ func TestUISnapshotProjectCreateDeleteBatches(t *testing.T) {
 				v.Clock = func() time.Time { return time.Unix(1000, 0) }
 				v.Update(&presentation.Publication{Entries: []presentation.Entry{
 					{Facts: facts, Values: item.Values()},
-					{Facts: presentation.Facts{Seq: 2, Agent: "Main", Kind: "text", Text: "Later text stays reachable"}},
+					{Seq: 2, Agent: "Main", Kind: "text", Text: "Later text stays reachable"},
 				}}, Display{})
 				for _, expansion := range []uint8{0, 2} {
 					v.Expansion = expansion
@@ -430,9 +430,9 @@ func TestUISnapshotOperationResultCounts(t *testing.T) {
 		{"rg -A 1 needle src", "a.go:1:needle\na.go-2-context"},
 		{"inspect_file a.go", "1-2 import\n[output truncated]"},
 	} {
-		entry := presentation.ItemContent{Facts: presentation.Facts{Kind: "tool", Text: presentation.ShellSource(tc.source, "")}, Details: &presentation.ItemDetails{SearchResults: presentation.OperationResultCount(tc.source, &tc.output, 0)}, Command: presentation.Command{Tail: strings.Split(tc.output, "\n"), Exited: true}}
+		entry := presentation.ItemContent{Kind: "tool", Text: presentation.ShellSource(tc.source, ""), Details: &presentation.ItemDetails{SearchResults: presentation.OperationResultCount(tc.source, &tc.output, 0)}, Command: presentation.Command{Tail: strings.Split(tc.output, "\n"), Exited: true}}
 		value := entry.Values()[0]
-		block := Block{Value: value, Annotation: Annotation{Collapsed: true}}
+		block := Block{Value: value, Collapsed: true}
 		painted := p.Block(block, 60)
 		if strings.Contains(ansi.Strip(strings.Join(painted, "\n")), "lines") {
 			t.Fatal("count retained hidden-line hint")

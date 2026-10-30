@@ -24,7 +24,7 @@ func TestClaudePublicationPreservesUnchangedReview(t *testing.T) {
 	for i := range 64 {
 		path := fmt.Sprintf("file-%d", i)
 		chunks = append(chunks, changes.Chunk{Key: path, CaptureOrder: uint64(i + 1), Workspace: b.settings.Workspace,
-			Origin: changes.Origin{Change: path, Caller: "/root/child"}, Review: diffmodel.RenderReviewFile(path, path, "old\n", "new\n")})
+			Change: path, Caller: "/root/child", Review: diffmodel.RenderReviewFile(path, path, "old\n", "new\n")})
 	}
 	review := &changes.Snapshot{Publication: (changes.Publication{}).With(changes.GroupCaptures(chunks))}
 	publication := claudePublication{frame: sessionapi.Frame{Session: sessionapi.Session{Thread: b.info.Thread, Workspace: b.settings.Workspace}}}

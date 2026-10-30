@@ -12,7 +12,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
@@ -269,7 +268,7 @@ func TestNativeChildDialogLinkKeepsSourceAcrossNavigation(t *testing.T) {
 			view.DisplayedWorkspace = "/child-workspace"
 			detail := &sessionapi.NativeDetails{Source: view.Displayed, Agent: true, View: sessionpresentation.DetailView{
 				ID:    sessionpresentation.DetailID{Attachment: view.Version.Attachment, Selection: 1},
-				Pages: []sessionpresentation.DetailItem{{DetailPage: activity.DetailPage{ID: "child-page"}}},
+				Pages: []sessionpresentation.DetailItem{{ID: "child-page"}},
 			}}
 			event := sessionapi.NativeEvent{Attachment: "view", Frame: sessionapi.NativeFrame{View: view, Details: detail}}
 			c.accept(event)

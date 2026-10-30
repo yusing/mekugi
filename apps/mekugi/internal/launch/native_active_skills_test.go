@@ -45,8 +45,8 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 	assertNativeUISnapshot(t, "native-main-title-active-skills", strings.Split(screen.String(), "\n")[:1])
 	x, y := -1, -1
 	for row, text := range strings.Split(screen.String(), "\n") {
-		if at := strings.Index(text, label); at >= 0 {
-			x, y = ansi.StringWidth(text[:at]), row
+		if before, _, ok := strings.Cut(text, label); ok {
+			x, y = ansi.StringWidth(before), row
 		}
 	}
 	if x < 0 {

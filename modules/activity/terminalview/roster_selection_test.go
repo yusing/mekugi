@@ -141,7 +141,7 @@ func TestNativeRosterKeepsSelectedFinishedChild(t *testing.T) {
 	v := NewView()
 	publication := &presentation.Publication{}
 	for i, name := range []string{"/root", "/root/done-a", "/root/done-b", "/root/done-c", "/root/work-a", "/root/work-b", "/root/work-c", "/root/work-d"} {
-		agent := presentation.Agent{AgentFacts: presentation.AgentFacts{Name: name, Responding: i > 3}, Status: "responding"}
+		agent := presentation.Agent{Name: name, Responding: i > 3, Status: "responding"}
 		if i >= 1 && i <= 3 {
 			agent.Final, agent.Status = true, "answered"
 		}

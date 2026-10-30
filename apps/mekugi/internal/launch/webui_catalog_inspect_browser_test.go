@@ -49,7 +49,7 @@ func TestWebUIBrowserCatalogAndInspect(t *testing.T) {
 		appServerTestNotify(t, u, phase, map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	}
 	agents := &activity.Publication{
-		Entries: []activity.Entry{{Facts: activity.Facts{Seq: 1, Agent: "/root/worker", Kind: "text", Text: "Worker detail marker"}, Revision: 1}},
+		Entries: []activity.Entry{{Seq: 1, Agent: "/root/worker", Kind: "text", Text: "Worker detail marker", Revision: 1}},
 	}
 	// Both inspected names start outside the first roster page. Only worker
 	// exists, so pagination must not make ghost a navigable agent.

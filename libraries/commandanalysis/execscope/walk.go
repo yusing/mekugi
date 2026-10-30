@@ -138,7 +138,7 @@ func (w *execPathWalker) glob(pattern string) ([]string, error) {
 		}
 		pattern = directory
 	}
-	for i := len(components) - 1; i >= 0; i-- {
+	for i, component := range slices.Backward(components) {
 		var matches []string
 		for _, directory := range directories {
 			if time.Now().After(w.deadline) {
@@ -156,7 +156,7 @@ func (w *execPathWalker) glob(pattern string) ([]string, error) {
 					err = errExecWalkIncomplete
 					break
 				}
-				matched, matchErr := filepath.Match(components[i], child.Name())
+				matched, matchErr := filepath.Match(component, child.Name())
 				if matchErr != nil {
 					return nil, matchErr
 				}

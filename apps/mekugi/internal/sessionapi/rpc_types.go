@@ -109,8 +109,8 @@ func (g *typescriptTypes) value(t reflect.Type, definition bool) (string, error)
 		var fields []string
 		var names []string
 		var embedded []string
-		for i := 0; i < t.NumField(); i++ {
-			f := t.Field(i)
+		for f := range t.Fields() {
+			f := f
 			tag := strings.Split(f.Tag.Get("json"), ",")
 			name := tag[0]
 			if f.PkgPath != "" || name == "-" {

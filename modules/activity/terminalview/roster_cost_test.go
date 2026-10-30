@@ -11,8 +11,8 @@ import (
 
 func rosterCostAgent() presentation.Agent {
 	return presentation.Agent{
-		AgentFacts: presentation.AgentFacts{Name: "/root/worker", Responding: true,
-			Started: time.Unix(100, 0), WorkKnown: true, WorkSince: time.Unix(100, 0)},
+		Name: "/root/worker", Responding: true,
+		Started: time.Unix(100, 0), WorkKnown: true, WorkSince: time.Unix(100, 0),
 		Summary: []presentation.Entry{{Seq: 1, Values: []presentation.Value{{
 			Kind: "op", Verb: "Run", Fenced: true, Lang: "javascript",
 			Code: "const results = await Promise.allSettled([tools.exec_command({cmd: 'go test ./...'})]);\n" + strings.Repeat("// retained source\n", 1000),

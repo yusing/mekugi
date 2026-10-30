@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -219,9 +220,7 @@ func TestResponsesWebSocketCompactionProgress(t *testing.T) {
 			server := httptest.NewServer(endpoint)
 			defer server.Close()
 			headers := serverCompactionMetadataHeaders(t)
-			for key, values := range codexAuthHeaders() {
-				headers[key] = values
-			}
+			maps.Copy(headers, codexAuthHeaders())
 			conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: headers})
 			if err != nil {
 				t.Fatal(err)

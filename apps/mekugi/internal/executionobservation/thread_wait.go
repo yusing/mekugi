@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -60,8 +61,8 @@ func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName
 			calls[responses.StringField(item, "call_id")] = item
 		}
 	}
-	for index := len(items) - 1; index >= 0; index-- {
-		output := items[index]
+	for index, output := range slices.Backward(items) {
+
 		kind := responses.StringField(output, "type")
 		if kind != "custom_tool_call_output" && kind != "function_call_output" {
 			continue

@@ -43,8 +43,8 @@ func TestChildReplySummaryFollowsFeature(t *testing.T) {
 func TestBatchResultRow(t *testing.T) {
 	t.Parallel()
 	const script = "set -e\nmcat a.go 1:9; mcat b.go 3:7"
-	result := activitypresentation.Value{Content: activityfeed.Content{Kind: "op", Verb: "Run", Label: "shell batch"}, BatchExit: true, Duration: 3700 * time.Millisecond, Tail: []string{"}"}, TailOmitted: 143}
-	steps := activitypresentation.Value{Content: activityfeed.Content{Kind: "reads", Verb: "Read", Reads: []activityfeed.Read{{Path: "a.go", Ranges: []string{"1:9"}}, {Path: "b.go", Ranges: []string{"3:7"}}}}}
+	result := activitypresentation.Value{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Duration: 3700 * time.Millisecond, Tail: []string{"}"}, TailOmitted: 143}
+	steps := activitypresentation.Value{Kind: "reads", Verb: "Read", Reads: []activityfeed.Read{{Path: "a.go", Ranges: []string{"1:9"}}, {Path: "b.go", Ranges: []string{"3:7"}}}}
 	command := &activitypresentation.ItemContent{Command: activitypresentation.Command{Display: script}}
 
 	listed := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{steps, result}, Command: command}, false, "/root")
@@ -67,7 +67,7 @@ func TestBatchResultRow(t *testing.T) {
 // The programs that made an edit leave its label as a separate list.
 func TestEditSources(t *testing.T) {
 	t.Parallel()
-	edit := activitypresentation.Value{Content: activityfeed.Content{Kind: "op", Verb: "Edit", Label: "`a.go` +2 −1 · python3, gofmt", EditSource: "python3, gofmt"}}
+	edit := activitypresentation.Value{Kind: "op", Verb: "Edit", Label: "`a.go` +2 −1 · python3, gofmt", EditSource: "python3, gofmt"}
 	if v := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{edit}}, false, "/root").Values[0]; v.Label != "`a.go` +2 −1" || strings.Join(v.Sources, "|") != "python3|gofmt" {
 		t.Fatalf("edit = %+v", v)
 	}
@@ -207,7 +207,7 @@ func TestCoordinationEndpointsUseRuntimeCaller(t *testing.T) {
 
 func TestRosterActivityUsesSharedSummary(t *testing.T) {
 	for _, kind := range []string{"progress", "reasoning"} {
-		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Kind: kind, Text: "Checking callers", Observed: time.Unix(100, 0)}}
+		item := activitypresentation.ItemContent{Kind: kind, Text: "Checking callers", Observed: time.Unix(100, 0)}
 		summary := activitypresentation.Entry{Facts: item.Facts, Values: item.Values()}
 		roster := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{
 			AgentFacts: activitypresentation.AgentFacts{Name: "/root/worker", Responding: true}, Summary: []activitypresentation.Entry{summary},
@@ -251,7 +251,7 @@ func TestSkippedCommandProjection(t *testing.T) {
 func TestPendingCommandsAndEffects(t *testing.T) {
 	t.Parallel()
 	const source = "printf ready; printf later"
-	item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Kind: "tool"}, Command: activitypresentation.Command{Script: source, Display: source, Running: true, Segments: []activitypresentation.CommandSegment{
+	item := activitypresentation.ItemContent{Seq: 1, Kind: "tool", Command: activitypresentation.Command{Script: source, Display: source, Running: true, Segments: []activitypresentation.CommandSegment{
 		{Source: "printf ready", Text: activitypresentation.ShellSource("printf ready", ""), Running: true},
 		{Source: "printf later", Pending: true},
 	}}, Details: &activitypresentation.ItemDetails{CommandText: source}}
@@ -259,7 +259,7 @@ func TestPendingCommandsAndEffects(t *testing.T) {
 	if len(projected.Values) < 2 || !projected.Values[1].Pending {
 		t.Fatalf("pending command lost: %+v", projected.Values)
 	}
-	effect := activitypresentation.Value{Effect: true, Content: activityfeed.Content{Kind: "op", Verb: "Create", Label: "`a.go` +1 -0"}}
+	effect := activitypresentation.Value{Effect: true, Kind: "op", Verb: "Create", Label: "`a.go` +1 -0"}
 	if !projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{effect}}, false, "/root").Values[0].Effect {
 		t.Fatal("captured effect lost its parent relationship")
 	}
@@ -278,7 +278,7 @@ func TestTemporaryEditDisclosure(t *testing.T) {
 				for i := range count {
 					records = append(records, fmt.Sprintf("%s `%s/file%03d.go` %s · %s", verb, root, i, counts, writer))
 				}
-				item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Kind: "tool", Text: strings.Join(records, "\n\n")}}
+				item := activitypresentation.ItemContent{Seq: 1, Kind: "tool", Text: strings.Join(records, "\n\n")}
 				values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false, "/root").Values
 				if len(values) != count || !strings.Contains(values[count-1].Label, fmt.Sprintf("file%03d.go", count-1)) {
 					t.Fatal("folded capture lost its original files")
@@ -296,7 +296,7 @@ func TestTemporaryEditDisclosure(t *testing.T) {
 		}
 	}
 	const source = "first\nsecond\nthird\nfourth\nfifth\nsixth"
-	item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Kind: "tool", Text: "Create `/tmp/large.txt`\n```text\n" + source + "\n```"}}
+	item := activitypresentation.ItemContent{Kind: "tool", Text: "Create `/tmp/large.txt`\n```text\n" + source + "\n```"}
 	if values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false, "/root").Values; len(values) != 1 || !values[0].FoldSource || values[0].Code != source {
 		t.Fatalf("temporary source disclosure lost original: %+v", values)
 	}
@@ -390,7 +390,7 @@ func TestPathlessSkillAttachmentProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Agent: "Main", Kind: "attachments"},
+	item := activitypresentation.ItemContent{Seq: 1, Agent: "Main", Kind: "attachments",
 		Details: &activitypresentation.ItemDetails{Attachments: sessionpresentation.AttachmentValues("/workspace", content)}}
 	values := projectValues(item.Values(), false)
 	if len(values) != 2 {

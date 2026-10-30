@@ -78,7 +78,7 @@ func TestUISnapshotCapturedEffectsUnderAction(t *testing.T) {
 				v := NewView()
 				v.Conversation = true
 				v.Painter.Theme = diffrender.DarkTheme
-				v.Update(&presentation.Publication{Entries: []presentation.Entry{{Facts: presentation.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: command.Script, Restored: restored}, Values: values}}}, Display{Caller: "/root"})
+				v.Update(&presentation.Publication{Entries: []presentation.Entry{{Seq: 1, Agent: "Main", Kind: "tool", Text: command.Script, Restored: restored, Values: values}}}, Display{Caller: "/root"})
 				rendered := v.RenderConversation(70)
 				plain := ansi.Strip(strings.Join(rendered.Lines, "\n"))
 				if strings.Count(plain, "Deleted") != 1 || !strings.Contains(plain, "exit 1") || !strings.Contains(plain, "failure detail") {

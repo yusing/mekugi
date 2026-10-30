@@ -33,7 +33,7 @@ func nativeTestAnswerBatch(call prompt.CallView) sessionapi.NativeAnswers {
 	input := sessionapi.NativeAnswers{Call: call.ID}
 	for _, q := range call.Questions {
 		if q.Pending {
-			input.Answers = append(input.Answers, sessionapi.NativeQuestionAnswer{AnswerInput: prompt.AnswerInput{Call: call.ID, Question: q.ID}})
+			input.Answers = append(input.Answers, sessionapi.NativeQuestionAnswer{Call: call.ID, Question: q.ID})
 		}
 	}
 	return input

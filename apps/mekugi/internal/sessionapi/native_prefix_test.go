@@ -28,9 +28,9 @@ func TestNativeOwnerDeltasThroughQueues(t *testing.T) {
 			}
 			defer source.close()
 			frame := benchmarkNativeHistoryFrame(1000)
-			frame.Agents = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: "agent history"}}}}
-			frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child"}, Agents: &activity.Publication{MainSummary: []activity.Entry{{Facts: activity.Facts{Text: "family summary"}}}}}
-			frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{Files: []changes.File{{Path: "saved.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("+saved diff\n", 1<<16)}}}}}}}
+			frame.Agents = &activity.Publication{Entries: []activity.Entry{{Text: "agent history"}}}
+			frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child"}, Agents: &activity.Publication{MainSummary: []activity.Entry{{Text: "family summary"}}}}
+			frame.Review = &changes.ReviewView{Revision: 1, Files: []changes.File{{Path: "saved.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("+saved diff\n", 1<<16)}}}}}}
 			frame.Effects = []NativeEffect{{ID: 1, Restore: &composer.Draft{Text: "restore"}}}
 			connection := &NativeConnection{thread: "thread", subscription: &RPCSubscription{client: &RPCClient{}}}
 			var events []publication
@@ -39,8 +39,8 @@ func TestNativeOwnerDeltasThroughQueues(t *testing.T) {
 				frame.View.Version.Revision++
 				switch step {
 				case 2:
-					frame.Main = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: "new history"}}}}
-					frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child", "grandchild"}, Agents: &activity.Publication{MainSummary: []activity.Entry{{Facts: activity.Facts{Text: "new family summary"}}}}}
+					frame.Main = &activity.Publication{Entries: []activity.Entry{{Text: "new history"}}}
+					frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child", "grandchild"}, Agents: &activity.Publication{MainSummary: []activity.Entry{{Text: "new family summary"}}}}
 					frame.MainOutput = []activity.OutputResult{{Demand: activity.OutputDemand{Source: 1}, View: activityfeed.OutputView{Lines: []string{"output"}}}}
 				case 3:
 					frame.MainOutput = nil
@@ -218,7 +218,7 @@ func TestNativeSemanticPrefixCanShrinkBeforeReceipt(t *testing.T) {
 	if err := native.Publish(attachment.Attachment, frame); err != nil {
 		t.Fatal(err)
 	}
-	frame.Main = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: strings.Repeat("n", 30<<20)}}}}
+	frame.Main = &activity.Publication{Entries: []activity.Entry{{Text: strings.Repeat("n", 30<<20)}}}
 	if err := native.Publish(attachment.Attachment, frame); err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestNativePublicationRejectsIndivisibleOversize(t *testing.T) {
 			if kind == "state" {
 				frame.Notice = payload
 			} else if kind == "feed" {
-				frame.Main = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: payload}}}}
+				frame.Main = &activity.Publication{Entries: []activity.Entry{{Text: payload}}}
 			} else {
 				frame.Effects = []NativeEffect{{ID: 1, Restore: &composer.Draft{Text: payload}}}
 			}
@@ -285,8 +285,8 @@ func TestNativeOwnerDeltaResetAndReviewReplacement(t *testing.T) {
 	}
 	defer source.close()
 	frame := benchmarkNativeHistoryFrame(1)
-	frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child"}, Agents: &activity.Publication{MainSummary: []activity.Entry{{Facts: activity.Facts{Text: "family summary"}}}}, Status: sessionpresentation.Label{Text: "Working", Running: true}}
-	frame.Review = &changes.ReviewView{Revision: 1, Coverage: "loading", Publication: changes.Publication{Files: []changes.File{{Path: "first.go"}}}}
+	frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child"}, Agents: &activity.Publication{MainSummary: []activity.Entry{{Text: "family summary"}}}, Status: sessionpresentation.Label{Text: "Working", Running: true}}
+	frame.Review = &changes.ReviewView{Revision: 1, Coverage: "loading", Files: []changes.File{{Path: "first.go"}}}
 	connection := &NativeConnection{thread: "thread", subscription: &RPCSubscription{client: &RPCClient{}}}
 	var first NativeFrame
 	for step := range 6 {
@@ -297,7 +297,7 @@ func TestNativeOwnerDeltaResetAndReviewReplacement(t *testing.T) {
 			frame.Review.Coverage = "complete"
 			frame.Family = new(*frame.Family)
 		case 2:
-			frame.Review = &changes.ReviewView{Revision: 2, Publication: changes.Publication{Files: []changes.File{{Path: "second.go"}}}}
+			frame.Review = &changes.ReviewView{Revision: 2, Files: []changes.File{{Path: "second.go"}}}
 			frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child", "grandchild"}, Status: sessionpresentation.Label{Text: "Finished"}}
 		case 3:
 			frame.View.Version.Attachment++
@@ -358,8 +358,8 @@ func TestNativeRetainedOwnersKeepSnapshotAndHydrationLimits(t *testing.T) {
 	defer source.close()
 	frame := benchmarkNativeHistoryFrame(1)
 	frame.Main.Entries[0].Text = strings.Repeat("m", 20<<20)
-	frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{Files: []changes.File{{Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("r", 20<<20)}}}}}}}
-	frame.Family = &Family{Root: "thread", Agents: &activity.Publication{MainSummary: []activity.Entry{{Facts: activity.Facts{Text: strings.Repeat("f", 20<<20)}}}}}
+	frame.Review = &changes.ReviewView{Revision: 1, Files: []changes.File{{Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("r", 20<<20)}}}}}}
+	frame.Family = &Family{Root: "thread", Agents: &activity.Publication{MainSummary: []activity.Entry{{Text: strings.Repeat("f", 20<<20)}}}}
 	if err := native.Publish(request.Attachment, frame); err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +424,7 @@ func TestNativeRetainedOwnersKeepSnapshotAndHydrationLimits(t *testing.T) {
 func TestNativeOversizedReviewKeepsAttachmentAndReconnect(t *testing.T) {
 	frame := nativeTestFrame("thread", 1)
 	file := changes.File{Path: "large.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("r", 33<<20)}}}}
-	frame.Review = &changes.ReviewView{Revision: 1, Workspace: "/workspace", Publication: changes.Publication{Files: []changes.File{file}, Unfiltered: map[string]changes.File{"large.go": file}}}
+	frame.Review = &changes.ReviewView{Revision: 1, Workspace: "/workspace", Files: []changes.File{file}, Unfiltered: map[string]changes.File{"large.go": file}}
 	frame.Effects = []NativeEffect{{ID: 1, Restore: &composer.Draft{Text: "retained input"}}}
 	native := NewLive().Native()
 	for range 2 { // Reattachment must independently contain the same source.

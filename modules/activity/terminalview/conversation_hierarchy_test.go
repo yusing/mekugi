@@ -33,7 +33,7 @@ func TestUISnapshotConversationHierarchy(t *testing.T) {
 					if caller != "/root" && kind != "final" {
 						agent = caller
 					} // Child feed's admitted owner.
-					item := presentation.ItemContent{Facts: presentation.Facts{Seq: seq, Agent: agent, Kind: kind, Text: body, Activity: seq + 100, Observed: now.Add(time.Duration(seq) * time.Second), Restored: restored}}
+					item := presentation.ItemContent{Seq: seq, Agent: agent, Kind: kind, Text: body, Activity: seq + 100, Observed: now.Add(time.Duration(seq) * time.Second), Restored: restored}
 					directed := &presentation.DirectedContent{From: from, To: to, Text: body}
 					switch kind {
 					case "start", "assignment":

@@ -33,7 +33,7 @@ func TestUISnapshotFeedElapsedRollover(t *testing.T) {
 		t.Run(fmt.Sprintf("Main=%t", main), func(t *testing.T) {
 			start := time.Date(2026, 10, 23, 12, 0, 0, 0, time.Local)
 			item := presentation.ItemContent{
-				Facts:   presentation.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: presentation.ShellSource("pwd", ""), Observed: start, Running: true},
+				Seq: 1, Agent: "Main", Kind: "tool", Text: presentation.ShellSource("pwd", ""), Observed: start, Running: true,
 				Command: presentation.Command{Running: true, Started: start},
 				Details: &presentation.ItemDetails{CommandText: "pwd"},
 			}
@@ -74,7 +74,7 @@ func TestUISnapshotFeedElapsedRollover(t *testing.T) {
 func TestUISnapshotRosterElapsedRollover(t *testing.T) {
 	start := time.Unix(100, 0)
 	v := NewView()
-	agent := presentation.Agent{AgentFacts: presentation.AgentFacts{Name: "/root", Started: start, WorkKnown: true, WorkSince: start}}
+	agent := presentation.Agent{Name: "/root", Started: start, WorkKnown: true, WorkSince: start}
 	var rows []string
 	for _, elapsed := range []time.Duration{0, 999 * time.Millisecond, time.Second} {
 		rows = append(rows, fmt.Sprint(elapsed))

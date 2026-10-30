@@ -54,8 +54,8 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		if i%50 == 49 {
 			text += strings.Repeat("\n\nRetained content acquired while scrolling.", 80)
 		}
-		main.Entries = append(main.Entries, activity.Entry{Facts: activity.Facts{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: text}, Revision: 1})
-		agents.Entries = append(agents.Entries, activity.Entry{Facts: activity.Facts{Seq: uint64(i + 1), Agent: fmt.Sprintf("/root/worker%d", i%4), Kind: "text", Text: text}, Revision: 1})
+		main.Entries = append(main.Entries, activity.Entry{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: text, Revision: 1})
+		agents.Entries = append(agents.Entries, activity.Entry{Seq: uint64(i + 1), Agent: fmt.Sprintf("/root/worker%d", i%4), Kind: "text", Text: text, Revision: 1})
 	}
 	for i := range 120 {
 		agents.Roster = append(agents.Roster, activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: fmt.Sprintf("/root/worker%d", i), Responding: i < 2, Final: i >= 2}}})
@@ -178,7 +178,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	}
 	// Hold one receipt so subsequent updates must coalesce to a snapshot.
 	run("eval", `window.savedSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { if (JSON.parse(text).method === 'publication/ack') { window.heldReceipt = () => window.savedSend.call(this, text); return; } return window.savedSend.call(this, text); }`)
-	frame.Main = &activity.Publication{Entries: append(main.Entries, activity.Entry{Facts: activity.Facts{Seq: 601, Agent: "Main", Kind: "text", Text: "Newest retained update"}, Revision: 1})}
+	frame.Main = &activity.Publication{Entries: append(main.Entries, activity.Entry{Seq: 601, Agent: "Main", Kind: "text", Text: "Newest retained update", Revision: 1})}
 	if err := machine.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	}
 	run("eval", `window.detailReads = []; window.savedFetch = window.fetch; window.fetch = (...args) => { if (String(args[0]).endsWith('/api/resources/content')) return new Promise((resolve, reject) => window.detailReads.push(() => window.savedFetch(...args).then(resolve, reject))); return window.savedFetch(...args); }`)
 	thread := sessionpresentation.Thread{ID: "same-thread", Caller: "/root"}
-	detailFrame := sessionapi.NativeFrame{View: sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 2}, Main: thread, Input: thread, Displayed: thread}, Details: &sessionapi.NativeDetails{Source: thread, View: sessionpresentation.DetailView{ID: sessionpresentation.DetailID{Attachment: 1, Selection: 1}, Revision: 1, Pages: []sessionpresentation.DetailItem{{DetailPage: activity.DetailPage{ID: "retained", Value: activity.Value{Body: strings.Repeat("Complete retained details.\n\n", 120)}}}}}}}
+	detailFrame := sessionapi.NativeFrame{View: sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 2}, Main: thread, Input: thread, Displayed: thread}, Details: &sessionapi.NativeDetails{Source: thread, View: sessionpresentation.DetailView{ID: sessionpresentation.DetailID{Attachment: 1, Selection: 1}, Revision: 1, Pages: []sessionpresentation.DetailItem{{ID: "retained", Body: strings.Repeat("Complete retained details.\n\n", 120)}}}}}
 	detailFrame.View.Info.Workspace = machine.workdir
 	if err := attachment.native.Publish(attachment.request.Attachment, detailFrame); err != nil {
 		t.Fatal(err)

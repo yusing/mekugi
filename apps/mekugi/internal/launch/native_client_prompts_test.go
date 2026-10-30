@@ -19,7 +19,6 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
-	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
 func TestNativeClientPromptDeliveryRoutesInput(t *testing.T) {
@@ -279,7 +278,7 @@ func TestNativeClientSecretCompletionIsOnlyFinalNativeInput(t *testing.T) {
 	questionTestSync(t, u, "secret", true)
 	first, second := nativeTestPromptClient(u), nativeTestPromptClient(u)
 	q := first.event.Frame.View.Questions
-	first.prompt(terminalsession.PromptInput{Version: first.event.Frame.View.Version, PromptKey: conversationui.PromptKey{Question: prompt.QuestionInput{Call: q.Call.ID, Question: q.Call.Questions[0].ID, Kind: prompt.InputChoose, Choice: len(q.Call.Questions[0].Choices)}}}, nil)
+	first.prompt(terminalsession.PromptInput{Version: first.event.Frame.View.Version, Question: prompt.QuestionInput{Call: q.Call.ID, Question: q.Call.Questions[0].ID, Kind: prompt.InputChoose, Choice: len(q.Call.Questions[0].Choices)}}, nil)
 	first.renderer.terminal.Prompts.Secret.InsertText("fixture-private-secret")
 	first.refresh(time.Now())
 	if first.event.Frame.View.PromptDraft.Draft.Text != "" || second.renderer.terminal.Prompts.Secret.Text != "" || wire.Len() != 0 {

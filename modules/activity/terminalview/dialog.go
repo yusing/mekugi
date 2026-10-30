@@ -331,7 +331,7 @@ func (p *Painter) DetailDocument(detail presentation.DetailPage, output *activit
 		value.Live, value.Running = false, false
 		if detail.Prepared.Cell {
 			// A cell is not a per-command file read or captured patch.
-			value = presentation.Value{Content: activitymodel.Content{Kind: "op", Verb: "Run"}}
+			value = presentation.Value{Kind: "op", Verb: "Run"}
 		}
 		view := activitymodel.OutputView{Done: true}
 		if detail.Prepared.Text != "" {

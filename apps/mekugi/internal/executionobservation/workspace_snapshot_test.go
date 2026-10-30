@@ -477,7 +477,7 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 			if receipts := data.Receipts(); len(receipts) != 1 || !strings.Contains(receipts[0].Text, "tool-managed files (diagnostic: +1 -0)") || strings.Contains(receipts[0].Text, "imported.txt") {
 				t.Fatalf("Git diagnostic receipt: %+v", receipts)
 			}
-			details := data.ActivityDetail(activitydetail.Request{Operation: activitydetail.Operation{Thread: history.ExecutingThread, Item: "vcs"}})
+			details := data.ActivityDetail(activitydetail.Request{Thread: history.ExecutingThread, Item: "vcs"})
 			if len(details.Pages) != len(history.ReviewFiles) || !strings.Contains(details.Pages[len(details.Pages)-1].Code, "+imported") {
 				t.Fatalf("Git diagnostic details: %+v", details)
 			}

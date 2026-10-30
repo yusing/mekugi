@@ -19,7 +19,7 @@ func TestAgentCompactionUsesSoleLedgerAndBothGates(t *testing.T) {
 			t.Run(fmt.Sprintf("ackFirst=%t/success=%t", ackFirst, success), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
 					transport := &requestTransport{id: "compact"}
-					u := Client[struct{}]{Live: Live{Thread: "main"}, Requests: NewRequests[struct{}](transport)}
+					u := Client[struct{}]{Thread: "main", Requests: NewRequests[struct{}](transport)}
 					done := make(chan error, 1)
 					go func() {
 						_, err := u.Requests.Input(t.Context(), control.NativeInput{Thread: "main", ID: "checkpoint", Kind: "COMPACT", Run: true})

@@ -156,6 +156,6 @@ func (d capturedDelivery) Prepare(refs []string) (command.PreparedDelivery, erro
 	return command.PreparedDelivery{
 		Referenced:   command.Output{Stdout: SnapshotPrefix + refs[0] + "\n"},
 		Unreferenced: command.Output{Stderr: "CONTENT NOT ATTACHED: reload snapshot publication failed\n", ExitCode: 1},
-		Recovery:     []command.RecoveryOutput{{OmittedOutput: command.OmittedOutput{Stdout: d.data}}},
+		Recovery:     []command.RecoveryOutput{{Stdout: d.data}},
 	}, nil
 }

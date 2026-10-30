@@ -86,7 +86,7 @@ func publishReviewFrame(t *testing.T, server *Server, frame Frame) {
 func reviewChunk(order uint64, caller, beforePath, afterPath, before, after string) changes.Chunk {
 	return changes.Chunk{
 		Key: fmt.Sprintf("capture-%d", order), CaptureOrder: order, Workspace: "/project",
-		Origin: changes.Origin{Change: fmt.Sprintf("change-%d", order), Caller: caller, Source: "apply_patch"},
+		Change: fmt.Sprintf("change-%d", order), Caller: caller, Source: "apply_patch",
 		Review: diffmodel.RenderReviewFile(beforePath, afterPath, before, after),
 	}
 }

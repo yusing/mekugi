@@ -70,7 +70,7 @@ func TestNativeFactsRestoreHistoryPreferencesAndUsage(t *testing.T) {
 func TestNativeCompletionContinuesNewestTargetWithoutEditorCache(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.attached.cwd, u.attached.view, u.picker.view = "/work", "view", "view"
-	editor := &composer.Editor{Draft: composer.Draft{Text: "@first"}}
+	editor := &composer.Editor{Text: "@first"}
 	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, editor, context.Background(), nil)
 	editor.Replace(composer.Draft{Text: "@second"})
 	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, editor, context.Background(), nil)

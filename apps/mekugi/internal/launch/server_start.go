@@ -260,11 +260,11 @@ func recentServerWorkspaces(ctx context.Context) []string {
 		if err != nil {
 			return
 		}
-		for i := len(entries) - 1; i >= 0; i-- {
+		for _, entry := range slices.Backward(entries) {
 			if ctx.Err() != nil || files >= 400 || len(workspaces) >= 20 {
 				return
 			}
-			entry := entries[i]
+
 			path := filepath.Join(directory, entry.Name())
 			if entry.IsDir() && depth < 3 {
 				walk(path, depth+1)

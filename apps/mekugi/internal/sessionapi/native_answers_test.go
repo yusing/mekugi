@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
 
 func TestNativeAnswerPreparationIsOneAdmission(t *testing.T) {
@@ -53,7 +52,7 @@ func TestNativeAnswerPreparationIsOneAdmission(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			input := NativeAnswers{Call: "call", Answers: []NativeQuestionAnswer{{AnswerInput: prompt.AnswerInput{Call: "call", Question: "call/0", Draft: composer.Draft{Text: "first"}}}, {AnswerInput: prompt.AnswerInput{Call: "call", Question: "call/1"}, Secret: "fixture-secret"}}}
+			input := NativeAnswers{Call: "call", Answers: []NativeQuestionAnswer{{Call: "call", Question: "call/0", Draft: composer.Draft{Text: "first"}}, {Call: "call", Question: "call/1", Secret: "fixture-secret"}}}
 			done := make(chan error, 1)
 			go func() {
 				_, err := connection.Send(t.Context(), event.Target(), NativeOperation{Answers: &input})

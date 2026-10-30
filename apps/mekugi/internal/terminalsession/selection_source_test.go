@@ -27,8 +27,8 @@ func TestCommonPathSelectionCopiesOriginalOperands(t *testing.T) {
 		blocks = activityui.MergeTargets(activityui.GroupOperations(blocks))
 		blocks[0].Duration, blocks[0].Workdir, blocks[0].ShowWorkdir = time.Second, "/workspace", true
 		blocks[0].Approval, blocks[0].Repeated = "Approved", "again"
-		p := activityui.Painter{}
-		p.CopySource = true
+		p := activityui.Painter{
+			CopySource: true}
 		rows := p.Block(blocks[0], 100)
 		copyRows := make([][]terminalui.CopySpan, len(rows))
 		for i := range rows {

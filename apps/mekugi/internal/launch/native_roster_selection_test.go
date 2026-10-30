@@ -29,7 +29,7 @@ func TestUISnapshotNativeSelectedAgentDiff(t *testing.T) {
 	var captures []changes.Chunk
 	for i, caller := range []string{"/root", "/root/worker", "/root/other"} {
 		name := fmt.Sprintf("file%d.go", i)
-		captures = append(captures, changes.Chunk{Key: name, Workspace: u.attached.cwd, CaptureOrder: uint64(i + 1), Origin: changes.Origin{Caller: caller, Change: name}, Review: diffmodel.RenderReviewFile("", filepath.Join(u.attached.cwd, name), "", "package selected\n// "+caller+" edit\n")})
+		captures = append(captures, changes.Chunk{Key: name, Workspace: u.attached.cwd, CaptureOrder: uint64(i + 1), Caller: caller, Change: name, Review: diffmodel.RenderReviewFile("", filepath.Join(u.attached.cwd, name), "", "package selected\n// "+caller+" edit\n")})
 	}
 	publication = publication.With(changes.GroupCaptures(captures))
 	c.event.Frame = sessionapi.NativeFrame{View: u.attached.presentation.View(), Review: &changes.ReviewView{Revision: 1, Workspace: u.attached.cwd, Publication: publication}}

@@ -117,7 +117,7 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 					draft.Selections = append(draft.Selections, token)
 					continue
 				}
-				editor := composer.Editor{Draft: composer.Draft{Text: text.String(), Selections: draft.Selections}}
+				editor := composer.Editor{Text: text.String(), Selections: draft.Selections}
 				if text.Len() > 0 {
 					editor.InsertText("\n")
 				}

@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	activityfeed "github.com/yusing/mekugi/modules/activity/feed"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -152,13 +151,13 @@ func TestRemoteViewDetachedSecretProjection(t *testing.T) {
 	q := prompt.QuestionView{ID: "secret", Secret: true, Pending: true, Header: "hidden-header", Text: "hidden-description", Choices: []prompt.Option{{Label: "hidden-option"}}, Answer: []string{"hidden-answer"}}
 	frame.Questions = []prompt.CallView{{ID: "call", Questions: []prompt.QuestionView{q, {ID: "ordinary", Text: "ordinary-question"}}}}
 	frame.View.Questions.Call = &frame.Questions[0]
-	value := activity.Value{Content: activityfeed.Content{Body: "hidden-body"}, Questions: []activity.Question{{Secret: true, Text: "hidden-description", Answer: "hidden-answer", Options: "hidden-option"}, {Text: "ordinary-question", Answer: "ordinary-answer"}}}
-	entry := activity.Entry{Facts: activity.Facts{Text: "2 questions\nhidden-description"}, Values: []activity.Value{value, {Content: activityfeed.Content{Body: "hidden-nested-body"}, Members: []activity.Value{value}, RequestedOperations: []activity.Value{value}}}}
+	value := activity.Value{Body: "hidden-body", Questions: []activity.Question{{Secret: true, Text: "hidden-description", Answer: "hidden-answer", Options: "hidden-option"}, {Text: "ordinary-question", Answer: "ordinary-answer"}}}
+	entry := activity.Entry{Text: "2 questions\nhidden-description", Values: []activity.Value{value, {Body: "hidden-nested-body", Members: []activity.Value{value}, RequestedOperations: []activity.Value{value}}}}
 	frame.Main = &activity.Publication{Entries: []activity.Entry{entry}, MainSummary: []activity.Entry{entry}, Roster: []activity.AgentRow{{Agent: activity.Agent{Summary: []activity.Entry{entry}}}}}
 	frame.Agents = frame.Main
 	frame.Family = &Family{Root: "root", Threads: []string{"root", "view"}, Agents: frame.Agents, Status: sessionpresentation.Label{Text: "Working", Running: true}}
-	frame.Details = &NativeDetails{View: sessionpresentation.DetailView{Pages: []sessionpresentation.DetailItem{{DetailPage: activity.DetailPage{Value: value, ID: "page"}}}}}
-	frame.Facts = NativeSessionFacts{History: []composer.HistoryEntry{{Draft: composer.Draft{Text: "hidden-local-history"}}}, DebugDirectory: "hidden-debug", Diagnostics: "hidden-host-stderr", Preferences: []byte(`{"private":"hidden-preferences"}`)}
+	frame.Details = &NativeDetails{View: sessionpresentation.DetailView{Pages: []sessionpresentation.DetailItem{{Value: value, ID: "page"}}}}
+	frame.Facts = NativeSessionFacts{History: []composer.HistoryEntry{{Text: "hidden-local-history"}}, DebugDirectory: "hidden-debug", Diagnostics: "hidden-host-stderr", Preferences: []byte(`{"private":"hidden-preferences"}`)}
 	event, _, client := openRemoteTest(t, s, hub.Handler(), frame)
 	data, err := json.Marshal(event, nativeEncoding)
 	if err != nil {

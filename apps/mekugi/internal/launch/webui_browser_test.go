@@ -25,7 +25,6 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
-	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
@@ -89,7 +88,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 			if input := request.Operation.Completion; input != nil {
 				frame.CompletionTarget = input.Target
 				if strings.HasPrefix(input.Draft.Text, "/") {
-					frame.View.Menu = &sessionpresentation.MenuView{ID: 99, View: completion.View{Choices: nativeCommands}}
+					frame.View.Menu = &sessionpresentation.MenuView{ID: 99, Choices: nativeCommands}
 				}
 			} else if reference := request.Operation.Reference; reference != nil {
 				references <- request
@@ -139,7 +138,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 				thread := sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}
 				frame := sessionapi.NativeFrame{View: sessionpresentation.View{Version: request.Version, Main: thread, Input: thread, Displayed: thread, Info: sessionpresentation.MainInfo{Workspace: request.Workspace}}}
 				frame.View.Version.Revision++
-				frame.Details = &sessionapi.NativeDetails{Source: thread, View: sessionpresentation.DetailView{ID: sessionpresentation.DetailID{Attachment: request.Version.Attachment, Selection: 1}, Pages: []sessionpresentation.DetailItem{{DetailPage: activitypresentation.DetailPage{ID: "compaction", Value: activitypresentation.Value{Kind: "compaction", Label: "Context compacted", Body: "Retained compacted summary."}}}}}}
+				frame.Details = &sessionapi.NativeDetails{Source: thread, View: sessionpresentation.DetailView{ID: sessionpresentation.DetailID{Attachment: request.Version.Attachment, Selection: 1}, Pages: []sessionpresentation.DetailItem{{ID: "compaction", Kind: "compaction", Label: "Context compacted", Body: "Retained compacted summary."}}}}
 				if err := native.Publish(request.Attachment, frame); err != nil {
 					request.Reply <- err.Error()
 				} else {
@@ -472,7 +471,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		run("wait", "--fn", `document.querySelector('#composer-text')?.value === 'keep draft'`)
 	}
 	responseMarkdown := "Response with **authored Markdown**.\n\n```go\nfmt.Println(\"complete\")\n```\n\n" + strings.Repeat("Oversized prose loads automatically.\n\n", 120) + "End of complete response."
-	if err := alpha.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 99, Agent: "Main", Kind: "final", Text: responseMarkdown}}}}}); err != nil {
+	if err := alpha.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Seq: 99, Agent: "Main", Kind: "final", Text: responseMarkdown}}}}); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "authored Markdown")
@@ -499,7 +498,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}
 	// Captured edits keep their semantic row even when the retained raw diff
 	// crosses the transport window. The diff belongs in existing Details.
-	editItem := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 97, Agent: "Main", Kind: "tool", Text: "Edit `/tmp/manifest.json` +64 -6 · python3\n```diff\n@@ -1,6 +1,64 @@\n" + strings.Repeat("+  captured_change,\n", 300) + "```"}}
+	editItem := activitypresentation.ItemContent{Seq: 97, Agent: "Main", Kind: "tool", Text: "Edit `/tmp/manifest.json` +64 -6 · python3\n```diff\n@@ -1,6 +1,64 @@\n" + strings.Repeat("+  captured_change,\n", 300) + "```"}
 	previewFrame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: editItem.Facts, Values: editItem.Values(), Revision: 1}}}}
 	if err := alpha.publishFrame(previewFrame); err != nil {
 		t.Fatal(err)
@@ -521,13 +520,13 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		theme("System")
 	}
 	// Source semantics reach both the compact feed and its retained disclosures.
-	shell := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 92, Agent: "Main", Kind: "tool", Text: activitypresentation.ShellSource("set -e\nset -u\nset -o pipefail\nplane comment ITEM --body - <<'EOF'\nA retained comment.\nEOF\nplane update ITEM", "")}}
-	single := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 91, Agent: "Main", Kind: "tool", Text: activitypresentation.ShellSource("set -e; plane update ITEM", "")}}
-	compaction := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 94, Agent: "Main", Kind: "compaction", Text: "Retained compacted summary."}}
+	shell := activitypresentation.ItemContent{Seq: 92, Agent: "Main", Kind: "tool", Text: activitypresentation.ShellSource("set -e\nset -u\nset -o pipefail\nplane comment ITEM --body - <<'EOF'\nA retained comment.\nEOF\nplane update ITEM", "")}
+	single := activitypresentation.ItemContent{Seq: 91, Agent: "Main", Kind: "tool", Text: activitypresentation.ShellSource("set -e; plane update ITEM", "")}
+	compaction := activitypresentation.ItemContent{Seq: 94, Agent: "Main", Kind: "compaction", Text: "Retained compacted summary."}
 	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
 		{Facts: single.Facts, Values: single.Values(), Revision: 1},
 		{Facts: shell.Facts, Values: shell.Values(), Revision: 1},
-		{Facts: activitypresentation.Facts{Seq: 93, Agent: "Main", Kind: "progress"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/review", Status: "completed"}}, WaitReason: "completed"}}, Revision: 1},
+		{Seq: 93, Agent: "Main", Kind: "progress", Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/review", Status: "completed"}}, WaitReason: "completed"}}, Revision: 1},
 		{Facts: compaction.Facts, Values: compaction.Values(), Revision: 1},
 	}}
 	if err := alpha.publishFrame(previewFrame); err != nil {
@@ -560,7 +559,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--text", "Retained compacted summary.")
 	button("Close details")
 	run("wait", "--fn", `!document.querySelector('[aria-labelledby="details-heading"]')`)
-	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 98, Agent: "Main", Kind: "tool", Text: "Run command"}, Values: []activitypresentation.Value{{Kind: "op", Verb: "Run", Code: "echo begin\n" + strings.Repeat("echo middle\n", 200) + "echo script_finished", Lang: "bash", Fenced: true, Tail: []string{strings.Repeat("output ", 200), "output_finished"}}}, Revision: 1}}}
+	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Seq: 98, Agent: "Main", Kind: "tool", Text: "Run command", Values: []activitypresentation.Value{{Kind: "op", Verb: "Run", Code: "echo begin\n" + strings.Repeat("echo middle\n", 200) + "echo script_finished", Lang: "bash", Fenced: true, Tail: []string{strings.Repeat("output ", 200), "output_finished"}}}, Revision: 1}}}
 	if err := alpha.publishFrame(previewFrame); err != nil {
 		t.Fatal(err)
 	}
@@ -573,7 +572,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--text", "script_finished")
 	button("Output: 2 lines")
 	run("wait", "--text", "output_finished")
-	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 95, Agent: "Main", Kind: "tool", Text: "JSON arguments"}, Values: []activitypresentation.Value{{Kind: "op", Verb: "Run", Code: "{\n  \"value\": \"" + strings.Repeat("large", 200) + "\",\n  \"message\": \"json_finished\"\n}", Lang: "json", Fenced: true}}, Revision: 2}}}
+	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Seq: 95, Agent: "Main", Kind: "tool", Text: "JSON arguments", Values: []activitypresentation.Value{{Kind: "op", Verb: "Run", Code: "{\n  \"value\": \"" + strings.Repeat("large", 200) + "\",\n  \"message\": \"json_finished\"\n}", Lang: "json", Fenced: true}}, Revision: 2}}}
 	if err := alpha.publishFrame(previewFrame); err != nil {
 		t.Fatal(err)
 	}
@@ -584,7 +583,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	// clipboard admission before the complete response is available.
 	publishBody := func(revision uint64, text string) {
 		t.Helper()
-		previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 96, Agent: "Main", Kind: "final", Text: strings.Repeat("Deferred prose. ", 300) + text}, Revision: revision}}}
+		previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Seq: 96, Agent: "Main", Kind: "final", Text: strings.Repeat("Deferred prose. ", 300) + text, Revision: revision}}}
 		if err := alpha.publishFrame(previewFrame); err != nil {
 			t.Fatal(err)
 		}
@@ -624,8 +623,8 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	// A changing newest entry must not monopolize automatic reads.
 	run("eval", `window.holdContent = true; window.heldContent = []`)
 	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
-		{Facts: activitypresentation.Facts{Seq: 94, Agent: "Main", Kind: "final", Text: strings.Repeat("Earlier prose. ", 300) + "STATIC_CONTENT"}, Revision: 1},
-		{Facts: activitypresentation.Facts{Seq: 95, Agent: "Main", Kind: "text", Text: strings.Repeat("Streaming prose. ", 300) + "STREAM_CONTENT"}, Revision: 1},
+		{Seq: 94, Agent: "Main", Kind: "final", Text: strings.Repeat("Earlier prose. ", 300) + "STATIC_CONTENT", Revision: 1},
+		{Seq: 95, Agent: "Main", Kind: "text", Text: strings.Repeat("Streaming prose. ", 300) + "STREAM_CONTENT", Revision: 1},
 	}}
 	if err := alpha.publishFrame(previewFrame); err != nil {
 		t.Fatal(err)
@@ -648,7 +647,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Helper()
 		entries := make([]activitypresentation.Entry, count)
 		for i := range entries {
-			item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: uint64(90 + i), Agent: "Main", Kind: "reasoning", Text: fmt.Sprintf("**Thought %d**\n\n", i+1) + strings.Repeat("Complete deferred reasoning. ", 160) + fmt.Sprintf("THOUGHT_%d_%s", i+1, suffix)}}
+			item := activitypresentation.ItemContent{Seq: uint64(90 + i), Agent: "Main", Kind: "reasoning", Text: fmt.Sprintf("**Thought %d**\n\n", i+1) + strings.Repeat("Complete deferred reasoning. ", 160) + fmt.Sprintf("THOUGHT_%d_%s", i+1, suffix)}
 			entries[i] = activitypresentation.Entry{Facts: item.Facts, Values: item.Values(), Revision: revision}
 		}
 		previewFrame.Main = &activitypresentation.Publication{Entries: entries}
@@ -711,7 +710,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	for i := range 200 {
 		captures = append(captures, fmt.Sprintf("Create `/tmp/tree/file%03d.go` +3 -0 · cp", i))
 	}
-	item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(captures, "\n\n")}}
+	item := activitypresentation.ItemContent{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(captures, "\n\n")}
 	frame := sessionapi.Frame{FamilyRoot: "same-thread", Members: []threadcontrol.Participant{{Thread: "same-thread", Task: "/root"}, {Thread: "child", Parent: "same-thread", Task: "/root/worker", Role: "worker"}}, Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true},
 		Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: item.Facts, Values: item.Values(), Revision: 1}}}}
 	if err := alpha.publishFrame(frame); err != nil {
@@ -831,12 +830,12 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}}
 	frame.Members = append(frame.Members, threadcontrol.Participant{Thread: "native-worker", Parent: "same-thread", Task: "/root/native-worker", NonAttachable: true})
 	frame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
-		{Facts: activitypresentation.Facts{Seq: 2, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/worker"}}, WaitTimeout: "5s"}}, Revision: 1},
-		{Facts: activitypresentation.Facts{Seq: 3, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitReason: "paused"}}, Revision: 1},
-		{Facts: activitypresentation.Facts{Seq: 4, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/one"}, {Name: "agent:main/two"}, {Name: "agent:main/three"}, {Name: "agent:main/four"}, {Name: "agent:main/five"}}}}, Revision: 1},
-		{Facts: activitypresentation.Facts{Seq: 5, Agent: "Main", Kind: "tool"}, Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "all"}}}}, Revision: 1},
-		{Facts: activitypresentation.Facts{Seq: 6, Agent: "Main", Kind: "reply"}, Values: []activitypresentation.Value{{Kind: "message", From: "agent:main", To: "agent:main/worker", Body: "Review the input."}}, Revision: 1},
-		{Facts: activitypresentation.Facts{Seq: 7, Agent: "/root/worker", Kind: "final", Text: "Review complete."}, Revision: 1},
+		{Seq: 2, Agent: "Main", Kind: "tool", Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/worker"}}, WaitTimeout: "5s"}}, Revision: 1},
+		{Seq: 3, Agent: "Main", Kind: "tool", Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitReason: "paused"}}, Revision: 1},
+		{Seq: 4, Agent: "Main", Kind: "tool", Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/one"}, {Name: "agent:main/two"}, {Name: "agent:main/three"}, {Name: "agent:main/four"}, {Name: "agent:main/five"}}}}, Revision: 1},
+		{Seq: 5, Agent: "Main", Kind: "tool", Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "all"}}}}, Revision: 1},
+		{Seq: 6, Agent: "Main", Kind: "reply", Values: []activitypresentation.Value{{Kind: "message", From: "agent:main", To: "agent:main/worker", Body: "Review the input."}}, Revision: 1},
+		{Seq: 7, Agent: "/root/worker", Kind: "final", Text: "Review complete.", Revision: 1},
 	}}
 	for i := range frame.Main.Entries {
 		entry := &frame.Main.Entries[i]
@@ -937,7 +936,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	frame.Agents = &activitypresentation.Publication{Roster: append([]activitypresentation.AgentRow(nil), frame.Agents.Roster...)}
 	for i, kind := range []string{"progress", "reasoning"} {
 		frame.Members[i].Status = threadcontrol.Working
-		item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Kind: kind, Text: "Connecting to provider"}}
+		item := activitypresentation.ItemContent{Kind: kind, Text: "Connecting to provider"}
 		if i == 1 {
 			item.Text = "**Checking child callers**\n\nThe expanded reasoning body stays in the transcript."
 		}
@@ -992,7 +991,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	review := changes.ReviewView{Workspace: alpha.workdir, Revision: 1}
 	review.Publication = review.Publication.With(changes.GroupCaptures([]changes.Chunk{{
 		Key: "child-capture", Workspace: alpha.workdir, CaptureOrder: 1,
-		Origin: changes.Origin{Caller: "/root/worker", Change: "child1", Source: "apply_patch"},
+		Caller: "/root/worker", Change: "child1", Source: "apply_patch",
 		Review: diffmodel.RenderReviewFile("", filepath.Join(alpha.workdir, "child.go"), "", "package child\n// child saved capture\n"),
 	}}))
 	frame.Review = &review
@@ -1047,16 +1046,16 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal("child runtime publication unavailable")
 	}
 	const pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
-	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: activitypresentation.Facts{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}}}}}}); err != nil {
+	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}}}}}); err != nil {
 		t.Fatal(err)
 	}
 	// The process dock can leave this lazy image above the transcript scrollport.
 	run("wait", "--fn", "!!document.querySelector('figure')")
 	run("eval", "document.querySelector('figure')?.scrollIntoView({block:'center'})")
 	run("wait", "--fn", "document.querySelector('img[alt=\"Attached image 1\"]')?.naturalWidth === 1")
-	generated := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 98, Agent: "Main", Kind: "tool", Text: "Generated `artwork.png`", Images: []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(previewFixturePNG(t))}}}
+	generated := activitypresentation.ItemContent{Seq: 98, Agent: "Main", Kind: "tool", Text: "Generated `artwork.png`", Images: []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(previewFixturePNG(t))}}
 	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{
-		{Facts: activitypresentation.Facts{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}}},
+		{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}},
 		{Facts: generated.Facts, Values: generated.Values()},
 	}}}); err != nil {
 		t.Fatal(err)

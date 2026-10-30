@@ -81,11 +81,11 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	// the browser's complete window with new entry objects.
 	entries := make([]activitypresentation.Entry, 0, 63)
 	for seq := uint64(1); seq <= 60; seq++ {
-		entries = append(entries, activitypresentation.Entry{Facts: activitypresentation.Facts{Seq: seq, Agent: "Main", Kind: "text", Text: fmt.Sprintf("Earlier step %d.", seq)}, Revision: 1})
+		entries = append(entries, activitypresentation.Entry{Seq: seq, Agent: "Main", Kind: "text", Text: fmt.Sprintf("Earlier step %d.", seq), Revision: 1})
 	}
 	entries = append(entries,
-		activitypresentation.Entry{Facts: activitypresentation.Facts{Seq: 61, Agent: "You", Kind: "text", Text: "Bound image", Images: []string{pixel}}, Revision: 1},
-		activitypresentation.Entry{Facts: activitypresentation.Facts{Seq: 62, Agent: "Main", Kind: "text", Text: "Status 1"}, Revision: 1},
+		activitypresentation.Entry{Seq: 61, Agent: "You", Kind: "text", Text: "Bound image", Images: []string{pixel}, Revision: 1},
+		activitypresentation.Entry{Seq: 62, Agent: "Main", Kind: "text", Text: "Status 1", Revision: 1},
 	)
 	frame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Content thread", Workspace: machine.workdir}, Input: &sessionapi.Input{Stoppable: true}}
 	publish := func() {
@@ -183,7 +183,7 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	holdImage.Store(false)
 	holdContent.Store(true)
 	stream := strings.Repeat("Streamed prose. ", 300)
-	entries = append(entries, activitypresentation.Entry{Facts: activitypresentation.Facts{Seq: 63, Agent: "Main", Kind: "text", Text: stream + "TAIL_ONE"}, Revision: 1})
+	entries = append(entries, activitypresentation.Entry{Seq: 63, Agent: "Main", Kind: "text", Text: stream + "TAIL_ONE", Revision: 1})
 	publish()
 	run("wait", "--text", "Loading content…")
 	await("the first content read", func() bool { return contentReads.Load() == 1 })

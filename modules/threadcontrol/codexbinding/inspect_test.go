@@ -24,7 +24,7 @@ func (retainedInspectionNative) Runtime(string) (control.Runtime, error) {
 }
 
 func (retainedInspectionNative) Inspect(context.Context, string) (control.SessionDetails, error) {
-	return control.SessionDetails{Model: new("retained-model"), SessionMetrics: control.SessionMetrics{Compactions: new(uint64(2))}}, nil
+	return control.SessionDetails{Model: new("retained-model"), Compactions: new(uint64(2))}, nil
 }
 
 func TestInspectCompletedAgentWithoutRuntime(t *testing.T) {
@@ -47,7 +47,7 @@ func TestInspectCompletedAgentWithoutRuntime(t *testing.T) {
 
 func (r *inspectionRuntime) Inspect(_ context.Context, thread string) (control.SessionDetails, error) {
 	r.thread = thread
-	return control.SessionDetails{Model: new("applied-model"), ReasoningEffort: new("high"), ServiceTier: new("priority"), SessionMetrics: control.SessionMetrics{ContextTokens: new(uint64(123)), ContextWindow: new(uint64(1000)), Compactions: new(uint64(2))}}, r.err
+	return control.SessionDetails{Model: new("applied-model"), ReasoningEffort: new("high"), ServiceTier: new("priority"), ContextTokens: new(uint64(123)), ContextWindow: new(uint64(1000)), Compactions: new(uint64(2))}, r.err
 }
 
 func TestInspectUsesAdmittedTargetAndRuntimeFacts(t *testing.T) {

@@ -30,7 +30,7 @@ func TestPresetNativeViewPersistenceRecallAndAdmission(t *testing.T) {
 		return publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, true)
 	}
 	publish()
-	editor := &composer.Editor{Draft: composer.Draft{Text: "ordinary draft", CursorBack: 3}}
+	editor := &composer.Editor{Text: "ordinary draft", CursorBack: 3}
 	openPresets(t.Context(), &v.attached, &u.Client, &v.picker, editor, preferences.Applied{Model: "example", Effort: "high"}, false)
 	answerPresetRead(t, u, map[string]presets.Slot{"1": {Input: "/clear", Label: "Clear"}})
 	for deadline := time.Now().Add(2 * time.Second); v.picker.Loading && time.Now().Before(deadline); {

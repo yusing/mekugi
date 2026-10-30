@@ -2,6 +2,7 @@ package pathdisplay
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -36,10 +37,8 @@ func CommonDirectory(paths []string) string {
 		prefix = prefix[:i]
 	}
 	prefix = prefix[:strings.LastIndexByte(prefix, filepath.Separator)+1]
-	for _, path := range paths {
-		if path == prefix {
-			return ""
-		}
+	if slices.Contains(paths, prefix) {
+		return ""
 	}
 	return prefix
 }

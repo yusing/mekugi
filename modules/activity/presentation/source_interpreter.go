@@ -75,14 +75,14 @@ func shellStatementProjection(statement *syntax.Stmt, partial bool) (shellScript
 		return shellScriptProjection{}, false
 	}
 	// Assignments prefix the invocation, so Via shows them as written.
-	assigns := ""
+	var assigns strings.Builder
 	for _, assign := range call.Assigns {
 		var source strings.Builder
 		if assign.Append || assign.Naked || !shellPlainWord(assign) ||
 			syntax.NewPrinter().Print(&source, assign) != nil || strings.ContainsAny(source.String(), "\r\n") {
 			return shellScriptProjection{}, false
 		}
-		assigns += source.String() + " "
+		assigns.WriteString(source.String() + " ")
 	}
 
 	args := call.Args[1:]
@@ -144,7 +144,7 @@ func shellStatementProjection(statement *syntax.Stmt, partial bool) (shellScript
 				words = words[:index+1]
 			}
 		}
-		return shellScriptProjection{Source: program, Language: sourceLanguage(name), Via: shellViaWords(assigns, words)}, true
+		return shellScriptProjection{Source: program, Language: sourceLanguage(name), Via: shellViaWords(assigns.String(), words)}, true
 	}
 
 	if len(statement.Redirs) != 1 {
@@ -158,7 +158,7 @@ func shellStatementProjection(statement *syntax.Stmt, partial bool) (shellScript
 	if stdin >= 0 && stdin == len(args)-1 && shellInterpreterStdinArguments(name) {
 		via = via[:len(via)-1] // A final `-` only says the program is stdin.
 	}
-	return shellScriptProjection{Source: program, Language: sourceLanguage(name), Via: shellViaWords(assigns, via)}, true
+	return shellScriptProjection{Source: program, Language: sourceLanguage(name), Via: shellViaWords(assigns.String(), via)}, true
 }
 
 // shellInterpreterStdinArguments reports interpreters that read their program

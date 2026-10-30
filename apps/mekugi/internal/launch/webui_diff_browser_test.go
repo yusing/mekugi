@@ -43,8 +43,8 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	unknown := diffmodel.RenderReviewFile("", filepath.Join(workspace, "notes.unknown"), "", "<script>literal & text</script>\n")
 	view := changes.ReviewView{Revision: 1, Workspace: workspace}
 	view.Publication = view.Publication.With(changes.GroupCaptures([]changes.Chunk{
-		{Key: "code", CaptureOrder: 1, Origin: changes.Origin{Caller: "/root", Source: "apply_patch"}, Review: file},
-		{Key: "plain", CaptureOrder: 2, Origin: changes.Origin{Caller: "/root", Source: "apply_patch"}, Review: unknown},
+		{Key: "code", CaptureOrder: 1, Caller: "/root", Source: "apply_patch", Review: file},
+		{Key: "plain", CaptureOrder: 2, Caller: "/root", Source: "apply_patch", Review: unknown},
 	}))
 	frame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Diffs thread", Workspace: workspace}, Input: &sessionapi.Input{Stoppable: true}, Review: &view}
 	// Each publication is a detached snapshot: the fixture keeps mutating view
@@ -198,7 +198,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		view.Revision++
 		refreshed := diffmodel.RenderReviewFile(path, path, "const previous = 1;\n", fmt.Sprintf("// refreshed review %d\n", i)+strings.Repeat("const updated = 2;\n", 200))
 		view.Publication = view.Publication.With(changes.GroupCaptures([]changes.Chunk{
-			{Key: "code", CaptureOrder: 1, Origin: changes.Origin{Caller: "/root", Source: "apply_patch"}, Review: refreshed},
+			{Key: "code", CaptureOrder: 1, Caller: "/root", Source: "apply_patch", Review: refreshed},
 		}))
 		frame.Session.Title = fmt.Sprintf("Review refresh %d", i)
 		publish()
@@ -242,7 +242,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	run("eval", `window.savedFile.querySelector('summary').click()`)
 	view.Revision++
 	view.Publication = view.Publication.With(changes.GroupCaptures([]changes.Chunk{
-		{Key: "code", CaptureOrder: 1, Origin: changes.Origin{Caller: "/root", Source: "apply_patch"}, Review: diffmodel.RenderReviewFile(path, path, "const previous = 1;\n", "// closed refresh\n"+strings.Repeat("const updated = 2;\n", 400))},
+		{Key: "code", CaptureOrder: 1, Caller: "/root", Source: "apply_patch", Review: diffmodel.RenderReviewFile(path, path, "const previous = 1;\n", "// closed refresh\n"+strings.Repeat("const updated = 2;\n", 400))},
 	}))
 	frame.Session.Title = "Closed review refresh"
 	publish()
@@ -366,7 +366,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	var many []changes.Chunk
 	for i := range 200 {
 		path := filepath.Join(workspace, fmt.Sprintf("retained-%03d.ts", i))
-		many = append(many, changes.Chunk{Key: path, CaptureOrder: uint64(i + 1), Origin: changes.Origin{Caller: "/root", Source: "apply_patch"}, Review: diffmodel.RenderReviewFile("", path, "", strings.Repeat("const retained = true;\n", 120))})
+		many = append(many, changes.Chunk{Key: path, CaptureOrder: uint64(i + 1), Caller: "/root", Source: "apply_patch", Review: diffmodel.RenderReviewFile("", path, "", strings.Repeat("const retained = true;\n", 120))})
 	}
 	view.Revision++
 	view.Publication = changes.Publication{}.With(changes.GroupCaptures(many))

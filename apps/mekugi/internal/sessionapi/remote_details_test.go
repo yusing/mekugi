@@ -25,8 +25,8 @@ func TestRemoteDetailContentRetainsPublicSelection(t *testing.T) {
 		}
 		frame := nativeTestFrame("thread", 1)
 		frame.Details = &NativeDetails{Source: frame.View.Main, View: sessionpresentation.DetailView{ID: sessionpresentation.DetailID{Attachment: 1, Selection: 1}, Revision: 1, Pages: []sessionpresentation.DetailItem{
-			{DetailPage: activity.DetailPage{ID: "large", Value: activity.Value{Code: strings.Repeat("retained full code\n", 4000)}}},
-			{DetailPage: activity.DetailPage{ID: "secret", Value: activity.Value{Code: "PRIVATE", Questions: []activity.Question{{Text: "PRIVATE", Secret: true}}}}},
+			{ID: "large", Code: strings.Repeat("retained full code\n", 4000)},
+			{ID: "secret", Code: "PRIVATE", Questions: []activity.Question{{Text: "PRIVATE", Secret: true}}},
 		}}}
 		if err := native.Publish(request.Attachment, frame); err != nil {
 			t.Fatal(err)

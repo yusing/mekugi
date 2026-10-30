@@ -183,7 +183,7 @@ func (c *nativeClient) prompt(input terminalsession.PromptInput, next *terminals
 						c.editor("main").Remember(editor.Draft)
 					}
 				} else if intent.Reason != "" {
-					c.unknown = append(c.unknown, nativeUnknownInput{Draft: composer.Draft{Text: intent.Reason}, Thread: approval.Thread, Prompt: approval.ID})
+					c.unknown = append(c.unknown, nativeUnknownInput{Text: intent.Reason, Thread: approval.Thread, Prompt: approval.ID})
 				}
 			})
 		}
@@ -255,7 +255,7 @@ func (c *nativeClient) submitPrompt(incomplete bool) {
 		if question.Outcome != "" {
 			continue
 		}
-		answer := sessionapi.NativeQuestionAnswer{AnswerInput: prompt.AnswerInput{Call: call.ID, Question: view.Questions[i].ID, Choice: question.Selected, Draft: question.Editor.Snapshot.Draft.Clone(), Skip: question.Skipped || !question.Done}}
+		answer := sessionapi.NativeQuestionAnswer{Call: call.ID, Question: view.Questions[i].ID, Choice: question.Selected, Draft: question.Editor.Snapshot.Draft.Clone(), Skip: question.Skipped || !question.Done}
 		if question.IsSecret {
 			answer.Draft = c.renderer.terminal.Prompts.SecretState(call.ID).Editors[i].Snapshot.Draft.Clone()
 			answer.Secret, answer.Draft.Text = answer.Draft.Text, ""

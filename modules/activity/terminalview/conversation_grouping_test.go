@@ -25,14 +25,14 @@ func TestUISnapshotConversationReasoningAndEdits(t *testing.T) {
 					body, title = title+" the changes.", ""
 				}
 				entries = append(entries, presentation.Entry{
-					Facts:  presentation.Facts{Seq: seq, Agent: "Main", Kind: "reasoning", Restored: true},
+					Seq: seq, Agent: "Main", Kind: "reasoning", Restored: true,
 					Values: []presentation.Value{{Kind: "summary", Source: seq, Label: title, Body: body, Thought: time.Duration(i+1) * time.Second}},
 				})
 			}
 			for i, path := range []string{"first.go", "second.go"} {
 				seq := uint64(i + 3)
 				entries = append(entries, presentation.Entry{
-					Facts:  presentation.Facts{Seq: seq, Agent: "Main", Kind: "tool", Text: "apply_patch", Restored: true},
+					Seq: seq, Agent: "Main", Kind: "tool", Text: "apply_patch", Restored: true,
 					Values: []presentation.Value{{Kind: "op", Source: seq, Verb: "Edit", Label: path, EditSource: "apply_patch"}},
 				})
 			}

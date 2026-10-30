@@ -8,7 +8,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -17,9 +16,8 @@ func TestContentDialogQueuedNavigation(t *testing.T) {
 		t.Run(fmt.Sprint(pointer), func(t *testing.T) {
 			d := ContentDialog{View: activityui.NewView()}
 			for i, name := range []string{"ALPHA", "BRAVO"} {
-				d.Pages = append(d.Pages, sessionpresentation.DetailItem{DetailPage: activity.DetailPage{
-					ID: name, Value: activity.Value{Content: activitymodel.Content{Kind: "op", Verb: "Read", Code: strings.Repeat(name+"\n", 40+i*10)}},
-				}})
+				d.Pages = append(d.Pages, sessionpresentation.DetailItem{
+					ID: name, Kind: "op", Verb: "Read", Code: strings.Repeat(name+"\n", 40+i*10)})
 			}
 			d.Update(sessionpresentation.DetailView{Pages: d.Pages})
 			d.Paint(make([]string, 24), 100, 24)
@@ -37,8 +35,8 @@ func TestContentDialogQueuedNavigation(t *testing.T) {
 			}
 			feed("jj")
 			d.Output = &sessionpresentation.DetailOutput{
-				DetailOutputRequest: sessionpresentation.DetailOutputRequest{Page: "ALPHA"},
-				View:                activitymodel.OutputView{Lines: []string{"ALPHA retained output"}, Done: true},
+				Page: "ALPHA",
+				View: activitymodel.OutputView{Lines: []string{"ALPHA retained output"}, Done: true},
 			}
 			if pointer {
 				feed(fmt.Sprintf("\x1b[<0;%d;%dM", d.rect.X+3+d.tabs[1].from, d.rect.Y+3))
@@ -67,17 +65,16 @@ func TestContentDialogQueuedNavigation(t *testing.T) {
 func TestContentDialogQueuedNavigationThenHydration(t *testing.T) {
 	d := ContentDialog{View: activityui.NewView()}
 	for _, name := range []string{"ALPHA", "BRAVO"} {
-		d.Pages = append(d.Pages, sessionpresentation.DetailItem{Retained: true, OutputVersion: 1, DetailPage: activity.DetailPage{
-			ID: name, Value: activity.Value{Content: activitymodel.Content{Kind: "op", Verb: "Run", Code: "source " + name}},
-		}})
+		d.Pages = append(d.Pages, sessionpresentation.DetailItem{Retained: true, OutputVersion: 1,
+			ID: name, Kind: "op", Verb: "Run", Code: "source " + name})
 	}
 	d.Update(sessionpresentation.DetailView{Pages: d.Pages})
 	d.Paint(make([]string, 24), 100, 24)
 	d.Key("\x1b[C")
 	d.Key("/") // Prepare the selected page before its output arrives.
 	d.Output = &sessionpresentation.DetailOutput{
-		DetailOutputRequest: sessionpresentation.DetailOutputRequest{Page: "BRAVO", Version: 1},
-		View:                activitymodel.OutputView{Lines: []string{"output BRAVO"}, Done: true},
+		Page: "BRAVO", Version: 1,
+		View: activitymodel.OutputView{Lines: []string{"output BRAVO"}, Done: true},
 	}
 	d.Paint(make([]string, 24), 100, 24)
 	d.Key("\x1b")

@@ -9,7 +9,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -49,7 +48,7 @@ func TestUISnapshotWebSearch(t *testing.T) {
 				start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 				source := &playback.Source{Thread: "main", Cwd: "/workspace", Start: start, End: start.Add(time.Second), Threads: map[string]string{"main": "/root"}}
 				for _, item := range items {
-					source.Events = append(source.Events, playback.Event{Event: observation.Event{At: start, Kind: "item/completed", ThreadID: "main", TurnID: "t", Item: item.Observation()}})
+					source.Events = append(source.Events, playback.Event{At: start, Kind: "item/completed", ThreadID: "main", TurnID: "t", Item: item.Observation()})
 				}
 				p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 				t.Cleanup(p.close)

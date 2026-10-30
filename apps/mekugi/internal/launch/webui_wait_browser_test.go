@@ -42,12 +42,12 @@ func TestWebUIBrowserWaitTargets(t *testing.T) {
 	for _, target := range []string{"agent:main/worker0", "agent:main/worker1", "agent:main/worker118", "agent:main/worker119"} {
 		wait.WaitTargets = append(wait.WaitTargets, activity.WaitTarget{Name: target})
 	}
-	main := &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: wait.ProgressText()}, Values: []activity.Value{wait}, Revision: 1}}}
+	main := &activity.Publication{Entries: []activity.Entry{{Seq: 1, Agent: "Main", Kind: "tool", Text: wait.ProgressText(), Values: []activity.Value{wait}, Revision: 1}}}
 	for i, text := range []string{
 		"+ 20 tool-managed files (diagnostic: +364 -53) · git cherry-pick",
 		"+ 2 tool-managed files (diagnostic: counts unavailable) · git reset",
 	} {
-		edit := activity.ItemContent{Facts: activity.Facts{Seq: uint64(i + 2), Agent: "Main", Kind: "tool", Text: text}}
+		edit := activity.ItemContent{Seq: uint64(i + 2), Agent: "Main", Kind: "tool", Text: text}
 		main.Entries = append(main.Entries, activity.Entry{Facts: edit.Facts, Values: edit.Values(), Revision: 1})
 	}
 	frame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Waits thread", Caller: "/root", Workspace: machine.workdir}, Input: &sessionapi.Input{}, Main: main, Agents: agents}

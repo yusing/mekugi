@@ -8,6 +8,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1077,9 +1078,7 @@ func (r *ClaudeRuntime) consume(ctx context.Context, uuid string, terminal claud
 		return r.saveLedger(tx)
 	})
 	if err != nil {
-		for uuid, name := range names {
-			r.ledger.Pending[uuid] = name
-		}
+		maps.Copy(r.ledger.Pending, names)
 		r.ledger.Retained = retained
 		return nil, err
 	}

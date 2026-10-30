@@ -21,9 +21,9 @@ func TestUISnapshotPreparedOutputFormats(t *testing.T) {
 				value presentation.Value
 				text  string
 			}{
-				{presentation.Value{Content: activitymodel.Content{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "main.go"}}}}, "package main\nvar answer = 42\n[same as O1]"},
-				{presentation.Value{Content: activitymodel.Content{Kind: "op", Verb: "Attached skill"}}, "# Guide\n\nUse **retained** content.\n\n[same as O1]"},
-				{presentation.Value{Content: activitymodel.Content{Kind: "op", Verb: "Run"}}, "--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new"},
+				{presentation.Value{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "main.go"}}}, "package main\nvar answer = 42\n[same as O1]"},
+				{presentation.Value{Kind: "op", Verb: "Attached skill"}, "# Guide\n\nUse **retained** content.\n\n[same as O1]"},
+				{presentation.Value{Kind: "op", Verb: "Run"}, "--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new"},
 			} {
 				prepared := p.DetailDocument(presentation.DetailPage{Value: tc.value, ModelVisible: true, Prepared: &presentation.PreparedContent{Text: tc.text, Altered: true}}, nil, nil, 64)
 				output := activitymodel.OutputView{Done: true, Lines: strings.Split(tc.text, "\n")}

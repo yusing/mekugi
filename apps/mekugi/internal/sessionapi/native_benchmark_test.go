@@ -18,7 +18,7 @@ func benchmarkNativeHistoryFrame(entries int) NativeFrame {
 	text := strings.Repeat("Completed tool output with retained session history. ", 8)
 	for i := range frame.Main.Entries {
 		frame.Main.Entries[i] = activity.Entry{
-			Facts:    activity.Facts{Seq: uint64(i + 1), Kind: "tool", Text: text, OutputComplete: true},
+			Seq: uint64(i + 1), Kind: "tool", Text: text, OutputComplete: true,
 			Revision: 1,
 		}
 	}
@@ -33,11 +33,10 @@ func BenchmarkNativePublishSavedReview(b *testing.B) {
 	}
 	defer source.close()
 	frame := benchmarkNativeHistoryFrame(1000)
-	frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{
+	frame.Review = &changes.ReviewView{Revision: 1,
 		Files: []changes.File{{Path: "large.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{
 			Diff: strings.Repeat("+saved diff\n", 1<<20),
-		}}}}},
-	}}
+		}}}}}}
 	if err := n.Publish(request.Attachment, frame); err != nil {
 		b.Fatal(err)
 	}
@@ -171,7 +170,7 @@ func BenchmarkNativeWireLargeOwners(b *testing.B) {
 				frame.Agents.Entries[i].Text = strings.Repeat("agent ", 10000)
 			}
 			file := changes.File{Path: "saved.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("+saved diff\n", 2<<20)}}}}
-			frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{Files: []changes.File{file}, Unfiltered: map[string]changes.File{"saved.go": file}}}
+			frame.Review = &changes.ReviewView{Revision: 1, Files: []changes.File{file}, Unfiltered: map[string]changes.File{"saved.go": file}}
 			connection := &NativeConnection{thread: "thread", subscription: &RPCSubscription{client: &RPCClient{}}}
 			consume := func() int {
 				if err := n.Publish(request.Attachment, frame); err != nil {

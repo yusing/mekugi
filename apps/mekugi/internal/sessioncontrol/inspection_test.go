@@ -21,7 +21,7 @@ func TestInspectionUsesLocalRuntimeHandoff(t *testing.T) {
 				done <- err
 			}()
 			call := <-requests.Inspections()
-			call.Complete("root", control.SessionDetails{Model: new("actual"), SessionMetrics: control.SessionMetrics{Compactions: new(uint64(0))}})
+			call.Complete("root", control.SessionDetails{Model: new("actual"), Compactions: new(uint64(0))})
 			if err := <-done; (err != nil) != (target == "foreign") {
 				t.Fatalf("target %s: %v", target, err)
 			}

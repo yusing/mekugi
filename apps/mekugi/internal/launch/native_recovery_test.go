@@ -70,7 +70,7 @@ func TestNativeRecoveryJoinedSnapshotsAndExactConsumption(t *testing.T) {
 	h := remoteOwnerView(t, u)
 	first := composer.Draft{Text: "@file", Files: []composer.Token{{Start: 0, End: 5, Path: "file"}}, Attachments: []string{"original file contents"}}
 	second := composer.Draft{Text: "@skill", Skills: []composer.Token{{Start: 0, End: 6, Name: "skill"}}, Attachments: []string{"original skill contents"}}
-	h.views.restore(u.attached.executionPresentation, []conversation.Input{{Origin: h.event.Attachment, Draft: first}, {Origin: h.event.Attachment, Draft: second}, {Origin: "detached", Draft: composer.Draft{Text: "foreign"}}})
+	h.views.restore(u.attached.executionPresentation, []conversation.Input{{Origin: h.event.Attachment, Draft: first}, {Origin: h.event.Attachment, Draft: second}, {Origin: "detached", Text: "foreign"}})
 	if len(h.view.effects.pending) != 1 {
 		t.Fatal("restore did not join originating submissions")
 	}
@@ -79,7 +79,7 @@ func TestNativeRecoveryJoinedSnapshotsAndExactConsumption(t *testing.T) {
 	if got := h.view.effects.recovery(id); got == nil || !reflect.DeepEqual(*got.RecoveryDraft(), want) {
 		t.Fatalf("joined recovery lost immutable snapshots: %+v", got)
 	}
-	h.views.restoreShell(u.attached.executionPresentation, conversation.Input{Origin: h.event.Attachment, Draft: composer.Draft{Text: "pwd"}})
+	h.views.restoreShell(u.attached.executionPresentation, conversation.Input{Origin: h.event.Attachment, Text: "pwd"})
 	other := h.view.effects.pending[1].ID
 	h.view.effects.discardRecovery(id)
 	if h.view.effects.recovery(id) != nil || h.view.effects.recovery(other) == nil {
@@ -136,7 +136,7 @@ func TestRemoteRecoveryKeepsQueueDisposition(t *testing.T) {
 	u.startSession("main", t.TempDir())
 	h := remoteOwnerView(t, u)
 	for _, queued := range []bool{false, true} {
-		u.attached.conversation.QueueInput(conversation.Input{Draft: composer.Draft{Text: "message"}, Origin: h.event.Attachment, Delivery: h.view.effects.input()}, queued)
+		u.attached.conversation.QueueInput(conversation.Input{Text: "message", Origin: h.event.Attachment, Delivery: h.view.effects.input()}, queued)
 	}
 	h.views.restore(u.attached.executionPresentation, u.attached.conversation.TakeWaiting())
 	if len(h.view.effects.pending) != 2 {

@@ -146,9 +146,8 @@ func (p *Painter) copyPathGroup(compact, original string) string {
 	if !p.CopySource || p.LayoutOnly {
 		return compact
 	}
-	return terminalui.AttachCopy(compact, []terminalui.CopySpan{{CopyFragment: terminalui.CopyFragment{
-		ID: terminalui.CopyID(original, p.CopyScope), Prefix: ansi.Strip(original), Width: ansi.StringWidth(compact),
-	}}})
+	return terminalui.AttachCopy(compact, []terminalui.CopySpan{{
+		ID: terminalui.CopyID(original, p.CopyScope), Prefix: ansi.Strip(original), Width: ansi.StringWidth(compact)}})
 }
 
 func (p *Painter) Label(verb, label string) string {
@@ -353,9 +352,8 @@ func (p *Painter) Block(block Block, width int) []string {
 		if len(spans) == 1 && spans[0].Text == "" && spans[0].Prefix != "" {
 			end := spans[0].Column + spans[0].Width
 			if width := ansi.StringWidth(row); end < width {
-				spans = append(spans, terminalui.CopySpan{Column: end, CopyFragment: terminalui.CopyFragment{
-					ID: spans[0].ID, Text: ansi.Strip(ansi.Cut(row, end, width)), Offset: 1, Width: width - end,
-				}})
+				spans = append(spans, terminalui.CopySpan{Column: end,
+					ID: spans[0].ID, Text: ansi.Strip(ansi.Cut(row, end, width)), Offset: 1, Width: width - end})
 				lines[0] = terminalui.AttachCopy(row, spans)
 			}
 		}

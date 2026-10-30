@@ -5,6 +5,7 @@ import (
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"fmt"
+	"slices"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -45,9 +46,9 @@ func projectContextUsage(input binding.InstructionInput, admitted binding.Contex
 			}
 		}
 		if admitted.FreshInput != nil && target.Index >= 0 {
-			for index := len(items) - 1; index >= 0; index-- {
-				if tool && contextKey(target.Index, items[index]) == target.Key || !tool && responses.StringField(items[index], "role") == "user" {
-					return contextnotice.Mark{Index: index, Key: contextKey(index, items[index])}
+			for index, item := range slices.Backward(items) {
+				if tool && contextKey(target.Index, item) == target.Key || !tool && responses.StringField(item, "role") == "user" {
+					return contextnotice.Mark{Index: index, Key: contextKey(index, item)}
 				}
 			}
 			return contextnotice.Mark{Index: -1}

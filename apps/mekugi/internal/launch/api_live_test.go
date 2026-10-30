@@ -42,7 +42,7 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "image", Type: "imageView", Path: imagePath}})
 	file := diffmodel.RenderReviewFile("/project/source.go", "/project/source.go", "old\n", "new\n")
-	saved := (changepresentation.Publication{}).With(changepresentation.GroupCaptures([]changepresentation.Chunk{{Key: "change1", Workspace: workspace, Review: file, Origin: changepresentation.Origin{Change: "change1", Caller: "/root", Source: "apply_patch"}}}))
+	saved := (changepresentation.Publication{}).With(changepresentation.GroupCaptures([]changepresentation.Chunk{{Key: "change1", Workspace: workspace, Review: file, Change: "change1", Caller: "/root", Source: "apply_patch"}}))
 	u.reviewSource.PublishReview(u.attached.session.Scope(), &changepresentation.Snapshot{Publication: saved}, workspace, "complete", "")
 	live := newLivePreview(t.Context())
 	defer testReview(live).Close()
@@ -110,7 +110,7 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 	workspace := u.attached.cwd
 	capture := func(key, caller, before, after string, order uint64) changepresentation.Publication {
 		return changepresentation.Publication{}.With(changepresentation.GroupCaptures([]changepresentation.Chunk{{
-			Key: key, Workspace: workspace, CaptureOrder: order, Origin: changepresentation.Origin{Caller: caller, Change: key},
+			Key: key, Workspace: workspace, CaptureOrder: order, Caller: caller, Change: key,
 			Review: diffmodel.RenderReviewFile(filepath.Join(workspace, "file.go"), filepath.Join(workspace, "file.go"), before, after),
 		}}))
 	}

@@ -38,7 +38,7 @@ func TestPublishedImageRead(t *testing.T) {
 	} {
 		source := tc.source
 		s := New()
-		sourceEntry := activity.Entry{Facts: activity.Facts{Seq: 1, Agent: tc.agent, Kind: tc.kind, Text: "[Image 1]", Images: []string{source}}}
+		sourceEntry := activity.Entry{Seq: 1, Agent: tc.agent, Kind: tc.kind, Text: "[Image 1]", Images: []string{source}}
 		frame := Frame{Session: Session{Thread: "main", Caller: tc.caller, Workspace: workspace}, Main: &activity.Publication{Entries: []activity.Entry{sourceEntry}}}
 		if tc.child {
 			frame.Main, frame.Agents = nil, frame.Main
@@ -106,7 +106,7 @@ func TestPublishedImageRead(t *testing.T) {
 func TestPublishedImageFailures(t *testing.T) {
 	for _, source := range []string{"missing.png", "https://example.com/image.png", "data:image/png;base64,bm90IGFuIGltYWdl", "data:image/png,plain"} {
 		s := New()
-		entry := activity.Entry{Facts: activity.Facts{Seq: 1, Agent: "You", Kind: "text", Images: []string{source}}}
+		entry := activity.Entry{Seq: 1, Agent: "You", Kind: "text", Images: []string{source}}
 		if err := s.Publish(Frame{Session: Session{Thread: "main"}, Main: &activity.Publication{Entries: []activity.Entry{entry}}}); err != nil {
 			t.Fatal(err)
 		}
@@ -165,7 +165,7 @@ func TestDraftPathImageAdmission(t *testing.T) {
 }
 
 func TestNativeImageSourcesExcludeUserPayloads(t *testing.T) {
-	entries := []activity.Entry{{Facts: activity.Facts{Seq: 1, Kind: "text", Images: []string{"data:image/png;base64,user-private"}}}, {Facts: activity.Facts{Seq: 2, Kind: "tool", Images: []string{"/work/artifact.png"}}}}
+	entries := []activity.Entry{{Seq: 1, Kind: "text", Images: []string{"data:image/png;base64,user-private"}}, {Seq: 2, Kind: "tool", Images: []string{"/work/artifact.png"}}}
 	wire, err := json.Marshal(&activity.Publication{Entries: entries}, nativeEncoding)
 	if err != nil {
 		t.Fatal(err)

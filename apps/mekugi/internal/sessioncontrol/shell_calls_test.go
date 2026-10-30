@@ -16,7 +16,7 @@ func TestNativeDeliveryWaitsForAuxiliarySettlement(t *testing.T) {
 			t.Run(fmt.Sprintf("compact=%t/run=%t", compact, run), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
 					transport := &requestTransport{id: "native"}
-					u := Client[struct{}]{Live: Live{Thread: "main"}, Requests: NewRequests[struct{}](transport)}
+					u := Client[struct{}]{Thread: "main", Requests: NewRequests[struct{}](transport)}
 					if compact {
 						u.Compaction.Begin(CompactIntent{})
 					} else {
@@ -65,7 +65,7 @@ func TestNativeFollowupPreservesActiveTurnAdmission(t *testing.T) {
 			t.Run(fmt.Sprintf("completed=%t/rejected=%t", completed, rejected), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
 					transport := &requestTransport{id: "followup"}
-					u := Client[struct{}]{Live: Live{Thread: "child", Turn: "active"}, Requests: NewRequests[struct{}](transport)}
+					u := Client[struct{}]{Thread: "child", Turn: "active", Requests: NewRequests[struct{}](transport)}
 					result := make(chan error, 1)
 					go func() {
 						_, err := u.Requests.Input(t.Context(), control.NativeInput{Thread: "child", ID: "followup", Run: true, Kind: "NEW_TASK", Message: "steer current work"})
@@ -98,7 +98,7 @@ func TestNativeFollowupPreservesActiveTurnAdmission(t *testing.T) {
 func TestNativeStartRejectionReleasesShellGate(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		transport := &requestTransport{id: "native"}
-		u := Client[struct{}]{Live: Live{Thread: "main"}, Requests: NewRequests[struct{}](transport)}
+		u := Client[struct{}]{Thread: "main", Requests: NewRequests[struct{}](transport)}
 		result := make(chan error, 1)
 		go func() {
 			_, err := u.Requests.Input(t.Context(), control.NativeInput{Thread: "main", ID: "wake", Run: true})

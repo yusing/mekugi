@@ -35,7 +35,7 @@ func familyRuntime(h *Hub, parent *managedSession, frame Frame) *managedSession 
 }
 
 func familyActivity(thread, text string) *activity.Publication {
-	entry := activity.Entry{Facts: activity.Facts{Agent: "/root", Text: text}, Values: []activity.Value{{Kind: "text", Body: text, From: "/root", To: "Main"}}}
+	entry := activity.Entry{Agent: "/root", Text: text, Values: []activity.Value{{Kind: "text", Body: text, From: "/root", To: "Main"}}}
 	return &activity.Publication{Entries: []activity.Entry{entry}, MainSummary: []activity.Entry{entry}, Roster: []activity.AgentRow{{Agent: activity.Agent{
 		AgentFacts: activity.AgentFacts{Name: "/root", Thread: thread, Responding: true, ContextKnown: true, ContextTokens: 42}, Summary: []activity.Entry{entry},
 	}}}}
@@ -180,7 +180,7 @@ func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 			}
 			view.UpdateRoster(family.Agents)
 			painted := ansi.Strip(strings.Join(view.NativeRoster(160, 10, time.Unix(100, 0), true), "\n"))
-			for _, line := range strings.Split(painted, "\n") {
+			for line := range strings.SplitSeq(painted, "\n") {
 				if strings.Contains(line, "└ child  "+tc.text) {
 					return
 				}

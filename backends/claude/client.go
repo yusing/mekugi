@@ -307,9 +307,7 @@ func (c *Client) read(stdout io.Reader) error {
 			c.mu.Lock()
 			c.callbacks[message.ID] = cancel
 			c.mu.Unlock()
-			c.callbackWG.Add(1)
-			go func() {
-				defer c.callbackWG.Done()
+			c.callbackWG.Go(func() {
 				defer cancel()
 				result, err := c.onRequest(ctx, message.Method, message.Params)
 				reply := frame{Kind: "response", ID: message.ID, Result: result}
@@ -321,7 +319,7 @@ func (c *Client) read(stdout io.Reader) error {
 				c.mu.Lock()
 				delete(c.callbacks, message.ID)
 				c.mu.Unlock()
-			}()
+			})
 		case "cancel":
 			c.mu.Lock()
 			cancel := c.callbacks[message.ID]

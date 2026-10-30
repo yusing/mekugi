@@ -108,7 +108,7 @@ func TestRetainedFeedPagesAndContent(t *testing.T) {
 	s := New()
 	publication := &activity.Publication{}
 	for i := range 600 {
-		publication.Entries = append(publication.Entries, activity.Entry{Facts: activity.Facts{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: strings.Repeat("retained text ", 400)}, Revision: 1})
+		publication.Entries = append(publication.Entries, activity.Entry{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: strings.Repeat("retained text ", 400), Revision: 1})
 	}
 	frame := Frame{Session: Session{Thread: "large"}, Main: publication}
 	if err := s.Publish(frame); err != nil {
@@ -158,7 +158,7 @@ func TestRetainedFeedPagesAndContent(t *testing.T) {
 	}
 	// Appending preserves history cursors; an earlier edit invalidates them.
 	updated := &activity.Publication{Entries: append([]activity.Entry{}, publication.Entries...)}
-	updated.Entries = append(updated.Entries, activity.Entry{Facts: activity.Facts{Seq: 601, Text: "new"}, Revision: 1})
+	updated.Entries = append(updated.Entries, activity.Entry{Seq: 601, Text: "new", Revision: 1})
 	frame.Main = updated
 	if err := s.Publish(frame); err != nil {
 		t.Fatal(err)
@@ -189,7 +189,7 @@ func TestFeedPagesRetainDisplayOrderAndTurnNumbers(t *testing.T) {
 	s := New()
 	publication := &activity.Publication{}
 	for i := range 100 {
-		publication.Entries = append(publication.Entries, activity.Entry{Facts: activity.Facts{Seq: uint64(100 - i), Agent: "You", Kind: "message", Text: "human turn"}, Revision: 1})
+		publication.Entries = append(publication.Entries, activity.Entry{Seq: uint64(100 - i), Agent: "You", Kind: "message", Text: "human turn", Revision: 1})
 	}
 	if err := s.Publish(Frame{Main: publication}); err != nil {
 		t.Fatal(err)
@@ -223,7 +223,7 @@ func TestCompactFeedPreservesPresentation(t *testing.T) {
 	for i := range 200 {
 		edits = append(edits, fmt.Sprintf("Create `/tmp/tree/file%03d.go` +3 -0 · cp", i))
 	}
-	item := activity.ItemContent{Facts: activity.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(edits, "\n\n")}}
+	item := activity.ItemContent{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(edits, "\n\n")}
 	command := "echo first\n" + strings.Repeat("echo next\n", 600)
 	for _, test := range []struct {
 		name  string
@@ -235,27 +235,27 @@ func TestCompactFeedPreservesPresentation(t *testing.T) {
 				t.Fatalf("compact edit presentation lost: %+v", e)
 			}
 		}},
-		{"command", activity.Entry{Facts: activity.Facts{Seq: 1, Kind: "tool", Agent: "Main", Text: "Run command"}, Values: []activity.Value{{Kind: "op", Verb: "Run", Code: command, Lang: "bash", Fenced: true, Tail: []string{strings.Repeat("output", 1000), "last line"}}}, Revision: 1}, func(t *testing.T, e entry) {
+		{"command", activity.Entry{Seq: 1, Kind: "tool", Agent: "Main", Text: "Run command", Values: []activity.Value{{Kind: "op", Verb: "Run", Code: command, Lang: "bash", Fenced: true, Tail: []string{strings.Repeat("output", 1000), "last line"}}}, Revision: 1}, func(t *testing.T, e entry) {
 			if e.AutoContent || len(e.Values) != 1 || e.Values[0].Code != "echo first" || e.Values[0].CodeLines != 601 || e.Values[0].TailLines != 2 {
 				t.Fatalf("command disclosures lost: %+v", e)
 			}
 		}},
-		{"inline program", activity.Entry{Facts: activity.Facts{Seq: 1, Kind: "tool", Agent: "Main", Text: "Run program"}, Values: []activity.Value{{Kind: "op", Verb: "Run", Label: "· via `python3`", Code: command, Lang: "python", Fenced: true}}, Revision: 1}, func(t *testing.T, e entry) {
+		{"inline program", activity.Entry{Seq: 1, Kind: "tool", Agent: "Main", Text: "Run program", Values: []activity.Value{{Kind: "op", Verb: "Run", Label: "· via `python3`", Code: command, Lang: "python", Fenced: true}}, Revision: 1}, func(t *testing.T, e entry) {
 			if e.AutoContent || len(e.Values) != 1 || e.Values[0].Label != "· via `python3`" || e.Values[0].Code != "echo first" || e.Values[0].CodeLines != 601 {
 				t.Fatalf("program headline lost: %+v", e)
 			}
 		}},
-		{"prose", activity.Entry{Facts: activity.Facts{Seq: 1, Agent: "Main", Kind: "final", Text: strings.Repeat("**authored text**\n", 1000)}, Revision: 1}, func(t *testing.T, e entry) {
+		{"prose", activity.Entry{Seq: 1, Agent: "Main", Kind: "final", Text: strings.Repeat("**authored text**\n", 1000), Revision: 1}, func(t *testing.T, e entry) {
 			if !e.AutoContent || len(e.Text) > 512 {
 				t.Fatal("inline prose did not request automatic completion")
 			}
 		}},
-		{"reply", activity.Entry{Facts: activity.Facts{Seq: 1, Agent: "/root/child", Kind: "reply", Text: "retained reply"}, Values: []activity.Value{{Kind: "message", From: "/root/child", To: "/root", Body: strings.Repeat("Supporting text. ", 1000), ReplySummary: "Compact summary.", ReplyDetails: strings.Repeat("Supporting text. ", 1000)}}, Revision: 1}, func(t *testing.T, e entry) {
+		{"reply", activity.Entry{Seq: 1, Agent: "/root/child", Kind: "reply", Text: "retained reply", Values: []activity.Value{{Kind: "message", From: "/root/child", To: "/root", Body: strings.Repeat("Supporting text. ", 1000), ReplySummary: "Compact summary.", ReplyDetails: strings.Repeat("Supporting text. ", 1000)}}, Revision: 1}, func(t *testing.T, e entry) {
 			if !e.AutoContent || e.Text != "" || e.Values[0].Summary != "Compact summary." || e.Values[0].Body == "" || len(e.Values[0].Body) > 512 || e.Values[0].Details != "" {
 				t.Fatal("deferred reply lost its summary or semantic body")
 			}
 		}},
-		{"long path", activity.Entry{Facts: activity.Facts{Seq: 1, Agent: "Main", Kind: "tool", Text: "Read path"}, Values: []activity.Value{{Kind: "op", Verb: "Read", Reads: []activityfeed.Read{{Path: strings.Repeat("long/path/", 1000)}}}}, Revision: 1}, func(t *testing.T, e entry) {
+		{"long path", activity.Entry{Seq: 1, Agent: "Main", Kind: "tool", Text: "Read path", Values: []activity.Value{{Kind: "op", Verb: "Read", Reads: []activityfeed.Read{{Path: strings.Repeat("long/path/", 1000)}}}}, Revision: 1}, func(t *testing.T, e entry) {
 			if !e.AutoContent {
 				t.Fatal("long inline path was silently omitted")
 			}
@@ -293,7 +293,7 @@ func TestCompactFeedDefersManyImages(t *testing.T) {
 		images[i] = fmt.Sprintf("/tmp/user-image-%d.png", i)
 	}
 	s := New()
-	if err := s.Publish(Frame{Main: &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Seq: 1, Agent: "You", Kind: "user", Text: "[images]", Images: images}, Revision: 1}}}}); err != nil {
+	if err := s.Publish(Frame{Main: &activity.Publication{Entries: []activity.Entry{{Seq: 1, Agent: "You", Kind: "user", Text: "[images]", Images: images, Revision: 1}}}}); err != nil {
 		t.Fatal(err)
 	}
 	page, err := s.feedPage("main", &s.main, 0, "")

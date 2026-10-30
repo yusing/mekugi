@@ -101,7 +101,7 @@ func TestNativeClientPTYDraftAndDetach(t *testing.T) {
 	// Retained source fits the review owner's bound, but its two wire
 	// representations exceed a transport frame. Input and detach must survive.
 	file := changes.File{Path: "large.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{Diff: strings.Repeat("r", 33<<20)}}}}
-	frame.Review = &changes.ReviewView{Revision: 1, Workspace: u.attached.cwd, Publication: changes.Publication{Files: []changes.File{file}, Unfiltered: map[string]changes.File{"large.go": file}}}
+	frame.Review = &changes.ReviewView{Revision: 1, Workspace: u.attached.cwd, Files: []changes.File{file}, Unfiltered: map[string]changes.File{"large.go": file}}
 	frame.Main.Entries = append([]activity.Entry{{Seq: 100, Agent: "Main", Kind: "tool", Text: "retained command", Outputs: map[int]int{1: 2}, Values: []activity.Value{{Kind: "op", Verb: "Run", Label: "printf retained", Source: 100, Output: 1, Exited: true, Tail: []string{"retained tail"}, TailOmitted: 1}}}}, frame.Main.Entries...)
 	views := make(chan context.Context, 1)
 	burst := make(chan struct{})

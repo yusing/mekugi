@@ -146,8 +146,8 @@ func (n *nativeViews) restore(execution *executionPresentation, parts []conversa
 		// Restore prepends. Deliver inputs in reverse order so the editor keeps
 		// their original order without joining individually deliverable payloads
 		// into one oversized consequence.
-		for i := len(inputs) - 1; i >= 0; i-- {
-			view.effects.restore(inputs[i:i+1], sessionapi.NativeEffect{Thread: view.thread, Restore: new(inputs[i].Draft)})
+		for i, input := range slices.Backward(inputs) {
+			view.effects.restore(inputs[i:i+1], sessionapi.NativeEffect{Thread: view.thread, Restore: new(input.Draft)})
 		}
 	}
 }

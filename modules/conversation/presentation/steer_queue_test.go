@@ -1,15 +1,14 @@
 package presentation
 
 import (
-	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"testing"
 )
 
 func TestSteerQueuedPreservesBoundInputAndSpecialEntries(t *testing.T) {
 	m := new(Session)
-	m.QueueInput(Input{Draft: composer.Draft{Text: "already waiting"}}, false)
-	for _, part := range []Input{{Draft: composer.Draft{Text: "next", Attachments: []string{"snapshot"}}, Origin: "browser", Delivery: 7}, {Draft: composer.Draft{Text: "/compact"}}, {Draft: composer.Draft{Text: "answer"}, Question: &prompt.Call{}}} {
+	m.QueueInput(Input{Text: "already waiting"}, false)
+	for _, part := range []Input{{Text: "next", Attachments: []string{"snapshot"}, Origin: "browser", Delivery: 7}, {Text: "/compact"}, {Text: "answer", Question: &prompt.Call{}}} {
 		m.QueueInput(part, true)
 	}
 	if !m.Queued[0].NextTurn || !m.Pending(nil, Waiting).CanSteer || !m.SteerQueued() {

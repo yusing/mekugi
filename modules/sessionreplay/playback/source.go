@@ -162,10 +162,9 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 					r.Threads[c.Thread] = c.Target
 					children = append(children, c.Thread)
 					if nonAttachable[c.Thread] {
-						r.Events = append(r.Events, Event{Event: observation.Event{
+						r.Events = append(r.Events, Event{
 							At: e.At, Kind: "thread/started", ThreadID: c.Thread,
-							Thread: observation.Thread{ID: c.Thread, Path: c.Target, NonAttachable: true},
-						}})
+							Thread: observation.Thread{ID: c.Thread, Path: c.Target, NonAttachable: true}})
 					}
 				}
 				if e.At.After(e.Started) {

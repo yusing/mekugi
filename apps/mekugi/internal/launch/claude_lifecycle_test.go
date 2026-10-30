@@ -79,7 +79,7 @@ func newClaudeLifecycleFixture(t *testing.T) (*claudeHookFixture, *claudeLifecyc
 	}
 	audience := sessioncontrol.NewAudience(nil)
 	t.Cleanup(audience.Close)
-	if err := driver.Connect(claudeLifecycleHost{claudeHookHost: claudeHookHost{runtime: runtime}, parent: parent}, audience); err != nil {
+	if err := driver.Connect(claudeLifecycleHost{runtime: runtime, parent: parent}, audience); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.Start(t.Context()); err != nil {

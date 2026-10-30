@@ -46,19 +46,19 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": coordinationActivityItems(t)[4]})
 	publication := u.attached.source.Publication(u.attached.presentation, nil)
 	for i, content := range []activity.ItemContent{
-		{Facts: activity.Facts{Kind: "tool"}, Command: activity.Command{UserShell: true, Display: "printf complete", Tail: []string{"complete"}}},
-		{Facts: activity.Facts{Kind: "tool"}, Command: activity.Command{UserShell: true, Display: "printf two", Tail: []string{"first output", "second output"}}},
-		{Facts: activity.Facts{Kind: "command"}, Details: &activity.ItemDetails{CommandText: "printf first\nprintf second"}},
-		{Facts: activity.Facts{Kind: "reply", Agent: "/root/worker"}, Message: &activity.DirectedContent{From: "/root/worker", To: "/root", Text: "Complete short reply."}},
-		{Facts: activity.Facts{Kind: "reply", Agent: "/root/worker"}, Message: &activity.DirectedContent{From: "/root/worker", To: "/root", Text: strings.Repeat("Long reply paragraph.\n\n", 14)}},
-		{Facts: activity.Facts{Kind: "tool"}, Command: activity.Command{UserShell: true, Display: "printf clipped", Tail: []string{"bounded…"}, TailClipped: true}},
-		{Facts: activity.Facts{Kind: "error", Agent: "/root/worker", Text: "Complete short failure."}},
-		{Facts: activity.Facts{Kind: "hook", Text: "Hook complete"}, Details: &activity.ItemDetails{Hook: &activity.HookDetails{Status: "completed"}}},
-		{Facts: activity.Facts{Kind: "hook", Text: "Hook output"}, Details: &activity.ItemDetails{Hook: &activity.HookDetails{Status: "completed"}}, Command: activity.Command{Tail: []string{"Hidden hook output"}}},
-		{Facts: activity.Facts{Kind: "hook", Text: "Hook failure"}, Details: &activity.ItemDetails{Hook: &activity.HookDetails{Status: "failed"}}, Command: activity.Command{Tail: []string{"Visible hook failure"}}},
-		{Facts: activity.Facts{Kind: "hook", Text: strings.Repeat("Long hook label ", 20)}, Details: &activity.ItemDetails{Hook: &activity.HookDetails{Status: "completed"}}},
-		{Facts: activity.Facts{Kind: "reasoning", Text: "**Checking callers**\n\nFirst thought body."}},
-		{Facts: activity.Facts{Kind: "reasoning", Text: "**Choosing a fix**\n\nSecond thought body."}},
+		{Kind: "tool", Command: activity.Command{UserShell: true, Display: "printf complete", Tail: []string{"complete"}}},
+		{Kind: "tool", Command: activity.Command{UserShell: true, Display: "printf two", Tail: []string{"first output", "second output"}}},
+		{Kind: "command", Details: &activity.ItemDetails{CommandText: "printf first\nprintf second"}},
+		{Kind: "reply", Agent: "/root/worker", Message: &activity.DirectedContent{From: "/root/worker", To: "/root", Text: "Complete short reply."}},
+		{Kind: "reply", Agent: "/root/worker", Message: &activity.DirectedContent{From: "/root/worker", To: "/root", Text: strings.Repeat("Long reply paragraph.\n\n", 14)}},
+		{Kind: "tool", Command: activity.Command{UserShell: true, Display: "printf clipped", Tail: []string{"bounded…"}, TailClipped: true}},
+		{Kind: "error", Agent: "/root/worker", Text: "Complete short failure."},
+		{Kind: "hook", Text: "Hook complete", Details: &activity.ItemDetails{Hook: &activity.HookDetails{Status: "completed"}}},
+		{Kind: "hook", Text: "Hook output", Details: &activity.ItemDetails{Hook: &activity.HookDetails{Status: "completed"}}, Command: activity.Command{Tail: []string{"Hidden hook output"}}},
+		{Kind: "hook", Text: "Hook failure", Details: &activity.ItemDetails{Hook: &activity.HookDetails{Status: "failed"}}, Command: activity.Command{Tail: []string{"Visible hook failure"}}},
+		{Kind: "hook", Text: strings.Repeat("Long hook label ", 20), Details: &activity.ItemDetails{Hook: &activity.HookDetails{Status: "completed"}}},
+		{Kind: "reasoning", Text: "**Checking callers**\n\nFirst thought body."},
+		{Kind: "reasoning", Text: "**Choosing a fix**\n\nSecond thought body."},
 	} {
 		content.Seq = uint64(i + 2)
 		if content.Kind == "tool" {
@@ -69,7 +69,7 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 		}
 		publication.Entries = append(publication.Entries, activity.Entry{Facts: content.Facts, Values: content.Values()})
 	}
-	mcp := activity.ItemContent{Facts: activity.Facts{Seq: 15, Agent: "Main", Kind: "tool", Text: activity.MCPText(observation.Item{Server: "plane", Tool: "workitem_relation", Status: "failed"})}}
+	mcp := activity.ItemContent{Seq: 15, Agent: "Main", Kind: "tool", Text: activity.MCPText(observation.Item{Server: "plane", Tool: "workitem_relation", Status: "failed"})}
 	publication.Entries = append(publication.Entries, activity.Entry{Facts: mcp.Facts, Values: mcp.Values()})
 	// Skills attached without source paths keep their names and outputs.
 	skillFrames := slices.Concat(composer.SkillFrames("review", "", "# Review\n\nCheck callers.\n"), composer.SkillFrames("commit", "", "# Commit\n\nUse conventional subjects.\n\nSign off.\n"))
@@ -77,7 +77,7 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	skills := activity.ItemContent{Facts: activity.Facts{Seq: 16, Agent: "Main", Kind: "attachments"}, Details: &activity.ItemDetails{Attachments: sessionpresentation.AttachmentValues(machine.workdir, skillContent)}}
+	skills := activity.ItemContent{Seq: 16, Agent: "Main", Kind: "attachments", Details: &activity.ItemDetails{Attachments: sessionpresentation.AttachmentValues(machine.workdir, skillContent)}}
 	publication.Entries = append(publication.Entries, activity.Entry{Facts: skills.Facts, Values: skills.Values()})
 	for i, command := range []string{
 		`python3 -I -c 'print("ok")'`,

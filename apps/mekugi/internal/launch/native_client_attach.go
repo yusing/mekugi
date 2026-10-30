@@ -124,9 +124,9 @@ func (c *nativeClient) finishPendingCalls() {
 		}
 	}
 	refusal := &sessionapi.NativeFailure{Status: http.StatusConflict, Reason: "The native view closed before admission"}
-	for i := len(c.calls) - 1; i >= 0; i-- {
-		if c.calls[i].after != nil {
-			c.calls[i].after(refusal)
+	for _, v := range slices.Backward(c.calls) {
+		if v.after != nil {
+			v.after(refusal)
 		}
 	}
 	c.calls = nil

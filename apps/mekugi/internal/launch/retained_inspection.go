@@ -39,7 +39,7 @@ func (e *threadExecution) Inspect(ctx context.Context, thread string) (control.S
 		return control.SessionDetails{}, err
 	}
 	details := control.SessionDetails{Model: observed.Model, ReasoningEffort: observed.Effort, ServiceTier: observed.Tier,
-		SessionMetrics: control.SessionMetrics{ContextTokens: observed.ContextTokens, ContextWindow: observed.Window, Compactions: observed.Compactions}}
+		ContextTokens: observed.ContextTokens, ContextWindow: observed.Window, Compactions: observed.Compactions}
 	if details.ServiceTier != nil {
 		details.ServiceTier = new((*inferencegateway.Tiers)(nil).Effective("", *details.ServiceTier, thread))
 	}

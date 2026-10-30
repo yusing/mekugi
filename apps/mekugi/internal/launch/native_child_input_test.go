@@ -36,7 +36,7 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 	child.Startup.Prepared = &sessioncontrol.PreparedThread{Parent: "main"}
 	child.attached.threadInput = &threadInput{admitted: true, caller: "/root/worker", role: "worker"}
 	captures := changes.Publication{}.With(changes.GroupCaptures([]changes.Chunk{{Key: "child-change", Workspace: child.attached.cwd, CaptureOrder: 1,
-		Origin: changes.Origin{Caller: "/root/worker", Change: "child1", Source: "apply_patch"},
+		Caller: "/root/worker", Change: "child1", Source: "apply_patch",
 		Review: diffmodel.RenderReviewFile("", filepath.Join(child.attached.cwd, "child.go"), "", "package child\n// captured child edit\n")}}))
 	child.reviewSource.PublishReview(child.attached.session.Scope(), &changes.Snapshot{Publication: captures}, child.attached.cwd, "", "")
 	frames := make(map[string]sessionapi.NativeFrame)
@@ -284,8 +284,8 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 		selectChild := func() {
 			t.Helper()
 			for row, line := range strings.Split(screen.String(), "\n") {
-				if column := strings.Index(line, "worker"); column >= 0 {
-					x, y := ansi.StringWidth(line[:column])+1, row+1
+				if before, _, ok := strings.Cut(line, "worker"); ok {
+					x, y := ansi.StringWidth(before)+1, row+1
 					write(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", x, y, x, y))
 					return
 				}
@@ -298,11 +298,11 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 		write("\x022")
 		await("No visible changes")
 		footer := strings.Split(screen.String(), "\n")[23]
-		column := strings.Index(footer, "3 Agents")
-		if column < 0 {
+		before, _, ok := strings.Cut(footer, "3 Agents")
+		if !ok {
 			t.Fatal("Agents selector missing from terminal")
 		}
-		x := ansi.StringWidth(footer[:column]) + 1
+		x := ansi.StringWidth(before) + 1
 		write(fmt.Sprintf("\x1b[<0;%d;24M\x1b[<0;%d;24m\x1b[B", x, x))
 		await("child-model")
 		await("child.go")
@@ -366,11 +366,11 @@ func TestChildFamilyRosterPreservesMainSummary(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("child", t.TempDir())
 	u.testMainFrame(100, 24, 0)
-	rootAgent := activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root", Thread: "main"}, Summary: []activity.Entry{{Facts: activity.Facts{Kind: "text", Text: "PARENT_SUMMARY", Agent: "Main"}, Values: []activity.Value{{Kind: "text", Body: "PARENT_SUMMARY"}}}}}
+	rootAgent := activity.Agent{Name: "/root", Thread: "main", Summary: []activity.Entry{{Kind: "text", Text: "PARENT_SUMMARY", Agent: "Main", Values: []activity.Value{{Kind: "text", Body: "PARENT_SUMMARY"}}}}}
 	family := &sessionapi.Family{Root: "main", Agents: &activity.Publication{Roster: []activity.AgentRow{{Agent: rootAgent}}, MainSummary: rootAgent.Summary}}
 	terminal, _ := u.terminalViews.NewAttachment(diffrender.DarkTheme)
 	c := &nativeClient{renderer: nativeClientRenderer{terminal: terminal, views: u.terminalViews}}
-	c.event.Frame = sessionapi.NativeFrame{Family: family, View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: &activity.Publication{MainSummary: []activity.Entry{{Facts: activity.Facts{Kind: "text", Text: "CHILD_SUMMARY", Agent: "Main"}, Values: []activity.Value{{Kind: "text", Body: "CHILD_SUMMARY"}}}}}}
+	c.event.Frame = sessionapi.NativeFrame{Family: family, View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: &activity.Publication{MainSummary: []activity.Entry{{Kind: "text", Text: "CHILD_SUMMARY", Agent: "Main", Values: []activity.Value{{Kind: "text", Body: "CHILD_SUMMARY"}}}}}}
 	c.event.Frame.View.Info.Caller = "/root/worker"
 	c.refreshView(time.Now())
 	summary, _ := terminal.Agents.Current(rootAgent, time.Now(), 100)
@@ -391,8 +391,8 @@ func TestChildFamilyRosterPreservesEditCounts(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("child", t.TempDir())
 	u.testMainFrame(120, 24, 0)
-	rootAgent := activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root", Thread: "main"}}
-	childAgent := activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root/worker", Thread: "child"}}
+	rootAgent := activity.Agent{Name: "/root", Thread: "main"}
+	childAgent := activity.Agent{Name: "/root/worker", Thread: "child"}
 	roster := &activity.Publication{Roster: []activity.AgentRow{{Agent: rootAgent}, {Agent: childAgent, Depth: 1}}, LineCounts: map[string]diffmodel.Counts{"/root": {Added: 100}, "/root/worker": {Added: 3}}, NetCounts: new(diffmodel.Counts{Added: 103})}
 	family := &sessionapi.Family{Root: "main", Agents: roster}
 	terminal, _ := u.terminalViews.NewAttachment(diffrender.DarkTheme)

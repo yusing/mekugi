@@ -21,7 +21,7 @@ func settledConversation(count int) *View {
 		if i%2 == 0 {
 			agent, kind = "You", "user"
 		}
-		p.Entries = append(p.Entries, presentation.Entry{Facts: presentation.Facts{Seq: uint64(i + 1), Agent: agent, Kind: kind, Text: "A short unchanged retained message.", Observed: now}, Revision: 1})
+		p.Entries = append(p.Entries, presentation.Entry{Seq: uint64(i + 1), Agent: agent, Kind: kind, Text: "A short unchanged retained message.", Observed: now, Revision: 1})
 	}
 	v.Update(p, Display{Caller: "/root"})
 	return v

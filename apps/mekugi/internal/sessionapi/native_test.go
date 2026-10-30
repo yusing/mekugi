@@ -343,7 +343,7 @@ func TestNativePublicationSuppressesOnlyIdenticalFrames(t *testing.T) {
 	}
 	// Feed identity is independent of the session view revision. New immutable
 	// publications and in-place changes to non-feed caller values both publish.
-	frame.Main = &activity.Publication{Entries: []activity.Entry{{Facts: activity.Facts{Text: "new history"}}}}
+	frame.Main = &activity.Publication{Entries: []activity.Entry{{Text: "new history"}}}
 	frame.View.Info.Skills = []string{"first"}
 	for _, mutate := range []func(){func() {}, func() { frame.View.Info.Skills[0] = "second" }} {
 		mutate()
@@ -359,9 +359,8 @@ func TestNativePublicationSuppressesOnlyIdenticalFrames(t *testing.T) {
 		func() {},
 		func() { frame.Review.Coverage = "complete" },
 		func() {
-			frame.Review = &changes.ReviewView{Revision: 2, Coverage: "complete", Publication: changes.Publication{
-				Files: []changes.File{{Path: "changed.go"}},
-			}}
+			frame.Review = &changes.ReviewView{Revision: 2, Coverage: "complete",
+				Files: []changes.File{{Path: "changed.go"}}}
 		},
 		func() { frame.Review = nil },
 	} {
@@ -392,11 +391,10 @@ func TestNativePublicationMetadataCostDoesNotScaleWithOwners(t *testing.T) {
 		for i := range frame.Family.Agents.MainSummary {
 			frame.Family.Agents.MainSummary[i].Text = strings.Repeat("family summary ", 32)
 		}
-		frame.Review = &changes.ReviewView{Revision: 1, Publication: changes.Publication{
+		frame.Review = &changes.ReviewView{Revision: 1,
 			Files: []changes.File{{Path: "large.go", Chunks: []changes.Chunk{{Review: diffmodel.ReviewFile{
 				Diff: strings.Repeat("+saved diff\n", entries*1024),
-			}}}}},
-		}}
+			}}}}}}
 		if err := n.Publish(request.Attachment, frame); err != nil {
 			t.Fatal(err)
 		}
@@ -485,7 +483,7 @@ func TestNativeFamilyQuestionRoutingKeepsAuthorityAndWorkspace(t *testing.T) {
 			if len(event.Frame.Questions) != 2 || event.Frame.Questions[0].ID != "root-call" || (authority == remoteHumanView && event.Frame.Questions[1].Questions[0].Text != "") {
 				t.Fatalf("shared/redacted inventory: %+v", event.Frame.Questions)
 			}
-			operation := NativeOperation{Answers: &NativeAnswers{Call: "child-call", Answers: []NativeQuestionAnswer{{AnswerInput: prompt.AnswerInput{Call: "child-call", Question: "child-call/0", Draft: composer.Draft{Text: "answer"}}}}}}
+			operation := NativeOperation{Answers: &NativeAnswers{Call: "child-call", Answers: []NativeQuestionAnswer{{Call: "child-call", Question: "child-call/0", Draft: composer.Draft{Text: "answer"}}}}}
 			var body []byte
 			if authority == remoteHumanView {
 				body, err = json.Marshal(RemoteMutation{Attachment: event.Attachment, Version: event.Frame.View.Version, Operation: RemoteOperation{Answers: &Answer{Call: "child-call", Answers: []QuestionAnswer{{Question: "child-call/0", Text: "answer"}}}}}, nativeEncoding)
