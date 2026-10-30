@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -369,6 +370,74 @@ func TestUISnapshotLogicalWaitNoTimeout(t *testing.T) {
 	u.testActivity(u.shell.Agents).publishActivity()
 	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for all") || strings.Contains(text, "timeout") {
 		t.Fatalf("roster differs from deadline-free transcript: %s", text)
+	}
+}
+
+func TestLogicalWaitPublicationUsesSelectedWait(t *testing.T) {
+	finished := func(id, stop string) *control.Wait {
+		return &control.Wait{
+			Effect: control.Effect{ID: id, Turn: id + "-turn", State: "completed"}, Stop: stop,
+			Terminal: &control.Event{Kind: "message", Task: "/root/worker"},
+		}
+	}
+	for _, tc := range []struct {
+		name              string
+		current, recovery *control.Wait
+		want              *control.Wait
+	}{
+		{name: "missing"},
+		{name: "current", current: finished("current", "committed"), want: finished("current", "committed")},
+		{name: "recovery without current", recovery: finished("recovery", "committed"), want: finished("recovery", "committed")},
+		{name: "recovery overrides current", current: finished("current", ""), recovery: finished("recovery", "committed"), want: finished("recovery", "committed")},
+		{name: "recovery does not borrow current stop", current: finished("current", "committed"), recovery: finished("recovery", "")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			retained, err := history.NewService(control.RecordKinds())
+			if err != nil {
+				t.Fatal(err)
+			}
+			store, err := retained.Open(t.Context(), t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "main")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(session.Close)
+			service := control.New()
+			if err := service.AdmitRoot(t.Context(), session, &control.Member{
+				Thread: "main", Session: "session", Task: "/root", Status: control.Working,
+				AudienceAdmitted: true, Wait: tc.current, RecoveryWait: tc.recovery,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			driver, err := threadbinding.NewDriver(service)
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, at := newActiveWorkTestUI(t)
+			syncLogicalWork(&u.attached, &u.Live, &threadExecution{shared: service, driver: driver}, *at)
+			var finishedItems []*sessionpresentation.NativeItem
+			for _, entry := range u.attached.session.Activity().Main.Entries {
+				if native := entry.Source.Native; native != nil && native.Wait != nil {
+					finishedItems = append(finishedItems, native)
+				}
+			}
+			if tc.want == nil {
+				if len(finishedItems) != 0 {
+					t.Fatalf("unexpected finished wait: %+v", finishedItems)
+				}
+				return
+			}
+			if len(finishedItems) != 1 {
+				t.Fatalf("finished wait count = %d, want 1", len(finishedItems))
+			}
+			got := finishedItems[0]
+			if got.Item != "threadcontrol:wait:"+tc.want.ID || got.Turn != tc.want.Turn || got.Wait.WaitReason != "message received" {
+				t.Fatalf("wrong selected wait identity or reason: %+v, wait: %+v", got, got.Wait)
+			}
+		})
 	}
 }
 

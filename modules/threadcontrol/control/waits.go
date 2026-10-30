@@ -355,6 +355,7 @@ func (s *Service) WaitPublication(thread string) *WaitResult {
 	}
 	result := tree.waitResult(wait)
 	result.Metrics = nil // Display facts do not borrow frozen continuation payloads.
+	result.Turn, result.Stop = wait.Turn, wait.Stop
 	result.EffectiveMS = nil
 	if wait.EffectiveMS != nil {
 		result.EffectiveMS = new(*wait.EffectiveMS)

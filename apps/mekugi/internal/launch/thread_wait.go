@@ -143,7 +143,7 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 		input := attached.threadInput
 		// Wake acknowledgements are retained owner facts, not ordinary host
 		// tool-completion items. Publish their actual reason before continuing.
-		if (member.Wait.Stop == "committed" || input.waitID == wait.ID) && (wait.State == "completed" || wait.State == "timeout" || wait.State == "canceled" || wait.State == "paused") && (input.waitID != wait.ID || input.waitState != wait.State) {
+		if (wait.Stop == "committed" || input.waitID == wait.ID) && (wait.State == "completed" || wait.State == "timeout" || wait.State == "canceled" || wait.State == "paused") && (input.waitID != wait.ID || input.waitState != wait.State) {
 			value := &activity.Value{Kind: "progress", Body: "Finished waiting for", WaitReason: wait.State}
 			for _, target := range wait.Targets {
 				value.WaitTargets = append(value.WaitTargets, activity.WaitTarget{Name: target})
@@ -169,7 +169,7 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 				value.WaitTargets = []activity.WaitTarget{{Name: event.Task, Status: status}}
 			}
 			entry := sessionpresentation.ActivityEntry{Agent: "/root", Kind: "progress", Text: value.ProgressText(), Observed: now,
-				Native: &sessionpresentation.NativeItem{Thread: live.Thread, Turn: member.Wait.Turn, Item: "threadcontrol:wait:" + wait.ID, Phase: "supplement", Wait: value}}
+				Native: &sessionpresentation.NativeItem{Thread: live.Thread, Turn: wait.Turn, Item: "threadcontrol:wait:" + wait.ID, Phase: "supplement", Wait: value}}
 			entry.Seq = attached.session.Activity().NextSequence()
 			sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 		}

@@ -186,6 +186,8 @@ type WaitResult struct {
 	Compaction   *CompactionResult         `json:"compaction,omitempty"`
 	Metrics      map[string]SessionMetrics `json:"metrics,omitempty"`
 	ID           string                    `json:"-"`
+	Turn         string                    `json:"-"`
+	Stop         string                    `json:"-"`
 	Standalone   bool                      `json:"-"`
 	All          bool                      `json:"-"`
 	State        string                    `json:"state"`
