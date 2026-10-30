@@ -14,6 +14,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
@@ -194,5 +195,47 @@ func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
 	}
 	if _, found, err := other.publication.LookupHostCall(t.Context(), workspace, id); err != nil || found {
 		t.Fatalf("observation crossed retained owners: %v, %v", found, err)
+	}
+}
+
+func TestAppServerShellCaptureRefreshesDelegateNamespace(t *testing.T) {
+	u := newShellEditTestUI(t)
+	store, thread, workspace := testUIStore(u), u.Thread, u.attached.cwd
+	const root = "shell-family"
+	// The UI lease predates durable enrollment as a delegate. Its cached
+	// namespace must not become the allocator for the child's next shell edit.
+	if err := store.publication.Transaction(u.ctx, store.writes, func(tx *history.Transaction) error {
+		return tx.InitializeScope(history.Scope{Thread: thread, Namespace: root, Parent: root}, nil)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if u.retainedSession.Namespace != thread {
+		t.Fatal("fixture needs the stale pre-enrollment namespace")
+	}
+	path := filepath.Join(workspace, "selected.txt")
+	writeTestFile(t, path, "before\n")
+	if edit := startShellEditTestCommand(t, u, "printf 'after\\n' > selected.txt", "delegate-shell"); edit == nil {
+		t.Fatal("missing delegate shell observation")
+	}
+	writeTestFile(t, path, "after\n")
+	completeShellEditTestCommand(t, u, "delegate-shell", 0)
+	if u.attached.feedback.Alert {
+		t.Fatal(u.attached.feedback.Text)
+	}
+	record := shellTestRecord(t, store, workspace, thread, "delegate-shell")
+	selected := u.retained
+	selected.Thread, selected.Namespace = thread, root
+	listed, err := u.changeSource.Read(u.ctx, selected, changes.Query{Workspace: workspace, View: "list"})
+	if err != nil || record.History.ChangeID == "" || !strings.Contains(listed, record.History.ChangeID) {
+		t.Fatalf("delegate capture missing from root namespace: %q, %v", listed, err)
+	}
+	selected.Thread = root
+	listed, err = u.changeSource.Read(u.ctx, selected, changes.Query{Workspace: workspace, View: "list"})
+	if err != nil || listed != "" {
+		t.Fatalf("delegate shell attributed to root: %q, %v", listed, err)
+	}
+	diff, err := u.changeSource.Read(u.ctx, selected, changes.Query{Workspace: workspace, IDs: []string{record.History.ChangeID}})
+	if err != nil || !strings.Contains(diff, "-before\n+after") {
+		t.Fatalf("root cannot review delegate shell evidence: %q, %v", diff, err)
 	}
 }

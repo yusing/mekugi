@@ -37,8 +37,20 @@ func captureShellEdit(attached *attachedPresentation, terminal *terminalsession.
 	if ctx == nil {
 		ctx = parent
 	}
+	// The attachment's session lease can predate enrollment as a delegate.
+	// Resolve its durable family namespace at admission, while retaining the
+	// selected thread as the shell operation's author.
+	var namespace string
+	if err := retained.Store.Transaction(ctx, nil, func(*history.Transaction) error {
+		var err error
+		namespace, err = retained.Store.NamespaceForThread(control.Thread)
+		return err
+	}); err != nil {
+		setNotice(&attached.feedback, terminal, time.Now(), "Shell change capture failed: "+err.Error(), true)
+		return nil
+	}
 	edit := executionobservation.PrepareShell(ctx, retained, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, executionobservation.ShellInput{
-		Thread: control.Thread, Turn: control.Turn, Namespace: retainedSession.Namespace,
+		Thread: control.Thread, Turn: control.Turn, Namespace: namespace,
 		Workspace: attached.cwd, Caller: attached.session.Caller(control.Thread), Command: command, Shell: shellEdits.shell,
 	})
 	if edit == nil {
