@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/headless"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
 
@@ -285,7 +284,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 	}
 }
 
-func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
+func TestRecoveredStreamDoesNotLeaveSessionNoticeNativeCodexE2E(t *testing.T) {
 	provider := &routerFaultCodexProvider{mode: "close"}
 	proxy := newManagedMekugiProxy(t)
 	issues := testCriticalErrors()
@@ -294,32 +293,14 @@ func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	issues.Configure(requestexecution.FailureStorage{Store: store.publication, Limits: store.retentionLimits(), Diagnostics: testDiagnostics(nil, nil)})
-	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, issues, proxy))
-	defer server.Close()
-	codex, err := exec.LookPath("codex")
-	if err != nil {
-		t.Fatal(err)
-	}
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, codex, "app-server",
-		"-c", `model_providers.router_fault_fixture={name="router_fault_fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
-		"-c", `model_provider="router_fault_fixture"`, "-c", `model="gpt-6-astra"`,
-		"-c", "features.plugins=false", "-c", "features.goals=false")
-	cmd.Env, cmd.Dir = routerFaultCodexEnvironment(t), t.TempDir()
-	var output bytes.Buffer
-	wait, err := headless.Start(ctx, cmd, strings.NewReader("Complete after one stream interruption."), &output, issues.Notices)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := wait(); err != nil {
-		t.Fatalf("host recovery: %v\n%s", err, output.String())
-	}
+	runAppServerPreviewWith(t, provider, proxy, appServerPreview{issues: issues})
 	provider.mu.Lock()
 	requests := provider.requests
 	provider.mu.Unlock()
-	if requests != 2 || len(issues.Notices.Pending()) != 0 || !strings.Contains(output.String(), "Recovered after a retry.") {
-		t.Fatalf("recovery requests=%d pending=%v\n%s", requests, issues.Notices.Pending(), output.String())
+	if requests != 2 || len(issues.Notices.Pending()) != 0 {
+		t.Fatalf("recovery requests=%d pending=%v", requests, issues.Notices.Pending())
 	}
 	records, err := testDiagnostics(nil, nil).ReadFailures(ctx, store.directory, "")
 	if err != nil || len(records) != 1 {

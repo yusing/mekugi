@@ -24,7 +24,8 @@ func (s *Service) Transcript(store *scope.Store) *transcript.State { return s.tr
 
 func (s *Service) Session(store *scope.Store) *Session { return s.session.Value(store) }
 
-// CompactIntent accompanies a queued command. Host operation gates stay in session control.
+// CompactIntent marks a queued command, independently of literal message text.
+// Host operation gates stay in session control.
 type CompactIntent struct{ WaitForIdle, Continue bool }
 
 // Input retains immutable attachment snapshots and neutral question identity.
@@ -39,7 +40,7 @@ type Input struct {
 	// Delivery identifies reserved restoration capacity at the originating view.
 	// It is opaque provenance, not an execution capability or renderer owner.
 	Delivery   uint64
-	Compact    CompactIntent
+	Compact    *CompactIntent
 	Question   *prompt.Call
 	ReplyCount int
 }
@@ -149,8 +150,8 @@ func Batch(stack []Input) ([]Input, []Input) {
 		return nil, nil
 	}
 	n := 1
-	if stack[0].Question == nil && stack[0].Text != "/compact" {
-		for n < len(stack) && stack[n].Question == nil && stack[n].Text != "/compact" {
+	if stack[0].Question == nil && stack[0].Compact == nil {
+		for n < len(stack) && stack[n].Question == nil && stack[n].Compact == nil {
 			n++
 		}
 	}

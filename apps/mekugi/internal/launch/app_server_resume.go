@@ -154,8 +154,8 @@ func resumeLastResponse(attached *attachedPresentation, control *sessioncontrol.
 }
 
 // Codex merges saved model metadata after loading process CLI configuration.
-// Forward explicit model settings on resume as well so that invocation-local
-// overrides retain their meaning. Other config keeps its app-server owner.
+// Forward explicit model settings on resume and request-only hook trust at
+// startup, preserving invocation-local overrides. Other config stays host-owned.
 func appServerResumeConfig(args, resumeArgv []string) map[string]any {
 	config := make(map[string]any)
 	for i := 0; i < len(args); i++ {
@@ -165,7 +165,7 @@ func appServerResumeConfig(args, resumeArgv []string) map[string]any {
 		i++
 		key, value, ok := strings.Cut(args[i], "=")
 		key = strings.Trim(strings.TrimSpace(key), `"'`)
-		if !ok || (key != "model" && key != "model_provider" && key != "model_reasoning_effort" && key != "service_tier") {
+		if !ok || (key != "model" && key != "model_provider" && key != "model_reasoning_effort" && key != "service_tier" && key != "bypass_hook_trust") {
 			continue
 		}
 		var parsed map[string]any

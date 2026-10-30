@@ -428,8 +428,9 @@ mekugi headless --yolo < prompt.txt
 ```
 
 Headless requires `--yolo` and one nonempty stdin prompt up to 16 MiB; model/`-c`
-options are accepted, resume/positional prompts are not. It exits after the host turn
-completes. Questions/approvals fail; Ctrl-C stops the run. Stdout
+options are accepted, resume/positional prompts are not. It supports the same
+Thread Control and child preloads as the interactive client, and exits after Main's
+logical work and required descendants complete. Questions/approvals fail; Ctrl-C stops the family. Stdout
 JSONL contains private host messages and a completion event;
 diagnostics go to stderr. Run/shutdown failure exits nonzero. `codex exec` is unchanged.
 

@@ -326,7 +326,7 @@ func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
 		}
 		u.Thread, u.Turn, u.LocalStop, u.Waiting = "child", "", "", ""
 		u.attached.threadInput = &threadInput{driver: threads.driver, caller: "/root/worker", admitted: true}
-		u.attached.conversation.Unsent = []conversationmodel.Input{{Text: "/compact"}}
+		u.attached.conversation.Unsent = []conversationmodel.Input{{Text: "/compact", Compact: new(conversationmodel.CompactIntent{})}}
 		for range 2 {
 			if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, t.Context(), false, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
 				t.Fatal(err)

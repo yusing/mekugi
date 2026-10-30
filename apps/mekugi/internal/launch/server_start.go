@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+	"github.com/yusing/mekugi/apps/mekugi/internal/headless"
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
@@ -22,6 +23,7 @@ import (
 )
 
 type serverLauncher struct {
+	headless *headless.Stream
 	workers  frontends.WorkerImage
 	threads  *threadcontrol.Service
 	hub      *sessionapi.Hub
@@ -168,10 +170,16 @@ func (l *serverLauncher) Run(ctx context.Context, start sessionapi.Start, api *s
 	}
 	var execution *threadExecution
 	if l.hub != nil {
-		execution = &threadExecution{hub: l.hub, shared: l.threads, workers: &l.workers}
+		execution = &threadExecution{hub: l.hub, shared: l.threads, workers: &l.workers, headless: l.headless}
 	}
 	if start.Native != nil {
 		code, err := runServerSession(ctx, start.Native.RouterArgs, start.Native.Args, api, start.Workspace, execution)
+		if l.headless != nil {
+			if err == nil && code != 0 {
+				err = fmt.Errorf("session exited with status %d", code)
+			}
+			return err
+		}
 		outcome := &sessionapi.NativeExit{Code: code}
 		if err != nil {
 			outcome.Message = err.Error()

@@ -104,7 +104,7 @@ func flushInput(attached *attachedPresentation, terminal *terminalsession.Attach
 		return nil
 	}
 	childInput := attached.threadInput != nil && attached.threadInput.caller != "" && attached.threadInput.caller != "/root"
-	compacting := len(next.Batch.Parts) == 1 && next.Batch.Parts[0].Text == "/compact"
+	compacting := len(next.Batch.Parts) == 1 && next.Batch.Parts[0].Compact != nil
 	if !compacting && (!next.Steer || control.LocalStop != "" || childInput) {
 		ready, err := attached.threadInput.prepare(parent, control.Thread, control.Requests)
 		if err != nil {
@@ -128,8 +128,8 @@ func flushInput(attached *attachedPresentation, terminal *terminalsession.Attach
 func sendConversationInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, parts []conversationmodel.Input, steer bool) error {
 	defer attached.threadInput.reset()
 	defer attached.presentation.PruneInput(&control.Live, attached.conversation)
-	if len(parts) == 1 && parts[0].Text == "/compact" {
-		intent := sessioncontrol.CompactIntent(parts[0].Compact)
+	if len(parts) == 1 && parts[0].Compact != nil {
+		intent := sessioncontrol.CompactIntent(*parts[0].Compact)
 		intent.Continue = intent.Continue && control.LocalStop == ""
 		control.Compaction.Begin(intent)
 		attached.presentation.Status.SetText("Compacting context" + "…")

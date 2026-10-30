@@ -28,7 +28,7 @@ func interruptSession(attached *attachedPresentation, terminal *terminalsession.
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Original work already ended.", false)
 		return nil
 	}
-	decision := control.RequestInterrupt(intent.Mode, len(unsent) > 0 && unsent[0].Text != "/compact")
+	decision := control.RequestInterrupt(intent.Mode, len(unsent) > 0 && unsent[0].Compact == nil)
 	err = applyInterruption(attached, terminal, control, picker, editor, questions, approvals, clock, reviewOwner, receipts, decision)
 	if err != nil && intent.Mode == sessioncontrol.ExpediteSteers {
 		control.SendSteersAfterInterrupt = false

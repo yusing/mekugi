@@ -4,6 +4,7 @@ package launch
 
 import (
 	"context"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -116,6 +117,7 @@ type appServerPreviewHook func(*testing.T, io.Writer, func(string), func(func(st
 
 // appServerPreview configures a preview run beyond its provider and proxy.
 type appServerPreview struct {
+	issues                    *requestexecution.Failures
 	integration               *appServerIntegration
 	environment               []string // Appended to Codex's isolated environment.
 	codexArgs                 []string // Appended to the app-server invocation.
@@ -138,7 +140,7 @@ func runAppServerPreviewWith(t *testing.T, provider inferencegateway.Forwarder, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, proxy))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, options.issues, proxy))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
@@ -167,7 +169,7 @@ func runAppServerPreviewWith(t *testing.T, provider inferencegateway.Forwarder, 
 	if options.integration != nil {
 		integration = *options.integration
 	}
-	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, integration, nil, "", true, nil, nil, nil, "", nil, &observations, options.approvals)
+	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, integration, options.issues, "", true, nil, nil, nil, "", nil, &observations, options.approvals)
 	if err != nil {
 		t.Fatal(err)
 	}

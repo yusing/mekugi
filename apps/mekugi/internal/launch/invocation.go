@@ -35,7 +35,6 @@ import (
 	"net"
 	"net/http"
 
-	headlessclient "github.com/yusing/mekugi/apps/mekugi/internal/headless"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
@@ -88,7 +87,7 @@ const (
 
 // runInvocation acquires independent owners, launches Codex and joins every lifetime.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func runInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stdin, stdout *os.File, stderr io.Writer, headless bool, resumeThread string, resumeArgv []string, approvals bool, stopStartupInterrupts func(), interrupts <-chan os.Signal, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
+func runInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stdin, stdout *os.File, stderr io.Writer, resumeThread string, resumeArgv []string, approvals bool, stopStartupInterrupts func(), interrupts <-chan os.Signal, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
 	appUI := api != nil
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -110,12 +109,18 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}
 	}
 	openCode := config.Providers
+	var readLogPath string
+	for _, entry := range environment {
+		if value, ok := strings.CutPrefix(entry, evidence.AXReadOutputEnvironment+"="); ok {
+			readLogPath = value
+		}
+	}
 	if agentMetrics != nil {
-		if err := evidence.ValidateOutputAliases(os.Getenv(evidence.AXReadOutputEnvironment), options.CaptureOutput); err != nil {
+		if err := evidence.ValidateOutputAliases(readLogPath, options.CaptureOutput); err != nil {
 			return 1, err
 		}
 	}
-	debug, err := openDebugOutput(diagnosis, options.Debug, options.CaptureOutput)
+	debug, err := openDebugOutput(diagnosis, options.Debug, options.CaptureOutput, readLogPath)
 	if err != nil {
 		return 1, err
 	}
@@ -466,7 +471,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if debug != nil {
 		cmd.Env = append(cmd.Env, evidence.AXReadOutputEnvironment+"="+debug.ReadLogPath())
 	}
-	if !appUI {
+	if !appUI || threads != nil && threads.headless != nil {
 		guards = nil
 	}
 	guard := len(guards) != 0
@@ -485,7 +490,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	// Resolve caller configuration once, using the final frontend environment.
 	var prior shellhook.Invocation
 	var disabled []string
-	compact := guidance != nil && (appUI || headless)
+	compact := guidance != nil && appUI
 	if guard {
 		prior, disabled, err = shellhook.Discover(ctx, cmd)
 	} else if compact {
@@ -550,9 +555,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	var waitCodex func() error
 	err = ctx.Err()
 	if err == nil {
-		if headless {
-			waitCodex, err = headlessclient.Start(ctx, cmd, stdin, stdout, issues.Notices)
-		} else if appUI {
+		if appUI {
 			guardServer, reportObserver, err = openShellObservation(ctx, frontendDirectory, guards, segments, issues)
 			if err != nil {
 				return stopFailedStartup(err)
@@ -591,7 +594,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 
 	if exitErr, ok := errors.AsType[*exec.ExitError](codexErr); ok {
-		if appUI || headless {
+		if appUI {
 			// UI failures carry context (for example a lost app-server)
 			// around the process status. Do not discard that diagnostic merely
 			// because we can preserve the child's exit code.

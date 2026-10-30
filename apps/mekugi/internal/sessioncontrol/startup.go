@@ -79,6 +79,13 @@ func (r *Requests[T]) OpenSession(s *Startup, control *Live, approvals bool, res
 		if err != nil {
 			return OpeningFresh, err
 		}
+		if trust, explicit := s.Config["bypass_hook_trust"]; explicit {
+			config := params["config"].(map[string]jsontext.Value)
+			config["bypass_hook_trust"], err = json.Marshal(trust)
+			if err != nil {
+				return OpeningFresh, err
+			}
+		}
 		r.preparation.Store(s.Prepared)
 		method := "thread/start"
 		opening := OpeningFresh
@@ -103,7 +110,11 @@ func (r *Requests[T]) OpenSession(s *Startup, control *Live, approvals bool, res
 		_, err := r.Send("thread/list", params, "main", owner)
 		return OpeningLatest, err
 	case target == "":
-		_, err := r.Send("thread/start", ThreadPermissions(map[string]any{}, approvals), "main", owner)
+		params := ThreadPermissions(map[string]any{}, approvals)
+		if trust, explicit := s.Config["bypass_hook_trust"]; explicit {
+			params["config"] = map[string]any{"bypass_hook_trust": trust}
+		}
+		_, err := r.Send("thread/start", params, "main", owner)
 		return OpeningFresh, err
 	default:
 		if found, err := s.History.ContainsSession(target); err != nil {

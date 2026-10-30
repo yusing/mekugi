@@ -13,7 +13,7 @@ import (
 
 func diagnosticDebugOutput(t *testing.T) *requestexecution.Debug {
 	t.Helper()
-	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "")
+	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "", os.Getenv(evidence.AXReadOutputEnvironment))
 	if err != nil {
 		t.Fatal(err)
 	}

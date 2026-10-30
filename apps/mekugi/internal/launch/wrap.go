@@ -64,6 +64,9 @@ func runWrap(routerArgs, args []string) int {
 }
 
 func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr error) {
+	if len(args) > 0 && args[0] == "headless" {
+		return runHeadless(ctx, routerArgs, args[1:], os.Stdin, os.Stdout)
+	}
 	if interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
 		if err := validateCodexArgs(args); err != nil {
 			return 2, err
@@ -103,10 +106,6 @@ func runServerSession(ctx context.Context, routerArgs, args []string, api *sessi
 func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
 	suppliedArgs := slices.Clone(args)
 	args = expandReasoningShortcuts(args)
-	headless := len(args) > 0 && args[0] == "headless"
-	if headless {
-		args = args[1:]
-	}
 	if err := validateCodexArgs(args); err != nil {
 		return 2, err
 	}
@@ -128,18 +127,12 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	var resumeThread string
 	var resumeArgv []string
 	approvals := false
-	if (appUI || headless) && (threads == nil || threads.start == nil) {
+	if appUI && (threads == nil || threads.start == nil) {
 		var err error
 		var yolo bool
 		args, resumeThread, yolo, err = appServerArgs(args)
 		if err != nil {
 			return 2, err
-		}
-		if headless && !yolo {
-			return 2, errors.New("headless cannot answer approvals; it requires explicit --yolo")
-		}
-		if headless && resumeThread != "" {
-			return 2, errors.New("headless runs a new thread; resume is not supported")
 		}
 		approvals = appUI && !yolo
 		if appUI {
@@ -176,6 +169,12 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	environment := os.Environ()
 	if threads != nil && threads.setup != nil {
 		environment = slices.Clone(threads.setup.environment)
+	}
+	if threads != nil && threads.start != nil {
+		options, environment, err = threads.setup.childOutputs()
+		if err != nil {
+			return 1, err
+		}
 	}
 	if api != nil {
 		// Shared startup APIs take files; this is an inert sink, never a hosted TTY.
@@ -229,7 +228,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 		directory := filepath.Dir(debugPaths[0])
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", commandargs.Quote(directory))
 	}()
-	return runInvocation(frontends.Terminal, frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, settings, issues, executable, args, environment, stdin, stdout, os.Stderr, headless, resumeThread, resumeArgv, approvals, stopStartupInterrupts, interrupts, func(paths []string) { debugPaths = paths }, api, workspace, threads)
+	return runInvocation(frontends.Terminal, frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, settings, issues, executable, args, environment, stdin, stdout, os.Stderr, resumeThread, resumeArgv, approvals, stopStartupInterrupts, interrupts, func(paths []string) { debugPaths = paths }, api, workspace, threads)
 }
 
 // Reasoning shortcuts are session-local Codex config overrides. Preserve option

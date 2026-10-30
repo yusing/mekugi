@@ -25,7 +25,7 @@ func pendingInput(control *sessioncontrol.Live, conversation *conversationmodel.
 		reason = conversationmodel.RestoringAfterInterrupt
 	case control.Compaction.Active():
 		reason = conversationmodel.CompactRunning
-	case len(conversation.Unsent) > 0 && conversation.Unsent[0].Text == "/compact":
+	case len(conversation.Unsent) > 0 && conversation.Unsent[0].Compact != nil:
 		reason = conversationmodel.CompactQueued
 	case control.Turn != "" || control.Starting():
 		reason = conversationmodel.Steering

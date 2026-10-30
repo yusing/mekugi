@@ -3,14 +3,19 @@ package launch
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+	"github.com/yusing/mekugi/apps/mekugi/internal/headless"
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -19,6 +24,7 @@ import (
 // threadExecution joins the supplied runtime registry and feature owner. It owns
 // no process registry, request ledger, or retained thread state.
 type threadExecution struct {
+	headless  *headless.Stream
 	workers   *frontends.WorkerImage
 	hub       *sessionapi.Hub
 	shared    *control.Service
@@ -94,7 +100,7 @@ func (e *threadExecution) Resume(ctx context.Context, thread string) (control.Ru
 		}
 		parent = ancestor.Parent
 	}
-	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, setup: e.setup, windows: e.windows.ForRuntime(), start: &sessioncontrol.PreparedThread{Parent: member.Parent, Settings: settings, Resume: &control.ThreadInfo{Thread: thread, Session: member.Session, Path: member.Path}}}
+	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, headless: e.headless, setup: e.setup, windows: e.windows.ForRuntime(), start: &sessioncontrol.PreparedThread{Parent: member.Parent, Settings: settings, Resume: &control.ThreadInfo{Thread: thread, Session: member.Session, Path: member.Path}}}
 	id, err := e.hub.StartPrepared(ctx, parent, thread, settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		_, err := runOwnedInvocation(runtime, nil, nil, api, settings.Workspace, child)
 		return err
@@ -120,7 +126,7 @@ func (e *threadExecution) Create(ctx context.Context, parent, importPath string,
 	if strings.HasPrefix(settings.Model, "claude:") {
 		return e.createClaude(ctx, parent, importPath, settings)
 	}
-	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, setup: e.setup, windows: e.windows.ForRuntime(), start: &sessioncontrol.PreparedThread{Parent: parent, Import: importPath, Settings: settings}}
+	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, headless: e.headless, setup: e.setup, windows: e.windows.ForRuntime(), start: &sessioncontrol.PreparedThread{Parent: parent, Import: importPath, Settings: settings}}
 	id, err := e.hub.StartPrepared(ctx, parent, "", settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		_, err := runOwnedInvocation(runtime, nil, nil, api, settings.Workspace, child)
 		return err
@@ -166,4 +172,42 @@ func (e *threadExecution) AttachChild(ctx context.Context, parent, thread string
 	}
 	_, err := e.Resume(ctx, thread)
 	return err
+}
+
+// childOutputs derives independent recorder destinations from the frozen family
+// selection. Descendants borrow this same setup, never a derived child's paths.
+func (s *threadSetup) childOutputs() (launchoptions.Config, []string, error) {
+	options, environment := s.options, slices.Clone(s.environment)
+	var reads string
+	for _, entry := range environment {
+		if value, ok := strings.CutPrefix(entry, evidence.AXReadOutputEnvironment+"="); ok {
+			reads = value
+		}
+	}
+	root := options.CaptureOutput
+	if root == "" {
+		root = reads
+	}
+	if root == "" {
+		return options, environment, nil
+	}
+	directory := root + ".runtimes"
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return options, environment, err
+	}
+	directory, err := os.MkdirTemp(directory, "")
+	if err != nil {
+		return options, environment, err
+	}
+	if options.CaptureOutput != "" {
+		options.CaptureOutput = filepath.Join(directory, "capture.jsonl")
+	}
+	if reads != "" {
+		for i, entry := range environment {
+			if strings.HasPrefix(entry, evidence.AXReadOutputEnvironment+"=") {
+				environment[i] = evidence.AXReadOutputEnvironment + "=" + filepath.Join(directory, "reads.jsonl")
+			}
+		}
+	}
+	return options, environment, nil
 }

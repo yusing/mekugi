@@ -230,7 +230,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		return flushCompletions()
 	}
 	dispatchHost = func(m appserver.Message, observe bool) error {
-		response, _ := control.Requests.Lookup(string(m.ID))
+		response, correlated := control.Requests.Lookup(string(m.ID))
 		if control.CompleteCall(m) {
 			if m.Error == nil {
 				if input := response.NativeDelivery(); input != nil {
@@ -311,6 +311,9 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 			}
 		}
 		predictions.observe(m, control.Thread)
+		if err == nil && threads != nil && threads.headless != nil && correlated && m.Method == "" && m.Error != nil && (response.Method == "turn/start" || response.Method == "turn/steer") {
+			return fmt.Errorf("%s: %s", response.Method, m.Error.Message)
+		}
 		return err
 	}
 	live := &apiLive{server: api, threads: threads, started: time.Now()}
@@ -653,7 +656,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 			if operation.Interrupt.Mode == sessioncontrol.RestoreWaiting && cancelQueuedCompact(&attached, shell, &control, &picker, &questions, &approvalDock, clock) {
 				return "", nil
 			}
-			decision := control.RequestInterrupt(operation.Interrupt.Mode, len(attached.conversation.Unsent) > 0 && attached.conversation.Unsent[0].Text != "/compact")
+			decision := control.RequestInterrupt(operation.Interrupt.Mode, len(attached.conversation.Unsent) > 0 && attached.conversation.Unsent[0].Compact == nil)
 			err = applyInterruption(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, reviewOwner, &receipts, decision)
 		case operation.Panel != nil:
 			action, admissionErr := view.panelAction(request)
@@ -678,7 +681,14 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		delegateApprovals = sessioncontrol.NewDelegateApprovals(ctx)
 		threads.approvals = delegateApprovals
 	}
-	return func() error {
+	return func() (runErr error) {
+		if threads != nil && threads.headless != nil {
+			defer func() {
+				if runErr != nil && !errors.Is(runErr, context.Canceled) {
+					threads.headless.Fail(runErr)
+				}
+			}()
+		}
 		defer control.Requests.Close()
 		defer native.close()
 		defer func() { _ = predictions.clear(&control, attached.conversation) }()
@@ -717,6 +727,28 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 			tick := time.NewTicker(33 * time.Millisecond)
 			defer tick.Stop()
 			for {
+				if threads != nil && threads.headless != nil {
+					if questions.Count(control.Thread) > 0 || len(approvalDock.Pending) > 0 {
+						return errors.New("headless cannot answer pending questions or approvals; continue interactively")
+					}
+					if threads.start == nil {
+						if !control.Requests.Pending() && control.Turn == "" && !attached.threadInput.preparing() {
+							lifecycle := attached.session.Lifecycle(control.Thread)
+							member, ok := threads.shared.Member(control.Thread)
+							if lifecycle.Final && (!ok || member.Status == threadcontrol.Completed) {
+								return nil
+							}
+							if ok {
+								switch member.Status {
+								case threadcontrol.Failed, threadcontrol.Interrupted, threadcontrol.Paused, threadcontrol.Uncertain:
+									return fmt.Errorf("headless logical Main: %s", member.Status)
+								}
+							} else if lifecycle.Turns > 0 && !lifecycle.Responding && !lifecycle.Waiting && !control.Compaction.Pending() {
+								return errors.New("headless Main turn failed or was interrupted")
+							}
+						}
+					}
+				}
 				if quit {
 					return nil
 				}
@@ -817,6 +849,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 					if !ok {
 						exited = true
 						return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.Done)
+					}
+					if threads != nil && threads.headless != nil {
+						if err := threads.headless.Observe(message); err != nil {
+							return err
+						}
 					}
 					if err := dispatch(message); err != nil || quit {
 						return err
@@ -997,7 +1034,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		attached.session.Retire()
 		if err != nil {
 			if diagnostic := c.Diagnostics.Snapshot(); diagnostic != "" {
-				fmt.Fprintln(stdout, diagnostic)
+				if threads != nil && threads.headless != nil {
+					err = fmt.Errorf("%w\nCodex: %s", err, diagnostic)
+				} else {
+					fmt.Fprintln(stdout, diagnostic)
+				}
 			}
 		}
 		return err

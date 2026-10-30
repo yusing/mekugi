@@ -24,6 +24,29 @@ type inputTransport struct {
 	err      error
 }
 
+func TestCompactionSelectionUsesIntentInsteadOfMessageText(t *testing.T) {
+	for _, command := range []bool{false, true} {
+		var store scope.Store
+		var presentation sessionpresentation.Service
+		m := presentation.Session(&store)
+		m.Attach(sessionpresentation.Thread{ID: "main", Caller: "/root"}, false)
+		control := sessioncontrol.Live{Thread: "main", Turn: "active"}
+		input := conversationmodel.Input{Text: "/compact"}
+		if command {
+			input.Compact = new(conversationmodel.CompactIntent{})
+		}
+		conversation := &conversationmodel.Session{Unsent: []conversationmodel.Input{input}}
+		next := m.NextInput(&control, conversation, false)
+		if command {
+			if !next.Interrupt || len(next.Batch.Parts) != 0 {
+				t.Fatal("semantic compaction did not preserve its interruption gate")
+			}
+		} else if next.Interrupt || !next.Steer || len(next.Batch.Parts) != 1 || next.Batch.Parts[0].Text != "/compact" {
+			t.Fatal("literal message was interpreted as a compaction command")
+		}
+	}
+}
+
 func (t *inputTransport) Initialize() (string, error)       { return "initialize", nil }
 func (t *inputTransport) Respond(jsontext.Value, any) error { return nil }
 func (t *inputTransport) Send(method string, params any, _ bool) (string, error) {

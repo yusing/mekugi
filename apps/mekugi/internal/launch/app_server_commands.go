@@ -121,7 +121,7 @@ func submitCompact(attached *attachedPresentation, terminal *terminalsession.Att
 	}
 	draft := prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take())
 	draft.Text = "/compact"
-	draft.Compact = conversationmodel.CompactIntent{WaitForIdle: queue, Continue: control.Turn != "" || control.Starting()}
+	draft.Compact = &conversationmodel.CompactIntent{WaitForIdle: queue, Continue: control.Turn != "" || control.Starting()}
 	attached.conversation.Unsent = append(attached.conversation.Unsent, draft)
 	return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, (*owned), hook, editor, parent, restoring, observations, reviewOwner, receipts)
 }
@@ -134,7 +134,7 @@ func sessionBusy(control *sessioncontrol.Live, conversation *conversationmodel.S
 // A queued compact is a local action, not Main's running turn. Return waiting
 // input for retry without interrupting that turn or an in-flight submission.
 func cancelQueuedCompact(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time) bool {
-	isCompact := func(d conversationmodel.Input) bool { return d.Text == "/compact" }
+	isCompact := func(d conversationmodel.Input) bool { return d.Compact != nil }
 	hasQueued := slices.ContainsFunc(attached.conversation.Unsent, isCompact) || slices.ContainsFunc(attached.conversation.Queued, isCompact)
 	cancelled, interruptionIssued := control.Compaction.CancelQueued(hasQueued)
 	if !cancelled {

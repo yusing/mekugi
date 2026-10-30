@@ -127,7 +127,7 @@ func TestDebugCanceledStartupReportsArtifacts(t *testing.T) {
 
 func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 	t.Parallel()
-	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "")
+	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "", os.Getenv(evidence.AXReadOutputEnvironment))
 	if err != nil {
 		t.Fatal(err)
 	}

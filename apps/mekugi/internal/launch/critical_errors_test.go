@@ -129,7 +129,7 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
-			debug, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "")
+			debug, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "", os.Getenv(evidence.AXReadOutputEnvironment))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -197,7 +197,7 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 	} {
 		t.Run(test.code, func(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
-			debug, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "")
+			debug, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "", os.Getenv(evidence.AXReadOutputEnvironment))
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -106,3 +106,78 @@ func TestNativeStartupDisconnectAndJoinedOutcome(t *testing.T) {
 		t.Fatalf("joined runtime outcome: %+v", outcome)
 	}
 }
+
+func TestRunNativeLiteralInputAndFamilyJoin(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	prompt := "  /literal\n!still literal\n"
+	childJoined := make(chan struct{})
+	var hub *Hub
+	launcher := &nativeStartupLauncher{run: func(ctx context.Context, start Start, server *Server) error {
+		if start.Native == nil || start.Native.Workspace != workspace {
+			return errors.New("lost native admission")
+		}
+		if err := server.SetSummary(Summary{Thread: "root", Workspace: workspace, Ready: true}); err != nil {
+			return err
+		}
+		select {
+		case intent := <-server.Intents():
+			if intent.Action != Send || intent.Thread != "root" || intent.Text != "" || intent.Prepared.Draft.Text != prompt {
+				return errors.New("literal prompt was changed")
+			}
+			if !intent.Prepared.Admit(ctx, nil) {
+				return errors.New("prepared input was not admitted")
+			}
+			_, err := hub.StartPrepared(ctx, "root", "child", workspace, func(ctx context.Context, child *Server) error {
+				if err := child.SetSummary(Summary{Thread: "child", Workspace: workspace, Ready: true}); err != nil {
+					return err
+				}
+				<-ctx.Done()
+				close(childJoined)
+				return ctx.Err()
+			})
+			if err != nil {
+				return err
+			}
+			intent.Reply <- ""
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}}
+	hub = NewHub(t.Context(), launcher)
+	defer hub.Close()
+	id, err := hub.RunNative(t.Context(), NativeStart{Workspace: workspace}, prompt)
+	if err != nil || id != "root" {
+		t.Fatalf("id=%q err=%v", id, err)
+	}
+	select {
+	case <-childJoined:
+	default:
+		t.Fatal("returned before child cleanup")
+	}
+}
+
+func TestRunNativeCancellationJoinsRuntime(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	joined := make(chan struct{})
+	launcher := &nativeStartupLauncher{run: func(ctx context.Context, _ Start, server *Server) error {
+		cancel()
+		<-ctx.Done()
+		close(joined)
+		return ctx.Err()
+	}}
+	hub := NewHub(t.Context(), launcher)
+	defer hub.Close()
+	_, err := hub.RunNative(ctx, NativeStart{Workspace: t.TempDir()}, "literal")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v", err)
+	}
+	select {
+	case <-joined:
+	default:
+		t.Fatal("runtime cleanup not joined")
+	}
+}

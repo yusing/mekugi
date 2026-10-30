@@ -124,7 +124,7 @@ func runFixtureInvocation(terminalViews terminalsession.Views, views *sessionpre
 		}
 		observed <- err
 	}()
-	code, runErr := runInvocation(terminalViews, views, conversation, live, activity, service, prefs, recovered, segments, changes, usage, agentMetrics, diagnostics, diagnosis, ctx, commands, projections, guidance, naming, observations, guards, options, settings, issues, executable, []string{"exec"}, os.Environ(), input, writer, io.Discard, false, "", nil, false, func() {}, nil, artifacts, nil, "", nil)
+	code, runErr := runInvocation(terminalViews, views, conversation, live, activity, service, prefs, recovered, segments, changes, usage, agentMetrics, diagnostics, diagnosis, ctx, commands, projections, guidance, naming, observations, guards, options, settings, issues, executable, []string{"exec"}, os.Environ(), input, writer, io.Discard, "", nil, false, func() {}, nil, artifacts, nil, "", nil)
 	writer.Close()
 	observeErr := <-observed
 	if observeErr != nil && !errors.Is(observeErr, io.EOF) {

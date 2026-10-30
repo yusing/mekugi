@@ -205,3 +205,23 @@ func TestAppServerResumeLastFailure(t *testing.T) {
 		}
 	}
 }
+
+func TestAppServerExplicitHookTrustOverride(t *testing.T) {
+	for _, tc := range []struct {
+		args    []string
+		want    any
+		present bool
+	}{
+		{nil, nil, false},
+		{[]string{"-c", "bypass_hook_trust=true"}, true, true},
+		{[]string{"-c", "bypass_hook_trust=false"}, false, true},
+		{[]string{"-c", "bypass_hook_trust=true", "-c", "bypass_hook_trust=false"}, false, true},
+		{[]string{"-c", "bypass_hook_trust=false", "-c", "bypass_hook_trust=true"}, true, true},
+	} {
+		config := appServerResumeConfig(tc.args, nil)
+		got, present := config["bypass_hook_trust"]
+		if got != tc.want || present != tc.present {
+			t.Fatalf("%v: config=%v", tc.args, config)
+		}
+	}
+}

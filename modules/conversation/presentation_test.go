@@ -19,7 +19,7 @@ func TestConversationScopedPayloads(t *testing.T) {
 	var store, other scope.Store
 	m := service.Session(&store)
 	reply := &prompt.Call{ID: "question", Sent: true}
-	m.Unsent = []presentation.Input{{Text: "answer envelope", Question: reply, ReplyCount: 1}, {Text: "first"}, {Text: "second"}, {Text: "/compact"}}
+	m.Unsent = []presentation.Input{{Text: "answer envelope", Question: reply, ReplyCount: 1}, {Text: "first"}, {Text: "second"}, {Text: "/compact", Compact: new(presentation.CompactIntent{})}}
 	m.Queued = []presentation.Input{{Text: "next turn"}}
 	if !m.AdvancePrompt() {
 		t.Fatal("ordinary prompt did not pass deferred answer")

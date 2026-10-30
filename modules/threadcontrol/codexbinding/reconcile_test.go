@@ -449,3 +449,38 @@ func TestCompletionReceiptFollowsQueuedStartCheckpoint(t *testing.T) {
 		t.Fatalf("receipt preceded exact disposition: %+v", member)
 	}
 }
+
+func TestLifecycleStopUnadmittedThread(t *testing.T) {
+	driver, err := NewDriver(control.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// Restore establishes observation identity before the first provider request
+	// admits logical work. Closing that idle host has nothing to pause.
+	driver.Restore(history.Session{Thread: "unadmitted"})
+	if err := driver.Stop(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLifecycleStopPausesAdmittedThread(t *testing.T) {
+	driver, _, _, _ := reconciliationFixture(t)
+	driver.thread = "root"
+	if err := driver.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := driver.control.Member("root")
+	if before.Status != control.Working {
+		t.Fatalf("fixture is not running: %+v", before)
+	}
+	if err := driver.Stop(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	member, ok := driver.control.Member("root")
+	if !ok || member.Status != control.Paused {
+		t.Fatalf("admitted work was not paused: %+v", member)
+	}
+}

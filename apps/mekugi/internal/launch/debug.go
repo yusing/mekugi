@@ -2,15 +2,13 @@ package launch
 
 import (
 	"errors"
-	"os"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-func openDebugOutput(service *diagnostic.Service, enabled bool, capturePath string) (*requestexecution.Debug, error) {
+func openDebugOutput(service *diagnostic.Service, enabled bool, capturePath, readLogPath string) (*requestexecution.Debug, error) {
 	if !enabled {
 		return nil, nil
 	}
@@ -25,7 +23,7 @@ func openDebugOutput(service *diagnostic.Service, enabled bool, capturePath stri
 	if err != nil {
 		return nil, err
 	}
-	bundle, err := service.OpenBundle(diagnostic.BundleOptions{Root: root, ReplayDirectory: replay, CapturePath: capturePath, ReadLogPath: os.Getenv(evidence.AXReadOutputEnvironment), Discover: discoverDebugRollouts})
+	bundle, err := service.OpenBundle(diagnostic.BundleOptions{Root: root, ReplayDirectory: replay, CapturePath: capturePath, ReadLogPath: readLogPath, Discover: discoverDebugRollouts})
 	if err != nil {
 		return nil, err
 	}

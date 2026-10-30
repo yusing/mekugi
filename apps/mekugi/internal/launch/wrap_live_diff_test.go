@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -50,6 +51,9 @@ func TestAutoWrapProcess(t *testing.T) {
 		}
 		if os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS") == "1" {
 			args = []string{"headless", "--yolo"}
+			if trust := os.Getenv("MEKUGI_AUTO_WRAP_TRUST"); trust != "" {
+				args = append(args, "-c", "bypass_hook_trust="+trust)
+			}
 		}
 		var routerArgs []string
 		if value := os.Getenv("MEKUGI_AUTO_WRAP_GUARD_FLAG"); value != "" {
@@ -92,6 +96,14 @@ func TestAutoWrapProcess(t *testing.T) {
 		os.Exit(code)
 	}
 	if len(os.Args) > 4 && os.Args[4] == "app-server" {
+		scenario := os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS_SCENARIO")
+		headlessHost := os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS") == "1" && strings.Contains(strings.Join(os.Args, "\n"), "compact_prompt=")
+		if headlessHost {
+			if scenario == "startup" {
+				fmt.Fprintln(os.Stderr, "fixture: invalid model configuration")
+				os.Exit(2)
+			}
+		}
 		guard := os.Getenv("MEKUGI_VCS_GUARD_HOOK")
 		preflight := os.Getenv("MEKUGI_AUTO_WRAP_GUARD") == "default" && guard == ""
 		if expected := os.Getenv("MEKUGI_AUTO_WRAP_GUARD"); expected != "" && !preflight {
@@ -118,13 +130,23 @@ func TestAutoWrapProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer marker.Close()
+		if headlessHost {
+			interrupt := make(chan os.Signal, 1)
+			signal.Notify(interrupt, os.Interrupt)
+			go func() { <-interrupt; _ = os.WriteFile(markerPath+".joined", []byte("joined"), 0600); os.Exit(0) }()
+		}
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			var request struct {
 				ID     jsontext.Value `json:"id"`
 				Method string         `json:"method"`
 				Params struct {
-					Cwds []string `json:"cwds"`
+					Cwds   []string       `json:"cwds"`
+					Config map[string]any `json:"config"`
+					Input  []struct {
+						Type string `json:"type"`
+						Text string `json:"text"`
+					} `json:"input"`
 				} `json:"params"`
 			}
 			if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
@@ -151,9 +173,14 @@ func TestAutoWrapProcess(t *testing.T) {
 					t.Fatal(err)
 				}
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":%s}`+"\n", request.ID, result)
+			case "model/list":
+				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"data":[]}}`+"\n", request.ID)
 			case "environment/info":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"shell":{"name":"bash","path":"/bin/bash"}}}`+"\n", request.ID)
 			case "thread/start":
+				if trust := os.Getenv("MEKUGI_AUTO_WRAP_TRUST"); trust != "" && request.Params.Config["bypass_hook_trust"] != (trust == "true") {
+					t.Fatal("thread/start omitted explicit hook trust")
+				}
 				foundPrompt := false
 				for _, arg := range os.Args {
 					if strings.HasPrefix(arg, "experimental_compact_prompt_file=") {
@@ -172,13 +199,43 @@ func TestAutoWrapProcess(t *testing.T) {
 					os.Exit(23)
 				}
 			case "turn/start":
+				switch scenario {
+				case "rpc-rejected":
+					fmt.Fprintf(os.Stdout, `{"id":%s,"error":{"code":-1,"message":"fixture: start rejected"}}`+"\n", request.ID)
+					continue
+				case "rpc-stale":
+					fmt.Fprintf(os.Stdout, `{"id":%q,"error":{"code":-1,"message":"fixture: stale rejection"}}`+"\n", string(request.ID))
+				}
+				switch scenario {
+				case "approval":
+					fmt.Fprintln(os.Stdout, `{"id":"approval","method":"item/commandExecution/requestApproval","params":{"threadId":"auto-wrap"}}`)
+					continue
+				case "question":
+					fmt.Fprintln(os.Stdout, `{"method":"item/completed","params":{"threadId":"auto-wrap","item":{"id":"question","type":"agentMessage","delivery":"async","questions":[{"id":"q"}]}}}`)
+					continue
+				case "disconnect":
+					fmt.Fprintln(os.Stderr, "fixture: host transport ended")
+					os.Exit(23)
+				}
+				if prompt := os.Getenv("MEKUGI_AUTO_WRAP_PROMPT"); prompt != "" && (len(request.Params.Input) != 1 || request.Params.Input[0].Text != prompt) {
+					t.Fatal("literal stdin prompt was changed")
+				}
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"turn":{"id":"test-turn"}}}`+"\n", request.ID)
 				fmt.Fprintln(os.Stdout, `{"method":"turn/started","params":{"threadId":"auto-wrap","turn":{"id":"test-turn"}}}`)
-				fmt.Fprintln(os.Stdout, `{"method":"turn/completed","params":{"threadId":"auto-wrap","turn":{"id":"test-turn","status":"completed"}}}`)
+				status := "completed"
+				if scenario == "failed" || scenario == "interrupted" {
+					status = scenario
+				}
+				fmt.Fprintf(os.Stdout, `{"method":"turn/completed","params":{"threadId":"auto-wrap","turn":{"id":"test-turn","status":%q}}}`+"\n", status)
 			}
 		}
 		if err := scanner.Err(); err != nil {
 			t.Fatal(err)
+		}
+		if headlessHost {
+			if err := os.WriteFile(markerPath+".joined", []byte("joined"), 0600); err != nil {
+				t.Fatal(err)
+			}
 		}
 		os.Exit(0) // Keep the test runner's PASS line out of the RPC stream.
 	}

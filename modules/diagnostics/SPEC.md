@@ -26,6 +26,9 @@ It collects request diagnostics, final projected instruction/tool
 content and available capture, metrics, read-log and AX artifacts. Capture and AX
 remain independently optional. Explicit capture and read-log destinations take
 precedence; the bundle records those selections for later inspection.
+Main retains the explicit destinations. Independent child runtimes write under
+`<root-capture>.runtimes/<unique-id>/` (or `<root-read-log>.runtimes/` when only a
+read log is selected), keeping captures and read logs separate across the family.
 
 Bundles contain private content and are not sanitized. Error strings may include
 request bodies or credentials. The adapter supplies final local projection and

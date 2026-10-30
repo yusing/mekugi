@@ -101,9 +101,14 @@ Codex-owned execution or explicitly invoked change-history tools.
 Rewind's optional captured-edit reversal uses those tools through the host's
 native shell under the [session-control contract](../sessioncontrol/SPEC.md).
 
-`codex headless --yolo` selects the [headless client](../headless/SPEC.md).
-Launch rejects resume and unsupported CLI options; explicit
-`--yolo` is required because the client cannot answer approvals.
+`codex headless --yolo` selects the [headless adapter](../headless/SPEC.md), using
+the same admitted runtime and Thread Control without a renderer. Its task-owned
+family is joined on completion or cancellation. Launch rejects resume and
+unsupported CLI options; explicit `--yolo` is required because the adapter cannot
+answer approvals.
+
+Explicit `-c bypass_hook_trust=true` or `false` applies to admitted thread startup
+and its children. `--yolo` alone does not bypass configured hook trust.
 
 ## Model catalog
 

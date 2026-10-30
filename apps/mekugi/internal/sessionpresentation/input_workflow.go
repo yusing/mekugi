@@ -23,7 +23,7 @@ func (m *Model) NextInput(control *sessioncontrol.Live, conversation *conversati
 	if m.replay || !control.AcceptsInput() {
 		return next
 	}
-	compactSteer := len(conversation.Unsent) > 0 && conversation.Unsent[0].Text == "/compact" && !conversation.Unsent[0].Compact.WaitForIdle
+	compactSteer := len(conversation.Unsent) > 0 && conversation.Unsent[0].Compact != nil && !conversation.Unsent[0].Compact.WaitForIdle
 	if conversation.Questions.Waiting(control.Thread) && !compactSteer {
 		return next
 	}
@@ -35,8 +35,8 @@ func (m *Model) NextInput(control *sessioncontrol.Live, conversation *conversati
 		if conversation.Unsent[0].Question != nil && emitting && !conversation.AdvancePrompt() {
 			return next
 		}
-		if conversation.Unsent[0].Text == "/compact" {
-			next.Interrupt = control.Compaction.InterruptBefore(sessioncontrol.CompactIntent(conversation.Unsent[0].Compact), control.Turn)
+		if conversation.Unsent[0].Compact != nil {
+			next.Interrupt = control.Compaction.InterruptBefore(sessioncontrol.CompactIntent(*conversation.Unsent[0].Compact), control.Turn)
 			return next
 		}
 	}

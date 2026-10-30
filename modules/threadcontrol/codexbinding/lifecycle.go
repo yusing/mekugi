@@ -67,7 +67,7 @@ func (d *Driver) Stop(ctx context.Context) error {
 	case <-d.stopped:
 	}
 	d.auxiliary.Wait()
-	if thread == "" {
+	if _, admitted := d.control.Member(thread); !admitted {
 		return nil
 	}
 	return d.control.Pause(ctx, thread)

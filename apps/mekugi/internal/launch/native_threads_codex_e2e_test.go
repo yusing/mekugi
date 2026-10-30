@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
@@ -204,7 +205,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		for _, comment := range []string{
 			"// Task-name segment under this agent. Use lowercase ASCII letters, digits, underscores and hyphens; for example, trace_roster_metrics.",
 			"// Model override for fork_turns=none. Set only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions.",
-			"// Startup sources for fork_turns=none. Supply known files, skills or mchanges IDs/ranges the child needs to begin; complete content arrives before first inference",
+			"// Required instruction files, skills, task files or mchanges IDs/ranges for fork_turns=none, acquired before first inference.",
 			"// Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline.",
 		} {
 			if !strings.Contains(catalog, comment) {
@@ -528,12 +529,24 @@ func TestNativeThreadsPreloadServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{preload: true})
 }
 
+func TestHeadlessThreadsPreloadServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{headless: true, preload: true})
+}
+
+func TestHeadlessThreadsCompactWaitServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{headless: true, agentCompact: true})
+}
+
+func TestHeadlessThreadsCompletionGuardServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{headless: true, earlyCompletion: true})
+}
+
 func TestNativeThreadsRewindServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{rewind: true})
 }
 
 type nativeThreadsScenario struct {
-	fullHistory, shellWait, compactWait, agentCompact, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind bool
+	fullHistory, shellWait, compactWait, agentCompact, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind, headless bool
 }
 
 func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
@@ -646,15 +659,29 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 	defer os.RemoveAll(socketDirectory)
 	socket := filepath.Join(socketDirectory, "s")
-	environment = append(environment, "XDG_STATE_HOME="+t.TempDir(),
+	stateDirectory := t.TempDir()
+	capturePath := ""
+	if scenario.headless && scenario.preload {
+		capturePath = filepath.Join(t.TempDir(), "capture.jsonl")
+	}
+	environment = append(environment, "XDG_STATE_HOME="+stateDirectory,
 		"MEKUGI_NATIVE_THREADS_SOCKET="+socket,
 		"MEKUGI_NATIVE_THREADS_ADDRESS="+server.Listener.Addr().String(),
 		"MEKUGI_NATIVE_THREADS_CERT="+base64.StdEncoding.EncodeToString(server.Certificate().Raw),
 		routerTestWorkerEnvironment+"=1")
+	if scenario.headless {
+		environment = append(environment, "MEKUGI_NATIVE_THREADS_HEADLESS=1", "MEKUGI_NATIVE_THREADS_CAPTURE="+capturePath)
+	}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestNativeThreadsServerProcessHelper$")
 	cmd.Env, cmd.Dir = environment, workspace
 	var diagnostics bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &diagnostics, &diagnostics
+	var headlessOutput headlessThreadsOutput
+	if scenario.headless {
+		headlessOutput.fixture = fixture
+		cmd.Stdin = strings.NewReader("PARENT_PRIVATE_SENTINEL delegate fresh work")
+		cmd.Stdout = &headlessOutput
+	}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -674,6 +701,77 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			t.Logf("server outcome: %v\n%s\n%s", processErr, &diagnostics, fixture.diagnostic())
 		}
 	}()
+
+	if scenario.headless {
+		select {
+		case <-joined:
+		case <-ctx.Done():
+			t.Fatalf("headless did not join: %v\n%s", ctx.Err(), &diagnostics)
+		}
+		if processErr != nil {
+			t.Fatalf("headless outcome: %v\n%s\n%s", processErr, &diagnostics, headlessOutput.output.String())
+		}
+		var methods []string
+		for _, row := range bytes.Split(bytes.TrimSpace(headlessOutput.output.Bytes()), []byte("\n")) {
+			var message appserver.Message
+			if err := json.Unmarshal(row, &message); err != nil {
+				t.Fatalf("non-JSON headless output: %v", err)
+			}
+			methods = append(methods, message.Method)
+		}
+		if len(methods) == 0 || methods[len(methods)-1] != "mekugi/headless/completed" || !headlessOutput.released || !strings.Contains(headlessOutput.output.String(), "MANAGED_PARENT_RESUMED") || !strings.Contains(headlessOutput.output.String(), "MANAGED_CHILD_FINAL") {
+			t.Fatalf("headless logical completion lost family evidence: %s", headlessOutput.output.String())
+		}
+		if capturePath != "" {
+			captures, err := filepath.Glob(capturePath + ".runtimes/*/capture.jsonl")
+			if err != nil || len(captures) != 1 {
+				t.Fatalf("independent child captures: %v, %v", captures, err)
+			}
+			captures = append(captures, capturePath)
+			for _, capture := range captures {
+				if _, err := os.Stat(filepath.Join(filepath.Dir(capture), "reads.jsonl")); err != nil {
+					available, _ := filepath.Glob(filepath.Join(stateDirectory, "mekugi", "debug", "*", "reads.jsonl"))
+					t.Fatalf("missing runtime-specific read log: %q, %v; bundle logs: %v", capture, err, available)
+				}
+				info, err := os.Stat(capture)
+				if err != nil || info.Size() == 0 {
+					t.Fatalf("missing runtime capture %q: %v", capture, err)
+				}
+				paired := false
+				err = filepath.WalkDir(stateDirectory, func(path string, entry os.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					if entry.Type()&os.ModeSymlink == 0 || entry.Name() != "capture.jsonl" {
+						return nil
+					}
+					target, err := filepath.EvalSymlinks(path)
+					if err != nil {
+						return err
+					}
+					if target == capture {
+						_, err = os.Stat(filepath.Join(filepath.Dir(path), "metrics.json"))
+						paired = err == nil
+						return err
+					}
+					return nil
+				})
+				if err != nil || !paired {
+					t.Fatalf("runtime capture has no joined metrics bundle: %q, %v", capture, err)
+				}
+			}
+		}
+		fixture.mu.Lock()
+		defer fixture.mu.Unlock()
+		want := 5
+		if scenario.earlyCompletion {
+			want = 6
+		}
+		if len(fixture.calls) != 2 || fixture.calls[fixture.parent] != want || fixture.calls[fixture.child] != map[bool]int{false: 2, true: 3}[scenario.agentCompact] {
+			t.Fatalf("headless repeated work or omitted children: %v", fixture.calls)
+		}
+		return
+	}
 	serverCLIAwait(t, func() bool {
 		select {
 		case <-joined:
@@ -1066,7 +1164,64 @@ func TestNativeThreadsServerProcessHelper(t *testing.T) {
 	defer transport.CloseIdleConnections()
 	ctx, cancel := signal.NotifyContext(t.Context(), os.Interrupt)
 	defer cancel()
+	if os.Getenv("MEKUGI_NATIVE_THREADS_HEADLESS") == "1" {
+		routerArgs := []string{"--shell-guard=false"}
+		if capture := os.Getenv("MEKUGI_NATIVE_THREADS_CAPTURE"); capture != "" {
+			routerArgs = append(routerArgs, "--debug", "--capture-output", capture)
+			// TestMain clears inherited AX destinations before fixture dispatch.
+			t.Setenv("MEKUGI_AX_OUTPUT", filepath.Join(filepath.Dir(capture), "reads.jsonl"))
+		}
+		code, err := wrapCodex(ctx, routerArgs, []string{"headless", "--yolo", "-m", "gpt-6-sol", "-c", "features.plugins=false", "-c", `model_reasoning_effort="ultra"`, "-c", "bypass_hook_trust=true"})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		os.Exit(code)
+	}
 	if code := RunServer(ctx, []string{"--socket", socket}, os.Stderr); code != 0 {
 		t.Fatalf("server exit status: %d", code)
 	}
+}
+
+// Release the held child only after Main's transient host completion was emitted.
+// A client that mistakes that boundary for logical completion loses the final
+// parent continuation and fails the provider-count and JSONL assertions.
+type headlessThreadsOutput struct {
+	output, pending bytes.Buffer
+	fixture         *nativeThreadsProvider
+	released        bool
+}
+
+func (o *headlessThreadsOutput) Write(data []byte) (int, error) {
+	o.output.Write(data)
+	o.pending.Write(data)
+	for {
+		rows := o.pending.Bytes()
+		at := bytes.IndexByte(rows, '\n')
+		if at < 0 {
+			break
+		}
+		var message appserver.Message
+		err := json.Unmarshal(rows[:at], &message)
+		o.pending.Next(at + 1)
+		if err != nil || message.Method != "turn/completed" || o.released {
+			continue
+		}
+		var event struct {
+			Thread string `json:"threadId"`
+			Turn   struct {
+				ID string `json:"id"`
+			} `json:"turn"`
+		}
+		if json.Unmarshal(message.Params, &event) != nil {
+			continue
+		}
+		o.fixture.mu.Lock()
+		release := event.Thread == o.fixture.parent && event.Turn.ID == o.fixture.waitTurn && o.fixture.waitTurn != ""
+		o.fixture.mu.Unlock()
+		if release {
+			o.released = true
+			close(o.fixture.waiting)
+		}
+	}
+	return len(data), nil
 }

@@ -131,4 +131,4 @@ func (m *Session) SteerQueued() bool {
 	return promoted
 }
 
-func steerable(input Input) bool { return input.Question == nil && input.Text != "/compact" }
+func steerable(input Input) bool { return input.Question == nil && input.Compact == nil }
