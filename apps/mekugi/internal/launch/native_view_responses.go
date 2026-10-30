@@ -26,6 +26,10 @@ func dispatchViewResponse(attached *attachedPresentation, terminal *terminalsess
 		rewindTurnsResponse(control, picker, response.Owner, m)
 		return true, nil
 	}
+	if method == "rewind/page" {
+		rewindPageResponse(control, picker, response.Owner, m)
+		return true, nil
+	}
 	if method == "rewind/source" {
 		rewindSourceResponse(control, picker, parent, response.Owner, m)
 		return true, nil

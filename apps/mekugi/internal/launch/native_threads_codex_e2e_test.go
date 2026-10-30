@@ -1090,7 +1090,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 					t.Fatal("rewind choice:", err)
 				}
 			}
-			if event.Frame.View.Main.ID != root && event.Frame.View.Admission.Submit && menu == nil {
+			if event.Frame.View.Main.ID == root && event.Frame.View.Admission.Submit && menu == nil {
 				found := false
 				if family := event.Frame.Family; family != nil && family.Agents != nil {
 					for _, row := range family.Agents.Roster {
@@ -1100,6 +1100,17 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 				if !found {
 					family, _ := json.Marshal(event.Frame.Family)
 					progress += " family=" + string(family)
+					continue
+				}
+				retained := false
+				if review := event.Frame.Review; review != nil {
+					for _, file := range review.Files {
+						for _, chunk := range file.Chunks {
+							retained = retained || chunk.Review.AfterPath == filepath.Join(childDirectory, "managed-child.txt")
+						}
+					}
+				}
+				if !retained {
 					continue
 				}
 				break

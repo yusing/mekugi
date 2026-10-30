@@ -52,15 +52,11 @@ func (p *composerPicker) menuView(workspace, text string, control *sessioncontro
 	case sessionpresentation.MenuArchive:
 		view.Title = "Archive this session?"
 		view.Explanation = archivePrompt(control)
-		if p.archiveTarget != "" {
-			view.Dialog = true
-			view.Title = "Archive the original session?"
-			view.Explanation = "The new branch is ready. Archive original thread " + p.archiveTarget + "?"
-		}
+
 	case sessionpresentation.MenuRewind:
 		view.Dialog = true
 		view.Title = "Rewind before a user turn"
-		view.Explanation = "The branch excludes this turn and later conversation. Next, choose whether to keep or revert captured edits."
+		view.Explanation = "Rewind removes this turn and later conversation. Next, choose whether to keep or revert captured edits."
 	case sessionpresentation.MenuRewindEdits:
 		view.Dialog = true
 		view.Title = "Keep or revert edits?"
@@ -149,7 +145,7 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 			p.Dismissed, p.Open = p.Target, false
 			p.Kind, p.Choices, p.CopyTexts = "", nil, nil
 			picker.Setting = ""
-			p.archiveTarget, p.rewindThread = "", ""
+			p.rewindThread = ""
 			picker.cancelScan()
 		}
 		return true
@@ -169,7 +165,7 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 		case "manage":
 			toggleSkill(picker, control.Requests, attached.cwd, choice)
 		case "rewind", "rewind-edits":
-			chooseRewind(attached, terminal, control, picker, applied, restoring, clock, choice, parent)
+			chooseRewind(attached, terminal, control, picker, restoring, clock, choice, parent)
 		case "archive":
 			chooseArchive(picker, control, &attached.feedback, terminal, clock, choice.ID == archiveConfirmChoice)
 		case "settings":

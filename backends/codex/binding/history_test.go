@@ -34,7 +34,8 @@ func TestDecodeHistoryThreadPreservesWireFields(t *testing.T) {
 	change := FileChange{Path: "old", Diff: "@@ -1 +1 @@\n-old\n+new\n"}
 	change.Kind.Type, change.Kind.MovePath, change.Kind.MovePath2 = "update", "snake", "camel"
 	want := ThreadInfo{
-		Name: "Saved session", ID: "child", ParentThreadID: "parent", AgentNickname: "Reader", AgentRole: "worker",
+		HistoryMode: "full",
+		Name:        "Saved session", ID: "child", ParentThreadID: "parent", AgentNickname: "Reader", AgentRole: "worker",
 		Cwd: "/workspace", Path: "/rollouts/child.jsonl",
 		CreatedAt: 1700000001, UpdatedAt: 1700000009,
 		Turns: []HistoryTurn{{

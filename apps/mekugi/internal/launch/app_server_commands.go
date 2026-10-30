@@ -42,7 +42,7 @@ var nativeCommands = []completion.Choice{
 	{Name: "/title", HideRemote: true, Description: "Rename this session"},
 	{Name: "/status", Description: "Show session settings and usage limits"},
 	{Name: "/copy", HideRemote: true, Description: "Copy the last response or part of it"},
-	{Name: "/rewind", Description: "Fork before a user turn; keep or revert captured edits"},
+	{Name: "/rewind", Description: "Rewind before a user turn; keep or revert captured edits"},
 	{Name: "/fork", Description: "Fork this conversation and switch to the branch"},
 	{Name: "/resume", Description: "Resume a saved session"},
 	{Name: "/archive", Description: "Archive this session"},
@@ -76,13 +76,13 @@ func sessionCommand(attached *attachedPresentation, terminal *terminalsession.At
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "/rewind is disabled before the first user turn", false)
 			return nil
 		}
-		showRewindPicker(control, picker, provider, approvalMode, reviewOwner)
+		showRewindPicker(control, picker, reviewOwner)
 		(*editor).Take()
 		return nil
 	}
 	prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take())
 	if command == "/fork" {
-		if err := control.Requests.Fork(&control.Startup, &control.Live, settings, provider, approvalMode, ""); err != nil {
+		if err := control.Requests.Fork(&control.Startup, &control.Live, settings, provider, approvalMode); err != nil {
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not fork session: "+err.Error(), true)
 			return nil
 		}

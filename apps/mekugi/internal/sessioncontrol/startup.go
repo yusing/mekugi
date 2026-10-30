@@ -30,7 +30,6 @@ type Startup struct {
 	ForkRetention     *ForkRetention
 	ForkSettings      *Settings
 	ForkSettingsAck   bool
-	RewindOriginal    string
 }
 
 // PreparedThread is an internal server admission, never human creation input.
@@ -207,7 +206,7 @@ func (r *Requests[T]) Resume(s *Startup, control *Live, evidence preferences.Evi
 
 // Fork branches the idle conversation with its currently applied settings. The
 // replacement remains pending until the host returns a distinct thread identity.
-func (r *Requests[T]) Fork(s *Startup, control *Live, applied preferences.Applied, provider string, approvals bool, beforeTurn string) error {
+func (r *Requests[T]) Fork(s *Startup, control *Live, applied preferences.Applied, provider string, approvals bool) error {
 	params := ThreadPermissions(map[string]any{"threadId": control.Thread, "model": applied.Model, "serviceTier": nil}, approvals)
 	if provider != "" {
 		params["modelProvider"] = provider
@@ -218,16 +217,9 @@ func (r *Requests[T]) Fork(s *Startup, control *Live, applied preferences.Applie
 	if applied.Tier != "" {
 		params["serviceTier"] = applied.Tier
 	}
-	if beforeTurn != "" {
-		params["beforeTurnId"] = beforeTurn
-	}
 	var owner T
 	if _, err := r.Send("thread/fork", params, "main", owner); err != nil {
 		return err
-	}
-	s.RewindOriginal = ""
-	if beforeTurn != "" {
-		s.RewindOriginal = control.Thread
 	}
 	s.ForkSettings, s.ForkSettingsAck = nil, false
 	control.Replacement.Fork()
@@ -263,6 +255,9 @@ func (s *Startup) Accept(control *Live, method string, data jsontext.Value) (Acc
 	}
 	if result.Thread.ID == "" {
 		return result, fmt.Errorf("%s returned no thread identity", method)
+	}
+	if method == "thread/revert" && result.Thread.ID != control.Thread {
+		return result, errors.New("thread/revert returned a different thread identity")
 	}
 	if method == "thread/resume" && result.Thread.ID != s.Target(control) {
 		return result, errors.New("thread/resume returned a different thread identity")
@@ -307,18 +302,9 @@ type ForkRetention struct {
 
 func (s *Startup) RetainFork(ctx context.Context, selected changes.Scope, source changes.Service, original string, message appserver.Message, accepted AcceptedThread) {
 	selected.Thread, selected.Namespace = accepted.Thread.ID, accepted.Thread.ID
-	rewind := s.RewindOriginal != ""
 	done := make(chan error, 1)
 	s.ForkRetention = &ForkRetention{Message: message, Done: done}
 	go func() {
-		if rewind {
-			var err error
-			selected.Namespace, err = selected.Store.NamespaceForThread(original)
-			if err != nil {
-				done <- err
-				return
-			}
-		}
 		done <- recordtransactions.RetainInput(ctx, selected, source, nil, recordtransactions.Input{
 			Workspace:  accepted.Thread.Cwd,
 			Initialize: &history.Scope{Thread: accepted.Thread.ID, Namespace: selected.Namespace, Fork: original},

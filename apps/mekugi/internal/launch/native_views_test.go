@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,27 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
+
+func TestNativeViewSurvivesSameThreadRewind(t *testing.T) {
+	u, wire := newResumeSessionTestUI(t)
+	u.startSession("main", t.TempDir())
+	h := remoteOwnerView(t, u)
+	h.view.initial = false
+	h.views.replacing = "another-view"
+	rewindTestTurns(t, u, wire)
+	appServerTestKeys(t, u, "\r\r")
+	rewind := resumeTestOne(t, wire, "thread/revert")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","cwd":%q}}}`, rewind.ID, u.attached.cwd))
+	resumeTestSettle(t, u, wire)
+	h.views.publish(&u.attached, &u.Client, preferences.Applied{}, nil, "", "", false, nil, nil, nil, sessionapi.NativeSessionFacts{}, time.Now())
+	if h.views.views[h.event.Attachment] != h.view || h.view.attached.executionPresentation != u.attached.executionPresentation {
+		t.Fatal("rewind disconnected another renderer of the same thread")
+	}
+	h.publish()
+	if code, reason := h.send(sessionapi.NativeOperation{Focused: new(true)}, func(request sessionapi.NativeRequest) string { return h.view.applyView(request.Operation) }); code != 202 || !h.view.focused {
+		t.Fatalf("rewound attachment unusable: %d %s", code, reason)
+	}
+}
 
 func TestNativeViewsBorrowExecutionAndDisposeIndependently(t *testing.T) {
 	u, wire := newAppServerTestUI()

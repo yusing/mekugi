@@ -117,18 +117,6 @@ func TestNativeViewReplacementRetiresAcquisitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The canonical restoration owner moves its post-rewind confirmation to the
-	// originating live view, even when its replacement has not published yet.
-	n.replacing = "origin"
-	u.attached.rewindArchive = n.rewindArchive
-	u.Startup.RewindOriginal = "main"
-	u.restoring = &appServerActivityRestore{rendered: true}
-	if err := u.finishRestoredContent(); err != nil {
-		t.Fatal(err)
-	}
-	if v.archiveOriginal != "main" || other.archiveOriginal != "" || u.picker.Kind == "archive" || u.Startup.RewindOriginal != "" {
-		t.Fatal("post-rewind confirmation crossed its originating view")
-	}
 	n.replacePresentation(v, &u.attached)
 	v.attached.presentation.Attach(sessionpresentation.Thread{ID: "branch", Caller: "/root"}, false)
 	if scan.Err() == nil || v.picker.State == oldPicker || v.attached.presentation == oldModel || v.panel != nil || v.resume != nil || v.picker.Open || v.picker.sideTask != nil {
@@ -140,11 +128,7 @@ func TestNativeViewReplacementRetiresAcquisitions(t *testing.T) {
 	if v.attached.executionPresentation != execution || other.attached.executionPresentation != execution || len(v.effects.pending) != 1 || v.effects.pending[0].Restore.Text != "prepared oneoff" {
 		t.Fatal("replacement copied execution or discarded the local pending input")
 	}
-	showRewindArchive(&v.picker, v.archiveOriginal)
-	publication := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, true)
-	if publication.Menu == nil || publication.Menu.Kind != sessionpresentation.MenuArchive || v.picker.archiveTarget != "main" || other.picker.Open {
-		t.Fatal("post-rewind confirmation was not published by its own view")
-	}
+
 }
 
 func TestNativeViewRestorationUsesOriginatingEditorLifetime(t *testing.T) {

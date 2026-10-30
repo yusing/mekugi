@@ -49,11 +49,9 @@ type composerPicker struct {
 	scanCwd                         string
 	toggleID, togglePath, toggleCwd string
 	toggleOwnsManager               bool
-	rewindThread, rewindProvider    string
-	rewindApprovals                 bool
+	rewindThread                    string
 	rewind                          *rewindSelection
 	rewindSlots                     chan struct{}
-	archiveTarget                   string
 	sideTask                        *composer.Draft
 	sideTaskDelivery                uint64
 	sideTarget                      string

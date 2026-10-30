@@ -122,9 +122,7 @@ func attachPresentation(attached *attachedPresentation, terminal *terminalsessio
 // settlePresentation runs before another intent can observe this session.
 // Opening a prompt does not mark it painted or acknowledge a notice.
 func settlePresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool) {
-	if picker.Open && picker.Kind == "rewind-edits" && !picker.Loading && picker.rewind.problem == "" && picker.rewind.command == "" && !restoring && !control.Replacement.Pending() && control.Thread == picker.rewindThread && !sessionBusy(&control.Live, attached.conversation) {
-		forkChosenRewind(attached, terminal, control, picker, settings, clock)
-	}
+	continueRewind(attached, terminal, control, picker, restoring, clock)
 	if attached.view == "" {
 		autoOpenApprovals(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
 		autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)

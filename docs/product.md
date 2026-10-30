@@ -135,7 +135,7 @@ part, scoped to the affected paths, while the rest of the task, other agents'
 edits, and the user's own changes stay in place. Overlapping edits are merged,
 conflicts are marked rather than guessed, and the revert can be reapplied.
 `/rewind` offers the same
-captured-edit reversal when branching before an earlier turn.
+captured-edit reversal when removing conversation from an earlier turn.
 
 ### Edit and review without replacing Codex
 

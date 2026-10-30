@@ -68,7 +68,6 @@ type nativeSessionView struct {
 	shell                 *terminalsession.Attachment
 	panel                 *appServerStatusReport
 	resume                *appServerResumePicker
-	archiveOriginal       string
 	effects               nativeViewEffects
 	notification          *sessionapi.NativeEffect
 	notices               *nativeCriticalNoticeDelivery
@@ -308,7 +307,7 @@ func (n *nativeViews) predictionEligibility(execution *attachedPresentation) (fo
 
 func (n *nativeViews) publish(execution *attachedPresentation, control *sessioncontrol.Client[appServerRequest], settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, review *sessionreview.Review, reviewSource *changecapture.Service, facts sessionapi.NativeSessionFacts, now time.Time) {
 	for id, v := range n.views {
-		if v.ctx.Err() != nil || v.attached.executionPresentation != execution.executionPresentation && id != n.replacing {
+		if v.ctx.Err() != nil || v.attached.executionPresentation != execution.executionPresentation && v.thread != control.Thread && id != n.replacing {
 			n.retire(id)
 			continue
 		}
@@ -319,6 +318,11 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			facts.Diagnostics = n.diagnostics.Snapshot()
 		}
 		var switched *sessionapi.NativeSwitch
+		if v.thread == control.Thread && v.attached.executionPresentation != execution.executionPresentation {
+			n.replacePresentation(v, execution)
+			v.attached.executionPresentation = execution.executionPresentation
+			v.attached.presentation.Attach(sessionpresentation.Thread{ID: control.Thread, Caller: "/root"}, false)
+		}
 		if !v.initial && v.thread != control.Thread {
 			if (!v.startup || v.thread != "") && id != n.replacing || control.Thread == "" {
 				n.retire(id)
@@ -333,10 +337,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 		}
 		n.reconcileEffects(v)
 		v.picker.pollPresets()
-		if v.archiveOriginal != "" {
-			showRewindArchive(&v.picker, v.archiveOriginal)
-			v.archiveOriginal = ""
-		}
+
 		for scanning := true; scanning; {
 			select {
 			case result := <-v.picker.scanResults:
@@ -344,6 +345,12 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			default:
 				scanning = false
 			}
+		}
+		replacing := control.Replacement.Pending()
+		continueRewind(&v.attached, v.shell, control, &v.picker, restoring, func() time.Time { return now })
+		if !replacing && control.Replacement.Pending() {
+			n.replacing = id
+			execution.presentation.BorrowExecutionStatus(v.attached.presentation)
 		}
 		if v.lastExecutionFeedback != execution.feedback.Revision {
 			v.lastExecutionFeedback = execution.feedback.Revision
@@ -402,15 +409,6 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 		}
 		v.initial, v.projected = false, now
 		v.mainOutput, v.agentOutput = nil, nil
-	}
-}
-
-func (n *nativeViews) rewindArchive(original string) {
-	if view := n.views[n.replacing]; view != nil && view.ctx.Err() == nil {
-		// Move the completed workflow's chooser request into its originating
-		// view. The next publication first binds the confirmed replacement.
-		view.archiveOriginal = original
-		view.projected = time.Time{}
 	}
 }
 

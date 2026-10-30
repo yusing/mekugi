@@ -52,7 +52,7 @@ func rewindEditsFixture(t *testing.T) (*appServerUI, *appServerTestInput) {
 	rewindTestUser(t, u)
 	appServerTestKeys(t, u, "/rewind\r")
 	read := resumeTestOne(t, w, "thread/read")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","path":%q,"turns":[{"id":"first","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Implement the parser"}]}]},{"id":"second","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Change the error format"}]}]}]}}}`, read.ID, sources["main"]))
+	rewindTestHistory(t, u, w, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","path":%q,"turns":[{"id":"first","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Implement the parser"}]}]},{"id":"second","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Change the error format"}]}]}]}}}`, read.ID, sources["main"]))
 	appServerTestKeys(t, u, "\x1b[B\r")
 	child := resumeTestOne(t, w, "thread/read")
 	if child.Params.ThreadID != "child" {
@@ -101,7 +101,7 @@ func TestAppServerRewindRevertGates(t *testing.T) {
 					}
 				}
 				if outcome == "keep" {
-					resumeTestOne(t, w, "thread/fork")
+					resumeTestOne(t, w, "thread/revert")
 				}
 				if w.Len() != 0 || u.Rewind != nil {
 					t.Fatal("keep/cancel dispatched a reversal")
@@ -148,7 +148,7 @@ func TestAppServerRewindRevertGates(t *testing.T) {
 				}
 			}
 			if outcome == "success" || outcome == "late-ack" {
-				fork := resumeTestOne(t, w, "thread/fork")
+				fork := resumeTestOne(t, w, "thread/revert")
 				if fork.Params.BeforeTurnID != "second" {
 					t.Fatalf("fork boundary: %+v", fork)
 				}
@@ -190,7 +190,7 @@ func TestAppServerRewindRejectsStalePlan(t *testing.T) {
 				t.Fatal("stale plan dispatched or remained selectable")
 			}
 			appServerTestKeys(t, u, "\r")
-			resumeTestOne(t, w, "thread/fork")
+			resumeTestOne(t, w, "thread/revert")
 		})
 	}
 }
@@ -264,7 +264,7 @@ func TestUISnapshotNativeRewindNoEdits(t *testing.T) {
 			writeTestFile(t, sources[0].Path, string(text)+`{"timestamp":"2026-10-21T01:00:03Z","type":"event_msg","payload":{"type":"task_started","turn_id":"third"}}`+"\n")
 			appServerTestKeys(t, u, "/rewind\r")
 			read := resumeTestOne(t, w, "thread/read")
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","path":%q,"turns":[{"id":"third","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Explain the changes"}]}]}]}}}`, read.ID, sources[0].Path))
+			rewindTestHistory(t, u, w, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","path":%q,"turns":[{"id":"third","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Explain the changes"}]}]}]}}}`, read.ID, sources[0].Path))
 			appServerTestKeys(t, u, "\r")
 			if scenario != "empty" {
 				for _, width := range []int{48, 100} {
@@ -285,7 +285,7 @@ func TestUISnapshotNativeRewindNoEdits(t *testing.T) {
 				u.testMainFrame(100, 18, 0)
 			}
 			if scenario != "cancel" {
-				fork := resumeTestOne(t, w, "thread/fork")
+				fork := resumeTestOne(t, w, "thread/revert")
 				if fork.Params.BeforeTurnID != "third" {
 					t.Fatalf("fork boundary: %+v", fork)
 				}
@@ -331,7 +331,7 @@ func TestRewindIgnoresDiagnosticOnlyChildren(t *testing.T) {
 			rewindTestUser(t, u)
 			appServerTestKeys(t, u, "/rewind\r")
 			read := resumeTestOne(t, w, "thread/read")
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","path":"/fixture/main.jsonl","turns":[{"id":"first","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Task"}]}]}]}}}`, read.ID))
+			rewindTestHistory(t, u, w, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","path":"/fixture/main.jsonl","turns":[{"id":"first","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Task"}]}]}]}}}`, read.ID))
 			appServerTestKeys(t, u, "\r")
 			if authored {
 				if requests := resumeTestRequests(t, w); len(requests) != 0 || len(u.picker.rewind.pending) != 0 || u.picker.Kind != "rewind-edits" {
@@ -341,7 +341,7 @@ func TestRewindIgnoresDiagnosticOnlyChildren(t *testing.T) {
 				if u.picker.Kind == "rewind-edits" {
 					t.Fatalf("diagnostic-only capture triggered edit selection: %+v", u.picker.Choices)
 				}
-				resumeTestOne(t, w, "thread/fork")
+				resumeTestOne(t, w, "thread/revert")
 			}
 		})
 	}

@@ -3,6 +3,7 @@ package launch
 import (
 	"cmp"
 	"context"
+	json "encoding/json/v2"
 	"fmt"
 	"maps"
 	"slices"
@@ -25,20 +26,19 @@ import (
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
-func showRewindPicker(control *sessioncontrol.Client[appServerRequest], picker *composerPicker, provider string, approvals bool, review *sessionreview.Review) {
+func showRewindPicker(control *sessioncontrol.Client[appServerRequest], picker *composerPicker, review *sessionreview.Review) {
 	picker.cancelScan()
 	picker.openMenu("rewind")
 	picker.Target, picker.Choices, picker.Problem, picker.Loading = completion.Target{}, nil, "", true
-	picker.rewindThread, picker.rewindProvider, picker.rewindApprovals = control.Thread, provider, approvals
+	picker.rewindThread = control.Thread
 	picker.rewind = &rewindSelection{problem: "saved change evidence is unavailable"}
 	if review != nil && review.Projection.Retained.Store != nil && review.Projection.Data != nil && review.Failure == "" && !review.Restoring() {
 		picker.rewind.snapshot, picker.rewind.problem = review.Projection.Data, ""
 		picker.rewind.scope = review.Projection.Scope
 	}
-	if _, err := control.Requests.Send("thread/read", map[string]any{"threadId": control.Thread, "includeTurns": true}, viewRequestScope(picker.view), appServerRequest{label: "rewind/turns", metadata: control.Thread, menu: picker.ID, view: picker.view}); err != nil {
+	if _, err := control.Requests.Send("thread/read", map[string]any{"threadId": control.Thread}, viewRequestScope(picker.view), appServerRequest{label: "rewind/turns", metadata: control.Thread, menu: picker.ID, view: picker.view}); err != nil {
 		picker.Loading, picker.Problem = false, "Could not load user turns: "+err.Error()
 	}
 }
@@ -57,8 +57,34 @@ func rewindTurnsResponse(control *sessioncontrol.Client[appServerRequest], picke
 		picker.Problem = "Could not load user turns: " + err.Error()
 		return
 	}
+	if thread.HistoryMode != "paginated" {
+		picker.Problem = "Rewind requires paginated history; legacy sessions cannot be rewound"
+		return
+	}
 	picker.rewind.sources = []binding.ThreadInfo{{ID: thread.ID, Path: thread.Path}}
-	for _, turn := range thread.Turns {
+	picker.Loading = true
+	if _, err := control.Requests.Send("thread/turns/list", historyPageParams(thread.ID, ""), viewRequestScope(picker.view), appServerRequest{label: "rewind/page", metadata: thread.ID, menu: picker.ID, view: picker.view}); err != nil {
+		picker.Loading, picker.Problem = false, "Could not load user turns: "+err.Error()
+	}
+}
+
+func rewindPageResponse(control *sessioncontrol.Client[appServerRequest], picker *composerPicker, request appServerRequest, message appserver.Message) {
+	if !picker.Open || picker.Kind != "rewind" || picker.ID != request.menu || picker.rewindThread != request.metadata || control.Thread != request.metadata {
+		return
+	}
+	picker.Loading = false
+	var page appServerHistoryPage
+	if message.Error != nil {
+		picker.Choices = nil
+		picker.Problem = "Could not load user turns: " + message.Error.Message
+		return
+	}
+	if err := json.Unmarshal(message.Result, &page); err != nil {
+		picker.Choices = nil
+		picker.Problem = "Could not load user turns: " + err.Error()
+		return
+	}
+	for _, turn := range page.Data {
 		if turn.ID == "" || turn.Status == "inProgress" {
 			continue
 		}
@@ -71,16 +97,31 @@ func rewindTurnsResponse(control *sessioncontrol.Client[appServerRequest], picke
 				text = answer
 			}
 			text = strings.Join(strings.Fields(text), " ")
-			picker.Choices = append(picker.Choices, completion.Choice{Name: turn.ID, Display: cmp.Or(text, "User turn (no text)"), Description: "Fork immediately before this turn"})
+			picker.Choices = append(picker.Choices, completion.Choice{Name: turn.ID, Display: cmp.Or(text, "User turn (no text)"), Description: "Rewind immediately before this turn"})
 			break
 		}
+	}
+	if page.NextCursor != "" {
+		if picker.rewind.cursors == nil {
+			picker.rewind.cursors = make(map[string]bool)
+		}
+		if picker.rewind.cursors[page.NextCursor] {
+			picker.Choices, picker.Problem = nil, "Could not load user turns: history cursor did not advance"
+			return
+		}
+		picker.rewind.cursors[page.NextCursor] = true
+		picker.Loading = true
+		if _, err := control.Requests.Send("thread/turns/list", historyPageParams(control.Thread, page.NextCursor), viewRequestScope(picker.view), request); err != nil {
+			picker.Loading, picker.Problem, picker.Choices = false, "Could not load user turns: "+err.Error(), nil
+		}
+		return
 	}
 	if len(picker.Choices) == 0 {
 		picker.Problem = "No user turns available to rewind"
 	}
 }
 
-func chooseRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, applied preferences.Applied, restoring bool, clock func() time.Time, choice completion.Choice, parent context.Context) {
+func chooseRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, restoring bool, clock func() time.Time, choice completion.Choice, parent context.Context) {
 	if restoring || control.Replacement.Pending() || control.Thread != picker.rewindThread || sessionBusy(&control.Live, attached.conversation) {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be idle before rewinding", true)
 		return
@@ -96,7 +137,7 @@ func chooseRewind(attached *attachedPresentation, terminal *terminalsession.Atta
 				}
 			}
 			if !hasChanges {
-				forkChosenRewind(attached, terminal, control, picker, applied, clock)
+				revertChosenRewind(attached, terminal, control, picker, clock)
 				return
 			}
 		}
@@ -122,25 +163,40 @@ func chooseRewind(attached *attachedPresentation, terminal *terminalsession.Atta
 	}
 	if choice.ID == 2 && picker.rewind.command != "" {
 		picker.cancelScan()
-		control.Rewind = &sessioncontrol.RewindOperation{Thread: control.Thread, BeforeTurn: picker.rewind.turn, Provider: picker.rewindProvider, Approvals: picker.rewindApprovals, Settings: applied, Command: picker.rewind.command}
+		control.Rewind = &sessioncontrol.RewindOperation{Thread: control.Thread, BeforeTurn: picker.rewind.turn, Command: picker.rewind.command}
 		picker.Kind, picker.Open, picker.Choices = "", false, nil
 		return
 	}
-	forkChosenRewind(attached, terminal, control, picker, applied, clock)
+	revertChosenRewind(attached, terminal, control, picker, clock)
 }
 
-func forkChosenRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, applied preferences.Applied, clock func() time.Time) {
+func revertChosenRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time) {
 	picker.Kind, picker.Open, picker.Choices = "", false, nil
 	picker.cancelScan()
-	if err := control.Requests.Fork(&control.Startup, &control.Live, applied, picker.rewindProvider, picker.rewindApprovals, picker.rewind.turn); err != nil {
+	if err := requestRewind(control, picker.rewind.turn); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not rewind session: "+err.Error(), true)
 		return
 	}
 	picker.rewindThread = ""
-	attached.presentation.Status.SetText("Forking before selected turn…")
+	attached.presentation.Status.SetText("Rewinding before selected turn…")
+}
+
+func requestRewind(control *sessioncontrol.Client[appServerRequest], before string) error {
+	if _, err := control.Requests.Send("thread/revert", map[string]any{"threadId": control.Thread, "beforeTurnId": before}, "main", appServerRequest{}); err != nil {
+		return err
+	}
+	control.Replacement.Rewind()
+	return nil
+}
+
+func continueRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, restoring bool, clock func() time.Time) {
+	if picker.Open && picker.Kind == "rewind-edits" && !picker.Loading && picker.rewind.problem == "" && picker.rewind.command == "" && !restoring && !control.Replacement.Pending() && control.Thread == picker.rewindThread && !sessionBusy(&control.Live, attached.conversation) {
+		revertChosenRewind(attached, terminal, control, picker, clock)
+	}
 }
 
 type rewindSelection struct {
+	cursors                map[string]bool
 	snapshot               *changepresentation.Snapshot
 	scope                  previewmodel.Scope
 	sources                []binding.ThreadInfo
@@ -232,11 +288,11 @@ func finishRewindRevert(attached *attachedPresentation, terminal *terminalsessio
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Revert incomplete; still in the original session. Inspect the shell output for conflicts and recovery instructions.", true)
 		return
 	}
-	if err := control.Requests.Fork(&control.Startup, &control.Live, r.Settings, r.Provider, r.Approvals, r.BeforeTurn); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Edits reverted, but the session could not be forked: "+err.Error(), true)
+	if err := requestRewind(control, r.BeforeTurn); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Edits reverted, but the conversation could not be rewound: "+err.Error(), true)
 		return
 	}
-	attached.presentation.Status.SetText("Forking before selected turn…")
+	attached.presentation.Status.SetText("Rewinding before selected turn…")
 }
 
 func dispatchRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time, parent context.Context, reviewOwner *sessionreview.Review, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store)) {

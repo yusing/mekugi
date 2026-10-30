@@ -1,14 +1,47 @@
 package launch
 
 import (
+	"context"
+	json "encoding/json/v2"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+// Deliver metadata and full-item pages through the picker acquisition path.
+func rewindTestHistory(t *testing.T, u *appServerUI, w *appServerTestInput, response string) {
+	t.Helper()
+	var message struct {
+		ID     int `json:"id"`
+		Result struct {
+			Thread map[string]any `json:"thread"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(response), &message); err != nil {
+		t.Fatal(err)
+	}
+	turns := message.Result.Thread["turns"]
+	delete(message.Result.Thread, "turns")
+	message.Result.Thread["historyMode"] = "paginated"
+	metadata, err := json.Marshal(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appServerTestMessage(t, u, string(metadata))
+	page := resumeTestOne(t, w, "thread/turns/list")
+	data, err := json.Marshal(map[string]any{"id": page.ID, "result": map[string]any{"data": turns}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appServerTestMessage(t, u, string(data))
+}
 
 func rewindTestUser(t *testing.T, u *appServerUI) {
 	t.Helper()
@@ -20,10 +53,10 @@ func rewindTestTurns(t *testing.T, u *appServerUI, w *appServerTestInput) {
 	rewindTestUser(t, u)
 	appServerTestKeys(t, u, "/rewind\r")
 	read := resumeTestOne(t, w, "thread/read")
-	if read.Params.ThreadID != "main" || read.Params.IncludeTurns == nil || !*read.Params.IncludeTurns {
+	if read.Params.ThreadID != "main" || read.Params.IncludeTurns != nil && *read.Params.IncludeTurns {
 		t.Fatalf("turn read = %+v", read)
 	}
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","turns":[
+	rewindTestHistory(t, u, w, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","turns":[
 		{"id":"first","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Implement the parser"}]}]},
 		{"id":"second","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Change the error format"}]}]}
 	]}}}`, read.ID))
@@ -43,42 +76,21 @@ func TestUISnapshotNativeRewind(t *testing.T) {
 			rows, _ = u.testMainFrame(width, 18, 0)
 			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-rewind-edits-unavailable-%d.txt", width), rows, width)
 			appServerTestKeys(t, u, "\r")
-			requests := appServerDrainRequests[struct {
-				ID     int            `json:"id"`
-				Method string         `json:"method"`
-				Params map[string]any `json:"params"`
-			}](t, w)
-			if len(requests) != 1 || requests[0].Method != "thread/fork" || requests[0].Params["beforeTurnId"] != "second" || requests[0].Params["threadId"] != "main" || requests[0].Params["model"] != "model" || requests[0].Params["serviceTier"] != "priority" {
-				t.Fatalf("rewind fork = %+v", requests)
+			rewind := resumeTestOne(t, w, "thread/revert")
+			if rewind.Params.ThreadID != "main" || rewind.Params.BeforeTurnID != "second" {
+				t.Fatalf("rewind: %+v", rewind)
 			}
 			appServerTestKeys(t, u, "preserved draft")
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","reasoningEffort":"high","serviceTier":"priority","thread":{"id":"branch","cwd":"/work","turns":[{"id":"first","status":"completed","items":[{"type":"agentMessage","id":"answer","text":"Parser implemented"}]}]}}}`, requests[0].ID))
-			for _, method := range resumeTestSettle(t, u, w) {
-				if method == "turn/start" || method == "thread/archive" {
-					t.Fatalf("rewind unexpectedly dispatched %s", method)
-				}
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","cwd":"/work","turns":[{"id":"first","status":"completed","items":[{"type":"agentMessage","id":"answer","text":"Parser implemented"}]}]}}}`, rewind.ID))
+			resumeTestSettle(t, u, w)
+			if u.Thread != "main" || u.Text != "preserved draft" || u.Replacement.Pending() || u.picker.Kind != "" || u.HasUserTurn || u.model != "model" || u.reasoningEffort != "high" || u.serviceTier != "priority" {
+				t.Fatalf("rewind lost session or draft: %s %q %+v", u.Thread, u.Text, u.Live)
 			}
-			if u.Thread != "branch" || u.Text != "preserved draft" || u.Replacement.Pending() || u.picker.Kind != "archive" || u.picker.archiveTarget != "main" || u.shell.Main.Menu.Selected != 0 {
-				t.Fatalf("rewind state = %s %q %+v", u.Thread, u.Text, u.picker)
-			}
-			if u.HasUserTurn {
-				t.Fatal("branch without user messages retained original rewind eligibility")
-			}
-			appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"main","turnId":"second","item":{"type":"agentMessage","id":"late","text":"Excluded original response"}}}`)
 			rows, _ = u.testMainFrame(width, 18, 0)
-			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-rewind-archive-%d.txt", width), rows, width)
-			appServerTestKeys(t, u, "\x1b[B\r")
-			archive := resumeTestOne(t, w, "thread/archive")
-			if archive.Params.ThreadID != "main" {
-				t.Fatal("archive targeted the branch")
-			}
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"archive unavailable"}}`, archive.ID))
-			if u.quitRequested || u.archived || u.Thread != "branch" || !strings.Contains(u.attached.feedback.Text, "main still exists") || u.Text != "preserved draft" {
-				t.Fatal("archive failure lost the branch or original identity")
-			}
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-rewind-ready-%d.txt", width), rows, width)
 			appServerTestKeys(t, u, "\r")
-			if start := resumeTestOne(t, w, "turn/start"); start.Params.ThreadID != "branch" {
-				t.Fatal("new branch unusable after archive failure")
+			if start := resumeTestOne(t, w, "turn/start"); start.Params.ThreadID != "main" {
+				t.Fatal("rewound session unusable")
 			}
 		})
 	}
@@ -97,56 +109,71 @@ func TestAppServerRewindCancellationAndLateRead(t *testing.T) {
 	u.Editor.Take()
 	rewindTestTurns(t, u, w)
 	appServerTestKeys(t, u, "\x1b")
-	if u.Thread != "main" || w.Len() != 0 || u.Startup.RewindOriginal != "" {
+	if u.Thread != "main" || w.Len() != 0 {
 		t.Fatal("picker cancellation forked or archived")
 	}
 }
 
-func TestAppServerRewindFailureAndArchiveChoice(t *testing.T) {
-	for _, outcome := range []string{"fork-failure", "settings-failure", "keep", "archive"} {
-		t.Run(outcome, func(t *testing.T) {
+func TestAppServerRewindFailure(t *testing.T) {
+	for _, response := range []string{`"error":{"code":-1,"message":"invalid turn"}`, `"result":{"thread":{"id":"foreign"}}`, `"result":{"thread":{}}`} {
+		t.Run(response, func(t *testing.T) {
 			u, w := newResumeSessionTestUI(t)
-			u.reasoningEffort = "high"
-			if outcome == "settings-failure" {
-				u.reasoningEffort = ""
-			}
 			rewindTestTurns(t, u, w)
 			appServerTestKeys(t, u, "\r\r")
-			fork := resumeTestOne(t, w, "thread/fork")
+			rewind := resumeTestOne(t, w, "thread/revert")
 			appServerTestKeys(t, u, "waiting")
-			if outcome == "fork-failure" {
-				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unsupported boundary"}}`, fork.ID))
-			} else {
-				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"branch","cwd":"/work"}}}`, fork.ID))
-				if outcome == "settings-failure" {
-					resume := resumeTestOne(t, w, "thread/resume")
-					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"settings unavailable"}}`, resume.ID))
-					if release := resumeTestOne(t, w, "thread/unsubscribe"); release.Params.ThreadID != "branch" {
-						t.Fatal("failed switch released original")
-					}
-				} else {
-					resumeTestSettle(t, u, w)
-				}
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, rewind.ID, response))
+			if u.Thread != "main" || u.Text != "waiting" || u.Replacement.Pending() || u.picker.Kind != "" || w.Len() != 0 {
+				t.Fatal("rejected rewind changed session or input")
 			}
-			if strings.HasSuffix(outcome, "failure") {
-				if u.Thread != "main" || u.Text != "waiting" || u.Replacement.Pending() || u.Startup.RewindOriginal != "" || u.picker.Kind == "archive" || w.Len() != 0 {
-					t.Fatal("failed rewind lost original or offered archive")
-				}
-				return
-			}
-			keys := "\r" // No is selected initially.
-			if outcome == "archive" {
-				keys = "\x1b[B\r"
-			}
-			appServerTestKeys(t, u, keys)
-			if outcome == "archive" {
-				archive := resumeTestOne(t, w, "thread/archive")
-				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, archive.ID))
-			}
-			if u.Thread != "branch" || u.Text != "waiting" || u.quitRequested || u.archived || w.Len() != 0 || u.picker.Kind != "" {
-				t.Fatal("archive choice changed new branch or input")
+			if u.attached.presentation.Status.Text != "Ready" {
+				t.Fatal("rejected rewind retained a pending status")
 			}
 		})
+	}
+}
+
+func TestAppServerRewindReloadFailureKeepsSession(t *testing.T) {
+	for _, failure := range []string{`"error":{"code":-1,"message":"history unavailable"}`, `"result":{"data":"invalid"}`} {
+		t.Run(failure, func(t *testing.T) {
+			u, w := newResumeSessionTestUI(t)
+			rewindTestTurns(t, u, w)
+			appServerTestKeys(t, u, "\r\r")
+			rewind := resumeTestOne(t, w, "thread/revert")
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","cwd":"/work","historyMode":"paginated"}}}`, rewind.ID))
+			appServerTestKeys(t, u, "preserved draft")
+			page := resumeTestOne(t, w, "thread/turns/list")
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, page.ID, failure))
+			resumeTestSettle(t, u, w)
+			if u.Thread != "main" || u.Replacement.Pending() || u.Text != "preserved draft" || !strings.Contains(u.attached.feedback.Text, "Conversation history incomplete") {
+				t.Fatal("history failure discarded the accepted thread or hid its recovery")
+			}
+			appServerTestKeys(t, u, "\r")
+			if next := resumeTestOne(t, w, "turn/start"); next.Params.ThreadID != "main" {
+				t.Fatal("history failure left the runtime unusable")
+			}
+		})
+	}
+}
+
+func TestAppServerRewindPreservesExecutionReaders(t *testing.T) {
+	u, w := newResumeSessionTestUI(t)
+	models, summaries := 0, 0
+	u.attached.modelsReady = func([]appServerModel, preferences.Applied, *inferencegateway.Tiers, string) { models++ }
+	u.attached.compaction = func(string, string) func(context.Context) (string, error) {
+		return func(context.Context) (string, error) { summaries++; return "retained summary", nil }
+	}
+	rewindTestTurns(t, u, w)
+	appServerTestKeys(t, u, "\r\r")
+	rewind := resumeTestOne(t, w, "thread/revert")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","cwd":"/work"}}}`, rewind.ID))
+	resumeTestSettle(t, u, w)
+	if models == 0 || u.attached.compaction == nil {
+		t.Fatal("rewind detached model or compaction readers")
+	}
+	text, err := u.attached.compaction("main", "summary")(t.Context())
+	if err != nil || text != "retained summary" || summaries != 1 {
+		t.Fatal("retained summary reader lost its owner")
 	}
 }
 
@@ -170,6 +197,69 @@ func TestAppServerRewindUnavailableHistory(t *testing.T) {
 	}
 }
 
+func TestAppServerRewindLegacyRefusesBeforeEdits(t *testing.T) {
+	u, w := rewindEditsFixture(t)
+	composerShellEscape(t, u)
+	appServerTestKeys(t, u, "/rewind\r")
+	read := resumeTestOne(t, w, "thread/read")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","historyMode":"legacy"}}}`, read.ID))
+	appServerTestKeys(t, u, "\r")
+	if !strings.Contains(u.picker.Problem, "legacy") || len(u.picker.Choices) != 0 || w.Len() != 0 || u.Rewind != nil || u.Replacement.Pending() {
+		t.Fatal("legacy history admitted rewind or edit reversal")
+	}
+}
+
+func TestAppServerRewindTurnPages(t *testing.T) {
+	u, w := newResumeSessionTestUI(t)
+	rewindTestUser(t, u)
+	appServerTestKeys(t, u, "/rewind\r")
+	read := resumeTestOne(t, w, "thread/read")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","historyMode":"paginated"}}}`, read.ID))
+	page := resumeTestOne(t, w, "thread/turns/list")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"first","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"First"}]}]}],"nextCursor":"older"}}`, page.ID))
+	page = resumeTestOne(t, w, "thread/turns/list")
+	if page.Params.Cursor != "older" || !u.picker.Loading {
+		t.Fatal("history paging stopped early")
+	}
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"second","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Second"}]}]}]}}`, page.ID))
+	if u.picker.Loading || len(u.picker.Choices) != 2 || u.picker.Choices[1].Name != "second" {
+		t.Fatal("picker lost a retained page")
+	}
+	appServerTestKeys(t, u, "\x1b[B\r\r")
+	if rewind := resumeTestOne(t, w, "thread/revert"); rewind.Params.BeforeTurnID != "second" {
+		t.Fatal("paged target changed")
+	}
+}
+
+func TestAppServerRewindReloadPages(t *testing.T) {
+	u, w := newResumeSessionTestUI(t)
+	rewindTestTurns(t, u, w)
+	appServerTestKeys(t, u, "\r\r")
+	rewind := resumeTestOne(t, w, "thread/revert")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","cwd":"/work","historyMode":"paginated","turns":[]}}}`, rewind.ID))
+	appServerTestKeys(t, u, "preserved draft")
+	// A duplicate original response cannot finish replacement before its pages.
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","cwd":"/work","historyMode":"paginated","turns":[]}}}`, rewind.ID))
+
+	for index := range 2 {
+		page := resumeTestOne(t, w, "thread/turns/list")
+		if !u.Replacement.Pending() {
+			t.Fatal("input admitted before transcript reload")
+		}
+		cursor := `,"nextCursor":"next"`
+		if index == 1 {
+			cursor = ""
+		}
+		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"retained-%d","status":"completed","items":[{"type":"agentMessage","id":"answer-%d","text":"Retained answer %d"}]}]%s}}`, page.ID, index, index, index, cursor))
+	}
+	resumeTestSettle(t, u, w)
+	rows, _ := u.testMainFrame(100, 20, 0)
+	frame := strings.Join(rows, "\n")
+	if !strings.Contains(frame, "Retained answer 0") || !strings.Contains(frame, "Retained answer 1") || strings.Contains(frame, "Implement the parser") || u.Replacement.Pending() || u.Text != "preserved draft" || u.Thread != "main" {
+		t.Fatal("rewind did not replace the transcript with all retained pages")
+	}
+}
+
 func TestAppServerRewindBeforeFirstUserTurn(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	appServerTestKeys(t, u, "/rewind\r")
@@ -186,7 +276,7 @@ func TestAppServerRewindQuestionAnswer(t *testing.T) {
 	appServerTestKeys(t, u, "/rewind\r")
 	read := resumeTestOne(t, w, "thread/read")
 	text := lifecycleReply(t, "question", 0, "How?", "Autosquash, including descendant commits")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","turns":[{"id":"answer","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":%q}]}]}]}}}`, read.ID, text))
+	rewindTestHistory(t, u, w, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","turns":[{"id":"answer","status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":%q}]}]}]}}}`, read.ID, text))
 	if len(u.picker.Choices) != 1 || u.picker.Choices[0].Display != "Autosquash, including descendant commits" {
 		t.Fatalf("answer choices = %+v", u.picker.Choices)
 	}
@@ -196,7 +286,7 @@ func TestAppServerRewindQuestionAnswer(t *testing.T) {
 		t.Fatalf("answer dialog = %s", frame)
 	}
 	appServerTestKeys(t, u, "\r\r")
-	if fork := resumeTestOne(t, w, "thread/fork"); fork.Params.BeforeTurnID != "answer" {
+	if fork := resumeTestOne(t, w, "thread/revert"); fork.Params.BeforeTurnID != "answer" {
 		t.Fatalf("answer fork = %+v", fork)
 	}
 }

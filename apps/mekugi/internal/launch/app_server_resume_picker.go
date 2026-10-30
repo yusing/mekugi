@@ -201,7 +201,6 @@ func resumeSessionFailed(attached *attachedPresentation, terminal *terminalsessi
 	if attached.reserveThread != nil {
 		_ = attached.reserveThread("")
 	}
-	control.Startup.RewindOriginal = ""
 	operation := "resume"
 	if control.Replacement.Forking() {
 		operation = "fork"

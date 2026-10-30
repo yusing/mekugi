@@ -31,7 +31,6 @@ type executionPresentation struct {
 	activeThread        func(string) bool
 	reserveThread       func(string) error
 	nativeImages        func(func(string))
-	rewindArchive       func(string)
 	interruptWait       func(string, string)
 	threadInput         *threadInput
 	reasoning           *pendingReasoning

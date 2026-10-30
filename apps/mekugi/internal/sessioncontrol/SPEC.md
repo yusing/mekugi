@@ -208,40 +208,37 @@ uses the same durable authorization and evidence restoration as resumed history.
 Inherited retained records are published before switching; storage waits leave
 input and host delivery responsive.
 
-`/rewind` is disabled until the session has a user turn. Its dialog shows readable
-user messages, including decoded question answers, and selects a turn to fork
-immediately before it, excluding that
-turn and all later conversation. It shares `/fork` admission, current settings,
-pending-input preservation and automatic switching. After choosing a turn, a
-second dialog offers Keep edits (the default) or Revert captured edits when there
-are changes to choose between. If no captured changes fall at or after the selected
-turn, rewind skips that dialog and forks directly. Revert
-targets retained changes from that turn onward, including admitted descendant
-agents, using validated host call times. Unrelated edits remain subject to the
-ordinary mchanges merge behavior. Missing history or ambiguous change membership
-disables Revert with a reason; Keep remains available.
-Newly admitted changes or membership invalidate a prepared reversal; reopen the
-dialog to select against the updated evidence.
+`/rewind` is available while idle after the first user turn, for paginated
+Codex history. Legacy history is refused before selecting or reversing edits.
+Its dialog shows readable user messages, including decoded question answers,
+and selects the first turn to exclude along with all later conversation.
+Native `thread/revert` replaces history in the same thread; current settings,
+pending input, logical family membership and descendant runtimes stay in place.
+Codex internally reloads the caller's runtime, so caller-owned process handles
+must not be assumed to survive.
 
-Revert runs mchanges through the host's native shell before forking. The original
-session remains selected until successful execution completes. Conflicts,
-incomplete reversal or rejection leave that session usable, with the command's
-output and recovery instructions; no fork or archive follows failure. Cancellation
-before dispatch changes no files. Once dispatched, interruption follows native
-shell behavior and cannot promise to undo completed effects.
-Saved change and output evidence remains available in the shared family namespace,
-including excluded turns and any captured reversal;
-conversation restoration uses only the host's truncated branch. Inheritance restores
-no approval grants. Rewind transfers the admitted logical family to the selected
-branch without restarting or interrupting descendants. Their native session IDs,
-running work and retained states remain unchanged. Ordinary forks remain separate
-families. Selecting an earlier rewind branch moves root authority back to that branch.
+After choosing a turn, a second dialog offers Keep edits (the default) or Revert
+captured edits when there are changes to choose between. Without captures at or
+after the selected turn, rewind skips that dialog. Reversal targets retained
+changes from that turn onward, including admitted descendant agents, using
+validated host call times. Unrelated edits remain subject to ordinary mchanges
+merge behavior. Missing history or ambiguous membership disables Revert with a
+reason; Keep remains available. Newly admitted changes or membership invalidate
+a prepared reversal; reopen the dialog to refresh its evidence.
 
-After the branch is usable, a separate confirmation offers to archive the exact
-original thread, initially selecting No. Cancellation before fork dispatch changes
-no session. Fork failure leaves the original usable; failure to switch preserves
-both saved threads. Archive failure leaves the new thread usable and reports that
-the original still exists. Resume and replay never repeat these operations.
+Reversal runs mchanges through the native shell before conversation rewind.
+Conflicts, incomplete reversal or rejection leave the conversation unchanged,
+with command output and recovery instructions. Cancellation before dispatch
+changes no files. Once dispatched, interruption follows native shell behavior
+and cannot promise to undo completed effects. A failed conversation rewind does
+not repeat or undo an already completed reversal.
+
+Saved change and output evidence remains available in the existing family
+namespace, including excluded turns and captured reversal. Transcript restoration
+hydrates the retained paginated history. Failed history reads leave the accepted
+thread usable and mark the transcript incomplete without repeating rewind.
+No branch or archive confirmation is created. Resume and replay
+never repeat these operations.
 
 `/archive` confirms with No selected initially. Success archives Main through Codex,
 stops its turn and exits only after host success; failure keeps the session usable.

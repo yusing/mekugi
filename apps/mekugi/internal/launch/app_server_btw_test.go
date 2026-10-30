@@ -772,44 +772,29 @@ func TestForeignSideDisplayPreservesReplaceMenu(t *testing.T) {
 }
 
 func TestSideMainForkReplacementCleanup(t *testing.T) {
-	for _, command := range []string{"/fork", "/rewind"} {
-		t.Run(command, func(t *testing.T) {
-			u, w := newResumeSessionTestUI(t)
-			u.reasoningEffort = "high"
-			appServerTestKeys(t, u, "/side\r")
-			sideFork := btwTestRequest(t, w, "thread/fork", "main")
-			selectSideThread(t, u, u.attached.presentation.View().Main)
-			appServerTestKeys(t, u, "/btw question\r")
-			questionFork := btwTestRequest(t, w, "thread/fork", "main")
-			selectSideThread(t, u, u.attached.presentation.View().Main)
-			if command == "/rewind" {
-				rewindTestTurns(t, u, w)
-				appServerTestKeys(t, u, "\r\r")
-			} else {
-				appServerTestKeys(t, u, command+"\r")
-			}
-			fork := resumeTestOne(t, w, "thread/fork")
-			appServerTestKeys(t, u, "branch draft")
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"branch","cwd":"/work"}}}`, fork.ID))
-			resumeTestSettle(t, u, w)
-			if u.Thread != "branch" || u.side != nil || u.BTW != nil || u.attached.presentation.View().SideThread.ID != "" || u.Text != "branch draft" {
-				t.Fatalf("replacement leaked Side or lost Main input: thread=%s side=%+v draft=%q", u.Thread, u.side, u.Text)
-			}
-			btwTestReply(t, u, sideFork, `{"thread":{"id":"late-side"}}`)
-			btwTestRequest(t, w, "thread/archive", "late-side")
-			btwTestReply(t, u, questionFork, `{"thread":{"id":"late-question"}}`)
-			btwTestRequest(t, w, "thread/archive", "late-question")
-			if command == "/rewind" {
-				menu := u.attached.presentation.View().Menu
-				if menu == nil || menu.Title != "Archive the original session?" || u.picker.archiveTarget != "main" {
-					t.Fatal("late Side cleanup changed rewind archive targeting")
-				}
-				appServerTestKeys(t, u, "\r")
-			}
-			if w.Len() != 0 || u.Thread != "branch" || u.Text != "branch draft" {
-				t.Fatal("late Side cleanup changed the branch or dispatched extra work")
-			}
-		})
+	u, w := newResumeSessionTestUI(t)
+	u.reasoningEffort = "high"
+	appServerTestKeys(t, u, "/side\r")
+	sideFork := btwTestRequest(t, w, "thread/fork", "main")
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	appServerTestKeys(t, u, "/btw question\r")
+	questionFork := btwTestRequest(t, w, "thread/fork", "main")
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	appServerTestKeys(t, u, "/fork\r")
+	fork := resumeTestOne(t, w, "thread/fork")
+	appServerTestKeys(t, u, "branch draft")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"branch","cwd":"/work"}}}`, fork.ID))
+	resumeTestSettle(t, u, w)
+	if u.Thread != "branch" || u.side != nil || u.BTW != nil || u.attached.presentation.View().SideThread.ID != "" || u.Text != "branch draft" {
+		t.Fatalf("replacement leaked Side or lost Main input: thread=%s side=%+v draft=%q", u.Thread, u.side, u.Text)
+	}
+	btwTestReply(t, u, sideFork, `{"thread":{"id":"late-side"}}`)
+	btwTestRequest(t, w, "thread/archive", "late-side")
+	btwTestReply(t, u, questionFork, `{"thread":{"id":"late-question"}}`)
+	btwTestRequest(t, w, "thread/archive", "late-question")
+
+	if w.Len() != 0 || u.Thread != "branch" || u.Text != "branch draft" {
+		t.Fatal("late Side cleanup changed the branch or dispatched extra work")
 	}
 }
 

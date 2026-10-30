@@ -308,21 +308,12 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		if m.Method == "skills/changed" {
 			native.invalidateSkills(attached.executionPresentation)
 		}
-		rewindFrom := control.Startup.RewindOriginal
 		err := dispatchHostMessage(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, &model, &effort, &tier, &serviceTiers, &title, &version, &restoring, &side, &panel, &resumePicker, &ownedImages, environment, &guardHook, observationInputs, ctx, &reviewOwner, &receipts, notifications, &shellEdits, retained, &retainedSession, changeSource, windows, audience, reviewSource, preparePane, approvals, generator, activity, &streams, tracker, trace, usage, &exitUsage, segments, &restoredSegments, views, &files, &statusConfig, issues, &quit, dispatch, &resumePending, &commits, terminalViews, conversation, observations, service, panes, &models, &modelsLoading, &archived, m)
 		adoptStartupChooser()
 		if err == nil && threads != nil && retainedSession.Thread != "" && retainedSession.Thread != restoredCoordination {
 			restoredCoordination = retainedSession.Thread
 			syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
-			if rewindFrom != "" && rewindFrom != retainedSession.Thread {
-				var accepted sessioncontrol.AcceptedThread
-				if err := json.Unmarshal(m.Result, &accepted); err != nil {
-					return err
-				}
-				attached.threadInput.restoration = threads.driver.Rewind(rewindFrom, threadcontrol.ThreadInfo{Thread: accepted.Thread.ID, Session: accepted.Thread.SessionID, Path: accepted.Thread.Path})
-			} else {
-				attached.threadInput.restoration = threads.driver.Restore(retainedSession)
-			}
+			attached.threadInput.restoration = threads.driver.Restore(retainedSession)
 		}
 		predictions.observe(m, control.Thread)
 		if err == nil && threads != nil && threads.headless != nil && correlated && m.Method == "" && m.Error != nil && (response.Method == "turn/start" || response.Method == "turn/steer") {
@@ -339,7 +330,6 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	attached.activeThread = api.ActiveThread
 	attached.reserveThread = api.ReserveThread
 	attached.nativeImages = native.imageClaims
-	attached.rewindArchive = native.rewindArchive
 	nativeRequests, nativeClosed := api.Native().Requests(), native.closed
 	intents := api.Intents()
 	live.publish(&attached, shell, &control, reviewOwner, reviewSource, restoring != nil, childSummary, presentationTime(clock))
@@ -1063,6 +1053,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 // Main's lifecycle scope retires on confirmed replacement. Side conversations
 // and title saves retain their own completion and cleanup across that boundary.
 type appServerRequest struct {
+	history  *appServerHistoryRead
 	view     string
 	metadata string
 	menu     uint64
@@ -1072,6 +1063,15 @@ type appServerRequest struct {
 }
 
 func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, windows *executionobservation.Windows, audience *sessioncontrol.Audience, reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, activityService *activitymodel.Service, streams *terminalsession.Streams, tracker *commandsegments.Observer, trace *nativetrace.Reader, usage *accounting.Service, exitUsage *binding.TokenUsage, segments *reports.Service, restoredSegments *map[string]*reports.Report, views *sessionpresentation.Service, files *detailFiles, statusConfig *appServerStatusConfig, issues *requestexecution.Failures, quit *bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, commits **activitypresentation.CommitReader, terminalViews terminalsession.Views, conversationState *conversationmodel.Service, bindings *binding.Observation, historyService *history.Service, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, archived *bool, m appserver.Message) (err error) {
+	if handled, complete, err := hydrateHistory(control, m); handled {
+		if err != nil {
+			return err
+		}
+		if complete != nil {
+			return dispatch(*complete)
+		}
+		return nil
+	}
 	defer func() {
 		if r := control.Rewind; r != nil && r.Completed && r.Failed && r.Item == "" && shellEdits.pending != nil && shellEdits.pending.Thread() == r.Thread {
 			shellEdits.pending.Discard()
@@ -1170,14 +1170,6 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		if handled, err := dispatchViewResponse(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}, *tiers, *title, *backend, restoring, side, panel, resumePicker, approvalMode, quit, parent, environment, response, m); handled || err != nil {
 			return err
 		}
-		if method == "rewind/archive" {
-			message := "Original thread " + response.Owner.metadata + " archived"
-			if m.Error != nil {
-				message = "Original thread " + response.Owner.metadata + " still exists: " + m.Error.Message
-			}
-			setNotice(&attached.feedback, terminal, presentationTime(clock), message, m.Error != nil)
-			return nil
-		}
 		if method == "thread/archive" {
 			if m.Error != nil {
 				control.Replacement.Finish()
@@ -1259,6 +1251,12 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, "retaining history: "+pending.Err.Error())
 			}
 		}
+		if method == "thread/revert" && m.Error != nil {
+			control.Replacement.Finish()
+			attached.presentation.Status.SetText("Ready")
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not rewind conversation: "+m.Error.Message, true)
+			return nil
+		}
 		if (method == "thread/resume" && control.Replacement.Target != "" || method == "thread/fork" && control.Replacement.Forking()) && m.Error != nil {
 			return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, m.Error.Message)
 		}
@@ -1281,13 +1279,23 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				return err
 			}
 			return openSession(attached, control, picker, clock, resumePicker, approvalMode)
-		case "thread/start", "thread/resume", "thread/fork":
+		case "thread/start", "thread/resume", "thread/fork", "thread/revert":
 			result, err := control.Startup.Accept(&control.Live, method, m.Result)
 			if err != nil {
+				if method == "thread/revert" {
+					control.Replacement.Finish()
+					attached.presentation.Status.SetText("Ready")
+					setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not rewind conversation: "+err.Error(), true)
+					return nil
+				}
 				if control.Replacement.Forking() {
 					return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, err.Error())
 				}
 				return err
+			}
+			if method == "thread/revert" {
+				result.Model, result.ReasoningEffort, result.ServiceTier = *model, *effort, *tier
+				result.PermissionState = control.Settings.Permissions
 			}
 			if held, err := control.Requests.PrepareForkEffort(&control.Startup, &control.Live, method, &result, appServerRequest{label: "fork/settings"}); held {
 				if err != nil {
@@ -1297,18 +1305,20 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				return nil
 			}
 			if control.Replacement.Pending() {
-				if err := closeBTWQuestion(attached, control); err != nil {
-					return err
-				}
-				// Detach only after host acceptance; process and operation owners remain live.
-				closing := (*side)
-				if closing != nil {
-					(*side) = nil
-					closing.Close()
-					attached.conversation.Side = nil
-					pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side), attached.nativeImages)
-					if err := control.Requests.ReleaseSide(closing); err != nil {
+				if method != "thread/revert" {
+					if err := closeBTWQuestion(attached, control); err != nil {
 						return err
+					}
+					// Detach only after host acceptance; process and operation owners remain live.
+					closing := (*side)
+					if closing != nil {
+						(*side) = nil
+						closing.Close()
+						attached.conversation.Side = nil
+						pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side), attached.nativeImages)
+						if err := control.Requests.ReleaseSide(closing); err != nil {
+							return err
+						}
 					}
 				}
 				if panes != nil {
@@ -1320,7 +1330,9 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				for _, agent := range roster {
 					retired = append(retired, agent.Thread)
 				}
-				control.RetireThreads(control.Thread, retired...)
+				if method != "thread/revert" {
+					control.RetireThreads(control.Thread, retired...)
+				}
 				(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
 				retainedQuestions := questions.calls()
 				if notifications != nil {
@@ -1328,9 +1340,11 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				}
 				(*panel) = nil
 				attached.presentation.ClosePanel()
-				control.Requests.Retire("main") // Retire old-thread response correlation.
-				if err := control.Request("thread/unsubscribe", map[string]any{"threadId": control.Thread}); err != nil {
-					return err
+				if method != "thread/revert" {
+					control.Requests.Retire("main") // Retire old-thread response correlation.
+					if err := control.Request("thread/unsubscribe", map[string]any{"threadId": control.Thread}); err != nil {
+						return err
+					}
 				}
 				(*picker) = composerPicker{}
 				(*exitUsage) = binding.TokenUsage{}
@@ -1340,6 +1354,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				waiting := attached.conversation
 				attached.session.Retire()
 				workspace := attached.cwd
+				compaction, modelsReady := attached.compaction, attached.modelsReady
 				inputHistory := attached.inputHistory
 				restoreInput := attached.restoreInput
 				restoreShell := attached.restoreShell
@@ -1348,8 +1363,8 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				activeThread := attached.activeThread
 				reserveThread := attached.reserveThread
 				nativeImages := attached.nativeImages
-				rewindArchive := attached.rewindArchive
 				(*attached) = newAttachedPresentation(views, conversationState, bindings)
+				attached.compaction, attached.modelsReady = compaction, modelsReady
 				attached.restoreInput = restoreInput
 				attached.restoreShell = restoreShell
 				attached.restoreSide = restoreSide
@@ -1357,10 +1372,12 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				attached.activeThread = activeThread
 				attached.reserveThread = reserveThread
 				attached.nativeImages = nativeImages
-				attached.rewindArchive = rewindArchive
 				attached.cwd = workspace
 				attached.inputHistory = inputHistory
 				attached.conversation.CarryInput(waiting)
+				if method == "thread/revert" {
+					attached.conversation.Side, attached.conversation.BTW = waiting.Side, waiting.BTW
+				}
 				(*editor) = &attached.conversation.Editor
 
 				picker.State, picker.MenuState = &attached.conversation.Completion, attached.presentation.Menu()
@@ -1379,7 +1396,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				control.Startup.Thread, control.Startup.Workspace = "", ""
 				control.Readmit(result.Thread.ID)
 				resetDiffScope(attached, terminal, (*reviewOwner), reviewSource, preparePane, parent)
-				if method == "thread/resume" || method == "thread/fork" {
+				if method == "thread/resume" || method == "thread/fork" || method == "thread/revert" {
 					// Restoration below replays events buffered during the switch.
 					control.Startup.Thread = result.Thread.ID
 				} else {
@@ -1387,9 +1404,11 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 					restoreDiffThread(attached, terminal, (*reviewOwner), reviewSource, preparePane, result.Thread)
 				}
 			}
-			(*statusConfig) = appServerStatusConfig{}
-			if err := json.Unmarshal(m.Result, statusConfig); err != nil {
-				return err
+			if method != "thread/revert" {
+				(*statusConfig) = appServerStatusConfig{}
+				if err := json.Unmarshal(m.Result, statusConfig); err != nil {
+					return err
+				}
 			}
 			control.Thread, control.RolloutPath = result.Thread.ID, result.Thread.Path
 			control.Settings.Permissions = result.PermissionState
@@ -1409,7 +1428,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				requestSessionTitle(control, &attached.feedback, terminal, clock, control.Names.Next(control.Thread))
 			}
 			(*model), (*effort), (*tier) = result.Model, result.ReasoningEffort, result.ServiceTier
-			if method == "thread/resume" || method == "thread/fork" {
+			if method == "thread/resume" || method == "thread/fork" || method == "thread/revert" {
 				control.Settings.RestoreEffort = control.TakeResumeEffort()
 			}
 			if method == "thread/start" {
@@ -1470,7 +1489,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			// Resumed history is applied once the roster is read, so Main can
 			// follow child activity in order. An active snapshot keeps its
 			// steer/interrupt target meanwhile.
-			if method == "thread/resume" || method == "thread/fork" {
+			if method == "thread/resume" || method == "thread/fork" || method == "thread/revert" {
 				for _, turn := range result.Thread.Turns {
 					if turn.Status == "inProgress" {
 						control.Turn = turn.ID
@@ -1483,7 +1502,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 			if panes != nil {
 				paneError(attached.source, panes.open(&terminal.Shell, terminal.Main, result.Thread.Cwd, control.Thread, method == "thread/resume"))
 			}
-			if method == "thread/resume" || method == "thread/fork" {
+			if method == "thread/resume" || method == "thread/fork" || method == "thread/revert" {
 				repair, err := result.RepairDefaultEffort(&control.Live)
 				if err != nil {
 					return err
@@ -1508,7 +1527,13 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 					control.Startup.MissingSettings = false
 				}
 				paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)}))
-				return restorePaneContent(attached, terminal, control, picker, editor, questions, approvals, clock, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, reviewSource, preparePane, result.Thread, dispatch, resumePending)
+				err = restorePaneContent(attached, terminal, control, picker, editor, questions, approvals, clock, restoring, panel, resumePicker, parent, reviewOwner, receipts, notifications, retained, retainedSession, activityService, segments, restoredSegments, reviewSource, preparePane, result.Thread, dispatch, resumePending)
+				if read := response.Owner.history; read != nil && read.failure != "" {
+					message := "Conversation history incomplete: " + read.failure
+					restoreHistoryNotice(attached, *restoring, message, true)
+					setNotice(&attached.feedback, terminal, presentationTime(clock), message, true)
+				}
+				return err
 			}
 			paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)}))
 		}

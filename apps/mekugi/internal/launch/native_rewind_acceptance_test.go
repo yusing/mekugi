@@ -33,7 +33,7 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 		serveNativeRewindHost(t)
 		os.Exit(0)
 	}
-	for _, outcome := range []string{"success", "conflict"} {
+	for _, outcome := range []string{"success", "conflict", "empty"} {
 		t.Run(outcome, func(t *testing.T) {
 			t.Setenv(shellhook.Environment, "")
 			u, _ := rewindEditsFixture(t)
@@ -47,6 +47,13 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 			sources := map[string]string{}
 			for _, source := range u.picker.rewind.sources {
 				sources[source.ID] = source.Path
+			}
+			if outcome == "empty" {
+				text, err := os.ReadFile(sources["main"])
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeTestFile(t, sources["main"], string(text)+`{"timestamp":"2026-10-21T01:00:03Z","type":"event_msg","payload":{"type":"task_started","turn_id":"third"}}`+"\n")
 			}
 			encoded, err := json.Marshal(sources)
 			if err != nil {
@@ -145,6 +152,15 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 				return event.Frame.View.Main.ID == "main" && event.Frame.Main != nil && len(event.Frame.Main.Entries) > 0 && event.Frame.Review != nil && event.Frame.Review.Coverage != "CONNECTING"
 			})
 			send(sessionapi.NativeOperation{Command: new("/rewind")})
+			if outcome == "empty" {
+				choose("third")
+				serverCLIAwait(t, func() bool { body, _ := os.ReadFile(logPath); return strings.Contains(string(body), "thread/revert ") })
+				body, _ := os.ReadFile(logPath)
+				if strings.Contains(string(body), "thread/shellCommand ") || strings.Count(string(body), "thread/revert ") != 1 || !strings.Contains(string(body), `"beforeTurnId":"third"`) {
+					t.Fatalf("empty native selection did not rewind directly: %s", body)
+				}
+				return
+			}
 			choose("second")
 			choose("Revert 2 captured changes")
 			// Admission completes before the host reads its pipe. Bound that drain,
@@ -160,7 +176,7 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(string(body), "thread/fork ") {
+			if strings.Contains(string(body), "thread/revert ") {
 				t.Fatal("fork preceded shell completion")
 			}
 			if strings.Count(string(body), "thread/shellCommand ") != 1 {
@@ -182,9 +198,9 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 			}
 			writeTestFile(t, gate, "complete")
 			if outcome == "success" {
-				serverCLIAwait(t, func() bool { body, _ := os.ReadFile(logPath); return strings.Contains(string(body), "thread/fork ") })
+				serverCLIAwait(t, func() bool { body, _ := os.ReadFile(logPath); return strings.Contains(string(body), "thread/revert ") })
 				body, _ := os.ReadFile(logPath)
-				if strings.Count(string(body), "thread/fork ") != 1 || !strings.Contains(string(body), `"beforeTurnId":"second"`) {
+				if strings.Count(string(body), "thread/revert ") != 1 || !strings.Contains(string(body), `"beforeTurnId":"second"`) {
 					t.Fatalf("fork boundary: %s", body)
 				}
 			} else {
@@ -197,7 +213,7 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 					return event.Frame.View.Menu != nil && event.Frame.View.Menu.Kind == sessionpresentation.MenuRewind && !event.Frame.View.Menu.Loading
 				})
 				body, _ := os.ReadFile(logPath)
-				if strings.Contains(string(body), "thread/fork ") {
+				if strings.Contains(string(body), "thread/revert ") {
 					t.Fatal("conflict forked the session")
 				}
 			}
@@ -241,12 +257,10 @@ func serveNativeRewindHost(t *testing.T) {
 		fmt.Fprintf(log, "%s %s\n", request.Method, request.Params)
 		result := map[string]any{}
 		switch request.Method {
-		case "thread/start", "thread/resume", "thread/fork":
+		case "thread/start", "thread/resume", "thread/revert":
 			cwd, _ := os.Getwd()
 			id := "main"
-			if request.Method == "thread/fork" {
-				id = "rewound"
-			}
+
 			result["thread"] = map[string]any{"id": id, "cwd": cwd}
 		case "thread/read":
 			var params struct {
@@ -255,7 +269,13 @@ func serveNativeRewindHost(t *testing.T) {
 			if err := json.Unmarshal(request.Params, &params); err != nil {
 				t.Fatal(err)
 			}
-			result["thread"] = map[string]any{"id": params.Thread, "path": sources[params.Thread], "turns": []any{map[string]any{"id": "second", "status": "completed", "items": []any{map[string]any{"type": "userMessage", "content": []any{map[string]any{"type": "text", "text": "Change the error format"}}}}}}}
+			result["thread"] = map[string]any{"id": params.Thread, "historyMode": "paginated", "path": sources[params.Thread], "turns": []any{map[string]any{"id": "second", "status": "completed", "items": []any{map[string]any{"type": "userMessage", "content": []any{map[string]any{"type": "text", "text": "Change the error format"}}}}}}}
+		case "thread/turns/list":
+			turn := "second"
+			if os.Getenv("MEKUGI_TEST_REWIND_OUTCOME") == "empty" {
+				turn = "third"
+			}
+			result["data"] = []any{map[string]any{"id": turn, "status": "completed", "items": []any{map[string]any{"type": "userMessage", "content": []any{map[string]any{"type": "text", "text": "Change the error format"}}}}}}
 		case "turn/start":
 			result["turn"] = map[string]any{"id": "next"}
 		}

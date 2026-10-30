@@ -8,7 +8,7 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-func TestRewindPreservesLiveDescendantsAndDeliveryIdentity(t *testing.T) {
+func TestSavedRootBranchPreservesDescendantsAndDeliveryIdentity(t *testing.T) {
 	s, session := fixture(t)
 	child(t, s, "root", "worker", "/root/worker", "wt")
 	child(t, s, "worker", "nested", "/root/worker/nested", "nt")
@@ -33,7 +33,15 @@ func TestRewindPreservesLiveDescendantsAndDeliveryIdentity(t *testing.T) {
 	must(t, session.Store.Transaction(t.Context(), session.Writes, func(tx *history.Transaction) error {
 		return tx.InitializeScope(history.Scope{Thread: "branch", Namespace: "root", Fork: "root"}, nil)
 	}))
-	must(t, s.Rewind(t.Context(), "root", ThreadInfo{Thread: "branch", Session: "branch-session", Path: "/branch.jsonl"}))
+	// Reconstruct a saved branch made by an older session. New manual rewinds
+	// retain their native identity rather than constructing a branch.
+	must(t, s.update(t.Context(), "root", func(tree *Tree, root *Member) error {
+		replacement := *root
+		replacement.Thread, replacement.Session, replacement.Path = "branch", "branch-session", "/branch.jsonl"
+		replacement.Instructions = []guidance.Fragment{{Thread: "branch", Item: "role", Kind: "multi_agent.role_instructions", Text: "native role"}}
+		tree.Members["branch"] = &replacement
+		return tree.selectRoot("branch")
+	}))
 	after, err := s.Snapshot("branch")
 	must(t, err)
 	for _, id := range []string{"worker", "nested"} {

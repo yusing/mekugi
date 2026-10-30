@@ -20,17 +20,22 @@ conversation, then switches to it with current settings and pending input. The
 original stays resumable and workspace files remain unchanged. A failed fork
 keeps the original session usable.
 
-`/rewind` opens a user-turn dialog while idle, after the first user turn. Select a turn to branch immediately
-before it, excluding that turn and later conversation while keeping current
-settings and pending input. Choose Keep edits (the default) or Revert captured
-edits from that turn onward, including descendant agents. When there are no such
-captured edits, rewind skips this choice. Revert uses `mchanges`
-and preserves unrelated edits through its normal merge behavior. Missing evidence
-disables Revert; conflicts stop that rewind. Keep remains available. Retained
-change/output evidence stays available, including any recorded reversal.
-After switching, a separate confirmation offers to archive the original thread;
-No is selected by default. Declining keeps both sessions. Archive failure leaves
-the new branch usable and the original available.
+`/rewind` opens a user-turn dialog while idle, after the first user turn. Select
+a turn to remove it and all later conversation from the same session, keeping
+current settings and pending input. It requires paginated Codex history; legacy
+sessions are refused before edits change.
+
+Choose Keep edits (the default) or Revert captured edits from that turn onward,
+including descendant agents. Without such captures, rewind skips this choice.
+Revert uses `mchanges` and preserves unrelated edits through its normal merge
+behavior. Missing evidence disables Revert; conflicts stop the rewind. Keep
+remains available. Retained change/output evidence stays available, including
+any recorded reversal. If conversation rewind fails after edits were reverted,
+inspect the reversal output before deciding what to recover.
+
+Rewind keeps the session identity and descendants. Codex reloads the caller's
+runtime, so its process handles may stop working. No saved branch or archive
+confirmation is created.
 
 ## Compaction and recovery
 
