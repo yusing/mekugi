@@ -78,8 +78,8 @@ func (source CommandSource) WritesFiles() bool {
 
 // SegmentText uses the same shell classifier as an untracked command.
 func (source CommandSource) SegmentText() string {
-	if text := ShellSource(source.Display, source.Directory); strings.TrimSpace(text) != "" {
-		return text
+	if source.Display != "" {
+		return ShellSource(source.Display, source.Directory)
 	}
 	script := source.Script
 	if strings.ContainsAny(script, "\r\n") {

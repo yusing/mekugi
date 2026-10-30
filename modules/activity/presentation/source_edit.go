@@ -15,8 +15,8 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// Intent is not a receipt. Keep edit source out of Run cards before capture,
-// without reading target files or claiming the requested writes succeeded.
+// Intent is not a receipt. Keep requested targets alongside recognized inline
+// programs, without reading target files or claiming the writes succeeded.
 func sourceEditStatement(script string, statement *syntax.Stmt) (string, bool) {
 	call, ok := statement.Cmd.(*syntax.CallExpr)
 	if !ok || statement.Background || statement.Negated || statement.Coprocess || statement.Disown || len(call.Assigns) != 0 || len(call.Args) == 0 {
@@ -79,7 +79,8 @@ func sourceEditStatement(script string, statement *syntax.Stmt) (string, bool) {
 	if languageName != "python" && languageName != "javascript" {
 		return "", false
 	}
-	projection, ok := shellStatementProjection(statement, false)
+	projection, inline := shellStatementProjection(statement, false)
+	ok = inline
 	if !ok {
 		if content, _, created := execscope.CreatedScript(script, statement, "/"); created {
 			projection = shellScriptProjection{Source: content, Language: languageName, Via: shellViaWords("", call.Args)}
@@ -125,7 +126,7 @@ func sourceEditStatement(script string, statement *syntax.Stmt) (string, bool) {
 			}
 		}
 	}
-	if result.Unresolved {
+	if result.Unresolved || inline {
 		display, ok := projection.display()
 		if !ok {
 			return "", false

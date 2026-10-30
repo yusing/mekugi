@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	"github.com/yusing/mekugi/modules/activity/feed"
@@ -75,6 +76,10 @@ func Operations(text string) []Value {
 // Compound reports whether invocation timing must stay on a combined result.
 // Source: apps/mekugi/internal/router/live_activity_blocks.go:52:80@6d403a5a.
 func (c Command) Compound(values []Value) bool {
+	return c.compound(values, !c.UserShell && len(c.Segments) == 0 && c.completeProgram(values))
+}
+
+func (c Command) compound(values []Value, inline bool) bool {
 	if c.UserShell {
 		return false
 	}
@@ -84,8 +89,14 @@ func (c Command) Compound(values []Value) bool {
 			operations++
 		}
 	}
-	if c.CaptureText != "" && len(c.Segments) == 0 && operations == 1 && len(values) > 0 && values[0].Verb == "Run" {
-		return false // This retained action already represents the complete invocation.
+	if len(c.Segments) == 0 && inline {
+		return false // Requested targets supplement this complete program.
+	}
+	if c.CaptureText != "" && len(c.Segments) == 0 && operations == 1 && len(values) > 0 && values[0].Verb == "Run" && !feed.Annotates(values[0].Label) {
+		preview, omitted := previewSource(cmp.Or(c.Display, c.Script))
+		if values[0].Code == textsanitize.Safe(preview, false) && values[0].SourceOmitted == omitted {
+			return false // One retained shell preview represents the whole invocation.
+		}
 	}
 	compound := operations > 1 || len(c.Segments) > 0
 	if compound || c.Script == "" {
@@ -97,6 +108,9 @@ func (c Command) Compound(values []Value) bool {
 		}
 		compound = len(program.Stmts) > 1
 		if len(program.Stmts) == 1 {
+			if body, wrapped := shellsyntax.ShellScript(sourceUnwrapCommand(program.Stmts[0])); wrapped {
+				return (Command{Script: body, Display: body}).Compound(values)
+			}
 			if binary, ok := program.Stmts[0].Cmd.(*syntax.BinaryCmd); ok {
 				compound = binary.Op == syntax.AndStmt || binary.Op == syntax.OrStmt
 			}
@@ -105,16 +119,42 @@ func (c Command) Compound(values []Value) bool {
 	return compound
 }
 
+// completeProgram distinguishes a whole interpreter program from one nested
+// operation selected out of it. Only its own target labels are supplementary.
+func (c Command) completeProgram(values []Value) bool {
+	projection, ok := shellInterpreterScriptProjection(shellDisplaySource(cmp.Or(c.Display, c.Script)))
+	if !ok {
+		return false
+	}
+	display, ok := projection.display()
+	if !ok {
+		return false
+	}
+	program := Operations(display)[0]
+	matched := false
+	for _, value := range values {
+		if value.Effect || value.EditOperation() {
+			continue
+		}
+		if matched || value.Verb != "Run" || value.Code != program.Code || value.Lang != program.Lang {
+			return false
+		}
+		matched = true
+	}
+	return matched
+}
+
 // ApplyFacts keeps host timing and exit facts off inferred individual operations.
 // Source: apps/mekugi/internal/router/live_activity_blocks.go:29:50@6d403a5a.
 func (c Command) ApplyFacts(values []Value) {
-	compound := c.Compound(values)
+	inline := c.completeProgram(values)
+	compound := c.compound(values, inline)
 	for i := range values {
 		value := &values[i]
 		if c.UserShell && !value.UserShell {
 			continue
 		}
-		if (value.Kind != "op" && value.Kind != "reads") || value.Skipped || value.Pending || value.Effect || compound && !value.BatchExit {
+		if (value.Kind != "op" && value.Kind != "reads") || value.Skipped || value.Pending || value.Effect || inline && value.EditOperation() || compound && !value.BatchExit {
 			continue
 		}
 		if c.Exited {
@@ -146,6 +186,58 @@ func previewSource(source string) (string, bool) {
 	return first, preview != source || strings.TrimSpace(rest) != ""
 }
 
+// Empty classified source denotes internal context transport, not a Run row.
+func hiddenCommandSource(source string) bool {
+	visible, hidden := visibleCommandSource(source)
+	return hidden && strings.TrimSpace(visible) == ""
+}
+
+// commandRun keeps inline programs in their language even when captured
+// effects replace classified intent. Renderers bound the program preview.
+func commandRun(source string, preview bool) Value {
+	source, _ = visibleCommandSource(source)
+	displaySource := shellDisplaySource(source)
+	if projection, inline := shellInterpreterScriptProjection(displaySource); inline {
+		if display, ok := projection.display(); ok {
+			value := Operations(display)[0]
+			value.Operation = 0
+			if statements, _, _, parsed := shellsyntax.StreamingStatements(displaySource, ""); parsed && len(statements) == 1 {
+				value.Timeouts = sourceTimeouts(statements[0])
+			}
+			return value
+		}
+	}
+	omitted := false
+	if preview {
+		source, omitted = previewSource(source)
+	}
+	return Value{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true, SourceOmitted: omitted}
+}
+
+// commandSources retains source-only statements in mixed invocations without
+// assigning their aggregate output or outcome to individual programs.
+func commandSources(source string, preview bool) ([]Value, bool) {
+	source, hidden := visibleCommandSource(source)
+	statements, _, _, ok := shellsyntax.StreamingStatements(source, "")
+	if !ok {
+		return nil, hidden
+	}
+	var values []Value
+	projected := hidden
+	header, _ := shellsyntax.Parse(source)
+	for _, statement := range shellsyntax.Sequence(statements) {
+		original := sourceStatementSource(header.Body, statement)
+		if hiddenCommandSource(original) {
+			projected = true
+			continue
+		}
+		value := commandRun(original, preview)
+		projected = projected || feed.Annotates(value.Label)
+		values = append(values, value)
+	}
+	return values, projected
+}
+
 // SegmentValues uses observed boundaries, retaining output and honest outcomes
 // after captured edits replace intent. Detail values additionally retain source.
 // Source: apps/mekugi/internal/router/live_activity_blocks.go:309:421@6d403a5a.
@@ -153,6 +245,9 @@ func (c Command) SegmentValues(detail bool) []Value {
 	var values []Value
 	_, classified := ClassifyShell(c.Script, "")
 	for segmentIndex, segment := range c.Segments {
+		if segment.Text == "" && hiddenCommandSource(cmp.Or(segment.Display, segment.Source)) {
+			continue
+		}
 		if classified && !segment.Skipped && segment.ExitCode == 0 {
 			following := ""
 			if segmentIndex+1 < len(c.Segments) {
@@ -163,7 +258,7 @@ func (c Command) SegmentValues(detail bool) []Value {
 			}
 		}
 		operations := Operations(textsanitize.Safe(segment.Text, false))
-		retainSource := segment.Pending || c.CaptureText != "" && len(c.Segments) == 1 && len(operations) > 1
+		retainSource := segment.Pending || c.CaptureText != "" && len(c.Segments) == 1 && (len(operations) > 1 || segment.Writer)
 		if c.Captured && !segment.Running && !segment.Skipped && !segment.Pending && segment.ExitCode == 0 {
 			removedTarget := false
 			operations = slices.DeleteFunc(operations, func(value Value) bool {
@@ -177,12 +272,7 @@ func (c Command) SegmentValues(detail bool) []Value {
 			retainSource = retainSource || len(operations) == 0 && (detail && (removedTarget || segment.Writer) || timed || len(segment.Tail) > 0 || segment.TailOmitted > 0 || hasOutput(segment.Output, segment.OutputContent) || c.CaptureText != "" && len(c.Segments) == 1)
 		}
 		if retainSource {
-			source := cmp.Or(segment.Display, segment.Source)
-			omitted := false
-			if !detail {
-				source, omitted = previewSource(source)
-			}
-			operations = []Value{{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true, SourceOmitted: omitted}}
+			operations = []Value{commandRun(cmp.Or(segment.Display, segment.Source), !detail)}
 		}
 		for i := range operations {
 			operations[i].Running, operations[i].Skipped, operations[i].Pending = segment.Running, segment.Skipped, segment.Pending
@@ -203,7 +293,8 @@ func (c Command) SegmentValues(detail bool) []Value {
 		}
 		last := &operations[len(operations)-1]
 		if detail && (last.EditSource != "" || last.Verb == "Run") {
-			last.Code, last.Lang, last.Fenced = textsanitize.Safe(cmp.Or(segment.Display, segment.Source), false), "bash", true
+			source := commandRun(cmp.Or(segment.Display, segment.Source), false)
+			last.Code, last.Lang, last.Fenced = source.Code, source.Lang, source.Fenced
 			if feed.Annotates(last.Label) {
 				last.Label = "" // It annotated the program the command replaced.
 			}
@@ -230,12 +321,7 @@ func (c Command) SegmentValues(detail bool) []Value {
 	combined := combinedOutput || len(c.Tail) > 0 || c.TailOmitted > 0 || len(values) == 0 && hasOutput(c.Output, c.OutputContent)
 	if combined {
 		if len(values) == 0 {
-			source := c.Script
-			omitted := false
-			if c.Captured && !detail {
-				source, omitted = previewSource(source)
-			}
-			values = append(values, Value{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true, SourceOmitted: omitted})
+			values = append(values, commandRun(cmp.Or(c.Display, c.Script), c.Captured && !detail))
 		}
 		for i := len(values) - 1; i >= 0; i-- {
 			if !values[i].Skipped && !values[i].Pending {
@@ -268,6 +354,9 @@ func (c Command) DetailValues() []Value {
 	if c.UserShell {
 		return nil // The visible command already retains the whole invocation.
 	}
+	if hiddenCommandSource(cmp.Or(c.Display, c.Script)) {
+		return nil
+	}
 	if c.Source == 0 || c.Script == "" && len(c.Segments) == 0 {
 		return nil
 	}
@@ -284,6 +373,21 @@ func (c Command) DetailValues() []Value {
 			return nil
 		}
 		values = []Value{{Source: c.Source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: c.Display, Lang: "bash", Output: outputID(c.Output, 1), Tail: c.Tail, TailOmitted: c.TailOmitted, TailClipped: c.TailClipped, Running: c.Running, Body: "Per-command output boundaries were not retained for this invocation."}}
+		if sources, projected := commandSources(cmp.Or(c.Display, c.Script), false); projected {
+			if !c.Compound(sources) && len(sources) == 1 {
+				values[0].Code, values[0].Lang, values[0].Fenced = sources[0].Code, sources[0].Lang, sources[0].Fenced
+				values[0].Body, values[0].Label, values[0].BatchExit = "", "", false
+			} else {
+				values[0].Code, values[0].Operation = "", len(sources)+1
+				for i := range sources {
+					sources[i].Source, sources[i].Operation, sources[i].Requested = c.Source, i+1, true
+					if feed.Annotates(sources[i].Label) {
+						sources[i].Label = ""
+					}
+				}
+				values = append(sources, values...)
+			}
+		}
 		classified := Operations(ShellSource(c.Display, c.Directory))
 		if slices.ContainsFunc(classified, func(value Value) bool { return value.EditSource != "" }) {
 			if segments, ok := shellinstrumentation.Split(c.Display); ok {
@@ -291,7 +395,7 @@ func (c Command) DetailValues() []Value {
 				for _, segment := range segments {
 					text := ShellSource(segment.Source, c.Directory)
 					if strings.TrimSpace(text) == "" {
-						text = RunSource(segment.Source)
+						continue // Internal transport deliberately has no source row.
 					}
 					classified = append(classified, Operations(text)...)
 				}
@@ -302,7 +406,9 @@ func (c Command) DetailValues() []Value {
 					classified[i].Label += " · requested"
 				}
 			}
-			values[0].RequestedOperations = classified
+			values[len(values)-1].RequestedOperations = slices.DeleteFunc(classified, func(value Value) bool {
+				return feed.Annotates(value.Label) || len(values) > 1 && !value.EditOperation()
+			})
 		}
 	} else {
 		for _, grouped := range GroupOperations(c.SegmentValues(true)) {
@@ -315,8 +421,9 @@ func (c Command) DetailValues() []Value {
 		}
 		slices.SortStableFunc(values, func(a, b Value) int { return cmp.Compare(a.Operation, b.Operation) })
 		if c.Approval != "" && len(c.Segments) > 1 {
+			source, _ := visibleCommandSource(cmp.Or(c.Display, c.Script))
 			values = append(values, Value{Source: c.Source, Kind: "op", Verb: "Run", BatchExit: true, Operation: len(c.Segments) + 1,
-				Code: textsanitize.Safe(cmp.Or(c.Display, c.Script), false), Lang: "bash", Fenced: true, Running: c.Running})
+				Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true, Running: c.Running})
 		}
 	}
 	c.ApplyFacts(values)

@@ -28,6 +28,7 @@ func TestShellEditIntentClassification(t *testing.T) {
 		wantPaths     []string
 		wantProgram   string
 		secret        string
+		wantLanguage  string
 	}{
 		{
 			name: "sed in-place", command: `sed -i 's/Answers\[0\]\.Id/Answers[0].ID/' internal/router/live_activity_view_test.go`,
@@ -59,11 +60,11 @@ func TestShellEditIntentClassification(t *testing.T) {
 		},
 		{
 			name: "python batch and test", command: "python3 - <<'PY'\nfrom pathlib import Path\na=Path('a.go'); a.write_text(a.read_text().replace('old', 'PRIVATE_PY_SOURCE'))\nb=Path('b.go'); b.write_text('new')\nPY\ngo test ./internal/router",
-			wantVerbs: []string{"Edit", "Edit", "Run"}, wantPaths: []string{"a.go", "b.go"}, wantProgram: "python3", secret: "PRIVATE_PY_SOURCE",
+			wantVerbs: []string{"Edit", "Edit", "Run", "Run"}, wantPaths: []string{"a.go", "b.go"}, wantProgram: "python3", secret: "PRIVATE_PY_SOURCE", wantLanguage: "python",
 		},
 		{
 			name: "python literal filename loop", command: "python3 - <<'PY'\nfrom pathlib import Path\nfor name in ['app_server_preview_test.go', 'app_server_events_test.go']:\n p=Path('internal/router')/name; s=p.read_text().replace('old','PRIVATE_LOOP_SOURCE'); p.write_text(s)\np=Path('internal/router/app_server_edit_receipts_test.go'); s=p.read_text().replace('old','new'); p.write_text(s)\nPY",
-			wantVerbs: []string{"Edit", "Edit", "Edit"}, wantPaths: []string{"internal/router/app_server_preview_test.go", "internal/router/app_server_events_test.go", "internal/router/app_server_edit_receipts_test.go"}, wantProgram: "python3", secret: "PRIVATE_LOOP_SOURCE",
+			wantVerbs: []string{"Edit", "Edit", "Edit", "Run"}, wantPaths: []string{"internal/router/app_server_preview_test.go", "internal/router/app_server_events_test.go", "internal/router/app_server_edit_receipts_test.go"}, wantProgram: "python3", secret: "PRIVATE_LOOP_SOURCE", wantLanguage: "python",
 		},
 		{
 			name: "python mutated filename remains unresolved", command: "python3 - <<'PY'\nfrom pathlib import Path\nname='a'\nname += '.txt'\n(Path('src') / name).write_text('new')\nPY",
@@ -75,11 +76,11 @@ func TestShellEditIntentClassification(t *testing.T) {
 		},
 		{
 			name: "pathlib open", command: `python3 -c 'from pathlib import Path; p=Path("a.go"); p.open("w").write("PRIVATE_PATH_SOURCE")'`,
-			wantVerbs: []string{"Edit"}, wantPaths: []string{"a.go"}, wantProgram: "python3", secret: "PRIVATE_PATH_SOURCE",
+			wantVerbs: []string{"Edit", "Run"}, wantPaths: []string{"a.go"}, wantProgram: "python3", secret: "PRIVATE_PATH_SOURCE", wantLanguage: "python",
 		},
 		{
 			name: "node write", command: "node - <<'JS'\nconst fs = require('fs'); fs.writeFileSync('a.go', 'PRIVATE_JS_SOURCE')\nJS",
-			wantVerbs: []string{"Edit"}, wantPaths: []string{"a.go"}, wantProgram: "node", secret: "PRIVATE_JS_SOURCE",
+			wantVerbs: []string{"Edit", "Run"}, wantPaths: []string{"a.go"}, wantProgram: "node", secret: "PRIVATE_JS_SOURCE", wantLanguage: "javascript",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -98,8 +99,19 @@ func TestShellEditIntentClassification(t *testing.T) {
 					t.Errorf("missing requested edit for %s: %q", path, got)
 				}
 			}
-			if tc.secret != "" && strings.Contains(got, tc.secret) || strings.Contains(got, "+1") || strings.Contains(got, "-1") {
-				t.Errorf("requested edit leaked source or implied applied stats: %q", got)
+			if tc.wantLanguage != "" {
+				found := false
+				for _, block := range blocks {
+					found = found || block.Verb == "Run" && block.Lang == tc.wantLanguage && strings.Contains(block.Code, tc.secret) && strings.Contains(block.Label, tc.wantProgram)
+				}
+				if !found {
+					t.Errorf("missing inner program and interpreter attribution: %q", got)
+				}
+			} else if tc.secret != "" && strings.Contains(got, tc.secret) {
+				t.Errorf("non-interpreter edit leaked source: %q", got)
+			}
+			if strings.Contains(got, "+1") || strings.Contains(got, "-1") {
+				t.Errorf("requested edit implied applied stats: %q", got)
 			}
 		})
 	}
@@ -141,10 +153,11 @@ func TestCodeModeEditIntentBatchPreview(t *testing.T) {
 	}
 	got := toolActivityShell(command)
 	blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: got})
-	if len(blocks) != 3 || blocks[0].Verb != "Edit" || blocks[1].Verb != "Edit" || blocks[2].Verb != "Run" ||
+	if len(blocks) != 4 || blocks[0].Verb != "Edit" || blocks[1].Verb != "Edit" || blocks[2].Verb != "Run" || blocks[3].Verb != "Run" ||
 		!strings.Contains(got, "Edit `a.go` · python3 (requested)") ||
 		!strings.Contains(got, "Edit `b.go` · python3 (requested)") ||
-		!strings.Contains(got, "go test ./internal/router") || strings.Contains(got, "PRIVATE_BATCH_SOURCE") {
+		!strings.Contains(blocks[3].Label, "go test ./internal/router") || blocks[2].Lang != "python" ||
+		!strings.Contains(blocks[2].Code, "PRIVATE_BATCH_SOURCE") || strings.Contains(blocks[2].Code, "python3 -") {
 		t.Fatalf("exec batch preview = %q, blocks %+v", got, blocks)
 	}
 }

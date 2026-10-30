@@ -19,10 +19,12 @@ type Entry struct {
 }
 
 func (e Entry) Hidden() bool {
-	return e.Suppressed || e.RosterOnly || e.Kind == "question_reply" || e.Kind == "tool" && e.Text == ""
+	return e.Suppressed || e.RosterOnly || e.Kind == "question_reply" || e.Kind == "tool" && e.Text == "" && len(e.Values) == 0
 }
 
-func (e Entry) Standalone() bool { return !e.RosterOnly && !(e.Kind == "tool" && e.Text == "") }
+func (e Entry) Standalone() bool {
+	return !e.RosterOnly && !(e.Kind == "tool" && e.Text == "" && len(e.Values) == 0)
+}
 
 func (e Entry) StatusAnimating() bool {
 	if !e.Live || len(e.Values) == 0 {

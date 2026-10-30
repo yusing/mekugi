@@ -1,0 +1,24 @@
+
+╭─ Run · from pathlib import Path ─────────────────────────────────────────── 1 / 5 [×] ─╮
+│                                                                                        │
+│  1 Run from pathlib import … 2 Run gofmt -w main.go api… 3 Run make build              │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│  1 │ from pathlib import Path                                                          ▌
+│  2 │ p=Path('go.mod'); p.write_text(p.read_text().replace('go 1.26.0','go 1.27.0'))    ▌
+│  3 │ p=Path('README.md'); s=p.read_text().replace('Go 1.26+', 'Go 1.27+').replace('The ▌
+│    │  helper uses the\ninstalled binary', 'The helper is the same Go executable instal ▌
+│    │ led under its Git command name and')                                              ▌
+│  4 │ p.write_text(s)                                                                   │
+│  5 │ p=Path('api.go'); s=p.read_text().replace('"encoding/json"','"encoding/json/jsont │
+│    │ ext"\n "encoding/json/v2"').replace('json.RawMessage','jsontext.Value'); p.write_ │
+│    │ text(s)                                                                           │
+│  6 │ p=Path('git.go'); s=p.read_text().replace('"context"','"cmp"\n "context"').replac │
+│    │ e('"sort"','"maps"\n "slices"')                                                   │
+│  7 │ a=s.index('func sortedKeys['); b=s.index('\nfunc pushedCommits',a); s=s[:a]+s[b:] │
+│  8 │ s=s.replace('sortedKeys(heads)','slices.Sorted(maps.Keys(heads))').replace('sorte │
+│    │ dKeys(after)','slices.Sorted(maps.Keys(after))').replace('sortedKeys(before)','sl │
+│    │ ices.Sorted(maps.Keys(before))')                                                  │
+│  9 │ a=s.index('\tfound := false'); b=s.index('\toutput, err :=',a)                    │
+╰─ ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc ─────────────────────────╯
+
+

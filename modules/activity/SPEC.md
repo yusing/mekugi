@@ -130,7 +130,12 @@ operations; other setup programs stay together. Other unsupported compounds rema
 Recognized output-only search pipelines and discarded stderr for `find`, `rg`,
 `grep` and `ls` do not obscure the operation. Effectful/unknown pipeline stages and
 ambiguous abbreviated listing options remain Run. Whole setup programs retain
-their source and known timeout metadata. Literal `mread` recovery calls add no row.
+their source and known timeout metadata. Internal `mreload` snapshot acquisition
+and literal `mread` recovery calls add no transcript or roster row. Their transport
+source and output remain model-facing; ordinary command output is not filtered
+by matching transport text. Mixed invocations hide internal command source;
+without retained per-command boundaries, their inseparable combined output stays
+available rather than discarding ordinary tool output.
 
 Blank lines separate operations except inside fenced source. Each operation keeps
 its verb, label, source language/body, explicit timeout annotations and read

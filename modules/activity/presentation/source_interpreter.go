@@ -59,7 +59,15 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 	if !ok || len(statements) != 1 {
 		return shellScriptProjection{}, false
 	}
-	return shellStatementProjection(statements[0], partialLine)
+	statement := statements[0]
+	for {
+		inner := shellsyntax.UnwrapMRun(shellsyntax.UnwrapTimeout(statement))
+		if inner == statement {
+			break
+		}
+		statement = inner
+	}
+	return shellStatementProjection(statement, partialLine)
 }
 
 // shellStatementProjection projects a parsed statement, so heredoc bodies
@@ -86,6 +94,16 @@ func shellStatementProjection(statement *syntax.Stmt, partial bool) (shellScript
 	}
 
 	args := call.Args[1:]
+	// Bun's explicit run subcommand reads JavaScript from `-`, rather than
+	// treating the heredoc as input for a package script or source file.
+	if name == "bun" && len(args) >= 2 {
+		if subcommand, _ := shellsyntax.Literal(args[0]); subcommand == "run" {
+			if input, _ := shellsyntax.Literal(args[1]); input != "-" {
+				return shellScriptProjection{}, false
+			}
+			args = args[1:]
+		}
+	}
 	stdin := -1
 	for index, word := range args {
 		if stdin >= 0 {

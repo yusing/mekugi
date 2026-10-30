@@ -186,7 +186,8 @@ wrappers, including literal `-NoLogo`/`-NoProfile`. Outer redirects, assignments
 extra arguments or dynamic words keep the wrapper intact. The inner source keeps
 shell highlighting; live and restored display never changes execution.
 
-Literal interpreter wrappers such as `python -c`, `python - <<'PY'` and `node -e`,
+Literal interpreter wrappers such as `python -c`, `python - <<'PY'`, `node -e`
+and `bun run - <<'JS'`,
 alone, under `timeout` or `mrun`, or as a top-level or `&&` statement among
 others, show their program from its first nonblank line as the row's subject in
 its own language, with source indentation intact, followed by `· via` and the
@@ -195,8 +196,9 @@ flags and stdin arguments stay in the attribution; arguments after a `-c` progra
 keep `…` in its place. A final `-` is omitted only for interpreters that pass
 later words to a stdin program; other interpreters keep it and accept no words
 after it. Substitutions, `env` wrappers, pipelines and compound commands keep the
-literal command, and detail pages show each command's own source without the
-attribution. Multiline programs begin beside the verb and end with the attribution
+literal command. Recognized programs retain their own language in full disclosures
+and detail pages, including actions with captured edits. Detail pages omit the
+preview attribution. Multiline programs begin beside the verb and end with the attribution
 row; terminal previews keep the row limit, the browser shows the first line, or
 the first 80 characters of a longer one-line program, with the full source behind
 its disclosure, and details keep the full source. A lone
@@ -549,8 +551,9 @@ Original details and copies remain unchanged.
 Detail pages preserve original operation identity through feed grouping. New tracked
 segments appear while open. Missing boundaries label combined output explicitly,
 preserving requested source, actual edits and invocation outcome independently.
-Classified edit summaries supplement the complete, uninstrumented shell source
-in combined pages. Tracked edit pages retain their original segment source,
+Classified edit summaries supplement the complete, uninstrumented source
+in combined pages. Recognized inline programs show their complete inner source
+in its own language; other tracked edit pages retain their original segment source,
 including silent captured edits. Grouping does not replace source with edit labels.
 The header shows target, result position, ranges, retained line count and known
 exit. Source has a solid numbered gutter; output a dashed one. Single-range reads

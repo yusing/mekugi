@@ -22,11 +22,19 @@ func TestProjectionPreservesHiddenOutputAndPendingSource(t *testing.T) {
 			t.Fatalf("output omission facts lost: %+v", values)
 		}
 	}
-	for _, source := range []string{"printf ready\n", "python3 - <<'PY'\nprint('hidden program body')\nPY"} {
+	for _, tc := range []struct {
+		source, code, language string
+		omitted                bool
+	}{
+		{"printf ready\n", "printf ready", "bash", false},
+		{"printf ready\nprintf hidden", "printf ready", "bash", true},
+		{"python3 - <<'PY'\nprint('inner program body')\nPY", "print('inner program body')", "python", false},
+	} {
+		source := tc.source
 		command := activity.Command{Source: 7, Script: source, Display: source, Segments: []activity.CommandSegment{{Source: source, Pending: true}}}
 		item := activity.ItemContent{Seq: 7, Kind: "tool", Command: command, Details: &activity.ItemDetails{CommandText: source}}
 		values := projectValues(item.Values(), false)
-		if len(values) != 1 || values[0].SourceOmitted != strings.Contains(source, "hidden program") || (values[0].DetailsAvailable != nil) != values[0].SourceOmitted {
+		if len(values) != 1 || values[0].Code != tc.code || values[0].Lang != tc.language || values[0].SourceOmitted != tc.omitted || (values[0].DetailsAvailable != nil) != tc.omitted {
 			t.Fatalf("pending source omission facts lost: %+v", values)
 		}
 		if pages := command.DetailValues(); values[0].SourceOmitted && (len(pages) != 1 || pages[0].Code != source) {

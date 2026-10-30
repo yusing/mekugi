@@ -1,2 +1,3 @@
 Search needle in src
-Ran    rg needle src; python3 - <<'PY' · 64ms
+Ran    open('nested.go', 'w').write('PRIVATE_EDIT_SOURCE') · via python3
+Ran    combined output · 64ms

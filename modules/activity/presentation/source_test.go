@@ -56,6 +56,8 @@ func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 		{"php stdin marker", "php - <<'PHP'\n<?php echo 1;\nPHP\n", "php -", "php", "<?php echo 1;\n"},
 		{"leading blank lines", "python3 - <<'PY'\n\n  \n  print('ok')\nPY\n", "python3", "python", "  print('ok')\n"},
 		{"bun heredoc", "bun --no-install - <<'JS'\nconsole.log(1)\nJS\n", "bun --no-install", "javascript", "console.log(1)\n"},
+		{"bun run heredoc", "bun run - <<'JS'\nconsole.log(1)\nJS\n", "bun run", "javascript", "console.log(1)\n"},
+		{"bun module heredoc", "bun --input-type=module <<'JS'\nconsole.log(1)\nJS\n", "bun --input-type=module", "javascript", "console.log(1)\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			want := "Run · via " + SourceCode(test.via) + "\n" + markdownsyntax.SourceFence(test.language, test.program)
@@ -109,6 +111,7 @@ func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 		"bash - script.sh <<'SH'\necho ok\nSH\n",
 		"php - script.php <<'PHP'\n<?php echo 1;\nPHP\n",
 		`node -p 'process.version'`,
+		"bun run package-script <<'JS'\ndata\nJS\n",
 		// env settings and enclosing commands belong to what runs.
 		"env A=1 python3 - <<'PY'\nprint(1)\nPY\n",
 		"f=$(python3 - <<'PY'\nprint(1)\nPY\n)\necho \"$f\"",
@@ -122,17 +125,236 @@ func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 	}
 }
 
-// Detail pages show each command's own source, which the annotation does not describe.
-func TestInterpreterDetailDropsAnnotation(t *testing.T) {
+// Detail pages keep the complete inner program in its own language.
+func TestInterpreterDetailSource(t *testing.T) {
 	program := "python3 -c 'print(1)'"
 	command := Command{Script: program, Segments: []CommandSegment{{Source: program, Text: shellSource(program)}}}
 	for detail, want := range map[bool]Value{
 		false: {Content: feed.Content{Verb: "Run", Label: "· via `python3`", Code: "print(1)"}},
-		true:  {Content: feed.Content{Verb: "Run", Code: program}},
+		true:  {Content: feed.Content{Verb: "Run", Code: "print(1)"}},
 	} {
 		values := command.SegmentValues(detail)
 		if len(values) != 1 || values[0].Verb != want.Verb || values[0].Label != want.Label || values[0].Code != want.Code {
 			t.Errorf("detail %v values = %+v; want %+v", detail, values, want)
+		}
+	}
+}
+
+func TestCapturedInterpreterSource(t *testing.T) {
+	for _, source := range []string{
+		"python3 - <<'PY'\nfrom pathlib import Path\nPath('file').write_text('new')\nPY\n",
+		"bun run - <<'JS'\nimport { writeFileSync } from 'node:fs';\nwriteFileSync('file', 'new');\nJS\n",
+	} {
+		projection, ok := shellInterpreterScriptProjection(source)
+		if !ok {
+			t.Fatal("missing interpreter projection")
+		}
+		for _, tracked := range []bool{false, true} {
+			for _, running := range []bool{false, true} {
+				command := Command{Source: 7, Script: source, Display: source, Text: ShellSource(source, ""), Captured: true,
+					CaptureText: "Edit `file` · +1 −1 · script", Running: running, Exited: !running, Duration: 1,
+					Tail: []string{"ordinary output"}}
+				if tracked {
+					command.Segments = []CommandSegment{{Source: source, Text: command.Text, Writer: !running, Running: running, Duration: 1, Tail: command.Tail}}
+				}
+				item := ItemContent{Seq: 7, Kind: "tool", Text: command.Text, Command: command, Details: &ItemDetails{CommandText: source}}
+				values := item.Values()
+				if len(values) < 2 || values[0].Code != strings.TrimSuffix(projection.Source, "\n") || values[0].Lang != projection.Language || !strings.Contains(values[0].Label, projection.Via) || len(values[0].Tail) != 1 {
+					t.Fatalf("tracked=%v running=%v values=%+v", tracked, running, values)
+				}
+				ids := make(map[string]bool)
+				for _, page := range DetailPages(values) {
+					if ids[page.ID] {
+						t.Fatalf("duplicate source/edit identity: %s", page.ID)
+					}
+					ids[page.ID] = true
+				}
+				pages := RefreshDetails(DetailPages(values[:1]), map[uint64]DetailSource{7: {Command: &command}})
+				if len(pages) != 1 || pages[0].Code != values[0].Code || pages[0].Lang != projection.Language {
+					t.Fatalf("detail lost program: %+v", pages)
+				}
+			}
+		}
+	}
+}
+
+func TestInternalReloadSource(t *testing.T) {
+	for _, source := range []string{
+		`mreload '{"sources":[{"path":"context.md"}]}'`,
+		"mreload \\\n  '{\"sources\":[{\"skill\":\"commit\"}]}'",
+		`mrun --max-tokens 1000 mreload '{"sources":[]}'`,
+		`mreload "$selection"`,
+		`SELECTION=x mreload '{"sources":[]}'`,
+		`mreload '{"sources":[]}' 2>/dev/null`,
+	} {
+		if text := ShellSource(source, ""); text != "" {
+			t.Fatalf("internal source visible: %q", text)
+		}
+		for _, running := range []bool{false, true} {
+			command := Command{Source: 7, Script: source, Display: source, Running: running, Exited: !running, Duration: 1, Tail: []string{"Reload snapshot: mread pearl"},
+				Segments: []CommandSegment{{Source: source, Running: running, Tail: []string{"Reload snapshot: mread pearl"}}}}
+			item := ItemContent{Seq: 7, Kind: "tool", Command: command, Details: &ItemDetails{CommandText: source, Output: 1}}
+			if values := item.Values(); len(values) != 0 {
+				t.Fatalf("internal output/source visible: %+v", values)
+			}
+			var model Model[modelSource, modelAgent]
+			model.Append(modelSource{Seq: 6, Agent: "/root/worker", Kind: "tool", Text: "Run `ordinary`"}, []Value{{Kind: "op", Verb: "Run", Code: "ordinary"}})
+			item.Agent = "/root/worker"
+			model.Append(modelSource{Facts: item.Facts}, item.Values())
+			if !model.Entries[1].Publish().Hidden() || model.Summary("/root/worker", false).Index != 0 {
+				t.Fatal("internal transport replaced transcript/roster activity")
+			}
+		}
+	}
+	// Ordinary output mentioning the transport is still ordinary output.
+	const ordinary = `printf 'Reload snapshot: mread pearl'`
+	item := ItemContent{Kind: "tool", Text: ShellSource(ordinary, ""), Command: Command{Script: ordinary, Display: ordinary, Tail: []string{"Reload snapshot: mread pearl"}}, Details: &ItemDetails{CommandText: ordinary}}
+	if values := item.Values(); len(values) != 1 || len(values[0].Tail) != 1 {
+		t.Fatalf("ordinary output suppressed: %+v", values)
+	}
+	for _, source := range []string{`mreload "$(printf selection)"`, `SELECTION=$(printf selection) mreload '{"sources":[]}'`} {
+		if hiddenCommandSource(source) {
+			t.Fatalf("nested command effects hidden: %s", source)
+		}
+	}
+}
+
+func TestMixedInterpreterAndInternalSource(t *testing.T) {
+	const program = "import { writeFileSync } from 'node:fs';\nwriteFileSync('file', 'new');"
+	const interpreter = "bun run - <<'JS'\n" + program + "\nJS\n"
+	for _, source := range []string{interpreter + "printf done\n", "printf before\n" + interpreter, "printf before && " + interpreter} {
+		command := Command{Source: 7, Script: source, Display: source, Text: ShellSource(source, ""), Captured: true, CaptureText: "Edit `file` · +1 −1 · bun", Exited: true, Duration: 1, Tail: []string{"ordinary output"}}
+		values := (ItemContent{Seq: 7, Kind: "tool", Text: command.Text, Command: command, Details: &ItemDetails{CommandText: source}}).Values()
+		found := false
+		for _, value := range values {
+			found = found || value.Code == program && value.Lang == "javascript" && strings.Contains(value.Label, "bun run")
+			if len(value.Tail) > 0 && !value.BatchExit {
+				t.Fatalf("aggregate output attributed to source: %+v", value)
+			}
+		}
+		if !found {
+			t.Fatalf("mixed program omitted: %+v", values)
+		}
+		pages := command.DetailValues()
+		if len(pages) != 3 || !pages[2].BatchExit || len(pages[2].Tail) != 1 {
+			t.Fatalf("mixed detail boundaries changed: %+v", pages)
+		}
+		found = false
+		for _, page := range pages[:2] {
+			found = found || page.Code == program && page.Lang == "javascript"
+		}
+		if !found {
+			t.Fatalf("mixed detail program omitted: %+v", pages)
+		}
+	}
+	const mixed = `printf ordinary; mreload '{"sources":[{"path":"private-context.md"}]}'`
+	command := Command{Source: 7, Script: mixed, Display: mixed, Text: ShellSource(mixed, ""), Exited: true, Duration: 1, Tail: []string{"ordinary", "Reload snapshot: mread pearl"}}
+	values := (ItemContent{Seq: 7, Kind: "tool", Text: command.Text, Command: command, Details: &ItemDetails{CommandText: mixed}}).Values()
+	for _, value := range append(values, command.DetailValues()...) {
+		if strings.Contains(value.Code+value.Label, "private-context.md") || strings.Contains(value.Code+value.Label, "mreload") {
+			t.Fatalf("mixed transport source leaked: %+v", value)
+		}
+	}
+	if len(values[len(values)-1].Tail) != 2 {
+		t.Fatal("inseparable ordinary output was discarded")
+	}
+	// Actual segment boundaries hide only the transport's own retained stream.
+	command.Segments = []CommandSegment{{Source: "printf ordinary", Text: ShellSource("printf ordinary", ""), Tail: []string{"ordinary"}}, {Source: `mreload '{"sources":[]}'`, Tail: []string{"Reload snapshot: mread pearl"}}}
+	command.Tail = nil
+	values = (ItemContent{Seq: 7, Kind: "tool", Text: command.Text, Command: command, Details: &ItemDetails{CommandText: mixed}}).Values()
+	if len(values) != 1 || len(values[0].Tail) != 1 || values[0].Tail[0] != "ordinary" {
+		t.Fatalf("segmented ordinary output changed: %+v", values)
+	}
+}
+
+func TestInternalReloadSetupAndApprovalFallbacks(t *testing.T) {
+	const internal = `mreload '{"sources":[{"path":"private-context.md"}]}'`
+	const source = "set -e; printf ordinary; " + internal
+	text := ShellSource(source, "")
+	command := Command{Source: 7, Script: source, Display: source, Text: text, Exited: true, Duration: 1,
+		Tail: []string{"ordinary", "Reload snapshot: mread pearl"}}
+	values := (ItemContent{Seq: 7, Kind: "tool", Text: text, Command: command, Details: &ItemDetails{CommandText: source}}).Values()
+	if strings.Contains(text, "mreload") || strings.Contains(text, "private-context.md") || !strings.Contains(text, "printf ordinary") {
+		t.Fatalf("setup fallback changed visible source: %q", text)
+	}
+	for _, value := range append(values, command.DetailValues()...) {
+		if strings.Contains(value.Code+value.Label, "mreload") || strings.Contains(value.Code+value.Label, "private-context.md") {
+			t.Fatalf("setup fallback exposed transport source: %+v", value)
+		}
+	}
+	if len(values) == 0 || len(values[len(values)-1].Tail) != 2 {
+		t.Fatal("setup fallback discarded inseparable ordinary output")
+	}
+	for _, approval := range []string{"Pending Approval", "Approved", "Denied"} {
+		t.Run(approval, func(t *testing.T) {
+			source := "sudo true; " + internal
+			command := Command{Source: 7, Script: source, Display: source, Text: ShellSource(source, ""), Approval: approval,
+				Segments: []CommandSegment{{Source: "sudo true", Text: ShellSource("sudo true", ""), Skipped: true}, {Source: internal, Skipped: true}}}
+			values := (ItemContent{Seq: 7, Kind: "tool", Text: command.Text, Command: command, Details: &ItemDetails{CommandText: source}}).Values()
+			pages := command.DetailValues()
+			for _, value := range append(values, pages...) {
+				if strings.Contains(value.Code+value.Label, "mreload") || strings.Contains(value.Code+value.Label, "private-context.md") {
+					t.Fatalf("approval fallback exposed transport source: %+v", value)
+				}
+			}
+			if len(pages) == 0 || !pages[len(pages)-1].BatchExit || pages[len(pages)-1].Approval != approval || !strings.Contains(pages[len(pages)-1].Code, "sudo true") {
+				t.Fatalf("approval fallback lost ordinary source or approval outcome: %+v", pages)
+			}
+		})
+	}
+}
+
+func TestPendingInterpreterKeepsTimeout(t *testing.T) {
+	source := "timeout 5 python3 - <<'PY'\nprint(1)\nPY\n"
+	command := Command{Script: source, Display: source, Segments: []CommandSegment{{Source: source, Pending: true}}}
+	values := command.SegmentValues(false)
+	if len(values) != 1 || values[0].Code != "print(1)" || len(values[0].Timeouts) != 1 || values[0].Timeouts[0] != "5" {
+		t.Fatalf("pending bound lost: %+v", values)
+	}
+}
+
+func TestInterpreterProjectionKeepsWholeInvocation(t *testing.T) {
+	const nested = `bash -lc 'python3 -c "print(1)"; printf done'`
+	command := Command{Source: 7, Script: nested, Display: nested, Text: ShellSource(nested, ""), Segments: []CommandSegment{{Source: nested, Pending: true}}}
+	if values := command.SegmentValues(false); len(values) != 1 || !strings.Contains(values[0].Code, "printf done") || values[0].Lang != "bash" {
+		t.Fatalf("nested sibling omitted: %+v", values)
+	}
+	if pages := command.DetailValues(); len(pages) != 1 || !strings.Contains(pages[0].Code, "printf done") {
+		t.Fatalf("nested detail sibling omitted: %+v", pages)
+	}
+	for index, source := range []string{
+		`bash -lc 'python3 -c "print(1)"; rm missing-file'`,
+		"python3 - <<'PY'\nfrom pathlib import Path\nPath('file').write_text('new')\nPY\nmreload '{\"sources\":[{\"path\":\"private-context.md\"}]}'\n",
+		`bash -lc 'printf ordinary; mreload "{\"sources\":[{\"path\":\"private-context.md\"}]}"'`,
+	} {
+		command := Command{Source: 7, Script: source, Display: source, Text: ShellSource(source, ""), Captured: true, CaptureText: "Edit `file` · +1 −1 · script", Exited: true, ExitCode: 1, Duration: 1, Tail: []string{"aggregate failure"}}
+		if index == 0 {
+			command.Captured, command.CaptureText = false, ""
+		}
+		values := (ItemContent{Seq: 7, Kind: "tool", Text: command.Text, Command: command, Details: &ItemDetails{CommandText: source}}).Values()
+		found := false
+		for _, value := range values {
+			if value.Exited && !value.BatchExit {
+				t.Fatalf("aggregate exit attributed to source: %+v", value)
+			}
+			found = found || value.BatchExit && value.Exited && value.ExitCode == 1
+		}
+		if !found {
+			t.Fatalf("missing aggregate failure: %+v", values)
+		}
+		ids := make(map[string]bool)
+		for _, page := range DetailPages(values) {
+			if ids[page.ID] {
+				t.Fatalf("duplicate operation identity %s", page.ID)
+			}
+			ids[page.ID] = true
+		}
+		for _, page := range command.DetailValues() {
+			for _, value := range append([]Value{page}, page.RequestedOperations...) {
+				if strings.Contains(value.Code+value.Label, "private-context.md") || strings.Contains(value.Code+value.Label, "mreload") {
+					t.Fatalf("detail transport source leaked: %+v", value)
+				}
+			}
 		}
 	}
 }

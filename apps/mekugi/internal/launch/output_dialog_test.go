@@ -45,18 +45,15 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 			Native: &sessionpresentation.NativeItem{Command: command, Output: output},
 		}}})
 		u := &terminalUI{Attachment: &terminalsession.Attachment{}}
-		if !u.openEntry(view.bind(u), 1) || len(u.Dialog.Pages) != 1 {
-			t.Fatal("missing combined output page")
+		if !u.openEntry(view.bind(u), 1) || len(u.Dialog.Pages) < 2 {
+			t.Fatal("missing source and combined output pages")
 		}
-		if got := u.Dialog.Pages[0].Code; got != sessionpresentation.CommandSource(command, "").Display {
-			t.Fatalf("combined page lost original source: %q", got)
+		if page := u.Dialog.Pages[0]; page.Lang != "python" || !strings.HasPrefix(page.Code, "from pathlib import Path") || strings.Contains(page.Code, "python3 -") {
+			t.Fatalf("program lost its own source/language: %+v", page)
 		}
 		rows := make([]string, 24)
 		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 		u.Dialog.Paint(rows, 100, len(rows))
-		if u.Dialog.Document.Text != "build failed" {
-			t.Fatalf("combined output lost host text: %q", u.Dialog.Document.Text)
-		}
 		var source []string
 		for _, line := range u.Dialog.Document.Lines {
 			if line.Gutter == "│" {
@@ -65,6 +62,14 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 		}
 		if got, want := strings.Join(source, "\n"), textsanitize.Safe(u.Dialog.Pages[0].Code, false); got != want {
 			t.Fatalf("rendered source = %q, want %q", got, want)
+		}
+		assertNativeUISnapshot(t, "combined-edit-source", rows)
+		u.Dialog.ShowPage(len(u.Dialog.Pages) - 1)
+		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
+		rows = make([]string, 24)
+		u.Dialog.Paint(rows, 100, len(rows))
+		if u.Dialog.Document.Text != "build failed" || !u.Dialog.Pages[u.Dialog.Page].BatchExit {
+			t.Fatalf("combined output lost host ownership: %q", u.Dialog.Document.Text)
 		}
 		assertNativeUISnapshot(t, "combined-edit-output", rows)
 	}

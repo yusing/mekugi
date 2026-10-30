@@ -393,6 +393,25 @@ func TestLiveActivityCompactionAppearsInFeedAndRoster(t *testing.T) {
 	}
 }
 
+func TestLiveActivityInterpreterWriterLifecycle(t *testing.T) {
+	const source = "python3 - <<'PY'\nfrom pathlib import Path\nPath('file').write_text('new')\nPY\n"
+	for _, phase := range []string{"pending", "running", "completed"} {
+		entry := sessionpresentation.ActivityEntry{Seq: 7, Agent: "Main", Kind: "tool", Text: toolActivityShell(source),
+			Native: &sessionpresentation.NativeItem{Command: source, Running: phase == "running", Segments: []sessionpresentation.ActivitySegment{{Source: source, Text: toolActivityShell(source), Pending: phase == "pending", Running: phase == "running"}}}}
+		found := false
+		for _, value := range sessionpresentation.ActivityContent(entry).Values() {
+			if value.Lang == "python" && strings.Contains(value.Code, "write_text") && strings.Contains(value.Label, "python3") {
+				painter := activityui.Painter{Theme: diffrender.DarkTheme}
+				rows := strings.Join(painter.Block(activityui.Block{Value: value}, 80), "\n")
+				found = strings.Contains(ansi.Strip(rows), "from pathlib import Path") && strings.Contains(rows, "\x1b[38;2;")
+			}
+		}
+		if !found {
+			t.Fatalf("%s lost inline writer source", phase)
+		}
+	}
+}
+
 func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 	for _, tc := range []struct {
 		shell, via, first, second string

@@ -16,7 +16,7 @@ func TestJavaScriptRepeatedAssignmentThenLoopRebinding(t *testing.T) {
 		t.Fatalf("ambiguous preview binding: files=%+v recognized=%v err=%v", files, recognized, err)
 	}
 	intent := activitypresentation.ShellSource(command, directory)
-	if !strings.HasPrefix(intent, "Edit ") || !strings.Contains(intent, "first.txt") || strings.Contains(intent, "loop.txt") {
+	if !strings.Contains(intent, "Edit `first.txt`") || strings.Contains(intent, "Edit `loop.txt`") || strings.Contains(intent, "Edit `second.txt`") {
 		t.Fatalf("built write intent changed by final binding pruning: intent=%q", intent)
 	}
 }

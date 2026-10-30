@@ -83,8 +83,8 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 			t.Fatalf("requested edit missing %q from terminal frame:\n%s", want, frame)
 		}
 	}
-	if strings.Contains(frame, "PRIVATE_CAT_BODY") || strings.Contains(frame, "PRIVATE_PY_BODY") {
-		t.Fatalf("terminal displayed edit source:\n%s", frame)
+	if strings.Contains(frame, "PRIVATE_CAT_BODY") || !strings.Contains(frame, "PRIVATE_PY_BODY") || !strings.Contains(frame, "via python3") || strings.Contains(frame, "python3 - <<") {
+		t.Fatalf("terminal lost inline source or exposed the non-interpreter edit body:\n%s", frame)
 	}
 	history := legacycall.History{ExecutingThread: "main", CorrelationID: "cmd\x00exec", ChangeID: "c1",
 		ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact, Labels: []string{"cat", "python3"}}),

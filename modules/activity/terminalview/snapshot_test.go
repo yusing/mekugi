@@ -59,12 +59,23 @@ func TestUISnapshotInterpreterRun(t *testing.T) {
 		{source: "node --input-type=module - <<'JS'\nconst items = [1, 2, 3]\nfor (const item of items) {\n  const doubled = item * 2\n  console.log(doubled)\n}\nconsole.log(\"done\")\nJS\n",
 			block: Block{Running: true, SourceRows: 4}},
 		{source: "python3 - \"$dir\" <<'PY'\nimport sys\nraise SystemExit(sys.argv[1])\nPY\n", block: Block{Exited: true, ExitCode: 1}},
+		{source: "bun run - <<'JS'\nimport { query } from './sdk.mjs';\nconsole.log(await query());\nJS\n", block: Block{Exited: true}},
 	} {
 		for _, value := range presentation.Operations(presentation.ShellSource(tc.source, "")) {
 			block := tc.block
 			block.Kind, block.Verb, block.Label, block.Code, block.Lang, block.Fenced = value.Kind, value.Verb, value.Label, value.Code, value.Lang, value.Fenced
 			rows = append(rows, p.Block(block, 60)...)
 		}
+	}
+	source := "python3 - <<'PY'\nfrom pathlib import Path\nPath('file').write_text('new')\nprint('saved')\nPY\n"
+	command := presentation.Command{Source: 7, Script: source, Display: source, Captured: true, CaptureText: "Edit `file` · +1 −1 · python3", Duration: time.Second, Tail: []string{"saved"}}
+	item := presentation.ItemContent{Seq: 7, Kind: "tool", Text: presentation.ShellSource(source, ""), Command: command, Details: &presentation.ItemDetails{CommandText: source}}
+	for _, value := range item.Values() {
+		rows = append(rows, p.Block(Block{Value: value}, 60)...)
+	}
+	pages := presentation.RefreshDetails(presentation.DetailPages(item.Values()[:1]), map[uint64]presentation.DetailSource{7: {Command: &command}})
+	for _, line := range p.DetailDocument(pages[0], nil, nil, 60).Lines {
+		rows = append(rows, line.Text)
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/interpreter-run-ansi.txt", append(rows, "plain after interpreter rows"), 60)
 }

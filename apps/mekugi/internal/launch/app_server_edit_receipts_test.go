@@ -375,7 +375,7 @@ func assertCapturedCommand(t *testing.T, view *activityAdapter, thread, item, ve
 		}
 		blocks := view.blocks(i)
 		at := slices.IndexFunc(blocks, func(b activityui.Block) bool { return b.Verb == verb })
-		if at < 0 || blocks[0].ExitCode != exit || blocks[at].Effect && blocks[at].ExitCode != 0 {
+		if at < 0 || !slices.ContainsFunc(blocks, func(b activityui.Block) bool { return !b.Effect && b.ExitCode == exit }) || blocks[at].Effect && blocks[at].ExitCode != 0 {
 			t.Fatalf("%s: text %q, blocks %+v, want %s exit %d", item, entry.Source.Text, view.blocks(i), verb, exit)
 		}
 		return
@@ -471,7 +471,7 @@ func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 		assertCapturedCommand(t, v, "main", "failed-edit", "Edit", 1)
 	}
 	feed := ansi.Strip(strings.Join(v.RenderFeed(120, 80).Lines, "\n"))
-	if strings.Contains(feed, "included in grouped") || strings.Contains(feed, "PRIVATE_") ||
+	if strings.Contains(feed, "included in grouped") || strings.Contains(feed, "PRIVATE_GROUPED_BODY") || !strings.Contains(feed, "PRIVATE_FAILED_BODY") ||
 		!strings.Contains(feed, "go test") || !strings.Contains(feed, "exit 2") || !strings.Contains(feed, "exit 1") {
 		t.Fatalf("grouped receipt hid work/failures or exposed bookkeeping: %q", feed)
 	}

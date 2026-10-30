@@ -14,6 +14,17 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
+// Internal context transport is identified by its executable, independently of
+// selection arguments, assignments and redirects. Callers retain nested effects.
+func sourceInternalCommand(call *syntax.CallExpr) bool {
+	if len(call.Args) == 0 {
+		return false
+	}
+	command, literal := shellsyntax.Literal(call.Args[0])
+	name := shellsyntax.CommandName(command)
+	return literal && name == "mreload"
+}
+
 func sourceReadCommand(script string, call *syntax.CallExpr, cwd string) (string, bool) {
 	var operations []struct{ label, detail string }
 	add := func(label, detail string) {

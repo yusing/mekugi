@@ -39,6 +39,10 @@ func TestCompactReloadPreservesIndependentOutcomes(t *testing.T) {
 			if len(values) != 4 {
 				t.Fatalf("source rows: %+v", values)
 			}
+			entry := Entry{Facts: item.Facts, Values: values}
+			if entry.Hidden() || !entry.Standalone() {
+				t.Fatal("internal transport suppression hid acquired source attachments")
+			}
 			if values[3].Verb != "Attached changes" || values[3].Label != "amber1..3" {
 				t.Fatalf("change identity lost: %+v", values[3])
 			}

@@ -88,6 +88,9 @@ func ClassifyShell(script, cwd string) (string, bool) {
 		})
 	}
 	if (hasHeredoc || hasSetup) && !hasEdit {
+		if visible, hidden := visibleCommandSource(script); hidden {
+			return ShellSource(visible, cwd), true
+		}
 		var source strings.Builder
 		var timeouts []string
 		offset := 0
@@ -185,6 +188,36 @@ func shellDisplaySource(script string) string {
 		return script
 	}
 	return sourceWithoutMRun(script, program)
+}
+
+// visibleCommandSource removes internal transport statements from source-only
+// fallbacks, including literal shell wrappers. Substitution effects stay literal.
+func visibleCommandSource(source string) (string, bool) {
+	statements, _, _, ok := shellsyntax.StreamingStatements(source, "")
+	if !ok {
+		return source, false
+	}
+	header, _ := shellsyntax.Parse(source)
+	var visible []string
+	hidden := false
+	for _, statement := range shellsyntax.Sequence(statements) {
+		original := sourceStatementSource(header.Body, statement)
+		inner := sourceUnwrapCommand(statement)
+		if call, ok := inner.Cmd.(*syntax.CallExpr); ok && sourceInternalCommand(call) && shellPlainWord(statement) {
+			hidden = true
+			continue
+		}
+		if body, wrapped := shellsyntax.ShellScript(inner); wrapped {
+			if inner, changed := visibleCommandSource(body); changed {
+				original, hidden = inner, true
+			}
+		}
+		visible = append(visible, original)
+	}
+	if hidden {
+		return strings.Join(visible, "\n"), true
+	}
+	return source, false
 }
 
 func sourceWithoutMRun(script string, program *syntax.File) string {
@@ -440,6 +473,9 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string, next *sy
 			return activitymodel.AddTimeouts("Run\n"+markdownsyntax.SourceFence("bash", sourceStatementSource(script, original)), innerTimeouts), true
 		}
 		return display, recognized
+	}
+	if call, ok := statement.Cmd.(*syntax.CallExpr); ok && sourceInternalCommand(call) && shellPlainWord(statement) {
+		return "", true
 	}
 	if display, ok := sourceEditStatement(script, statement); ok {
 		return display, true

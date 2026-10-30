@@ -39,6 +39,9 @@ type ItemDetails struct {
 // Source: apps/mekugi/internal/router/live_activity_blocks.go:35:175@35fd8de4.
 func (entry ItemContent) Values() (blocks []Value) {
 	command := entry.Command
+	if entry.Kind == "tool" && entry.Text == "" && !command.UserShell && (entry.Details == nil || len(entry.Details.Reload) == 0) && hiddenCommandSource(cmp.Or(command.Display, command.Script)) {
+		return nil
+	}
 	defer func() {
 		defer func() { Identify(blocks, entry.Seq) }()
 		compoundApproval := command.Approval != "" && (len(command.Segments) > 1 && !command.UserShell ||
@@ -52,6 +55,9 @@ func (entry ItemContent) Values() (blocks []Value) {
 			batch := Value{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true,
 				SourceOmitted: omitted,
 				BatchExit:     true, Running: entry.Command.Running, Output: n.Output, Tail: entry.Command.Tail, TailOmitted: entry.Command.TailOmitted, TailClipped: entry.Command.TailClipped}
+			if _, projected := commandSources(cmp.Or(command.Display, command.Script, n.CommandText), true); projected {
+				batch.Code, batch.Label, batch.SourceOmitted = "", "combined output", false
+			}
 			if len(command.Segments) > 0 {
 				batch.Operation = len(command.Segments) + 1
 			}
@@ -201,11 +207,26 @@ func (entry ItemContent) Values() (blocks []Value) {
 		}
 		if command.CaptureText != "" && command.Display != "" &&
 			(command.Running || command.Duration > 0 || command.ExitCode != 0 || len(command.Tail) > 0 || hasOutput(command.Output, command.OutputContent)) {
-			source, omitted := previewSource(command.Display)
-			blocks := []Value{{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true, BatchExit: command.Compound(Operations(text)),
-				SourceOmitted: omitted,
-				Running:       command.Running, Output: outputID(command.Output, 1), Tail: command.Tail, TailOmitted: command.TailOmitted, TailClipped: command.TailClipped, Changes: command.Changes}}
-			return GroupOperations(append(blocks, command.Effects()...))
+			blocks, projected := commandSources(command.Display, true)
+			compound := command.Compound(blocks)
+			if !projected || len(blocks) == 0 {
+				blocks = []Value{commandRun(command.Display, true)}
+			}
+			for i := range blocks {
+				blocks[i].Running = command.Running
+				blocks[i].Requested = projected && compound
+			}
+			if projected && compound {
+				blocks = append(blocks, Value{Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Running: command.Running})
+			}
+			block := &blocks[len(blocks)-1]
+			block.BatchExit = compound
+			block.Output, block.Tail, block.TailOmitted, block.TailClipped, block.Changes = outputID(command.Output, 1), command.Tail, command.TailOmitted, command.TailClipped, command.Changes
+			effects := command.Effects()
+			for i := range effects {
+				effects[i].Operation = len(blocks) + i + 1
+			}
+			return GroupOperations(append(blocks, effects...))
 		}
 		blocks := FoldStages(Operations(text))
 		if len(blocks) == 1 && slices.Contains([]string{"Search", "Web Search", "List", "Inspect"}, blocks[0].Verb) && entry.Details != nil {
@@ -295,8 +316,10 @@ func CommandExit(blocks []Value, source string, code int, tail []string, omitted
 			batch = len(blocks)
 			value := Value{Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true}
 			if source != "" {
-				source, value.SourceOmitted = previewSource(source)
-				value.Label, value.Code, value.Lang, value.Fenced = "", textsanitize.Safe(source, false), "bash", true
+				if _, projected := commandSources(source, true); !projected {
+					source, value.SourceOmitted = previewSource(source)
+					value.Label, value.Code, value.Lang, value.Fenced = "", textsanitize.Safe(source, false), "bash", true
+				}
 			}
 			blocks = append(blocks, value)
 		}
