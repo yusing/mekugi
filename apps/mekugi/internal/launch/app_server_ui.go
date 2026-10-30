@@ -253,6 +253,20 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 			}
 		}
 		if m.Method == "" {
+			if response, ok := control.Requests.Lookup(string(m.ID)); ok {
+				if handled, warning := control.Requests.ProcessResponse(response, m); handled {
+					control.Requests.Take(string(m.ID))
+					if warning != "" {
+						target, targetShell := &attached, shell
+						if view := native.views[response.Owner.view]; view != nil && view.ctx.Err() == nil {
+							target, targetShell = &view.attached, view.shell
+							view.projected = time.Time{}
+						}
+						setNotice(&target.feedback, targetShell, presentationTime(clock), warning, true)
+					}
+					return nil
+				}
+			}
 			if response, ok := control.Requests.Lookup(string(m.ID)); ok && response.Method == "thread/list" && control.Startup.Thread == "--last" {
 				// The host can finish lookup before the initial native attach is
 				// admitted. Deliver through that actual view's retained effects.
@@ -643,7 +657,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 			if admissionErr := attached.session.AdmitProcess(*operation.StopProcess); admissionErr != nil {
 				return admissionErr.Error(), nil
 			}
-			_, err = control.Requests.Send("thread/backgroundTerminals/terminate", map[string]any{"threadId": operation.StopProcess.Thread, "processId": operation.StopProcess.ID}, operation.StopProcess.Thread, appServerRequest{view: view.attached.view})
+			err = control.Requests.StopProcess(operation.StopProcess.Thread, operation.StopProcess.ID, appServerRequest{view: view.attached.view})
 		case operation.Interrupt != nil:
 			active, admissionErr := view.attached.presentation.ResolveInterrupt(*operation.Interrupt, &control.Live, &attached.session)
 			if admissionErr != nil {

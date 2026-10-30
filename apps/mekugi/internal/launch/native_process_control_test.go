@@ -136,6 +136,7 @@ func serveNativeProcessHost(t *testing.T) {
 		}
 	}
 	stops := 0
+	notices := 0
 	for {
 		var request struct {
 			ID     jsontext.Value `json:"id"`
@@ -158,6 +159,22 @@ func serveNativeProcessHost(t *testing.T) {
 		case "thread/start":
 			cwd, _ := os.Getwd()
 			result["thread"] = map[string]any{"id": "main", "cwd": cwd}
+		case "thread/inject_items":
+			var params struct {
+				Thread string `json:"threadId"`
+				Items  []struct {
+					Role    string `json:"role"`
+					Content []struct {
+						Text string `json:"text"`
+					} `json:"content"`
+				} `json:"items"`
+			}
+			if err := json.Unmarshal(request.Params, &params); err != nil || params.Thread != "main" || len(params.Items) != 1 || params.Items[0].Role != "developer" || len(params.Items[0].Content) != 1 || params.Items[0].Content[0].Text == "" {
+				t.Fatalf("invalid process notice: %s, %v", request.Params, err)
+			}
+			notices++
+		case "turn/start", "turn/steer":
+			t.Fatalf("process cancellation started model work: %s", request.Method)
 		case "thread/backgroundTerminals/terminate":
 			var params struct {
 				Thread  string `json:"threadId"`
@@ -170,6 +187,9 @@ func serveNativeProcessHost(t *testing.T) {
 				t.Fatalf("wrong host termination: %+v", params)
 			}
 			stops++
+			if notices != 2*stops-1 {
+				t.Fatalf("stop %d lost cancellation or failure notice: notices=%d", stops, notices)
+			}
 			if stops == 1 {
 				write(map[string]any{"id": request.ID, "error": map[string]any{"code": -32603, "message": "fixture refusal"}})
 				continue

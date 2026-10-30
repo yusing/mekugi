@@ -27,15 +27,17 @@ type Transport interface {
 // Request retains only routing context. Scope identifies operations retired
 // together when their owning session is replaced; Owner stays with the consumer.
 type Request[T any] struct {
-	Method       string
-	Scope        string
-	Owner        T
-	Side         *Side
-	SideInput    *conversationmodel.Input
-	SideExchange uint64
-	Prediction   *Prediction
-	call         *HostCall
-	input        *InputRequest
+	Method        string
+	Scope         string
+	Owner         T
+	Side          *Side
+	SideInput     *conversationmodel.Input
+	SideExchange  uint64
+	Prediction    *Prediction
+	call          *HostCall
+	input         *InputRequest
+	process       string
+	processNotice bool
 }
 
 // Requests is the sole request ledger for one application client. Its event-loop

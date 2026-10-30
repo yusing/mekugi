@@ -141,6 +141,16 @@ waiting input for retry. Confirmed replacement discards compaction state; switch
 replay cannot revive it. Codex owns compaction/execution; progress and errors remain
 visible.
 
+### Native processes
+
+Stopping a selected native process records the user's cancellation for its owning
+thread independently of whether host termination succeeds. The notice reaches
+the model through retained host input without starting a turn or restarting the
+canceled operation. Termination and notice-delivery failures remain visible after
+the requesting view detaches. Codex owns native process-group cleanup and stopped
+session polling. Daemon-owned containers require separate explicit ownership;
+stopping their client process does not establish container shutdown.
+
 ### Native shell
 
 With an initial `!`, Enter or Tab immediately submits literal shell syntax, minus
