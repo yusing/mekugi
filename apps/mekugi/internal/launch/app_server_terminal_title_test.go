@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
@@ -144,5 +146,71 @@ func TestAppServerTerminalTitleIsolationAndSanitizing(t *testing.T) {
 func TestTerminalTitleUnavailableOutputDoesNotReadPrompts(t *testing.T) {
 	for _, notifications := range []*nativeNotifications{nil, {}} {
 		notifications.writeTerminalTitle(nil, nil, nil, "", "", nil, nil, false, time.Time{})
+	}
+}
+
+func TestNativeTerminalStatusLifecycle(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/work/project")
+	c := nativeTestPromptClient(u)
+	out := new(bytes.Buffer)
+	c.notifications.out = out
+	// Lifecycle reporting starts before notification settings and without Herdr
+	// environment detection, and survives disabled desktop notifications.
+	c.notifications.settings.Events = []byte("false")
+	now := time.Unix(0, 0)
+	write := func(actionRequired, busy bool, want string) {
+		t.Helper()
+		out.Reset()
+		c.event.Frame.Facts = sessionapi.NativeSessionFacts{ActionRequired: actionRequired, Busy: busy}
+		c.writeTerminalStatus(now)
+		if want == "" {
+			if strings.Contains(out.String(), "\x1b]7501;") {
+				t.Fatalf("unchanged status repeated: %q", out.String())
+			}
+		} else if sequence := "\x1b]7501;state=" + want + ":app=mekugi\x1b\\"; !strings.Contains(out.String(), sequence) || strings.Count(out.String(), "\x1b]7501;") != 1 {
+			t.Fatalf("terminal output = %q, want status %q", out.String(), sequence)
+		}
+	}
+	write(false, false, "idle")
+	write(false, false, "")
+	write(false, true, "working")
+	now = now.Add(100 * time.Millisecond)
+	write(false, true, "") // Title animation must not repeat lifecycle status.
+	write(true, true, "blocked")
+	write(true, false, "") // A question outlives the host turn.
+	write(false, true, "working")
+	write(false, false, "idle")
+	out.Reset()
+	c.notifications.clearTerminalStatus(&c.feedback, c.renderer.terminal)
+	if got := out.String(); got != "\x1b]0;\a\x1b]7501;state=clear\x1b\\" {
+		t.Fatalf("cleanup = %q", got)
+	}
+	write(false, false, "idle") // Returning from a handoff republishes.
+
+	other := nativeTestPromptClient(u)
+	other.notifications.out = out
+	r := &nativeClientRuntime{active: c}
+	c.runtime, other.runtime = r, r
+	out.Reset()
+	r.activate(other)
+	other.writeTerminalStatus(now)
+	if strings.Count(out.String(), "\x1b]7501;state=clear\x1b\\") != 1 || !strings.Contains(out.String(), "\x1b]7501;state=idle:app=mekugi\x1b\\") {
+		t.Fatalf("ownership transfer = %q", out.String())
+	}
+	out.Reset()
+	c.event.Frame.Facts.ActionRequired = true
+	c.writeTerminalStatus(now)
+	if out.Len() != 0 {
+		t.Fatalf("hidden attachment wrote root status: %q", out.String())
+	}
+	other.event.Frame.View.ReadOnly = sessionpresentation.Replay
+	other.writeTerminalStatus(now)
+	if !strings.Contains(out.String(), "\x1b]7501;state=clear\x1b\\") {
+		t.Fatalf("replay retained live status: %q", out.String())
+	}
+	out.Reset()
+	other.writeTerminalStatus(now)
+	if out.Len() != 0 {
+		t.Fatalf("replay published live status: %q", out.String())
 	}
 }

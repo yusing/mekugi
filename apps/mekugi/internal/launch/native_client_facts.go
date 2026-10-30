@@ -10,6 +10,19 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
+func (c *nativeClient) writeTerminalStatus(now time.Time) {
+	if c.runtime != nil && c.runtime.active != c {
+		return
+	}
+	if c.event.Attachment == "" || c.event.Frame.View.Main.ID == "" || c.event.Frame.View.ReadOnly == sessionpresentation.Replay {
+		c.notifications.clearTerminalStatus(&c.feedback, c.renderer.terminal)
+		return
+	}
+	facts := c.event.Frame.Facts
+	c.notifications.writeTitle(&c.feedback, c.renderer.terminal, nil, c.event.Frame.View.Info.Workspace, facts.ActionRequired, facts.Busy, now)
+	c.notifications.writeStatus(&c.feedback, c.renderer.terminal, facts.ActionRequired, facts.Busy)
+}
+
 func (c *nativeClient) acceptFacts(previous string) {
 	facts := c.event.Frame.Facts
 	if previous != c.event.Frame.View.Main.ID && c.notifications.focused {

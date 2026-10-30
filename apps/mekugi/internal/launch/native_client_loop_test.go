@@ -90,6 +90,11 @@ func TestNativeClientInputDrainBoundAndEOF(t *testing.T) {
 }
 
 func TestNativeClientPTYDraftAndDetach(t *testing.T) {
+	editor := filepath.Join(t.TempDir(), "editor")
+	if err := os.WriteFile(editor, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("EDITOR", editor)
 	u, _ := newAppServerTestUI()
 	u.attached.cwd = t.TempDir()
 	u.attached.presentation.Status.Text = "Ready"
@@ -130,6 +135,7 @@ func TestNativeClientPTYDraftAndDetach(t *testing.T) {
 				}
 				frame.MainOutput = nil
 			case <-burst:
+				frame.Facts.Busy = true
 				for i := range 80 {
 					effects.deliver("main", []sessionpresentation.ActivityDelivery{{Command: &sessionpresentation.CommandDelivery{Kind: sessionpresentation.CommandDelta, Key: [3]string{"main", "turn", "cmd"}, Delta: fmt.Sprintf("line %d\n", i)}}})
 				}
@@ -216,12 +222,28 @@ func TestNativeClientPTYDraftAndDetach(t *testing.T) {
 		t.Fatal(err)
 	}
 	frames := make(chan []byte, 64)
+	statuses := make(chan string, 16)
 	go func() {
 		defer close(frames)
 		var pending synchronizedFrameBuffer
 		buffer := make([]byte, 8192)
+		var signals string
 		for {
 			n, err := master.Read(buffer)
+			signals += string(buffer[:n])
+			for {
+				start := strings.Index(signals, "\x1b]7501;")
+				if start < 0 {
+					signals = signals[max(0, len(signals)-8):]
+					break
+				}
+				end := strings.Index(signals[start:], "\x1b\\")
+				if end < 0 {
+					break
+				}
+				statuses <- signals[start+7 : start+end]
+				signals = signals[start+end+2:]
+			}
 			pending.Append(buffer[:n])
 			for {
 				frame, ok := pending.Next()
@@ -280,8 +302,26 @@ func TestNativeClientPTYDraftAndDetach(t *testing.T) {
 		}
 	}
 	await("completed-transcript-row-59")
+	awaitStatus := func(want string) {
+		t.Helper()
+		select {
+		case got := <-statuses:
+			if got != want {
+				t.Fatalf("terminal status = %q, want %q", got, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("terminal did not emit status %q", want)
+		}
+	}
+	awaitStatus("state=idle:app=mekugi")
+	if _, err := master.WriteString("\x07"); err != nil {
+		t.Fatal(err)
+	}
+	awaitStatus("state=clear")
+	awaitStatus("state=idle:app=mekugi")
 	burst <- struct{}{}
 	await("burst survived")
+	awaitStatus("state=working:app=mekugi")
 	if _, err := master.WriteString("\x03"); err != nil {
 		t.Fatal(err)
 	}
@@ -371,6 +411,7 @@ func TestNativeClientPTYDraftAndDetach(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("client did not detach")
 	}
+	awaitStatus("state=clear")
 	select {
 	case <-viewContext.Done():
 	case <-time.After(5 * time.Second):

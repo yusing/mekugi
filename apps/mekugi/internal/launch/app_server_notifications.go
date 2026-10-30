@@ -27,6 +27,7 @@ type nativeNotifications struct {
 	relay        func(string, string)
 	lastTitle    string
 	titleWritten bool
+	lastStatus   string
 	blocked      map[string]nativeBlockedRequest
 	settings     struct {
 		Events    jsontext.Value `json:"notifications"`
@@ -102,6 +103,32 @@ func (n *nativeNotifications) clearTerminalTitle(feedback *noticepresentation.Mo
 	if n != nil && n.titleWritten {
 		n.writeTerminalSignal(feedback, terminal, clock, "\x1b]0;\a")
 		n.lastTitle, n.titleWritten = "", false
+	}
+}
+
+// OSC 7501 describes the foreground Mekugi client, independently of desktop
+// notification policy and terminal-specific environment hints.
+func (n *nativeNotifications) writeStatus(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, actionRequired, busy bool) {
+	if n == nil || n.out == nil {
+		return
+	}
+	state := "idle"
+	if actionRequired {
+		state = "blocked"
+	} else if busy {
+		state = "working"
+	}
+	if state != n.lastStatus {
+		n.writeTerminalSignal(feedback, terminal, nil, "\x1b]7501;state="+state+":app=mekugi\x1b\\")
+		n.lastStatus = state
+	}
+}
+
+func (n *nativeNotifications) clearTerminalStatus(feedback *noticepresentation.Model, terminal *terminalsession.Attachment) {
+	n.clearTerminalTitle(feedback, terminal, nil)
+	if n != nil && n.lastStatus != "" {
+		n.writeTerminalSignal(feedback, terminal, nil, "\x1b]7501;state=clear\x1b\\")
+		n.lastStatus = ""
 	}
 }
 

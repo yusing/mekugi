@@ -297,6 +297,7 @@ func (c *nativeClient) effectsSettled() bool {
 
 func (r *nativeClientRuntime) activate(c *nativeClient) {
 	previous := r.active
+	previous.notifications.clearTerminalStatus(&previous.feedback, previous.renderer.terminal)
 	previous.notifications.focused = false
 	previous.stagePreferences(true)
 	// Hydration belongs to a painted source, not to the terminal's control path.

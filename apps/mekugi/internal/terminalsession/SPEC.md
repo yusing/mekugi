@@ -483,6 +483,14 @@ unsupported requests take precedence with `Action Required`, even when hidden.
 Settled Main turns remove the spinner; child completion does not settle Main.
 Herdr owns seen/unseen completion indicators. Exit and external editing clear titles.
 
+The active live terminal also reports OSC 7501 lifecycle status with application
+identity `mekugi`: `blocked` when action is required, otherwise `working` while
+Main is busy (including logical waits), otherwise `idle`. Unchanged states are
+not repeated. Offline replay and hidden attachments never publish live root
+status; historical events do not determine live lifecycle state.
+Switching terminal ownership, external editing, suspension and exit
+clear the previous status; returning to the live terminal republishes it.
+
 The application reads effective workspace `tui.notifications`,
 `tui.notification_method` and `tui.notification_condition` without writing config.
 Only successful live Main completion and eligible approval, synchronous-input or
@@ -491,7 +499,8 @@ do not notify. [Notifications](../../../../modules/notifications/SPEC.md#desktop
 owns eligibility. Focus reports never become composer input. `osc9` emits OSC 9,
 `bel` emits BEL, and `auto` uses OSC 9 in supported terminals/Herdr, otherwise BEL;
 tmux outside Herdr receives passthrough-wrapped OSC 9. Text is generic. Failures
-report auxiliary notices; disabling desktop signals leaves lifecycle titles active.
+report auxiliary notices; disabling desktop signals leaves lifecycle titles and
+status active.
 
 ## Offline playback
 

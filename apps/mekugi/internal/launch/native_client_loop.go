@@ -7,8 +7,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"slices"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
@@ -339,7 +341,11 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 	defer runtime.previews.close()
 	// Source: apps/mekugi/internal/launch/app_server_ui.go:468:468@42f43ded.
 	for {
+		suspended := false
 		err := terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1004;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1004;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) (runErr error) {
+			suspensions := make(chan os.Signal, 1)
+			signal.Notify(suspensions, syscall.SIGTSTP)
+			defer signal.Stop(suspensions)
 			defer func() {
 				if images := runtime.active.renderer.terminal.Frame.Images; images != nil {
 					_, clearErr := io.WriteString(stdout, images.Clear())
@@ -353,6 +359,9 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 				runtime.schedule()
 				c := runtime.active
 				select {
+				case <-suspensions:
+					suspended = true
+					return nil
 				case <-ctx.Done():
 					return ctx.Err()
 				case message := <-runtime.messages:
@@ -383,7 +392,7 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 						c.refresh(now)
 					}
 					c.stagePreferences(false)
-					c.notifications.writeTitle(&c.feedback, c.renderer.terminal, nil, c.event.Frame.View.Info.Workspace, c.event.Frame.Facts.ActionRequired, c.event.Frame.Facts.Busy, now)
+					c.writeTerminalStatus(now)
 					width, height, err := term.GetSize(int(stdout.Fd()))
 					if err != nil {
 						return err
@@ -422,7 +431,17 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 			return nil
 		})
 		c := runtime.active
-		c.notifications.clearTerminalTitle(&c.feedback, c.renderer.terminal, nil)
+		c.notifications.clearTerminalStatus(&c.feedback, c.renderer.terminal)
+		if suspended && err == nil {
+			// Raw mode and terminal signals are restored before stopping. SIGCONT
+			// resumes here and the next pane publishes the current live state.
+			if err := syscall.Kill(os.Getpid(), syscall.SIGSTOP); err != nil {
+				return c, err
+			}
+			c.renderer.terminal.Frame.Rows = nil
+			c.refresh(time.Now())
+			continue
+		}
 		if c.handoff == nil {
 			c.flushNativeView()
 			return c, err
