@@ -1,7 +1,9 @@
 # Documentation
 
 [Product scope and journeys](product.md) explain what Mekugi provides.
-The [user guide](../README.md) covers setup and operation;
+The [README](../README.md) covers installation and a quick start; the
+[user guides](../README.md#guides) under `guide/` cover operation, from the
+[terminal UI](guide/terminal-ui.md) to [configuration](guide/configuration.md);
 [Development](contributing/development.md) covers builds, tests and diagnostics.
 
 ## Features

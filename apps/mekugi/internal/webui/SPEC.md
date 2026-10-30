@@ -376,7 +376,8 @@ its binding tests, types, lint and formatting; focused tests cover transport and
 The UI host serves a clear 503 when assets have not been built.
 The root Docker build embeds Bun-built assets; Compose hosts the page separately
 from the connector and does not start an execution server. Container setup and
-remote TLS requirements are documented in the root README's Docker deployment section.
+remote TLS requirements are documented in the user guide's
+[Docker deployment](../../../../docs/guide/remote.md#docker-deployment) section.
 
 Acceptance covers two explicit machine connections, identical thread IDs, independent
 failure/token rotation, machine restoration after reload, saved token replacement

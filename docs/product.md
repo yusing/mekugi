@@ -192,8 +192,9 @@ Mekugi includes:
 - authenticated third-party model routing; and
 - content-safe captured metrics for evaluating real traffic.
 
-User installation, configuration, and commands belong in the
-[README](../README.md).
+Installation and a quick start belong in the [README](../README.md);
+configuration and commands belong in the [user guides](../README.md#guides)
+under `docs/guide/`.
 
 ## Non-goals
 
