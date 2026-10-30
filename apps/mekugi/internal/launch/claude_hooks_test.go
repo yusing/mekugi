@@ -6,12 +6,12 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -396,7 +396,10 @@ func TestClaudeLaunchApprovalAndRetainedInspection(t *testing.T) {
 	}
 }
 
-type claudeJoinedWriter struct{ command *exec.Cmd }
+type claudeJoinedWriter struct {
+	command *exec.Cmd
+	input   io.Closer
+}
 
 func TestClaudeContextWarningSharesToolBatchMilestone(t *testing.T) {
 	b := newClaudeHookFixture(t).bridge
@@ -441,10 +444,7 @@ func TestClaudeLaunchInterruptReceiptReducesTerminal(t *testing.T) {
 }
 
 func (writer claudeJoinedWriter) Close() error {
-	if err := writer.command.Process.Signal(syscall.SIGTERM); err != nil {
-		return err
-	}
-	return writer.command.Wait()
+	return errors.Join(writer.input.Close(), writer.command.Wait())
 }
 
 func TestClaudeLaunchJoinedCloseCapturesUnknownOutcome(t *testing.T) {
@@ -460,7 +460,11 @@ func TestClaudeLaunchJoinedCloseCapturesUnknownOutcome(t *testing.T) {
 		t.Fatal(err)
 	}
 	cancel()
-	command := exec.CommandContext(t.Context(), execTrackShellExecutable(t, "bash"), "-c", "trap 'printf \"after joined close\\n\" > joined.txt; exit 0' TERM; printf 'ready\\n'; read -r ignored")
+	writerCtx, stopWriter := context.WithTimeout(t.Context(), 5*time.Second)
+	defer stopWriter()
+	// EOF requests cleanup without depending on inherited signal state. The
+	// deadline also bounds startup and joining if the fixture stops responding.
+	command := exec.CommandContext(writerCtx, execTrackShellExecutable(t, "bash"), "-c", "printf 'ready\\n'; read -r ignored; printf 'after joined close\\n' > joined.txt")
 	command.Dir = b.settings.Workspace
 	input, err := command.StdinPipe()
 	if err != nil {
@@ -485,7 +489,7 @@ func TestClaudeLaunchJoinedCloseCapturesUnknownOutcome(t *testing.T) {
 	}
 	// The native writer's effect happens during process cleanup. No terminal
 	// hook is supplied, and the pre-tool request context has already ended.
-	if err := b.close(claudeJoinedWriter{command}); err != nil {
+	if err := b.close(claudeJoinedWriter{command: command, input: input}); err != nil {
 		t.Fatal(err)
 	}
 	if command.ProcessState == nil {
