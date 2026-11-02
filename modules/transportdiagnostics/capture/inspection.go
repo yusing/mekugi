@@ -15,7 +15,7 @@ func (s *Service) InspectUsage(ctx context.Context, path string, filter inspecti
 	}
 	result := make(map[string]inspection.Usage, len(usage))
 	for id, observed := range usage {
-		value := inspection.Usage{State: observed.State, UnknownCompletenessRecords: observed.UnknownCompletenessRecords, ObservedRecords: observed.ObservedRecords, MissingRecords: observed.MissingRecords}
+		value := inspection.Usage{State: observed.State, ObservedRecords: observed.ObservedRecords, MissingRecords: observed.MissingRecords}
 		if observed.Tokens != nil {
 			value.Tokens, err = json.Marshal(observed.Tokens, jsonv1.DefaultOptionsV1())
 			if err != nil {

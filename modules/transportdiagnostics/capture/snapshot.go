@@ -19,7 +19,6 @@ type usageMetrics struct {
 	OutputThroughput    inference.OutputThroughput `json:"output_throughput,omitzero"`
 	CompleteAttempts    uint64                     `json:"complete_attempts"`
 	IncompleteAttempts  uint64                     `json:"incomplete_attempts"`
-	UnknownAttempts     uint64                     `json:"unknown_attempts"`
 	MissingAttempts     uint64                     `json:"missing_attempts"`
 	InputTokens         uint64                     `json:"input_tokens"`
 	CachedInputTokens   uint64                     `json:"cached_input_tokens"`
@@ -292,13 +291,10 @@ func usageOf(usage ProviderUsage) usageMetrics {
 		ProviderAttempts: 1,
 		OutputThroughput: usage.OutputThroughput,
 	}
-	switch {
-	case usage.EvidenceComplete == nil:
-		result.UnknownAttempts = 1
-	case !*usage.EvidenceComplete:
-		result.IncompleteAttempts = 1
-	default:
+	if usage.EvidenceComplete {
 		result.CompleteAttempts = 1
+	} else {
+		result.IncompleteAttempts = 1
 	}
 	return result
 }
@@ -313,7 +309,6 @@ func addUsage(total *usageMetrics, usage usageMetrics) {
 	total.ProviderAttempts += usage.ProviderAttempts
 	total.CompleteAttempts += usage.CompleteAttempts
 	total.IncompleteAttempts += usage.IncompleteAttempts
-	total.UnknownAttempts += usage.UnknownAttempts
 	total.MissingAttempts += usage.MissingAttempts
 }
 

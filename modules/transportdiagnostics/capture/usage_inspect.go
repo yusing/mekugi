@@ -20,11 +20,10 @@ import (
 // UsageInspection keeps provider-consumption evidence separate from local byte
 // measurements. Missing/incomplete records never count as zero-token successes.
 type UsageInspection struct {
-	UnknownCompletenessRecords uint64         `json:"unknown_completeness_records"`
-	State                      string         `json:"state"`
-	ObservedRecords            uint64         `json:"observed_records"`
-	MissingRecords             uint64         `json:"missing_records"`
-	Tokens                     *ProviderUsage `json:"tokens,omitempty"`
+	State           string         `json:"state"`
+	ObservedRecords uint64         `json:"observed_records"`
+	MissingRecords  uint64         `json:"missing_records"`
+	Tokens          *ProviderUsage `json:"tokens,omitempty"`
 }
 
 type UsageInspectionFilter struct {
@@ -71,11 +70,7 @@ func (*Service) InspectProviderUsage(ctx context.Context, path string, filter Us
 			continue
 		}
 		entry := result[record.ThreadID]
-		valid := record.Usage != nil && record.ResponseComplete && record.CaptureError == ""
-		if record.Usage != nil && record.Usage.EvidenceComplete == nil {
-			entry.UnknownCompletenessRecords++
-		}
-		valid = valid && record.Usage.EvidenceComplete != nil && *record.Usage.EvidenceComplete
+		valid := record.Usage != nil && record.Usage.EvidenceComplete && record.ResponseComplete && record.CaptureError == ""
 		var raw struct {
 			Usage map[string]jsonv1.RawMessage `json:"usage"`
 		}
@@ -94,7 +89,7 @@ func (*Service) InspectProviderUsage(ctx context.Context, path string, filter Us
 				return nil, errors.New("invalid provider usage totals")
 			}
 			if entry.Tokens == nil {
-				entry.Tokens = new(ProviderUsage)
+				entry.Tokens = &ProviderUsage{EvidenceComplete: true}
 			}
 			for _, pair := range [][2]*uint64{
 				{&entry.Tokens.InputTokens, &record.Usage.InputTokens},

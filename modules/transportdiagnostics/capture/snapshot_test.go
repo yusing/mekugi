@@ -3,9 +3,11 @@ package capture
 import (
 	"bytes"
 	"encoding/json/v2"
-	"github.com/yusing/mekugi/libraries/persistence"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 func TestSnapshotDetachedAndMatchesWriteMetrics(t *testing.T) {
@@ -86,14 +88,21 @@ func TestSnapshotUsageCoverageAndAttemptDetails(t *testing.T) {
 	// observation; explicit zero with complete evidence is still observed usage.
 	providers := []captureRecord{
 		{ProviderAttempt: 1, DurationMillis: 35, StatusCode: 429, ResponseStatus: "http_error", ResponseComplete: true, CaptureError: "missing_projected_request"},
-		{ProviderAttempt: 2, Usage: &ProviderUsage{EvidenceComplete: new(false), InputTokens: 100}},
+		{ProviderAttempt: 2, Usage: &ProviderUsage{EvidenceComplete: false, InputTokens: 100}},
 		{ProviderAttempt: 3, Usage: &ProviderUsage{InputTokens: 50, CachedTokens: 20}},
-		{ProviderAttempt: 4, Usage: &ProviderUsage{EvidenceComplete: new(true)}},
+		{ProviderAttempt: 4, Usage: &ProviderUsage{EvidenceComplete: true}},
 	}
 	r.addExchange(captureRecord{RequestSequence: 1, ThreadID: "main", StatusCode: 200, ResponseStatus: "completed", ResponseComplete: true}, providers)
 	r.addExchange(captureRecord{RequestSequence: 2, ThreadID: "side", StatusCode: 502, CaptureError: "response_read", ResponseStatus: "http_error"}, []captureRecord{{ProviderAttempt: 1}})
 	s := r.Snapshot()
-	want := usageMetrics{InputTokens: 150, CachedInputTokens: 20, UncachedInputTokens: 130, ProviderAttempts: 3, CompleteAttempts: 1, IncompleteAttempts: 1, UnknownAttempts: 1, MissingAttempts: 2}
+	var exported bytes.Buffer
+	if err := r.WriteMetrics(&exported); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(exported.String(), `"unknown_attempts"`) {
+		t.Fatalf("metrics include removed completeness counter: %s", exported.String())
+	}
+	want := usageMetrics{InputTokens: 150, CachedInputTokens: 20, UncachedInputTokens: 130, ProviderAttempts: 3, CompleteAttempts: 1, IncompleteAttempts: 2, MissingAttempts: 2}
 	if s.Usage != want || s.Requests.Retries != 3 || s.Requests.ProviderAttempts != 5 || s.Requests.Failed != 1 {
 		t.Fatalf("coverage = %+v; requests = %+v", s.Usage, s.Requests)
 	}

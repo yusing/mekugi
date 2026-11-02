@@ -37,12 +37,12 @@ payload bytes at both boundaries, and capture health. Recent exchange details
 are bounded; eviction never reduces cumulative totals and is reported explicitly.
 Duration, HTTP status, response status and completeness remain separate facts.
 
-Provider usage is authoritative. Complete, incomplete, unknown legacy and missing
+Provider usage is authoritative. Complete, incomplete and missing
 usage observations remain distinct, including explicit zero-token observations.
 Attempt coverage reconciles with request attempts; an exchange without usage
 keeps usage absent. Incomplete capture is never presented as zero consumption.
 The inspection contribution supplies provider-usage summaries and owner-encoded
-token evidence. Offline corpus totals exclude incomplete or unknown usage evidence. Stream
+token evidence. Offline corpus totals exclude incomplete usage evidence. Stream
 receipt timing and paired output tokens follow the shared
 [throughput contract](../usage/SPEC.md#output-throughput). The launch average is
 summed paired output tokens divided by summed durations, excluding unmeasured

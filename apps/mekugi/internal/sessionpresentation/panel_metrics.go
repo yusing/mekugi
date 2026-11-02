@@ -72,10 +72,9 @@ func MetricFields(body *PanelView, tab, exchange int) (fields []StatusField) {
 			add("Usage", "Average output", "unavailable")
 		}
 		add("Usage", "Throughput basis", "Measured output tokens / summed provider-request seconds, including latency and retries. Unmeasured requests excluded; not session wall time or mean request TPS.")
-		add("Usage evidence", "", "Attempt coverage: complete categories, partial telemetry, legacy completeness unknown, or no usage observed.")
+		add("Usage evidence", "", "Attempt coverage: complete categories, partial telemetry, or no usage observed.")
 		add("Usage evidence", "Complete", s.Usage.CompleteAttempts)
 		add("Usage evidence", "Partial", s.Usage.IncompleteAttempts)
-		add("Usage evidence", "Legacy", s.Usage.UnknownAttempts)
 		add("Usage evidence", "Missing", s.Usage.MissingAttempts)
 		if s.Cache.ProviderCacheRate == nil {
 			add("Cache", "Provider rate", "unavailable")
@@ -175,13 +174,10 @@ func MetricFields(body *PanelView, tab, exchange int) (fields []StatusField) {
 				add(group, "Usage", "unavailable")
 			} else {
 				usage(group, a.Usage.InputTokens, a.Usage.CachedInputTokens, a.Usage.UncachedInputTokens, a.Usage.OutputTokens, a.Usage.ReasoningTokens)
-				switch {
-				case a.Usage.CompleteAttempts != 0:
+				if a.Usage.CompleteAttempts != 0 {
 					add(group, "Usage evidence", "complete")
-				case a.Usage.IncompleteAttempts != 0:
+				} else {
 					add(group, "Usage evidence", "partial")
-				default:
-					add(group, "Usage evidence", "legacy completeness unknown")
 				}
 			}
 			if evidence := a.ProviderResponse; evidence != nil {

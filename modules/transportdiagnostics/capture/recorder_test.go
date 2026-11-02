@@ -482,7 +482,7 @@ func TestSnapshotBoundsExchangeDetailWithoutLosingTotals(t *testing.T) {
 
 	snapshot := recorder.snapshot()
 	if snapshot.Requests.Logical != maxRetainedExchangeDetails+1 || snapshot.Usage.InputTokens != maxRetainedExchangeDetails+1 ||
-		snapshot.Usage.UnknownAttempts != maxRetainedExchangeDetails+1 {
+		snapshot.Usage.IncompleteAttempts != maxRetainedExchangeDetails+1 {
 		t.Fatalf("cumulative metrics = requests %d, input %d", snapshot.Requests.Logical, snapshot.Usage.InputTokens)
 	}
 	if len(snapshot.Exchanges) != maxRetainedExchangeDetails || snapshot.Exchanges[0].Sequence != 2 {

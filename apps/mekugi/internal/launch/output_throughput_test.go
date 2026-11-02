@@ -141,7 +141,11 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 						t.Fatalf("response=%d %s", out.Code, out.Body.String())
 					}
 					if recorder != nil {
-						measurement := recorder.Snapshot().Usage.OutputThroughput
+						usage := recorder.Snapshot().Usage
+						if usage.CompleteAttempts != 1 || usage.IncompleteAttempts != 0 || usage.MissingAttempts != 0 {
+							t.Fatalf("capture usage coverage=%+v", usage)
+						}
+						measurement := usage.OutputThroughput
 						if rate, known := measurement.Rate(); !known || rate != 40 {
 							t.Fatalf("capture throughput=%+v", measurement)
 						}

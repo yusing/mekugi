@@ -1527,7 +1527,6 @@ export type usageMetrics = {
   "output_throughput"?: OutputThroughput;
   "complete_attempts": number;
   "incomplete_attempts": number;
-  "unknown_attempts": number;
   "missing_attempts": number;
   "input_tokens": number;
   "cached_input_tokens": number;

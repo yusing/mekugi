@@ -22,4 +22,4 @@
     │  Cached input              0                                                   │
     │  Uncached input            120                                                 │
     │                                                                                │
-    ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close  1–21 / 53 ──────────────────────╯
+    ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close  1–21 / 52 ──────────────────────╯

@@ -5,6 +5,7 @@
 
 
 
+
     ╭ Session · Overview ───────────────────────────────────────────────── Esc close ╮
     │                                                                                │
     │  Requests  ──────────────────────────────────────────────────────────────────  │
@@ -32,11 +33,10 @@
     │                     time or mean request TPS.                                  │
     │                                                                                │
     │  Usage evidence  ────────────────────────────────────────────────────────────  │
-    │  Attempt coverage: complete categories, partial telemetry, legacy              │
-    │  completeness unknown, or no usage observed.                                   │
+    │  Attempt coverage: complete categories, partial telemetry, or no usage         │
+    │  observed.                                                                     │
     │  Complete           1                                                          │
     │  Partial            1                                                          │
-    │  Legacy             0                                                          │
     │  Missing            1                                                          │
     │                                                                                │
     │  Cache  ─────────────────────────────────────────────────────────────────────  │

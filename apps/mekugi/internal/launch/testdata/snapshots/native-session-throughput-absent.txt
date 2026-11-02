@@ -9,11 +9,10 @@
     │                    time or mean request TPS.                                   │
     │                                                                                │
     │  Usage evidence  ────────────────────────────────────────────────────────────  │
-    │  Attempt coverage: complete categories, partial telemetry, legacy              │
-    │  completeness unknown, or no usage observed.                                   │
+    │  Attempt coverage: complete categories, partial telemetry, or no usage         │
+    │  observed.                                                                     │
     │  Complete          1                                                           │
     │  Partial           1                                                           │
-    │  Legacy            0                                                           │
     │  Missing           1                                                           │
     │                                                                                │
     │  Cache  ─────────────────────────────────────────────────────────────────────  │
@@ -21,5 +20,6 @@
     │  Cached / input from observed usage. Partial or missing telemetry is not       │
     │  evidence of zero consumption or cache misses.                                 │
     │                                                                                │
+    │  Capture  ───────────────────────────────────────────────────────────────────  │
     │                                                                                │
-    ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close  15–35 / 44 ─────────────────────╯
+    ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close  15–35 / 43 ─────────────────────╯

@@ -470,7 +470,7 @@ func (a *requestAttempt) prepareResponse() error {
 		}
 		transportcapture.ObserveProviderUsage(a.executionCtx, transportcapture.ProviderUsage{
 			OutputThroughput: throughput,
-			EvidenceComplete: new(!counts.Incomplete && !counts.Inconsistent),
+			EvidenceComplete: !counts.Incomplete && !counts.Inconsistent,
 			InputTokens:      counts.InputTokens,
 			CachedTokens:     counts.InputTokens - counts.UncachedInputTokens,
 			OutputTokens:     counts.OutputTokens,

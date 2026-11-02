@@ -39,11 +39,10 @@ type UsageFilter struct {
 
 // Usage carries completeness counts and an owner-encoded token section.
 type Usage struct {
-	UnknownCompletenessRecords uint64         `json:"unknown_completeness_records"`
-	State                      string         `json:"state"`
-	ObservedRecords            uint64         `json:"observed_records"`
-	MissingRecords             uint64         `json:"missing_records"`
-	Tokens                     jsontext.Value `json:"tokens,omitempty"`
+	State           string         `json:"state"`
+	ObservedRecords uint64         `json:"observed_records"`
+	MissingRecords  uint64         `json:"missing_records"`
+	Tokens          jsontext.Value `json:"tokens,omitempty"`
 }
 
 type Contribution struct {
