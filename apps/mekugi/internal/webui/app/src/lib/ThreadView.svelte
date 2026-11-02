@@ -1,7 +1,7 @@
 <script lang="ts">
   let selectedQuestion = $state("");
   const questionChannel = $derived(
-    (stream.prompts?.questions ?? []).flatMap((call) =>
+    (semantic.prompts?.questions ?? []).flatMap((call) =>
       call.questions.map((question, index) => ({ call, question, index })),
     ),
   );
@@ -58,7 +58,6 @@
     id,
     initial,
     oninitial,
-    notice: opened,
     sidebar,
     onsidebar,
     onend,
@@ -67,7 +66,6 @@
     id: string;
     initial?: InitialInput;
     oninitial: () => void;
-    notice?: string;
     sidebar: boolean;
     onsidebar: () => void;
     onend: (target: { machine: Machine; id: string; title: string; replay: boolean }) => void;
@@ -148,12 +146,13 @@
 
   // Live selections name ordinary thread IDs. An agent route selects only
   // retained activity within the current recording or historical publication.
-  const recorded = $derived(
+  const recorded = $derived<import("./protocol").Agent | undefined>(
     view.agent && view.agent !== "/root" && !stream.agent(view.agent)?.nonAttachable
       ? (stream.agent(view.agent) ??
           (stream.roster.next && !stream.unavailableAgents.includes(view.agent)
             ? {
                 name: view.agent,
+                aliases: [view.agent],
                 label: stream.label(view.agent),
                 state: "idle" as const,
                 depth: 0,
@@ -588,7 +587,6 @@
   <div class="relative flex min-h-0">
     {#key id}
       <main class="flex min-h-0 min-w-0 flex-1 flex-col">
-        {#if opened}<Notice class="{column} mt-3">{opened}</Notice>{/if}
         {#if notice}
           <Notice class="{column} mt-3" role={stream.connection === "open" ? "alert" : "status"}
             >{notice}</Notice
@@ -708,7 +706,6 @@
                 jumps={stream.jumps}
                 {empty}
                 {live}
-                source={stream}
                 painted={eventPainted}
                 ondetails={live && !ended && sview
                   ? (seq) =>
@@ -760,17 +757,16 @@
                 This agent's retained activity is read-only.
               </p>
             {:else}
-              {#if frame && stream.prompts && (stream.prompts.approvals.length || stream.prompts.questions.length)}
+              {#if frame && semantic.prompts && (semantic.prompts.approvals.length || semantic.prompts.questions.length)}
                 <section
                   class="mx-auto flex max-h-[50dvh] w-full max-w-column flex-col gap-3 overflow-y-auto overscroll-contain px-4 pb-2"
                   aria-label="Pending prompts"
                 >
-                  {#each stream.prompts.approvals.slice(0, 1) as approval (approval.id)}
+                  {#each semantic.prompts.approvals.slice(0, 1) as approval (approval.id)}
                     <Prompt
                       item={approval}
-                      count={stream.prompts.approvals.length}
-                      unavailable={stream.connection !== "open"}
-                      source={stream}
+                      count={semantic.prompts.approvals.length}
+                      unavailable={stream.connection !== "open" || semantic.connection !== "open"}
                     />
                   {/each}
                   {#each currentQuestion ? [currentQuestion] : [] as current (current.call.id)}
@@ -790,8 +786,7 @@
                         selectedQuestion =
                           questionChannel[questionPosition + 1]?.question.id ?? current.question.id;
                       }}
-                      unavailable={stream.connection !== "open"}
-                      source={stream}
+                      unavailable={stream.connection !== "open" || semantic.connection !== "open"}
                     />
                   {/each}
                 </section>
@@ -799,7 +794,6 @@
               {#if frame}<ThreadDocks />{/if}
               <Composer
                 input={frame ? stream.input : undefined}
-                source={stream}
                 agentName={shown?.label ?? "main"}
                 role={session?.role || selected?.role}
                 machine={machine.label}
@@ -890,10 +884,10 @@
                   >{stream.rosterError}<Button
                     variant="quiet"
                     onclick={() => {
-                      const agent = stream.rosterRetryAgent;
-                      return agent
-                        ? stream.completeAgent(agent)
-                        : stream.moreRoster(stream.rosterRetryCaller);
+                      const retry = stream.rosterRetry;
+                      return retry?.kind === "agent"
+                        ? stream.completeAgent(retry.agent)
+                        : stream.moreRoster(retry?.caller);
                     }}>Retry</Button
                   ></Alert
                 >{/if}

@@ -6,7 +6,7 @@
   import { hasDetails, isUser, isView, responseText } from "./kinds";
   import ResponseCopy from "./ResponseCopy.svelte";
   import type { Entry } from "./protocol";
-  import { stream, type Stream } from "./stream.svelte";
+  import { stream } from "./stream.svelte";
   import Button from "./ui/Button.svelte";
   import Alert from "./ui/Alert.svelte";
   import { errorText } from "./transport";
@@ -30,7 +30,6 @@
     live = false,
     ondetails,
     header,
-    source = stream,
     painted,
   }: {
     entries: Entry[];
@@ -43,7 +42,6 @@
     live?: boolean;
     ondetails?: (seq: number) => unknown;
     header?: Snippet;
-    source?: Stream;
     painted?: (seq: number) => Attachment<HTMLElement> | undefined;
   } = $props();
 
@@ -119,8 +117,8 @@
     if (following) oldest = rows[Math.max(0, rows.length - pageSize)]?.entry.seq;
   });
   let paging = false;
-  const canEarlier = $derived(first > 0 || !!source.history(caller).earlier);
-  const pageError = $derived(source.historyErrors[caller ?? ""]);
+  const canEarlier = $derived(first > 0 || !!stream.history(caller).earlier);
+  const pageError = $derived(stream.historyErrors[caller ?? ""]);
   async function earlier() {
     if (!scroller || !column || paging || !canEarlier) return;
     paging = true;
@@ -129,7 +127,7 @@
     const anchor = column.querySelector<HTMLElement>("[data-entry]");
     const top = anchor?.getBoundingClientRect().top ?? 0;
     if (first === 0) {
-      await source.earlier(caller, reads.signal);
+      await stream.earlier(caller, reads.signal);
       await tick();
     }
     oldest = rows[Math.max(0, first - pageSize)]?.entry.seq;
@@ -234,13 +232,13 @@
       );
     });
   });
-  const historyIdentity = $derived(`${source.agents.attachment}:${source.agents.revision}`);
+  const historyIdentity = $derived(`${stream.agents.attachment}:${stream.agents.revision}`);
   $effect(() => {
     void historyIdentity;
     const selected = caller;
     if (!selected) return;
     const request = new AbortController();
-    untrack(() => void source.prepareHistory(selected, request.signal));
+    untrack(() => void stream.prepareHistory(selected, request.signal));
     return () => request.abort();
   });
   $effect(() => {
@@ -305,7 +303,7 @@
     loading = { ...loading, [entry.seq]: true };
     contentErrors = { ...contentErrors, [entry.seq]: undefined };
     try {
-      const result = await source.content(entry, signal);
+      const result = await stream.content(entry, signal);
       const current = entries.find((value) => value.seq === entry.seq)?.content;
       if (
         !signal.aborted &&
@@ -345,7 +343,7 @@
   {onscroll}
   {onclick}
   onfocusin={hold}
-  aria-busy={!!source.historyLoading[caller ?? ""]}
+  aria-busy={!!stream.historyLoading[caller ?? ""]}
 >
   <!-- The rows' text shares the composer's column; recorded times sit in the
        gutter to its left, and each row's details action to its right. -->
@@ -358,7 +356,7 @@
       <Alert
         >{pageError}<Button variant="quiet" onclick={earlier}>Retry earlier entries</Button></Alert
       >
-    {:else if entries.length && !canEarlier && source.history(caller).loaded?.length}
+    {:else if entries.length && !canEarlier && stream.history(caller).loaded?.length}
       <p class="ml-19 text-small text-muted">Beginning of retained history</p>
     {/if}
     {#each visible as row (row.entry.seq)}
@@ -377,7 +375,6 @@
           views={row.views}
           thoughts={row.thoughts?.map(resolved)}
           {owner}
-          {source}
           ondetails={ondetails ? () => ondetails?.(row.entry.seq) : undefined}
           onload={() => void load(row.entry).catch(() => {})}
           onclip={ondetails

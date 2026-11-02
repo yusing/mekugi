@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -81,6 +83,14 @@ func publicCall(call prompt.CallView) prompt.CallView {
 	for i, q := range call.Questions {
 		if q.Secret {
 			call.Questions[i] = prompt.QuestionView{ID: q.ID, Pending: q.Pending, Secret: true}
+		} else {
+			q.Header, q.Text = textsanitize.Safe(q.Header, false), textsanitize.Safe(q.Text, false)
+			q.Choices = slices.Clone(q.Choices)
+			for j := range q.Choices {
+				q.Choices[j].Label = textsanitize.Safe(q.Choices[j].Label, false)
+				q.Choices[j].Description = textsanitize.Safe(q.Choices[j].Description, false)
+			}
+			call.Questions[i] = q
 		}
 	}
 	return call
@@ -113,6 +123,39 @@ func (f NativeFrame) remote() NativeFrame {
 	f.Questions = slices.Clone(f.Questions)
 	for i := range f.Questions {
 		f.Questions[i] = publicCall(f.Questions[i])
+		if f.Family != nil {
+			for _, call := range f.Family.Prompts {
+				if call.ID == f.Questions[i].ID {
+					f.Questions[i].Agent = call.Agent
+					break
+				}
+			}
+		}
+	}
+	f.Approvals = slices.Clone(f.Approvals)
+	for i := range f.Approvals {
+		a := &f.Approvals[i]
+		if a.Thread != "" && a.Thread != f.View.Main.ID {
+			for _, source := range []*activity.Publication{f.Main, f.Agents} {
+				if source == nil {
+					continue
+				}
+				for _, row := range source.Roster {
+					if row.Agent.Thread == a.Thread {
+						a.Agent = row.Agent.Name
+						break
+					}
+				}
+			}
+		}
+		a.Title, a.Subject = textsanitize.Safe(a.Title, false), textsanitize.Safe(a.Subject, false)
+		a.Details, a.Choices = slices.Clone(a.Details), slices.Clone(a.Choices)
+		for j := range a.Details {
+			a.Details[j] = textsanitize.Safe(a.Details[j], false)
+		}
+		for j := range a.Choices {
+			a.Choices[j].Label = textsanitize.Safe(a.Choices[j].Label, false)
+		}
 	}
 	if call := f.View.Questions.Call; call != nil {
 		f.View.Questions.Call = new(publicCall(*call))

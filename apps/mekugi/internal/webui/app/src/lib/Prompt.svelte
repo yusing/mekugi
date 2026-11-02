@@ -4,7 +4,7 @@
   import { prepareAttachments } from "./attachments";
   import { onDestroy, tick, untrack } from "svelte";
   import type { Approval, QuestionCall } from "./protocol";
-  import { stream, type Stream } from "./stream.svelte";
+  import { stream } from "./stream.svelte";
   import { semantic } from "./semantic.svelte";
   import Button from "./ui/Button.svelte";
   import { input } from "./ui/styles";
@@ -19,7 +19,6 @@
     onprevious,
     onnext,
     unavailable = false,
-    source = stream,
   }: {
     item: Approval | QuestionCall;
     count?: number;
@@ -30,7 +29,6 @@
     onprevious?: () => void;
     onnext?: () => void;
     unavailable?: boolean;
-    source?: Stream;
   } = $props();
 
   const call = $derived("questions" in item ? item : undefined);
@@ -146,11 +144,22 @@
     const pending = promptState;
     const release = semantic.retainInput();
     pending.sending = true;
-    pending.error = await source.decide({
-      approval: approval.id,
-      choice,
-      reason: choice === pending.deny ? pending.reason : undefined,
-    });
+    const event = semantic.event;
+    pending.error = event
+      ? await semantic.send(
+          {
+            approval: {
+              Version: event.frame.view.Version,
+              Request: approval.id,
+              Choice: choice,
+              Reason: choice === pending.deny ? pending.reason : "",
+            },
+          },
+          undefined,
+          false,
+          event,
+        )
+      : "Wait for this thread's control view to connect.";
     pending.accepted = !pending.error;
     pending.sending = false;
     release();
@@ -165,7 +174,7 @@
 </script>
 
 <article class="rounded-card bg-raised p-4 wrap-anywhere max-sm:p-3" data-prompt bind:this={card}>
-  {#if item.agent}<p class="mb-2 text-small text-muted">{source.label(item.agent)}</p>{/if}
+  {#if item.agent}<p class="mb-2 text-small text-muted">{stream.label(item.agent)}</p>{/if}
   {#if approval}
     <div class="flex items-baseline gap-3">
       <h2 class="font-semibold">{approval.title}</h2>

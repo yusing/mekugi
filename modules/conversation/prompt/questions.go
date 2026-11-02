@@ -236,6 +236,7 @@ type QuestionView struct {
 	Secret                  bool
 }
 type CallView struct {
+	Agent                  string `json:"agent,omitzero"`
 	Sync, Local            bool
 	ID, Thread, Turn, Item string
 	Questions              []QuestionView

@@ -49,7 +49,7 @@ function describe(entry: Entry, label: (name: string) => string): { verb: string
 
 // Work time on the recorded clock, as the terminal's roster timer counts it.
 export function worked(agent: Agent, now: number): number | undefined {
-  if (agent.work === undefined) return undefined;
+  if (agent.work == null) return undefined;
   return agent.work + (agent.workSince ? Math.max(0, now - agent.workSince) : 0);
 }
 

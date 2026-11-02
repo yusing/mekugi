@@ -11,7 +11,7 @@ import type { Machine } from "./hub.svelte";
 import { errorText, newIdentity, TransportError, type Connection } from "./transport";
 import { open, view } from "./view.svelte";
 import { referenceLabel, type PendingAttachment } from "./attachments";
-import type { Listed } from "./protocol";
+import type { Listed, Prompts } from "./protocol";
 
 export function textDraft(text = "", cursorBack = 0): Draft {
   return {
@@ -49,63 +49,57 @@ export type PromptState = {
   resolved?: boolean;
 };
 
-type ControlView = {
-  machine: Machine;
-  thread: string;
-  lifetime: AbortController;
+class ControlView {
+  lifetime = new AbortController();
   stop?: () => void;
   event?: NativeEvent;
-  received: boolean;
-  connection: Connection;
-  unavailable?: boolean;
+  received = false;
+  connection = $state<Connection>("connecting");
+  unavailable = $state(false);
   noView?: boolean;
   discovery?: Listed[];
-  error?: string;
+  error = $state<string>();
   operationError?: string;
   outcome?: TransportError["kind"];
-  work: number;
-  inputs: number;
-  pending: number;
-  queue: Promise<unknown>;
-  effect: number;
-  acknowledged: number;
-  receipt: number;
+  work = 0;
+  inputs = 0;
+  pending = $state(0);
+  queue: Promise<unknown> = Promise.resolve();
+  effect = 0;
+  acknowledged = 0;
+  receipt = 0;
   notice?: NoticePaint;
   applied?: string;
-  prompts: Record<string, PromptState>;
-};
+  prompts = $state<Record<string, PromptState>>({});
+
+  thread: string;
+  machine: Machine;
+  constructor(thread: string, machine: Machine) {
+    this.thread = thread;
+    this.machine = machine;
+  }
+}
 
 // Surfaces of one notice claim visibly painted so far, and whether its one
 // receipt is in flight or delivered.
 type NoticePaint = { claim: string; composer?: boolean; entries: Set<number>; sent?: boolean };
 
-function controlView(thread: string, machine: Machine): ControlView {
-  const prompts = $state<Record<string, PromptState>>({});
-  return {
-    thread,
-    machine,
-    lifetime: new AbortController(),
-    connection: "connecting",
-    received: false,
-    work: 0,
-    inputs: 0,
-    pending: 0,
-    queue: Promise.resolve(),
-    effect: 0,
-    acknowledged: 0,
-    receipt: 0,
-    prompts,
-  };
-}
-
 class Semantic {
   event = $state.raw<NativeEvent>();
   family = $state.raw<Pick<NonNullable<NativeEvent["frame"]["family"]>, "root" | "threads">>();
-  connection = $state<Connection>("connecting");
-  unavailable = $state(false);
+  get connection(): Connection {
+    return this.#source?.connection ?? "connecting";
+  }
+  get unavailable(): boolean {
+    return this.#source?.unavailable ?? false;
+  }
+  get connectionError(): string | undefined {
+    return this.#source?.error;
+  }
+  get pending(): number {
+    return this.#source?.pending ?? 0;
+  }
   error = $state<string>();
-  connectionError = $state<string>();
-  pending = $state(0);
   resuming = $state<string>();
   copied = $state<string>();
   editors = $state<Record<string, Editor>>({});
@@ -120,6 +114,46 @@ class Semantic {
 
   get frame() {
     return this.event?.frame;
+  }
+
+  get prompts(): Prompts {
+    const frame = this.frame;
+    const agent = (thread: string) =>
+      thread && thread !== frame?.view.Main.ID
+        ? thread === frame?.view.SideThread?.ID
+          ? frame.view.SideThread.Caller
+          : undefined
+        : undefined;
+    return {
+      questions: (frame?.questions ?? [])
+        .filter((call) => !call.Sent && !call.Resolved)
+        .map((call) => ({
+          id: call.ID,
+          agent: call.agent || agent(call.Thread),
+          questions: call.Questions.filter((q) => q.Pending).map((q) => ({
+            id: q.ID,
+            secret: q.Secret,
+            header: q.Header,
+            text: q.Text,
+            options: q.Choices.map((choice) => ({
+              label: choice.Label,
+              description: choice.Description,
+            })),
+          })),
+        })),
+      approvals: (frame?.approvals ?? []).map((approval) => ({
+        id: approval.ID,
+        agent: approval.agent || agent(approval.Thread),
+        title: approval.Title,
+        subject: approval.Subject,
+        details: approval.Details,
+        choices: approval.Choices.map((choice) => ({
+          id: choice.ID,
+          label: choice.Label,
+          deny: choice.Deny,
+        })),
+      })),
+    };
   }
 
   // Renderers report each visibly painted surface of the event's notice claim:
@@ -298,19 +332,15 @@ class Semantic {
     this.cancelResume();
     let source = this.#views.get(thread);
     if (!source) {
-      source = controlView(thread, machine);
+      source = new ControlView(thread, machine);
       this.#views.set(thread, source);
     }
     this.#source = source;
     this.ensureEditor(source.thread);
     this.event = undefined;
     this.clearMenus();
-    this.pending = source.pending;
-    this.connection = source.connection;
-    this.unavailable = !!source.unavailable;
     this.error = source.operationError;
     this.copied = undefined;
-    this.connectionError = source.error;
     if (source.event) {
       this.receive(source.event);
       this.retireInactive();
@@ -385,10 +415,6 @@ class Semantic {
           else {
             source.connection = "lost";
             source.error = error;
-            if (source === this.#source) {
-              this.connection = "lost";
-              this.connectionError = error;
-            }
           }
           return;
         }
@@ -401,7 +427,6 @@ class Semantic {
         ]);
         for (const settle of this.#settle) settle();
         if (source === this.#source) {
-          this.connection = "open";
           this.receive(next);
           if (initial) this.retireInactive();
         } else if (source === this.#destination) this.advanceResume();
@@ -416,13 +441,10 @@ class Semantic {
         source.unavailable = source.noView || failure?.status === 404 || failure?.status === 410;
         if (connection !== "open" || source.noView) source.event = undefined;
         if (source === this.#source) {
-          this.connection = connection;
-          this.unavailable = source.unavailable;
           if (connection !== "open" || source.noView) {
             this.clearMenus();
             this.event = undefined;
           }
-          this.connectionError = source.error;
           if (source.noView) this.retireInactive();
         } else if (source === this.#destination && failure) this.failResume(failure.message);
       },
@@ -609,7 +631,7 @@ class Semantic {
     const source = this.#source;
     if (!source || thread === source.thread || this.#destination?.thread === thread) return;
     this.cancelResume();
-    this.#destination = controlView(thread, source.machine);
+    this.#destination = new ControlView(thread, source.machine);
     this.resuming = "Opening resumed thread…";
     this.subscribe(this.#destination);
   }
@@ -652,9 +674,7 @@ class Semantic {
     this.#views.set(destination.thread, destination);
     this.#source = destination;
     this.event = undefined;
-    this.pending = destination.pending;
-    this.error = this.connectionError = this.resuming = undefined;
-    this.connection = "open";
+    this.error = this.resuming = undefined;
     open(destination.thread, true);
     this.receive(destination.event);
     this.retireInactive();
@@ -670,15 +690,11 @@ class Semantic {
     this.#views.clear();
     this.#source = undefined;
     this.event = undefined;
-    this.connection = "connecting";
     this.family = undefined;
-    this.unavailable = false;
     this.error = undefined;
-    this.connectionError = undefined;
     this.resuming = undefined;
     this.editors = {};
     this.copied = undefined;
-    this.pending = 0;
   }
   async send(
     operation: RemoteOperation,
@@ -720,7 +736,6 @@ class Semantic {
         source.operationError = undefined;
         source.outcome = undefined;
         source.pending++;
-        if (this.#source === source) this.pending = source.pending;
         if (this.#source === source) this.error = undefined;
       }
       try {
@@ -751,7 +766,6 @@ class Semantic {
       } finally {
         if (!quiet) {
           source.pending--;
-          if (this.#source === source) this.pending = source.pending;
         }
       }
     };

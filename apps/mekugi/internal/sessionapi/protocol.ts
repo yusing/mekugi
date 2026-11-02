@@ -729,6 +729,7 @@ export type EditorTarget = {
 };
 
 export type CallView = {
+  "agent"?: string;
   "Sync": boolean;
   "Local": boolean;
   "ID": string;
@@ -741,6 +742,7 @@ export type CallView = {
 };
 
 export type ApprovalView = {
+  "agent"?: string;
   "Selected": number;
   "ID": string;
   "Thread": string;

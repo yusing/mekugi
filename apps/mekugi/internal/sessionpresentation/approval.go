@@ -1,6 +1,9 @@
 package sessionpresentation
 
-import "github.com/yusing/mekugi/modules/conversation/prompt"
+import (
+	"errors"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
+)
 
 type ApprovalIntent struct {
 	Version Version
@@ -19,6 +22,9 @@ func (m *Model) Approval(intent ApprovalIntent, approvals *prompt.Approvals) (*p
 	a, choice, ok := approvals.Decision(intent.Request, intent.Choice)
 	if !ok {
 		return nil, prompt.Choice{}, ErrStaleIntent
+	}
+	if intent.Reason != "" && !choice.Deny {
+		return nil, prompt.Choice{}, errors.New("A reason can only accompany a denial.")
 	}
 	return a, choice, nil
 }

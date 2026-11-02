@@ -68,12 +68,12 @@
       costKnown = false,
       partial = !!roster.next;
     for (const a of agents) {
-      if (a.inputTokens !== undefined) {
+      if (a.inputTokens != null) {
         input += a.inputTokens;
         output += a.outputTokens ?? 0;
         tokensKnown = true;
       }
-      if (a.cost !== undefined) {
+      if (a.cost != null) {
         usd += a.cost;
         costKnown = true;
       }
@@ -189,7 +189,7 @@
           type="button"
           class={[
             "group/card relative grid w-full min-w-0 gap-1 rounded-card px-2.5 py-2 text-left pointer-coarse:py-[11px]",
-            agent.context !== undefined && agent.window && "pb-3 pointer-coarse:pb-[13px]",
+            agent.context != null && agent.window && "pb-3 pointer-coarse:pb-[13px]",
             agent.name === selected ? "bg-accent-tint" : !agent.nonAttachable && "hover:bg-raised",
           ]}
           disabled={agent.nonAttachable}
@@ -242,7 +242,7 @@
                   edits.Removed,
                   "Lines this agent changed",
                 )}{/if}
-              {#if agent.inputTokens !== undefined}{@render metric(
+              {#if agent.inputTokens != null}{@render metric(
                   atLeast(tokens(agent.inputTokens), agent.usagePartial),
                   "in",
                   "Input tokens",
@@ -251,7 +251,7 @@
                   "out",
                   "Output tokens",
                 )}{/if}
-              {#if agent.cost !== undefined}<span class="text-ink" title="Cost"
+              {#if agent.cost != null}<span class="text-ink" title="Cost"
                   >{atLeast(cost(agent.cost), agent.costPartial)}</span
                 >{/if}
               {#if agent.turns}{@render metric(String(agent.turns), unit(agent.turns, "turn"))}{/if}
@@ -265,7 +265,7 @@
                   agent.skills.join(", "),
                 )}{/if}
               {#each agent.items ?? [] as item, i (i)}<span class="text-muted">{item}</span>{/each}
-              {#if agent.context !== undefined}<span class="whitespace-nowrap" title="Context used"
+              {#if agent.context != null}<span class="whitespace-nowrap" title="Context used"
                   ><span class="text-ink">{tokens(agent.context)}</span>
                   <span class="text-muted"
                     >{agent.window ? `of ${tokens(agent.window)} context` : "context"}</span
@@ -279,7 +279,7 @@
               >{/if}
           </span>
           <!-- The context bar runs along the card's foot rather than taking a row. -->
-          {#if agent.context !== undefined && agent.window}
+          {#if agent.context != null && agent.window}
             <Progress
               class="pointer-events-none absolute inset-x-2.5 bottom-1 h-[3px] w-auto bg-active [&_[data-slot=progress-indicator]]:bg-accent"
               value={Math.max(0, Math.min(agent.context, agent.window))}

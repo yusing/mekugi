@@ -24,7 +24,7 @@
     onopened,
   }: {
     machine: Machine;
-    onopened: (machine: string, session: string, notice?: string, initial?: InitialInput) => void;
+    onopened: (machine: string, session: string, initial?: InitialInput) => void;
   } = $props();
   let mode = $state<"new" | "resume" | "replay">("new");
   let options = $state<StartOptions>();
@@ -134,7 +134,7 @@
       }
       select(target.id);
       open(result.id);
-      onopened(target.id, result.id, result.notice, initial);
+      onopened(target.id, result.id, initial);
     } catch (failure) {
       if (!disposed)
         error = pending.signal.aborted

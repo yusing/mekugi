@@ -404,12 +404,10 @@ test("family navigation keeps only the roster while the selected thread attaches
   stream.connect("thread-one", owner);
   stream.roster = { agents: family.threads.map((thread) => ({ name: `/root/${thread}`, thread })) };
   stream.session = { thread: "thread-one", workspace: "/parent" };
-  stream.prompts = { questions: [{ id: "parent-question" }] };
   stream.connect("child", owner, true);
   semantic.connect("child", owner);
   assert.equal(stream.roster.agents.length, 3);
   assert.equal(stream.session, undefined);
-  assert.equal(stream.prompts, undefined);
   assert.equal(semantic.frame, undefined);
   show("/root/sibling");
   assert.equal(view.session, "sibling", "navigation works before the child view is ready");
@@ -2239,17 +2237,71 @@ test("roster retries retain the failed page or agent operation", async () => {
     return { agent: { name: agent.name } };
   };
   const retry = () =>
-    source.rosterRetryAgent ? source.completeAgent(source.rosterRetryAgent) : source.moreRoster();
+    source.rosterRetry?.kind === "agent"
+      ? source.completeAgent(source.rosterRetry.agent)
+      : source.moreRoster(source.rosterRetry?.caller);
   await source.moreRoster();
-  assert.equal(source.rosterRetryAgent, undefined);
+  assert.deepEqual(source.rosterRetry, { kind: "page", caller: undefined });
   await retry();
   assert.equal(pages, 2);
   assert.equal(agents, 0);
   assert.equal(source.roster.next, null);
   await source.completeAgent(agent);
-  assert.equal(source.rosterRetryAgent, agent);
+  assert.deepEqual(source.rosterRetry, { kind: "agent", agent });
   await retry();
   assert.equal(agents, 2);
   assert.equal(source.rosterError, undefined);
   assert.equal(source.roster.agents[0].content, undefined);
+});
+
+test("prompt cards derive from actionable semantic inventory and retain child attribution", () => {
+  const owner = machine();
+  const question = {
+    ID: "pending",
+    Pending: true,
+    Text: "Choose",
+    Choices: [{ Label: "Yes", Description: "Proceed" }],
+  };
+  owner.views[0].snapshot(2, [], {
+    questions: [
+      {
+        ID: "child",
+        agent: "/root/unpaged",
+        Thread: "child-thread",
+        Questions: [question, { ...question, ID: "answered", Pending: false }],
+      },
+      { ID: "sent", Sent: true, Questions: [question] },
+      { ID: "resolved", Resolved: true, Questions: [question] },
+    ],
+    approvals: [
+      {
+        ID: "approval",
+        Thread: "unpaged-child",
+        agent: "/root/approval-child",
+        Title: "Allow",
+        Details: [],
+        Choices: [{ ID: 20, Label: "Deny", Deny: true }],
+      },
+    ],
+  });
+  assert.deepEqual(semantic.prompts.questions, [
+    {
+      id: "child",
+      agent: "/root/unpaged",
+      questions: [
+        {
+          id: "pending",
+          secret: undefined,
+          header: undefined,
+          text: "Choose",
+          options: [{ label: "Yes", description: "Proceed" }],
+        },
+      ],
+    },
+  ]);
+  assert.equal(semantic.prompts.approvals[0].agent, "/root/approval-child");
+  assert.deepEqual(semantic.prompts.approvals[0].choices, [{ id: 20, label: "Deny", deny: true }]);
+  assert.equal(semantic.frame.questions.length, 3, "reconciliation retains sent calls");
+  owner.views[0].state("lost", { status: 503, message: "Unavailable" });
+  assert.equal(semantic.prompts.questions.length, 0);
 });

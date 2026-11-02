@@ -19,6 +19,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/connector"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
 	"github.com/yusing/mekugi/contracts/observation"
@@ -72,6 +73,9 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	renameReply := make(chan chan string, 1)
 	references := make(chan sessionapi.NativeRequest, 1)
 	questionAnswers := make(chan sessionapi.NativeRequest, 1)
+	approvalRequests := make(chan sessionapi.NativeRequest, 2)
+	var refuseApproval atomic.Bool
+	refuseApproval.Store(true)
 	var noticeView atomic.Pointer[nativeSessionView]
 	noticeReceipts := make(chan sessionapi.NativeReceipt, 4)
 	var alpha *webUIBrowserMachine
@@ -82,6 +86,15 @@ func TestWebUIBrowserMachines(t *testing.T) {
 				noticeReceipts <- *receipt
 				return true
 			}
+		}
+		if request.Operation.Approval != nil {
+			approvalRequests <- request
+			if refuseApproval.Swap(false) {
+				request.Reply <- "Approval is temporarily unavailable."
+			} else {
+				request.Reply <- ""
+			}
+			return true
 		}
 		if request.Operation.Answers != nil {
 			questionAnswers <- request
@@ -261,15 +274,15 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Helper()
 		button("Stop")
 		select {
-		case intent := <-machine.intents:
-			if intent.Action != sessionapi.Stop || intent.Thread != "same-thread" {
-				t.Fatalf("wrong target or action: %s %s", intent.Thread, intent.Action)
+		case intent := <-machine.controls:
+			if intent.Operation.Interrupt == nil || intent.Thread != "same-thread" || !intent.RemoteHuman() {
+				t.Fatalf("wrong semantic target: %+v", intent)
 			}
 		case <-ctx.Done():
 			t.Fatal("selected machine did not receive its interrupt")
 		}
 		select {
-		case <-other.intents:
+		case <-other.controls:
 			t.Fatal("request reached the other machine")
 		default:
 		}
@@ -363,8 +376,8 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}
 	button("Stop")
 	select {
-	case intent := <-alpha.intents:
-		if intent.Thread != "cold" || intent.Action != sessionapi.Stop {
+	case intent := <-alpha.controls:
+		if intent.Thread != "cold" || intent.Operation.Interrupt == nil || intent.Operation.Interrupt.Target.Thread != "cold" || intent.Operation.Interrupt.Target.Turn != "fixture-turn" || intent.Operation.Interrupt.Mode != sessioncontrol.RestoreWaiting || intent.Operation.Interrupt.Version != intent.Version {
 			t.Fatalf("cold control reached wrong target: %+v", intent)
 		}
 	case <-ctx.Done():
@@ -1006,6 +1019,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}}))
 	frame.Review = &review
 	frame.Prompts = &sessionapi.Prompts{Questions: []sessionapi.QuestionCall{{ID: "parent-question", Questions: []sessionapi.Question{{ID: "q", Text: "Shared parent question"}}}}}
+	frame.Questions = []prompt.CallView{{ID: "parent-question", Thread: "same-thread", Questions: []prompt.QuestionView{{ID: "q", Text: "Shared parent question", Pending: true}}}}
 	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
@@ -1045,10 +1059,15 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--fn", `document.querySelector('[aria-labelledby="saved-heading"]')?.textContent.includes('child saved capture')`)
 	run("find", "role", "tab", "click", "--name", "Agents", "--exact")
 	run("wait", "--text", "Shared parent question")
-	frame.Prompts = nil
+	frame.Prompts, frame.Questions = nil, nil
 	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
+	childFrame.Family, _ = alpha.hub.Family("child")
+	if err := attachment.native.Publish(attachment.request.Attachment, childFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `!document.querySelector('[data-prompt]')`)
 	// A child's own feed resolves images against that runtime, not Main's
 	// unrelated sequence namespace.
 	_, ok = alpha.sessions.Load("child")
@@ -1254,8 +1273,8 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("fill", "#composer-text", "child draft")
 	button("Stop")
 	select {
-	case intent := <-alpha.intents:
-		if intent.Thread != "child" {
+	case intent := <-alpha.controls:
+		if intent.Thread != "child" || intent.Operation.Interrupt == nil {
 			t.Fatalf("child Stop targeted %q", intent.Thread)
 		}
 	case <-ctx.Done():
@@ -1265,6 +1284,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'main draft'")
 	// Questions from the root and independent child share one question dialog.
 	frame.Prompts = &sessionapi.Prompts{Questions: []sessionapi.QuestionCall{{ID: "parent-question", Questions: []sessionapi.Question{{ID: "q", Text: "Shared parent question"}, {ID: "q2", Text: "Second parent question"}}}}}
+	frame.Questions = []prompt.CallView{{ID: "parent-question", Thread: "same-thread", Questions: []prompt.QuestionView{{ID: "q", Text: "Shared parent question", Pending: true}, {ID: "q2", Text: "Second parent question", Pending: true}}}}
 
 	childQuestions, _ := alpha.frames.Load("child")
 	sharedChild := childQuestions.(sessionapi.Frame)
@@ -1274,6 +1294,13 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := alpha.publishFrame(frame); err != nil {
+		t.Fatal(err)
+	}
+	request, _ := alpha.views.Load("same-thread")
+	rootRequest := request.(sessionapi.NativeRequest)
+	mainThread := sessionpresentation.Thread{ID: "same-thread", Caller: "/root"}
+	family, _ := alpha.hub.Family("same-thread")
+	if err := alpha.api.Native().Publish(rootRequest.Attachment, sessionapi.NativeFrame{View: sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Main: mainThread, Input: mainThread, Displayed: mainThread, Info: sessionpresentation.MainInfo{Workspace: alpha.workdir}}, Questions: frame.Questions, Family: family}); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--fn", `document.querySelectorAll('[data-prompt]').length === 1 && document.querySelector('[data-prompt]').textContent.includes('1 of 3')`)
@@ -1291,6 +1318,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "family-questions-phone.png"))
 		run("eval", `document.documentElement.dataset.theme = "dark"`)
+		run("wait", "--fn", `!document.getAnimations().some(animation => animation instanceof CSSTransition && animation.playState === 'running')`)
 		run("screenshot", filepath.Join(artifacts, "family-questions-phone-dark.png"))
 		run("eval", `document.documentElement.dataset.theme = "light"`)
 	}
@@ -1305,15 +1333,49 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("family answer was not delivered")
 	}
+
+	// Approvals use the same captured semantic view, retaining denial input on refusal.
+	approvalFrame := sessionapi.NativeFrame{Family: family, View: sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Main: mainThread, Input: mainThread, Displayed: mainThread, Info: sessionpresentation.MainInfo{Workspace: alpha.workdir}}, Approvals: []prompt.ApprovalView{{ID: "remote-approval", Agent: "/root/unpaged-worker", Thread: "same-thread", Title: "Approve remote command", Details: []string{"Keep the existing command"}, Choices: []prompt.Choice{{ID: 20, Label: "Reject command", Deny: true}}}}}
+	if err := alpha.api.Native().Publish(rootRequest.Attachment, approvalFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "Approve remote command")
+	run("wait", "--fn", `document.querySelector("[data-prompt]").textContent.includes("/root/unpaged-worker")`)
+	button("Reject command")
+	run("fill", `[name="denial-reason"]`, "Keep it local")
+	button("Deny")
+	run("wait", "--text", "Approval is temporarily unavailable.")
+	run("wait", "--fn", `document.querySelector('[name="denial-reason"]')?.value === 'Keep it local'`)
+	button("Deny")
+	for range 2 {
+		select {
+		case request := <-approvalRequests:
+			decision := request.Operation.Approval
+			if request.Attachment != rootRequest.Attachment || !request.RemoteHuman() || decision.Request != "remote-approval" || decision.Choice != 20 || decision.Reason != "Keep it local" {
+				t.Fatalf("semantic approval identity: %+v", request)
+			}
+		case <-ctx.Done():
+			t.Fatal("semantic approval was not delivered")
+		}
+	}
+	approvalFrame.Approvals = nil
+	if err := alpha.api.Native().Publish(rootRequest.Attachment, approvalFrame); err != nil {
+		t.Fatal(err)
+	}
 	sharedChild.Questions = nil
 	sharedChild.Prompts = nil
 	if err := alpha.publishFrame(sharedChild); err != nil {
 		t.Fatal(err)
 	}
-	frame.Prompts = nil
+	frame.Prompts, frame.Questions = nil, nil
 	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
+	approvalFrame.Family, _ = alpha.hub.Family("same-thread")
+	if err := alpha.api.Native().Publish(rootRequest.Attachment, approvalFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `!document.querySelector('[data-prompt]')`)
 
 	run("find", "text", "worker", "click", "--exact")
 	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'child draft'")
@@ -1486,6 +1548,8 @@ type webUIBrowserMachine struct {
 	bridge       atomic.Pointer[connector.Connector]
 	options      connector.Options
 	intents      chan sessionapi.Intent
+	controls     chan sessionapi.NativeRequest
+	views        sync.Map
 	workdir      string
 	start        func(string)
 }
@@ -1511,7 +1575,7 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(directory) })
-	machine := &webUIBrowserMachine{intents: make(chan sessionapi.Intent, 16), workdir: directory}
+	machine := &webUIBrowserMachine{intents: make(chan sessionapi.Intent, 16), controls: make(chan sessionapi.NativeRequest, 16), workdir: directory}
 	launcher := &nativeReattachLauncher{prepare: func(_ context.Context, _ string, input sessionapi.InputRequest) (*sessionapi.PreparedInput, error) {
 		return &sessionapi.PreparedInput{Draft: composer.Draft{Text: input.Text}}, nil
 	}, run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
@@ -1544,6 +1608,7 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 				intent.Reply <- ""
 			case request := <-native.Requests():
 				if request.Attach {
+					machine.views.Store(request.Thread, request)
 					if raw, ok := machine.frames.Load(start.Resume); ok {
 						if err := api.Publish(raw.(sessionapi.Frame)); err != nil {
 							request.Reply <- err.Error()
@@ -1554,17 +1619,29 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 				if handle != nil && handle(native, request) {
 					continue
 				}
+				if request.Operation.Interrupt != nil || request.Operation.Approval != nil {
+					machine.controls <- request
+				}
 				if request.Attach {
 					thread := sessionpresentation.Thread{ID: start.Resume, Caller: "/root"}
 					family, _ := machine.hub.Family(start.Resume)
 					frame := sessionapi.NativeFrame{Family: family, View: sessionpresentation.View{
 						Version: sessionpresentation.Version{Attachment: 1, Revision: 1},
 						Main:    thread, Input: thread, Displayed: thread,
-						Info: sessionpresentation.MainInfo{Workspace: directory},
+						Info:      sessionpresentation.MainInfo{Workspace: directory},
+						Interrupt: sessioncontrol.InterruptTarget{Thread: start.Resume, Turn: "fixture-turn"},
 					}}
 					if raw, ok := machine.frames.Load(start.Resume); ok && raw.(sessionapi.Frame).Prompts != nil {
 						for _, call := range raw.(sessionapi.Frame).Prompts.Questions {
-							frame.Questions = append(frame.Questions, prompt.CallView{ID: call.ID, Thread: start.Resume})
+							item := prompt.CallView{ID: call.ID, Thread: start.Resume}
+							for _, q := range call.Questions {
+								question := prompt.QuestionView{ID: q.ID, Header: q.Header, Text: q.Text, Secret: q.Secret, Pending: true}
+								for _, option := range q.Options {
+									question.Choices = append(question.Choices, prompt.Option{Label: option.Label, Description: option.Description})
+								}
+								item.Questions = append(item.Questions, question)
+							}
+							frame.Questions = append(frame.Questions, item)
 						}
 					}
 					if err := native.Publish(request.Attachment, frame); err != nil {

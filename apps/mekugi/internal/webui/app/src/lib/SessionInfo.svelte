@@ -28,17 +28,17 @@
         ["Round trips", root?.roundtrips !== undefined ? String(root.roundtrips) : undefined],
         [
           "Tokens in / out",
-          root?.inputTokens !== undefined
+          root?.inputTokens != null
             ? `${atLeast(tokens(root.inputTokens), root.usagePartial)} / ${atLeast(tokens(root.outputTokens ?? 0), root.usagePartial)}`
             : undefined,
         ],
         [
           "Context",
-          root?.context !== undefined
+          root?.context != null
             ? `${tokens(root.context)}${root.window ? ` of ${tokens(root.window)}` : ""}`
             : undefined,
         ],
-        ["Cost", root?.cost !== undefined ? atLeast(cost(root.cost), root.costPartial) : undefined],
+        ["Cost", root?.cost != null ? atLeast(cost(root.cost), root.costPartial) : undefined],
       ] as [string, string | undefined][]
     ).filter(([, value]) => value !== undefined),
   );

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Entry } from "./protocol";
-  import { stream, type Stream } from "./stream.svelte";
+  import { stream } from "./stream.svelte";
   import Button from "./ui/Button.svelte";
 
   // An image bound to an entry: one a user attached, or one an agent viewed.
@@ -11,14 +11,12 @@
     image,
     label = `Attached image ${index + 1}`,
     small = false,
-    source = stream,
   }: {
     entry: Entry;
     index: number;
     image: string;
     label?: string;
     small?: boolean;
-    source?: Stream;
   } = $props();
   const size = $derived(small ? "h-32 w-44" : "h-48 w-64");
   let element = $state<HTMLElement>();
@@ -29,11 +27,11 @@
   // which shared snapshots and window replacements recreate unchanged.
   const seq = $derived(entry.seq);
   const agent = $derived(entry.agent);
-  const attachment = $derived(source.main.attachment);
+  const attachment = $derived(stream.main.attachment);
   $effect(() => {
     if (!element) return;
     void attachment;
-    const request = { seq, agent, index, image, retry, source };
+    const request = { seq, agent, index, image, retry };
     const controller = new AbortController();
     let objectURL: string | undefined;
     url = error = undefined;
@@ -41,7 +39,7 @@
       (entries) => {
         if (!entries.some((e) => e.isIntersecting)) return;
         observer.disconnect();
-        void request.source
+        void stream
           .image(request, request.index, request.image, controller.signal)
           .then((blob) => {
             if (!controller.signal.aborted) url = objectURL = URL.createObjectURL(blob);

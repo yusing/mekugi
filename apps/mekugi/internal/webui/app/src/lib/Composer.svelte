@@ -14,7 +14,7 @@
   } from "./attachments";
   import type { Attachment, Input } from "./protocol";
   import { semantic, textDraft } from "./semantic.svelte";
-  import { stream, type Stream } from "./stream.svelte";
+  import { stream } from "./stream.svelte";
   import Button from "./ui/Button.svelte";
   import ComposerCard from "./ui/ComposerCard.svelte";
   import * as InputGroup from "./ui/input-group";
@@ -31,7 +31,6 @@
     input,
     machine,
     unavailable,
-    source = stream,
     agentName = "main",
     role,
     initial,
@@ -40,7 +39,6 @@
     input?: Input;
     machine: string;
     unavailable?: string;
-    source?: Stream;
     agentName?: string;
     role?: string;
     initial?: InitialInput;
@@ -262,7 +260,21 @@
   }
   async function stop() {
     stopping = true;
-    error = await source.stop();
+    const event = semantic.event;
+    error = event
+      ? await semantic.send(
+          {
+            interrupt: {
+              Version: event.frame.view.Version,
+              Target: event.frame.view.Interrupt,
+              Mode: 0,
+            },
+          },
+          undefined,
+          false,
+          event,
+        )
+      : "Wait for this thread's control view to connect.";
     stopping = false;
     field?.focus();
   }
@@ -339,7 +351,7 @@
       progress ||
       (pending ? "Sending…" : undefined) ||
       refusal ||
-      source.notice ||
+      stream.notice ||
       (touch
         ? ""
         : shell
@@ -517,7 +529,7 @@
       />
       {#if shell}<Tag mono class="ml-1.5">Shell</Tag>{/if}
       <!-- On phones the breadcrumb above already names the role. -->
-      {#if role}<Tag color={source.roleColor(role)} class="ml-1.5 max-sm:hidden">{role}</Tag>{/if}
+      {#if role}<Tag color={stream.roleColor(role)} class="ml-1.5 max-sm:hidden">{role}</Tag>{/if}
       {#if view && view.Displayed.ID === view.Main.ID}
         <Button
           variant="quiet"

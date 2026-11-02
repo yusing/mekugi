@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
 )
@@ -88,7 +89,8 @@ func TestWebUIBrowserResumeFailure(t *testing.T) {
 		frame := sessionapi.NativeFrame{View: sessionpresentation.View{
 			Version: sessionpresentation.Version{Attachment: 1, Revision: revision},
 			Main:    thread, Input: thread, Displayed: thread,
-			Info: sessionpresentation.MainInfo{Workspace: machine.workdir},
+			Info:      sessionpresentation.MainInfo{Workspace: machine.workdir},
+			Interrupt: sessioncontrol.InterruptTarget{Thread: target.request.Thread, Turn: "fixture-turn"},
 		}}
 		if effect != 0 {
 			frame.Effects = []sessionapi.NativeEffect{{ID: effect, Reattach: new("destination")}}
@@ -101,9 +103,9 @@ func TestWebUIBrowserResumeFailure(t *testing.T) {
 		t.Helper()
 		button("Stop")
 		select {
-		case intent := <-machine.intents:
-			if intent.Action != sessionapi.Stop || intent.Thread != "same-thread" {
-				t.Fatalf("wrong source control: %s %s", intent.Thread, intent.Action)
+		case intent := <-machine.controls:
+			if intent.Operation.Interrupt == nil || intent.Thread != "same-thread" || intent.Operation.Interrupt.Target.Thread != "same-thread" {
+				t.Fatalf("wrong source control: %+v", intent)
 			}
 		case <-ctx.Done():
 			t.Fatal("source control did not reach owner")
@@ -170,9 +172,9 @@ func TestWebUIBrowserResumeFailure(t *testing.T) {
 	run("find", "label", "Message", "fill", "destination remains editable")
 	button("Stop")
 	select {
-	case intent := <-machine.intents:
-		if intent.Action != sessionapi.Stop || intent.Thread != "destination" {
-			t.Fatalf("wrong adopted control: %s %s", intent.Thread, intent.Action)
+	case intent := <-machine.controls:
+		if intent.Operation.Interrupt == nil || intent.Thread != "destination" || intent.Operation.Interrupt.Target.Thread != "destination" {
+			t.Fatalf("wrong adopted control: %+v", intent)
 		}
 	case <-ctx.Done():
 		t.Fatal("adopted destination control did not reach owner")

@@ -80,6 +80,7 @@ func (m *Approvals) Hide()        { m.Open = false }
 func (a *Approval) Move(step int) { a.Selected = (a.Selected + step + len(a.Choices)) % len(a.Choices) }
 
 type ApprovalView struct {
+	Agent                                           string `json:"agent,omitzero"`
 	Selected                                        int
 	ID, Thread, Turn, Item, Title, Subject, Outcome string
 	Details                                         []string

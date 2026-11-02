@@ -79,7 +79,7 @@ export function basename(path: string): string {
 // it failed.
 export function statusText(s: Status): string {
   let text = s.text ?? "";
-  if (s.completed !== undefined) text += ` in ${duration(s.completed)}`;
+  if (s.completed != null) text += ` in ${duration(s.completed)}`;
   if (s.failure) text += `: ${s.failure}`;
   return text;
 }

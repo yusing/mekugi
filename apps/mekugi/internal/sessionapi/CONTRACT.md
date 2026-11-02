@@ -228,6 +228,15 @@ displayed. A raw command sent without editor metadata leaves every draft
 unchanged. Attachment submissions retain the ordered descriptors, limits and
 preparation ownership defined below.
 
+The browser renders prompts from its control frame. `questions` is the family
+inventory, including sent calls retained for reconciliation; actionable calls
+exclude `Sent` and `Resolved`, and show only `Pending` questions. Optional
+`agent` identifies a prompt's originating agent independently of browser roster
+paging. `approvals` belongs to the selected runtime. Display text is sanitized
+and secret questions remain redacted. Approval intents use offered choice IDs;
+only denial accepts a reason. Interrupt intents capture the observed work target
+and view version.
+
 A remote composer Submit/Queue operation carries `input` with the same `text`
 and ordered `attachments` as ordinary input. Raw native `Draft` content is refused;
 native composer operations instead use `Draft` and cannot mix the two forms.

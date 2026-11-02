@@ -213,13 +213,9 @@ class Hub {
     start: Start,
     machine: Machine,
     signal?: AbortSignal,
-  ): Promise<{ id: string; notice?: string } | { error: string }> {
+  ): Promise<{ id: string } | { error: string }> {
     try {
-      return await machine.request<{ id: string; notice?: string }>(
-        "session/start",
-        { body: start },
-        { signal },
-      );
+      return await machine.request<{ id: string }>("session/start", { body: start }, { signal });
     } catch (error) {
       return { error: errorText(error, true) };
     }

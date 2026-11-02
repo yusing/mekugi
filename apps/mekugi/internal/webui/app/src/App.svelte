@@ -37,7 +37,6 @@
     error?: string;
   }>();
   let endNotice = $state<string>();
-  let creationNotice = $state<{ machine: string; session: string; text: string }>();
   let firstInput = $state<{ machine: string; session: string; input: InitialInput }>();
   async function endSession() {
     const target = endTarget;
@@ -130,9 +129,6 @@
               ? firstInput.input
               : undefined}
             oninitial={() => (firstInput = undefined)}
-            notice={creationNotice?.machine === machine.id && creationNotice.session === thread
-              ? creationNotice.text
-              : undefined}
             onend={(target) => (endTarget = { ...target, pending: false })}
           />
         {/key}
@@ -154,8 +150,7 @@
             </Notice>{/if}
           <NewThread
             {machine}
-            onopened={(machine, session, text, initial) => {
-              creationNotice = text ? { machine, session, text } : undefined;
+            onopened={(machine, session, initial) => {
               firstInput = initial ? { machine, session, input: initial } : undefined;
             }}
           />

@@ -258,3 +258,19 @@ func TestGeneratedRemoteAnswerUsesPublicShape(t *testing.T) {
 		t.Fatalf("remote answer refused: %+v", reply)
 	}
 }
+
+func TestRemotePromptProjectionSanitizesAndAttributesDetachedInventory(t *testing.T) {
+	frame := nativeTestFrame("root", 1)
+	frame.Questions = []prompt.CallView{{ID: "child-call", Thread: "child", Questions: []prompt.QuestionView{{ID: "q", Header: "\x1b[31mHeading", Text: "\x1b[31mQuestion", Pending: true, Choices: []prompt.Option{{Label: "\x1b[31mYes", Description: "\x1b[31mProceed"}}}}}}
+	frame.Family = &Family{Prompts: []QuestionCall{{ID: "child-call", Agent: "/root/unpaged-child"}}}
+	frame.Agents = &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Thread: "approval-child", Name: "/root/approval-child"}}}}}
+	frame.Approvals = []prompt.ApprovalView{{ID: "approve", Thread: "approval-child", Title: "\x1b[31mAllow", Subject: "\x1b[31mCommand", Details: []string{"\x1b[31mDetail"}, Choices: []prompt.Choice{{ID: 20, Label: "\x1b[31mDeny", Deny: true}}}}
+	remote := frame.remote()
+	q, a := remote.Questions[0].Questions[0], remote.Approvals[0]
+	if remote.Questions[0].Agent != "/root/unpaged-child" || q.Header != "Heading" || q.Text != "Question" || q.Choices[0].Label != "Yes" || q.Choices[0].Description != "Proceed" || a.Agent != "/root/approval-child" || a.Title != "Allow" || a.Subject != "Command" || a.Details[0] != "Detail" || a.Choices[0].Label != "Deny" || a.Choices[0].ID != 20 {
+		t.Fatalf("remote prompt facts: %+v %+v", remote.Questions, remote.Approvals)
+	}
+	if frame.Questions[0].Agent != "" || frame.Questions[0].Questions[0].Choices[0].Label != "\x1b[31mYes" || frame.Approvals[0].Choices[0].Label != "\x1b[31mDeny" {
+		t.Fatal("projection mutated owner inventory")
+	}
+}

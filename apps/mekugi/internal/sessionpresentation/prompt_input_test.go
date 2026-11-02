@@ -64,3 +64,26 @@ func TestNonTerminalPromptInputAndDraftPublication(t *testing.T) {
 		t.Fatal("replay admitted prompt input")
 	}
 }
+
+func TestApprovalReasonAdmission(t *testing.T) {
+	c := newStatusConsumer()
+	approvals := &c.conversation.Approvals
+	a := &prompt.Approval{ID: "request", Choices: []prompt.Choice{{ID: 10, Approve: true}, {ID: 20, Deny: true}}}
+	approvals.Add(a)
+	v := c.publish(sessionpresentation.Caption{})
+	for _, tc := range []struct {
+		choice  int
+		reason  string
+		allowed bool
+	}{
+		{10, "", true}, {20, "", true}, {20, "keep local", true}, {10, "keep local", false}, {0, "", false},
+	} {
+		got, choice, err := c.model().Approval(sessionpresentation.ApprovalIntent{Version: v.Version, Request: a.ID, Choice: tc.choice, Reason: tc.reason}, approvals)
+		if (err == nil) != tc.allowed || tc.allowed && (got != a || choice.ID != tc.choice) {
+			t.Fatalf("choice %d reason %q: %v", tc.choice, tc.reason, err)
+		}
+		if len(approvals.Pending) != 1 || approvals.Pending[0] != a {
+			t.Fatal("admission changed the pending approval")
+		}
+	}
+}

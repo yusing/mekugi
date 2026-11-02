@@ -120,17 +120,15 @@ func applyAPIIntent(attached *attachedPresentation, terminal *terminalsession.At
 		}
 		return "", submitQuestions(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, environment, *owned, hook, parent, observations, reviewOwner, receipts, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: intent.Answer.Call, Incomplete: incomplete})
 	case sessionapi.DecideApproval:
-		_, choice, ok := attached.conversation.Approvals.Decision(intent.Decide.Approval, intent.Decide.Choice)
-		if !ok {
-			return "This approval or choice is no longer available.", nil
+		decision := sessionpresentation.ApprovalIntent{Version: attached.presentation.View().Version, Request: intent.Decide.Approval, Choice: intent.Decide.Choice, Reason: intent.Decide.Reason}
+		_, choice, err := attached.presentation.Approval(decision, &attached.conversation.Approvals)
+		if err != nil {
+			return err.Error(), nil
 		}
 		if choice.Session {
 			return "Reusable approval grants require an attached control view. Use view/intent.", nil
 		}
-		if intent.Decide.Reason != "" && !choice.Deny {
-			return "A reason can only accompany a denial.", nil
-		}
-		return "", decideApproval(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, notifications, reviewOwner, receipts, observations, sessionpresentation.ApprovalIntent{Version: attached.presentation.View().Version, Request: intent.Decide.Approval, Choice: intent.Decide.Choice, Reason: intent.Decide.Reason})
+		return "", decideApproval(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, notifications, reviewOwner, receipts, observations, decision)
 	case sessionapi.Send:
 		// Enter semantics: steer the active turn, or start one while idle.
 		if reason := apiInputRefusal(attached, control, restoring); reason != "" {

@@ -9,7 +9,7 @@
   import { inline, referenceContext } from "./markdown";
   import { observeOverflow } from "./overflow";
   import type { Entry, Value } from "./protocol";
-  import { stream, type Stream } from "./stream.svelte";
+  import { stream } from "./stream.svelte";
   import Icon from "./ui/Icon.svelte";
   import Reasoning from "./ui/ai/Reasoning.svelte";
   import * as Message from "./ui/message";
@@ -31,7 +31,6 @@
     owner,
     views,
     thoughts,
-    source = stream,
     onload,
     onclip,
     ondetails,
@@ -43,7 +42,6 @@
     owner: string;
     views?: Entry[];
     thoughts?: Entry[];
-    source?: Stream;
     onload?: () => unknown;
     onclip?: (clipped?: boolean) => void;
     ondetails?: () => unknown;
@@ -128,7 +126,7 @@
       notify();
     };
   };
-  const endpoint = (name?: string) => (name ? source.address(name) : undefined);
+  const endpoint = (name?: string) => (name ? stream.address(name) : undefined);
 
   // Traffic between agents: a task, a message, or a child's answer. Like the
   // terminal, it is headed by who sent it and what happened.
@@ -297,7 +295,6 @@
                 {entry}
                 {image}
                 {index}
-                {source}
               />{/each}
           </div>{/if}
         <Markdown text={entry.text ?? ""} spans={entry.spans} />
@@ -421,7 +418,6 @@
                     entry={view}
                     {image}
                     {index}
-                    {source}
                     label="{view.values?.[0]?.verb === 'Generated'
                       ? 'Generated'
                       : 'Viewed'} image {paths[i]}"
@@ -464,7 +460,7 @@
               <p class="col-span-full py-[5px] text-muted">{@render wait(value)}</p>
             {:else if value.kind === "progress"}
               <p class="col-span-full py-[5px] text-muted">
-                {progressText(value, (name) => source.label(name))}
+                {progressText(value, (name) => stream.label(name))}
               </p>
             {:else if hidden}
               <details

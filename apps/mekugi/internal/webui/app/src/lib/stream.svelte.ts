@@ -3,8 +3,6 @@ import type { Machine } from "./hub.svelte";
 import { errorText, TransportError, type Connection, type RPCMethod } from "./transport";
 import type {
   Action,
-  Decide,
-  Prompts,
   Agent,
   Entry,
   FeedChange,
@@ -45,17 +43,15 @@ export class Stream {
   session = $state.raw<Session | undefined>();
   playback = $state.raw<Playback | undefined>();
   input = $state.raw<Input | undefined>();
-  prompts = $state.raw<Prompts | undefined>();
   status = $state.raw<Status>({});
   main = $state.raw<Feed>(empty);
   agents = $state.raw<Feed>(empty);
   histories = $state.raw<Record<string, Feed>>({});
   historyLoading = $state.raw<Record<string, boolean>>({});
   historyErrors = $state.raw<Record<string, string | undefined>>({});
-  roster = $state.raw<Roster>({ agents: [] });
+  roster = $state.raw<Roster>({ total: 0, agents: [] });
   rosterLoading = $state(false);
-  rosterRetryAgent = $state.raw<Agent>();
-  rosterRetryCaller = $state<string>();
+  rosterRetry = $state.raw<{ kind: "agent"; agent: Agent } | { kind: "page"; caller?: string }>();
   rosterError = $state<string>();
   unavailableAgents = $state.raw<string[]>([]);
   #agentReads = new Set<string>();
@@ -113,7 +109,6 @@ export class Stream {
     this.#requests = new AbortController();
     this.connection = "connecting";
     this.session = this.playback = this.input = this.gone = undefined;
-    this.prompts = undefined;
     this.status = {};
     this.main = this.agents = empty;
     this.histories = {};
@@ -125,9 +120,8 @@ export class Stream {
           next: undefined,
           agents: this.roster.agents.map((agent) => ({ ...agent, content: undefined })),
         }
-      : { agents: [] };
-    this.rosterRetryAgent = undefined;
-    this.rosterRetryCaller = undefined;
+      : { total: 0, agents: [] };
+    this.rosterRetry = undefined;
     this.rosterError = undefined;
     this.unavailableAgents = [];
     this.review = null;
@@ -213,7 +207,7 @@ export class Stream {
       (message.session?.thread !== this.session.thread ||
         message.main?.attachment !== this.main.attachment)
     ) {
-      this.roster = { agents: [] };
+      this.roster = { total: 0, agents: [] };
       this.contentIdentities = {};
     }
     snapshot &&=
@@ -227,6 +221,7 @@ export class Stream {
     if (message.deferred !== undefined) {
       this.deferred = Object.fromEntries(
         Object.entries(message.deferred ?? {}).filter(([kind, ref]) => {
+          if (kind === "prompts") return false;
           const loaded = this.#hydratedSections.get(kind);
           if (ref && loaded?.attachment === ref.attachment && loaded?.revision === ref.revision)
             delete message[kind as keyof DeferredSections];
@@ -238,12 +233,11 @@ export class Stream {
     }
     if (snapshot) {
       this.gone = undefined;
-      this.session = message.session;
-      this.playback = message.playback;
-      this.input = message.input;
-      this.prompts = message.prompts;
+      this.session = message.session ?? undefined;
+      this.playback = message.playback ?? undefined;
+      this.input = message.input ?? undefined;
       this.status = message.status ?? {};
-      this.#updateRoster(message.roster ?? { agents: [] });
+      this.#updateRoster(message.roster ?? { total: 0, agents: [] });
       this.unavailableAgents = [];
       this.#observeRoles();
       this.review = message.review ?? null;
@@ -255,10 +249,9 @@ export class Stream {
       this.jumps++;
       return;
     }
-    if (message.session) this.session = message.session;
-    if (message.playback) this.playback = message.playback;
-    if (message.input) this.input = message.input;
-    if (message.prompts) this.prompts = message.prompts;
+    if (message.session) this.session = message.session ?? undefined;
+    if (message.playback) this.playback = message.playback ?? undefined;
+    if (message.input) this.input = message.input ?? undefined;
     if (message.status) this.status = message.status;
     if (message.roster) {
       this.#updateRoster(message.roster);
@@ -473,8 +466,7 @@ export class Stream {
         this.roster.next?.revision === cursor.revision &&
         !(error instanceof TransportError && error.status === 409)
       ) {
-        this.rosterRetryAgent = undefined;
-        this.rosterRetryCaller = caller;
+        this.rosterRetry = { kind: "page", caller };
         this.rosterError = errorText(error);
       }
     } finally {
@@ -521,7 +513,7 @@ export class Stream {
         this.agent(agent.name)?.content === reference &&
         !(error instanceof TransportError && error.status === 409)
       ) {
-        this.rosterRetryAgent = agent;
+        this.rosterRetry = { kind: "agent", agent };
         this.rosterError = errorText(error);
       }
     }
@@ -572,9 +564,6 @@ export class Stream {
           break;
         case "input":
           if (result.input) this.input = result.input;
-          break;
-        case "prompts":
-          if (result.prompts) this.prompts = result.prompts as Prompts;
           break;
         case "status":
           if (result.status) this.status = result.status as Status;
@@ -641,13 +630,6 @@ export class Stream {
     if (action !== "toggle-pause" && action !== "faster" && action !== "slower") this.jumps++;
     const error = await this.#request("session/control", { action, position });
     if (!lifetime.aborted) this.controlError = error;
-  }
-
-  stop(): Promise<string | undefined> {
-    return this.#request("session/interrupt", {});
-  }
-  decide(body: Decide): Promise<string | undefined> {
-    return this.#request("session/decide", body);
   }
 
   async image(
