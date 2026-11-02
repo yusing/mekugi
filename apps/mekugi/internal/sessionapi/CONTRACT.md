@@ -605,7 +605,12 @@ asking child through that child's authenticated ordinary input ledger.
 
 `session/decide` takes `{"approval": ID, "choice": CHOICE_ID,
 "reason": TEXT}`. The choice must be offered by that approval; only a denial
-accepts a reason. Both methods return success when accepted, error status 409
+accepts a reason. For Mekugi shell guards, this endpoint supports approve-once and deny.
+Reusable exact-command grants
+require attachment-bound `view/intent`; requesting one here returns 409 with that
+direction. A reusable grant belongs to the answering view, survives displayed-thread
+switching within it, and expires when that attachment retires. Another live view
+retains its own grants independently. Both methods return success when accepted, error status 409
 when refused (including already answered prompts), and 400 for malformed requests.
 
 `session/control` takes `{"action": ACTION, "position": MILLISECONDS}`.

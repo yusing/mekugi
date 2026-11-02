@@ -33,11 +33,6 @@ func NewApprovalGrants(guards []binding.ShellApproval) ApprovalGrants {
 	return g
 }
 
-func (g ApprovalGrants) Available(request *ShellApprovalRequest) bool {
-	kind, known := binding.GuardForRequest(request.Kind)
-	return known && g.values[kind] != nil
-}
-
 func commandApprovalIdentity(request *ShellApprovalRequest) approval.Command {
 	command, _ := json.Marshal(request.Argv)
 	return approval.Command{Directory: request.Cwd, Executable: request.Executable, Arguments: string(command)}

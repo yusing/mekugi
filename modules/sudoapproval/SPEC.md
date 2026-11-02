@@ -57,7 +57,7 @@ limits as the VCS guard's Bash path functions.
 ## Lifecycle
 
 Session Control owns exact-command grants per registered guard kind for each attached UI lifetime.
-Grants are invocation-local and discarded on detach; changing the displayed thread
+Grants belong to the answering UI attachment and are discarded on detach; changing the displayed thread
 does not create another set. Fresh resume creates a new set. The application owns
 the shared local decision channel and joins it independently of segment reporting.
 

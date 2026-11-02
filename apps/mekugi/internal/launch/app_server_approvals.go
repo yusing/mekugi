@@ -40,7 +40,8 @@ type nativeApprovalDock struct {
 	handles map[*prompt.Approval]*sessioncontrol.Approval
 	unbound []*sessioncontrol.Approval
 	patches map[string][]string
-	grants  sessioncontrol.ApprovalGrants
+	guards  []binding.ShellApproval
+	allows  func(*sessioncontrol.ShellApprovalRequest) bool
 }
 
 func (d *nativeApprovalDock) calls() []*sessioncontrol.Approval {
@@ -80,7 +81,8 @@ func addGuardApproval(attached *attachedPresentation, terminal *terminalsession.
 	if request.Finished() {
 		return
 	}
-	if !approvals.grants.Available(request) {
+	kind, known := binding.GuardForRequest(request.Kind)
+	if !known || !slices.ContainsFunc(approvals.guards, func(guard binding.ShellApproval) bool { return guard.Kind == kind }) {
 		request.Reply <- shellapproval.Reply{Reason: "approval module is not active"}
 		return
 	}
@@ -107,7 +109,7 @@ func addGuardApproval(attached *attachedPresentation, terminal *terminalsession.
 		openSudoPassword(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, a)
 		return
 	}
-	if approvals.grants.Allows(request) {
+	if approvals.allows != nil && approvals.allows(request) {
 		recordApproval(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, a, "Approved for this session")
 		request.Reply <- shellapproval.Reply{OK: true}
 		return
@@ -328,13 +330,13 @@ func decideApproval(attached *attachedPresentation, terminal *terminalsession.At
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
 	}
-	return applyApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, observations, approvals.handles[record], choice, intent.Reason)
+	return applyApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, observations, attached.grants, approvals.handles[record], choice, intent.Reason)
 }
 
 // applyApproval also settles decisions covered by an existing exact-command
 // grant; those carry their admitted authority rather than a new renderer intent.
-func applyApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, observations *sessioncontrol.Observations, a *sessioncontrol.Approval, choice prompt.Choice, reason string) error {
-	outcome, delivered, err := a.Decide(choice, reason, approvals.grants, control.Requests, observations)
+func applyApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, observations *sessioncontrol.Observations, grants sessioncontrol.ApprovalGrants, a *sessioncontrol.Approval, choice prompt.Choice, reason string) error {
+	outcome, delivered, err := a.Decide(choice, reason, grants, control.Requests, observations)
 	if err != nil {
 		return err
 	}
@@ -346,7 +348,7 @@ func applyApproval(attached *attachedPresentation, terminal *terminalsession.Att
 	if a.Guard != nil && choice.Approve && choice.Session {
 		for _, pending := range slices.Clone(approvals.calls()) {
 			if a.SameCommand(pending) {
-				if err := applyApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, observations, pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}, ""); err != nil {
+				if err := applyApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, observations, grants, pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}, ""); err != nil {
 					return err
 				}
 			}

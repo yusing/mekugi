@@ -50,6 +50,7 @@ type attachedPresentation struct {
 	presentation *sessionpresentation.Model
 	view         string
 	effects      *nativeViewEffects
+	grants       sessioncontrol.ApprovalGrants
 }
 
 func newAttachedPresentation(ctx context.Context, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation) attachedPresentation {

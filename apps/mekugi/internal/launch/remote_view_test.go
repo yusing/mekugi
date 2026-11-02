@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -43,6 +44,8 @@ func remoteOwnerView(t *testing.T, u *appServerUI) *remoteViewHarness {
 		run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
 			h.api = api
 			h.views = newNativeViews(ctx, api.Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+			h.views.guards = u.approvals.guards
+			u.approvals.allows = h.views.allowsApproval
 			defer h.views.close()
 			if err := api.SetSummary(sessionapi.Summary{Thread: start.Resume, Workspace: u.attached.cwd, Ready: true}); err != nil {
 				return err
@@ -409,5 +412,73 @@ func TestRemoteOutputDemandRejectsNegativeHandle(t *testing.T) {
 	})
 	if code != http.StatusAccepted || len(h.view.mainOutput) != 1 || !h.view.mainOutput[0].View.Released {
 		t.Fatalf("unavailable remote output: %d %s %+v", code, body, h.view.mainOutput)
+	}
+}
+
+func TestRemoteViewApprovalGrantsRetireWithAnsweringAttachment(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	h := remoteOwnerView(t, u)
+	enqueue := func(kind string) *sessioncontrol.ShellApprovalRequest {
+		request := compositionApproval(kind)
+		addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
+		return request
+	}
+	first, queued := enqueue(""), enqueue("")
+	h.publish()
+	approval := u.approvals.calls()[0]
+	intent := &sessionpresentation.ApprovalIntent{Version: h.event.Frame.View.Version, Request: approval.ID, Choice: 1}
+	code, problem := h.send(sessionapi.NativeOperation{Approval: intent}, func(request sessionapi.NativeRequest) string {
+		view := h.views.views[request.Attachment]
+		record, choice, err := view.attached.presentation.Approval(*request.Operation.Approval, u.approvals.Approvals)
+		if err != nil {
+			return err.Error()
+		}
+		if err := applyApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, view.attached.grants, u.approvals.handles[record], choice, ""); err != nil {
+			return err.Error()
+		}
+		return ""
+	})
+	if code != http.StatusAccepted || len(first.Reply) != 1 || len(queued.Reply) != 1 || !(<-first.Reply).OK || !(<-queued.Reply).OK {
+		t.Fatalf("attachment session grant: code=%d problem=%q", code, problem)
+	}
+	if !h.views.allowsApproval(compositionApproval("")) {
+		t.Fatal("live attachment grant was not available")
+	}
+	// Presentation replacement is the display-switch path, not a UI detach.
+	h.views.replacePresentation(h.view, &u.attached)
+	h.view.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, false)
+	if !h.views.allowsApproval(compositionApproval("")) {
+		t.Fatal("display replacement retired the attachment grant")
+	}
+	otherContext, cancelOther := context.WithCancel(t.Context())
+	defer cancelOther()
+	if refusal := h.views.attach(sessionapi.NativeRequest{Attachment: "other", Thread: u.Thread, Workspace: u.attached.cwd, Context: t.Context(), ViewContext: otherContext}, &u.attached, u.Thread); refusal != "" {
+		t.Fatal(refusal)
+	}
+	other := h.views.views["other"]
+	if other.attached.grants.Allows(compositionApproval("")) {
+		t.Fatal("another attachment inherited the grant")
+	}
+	second := enqueue("sudo")
+	publishSessionView(&other.attached, &u.Client, &other.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, false)
+	approval = u.approvals.calls()[0]
+	intent = &sessionpresentation.ApprovalIntent{Version: other.attached.presentation.View().Version, Request: approval.ID, Choice: 1}
+	if err := decideApproval(&other.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{}, u.serviceTiers, "", "", false, u.side, u.clock, &u.questions, &u.approvals, false, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, *intent); err != nil || len(second.Reply) != 1 || !(<-second.Reply).OK {
+		t.Fatalf("second attachment grant: %v", err)
+	}
+	h.views.retire(h.event.Attachment)
+	if h.views.allowsApproval(compositionApproval("")) || !h.views.allowsApproval(compositionApproval("sudo")) {
+		t.Fatal("detachment retained its grant or revoked another attachment's grant")
+	}
+	if refusal := h.views.attach(sessionapi.NativeRequest{Attachment: "replacement", Thread: u.Thread, Workspace: u.attached.cwd, Context: t.Context(), ViewContext: t.Context()}, &u.attached, u.Thread); refusal != "" {
+		t.Fatal(refusal)
+	}
+	repeated := enqueue("")
+	if len(repeated.Reply) != 0 || len(u.approvals.calls()) != 1 {
+		t.Fatal("reattachment restored retired command authority")
+	}
+	cancelOther()
+	if h.views.allowsApproval(compositionApproval("sudo")) {
+		t.Fatal("closed view retained authority before disposal")
 	}
 }

@@ -336,7 +336,9 @@ The invocation's shell-approval transport belongs to Session Control, independen
 of provider requests and command reports. It delivers guarded commands to the
 existing approval and secret-entry workflows. Withdrawal, timeout and shutdown
 retire pending questions; replies retain their original command identity. Guard
-policy and grants stay with the composed approval modules. Shutdown closes report
+policy stays with the composed approval modules. Session Control owns exact-command
+grants for each answering UI attachment. They survive displayed-thread changes
+within that attachment and expire on its retirement. Shutdown closes report
 observation and approval transport before draining retained request facts.
 
 ## Composer predictions

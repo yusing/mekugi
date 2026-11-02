@@ -51,7 +51,7 @@ func TestApprovalGrantsRegisteredKindsAndAttachmentIsolation(t *testing.T) {
 	other := NewApprovalGrants(guards)
 	for _, kind := range []string{"", "sudo"} {
 		request := &ShellApprovalRequest{Kind: kind, Cwd: "/workspace", Executable: "/tools/command", Argv: []string{"printf", "a b"}, Reply: make(chan shellapproval.Reply, 1)}
-		if !grants.Available(request) || grants.Allows(request) {
+		if grants.Allows(request) {
 			t.Fatal("registered guard has incorrect initial grants")
 		}
 		approval := &Approval{Guard: request}
@@ -81,10 +81,5 @@ func TestApprovalGrantsRegisteredKindsAndAttachmentIsolation(t *testing.T) {
 			t.Fatal("grant crossed guard kinds")
 		}
 	}
-	for _, kind := range []string{"sudo", "unknown"} {
-		request := &ShellApprovalRequest{Kind: kind}
-		if NewApprovalGrants(guards[:1]).Available(request) || NewApprovalGrants(nil).Available(request) || (ApprovalGrants{}).Allows(request) {
-			t.Fatal("absent guard acquired authority")
-		}
-	}
+
 }

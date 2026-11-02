@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
@@ -28,6 +29,7 @@ import (
 // nativeViews owns renderer attachments on the existing execution goroutine.
 // It borrows execution owners and never constructs another host request ledger.
 type nativeViews struct {
+	guards      []binding.ShellApproval
 	diagnostics *appserver.Diagnostics
 	threads     *threadExecution
 	activity    *activitymodel.Service
@@ -134,7 +136,7 @@ func (n *nativeViews) attach(request sessionapi.NativeRequest, execution *attach
 		return "The requested session attachment is unavailable."
 	}
 	v := &nativeSessionView{remoteHuman: request.RemoteHuman(), thread: request.Thread, startup: request.Startup != "", initial: true, ctx: request.ViewContext}
-	v.attached = attachedPresentation{executionPresentation: execution.executionPresentation, presentation: n.models.Session(v.scope.Scope()), view: request.Attachment, effects: &v.effects}
+	v.attached = attachedPresentation{executionPresentation: execution.executionPresentation, presentation: n.models.Session(v.scope.Scope()), view: request.Attachment, effects: &v.effects, grants: sessioncontrol.NewApprovalGrants(n.guards)}
 	// Transitional semantic adapters borrow independent renderer scratch. No
 	// physical terminal, editor, key decoder or painting lifetime is attached.
 	v.shell, _ = n.terminals.NewAttachment(diffrender.DarkTheme)
@@ -151,6 +153,17 @@ func (n *nativeViews) attach(request sessionapi.NativeRequest, execution *attach
 	n.views[request.Attachment] = v
 	execution.modelsReady = n.refreshSettings
 	return ""
+}
+
+// allowsApproval consults only live attachment authority. Presentation replacement
+// leaves each attachment's grants intact; disposal retires them with its view.
+func (n *nativeViews) allowsApproval(request *sessioncontrol.ShellApprovalRequest) bool {
+	for _, view := range n.views {
+		if view.ctx.Err() == nil && view.attached.grants.Allows(request) {
+			return true
+		}
+	}
+	return false
 }
 
 func (n *nativeViews) refreshSettings(models []appServerModel, applied preferences.Applied, tiers *inferencegateway.Tiers, problem string) {

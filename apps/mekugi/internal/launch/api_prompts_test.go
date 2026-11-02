@@ -2,12 +2,16 @@
 package launch
 
 import (
+	"context"
 	json "encoding/json/v2"
+	"errors"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAPIQuestionBatchRejectsAtomically(t *testing.T) {
@@ -128,5 +132,65 @@ func TestAPIDecidesApproval(t *testing.T) {
 	}
 	if got := apiPrompts(&u.attached, &u.Client).Approvals; len(got) != 0 {
 		t.Fatalf("decided approvals remain projected: %+v", got)
+	}
+}
+
+func TestAPIGuardDecisionsRequireAttachmentForReusableGrants(t *testing.T) {
+	for _, kind := range []string{"", "sudo"} {
+		t.Run("kind="+kind, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			h := remoteOwnerView(t, u)
+			decide := func(value sessionapi.Decide) (int, string) {
+				body, err := json.Marshal(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+				defer cancel()
+				done := make(chan error, 1)
+				go func() {
+					done <- h.rpc.Call(ctx, "session/decide", sessionapi.RPCParams{Thread: u.Thread, Body: body}, nil)
+				}()
+				select {
+				case intent := <-h.api.Intents():
+					intent.Reply <- apiTestIntent(t, u, intent)
+					err = <-done
+				case err = <-done:
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				}
+				if err == nil {
+					return http.StatusAccepted, ""
+				}
+				if failure, ok := errors.AsType[*sessionapi.RPCError](err); ok && failure.Data != nil {
+					return failure.Data.Status, failure.Message
+				}
+				t.Fatal(err)
+				return 0, ""
+			}
+			request := compositionApproval(kind)
+			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
+			approval := u.approvals.calls()[0]
+			intent := sessionapi.Intent{Action: sessionapi.DecideApproval, Decide: sessionapi.Decide{Approval: approval.ID, Choice: 1}}
+			if code, refusal := decide(intent.Decide); code != http.StatusConflict || !strings.Contains(refusal, "view/intent") || len(request.Reply) != 0 || len(u.approvals.calls()) != 1 || u.attached.grants.Allows(request) {
+				t.Fatalf("reusable grant did not preserve pending approval: %q", refusal)
+			}
+			intent.Decide.Choice = 0
+			if code, refusal := decide(intent.Decide); code != http.StatusAccepted || refusal != "" || len(request.Reply) != 1 || !(<-request.Reply).OK {
+				t.Fatalf("approve-once refused: %q", refusal)
+			}
+			repeated := compositionApproval(kind)
+			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, repeated)
+			if len(repeated.Reply) != 0 || len(u.approvals.calls()) != 1 {
+				t.Fatal("approve-once granted the repeated command")
+			}
+			intent.Decide = sessionapi.Decide{Approval: u.approvals.calls()[0].ID, Choice: 2, Reason: "keep local"}
+			if code, refusal := decide(intent.Decide); code != http.StatusAccepted || refusal != "" || len(repeated.Reply) != 1 {
+				t.Fatalf("denial refused: %q", refusal)
+			}
+			if reply := <-repeated.Reply; reply.OK || !strings.Contains(reply.Reason, "keep local") {
+				t.Fatalf("denial reply=%+v", reply)
+			}
+		})
 	}
 }

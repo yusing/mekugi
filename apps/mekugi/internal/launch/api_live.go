@@ -124,6 +124,9 @@ func applyAPIIntent(attached *attachedPresentation, terminal *terminalsession.At
 		if !ok {
 			return "This approval or choice is no longer available.", nil
 		}
+		if choice.Session {
+			return "Reusable approval grants require an attached control view. Use view/intent.", nil
+		}
 		if intent.Decide.Reason != "" && !choice.Deny {
 			return "A reason can only accompany a denial.", nil
 		}

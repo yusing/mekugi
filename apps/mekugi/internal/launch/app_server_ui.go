@@ -144,7 +144,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		titleUpdates = generator.updates
 	}
 	if guard != nil {
-		approvalDock.grants = sessioncontrol.NewApprovalGrants(guards)
+		approvalDock.guards = guards
 	}
 	if skillsManager {
 		environment = cmd.Environ()
@@ -184,6 +184,8 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	settlePresentation(&attached, shell, &control, &picker, &editor, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, restoring != nil, side, clock, &questions, &approvalDock, panel != nil || resumePicker != nil)
 	predictions := composerPredictions{provider: predictionProvider, results: make(chan predictionConfiguration, 1)}
 	native := newNativeViews(ctx, api.Native(), views, terminalViews, activity, control.Requests)
+	native.guards = approvalDock.guards
+	approvalDock.allows = native.allowsApproval
 	attached.compaction = func(thread, item string) func(context.Context) (string, error) {
 		return compactionSummaryReader(retainedSession, control.RolloutPath, thread, item)
 	}
@@ -893,7 +895,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 								if err != nil {
 									refusal = err.Error()
 								} else {
-									operationErr = applyApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, notifications, reviewOwner, &receipts, observationInputs, approvalDock.handles[record], choice, operation.Approval.Reason)
+									operationErr = applyApproval(&attached, shell, &control, &picker, &editor, &questions, &approvalDock, clock, notifications, reviewOwner, &receipts, observationInputs, view.attached.grants, approvalDock.handles[record], choice, operation.Approval.Reason)
 								}
 							default:
 								refusal, operationErr = applyNativeOperation(view, request)
