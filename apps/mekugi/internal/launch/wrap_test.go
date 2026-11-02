@@ -944,12 +944,62 @@ func TestFrontendNestedGuardOptOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !slices.Contains(env, "PATH="+inner+":"+real+":/usr/bin:/bin") {
+		t.Fatalf("nested PATH retains stale frontend: %q", env)
+	}
 	for _, name := range []string{"git", filepath.Join(real, "git")} {
 		cmd := exec.Command("/bin/bash", "-c", commandargs.Quote(name)+" push; printf ' %s' \"$USER_STARTUP\"")
 		cmd.Env = env
 		out, err := cmd.CombinedOutput()
 		if err != nil || string(out) != "REAL_GIT preserved" {
 			t.Fatalf("nested opt-out %q = %q, %v", name, out, err)
+		}
+	}
+}
+
+func TestInheritedFrontendEnvironment(t *testing.T) {
+	root := t.TempDir()
+	startup := filepath.Join(root, "frontend-bash-env")
+	for _, marked := range []bool{false, true} {
+		body := "# user startup\n"
+		if marked {
+			body = frontendBashEnvMarker
+		}
+		if err := os.WriteFile(startup, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for _, previous := range []string{"", "/user/startup"} {
+			environment := []string{"PATH=" + root + "/bin:" + root + "/vcs:" + root + "/sudo:" + root + "-neighbor/bin:/usr/bin", "BASH_ENV=" + startup, userBashEnvEnvironment + "=" + previous, "KEEP=value", "TERM=dumb", "TMUX=outer", "HERDR_ENV=1", "MEKUGI_BASE_URL=outer", "MEKUGI_RUNTIME_DIR=outer"}
+			for _, key := range []string{"CODEX_THREAD_ID", shellinstrumentation.Guard, shellinstrumentation.ShTrackerEnvironment, shellapproval.DirectoryEnvironment, shellinstrumentation.ItemEnvironment, shellinstrumentation.RealEnvironment} {
+				environment = append(environment, key+"=outer")
+			}
+			want := slices.Clone(environment[:9])
+			want = slices.Delete(want, 2, 3)
+			if marked {
+				want[0] = "PATH=" + root + "-neighbor/bin:/usr/bin"
+				want = slices.Delete(want, 1, 2)
+				if previous != "" {
+					want = append(want[:1], append([]string{"BASH_ENV=" + previous}, want[1:]...)...)
+				}
+			}
+			if got := withoutInheritedFrontend(environment); !slices.Equal(got, want) {
+				t.Fatalf("marked=%v previous=%q: scrubbed=%q want=%q", marked, previous, got, want)
+			}
+			serverWant := slices.DeleteFunc(slices.Clone(want), func(entry string) bool {
+				return strings.HasPrefix(entry, "TERM=") || strings.HasPrefix(entry, "TMUX=") || strings.HasPrefix(entry, "HERDR_") || strings.HasPrefix(entry, "MEKUGI_BASE_URL=") || strings.HasPrefix(entry, "MEKUGI_RUNTIME_DIR=")
+			})
+			if got := serverEnvironment(environment); !slices.Equal(got, append(serverWant, "TERM=xterm-256color")) {
+				t.Fatalf("server environment=%q", got)
+			}
+		}
+	}
+	for _, terminal := range []string{"", "dumb", "screen-256color"} {
+		want := terminal
+		if want == "" || want == "dumb" {
+			want = "xterm-256color"
+		}
+		if got := serverEnvironment([]string{"TERM=" + terminal}); !slices.Equal(got, []string{"TERM=" + want}) {
+			t.Fatalf("terminal %q: %q", terminal, got)
 		}
 	}
 }

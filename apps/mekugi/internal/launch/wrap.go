@@ -278,6 +278,45 @@ func execTrackHelper() string {
 const userBashEnvEnvironment = "MEKUGI_USER_BASH_ENV"
 const frontendBashEnvMarker = "# Mekugi frontend shell startup\n"
 
+// withoutInheritedFrontend removes invocation-owned shell state and restores
+// the user's startup file before another invocation installs its own frontend.
+func withoutInheritedFrontend(environment []string) []string {
+	values := map[string]string{}
+	for _, entry := range environment {
+		key, value, _ := strings.Cut(entry, "=")
+		values[key] = value
+	}
+	frontendDirectory := ""
+	if path := values["BASH_ENV"]; filepath.Base(path) == "frontend-bash-env" {
+		if body, err := os.ReadFile(path); err == nil && strings.HasPrefix(string(body), frontendBashEnvMarker) {
+			frontendDirectory = filepath.Dir(path)
+		}
+	}
+	result := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		key, value, _ := strings.Cut(entry, "=")
+		if slices.Contains([]string{"CODEX_THREAD_ID", userBashEnvEnvironment, shellinstrumentation.Guard, shellinstrumentation.ShTrackerEnvironment, shellapproval.DirectoryEnvironment, shellinstrumentation.ItemEnvironment, shellinstrumentation.RealEnvironment}, key) {
+			continue
+		}
+		if key == "BASH_ENV" && frontendDirectory != "" {
+			if previous := values[userBashEnvEnvironment]; previous != "" {
+				result = append(result, "BASH_ENV="+previous)
+			}
+			continue
+		}
+		if key == "PATH" && frontendDirectory != "" {
+			paths := filepath.SplitList(value)
+			paths = slices.DeleteFunc(paths, func(path string) bool {
+				relative, err := filepath.Rel(frontendDirectory, path)
+				return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+			})
+			entry = "PATH=" + strings.Join(paths, string(os.PathListSeparator))
+		}
+		result = append(result, entry)
+	}
+	return result
+}
+
 // frontendShellEnvironment restores the frontend PATH in Codex's Bash command
 // shells and, with a helper, reports each command's segments to the
 // A guard puts the helper ahead of the version-control tools, and defines a
@@ -287,34 +326,19 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	if len(guards) != 0 && helper == "" {
 		return nil, errors.New("Shell guard requires mekugi-exec beside mekugi; install both or use --shell-guard=false")
 	}
+	environment = withoutInheritedFrontend(environment)
 	// Login Bash may replace inherited PATH while reading /etc/profile. Its
 	// noninteractive startup file runs afterward, including for `bash -lc`.
 	previous := ""
 	basePath := ""
-	userBashEnv, userBashEnvSet := "", false
 	for _, entry := range environment {
 		if value, ok := strings.CutPrefix(entry, "BASH_ENV="); ok {
 			previous = value
-		}
-		if value, ok := strings.CutPrefix(entry, userBashEnvEnvironment+"="); ok {
-			userBashEnv, userBashEnvSet = value, true
 		}
 		if value, ok := strings.CutPrefix(entry, "PATH="); ok {
 			basePath = value
 		}
 	}
-	var inheritedGuards []string
-	if userBashEnvSet && filepath.Base(previous) == "frontend-bash-env" {
-		if data, err := os.ReadFile(previous); err == nil && strings.HasPrefix(string(data), frontendBashEnvMarker) {
-			inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(previous), shellinstrumentation.VCSDirectory), shellapproval.SudoDirectory(filepath.Join(filepath.Dir(previous), "bin")))
-			previous = userBashEnv
-		}
-	}
-	paths := filepath.SplitList(basePath)
-	paths = slices.DeleteFunc(paths, func(path string) bool {
-		return slices.Contains(inheritedGuards, filepath.Clean(path))
-	})
-	basePath = strings.Join(paths, string(os.PathListSeparator))
 	startup := frontendBashEnvMarker
 	if previous != "" {
 		startup += ". " + commandargs.Quote(previous) + "\n"
@@ -371,8 +395,8 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		startup += shellinstrumentation.Functions(sudoDirectory, shellinstrumentation.KnownPaths(basePath, tools), tools)
 	}
 
-	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
-		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, shellinstrumentation.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, shellinstrumentation.Guard+"=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=") || strings.HasPrefix(entry, shellapproval.DirectoryEnvironment+"=")
+	environment = slices.DeleteFunc(environment, func(entry string) bool {
+		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=")
 	})
 	if sudoDirectory != "" {
 		environment = append(environment, shellapproval.DirectoryEnvironment+"="+sudoDirectory)

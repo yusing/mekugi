@@ -211,40 +211,18 @@ func (l *serverLauncher) Run(ctx context.Context, start sessionapi.Start, api *s
 }
 
 func serverEnvironment(environment []string) []string {
-	values := map[string]string{}
-	for _, entry := range environment {
-		key, value, _ := strings.Cut(entry, "=")
-		values[key] = value
-	}
-	frontendDirectory := ""
-	if path := values["BASH_ENV"]; filepath.Base(path) == "frontend-bash-env" {
-		if body, err := os.ReadFile(path); err == nil && strings.HasPrefix(string(body), frontendBashEnvMarker) {
-			frontendDirectory = filepath.Dir(path)
-		}
-	}
+	terminal := ""
 	result := make([]string, 0, len(environment))
-	for _, entry := range environment {
+	for _, entry := range withoutInheritedFrontend(environment) {
 		key, value, _ := strings.Cut(entry, "=")
-		if slices.Contains([]string{"CODEX_THREAD_ID", "MEKUGI_BASE_URL", "MEKUGI_RUNTIME_DIR", userBashEnvEnvironment, "MEKUGI_EXEC_TRACK", "MEKUGI_SH_TRACKER", "MEKUGI_SUDO_DIRECTORY", "MEKUGI_VCS_ITEM", "MEKUGI_VCS_GUARD_REAL", "TMUX", "TMUX_PANE", "TERM"}, key) || strings.HasPrefix(key, "HERDR_") {
-			continue
+		if key == "TERM" {
+			terminal = value
 		}
-		if key == "BASH_ENV" && frontendDirectory != "" {
-			if previous := values[userBashEnvEnvironment]; previous != "" {
-				result = append(result, "BASH_ENV="+previous)
-			}
+		if slices.Contains([]string{"MEKUGI_BASE_URL", "MEKUGI_RUNTIME_DIR", "TMUX", "TMUX_PANE", "TERM"}, key) || strings.HasPrefix(key, "HERDR_") {
 			continue
-		}
-		if key == "PATH" && frontendDirectory != "" {
-			paths := filepath.SplitList(value)
-			paths = slices.DeleteFunc(paths, func(path string) bool {
-				relative, err := filepath.Rel(frontendDirectory, path)
-				return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
-			})
-			entry = "PATH=" + strings.Join(paths, string(os.PathListSeparator))
 		}
 		result = append(result, entry)
 	}
-	terminal := values["TERM"]
 	if terminal == "" || terminal == "dumb" {
 		terminal = "xterm-256color"
 	}
