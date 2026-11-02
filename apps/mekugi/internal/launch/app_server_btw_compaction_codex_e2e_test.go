@@ -19,6 +19,66 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
+func TestSideForkDuringMainCompactionNativeCodex(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	seed, compact := make(chan struct{}), make(chan struct{})
+	close(seed)
+	provider := &appQueueProvider{requests: make(chan []byte, 8), gates: []chan struct{}{seed, compact}}
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
+	defer server.Close()
+	defer func() {
+		select {
+		case <-compact:
+		default:
+			close(compact)
+		}
+	}()
+	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
+	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
+		cmd := exec.CommandContext(ctx, "codex", "app-server", "-c", `model_providers.preview={name="side-compaction",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd.Env, cmd.Dir = environment, workspace
+		return cmd
+	}, "")
+	next := func(label string) string {
+		t.Helper()
+		select {
+		case body := <-provider.requests:
+			return string(body)
+		case <-terminal.ctx.Done():
+			t.Fatalf("no request for %s: %v\n%s", label, terminal.ctx.Err(), terminal.screen.String())
+		}
+		return ""
+	}
+	terminal.await("Ready")
+	terminal.send("Main seed\r")
+	next("Main seed")
+	terminal.await("completed")
+	terminal.send("/compact\r")
+	next("blocked Main compaction")
+	terminal.send("/btw Side question\r")
+	if !strings.Contains(next("BTW while compacting"), "Side question") {
+		t.Fatal("BTW request lost its question")
+	}
+	terminal.await("/btw · completed")
+	terminal.send("/btw Side followup\r")
+	if !strings.Contains(next("BTW follow-up while compacting"), "Side followup") {
+		t.Fatal("BTW follow-up lost its input")
+	}
+	terminal.await("/btw · completed")
+	terminal.send("\x1b/oneoff Independent task\r")
+	if !strings.Contains(next("one-off while compacting"), "Independent task") {
+		t.Fatal("one-off request lost its task")
+	}
+	terminal.await("╭─ completed")
+	terminal.send("\x1b")
+	terminal.awaitMatch("Main remains compacting", func(frame string) bool {
+		return strings.Contains(frame, "Compacting context") && !strings.Contains(frame, "One-off")
+	})
+	close(compact)
+	terminal.await("Context compacted")
+	terminal.quit()
+}
+
 // Main reports 62% authoritative usage, leaving 38% of the configured compact
 // budget. Its fork must answer without premature compaction. Only the side
 // answer exceeds that budget, so its next question genuinely requires compaction.

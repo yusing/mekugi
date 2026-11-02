@@ -230,7 +230,7 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 	b.Pending = parts[0]
 	update, err := control.Requests.StartSide(b, sessioncontrol.SideMain{
 		Thread: control.Thread, Model: settings.Model, Effort: settings.Effort, Tier: settings.Tier,
-		Blocked: control.Starting() || control.InputPending() || control.Settings.Pending(), Replacing: control.Replacement.Pending(),
+		Blocked: control.SideForkBlocked(), Replacing: control.Replacement.Pending(),
 	}, presentationTime(clock))
 	if update.TurnRequested {
 		if b.OneOff {
@@ -351,7 +351,7 @@ func openFreshSide(attached *attachedPresentation, terminal *terminalsession.Att
 		*editor = &answer.Drafts.Editor
 	}
 	terminal.Transcript.Follow()
-	update, err := control.Requests.StartSide(*side, sessioncontrol.SideMain{Thread: control.Thread, Model: settings.Model, Effort: settings.Effort, Tier: settings.Tier, Blocked: control.Starting() || control.InputPending() || control.Settings.Pending()}, now)
+	update, err := control.Requests.StartSide(*side, sessioncontrol.SideMain{Thread: control.Thread, Model: settings.Model, Effort: settings.Effort, Tier: settings.Tier, Blocked: control.SideForkBlocked()}, now)
 	applySideUpdate(attached, terminal, control, func() time.Time { return now }, update)
 	return err
 }

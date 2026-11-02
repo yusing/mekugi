@@ -28,6 +28,12 @@ func (h *Live) Starting() bool {
 	return h.AwaitingTurn || h.Compaction.Starting() || h.Shell.phase == shellStarting
 }
 
+// SideForkBlocked waits for Main's submitted input and settings to be visible
+// in a new fork. Compaction does not submit input or own the fork's lifetime.
+func (h *Live) SideForkBlocked() bool {
+	return h.AwaitingTurn || h.Shell.phase == shellStarting || h.InputPending() || h.Settings.Pending()
+}
+
 // AuxiliaryTurn identifies host work that does not start or finish an assignment.
 func (h *Live) AuxiliaryTurn(turn string) bool {
 	return h.Shell.OwnsTurn(turn) || h.Compaction.OwnsTurn(turn) || h.CompactionStopsWait(turn)

@@ -263,6 +263,8 @@ visible slot is dismissed, so its prompts and descendant activity retire togethe
 The temporary `/btw` answer has a separate operation and exchange from the
 Side/One-off slot. Both can run concurrently, with independent follow-ups and
 cancellation. Main replacement closes both; closing either leaves the other intact.
+Main compaction does not delay their forks, input, answers or cleanup; new forks
+still wait for Main's submitted input and settings to settle.
 The existing request ledger correlates side replies and notifications to the
 side operation, independently of any renderer. An empty `/side` forks without
 starting a turn; `/oneoff TASK` creates the same owned internal fork and starts

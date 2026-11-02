@@ -4,6 +4,7 @@ import (
 	"bytes"
 	jsonv1 "encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,93 @@ import (
 
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+func TestSideForkDuringMainCompaction(t *testing.T) {
+	for _, oneoff := range []bool{false, true} {
+		for _, gate := range []string{"starting", "running", "acknowledged", "completed"} {
+			t.Run(fmt.Sprintf("oneoff=%v/%s", oneoff, gate), func(t *testing.T) {
+				u, wire := newAppServerTestUI()
+				u.startSession("main", t.TempDir())
+				appServerTestKeys(t, u, "/compact\r")
+				compact := btwTestRequest(t, wire, "thread/compact/start", "main")
+				if gate == "acknowledged" {
+					btwTestReply(t, u, compact, `{}`)
+				}
+				if gate == "running" || gate == "completed" {
+					appServerTestTurn(t, u, "compact-turn")
+				}
+				if gate == "completed" {
+					appServerTestTurnEnd(t, u, "compact-turn", "completed")
+				}
+				if oneoff {
+					oneoffTestStart(t, u, wire)
+				} else {
+					btwTestStart(t, u, wire)
+				}
+				thread, turn := "side", "side-turn"
+				if oneoff {
+					thread, turn = "oneoff", "oneoff-turn"
+				}
+				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": turn}})
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": turn, "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "independent answer", "phase": "final_answer"}})
+				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": turn, "status": "completed"}})
+				b := u.BTW
+				if oneoff {
+					b = u.side
+					if !strings.Contains(strings.Join(u.sideFrame(100, 24), "\n"), "independent answer") {
+						t.Fatal("one-off answer did not reach its view")
+					}
+					selectSideThread(t, u, u.attached.presentation.View().Main)
+				} else if len(b.Answer) != 1 || b.Answer[0].Text != "independent answer" {
+					t.Fatal("BTW answer did not reach its exchange")
+				}
+				if b.Busy || !u.Compaction.Pending() {
+					t.Fatal("side completion lost its answer or settled Main compaction")
+				}
+				appServerTestKeys(t, u, "Main waits\r")
+				if wire.Len() != 0 {
+					t.Fatalf("Main input bypassed compaction: %s", wire.String())
+				}
+				if gate == "starting" || gate == "acknowledged" {
+					appServerTestTurn(t, u, "compact-turn")
+				}
+				if gate != "completed" {
+					appServerTestTurnEnd(t, u, "compact-turn", "completed")
+				}
+				if gate != "acknowledged" {
+					if wire.Len() != 0 {
+						t.Fatal("Main input bypassed compact acknowledgement")
+					}
+					btwTestReply(t, u, compact, `{}`)
+				}
+				btwTestRequest(t, wire, "turn/start", "main")
+			})
+		}
+	}
+}
+
+func TestOneoffReplacementDuringMainCompaction(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.startSession("main", t.TempDir())
+	oneoffTestStart(t, u, wire)
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "completed"}})
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	appServerTestKeys(t, u, "/compact\r")
+	btwTestRequest(t, wire, "thread/compact/start", "main")
+	appServerTestKeys(t, u, "/oneoff replacement\r\x1b[B\r")
+	line, err := wire.ReadBytes('\n')
+	var archive btwTestRPC
+	if err != nil || jsonv1.Unmarshal(line, &archive) != nil || archive.Method != "thread/archive" || archive.Params.ThreadID != "oneoff" {
+		t.Fatalf("missing old One-off cleanup: %s", line)
+	}
+	fork := btwTestRequest(t, wire, "thread/fork", "main")
+	if !u.Compaction.Starting() || u.side == nil || strings.TrimSpace(u.side.Pending.Text) != "replacement" {
+		t.Fatal("replacement lost its task or settled Main compaction")
+	}
+	btwTestReply(t, u, archive, `{}`)
+	btwTestReply(t, u, fork, `{"thread":{"id":"replacement"}}`)
+	btwTestRequest(t, wire, "turn/start", "replacement")
+}
 
 func TestAppServerBTWCompactionRejectsBeforeProvider(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
