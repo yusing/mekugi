@@ -192,9 +192,12 @@ changes:
 		matched := false
 		for _, root := range roots {
 			candidate := filepath.Join(root, path)
-			if known[candidate] {
-				resolved = append(resolved, candidate)
-				matched = true
+			for recorded := range known {
+				if changePathContains(candidate, recorded) {
+					resolved = append(resolved, candidate)
+					matched = true
+					break
+				}
 			}
 		}
 		if !matched {

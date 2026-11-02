@@ -64,8 +64,14 @@ func (s *store) loadChangeCaptures(ctx context.Context, workspace string, index 
 	for _, path := range paths {
 		relevant[path] = true
 	}
+	relevantPath := func(path string) bool {
+		if relevant[path] {
+			return true
+		}
+		return slices.ContainsFunc(paths, func(root string) bool { return changePathContains(root, path) })
+	}
 	keeps := func(file diffmodel.ReviewFile) bool {
-		return paths == nil || relevant[file.BeforePath] || relevant[file.AfterPath]
+		return paths == nil || relevantPath(file.BeforePath) || relevantPath(file.AfterPath)
 	}
 	bytes := 0
 	retain := func(diff string) error {
@@ -159,7 +165,7 @@ changes:
 			grown = false
 			for _, capture := range captures {
 				for _, file := range capture.files {
-					if file.BeforePath != "" && file.AfterPath != "" && relevant[file.BeforePath] != relevant[file.AfterPath] {
+					if file.BeforePath != "" && file.AfterPath != "" && relevantPath(file.BeforePath) != relevantPath(file.AfterPath) {
 						relevant[file.BeforePath], relevant[file.AfterPath], grown = true, true, true
 					}
 				}

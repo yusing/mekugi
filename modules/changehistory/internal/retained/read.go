@@ -670,9 +670,18 @@ func changePathMatches(options changeReadOptions, recorded string) bool {
 		paths = options.resolvedPaths
 	}
 	for _, path := range paths {
-		if path == recorded || (options.workspace != "" && resolve(path) == resolve(recorded)) {
+		if path == recorded || (options.workspace != "" && changePathContains(resolve(path), resolve(recorded))) {
 			return true
 		}
 	}
 	return false
+}
+
+// Match retained names lexically, including descendants, without filesystem access.
+func changePathContains(root, path string) bool {
+	if root == "" || path == "" {
+		return false
+	}
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

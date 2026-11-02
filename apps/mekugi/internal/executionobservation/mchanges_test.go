@@ -188,6 +188,63 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	}
 }
 
+func TestMChangesDirectoryFilters(t *testing.T) {
+	t.Parallel()
+	f := newMChangesSliceFixture(t, "directory-filters")
+	child := filepath.Join(f.workspace, "child")
+	other := filepath.Join(f.workspace, "other")
+	for _, root := range []string{child, other} {
+		if err := os.MkdirAll(filepath.Join(root, "foo", "nested"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(root, "foobar"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	file := diffmodel.RenderReviewFile("foo/nested/selected.txt", "foo/nested/selected.txt", "before\n", "after\n")
+	sibling := diffmodel.RenderReviewFile("foobar/excluded.txt", "foobar/excluded.txt", "before\n", "after\n")
+	id := putTestChange(t, f.ctx, f.store, child, "directory-child", file, sibling)
+	otherID := putTestChange(t, f.ctx, f.store, other, "directory-other", file, sibling)
+	writeTestFile(t, filepath.Join(child, "foo/nested/selected.txt"), "after\n")
+	writeTestFile(t, filepath.Join(child, "foobar/excluded.txt"), "after\n")
+	// Retained reads must not require the selected directory or workspace to exist.
+	if err := os.RemoveAll(other); err != nil {
+		t.Fatal(err)
+	}
+	for _, view := range []string{"", "--summary", "--history"} {
+		for _, tc := range []struct {
+			ids, path string
+			count     int
+		}{
+			{id + " " + otherID, "foo", 2},
+			{otherID, "foo", 1},
+			{id, "child/foo", 1},
+			{id, commandargs.QuoteArgument(filepath.Join(child, "foo")), 1},
+			{otherID, commandargs.QuoteArgument(filepath.Join(other, "foo")), 1},
+		} {
+			command := "mchanges " + tc.ids + " " + view + " -- " + tc.path
+			stdout, stderr, status := f.run(t, command)
+			if status != 0 || stderr != "" || strings.Count(stdout, "selected.txt") < tc.count || strings.Contains(stdout, "excluded.txt") {
+				t.Fatalf("%s: stdout %q, stderr %q, status %d", command, stdout, stderr, status)
+			}
+		}
+	}
+	for _, action := range []struct{ name, want string }{{"revert", "before\n"}, {"apply", "after\n"}} {
+		command := "mchanges " + action.name + " " + id + " -- child/foo"
+		stdout, stderr, status := f.run(t, command)
+		if status != 0 || stderr != "" || readTestFile(t, filepath.Join(child, "foo/nested/selected.txt")) != action.want || readTestFile(t, filepath.Join(child, "foobar/excluded.txt")) != "after\n" {
+			t.Fatalf("%s: stdout %q, stderr %q, status %d", command, stdout, stderr, status)
+		}
+	}
+	edit := putTestChange(t, f.ctx, f.store, child, "directory-move-edit", diffmodel.RenderReviewFile("old.txt", "old.txt", "before\n", "after\n"))
+	move := putTestChange(t, f.ctx, f.store, child, "directory-move", diffmodel.RenderReviewFile("old.txt", "foo/moved.txt", "after\n", "after\n"))
+	command := "mchanges " + edit + " " + move + " -- foo"
+	stdout, stderr, status := f.run(t, command)
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "old.txt") || !strings.Contains(stdout, "foo/moved.txt") || !strings.Contains(stdout, "+after") {
+		t.Fatalf("%s: stdout %q, stderr %q, status %d", command, stdout, stderr, status)
+	}
+}
+
 func TestParseChangeRead(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()

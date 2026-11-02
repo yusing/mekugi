@@ -147,6 +147,8 @@ match retained names without reading the current filesystem. Relative operands
 first match against selected authored workspaces, then against the caller
 directory; absolute operands match directly. When the same relative name exists
 in multiple selected authored workspaces, it selects each matching captured path.
+Directory operands select captured descendants at path-component boundaries,
+including when the directory no longer exists.
 Read-only views remain available after an authored workspace is deleted. Apply
 and revert require the selected authored workspaces to exist and validate every
 selected dependency before writing. `--max-tokens` bounds displayed output. When output is
