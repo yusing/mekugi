@@ -107,7 +107,6 @@ type Summary struct {
 type listed struct {
 	ParentThread string `json:"parentThread,omitzero"`
 	ID           string `json:"id,omitzero"`
-	Starting     bool   `json:"starting,omitzero"`
 	Replay       bool   `json:"replay,omitzero"`
 	Thread       string `json:"thread,omitzero"`
 	Title        string `json:"title,omitzero"`

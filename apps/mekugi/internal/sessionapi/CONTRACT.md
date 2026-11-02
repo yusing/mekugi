@@ -71,6 +71,11 @@ acknowledgements cannot reactivate a retired subscription.
 | `request/cancel` | Cancel pending request work; body contains the original `id` |
 | `publication/ack` | Acknowledge the current connection-local delivery ID |
 
+The public `session/input`, `session/shell`, `session/answer`, `session/list`
+and `session/read` methods support external local automation clients as well as
+in-repository consumers. They remain available alongside semantic control views
+and subscriptions, under the same initialization and endpoint authority rules.
+
 Notifications use `subscription/event` with `{subscription, kind, data}` and an
 optional `delivery` receipt ID for shared publications.
 Kind is `sessions`, `snapshot`, `patch` or `exit`; data preserves the corresponding
@@ -132,8 +137,7 @@ status. Transfers share aggregate preparation capacity through response delivery
 Cancellation retires only the affected read, without ending execution.
 
 Session-list data is `{"sessions":[...]}`. Entries expose `id`, `thread`,
-`workspace`, title/start/status and waiting facts when known. `starting` marks a
-thread whose initial input is pending. The latest list replaces its predecessor.
+`workspace`, title/start/status and waiting facts when known. The latest list replaces its predecessor.
 The list contains top-level sessions only. Prepared children remain addressable
 by confirmed thread ID; `session/read` exposes their `parentThread` identity.
 This is the parent thread at admission, unchanged by runtime thread switching.
@@ -146,17 +150,16 @@ label, `defaultModel`, and an optional catalog-availability `note`. Each model
 has `id`, `label`, `efforts` and `defaultEffort`. Recent workspaces are suggestions,
 not an allowlist. Model IDs retain provider/default selection semantics.
 
-Creation accepts `workspace`, `model`, optional `effort`, `text`, ordered
-`attachments`, and optional `resume` naming a saved thread. The workspace must be an existing absolute
-directory; model/effort must be offered. Initial input may be omitted so a client
-can attach its control view before submitting. Initial slash/shell input is refused. An already
-running or pending resume receives 409.
+Creation accepts `workspace`, `model`, optional `effort`, and optional `resume`
+naming a saved thread. The workspace must be an existing absolute
+directory; model/effort must be offered. Clients submit input separately after
+creation returns readiness, using `session/input` or an attached control view.
+An already running or pending resume receives 409.
 
 Creation is server-owned once admitted. Client cancellation after admission does
-not cancel execution. A successful result is `{"id":ID}` after readiness
-and initial-message admission. Only an explicit initial-input refusal permits
-retry on a later readiness publication. Startup failure receives 502; losing
-that response is still an ambiguous outcome to the client.
+not cancel execution. A successful result is `{"id":ID}` after readiness.
+Startup failure receives 502; losing that response is still an ambiguous outcome
+to the client.
 
 End returns a successful null result after canceling the selected runtime. Server shutdown cancels
 and joins every runtime it owns. Disconnecting a stream or connector leaves
@@ -182,8 +185,8 @@ Replay starts no backend/provider and opens no writable history store.
 [Thread Control](../../../../modules/threadcontrol/SPEC.md) admits prepared native
 children through the server’s runtime owner, independently of renderer subscriptions.
 Preparation supplies frozen execution settings and an optional retained fork import.
-The server starts no assignment from ordinary creation text: confirmed creation,
-durable logical admission, attributed assignment retention and execution are distinct
+Confirmed creation, durable logical admission, attributed assignment retention
+and execution are distinct
 acknowledgements. Ordinary human input becomes available after logical child
 admission and uses that child's actual runtime. An idle child acquires a tracked
 assignment and concurrency reservation; a running child receives a steer. Its
@@ -520,7 +523,7 @@ only when its entry has no other value, and otherwise no label.
 
 ## Attachment input
 
-Creation and later input accept the same ordered attachment descriptors:
+Input and answers accept ordered attachment descriptors:
 `{"source":"path","path":PATH}` or
 `{"source":"upload","name":LABEL,"data":BASE64}`. Upload names are display labels,
 never filesystem destinations; content bytes, not a browser MIME declaration,
@@ -540,15 +543,15 @@ appends a uniquely named selection as usual. Other attachment sources reject `in
 Combined decoded uploads are limited to 32 MiB per message. Existing composer
 text/directory framing and text-envelope limits remain in force. Oversized or
 unreadable snapshot content retains explicit omission frames and a `notice` in
-the successful acknowledgement; it is not silently truncated. Creation adds
-that optional notice alongside `id`; later-input acceptance may return it alone.
+the successful acknowledgement; it is not silently truncated.
+Input acceptance may return that optional notice.
 
 Acquisition runs outside the session event loop. Admission rechecks captured
 thread/workspace and operation state, then transfers newly acquired image files
 to existing queued-input ownership. Cancellation, refusal or stale completion
 reclaims only files acquired by that request; admitted image retention supports
 continuation. Uploaded text snapshots use bytes directly, not temporary files or
-invented host paths. Retried admission reuses snapshots without rereading sources.
+invented host paths.
 
 Malformed/unsupported content has error status 400; size violations have status
 413. Status codes below refer to `error.data.status`, not HTTP responses.
@@ -559,7 +562,7 @@ leaves the outcome unknown and never triggers automatic resubmission.
 
 Operation bodies are JSON of at most 1 KiB, with these exceptions:
 
-- Creation/input and all native or remote semantic-intent bodies allow base64
+- Input and all native or remote semantic-intent bodies allow base64
   expansion of 32 MiB plus 1 MiB for text and metadata, including intents without
   attachment input.
 - Native startup and shell bodies allow at most 1 MiB.

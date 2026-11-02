@@ -107,7 +107,8 @@ func TestNativeServerSavedResume(t *testing.T) {
 			t.Fatalf("created identity %q: %v", created.ID, err)
 		}
 	}
-	create(sessionapi.Start{Workspace: workspace, Model: "codex", Text: "saved first input"})
+	create(sessionapi.Start{Workspace: workspace, Model: "codex"})
+	serverRPCCall(t, rpc, "session/input", "main", sessionapi.InputRequest{Text: "saved first input"})
 	events := serverRPCSubscribe(t, rpc, "main")
 	serverCLIEvent(t, events, "", "saved host answer 1")
 	events.Close()

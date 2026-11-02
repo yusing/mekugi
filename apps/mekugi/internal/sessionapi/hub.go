@@ -65,8 +65,6 @@ type managedSession struct {
 	ready          chan string
 	id             string
 	err            error
-	initial        *PreparedInput
-	inputContext   context.Context
 	inputWorkspace string
 }
 
@@ -151,22 +149,13 @@ func (h *Hub) startSession(requestContext context.Context, body jsontext.Value) 
 	if err != nil {
 		return nil, runtimeStartFailure(err)
 	}
-	if len(start.Attachments) > 0 {
-		stopCleanup := context.AfterFunc(requestContext, m.initial.Cleanup)
-		defer stopCleanup()
-	}
 	id, err := m.waitReady(requestContext)
 	if err != nil {
 		return nil, runtimeStartFailure(err)
 	}
-	notice := ""
-	if m.initial != nil {
-		notice = m.initial.Draft.AttachmentNotice
-	}
 	return struct {
-		ID     string `json:"id"`
-		Notice string `json:"notice,omitempty"`
-	}{id, notice}, nil
+		ID string `json:"id"`
+	}{id}, nil
 }
 
 // admitRuntime owns construction and registration for every execution input.
@@ -176,10 +165,9 @@ func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start St
 	if h.launcher == nil {
 		return nil, nil, rpcFailure(405, "This server does not start threads.")
 	}
-	var prepared *PreparedInput
 	requestedThread := start.Resume
 	if start.Replay != nil {
-		if start.Workspace != "" || start.Model != "" || start.Effort != "" || start.Text != "" || len(start.Attachments) != 0 || start.Resume != "" {
+		if start.Workspace != "" || start.Model != "" || start.Effort != "" || start.Resume != "" {
 			return nil, nil, rpcFailure(400, "Recorded playback cannot include live session fields.")
 		}
 		replay := start.Replay
@@ -188,10 +176,6 @@ func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start St
 		}
 		requestedThread = replay.Session
 	} else {
-		start.Text = strings.TrimSpace(start.Text)
-		if strings.HasPrefix(start.Text, "/") || strings.HasPrefix(start.Text, "!") {
-			return nil, nil, rpcFailure(400, "Initial input must be a message, not a slash or shell command.")
-		}
 		info, err := os.Stat(start.Workspace)
 		if !filepath.IsAbs(start.Workspace) || err != nil || !info.IsDir() {
 			return nil, nil, rpcFailure(400, "Choose an existing absolute workspace directory.")
@@ -208,22 +192,7 @@ func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start St
 				return nil, nil, rpcFailure(400, err.Error())
 			}
 		}
-		if start.Text != "" || len(start.Attachments) > 0 {
-			var failure *RPCError
-			prepared, failure = acquireInput(h.preparations, func() (*PreparedInput, error) {
-				return h.launcher.PrepareInput(requestContext, start.Workspace, InputRequest{Text: start.Text, Attachments: start.Attachments})
-			})
-			if failure != nil {
-				return nil, nil, failure
-			}
-		}
 	}
-	scheduled := false
-	defer func() {
-		if !scheduled {
-			prepared.Cleanup()
-		}
-	}()
 	h.mu.Lock()
 	if h.stopping || h.ctx.Err() != nil || requestContext.Err() != nil {
 		h.mu.Unlock()
@@ -256,7 +225,7 @@ func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start St
 	if run == nil {
 		run = func(ctx context.Context, server *Server) error { return h.launcher.Run(ctx, start, server) }
 	}
-	m := &managedSession{parent: parentRuntime, parentThread: parent, run: run, operation: rand.Text(), resume: requestedThread, ctx: ctx, server: server, initial: prepared, inputContext: ctx, inputWorkspace: start.Workspace, cancel: cancel, done: make(chan struct{}), ready: make(chan string, 1)}
+	m := &managedSession{parent: parentRuntime, parentThread: parent, run: run, operation: rand.Text(), resume: requestedThread, ctx: ctx, server: server, inputWorkspace: start.Workspace, cancel: cancel, done: make(chan struct{}), ready: make(chan string, 1)}
 	m.server.activeThread = h.activeThread
 	m.server.questionOwner = func(call string) *Server { return h.questionOwner(m.server, call) }
 	m.server.family = func() (*Family, *changes.ReviewView) {
@@ -264,9 +233,6 @@ func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start St
 			return h.Family(frame.Session.Thread)
 		}
 		return nil, nil
-	}
-	if len(start.Attachments) > 0 {
-		m.inputContext = requestContext
 	}
 	var subscription *rpcSubscription
 	var attach NativeRequest
@@ -282,8 +248,7 @@ func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start St
 	h.running[m] = struct{}{}
 	h.wg.Add(1)
 	h.mu.Unlock()
-	scheduled = true
-	go h.run(ctx, m, start)
+	go h.run(ctx, m)
 	if subscription != nil {
 		attach.Context = requestContext
 		if failure := server.Native().deliver(attach); failure != nil {
@@ -320,9 +285,8 @@ func runtimeStartFailure(err error) *RPCError {
 	return rpcFailure(502, "Thread startup failed.")
 }
 
-func (h *Hub) run(ctx context.Context, m *managedSession, start Start) {
+func (h *Hub) run(ctx context.Context, m *managedSession) {
 	defer h.wg.Done()
-	defer m.initial.Cleanup()
 	m.server.reserveThread = func(thread string) error {
 		h.mu.Lock()
 		defer h.mu.Unlock()
@@ -373,15 +337,7 @@ func (h *Hub) run(ctx context.Context, m *managedSession, start Start) {
 		h.mu.Unlock()
 		close(m.done)
 	}()
-	var reply <-chan string
-	var attemptedSummary []byte
-	var inputThread string
 	ready := false
-	pending := start.Text != "" || len(start.Attachments) > 0
-	var inputCanceled <-chan struct{}
-	if len(start.Attachments) > 0 {
-		inputCanceled = m.inputContext.Done()
-	}
 	for {
 		select {
 		case m.err = <-result:
@@ -390,60 +346,12 @@ func (h *Hub) run(ctx context.Context, m *managedSession, start Start) {
 			m.cancel()
 			m.err = <-result
 			return
-		case <-inputCanceled:
-			inputCanceled = nil
-			if !m.initial.Admitted() {
-				m.cancel()
-				m.err = <-result
-				return
-			}
-		case refusal := <-reply:
-			reply = nil
-			if refusal != "" {
-				// A newer summary may have arrived while this answer was
-				// pending. Retry only that new state after an explicit refusal;
-				// unchanged readiness and unknown outcomes never resubmit.
-				m.server.mu.Lock()
-				if !bytes.Equal(attemptedSummary, m.server.summary) {
-					select {
-					case m.server.summaryChanged <- struct{}{}:
-					default:
-					}
-				}
-				m.server.mu.Unlock()
-				continue
-			}
-			pending = false
-			inputCanceled = nil
-			if !ready {
-				m.ready <- m.id
-				ready = true
-			}
-			h.mu.Lock()
-			if s := h.sessions[m.id]; s != nil {
-				next := *s
-				next.entry.Starting = false
-				h.sessions[m.id] = &next
-				h.publishList()
-			}
-			h.mu.Unlock()
 		case <-m.server.summaryChanged:
 			m.server.mu.Lock()
 			summary := m.server.identity
-			summaryBytes := m.server.summary
 			m.server.mu.Unlock()
 			if summary.Thread == "" {
 				continue
-			}
-			if pending {
-				if inputThread == "" {
-					inputThread = summary.Thread
-				}
-				if summary.Thread != inputThread || summary.Workspace != m.inputWorkspace {
-					m.cancel()
-					m.err = <-result
-					return
-				}
 			}
 			h.mu.Lock()
 			conflict := false
@@ -467,42 +375,12 @@ func (h *Hub) run(ctx context.Context, m *managedSession, start Start) {
 			entry := projectSummary(summary)
 			entry.ParentThread = m.parentThread
 			entry.ID = m.id
-			entry.Starting = !ready
 			h.sessions[m.id] = &listedSession{entry: entry, server: m.server, runtime: m}
 			h.publishList()
 			h.mu.Unlock()
-			if !summary.Ready || ready || reply != nil {
-				continue
-			}
-			if !pending {
-				h.mu.Lock()
-				if current := h.sessions[m.id]; current != nil {
-					next := *current
-					next.entry.Starting = false
-					h.sessions[m.id] = &next
-					h.publishList()
-				}
-				h.mu.Unlock()
+			if summary.Ready && !ready {
 				m.ready <- m.id
 				ready = true
-				continue
-			}
-			answer := make(chan string, 1)
-			intent := Intent{Action: Send, Text: start.Text, Prepared: m.initial, Thread: inputThread, Workspace: m.inputWorkspace, Context: m.inputContext, Reply: answer}
-			select {
-			case m.server.intents <- intent:
-				reply = answer
-				attemptedSummary = summaryBytes
-			case m.err = <-result:
-				return
-			case <-inputCanceled:
-				m.cancel()
-				m.err = <-result
-				return
-			case <-ctx.Done():
-				m.cancel()
-				m.err = <-result
-				return
 			}
 		}
 	}

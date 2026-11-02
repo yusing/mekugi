@@ -79,7 +79,7 @@ func TestManagedActiveThreadResolutionUsesOwnedRegistry(t *testing.T) {
 	launcher := newManagedLauncher()
 	hub := NewHub(t.Context(), launcher)
 	defer hub.Close()
-	response := managedRequest(t, hub, "session/start", "", Start{Workspace: t.TempDir(), Model: "codex", Text: "first"})
+	response := managedRequest(t, hub, "session/start", "", Start{Workspace: t.TempDir(), Model: "codex"})
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("create: %d: %s", response.Code, response.Body)
 	}
@@ -172,14 +172,15 @@ func TestManagedRuntimeInputAndClientDisconnect(t *testing.T) {
 	launcher := newManagedLauncher()
 	hub := NewHub(ctx, launcher)
 	defer hub.Close()
-	start := Start{Workspace: t.TempDir(), Model: "codex", Text: "first"}
+	start := Start{Workspace: t.TempDir(), Model: "codex"}
 	rec := managedRequest(t, hub, "session/start", "", start)
 	if rec.Code != 202 || !strings.Contains(rec.Body.String(), "logical-1") {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body)
 	}
-	first := <-launcher.inputs
-	if first.Text != "first" || first.Thread != "logical-1" || first.Workspace != start.Workspace {
-		t.Fatalf("first input: %+v", first)
+	select {
+	case input := <-launcher.inputs:
+		t.Fatalf("creation submitted input: %+v", input)
+	default:
 	}
 	viewer := openTestRPC(t, hub.Handler(), false)
 	if _, err := viewer.Subscribe(t.Context(), "session/subscribe", RPCParams{Thread: "logical-1"}); err != nil {
@@ -196,7 +197,7 @@ func TestManagedRuntimeInputAndClientDisconnect(t *testing.T) {
 		t.Fatalf("later: %d %s", rec.Code, rec.Body)
 	}
 	later := <-launcher.inputs
-	if later.Thread != first.Thread || later.Workspace != first.Workspace || later.Text != "later" {
+	if later.Thread != "logical-1" || later.Workspace != start.Workspace || later.Text != "later" {
 		t.Fatalf("later input: %+v", later)
 	}
 	rec = managedRequest(t, hub, "session/end", "logical-1", nil)

@@ -1,16 +1,13 @@
 package sessionapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json/jsontext"
-	json "encoding/json/v2"
 	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -113,184 +110,6 @@ func TestAttachmentCanceledAfterDeliveryCannotTransfer(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("canceled acquired image not cleaned", err)
-	}
-}
-
-type attachmentLauncher struct {
-	prepare func(context.Context, string, InputRequest) (*PreparedInput, error)
-	run     func(context.Context, Start, *Server) error
-}
-
-func (l attachmentLauncher) StartOptions(context.Context) (StartOptions, error) {
-	return StartOptions{Models: []ModelGroup{{Models: []Model{{ID: "model"}}}}}, nil
-}
-func (l attachmentLauncher) PrepareInput(ctx context.Context, cwd string, input InputRequest) (*PreparedInput, error) {
-	return l.prepare(ctx, cwd, input)
-}
-func (l attachmentLauncher) Run(ctx context.Context, start Start, server *Server) error {
-	return l.run(ctx, start, server)
-}
-
-func TestManagedAttachmentInitialRetryKeepsSnapshot(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	var prepared atomic.Int32
-	var snapshot *PreparedInput
-	updates := make(chan []byte, 8)
-	launcher := attachmentLauncher{
-		prepare: func(context.Context, string, InputRequest) (*PreparedInput, error) {
-			prepared.Add(1)
-			snapshot = NewPreparedInput(composer.Draft{Text: "captured", AttachmentNotice: "file contents omitted"}, nil)
-			return snapshot, nil
-		},
-		run: func(ctx context.Context, start Start, s *Server) error {
-			if err := s.SetSummary(Summary{Thread: "thread", Workspace: start.Workspace, Ready: true}); err != nil {
-				return err
-			}
-			select {
-			case first := <-s.Intents():
-				if err := s.SetSummary(Summary{Thread: "thread", Workspace: start.Workspace, Ready: true, Waiting: 1}); err != nil {
-					return err
-				}
-				// Wait for the hub's list publication, proving that the newer
-				// summary was consumed while the first answer was outstanding.
-				observed := false
-				for !observed {
-					select {
-					case update := <-updates:
-						observed = bytes.Contains(update, []byte(`"waiting":1`))
-					case <-ctx.Done():
-						return ctx.Err()
-					}
-				}
-				first.Reply <- "Try again when ready."
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-			select {
-			case intent := <-s.Intents():
-				if intent.Prepared != snapshot || intent.Prepared.Draft.Text != "captured" {
-					t.Error("first input was reacquired on retry")
-				}
-				if !intent.Prepared.Admit(intent.Context, make(map[string]bool)) {
-					t.Error("retry lost snapshot ownership")
-				}
-				intent.Reply <- ""
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-			<-ctx.Done()
-			return ctx.Err()
-		},
-	}
-	hub := NewHub(ctx, launcher)
-	hub.viewers[updates] = struct{}{}
-	defer hub.Close()
-	response := managedRequest(t, hub, "session/start", "", Start{Workspace: t.TempDir(), Model: "model", Attachments: []Attachment{{Source: "upload", Name: "empty.txt", Data: new("")}}})
-	if response.Code != http.StatusAccepted || prepared.Load() != 1 || !snapshot.Admitted() {
-		t.Fatalf("first attachment: status=%d preparations=%d admitted=%v", response.Code, prepared.Load(), snapshot.Admitted())
-	}
-}
-
-func TestManagedAttachmentCancellationBeforeInitialAdmission(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	path := filepath.Join(t.TempDir(), "acquired")
-	if err := os.WriteFile(path, nil, 0600); err != nil {
-		t.Fatal(err)
-	}
-	started, stopped := make(chan struct{}), make(chan struct{})
-	launcher := attachmentLauncher{
-		prepare: func(context.Context, string, InputRequest) (*PreparedInput, error) {
-			return NewPreparedInput(composer.Draft{Text: "snapshot"}, []string{path}), nil
-		},
-		run: func(ctx context.Context, _ Start, s *Server) error {
-			close(started)
-			defer close(stopped)
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-s.Intents():
-				t.Error("unready canceled first input was submitted")
-				return nil
-			}
-		},
-	}
-	hub := NewHub(ctx, launcher)
-	defer hub.Close()
-	body, _ := json.Marshal(Start{Workspace: t.TempDir(), Model: "model", Attachments: []Attachment{{Source: "upload", Name: "image", Data: new("")}}})
-	requestCtx, disconnect := context.WithCancel(ctx)
-	finished := make(chan struct{})
-	go func() {
-		hub.startSession(requestCtx, body)
-		close(finished)
-	}()
-	<-started
-	disconnect()
-	<-finished
-	select {
-	case <-stopped:
-	case <-ctx.Done():
-		t.Fatal("canceled first-input runtime not joined")
-	}
-	hub.Close()
-	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("canceled first-input image survived", err)
-	}
-}
-
-func TestManagedAttachmentDisconnectAfterAdmission(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	path := filepath.Join(t.TempDir(), "acquired")
-	if err := os.WriteFile(path, nil, 0600); err != nil {
-		t.Fatal(err)
-	}
-	admitted, reply, stopped := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	launcher := attachmentLauncher{
-		prepare: func(context.Context, string, InputRequest) (*PreparedInput, error) {
-			return NewPreparedInput(composer.Draft{Text: "snapshot"}, []string{path}), nil
-		},
-		run: func(ctx context.Context, start Start, s *Server) error {
-			defer close(stopped)
-			if err := s.SetSummary(Summary{Thread: "thread", Workspace: start.Workspace, Ready: true}); err != nil {
-				return err
-			}
-			select {
-			case intent := <-s.Intents():
-				if !intent.Prepared.Admit(intent.Context, make(map[string]bool)) {
-					t.Error("first input refused")
-				}
-				close(admitted)
-				<-reply
-				intent.Reply <- ""
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-			<-ctx.Done()
-			return ctx.Err()
-		},
-	}
-	hub := NewHub(ctx, launcher)
-	defer hub.Close()
-	body, _ := json.Marshal(Start{Workspace: t.TempDir(), Model: "model", Attachments: []Attachment{{Source: "upload", Name: "image", Data: new("")}}})
-	requestCtx, disconnect := context.WithCancel(ctx)
-	finished := make(chan struct{})
-	go func() {
-		hub.startSession(requestCtx, body)
-		close(finished)
-	}()
-	<-admitted
-	disconnect()
-	<-finished
-	close(reply)
-	if _, err := os.Stat(path); err != nil {
-		t.Fatal("disconnect reclaimed admitted image", err)
-	}
-	select {
-	case <-stopped:
-		t.Fatal("disconnect stopped admitted execution")
-	default:
 	}
 }
 

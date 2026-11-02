@@ -88,8 +88,6 @@ export type Start = {
   "workspace": string;
   "model": string;
   "effort"?: string;
-  "text": string;
-  "attachments"?: Array<Attachment>;
   "resume"?: string;
 };
 
@@ -146,7 +144,6 @@ export type NativeExit = {
 export type listed = {
   "parentThread"?: string;
   "id"?: string;
-  "starting"?: boolean;
   "replay"?: boolean;
   "thread"?: string;
   "title"?: string;
@@ -318,17 +315,17 @@ export type ReplayStart = {
   "childReplySummary"?: (boolean | null);
 };
 
+export type ModelGroup = {
+  "label": string;
+  "models": Array<Model>;
+};
+
 export type Attachment = {
   "source": string;
   "path"?: string;
   "name"?: string;
   "data"?: (string | null);
   "inline"?: boolean;
-};
-
-export type ModelGroup = {
-  "label": string;
-  "models": Array<Model>;
 };
 
 export type QuestionAnswer = {

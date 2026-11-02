@@ -1524,13 +1524,14 @@ func TestRunServerLifecycle(t *testing.T) {
 	defer rpc.Close()
 	workspace := t.TempDir()
 	create := func(text string) string {
-		data := serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: workspace, Model: "codex", Text: text})
+		data := serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: workspace, Model: "codex"})
 		var created struct {
 			ID string `json:"id"`
 		}
 		if err := jsonv2.Unmarshal(data, &created); err != nil || created.ID != "main" {
 			t.Fatalf("logical identity %q: %v", created.ID, err)
 		}
+		serverRPCCall(t, rpc, "session/input", created.ID, sessionapi.InputRequest{Text: text})
 		return created.ID
 	}
 	thread := create("initial message")

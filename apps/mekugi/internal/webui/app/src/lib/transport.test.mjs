@@ -437,15 +437,13 @@ test(
     await submission;
     assert.equal(sockets[1].readyState, 1);
     assert.equal(sockets[0].readyState, 1);
-    for (const method of ["session/start", "session/input"]) {
-      await connector.request(method, {
-        thread: "same",
-        body: { text: "", attachments: [{ source: "path", path: "notes.txt" }] },
-      });
-      assert.equal(sockets[1].sent.at(-1).method, method);
-      assert.equal(sockets[1].readyState, 1);
-      assert.equal(sockets[0].readyState, 1);
-    }
+    await connector.request("session/input", {
+      thread: "same",
+      body: { text: "", attachments: [{ source: "path", path: "notes.txt" }] },
+    });
+    assert.equal(sockets[1].sent.at(-1).method, "session/input");
+    assert.equal(sockets[1].readyState, 1);
+    assert.equal(sockets[0].readyState, 1);
     assert.equal(sockets.length, 2);
     handler = (socket, message) => {
       if (!initialize(socket, message)) socket.reply(message, null);
@@ -592,7 +590,7 @@ test(
     const controller = new AbortController();
     const pending = waiting.request(
       "session/start",
-      { body: { text: "once" } },
+      { body: { workspace: "/workspace", model: "codex" } },
       { signal: controller.signal },
     );
     await initialization.promise;

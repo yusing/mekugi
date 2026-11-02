@@ -35,7 +35,7 @@ var rpcMethods = map[string]rpcMethod{
 	"session/list":        {limit: 1024},
 	"session/read":        {limit: 1024},
 	"session/page":        {limit: 1024},
-	"session/start":       {limit: InputBodyLimit},
+	"session/start":       {limit: 1024},
 	"session/end":         {limit: 1024},
 	"session/subscribe":   {limit: 1024},
 	"session/input":       {limit: InputBodyLimit},

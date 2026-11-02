@@ -83,17 +83,18 @@ func TestConnectorServerAttachmentInputAndDisconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: workspace, Model: "codex", Attachments: []sessionapi.Attachment{
-		{Source: "upload", Name: "first.txt", Data: new(base64.StdEncoding.EncodeToString([]byte("first uploaded bytes")))},
-		{Source: "path", Path: "host.txt"},
-		{Source: "upload", Name: "../../display-label.png", Data: new(base64.StdEncoding.EncodeToString(image))},
-	}})
+	data := serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: workspace, Model: "codex"})
 	var created struct {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(data, &created); err != nil || created.ID != "main" {
 		t.Fatalf("created logical thread: %q, %v", created.ID, err)
 	}
+	serverRPCCall(t, rpc, "session/input", created.ID, sessionapi.InputRequest{Attachments: []sessionapi.Attachment{
+		{Source: "upload", Name: "first.txt", Data: new(base64.StdEncoding.EncodeToString([]byte("first uploaded bytes")))},
+		{Source: "path", Path: "host.txt"},
+		{Source: "upload", Name: "../../display-label.png", Data: new(base64.StdEncoding.EncodeToString(image))},
+	}})
 	events := serverRPCSubscribe(t, rpc, created.ID)
 	serverCLIEvent(t, events, "", "offline host response 1")
 	serverRPCCall(t, rpc, "session/input", created.ID, sessionapi.InputRequest{Attachments: []sessionapi.Attachment{{Source: "upload", Name: "later.txt", Data: new(base64.StdEncoding.EncodeToString([]byte("later uploaded bytes")))}}})

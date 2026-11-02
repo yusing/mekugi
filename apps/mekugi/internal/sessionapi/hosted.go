@@ -31,14 +31,12 @@ type Model struct {
 	DefaultEffort string   `json:"defaultEffort,omitzero"`
 }
 type Start struct {
-	Native      *NativeStart `json:"-"`
-	Replay      *ReplayStart `json:"replay,omitzero"`
-	Workspace   string       `json:"workspace"`
-	Model       string       `json:"model"`
-	Effort      string       `json:"effort,omitzero"`
-	Text        string       `json:"text"`
-	Attachments []Attachment `json:"attachments,omitempty"`
-	Resume      string       `json:"resume,omitzero"`
+	Native    *NativeStart `json:"-"`
+	Replay    *ReplayStart `json:"replay,omitzero"`
+	Workspace string       `json:"workspace"`
+	Model     string       `json:"model"`
+	Effort    string       `json:"effort,omitzero"`
+	Resume    string       `json:"resume,omitzero"`
 }
 
 // ReplayStart selects retained history, never live input or a client workspace.

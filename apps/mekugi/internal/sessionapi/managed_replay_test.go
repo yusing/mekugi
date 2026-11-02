@@ -75,7 +75,7 @@ func TestManagedReplayValidationBeforeLiveAcquisition(t *testing.T) {
 	defer hub.Close()
 	cases := []Start{
 		{Workspace: "/workspace"}, {Model: "codex"}, {Effort: "high"},
-		{Text: "message"}, {Resume: "other"}, {Attachments: []Attachment{{}}},
+		{Resume: "other"},
 	}
 	for _, start := range cases {
 		start.Replay = &ReplayStart{Session: "saved"}
