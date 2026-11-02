@@ -80,8 +80,8 @@ native request metadata remains unchanged on the provider wire.
   distinct from a measured zero. Inspection uses live session facts or retained
   observations without starting work or restoring an inactive runtime.
 - `compact` schedules an authenticated self-directed context checkpoint and then
-  continues unfinished work once. Agents choose safe checkpoints using judgment
-  and existing context inspection; there is no automatic threshold.
+  continues unfinished work once. Context-usage reminders appear starting at 50%;
+  agents choose safe checkpoints rather than compacting at an automatic threshold.
 - `wait_agent` accepts `target?: string[] | "all"`, `wait_mode?: "any" | "all"`,
   `timeout_ms?: integer`, and `compact?: boolean`. Omitted target means `"all"`;
   omitted mode means `"any"`; omitted compaction means false.
