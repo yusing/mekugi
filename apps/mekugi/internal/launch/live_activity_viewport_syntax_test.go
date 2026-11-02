@@ -103,13 +103,6 @@ func TestLiveActivityViewportSyntaxMatchesEager(t *testing.T) {
 				v.Following, v.Offset = false, 2
 			}
 			check("scroll inside early run", 70, 9)
-			for _, v := range []*activityAdapter{lazy, eager} {
-				if _, ok := v.QuestionRows[12]; !ok {
-					t.Fatal("fixture lacks the cross-pane navigation target")
-				}
-				v.PendingTarget = 12
-			}
-			check("cross pane jump", 70, 9)
 			check("narrow resize", 34, 6)
 			for _, v := range []*activityAdapter{lazy, eager} {
 				v.Painter.Theme = diffrender.LightTheme

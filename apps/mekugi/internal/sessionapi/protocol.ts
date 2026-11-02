@@ -1351,7 +1351,6 @@ export type Facts = {
   "Unconfirmed": boolean;
   "ContextBoundary": boolean;
   "Suppressed": boolean;
-  "RosterOnly": boolean;
   "OutputFailed": boolean;
   "OutputComplete": boolean;
   "ItemComplete": boolean;

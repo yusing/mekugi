@@ -139,22 +139,6 @@ func TestLiveActivityClippedNarrativeRetainsDialog(t *testing.T) {
 	}
 }
 
-func TestLiveActivitySharedEventJumpFlash(t *testing.T) {
-	v := sharedEventsView(true)
-	entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: "/root/worker", Kind: "final", Text: "Answer to the assignment.", Observed: v.Now()}
-	v.appendEntry(entry, parseLiveActivity(entry))
-	before := v.RenderFeed(60, 20)
-	v.PendingTarget = 1
-	after := v.RenderFeed(60, 20)
-	fill := v.Painter.Theme.SelectionBackground()
-	if strings.Contains(after.Lines[0], fill) || strings.Contains(after.Lines[1], fill) || !strings.Contains(after.Lines[2], fill) {
-		t.Fatal("jump flash must highlight the answer, not the event heading")
-	}
-	if ansi.Strip(strings.Join(before.Lines, "\n")) != ansi.Strip(strings.Join(after.Lines, "\n")) || v.QuestionRows[1] != 0 {
-		t.Fatal("jump flash changed content or lost the navigation anchor")
-	}
-}
-
 func TestLiveActivitySharedNarrativeDialogRefresh(t *testing.T) {
 	v := sharedEventsView(true)
 	entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: "/root/worker", Kind: "text", Text: strings.Repeat("First paragraph.\n\n", 12), Observed: v.Now(),

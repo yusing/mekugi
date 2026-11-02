@@ -35,7 +35,7 @@ func TestPublicationPreservesFactsAndDetachesValues(t *testing.T) {
 		Observed: now, Completed: now.Add(time.Second), Spans: []TextSpan{{Start: 0, End: 5, Kind: FileToken}},
 		InputGroup: "input-1", Question: 12, Activity: 13, AssignmentTo: "/root/b", AssignmentText: "task",
 		Running: true, Live: true, Restored: true, Unconfirmed: true, ContextBoundary: true,
-		Suppressed: true, RosterOnly: true, OutputFailed: true, Outputs: map[int]int{1: 7, 2: 8},
+		Suppressed: true, OutputFailed: true, Outputs: map[int]int{1: 7, 2: 8},
 	}
 	var model Model[modelSource, modelAgent]
 	model.Accept(42)

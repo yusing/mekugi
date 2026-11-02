@@ -28,7 +28,7 @@ type Facts struct {
 	AssignmentTo, AssignmentText                          string
 	Assignment                                            bool
 	Running, Live, Restored, Unconfirmed, ContextBoundary bool
-	Suppressed, RosterOnly, OutputFailed, OutputComplete  bool
+	Suppressed, OutputFailed, OutputComplete              bool
 	ItemComplete                                          bool
 	Completed                                             time.Time
 	Outputs                                               map[int]int

@@ -5,7 +5,6 @@ package terminalview
 import (
 	"cmp"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -73,7 +72,6 @@ type View struct {
 	Unseen          int
 	StatusLabel     string
 	RoleColors      map[string]string
-	LivePreviews    map[string][]string // Temporary caller-local transcript replacements.
 	FeedOnly        bool
 	Conversation    bool                        // Full, unclipped messages in the displayed transcript.
 	ChildrenOnly    bool                        // Main owns root activity; this view retains child entries.
@@ -116,7 +114,6 @@ type View struct {
 	FeedQuestions       []uint64
 	CopyRows            [][]terminalui.CopySpan
 	QuestionRows        map[uint64]int
-	PendingTarget       uint64 // Cross-pane jump resolved after the destination layout is rendered.
 	// QuestionHover is the pointed viewport row plus one; zero points at none.
 	QuestionHover                        int
 	EditHover                            int // Pointed viewport row plus one, not the whole capture.
@@ -1273,34 +1270,11 @@ func (v *View) LayoutFeed(width int) Feed {
 	if v.Expansion != 0 {
 		clip = 0
 	}
-	// A cross-pane jump flashes its target from the first frame that shows it.
-	if v.PendingTarget != 0 && slices.ContainsFunc(v.entries, func(entry activitypresentation.Entry) bool {
-		return entry.Seq == v.PendingTarget && v.Visible(entry)
-	}) {
-		v.FlashQuestion, v.FlashUntil = v.PendingTarget, v.Now().Add(700*time.Millisecond)
-	}
 	flash := uint64(0)
 	if v.Now().Before(v.FlashUntil) {
 		flash = v.FlashQuestion
 	}
 	var feed Feed
-	lastPreview := make(map[string]int)
-	for i, entry := range v.entries {
-		if v.Visible(entry) && len(v.LivePreviews[entry.Agent]) > 0 {
-			lastPreview[entry.Agent] = i
-		}
-	}
-	appendPreview := func(agent string) {
-		if len(feed.Lines) > 0 {
-			feed.separator()
-		}
-		head := len(feed.Lines)
-		lines := v.LivePreviews[agent]
-		for range lines {
-			feed.Heads = append(feed.Heads, head)
-		}
-		feed.appendRows(Run{Lines: lines, Snippets: make([]Snippet, len(lines)), Questions: make([]uint64, len(lines))})
-	}
 	for i := 0; i < len(v.entries); {
 		if !v.Visible(v.entries[i]) {
 			i++
@@ -1308,13 +1282,6 @@ func (v *View) LayoutFeed(width int) Feed {
 		}
 		agent := v.entries[i].Agent
 		shared := v.sharedEvent(i)
-		if last, ok := lastPreview[agent]; ok {
-			if i == last {
-				appendPreview(agent)
-			}
-			i++
-			continue
-		}
 		last, j := i, i
 		for ; j < len(v.entries); j++ {
 			if !v.Visible(v.entries[j]) {
@@ -1393,12 +1360,6 @@ func (v *View) LayoutFeed(width int) Feed {
 		feed.appendRows(run)
 		feed.Spans = append(feed.Spans, Span{key.First, head, len(feed.Lines)})
 		i = j
-	}
-	// A preview can arrive before the caller's first transcript entry.
-	for _, agent := range slices.Sorted(maps.Keys(v.LivePreviews)) {
-		if _, ok := lastPreview[agent]; !ok {
-			appendPreview(agent)
-		}
 	}
 	v.retainRuns()
 	return feed
@@ -1538,13 +1499,9 @@ func (v *View) renderRun(first uint64, agent string, observed time.Time, blocks 
 	return run
 }
 
-// viewportPosition resolves scrolling and pending navigation targets without
-// committing viewport geometry.
+// viewportPosition resolves scrolling without committing viewport geometry.
 func (v *View) viewportPosition(feed Feed, rows int) (int, bool) {
 	offset, following := v.Offset, v.Following
-	if target, ok := v.QuestionRows[v.PendingTarget]; v.PendingTarget != 0 && ok {
-		offset, following = max(0, target-1), false
-	}
 	if following {
 		offset = len(feed.Lines) - rows
 	}
@@ -1560,7 +1517,6 @@ func (v *View) Viewport(feed Feed, rows int) []string {
 	}
 	v.Offset, v.Following = v.viewportPosition(feed, rows)
 	v.imageViewport(feed, rows)
-	v.PendingTarget = 0
 	v.FeedSpans = feed.Spans
 	v.FeedLines, v.FeedRows = len(feed.Lines), max(1, rows)
 	if v.Following {

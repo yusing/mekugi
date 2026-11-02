@@ -219,7 +219,6 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		return ansi.Strip(strings.Join(p.ui.testActivity(p.ui.shell.Agents).RenderFeed(120, 80).Lines, "\n"))
 	}
 	terminalTest(p.ui).LiveHidden = true
-	p.ui.shell.Agents.LivePreviews = nil
 	p.until("tester applies")
 	// Hold the real rerun process at its first output boundary until the live
 	// frame has been inspected. A zero-delay script can otherwise finish before

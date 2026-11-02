@@ -48,7 +48,7 @@ func (v *View) FreezeTranscript() *View {
 	frozen.outputVersions, frozen.outputCache = maps.Clone(v.outputVersions), maps.Clone(v.outputCache)
 	frozen.completed, frozen.collapsed = maps.Clone(v.completed), maps.Clone(v.collapsed)
 	frozen.Paced, frozen.Passed, frozen.Events = maps.Clone(v.Paced), maps.Clone(v.Passed), maps.Clone(v.Events)
-	frozen.RoleColors, frozen.LivePreviews = maps.Clone(v.RoleColors), maps.Clone(v.LivePreviews)
+	frozen.RoleColors = maps.Clone(v.RoleColors)
 	frozen.Disclosure = maps.Clone(v.Disclosure)
 	for source, annotations := range frozen.Disclosure {
 		frozen.Disclosure[source] = maps.Clone(annotations)
