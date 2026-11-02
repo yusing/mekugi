@@ -105,7 +105,7 @@ func TestTemporaryUsageLimitWaitingAndClose(t *testing.T) {
 						btwTestReply(t, u, btwTestRequest(t, wire, "thread/archive", "side"), `{}`)
 					} else {
 						appServerTestNotify(t, u, closure, map[string]any{"threadId": "side"})
-						if !u.side.Unloaded || !u.RetiredThread("side", "") {
+						if !u.side.Unloaded() || !u.RetiredThread("side", "") {
 							t.Fatal("native closure did not retire temporary conversation")
 						}
 					}

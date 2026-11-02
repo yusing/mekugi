@@ -60,12 +60,13 @@ func PredictionForkSupported(version string) bool {
 
 // Prediction retains host correlation after its composer destination is retired.
 type Prediction struct {
-	SourceThread, SourceTurn, Trigger    string
-	Prompt, Effort                       string
-	UnsupportedModels                    []string
-	Thread, Turn, Text                   string
-	Closed, Completed                    bool
-	pending, interrupting, unsubscribing bool
+	SourceThread, SourceTurn, Trigger string
+	Prompt, Effort                    string
+	UnsupportedModels                 []string
+	Thread, Turn, Text                string
+	Closed, Completed                 bool
+	pending                           bool
+	release                           forkRelease
 }
 
 func (r *Requests[T]) sendPrediction(p *Prediction, method string, params any) error {
@@ -75,6 +76,9 @@ func (r *Requests[T]) sendPrediction(p *Prediction, method string, params any) e
 		request := r.pending[id]
 		request.Prediction = p
 		r.pending[id] = request
+	} else {
+		p.pending = false
+		p.release.Failed()
 	}
 	return err
 }
@@ -86,7 +90,10 @@ func (r *Requests[T]) StartPrediction(p *Prediction) error {
 
 // PredictionPending bounds auxiliary work when a cancelled fork is still closing.
 func (r *Requests[T]) PredictionPending() bool {
-	if len(r.predictions) != 0 {
+	r.sidesMu.RLock()
+	active := len(r.predictions) != 0
+	r.sidesMu.RUnlock()
+	if active {
 		return true
 	}
 	for _, request := range r.pending {
@@ -106,23 +113,27 @@ func (r *Requests[T]) ClosePrediction(p *Prediction) error {
 }
 
 func (r *Requests[T]) releasePrediction(p *Prediction) error {
-	if p.pending || p.Thread == "" || p.unsubscribing {
+	if p.pending || p.Thread == "" {
 		return nil
 	}
-	if p.Turn != "" && !p.Completed {
-		if p.interrupting {
-			return nil
-		}
-		p.interrupting = true
-		return r.sendPrediction(p, "turn/interrupt", map[string]any{"threadId": p.Thread, "turnId": p.Turn})
+	turn := p.Turn
+	if p.Completed {
+		turn = ""
 	}
-	p.unsubscribing = true
-	return r.sendPrediction(p, "thread/unsubscribe", map[string]any{"threadId": p.Thread})
+	method := p.release.Next(turn, "thread/unsubscribe")
+	if method == "" {
+		return nil
+	}
+	params := map[string]any{"threadId": p.Thread}
+	if method == "turn/interrupt" {
+		params["turnId"] = p.Turn
+	}
+	return r.sendPrediction(p, method, params)
 }
 
 // ObservePrediction runs before Main/side admission and uses their one ledger.
 // Source: ChatGPT desktop 26.1013.40934, src-DsLVGakC.js Jq/An.
-func (c *Client[T]) ObservePrediction(m appserver.Message, response Request[T], observations *Observations) (bool, error) {
+func (c *Client[T]) ObservePrediction(m appserver.Message, response Request[T]) (bool, error) {
 	r := c.Requests
 	p := response.Prediction
 	if m.Method == "" {
@@ -131,15 +142,18 @@ func (c *Client[T]) ObservePrediction(m appserver.Message, response Request[T], 
 		}
 		if response.Method == "thread/unsubscribe" {
 			if m.Error != nil {
-				p.Closed = true
+				p.release.Failed()
 				return true, nil
 			}
+			p.release.Complete()
+			r.sidesMu.Lock()
 			delete(r.predictions, p.Thread)
+			r.sidesMu.Unlock()
 			c.RetireThreads(p.Thread)
-			observations.SetSideThread(p.Thread, false)
 			return true, nil
 		}
 		if response.Method == "turn/interrupt" {
+			p.release.InterruptAcknowledged()
 			p.Completed = true
 			return true, r.ClosePrediction(p)
 		}
@@ -174,11 +188,12 @@ func (c *Client[T]) ObservePrediction(m appserver.Message, response Request[T], 
 				return true, r.ClosePrediction(p)
 			}
 			p.Thread = result.Thread.ID
+			r.sidesMu.Lock()
 			if r.predictions == nil {
 				r.predictions = make(map[string]*Prediction)
 			}
 			r.predictions[p.Thread] = p
-			observations.SetSideThread(p.Thread, true)
+			r.sidesMu.Unlock()
 			if p.Closed {
 				return true, r.ClosePrediction(p)
 			}
@@ -202,7 +217,10 @@ func (c *Client[T]) ObservePrediction(m appserver.Message, response Request[T], 
 		}
 		return true, nil
 	}
-	if len(r.predictions) == 0 && m.Method != "thread/started" {
+	r.sidesMu.RLock()
+	active := len(r.predictions) != 0
+	r.sidesMu.RUnlock()
+	if !active && m.Method != "thread/started" {
 		return false, nil
 	}
 	var event binding.Notification
@@ -220,7 +238,9 @@ func (c *Client[T]) ObservePrediction(m appserver.Message, response Request[T], 
 	if json.Unmarshal(m.Params, &event) != nil {
 		return false, nil
 	}
+	r.sidesMu.RLock()
 	p = r.predictions[event.ThreadID]
+	r.sidesMu.RUnlock()
 	if p == nil {
 		return false, nil
 	}
@@ -273,12 +293,15 @@ func (c *Client[T]) ObservePrediction(m appserver.Message, response Request[T], 
 		// Completion retains its result but releases the ephemeral host resource.
 		return true, r.releasePrediction(p)
 	case "thread/closed":
+		p.release.HostClosed()
+		p.release.Complete()
 		if !p.Completed {
 			p.Closed = true
 		}
+		r.sidesMu.Lock()
 		delete(r.predictions, event.ThreadID)
+		r.sidesMu.Unlock()
 		c.RetireThreads(event.ThreadID)
-		observations.SetSideThread(event.ThreadID, false)
 	}
 	return true, nil
 }

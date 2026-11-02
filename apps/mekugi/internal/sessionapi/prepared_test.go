@@ -10,8 +10,28 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+func TestServerBorrowsForkClassificationFromRequests(t *testing.T) {
+	server := NewLive()
+	if server.IsSideThread("side") || server.IsBTWThread("side") {
+		t.Fatal("unbound server classified a fork")
+	}
+	requests := sessioncontrol.NewRequests[struct{}](nil)
+	server.BindRequests(requests)
+	requests.TrackSide("side", &sessioncontrol.Side{Thread: "side", SideAnswer: new(conversation.SideAnswer), LowReasoning: true})
+	if !server.IsSideThread("side") || !server.IsBTWThread("side") || server.IsSideThread("main") {
+		t.Fatal("server did not borrow the bound request ledger")
+	}
+	requests.CloseSide("side")
+	if server.IsSideThread("side") || server.IsBTWThread("side") {
+		t.Fatal("server retained classification after owner cleanup")
+	}
+}
 
 func preparedParent(t *testing.T) (*Hub, *managedLauncher, string) {
 	t.Helper()

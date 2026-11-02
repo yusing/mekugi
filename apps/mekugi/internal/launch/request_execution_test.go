@@ -11,6 +11,8 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
@@ -34,10 +36,12 @@ func TestAuxiliaryRequestsUseLowReasoning(t *testing.T) {
 			driver := new(threadbinding.Driver)
 			driver.CaptureCatalog(mustTestJSON(t, map[string]any{"models": []any{map[string]any{"slug": "test-model", "default_reasoning_level": tc.fallback, "supported_reasoning_levels": []any{map[string]any{"effort": tc.choices}}}}}))
 			proxy := newManagedMekugiProxy(t)
+			requests := sessioncontrol.NewRequests[appServerRequest](nil)
+			proxy.bindForkRequests(requests)
 			if tc.kind == "btw" {
-				proxy.control.SetBTWThread("auxiliary")
+				requests.TrackSide("auxiliary", &sessioncontrol.Side{Thread: "auxiliary", SideAnswer: new(conversationmodel.SideAnswer), LowReasoning: true})
 			} else if tc.kind == "side" {
-				proxy.control.SetSideThread("auxiliary", true)
+				requests.TrackSide("auxiliary", &sessioncontrol.Side{Thread: "auxiliary", SideAnswer: new(conversationmodel.SideAnswer)})
 			}
 			request := modelTestRequest(t, "test-model")
 			request.Fields["reasoning"] = mustTestJSON(t, map[string]any{"effort": tc.effort, "summary": "auto"})
@@ -47,7 +51,7 @@ func TestAuxiliaryRequestsUseLowReasoning(t *testing.T) {
 			}
 			headers.Set(codexresponses.ThreadIDHeader, "auxiliary")
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-			executor := requestexecution.Executor{Provider: provider, Control: proxy.control, ReasoningChoices: driver.ReasoningChoices, Output: io.Discard}
+			executor := requestexecution.Executor{Provider: provider, SideThreads: proxy, ReasoningChoices: driver.ReasoningChoices, Output: io.Discard}
 			if err := executor.Execute(t.Context(), t.Context(), request, headers, "auxiliary"); err != nil {
 				t.Fatal(err)
 			}

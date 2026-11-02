@@ -4,8 +4,31 @@ import (
 	"context"
 	"errors"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+func (s *Server) forkClassifier() sessioncontrol.ForkClassifier {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	forks, _ := s.requests.(sessioncontrol.ForkClassifier)
+	return forks
+}
+
+// IsSideThread borrows classification from this runtime's admitted request owner.
+func (s *Server) IsSideThread(thread string) bool {
+	forks := s.forkClassifier()
+	return forks != nil && forks.IsSideThread(thread)
+}
+
+func (s *Server) IsBTWThread(thread string) bool {
+	forks := s.forkClassifier()
+	return forks != nil && forks.IsBTWThread(thread)
+}
 
 func (s *Server) BindRequests(requests threadcontrol.Runtime) {
 	s.mu.Lock()

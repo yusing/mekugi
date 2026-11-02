@@ -137,21 +137,20 @@ func TestComposerPredictionNativeCodex(t *testing.T) {
 	if err := client.Requests.StartPrediction(p); err != nil {
 		t.Fatal(err)
 	}
-	observations := new(sessioncontrol.Observations)
 	for !p.Completed || client.Requests.Pending() {
 		m := next()
 		var response sessioncontrol.Request[struct{}]
 		if m.Method == "" {
 			response, _ = client.Requests.Take(string(m.ID))
 		}
-		if _, err := client.ObservePrediction(m, response, observations); err != nil {
+		if _, err := client.ObservePrediction(m, response); err != nil {
 			t.Fatal(err)
 		}
 		if p.Closed && !p.Completed {
 			t.Fatalf("prediction rejected: %+v, message=%+v", p, m)
 		}
 	}
-	if p.Text != "Show tests" || p.Closed || p.Thread == main || observations.IsSideThread(p.Thread) {
+	if p.Text != "Show tests" || p.Closed || p.Thread == main || client.Requests.IsSideThread(p.Thread) {
 		t.Fatalf("prediction result or cleanup failed: %+v", p)
 	}
 	mu.Lock()

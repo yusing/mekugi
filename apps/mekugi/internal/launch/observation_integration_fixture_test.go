@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -35,6 +37,7 @@ type observationFixture struct {
 	execWindows      *executionobservation.Windows
 	nativeTrace      *nativetrace.Reader
 	control          *sessioncontrol.Observations
+	forks            atomic.Pointer[sessionapi.Server]
 	previewTiming    previewbinding.Timing
 	calls            *history.CallCache
 	retained         changes.Scope
@@ -43,6 +46,20 @@ type observationFixture struct {
 	recovered        *recovery.Service
 	publishChanges   func([]changes.Update)
 	noticeSink       func(string, string, string, string)
+}
+
+func (p *observationFixture) IsSideThread(thread string) bool {
+	return p.forks.Load().IsSideThread(thread)
+}
+
+func (p *observationFixture) IsBTWThread(thread string) bool {
+	return p.forks.Load().IsBTWThread(thread)
+}
+
+func (p *observationFixture) bindForkRequests(requests *sessioncontrol.Requests[appServerRequest]) {
+	server := sessionapi.NewLive()
+	server.BindRequests(requests)
+	p.forks.Store(server)
 }
 
 func (p *observationFixture) Prepare(ctx context.Context, request *codexresponses.Request, input requestexecution.Preparation) (requestexecution.Prepared, error) {

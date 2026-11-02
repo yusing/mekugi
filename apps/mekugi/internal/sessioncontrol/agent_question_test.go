@@ -17,7 +17,6 @@ func TestAgentQuestionUsesRestrictedForkAndCleansUp(t *testing.T) {
 		transport := &requestTransport{id: "fork"}
 		r := NewRequests[struct{}](transport)
 		defer r.Close()
-		observations := new(Observations)
 		done := make(chan questionResult, 1)
 		go func() {
 			answer, err := r.SideQuestion(t.Context(), &control.Member{Thread: "source", Session: "source-session", Settings: control.Settings{Effort: new("ultra")}}, "question")
@@ -32,7 +31,7 @@ func TestAgentQuestionUsesRestrictedForkAndCleansUp(t *testing.T) {
 			t.Helper()
 			response, _ := r.Take(id)
 			transport.id = next
-			if !r.ObserveAgentQuestion(appserver.Message{ID: jsontext.Value(id), Result: jsontext.Value(body)}, response, observations) {
+			if !r.ObserveAgentQuestion(appserver.Message{ID: jsontext.Value(id), Result: jsontext.Value(body)}, response) {
 				t.Fatal("question response unhandled")
 			}
 		}
@@ -45,7 +44,7 @@ func TestAgentQuestionUsesRestrictedForkAndCleansUp(t *testing.T) {
 			{Method: "item/completed", Params: jsontext.Value(`{"threadId":"side","turnId":"side-turn","item":{"id":"answer","type":"agentMessage","text":"answer"}}`)},
 			{Method: "turn/completed", Params: jsontext.Value(`{"threadId":"side","turn":{"id":"side-turn","status":"completed"}}`)},
 		} {
-			if !r.ObserveAgentQuestion(event, Request[struct{}]{}, observations) {
+			if !r.ObserveAgentQuestion(event, Request[struct{}]{}) {
 				t.Fatal("question event unhandled")
 			}
 		}
@@ -99,12 +98,12 @@ func TestAgentQuestionStartFailureReturnsAndAllowsCleanup(t *testing.T) {
 		response, _ := r.Take("fork")
 		failure := errors.New("native send failed")
 		transport.err = failure
-		r.ObserveAgentQuestion(appserver.Message{ID: jsontext.Value("fork"), Result: jsontext.Value(`{"thread":{"id":"side"}}`)}, response, new(Observations))
+		r.ObserveAgentQuestion(appserver.Message{ID: jsontext.Value("fork"), Result: jsontext.Value(`{"thread":{"id":"side"}}`)}, response)
 		if err := <-done; !errors.Is(err, failure) {
 			t.Fatalf("start failure hidden: %v", err)
 		}
 		side := r.Side("side")
-		if side.Starting || side.Unloading || !side.Closed || r.Pending() {
+		if side.Starting || side.release.phase.Load() == forkClosing || !side.Closed || r.Pending() {
 			t.Fatal("failed send retained an impossible acknowledgement")
 		}
 		transport.err = nil
@@ -127,11 +126,10 @@ func TestAgentQuestionUnsolicitedArchiveFails(t *testing.T) {
 		r.DispatchQuestion(<-r.Questions())
 		response, _ := r.Take("fork")
 		transport.id = "start"
-		observations := new(Observations)
-		r.ObserveAgentQuestion(appserver.Message{ID: jsontext.Value("fork"), Result: jsontext.Value(`{"thread":{"id":"side"}}`)}, response, observations)
+		r.ObserveAgentQuestion(appserver.Message{ID: jsontext.Value("fork"), Result: jsontext.Value(`{"thread":{"id":"side"}}`)}, response)
 		response, _ = r.Take("start")
-		r.ObserveAgentQuestion(appserver.Message{ID: jsontext.Value("start"), Result: jsontext.Value(`{"turn":{"id":"turn"}}`)}, response, observations)
-		r.ObserveAgentQuestion(appserver.Message{Method: "thread/archived", Params: jsontext.Value(`{"threadId":"side"}`)}, Request[struct{}]{}, observations)
+		r.ObserveAgentQuestion(appserver.Message{ID: jsontext.Value("start"), Result: jsontext.Value(`{"turn":{"id":"turn"}}`)}, response)
+		r.ObserveAgentQuestion(appserver.Message{Method: "thread/archived", Params: jsontext.Value(`{"threadId":"side"}`)}, Request[struct{}]{})
 		result := <-done
 		if result.err == nil || result.answer != "" || r.HasSides() {
 			t.Fatalf("unexpected archive returned a successful answer or retained the fork: %+v", result)

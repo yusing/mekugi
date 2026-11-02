@@ -20,7 +20,7 @@ import (
 
 // ArchiveSides drains only side cleanup after ordinary input has stopped. The
 // host connection remains open until its archive acknowledgements arrive.
-func (r *Requests[T]) ArchiveSides(ctx context.Context, messages <-chan appserver.Message, observations *Observations, additional ...*Side) error {
+func (r *Requests[T]) ArchiveSides(ctx context.Context, messages <-chan appserver.Message, additional ...*Side) error {
 	operations := make(map[*Side]bool)
 	for _, request := range r.pending {
 		if request.Side != nil {
@@ -46,7 +46,7 @@ func (r *Requests[T]) ArchiveSides(ctx context.Context, messages <-chan appserve
 	for {
 		pending := false
 		for side := range operations {
-			pending = pending || !side.Archived && (side.Thread != "" || side.Starting)
+			pending = pending || !side.Archived() && (side.Thread != "" || side.Starting)
 		}
 		if !pending {
 			return nil
@@ -62,7 +62,7 @@ func (r *Requests[T]) ArchiveSides(ctx context.Context, messages <-chan appserve
 			if message.Method == "" {
 				response, _ = r.Take(string(message.ID))
 			}
-			update, err := r.ObserveSide(message, response, "", observations)
+			update, err := r.ObserveSide(message, response, "")
 			if err != nil {
 				return err
 			}
@@ -135,7 +135,7 @@ const SideThreadSource = "mekugi_side"
 // StartSide receives acquired Conversation input and uses the one request ledger.
 // Source: apps/mekugi/internal/router/app_server_btw.go:68:128@0d7819f3.
 func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpdate, error) {
-	if !s.Ready(main.Replacing) && (main.Input == nil || main.Replacing || s.Closed || s.Unloaded || s.Starting || s.Settings.Pending()) {
+	if !s.Ready(main.Replacing) && (main.Input == nil || main.Replacing || s.Closed || s.Unloaded() || s.Starting || s.Settings.Pending()) {
 		return SideUpdate{}, nil
 	}
 	if s.Thread == "" {
@@ -211,7 +211,7 @@ func (r *Requests[T]) ReleaseSide(s *Side) error {
 	if s.Closed {
 		r.interruptSideUsageWaits(s)
 	}
-	if s.Archived {
+	if s.Archived() {
 		if s.Closed {
 			r.CloseSide(s.Thread)
 		}
@@ -225,7 +225,11 @@ func (r *Requests[T]) ReleaseSide(s *Side) error {
 	if method == "turn/interrupt" {
 		params["turnId"] = s.Turn
 	}
-	return r.sendSide(s, method, params, nil)
+	err := r.sendSide(s, method, params, nil)
+	if err != nil {
+		s.release.Failed()
+	}
+	return err
 }
 
 func (r *Requests[T]) interruptSideUsageWaits(s *Side) {
@@ -242,7 +246,7 @@ func (r *Requests[T]) interruptSideUsageWaits(s *Side) {
 // ObserveSide runs before Main's filtering. Closed docks retain their original
 // operation through late acknowledgements and thread/closed notification.
 // Source: apps/mekugi/internal/router/app_server_btw.go:162:305@0d7819f3.
-func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main string, observations *Observations) (SideUpdate, error) {
+func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main string) (SideUpdate, error) {
 	s, method := response.Side, response.Method
 	if m.Method == "" {
 		if s == nil {
@@ -258,17 +262,23 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		}
 		if method == "thread/archive" {
 			if m.Error != nil {
+				s.release.Failed()
 				update.Notice, update.NoticeError = "Could not archive side conversation: "+m.Error.Message, true
 			} else {
-				s.Unloaded, s.Archived = true, true
-				observations.SetSideThread(s.Thread, false)
+				s.release.Complete()
 				if s.Closed {
 					r.CloseSide(s.Thread)
 				}
 			}
 			return update, nil
 		}
-		if s.Unloaded {
+		if s.Unloaded() {
+			if method == "turn/start" && (response.SideInput == nil || response.SideInput.Question == nil || response.SideInput.Question.Thread == s.Thread) {
+				s.Starting = false
+			}
+			if s.Closed {
+				return update, r.ReleaseSide(s)
+			}
 			return update, nil
 		}
 		if method == "thread/settings/update" || method == "turn/settings/update" {
@@ -369,10 +379,6 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 				s.Status = "Ready"
 				s.Busy = false
 			}
-			observations.SetSideThread(s.Thread, !s.OneOff)
-			if s.LowReasoning {
-				observations.SetBTWThread(s.Thread)
-			}
 			r.TrackSide(s.Thread, s)
 		case "turn/start":
 			if result.Turn.ID == "" {
@@ -407,20 +413,19 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 	if s == nil {
 		return SideUpdate{}, nil
 	}
-	update := SideUpdate{Handled: true, Side: s, Forward: !s.Closed && !s.Unloaded && (s.OneOff || m.Method == "thread/tokenUsage/updated" || m.Method == "thread/settings/updated")}
+	update := SideUpdate{Handled: true, Side: s, Forward: !s.Closed && !s.Unloaded() && (s.OneOff || m.Method == "thread/tokenUsage/updated" || m.Method == "thread/settings/updated")}
 	if thread != s.Thread {
 		// Descendants share admission and cleanup, never their root's turn lifecycle.
 		return update, nil
 	}
 	if m.Method == "thread/closed" || m.Method == "thread/archived" {
 		update.ClosedThread = thread
-		observations.SetSideThread(thread, false)
-		s.Unloaded = true
+		s.release.HostClosed()
 		r.interruptSideUsageWaits(s)
 		if m.Method == "thread/archived" {
-			s.Archived = true
+			s.release.Complete()
 		}
-		if s.Closed && s.Archived {
+		if s.Closed && s.Archived() {
 			r.CloseSide(thread)
 		} else if !s.Closed {
 			s.Turn, s.Busy, s.Starting = "", false, false
@@ -429,7 +434,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		}
 		return update, nil
 	}
-	if s.Unloaded {
+	if s.Unloaded() {
 		return update, nil
 	}
 	if len(m.ID) != 0 {
@@ -518,7 +523,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 
 // ReplySide delivers side input through the same input request ledger.
 func (r *Requests[T]) ReplySide(s *Side, thread, turn string, input conversationmodel.Input) (SideUpdate, error) {
-	if s == nil || s.LowReasoning || s.Closed || s.Unloaded {
+	if s == nil || s.LowReasoning || s.Closed || s.Unloaded() {
 		return SideUpdate{}, errors.New("side conversation is no longer available")
 	}
 	var owner T

@@ -75,7 +75,7 @@ func (q *AgentQuestion) finish(answer string, err error) {
 // ObserveAgentQuestion consumes question events before interactive side rendering.
 // The caller receives its outcome immediately; the fork is then released through
 // the ordinary side ledger.
-func (r *Requests[T]) ObserveAgentQuestion(m appserver.Message, response Request[T], observations *Observations) bool {
+func (r *Requests[T]) ObserveAgentQuestion(m appserver.Message, response Request[T]) bool {
 	s := response.Side
 	if m.Method != "" {
 		if !r.HasSides() {
@@ -89,23 +89,22 @@ func (r *Requests[T]) ObserveAgentQuestion(m appserver.Message, response Request
 		return false
 	}
 	q := s.question
-	update, err := r.ObserveSide(m, response, q.main.Thread, observations)
+	update, err := r.ObserveSide(m, response, q.main.Thread)
 	switch {
 	case err != nil:
-		s.Interrupting, s.Unloading = false, false
 		q.finish("", err)
 		return true
 	case update.NoticeError:
 		q.finish("", errors.New(update.Notice))
 		return true
-	case s.Archived:
+	case s.Archived():
 		s.Close()
 		r.CloseSide(s.Thread)
 		q.finish("", errors.New("side question closed before answering"))
 		return true
 	case s.Closed:
 		return true
-	case s.Alert || s.Unloaded:
+	case s.Alert || s.Unloaded():
 		q.finish("", errors.New(s.Status))
 	case m.Method == "turn/completed":
 		var answer strings.Builder
@@ -131,9 +130,7 @@ func (r *Requests[T]) ObserveAgentQuestion(m appserver.Message, response Request
 		return true
 	}
 	s.Close()
-	if r.ReleaseSide(s) != nil {
-		// Joined shutdown retries the release.
-		s.Interrupting, s.Unloading = false, false
-	}
+	// The answer is settled; joined shutdown retries failed cleanup.
+	_ = r.ReleaseSide(s)
 	return true
 }

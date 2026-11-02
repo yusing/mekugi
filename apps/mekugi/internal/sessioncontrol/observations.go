@@ -20,7 +20,6 @@ type generatingInput struct {
 type Observations struct {
 	mu                sync.RWMutex
 	generations       map[*Generation]generatingInput
-	sideThreads       map[string]bool // Presence identifies answer-only forks; the value identifies /btw.
 	feedbackMu        sync.Mutex
 	feedback          map[[2]string][]string
 	contextRevision   map[string]uint64
@@ -117,53 +116,6 @@ func (o *Observations) EmittingToolInput(workspace, thread string) bool {
 		}
 	}
 	return false
-}
-
-func (o *Observations) SetSideThread(thread string, active bool) {
-	if o == nil {
-		return
-	}
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	if !active {
-		delete(o.sideThreads, thread)
-		return
-	}
-	if o.sideThreads == nil {
-		o.sideThreads = make(map[string]bool)
-	}
-	o.sideThreads[thread] = false
-}
-
-func (o *Observations) IsSideThread(thread string) bool {
-	if o == nil {
-		return false
-	}
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	_, found := o.sideThreads[thread]
-	return found
-}
-
-func (o *Observations) SetBTWThread(thread string) {
-	if o == nil {
-		return
-	}
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	if o.sideThreads == nil {
-		o.sideThreads = make(map[string]bool)
-	}
-	o.sideThreads[thread] = true
-}
-
-func (o *Observations) IsBTWThread(thread string) bool {
-	if o == nil {
-		return false
-	}
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	return o.sideThreads[thread]
 }
 
 func (o *Observations) AnswerWithFeedback(thread, turn, text string, answer func() error) error {

@@ -49,7 +49,7 @@ type Executor struct {
 	CompactPrompt    func() string
 	ReasoningChoices func(string) (string, []string)
 	CompactStore     func(context.Context, string, string, string) (string, error)
-	Control          *sessioncontrol.Observations
+	SideThreads      sessioncontrol.ForkClassifier
 	Usage            *accounting.Service
 }
 
@@ -220,7 +220,7 @@ func (a *requestAttempt) prepare() error {
 	a.finalization.threadID = a.threadID
 	a.finalization.turnID = a.metadata.TurnID
 	if !a.approvalReview && a.executor.Observations != nil && a.metadataValid && a.metadata.RequestKind == responses.Compaction {
-		if a.executor.Control.IsSideThread(a.threadID) {
+		if a.executor.SideThreads != nil && a.executor.SideThreads.IsSideThread(a.threadID) {
 			return inferencegateway.IncompatibleRequest("btw_compaction_required", conversationmodel.SideCompactionRequired)
 		}
 		if err := codexresponses.ValidateCompaction(&a.request, a.metadata); err != nil {
@@ -283,7 +283,7 @@ func (a *requestAttempt) prepareWire() error {
 		a.request.Fields["access_programs"] = programs
 	}
 	compaction := !a.approvalReview && a.metadataValid && a.metadata.RequestKind == responses.Compaction
-	if !a.approvalReview && a.executor.ReasoningChoices != nil && (compaction || a.executor.Control.IsBTWThread(a.threadID)) {
+	if !a.approvalReview && a.executor.ReasoningChoices != nil && (compaction || a.executor.SideThreads != nil && a.executor.SideThreads.IsBTWThread(a.threadID)) {
 		fallback, choices := a.executor.ReasoningChoices(a.request.Model())
 		if err := a.request.UseLowReasoning(fallback, choices); err != nil {
 			return err

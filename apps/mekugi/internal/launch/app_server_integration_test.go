@@ -1,16 +1,22 @@
 package launch
 
+import "github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+
 func testAppServerIntegration(p *observationFixture) appServerIntegration {
 	if p == nil {
 		return appServerIntegration{}
 	}
 	integration := appServerIntegration{controlObservations: p.control, usage: p.usage, audience: p.activity, review: p.review, execWindows: p.execWindows, nativeTrace: p.nativeTrace, retained: p.retained, changeSource: p.changeSource, snapshots: p.snapshots, recovered: p.recovered, publishChanges: p.publishChanges, captureNotice: p.noticeSink}
+	integration.bindForks = func(server *sessionapi.Server) { p.forks.Store(server) }
 	if p.execWindows != nil {
 		integration.execTrack = p.execWindows.Reports
 	}
 	return integration
 }
 func setTestAppServerIntegration(u *appServerUI, p *observationFixture) {
+	if p != nil {
+		p.bindForkRequests(u.Requests)
+	}
 	integration := testAppServerIntegration(p)
 	u.controlObservations = integration.controlObservations
 	u.usage = integration.usage

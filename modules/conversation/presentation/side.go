@@ -58,7 +58,11 @@ func (s *SideAnswer) Begin(question string, pending Input) {
 	if key == "" {
 		key = rand.Text()
 	}
-	*s = SideAnswer{OneOff: s.OneOff, Key: key, Drafts: s.Drafts, History: history, Truncated: s.Truncated, ID: s.ID + 1, Question: question, Pending: pending, AttachmentNotice: pending.AttachmentNotice, Status: "Waiting for Main's submission…"}
+	// OneOff is immutable after admission and shared with request classification.
+	s.Key, s.History, s.ID = key, history, s.ID+1
+	s.Question, s.Pending, s.AttachmentNotice = question, pending, pending.AttachmentNotice
+	s.Status = "Waiting for Main's submission…"
+	s.Answer, s.Alert, s.Started = nil, false, time.Time{}
 	s.bound()
 }
 

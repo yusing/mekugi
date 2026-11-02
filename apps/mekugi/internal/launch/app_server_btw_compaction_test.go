@@ -118,7 +118,9 @@ func TestAppServerBTWCompactionRejectsBeforeProvider(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	workspace := t.TempDir()
 	thread := "side"
-	proxy.control.SetSideThread(thread, true)
+	requests := sessioncontrol.NewRequests[appServerRequest](nil)
+	proxy.bindForkRequests(requests)
+	requests.TrackSide(thread, &sessioncontrol.Side{Thread: thread, SideAnswer: new(conversationmodel.SideAnswer)})
 	requestFor := func(thread string) (codexresponses.Request, http.Header) {
 		request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 			"model": "gpt-test", "stream": true,
@@ -180,7 +182,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			appServerTestKeys(t, u, "\r")
 			fork := btwTestRequest(t, w, "thread/fork", "main")
 			btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
-			if !u.controlObservations.IsSideThread("side") {
+			if !u.Requests.IsSideThread("side") {
 				t.Fatal("side not registered before turn/start")
 			}
 			start := btwTestRequest(t, w, "turn/start", "side")
@@ -240,7 +242,7 @@ func TestAppServerBTWCompactionCloseRecreateIgnoresLateFailure(t *testing.T) {
 	btwTestReply(t, u, interrupt, `{}`)
 	unload := btwTestRequest(t, w, "thread/archive", "side")
 	btwTestReply(t, u, unload, `{}`)
-	if u.BTW == old || u.BTW.Thread != "new-side" || !u.BTW.Busy || u.Text != "" || u.controlObservations.IsSideThread("side") || !u.controlObservations.IsSideThread("new-side") {
+	if u.BTW == old || u.BTW.Thread != "new-side" || !u.BTW.Busy || u.Text != "" || u.Requests.IsSideThread("side") || !u.Requests.IsSideThread("new-side") {
 		t.Fatalf("late events crossed lifecycle: %+v draft=%q", u.BTW, u.Text)
 	}
 }

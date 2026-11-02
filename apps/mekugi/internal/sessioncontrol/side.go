@@ -6,6 +6,12 @@ import (
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
+// ForkClassifier lends concurrent reads of the authoritative auxiliary ledger.
+type ForkClassifier interface {
+	IsSideThread(string) bool
+	IsBTWThread(string) bool
+}
+
 // Side owns live side-thread admission and cleanup independently of Main.
 // Closing its presentation does not retire pending fork/start acknowledgements.
 type Side struct {
@@ -15,20 +21,18 @@ type Side struct {
 	Source, Model, Effort, Tier string
 	ForkPending                 bool
 	Busy, Starting, Closed      bool
-	Interrupting, Unloading     bool
-	Unloaded                    bool
-	Archived                    bool
+	release                     forkRelease
 	Settings                    Settings
 	LowReasoning                bool
 	question                    *AgentQuestion
 }
 
 func (s *Side) PrepareSettings(change map[string]any) SettingsPlan {
-	return s.Settings.prepare(preferences.Applied{Model: s.Model, Effort: s.Effort, Tier: s.Tier}, change, s.Turn, s.Thread != "" && !s.Starting && !s.Closed && !s.Unloaded)
+	return s.Settings.prepare(preferences.Applied{Model: s.Model, Effort: s.Effort, Tier: s.Tier}, change, s.Turn, s.Thread != "" && !s.Starting && !s.Closed && !s.Unloaded())
 }
 
 func (s *Side) Ready(replacing bool) bool {
-	return s != nil && !s.Closed && !s.Unloaded && s.Waiting == "" && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !s.Settings.Pending() && !replacing
+	return s != nil && !s.Closed && !s.Unloaded() && s.Waiting == "" && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !s.Settings.Pending() && !replacing
 }
 
 func (s *Side) Close() {
@@ -38,18 +42,19 @@ func (s *Side) Close() {
 }
 
 func (s *Side) Release() string {
-	if s.Thread == "" || s.Starting || s.Interrupting || s.Unloading || s.Archived {
+	if s.Thread == "" || s.Starting {
 		return ""
 	}
-	if s.Turn != "" && !s.Unloaded {
-		s.Interrupting = true
-		return "turn/interrupt"
-	}
-	s.Unloading = true
-	return "thread/archive"
+	return s.release.Next(s.Turn, "thread/archive")
 }
 
-func (s *Side) InterruptAcknowledged() { s.Turn, s.Interrupting = "", false }
+func (s *Side) Unloaded() bool { return s.release.Unloaded() }
+func (s *Side) Archived() bool { return s.release.Closed() }
+
+func (s *Side) InterruptAcknowledged() {
+	s.Turn = ""
+	s.release.InterruptAcknowledged()
+}
 
 func (s *Side) StartAcknowledged(turn string) {
 	s.Starting = false
@@ -85,6 +90,28 @@ func (r *Requests[T]) Side(thread string) *Side {
 // HasSideThread lends admission to the runtime registry without exposing mutable
 // side state to inference workers. Cleanup retains the same correlation lifetime.
 func (r *Requests[T]) HasSideThread(thread string) bool { return r.Side(thread) != nil }
+
+// IsSideThread identifies answer-only roots, not their admitted descendants.
+// An archived fork may still own an open dock and notification correlation.
+func (r *Requests[T]) IsSideThread(thread string) bool {
+	if r == nil {
+		return false
+	}
+	r.sidesMu.RLock()
+	defer r.sidesMu.RUnlock()
+	s := r.sides[thread]
+	return r.predictions[thread] != nil || s != nil && s.Thread == thread && !s.OneOff && !s.Unloaded()
+}
+
+func (r *Requests[T]) IsBTWThread(thread string) bool {
+	if r == nil {
+		return false
+	}
+	r.sidesMu.RLock()
+	defer r.sidesMu.RUnlock()
+	s := r.sides[thread]
+	return s != nil && s.Thread == thread && s.LowReasoning && !s.Unloaded()
+}
 
 func (r *Requests[T]) HasSides() bool {
 	if r == nil {

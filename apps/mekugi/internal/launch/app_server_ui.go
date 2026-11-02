@@ -998,7 +998,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		err = runLoop()
 		if !exited {
 			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
-			err = errors.Join(err, control.Requests.ArchiveSides(cleanup, c.Messages, observationInputs, side, control.BTW))
+			err = errors.Join(err, control.Requests.ArchiveSides(cleanup, c.Messages, side, control.BTW))
 			cancel()
 		}
 		if saveErr := panes.savePrepared(presentationTime(clock), true); saveErr != nil {
@@ -1107,10 +1107,10 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		}
 		response, correlated = control.Requests.Take(string(m.ID))
 	}
-	if handled, err := control.ObservePrediction(m, response, observations); handled {
+	if handled, err := control.ObservePrediction(m, response); handled {
 		return err
 	}
-	if control.Requests.ObserveAgentQuestion(m, response, observations) {
+	if control.Requests.ObserveAgentQuestion(m, response) {
 		return nil
 	}
 	if sessionTitleMessage(control, generator, &attached.feedback, terminal, clock, title, m, response.Owner.title) {
@@ -1120,7 +1120,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 	}()
 	// Side control settles first; work-capable forks share native event consumers.
-	if update, err := control.Requests.ObserveSide(m, response, control.Thread, observations); update.Handled {
+	if update, err := control.Requests.ObserveSide(m, response, control.Thread); update.Handled {
 		applySideUpdate(attached, terminal, control, clock, update)
 		if err != nil {
 			return err

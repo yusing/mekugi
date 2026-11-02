@@ -2,10 +2,12 @@ package sessioncontrol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +16,105 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 )
+
+func TestAnswerOnlyClassificationUsesLiveForkLedger(t *testing.T) {
+	for _, oneoff := range []bool{false, true} {
+		for _, btw := range []bool{false, true} {
+			t.Run(fmt.Sprintf("oneoff=%t/btw=%t", oneoff, btw), func(t *testing.T) {
+				transport := &requestTransport{id: "fork"}
+				r := NewRequests[struct{}](transport)
+				side := &Side{SideAnswer: &conversationmodel.SideAnswer{OneOff: oneoff}, ForkPending: true, LowReasoning: btw}
+				if _, err := r.StartSide(side, SideMain{Thread: "main"}, time.Time{}); err != nil {
+					t.Fatal(err)
+				}
+				request, _ := r.Take("fork")
+				if _, err := r.ObserveSide(appserver.Message{Result: []byte(`{"thread":{"id":"side"}}`)}, request, "main"); err != nil {
+					t.Fatal(err)
+				}
+				r.AdmitSideChild("child", "side")
+				if r.IsSideThread("side") != !oneoff || r.IsBTWThread("side") != btw || r.IsSideThread("child") || r.IsBTWThread("child") {
+					t.Fatal("classification confused root kind or descendant admission")
+				}
+				var workers sync.WaitGroup
+				workers.Go(func() {
+					for range 1000 {
+						r.IsSideThread("side")
+						r.IsBTWThread("side")
+					}
+				})
+				for range 100 {
+					side.Begin("follow-up", conversationmodel.Input{Text: "follow-up"})
+				}
+				if _, err := r.ObserveSide(appserver.Message{Method: "thread/archived", Params: []byte(`{"threadId":"side"}`)}, Request[struct{}]{}, "main"); err != nil {
+					t.Fatal(err)
+				}
+				workers.Wait()
+				if r.IsSideThread("side") || r.IsBTWThread("side") || r.Side("side") != side {
+					t.Fatal("archived open dock retained classification or lost correlation")
+				}
+			})
+		}
+	}
+}
+
+func TestClosedSideHostCloseBeforeStartAcknowledgement(t *testing.T) {
+	transport := &requestTransport{id: "archive"}
+	r := NewRequests[struct{}](transport)
+	side := &Side{SideAnswer: new(conversationmodel.SideAnswer), Thread: "side", Starting: true, Busy: true}
+	r.TrackSide(side.Thread, side)
+	side.Close()
+	if _, err := r.ObserveSide(appserver.Message{Method: "thread/closed", Params: []byte(`{"threadId":"side"}`)}, Request[struct{}]{}, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.ObserveSide(appserver.Message{Result: []byte(`{"turn":{"id":"late"}}`)}, Request[struct{}]{Side: side, Method: "turn/start"}, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if side.Starting || side.Turn != "" || len(transport.sends) != 1 || transport.sends[0].method != "thread/archive" {
+		t.Fatal("late start revived execution or blocked cleanup")
+	}
+}
+
+func TestSideArchiveFailureCanRetryAfterHostClose(t *testing.T) {
+	for _, failure := range []string{"send", "acknowledgement"} {
+		t.Run(failure, func(t *testing.T) {
+			transport := &requestTransport{id: "archive"}
+			r := NewRequests[struct{}](transport)
+			side := &Side{SideAnswer: new(conversationmodel.SideAnswer), Thread: "side"}
+			r.TrackSide(side.Thread, side)
+			if failure == "send" {
+				transport.err = errors.New("write failed")
+			}
+			if err := r.ReleaseSide(side); (err != nil) != (failure == "send") {
+				t.Fatal(err)
+			}
+			if _, err := r.ObserveSide(appserver.Message{Method: "thread/closed", Params: []byte(`{"threadId":"side"}`)}, Request[struct{}]{}, "main"); err != nil {
+				t.Fatal(err)
+			}
+			if failure == "acknowledgement" {
+				if err := r.ReleaseSide(side); err != nil || len(transport.sends) != 1 {
+					t.Fatal("host close duplicated an in-flight archive")
+				}
+				request, _ := r.Take("archive")
+				update, err := r.ObserveSide(appserver.Message{Error: &appserver.Error{Message: "archive rejected"}}, request, "main")
+				if err != nil || !update.NoticeError {
+					t.Fatal("archive rejection was hidden")
+				}
+			}
+			if !side.Unloaded() || side.Archived() || r.Side("side") != side {
+				t.Fatal("host close or retry correlation lost")
+			}
+			transport.err = nil
+			side.Close()
+			if err := r.ReleaseSide(side); err != nil || transport.sends[len(transport.sends)-1].method != "thread/archive" {
+				t.Fatal("failed archive cannot retry")
+			}
+			request, _ := r.Take("archive")
+			if _, err := r.ObserveSide(appserver.Message{}, request, "main"); err != nil || !side.Archived() || r.HasSides() {
+				t.Fatal("successful retry retained the dismissed fork")
+			}
+		})
+	}
+}
 
 func TestSideForkInheritedEffort(t *testing.T) {
 	driver := new(threadbinding.Driver)
@@ -60,16 +161,17 @@ func TestSideForkWaitsForCatalogAndRestoresOnFailure(t *testing.T) {
 func TestArchiveSidesDrainsClosedNativeThread(t *testing.T) {
 	transport := &requestTransport{id: "archive"}
 	requests := NewRequests[struct{}](transport)
-	side := &Side{SideAnswer: new(conversationmodel.SideAnswer), Thread: "side", Unloaded: true}
+	side := &Side{SideAnswer: new(conversationmodel.SideAnswer), Thread: "side"}
+	side.release.HostClosed()
 	requests.TrackSide(side.Thread, side)
 	messages := make(chan appserver.Message, 1)
 	messages <- appserver.Message{ID: []byte("archive"), Result: []byte(`{}`)}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	if err := requests.ArchiveSides(ctx, messages, new(Observations), side); err != nil {
+	if err := requests.ArchiveSides(ctx, messages, side); err != nil {
 		t.Fatal(err)
 	}
-	if len(transport.sends) != 1 || transport.sends[0].method != "thread/archive" || !side.Archived || requests.HasSides() {
+	if len(transport.sends) != 1 || transport.sends[0].method != "thread/archive" || !side.Archived() || requests.HasSides() {
 		t.Fatalf("closed native history was not archived once: %+v %+v", transport.sends, side)
 	}
 }
@@ -92,10 +194,10 @@ func TestArchiveSidesDrainsDismissedPendingFork(t *testing.T) {
 	messages <- appserver.Message{ID: []byte("archive"), Result: []byte(`{}`)}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	if err := requests.ArchiveSides(ctx, messages, new(Observations)); err != nil {
+	if err := requests.ArchiveSides(ctx, messages); err != nil {
 		t.Fatal(err)
 	}
-	if !side.Archived || requests.HasSides() || len(transport.sends) != 2 || transport.sends[1].method != "thread/archive" {
+	if !side.Archived() || requests.HasSides() || len(transport.sends) != 2 || transport.sends[1].method != "thread/archive" {
 		t.Fatalf("dismissed fork survived cleanup: %+v %+v", side, transport.sends)
 	}
 }
@@ -107,7 +209,6 @@ func TestSideWorkflowWithoutRenderer(t *testing.T) {
 			side := &Side{SideAnswer: answer, Busy: true}
 			transport := &requestTransport{id: "fork"}
 			requests := NewRequests[struct{}](transport)
-			observations := new(Observations)
 			main := SideMain{Thread: "main", Blocked: true}
 			if _, err := requests.StartSide(side, main, time.Time{}); err != nil || len(transport.sends) != 0 {
 				t.Fatal("fork escaped Main's pending submission")
@@ -125,8 +226,8 @@ func TestSideWorkflowWithoutRenderer(t *testing.T) {
 				t.Fatal("side correlation or Conversation owner changed")
 			}
 			transport.id = "next"
-			update, err := requests.ObserveSide(appserver.Message{Result: []byte(`{"thread":{"id":"side"}}`)}, fork, "replacement-main", observations)
-			if err != nil || !update.Handled || !observations.IsSideThread("side") || update.Flush == closed {
+			update, err := requests.ObserveSide(appserver.Message{Result: []byte(`{"thread":{"id":"side"}}`)}, fork, "replacement-main")
+			if err != nil || !update.Handled || !requests.IsSideThread("side") || update.Flush == closed {
 				t.Fatalf("fork result: update=%+v err=%v", update, err)
 			}
 			if closed {
@@ -134,7 +235,7 @@ func TestSideWorkflowWithoutRenderer(t *testing.T) {
 					t.Fatal("closed fork sampled or retained its visible draft")
 				}
 				response, _ := requests.Take("next")
-				if _, err := requests.ObserveSide(appserver.Message{}, response, "replacement-main", observations); err != nil || observations.IsSideThread("side") {
+				if _, err := requests.ObserveSide(appserver.Message{}, response, "replacement-main"); err != nil || requests.IsSideThread("side") {
 					t.Fatal("unsubscribe failed to retire side classification")
 				}
 				return
@@ -143,11 +244,11 @@ func TestSideWorkflowWithoutRenderer(t *testing.T) {
 			if err != nil || !update.TurnRequested || transport.sends[len(transport.sends)-1].method != "turn/start" {
 				t.Fatal("classified side did not start through the existing ledger")
 			}
-			if _, err := requests.ObserveSide(appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"side","turn":{"id":"turn","status":"completed"}}`)}, Request[struct{}]{}, "main", observations); err != nil {
+			if _, err := requests.ObserveSide(appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"side","turn":{"id":"turn","status":"completed"}}`)}, Request[struct{}]{}, "main"); err != nil {
 				t.Fatal(err)
 			}
 			response, _ := requests.Take("next")
-			if _, err := requests.ObserveSide(appserver.Message{Result: []byte(`{"turn":{"id":"turn"}}`)}, response, "main", observations); err != nil || side.Turn != "" || side.Busy {
+			if _, err := requests.ObserveSide(appserver.Message{Result: []byte(`{"turn":{"id":"turn"}}`)}, response, "main"); err != nil || side.Turn != "" || side.Busy {
 				t.Fatal("late start acknowledgement revived completed side work")
 			}
 		})

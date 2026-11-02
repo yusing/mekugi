@@ -24,7 +24,7 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 	if preparation != nil {
 		displayingSide = preparation.side
 	}
-	if *side != nil && (*side).Unloaded && displayingSide {
+	if *side != nil && (*side).Unloaded() && displayingSide {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Side conversation closed · return to Main to start a new conversation", true)
 		return nil
 	}
@@ -102,7 +102,7 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 		setNotice(&attached.feedback, terminal, presentationTime(clock), conversationmodel.SideCompactionRequired, true)
 		return nil
 	}
-	if (*owner) != nil && (*owner).Unloaded {
+	if (*owner) != nil && (*owner).Unloaded() {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Side conversation closed · Esc closes", true)
 		return nil
 	}
@@ -160,7 +160,7 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 		return nil
 	}
 	admission := attached.sideInputs[b]
-	if admission != nil && !b.Closed && !b.Unloaded {
+	if admission != nil && !b.Closed && !b.Unloaded() {
 		ready, err := admission.prepare(attached.ctx, b.Thread, control.Requests)
 		if err != nil {
 			attached.releaseSideInput(b)
@@ -172,7 +172,7 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 			b.Waiting = ""
 		}
 	}
-	if b != nil && !b.LowReasoning && !b.Closed && !b.Unloaded && !b.Starting {
+	if b != nil && !b.LowReasoning && !b.Closed && !b.Unloaded() && !b.Starting {
 		for len(b.Drafts.Unsent) > 0 && (b.Waiting != "" || b.Turn != "" || b.Pending.Text == "") {
 			next := 0
 			if b.Waiting != "" {
@@ -294,7 +294,7 @@ func applySideUpdate(attached *attachedPresentation, terminal *terminalsession.A
 	if update.ClosedThread != "" {
 		attached.releaseSideInput(update.Side)
 		forgetSideActivity(attached, update.ClosedThread)
-		if update.Side != nil && update.Side.Unloaded {
+		if update.Side != nil && update.Side.Unloaded() {
 			control.RetireThreads(update.ClosedThread, control.Requests.SideThreads(update.Side)...)
 		}
 	}

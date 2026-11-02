@@ -13,7 +13,7 @@ func TestSideCompletionAndDelayedCleanup(t *testing.T) {
 	}
 	side.StartAcknowledged("turn")
 	if side.Turn != "" || side.Release() != "thread/archive" || side.Release() != "" {
-		t.Fatalf("late acknowledgement revived execution or repeated cleanup: %+v", side)
+		t.Fatalf("late acknowledgement revived execution or repeated cleanup: %+v", &side)
 	}
 	side = Side{Thread: "side", Turn: "turn", Busy: true, Closed: true}
 	if side.Complete("other") || side.Release() != "turn/interrupt" || side.Release() != "" {

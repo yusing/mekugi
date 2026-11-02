@@ -37,6 +37,7 @@ import (
 type appServerIntegration struct {
 	nativeHub           func(*sessionapi.Hub)
 	controlObservations *sessioncontrol.Observations
+	bindForks           func(*sessionapi.Server)
 	usage               *accounting.Service
 	audience            *sessioncontrol.Audience
 	review              *sessionreview.Review
@@ -91,6 +92,9 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 			wait, err := startNativeSession(terminalViews, reviewSource, views, conversation, activity, service, prefs, segments, runtimeContext, cmd, stdout, integration.controlObservations, integration.usage, integration.audience, integration.review, integration.execWindows, integration.nativeTrace, integration.retained, integration.changeSource, integration.snapshots, integration.recovered, integration.publishChanges, integration.captureNotice, integration.guard, integration.guards, integration.execTrack, integration.skillsManager, issues, resumeThread, serviceTiers, capture, resumeArgv, debugDirectory, generator, observations, approvals, nil, api, false, nil)
 			if err != nil {
 				return err
+			}
+			if integration.bindForks != nil {
+				integration.bindForks(api)
 			}
 			return wait()
 		}}

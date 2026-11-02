@@ -365,7 +365,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	var compactPrompt atomic.Pointer[string]
 	executor.Observations, executor.Guidance = mekugiCalls, registry.Guidance
-	executor.SkillsManager, executor.Control, executor.Usage = skillsManagerAvailable, &control, usage
+	executor.SkillsManager, executor.SideThreads, executor.Usage = skillsManagerAvailable, api, usage
 	executor.CompactStore = mekugiCalls.StoreCompact
 	executor.CompactPrompt = func() string {
 		if prompt := compactPrompt.Load(); prompt != nil {

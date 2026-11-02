@@ -144,7 +144,7 @@ func TestAppServerBTWCompactionNativeCodexE2E(t *testing.T) {
 		if thread == "" {
 			thread = metadata.ThreadID
 		}
-		if valid && metadata.RequestKind == "compaction" && proxy.control.IsSideThread(thread) {
+		if valid && metadata.RequestKind == "compaction" && proxy.IsSideThread(thread) {
 			observationsMu.Lock()
 			rejectedSideCompactions++
 			observationsMu.Unlock()

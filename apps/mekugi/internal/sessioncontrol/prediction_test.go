@@ -3,10 +3,47 @@ package sessioncontrol
 import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"errors"
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
+
+func TestPredictionCleanupFailureRetainsCompletedResult(t *testing.T) {
+	for _, failure := range []string{"send", "acknowledgement"} {
+		t.Run(failure, func(t *testing.T) {
+			transport := &requestTransport{id: "unsubscribe"}
+			r := NewRequests[struct{}](transport)
+			client := &Client[struct{}]{Requests: r}
+			p := &Prediction{Thread: "prediction", Completed: true, Text: "Show tests"}
+			r.predictions = map[string]*Prediction{p.Thread: p}
+			if failure == "send" {
+				transport.err = errors.New("write failed")
+			}
+			if err := r.releasePrediction(p); (err != nil) != (failure == "send") {
+				t.Fatal(err)
+			}
+			if failure == "acknowledgement" {
+				request, _ := r.Take("unsubscribe")
+				if _, err := client.ObservePrediction(appserver.Message{Error: &appserver.Error{Message: "rejected"}}, request); err != nil {
+					t.Fatal(err)
+				}
+			}
+			transport.err = nil
+			if err := r.ClosePrediction(p); err != nil || transport.sends[len(transport.sends)-1].method != "thread/unsubscribe" {
+				t.Fatal("failed prediction cleanup cannot retry")
+			}
+			// A close notification can precede the cleanup acknowledgement.
+			if _, err := client.ObservePrediction(appserver.Message{Method: "thread/closed", Params: []byte(`{"threadId":"prediction"}`)}, Request[struct{}]{}); err != nil {
+				t.Fatal(err)
+			}
+			request, _ := r.Take("unsubscribe")
+			if _, err := client.ObservePrediction(appserver.Message{}, request); err != nil || r.PredictionPending() || p.Text != "Show tests" || !p.Completed {
+				t.Fatal("late cleanup acknowledgement lost the result or correlation")
+			}
+		})
+	}
+}
 
 func TestPredictionHostCapabilityAndEligibility(t *testing.T) {
 	for version, want := range map[string]bool{"": false, "0.161.0": false, "0.162.0-alpha.19": false, "0.162.0-alpha.20": true, "0.162.0": true, "0.163.0": true} {
@@ -38,7 +75,7 @@ func TestPredictionHostCapabilityAndEligibility(t *testing.T) {
 			}
 			request, _ := requests.Take("request")
 			body, _ := json.Marshal(result)
-			if handled, err := client.ObservePrediction(appserver.Message{Result: body}, request, nil); !handled || err != nil {
+			if handled, err := client.ObservePrediction(appserver.Message{Result: body}, request); !handled || err != nil {
 				t.Fatal(err)
 			}
 			if !p.Closed || len(transport.sends) != 1 {
@@ -54,7 +91,6 @@ func TestPredictionLifecycleAndLateCompletion(t *testing.T) {
 			transport := &requestTransport{id: "request"}
 			requests := NewRequests[struct{}](transport)
 			client := &Client[struct{}]{Requests: requests}
-			observations := new(Observations)
 			p := &Prediction{SourceThread: "main", SourceTurn: "source", Prompt: "remote", Trigger: "live"}
 			if err := requests.StartPrediction(p); err != nil {
 				t.Fatal(err)
@@ -65,7 +101,7 @@ func TestPredictionLifecycleAndLateCompletion(t *testing.T) {
 				if !ok {
 					t.Fatal("missing ledger entry")
 				}
-				handled, err := client.ObservePrediction(appserver.Message{Result: jsontext.Value(body)}, request, observations)
+				handled, err := client.ObservePrediction(appserver.Message{Result: jsontext.Value(body)}, request)
 				if !handled || err != nil {
 					t.Fatalf("reply handled=%v err=%v", handled, err)
 				}
@@ -99,7 +135,7 @@ func TestPredictionLifecycleAndLateCompletion(t *testing.T) {
 				reply(`{}`)
 				return
 			}
-			if !observations.IsSideThread("prediction") || last() != "turn/start" {
+			if !requests.IsSideThread("prediction") || last() != "turn/start" {
 				t.Fatal("prediction not isolated before sampling")
 			}
 			if closeAt == "start" {
@@ -116,7 +152,7 @@ func TestPredictionLifecycleAndLateCompletion(t *testing.T) {
 			}
 			// Completion may precede the start acknowledgement.
 			for _, m := range []appserver.Message{{Method: "item/completed", Params: []byte(`{"threadId":"prediction","turnId":"turn","item":{"type":"agentMessage","text":"{\"suggestion\":\"Show tests\"}"}}`)}, {Method: "turn/completed", Params: []byte(`{"threadId":"prediction","turn":{"id":"turn","status":"completed"}}`)}} {
-				if handled, err := client.ObservePrediction(m, Request[struct{}]{}, observations); !handled || err != nil {
+				if handled, err := client.ObservePrediction(m, Request[struct{}]{}); !handled || err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -125,7 +161,7 @@ func TestPredictionLifecycleAndLateCompletion(t *testing.T) {
 				t.Fatalf("lost result/cleanup %+v", p)
 			}
 			reply(`{}`)
-			if observations.IsSideThread("prediction") || requests.Pending() {
+			if requests.IsSideThread("prediction") || requests.Pending() {
 				t.Fatal("prediction resources retained")
 			}
 		})
@@ -143,7 +179,7 @@ func TestPredictionCompletedResultRejectsLateItems(t *testing.T) {
 		{Method: "item/completed", Params: []byte(`{"threadId":"prediction","turnId":"turn","item":{"type":"agentMessage","text":"{\"suggestion\":\"late replacement\"}"}}`)},
 		{Method: "item/agentMessage/delta", Params: []byte(`{"threadId":"prediction","turnId":"turn","delta":"late delta"}`)},
 	} {
-		if handled, err := client.ObservePrediction(event, Request[struct{}]{}, nil); !handled || err != nil {
+		if handled, err := client.ObservePrediction(event, Request[struct{}]{}); !handled || err != nil {
 			t.Fatal(err)
 		}
 	}
