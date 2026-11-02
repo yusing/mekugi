@@ -10,7 +10,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Owner | Entry points and responsibility |
 | --- | --- |
 | Composition | `composition/modules.go`: selected descriptors/bindings; `contracts`: shared interfaces; `testsupport/moduletest`: composed harness |
-| Launch | `launch/{dispatch,wrap,invocation}.go`: process lifecycle, invocation owners and host effects; `{native_process,native_process_supervisor}.go`: detached-server startup and diagnostics lifetime; executable: `apps/mekugi/cmd/mekugi` |
+| Launch | `launch/{dispatch,wrap,invocation}.go`: process lifecycle and host effects; `{native_session,app_server_ui}.go`: invocation state and serialized session loop; `{native_process,native_process_supervisor}.go`: detached-server startup and diagnostics lifetime; executable: `apps/mekugi/cmd/mekugi` |
 | Options/catalog | `launch/options`, `launch/modelcatalog`, `launch/catalog.go`: launch/resume configuration, selected provider metadata and bundled discovery |
 | Frontends | `frontends/{registry,worker,session,recovery}.go`: authenticated catalog/PATH, dispatch, executable pinning, worker leases and retained delivery |
 | Headless | `headless`: automation adapter and JSONL host evidence; Launch admits it through the shared server-owned runtime and task-owned family lifetime |
@@ -40,7 +40,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Diff primitives | `libraries/diffmodel`: composition/grouping/alignment; `libraries/diffrender`: geometry, syntax and word highlighting |
 | Shared UI | `libraries/terminalui`: panes/dialogs, Markdown/tables, copy fragments and choices; `{images,image_frame}.go`: terminal graphics capabilities, encoding and lifetime; `libraries/textsanitize`: shared display sanitization; `libraries/pathdisplay`: workspace paths |
 | Notices | `modules/notifications/{notice,presentation}`: bounded notices/claims/feedback; Request Execution classifies failures, Launch `{critical_errors,composer_notice}.go` binds audience/receipts |
-| Settings/naming | `modules/sessionpreferences`: applied settings/resume precedence; Terminal Session `preferences.go`: layout restoration; `modules/sessionnaming`: naming policy/requests; Launch `{session_naming,app_server_session_title}.go`: lifetime/name saves |
+| Settings/naming | `modules/sessionpreferences`: applied settings/resume precedence; Launch `{native_session,app_server_settings}.go`: Main applied settings and target-specific dispatch; Terminal Session `preferences.go`: layout restoration; `modules/sessionnaming`: naming policy/requests; Launch `{session_naming,app_server_session_title}.go`: lifetime/name saves |
 | Approvals | `modules/remotewriteapproval`: VCS classification; `modules/sudoapproval`: sudo policy/password validation; `apps/mekugi/cmd/mekugi-exec/{guard*,sudo}.go`: native helpers; Session Control `{shell_approvals,approval,question}.go`: pending decisions, attachment-owned grants and replies |
 | Command segments | `modules/commandsegments/{segments,transport,reports}`: live correlation/subscriptions, FIFO, retained publication/adoption; `libraries/shellinstrumentation`: argv/source instrumentation; Launch `exec_track.go`, Execution Observation `exec_report_observation.go`: host integration |
 | Session history | `modules/sessionhistory/history`: namespaces, leases, enrollment, retention and host-call cache; `{calls,call_requests,host_records}.go`: cache/pins/envelopes. Feature descriptors own record kinds; Record Transactions coordinates publication |
@@ -72,7 +72,8 @@ Application owners below are under `apps/mekugi/internal/`.
 Launch adapts host effects and terminal delivery; feature/presentation owners retain semantics.
 Cross-owner adapter entry points:
 
-- Live/replay observations: `launch/{attached_presentation,app_server_events,session_ui_replay_attachment}.go`.
+- Live/replay observations: `launch/{attached_presentation,app_server_events,session_ui_replay_attachment}.go`;
+  `attached_presentation.go` keeps execution hooks stable across presentation replacement.
 - Activity sources/painter/output: `launch/activity_terminal.go`; VCS facts: `activity_vcs.go`;
   enrichment resources: `activity_commit_reader.go`; auxiliary observations: `activity_supplements.go`.
 - Transcript images: `launch/image_previews.go` acquires images admitted by
