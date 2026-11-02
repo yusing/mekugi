@@ -144,7 +144,7 @@ func TestMChangesLegacyPositionalStreamsSeedNewWorkspaceID(t *testing.T) {
 	}
 	store := f.store.scoped(f.ctx)
 	if err := store.locked(f.ctx, func(store *mekugiReplayStore) error {
-		index, err := store.changes.Inspect(store.changeScope(), f.workspace)
+		index, err := readChangeIndexFixture(store, f.workspace)
 		if err != nil {
 			return err
 		}

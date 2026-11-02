@@ -1,5 +1,4 @@
 # Production reachability only. Test-inclusive reachability has no exceptions.
-github.com/yusing/mekugi/modules/sourceoutline/outline.Service.InspectSource
 github.com/yusing/mekugi/libraries/commandanalysis.ExecCommandArguments
 
 # Reserved MCP endpoint: libraries/mcptransport/SPEC.md.

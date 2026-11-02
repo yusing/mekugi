@@ -32,7 +32,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
 			trace := newNativeTraceFixture(t)
-			proxy.nativeTrace = nativetrace.NewWithNotice(trace.root, nil)
+			proxy.NativeTrace = nativetrace.NewWithNotice(trace.root, nil)
 			transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 			transform.sessionShell = "bash"
 			target := filepath.Join(workspace, "file.txt")

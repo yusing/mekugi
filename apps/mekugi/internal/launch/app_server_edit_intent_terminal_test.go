@@ -87,7 +87,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 		t.Fatalf("terminal lost inline source or exposed the non-interpreter edit body:\n%s", frame)
 	}
 	history := legacycall.History{ExecutingThread: "main", CorrelationID: "cmd\x00exec", ChangeID: "c1",
-		ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact, Labels: []string{"cat", "python3"}}),
+		ExecOutcome: &legacycall.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact, Labels: []string{"cat", "python3"}},
 		ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{
 			diffmodel.RenderReviewFile("a.go", "a.go", "old\n", "new\n"),
 			diffmodel.RenderReviewFile("b.go", "b.go", "old\n", "first\nsecond\n"),

@@ -11,14 +11,10 @@ import (
 )
 
 type ReadRequest struct {
-	Stdout     string
-	Stderr     string
-	StdoutKind string
-	StderrKind string
-	Position   [2]int
-	Stream     string
-	SourceRow  uint64
-	Label      string
+	Position  [2]int
+	Stream    string
+	SourceRow uint64
+	Label     string
 }
 type ReadPage struct {
 	Text         string

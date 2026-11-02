@@ -12,13 +12,12 @@ import (
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 func TestEditReceiptGroupsCaptureGapsWithoutClaimingEdits(t *testing.T) {
 	for _, known := range []bool{false, true} {
 		t.Run(fmt.Sprint(known), func(t *testing.T) {
-			history := legacycall.History{ChangeID: "amber1", ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"python3"}})}
+			history := legacycall.History{ChangeID: "amber1", ExecOutcome: &legacycall.Outcome{Labels: []string{"python3"}}}
 			if known {
 				history.ReviewFiles = append(history.ReviewFiles, legacycall.ReviewFile(diffmodel.RenderReviewFile("edited.go", "edited.go", "old\n", "new\n")))
 			}

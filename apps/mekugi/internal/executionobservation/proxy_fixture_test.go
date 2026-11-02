@@ -205,9 +205,9 @@ func (p *Preparer) Close() error {
 	if p == nil {
 		return nil
 	}
-	p.calls.StopAdmission()
-	p.calls.Close()
-	p.activity.Close()
+	p.Calls.StopAdmission()
+	p.Calls.Close()
+	p.Audience.Close()
 	return nil
 }
 
@@ -215,16 +215,7 @@ func newMekugiProxy(registry *frontends.Registry, projections []binding.InputPro
 	if registry == nil {
 		return nil
 	}
-	proxy := &Preparer{
-		registry:         registry,
-		calls:            service.Calls(),
-		review:           sessionreview.New(context.Background(), nil, nil),
-		inputProjections: slices.Clone(projections),
-		usage:            usage,
-		control:          new(sessioncontrol.Observations),
-		previewTiming:    previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain},
-		execWindows:      &Windows{},
-	}
-	proxy.activity = sessioncontrol.NewAudience(func(category, message string) { proxy.notice("", "", category, message) })
+	proxy := &Preparer{Config: Config{Registry: registry, Calls: service.Calls(), Review: sessionreview.New(context.Background(), nil, nil), InputProjections: slices.Clone(projections), Usage: usage, Control: new(sessioncontrol.Observations), PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}, Windows: &Windows{}}}
+	proxy.Audience = sessioncontrol.NewAudience(func(category, message string) { proxy.notice("", "", category, message) })
 	return proxy
 }

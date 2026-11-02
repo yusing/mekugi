@@ -63,6 +63,9 @@ type mekugiHistory struct {
 	CommentaryMessageIDs []string
 	AlreadySatisfied     bool
 
+	// legacy keeps frozen inventory and coverage metadata at the retained record owner.
+	legacy *legacycall.History
+
 	confirmed  bool
 	nativeCell *nativetrace.Cell
 	// sequence orders a request-visible view (or the bounded memory cache).
@@ -115,9 +118,9 @@ func orderedCalls(histories map[string]mekugiHistory) []history.Call {
 // the entire input is valid, including output confirmations.
 func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresponses.Request, workspace, sessionID string) (map[string]mekugiHistory, error) {
 	releaseSnapshot := func() {}
-	if p.retained.Store != nil {
+	if p.Retained.Store != nil {
 		var err error
-		releaseSnapshot, err = p.retained.Store.SnapshotLease(ctx)
+		releaseSnapshot, err = p.Retained.Store.SnapshotLease(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +137,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 	}
 	// Retain original dependencies before projection mutates or filters the items.
 	var retentionInput recordtransactions.Input
-	if p.retained.Store != nil && observationScope(ctx, p.retained).Thread != "" {
+	if p.Retained.Store != nil && observationScope(ctx, p.Retained).Thread != "" {
 		retentionInput = observationRetentionInput(workspace, raw, items, releaseSnapshot)
 	}
 	// Validate this request's retained selections under one publication lock.
@@ -150,8 +153,8 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 		err     error
 	}
 	retained := make(map[lookupKey]lookupResult)
-	if p.retained.Store != nil {
-		err := p.retained.Store.Transaction(ctx, nil, func(*history.Transaction) error {
+	if p.Retained.Store != nil {
+		err := p.Retained.Store.Transaction(ctx, nil, func(*history.Transaction) error {
 			for _, item := range items {
 				var key lookupKey
 				switch responses.StringField(item, "type") {
@@ -173,7 +176,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 				}
 				result := lookupResult{err: ctx.Err()}
 				if result.err == nil {
-					record, found, err := p.retained.Store.ReadHostCall(workspace, key.id, key.commentary)
+					record, found, err := p.Retained.Store.ReadHostCall(workspace, key.id, key.commentary)
 					result = lookupResult{history: record.History, found: found, err: err}
 				}
 				retained[key] = result
@@ -185,7 +188,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 		}
 	}
 	changed := false
-	commentaryIDs := p.calls.CommentaryIDs(sessionID)
+	commentaryIDs := p.Calls.CommentaryIDs(sessionID)
 	filtered := make([]map[string]json.RawMessage, 0, len(items))
 	for _, item := range items {
 		kind, reference := responses.StringField(item, "type"), responses.StringField(item, "encrypted_content")
@@ -201,7 +204,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 		if responses.StringField(item, "type") == "message" {
 			id := responses.StringField(item, "id")
 			_, generated := commentaryIDs[id]
-			if p.retained.Store != nil {
+			if p.Retained.Store != nil {
 				lookup := retained[lookupKey{id: id, commentary: true}]
 				if lookup.err != nil {
 					return nil, lookup.err
@@ -269,7 +272,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 		}
 		history, known := visible[callID]
 		if !known {
-			if p.retained.Store != nil {
+			if p.Retained.Store != nil {
 				lookup := retained[lookupKey{id: callID}]
 				history, known = legacyHistory(lookup.history), lookup.found
 				if lookup.err != nil {
@@ -277,7 +280,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 				}
 			} else {
 				var retained legacycall.History
-				retained, known = p.calls.Lookup(sessionID, callID)
+				retained, known = p.Calls.Lookup(sessionID, callID)
 				history = legacyHistory(retained)
 			}
 			if !known {
@@ -298,7 +301,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 					editOutputs[callID] = item
 				} else if pending := completed.result.ResumeHandle; pending != "" {
 					pendingCalls[pending] = completed
-					p.execWindows.setSession(callID, pending)
+					p.Windows.setSession(callID, pending)
 				}
 			}
 			if history.confirmsReport(item["output"]) {
@@ -350,7 +353,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 		}
 		changed = true
 	}
-	if err := retainObservationInput(ctx, p.retained, p.changeSource, p.recovered, retentionInput, visible); err != nil {
+	if err := retainObservationInput(ctx, p.Retained, p.Changes, p.Recovery, retentionInput, visible); err != nil {
 		return nil, err
 	}
 	releaseSnapshot()
@@ -363,11 +366,11 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 			if source == "" {
 				source = completed.history.Script
 			}
-			completed.history.nativeCell = p.nativeTrace.ReadCell(completed.history.ExecutingThread, completed.callID, source)
+			completed.history.nativeCell = p.NativeTrace.ReadCell(completed.history.ExecutingThread, completed.callID, source)
 			resolveStockEdits(&completed.history, workspace)
 		}
 	}
-	completedCalls = orderExecCompletions(p.execWindows, completedCalls)
+	completedCalls = orderExecCompletions(p.Windows, completedCalls)
 	execGroups := make(map[string][]execCompletion)
 	for _, completed := range completedCalls {
 		// A yielded command owns its continuing process, not the completed
@@ -388,32 +391,32 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 			return nil, err
 		}
 		if completed.history.ExecObservation == nil {
-			p.execWindows.close(completed.callID)
+			p.Windows.close(completed.callID)
 		}
 		key := execSiblingKey(completed.history)
 		if key == "" {
 			key = completed.callID
 		}
 		if members := execGroups[key]; len(members) != 0 {
-			if err := finalizeExecObservations(p.retained, p.changeSource, p.snapshots, p.recovered, p.publishChanges, p.execWindows, p.activity, p.noticeSink, ctx, workspace, members); err != nil {
+			if err := finalizeExecObservations(p.Retained, p.Changes, p.Checkpoints, p.Recovery, p.PublishChanges, p.Windows, p.Audience, p.Notice, ctx, workspace, members); err != nil {
 				return nil, err
 			}
 			delete(execGroups, key)
 		}
 	}
-	if p.retained.Store != nil {
-		updates, err := p.changeSource.Repair(ctx, observationScope(ctx, p.retained), workspace, changePublications(visible))
+	if p.Retained.Store != nil {
+		updates, err := p.Changes.Repair(ctx, observationScope(ctx, p.Retained), workspace, changePublications(visible))
 		if err != nil {
 			return nil, changeError(err)
 		}
-		notifyChanges(p.publishChanges, updates)
+		notifyChanges(p.PublishChanges, updates)
 	}
 	for _, completed := range completedCalls {
 		item := editOutputs[completed.callID]
 		if item == nil {
 			continue
 		}
-		notice, err := agentEditNotice(ctx, p.retained, p.changeSource, workspace, completed.callID, completed.history)
+		notice, err := agentEditNotice(ctx, p.Retained, p.Changes, workspace, completed.callID, completed.history)
 		if err != nil || notice == "" {
 			continue // Auxiliary evidence must not interfere with stock results.
 		}
@@ -444,10 +447,10 @@ func (t *mekugiResponseTransform) commitHistory() error {
 	if t.historyCommitted {
 		return nil
 	}
-	if err := publishAfterMaintenance(t.ctx, t.retained, t.changeSource, t.publishChanges, t.directory, t.local); err != nil {
+	if err := publishAfterMaintenance(t.ctx, t.owners.Retained, t.owners.Changes, t.owners.PublishChanges, t.directory, t.local); err != nil {
 		return requestexecution.Classify(err, "replay_history_commit", "Mekugi could not persist completed response history", true)
 	}
-	if err := t.calls.Remember(t.historySessionID, orderedCalls(t.local)); err != nil && t.retained.Store == nil {
+	if err := t.owners.Calls.Remember(t.historySessionID, orderedCalls(t.local)); err != nil && t.owners.Retained.Store == nil {
 		return requestexecution.Classify(err, "replay_history_commit", "Mekugi could not retain completed response history", true)
 	}
 	t.historyCommitted = true
@@ -459,10 +462,10 @@ func (t *mekugiResponseTransform) commitLocalCall(callID string) error {
 	if !exists {
 		return nil
 	}
-	if err := publishAfterMaintenance(t.ctx, t.retained, t.changeSource, t.publishChanges, t.directory, map[string]mekugiHistory{callID: history}); err != nil {
+	if err := publishAfterMaintenance(t.ctx, t.owners.Retained, t.owners.Changes, t.owners.PublishChanges, t.directory, map[string]mekugiHistory{callID: history}); err != nil {
 		return requestexecution.Classify(err, "replay_call_commit", "Mekugi could not persist a completed tool call", true)
 	}
-	if err := t.calls.Remember(t.historySessionID, orderedCalls(map[string]mekugiHistory{callID: history})); err != nil && t.retained.Store == nil {
+	if err := t.owners.Calls.Remember(t.historySessionID, orderedCalls(map[string]mekugiHistory{callID: history})); err != nil && t.owners.Retained.Store == nil {
 		return requestexecution.Classify(err, "replay_call_commit", "Mekugi could not retain a completed tool call", true)
 	}
 	return nil

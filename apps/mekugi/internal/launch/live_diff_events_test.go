@@ -17,7 +17,6 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -119,11 +118,11 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 	if _, err := projection.Apply(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope}); err != nil {
 		t.Fatalf("unchanged membership reread an immutable capture: %v", err)
 	}
-	index, err := store.changes.Inspect(store.changeScope(), workspace)
+	index, err := readChangeIndexFixture(store, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	index.Changes["amber1"] = changes.Change{Correlation: "one"}
+	index.Changes["amber1"] = historicalTrackedChange{Correlation: "one"}
 	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error { return writeChangeIndexFixture(store, index) }); err != nil {
 		t.Fatal(err)
 	}

@@ -101,7 +101,7 @@ func TestSavedReviewLoaderPublishesImmutableAtomicReceiptData(t *testing.T) {
 	path := filepath.Join(workspace, "receipt.go")
 	history := legacycall.History{ChangeID: id, CorrelationID: call, ExecutingThread: "main", ToolName: nativeExecCommandToolName,
 		ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "before\n", "after\n")}),
-		ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Status: changecapture.StatusFailed, Coverage: changecapture.CoverageExact, Exit: new(2)})}
+		ExecOutcome: &legacycall.Outcome{Status: changecapture.StatusFailed, Coverage: changecapture.CoverageExact, Exit: new(2)}}
 	if err := store.put(t.Context(), workspace, map[string]legacycall.History{call: history}); err != nil {
 		t.Fatal(err)
 	}

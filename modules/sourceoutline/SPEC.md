@@ -91,8 +91,7 @@ shares the host tool identity. Passthrough installs and advertises no frontends.
 
 ## Lifecycle
 
-Stateless. Every call finishes its parsing before returning. Snapshot inspection
-accepts caller-supplied bytes without reopening the source.
+Stateless. Every call finishes its parsing before returning.
 
 ## Codex connection
 

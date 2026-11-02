@@ -52,10 +52,10 @@ func (p *Preparer) restoreApprovalReviewContext(ctx context.Context, request *co
 		}
 		if release == nil {
 			metadata := input.Metadata
-			if p == nil || p.retained.Store == nil || !input.MetadataValid || input.Thread == "" || metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != input.Thread {
+			if p == nil || p.Retained.Store == nil || !input.MetadataValid || input.Thread == "" || metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != input.Thread {
 				return errors.New("approval review compaction recovery requires admitted identity and storage")
 			}
-			store := p.retained.Store
+			store := p.Retained.Store
 			scope, exists, err := store.ReadScope(input.Thread)
 			if err != nil {
 				return err
@@ -104,14 +104,14 @@ func (p *Preparer) restoreApprovalReviewContext(ctx context.Context, request *co
 // StoreCompact publishes the exact model answer and separate reload selection before the
 // native compaction reference can enter host history. It owns no second store.
 func (p *Preparer) StoreCompact(ctx context.Context, thread, summary, reload string) (string, error) {
-	if p == nil || p.retained.Store == nil || thread == "" || strings.TrimSpace(summary) == "" {
+	if p == nil || p.Retained.Store == nil || thread == "" || strings.TrimSpace(summary) == "" {
 		return "", errors.New("compaction publication requires a retained thread and summary")
 	}
 	_, err := compact.ReadCommands(reload)
 	if err != nil {
 		return "", err
 	}
-	store := p.retained
+	store := p.Retained
 	namespace, release, err := store.Store.BeginSession(ctx, store.Writes, store.Limits, thread)
 	if err != nil {
 		return "", err
@@ -148,7 +148,7 @@ func (p *Preparer) StoreCompact(ctx context.Context, thread, summary, reload str
 func (p *Preparer) readCompact(ctx context.Context, reference string) (compact.Record, error) {
 	identity, _ := ctx.Value(storageSessionKey{}).(storageSessionIdentity)
 	namespace := identity.Namespace
-	store := p.retained.Store
+	store := p.Retained.Store
 	if store == nil || identity.Thread == "" {
 		return compact.Record{}, errors.New("compaction recovery has no admitted thread")
 	}
@@ -167,19 +167,19 @@ func (p *Preparer) readCompact(ctx context.Context, reference string) (compact.R
 
 // Prewarm projects immutable history without publishing a scope or running readers.
 func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexresponses.Request, session, thread string, metadata codexresponses.TurnMetadata, prewarm bool) (jsontext.Value, map[string]bool, error) {
-	if p == nil || p.retained.Store == nil || thread == "" || metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != thread {
+	if p == nil || p.Retained.Store == nil || thread == "" || metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != thread {
 		return nil, nil, errors.New("compaction recovery identity or storage is unavailable")
 	}
-	namespace, err := p.retained.Store.NamespaceForThread(thread)
+	namespace, err := p.Retained.Store.NamespaceForThread(thread)
 	if err != nil {
 		return nil, nil, err
 	}
 	ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: thread, Namespace: namespace})
-	ctx, err = prepareHandleScope(ctx, p.retained.Store, p.retained.Writes, metadata)
+	ctx, err = prepareHandleScope(ctx, p.Retained.Store, p.Retained.Writes, metadata)
 	if err != nil {
 		return nil, nil, err
 	}
-	release, err := p.retained.Store.SnapshotLease(ctx)
+	release, err := p.Retained.Store.SnapshotLease(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -216,7 +216,7 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 			if callErr == nil && len(call) == 0 {
 				turn = ""
 			}
-			p.activity.Collect(activity.Supplement{Thread: thread, Turn: turn, Source: record.Reference, Kind: "compact_reload", Text: "Compaction reload", ReloadSources: reloads})
+			p.Audience.Collect(activity.Supplement{Thread: thread, Turn: turn, Source: record.Reference, Kind: "compact_reload", Text: "Compaction reload", ReloadSources: reloads})
 		}
 		if prewarm {
 			for key := range item {
@@ -238,12 +238,12 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 		return nil, readCalls, err
 	}
 	release()
-	ctx, release, err = beginRetainedSession(ctx, p.retained.Store, p.retained.Writes, p.retained.Limits, thread, session)
+	ctx, release, err = beginRetainedSession(ctx, p.Retained.Store, p.Retained.Writes, p.Retained.Limits, thread, session)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer release()
-	ctx, err = prepareHandleScope(ctx, p.retained.Store, p.retained.Writes, metadata)
+	ctx, err = prepareHandleScope(ctx, p.Retained.Store, p.Retained.Writes, metadata)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -253,7 +253,7 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 	}
 	_, err = p.reconcileVisibleInput(ctx, request, workspace, workspace+"\x00"+thread)
 	if err == nil && metadata.RequestKind == responses.Turn {
-		p.control.ObserveCompactionContext(thread, contextReference)
+		p.Control.ObserveCompactionContext(thread, contextReference)
 	}
 	return pending, readCalls, err
 }
@@ -396,19 +396,19 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 	if len(calls) == 0 && len(assignments) == 0 {
 		return outputs, nil
 	}
-	namespace, err := p.retained.Store.NamespaceForThread(thread)
+	namespace, err := p.Retained.Store.NamespaceForThread(thread)
 	if err != nil {
 		return nil, err
 	}
-	if _, exists, err := p.retained.Store.ReadScope(thread); err != nil {
+	if _, exists, err := p.Retained.Store.ReadScope(thread); err != nil {
 		return nil, err
 	} else if !exists && metadata.ForkedFromThreadID != "" {
-		namespace, err = p.retained.Store.NamespaceForThread(metadata.ForkedFromThreadID)
+		namespace, err = p.Retained.Store.NamespaceForThread(metadata.ForkedFromThreadID)
 		if err != nil {
 			return nil, err
 		}
 	}
-	release, err := p.retained.Store.SnapshotLease(ctx)
+	release, err := p.Retained.Store.SnapshotLease(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -440,10 +440,10 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 		if reference == "" {
 			continue
 		} // Denial, cancellation, or failed publication.
-		if p.recovered == nil {
+		if p.Recovery == nil {
 			return nil, errors.New("compaction snapshot recovery is unavailable")
 		}
-		store, err := p.recovered.AttachStore(p.retained.Store, namespace, thread, recovery.DefaultLimits(), nil)
+		store, err := p.Recovery.AttachStore(p.Retained.Store, namespace, thread, recovery.DefaultLimits(), nil)
 		if err != nil {
 			return nil, err
 		}
@@ -488,7 +488,7 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 		}
 		outputs[id] = responses.MustMarshalJSON(parts)
 		if !prewarm && metadata.RequestKind == responses.Turn {
-			p.activity.Collect(activity.Supplement{Thread: thread, Source: "reload-result:" + id + ":" + reference, Kind: "compact_reload", Text: "Compaction reload", ReloadSources: reloads})
+			p.Audience.Collect(activity.Supplement{Thread: thread, Source: "reload-result:" + id + ":" + reference, Kind: "compact_reload", Text: "Compaction reload", ReloadSources: reloads})
 		}
 	}
 	return outputs, nil

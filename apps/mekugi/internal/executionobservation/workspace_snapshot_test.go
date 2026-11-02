@@ -206,7 +206,7 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 	isolateSnapshotGit(t)
 	f := newMChangesSliceFixture(t, "snapshot-overlap")
 	proxy := testProxyWithStore(f.store, &Windows{})
-	sibling := testProxyWithStore(f.store, proxy.execWindows.ForRuntime())
+	sibling := testProxyWithStore(f.store, proxy.Windows.ForRuntime())
 	target := filepath.Join(f.workspace, "shared.txt")
 	writeTestFile(t, target, "one\n")
 	observe := func(proxy *Preparer, ref string) mekugiHistory {
@@ -214,12 +214,12 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 		if tree == "" {
 			t.Fatal("no workspace checkpoint")
 		}
-		proxy.execWindows.open(&execWindow{ref: ref, roots: []string{f.workspace}})
+		proxy.Windows.open(&execWindow{ref: ref, roots: []string{f.workspace}})
 		return mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
 			ExecObservation: &changecapture.Observation{Commands: []commandanalysis.Command{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
 	}
 	finalize := func(proxy *Preparer, ref string, history mekugiHistory) mekugiHistory {
-		if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
+		if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
 			t.Fatal(err)
 		}
 		record, _, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID(ref, false))
@@ -250,9 +250,9 @@ func TestWorkspaceSnapshotConcurrentRuntimesRecordAnEffectOnce(t *testing.T) {
 	isolateSnapshotGit(t)
 	f := newMChangesSliceFixture(t, "snapshot-runtime-overlap")
 	parent := testProxyWithStore(f.store, &Windows{})
-	child := testProxyWithStore(f.store, parent.execWindows.ForRuntime())
+	child := testProxyWithStore(f.store, parent.Windows.ForRuntime())
 	var err error
-	child.snapshots, err = testCapture(t, f.store.directory).Checkpoints(f.store.directory)
+	child.Checkpoints, err = testCapture(t, f.store.directory).Checkpoints(f.store.directory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,11 +262,11 @@ func TestWorkspaceSnapshotConcurrentRuntimesRecordAnEffectOnce(t *testing.T) {
 	refs := []string{"parent", "child"}
 	histories := make([]mekugiHistory, len(proxies))
 	for i, proxy := range proxies {
-		tree := proxy.snapshots.Checkpoint(f.ctx, f.workspace)
+		tree := proxy.Checkpoints.Checkpoint(f.ctx, f.workspace)
 		if tree == "" {
 			t.Fatal("no workspace checkpoint")
 		}
-		proxy.execWindows.open(&execWindow{ref: refs[i], roots: []string{f.workspace}})
+		proxy.Windows.open(&execWindow{ref: refs[i], roots: []string{f.workspace}})
 		histories[i] = mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
 			ExecObservation: &changecapture.Observation{Commands: []commandanalysis.Command{{Command: refs[i]}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
 	}
@@ -275,11 +275,11 @@ func TestWorkspaceSnapshotConcurrentRuntimesRecordAnEffectOnce(t *testing.T) {
 	// Each uses its own checkpoint owner, as independently launched runtimes do.
 	var workers sync.WaitGroup
 	defer workers.Wait()
-	release := sync.OnceFunc(parent.execWindows.serialize(f.workspace))
+	release := sync.OnceFunc(parent.Windows.serialize(f.workspace))
 	defer release()
 	for i, proxy := range proxies {
 		workers.Go(func() {
-			if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, f.workspace,
+			if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace,
 				[]execCompletion{{callID: refs[i], history: histories[i], result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
 				t.Error(err)
 			}
@@ -288,7 +288,7 @@ func TestWorkspaceSnapshotConcurrentRuntimesRecordAnEffectOnce(t *testing.T) {
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
 	for {
-		state := parent.execWindows.state()
+		state := parent.Windows.state()
 		state.mu.Lock()
 		waiting := state.finalizing[f.workspace].users == len(proxies)+1
 		state.mu.Unlock()
@@ -318,7 +318,7 @@ func TestWorkspaceSnapshotConcurrentRuntimesRecordAnEffectOnce(t *testing.T) {
 	if effects != 1 {
 		t.Fatalf("one physical edit captured %d times", effects)
 	}
-	if len(parent.execWindows.state().finalizing) != 0 {
+	if len(parent.Windows.state().finalizing) != 0 {
 		t.Fatal("completed comparisons retained workspace locks")
 	}
 }
@@ -398,7 +398,7 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 		if tree == "" {
 			t.Fatal("no workspace checkpoint")
 		}
-		proxy.execWindows.open(&execWindow{ref: ref, roots: []string{workspace}})
+		proxy.Windows.open(&execWindow{ref: ref, roots: []string{workspace}})
 		return mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
 			ExecObservation: &changecapture.Observation{Commands: []commandanalysis.Command{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{workspace}, Tree: tree}}
 	}
@@ -408,7 +408,7 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 		ref, workspace string
 		history        mekugiHistory
 	}{{"outer", f.workspace, outer}, {"nested", inner, nested}} {
-		if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, call.workspace, []execCompletion{{callID: call.ref, history: call.history, result: binding.DecodeExecutionResult(call.history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
+		if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, call.workspace, []execCompletion{{callID: call.ref, history: call.history, result: binding.DecodeExecutionResult(call.history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
 			t.Fatal(err)
 		}
 	}

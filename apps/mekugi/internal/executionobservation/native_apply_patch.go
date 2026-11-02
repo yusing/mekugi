@@ -31,12 +31,12 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 	if !result.Terminal {
 		return nil
 	}
-	cuts := p.execWindows.intervalCuts([]string{callID})
+	cuts := p.Windows.intervalCuts([]string{callID})
 	var refs []string
 	for _, cut := range cuts {
 		refs = append(refs, cut.writer)
 	}
-	unlock := p.execWindows.lockIntervals(refs)
+	unlock := p.Windows.lockIntervals(refs)
 	defer unlock()
 	windowFiles := changecapture.PatchWindowFiles(history.NativePatches)
 	attempts := make(map[string]mekugiHistory)
@@ -50,7 +50,7 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 			continue // Outer completion cannot finish a still-running nested edit.
 		}
 		derivedCallID := legacycall.PatchCallID(callID, index)
-		if retained, found, err := p.retained.Store.LookupHostCall(ctx, workspace, derivedCallID); err != nil {
+		if retained, found, err := p.Retained.Store.LookupHostCall(ctx, workspace, derivedCallID); err != nil {
 			return err
 		} else if found {
 			if retained.CorrelationID != callID+"\x00"+strconv.Itoa(index) || retained.Script != observation.Input {
@@ -64,9 +64,9 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 		// Attempts remain durable, but IDs select actual or incomplete file
 		// evidence, not successful no-ops or rejected patches with no effects.
 		changeID := ""
-		if len(reviews) != 0 && p.retained.Store != nil {
+		if len(reviews) != 0 && p.Retained.Store != nil {
 			var err error
-			changeID, err = p.changeSource.Reserve(ctx, observationScope(ctx, p.retained), workspace, thread, correlation)
+			changeID, err = p.Changes.Reserve(ctx, observationScope(ctx, p.Retained), workspace, thread, correlation)
 			if err != nil {
 				return changeError(err)
 			}
@@ -134,7 +134,7 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 	if err != nil {
 		return err
 	}
-	if err := publishObservations(context.WithoutCancel(ctx), p.retained, p.changeSource, p.publishChanges, workspace, attempts, continuations...); err != nil {
+	if err := publishObservations(context.WithoutCancel(ctx), p.Retained, p.Changes, p.PublishChanges, workspace, attempts, continuations...); err != nil {
 		return changeError(err)
 	}
 	displayID := ""
@@ -142,7 +142,7 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 		displayID = responses.StringField(history.UpstreamItem, "id")
 	}
 	for _, id := range receipts {
-		_ = publishEditReceipt(context.WithoutCancel(ctx), p.retained, p.changeSource, workspace, thread, id, p.activity, displayID)
+		_ = publishEditReceipt(context.WithoutCancel(ctx), p.Retained, p.Changes, workspace, thread, id, p.Audience, displayID)
 	}
 	return nil
 }

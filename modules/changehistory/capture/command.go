@@ -111,9 +111,6 @@ type Observation struct {
 	// LiteralClass preserves pre-captured scope independently of uncertainty
 	// about additional exec calls whose arguments are not yet resolved.
 	LiteralClass string `json:",omitempty"`
-	// Inventory is the selected workspace before an opaque call. It is
-	// window evidence, separate from the explicit scope above.
-	Inventory *Inventory `json:",omitempty"`
 	// Tree is the private workspace snapshot taken before a writer call. Its
 	// comparison covers effects outside the source-named scope.
 	Tree string `json:",omitempty"`
@@ -221,8 +218,6 @@ type Outcome struct {
 	// exactly.
 	Scope       []string `json:",omitempty"`
 	ScopeReason string   `json:",omitempty"`
-	// Unswept retains command-level coverage diagnostics, not changed files.
-	Unswept string `json:",omitempty"`
 	// Overlaps are calls whose windows overlapped this one on the same root.
 	Overlaps []string `json:",omitempty"`
 	// Background names still-running sessions for command-history diagnostics.

@@ -109,7 +109,7 @@ func TestRequestPreparationBeginsOnlyNewRootTurn(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	auto, sub := newLiveDiffTurnTest(t, workspace, thread)
 
-	proxy.review = testReview(auto)
+	proxy.Review = testReview(auto)
 	headers := func(turnID string) http.Header {
 		metadata := codexresponses.TurnMetadata{
 			RequestKind: "turn", ThreadID: thread, TurnID: turnID,
@@ -149,7 +149,7 @@ func TestLiveDiffTerminalCompletesAfterTransformedDelivery(t *testing.T) {
 				transform, _, _, workspace := newMekugiTestTransform(t)
 				auto, sub := newLiveDiffTurnTest(t, workspace, transform.threadID)
 
-				transform.review = testReview(auto)
+				transform.owners.Review = testReview(auto)
 				transform.shellTurnID = "host-turn"
 				transform.subagentTurn = child
 				beginLiveDiffTurn(auto, workspace, transform.threadID, codexresponses.TurnMetadata{
@@ -208,7 +208,7 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 				transform.shellTurnID = turnID
 				auto, sub := newLiveDiffTurnTest(t, workspace, transform.shellThreadID)
 
-				transform.review = testReview(auto)
+				transform.owners.Review = testReview(auto)
 				beginLiveDiffTurn(auto, workspace, transform.shellThreadID, codexresponses.TurnMetadata{
 					RequestKind: "turn", ThreadID: transform.shellThreadID, TurnID: turnID,
 				})

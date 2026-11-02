@@ -18,7 +18,6 @@ func durableHistory(h mekugiHistory) mekugiHistory {
 		for i := range baseline.Files {
 			baseline.Files[i].WatchStamp = ""
 		}
-		baseline.Inventory = durableInventory(baseline.Inventory)
 		h.ResolvedBaseline = &baseline
 	}
 	h.ExecObservation = durableObservation(h.ExecObservation)
@@ -44,29 +43,5 @@ func durableObservation(o *capture.Observation) *capture.Observation {
 			observation.Listings[i].Entries = nil
 		}
 	}
-	observation.Inventory = durableInventory(observation.Inventory)
 	return &observation
-}
-
-// durable drops request-local preview stamps and spells empty collections as
-// they read back.
-func durableInventory(i *capture.Inventory) *capture.Inventory {
-	if i == nil {
-		return nil
-	}
-	inventory := *i
-	inventory.Files = slices.Clone(inventory.Files)
-	for index := range inventory.Files {
-		inventory.Files[index].WatchStamp = ""
-	}
-	if len(inventory.Files) == 0 {
-		inventory.Files = nil
-	}
-	if len(inventory.Entries) == 0 {
-		inventory.Entries = nil
-	}
-	if len(inventory.Blobs) == 0 {
-		inventory.Blobs = nil
-	}
-	return &inventory
 }

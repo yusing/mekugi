@@ -92,7 +92,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	}
 	history := legacycall.History{ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: "main", CorrelationID: call, ChangeID: id,
 		ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile(filepath.Join(workspace, "formatted.go"), filepath.Join(workspace, "formatted.go"), "old\n", "new\n")}),
-		ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Status: changecapture.StatusFailed, Coverage: changecapture.CoverageExact, Exit: new(2)}),
+		ExecOutcome: &legacycall.Outcome{Status: changecapture.StatusFailed, Coverage: changecapture.CoverageExact, Exit: new(2)},
 	}
 	if err := writer.put(t.Context(), workspace, map[string]legacycall.History{call: history}); err != nil {
 		t.Fatal(err)

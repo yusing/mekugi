@@ -11,11 +11,10 @@ import (
 
 // Legacy schema, decoded only when reading retained pre-redesign records.
 type resolvedStockBaseline struct {
-	Root      string
-	Shell     string
-	Files     []changecapture.File     `json:",omitempty"`
-	Omitted   []changecapture.Omission `json:",omitempty"`
-	Inventory *changecapture.Inventory `json:",omitempty"`
+	Root    string
+	Shell   string
+	Files   []changecapture.File     `json:",omitempty"`
+	Omitted []changecapture.Omission `json:",omitempty"`
 }
 
 // Host tracing confirms outcomes and repeated literal call sites. It never

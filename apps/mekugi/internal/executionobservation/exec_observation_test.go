@@ -303,7 +303,7 @@ func retainCommandObservation(t *testing.T, transform *mekugiResponseTransform, 
 	if !ok {
 		t.Fatal("invalid retained command fixture")
 	}
-	observation, observed := changecapture.Capture(transform.ctx, []commandanalysis.Command{command}, false, false, executionCaptureEnvironment(transform.ctx, transform.directory, transform.retained, transform.changeSource, transform.snapshots, nil))
+	observation, observed := changecapture.Capture(transform.ctx, []commandanalysis.Command{command}, false, false, executionCaptureEnvironment(transform.ctx, transform.directory, transform.owners.Retained, transform.owners.Changes, transform.owners.Checkpoints, nil))
 	if !observed {
 		return
 	}

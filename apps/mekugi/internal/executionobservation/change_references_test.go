@@ -6,6 +6,9 @@ import (
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"fmt"
+	"path/filepath"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
@@ -19,12 +22,40 @@ func changeIndexName(workspace, namespace string) string {
 }
 
 type historicalChangeIndex struct {
-	Version int
-	changes.Snapshot
+	Sequence             uint64 `json:",omitzero"`
+	Version              int
+	Workspace, Namespace string
+	Streams              []historicalChangeStream
+	Changes              map[string]historicalTrackedChange
 }
 
-func writeChangeIndexFixture(s *mekugiReplayStore, index changes.Snapshot) error {
-	data, err := json.Marshal(&historicalChangeIndex{Version: 1, Snapshot: index}, jsonv1.DefaultOptionsV1())
+type historicalChangeStream struct {
+	Name, Thread  string
+	Next, Retired int
+}
+
+type historicalTrackedChange struct {
+	Correlation string
+	Calls       []struct {
+		Sequence   uint64
+		Thread, ID string
+		Managed    bool
+	}
+	Dependencies []string
+	RetiredCalls int
+}
+
+func readChangeIndexFixture(s *mekugiReplayStore, workspace string) (historicalChangeIndex, error) {
+	var index historicalChangeIndex
+	data, err := history.ReadRecord(filepath.Join(s.directory, changeIndexName(workspace, s.session.Namespace)))
+	if err == nil {
+		err = json.Unmarshal(data, &index)
+	}
+	return index, err
+}
+
+func writeChangeIndexFixture(s *mekugiReplayStore, index historicalChangeIndex) error {
+	data, err := json.Marshal(&index, jsonv1.DefaultOptionsV1())
 	if err != nil {
 		return err
 	}

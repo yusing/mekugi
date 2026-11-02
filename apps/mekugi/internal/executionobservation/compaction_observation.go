@@ -38,10 +38,10 @@ func validateProviderContext(input jsonv1.RawMessage) error {
 // Compaction can carry the first completed host result for an observed edit.
 // Retain that evidence without projecting changes into the provider request.
 func (p *Preparer) observeCompactionInput(ctx context.Context, request *codexresponses.Request, session, thread string, metadata codexresponses.TurnMetadata) error {
-	if p == nil || p.retained.Store == nil || thread == "" {
+	if p == nil || p.Retained.Store == nil || thread == "" {
 		return nil
 	}
-	ctx, release, err := beginRetainedSession(ctx, p.retained.Store, p.retained.Writes, p.retained.Limits, thread, session)
+	ctx, release, err := beginRetainedSession(ctx, p.Retained.Store, p.Retained.Writes, p.Retained.Limits, thread, session)
 	if err != nil {
 		return err
 	}
@@ -51,15 +51,15 @@ func (p *Preparer) observeCompactionInput(ctx context.Context, request *codexres
 		return errors.New("compaction observation requires one valid workspace")
 	}
 	if workspace == "" {
-		err = p.retained.Store.Transaction(ctx, p.retained.Writes, func(*history.Transaction) error {
-			workspace, err = retainedCallWorkspace(p.retained.Store, thread)
+		err = p.Retained.Store.Transaction(ctx, p.Retained.Writes, func(*history.Transaction) error {
+			workspace, err = retainedCallWorkspace(p.Retained.Store, thread)
 			return err
 		})
 		if err != nil {
 			return err
 		}
 	}
-	ctx, err = prepareHandleScope(ctx, p.retained.Store, p.retained.Writes, metadata)
+	ctx, err = prepareHandleScope(ctx, p.Retained.Store, p.Retained.Writes, metadata)
 	if err != nil {
 		return err
 	}

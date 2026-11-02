@@ -209,7 +209,7 @@ func rebaseExecIntervals(observation *changecapture.Observation, intervals []exe
 }
 
 func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, observation *changecapture.Observation, patches []changecapture.PatchObservation) error {
-	if t.execWindows == nil || t.retained.Store == nil {
+	if t.owners.Windows == nil || t.owners.Retained.Store == nil {
 		return nil
 	}
 	var boundaries []changecapture.File
@@ -242,15 +242,15 @@ func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, observati
 		paths[boundary.Path] = true
 	}
 	var candidates []execIntervalCut
-	t.execWindows.state().mu.Lock()
-	for _, window := range t.execWindows.state().windows {
+	t.owners.Windows.state().mu.Lock()
+	for _, window := range t.owners.Windows.state().windows {
 		if window.ref != patchCall && window.group != t.execGroup && window.closed.IsZero() && window.scope.Store != nil && slices.ContainsFunc(window.paths, func(path string) bool { return paths[path] }) {
 			candidates = append(candidates, execIntervalCut{writer: window.ref, scope: window.scope})
 		}
 	}
-	t.execWindows.state().mu.Unlock()
+	t.owners.Windows.state().mu.Unlock()
 	for _, cut := range candidates {
-		unlock := t.execWindows.lockIntervals([]string{cut.writer})
+		unlock := t.owners.Windows.lockIntervals([]string{cut.writer})
 		err := t.splitExecInterval(patchCall, boundaries, cut)
 		unlock()
 		if err != nil {
@@ -261,10 +261,10 @@ func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, observati
 }
 
 func (t *mekugiResponseTransform) splitExecInterval(patchCall string, boundaries []changecapture.File, cut execIntervalCut) error {
-	t.execWindows.state().mu.Lock()
-	window := t.execWindows.find(cut.writer)
+	t.owners.Windows.state().mu.Lock()
+	window := t.owners.Windows.find(cut.writer)
 	active := window != nil && window.closed.IsZero()
-	t.execWindows.state().mu.Unlock()
+	t.owners.Windows.state().mu.Unlock()
 	if !active {
 		return nil
 	}
@@ -276,7 +276,7 @@ func (t *mekugiResponseTransform) splitExecInterval(patchCall string, boundaries
 		return nil
 	}
 	cut.codeMode = original.ExecObservation.CodeMode
-	intervals, err := readExecIntervals(t.ctx, cut.scope, t.changeSource, t.directory, cut.writer, cut.codeMode)
+	intervals, err := readExecIntervals(t.ctx, cut.scope, t.owners.Changes, t.directory, cut.writer, cut.codeMode)
 	if err != nil {
 		return err
 	}
@@ -295,11 +295,11 @@ func (t *mekugiResponseTransform) splitExecInterval(patchCall string, boundaries
 		return nil
 	}
 	correlation := cut.writer + "\x00exec"
-	id, err := t.changeSource.Reserve(t.ctx, cut.scope, t.directory, original.ExecutingThread, correlation)
+	id, err := t.owners.Changes.Reserve(t.ctx, cut.scope, t.directory, original.ExecutingThread, correlation)
 	if err != nil {
 		return err
 	}
-	prefix := mekugiHistory{ToolName: nativeExecCommandToolName, Script: execObservationScript(*observation), Root: t.directory,
+	prefix := mekugiHistory{legacy: legacyMetadata(original), ToolName: nativeExecCommandToolName, Script: execObservationScript(*observation), Root: t.directory,
 		ExecutingThread: original.ExecutingThread, Caller: original.Caller, Source: observation.SourceLabel(),
 		ChangeID: id, CorrelationID: correlation, Attempt: cut.number + 1, ReviewFiles: reviews,
 		ExecObservation: &changecapture.Observation{Files: files, CodeMode: cut.codeMode}}
@@ -308,16 +308,16 @@ func (t *mekugiResponseTransform) splitExecInterval(patchCall string, boundaries
 		if err := publishObservation(tx, cut.scope, legacycall.Record{Version: 1, Workspace: t.directory, CallID: callID, History: retainedHistory(prefix)}); err != nil {
 			return err
 		}
-		_, err := t.changeSource.Publish(tx, cut.scope, t.directory, map[string]changes.Publication{callID: {ChangeID: id, CorrelationID: correlation, Dependency: true}})
+		_, err := t.owners.Changes.Publish(tx, cut.scope, t.directory, map[string]changes.Publication{callID: {ChangeID: id, CorrelationID: correlation, Dependency: true}})
 		return err
 	}); err != nil {
 		return err
 	}
-	t.execWindows.state().mu.Lock()
-	if window := t.execWindows.find(patchCall); window != nil {
+	t.owners.Windows.state().mu.Lock()
+	if window := t.owners.Windows.find(patchCall); window != nil {
 		window.cuts = append(window.cuts, cut)
 	}
-	t.execWindows.state().mu.Unlock()
+	t.owners.Windows.state().mu.Unlock()
 	return nil
 }
 
@@ -371,7 +371,7 @@ func prepareExecIntervalContinuation(ctx context.Context, workspace string, cut 
 			}
 		}
 	}
-	resume := mekugiHistory{ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: prefix.ExecutingThread,
+	resume := mekugiHistory{legacy: legacyMetadata(prefix), ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: prefix.ExecutingThread,
 		ChangeID: prefix.ChangeID, CorrelationID: prefix.CorrelationID, Attempt: prefix.Attempt,
 		ExecObservation: &changecapture.Observation{Files: files, CodeMode: cut.codeMode}}
 	return &execIntervalContinuation{scope: cut.scope, record: legacycall.Record{Version: 1, Workspace: workspace, CallID: id + ":resume", History: retainedHistory(resume)}}, nil

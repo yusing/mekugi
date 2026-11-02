@@ -99,7 +99,7 @@ func TestChangeRetirementThroughSessionHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	index, err := reopened.scoped(ctx).changes.Inspect(reopened.scoped(ctx).changeScope(), "/w")
+	index, err := readChangeIndexFixture(reopened.scoped(ctx), "/w")
 	if err != nil {
 		t.Fatal(err)
 	}

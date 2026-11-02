@@ -5,6 +5,7 @@ import (
 	jsonv1 "encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -24,6 +26,82 @@ import (
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
+
+func TestLegacyMetadataSurvivesIntervalPublication(t *testing.T) {
+	f := newMChangesSliceFixture(t, "legacy-interval")
+	p := testProxyWithStore(f.store, &Windows{})
+	selected := observationScope(f.ctx, p.Retained)
+	path := filepath.Join(f.workspace, "file.txt")
+	writeTestFile(t, path, "A\n")
+	before := changecapture.ReadFile(path, nil)
+	inventory := &legacycall.Inventory{Version: 1, Root: f.workspace,
+		Entries:     map[string]string{"file.txt": "old-stamp"},
+		Directories: map[string]legacycall.DirectoryStamp{f.workspace: {Exists: true, Complete: true}},
+		Files:       []legacycall.File{retainedFile(before)}}
+	old := legacycall.History{ToolName: nativeExecCommandToolName, Root: f.workspace, ExecutingThread: f.thread,
+		ResolvedBaseline: &legacycall.Baseline{Root: f.workspace, Inventory: inventory},
+		ExecObservation:  &legacycall.Observation{Files: []legacycall.File{retainedFile(before)}, Inventory: inventory},
+		ExecOutcome:      &legacycall.Outcome{Unswept: "historical coverage diagnostic"}}
+	if err := selected.Store.Transaction(f.ctx, nil, func(tx *history.Transaction) error {
+		return publishObservation(tx, selected, legacycall.Record{Version: 1, Workspace: f.workspace, CallID: "writer", History: old})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{"writer", "patch"} {
+		p.Windows.open(&execWindow{ref: ref, group: ref, paths: []string{path}, scope: selected})
+	}
+	writeTestFile(t, path, "B\n")
+	transform := &mekugiResponseTransform{owners: &Preparer{Config: Config{Windows: p.Windows, Changes: p.Changes}}, ctx: f.ctx, directory: f.workspace}
+	cut := execIntervalCut{writer: "writer", scope: selected}
+	if err := transform.splitExecInterval("patch", []changecapture.File{changecapture.ReadFile(path, nil)}, cut); err != nil {
+		t.Fatal(err)
+	}
+	id := execIntervalID("writer", false, 0)
+	check := func(call string, baseline bool) {
+		t.Helper()
+		got, found, err := selected.Store.LookupHostCall(f.ctx, f.workspace, call)
+		if err != nil || !found {
+			t.Fatalf("lookup %s: %v, %v", call, found, err)
+		}
+		if got.ExecObservation == nil || !reflect.DeepEqual(got.ExecObservation.Inventory, inventory) ||
+			got.ExecOutcome == nil || got.ExecOutcome.Unswept != old.ExecOutcome.Unswept {
+			t.Fatalf("%s lost historical metadata: %+v", call, got)
+		}
+		if baseline && (got.ResolvedBaseline == nil || !reflect.DeepEqual(got.ResolvedBaseline.Inventory, inventory)) {
+			t.Fatalf("%s lost baseline inventory: %+v", call, got.ResolvedBaseline)
+		}
+	}
+	check(id, false)
+	writeTestFile(t, path, "C\n")
+	continuations, err := prepareExecIntervalContinuations(f.ctx, f.workspace, []execIntervalCut{cut}, []changecapture.File{changecapture.ReadFile(path, nil)})
+	if err != nil || len(continuations) != 1 {
+		t.Fatalf("prepare continuation: %+v, %v", continuations, err)
+	}
+	if err := publishObservations(f.ctx, selected, p.Changes, nil, f.workspace, map[string]mekugiHistory{"writer": legacyHistory(old)}, continuations...); err != nil {
+		t.Fatal(err)
+	}
+	check(id+":resume", false)
+	check("writer", true)
+	got := retainedHistory(legacyHistory(old))
+	if !reflect.DeepEqual(got, old) {
+		t.Fatalf("historical round trip changed metadata: %+v", got)
+	}
+	displayID, err := p.Changes.Reserve(f.ctx, selected, f.workspace, f.thread, "legacy-readable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := legacyHistory(old)
+	completed.ChangeID, completed.CorrelationID = displayID, "legacy-readable"
+	completed.ExecOutcome.Status = changecapture.StatusCompleted
+	completed.ReviewFiles = []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "A\n", "B\n")}
+	if err := publishObservations(f.ctx, selected, p.Changes, nil, f.workspace, map[string]mekugiHistory{"display": completed}); err != nil {
+		t.Fatal(err)
+	}
+	text, err := p.Changes.Read(f.ctx, selected, changes.Query{Workspace: f.workspace, IDs: []string{displayID}, View: "history"})
+	if err != nil || !strings.Contains(text, old.ExecOutcome.Unswept) {
+		t.Fatalf("historical display lost coverage diagnostic: %q, %v", text, err)
+	}
+}
 
 func TestExecCompletionOrderingSkipsUninterruptedHistory(t *testing.T) {
 	windows := &Windows{}
@@ -48,7 +126,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
 			trace := newNativeTraceFixture(t)
-			proxy.nativeTrace = nativetrace.NewWithNotice(trace.root, nil)
+			proxy.NativeTrace = nativetrace.NewWithNotice(trace.root, nil)
 			transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 			transform.sessionShell = "bash"
 			path := filepath.Join(workspace, "file.txt")
@@ -430,27 +508,27 @@ func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
 			isolateSnapshotGit(t)
 			f := newMChangesSliceFixture(t, "named-runtime-overlap")
 			parent := testProxyWithStore(f.store, &Windows{})
-			child := testProxyWithStore(f.store, parent.execWindows.ForRuntime())
+			child := testProxyWithStore(f.store, parent.Windows.ForRuntime())
 			path := filepath.Join(f.workspace, "file.txt")
-			selected := observationScope(f.ctx, parent.retained)
+			selected := observationScope(f.ctx, parent.Retained)
 			capture := func(ref, value string, proxy *Preparer) mekugiHistory {
 				writeTestFile(t, path, value)
 				budget := changecapture.MaxContentBytes
 				file := changecapture.ReadFile(path, &budget)
-				tree := proxy.snapshots.Checkpoint(f.ctx, f.workspace)
+				tree := proxy.Checkpoints.Checkpoint(f.ctx, f.workspace)
 				if tree == "" {
 					t.Fatal("missing checkpoint")
 				}
-				proxy.execWindows.open(&execWindow{ref: ref, group: ref, roots: []string{f.workspace}, paths: []string{path}, scope: selected})
+				proxy.Windows.open(&execWindow{ref: ref, group: ref, roots: []string{f.workspace}, paths: []string{path}, scope: selected})
 				return mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
 					ExecObservation: &changecapture.Observation{Commands: []commandanalysis.Command{{Command: "printf changed > file.txt", Workdir: f.workspace, Shell: "bash"}}, Files: []changecapture.File{file}, Roots: []string{f.workspace}, Tree: tree}}
 			}
 			earlier := capture("earlier", "A\n", parent)
 			later := capture("later", "B\n", child)
-			if err := publishObservations(f.ctx, selected, parent.changeSource, nil, f.workspace, map[string]mekugiHistory{"earlier": earlier, "later": later}); err != nil {
+			if err := publishObservations(f.ctx, selected, parent.Changes, nil, f.workspace, map[string]mekugiHistory{"earlier": earlier, "later": later}); err != nil {
 				t.Fatal(err)
 			}
-			transform := &mekugiResponseTransform{ctx: f.ctx, directory: f.workspace, retained: selected, changeSource: parent.changeSource, execWindows: parent.execWindows, execGroup: "later"}
+			transform := &mekugiResponseTransform{owners: &Preparer{Config: Config{Retained: selected, Changes: parent.Changes, Windows: parent.Windows}}, ctx: f.ctx, directory: f.workspace, execGroup: "later"}
 			if patch {
 				later.NativePatches = changecapture.Patches([]string{"*** Begin Patch\n*** Update File: file.txt\n@@\n-B\n+C\n*** End Patch\n"}, f.workspace)
 			}
@@ -460,10 +538,10 @@ func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
 			writeTestFile(t, path, "C\n")
 			finalize := func(ctx context.Context, ref string, proxy *Preparer, h mekugiHistory, publish func([]changes.Update)) error {
 				if ref == "later" && patch {
-					proxy.publishChanges = publish
+					proxy.PublishChanges = publish
 					return proxy.finalizeNativePatches(ctx, f.workspace, f.thread, ref, h, binding.ExecutionResult{Terminal: true, Succeeded: true})
 				}
-				return finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, publish, proxy.execWindows, proxy.activity, proxy.noticeSink, ctx, f.workspace,
+				return finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, publish, proxy.Windows, proxy.Audience, proxy.Notice, ctx, f.workspace,
 					[]execCompletion{{callID: ref, history: h, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}})
 			}
 			if writerFirst {
@@ -492,9 +570,9 @@ func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
 				case <-time.After(5 * time.Second):
 					t.Fatal("later publication not reached")
 				}
-				parent.execWindows.state().mu.Lock()
-				window := parent.execWindows.find("earlier")
-				parent.execWindows.state().mu.Unlock()
+				parent.Windows.state().mu.Lock()
+				window := parent.Windows.find("earlier")
+				parent.Windows.state().mu.Unlock()
 				if window.intervalMu.TryLock() {
 					window.intervalMu.Unlock()
 					close(release)
@@ -535,12 +613,12 @@ func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
 				}
 				ids = append(ids, record.ChangeID)
 			}
-			net, err := parent.changeSource.Read(f.ctx, selected, changes.Query{Workspace: f.workspace, IDs: ids, View: "net"})
+			net, err := parent.Changes.Read(f.ctx, selected, changes.Query{Workspace: f.workspace, IDs: ids, View: "net"})
 			if writerFirst {
 				if err == nil || !strings.Contains(err.Error(), "partial captured effects") {
 					t.Fatalf("unwitnessed overlap claimed complete attribution: %q, %v", net, err)
 				}
-				endpoint, err := parent.changeSource.Read(f.ctx, selected, changes.Query{Workspace: f.workspace, IDs: ids[:1], View: "history", Paths: []string{path}})
+				endpoint, err := parent.Changes.Read(f.ctx, selected, changes.Query{Workspace: f.workspace, IDs: ids[:1], View: "history", Paths: []string{path}})
 				if err != nil || !strings.Contains(endpoint, "+C\n") || !strings.Contains(endpoint, "overlapping writer endpoint unavailable") || strings.Contains(endpoint, "unrelated live") {
 					t.Fatalf("writer-first endpoint is not independently recoverable: %q, %v", endpoint, err)
 				}

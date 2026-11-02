@@ -1,7 +1,6 @@
 package paging
 
 import (
-	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"reflect"
@@ -14,17 +13,18 @@ import (
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
-func Page(ctx context.Context, request ReadRequest, budget int) (ReadPage, error) {
-	source, err := Admit(request.Stdout, request.Stderr, request.StdoutKind, request.StderrKind)
+func nativeSource(t *testing.T, stdout, stderr, stdoutKind, stderrKind string) *Source {
+	t.Helper()
+	source, err := Admit(stdout, stderr, stdoutKind, stderrKind)
 	if err != nil {
-		return ReadPage{}, err
+		t.Fatal(err)
 	}
-	return source.Page(ctx, request, budget)
+	return source
 }
 
-func nativeReadFixture(t *testing.T, request ReadRequest, budget int) ReadPage {
+func nativeReadFixture(t *testing.T, source *Source, request ReadRequest, budget int) ReadPage {
 	t.Helper()
-	page, err := Page(t.Context(), request, budget)
+	page, err := source.Page(t.Context(), request, budget)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,11 +47,12 @@ func TestNativeOutputReadPagination(t *testing.T) {
 		{"rows", rows.String(), 80}, {"", "α🙂text" + strings.Repeat("α🙂text", 100), 32},
 	} {
 		t.Run(tc.kind, func(t *testing.T) {
-			request := ReadRequest{Stdout: tc.source, StdoutKind: tc.kind, Stream: "stdout"}
+			admitted := nativeSource(t, tc.source, "", tc.kind, "")
+			request := ReadRequest{Stream: "stdout"}
 			var joined strings.Builder
 			complete := false
 			for range 100 {
-				page := nativeReadFixture(t, request, tc.budget)
+				page := nativeReadFixture(t, admitted, request, tc.budget)
 				if page.Position == request.Position && !page.Complete {
 					t.Fatalf("no progress: %+v", page)
 				}
@@ -74,25 +75,26 @@ func TestNativeOutputReadPagination(t *testing.T) {
 		})
 	}
 	oversized := "1:abcd " + strings.Repeat("word ", 200) + "\n"
-	request := ReadRequest{Stdout: oversized, StdoutKind: "rows", Stream: "stdout"}
-	page := nativeReadFixture(t, request, 80)
+	admitted := nativeSource(t, oversized, "", "rows", "")
+	request := ReadRequest{Stream: "stdout"}
+	page := nativeReadFixture(t, admitted, request, 80)
 	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != countTokens(t, oversized) {
 		t.Fatalf("oversized row must not advance: %+v", page)
 	}
 	request.Label, request.SourceRow = "file.go", 7
-	page = nativeReadFixture(t, request, 80)
+	page = nativeReadFixture(t, admitted, request, 80)
 	framed := "--- file.go ---\n[rows 7:7]\n" + oversized
 	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != countTokens(t, framed) {
 		t.Fatalf("oversized framed row must count admission framing: %+v", page)
 	}
-	if page := nativeReadFixture(t, ReadRequest{Stdout: "x", Stream: "stdout"}, 1); page.Text != "x" || !page.Complete {
+	if page := nativeReadFixture(t, nativeSource(t, "x", "", "", ""), ReadRequest{Stream: "stdout"}, 1); page.Text != "x" || !page.Complete {
 		t.Fatalf("tiny page: %+v", page)
 	}
 }
 
 func TestNativeOutputReadExactJSON(t *testing.T) {
 	source := `[9007199254740993,1e400,{"n":9007199254740993,"s":"a,]b","a":[1e400]}]`
-	page := nativeReadFixture(t, ReadRequest{Stdout: source, StdoutKind: "json", Stream: "stdout"}, 200)
+	page := nativeReadFixture(t, nativeSource(t, source, "", "json", ""), ReadRequest{Stream: "stdout"}, 200)
 	if page.Text != source || !page.Complete {
 		t.Fatalf("raw numeric JSON changed: %+v", page)
 	}
@@ -101,7 +103,7 @@ func TestNativeOutputReadExactJSON(t *testing.T) {
 		`[1e400,{"n":9007199254740993,"s":"a,]b","a":[1e400]}]`,
 		`[{"n":9007199254740993,"s":"a,]b","a":[1e400]}]`,
 	} {
-		page := nativeReadFixture(t, ReadRequest{Stdout: source, StdoutKind: "json", Stream: "stdout", Position: [2]int{position, 0}}, 200)
+		page := nativeReadFixture(t, nativeSource(t, source, "", "json", ""), ReadRequest{Stream: "stdout", Position: [2]int{position, 0}}, 200)
 		if page.Text != want || !page.Complete || page.Position != [2]int{3, 0} {
 			t.Fatalf("raw numeric continuation %d changed: %+v", position, page)
 		}
@@ -114,11 +116,12 @@ func TestNativeOutputReadExactJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := ReadRequest{Stdout: string(encoded), StdoutKind: "json", Stream: "stdout"}
+	admitted := nativeSource(t, string(encoded), "", "json", "")
+	request := ReadRequest{Stream: "stdout"}
 	var joined []jsontext.Value
 	complete := false
 	for range 100 {
-		page := nativeReadFixture(t, request, 96)
+		page := nativeReadFixture(t, admitted, request, 96)
 		var values []jsontext.Value
 		if err := json.Unmarshal([]byte(page.Text), &values); err != nil {
 			t.Fatalf("invalid page array: %v", err)
@@ -133,8 +136,9 @@ func TestNativeOutputReadExactJSON(t *testing.T) {
 	if !complete || !reflect.DeepEqual(joined, entries) {
 		t.Fatal("JSON entries lost or changed")
 	}
-	request = ReadRequest{Stdout: source, StdoutKind: "json", Stream: "stdout"}
-	page = nativeReadFixture(t, request, 1)
+	admitted = nativeSource(t, source, "", "json", "")
+	request = ReadRequest{Stream: "stdout"}
+	page = nativeReadFixture(t, admitted, request, 1)
 	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != countTokens(t, "[9007199254740993]") {
 		t.Fatalf("oversized JSON entry: %+v", page)
 	}
@@ -148,40 +152,43 @@ func TestNativeOutputReadFramesAndSelection(t *testing.T) {
 		{"out\n", "err\n", "", "[stdout bytes]\nout\n\n[/stdout]\n[stderr bytes]\nerr\n\n[/stderr]\n"},
 		{"out", "err", "stdout", "out"}, {"out", "err", "stderr", "[stderr bytes]\nerr\n[/stderr]\n"},
 	} {
-		page := nativeReadFixture(t, ReadRequest{Stdout: tc.stdout, Stderr: tc.stderr, Stream: tc.stream}, 100)
+		page := nativeReadFixture(t, nativeSource(t, tc.stdout, tc.stderr, "", ""), ReadRequest{Stream: tc.stream}, 100)
 		if page.Text != tc.want || !page.Complete {
 			t.Fatalf("frame %q / %q / %q = %+v; want %q", tc.stdout, tc.stderr, tc.stream, page, tc.want)
 		}
 	}
-	request := ReadRequest{Stdout: strings.Repeat("x", 200), Stderr: "[1]", StderrKind: "json"}
-	page := nativeReadFixture(t, request, 4)
+	admitted := nativeSource(t, strings.Repeat("x", 200), "[1]", "", "json")
+	request := ReadRequest{}
+	page := nativeReadFixture(t, admitted, request, 4)
 	if strings.Contains(page.Text, "stderr") || page.Position[1] != 0 {
 		t.Fatalf("premature JSON placeholder: %+v", page)
 	}
 	request.Position = [2]int{200, 1}
-	page = nativeReadFixture(t, request, 100)
+	page = nativeReadFixture(t, admitted, request, 100)
 	if page.Text != "" || !page.Complete {
 		t.Fatalf("exhausted JSON placeholder: %+v", page)
 	}
-	request = ReadRequest{Stdout: "first\nsecond\n", StdoutKind: "rows", SourceRow: 10, Label: "file.go", Stream: "stdout"}
-	page = nativeReadFixture(t, request, 100)
+	admitted = nativeSource(t, "first\nsecond\n", "", "rows", "")
+	request = ReadRequest{SourceRow: 10, Label: "file.go", Stream: "stdout"}
+	page = nativeReadFixture(t, admitted, request, 100)
 	if page.Text != "--- file.go ---\n[rows 10:11]\nfirst\nsecond\n" {
 		t.Fatalf("source rows: %+v", page)
 	}
 	request.Position[0] = len("first\n")
-	page = nativeReadFixture(t, request, 100)
+	page = nativeReadFixture(t, admitted, request, 100)
 	if page.Text != "--- file.go ---\n[rows 11:11]\nsecond\n" {
 		t.Fatalf("continued source rows: %+v", page)
 	}
 }
 
 func TestNativeOutputReadSharedStreamBudget(t *testing.T) {
-	request := ReadRequest{Stdout: "short output", Stderr: strings.Repeat("diagnostic ", 30)}
+	admitted := nativeSource(t, "short output", strings.Repeat("diagnostic ", 30), "", "")
+	request := ReadRequest{}
 	framed := regexp.MustCompile(`\[(stdout|stderr) bytes\]\n([\s\S]*?)\n\[/(?:stdout|stderr)\]\n`)
 	var stdout, stderr strings.Builder
 	complete := false
 	for range 100 {
-		page := nativeReadFixture(t, request, 24)
+		page := nativeReadFixture(t, admitted, request, 24)
 		if strings.HasPrefix(page.Text, "[") {
 			for _, match := range framed.FindAllStringSubmatch(page.Text, -1) {
 				if match[1] == "stdout" {
@@ -202,20 +209,25 @@ func TestNativeOutputReadSharedStreamBudget(t *testing.T) {
 			break
 		}
 	}
-	if !complete || stdout.String() != request.Stdout || stderr.String() != request.Stderr {
+	if !complete || stdout.String() != "short output" || stderr.String() != strings.Repeat("diagnostic ", 30) {
 		t.Fatal("framed pagination lost stream data")
 	}
 }
 
 func TestNativeOutputRejectsInvalidReadPositions(t *testing.T) {
-	for _, request := range []ReadRequest{
-		{Stdout: "α", Position: [2]int{1, 0}, Stream: "stdout"},
-		{Stdout: "row\n", StdoutKind: "rows", Position: [2]int{1, 0}, Stream: "stdout"},
-		{Stdout: "x", Position: [2]int{-1, 0}}, {Stdout: "x", Position: [2]int{2, 0}},
-		{Stdout: "[1]", StdoutKind: "json", Position: [2]int{2, 0}},
+	for _, tc := range []struct {
+		stdout, kind string
+		request      ReadRequest
+	}{
+		{"α", "", ReadRequest{Position: [2]int{1, 0}, Stream: "stdout"}},
+		{"row\n", "rows", ReadRequest{Position: [2]int{1, 0}, Stream: "stdout"}},
+		{"x", "", ReadRequest{Position: [2]int{-1, 0}}},
+		{"x", "", ReadRequest{Position: [2]int{2, 0}}},
+		{"[1]", "json", ReadRequest{Position: [2]int{2, 0}}},
 	} {
-		if _, err := Page(t.Context(), request, 64); err == nil {
-			t.Fatalf("accepted invalid position: %+v", request)
+		source := nativeSource(t, tc.stdout, "", tc.kind, "")
+		if _, err := source.Page(t.Context(), tc.request, 64); err == nil {
+			t.Fatalf("accepted invalid position: %+v", tc.request)
 		}
 	}
 }

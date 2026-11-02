@@ -14,16 +14,16 @@ import (
 )
 
 func projectChange(value trackedChange) changes.Change {
-	result := changes.Change{Correlation: value.Correlation, RetiredCalls: value.RetiredCalls, Dependencies: slices.Clone(value.Dependencies)}
+	result := changes.Change{Correlation: value.Correlation, Dependencies: slices.Clone(value.Dependencies)}
 	for _, call := range value.Calls {
-		result.Calls = append(result.Calls, changes.Call{ID: call.ID, Thread: call.Thread, Sequence: call.Sequence, Managed: call.Managed})
+		result.Calls = append(result.Calls, changes.Call{ID: call.ID, Thread: call.Thread})
 	}
 	return result
 }
 func snapshot(index changeIndex) changes.Snapshot {
-	result := changes.Snapshot{Sequence: index.Sequence, Workspace: index.Workspace, Namespace: index.Namespace, Changes: make(map[string]changes.Change, len(index.Changes))}
+	result := changes.Snapshot{Workspace: index.Workspace, Namespace: index.Namespace, Changes: make(map[string]changes.Change, len(index.Changes))}
 	for position, stream := range index.Streams {
-		result.Streams = append(result.Streams, changes.Stream{Name: index.streamName(position), Thread: stream.Thread, Next: stream.Next, Retired: stream.Retired})
+		result.Streams = append(result.Streams, changes.Stream{Name: index.streamName(position), Thread: stream.Thread, Next: stream.Next})
 	}
 	for id, value := range index.Changes {
 		result.Changes[id] = projectChange(value)

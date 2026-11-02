@@ -25,7 +25,7 @@ func (p *Preparer) preparePreloadInput(request *codexresponses.Request, session,
 	if metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != thread {
 		return nil, nil, nil, errors.New("context preload requires matching runtime identity")
 	}
-	selections, err := p.threadControl.Coordination().ContextPreloads(thread, session)
+	selections, err := p.ThreadControl.Coordination().ContextPreloads(thread, session)
 	if err != nil {
 		return nil, nil, nil, err
 	}

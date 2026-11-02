@@ -254,8 +254,8 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 			ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: cmd.thread,
 			CorrelationID: cmd.carrier, ChangeID: id,
 			ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile(cmd.path, cmd.path, "old\n", "new\n")}),
-			ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact,
-				CodeMode: cmd.codeMode, Labels: []string{cmd.program}}),
+			ExecOutcome: &legacycall.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact,
+				CodeMode: cmd.codeMode, Labels: []string{cmd.program}},
 		}
 		if cmd.codeMode {
 			history.HostResults = []legacycall.HostResult{

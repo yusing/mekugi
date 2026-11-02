@@ -38,7 +38,7 @@ func TestFailedWaitExecutionAllowsRetry(t *testing.T) {
 	}
 	driver, err := threadbinding.NewDriver(service)
 	check(err)
-	p := &Preparer{threadControl: driver}
+	p := &Preparer{Config: Config{ThreadControl: driver}}
 	for _, state := range []string{"Script failed", "Script terminated", "Script completed"} {
 		caller.Call, caller.Item = state, "item-"+state
 		_, err := service.RegisterWait(t.Context(), caller, nil, true, "", nil, time.Now())

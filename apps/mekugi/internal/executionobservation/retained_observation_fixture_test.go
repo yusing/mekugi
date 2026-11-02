@@ -171,13 +171,13 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 
 // Fixture composition supplies production owners before preparing an operation.
 func setTestProxyStore(p *Preparer, store *mekugiReplayStore) {
-	p.retained, p.changeSource, p.snapshots, p.recovered, p.publishChanges = store.changeScope(), store.changes, store.snapshots, store.recovery, store.liveDiff
+	p.Retained, p.Changes, p.Checkpoints, p.Recovery, p.PublishChanges = store.changeScope(), store.changes, store.snapshots, store.recovery, store.liveDiff
 }
 func testProxyWithStore(store *mekugiReplayStore, windows ...*Windows) *Preparer {
 	p := new(Preparer)
 	setTestProxyStore(p, store)
 	if len(windows) != 0 {
-		p.execWindows = windows[0]
+		p.Windows = windows[0]
 	}
 	return p
 }
@@ -189,10 +189,10 @@ func observationTestStore(selected changes.Scope, source changes.Service, snapsh
 	return &mekugiReplayStore{publication: selected.Store, directory: selected.Store.Directory(), writes: selected.Writes, maxBytes: selected.Limits.Total, maxCommentaryBytes: selected.Limits.Kinds["commentary"], session: storageSessionIdentity{Thread: selected.Thread, Namespace: selected.Namespace}, changes: source, snapshots: snapshots, recovery: recovered, liveDiff: publish}
 }
 func testProxyStore(p *Preparer) *mekugiReplayStore {
-	return observationTestStore(p.retained, p.changeSource, p.snapshots, p.recovered, p.publishChanges)
+	return observationTestStore(p.Retained, p.Changes, p.Checkpoints, p.Recovery, p.PublishChanges)
 }
 func testResponseStore(t *mekugiResponseTransform) *mekugiReplayStore {
-	return observationTestStore(t.retained, t.changeSource, t.snapshots, t.recovered, t.publishChanges)
+	return observationTestStore(t.owners.Retained, t.owners.Changes, t.owners.Checkpoints, t.owners.Recovery, t.owners.PublishChanges)
 }
 
 const maxReplayRecordBytes = history.MaxRecordBytes

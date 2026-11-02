@@ -18,8 +18,8 @@ func testGatewayResponse(response *http.Response, err error) (*inferencegateway.
 func testRequestExecutor(provider inferencegateway.Forwarder, issues *requestexecution.Failures, proxy *Preparer) requestexecution.Executor {
 	executor := requestexecution.Executor{Provider: provider, Issues: issues}
 	if proxy != nil {
-		executor.Observations, executor.Guidance = proxy, proxy.registry.Guidance
-		executor.Usage = proxy.usage
+		executor.Observations, executor.Guidance = proxy, proxy.Registry.Guidance
+		executor.Usage = proxy.Usage
 	}
 	executor.Exchange, _ = provider.(*inferencegateway.Exchange)
 	return executor

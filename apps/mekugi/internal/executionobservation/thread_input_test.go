@@ -42,7 +42,7 @@ func TestThreadInputConsumedWithoutExecution(t *testing.T) {
 			driver, err := threadbinding.NewDriver(service)
 			check(err)
 			proxy := newManagedMekugiProxy(t)
-			proxy.threadControl = driver
+			proxy.ThreadControl = driver
 			wake := control.NativeInput{ID: "root:wait", Wake: &control.WaitResult{ID: "wait", State: "timeout", Metrics: map[string]control.SessionMetrics{"/root/child": {ContextTokens: new(uint64(123)), Compactions: new(uint64(2))}}}}
 			request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 				"model": "fixture", "stream": true, "tool_choice": "auto", "parallel_tool_calls": false,

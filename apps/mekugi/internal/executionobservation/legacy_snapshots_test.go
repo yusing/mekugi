@@ -115,17 +115,6 @@ func (s *mekugiReplayStore) compactSnapshots(r *replayRecord) ([]managedFile, er
 		observation.Files = nil
 		h.ExecObservation = &observation
 	}
-	if h.ExecObservation != nil && h.ExecObservation.Inventory != nil && len(h.ExecObservation.Inventory.Files) > 0 {
-		inventory := *h.ExecObservation.Inventory
-		refs.ExecInventoryFiles, err = batch.putFiles(snapshotFiles{Exec: slices.Clone(inventory.Files)}, refs)
-		if err != nil {
-			return nil, err
-		}
-		inventory.Files = nil
-		observation := *h.ExecObservation
-		observation.Inventory = &inventory
-		h.ExecObservation = &observation
-	}
 	if h.ResolvedBaseline != nil && len(h.ResolvedBaseline.Files) > 0 {
 		refs.BaselineFiles, err = batch.putFiles(snapshotFiles{Exec: slices.Clone(h.ResolvedBaseline.Files)}, refs)
 		if err != nil {
@@ -133,17 +122,6 @@ func (s *mekugiReplayStore) compactSnapshots(r *replayRecord) ([]managedFile, er
 		}
 		baseline := *h.ResolvedBaseline
 		baseline.Files = nil
-		h.ResolvedBaseline = &baseline
-	}
-	if h.ResolvedBaseline != nil && h.ResolvedBaseline.Inventory != nil && len(h.ResolvedBaseline.Inventory.Files) > 0 {
-		inventory := *h.ResolvedBaseline.Inventory
-		refs.BaselineInventoryFiles, err = batch.putFiles(snapshotFiles{Exec: slices.Clone(inventory.Files)}, refs)
-		if err != nil {
-			return nil, err
-		}
-		inventory.Files = nil
-		baseline := *h.ResolvedBaseline
-		baseline.Inventory = &inventory
 		h.ResolvedBaseline = &baseline
 	}
 	h.NativePatches = slices.Clone(h.NativePatches)

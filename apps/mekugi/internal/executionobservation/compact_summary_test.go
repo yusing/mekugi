@@ -38,7 +38,7 @@ func TestCompactRecoveryAuthorityAndPrewarm(t *testing.T) {
 	if err := recover("warm-fork", "", "root", ref, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, found, err := p.retained.Store.ReadScope("warm-fork"); err != nil || found {
+	if _, found, err := p.Retained.Store.ReadScope("warm-fork"); err != nil || found {
 		t.Fatal("prewarm published inheritance", err)
 	}
 	for _, tc := range []struct{ thread, parent, fork string }{{"root", "", ""}, {"fork", "", "root"}, {"child", "root", ""}, {"fork", "", ""}, {"child", "", ""}} {
@@ -59,7 +59,7 @@ func TestCompactRecoveryAuthorityAndPrewarm(t *testing.T) {
 	if err := recover("child", "", "", later, false); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(p.retained.Store.Directory(), compact.Name(ref))
+	path := filepath.Join(p.Retained.Store.Directory(), compact.Name(ref))
 	if err := os.WriteFile(path, []byte(`{"Version":1,"Reference":"wrong","Summary":"wrong"}`), 0600); err != nil {
 		t.Fatal(err)
 	}

@@ -19,6 +19,6 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 		t.storageIdle = true
 	}
 	if t.liveDiffCompletionReady {
-		t.review.Preview().FinishTurn(t.directory, t.threadID, t.shellTurnID)
+		t.owners.Review.Preview().FinishTurn(t.directory, t.threadID, t.shellTurnID)
 	}
 }

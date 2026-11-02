@@ -35,7 +35,7 @@ func TestApprovalReviewRestoresCompactionAtProvider(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			proxy.threadControl = driver
+			proxy.ThreadControl = driver
 			ref, err := proxy.StoreCompact(ctx, "parent", "exact retained handover", `{"sources":[{"path":"must-not-be-read.txt"}]}`)
 			if err != nil {
 				t.Fatal(err)
@@ -143,7 +143,7 @@ func TestApprovalReviewRestoresCompactionAtProvider(t *testing.T) {
 			if _, admitted := driver.Coordination().Member("reviewer"); admitted {
 				t.Fatal("reviewer entered managed-agent tree")
 			}
-			if _, found, err := proxy.retained.Store.ReadScope("reviewer"); found || err != nil {
+			if _, found, err := proxy.Retained.Store.ReadScope("reviewer"); found || err != nil {
 				t.Fatal("reviewer published retained scope", err)
 			}
 		})
@@ -159,7 +159,7 @@ func TestApprovalReviewPreservesNativeRequestAndChildAdmission(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			proxy.threadControl = driver
+			proxy.ThreadControl = driver
 			request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 				"model": "gpt-test", "instructions": "Review the proposed action under the approval policy.",
 				"input": []any{map[string]any{"role": "user", "content": "Review this action."}, map[string]any{"type": "compaction", "encrypted_content": "provider-opaque"}},
@@ -233,7 +233,7 @@ func TestApprovalReviewCompactionAuthority(t *testing.T) {
 						metadata["forked_from_thread_id"] = "parent"
 					}
 				}
-				if err := proxy.retained.Store.Transaction(t.Context(), nil, func(tx *history.Transaction) error {
+				if err := proxy.Retained.Store.Transaction(t.Context(), nil, func(tx *history.Transaction) error {
 					return tx.InitializeScope(scope, nil)
 				}); err != nil {
 					t.Fatal(err)
@@ -250,7 +250,7 @@ func TestApprovalReviewCompactionAuthority(t *testing.T) {
 					}
 				}
 			}
-			priorScope, priorExists, err := proxy.retained.Store.ReadScope("reviewer")
+			priorScope, priorExists, err := proxy.Retained.Store.ReadScope("reviewer")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -268,7 +268,7 @@ func TestApprovalReviewCompactionAuthority(t *testing.T) {
 				// Validate every reference before publishing any projection.
 				references = append(references, compact.Prefix+"parent:amber999")
 			case "missing", "corrupt":
-				path := filepath.Join(proxy.retained.Store.Directory(), compact.Name(ref))
+				path := filepath.Join(proxy.Retained.Store.Directory(), compact.Name(ref))
 				if scenario == "missing" {
 					err = os.Remove(path)
 				} else {
@@ -313,7 +313,7 @@ func TestApprovalReviewCompactionAuthority(t *testing.T) {
 			} else if err == nil || len(provider.forwarded) != 0 || !bytes.Equal(request.Fields["input"], original) {
 				t.Fatalf("invalid recovery forwarded or partially changed context: %v, forwards=%d", err, len(provider.forwarded))
 			}
-			if scope, found, err := proxy.retained.Store.ReadScope("reviewer"); found != priorExists || err != nil || !bytes.Equal(mustTestJSON(t, scope), mustTestJSON(t, priorScope)) {
+			if scope, found, err := proxy.Retained.Store.ReadScope("reviewer"); found != priorExists || err != nil || !bytes.Equal(mustTestJSON(t, scope), mustTestJSON(t, priorScope)) {
 				t.Fatal("reviewer changed retained scope", err)
 			}
 		})

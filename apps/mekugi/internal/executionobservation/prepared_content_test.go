@@ -49,7 +49,7 @@ func TestPreparedContentRetainsActualDeduplicationAndWholeCell(t *testing.T) {
 	projection := outputdeduplication.Module.Bindings.InputProjection(service).Prepare(request.Fields["input"])
 	request.Fields["input"] = projection(request.Fields["input"]).Input
 	_, ids := requestexecution.ProjectFileAttachments(&request)
-	transform := mekugiResponseTransform{activity: audience, nativeTrace: nativetrace.NewWithNotice(f.root, nil), threadID: "thread", codeModeToolName: "exec"}
+	transform := mekugiResponseTransform{owners: &Preparer{Config: Config{Audience: audience, NativeTrace: nativetrace.NewWithNotice(f.root, nil)}}, threadID: "thread", codeModeToolName: "exec"}
 	transform.ObservePreparedContent(&request, ids)
 	got, ok := audience.Prepared("thread", "thread", second.ReceiptID(frame))
 	var finalItems []map[string]jsontext.Value
@@ -114,7 +114,7 @@ func TestPreparedContentReadableComparison(t *testing.T) {
 				t.Fatal(err)
 			}
 			request.Fields["input"] = []byte(`[{"type":"function_call_output","call_id":"call","output":` + tc.prepared + `}]`)
-			transform := mekugiResponseTransform{activity: audience, threadID: "thread"}
+			transform := mekugiResponseTransform{owners: &Preparer{Config: Config{Audience: audience}}, threadID: "thread"}
 			transform.ObservePreparedContent(&request, nil)
 			got, ok := audience.Prepared("thread", "thread", "call")
 			if !ok || got.Text != tc.want || got.Altered != tc.altered {

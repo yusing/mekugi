@@ -110,7 +110,7 @@ func liveDiffInterpreterSource(ctx context.Context, input previewInterpreterInpu
 	if tree.RootNode().HasError() {
 		return nil, editScript, nil
 	}
-	scan := previewSourceScope{Bindings: execscope.NewBindings(execscope.SourceInput{Source: data, Script: script, Directory: input.cwd, Deadline: input.deadline, Python: python}), input: input, source: data, python: python}
+	scan := previewSourceScope{Bindings: execscope.NewBindings(execscope.SourceInput{Source: data, Script: script, Directory: input.cwd, Deadline: input.deadline, Python: python}), input: input, python: python}
 	scan.State().Segments = make(map[string][]string)
 	scan.Analyze(tree.RootNode())
 	if python {

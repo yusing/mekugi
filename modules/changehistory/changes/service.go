@@ -43,24 +43,20 @@ type Publication struct {
 }
 
 type Call struct {
-	Sequence   uint64
 	Thread, ID string
-	Managed    bool
 }
 type Change struct {
 	Correlation  string
 	Calls        []Call
 	Dependencies []string
-	RetiredCalls int
 }
 type Stream struct {
-	Name, Thread  string
-	Next, Retired int
+	Name, Thread string
+	Next         int
 }
 
 // Snapshot contains domain membership, not a writable index or record encoding.
 type Snapshot struct {
-	Sequence             uint64
 	Workspace, Namespace string
 	Streams              []Stream
 	Changes              map[string]Change

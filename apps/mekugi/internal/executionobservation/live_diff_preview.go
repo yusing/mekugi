@@ -18,7 +18,7 @@ func (t *mekugiResponseTransform) previewStockDelta(itemID, kind, delta string) 
 	if delta == "" {
 		return
 	}
-	auto := t.review.Preview()
+	auto := t.owners.Review.Preview()
 	if auto == nil || !auto.Enabled() {
 		return
 	}
@@ -29,7 +29,7 @@ func (t *mekugiResponseTransform) previewStockDelta(itemID, kind, delta string) 
 	if worker == nil {
 		worker = previewbinding.Start(t.ctx, auto, previewbinding.Identity{
 			Workspace: t.directory, Thread: t.threadID, Kind: kind, Caller: t.operationCaller(), Turn: t.shellTurnID,
-		}, t.previewTiming, changecapture.ReadPatchFile)
+		}, t.owners.PreviewTiming, changecapture.ReadPatchFile)
 		t.previews[itemID] = worker
 	}
 	worker.Append(delta)

@@ -21,6 +21,5 @@ type previewInterpreterInput struct {
 type previewSourceScope struct {
 	*execscope.Bindings
 	input  previewInterpreterInput
-	source []byte
 	python bool
 }

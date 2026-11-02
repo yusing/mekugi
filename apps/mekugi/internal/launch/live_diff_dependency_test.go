@@ -2,9 +2,10 @@ package launch
 
 import (
 	"fmt"
-	"github.com/yusing/mekugi/libraries/legacycall"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	sessionreview "github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
@@ -40,7 +41,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 				}
 				ids = append(ids, id)
 				history := legacycall.History{ChangeID: id, CorrelationID: call, Caller: "/root", ExecutingThread: "stock-thread", Source: "exec",
-					ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Coverage: changecapture.CoveragePartial}), ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file})}
+					ExecOutcome: &legacycall.Outcome{Coverage: changecapture.CoveragePartial}, ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file})}
 				if err := store.put(t.Context(), "/w", map[string]legacycall.History{call: history}); err != nil {
 					t.Fatal(err)
 				}

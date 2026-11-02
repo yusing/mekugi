@@ -63,54 +63,16 @@ type Config struct {
 
 // New binds request preparation to the composed owners without acquiring resources.
 func New(config Config) *Preparer {
-	return &Preparer{
-		inspect:          config.Inspect,
-		threadControl:    config.ThreadControl,
-		registry:         config.Registry,
-		inputProjections: config.InputProjections,
-		usage:            config.Usage,
-		review:           config.Review,
-		activity:         config.Audience,
-		execWindows:      config.Windows,
-		nativeTrace:      config.NativeTrace,
-		control:          config.Control,
-		previewTiming:    config.PreviewTiming,
-		calls:            config.Calls,
-		retained:         config.Retained,
-		changeSource:     config.Changes,
-		snapshots:        config.Checkpoints,
-		recovered:        config.Recovery,
-		publishChanges:   config.PublishChanges,
-		noticeSink:       config.Notice,
-		eventSink:        config.Event,
-	}
+	return &Preparer{Config: config}
 }
 
 type Preparer struct {
-	inspect          func(context.Context, string) (threadcontrol.SessionDetails, error)
-	threadControl    *threadbinding.Driver
-	registry         *frontends.Registry
-	inputProjections []binding.InputProjection
-	usage            *accounting.Service
-	review           *sessionreview.Review
-	activity         *sessioncontrol.Audience
-	execWindows      *Windows
-	nativeTrace      *nativetrace.Reader
-	control          *sessioncontrol.Observations
-	previewTiming    previewbinding.Timing
-	calls            *history.CallCache
-	retained         changes.Scope
-	changeSource     changes.Service
-	snapshots        *changecapture.Workspaces
-	recovered        *recovery.Service
-	publishChanges   func([]changes.Update)
-	noticeSink       func(string, string, string, string)
-	eventSink        func(string, string, string, string)
+	Config
 }
 
 func (p *Preparer) notice(session, thread, category, message string) {
-	if p != nil && p.noticeSink != nil {
-		p.noticeSink(session, thread, category, message)
+	if p != nil && p.Notice != nil {
+		p.Notice(session, thread, category, message)
 	}
 }
 
@@ -128,23 +90,12 @@ type mekugiTranslationState struct {
 }
 
 type mekugiResponseTransform struct {
+	owners           *Preparer
 	localWaitItem    string
 	compactReload    jsonv1.RawMessage
-	activity         *sessioncontrol.Audience
-	nativeTrace      *nativetrace.Reader
 	generation       sessioncontrol.Generation
 	toolTrace        requestexecution.Trace
 	ctx              context.Context
-	control          *sessioncontrol.Observations
-	review           *sessionreview.Review
-	execWindows      *Windows
-	calls            *history.CallCache
-	retained         changes.Scope
-	changeSource     changes.Service
-	snapshots        *changecapture.Workspaces
-	recovered        *recovery.Service
-	publishChanges   func([]changes.Update)
-	previewTiming    previewbinding.Timing
 	sessionID        string
 	shellTurnID      string
 	execGroup        string
@@ -178,8 +129,8 @@ func (t *mekugiResponseTransform) Close() {
 	if t == nil {
 		return
 	}
-	if t.control != nil {
-		t.control.EndGeneration(&t.generation)
+	if t.owners.Control != nil {
+		t.owners.Control.EndGeneration(&t.generation)
 	}
 	for itemID := range t.previews {
 		t.endPreview(itemID)
@@ -212,7 +163,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			return nil, err
 		}
 	}
-	if p.threadControl != nil {
+	if p.ThreadControl != nil {
 		if !metadataValid {
 			return nil, errors.New("context preload requires valid metadata")
 		}
@@ -286,12 +237,12 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	if !metadataValid || (!prewarm && metadata.RequestKind != responseevents.Turn) {
 		return nil, errors.New("mekugi rewrite requires valid turn metadata")
 	}
-	if p.threadControl != nil {
+	if p.ThreadControl != nil {
 		if err := binding.ValidateIndependentThreadCatalog(request); err != nil {
 			return nil, err
 		}
 	}
-	p.execWindows.markBackground(threadID, metadata.TurnID)
+	p.Windows.markBackground(threadID, metadata.TurnID)
 	// Execution-free requests retain native tools and schema; admitted thread
 	// identity guidance still follows the same visible namespace as execution.
 	if codexresponses.ExecutionFree(request) {
@@ -311,7 +262,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	}
 	var projections []binding.PreparedInputProjection
 	if !prewarm {
-		for _, registration := range p.inputProjections {
+		for _, registration := range p.InputProjections {
 			projections = append(projections, registration.Prepare(projectionInput))
 		}
 	}
@@ -319,7 +270,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	// handshake may not yet carry the instruction or tool catalog of a turn.
 	if prewarm {
 		tools := codexresponses.DecodeToolCatalog(request.Fields)
-		execution, err := binding.PrepareStockExecution(request.Fields, tools, p.registry.FrontendGuidance, p.registry.Guidance)
+		execution, err := binding.PrepareStockExecution(request.Fields, tools, p.Registry.FrontendGuidance, p.Registry.Guidance)
 		if err != nil {
 			return nil, err
 		}
@@ -327,8 +278,8 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			return nil, projectReload()
 		}
 	}
-	if p.registry.Guidance != nil {
-		if err := requestexecution.ProjectInstructions(request, p.registry.Guidance.ForExecution); err != nil {
+	if p.Registry.Guidance != nil {
+		if err := requestexecution.ProjectInstructions(request, p.Registry.Guidance.ForExecution); err != nil {
 			return nil, err
 		}
 	}
@@ -336,7 +287,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	tools := codexresponses.DecodeToolCatalog(request.Fields)
 	directory := p.observationDirectory(metadata.Directories, threadID)
 	responseContract := codexresponses.CaptureResponseContract(request.Fields)
-	codeModeToolName, err := binding.PrepareStockExecution(request.Fields, tools, p.registry.FrontendGuidance, p.registry.Guidance)
+	codeModeToolName, err := binding.PrepareStockExecution(request.Fields, tools, p.Registry.FrontendGuidance, p.Registry.Guidance)
 	if err != nil {
 		return nil, err
 	}
@@ -347,12 +298,12 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 	}
 	historySessionID := directory + "\x00" + threadID
-	retained, err := p.calls.Begin(historySessionID, threadID)
+	retained, err := p.Calls.Begin(historySessionID, threadID)
 	if err != nil {
 		return nil, err
 	}
 	release := func() {}
-	if store := p.retained; store.Store != nil {
+	if store := p.Retained; store.Store != nil {
 		ctx, release, err = beginRetainedSession(ctx, store.Store, store.Writes, store.Limits, threadID, sessionID)
 	}
 	if err == nil {
@@ -362,7 +313,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		retained.Finish(false)
 		return nil, requestexecution.StorageIOError(err)
 	}
-	if store := p.retained; store.Store != nil {
+	if store := p.Retained; store.Store != nil {
 		ctx, err = prepareHandleScope(ctx, store.Store, store.Writes, metadata)
 	}
 	if err != nil {
@@ -375,14 +326,14 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		return nil, err
 	}
 	var localWaitItem string
-	if p.threadControl != nil {
-		selected := observationScope(ctx, p.retained)
+	if p.ThreadControl != nil {
+		selected := observationScope(ctx, p.Retained)
 		session := history.Session{Store: selected.Store, Thread: selected.Thread, Namespace: selected.Namespace, Limits: selected.Limits, Writes: selected.Writes, Context: ctx}
-		if err := p.threadControl.AdmitRequest(ctx, session, threadcontrol.Identity{Thread: threadID, Session: sessionID, Turn: metadata.TurnID}, metadata.SubagentKind == ""); err != nil {
+		if err := p.ThreadControl.AdmitRequest(ctx, session, threadcontrol.Identity{Thread: threadID, Session: sessionID, Turn: metadata.TurnID}, metadata.SubagentKind == ""); err != nil {
 			retained.Finish(false)
 			return nil, err
 		}
-		instructions, err := p.threadControl.Instructions(ctx, threadID, request.Model())
+		instructions, err := p.ThreadControl.Instructions(ctx, threadID, request.Model())
 		if err == nil {
 			err = p.projectThreadInstructions(request, instructions)
 		}
@@ -403,38 +354,32 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	// Only accepted requests may change retained ancestry or collect activity.
 	activityThreadID := ""
 	if metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != threadID {
-		p.activity.Invalidate(threadID)
+		p.Audience.Invalidate(threadID)
 	} else {
 		name := metadata.AgentName
 		if name == "" && metadata.SubagentKind == "" {
 			name = "/root"
 		}
 		var observed bool
-		if p.threadControl != nil {
-			observed = p.threadControl.Coordination().ObserveAudience(threadID, p.activity.ObserveAdmitted)
+		if p.ThreadControl != nil {
+			observed = p.ThreadControl.Coordination().ObserveAudience(threadID, p.Audience.ObserveAdmitted)
 		} else {
-			observed = p.activity.Observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "")
+			observed = p.Audience.Observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "")
 		}
 		if observed {
 			activityThreadID = threadID
 		}
 	}
 	if activityThreadID != "" {
-		p.activity.Collect(preloadActivity...)
+		p.Audience.Collect(preloadActivity...)
 		model := request.Model()
-		p.activity.BeginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model), time.Now())
+		p.Audience.BeginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model), time.Now())
 	}
 	transform := &mekugiResponseTransform{
-		localWaitItem: localWaitItem,
-		compactReload: reload,
-		activity:      p.activity, nativeTrace: p.nativeTrace,
-		ctx:         ctx,
-		control:     p.control,
-		review:      p.review,
-		execWindows: p.execWindows,
-		calls:       p.calls,
-		retained:    p.retained, changeSource: p.changeSource, snapshots: p.snapshots, recovered: p.recovered, publishChanges: p.publishChanges,
-		previewTiming:    p.previewTiming,
+		localWaitItem:    localWaitItem,
+		compactReload:    reload,
+		owners:           p,
+		ctx:              ctx,
 		sessionID:        sessionID,
 		shellTurnID:      metadata.TurnID,
 		shellThreadID:    threadID,
@@ -450,7 +395,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		local:            make(map[string]mekugiHistory),
 		commentaryAuthor: metadata.CommentaryAuthor(),
 		subagentTurn:     metadata.SubagentKind != "",
-		usageTracker:     p.usage.Observation(threadID, metadata.ThreadID, request.Model(), codexresponses.UsageServiceTier(request.Fields["service_tier"])),
+		usageTracker:     p.Usage.Observation(threadID, metadata.ThreadID, request.Model(), codexresponses.UsageServiceTier(request.Fields["service_tier"])),
 		codeModeToolName: codeModeToolName,
 		sessionShell:     codexresponses.SessionShell(request.Fields["input"]),
 	}
@@ -458,7 +403,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		transform.usageTracker.Reasoning = request.ReasoningEffort()
 	}
 	p.observeCodeModeFailures(activityThreadID, codeModeToolName, request, visible)
-	if err := request.AppendApprovalFeedback(p.control.Feedback(threadID, metadata.TurnID)); err != nil {
+	if err := request.AppendApprovalFeedback(p.Control.Feedback(threadID, metadata.TurnID)); err != nil {
 		transform.Close()
 		return nil, err
 	}
@@ -480,7 +425,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		}
 		transportcapture.ObserveOutputDeduplication(ctx, summary.OutputRepetitions, summary.SavedTokens, summary.TokensMeasured)
 		for id, label := range summary.RepeatedAttachments {
-			p.activity.Collect(activitypresentation.Supplement{Thread: activityThreadID, Source: "output-dedupe\x00" + id, Kind: "output_dedupe", CallID: id, Text: label})
+			p.Audience.Collect(activitypresentation.Supplement{Thread: activityThreadID, Source: "output-dedupe\x00" + id, Kind: "output_dedupe", CallID: id, Text: label})
 		}
 		if len(summary.RepeatedCalls) == 0 {
 			continue
@@ -502,10 +447,10 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 					source = history.Script
 				}
 			}
-			if commands := p.nativeTrace.ReadCell(activityThreadID, call, source).ExecCommands(); len(commands) > 0 {
+			if commands := p.NativeTrace.ReadCell(activityThreadID, call, source).ExecCommands(); len(commands) > 0 {
 				target = commands[len(commands)-1]
 			}
-			p.activity.Collect(activitypresentation.Supplement{Thread: activityThreadID, Source: "output-dedupe\x00" + call, Kind: "output_dedupe", CallID: target, Text: label})
+			p.Audience.Collect(activitypresentation.Supplement{Thread: activityThreadID, Source: "output-dedupe\x00" + call, Kind: "output_dedupe", CallID: target, Text: label})
 		}
 	}
 	if err := projectReload(); err != nil {

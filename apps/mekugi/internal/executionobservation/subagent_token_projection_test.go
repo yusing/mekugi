@@ -16,7 +16,7 @@ func TestChildCompletionPreservesRootAnswer(t *testing.T) {
 				proxy := newManagedMekugiProxy(t)
 				root, _ := prepareActivityTest(t, proxy, "shared-session", "root", "", "/root", nil)
 				child, _ := prepareActivityTest(t, proxy, "shared-session", "child", "root", "/root/worker", nil)
-				child.usageTracker = proxy.usage.Observation("child", "child", "gpt-5.6-sol", "")
+				child.usageTracker = proxy.Usage.Observation("child", "child", "gpt-5.6-sol", "")
 				root.Close()
 				if missing {
 					child.usageTracker.Finish()
@@ -48,7 +48,7 @@ func TestChildCompletionPreservesRootAnswer(t *testing.T) {
 				}
 				child.Close()
 				root, _ = prepareActivityTest(t, proxy, "remapped", "root", "", "/root", nil)
-				root.usageTracker = proxy.usage.Observation("root", "root", "gpt-6-astra", "")
+				root.usageTracker = proxy.Usage.Observation("root", "root", "gpt-6-astra", "")
 				root.ObserveUsage(inference.Usage{InputTokens: 100, UncachedInputTokens: 50, OutputTokens: 10, ReasoningTokens: 5})
 				if stream {
 					events, err := root.TransformSSE([]byte(`{"type":"response.created","response":{"id":"root-response"}}`))

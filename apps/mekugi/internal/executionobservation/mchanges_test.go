@@ -299,7 +299,7 @@ func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
 	if got, err := store.changes.Read(t.Context(), store.scoped(t.Context()).changeScope(), options); err != nil || got != "M\t2\t1\tfile\n" {
 		t.Fatalf("recovery summary = %q, %v", got, err)
 	}
-	index, err := store.changes.Inspect(store.changeScope(), workspace)
+	index, err := readChangeIndexFixture(store, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}

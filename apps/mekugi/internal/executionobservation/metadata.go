@@ -12,7 +12,7 @@ func (p *Preparer) observationDirectory(declared map[string]json.RawMessage, thr
 	}
 	// An admitted workspace is durable identity, even after worktree removal.
 	// Explicit command directories still establish their own capture targets.
-	workspace := p.review.WorkspaceForThread(thread)
+	workspace := p.Review.WorkspaceForThread(thread)
 	_, matches := declared[workspace]
 	if workspace != "" && (len(declared) == 0 || matches) {
 		return workspace

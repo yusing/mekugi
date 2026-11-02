@@ -1,8 +1,12 @@
 package outline
 
 import (
+	"context"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
 )
 
 func TestNativeInspectPreservesLoneSurrogateNames(t *testing.T) {
@@ -37,10 +41,23 @@ func TestFrontmatterUnicodeColumns(t *testing.T) {
 			if entry.Name != "next" || entry.Line != 2 || entry.LineEnd != 2 {
 				t.Fatalf("later key span: %+v", entry)
 			}
-			snapshot, err := (Service{}).InspectSource(t.Context(), path, []byte(source))
+			snapshot, err := inspectSourceFixture(t.Context(), path, []byte(source))
 			if err != nil || !strings.Contains(snapshot, "2-2 frontmatter next\n") {
 				t.Fatalf("snapshot=%q err=%v", snapshot, err)
 			}
 		})
 	}
+}
+
+func inspectSourceFixture(ctx context.Context, path string, bytes []byte) (string, error) {
+	data := inspectionData{Path: filepath.ToSlash(path), Size: int64(len(bytes)), Complete: true}
+	format, ok := sourcekind.Classify(path)
+	if !ok || !format.Outline {
+		return "(no outline)\n", nil
+	}
+	data, err := inspectSource(ctx, data, bytes, format)
+	if err != nil {
+		return "", err
+	}
+	return strings.Join(compactNativeOutline(data), ""), nil
 }

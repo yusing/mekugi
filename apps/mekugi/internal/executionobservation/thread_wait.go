@@ -17,7 +17,7 @@ import (
 // Consumption is observation, including when compaction or an execution-free
 // request reads injected messages without starting logical work.
 func (p *Preparer) consumeThreadInput(ctx context.Context, thread, session string, request *codexresponses.Request) error {
-	if p == nil || p.threadControl == nil || !bytes.Contains(request.Fields["input"], []byte("threadcontrol_")) {
+	if p == nil || p.ThreadControl == nil || !bytes.Contains(request.Fields["input"], []byte("threadcontrol_")) {
 		return nil
 	}
 	var items []struct {
@@ -34,17 +34,17 @@ func (p *Preparer) consumeThreadInput(ctx context.Context, thread, session strin
 			consumed = append(consumed, item.ID)
 		}
 	}
-	return p.threadControl.Coordination().InputConsumed(ctx, control.Identity{Thread: thread, Session: session}, consumed)
+	return p.ThreadControl.Coordination().InputConsumed(ctx, control.Identity{Thread: thread, Session: session}, consumed)
 }
 
 // observeThreadWait runs after the normal authenticated request/history join.
 // It admits only a current host result for the wait's exact enclosing exec
 // item, never a nested MCP success or a caller-authored output lookalike.
 func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName string, request *codexresponses.Request, visible map[string]mekugiHistory) (string, error) {
-	if p.threadControl == nil {
+	if p.ThreadControl == nil {
 		return "", nil
 	}
-	wait, err := p.threadControl.Coordination().WaitForTurn(thread, turn)
+	wait, err := p.ThreadControl.Coordination().WaitForTurn(thread, turn)
 	if err != nil || wait == nil {
 		return "", err
 	}
@@ -100,22 +100,22 @@ func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName
 		}
 		result := binding.DecodeExecutionResult(execName, output["output"])
 		if result.ResumeHandle != "" {
-			return "", p.threadControl.Coordination().Execution(ctx, thread, turn, wait.Item, result.ResumeHandle, false)
+			return "", p.ThreadControl.Coordination().Execution(ctx, thread, turn, wait.Item, result.ResumeHandle, false)
 		}
 		if !result.Terminal {
 			return "", nil
 		}
 		if !result.Succeeded {
-			return "", p.threadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", false)
+			return "", p.ThreadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", false)
 		}
 		for _, later := range items[index+1:] {
 			if !strings.HasSuffix(responses.StringField(later, "type"), "_output") {
 				// Input injected after the enclosing result needs inference. Retire
 				// this subscription, including a stop already claimed for it.
-				return "", p.threadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", false)
+				return "", p.ThreadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", false)
 			}
 		}
-		return wait.Item, p.threadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", true)
+		return wait.Item, p.ThreadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", true)
 	}
 	return "", nil
 }

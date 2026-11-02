@@ -287,7 +287,6 @@ type changeMutation struct {
 type mutationEffect struct {
 	review diffmodel.ReviewFile
 	before string
-	files  []*mutationFile
 }
 
 func (m *changeMutation) file(path string) *mutationFile {
@@ -463,7 +462,7 @@ func (m *changeMutation) merge(capture changeCapture, review diffmodel.ReviewFil
 	}
 	m.effects = append(m.effects, mutationEffect{
 		review: diffmodel.RenderReviewFile(beforePath, afterPath, before, after),
-		before: before, files: []*mutationFile{current, primary},
+		before: before,
 	})
 }
 

@@ -51,7 +51,7 @@ func (p *Preparer) observeCodeModeFailures(thread, codeModeToolName string, requ
 			continue
 		}
 		if text, failed := binding.CodeModeFailureText(binding.ExecutionOutputTexts(item["output"])); failed {
-			p.activity.Collect(activitypresentation.Supplement{Thread: thread, Source: "code-mode-failure\x00" + callID, Kind: "error", CallID: callID, Text: text})
+			p.Audience.Collect(activitypresentation.Supplement{Thread: thread, Source: "code-mode-failure\x00" + callID, Kind: "error", CallID: callID, Text: text})
 		}
 		if codeModeReturnedNothing(item["output"]) {
 			source := responses.StringField(call, "input")
@@ -59,7 +59,7 @@ func (p *Preparer) observeCodeModeFailures(thread, codeModeToolName string, requ
 				// The host ran the translated carrier, not the model's script.
 				source = cmp.Or(history.CarrierPayload, history.Script)
 			}
-			p.activity.NoteUnreturned(thread, p.nativeTrace.ReadCell(thread, callID, source).ExecCommands())
+			p.Audience.NoteUnreturned(thread, p.NativeTrace.ReadCell(thread, callID, source).ExecCommands())
 		}
 	}
 }

@@ -21,7 +21,7 @@ func newLiveDiffFinalFrameTransform(t *testing.T) (*mekugiResponseTransform, *pr
 	t.Helper()
 	proxy := newManagedMekugiProxy(t)
 	broker := newLivePreview(t.Context())
-	proxy.review = testReview(broker)
+	proxy.Review = testReview(broker)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	workspace, thread := transform.directory, transform.threadID
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {thread: true}}}
@@ -29,7 +29,7 @@ func newLiveDiffFinalFrameTransform(t *testing.T) (*mekugiResponseTransform, *pr
 	sub := testReview(broker).Subscribe()
 	<-sub.Events() // retained scope
 
-	proxy.review.Preview().Enable()
+	proxy.Review.Preview().Enable()
 	return transform, broker, sub
 }
 

@@ -113,7 +113,7 @@ func TestCompactReloadDeduplicatesOrdinaryReread(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.inputProjections = []binding.InputProjection{outputdeduplication.Module.Bindings.InputProjection(service)}
+	p.InputProjections = []binding.InputProjection{outputdeduplication.Module.Bindings.InputProjection(service)}
 	selection := `{"sources":[{"path":"selected.txt"}]}`
 	ref, err := p.StoreCompact(t.Context(), "root", "handover", selection)
 	if err != nil {
@@ -194,11 +194,11 @@ func TestCompactReloadIntroducesMultipleOutputsOnce(t *testing.T) {
 
 func compactTestSnapshot(t *testing.T, p *Preparer, snapshot compact.Snapshot) string {
 	t.Helper()
-	ns, err := p.retained.Store.NamespaceForThread("root")
+	ns, err := p.Retained.Store.NamespaceForThread("root")
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := p.recovered.AttachStore(p.retained.Store, ns, "root", recovery.DefaultLimits(), nil)
+	store, err := p.Recovery.AttachStore(p.Retained.Store, ns, "root", recovery.DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

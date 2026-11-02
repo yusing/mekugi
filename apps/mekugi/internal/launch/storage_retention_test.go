@@ -451,7 +451,7 @@ func TestStorageIndexLimitReclaimsInactiveChanges(t *testing.T) {
 		next, err = store.changes.Reserve(current, store.scoped(current).changeScope(), "/w", "current", strings.Repeat("y", 4096))
 		return err
 	})
-	index, err := store.scoped(current).changes.Inspect(store.scoped(current).changeScope(), "/w")
+	index, err := readChangeIndexFixture(store.scoped(current), "/w")
 	if err != nil || next == id || index.Streams[0].Retired != 1 || len(index.Changes) != 1 || index.Changes[next].Correlation != strings.Repeat("y", 4096) {
 		t.Fatalf("index reclamation: next=%s retired=%+v err=%v", next, index.Streams, err)
 	}
@@ -547,7 +547,7 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 		next, err = store.changes.Reserve(current, store.scoped(current).changeScope(), "/w", "current", correlation)
 		return err
 	})
-	index, err := store.scoped(current).changes.Inspect(store.scoped(current).changeScope(), "/w")
+	index, err := readChangeIndexFixture(store.scoped(current), "/w")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -656,8 +656,8 @@ func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
 		oldOutput: []byte(`{"version":1,"id":"r_AAAAAAAAAAAAAAAAAAAAAA","stdout":"old output","stderr":"","exit_code":0,"position":[0,0]}`),
 		oldIndex: responses.MustMarshalJSON(historicalChangeIndex{
 			Version: 1, Workspace: workspace,
-			Streams: []changes.Stream{{Thread: "old", Next: 1}},
-			Changes: map[string]changes.Change{"hp_a1": {Correlation: "old-call"}},
+			Streams: []historicalChangeStream{{Thread: "old", Next: 1}},
+			Changes: map[string]historicalTrackedChange{"hp_a1": {Correlation: "old-call"}},
 		}),
 	} {
 		if err := os.WriteFile(filepath.Join(store.directory, name), data, 0600); err != nil {
@@ -786,11 +786,11 @@ func BenchmarkStorageReserveChange(b *testing.B) {
 	const existing = 128
 	index := historicalChangeIndex{
 		Version: 1, Workspace: "/w",
-		Streams: []changes.Stream{{Thread: "current", Next: existing}},
-		Changes: make(map[string]changes.Change, existing),
+		Streams: []historicalChangeStream{{Thread: "current", Next: existing}},
+		Changes: make(map[string]historicalTrackedChange, existing),
 	}
 	for number := 1; number <= existing; number++ {
-		index.Changes[changes.ID("a", number)] = changes.Change{
+		index.Changes[changes.ID("a", number)] = historicalTrackedChange{
 			Correlation: strings.Repeat("x", 2048) + strconv.Itoa(number),
 		}
 	}

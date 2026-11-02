@@ -54,7 +54,7 @@ func TestAuthoredChangesKnownEditsIgnoreIncidentalEffectsAndGitIgnore(t *testing
 			writeTestFile(t, filepath.Join(f.workspace, "arbitrary-output", "output.txt"), "incidental\n")
 			proxy := testProxyWithStore(f.store)
 			history := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread, ExecObservation: observation}
-			if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, f.workspace, []execCompletion{{callID: "edit", history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(map[string]any{"exit_code": 0}))}}); err != nil {
+			if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "edit", history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(map[string]any{"exit_code": 0}))}}); err != nil {
 				t.Fatal(err)
 			}
 			reopened, err := openMekugiReplayStore(f.store.directory)
@@ -170,7 +170,7 @@ func TestAuthoredChangesNamedFormatterKeepsFinalSourceEdits(t *testing.T) {
 	}
 	proxy := testProxyWithStore(f.store)
 	history := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread, ExecObservation: observation}
-	if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, f.workspace, []execCompletion{{callID: "format", history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(map[string]any{"exit_code": 0}))}}); err != nil {
+	if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "format", history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(map[string]any{"exit_code": 0}))}}); err != nil {
 		t.Fatal(err)
 	}
 	record, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("format", false))
@@ -203,7 +203,7 @@ func TestAuthoredChangesBraceFormatterKeepsCreationChain(t *testing.T) {
 	}
 	proxy := testProxyWithStore(f.store)
 	history := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread, ExecObservation: observation}
-	if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, f.workspace, []execCompletion{{callID: "format", history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(map[string]any{"exit_code": 0}))}}); err != nil {
+	if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "format", history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(map[string]any{"exit_code": 0}))}}); err != nil {
 		t.Fatal(err)
 	}
 	formatted, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("format", false))

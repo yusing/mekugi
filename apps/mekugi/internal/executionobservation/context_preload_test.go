@@ -23,7 +23,7 @@ func TestContextPreloadUsesNativeReloadAndRetainedResults(t *testing.T) {
 func testContextReload(t *testing.T, completion bool) {
 	p := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, p)
-	session, err := p.retained.Store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "root")
+	session, err := p.Retained.Store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "root")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func testContextReload(t *testing.T, completion bool) {
 	if err := service.AdmitRoot(t.Context(), controlSession, &control.Member{Thread: "root", Session: "routing", Task: "/root", AudienceAdmitted: true, Preload: preload}); err != nil {
 		t.Fatal(err)
 	}
-	p.threadControl, err = threadbinding.NewDriver(service)
+	p.ThreadControl, err = threadbinding.NewDriver(service)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func testContextReload(t *testing.T, completion bool) {
 			if mode == "foreign" {
 				ancestor = ""
 			}
-			if err := p.retained.Store.Transaction(t.Context(), nil, func(tx *history.Transaction) error {
+			if err := p.Retained.Store.Transaction(t.Context(), nil, func(tx *history.Transaction) error {
 				return tx.InitializeScope(history.Scope{Thread: fork, Namespace: fork, Fork: ancestor}, nil)
 			}); err != nil {
 				t.Fatal(err)

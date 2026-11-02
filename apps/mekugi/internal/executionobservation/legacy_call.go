@@ -13,11 +13,10 @@ import (
 // Conversion leaves those fields unset, just as reading retained JSON did.
 func legacyBaseline(v legacycall.Baseline) resolvedStockBaseline {
 	return resolvedStockBaseline{
-		Root:      v.Root,
-		Shell:     v.Shell,
-		Files:     legacySlice(v.Files, legacyFile),
-		Omitted:   legacySlice(v.Omitted, func(v legacycall.Omission) changecapture.Omission { return changecapture.Omission(v) }),
-		Inventory: legacyPointer(v.Inventory, legacyInventory),
+		Root:    v.Root,
+		Shell:   v.Shell,
+		Files:   legacySlice(v.Files, legacyFile),
+		Omitted: legacySlice(v.Omitted, func(v legacycall.Omission) changecapture.Omission { return changecapture.Omission(v) }),
 	}
 }
 
@@ -38,7 +37,7 @@ func legacyFile(v legacycall.File) changecapture.File {
 }
 
 func legacyHistory(v legacycall.History) mekugiHistory {
-	return mekugiHistory{
+	result := mekugiHistory{
 		ToolName:             v.ToolName,
 		PluginID:             v.PluginID,
 		Script:               v.Script,
@@ -51,7 +50,7 @@ func legacyHistory(v legacycall.History) mekugiHistory {
 		NativePatches:        legacySlice(v.NativePatches, legacyNativePatch),
 		ResolvedBaseline:     legacyPointer(v.ResolvedBaseline, legacyBaseline),
 		ExecObservation:      legacyPointer(v.ExecObservation, legacyObservation),
-		ExecOutcome:          legacyPointer(v.ExecOutcome, func(v legacycall.Outcome) changecapture.Outcome { return changecapture.Outcome(v) }),
+		ExecOutcome:          legacyPointer(v.ExecOutcome, legacyOutcome),
 		HostResults:          legacySlice(v.HostResults, func(v legacycall.HostResult) binding.ToolResult { return binding.ToolResult(v) }),
 		CommandSegments:      v.CommandSegments,
 		CarrierName:          v.CarrierName,
@@ -67,20 +66,17 @@ func legacyHistory(v legacycall.History) mekugiHistory {
 		CommentaryMessageIDs: v.CommentaryMessageIDs,
 		AlreadySatisfied:     v.AlreadySatisfied,
 	}
+	result.legacy = legacyMetadata(v)
+	return result
 }
 
-func legacyInventory(v legacycall.Inventory) changecapture.Inventory {
-	return changecapture.Inventory{
-		Version:      v.Version,
-		Directories:  legacyDirectories(v.Directories),
-		Root:         v.Root,
-		Entries:      v.Entries,
-		Blobs:        v.Blobs,
-		Files:        legacySlice(v.Files, legacyFile),
-		Repositories: v.Repositories,
-		Pruned:       v.Pruned,
-		Omitted:      legacySlice(v.Omitted, func(v legacycall.Omission) changecapture.Omission { return changecapture.Omission(v) }),
+func legacyMetadata(v legacycall.History) *legacycall.History {
+	if v.ExecObservation != nil && v.ExecObservation.Inventory != nil ||
+		v.ResolvedBaseline != nil && v.ResolvedBaseline.Inventory != nil ||
+		v.ExecOutcome != nil && v.ExecOutcome.Unswept != "" {
+		return new(v)
 	}
+	return nil
 }
 
 func legacyNativePatch(v legacycall.NativePatch) changecapture.PatchObservation {
@@ -108,7 +104,6 @@ func legacyObservation(v legacycall.Observation) changecapture.Observation {
 		Excluded:       v.Excluded,
 		RepeatedPaths:  v.RepeatedPaths,
 		LiteralClass:   v.LiteralClass,
-		Inventory:      legacyPointer(v.Inventory, legacyInventory),
 		Tree:           v.Tree,
 	}
 }
@@ -131,26 +126,14 @@ func legacyPointer[A, B any](value *A, convert func(A) B) *B {
 	return new(convert(*value))
 }
 
-func legacyDirectories(values map[string]legacycall.DirectoryStamp) map[string]changecapture.DirectoryStamp {
-	if values == nil {
-		return nil
-	}
-	result := make(map[string]changecapture.DirectoryStamp, len(values))
-	for key, value := range values {
-		result[key] = changecapture.DirectoryStamp(value)
-	}
-	return result
-}
-
 // Typed neutral publication and cache conversion; live-only fields stay local.
 // Source: apps/mekugi/internal/router/legacy_call.go:14:143@d002a0dc, inverse conversion.
 func retainedBaseline(v resolvedStockBaseline) legacycall.Baseline {
 	return legacycall.Baseline{
-		Root:      v.Root,
-		Shell:     v.Shell,
-		Files:     legacySlice(v.Files, retainedFile),
-		Omitted:   legacySlice(v.Omitted, func(v changecapture.Omission) legacycall.Omission { return legacycall.Omission(v) }),
-		Inventory: legacyPointer(v.Inventory, retainedInventory),
+		Root:    v.Root,
+		Shell:   v.Shell,
+		Files:   legacySlice(v.Files, retainedFile),
+		Omitted: legacySlice(v.Omitted, func(v changecapture.Omission) legacycall.Omission { return legacycall.Omission(v) }),
 	}
 }
 
@@ -171,7 +154,7 @@ func retainedFile(v changecapture.File) legacycall.File {
 }
 
 func retainedHistory(v mekugiHistory) legacycall.History {
-	return legacycall.History{
+	result := legacycall.History{
 		ToolName:             v.ToolName,
 		PluginID:             v.PluginID,
 		Script:               v.Script,
@@ -184,7 +167,7 @@ func retainedHistory(v mekugiHistory) legacycall.History {
 		NativePatches:        legacySlice(v.NativePatches, retainedNativePatch),
 		ResolvedBaseline:     legacyPointer(v.ResolvedBaseline, retainedBaseline),
 		ExecObservation:      legacyPointer(v.ExecObservation, retainedObservation),
-		ExecOutcome:          legacyPointer(v.ExecOutcome, func(v changecapture.Outcome) legacycall.Outcome { return legacycall.Outcome(v) }),
+		ExecOutcome:          legacyPointer(v.ExecOutcome, retainedOutcome),
 		HostResults:          legacySlice(v.HostResults, func(v binding.ToolResult) legacycall.HostResult { return legacycall.HostResult(v) }),
 		CommandSegments:      v.CommandSegments,
 		CarrierName:          v.CarrierName,
@@ -200,20 +183,22 @@ func retainedHistory(v mekugiHistory) legacycall.History {
 		CommentaryMessageIDs: v.CommentaryMessageIDs,
 		AlreadySatisfied:     v.AlreadySatisfied,
 	}
-}
-
-func retainedInventory(v changecapture.Inventory) legacycall.Inventory {
-	return legacycall.Inventory{
-		Version:      v.Version,
-		Directories:  retainedDirectories(v.Directories),
-		Root:         v.Root,
-		Entries:      v.Entries,
-		Blobs:        v.Blobs,
-		Files:        legacySlice(v.Files, retainedFile),
-		Repositories: v.Repositories,
-		Pruned:       v.Pruned,
-		Omitted:      legacySlice(v.Omitted, func(v changecapture.Omission) legacycall.Omission { return legacycall.Omission(v) }),
+	// Frozen metadata belongs to the historical record, not live capture.
+	if old := v.legacy; old != nil {
+		if old.ExecObservation != nil && result.ExecObservation != nil {
+			result.ExecObservation.Inventory = old.ExecObservation.Inventory
+		}
+		if old.ResolvedBaseline != nil && result.ResolvedBaseline != nil {
+			result.ResolvedBaseline.Inventory = old.ResolvedBaseline.Inventory
+		}
+		if old.ExecOutcome != nil && old.ExecOutcome.Unswept != "" {
+			if result.ExecOutcome == nil {
+				result.ExecOutcome = new(legacycall.Outcome)
+			}
+			result.ExecOutcome.Unswept = old.ExecOutcome.Unswept
+		}
 	}
+	return result
 }
 
 func retainedNativePatch(v changecapture.PatchObservation) legacycall.NativePatch {
@@ -241,18 +226,42 @@ func retainedObservation(v changecapture.Observation) legacycall.Observation {
 		Excluded:       v.Excluded,
 		RepeatedPaths:  v.RepeatedPaths,
 		LiteralClass:   v.LiteralClass,
-		Inventory:      legacyPointer(v.Inventory, retainedInventory),
 		Tree:           v.Tree,
 	}
 }
 
-func retainedDirectories(values map[string]changecapture.DirectoryStamp) map[string]legacycall.DirectoryStamp {
-	if values == nil {
-		return nil
+func legacyOutcome(v legacycall.Outcome) changecapture.Outcome {
+	return changecapture.Outcome{
+		DeletedDirectories: v.DeletedDirectories,
+		OutputRef:          v.OutputRef,
+		Status:             v.Status,
+		Exit:               v.Exit,
+		Class:              v.Class,
+		Labels:             v.Labels,
+		Coverage:           v.Coverage,
+		CodeMode:           v.CodeMode,
+		Scope:              v.Scope,
+		ScopeReason:        v.ScopeReason,
+		Overlaps:           v.Overlaps,
+		Background:         v.Background,
+		SharedWith:         v.SharedWith,
 	}
-	result := make(map[string]legacycall.DirectoryStamp, len(values))
-	for key, value := range values {
-		result[key] = legacycall.DirectoryStamp(value)
+}
+
+func retainedOutcome(v changecapture.Outcome) legacycall.Outcome {
+	return legacycall.Outcome{
+		DeletedDirectories: v.DeletedDirectories,
+		OutputRef:          v.OutputRef,
+		Status:             v.Status,
+		Exit:               v.Exit,
+		Class:              v.Class,
+		Labels:             v.Labels,
+		Coverage:           v.Coverage,
+		CodeMode:           v.CodeMode,
+		Scope:              v.Scope,
+		ScopeReason:        v.ScopeReason,
+		Overlaps:           v.Overlaps,
+		Background:         v.Background,
+		SharedWith:         v.SharedWith,
 	}
-	return result
 }

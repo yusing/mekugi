@@ -369,8 +369,12 @@ func TestModuleForkDependencyPublicationAndRetirement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var retainedCounters struct{ Streams []struct{ Retired int } }
+	if err := json.Unmarshal(update.Data, &retainedCounters); err != nil || len(retainedCounters.Streams) != 1 || retainedCounters.Streams[0].Retired != 1 {
+		t.Fatalf("retired counter lost: %+v, %v", retainedCounters, err)
+	}
 	retired, err := f.service.Inspect(child, f.workspace)
-	if err != nil || len(retired.Changes) != 0 || retired.Streams[0].Next != 1 || retired.Streams[0].Retired != 1 {
+	if err != nil || len(retired.Changes) != 0 || retired.Streams[0].Next != 1 {
 		t.Fatalf("retired allocation lost: %+v, %v", retired, err)
 	}
 	text, err := f.service.Read(t.Context(), child, changes.Query{Workspace: f.workspace, IDs: []string{id}})

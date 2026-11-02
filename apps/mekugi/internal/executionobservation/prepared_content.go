@@ -16,7 +16,7 @@ import (
 // those messages; subsequent skill rewriting preserves message membership.
 func (t *mekugiResponseTransform) ObservePreparedContent(request *codexresponses.Request, attachmentIDs map[int]string) {
 	var items []map[string]jsontext.Value
-	if t.activity == nil || t.threadID == "" || json.Unmarshal(request.Fields["input"], &items) != nil {
+	if t.owners.Audience == nil || t.threadID == "" || json.Unmarshal(request.Fields["input"], &items) != nil {
 		return
 	}
 	sources := make(map[string]string)
@@ -83,14 +83,14 @@ func (t *mekugiResponseTransform) ObservePreparedContent(request *codexresponses
 					source = history.Script
 				}
 			}
-			content.Calls = t.nativeTrace.ReadCell(t.threadID, id, source).ToolCalls()
+			content.Calls = t.owners.NativeTrace.ReadCell(t.threadID, id, source).ToolCalls()
 		}
-		t.activity.ObservePrepared(t.threadID, content)
+		t.owners.Audience.ObservePrepared(t.threadID, content)
 	}
 	for id, frames := range attached {
 		text := strings.Join(frames, "\n\n")
 		original, known := originalAttachments[id]
-		t.activity.ObservePrepared(t.threadID, activity.PreparedContent{ID: id, Text: text, Altered: known && text != strings.Join(original, "\n\n")})
+		t.owners.Audience.ObservePrepared(t.threadID, activity.PreparedContent{ID: id, Text: text, Altered: known && text != strings.Join(original, "\n\n")})
 	}
 }
 

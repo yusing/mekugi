@@ -10,11 +10,11 @@ func TestToolInputEmissionClearsOnItemDoneOrResponseClose(t *testing.T) {
 	for _, closeResponse := range []bool{false, true} {
 		t.Run(map[bool]string{false: "item done", true: "response close"}[closeResponse], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
-			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, threadID: "main", directory: "/workspace"}
+			transform := &mekugiResponseTransform{owners: &Preparer{Config: Config{Control: proxy.Control, Review: proxy.Review, Windows: proxy.Windows, Calls: proxy.Calls, Retained: proxy.Retained, Changes: proxy.Changes, Checkpoints: proxy.Checkpoints, Recovery: proxy.Recovery, PublishChanges: proxy.PublishChanges, PreviewTiming: proxy.PreviewTiming}}, threadID: "main", directory: "/workspace"}
 			defer transform.Close()
 			item := map[string]any{"id": "emitting", "type": "custom_tool_call", "status": "incomplete"}
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
-			if !proxy.control.EmittingToolInput("/workspace", "main") {
+			if !proxy.Control.EmittingToolInput("/workspace", "main") {
 				t.Fatal("emission was not observed")
 			}
 			if closeResponse {
@@ -22,7 +22,7 @@ func TestToolInputEmissionClearsOnItemDoneOrResponseClose(t *testing.T) {
 			} else {
 				emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": item})
 			}
-			if proxy.control.EmittingToolInput("/workspace", "main") {
+			if proxy.Control.EmittingToolInput("/workspace", "main") {
 				t.Fatal("ended response still blocks answers")
 			}
 		})
