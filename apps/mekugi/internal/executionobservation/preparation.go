@@ -58,6 +58,7 @@ type Config struct {
 	Recovery         *recovery.Service
 	PublishChanges   func([]changes.Update)
 	Notice           func(string, string, string, string)
+	Event            func(string, string, string, string)
 }
 
 // New binds request preparation to the composed owners without acquiring resources.
@@ -81,6 +82,7 @@ func New(config Config) *Preparer {
 		recovered:        config.Recovery,
 		publishChanges:   config.PublishChanges,
 		noticeSink:       config.Notice,
+		eventSink:        config.Event,
 	}
 }
 
@@ -103,6 +105,7 @@ type Preparer struct {
 	recovered        *recovery.Service
 	publishChanges   func([]changes.Update)
 	noticeSink       func(string, string, string, string)
+	eventSink        func(string, string, string, string)
 }
 
 func (p *Preparer) notice(session, thread, category, message string) {

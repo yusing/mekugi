@@ -401,6 +401,8 @@ export type NativeFrame = {
   "notification"?: (NativeEffect | null);
   "pendingEffects": boolean;
   "notice"?: string;
+  "noticeEntries"?: Array<number>;
+  "noticeFeedback"?: number;
 };
 
 export type DeferredSections = {

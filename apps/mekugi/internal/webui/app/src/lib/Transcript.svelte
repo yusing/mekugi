@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, untrack, type Snippet } from "svelte";
+  import type { Attachment } from "svelte/attachments";
   import EntryView from "./EntryView.svelte";
   import { date, offset } from "./format";
   import { hasDetails, isUser, isView, responseText } from "./kinds";
@@ -16,7 +17,8 @@
   // so offsets keep one width; jumps counts seeks and fresh snapshots, each of
   // which returns the view to the end. A live session shows clock times
   // instead of recorded offsets. A live session's rows offer their details;
-  // header leads the transcript, above its oldest row.
+  // header leads the transcript, above its oldest row. painted may attach a
+  // paint observer to a row.
   let {
     entries,
     owner,
@@ -29,6 +31,7 @@
     ondetails,
     header,
     source = stream,
+    painted,
   }: {
     entries: Entry[];
     owner: string;
@@ -41,6 +44,7 @@
     ondetails?: (seq: number) => unknown;
     header?: Snippet;
     source?: Stream;
+    painted?: (seq: number) => Attachment<HTMLElement> | undefined;
   } = $props();
 
   let scroller = $state<HTMLElement>();
@@ -364,7 +368,7 @@
         !isUser(entry) && !entry.assignment
           ? responseText(entry.kind, entry.text, entry.values?.[0]?.body)
           : ""}
-      <div class="group/row relative" data-entry={row.entry.seq}>
+      <div class="group/row relative" data-entry={row.entry.seq} {@attach painted?.(row.entry.seq)}>
         <EntryView
           {entry}
           at={row.at}

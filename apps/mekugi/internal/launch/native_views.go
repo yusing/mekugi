@@ -363,6 +363,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			}
 		}
 		v.attached.presentation.BorrowExecutionStatus(execution.presentation)
+		v.notices.refreshProgress(&v.attached, now)
 		view := publishSessionView(&v.attached, control, &v.picker, "", settings, tiers, title, backend, restoring, side, true)
 		facts.Busy = view.Status.Session.Running || control.Busy(false)
 		reviewView := reviewSource.DiffReviewView(execution.session.Scope())
@@ -378,7 +379,10 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			MainOutput:     v.mainOutput, AgentOutput: v.agentOutput, Switch: switched,
 		}
 		if v.notices != nil {
-			frame.Notice = v.notices.id
+			frame.Notice, frame.NoticeEntries = v.notices.id, v.notices.entries
+			if len(v.notices.errors.Messages) > 0 {
+				frame.NoticeFeedback = v.notices.feedback
+			}
 		}
 		if review != nil {
 			frame.LiveScope = review.Scope()

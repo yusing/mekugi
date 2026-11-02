@@ -149,8 +149,8 @@ The capability conveys information, never execution authorization.
 ## Context usage notices
 
 Measured notices at 50/60/70/80/90% reset after compaction and are isolated by native session/thread.
-Each fresh model-facing milestone also emits a user-only warning through the shared
-terminal and browser notice presentation. Replaying an annotation emits no warning.
+Each fresh model-facing milestone also emits a user-only progress event, shown as a
+terminal and browser transcript row rather than error feedback. Replaying an annotation emits no event.
 Codex adds developer context after fresh tool results or text-only user input and replays at most five
 boundary associations, preserving native content, identities, base instructions and provider prefixes.
 Claude uses post-tool-batch context. Prewarm, approval, compaction, already-started successors and unknown usage add no notices.

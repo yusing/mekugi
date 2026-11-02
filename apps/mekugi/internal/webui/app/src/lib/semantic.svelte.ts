@@ -70,10 +70,14 @@ type ControlView = {
   effect: number;
   acknowledged: number;
   receipt: number;
-  noticeReceipt?: string;
+  notice?: NoticePaint;
   applied?: string;
   prompts: Record<string, PromptState>;
 };
+
+// Surfaces of one notice claim visibly painted so far, and whether its one
+// receipt is in flight or delivered.
+type NoticePaint = { claim: string; composer?: boolean; entries: Set<number>; sent?: boolean };
 
 function controlView(thread: string, machine: Machine): ControlView {
   const prompts = $state<Record<string, PromptState>>({});
@@ -118,14 +122,27 @@ class Semantic {
     return this.event?.frame;
   }
 
-  async noticePainted(event: NativeEvent): Promise<void> {
+  // Renderers report each visibly painted surface of the event's notice claim:
+  // its error feedback, or one of its event rows in the Main transcript. New
+  // frames report no surface but may replace the claimed feedback. One receipt
+  // reports the painted surfaces once either is complete or the feedback is
+  // replaced; the host retries the rest under a new claim.
+  async noticePainted(event: NativeEvent, painted?: "feedback" | number): Promise<void> {
     const source = this.#source;
     const { frame } = event;
-    if (!source || this.event !== event || !frame.notice || !frame.view.Status.Feedback.Text)
-      return;
-    const identity = `${event.attachment}:${frame.view.Version.Attachment}:${frame.view.Status.FeedbackRevision}`;
-    if (source.noticeReceipt === identity) return;
-    source.noticeReceipt = identity;
+    if (!source || this.event !== event || !frame.notice) return;
+    const claim = `${event.attachment}:${frame.view.Version.Attachment}:${frame.notice}`;
+    if (source.notice?.claim !== claim) source.notice = { claim, entries: new Set() };
+    const notice = source.notice;
+    const required = frame.noticeFeedback;
+    const shown = required !== undefined && frame.view.Status.FeedbackRevision === required;
+    if (painted === "feedback") notice.composer ||= shown;
+    else if (painted !== undefined) notice.entries.add(painted);
+    const rows = frame.noticeEntries ?? [];
+    const content = rows.length > 0 && rows.every((seq) => notice.entries.has(seq));
+    const composer = !!notice.composer;
+    if (notice.sent || !(composer || content || (required !== undefined && !shown))) return;
+    notice.sent = true;
     const error = await this.send(
       {
         receipt: {
@@ -133,9 +150,9 @@ class Semantic {
           Notice: {
             Attachment: frame.view.Version.Attachment,
             Claim: frame.notice,
-            Feedback: frame.view.Status.FeedbackRevision,
-            Composer: true,
-            Content: false,
+            Feedback: required ?? 0,
+            Composer: composer,
+            Content: content,
           },
         },
       },
@@ -143,7 +160,7 @@ class Semantic {
       true,
       event,
     );
-    if (error && source.noticeReceipt === identity) source.noticeReceipt = undefined;
+    if (error && source.notice === notice) notice.sent = false;
   }
 
   // Cached menus are presentation only. Actions always use the live frame.
@@ -433,6 +450,7 @@ class Semantic {
     let destination: string | undefined;
     this.ensureEditor(next.frame.view.Input.ID);
     this.event = next;
+    void this.noticePainted(next);
     this.family = next.frame.family
       ? { root: next.frame.family.root, threads: next.frame.family.threads }
       : undefined;

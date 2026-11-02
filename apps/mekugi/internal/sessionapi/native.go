@@ -44,6 +44,11 @@ type NativeFrame struct {
 	Notification    *NativeEffect        `json:"notification,omitempty"`
 	PendingEffects  bool                 `json:"pendingEffects"`
 	Notice          string               `json:"notice,omitempty"`
+	// NoticeEntries are the Main transcript rows whose painting acknowledges
+	// the claim's content surface.
+	NoticeEntries []uint64 `json:"noticeEntries,omitempty"`
+	// NoticeFeedback is the feedback revision that shows the claim's errors.
+	NoticeFeedback uint64 `json:"noticeFeedback,omitempty"`
 }
 
 // NativeActivityFrame retains a bounded window of renderer pacing deliveries.

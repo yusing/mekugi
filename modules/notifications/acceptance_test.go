@@ -141,6 +141,27 @@ func TestIndependentSurfaceReceiptsAndCapturedRepeats(t *testing.T) {
 	}
 }
 
+func TestWaitingReportsUnclaimedSurface(t *testing.T) {
+	service := newService(t)
+	service.Submit(notice.Input{ID: "progress", Thread: "root", Category: "context", Text: "context usage", Surface: notice.Progress})
+	held := requireClaim(t, service, nil)
+	if service.Waiting("root", nil, notice.Error) || service.Waiting("root", nil, notice.Progress) {
+		t.Fatal("held progress reported as waiting")
+	}
+	service.Submit(notice.Input{ID: "other", Thread: "other", Category: "storage", Text: "outside scope"})
+	if service.Waiting("root", nil, notice.Error) {
+		t.Fatal("out-of-scope error reported as waiting")
+	}
+	service.Submit(notice.Input{ID: "error", Thread: "root", Category: "storage", Text: "storage unavailable"})
+	if !service.Waiting("root", nil, notice.Error) || service.Waiting("root", nil, notice.Progress) {
+		t.Fatal("new error behind held progress was not waiting")
+	}
+	held.Progress.Finish(false)
+	retry := requireClaim(t, service, nil)
+	requireMessages(t, retry.Errors, notice.Message{ID: "error", Text: "storage unavailable"})
+	requireMessages(t, retry.Progress, notice.Message{ID: "progress", Text: "context usage"})
+}
+
 func TestNormalizedScopeAcceptance(t *testing.T) {
 	service := newService(t)
 	for _, input := range []notice.Input{
@@ -207,10 +228,18 @@ func TestAttachedFeedbackRetryAndLifetime(t *testing.T) {
 	service.Submit(notice.Input{ID: "error", Thread: "root", Category: "error", Text: complete})
 	service.Submit(notice.Input{ID: "progress", Thread: "root", Category: "progress", Text: "cleanup", Surface: notice.Progress})
 	var view presentation.Model
+	var transcript presentation.Progress
+	var added []notice.Message
+	add := func(message notice.Message) uint64 {
+		added = append(added, message)
+		return uint64(len(added))
+	}
+	present := func(uint64) bool { return true }
 	now := time.Unix(100, 0)
 	first := requireClaim(t, service, nil)
-	if got := view.Receive(first, now); !reflect.DeepEqual(got, []notice.Message{{ID: "progress", Text: "cleanup"}}) {
-		t.Fatalf("first progress = %v", got)
+	view.Receive(first, now)
+	if got := transcript.Rows(first.Progress, present, add); !reflect.DeepEqual(got, []uint64{1}) || !reflect.DeepEqual(added, []notice.Message{{ID: "progress", Text: "cleanup"}}) {
+		t.Fatalf("first progress rows = %v, added = %v", got, added)
 	}
 	if view.Text != complete || !view.Alert || view.Expire(now.Add(time.Hour)) {
 		t.Fatal("complete actionable feedback was truncated or expired")
@@ -219,12 +248,17 @@ func TestAttachedFeedbackRetryAndLifetime(t *testing.T) {
 	first.Errors.Finish(false)
 	first.Progress.Finish(false)
 	retry := requireClaim(t, service, nil)
-	if got := view.Receive(retry, now); len(got) != 0 || view.Text != complete {
-		t.Fatalf("retry progress = %v, complete error restored = %t", got, view.Text == complete)
+	view.Receive(retry, now)
+	if view.Text != complete {
+		t.Fatal("retry did not restore the complete error")
 	}
-	var reattached presentation.Model
-	if got := reattached.Receive(retry, now); len(got) != 1 {
-		t.Fatal("progress delivery identity escaped its attached view")
+	// Another view of the same transcript names the existing row.
+	if got := transcript.Rows(retry.Progress, present, add); !reflect.DeepEqual(got, []uint64{1}) || len(added) != 1 {
+		t.Fatalf("retried progress rows = %v, added = %v", got, added)
+	}
+	var replaced presentation.Progress
+	if got := replaced.Rows(retry.Progress, present, add); !reflect.DeepEqual(got, []uint64{2}) {
+		t.Fatal("progress delivery identity escaped its transcript")
 	}
 	retry.Errors.Finish(true)
 	retry.Progress.Finish(true)

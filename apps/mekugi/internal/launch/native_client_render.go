@@ -3,6 +3,7 @@ package launch
 import (
 	"context"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
@@ -18,10 +19,12 @@ import (
 // The caller owns draft/prompt editors; this binding owns no semantic source,
 // history store, acquisition callback or host request ledger.
 type nativeClientRenderer struct {
-	terminal   *terminalsession.Attachment
-	views      terminalsession.Views
-	frame      sessionapi.NativeFrame
-	attachment uint64
+	terminal    *terminalsession.Attachment
+	views       terminalsession.Views
+	frame       sessionapi.NativeFrame
+	attachment  uint64
+	noticeClaim string
+	noticeRows  map[uint64]bool
 }
 
 func (c *nativeClientRenderer) update(frame sessionapi.NativeFrame, draft conversation.DraftView, prompt conversation.PromptDraftView, now time.Time) {
@@ -152,6 +155,7 @@ func (c *nativeClientRenderer) replace(attachment uint64) {
 		u.Auxiliary.Reset()
 	}
 	c.attachment = attachment
+	c.noticeClaim, c.noticeRows = "", nil
 }
 
 // render returns immutable hydration demands to the transport caller. It never
@@ -161,12 +165,22 @@ func (c *nativeClientRenderer) render(ctx context.Context, out io.Writer, now ti
 	u.Live.Tick(now)
 	in := u.FrameInput(now, version)
 	in.FileLinks = c.frame.FileLinks
+	in.NoticeEntries = c.frame.NoticeEntries
 	frame, err := u.Frame.Render(ctx, in)
 	if err != nil || len(frame.Demands) > 0 {
 		return frame, err
 	}
 	if err := u.Frame.Write(out, frame, u.Width, u.Faint); err != nil {
 		return frame, err
+	}
+	if c.noticeClaim != c.frame.Notice {
+		c.noticeClaim, c.noticeRows = c.frame.Notice, make(map[uint64]bool)
+	}
+	for _, seq := range frame.PaintedNoticeEntries {
+		c.noticeRows[seq] = true
+	}
+	if len(c.frame.NoticeEntries) > 0 {
+		frame.Notices.Content = !slices.ContainsFunc(c.frame.NoticeEntries, func(seq uint64) bool { return !c.noticeRows[seq] })
 	}
 	if frame.PromptVisible {
 		u.Prompts.Delivered(frame.Prompt)

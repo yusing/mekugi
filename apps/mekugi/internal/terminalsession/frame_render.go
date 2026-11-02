@@ -36,6 +36,7 @@ type FrameInput struct {
 	Prefix, Playback       bool
 	PlaybackBar            string
 	FileLinks              map[string]bool
+	NoticeEntries          []uint64 // Claimed Main event rows, acknowledged only inside the viewport.
 }
 
 type RenderedFrame struct {
@@ -43,6 +44,7 @@ type RenderedFrame struct {
 	ImageDemands                   []terminalui.ImageSource
 	FileLinkDemands                []string
 	Notices                        NoticeReceipt
+	PaintedNoticeEntries           []uint64
 	Source                         SourceContext
 	Rows                           []string
 	Copy                           [][]terminalui.CopySpan
@@ -135,6 +137,16 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 			return out, nil
 		}
 		out.Notices = main.Notices
+		if view.Displayed.ID != view.Main.ID {
+			out.Notices.Content = false
+		}
+		if out.Notices.Content && len(in.NoticeEntries) > 0 {
+			for _, span := range transcript.FeedSpans {
+				if span.End > transcript.Offset && span.Start < transcript.Offset+transcript.FeedRows && slices.Contains(in.NoticeEntries, span.Seq) {
+					out.PaintedNoticeEntries = append(out.PaintedNoticeEntries, span.Seq)
+				}
+			}
+		}
 		out.composer = main.composer
 		content.Main, content.Dock = main.Rows, main.Dock
 		dockAt, dockRows := content.Dock.Y, content.Dock.H
@@ -205,6 +217,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	}
 	if in.Dialog != nil || in.Selection != nil && out.SelectionRetained {
 		out.Notices.Composer, out.Notices.Content = false, false
+		out.PaintedNoticeEntries = nil
 	}
 	// Overlays use cursor-positioned painting. Resolve their final cells so
 	// covered transcript candidates cannot request filesystem work.

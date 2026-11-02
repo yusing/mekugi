@@ -72,6 +72,19 @@ func (c *nativeClient) acquireCompletion() {
 // Applied effects need no paint or output hydration. Notice identities come only
 // from successful paints, and a queued receipt can cover newer applied effects.
 func (c *nativeClient) stageReceipt(notice *sessionapi.NativeNoticeReceipt) {
+	// Keep an incomplete claim across paints so separate event rows can be
+	// visited in different viewports. Effects still acknowledge independently.
+	if notice != nil && notice.Claim != "" {
+		painted := *notice
+		feedback := c.renderer.frame.NoticeFeedback
+		painted.Composer = painted.Composer && feedback != 0 && painted.Feedback == feedback
+		painted.Content = painted.Content && len(c.renderer.frame.NoticeEntries) > 0
+		if painted.Composer || painted.Content || feedback != 0 && painted.Feedback != feedback {
+			notice = &painted
+		} else {
+			notice = nil
+		}
+	}
 	for _, call := range c.calls {
 		if call.operation.Receipt != nil && (call.target.Attachment != c.event.Attachment || call.target.Version.Attachment != c.event.Frame.View.Version.Attachment) {
 			call.target = c.event.Target()

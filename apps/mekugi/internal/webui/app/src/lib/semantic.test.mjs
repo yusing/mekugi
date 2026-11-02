@@ -1391,36 +1391,86 @@ test("repeated effect publications apply and acknowledge each receipt only once"
   assert.equal(semantic.pending, 0, "quiet receipts do not wait for a publication");
 });
 
-test("painted feedback receipts retain identity without effects or duplicate acknowledgement", async () => {
+test("painted notice surfaces send one receipt per claim without effects", async () => {
   const owner = machine();
-  const warning = (revision, claim, feedback = 5) =>
+  const notice = (revision, claim, { rows, errors, feedback = errors ?? 5 } = {}) =>
     owner.views[0].snapshot(revision, [], {
       notice: claim,
-      view: { Status: { FeedbackRevision: feedback, Feedback: { Text: "Context usage: 60%" } } },
+      noticeEntries: rows,
+      noticeFeedback: errors,
+      view: {
+        Status: {
+          FeedbackRevision: feedback,
+          Feedback: errors ? { Text: "Request failed", Alert: true } : { Text: "Copied" },
+        },
+      },
     });
-  warning(2, "claim-one");
-  const painted = semantic.event;
-  const acknowledgement = semantic.noticePainted(painted);
-  void semantic.noticePainted(painted);
+  const receipt = (index) => owner.requests[index].params.body.operation.receipt;
+
+  // An error-only claim is acknowledged by its painted feedback revision.
+  notice(2, "error-claim", { errors: 5 });
+  const errors = semantic.event;
+  const acknowledgement = semantic.noticePainted(errors, "feedback");
+  void semantic.noticePainted(errors, "feedback");
   await tick();
   assert.equal(owner.requests.length, 1);
-  assert.deepEqual(owner.requests[0].params.body.operation.receipt, {
+  assert.deepEqual(receipt(0), {
     Effect: 0,
-    Notice: { Attachment: 1, Claim: "claim-one", Feedback: 5, Composer: true, Content: false },
+    Notice: { Attachment: 1, Claim: "error-claim", Feedback: 5, Composer: true, Content: false },
   });
   owner.requests[0].resolve({ version: { Attachment: 1, Revision: 2 } });
   await acknowledgement;
-  warning(3, "progress-only-claim");
-  await semantic.noticePainted(semantic.event);
-  assert.equal(owner.requests.length, 1, "unchanged feedback cannot acknowledge another surface");
-  warning(4, "claim-two", 6);
-  await semantic.noticePainted(painted);
+
+  // An event claim waits for every claimed row; other feedback cannot settle it.
+  notice(3, "event-claim", { rows: [7, 8], feedback: 6 });
+  const events = semantic.event;
+  await semantic.noticePainted(events, "feedback");
+  await semantic.noticePainted(events, 7);
+  assert.equal(owner.requests.length, 1, "an unpainted event row keeps the claim pending");
+  notice(4, "event-claim", { rows: [7, 8], feedback: 6 });
+  await semantic.noticePainted(events, 8);
   assert.equal(owner.requests.length, 1, "a stale paint cannot acknowledge a new frame");
-  const next = semantic.noticePainted(semantic.event);
+  const content = semantic.noticePainted(semantic.event, 8);
   await tick();
-  assert.equal(owner.requests[1].params.body.operation.receipt.Notice.Claim, "claim-two");
+  assert.deepEqual(receipt(1).Notice, {
+    Attachment: 1,
+    Claim: "event-claim",
+    Feedback: 0,
+    Composer: false,
+    Content: true,
+  });
   owner.requests[1].resolve({ version: { Attachment: 1, Revision: 4 } });
-  await next;
+  await content;
+  await semantic.noticePainted(semantic.event, 7);
+  assert.equal(owner.requests.length, 2, "a claim is acknowledged once");
+
+  // Painted errors settle a mixed claim without waiting for its unpainted rows.
+  notice(5, "mixed-claim", { rows: [9], errors: 7 });
+  const mixed = semantic.noticePainted(semantic.event, "feedback");
+  await tick();
+  assert.deepEqual(receipt(2).Notice, {
+    Attachment: 1,
+    Claim: "mixed-claim",
+    Feedback: 7,
+    Composer: true,
+    Content: false,
+  });
+  owner.requests[2].resolve({ version: { Attachment: 1, Revision: 5 } });
+  await mixed;
+
+  // Replaced feedback releases unpainted errors for retry without any paint.
+  notice(6, "displaced-claim", { errors: 8 });
+  assert.equal(owner.requests.length, 3);
+  notice(7, "displaced-claim", { errors: 8, feedback: 9 });
+  await tick();
+  assert.deepEqual(receipt(3).Notice, {
+    Attachment: 1,
+    Claim: "displaced-claim",
+    Feedback: 8,
+    Composer: false,
+    Content: false,
+  });
+  owner.requests[3].resolve({ version: { Attachment: 1, Revision: 7 } });
 });
 
 test("a late reference refuses a changed draft and never reaches another thread", async () => {

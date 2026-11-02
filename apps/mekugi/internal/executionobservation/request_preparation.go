@@ -80,7 +80,9 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 			}
 		}
 		admitted.Notify = func(text string) {
-			p.notice(input.Session, input.Thread, fmt.Sprintf("context-usage:%d:%s", admitted.Compactions, text), text)
+			if p.eventSink != nil {
+				p.eventSink(input.Session, input.Thread, fmt.Sprintf("context-usage:%d:%s", admitted.Compactions, text), text)
+			}
 		}
 		if err := requestexecution.ProjectInstructions(request, func(text binding.InstructionInput) (binding.InstructionUpdate, error) {
 			return p.registry.Guidance.ContextUsage(text, admitted)

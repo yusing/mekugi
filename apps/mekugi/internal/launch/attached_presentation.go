@@ -35,6 +35,9 @@ type executionPresentation struct {
 	threadInput         *threadInput
 	reasoning           *pendingReasoning
 	modelsReady         func([]appServerModel, preferences.Applied, *inferencegateway.Tiers, string)
+
+	// Progress notice rows belong to the shared Main transcript, not to a view.
+	noticeProgress noticepresentation.Progress
 }
 
 // attachedPresentation combines a borrowed execution attachment with one view's

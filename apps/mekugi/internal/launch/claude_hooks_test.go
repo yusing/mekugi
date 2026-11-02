@@ -423,6 +423,9 @@ func TestClaudeContextWarningSharesToolBatchMilestone(t *testing.T) {
 	if len(pending) != 1 || !strings.Contains(pending[0], "Mekugi context usage: 60% (120000/200000 tokens).") || strings.Contains(pending[0], "occurred") {
 		t.Fatalf("user warning missing or duplicated: %v", pending)
 	}
+	if claim := b.owners.Notifications.Claim(b.info.Thread, nil); claim == nil || len(claim.Errors.Messages) != 0 || len(claim.Progress.Messages) != 1 || claim.Progress.Messages[0].ID == "" {
+		t.Fatalf("context milestone is not an identified progress event: %+v", claim)
+	}
 }
 
 func TestClaudeLaunchInterruptReceiptReducesTerminal(t *testing.T) {

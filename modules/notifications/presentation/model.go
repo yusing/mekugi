@@ -9,14 +9,13 @@ import (
 )
 
 // Model belongs to one attached view. Geometry and display receipts stay with
-// the renderer; complete text and progress identity do not depend on its size.
+// the renderer; complete text does not depend on its size.
 // Source: internal/router/composer_notice.go:14:29,156:200@b4d36aa2
 type Model struct {
 	Revision uint64
 	Text     string
 	Alert    bool
 	Until    time.Time
-	progress map[string]bool
 }
 
 func (m *Model) Set(text string, alert bool, now time.Time) {
@@ -35,8 +34,8 @@ func (m *Model) Expire(now time.Time) bool {
 	return true
 }
 
-// Receive restores complete errors and returns only newly observed progress.
-func (m *Model) Receive(d *notice.Delivery, now time.Time) []notice.Message {
+// Receive restores complete errors as actionable feedback.
+func (m *Model) Receive(d *notice.Delivery, now time.Time) {
 	if len(d.Errors.Messages) != 0 {
 		texts := make([]string, 0, len(d.Errors.Messages))
 		for _, message := range d.Errors.Messages {
@@ -44,18 +43,28 @@ func (m *Model) Receive(d *notice.Delivery, now time.Time) []notice.Message {
 		}
 		m.Set(strings.Join(texts, "\n\n"), true, now)
 	}
-	var progress []notice.Message
-	for _, message := range d.Progress.Messages {
-		if m.progress[message.ID] {
-			continue
+}
+
+// Progress belongs to one transcript, shared by every view attached to it. It
+// keeps the row each progress notice occupies, so a retried claim from any
+// view names the existing row instead of adding another.
+type Progress struct{ rows map[string]uint64 }
+
+// Rows returns the claimed messages' rows, adding unseen or retired rows through add.
+func (p *Progress) Rows(batch notice.Batch, present func(uint64) bool, add func(notice.Message) uint64) []uint64 {
+	var rows []uint64
+	for _, message := range batch.Messages {
+		row, ok := p.rows[message.ID]
+		if !ok || !present(row) {
+			if p.rows == nil {
+				p.rows = make(map[string]uint64)
+			}
+			row = add(message)
+			p.rows[message.ID] = row
 		}
-		if m.progress == nil {
-			m.progress = make(map[string]bool)
-		}
-		m.progress[message.ID] = true
-		progress = append(progress, message)
+		rows = append(rows, row)
 	}
-	return progress
+	return rows
 }
 
 // DesktopPolicy consumes normalized settings. A nil event list allows every

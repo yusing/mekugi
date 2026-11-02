@@ -43,9 +43,10 @@ repeat counts remain available after shutdown, including when no UI attaches.
 Each notice has one delivery claim at a time. Claims retain the complete batch
 and the repeat count captured at reservation. Error and progress surfaces receive
 independent acknowledgements. Success acknowledges only the captured count;
-failed or hidden delivery releases the claim for retry. Retrying never duplicates
-progress items in the attached view. Pending invocation notices remain eligible
-after the transcript is cleared or replaced.
+failed or hidden delivery releases the claim for retry. Retrying, from any view
+of the same transcript, never duplicates its progress rows; the claim names
+those rows so a renderer acknowledges progress only after painting them.
+Pending invocation notices remain eligible after the transcript is cleared or replaced.
 
 A protocol write or host outcome is not a display receipt. The actual renderer
 acknowledges a surface only after successfully painting it visibly. Replaced
@@ -75,7 +76,7 @@ notice and history content retains its independent delivery lifetime.
 
 The composed service is invocation-scoped: notices can precede attachment and
 must remain available after detach or shutdown for launcher recovery. Each attached
-view owns its feedback and progress-delivery state. The module starts no goroutine,
+view owns its feedback; each transcript owns its progress rows. The module starts no goroutine,
 opens no file and restores no live operation. Producer callbacks remain optional.
 
 ## Codex connection

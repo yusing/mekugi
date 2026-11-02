@@ -167,13 +167,10 @@ func (s *Service) Claim(root string, descendants map[string]string) *Delivery {
 	defer s.mu.Unlock()
 	d := &Delivery{Errors: Batch{owner: s}, Progress: Batch{owner: s}}
 	for _, e := range s.entries {
-		if e.awaitTurn || e.delivered != 0 || e.inFlight {
+		if !e.claimable(root, descendants) {
 			continue
 		}
 		name, child := descendants[e.Thread]
-		if e.Thread != root && !child && !(e.Thread == "" && e.Session == "") {
-			continue
-		}
 		e.inFlight = true
 		text := e.text()
 		if e.Thread != root && e.Thread != "" && child {
@@ -190,6 +187,30 @@ func (s *Service) Claim(root string, descendants map[string]string) *Delivery {
 		return nil
 	}
 	return d
+}
+
+// Waiting reports whether Claim would now deliver a notice on surface, so a
+// holder can release an older claim instead of hiding newer feedback.
+func (s *Service) Waiting(root string, descendants map[string]string, surface Surface) bool {
+	if s == nil || root == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.entries {
+		if e.Surface == surface && e.claimable(root, descendants) {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *entry) claimable(root string, descendants map[string]string) bool {
+	if e.awaitTurn || e.delivered != 0 || e.inFlight {
+		return false
+	}
+	_, child := descendants[e.Thread]
+	return e.Thread == root || child || e.Thread == "" && e.Session == ""
 }
 
 // Finish acknowledges only this surface's actual visible delivery.

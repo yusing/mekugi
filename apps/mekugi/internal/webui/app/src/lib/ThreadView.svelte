@@ -34,6 +34,7 @@
   import { stream } from "./stream.svelte";
   import type { DeferredSections } from "./protocol";
   import { newIdentity } from "./transport";
+  import { visiblyPainted } from "./paint";
   import ThreadDocks from "./ThreadDocks.svelte";
   import Transcript from "./Transcript.svelte";
   import Button from "./ui/Button.svelte";
@@ -287,6 +288,19 @@
 
   const side = $derived(!recorded && !!sview && sview.Displayed.ID !== sview.Main.ID);
   const tabs = $derived(!recorded && !!sview && (!!sview.Side || side));
+
+  // A notice claim's event rows are acknowledged only where this view's own
+  // live Main transcript paints them.
+  const eventPainted = $derived.by(() => {
+    const event = semantic.event;
+    const rows = frame?.noticeEntries;
+    if (!live || ended || recorded || side || !event || event.frame !== frame || !rows?.length)
+      return undefined;
+    return (seq: number) =>
+      rows.includes(seq)
+        ? visiblyPainted(() => void semantic.noticePainted(event, seq))
+        : undefined;
+  });
 
   const notice = $derived.by(() => {
     if (!session && stream.gone && semantic.connection === "connecting") return undefined;
@@ -695,6 +709,7 @@
                 {empty}
                 {live}
                 source={stream}
+                painted={eventPainted}
                 ondetails={live && !ended && sview
                   ? (seq) =>
                       semantic.send({

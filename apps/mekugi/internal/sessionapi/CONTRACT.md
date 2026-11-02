@@ -320,6 +320,12 @@ apply each once and acknowledge the completed delivery watermark independently o
 output hydration. `pendingEffects` covers withheld consequences and admitted inputs whose later host
 settlement may require restoration. Navigation retains the source view until those
 reservations and its deliveries settle; input acknowledgement alone is insufficient.
+A held notice claim publishes `notice`; `noticeFeedback`, the feedback revision
+showing its errors; and `noticeEntries`, the Main transcript rows showing its
+progress events. Native frames carry those rows in `main`; remote clients receive
+them through `session/subscribe`. The client sends one receipt once either surface
+is visibly painted or its feedback revision is replaced, reporting only painted
+surfaces; the host retries the rest under a new claim.
 Admission reserves retained consequence capacity before consuming input or
 dispatching work. Native restored inputs remain individually deliverable, in their
 original editor order. Remote recovery retains its joined submission behind the

@@ -9,16 +9,26 @@ import (
 // Take the ancestry/name snapshot before the notice owner locks: activity
 // producers may submit degradation while holding their own lock.
 func claimNativeNotices(c *requestexecution.Failures, root string, activity *sessioncontrol.Audience) *notice.Delivery {
-	if c == nil || root == "" {
+	descendants, valid := noticeAudience(c, root, activity)
+	if !valid {
 		return nil
 	}
-	var descendants map[string]string
-	if activity != nil {
-		audience, valid := activity.Snapshot(root)
-		if !valid {
-			return nil
-		}
-		descendants = audience.Threads
-	}
 	return c.Notices.Claim(root, descendants)
+}
+
+// nativeErrorsWaiting reports composer errors that a held claim would hide.
+func nativeErrorsWaiting(c *requestexecution.Failures, root string, activity *sessioncontrol.Audience) bool {
+	descendants, valid := noticeAudience(c, root, activity)
+	return valid && c.Notices.Waiting(root, descendants, notice.Error)
+}
+
+func noticeAudience(c *requestexecution.Failures, root string, activity *sessioncontrol.Audience) (map[string]string, bool) {
+	if c == nil || root == "" {
+		return nil, false
+	}
+	if activity == nil {
+		return nil, true
+	}
+	audience, valid := activity.Snapshot(root)
+	return audience.Threads, valid
 }

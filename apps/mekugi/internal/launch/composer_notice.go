@@ -1,7 +1,9 @@
 package launch
 
 import (
+	"cmp"
 	"crypto/rand"
+	"slices"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -34,10 +36,30 @@ func expireNotice(feedback *noticepresentation.Model, terminal *terminalsession.
 }
 
 // Claims retain only the identity they published and their independent queues.
+// Entries are the Main transcript rows that show the progress batch.
 type nativeCriticalNoticeDelivery struct {
 	id                   string
 	attachment, feedback uint64
+	entries              []uint64
 	errors, progress     notice.Batch
+}
+
+// Recreate pending rows aged out of the bounded transcript, keeping every
+// surviving row shared by all views.
+func (d *nativeCriticalNoticeDelivery) refreshProgress(attached *attachedPresentation, now time.Time) {
+	if d == nil || len(d.progress.Messages) == 0 {
+		return
+	}
+	d.entries = attached.noticeProgress.Rows(d.progress, func(seq uint64) bool {
+		_, present := slices.BinarySearchFunc(attached.source.Entries, seq, func(row sessionpresentation.ActivityRecord, seq uint64) int {
+			return cmp.Compare(row.Source.Seq, seq)
+		})
+		return present
+	}, func(message notice.Message) uint64 {
+		seq := attached.source.LastSeq + 1
+		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: seq, Agent: "Main", Kind: "progress", Text: message.Text, Observed: now}}})
+		return seq
+	})
 }
 
 func (d *nativeCriticalNoticeDelivery) finish(receipt terminalsession.NoticeReceipt) {
@@ -61,9 +83,8 @@ func applyCriticalNotices(attached *attachedPresentation, terminal *terminalsess
 		return nil
 	}
 	delivery = &nativeCriticalNoticeDelivery{id: rand.Text(), errors: claim.Errors, progress: claim.Progress}
-	for _, message := range attached.feedback.Receive(claim, presentationTime(clock)) {
-		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: presentationTime(clock)}}})
-	}
+	attached.feedback.Receive(claim, presentationTime(clock))
+	delivery.refreshProgress(attached, presentationTime(clock))
 	if len(claim.Errors.Messages) > 0 {
 		terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	}

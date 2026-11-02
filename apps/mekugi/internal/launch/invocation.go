@@ -298,7 +298,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 			return runtime.Inspect(ctx, thread)
 		}
 	}
-	mekugiCalls = executionobservation.New(executionobservation.Config{Inspect: inspect, ThreadControl: driver, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
+	mekugiCalls = executionobservation.New(executionobservation.Config{Inspect: inspect, ThreadControl: driver, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, Event: issues.AddThreadEvent, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
 	usage.Configure(retained.Store, retained.Writes, retained.Limits, func(thread string, err error) {
 		issues.AddThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
 	})

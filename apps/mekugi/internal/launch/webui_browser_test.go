@@ -1064,10 +1064,14 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("eval", "document.querySelector('figure')?.scrollIntoView({block:'center'})")
 	run("wait", "--fn", "document.querySelector('img[alt=\"Attached image 1\"]')?.naturalWidth === 1")
 	generated := activitypresentation.ItemContent{Seq: 98, Agent: "Main", Kind: "tool", Text: "Generated `artwork.png`", Images: []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(previewFixturePNG(t))}}
-	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{
+	childEntries := []activitypresentation.Entry{
 		{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}},
 		{Facts: generated.Facts, Values: generated.Values()},
-	}}}); err != nil {
+	}
+	childSession := func(entries ...activitypresentation.Entry) sessionapi.Frame {
+		return sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: append(slices.Clone(childEntries), entries...)}}
+	}
+	if err := alpha.publishFrame(childSession()); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--text", "artwork.png")
@@ -1111,15 +1115,20 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}
 	warningUI, _ := newAppServerTestUI()
 	warningUI.Client.Thread = "child"
+	// The shared child transcript already holds the rows published above.
+	warningUI.attached.source.LastSeq = 98
 	defer terminalTest(warningUI).Diff.Close()
 	queueContextWarning(t, warningUI.issues, "child")
-	publishWarning := func() *nativeCriticalNoticeDelivery {
+	publishNotice := func() *nativeCriticalNoticeDelivery {
 		delivery := applyCriticalNotices(&warningUI.attached, warningUI.shell, &warningUI.Client, &warningUI.picker, &warningUI.Editor, warningUI.clock, preferences.Applied{}, warningUI.serviceTiers, "", "", &warningUI.restoring, &warningUI.side, warningUI.audience, warningUI.issues)
 		if delivery == nil {
-			t.Fatal("context milestone did not reach the browser's thread")
+			t.Fatal("notice did not reach the browser's thread")
 		}
 		noticeView.Store(&nativeSessionView{notices: delivery})
-		childFrame.Notice = delivery.id
+		childFrame.Notice, childFrame.NoticeEntries, childFrame.NoticeFeedback = delivery.id, delivery.entries, 0
+		if len(delivery.errors.Messages) > 0 {
+			childFrame.NoticeFeedback = delivery.feedback
+		}
 		childFrame.View.Version.Attachment = delivery.attachment
 		childFrame.View.Status.SetFeedback(sessionpresentation.Label{Text: warningUI.attached.feedback.Text, Alert: warningUI.attached.feedback.Alert}, delivery.feedback)
 		childFrame.View.Version.Revision++
@@ -1128,43 +1137,62 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		}
 		return delivery
 	}
-	awaitWarningReceipt := func(delivery *nativeCriticalNoticeDelivery) {
+	publishTranscript := func() {
+		if err := alpha.publishFrame(childSession(warningUI.attached.source.Publication(warningUI.attached.presentation, nil).Entries...)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	awaitNoticeReceipt := func(delivery *nativeCriticalNoticeDelivery) {
 		select {
 		case receipt := <-noticeReceipts:
-			if receipt.Notice.Claim != delivery.id || receipt.Notice.Attachment != delivery.attachment || receipt.Notice.Feedback != delivery.feedback || !receipt.Notice.Composer || receipt.Notice.Content {
+			if receipt.Notice.Claim != delivery.id || receipt.Notice.Attachment != delivery.attachment || receipt.Notice.Feedback != childFrame.NoticeFeedback || receipt.Notice.Composer != (len(delivery.errors.Messages) > 0) || receipt.Notice.Content != (len(delivery.entries) > 0) {
 				t.Fatalf("browser notice receipt lost its painted identity: %+v", receipt)
 			}
 		case <-ctx.Done():
-			t.Fatal("browser did not acknowledge its painted warning")
+			t.Fatal("browser did not acknowledge its painted notice")
 		}
 		if pending := warningUI.issues.Notices.Pending(); len(pending) != 0 || noticeView.Load().notices != nil {
-			t.Fatalf("production browser receipt did not settle the warning: %v", pending)
+			t.Fatalf("production browser receipt did not settle the notice: %v", pending)
 		}
 	}
-	// Hidden feedback and a covering modal retain the claim until actual paint.
-	run("eval", `document.querySelector('[aria-label="Thread feedback"]').style.display = 'none'`)
-	delivery := publishWarning()
-	run("wait", "--fn", `document.querySelector('[aria-label="Thread feedback"]')?.textContent.includes('Mekugi context usage: 60%')`)
 	paintedFrames := `new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))))`
 	assertPending := func() {
 		run("eval", paintedFrames)
 		if len(noticeReceipts) != 0 || len(warningUI.issues.Notices.Pending()) != 1 {
-			t.Fatal("hidden or covered warning was acknowledged")
+			t.Fatal("unrendered, hidden or covered notice was acknowledged")
 		}
 	}
+	// The context milestone is a transcript event. Its claim stays pending until
+	// its own row arrives and is visibly painted, not merely published.
+	delivery := publishNotice()
+	if len(delivery.entries) != 1 || len(delivery.errors.Messages) != 0 || warningUI.attached.feedback.Text != "" {
+		t.Fatalf("context milestone was not claimed as one event row: %+v", delivery)
+	}
+	row := fmt.Sprintf(`document.querySelector('[data-entry="%d"]')`, delivery.entries[0])
 	assertPending()
-	run("eval", `document.querySelector('[aria-label="Thread feedback"]').style.display = ''; const cover = document.createElement('dialog'); cover.id = 'notice-cover'; cover.textContent = 'Covering feedback'; document.body.append(cover); cover.showModal()`)
+	run("eval", fmt.Sprintf(`const hidden = document.createElement('style'); hidden.id = 'notice-hidden'; hidden.textContent = '[data-entry="%d"] { display: none }'; document.head.append(hidden)`, delivery.entries[0]))
+	publishTranscript()
+	run("wait", "--fn", row+`?.textContent.includes('Mekugi context usage: 60% (600/1000 tokens).')`)
+	assertPending()
+	run("eval", `document.querySelector('#notice-hidden').remove(); const cover = document.createElement('dialog'); cover.id = 'notice-cover'; cover.textContent = 'Covering transcript'; document.body.append(cover); cover.showModal()`)
 	assertPending()
 	run("eval", `document.querySelector('#notice-cover').remove()`)
-	run("wait", "--fn", `(() => { const note = document.querySelector('[aria-label="Thread feedback"]'); if (!note?.textContent.includes('Mekugi context usage: 60% (600/1000 tokens).')) return false; const r = note.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; })()`)
-	awaitWarningReceipt(delivery)
+	// The reader is scrolled away from the transcript's end, where the process
+	// dock covers the row; scrolling to it paints the event.
+	assertPending()
+	run("eval", row+`.scrollIntoView({block: 'center'})`)
+	awaitNoticeReceipt(delivery)
+	run("wait", "--fn", `(() => { const event = `+row+`; if (!event?.querySelector('p.text-muted')?.textContent.includes('Mekugi context usage: 60%')) return false; const r = event.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && !document.querySelector('[aria-label="Thread feedback"] [role="alert"]') && !document.querySelector('[aria-label="Thread feedback"]')?.textContent.includes('Mekugi context usage'); })()`)
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
-		run("screenshot", filepath.Join(artifacts, "context-warning-phone.png"))
+		run("screenshot", filepath.Join(artifacts, "context-event-phone.png"))
 	}
+	// A genuine error remains composer feedback; a preview taller than the
+	// viewport is acknowledged by its visible portion.
 	warningUI.issues.AddThreadNotice(t.Name(), "child", "next-notice", strings.Repeat("Another browser warning. ", 300))
-	longDelivery := publishWarning()
+	longDelivery := publishNotice()
 	run("wait", "--fn", `document.querySelector('[aria-label="Thread feedback"] p[role="alert"]')?.getBoundingClientRect().height > innerHeight`)
-	awaitWarningReceipt(longDelivery)
+	awaitNoticeReceipt(longDelivery)
+	childFrame.NoticeEntries, childFrame.NoticeFeedback = nil, 0
 	childFrame.Notice = ""
 	childFrame.Processes = nil
 	childFrame.View.Status.Feedback.Text = ""
@@ -1216,6 +1244,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--fn", `(() => { const row = [...document.querySelectorAll('[data-kind="reply"]')].find(row => row.textContent.includes('Confirmed the separate')); return row?.innerText.includes('Confirmed the separate Loading content… cycle') && !row.innerText.includes('A bounded temporary') && !row.querySelector('h2') && row.querySelector('summary')?.textContent === 'Details'; })()`)
 	run("eval", `[...document.querySelectorAll('[data-kind="reply"]')].find(row => row.textContent.includes('Confirmed the separate')).querySelector('details').open = true`)
 	run("wait", "--fn", `(() => { const row = [...document.querySelectorAll('[data-kind="reply"]')].find(row => row.textContent.includes('Confirmed the separate')); return row.innerText.includes('A bounded temporary') && row.innerText.split('Confirmed the separate').length === 2 && !row.querySelector('h2'); })()`)
+	run("eval", `[...document.querySelectorAll('[data-entry]:has([data-kind="reply"]) button[aria-label="Copy response"]')].at(-1).scrollIntoView({block: 'center'})`)
 	run("find", "last", `[data-entry]:has([data-kind="reply"]) button[aria-label="Copy response"]`, "click")
 	quoted, err := json.Marshal(original)
 	if err != nil {

@@ -394,7 +394,7 @@ func TestNativeAppliedEffectsAcknowledgedBeforePaint(t *testing.T) {
 				t.Fatal("pending progress fixture unavailable")
 			}
 			effect := sessionapi.NativeEffect{ID: 1, Restore: &composer.Draft{Text: "restored"}}
-			c.accept(sessionapi.NativeEvent{Attachment: c.event.Attachment, Frame: sessionapi.NativeFrame{Notice: delivery.id, View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Effects: []sessionapi.NativeEffect{effect}}})
+			c.accept(sessionapi.NativeEvent{Attachment: c.event.Attachment, Frame: sessionapi.NativeFrame{Notice: delivery.id, NoticeEntries: delivery.entries, View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Effects: []sessionapi.NativeEffect{effect}}})
 			v := nativeSessionView{notices: delivery}
 			v.effects.add(effect)
 			deliverReceipt := func() {

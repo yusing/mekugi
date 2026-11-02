@@ -11,6 +11,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/claude"
 	"github.com/yusing/mekugi/contracts/observation"
@@ -317,7 +318,7 @@ func (b *claudeBridge) batch(ctx context.Context, hook claudeHook) (jsontext.Val
 		}
 		if warning, _ := b.contextNotices.Project(b.info.Session, b.info.Thread, sample, func(string) contextnotice.Mark { return contextnotice.Mark{Key: "claude"} }); warning.Text != "" {
 			receipts = strings.TrimSpace(receipts + "\n" + warning.Reminder)
-			b.owners.Notifications.Submit(notice.Input{Session: b.info.Session, Thread: b.info.Thread, Category: fmt.Sprintf("context-usage:%d:%s", sample.Compactions, warning.Text), Text: warning.Text})
+			(&requestexecution.Failures{Notices: b.owners.Notifications}).AddThreadEvent(b.info.Session, b.info.Thread, fmt.Sprintf("context-usage:%d:%s", sample.Compactions, warning.Text), warning.Text)
 		}
 	}
 	return json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": hook.Event, "additionalContext": receipts}})

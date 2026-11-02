@@ -259,6 +259,15 @@ func (c *Failures) AddThreadNotice(session, thread, category, message string) {
 	c.Notices.Submit(notice.Input{ID: noticeID("notice:" + session + ":" + thread + ":" + category), Session: session, Thread: thread, Category: category, Text: message})
 }
 
+// AddThreadEvent reports an informational thread occurrence as transcript
+// progress, never as composer error feedback.
+func (c *Failures) AddThreadEvent(session, thread, category, message string) {
+	if c == nil {
+		return
+	}
+	c.Notices.Submit(notice.Input{ID: noticeID("notice:" + session + ":" + thread + ":" + category), Session: session, Thread: thread, Category: category, Text: message, Surface: notice.Progress})
+}
+
 // Cleanup supplies a typed surface at the producer boundary, rather than asking
 // a renderer to infer presentation from a category string.
 func (c *Failures) CleanupNotice(session, thread, phase, message string) {

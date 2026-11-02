@@ -967,6 +967,11 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 						}
 						expireNotice(&view.attached.feedback, view.shell, presentationTime(clock))
 						refreshSessionMetrics(view.panel, capture, presentationTime(clock), false)
+						if view.notices != nil && nativeErrorsWaiting(issues, control.Thread, audience) {
+							// Unpainted claims yield to newer composer errors; rows stay deduped.
+							view.notices.finish(terminalsession.NoticeReceipt{})
+							view.notices = nil
+						}
 						if view.notices == nil {
 							requestEditor := new(composer.Editor)
 							view.notices = applyCriticalNotices(&view.attached, view.shell, &control, &view.picker, &requestEditor, clock, preferences.Applied{Model: model, Effort: effort, Tier: tier}, serviceTiers, title, version, &restoring, &side, audience, issues)
