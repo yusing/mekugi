@@ -224,7 +224,8 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 }
 
 // collapsedRoster admits the displayed row and Main before other active rows,
-// then finished children. Keep canonical order and ancestry within the subset.
+// then inactive children. Errors remain browsable without keeping the strip open.
+// Keep canonical order and ancestry within the subset.
 func (v *View) collapsedRoster(rows []activitypresentation.AgentRow, limit int, selected string) []activitypresentation.AgentRow {
 	priority := func(row activitypresentation.AgentRow) int {
 		switch {
@@ -234,10 +235,12 @@ func (v *View) collapsedRoster(rows []activitypresentation.AgentRow, limit int, 
 			return 1
 		case v.agentStatus(row.Agent) == '◐':
 			return 2
-		case v.agentStatus(row.Agent) != '✓':
+		case v.agentStatus(row.Agent) != '✓' && v.agentStatus(row.Agent) != '!':
 			return 3
-		default:
+		case v.agentStatus(row.Agent) == '!':
 			return 4
+		default:
+			return 5
 		}
 	}
 	indices := make([]int, len(rows))

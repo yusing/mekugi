@@ -93,7 +93,9 @@ func (entry ActivityEntry) ActivityFacts() activitypresentation.Facts {
 		facts.ItemComplete = n.Phase == "item/completed" || n.Phase == "supplement" && entry.Kind == "reply" && entry.Message != nil
 		facts.Spans, facts.Question = n.Spans, n.Question
 		facts.Images = n.Images
-		facts.Suppressed = n.Phase == "queued-summary"
+		// Interrupted deliveries carry a retained earlier answer, not a new reply.
+		// The interrupt request's settled progress row reports the interruption.
+		facts.Suppressed = n.Phase == "queued-summary" || entry.Kind == "final" && n.Status == "interrupted"
 		facts.OutputComplete = n.Exit != nil && *n.Exit == 0 || !n.Live && len(n.Segments) > 0 ||
 			n.Hook != nil && n.Hook.Status == "completed" && !n.Hook.HasError
 		if n.Turn != "" {

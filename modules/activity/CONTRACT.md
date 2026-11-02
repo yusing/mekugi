@@ -596,7 +596,9 @@ two targets followed by `N more`; the existing disclosure opens the complete
 selection. A waiting roster row uses the transcript's wait text,
 canonical target colors and muted optional timeout, rather than a names-only label.
 Interrupt acknowledgement reports the request, not task
-completion. Agent listing reports its observed count alongside the existing roster.
+completion. Its settled interruption event remains visible; an interrupted result
+does not replay the agent's earlier message as a new reply.
+Agent listing reports its observed count alongside the existing roster.
 Raw arguments and outcomes remain in details rather than the transcript.
 
 Active-work timers start on the first turn, not registration, accumulate observed
@@ -637,8 +639,9 @@ observed final answer without a newer open response or error, not verified task
 completion. Finished children retain separate selectable rows and their captured
 edit and usage metrics when visible; names never collapse into a comma-joined
 summary. The unfocused roster grows to show active agents within terminal bounds.
-The displayed child and Main take priority as capacity permits, and finished
-children are hidden first. Overflow counts include every omitted row, including
+The displayed child and Main take priority as capacity permits. Errors remain
+in counts and ordinary browsing without keeping the unfocused roster open;
+finished children are hidden first. Overflow counts include every omitted row, including
 rows before selection. The viewport moves only when selection leaves it.
 Hover emphasizes the name; selection shades the row. Returning to Main brings
 its roster row into view and clears the previous child highlight. Remembering a

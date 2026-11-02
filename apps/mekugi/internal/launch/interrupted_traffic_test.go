@@ -114,14 +114,14 @@ func TestUISnapshotInterruptedTraffic(t *testing.T) {
 			view := u.testActivity(u.shell.Transcript)
 			view.Clock, view.Painter.Theme, view.Conversation = u.clock, theme.theme, true
 			f.complete(t)
-			publishNativeDelivery(&u.attached, control.NativeInput{Thread: "main", ID: "interrupted", Sender: "/root/worker", Recipient: "/root", Kind: "FINAL_ANSWER", Outcome: control.Interrupted, Message: "Status: interrupted\n"}, u.clock())
+			publishNativeDelivery(&u.attached, control.NativeInput{Thread: "main", ID: "interrupted", Sender: "/root/worker", Recipient: "/root", Kind: "FINAL_ANSWER", Outcome: control.Interrupted, Message: "Earlier progress must not replay."}, u.clock())
 			for _, status := range []control.Status{control.Failed, control.Completed} {
 				publishNativeDelivery(&u.attached, control.NativeInput{Thread: "main", ID: string(status), Sender: map[control.Status]string{control.Failed: "/root/failure", control.Completed: "/root/success"}[status], Recipient: "/root", Kind: "FINAL_ANSWER", Outcome: status, Message: "Result evidence."}, u.clock())
 			}
 			settleActivity(u.clock().Add(time.Second), view)
 			rows := view.testRenderConversation(90).Lines
 			text := ansi.Strip(strings.Join(rows, "\n"))
-			if strings.Contains(text, "Interrupt requested") || !strings.Contains(text, "Interrupted /root/worker") || !strings.Contains(text, "interrupted") || !strings.Contains(text, "failed") || !strings.Contains(text, "finished") {
+			if strings.Contains(text, "Interrupt requested") || !strings.Contains(text, "Interrupted /root/worker") || strings.Contains(text, "Earlier progress") || strings.Contains(text, "interrupted") || !strings.Contains(text, "failed") || !strings.Contains(text, "finished") {
 				t.Fatalf("terminal outcomes did not settle: %s", text)
 			}
 			if entry := u.attached.source.Entries[0]; entry.Source.Native.ToolDetail == "" {

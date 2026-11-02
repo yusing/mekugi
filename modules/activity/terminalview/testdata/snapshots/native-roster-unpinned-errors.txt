@@ -1,0 +1,6 @@
+"\x1b[38;2;70;70;90m─ \x1b[39;2m3 Agents · 6 · \x1b[38;5;214;22m1 working\x1b[39;2m · 1 finished · \x1b[38;5;203;22m2 error\x1b[38;2;70;70;90m ──────────────────────────────────────────────────\x1b[m"
+" \x1b[36m●\x1b[m \x1b[36;1mmain\x1b[m  \x1b[2midle\x1b[m                                                                                  \x1b[2m    \x1b[m "
+" \x1b[38;5;99;1m●\x1b[m \x1b[38;5;99;2m├ target_95/\x1b[22;1mbrowser\x1b[m  \x1b[2midle\x1b[m                                                                   \x1b[2m  0%\x1b[m "
+" \x1b[38;5;39;1m◐\x1b[m \x1b[38;5;39;2m└ \x1b[22;1mtarget_95_codex\x1b[m  working                                                                  \x1b[2m  0%\x1b[m "
+"\x1b[2m   +3 more · ^B 3 to browse\x1b[m                                                                         "
+"plain after roster                                                                                  "

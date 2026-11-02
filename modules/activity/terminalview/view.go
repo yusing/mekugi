@@ -866,24 +866,24 @@ func RosterRange(count, start, selected, limit int) (end int, metrics bool) {
 	return end, remaining > 0 && selected >= start && selected < end
 }
 
-// RosterTree draws guides only from ancestors that are drawn as branches, so
-// a row whose parent is off-screen shows its relative path without guides.
+// RosterTree joins visible canonical ancestors. Missing parents retain their
+// relative path, so a hidden branch cannot make the next sibling look nested.
 func RosterTree(rows []activitypresentation.AgentRow, index, start int) (name, indent string) {
 	parentAt := func(i int) int {
-		parent, _, _ := strings.CutLast(rows[i].Agent.Name, "/")
 		for j := i - 1; j >= start; j-- {
-			if rows[j].Agent.Name == parent {
+			if strings.HasPrefix(rows[i].Agent.Name, rows[j].Agent.Name+"/") {
 				return j
 			}
 		}
 		return -1
 	}
 	continuation := func(i int) bool {
+		parent := parentAt(i)
 		for j := i + 1; j < len(rows); j++ {
-			if rows[j].Depth < rows[i].Depth {
+			if !strings.HasPrefix(rows[j].Agent.Name, rows[parent].Agent.Name+"/") {
 				break
 			}
-			if rows[j].Depth == rows[i].Depth {
+			if !strings.HasPrefix(rows[j].Agent.Name, rows[i].Agent.Name+"/") {
 				return true
 			}
 		}
@@ -910,7 +910,7 @@ func RosterTree(rows []activitypresentation.AgentRow, index, start int) (name, i
 	if continuation(index) {
 		branch, guide = "├ ", "│ "
 	}
-	_, leaf, _ := strings.CutLast(rows[index].Agent.Name, "/")
+	leaf := strings.TrimPrefix(rows[index].Agent.Name, rows[parent].Agent.Name+"/")
 	return prefix + branch + leaf, prefix + guide
 }
 

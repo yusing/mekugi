@@ -69,13 +69,13 @@ func TestWebUIBrowserInterruptedTraffic(t *testing.T) {
 	run("wait", "--text", "Interrupt requested for /root/worker")
 	run("wait", "--text", "Listed 2 agents")
 	f.complete(t)
-	publishNativeDelivery(&u.attached, control.NativeInput{Thread: "main", ID: "interrupted", Sender: "/root/worker", Recipient: "/root", Kind: "FINAL_ANSWER", Outcome: control.Interrupted, Message: "Status: interrupted\n"}, u.clock())
+	publishNativeDelivery(&u.attached, control.NativeInput{Thread: "main", ID: "interrupted", Sender: "/root/worker", Recipient: "/root", Kind: "FINAL_ANSWER", Outcome: control.Interrupted, Message: "Earlier progress must not replay."}, u.clock())
 	publish()
 	for _, width := range []int{1280, 768, 390} {
 		run("set", "viewport", fmt.Sprint(width), "900")
 		for _, theme := range []string{"light", "dark"} {
 			run("set", "media", theme)
-			run("wait", "--fn", `document.body.textContent.includes('Interrupted /root/worker') && !document.body.textContent.includes('Interrupt requested') && [...document.querySelectorAll('.border-l-2')].some(e=>e.textContent.includes('worker') && e.textContent.includes('interrupted') && e.textContent.includes('■') && !e.textContent.includes('finished') && !e.querySelector('.text-positive') && e.getBoundingClientRect().right <= window.innerWidth)`)
+			run("wait", "--fn", `document.body.textContent.includes('Interrupted /root/worker') && !document.body.textContent.includes('Interrupt requested') && !document.body.textContent.includes('Earlier progress must not replay.') && ![...document.querySelectorAll('.border-l-2')].some(e=>e.textContent.includes('worker') && e.textContent.includes('interrupted'))`)
 			run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[data-ai-element="agent-progress"]')]; return ['Interrupted /root/worker', 'Listed 2 agents'].every(text => rows.some(row => row.textContent.includes(text) && !row.closest('[data-slot="card"]') && row.querySelector('svg') && row.getBoundingClientRect().right <= window.innerWidth)); })()`)
 			if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
 				run("screenshot", filepath.Join(directory, fmt.Sprintf("interrupted-traffic-%s-%d.png", theme, width)))

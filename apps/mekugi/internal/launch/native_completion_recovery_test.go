@@ -21,7 +21,6 @@ func TestNativeCompletionRequestRestoresOutcome(t *testing.T) {
 		label   string
 	}{
 		{control.Completed, "✓", "finished"},
-		{control.Interrupted, "■", "interrupted"},
 		{control.Failed, "✗", "failed"},
 	} {
 		t.Run(string(tc.outcome), func(t *testing.T) {

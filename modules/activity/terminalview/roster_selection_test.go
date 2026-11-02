@@ -2,6 +2,7 @@ package terminalview
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -197,6 +198,45 @@ func TestNativeRosterWheelKeepsCompactHeight(t *testing.T) {
 	v.NativeRoster(80, 14, time.Unix(100, 0), false)
 	if v.Hits[0].Agent != "/root" {
 		t.Fatal("upward scrolling did not return to Main")
+	}
+}
+
+func TestUISnapshotNativeRosterUnpinnedErrorsAndHiddenParents(t *testing.T) {
+	v := NewView()
+	publication := &presentation.Publication{}
+	for _, name := range []string{"/root", "/root/reviewer/error-a", "/root/reviewer/error-b", "/root/target_95", "/root/target_95/browser", "/root/target_95_codex"} {
+		agent := presentation.Agent{Name: name}
+		switch {
+		case strings.Contains(name, "error-"):
+			agent.Status, agent.LatestKind = "error", "error"
+		case name == "/root/target_95":
+			agent.Status, agent.Final = "answered", true
+		case name == "/root/target_95_codex":
+			agent.Status, agent.Responding = "responding", true
+		}
+		publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: agent, Depth: strings.Count(name, "/") - 1})
+	}
+	v.Update(publication, Display{Caller: "/root"})
+	rows := v.NativeRoster(100, 8, time.Unix(100, 0), false)
+	for _, hit := range v.Hits {
+		if strings.Contains(hit.Agent, "error-") {
+			t.Fatalf("error remained pinned: %+v", v.Hits)
+		}
+	}
+	text := ansi.Strip(strings.Join(rows, "\n"))
+	if !strings.Contains(text, "2 error") || !strings.Contains(text, "+3 more") || !strings.Contains(text, "├ target_95/browser") || !strings.Contains(text, "└ target_95_codex") {
+		t.Fatalf("lost errors or canonical hierarchy:\n%s", text)
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/native-roster-unpinned-errors.txt", append(rows, "plain after roster"), 100)
+	v.ScrollRoster(1)
+	v.NativeRoster(100, 8, time.Unix(100, 0), false)
+	if !strings.Contains(v.Hits[0].Agent, "error-") {
+		t.Fatalf("error unavailable through ordinary browsing: %+v", v.Hits)
+	}
+	v.Update(publication, Display{Caller: "/root/reviewer/error-b"})
+	v.NativeRoster(100, 8, time.Unix(100, 0), false)
+	if !slices.ContainsFunc(v.Hits, func(hit Hit) bool { return hit.Agent == "/root/reviewer/error-b" }) {
+		t.Fatal("displayed error lost its priority")
 	}
 }
 

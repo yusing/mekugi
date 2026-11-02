@@ -20,7 +20,7 @@
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ─ 3 Agents · 9 · 5 working · 3 finished ────────────────────────────────────────────────────────────
  ● main  idle
- ◐ done-parent/worker  working                                                                   0%
+ ◐ ├ done-parent/worker  working                                                                 0%
  ◐ ├ work-b  working                                                                             0%
  ◐ ├ work-c  working                                                                             0%
  ◐ ├ work-d  working                                                                             0%

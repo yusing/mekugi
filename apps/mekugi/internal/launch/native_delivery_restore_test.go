@@ -22,9 +22,12 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 		live := newAppServerSessionTestUI(t, t.TempDir())
 		wire := live.Host.Input.(*appServerTestInput)
 		var records []map[string]any
-		bodies := []string{"## Summary\nMESSAGE result.\n\n## Details\nPayload:\nMessage evidence.\n", "## Summary\nFINAL_ANSWER result.\n\n## Details\nPayload:\nFinal evidence.\n"}
-		for i, kind := range []string{"MESSAGE", "FINAL_ANSWER"} {
+		bodies := []string{"## Summary\nMESSAGE result.\n\n## Details\nPayload:\nMessage evidence.\n", "## Summary\nFINAL_ANSWER result.\n\n## Details\nPayload:\nFinal evidence.\n", "Earlier progress must not replay.\n"}
+		for i, kind := range []string{"MESSAGE", "FINAL_ANSWER", "FINAL_ANSWER"} {
 			input := control.NativeInput{Thread: "main", ID: kind, Sender: "/root/worker", Recipient: "/root", Kind: kind, Message: bodies[i]}
+			if i == 2 {
+				input.ID, input.Outcome = "interrupted", control.Interrupted
+			}
 			if kind == "FINAL_ANSWER" {
 				input.Message += completionTestTrailer
 			}
@@ -52,10 +55,13 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 			publishNativeDelivery(&live.attached, *request.NativeDelivery(), time.Now())
 			entry := live.attached.source.Entries[len(live.attached.source.Entries)-1].Source
 			if entry.Text != bodies[i] || entry.Message.Text != bodies[i] || request.NativeDelivery().Message != input.Message {
-				t.Fatal("presentation exposed reload metadata or changed retained delivery")
+				t.Fatalf("delivery %s: entry=%q message=%q retained=%q want=%q", input.ID, entry.Text, entry.Message.Text, request.NativeDelivery().Message, bodies[i])
 			}
 			if live.attached.source.Entries[len(live.attached.source.Entries)-1].Source.ActivitySeq == 0 {
 				t.Fatalf("live %s delivery lost its child-feed link", kind)
+			}
+			if entry.ActivityFacts().Suppressed != (input.Outcome == control.Interrupted) {
+				t.Fatal("interrupted delivery remained visible or hid ordinary traffic")
 			}
 			// Both deliveries arrive while idle, one before any host turn.
 			record := rolloutRecord(i*3+1, "response_item", sent.Params.Items[0])
@@ -67,7 +73,7 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 					rolloutRecord(3, "event_msg", map[string]any{"type": "task_complete", "turn_id": "saved"}))
 			}
 			// An ordinary assistant's printed envelope supplies no delivery provenance.
-			lookalike := map[string]any{"type": "message", "id": control.MessageItemID("lookalike-" + kind), "role": "assistant", "phase": "commentary", "content": sent.Params.Items[0]["content"]}
+			lookalike := map[string]any{"type": "message", "id": control.MessageItemID("lookalike-" + input.ID), "role": "assistant", "phase": "commentary", "content": sent.Params.Items[0]["content"]}
 			records = append(records, rolloutRecord(i*3+1, "response_item", lookalike))
 		}
 		for _, idle := range []bool{false, true} {
@@ -86,6 +92,12 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 			var got []string
 			var target uint64
 			for _, entry := range restored.attached.source.Entries {
+				if entry.Source.ActivityFacts().Suppressed {
+					if entry.Source.Text != bodies[2] {
+						t.Fatal("restoration suppressed ordinary traffic")
+					}
+					continue
+				}
 				got = append(got, entry.Source.Text)
 				if entry.Source.Text == "host answer" {
 					continue
@@ -109,6 +121,9 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 			}
 			view := restored.testActivity(restored.shell.Transcript)
 			rendered := ansi.Strip(strings.Join(view.testRenderConversation(100).Lines, "\n"))
+			if strings.Contains(rendered, bodies[2]) {
+				t.Fatalf("restoration replayed interrupted traffic: %s", rendered)
+			}
 			if !strings.Contains(rendered, "MESSAGE result.") || !strings.Contains(rendered, "↩ Open reply") || strings.Contains(rendered, "Summary") || strings.Contains(rendered, "Details") || strings.Contains(rendered, "Message evidence.") {
 				t.Fatalf("restored message disclosure: %s", rendered)
 			}

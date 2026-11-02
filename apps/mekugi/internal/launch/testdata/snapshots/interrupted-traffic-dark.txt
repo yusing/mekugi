@@ -1,8 +1,5 @@
 "\x1b[2m↔ Interrupted /root/worker\x1b[m                                                                "
 "                                                                                          "
-"\x1b[2m■\x1b[m \x1b[38;5;37mworker\x1b[39;2m → \x1b[38;2;86;212;221;22mmain\x1b[m \x1b[2minterrupted\x1b[m                                                       \x1b[2m20:00:00\x1b[m"
-"\x1b[38;5;37m│\x1b[m Status: interrupted                                                                     "
-"                                                                                          "
 "\x1b[38;5;203m✗\x1b[m \x1b[38;5;74mfailure\x1b[39;2m → \x1b[38;2;86;212;221;22mmain\x1b[m \x1b[2mfailed\x1b[m                                                           \x1b[2m20:00:00\x1b[m"
 "\x1b[38;5;74m│\x1b[m Result evidence.                                                                        "
 "                                                                                          "
