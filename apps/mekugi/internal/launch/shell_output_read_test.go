@@ -191,14 +191,16 @@ func TestMSymbolFrontendRecoveryAfterSourceRemoval(t *testing.T) {
 	resolverDirectory := installMSymbolRecoveryLSP(t, source)
 	invocation := newShellWorkerTestInvocation(directory,
 		"PATH="+resolverDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	queries := "refs sample.go 2 Target refs sample.go 2 Target refs sample.go 2 Target"
 	full, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
-		"msymbol --max-tokens 15500 refs sample.go 2 Target", nil, invocation)
+		"msymbol --max-tokens 15500 "+queries, nil, invocation)
 	if status != 0 || diagnostic != "" ||
-		!strings.HasPrefix(full, "\"sample.go\":\n3 func Use0() { Target() }\n") {
+		!strings.Contains(full, "\"sample.go\":\n3 [1,2,3] func Use0() { Target() }\n") ||
+		strings.Count(full, "func Use0() { Target() }") != 1 {
 		t.Fatalf("full symbol read: %d %q %q", status, full, diagnostic)
 	}
 	first, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
-		"msymbol --max-tokens 16 refs sample.go 2 Target", nil, invocation)
+		"msymbol --max-tokens 16 "+queries, nil, invocation)
 	if status == 0 || !strings.Contains(diagnostic, "msymbol: output incomplete") {
 		t.Fatalf("partial symbol read: %d %q %q", status, first, diagnostic)
 	}

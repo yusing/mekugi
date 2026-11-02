@@ -51,6 +51,12 @@ func (e *symbolFailure) Error() string { return e.message }
 
 type symbolSourceFailure struct{ reason, message string }
 
+type symbolReference struct {
+	key, source string
+	line        int
+	queries     string
+}
+
 func (e *symbolSourceFailure) Error() string { return e.message }
 
 func outsideSymbolWorkspace(root, path string) bool {
@@ -229,8 +235,12 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 	}
 	root, explicit, budget := arguments.Workspace, arguments.ExplicitWorkspace, arguments.Budget
 	queries := make([]*symbolQuery, len(arguments.Queries))
+	refQueries := 0
 	for i, selection := range arguments.Queries {
 		queries[i] = &symbolQuery{mode: selection.Mode, path: selection.Path, name: selection.Name, line: selection.Line, occurrence: selection.Occurrence}
+		if selection.Mode == "refs" {
+			refQueries++
+		}
 	}
 	if root == "" {
 		root, err = os.Getwd()
@@ -314,12 +324,14 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 	counter := outputbudget.Budget{}
 	var shown, retained strings.Builder
 	incomplete, retentionFailed := false, false
+	sharedBytes := 0
 	appendRow := func(row string) error {
 		if retentionFailed {
 			return &symbolFailure{"output_limit", "complete reference output exceeds the 16 MiB retention bound"}
 		}
-		if retained.Len()+len(row) > retainedBytes {
-			retentionFailed = true
+		if retained.Len()+sharedBytes+len(row) > retainedBytes {
+			// Later tuples cannot consume bytes reserved for accepted references.
+			retentionFailed = sharedBytes == 0
 			return &symbolFailure{"output_limit", "complete reference output exceeds the 16 MiB retention bound"}
 		}
 		retained.WriteString(row)
@@ -341,7 +353,7 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 			class = "invalid_source"
 		}
 		label := ""
-		if len(queries) > 1 {
+		if len(queries) > 1 && q != nil {
 			line := ""
 			if q.line > 0 {
 				line = strconv.Itoa(q.line)
@@ -362,7 +374,10 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 		}
 		skipped[reason]++
 	}
-	for _, q := range queries {
+	sharedReferences := map[string]*symbolReference{}
+	sharedFiles := map[string][]*symbolReference{}
+	var sharedOrder []string
+	for queryIndex, q := range queries {
 		if q.err != nil {
 			fail(q, q.err)
 			continue
@@ -372,7 +387,7 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 			result.Stderr += "\n"
 		}
 		seen := map[string]bool{}
-		references := map[string][]string{}
+		references := map[string][]*symbolReference{}
 		var referenceOrder []string
 		referenceBytes := 0
 		emitted := false
@@ -436,8 +451,7 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 					}
 					queryErr = appendRow(row + "\n")
 				} else {
-					formatted := fmt.Sprintf("%d %s\n", line, row)
-					referenceBytes += len(formatted)
+					referenceBytes += len(strconv.Itoa(line)) + len(row) + 2
 					if referenceBytes > retainedBytes {
 						queryErr = &symbolFailure{"output_limit", "complete reference output exceeds the 16 MiB retention bound"}
 						break
@@ -445,7 +459,7 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 					if _, ok := references[label]; !ok {
 						referenceOrder = append(referenceOrder, label)
 					}
-					references[label] = append(references[label], formatted)
+					references[label] = append(references[label], &symbolReference{key: key, source: row, line: line})
 				}
 				emitted = true
 				if queryErr != nil {
@@ -456,13 +470,59 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 				break
 			}
 		}
-		if queryErr == nil {
+		if queryErr == nil && q.mode == "refs" && refQueries > 1 {
+			id := strconv.Itoa(queryIndex + 1)
+			path := q.file.path
+			if !explicit {
+				path, _ = filepath.Rel(root, path)
+			}
+			header := fmt.Sprintf("refs[%s] %s:%d %s", id, quotePath(filepath.ToSlash(path)), q.line, q.name)
+			if q.occurrence > 0 {
+				header += " " + strconv.Itoa(q.occurrence)
+			}
+			header += "\n"
+			added := 0
+			for _, label := range referenceOrder {
+				if _, ok := sharedFiles[label]; !ok {
+					added += len(label) + 2
+				}
+				for _, row := range references[label] {
+					if sharedReferences[row.key] == nil {
+						added += len(strconv.Itoa(row.line)) + len(id) + len(row.source) + 5
+					} else {
+						added += len(id) + 1
+					}
+				}
+			}
+			if retained.Len()+sharedBytes+added+len(header) > retainedBytes {
+				queryErr = &symbolFailure{"output_limit", "complete reference output exceeds the 16 MiB retention bound"}
+			} else {
+				queryErr = appendRow(header)
+			}
+			if queryErr == nil {
+				sharedBytes += added
+				for _, label := range referenceOrder {
+					for _, row := range references[label] {
+						if previous := sharedReferences[row.key]; previous != nil {
+							previous.queries += "," + id
+						} else {
+							row.queries = id
+							sharedReferences[row.key] = row
+							if _, ok := sharedFiles[label]; !ok {
+								sharedOrder = append(sharedOrder, label)
+							}
+							sharedFiles[label] = append(sharedFiles[label], row)
+						}
+					}
+				}
+			}
+		} else if queryErr == nil {
 			for _, label := range referenceOrder {
 				if queryErr = appendRow(label + ":\n"); queryErr != nil {
 					break
 				}
 				for _, row := range references[label] {
-					if queryErr = appendRow(row); queryErr != nil {
+					if queryErr = appendRow(fmt.Sprintf("%d %s\n", row.line, row.source)); queryErr != nil {
 						break
 					}
 				}
@@ -475,6 +535,22 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 			fail(q, queryErr)
 		} else if q.mode == "def" && !emitted {
 			fail(q, &symbolFailure{"no_editable_location", "definition has no editable workspace location"})
+		}
+	}
+	sharedBytes = 0
+	for _, label := range sharedOrder {
+		if e := appendRow(label + ":\n"); e != nil {
+			fail(nil, e)
+			break
+		}
+		for _, row := range sharedFiles[label] {
+			if e := appendRow(fmt.Sprintf("%d [%s] %s\n", row.line, row.queries, row.source)); e != nil {
+				fail(nil, e)
+				break
+			}
+		}
+		if retentionFailed {
+			break
 		}
 	}
 	if len(skipOrder) > 0 {

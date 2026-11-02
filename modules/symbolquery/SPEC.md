@@ -65,7 +65,8 @@ substitutes text search. Go and LSP processes both run in the selected workspace
 Several `(def|refs) PATH [LINE] SYMBOL [N]` tuples may follow each other in one
 invocation. Each input is validated before resolver startup; invalid inputs are reported while valid tuples continue. Tuples share one
 language-server session per language in the selected workspace, and one combined
-output budget. Results follow tuple order. Go queries, including single queries, use one
+output budget. Definition results and reference-query labels follow tuple order;
+batched references share a source inventory after those results. Go queries, including single queries, use one
 command-owned gopls LSP server. Its unused Staticcheck diagnostics are disabled
 without changing semantic workspace or test coverage. No detached cross-invocation
 daemon is started. The session deadline is 30 seconds, shared by its queries;
@@ -88,12 +89,30 @@ Successful definitions have one header and raw body rows:
 SOURCE TEXT
 ```
 
-References group first-seen rows by canonical file, in first-seen file order:
+A single reference query groups first-seen rows by canonical file, in first-seen file order:
 
 ```text
 "PATH":
 LINE SOURCE TEXT
 ```
+
+When an invocation contains multiple `refs` tuples, successful queries emit
+`refs[ID] "PATH":LINE SYMBOL [N]` labels in tuple order. `ID` is the one-based
+position in the full tuple list, including definitions and failed queries.
+Failed queries retain target-qualified stderr. Empty successful queries still
+emit a label. One shared source inventory follows all tuple results:
+
+```text
+refs[1] "options.go":2 Model
+refs[2] "options.go":2 ServiceTier
+"options.go":
+2 [1,2] type Options struct { Model, ServiceTier string }
+```
+
+Each canonical file/line appears once in that inventory. The bracketed IDs name
+every successful reference query containing the row, in tuple order. Files and
+rows retain first-seen order across queries. Source text remains complete;
+definition bodies keep their existing format and deduplication scope.
 
 `PATH` is the JSON-quoted path from the default canonical workspace root to the
 canonical result file, without a leading `./`. With an explicit `--workspace`,
@@ -114,6 +133,9 @@ resolver result. Exceeding the retention bound or failing to save the snapshot
 returns an explicit failure, never a claim of complete reference coverage. `def`
 emits every editable definition returned by the resolver in first-seen order and
 deduplicates canonical result rows.
+
+A tuple whose inventory additions exceed the shared retention bound fails without
+discarding previously accepted reference rows or adding its ID to their membership.
 
 Definition expansion occurs only when the resolver's definition selection exactly
 matches the declared name of a complete inspect_file outline entry. Supported
@@ -170,7 +192,8 @@ cleanup never fabricate a completed semantic reply or rerun a query.
    definition emits its one current logical line. Multiple definitions retain
    resolver order and deduplicate rows.
 4. `refs` includes declarations, groups by first-seen file and row order, deduplicates one
-   canonical path and line, reports skipped locations, and accepts an empty result.
+   canonical path and line across reference tuples while preserving query membership,
+   reports skipped locations, and accepts an empty result.
 5. Relative and absolute in-workspace paths work. Lexical escapes, escaping
    symlinks, missing resolvers, source changes, malformed protocol results, and
    uneditable definitions fail without suppressing unrelated tuples' stdout.
@@ -185,4 +208,4 @@ cleanup never fabricate a completed semantic reply or rerun a query.
 8. Combined path/line operands, qualified selectors, and unique no-line definition
    and reference queries are accepted. Ambiguous and missing-token errors are actionable without
    starting the resolver. A batch starts one server per language, shares its budget,
-   preserves tuple order, and rejects changed inputs without suppressing unchanged inputs.
+   preserves tuple-label order and per-query coverage, and rejects changed inputs without suppressing unchanged inputs.
