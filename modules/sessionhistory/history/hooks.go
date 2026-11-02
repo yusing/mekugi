@@ -3,7 +3,6 @@ package history
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -95,18 +94,4 @@ func (s *Store) ReadHookObservations(workspace, thread string) (HookObservations
 }
 
 // HookRecord preserves the existing retained identity and shared store budget.
-var HookRecord = recordkind.Spec{ID: "hooks", Match: func(name string) bool {
-	if filepath.Base(name) != name {
-		return false
-	}
-	hash, ok := strings.CutPrefix(name, "hooks-")
-	if !ok {
-		return false
-	}
-	hash, ok = strings.CutSuffix(hash, ".json")
-	if !ok || len(hash) != 64 || strings.ToLower(hash) != hash {
-		return false
-	}
-	_, err := hex.DecodeString(hash)
-	return err == nil
-}}
+var HookRecord = recordkind.Spec{ID: "hooks", Match: recordkind.HashedName("hooks-", ".json")}

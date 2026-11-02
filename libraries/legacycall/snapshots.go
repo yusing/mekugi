@@ -13,8 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
+	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/libraries/persistence"
 )
 
@@ -72,13 +72,10 @@ func SnapshotName(data []byte) string {
 	return fmt.Sprintf("snapshot-%x.json.gz", sha256.Sum256(data))
 }
 
+var matchSnapshotName = recordkind.HashedName("snapshot-", ".json.gz")
+
 func ValidSnapshotName(name string) bool {
-	hash, ok := strings.CutPrefix(name, "snapshot-")
-	if !ok {
-		return false
-	}
-	hash, ok = strings.CutSuffix(hash, ".json.gz")
-	return ok && len(hash) == 64 && strings.Trim(hash, "0123456789abcdef") == ""
+	return matchSnapshotName(name)
 }
 
 func SnapshotData(directory, name string, limit int) ([]byte, bool, error) {

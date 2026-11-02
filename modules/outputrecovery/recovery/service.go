@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -391,25 +390,11 @@ func (s *Session) retain(tx *history.Transaction, value record.Record, admitted 
 }
 
 func RecordKinds() []recordkind.Spec {
-	hashed := func(name, prefix string) bool {
-		if filepath.Base(name) != name {
-			return false
-		}
-		hash, ok := strings.CutPrefix(name, prefix)
-		if !ok {
-			return false
-		}
-		hash, ok = strings.CutSuffix(hash, ".json")
-		if !ok || len(hash) != 64 || strings.ToLower(hash) != hash {
-			return false
-		}
-		_, err := hex.DecodeString(hash)
-		return err == nil
-	}
+	outputName := recordkind.HashedName("output-", ".json")
 	return []recordkind.Spec{
-		{ID: "cursor", Match: func(name string) bool { return hashed(name, "cursor-") }},
+		{ID: "cursor", Match: recordkind.HashedName("cursor-", ".json")},
 		{ID: "output", Limit: 256 << 20, Match: func(name string) bool {
-			if hashed(name, "output-") {
+			if outputName(name) {
 				return true
 			}
 			id, ok := strings.CutPrefix(name, "output-")

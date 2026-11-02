@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
@@ -13,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/contracts/recordkind"
@@ -21,21 +19,7 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-var Failures = recordkind.Spec{ID: "failure", Match: func(name string) bool {
-	if filepath.Base(name) != name {
-		return false
-	}
-	hash, ok := strings.CutPrefix(name, "failure-")
-	if !ok {
-		return false
-	}
-	hash, ok = strings.CutSuffix(hash, ".json")
-	if !ok || len(hash) != 64 || strings.ToLower(hash) != hash {
-		return false
-	}
-	_, err := hex.DecodeString(hash)
-	return err == nil
-}}
+var Failures = recordkind.Spec{ID: "failure", Match: recordkind.HashedName("failure-", ".json")}
 
 // Failure records retain the actual error for post-session diagnosis.
 type Failure struct {

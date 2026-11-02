@@ -3,12 +3,12 @@ package reports
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/contracts/recordkind"
 )
 
 // Source: internal/router/command_segments.go:21:38@[cc2524a0] retained reports and identity.
@@ -39,17 +39,10 @@ func ID(turn, item string) string {
 }
 
 func IsID(id string) bool {
-	hash, ok := strings.CutPrefix(id, "command-segments:")
-	return ok && validHash(hash)
+	return matchID(id)
 }
 
-func validHash(hash string) bool {
-	if len(hash) != 64 || strings.ToLower(hash) != hash {
-		return false
-	}
-	_, err := hex.DecodeString(hash)
-	return err == nil
-}
+var matchID = recordkind.HashedName("command-segments:", "")
 
 // Source: internal/router/command_segments.go:220:247@[cc2524a0] report validation.
 func (r Report) validate() error {

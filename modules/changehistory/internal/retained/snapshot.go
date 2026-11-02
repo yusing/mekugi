@@ -76,7 +76,7 @@ func (s *store) visibleIndexes(workspace string, threads map[string]bool) ([]cha
 			return nil, err
 		}
 		for _, entry := range entries {
-			if hashedRecordName(entry.Name(), changeIndexPrefix) {
+			if matchChangeIndex(entry.Name()) {
 				names[entry.Name()] = true
 			}
 		}

@@ -68,7 +68,7 @@ func (s *store) selectChangeIndex(options *changeReadOptions) (changeIndex, erro
 	}
 	ambiguous := make(map[string]bool)
 	for _, entry := range entries {
-		if !hashedRecordName(entry.Name(), changeIndexPrefix) {
+		if !matchChangeIndex(entry.Name()) {
 			continue
 		}
 		data, err := history.ReadRecord(filepath.Join(s.directory, entry.Name()))

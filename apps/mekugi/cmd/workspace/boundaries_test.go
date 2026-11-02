@@ -24,6 +24,9 @@ func TestWorkspaceImportBoundaries(t *testing.T) {
 		allowed            bool
 	}{
 		{"libraries/legacycall", ".", "libraries/persistence", true},
+		{"libraries/legacycall", ".", "contracts/recordkind", true},
+		{"libraries/legacycall", ".", "contracts/command", false},
+		{"libraries/persistence", ".", "contracts/recordkind", false},
 		{"libraries/persistence", ".", "libraries/legacycall", false},
 		{"libraries/outputbudget", ".", "libraries/sourceanalysis/rows", true},
 		{"libraries/terminalui", ".", "libraries/sourceanalysis/markdownsyntax", true},

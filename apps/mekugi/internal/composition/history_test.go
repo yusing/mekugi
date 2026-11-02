@@ -123,6 +123,14 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 		{legacycall.Name("/workspace", "commentary", true), "commentary"},
 		{legacycall.SnapshotName([]byte("snapshot")), "snapshot"},
 		{"wait-0002a56ee5625e517b301ff9722d588a16f1cd41c9f8a8599cd1ba8793cd44d6.json", "wait"},
+		{"usage-" + strings.Repeat("a", 64) + ".json", "usage"},
+		{"failure-" + strings.Repeat("a", 64) + ".json", "failure"},
+		{"changes-v3-" + strings.Repeat("a", 64) + ".json", "changes"},
+		{reports.Name("/workspace", reports.ID("turn", "item")), "commandsegments"},
+		{"compact-" + strings.Repeat("a", 64) + ".json", "compact"},
+		{history.HookObservationsName("/workspace", "thread"), "hooks"},
+		{"cursor-" + strings.Repeat("a", 64) + ".json", "cursor"},
+		{"output-" + strings.Repeat("a", 64) + ".json", "output"},
 	} {
 		kind, found, err := runtime.History.Kind(tc.name)
 		if err != nil || !found || kind.ID != tc.id {
@@ -142,11 +150,27 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 				t.Fatalf("call dependencies: %v, %v", deps, err)
 			}
 		}
-		prefix, suffix, _ := strings.Cut(tc.name, "-")
-		for _, invalid := range []string{"../" + tc.name, prefix + "-" + strings.Repeat("A", 64) + suffix[64:], prefix + "-" + strings.Repeat("g", 64) + suffix[64:], strings.Replace(tc.name, "-", "-a", 1), tc.name + ".tmp"} {
+		suffix := ".json"
+		if strings.HasSuffix(tc.name, ".json.gz") {
+			suffix = ".json.gz"
+		}
+		prefix := tc.name[:len(tc.name)-len(suffix)-64]
+		for _, invalid := range []string{"../" + tc.name, prefix + strings.Repeat("A", 64) + suffix, prefix + strings.Repeat("g", 64) + suffix, strings.Replace(tc.name, "-", "-a", 1), tc.name + ".tmp"} {
 			if kind.Match(invalid) {
 				t.Fatalf("invalid record %q recognized as %s", invalid, kind.ID)
 			}
+		}
+	}
+	for _, id := range []string{history.ShortHandle(0), history.ShortHandle(65)} {
+		name := "output-" + id + ".json"
+		kind, found, err := runtime.History.Kind(name)
+		if err != nil || !found || kind.ID != "output" {
+			t.Fatalf("output ID %q: kind=%+v found=%v err=%v", name, kind, found, err)
+		}
+	}
+	for _, name := range []string{"output-amber0.json", "output-AMBER.json", "cursor-amber.json", "../output-amber.json"} {
+		if kind, found, err := runtime.History.Kind(name); err == nil && found {
+			t.Fatalf("invalid ID %q recognized as %s", name, kind.ID)
 		}
 	}
 	if runtime.Segments == nil {

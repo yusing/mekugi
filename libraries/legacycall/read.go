@@ -12,8 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
+	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/libraries/persistence"
 )
 
@@ -33,12 +33,7 @@ func ValidName(name string, commentary bool) bool {
 	if commentary {
 		prefix = "commentary-"
 	}
-	hash, ok := strings.CutPrefix(name, prefix)
-	if !ok {
-		return false
-	}
-	hash, ok = strings.CutSuffix(hash, ".json")
-	return ok && len(hash) == 64 && strings.Trim(hash, "0123456789abcdef") == ""
+	return recordkind.HashedName(prefix, ".json")(name)
 }
 
 func Read(directory, workspace, callID string, commentary bool, limit int) (Record, bool, error) {

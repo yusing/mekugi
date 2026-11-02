@@ -36,7 +36,7 @@ func (*service) PrepareFork(selected changes.Scope, source, dest, fork string) (
 		return nil, err
 	}
 	for _, entry := range entries {
-		if !hashedRecordName(entry.Name(), changeIndexPrefix) {
+		if !matchChangeIndex(entry.Name()) {
 			continue
 		}
 		data, err := history.ReadRecord(filepath.Join(selected.Store.Directory(), entry.Name()))

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -47,11 +46,7 @@ func Name(workspace, id string) string {
 }
 
 func RecordKinds() []recordkind.Spec {
-	return []recordkind.Spec{{ID: "commandsegments", MaxRecordBytes: history.MaxRecordBytes, Match: func(name string) bool {
-		hash, ok := strings.CutPrefix(name, "segments-")
-		hash, suffix := strings.CutSuffix(hash, ".json")
-		return ok && suffix && validHash(hash)
-	}}}
+	return []recordkind.Spec{{ID: "commandsegments", MaxRecordBytes: history.MaxRecordBytes, Match: recordkind.HashedName("segments-", ".json")}}
 }
 
 type record struct {

@@ -19,10 +19,7 @@ func Name(reference string) string {
 	return fmt.Sprintf("compact-%x.json", sha256.Sum256([]byte(reference)))
 }
 
-var Kind = recordkind.Spec{ID: "compact", Match: func(name string) bool {
-	hash := strings.TrimSuffix(strings.TrimPrefix(name, "compact-"), ".json")
-	return len(hash) == 64 && strings.Trim(hash, "0123456789abcdef") == "" && name == "compact-"+hash+".json"
-}}
+var Kind = recordkind.Spec{ID: "compact", Match: recordkind.HashedName("compact-", ".json")}
 
 type Record struct {
 	Bytes              int `json:"-"` // Retained input charged by bounded consumers.
