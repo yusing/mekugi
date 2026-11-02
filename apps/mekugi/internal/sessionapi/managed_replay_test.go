@@ -290,6 +290,18 @@ func (l pendingNativeReplayLauncher) Run(ctx context.Context, _ Start, server *S
 		return err
 	}
 	l.started <- server
+	// Acknowledge the initial view without confirming the reserved thread.
+	select {
+	case request := <-server.Native().Requests():
+		select {
+		case <-l.ready:
+			request.Reply <- ""
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 	<-ctx.Done()
 	return ctx.Err()
 }
@@ -298,14 +310,22 @@ func TestManagedReplayRefusesPendingNativeStartup(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	launcher := pendingNativeReplayLauncher{newManagedLauncher()}
+	acknowledge := make(chan struct{})
+	launcher.ready = acknowledge
 	hub := NewHub(ctx, launcher)
 	defer hub.Close()
 	client := openTestRPC(t, hub.Handler(), true)
-	finished := make(chan error, 1)
+	finished := make(chan struct {
+		subscription *RPCSubscription
+		err          error
+	}, 1)
 	workspace := t.TempDir()
 	go func() {
-		_, err := client.Subscribe(ctx, "native/start", RPCParams{Body: testJSON(t, NativeStart{Workspace: workspace, Args: []string{"resume", "saved"}})})
-		finished <- err
+		subscription, err := client.Subscribe(ctx, "native/start", RPCParams{Body: testJSON(t, NativeStart{Workspace: workspace, Args: []string{"resume", "saved"}})})
+		finished <- struct {
+			subscription *RPCSubscription
+			err          error
+		}{subscription, err}
 	}()
 	select {
 	case <-launcher.started:
@@ -315,8 +335,26 @@ func TestManagedReplayRefusesPendingNativeStartup(t *testing.T) {
 	if result := managedRequest(t, hub, "session/start", "", Start{Replay: &ReplayStart{Session: "saved"}}); result.Code != 409 {
 		t.Fatalf("replay bypassed pending native ownership: %+v", result)
 	}
+	// Startup admission must settle before shutdown, rather than relying on
+	// runtime exit to release its unacknowledged attachment request.
+	close(acknowledge)
+	started := <-finished
+	if started.err != nil {
+		t.Fatal(started.err)
+	}
+	if result := managedRequest(t, hub, "session/start", "", Start{Replay: &ReplayStart{Session: "saved"}}); result.Code != 409 {
+		t.Fatalf("attachment acknowledgement released pending native ownership: %+v", result)
+	}
 	hub.Close()
-	if err := <-finished; err != nil {
+	event, err := started.subscription.Next(ctx)
+	if err != nil {
 		t.Fatal(err)
+	}
+	var outcome NativeExit
+	if event.Kind != "exit" || json.Unmarshal(event.Data, &outcome) != nil || outcome.Code != 1 || outcome.Message != context.Canceled.Error() {
+		t.Fatalf("shutdown lost joined startup outcome: %+v", event)
+	}
+	if len(hub.running) != 0 || len(hub.sessions) != 0 {
+		t.Fatal("shutdown retained native ownership")
 	}
 }
