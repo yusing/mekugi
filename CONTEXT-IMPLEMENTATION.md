@@ -20,7 +20,8 @@ contracts and consumers together when a redesign changes those commitments.
   in renderer/view packages; test harnesses stay test-only. `Requires` matches actual module API use.
 - **Compose once.** Descriptors own commands, records, bindings and views; derive catalogs and
   guidance from their contributions instead of adding parallel lists or command-name switches.
-  Optional relationships use typed slots whose hosts accept zero contributions. With existing slots
+  Single-provider relationships use direct typed dependencies; shared extension families use typed
+  slots whose hosts accept zero contributions. With existing slots
   and binding mechanisms, a new module needs only workspace membership and one composition entry;
   a new shared mechanism is an explicit contract change, not a runtime plugin layer.
 - **Pass actual owners.** Give consumers the selected store, authenticated snapshot or narrow typed
