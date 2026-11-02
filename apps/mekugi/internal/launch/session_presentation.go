@@ -77,6 +77,11 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 		m.SetSide(sessionpresentation.Thread{})
 	}
 	view := m.View()
+	feedbackThread := control.Thread
+	if m.DisplayingSide() {
+		feedbackThread = side.Thread
+	}
+	attached.feedback.BindThread(feedbackThread)
 	var caption sessionpresentation.Caption
 	if view.Displayed.ID == view.Main.ID {
 		caption.Model, caption.Effort, caption.Tier = settings.Model, settings.Effort, tiers.Effective(settings.Model, settings.Tier, control.Thread)

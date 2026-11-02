@@ -299,7 +299,7 @@ func (m *Main) noticeBorder(status sessionpresentation.MainStatus, now time.Time
 	if full == "" {
 		return composerBorder("╭", "╮", label, "", width, color)
 	}
-	// Reserve the check before truncating, so a long error cannot hide it.
+	// Reserve dismissal before truncating, so a long error cannot hide it.
 	room := max(1, width-13)
 	// In compact panes the error takes precedence over the session caption.
 	plain := ansi.Strip(label)
@@ -315,6 +315,6 @@ func (m *Main) noticeBorder(status sessionpresentation.MainStatus, now time.Time
 	if clipped || details {
 		m.NoticeDetails = Rect{3, row, ansi.StringWidth(label), 1}
 	}
-	m.NoticeDismiss = Rect{width - 6, row, 3, 1}
-	return composerBorder("╭", "╮", label, terminalui.Green+"[✓]"+terminalui.Reset, width, color)
+	m.NoticeDismiss = Rect{4 + ansi.StringWidth(label), row, 3, 1}
+	return composerBorder("╭", "╮", label+" "+terminalui.Green+"[x]"+terminalui.Reset, "", width, color)
 }

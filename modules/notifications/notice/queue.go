@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 )
 
 // Source: internal/router/critical_errors.go:34:457@b4d36aa2 CriticalErrors
@@ -27,16 +28,48 @@ type entry struct {
 	Input
 	count, delivered    uint64
 	inFlight, awaitTurn bool
+	occurred            time.Time
 }
 
 type turnOutcome struct{ thread, turn, status string }
 
+type requestSuccess struct {
+	thread string
+	at     time.Time
+}
+
 // Service holds bounded invocation recovery state. A nil service is disabled.
 type Service struct {
-	mu       sync.Mutex
-	entries  []*entry
-	outcomes []turnOutcome
-	overflow uint64
+	mu        sync.Mutex
+	entries   []*entry
+	outcomes  []turnOutcome
+	successes []requestSuccess
+	overflow  uint64
+}
+
+// RequestSucceeded retires older request errors, independently of host turn
+// completion, and lets each attached view clear only feedback for this thread.
+func (s *Service) RequestSucceeded(thread string, at time.Time) {
+	if s == nil || thread == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.successes = slices.DeleteFunc(s.successes, func(success requestSuccess) bool { return success.thread == thread })
+	if len(s.successes) == 256 {
+		s.successes = slices.Delete(s.successes, 0, 1)
+	}
+	s.successes = append(s.successes, requestSuccess{thread, at})
+	s.entries = slices.DeleteFunc(s.entries, func(e *entry) bool { return e.Request && e.Thread == thread })
+}
+
+func (s *Service) SucceededSince(thread string, at time.Time) bool {
+	if s == nil || thread == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.ContainsFunc(s.successes, func(success requestSuccess) bool { return success.thread == thread && success.at.After(at) })
 }
 
 func (s *Service) Submit(input Input) {
@@ -62,6 +95,7 @@ func (s *Service) Submit(input Input) {
 	for _, e := range s.entries {
 		if e.Session == input.Session && e.Category == input.Category && (input.Request || e.Thread == input.Thread) {
 			e.count++
+			e.occurred = time.Now()
 			if input.Request {
 				e.Thread, e.Turn, e.Reference, e.awaitTurn = input.Thread, input.Turn, input.Reference, awaitTurn
 			}
@@ -72,7 +106,7 @@ func (s *Service) Submit(input Input) {
 		s.overflow++
 		return
 	}
-	s.entries = append(s.entries, &entry{Input: input, count: 1, awaitTurn: awaitTurn})
+	s.entries = append(s.entries, &entry{Input: input, count: 1, awaitTurn: awaitTurn, occurred: time.Now()})
 }
 
 // ObserveTurn reconciles late finalization without retaining live host state.
@@ -141,7 +175,10 @@ func (s *Service) Pending() []string {
 	return result
 }
 
-type Message struct{ ID, Text string }
+type Message struct {
+	ID, Text, Thread string
+	Occurred         time.Time
+}
 
 // Batch keeps its captured repeat counts private; messages are detached values.
 type Batch struct {
@@ -180,7 +217,7 @@ func (s *Service) Claim(root string, descendants map[string]string) *Delivery {
 		if e.Surface == Progress {
 			batch = &d.Progress
 		}
-		batch.Messages = append(batch.Messages, Message{e.ID, text})
+		batch.Messages = append(batch.Messages, Message{ID: e.ID, Text: text, Thread: e.Thread, Occurred: e.occurred})
 		batch.claims = append(batch.claims, claim{e, e.count})
 	}
 	if len(d.Errors.Messages)+len(d.Progress.Messages) == 0 {

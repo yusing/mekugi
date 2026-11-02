@@ -3,6 +3,7 @@ package notifications_test
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -21,7 +22,11 @@ func newService(t *testing.T) *notice.Service {
 
 func requireMessages(t *testing.T, batch notice.Batch, want ...notice.Message) {
 	t.Helper()
-	if !reflect.DeepEqual(batch.Messages, want) {
+	got := slices.Clone(batch.Messages)
+	for i := range got {
+		got[i].Occurred = time.Time{}
+	}
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("messages = %+v, want %+v", batch.Messages, want)
 	}
 }
@@ -33,6 +38,55 @@ func requireClaim(t *testing.T, service *notice.Service, descendants map[string]
 		t.Fatal("expected a delivery claim")
 	}
 	return delivery
+}
+
+func TestRequestSuccessClearsOnlyOriginatingErrors(t *testing.T) {
+	service := newService(t)
+	now := time.Now()
+	for _, thread := range []string{"root", "child"} {
+		service.Submit(notice.Input{ID: thread, Session: "session", Thread: thread, Category: thread + ":failure", Text: thread + " failed", Request: true})
+	}
+	var feedback presentation.Model
+	feedback.Receive(requireClaim(t, service, map[string]string{"child": "Worker"}), now)
+	service.RequestSucceeded("other", now.Add(time.Second))
+	if feedback.ClearSucceeded(service, "root") {
+		t.Fatal("foreign success cleared errors")
+	}
+	service.RequestSucceeded("root", now.Add(2*time.Second))
+	if !feedback.ClearSucceeded(service, "root") || !feedback.Alert || strings.Contains(feedback.Text, "root failed") || !strings.Contains(feedback.Text, "child failed") {
+		t.Fatalf("partial error clearing: %+v", feedback)
+	}
+	service.RequestSucceeded("child", now.Add(3*time.Second))
+	if !feedback.ClearSucceeded(service, "root") || feedback.Alert || feedback.Text != "" || len(service.Pending()) != 0 {
+		t.Fatalf("successful requests retained errors: %+v", feedback)
+	}
+	feedback.Set("new error", true, now.Add(4*time.Second))
+	feedback.BindThread("root")
+	if feedback.ClearSucceeded(service, "child") {
+		t.Fatal("old success or display navigation cleared a new error")
+	}
+	feedback.Set("saved", false, now)
+	service.RequestSucceeded("root", now.Add(5*time.Second))
+	if feedback.ClearSucceeded(service, "root") || feedback.Text != "saved" {
+		t.Fatal("success cleared ordinary feedback")
+	}
+}
+
+func TestRequestSuccessDuringNoticeRetry(t *testing.T) {
+	service := newService(t)
+	service.Submit(notice.Input{ID: "failed", Session: "session", Thread: "root", Turn: "old", Category: "failure", Text: "old failure", Request: true})
+	service.ObserveTurn("root", "old", "failed")
+	var feedback presentation.Model
+	first := requireClaim(t, service, nil)
+	feedback.Receive(first, time.Now())
+	first.Errors.Finish(false)
+	retry := requireClaim(t, service, nil)
+	service.RequestSucceeded("root", time.Now())
+	feedback.Receive(retry, time.Now())
+	feedback.ClearSucceeded(service, "root")
+	if feedback.Alert {
+		t.Fatalf("retry resurrected retired feedback: %+v", feedback)
+	}
 }
 
 func TestRequestOutcomeAcceptance(t *testing.T) {
@@ -64,7 +118,7 @@ func TestRequestOutcomeAcceptance(t *testing.T) {
 					return
 				}
 				delivery := requireClaim(t, service, nil)
-				requireMessages(t, delivery.Errors, notice.Message{ID: "request", Text: "complete failure"})
+				requireMessages(t, delivery.Errors, notice.Message{ID: "request", Thread: "root", Text: "complete failure"})
 				delivery.Errors.Finish(true)
 				if len(service.Pending()) != 0 {
 					t.Fatal("visible failure remained pending")
@@ -95,7 +149,7 @@ func TestCoalescedRequestOutcomeGate(t *testing.T) {
 				if service.Claim("root", nil) != nil {
 					t.Fatal("coalescing released an in-flight claim")
 				}
-				requireMessages(t, previous.Errors, notice.Message{ID: "request", Text: "failure"})
+				requireMessages(t, previous.Errors, notice.Message{ID: "request", Thread: "root", Text: "failure"})
 				previous.Errors.Finish(false)
 				if service.Claim("root", nil) != nil {
 					t.Fatal("coalesced request escaped before its current turn outcome")
@@ -103,7 +157,7 @@ func TestCoalescedRequestOutcomeGate(t *testing.T) {
 				service.ObserveTurn("root", "second", "failed")
 			}
 			delivery := requireClaim(t, service, nil)
-			requireMessages(t, delivery.Errors, notice.Message{ID: "request", Text: "failure (occurred 2 times)"})
+			requireMessages(t, delivery.Errors, notice.Message{ID: "request", Thread: "root", Text: "failure (occurred 2 times)"})
 			delivery.Errors.Finish(true)
 			if len(service.Pending()) != 0 || service.Claim("root", nil) != nil {
 				t.Fatal("acknowledged coalesced notice remained pending")
@@ -123,7 +177,7 @@ func TestIndependentSurfaceReceiptsAndCapturedRepeats(t *testing.T) {
 		t.Fatal("claimed entries were reserved twice")
 	}
 	service.Submit(err)
-	requireMessages(t, first.Errors, notice.Message{ID: "error", Text: "storage unavailable"})
+	requireMessages(t, first.Errors, notice.Message{ID: "error", Thread: "root", Text: "storage unavailable"})
 	first.Errors.Finish(true)
 	if service.Claim("root", nil) != nil {
 		t.Fatal("acknowledging errors released progress or redisplayed a repeat")
@@ -131,7 +185,7 @@ func TestIndependentSurfaceReceiptsAndCapturedRepeats(t *testing.T) {
 	first.Progress.Finish(false)
 	retry := requireClaim(t, service, nil)
 	requireMessages(t, retry.Errors)
-	requireMessages(t, retry.Progress, notice.Message{ID: "progress", Text: "cleanup delayed"})
+	requireMessages(t, retry.Progress, notice.Message{ID: "progress", Thread: "root", Text: "cleanup delayed"})
 	retry.Progress.Finish(true)
 	if got := service.Pending(); !reflect.DeepEqual(got, []string{"mekugi: storage unavailable (occurred 2 times)"}) {
 		t.Fatalf("post-delivery recovery = %v", got)
@@ -158,8 +212,8 @@ func TestWaitingReportsUnclaimedSurface(t *testing.T) {
 	}
 	held.Progress.Finish(false)
 	retry := requireClaim(t, service, nil)
-	requireMessages(t, retry.Errors, notice.Message{ID: "error", Text: "storage unavailable"})
-	requireMessages(t, retry.Progress, notice.Message{ID: "progress", Text: "context usage"})
+	requireMessages(t, retry.Errors, notice.Message{ID: "error", Thread: "root", Text: "storage unavailable"})
+	requireMessages(t, retry.Progress, notice.Message{ID: "progress", Thread: "root", Text: "context usage"})
 }
 
 func TestNormalizedScopeAcceptance(t *testing.T) {
@@ -178,8 +232,8 @@ func TestNormalizedScopeAcceptance(t *testing.T) {
 	}
 	delivery := requireClaim(t, service, map[string]string{"child": "Worker"})
 	requireMessages(t, delivery.Errors,
-		notice.Message{ID: "root", Text: "own failure"},
-		notice.Message{ID: "child", Text: "Worker: child failure"},
+		notice.Message{ID: "root", Thread: "root", Text: "own failure"},
+		notice.Message{ID: "child", Thread: "child", Text: "Worker: child failure"},
 		notice.Message{ID: "aux", Text: "invocation failure"})
 	delivery.Errors.Finish(true)
 	if got := service.Pending(); !reflect.DeepEqual(got, []string{"mekugi: other root", "mekugi: unknown thread"}) {
@@ -219,7 +273,7 @@ func TestBoundedRecoveryAndRecentOutcomes(t *testing.T) {
 		t.Fatal("evicted outcome was treated as a known failure")
 	}
 	service.ObserveTurn("root", "0", "failed")
-	requireMessages(t, requireClaim(t, service, nil).Errors, notice.Message{ID: "0", Text: "late 0"})
+	requireMessages(t, requireClaim(t, service, nil).Errors, notice.Message{ID: "0", Thread: "root", Text: "late 0"})
 }
 
 func TestAttachedFeedbackRetryAndLifetime(t *testing.T) {
@@ -238,9 +292,10 @@ func TestAttachedFeedbackRetryAndLifetime(t *testing.T) {
 	now := time.Unix(100, 0)
 	first := requireClaim(t, service, nil)
 	view.Receive(first, now)
-	if got := transcript.Rows(first.Progress, present, add); !reflect.DeepEqual(got, []uint64{1}) || !reflect.DeepEqual(added, []notice.Message{{ID: "progress", Text: "cleanup"}}) {
+	if got := transcript.Rows(first.Progress, present, add); !reflect.DeepEqual(got, []uint64{1}) {
 		t.Fatalf("first progress rows = %v, added = %v", got, added)
 	}
+	requireMessages(t, notice.Batch{Messages: added}, notice.Message{ID: "progress", Thread: "root", Text: "cleanup"})
 	if view.Text != complete || !view.Alert || view.Expire(now.Add(time.Hour)) {
 		t.Fatal("complete actionable feedback was truncated or expired")
 	}

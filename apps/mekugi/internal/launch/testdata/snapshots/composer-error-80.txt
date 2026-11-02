@@ -3,6 +3,6 @@ Mekugi dev • codex
 
 
 
-╭─ Ready · ✗ File contents omitted: setup.sh (attachment budget excee… ── [✓] ─╮
+╭─ Ready · ✗ File contents omitted: setup.sh (attachment budget excee… [x] ────╮
 │ ❯                                                                            │
 ╰───────────────────────────────────────────────────────────────────────── 0% ─╯

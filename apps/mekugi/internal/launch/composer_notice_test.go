@@ -1,7 +1,10 @@
 package launch
 
 import (
+	"bytes"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +23,11 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 func TestComposerErrorClickAndDismiss(t *testing.T) {
@@ -83,6 +90,46 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 	}
 }
 
+func TestComposerErrorClearsOnSuccessfulModelRequest(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.issues = testCriticalErrors()
+	u.Turn = "still-running"
+	u.clock = time.Now
+	defer terminalTest(u).Diff.Close()
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "previous request failed", true)
+	u.testMainFrame(80, 8, 0)
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"ok\",\"status\":\"completed\",\"output\":[]}}\n\n")
+	}))
+	defer provider.Close()
+	executor := requestexecution.Executor{Issues: u.issues, Provider: inferencegateway.NewClient(provider.URL, provider.Client(), requestexecution.ProviderDiagnostics())}
+	request, err := codexresponses.ParseRequest([]byte(`{"model":"gpt-test","stream":true,"input":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, thread := range []string{"unrelated", "main"} {
+		headers := http.Header{}
+		headers.Set("Authorization", "Bearer fixture")
+		headers.Set("ChatGPT-Account-ID", "fixture-account")
+		headers.Set(codexresponses.ThreadIDHeader, thread)
+		headers.Set(codexresponses.TurnMetadataHeader, `{"thread_id":"`+thread+`","turn_id":"still-running","request_kind":"turn"}`)
+		var output bytes.Buffer
+		if err := executor.ExecuteHTTP(t.Context(), t.Context(), request, headers, &output); err != nil {
+			t.Fatal(err)
+		}
+		applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
+		rows, _ := u.testMainFrame(80, 8, 0)
+		if thread == "unrelated" {
+			if !u.attached.feedback.Alert || !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), "[x]") {
+				t.Fatal("unrelated success cleared feedback")
+			}
+		} else if u.attached.feedback.Alert || u.shell.Main.NoticeDismiss.W != 0 || u.Turn != "still-running" {
+			t.Fatal("successful model request did not clear the error during its host turn")
+		}
+	}
+}
+
 func TestUISnapshotComposerError(t *testing.T) {
 	for _, width := range []int{12, 20, 36, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
@@ -93,7 +140,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)
 			rows, _ := u.testMainFrame(width, 8, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("composer-error-%d", width), rows)
-			if !strings.Contains(rows[u.shell.Main.NoticeDismiss.Y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.shell.Main.NoticeDismiss.Y]), "[✓]") {
+			if !strings.Contains(rows[u.shell.Main.NoticeDismiss.Y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.shell.Main.NoticeDismiss.Y]), "[x]") {
 				t.Fatal("dismiss check is missing its shared success color")
 			}
 		})

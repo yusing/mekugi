@@ -3,6 +3,6 @@ Mekugi dev • codex
 
 
 
-╭─ Ready · ✗ File content… ── [✓] ─╮
+╭─ Ready · ✗ File content… [x] ────╮
 │ ❯                                │
 ╰───────────────────────────── 0% ─╯

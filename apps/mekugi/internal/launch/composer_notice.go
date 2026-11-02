@@ -72,6 +72,15 @@ func (d *nativeCriticalNoticeDelivery) finish(receipt terminalsession.NoticeRece
 }
 
 func applyCriticalNotices(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, audience *sessioncontrol.Audience, issues *requestexecution.Failures) (delivery *nativeCriticalNoticeDelivery) {
+	if issues != nil {
+		thread := control.Thread
+		if attached.presentation.DisplayingSide() && *side != nil {
+			thread = (*side).Thread
+		}
+		if attached.feedback.ClearSucceeded(issues.Notices, thread) {
+			terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+		}
+	}
 	defer func() {
 		view := publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side))
 		if delivery != nil {

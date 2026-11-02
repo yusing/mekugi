@@ -16,14 +16,37 @@ type Model struct {
 	Text     string
 	Alert    bool
 	Until    time.Time
+	setAt    time.Time
+	errors   []notice.Message
 }
 
 func (m *Model) Set(text string, alert bool, now time.Time) {
 	m.Revision++
 	m.Text, m.Alert, m.Until = text, alert, time.Time{}
+	m.setAt, m.errors = now, nil
 	if text != "" && !alert {
 		m.Until = now.Add(3 * time.Second)
 	}
+}
+
+// ClearSucceeded preserves unrelated-thread errors and non-error feedback.
+func (m *Model) ClearSucceeded(notices *notice.Service, thread string) bool {
+	if !m.Alert {
+		return false
+	}
+	m.BindThread(thread)
+	before := len(m.errors)
+	m.errors = slices.DeleteFunc(m.errors, func(source notice.Message) bool { return notices.SucceededSince(source.Thread, source.Occurred) })
+	if len(m.errors) == before {
+		return false
+	}
+	texts := make([]string, 0, len(m.errors))
+	for _, source := range m.errors {
+		texts = append(texts, source.Text)
+	}
+	m.Revision++
+	m.Text, m.Alert = strings.Join(texts, "\n\n"), len(texts) != 0
+	return true
 }
 
 func (m *Model) Expire(now time.Time) bool {
@@ -34,6 +57,21 @@ func (m *Model) Expire(now time.Time) bool {
 	return true
 }
 
+// BindThread captures a local error's destination before display navigation.
+func (m *Model) BindThread(thread string) {
+	if !m.Alert || thread == "" {
+		return
+	}
+	if len(m.errors) == 0 {
+		m.errors = []notice.Message{{Thread: thread, Text: m.Text, Occurred: m.setAt}}
+	}
+	for i := range m.errors {
+		if m.errors[i].Thread == "" {
+			m.errors[i].Thread = thread
+		}
+	}
+}
+
 // Receive restores complete errors as actionable feedback.
 func (m *Model) Receive(d *notice.Delivery, now time.Time) {
 	if len(d.Errors.Messages) != 0 {
@@ -42,6 +80,7 @@ func (m *Model) Receive(d *notice.Delivery, now time.Time) {
 			texts = append(texts, message.Text)
 		}
 		m.Set(strings.Join(texts, "\n\n"), true, now)
+		m.errors = slices.Clone(d.Errors.Messages)
 	}
 }
 

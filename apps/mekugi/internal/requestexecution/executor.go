@@ -590,6 +590,9 @@ func (a *requestAttempt) finish(requestErr error) error {
 	}
 
 	a.finalization.finish(a.executionCtx, requestErr, a.executor.Output, a.executor.Issues)
+	if requestErr == nil && !a.usageLimited && a.finishUsage && !a.approvalReview && !a.prewarm && a.metadataValid && a.metadata.RequestKind == responses.Turn && a.finalization.outcome == requestOutcomeCompleted && a.finalization.upstreamTerminalState == responses.TerminalCompleted {
+		a.executor.Issues.Notices.RequestSucceeded(a.threadID, time.Now())
+	}
 	_, compatibilityFault := errors.AsType[*inferencegateway.CompatibilityError](requestErr)
 	transformFailure := (a.finalization.failurePhase == requestFailureTransform || a.finalization.failurePhase == requestFailurePrepare && compatibilityFault) && a.finalization.outcome == requestOutcomeFailed
 	compactFailure := a.metadata.RequestKind == responses.Compaction && requestErr != nil && requestResponseStarted(a.executor.Output) &&

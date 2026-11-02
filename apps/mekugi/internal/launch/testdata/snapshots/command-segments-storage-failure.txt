@@ -7,6 +7,6 @@ Mekugi dev • codex
 
 
 
-╭─ ✗ Command segment history could not be retained for item command (… ── [✓] ─╮
+╭─ ✗ Command segment history could not be retained for item command (… [x] ────╮
 │ ❯                                                                            │
 ╰───────────────────────────────────────────────────────────────────────── 0% ─╯
