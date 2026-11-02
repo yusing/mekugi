@@ -53,7 +53,7 @@ func TestLegacyMetadataSurvivesIntervalPublication(t *testing.T) {
 	writeTestFile(t, path, "B\n")
 	transform := &mekugiResponseTransform{owners: &Preparer{Config: Config{Windows: p.Windows, Changes: p.Changes}}, ctx: f.ctx, directory: f.workspace}
 	cut := execIntervalCut{writer: "writer", scope: selected}
-	if err := transform.splitExecInterval("patch", []changecapture.File{changecapture.ReadFile(path, nil)}, cut); err != nil {
+	if err := transform.owners.splitExecInterval(f.ctx, f.workspace, "patch", []changecapture.File{changecapture.ReadFile(path, nil)}, cut, false); err != nil {
 		t.Fatal(err)
 	}
 	id := execIntervalID("writer", false, 0)

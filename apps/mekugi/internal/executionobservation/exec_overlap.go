@@ -23,14 +23,15 @@ const maxExecWindows = 1024
 // the call to observing its terminal result. The registry is in memory, so
 // after a restart, records carry no overlap tags for windows opened before it.
 type execWindow struct {
-	intervalMu sync.Mutex
-	owner      *Windows
-	scope      changes.Scope
-	cuts       []execIntervalCut
-	ref        string
-	roots      []string
-	thread     string
-	turn       string
+	intervalMu               sync.Mutex
+	owner                    *Windows
+	scope                    changes.Scope
+	cuts                     []execIntervalCut
+	ref                      string
+	roots                    []string
+	thread                   string
+	turn                     string
+	source, workspace, shell string
 	// group identifies the response that emitted the call.
 	group  string
 	paths  []string

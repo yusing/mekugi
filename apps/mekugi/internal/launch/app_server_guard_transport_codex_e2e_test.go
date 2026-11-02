@@ -53,7 +53,7 @@ func TestAppServerGuardTransportFailureNativeCodex(t *testing.T) {
 				helper = hookHelper
 			}
 			guard, _ := shellapproval.Paths(filepath.Join(shell.root, "bin"))
-			hook, state, hash, err := shellhook.Config(helper, guard, "", "", shellhook.Invocation{}, nil)
+			hook, state, hash, err := shellhook.Config(helper, guard, "", "", "", shellhook.Invocation{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

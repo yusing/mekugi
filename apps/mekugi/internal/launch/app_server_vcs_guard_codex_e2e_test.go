@@ -167,7 +167,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 				if err := os.WriteFile(caller, []byte("#!/bin/sh\nprintf reached > "+quoteShellWord(conflictMarker)+"\nprintf '{}\\n'\n"), 0o700); err != nil {
 					t.Fatal(err)
 				}
-				callerConfig, callerState, _, err := shellhook.Config(caller, "", "", "", shellhook.Invocation{}, nil)
+				callerConfig, callerState, _, err := shellhook.Config(caller, "", "", "", "", shellhook.Invocation{}, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -184,7 +184,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 				}
 				disabled = []string{shellhook.Key}
 			}
-			hook, state, hash, err := shellhook.Config(helper, guard, "", "", prior, disabled)
+			hook, state, hash, err := shellhook.Config(helper, guard, "", "", t.TempDir(), prior, disabled)
 			if err != nil {
 				t.Fatal(err)
 			}

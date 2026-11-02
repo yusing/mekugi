@@ -5,18 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/yusing/mekugi/backends/codex/shellhook"
+	"github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 // guardHook reads the host event, then binds resources from the trusted command
 // arguments. Event metadata cannot replace the invocation's helper or channels.
 func guardHook(helper string, args []string, input io.Reader, output, stderr io.Writer) int {
+	deadline := time.Now().Add(transport.BoundaryHold)
 	fail := func(err error) int {
 		fmt.Fprintln(stderr, "mekugi: VCS guard instrumentation failed:", err)
 		return 2
 	}
-	if len(args) != 3 {
+	if len(args) != 3 && len(args) != 4 {
 		return fail(errors.New("expected guard, sudo, and tracking resources"))
 	}
 	const limit = 4 << 20
@@ -36,6 +39,9 @@ func guardHook(helper string, args []string, input io.Reader, output, stderr io.
 	result, err := shellhook.Rewrite(request)
 	if err != nil {
 		return fail(err)
+	}
+	if len(args) == 4 && request.Input.Command != nil {
+		transport.ObserveBoundary(args[3], transport.Boundary{Thread: request.Thread, Turn: request.Turn, Item: request.Item, Tool: request.Tool, CWD: request.CWD, Input: *request.Input.Command, Deadline: deadline})
 	}
 	data, err = json.Marshal(result)
 	if err != nil {

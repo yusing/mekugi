@@ -40,7 +40,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(helper, shell.transport.Endpoints().Requests, shell.transport.Endpoints().Directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	hook, state, _, err := shellhook.Config(helper, "", "", tracker, shellhook.Invocation{}, nil)
+	hook, state, _, err := shellhook.Config(helper, "", "", tracker, "", shellhook.Invocation{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The command hook instruments without executing the command script.
-	hook, state, _, err := shellhook.Config(helper, "", "", "", shellhook.Invocation{}, nil)
+	hook, state, _, err := shellhook.Config(helper, "", "", "", "", shellhook.Invocation{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestAppServerExecTrackNativeCodexMovedWorkspace(t *testing.T) {
 	if err := os.WriteFile(wrapper, []byte("#!/bin/sh\nprintf 'hook\\n' >> "+quoteShellWord(marker)+"\nexec "+quoteShellWord(helper)+" \"$@\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	hook, state, _, err := shellhook.Config(wrapper, guard, "", "", shellhook.Invocation{}, nil)
+	hook, state, _, err := shellhook.Config(wrapper, guard, "", "", "", shellhook.Invocation{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

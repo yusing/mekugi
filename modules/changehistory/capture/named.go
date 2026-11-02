@@ -11,7 +11,11 @@ import (
 // source. Paths must already be resolved against the native working directory;
 // workspace retains the selected capture identity.
 func Named(paths []string, workspace string) *Observation {
-	deadline := time.Now().Add(execCaptureHold)
+	return NamedUntil(paths, workspace, time.Now().Add(execCaptureHold))
+}
+
+// NamedUntil shares the enclosing native-boundary deadline across every path.
+func NamedUntil(paths []string, workspace string, deadline time.Time) *Observation {
 	base := Observation{Class: execscope.Declared.String(), Roots: AddRoot(nil, workspace)}
 	missing := func() *Observation {
 		observation := base

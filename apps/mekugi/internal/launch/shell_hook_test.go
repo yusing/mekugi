@@ -12,7 +12,7 @@ import (
 func TestOptionalTrackingHookArgsPreservesExistingTrustAndCaller(t *testing.T) {
 	caller := []string{"exec", "-c", `hooks.state={other={trusted_hash="existing"}}`, "--", "-c", "hooks.PreToolUse=[]"}
 	original := slices.Clone(caller)
-	got, identity, err := optionalTrackingHookArgs(caller, "/path with spaces/mekugi", "/private/tracker")
+	got, identity, err := optionalTrackingHookArgs(caller, "/path with spaces/mekugi", "/private/tracker", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestOptionalTrackingHookArgsRejectsExplicitConflicts(t *testing.T) {
 	} {
 		for _, args := range [][]string{{"exec", "-c", setting}, {"exec", "--config=" + setting}, {"exec", "-c" + setting}} {
 			original := slices.Clone(args)
-			fallback, _, err := optionalTrackingHookArgs(args, "/mekugi", "/tracker")
+			fallback, _, err := optionalTrackingHookArgs(args, "/mekugi", "/tracker", "")
 			if err == nil {
 				t.Errorf("accepted conflicting config: %q", args)
 			}

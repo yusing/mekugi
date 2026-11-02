@@ -294,7 +294,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 		}
 		carrierKind := history.effectiveCarrierKind()
 		if itemType == carrierOutputItemType(carrierKind) {
-			if len(history.NativePatches) != 0 || history.ExecObservation != nil || history.ResolvedBaseline != nil {
+			if len(history.NativePatches) != 0 || history.ExecObservation != nil || history.ResolvedBaseline != nil || history.ReplayCarrier && history.CarrierPayload != "" {
 				completed := execCompletion{callID: callID, history: history, result: binding.DecodeExecutionResult(history.ToolName, item["output"])}
 				if completed.result.Terminal {
 					completedCalls = append(completedCalls, completed)
@@ -367,6 +367,9 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 				source = completed.history.Script
 			}
 			completed.history.nativeCell = p.NativeTrace.ReadCell(completed.history.ExecutingThread, completed.callID, source)
+			if err := p.loadNativeBoundaries(ctx, workspace, completed.callID, &completed.history); err != nil {
+				return nil, err
+			}
 			resolveStockEdits(&completed.history, workspace)
 		}
 	}

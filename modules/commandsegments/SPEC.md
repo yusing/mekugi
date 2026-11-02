@@ -20,6 +20,11 @@ supported shells, source boundaries and untracked cases. The backend supplies
 decoded host facts; the application supplies authenticated instrumentation and
 captured-window scope. Presentation owns output buffers, notices and rendering.
 
+The same private transport carries auxiliary synchronous native pre-tool
+observations to the application's capture owner. These requests do not claim
+segment reports or approve execution. Their capture semantics and bounds belong
+to [change evidence](../../docs/contracts/change-evidence.md).
+
 ## Behavior
 
 ### Shell observations

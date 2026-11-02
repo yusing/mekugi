@@ -148,7 +148,7 @@ PostToolUse = [{matcher="Read",hooks=[%s]}]
 	if len(prior.PreToolUse) != 3 {
 		t.Fatalf("session groups=%s", prior.PreToolUse)
 	}
-	config, state, hash, err := Config(filepath.Join(workspace, "unused-helper"), filepath.Join(workspace, "guard"), "", "", prior, disabled)
+	config, state, hash, err := Config(filepath.Join(workspace, "unused-helper"), filepath.Join(workspace, "guard"), "", "", "", prior, disabled)
 	if err != nil {
 		t.Fatal(err)
 	}

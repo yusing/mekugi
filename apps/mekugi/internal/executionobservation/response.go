@@ -308,13 +308,17 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 		execs, dynamic := commandanalysis.LiteralExecCommands(originalInput, t.directory, t.sessionShell)
 		// Source-resolved edit operands acquire baselines; a cell that may write
 		// elsewhere, including a dynamic one, is bounded by a workspace snapshot.
-		observation, observed := changecapture.Capture(t.ctx, execs, dynamic, true, executionCaptureEnvironment(t.ctx, t.directory, t.owners.Retained, t.owners.Changes, t.owners.Checkpoints, patches))
-		previewOpened := t.openStockExecWindow(callID, observation, patches, execs, dynamic, true)
+		observation, _ := changecapture.Capture(t.ctx, execs, dynamic, true, executionCaptureEnvironment(t.ctx, t.directory, t.owners.Retained, t.owners.Changes, t.owners.Checkpoints, patches))
+		t.openStockExecWindow(callID, observation, patches, execs, dynamic, true)
+		if t.owners.Windows != nil {
+			t.owners.Windows.state().mu.Lock()
+			if window := t.owners.Windows.find(callID); window != nil {
+				window.source = originalInput
+			}
+			t.owners.Windows.state().mu.Unlock()
+		}
 		if err := t.splitExecIntervals(callID, observation, patches); err != nil {
 			return false, err
-		}
-		if len(patches) == 0 && !observed && !previewOpened {
-			return false, nil
 		}
 		if observation == nil && len(execs) != 0 {
 			// Retained patch cells still need literal reader identities
@@ -340,13 +344,13 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 }
 
 func (t *mekugiResponseTransform) openExecWindow(callID string, observation *changecapture.Observation, patches []changecapture.PatchObservation) {
-	if observation == nil && len(patches) == 0 || t.owners.Windows == nil {
+	if t.owners.Windows == nil {
 		return
 	}
 	if t.execGroup == "" {
 		t.execGroup = rand.Text()
 	}
-	window := &execWindow{ref: callID, thread: t.shellThreadID, turn: t.shellTurnID, group: t.execGroup, scope: observationScope(t.ctx, t.owners.Retained)}
+	window := &execWindow{ref: callID, thread: t.shellThreadID, turn: t.shellTurnID, group: t.execGroup, scope: observationScope(t.ctx, t.owners.Retained), workspace: t.directory, shell: t.sessionShell}
 	admitExecutionWindow(t.owners.Windows, t.owners.Review, window, observation, patches, executionCaptureEnvironment(t.ctx, t.directory, t.owners.Retained, t.owners.Changes, t.owners.Checkpoints, patches), t.threadID, t.operationCaller())
 }
 

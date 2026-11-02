@@ -299,6 +299,11 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}
 	}
 	mekugiCalls = executionobservation.New(executionobservation.Config{Inspect: inspect, ThreadControl: driver, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, Event: issues.AddThreadEvent, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
+	if segments.Live != nil {
+		if err := segments.Live.RegisterBoundary(mekugiCalls.ObserveNativeBoundary); err != nil {
+			issues.AddNotice("", "capture_boundary", "Native capture boundaries unavailable: "+err.Error())
+		}
+	}
 	usage.Configure(retained.Store, retained.Writes, retained.Limits, func(thread string, err error) {
 		issues.AddThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
 	})
@@ -483,6 +488,10 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if segments.Live != nil {
 		reportEndpoints = segments.Live.Endpoints()
 	}
+	captureChannel := ""
+	if reportEndpoints.Requests != "" {
+		captureChannel = filepath.Dir(reportEndpoints.Requests)
+	}
 	cmd.Env, err = frontendShellEnvironment(cmd.Env, frontendDirectory, helper, guards, reportEndpoints)
 	if err != nil {
 		return stopFailedStartup(err)
@@ -523,7 +532,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		var hash string
 		if guard {
 			var config, state string
-			config, state, hash, err = shellhook.Config(helper, guardDirectory, sudoDirectory, tracker, prior, disabled)
+			config, state, hash, err = shellhook.Config(helper, guardDirectory, sudoDirectory, tracker, captureChannel, prior, disabled)
 			if err == nil {
 				cmd.Args = append(cmd.Args, "-c", config, "-c", state)
 				for _, key := range disabled {
@@ -531,7 +540,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 				}
 			}
 		} else if tracker != "" {
-			cmd.Args, hash, err = optionalTrackingHookArgs(cmd.Args, helper, tracker)
+			cmd.Args, hash, err = optionalTrackingHookArgs(cmd.Args, helper, tracker, captureChannel)
 		}
 		if err != nil {
 			if guard {

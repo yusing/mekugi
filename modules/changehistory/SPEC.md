@@ -26,7 +26,8 @@ application evidence loading remains independent of terminal interaction.
 ### Passive capture
 
 The current capture design uses the `capture` API to acquire bounded before-state
-for literal patch and command inputs, then reconcile observed endpoint differences.
+for literal command inputs and patches whose targets are available before native
+execution, then reconcile observed endpoint differences.
 The shared command-scope classifier supplies source facts; capture owns merged command scope, filesystem
 reads, limits, incomplete evidence, rename/copy pairing and authored-versus-managed
 provenance. Named operands and workspace checkpoints share admission, so stock

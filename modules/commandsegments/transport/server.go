@@ -37,7 +37,10 @@ type Server struct {
 	done      chan struct{}
 	mu        sync.Mutex
 	claim     Claim
+	boundary  func(context.Context, Boundary)
 }
+
+var errBoundaryRegistered = errors.New("capture boundary consumer already registered")
 
 // Listen acquires a private transport root independent of frontend authentication.
 // Source: internal/router/exec_track.go:98:169@[34c92f4c] FIFO listener and handshake
@@ -97,11 +100,12 @@ func Listen(ctx context.Context) (*Server, error) {
 			}
 			s.mu.Lock()
 			claim := s.claim
+			boundary := s.boundary
 			s.mu.Unlock()
-			if claim == nil || ctx.Err() != nil {
+			if (claim == nil && boundary == nil) || ctx.Err() != nil {
 				continue
 			}
-			reports.Go(func() { acceptReport(ctx, work, claim) })
+			reports.Go(func() { acceptReport(ctx, work, claim, boundary) })
 		}
 	}()
 	return s, nil
@@ -136,7 +140,7 @@ func (s *Server) Close() {
 
 // The server creates all command files outside Codex's sandbox. The helper can
 // open these existing FIFOs even with a read-only mount.
-func acceptReport(ctx context.Context, work string, claim Claim) {
+func acceptReport(ctx context.Context, work string, claim Claim, boundary func(context.Context, Boundary)) {
 	if err := os.Mkdir(work, 0o700); err != nil {
 		return
 	}
@@ -166,19 +170,49 @@ func acceptReport(ctx context.Context, work string, claim Claim) {
 	}
 	reply := os.NewFile(uintptr(fd), filepath.Join(work, "reply"))
 	defer reply.Close()
-	serve(ctx, report, reply, work, claim)
+	serve(ctx, report, reply, work, claim, boundary)
 }
 
 // Source: internal/router/exec_track.go:315:384@[34c92f4c] report validation and dispatch
-func serve(ctx context.Context, report, reply *os.File, work string, claim Claim) {
+func serve(ctx context.Context, report, reply *os.File, work string, claim Claim, boundary func(context.Context, Boundary)) {
 	stop := context.AfterFunc(ctx, func() { report.Close(); reply.Close() })
 	defer stop()
 	reader := bufio.NewReaderSize(report, 64<<10)
 	if err := report.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		return
 	}
+	var line []byte
+	var err error
+	for {
+		var part []byte
+		part, err = reader.ReadSlice('\n')
+		if len(line)+len(part) > 4<<20 {
+			return
+		}
+		line = append(line, part...)
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			break
+		}
+	}
+	var request struct {
+		Type     string `json:"t"`
+		Boundary Boundary
+	}
+	if err != nil || len(line) > 4<<20 || json.Unmarshal(line, &request) != nil {
+		return
+	}
+	if request.Type == "boundary" {
+		if boundary == nil || !time.Now().Before(request.Boundary.Deadline) {
+			return
+		}
+		ctx, cancel := context.WithDeadline(ctx, minTime(request.Boundary.Deadline, time.Now().Add(BoundaryHold)))
+		defer cancel()
+		boundary(ctx, request.Boundary)
+		_ = writeReply(reply, true)
+		return
+	}
 	var hello Message
-	if line, err := reader.ReadBytes('\n'); err != nil || json.Unmarshal(line, &hello) != nil {
+	if json.Unmarshal(line, &hello) != nil || claim == nil {
 		return
 	}
 	if hello.Type != Hello || hello.Version != Protocol || len(hello.Segments) == 0 {
@@ -227,6 +261,13 @@ func serve(ctx context.Context, report, reply *os.File, work string, claim Claim
 			return
 		}
 	}
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
 }
 
 func writeReply(conn *os.File, ok bool) error {

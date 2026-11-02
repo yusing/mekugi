@@ -33,7 +33,7 @@ func TestHookConfigCommandAdapter(t *testing.T) {
 				}
 			}
 			resources := []string{filepath.Join(directory, "guard's"), "", filepath.Join(directory, "tracker's")}
-			config, _, _, err := Config(helper, resources[0], resources[1], resources[2], Invocation{}, nil)
+			config, _, _, err := Config(helper, resources[0], resources[1], resources[2], "", Invocation{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -64,5 +64,37 @@ func TestHookConfigCommandAdapter(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCaptureHookFailureLeavesPatchesAvailable(t *testing.T) {
+	config, _, hash, err := Config(filepath.Join(t.TempDir(), "missing-helper"), "/guard", "", "", "/capture", Invocation{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Hooks struct {
+			PreToolUse []struct {
+				Matcher string
+				Hooks   []struct{ Command string }
+			}
+		}
+	}
+	if _, err := toml.Decode(config, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	groups := parsed.Hooks.PreToolUse
+	if len(groups) != 2 || groups[0].Matcher != "^Bash$" || groups[1].Matcher != "^apply_patch$" {
+		t.Fatalf("unexpected hook config: %s", config)
+	}
+	patch := guardHookTestEntry("auxiliary")
+	patch["matcher"] = groups[1].Matcher
+	patch["key"] = "auxiliary"
+	if err := Validate(guardHookTestResult(t, "/workspace", guardHookTestEntry(hash), patch), "/workspace", hash); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.CommandContext(t.Context(), "/bin/sh", "-c", groups[1].Hooks[0].Command)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("missing capture helper blocked a patch: %v %s", err, output)
 	}
 }

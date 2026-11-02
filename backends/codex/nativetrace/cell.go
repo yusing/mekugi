@@ -12,6 +12,7 @@ import (
 // Call contains decoded native invocation facts, not trace protocol payloads.
 // LocalEnvironment is true only for a supported local command environment.
 type Call struct {
+	ID               string
 	Tool, Input      string
 	Command          commandanalysis.Command
 	LocalEnvironment bool
@@ -28,9 +29,34 @@ func (c *Cell) Calls() []Call {
 	}
 	calls := make([]Call, 0, len(c.tools))
 	for _, tool := range c.tools {
-		calls = append(calls, Call{Tool: tool.Tool, Input: tool.input, Command: tool.command, LocalEnvironment: commandanalysis.LocalEnvironment(tool.environmentID), Session: tool.session})
+		calls = append(calls, Call{ID: tool.CallID, Tool: tool.Tool, Input: tool.input, Command: tool.command, LocalEnvironment: commandanalysis.LocalEnvironment(tool.environmentID), Session: tool.session})
 	}
 	return calls
+}
+
+// ReadTool admits a pre-tool hook only against its exact native thread, turn,
+// item and already admitted source. It does not depend on tool completion.
+func (t *Reader) ReadTool(thread, turn, item, callID, source string) (Call, bool) {
+	if t == nil || thread == "" || turn == "" || item == "" {
+		return Call{}, false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var result Call
+	found := false
+	for _, b := range t.readBundles() {
+		tool := b.calls[thread+"\x00"+item]
+		if tool == nil {
+			continue
+		}
+		cell := b.cells[thread+"\x00"+tool.cell]
+		if cell == nil || cell.turn != turn || cell.callID != callID || cell.source != sourceHash(source) || found {
+			return Call{}, false
+		}
+		result = Call{ID: tool.CallID, Tool: tool.Tool, Input: tool.input, Command: tool.command, LocalEnvironment: commandanalysis.LocalEnvironment(tool.environmentID), Session: tool.session}
+		found = true
+	}
+	return result, found
 }
 
 // PatchPending distinguishes an observed unfinished patch from an absent call.

@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+	"github.com/yusing/mekugi/backends/codex/shellhook"
+	"github.com/yusing/mekugi/modules/commandsegments/transport"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -55,6 +58,10 @@ type mchangesNestedCodexProvider struct {
 	workspace                 string
 	overlapProgram            string
 	overlapCell               string
+	codexArgs                 []string
+	observedCalls             []nativetrace.Call
+	laterProgram              string
+	processSession            int
 }
 
 func (p *mchangesNestedCodexProvider) ForwardExecution(
@@ -120,6 +127,11 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 			break
 		}
 		result := binding.DecodeExecutionResult("exec", item.Output)
+		if p.laterProgram != "" && p.waitCall == p.callID+"-overlap" && result.Terminal {
+			p.waitCall = p.callID + "-later"
+			program := strings.ReplaceAll(p.laterProgram, "SESSION", strconv.Itoa(p.processSession))
+			return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "custom_tool_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "exec", "status": "completed", "input": program}), nil)
+		}
 		if p.overlapCell != "" && p.waitCall == p.callID+"-overlap" && result.Terminal {
 			p.waitCall = "nested-overlap-wait"
 			return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": p.overlapCell, "yield_time_ms": 10000}))}), nil)
@@ -144,6 +156,11 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 				return nil, err
 			}
 			p.sawPending = true
+			if p.laterProgram != "" {
+				p.processSession = session
+				p.waitCall = p.callID + "-overlap"
+				return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "custom_tool_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "exec", "status": "completed", "input": p.overlapProgram}), nil)
+			}
 			p.processWait = true
 			p.waitCall = "nested-process-wait"
 			return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "write_stdin", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"session_id": session, "chars": "", "yield_time_ms": 10000}))}), nil)
@@ -161,7 +178,7 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 				}
 				p.sawPending = true
 			}
-			if p.overlapProgram != "" && p.overlapCell == "" {
+			if p.overlapProgram != "" && p.overlapCell == "" && p.laterProgram == "" {
 				if !strings.Contains(result.Text, "formatter-no-op") {
 					return nil, fmt.Errorf("formatter comparison did not complete before overlap: %s", result.Text)
 				}
@@ -178,6 +195,7 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 	if !p.resultSeen {
 		return nil, fmt.Errorf("Codex did not return the completed exec cell result: %.3000s", body)
 	}
+	p.observedCalls = p.trace.ReadCell(p.threadID, p.callID, p.program).Calls()
 	return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{
 		"type": "message", "id": p.callID + "-final", "role": "assistant", "status": "completed",
 		"content": []any{map[string]any{"type": "output_text", "text": p.finalMessage}},
@@ -615,6 +633,26 @@ func runMChangesNestedCodexCell(
 	setTestProxyStore(proxy, store)
 	proxy.nativeTrace = nativetrace.NewWithNotice(traceRoot, nil)
 	provider.trace = proxy.nativeTrace
+	boundaryServer, err := transport.Listen(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer boundaryServer.Close()
+	boundaryOwner := executionobservation.New(executionobservation.Config{Windows: proxy.execWindows, NativeTrace: proxy.nativeTrace, Changes: proxy.changeSource})
+	if err := boundaryServer.RegisterBoundary(boundaryOwner.ObserveNativeBoundary); err != nil {
+		t.Fatal(err)
+	}
+	helper, err := execTrackTestHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook, state, _, err := shellhook.Config(helper, "", "", "", filepath.Dir(boundaryServer.Endpoints().Requests), shellhook.Invocation{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.codexArgs) == 0 {
+		provider.codexArgs = []string{"-c", hook, "-c", state}
+	}
 	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy))
 	defer server.Close()
 	config := `model_providers.mchanges_fixture={name="mchanges_fixture",base_url=` +
@@ -627,6 +665,7 @@ func runMChangesNestedCodexCell(
 		"exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
 		"-C", workspace, "Exercise the supplied literal exec operations exactly once.",
 	)
+	command.Args = append(command.Args[:1], append(provider.codexArgs, command.Args[1:]...)...)
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
 	if err := command.Run(); err != nil {

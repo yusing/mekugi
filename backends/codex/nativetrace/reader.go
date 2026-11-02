@@ -61,6 +61,7 @@ func (e *traceFormatError) Error() string {
 // Its methods do not refresh the reader or execute tools.
 type Cell struct {
 	thread, callID string
+	turn           string
 	source         [32]byte
 	ended          bool
 	tools          []*tool
@@ -68,6 +69,7 @@ type Cell struct {
 
 type tool struct {
 	binding.ToolResult
+	cell          string
 	input         string
 	command       commandanalysis.Command
 	environmentID jsontext.Value
@@ -84,6 +86,7 @@ type event struct {
 	Version int    `json:"schema_version"`
 	Seq     uint64 `json:"seq"`
 	Thread  string `json:"thread_id"`
+	Turn    string `json:"codex_turn_id"`
 	Payload struct {
 		Type   string `json:"type"`
 		Cell   string `json:"runtime_cell_id"`
@@ -213,7 +216,7 @@ func (b *bundle) event(directory string, event event) error {
 		if len(b.cells) >= 4096 || b.cells[key] != nil {
 			return errors.New("native trace cell inventory unavailable")
 		}
-		b.cells[key] = &Cell{thread: event.Thread, callID: p.Call, source: sourceHash(p.Source)}
+		b.cells[key] = &Cell{thread: event.Thread, turn: event.Turn, callID: p.Call, source: sourceHash(p.Source)}
 	case "code_cell_ended":
 		if cell := b.cells[key]; cell != nil {
 			cell.ended = true
@@ -241,7 +244,7 @@ func (b *bundle) event(directory string, event event) error {
 		if err := readPayload(directory, p.Invocation, &invocation); err != nil {
 			return err
 		}
-		tool := &tool{CallID: p.Tool, Tool: invocation.Name, input: invocation.Payload.Input}
+		tool := &tool{CallID: p.Tool, cell: p.Requester.Cell, Tool: invocation.Name, input: invocation.Payload.Input}
 		if invocation.Namespace != "" && invocation.Namespace != "functions" {
 			tool.Tool = invocation.Namespace + "." + invocation.Name
 		}

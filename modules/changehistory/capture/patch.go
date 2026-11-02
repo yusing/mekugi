@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -37,6 +38,68 @@ type PatchFile struct {
 type nativePatchPath struct {
 	before string
 	after  string
+}
+
+// PatchTargets resolves the actual native input without reading before-state.
+func PatchTargets(input, workspace string) ([]string, error) {
+	paths, err := nativePatchPaths(input, workspace)
+	var targets []string
+	for _, path := range paths {
+		if path.before != "" {
+			targets = append(targets, path.before)
+		}
+		if path.after != "" && path.after != path.before {
+			targets = append(targets, path.after)
+		}
+	}
+	return targets, err
+}
+
+// PatchBoundary uses the same aggregate acquisition as overlapping writer cuts.
+func PatchBoundary(input, workspace string, files []File) (PatchObservation, error) {
+	paths, err := nativePatchPaths(input, workspace)
+	if err != nil {
+		return PatchObservation{}, err
+	}
+	byPath := make(map[string]File, len(files))
+	for _, file := range files {
+		byPath[file.Path] = file
+	}
+	budget := MaxContentBytes
+	read := func(path string) (string, bool, string) {
+		if file, found := byPath[path]; found {
+			if file.Error != "" {
+				return "", FilePresent(file), file.Error
+			}
+			if file.Kind == Absent || file.Kind == Text {
+				size := len(responses.MustMarshalJSON(file.Content))
+				if size > budget {
+					return "", FilePresent(file), "native patch baseline exceeds capture bound"
+				}
+				budget -= size
+				return file.Content, FilePresent(file), ""
+			}
+			return "", true, "native patch baseline is not text"
+		}
+		return "", false, "native patch baseline unavailable"
+	}
+	observation := PatchObservation{Input: input}
+	for _, path := range paths {
+		file := PatchFile{BeforePath: path.before, AfterPath: path.after}
+		target := path.before
+		if target == "" {
+			target = path.after
+		}
+		file.Before, file.Exists, file.Error = read(target)
+		if file.BeforePath == "" && file.Exists {
+			file.BeforePath = target
+		}
+		if path.before != "" && path.after != "" && path.before != path.after {
+			file.TargetBefore, file.TargetExists, file.TargetError = read(path.after)
+		}
+		observation.Files = append(observation.Files, file)
+	}
+	return observation, nil
 }
 
 // nativePatchPaths extracts only the path ownership declared by a complete

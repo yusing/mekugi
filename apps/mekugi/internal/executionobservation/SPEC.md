@@ -36,6 +36,8 @@ calls. Prewarm and execution-free requests never start acquisition; completed
 results remain reusable across continuation and resume.
 
 One invocation window registry joins command reports and capture observations.
+Synchronous native pre-tool observations bind actual patch inputs and overlapping
+writer endpoints to admitted windows through the same capture and history owners.
 Native shell operations use the same admission and completion workflow, retaining
 their original thread, namespace and workspace when the displayed session changes.
 Restoration reads durable facts without reviving windows or capturing baselines.

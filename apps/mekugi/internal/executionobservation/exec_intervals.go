@@ -181,6 +181,7 @@ func rebaseExecIntervals(observation *changecapture.Observation, intervals []exe
 	copy := *observation
 	copy.Files = slices.Clone(observation.Files)
 	for _, interval := range intervals {
+		copy.Excluded = append(slices.Clone(copy.Excluded), interval.before.ExecObservation.Excluded...)
 		for _, boundary := range interval.before.ExecObservation.Files {
 			for i, file := range copy.Files {
 				if file.Path != boundary.Path {
@@ -251,7 +252,7 @@ func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, observati
 	t.owners.Windows.state().mu.Unlock()
 	for _, cut := range candidates {
 		unlock := t.owners.Windows.lockIntervals([]string{cut.writer})
-		err := t.splitExecInterval(patchCall, boundaries, cut)
+		err := t.owners.splitExecInterval(t.ctx, t.directory, patchCall, boundaries, cut, false)
 		unlock()
 		if err != nil {
 			return err
@@ -260,15 +261,15 @@ func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, observati
 	return nil
 }
 
-func (t *mekugiResponseTransform) splitExecInterval(patchCall string, boundaries []changecapture.File, cut execIntervalCut) error {
-	t.owners.Windows.state().mu.Lock()
-	window := t.owners.Windows.find(cut.writer)
+func (p *Preparer) splitExecInterval(ctx context.Context, workspace, patchCall string, boundaries []changecapture.File, cut execIntervalCut, terminal bool) error {
+	p.Windows.state().mu.Lock()
+	window := p.Windows.find(cut.writer)
 	active := window != nil && window.closed.IsZero()
-	t.owners.Windows.state().mu.Unlock()
+	p.Windows.state().mu.Unlock()
 	if !active {
 		return nil
 	}
-	original, found, err := cut.scope.Store.LookupHostCall(t.ctx, t.directory, cut.writer)
+	original, found, err := cut.scope.Store.LookupHostCall(ctx, workspace, cut.writer)
 	if err != nil {
 		return err
 	}
@@ -276,7 +277,7 @@ func (t *mekugiResponseTransform) splitExecInterval(patchCall string, boundaries
 		return nil
 	}
 	cut.codeMode = original.ExecObservation.CodeMode
-	intervals, err := readExecIntervals(t.ctx, cut.scope, t.owners.Changes, t.directory, cut.writer, cut.codeMode)
+	intervals, err := readExecIntervals(ctx, cut.scope, p.Changes, workspace, cut.writer, cut.codeMode)
 	if err != nil {
 		return err
 	}
@@ -295,29 +296,34 @@ func (t *mekugiResponseTransform) splitExecInterval(patchCall string, boundaries
 		return nil
 	}
 	correlation := cut.writer + "\x00exec"
-	id, err := t.owners.Changes.Reserve(t.ctx, cut.scope, t.directory, original.ExecutingThread, correlation)
+	id, err := p.Changes.Reserve(ctx, cut.scope, workspace, original.ExecutingThread, correlation)
 	if err != nil {
 		return err
 	}
-	prefix := mekugiHistory{legacy: legacyMetadata(original), ToolName: nativeExecCommandToolName, Script: execObservationScript(*observation), Root: t.directory,
+	prefix := mekugiHistory{legacy: legacyMetadata(original), ToolName: nativeExecCommandToolName, Script: execObservationScript(*observation), Root: workspace,
 		ExecutingThread: original.ExecutingThread, Caller: original.Caller, Source: observation.SourceLabel(),
 		ChangeID: id, CorrelationID: correlation, Attempt: cut.number + 1, ReviewFiles: reviews,
 		ExecObservation: &changecapture.Observation{Files: files, CodeMode: cut.codeMode}}
-	if err := cut.scope.Store.Transaction(t.ctx, cut.scope.Writes, func(tx *history.Transaction) error {
+	if terminal {
+		for _, file := range files {
+			prefix.ExecObservation.Excluded = append(prefix.ExecObservation.Excluded, file.Path)
+		}
+	}
+	if err := cut.scope.Store.Transaction(ctx, cut.scope.Writes, func(tx *history.Transaction) error {
 		callID := execIntervalID(cut.writer, cut.codeMode, cut.number)
-		if err := publishObservation(tx, cut.scope, legacycall.Record{Version: 1, Workspace: t.directory, CallID: callID, History: retainedHistory(prefix)}); err != nil {
+		if err := publishObservation(tx, cut.scope, legacycall.Record{Version: 1, Workspace: workspace, CallID: callID, History: retainedHistory(prefix)}); err != nil {
 			return err
 		}
-		_, err := t.owners.Changes.Publish(tx, cut.scope, t.directory, map[string]changes.Publication{callID: {ChangeID: id, CorrelationID: correlation, Dependency: true}})
+		_, err := p.Changes.Publish(tx, cut.scope, workspace, map[string]changes.Publication{callID: {ChangeID: id, CorrelationID: correlation, Dependency: true}})
 		return err
 	}); err != nil {
 		return err
 	}
-	t.owners.Windows.state().mu.Lock()
-	if window := t.owners.Windows.find(patchCall); window != nil {
+	p.Windows.state().mu.Lock()
+	if window := p.Windows.find(patchCall); window != nil && !terminal {
 		window.cuts = append(window.cuts, cut)
 	}
-	t.owners.Windows.state().mu.Unlock()
+	p.Windows.state().mu.Unlock()
 	return nil
 }
 

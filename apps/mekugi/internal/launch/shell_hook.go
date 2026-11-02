@@ -14,7 +14,7 @@ import (
 
 // optionalTrackingHookArgs preserves caller hooks when shell guarding is off.
 // Tracking remains auxiliary and does not start a discovery process.
-func optionalTrackingHookArgs(args []string, helper, tracker string) ([]string, string, error) {
+func optionalTrackingHookArgs(args []string, helper, tracker, capture string) ([]string, string, error) {
 	index := slices.Index(args, "--")
 	if index < 0 {
 		index = len(args)
@@ -46,7 +46,7 @@ func optionalTrackingHookArgs(args []string, helper, tracker string) ([]string, 
 			}
 		}
 	}
-	config, state, hash, err := shellhook.Config(helper, "", "", tracker, prior, nil)
+	config, state, hash, err := shellhook.Config(helper, "", "", tracker, capture, prior, nil)
 	if err != nil {
 		return args, "", err
 	}

@@ -28,7 +28,7 @@ func TestHookConfigPreservesCallerConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config, state, hash, err := Config("/helper's path", "/guard", "/sudo", "/tracker", prior, []string{"caller:1:1", "file:0:0"})
+	config, state, hash, err := Config("/helper's path", "/guard", "/sudo", "/tracker", "", prior, []string{"caller:1:1", "file:0:0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestHookConfigRejectsUnrepresentableCallerValues(t *testing.T) {
 		{PreToolUse: []jsontext.Value{jsontext.Value(`{"hooks":null}`)}},
 		{State: map[string]jsontext.Value{"conflict": jsontext.Value(`false`)}},
 	} {
-		if _, _, _, err := Config("/helper", "/guard", "", "", prior, []string{"conflict"}); err == nil {
+		if _, _, _, err := Config("/helper", "/guard", "", "", "", prior, []string{"conflict"}); err == nil {
 			t.Fatal("accepted invalid caller hook configuration")
 		}
 	}

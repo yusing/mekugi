@@ -34,6 +34,9 @@ type Input struct {
 	Event         string `json:"hook_event_name"`
 	Tool          string `json:"tool_name"`
 	Item          string `json:"tool_use_id"`
+	Thread        string `json:"session_id"`
+	Turn          string `json:"turn_id"`
+	CWD           string `json:"cwd"`
 	Input         struct {
 		Command *string `json:"command"`
 	} `json:"tool_input"`
@@ -41,13 +44,17 @@ type Input struct {
 
 // Config uses the native session-layer hook and exact trust identity. It
 // neither changes user files nor grants sandbox permissions.
-func Config(helper, directory, sudoDirectory, tracker string, prior Invocation, disabled []string) (config, state, identityHash string, err error) {
+func Config(helper, directory, sudoDirectory, tracker, capture string, prior Invocation, disabled []string) (config, state, identityHash string, err error) {
 	// Hook runs carry only this description of what the hook does.
 	status := "Tracking shell segments"
 	if directory != "" || sudoDirectory != "" {
 		status = "Applying shell guard"
 	}
 	arguments := []string{helper, Flag, directory, sudoDirectory, tracker}
+	matcher := "^Bash$"
+	if capture != "" {
+		arguments = append(arguments, capture)
+	}
 	for i := range arguments {
 		arguments[i] = commandargs.Quote(arguments[i])
 	}
@@ -57,7 +64,7 @@ func Config(helper, directory, sudoDirectory, tracker string, prior Invocation, 
 	adapter := "if " + strings.Join(arguments, " ") + "; then :; else printf '%s\\n' 'mekugi: approval guard hook failed; command blocked' >&2; exit 2; fi"
 	command := "/bin/sh -c " + commandargs.Quote(adapter)
 	identity := map[string]any{
-		"event_name": "pre_tool_use", "matcher": "^Bash$",
+		"event_name": "pre_tool_use", "matcher": matcher,
 		"hooks": []map[string]any{{"type": "command", "command": command, "timeout": 5, "async": false, "statusMessage": status}},
 	}
 	data, err := json.Marshal(identity, json.Deterministic(true))
@@ -66,7 +73,7 @@ func Config(helper, directory, sudoDirectory, tracker string, prior Invocation, 
 	}
 	hash := sha256.Sum256(data)
 	identityHash = "sha256:" + hex.EncodeToString(hash[:])
-	group, err := json.Marshal(map[string]any{"matcher": "^Bash$", "hooks": identity["hooks"]})
+	group, err := json.Marshal(map[string]any{"matcher": matcher, "hooks": identity["hooks"]})
 	if err != nil {
 		return "", "", "", err
 	}
@@ -94,6 +101,29 @@ func Config(helper, directory, sudoDirectory, tracker string, prior Invocation, 
 	if err != nil {
 		return "", "", "", err
 	}
+	if capture != "" {
+		// Patch observation has no approval role. Even helper launch failure
+		// must leave native patch execution available.
+		auxiliary := map[string]any{
+			"event_name": "pre_tool_use", "matcher": "^apply_patch$",
+			"hooks": []map[string]any{{"type": "command", "command": "/bin/sh -c " + commandargs.Quote(strings.Join(arguments, " ")+" || :"), "timeout": 5, "async": false, "statusMessage": "Observing patch targets"}},
+		}
+		data, err := json.Marshal(auxiliary, json.Deterministic(true))
+		if err != nil {
+			return "", "", "", err
+		}
+		hash := sha256.Sum256(data)
+		key := fmt.Sprintf("/<session-flags>/config.toml:pre_tool_use:%d:0", len(groups))
+		states[key], err = json.Marshal(map[string]any{"trusted_hash": "sha256:" + hex.EncodeToString(hash[:]), "enabled": true})
+		if err != nil {
+			return "", "", "", err
+		}
+		group, err := json.Marshal(map[string]any{"matcher": auxiliary["matcher"], "hooks": auxiliary["hooks"]})
+		if err != nil {
+			return "", "", "", err
+		}
+		groups = append(groups, group)
+	}
 	groupJSON, err := json.Marshal(&groups)
 	if err != nil {
 		return "", "", "", err
@@ -117,7 +147,7 @@ func Config(helper, directory, sudoDirectory, tracker string, prior Invocation, 
 // Rewrite only instruments the command. Approval occurs in the shell's helper
 // when the command is actually reached, never for an unexecuted branch.
 func Rewrite(request Input) (any, error) {
-	if request.Event != "PreToolUse" || request.Tool != "Bash" || request.Input.Command == nil {
+	if request.Event != "PreToolUse" || (request.Tool != "Bash" && request.Tool != "apply_patch") || request.Input.Command == nil {
 		return nil, fmt.Errorf("unexpected hook input")
 	}
 	if !filepath.IsAbs(request.Helper) {
@@ -127,6 +157,9 @@ func Rewrite(request Input) (any, error) {
 		if path != "" && !filepath.IsAbs(path) {
 			return nil, fmt.Errorf("hook resource must be absolute")
 		}
+	}
+	if request.Tool == "apply_patch" {
+		return map[string]any{}, nil
 	}
 	changed := *request.Input.Command
 	if request.Directory != "" || request.SudoDirectory != "" {

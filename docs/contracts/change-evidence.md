@@ -87,10 +87,12 @@ the temporary parent. Dry-run, help, version and failed invocations establish no
 creation. Recorded creation followed by deletion cancels in the net view.
 
 Patches within one JavaScript `exec` cell share a pre-cell/post-cell window.
-Literal complete inputs establish baselines before execution; host tracing
-distinguishes repeated literal calls without evaluating JavaScript or learning a
-before-state afterward. Dynamic patches lacking pre-dispatch targets are outside
-recorded coverage, not no-ops. Overlapping move endpoints remain separate endpoint
+Literal complete inputs establish baselines before execution. A synchronous native
+pre-tool hook can also acquire actual variable-built patch arguments and their
+baselines, correlated to the admitted thread, turn, cell and tool identity.
+Host tracing distinguishes repeated calls without evaluating JavaScript or learning
+a before-state afterward. Known actual patch targets without a witnessed baseline
+retain incomplete evidence. Overlapping move endpoints remain separate endpoint
 differences rather than invented intermediate renames. Completed patches finalize
 independently of sibling commands still running.
 
@@ -155,10 +157,18 @@ open named writer, capture retains separate writer-before-edit, edit, and
 writer-after-edit intervals. Each interval keeps its originating operation. Writer intervals remain
 pending until that writer's terminal result; the intervening edit can complete independently.
 Unavailable boundaries retain incomplete evidence rather than an invented chain.
+A synchronous native pre-tool boundary can close a terminated overlapping writer
+before the next named writer starts. This preserves both operations even when the
+later writer restores earlier bytes. Acquisition shares one 500 ms deadline from
+helper entry through input decoding, transport, correlation and reads. Host/helper
+process startup is excluded from this bound. Capture retains an aggregate 8 MiB
+text budget and the existing encoded-observation bound. It reads only shared named writer paths
+and actual patch targets. Missing or exhausted acquisition remains partial and
+never rejects command execution or replaces approval decisions.
 Known text endpoints remain recoverable with `mchanges ID --history PATH` even
 when their preceding boundary is unavailable; those rows establish neither
 authored changes nor complete counts, composition, apply or revert evidence.
-Writes restored before return have no recoverable intermediate diff; repeated-write
+Writes restored before return without a witnessed boundary have no recoverable intermediate diff; repeated-write
 uncertainty remains diagnostic. Observation neither instruments nor reruns the
 process to reconstruct those bytes.
 
