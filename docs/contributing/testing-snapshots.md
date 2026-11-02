@@ -25,8 +25,10 @@ tests. `SNAPSHOT` filters test names within selected packages. Explicit package 
   sequences. Include a following plain row to detect style leaks. Theme-sensitive cases cover
   terminal/dark/light; code fills also cover a reported background.
 - A missing/changed fixture fails and writes a sibling `.txt.new` candidate plus a unified diff;
-  the baseline stays unchanged. Review the candidate, then move it over the fixture or run the
-  selected update recipe. Omitting `SNAPSHOT` updates all matching cases.
+  the baseline stays unchanged. Review the candidate against the requested behavior and the
+  owner's design guide, as its user would see it. Accept it only for an intended change by moving
+  it over the fixture or running the selected update recipe; a difference outside the intended
+  change is a regression to fix in the code. Omitting `SNAPSHOT` updates all matching cases.
 - Updates require `MEKUGI_UPDATE_UI_SNAPSHOTS=1`; check recipes clear it. A pass or explicit update
   removes stale candidates. Rerun checks after accepting a baseline.
 - Keep copy/state/bounds/interaction/PTY checks separate. Git attributes exempt only snapshot text
