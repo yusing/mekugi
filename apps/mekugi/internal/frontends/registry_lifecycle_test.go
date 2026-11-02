@@ -30,7 +30,7 @@ func TestFrontendRegistryCleanupPreservesPeerInvocation(t *testing.T) {
 	if _, err := testHistory().Open(t.Context(), replay); err != nil {
 		t.Fatal(err)
 	}
-	config := Config{Commands: testCommands(), RuntimeDirectory: filepath.Join(directory, "runtime"), ReplayDirectory: replay}
+	config := Config{Commands: testCommands(), ReplayDirectory: replay}
 	first, err := New(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +64,7 @@ func TestFrontendRegistryCleanupPreservesPeerInvocation(t *testing.T) {
 	}
 	t.Setenv("CODEX_THREAD_ID", uniqueTestThread("peer"))
 	var stdout, stderr bytes.Buffer
-	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), peer.Frontends["mcat"], []string{path}, nil, &stdout, &stderr)
+	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), filepath.Join(peer.FrontendDirectory, "mcat"), []string{path}, nil, &stdout, &stderr)
 	if !handled || status != 0 || stdout.String() != "peer survives\n" || stderr.Len() != 0 {
 		t.Fatalf("peer after cleanup: handled=%t status=%d stdout=%q stderr=%q", handled, status, &stdout, &stderr)
 	}

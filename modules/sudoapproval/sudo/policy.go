@@ -75,3 +75,6 @@ func applicable(args []string, password bool) bool {
 
 // ValidPassword accepts one askpass answer without line framing characters.
 func ValidPassword(password string) bool { return !strings.ContainsAny(password, "\r\n") }
+
+// Service identifies the composed guard policy. Grants belong to the UI attachment.
+type Service struct{}

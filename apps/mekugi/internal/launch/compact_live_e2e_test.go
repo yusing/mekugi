@@ -91,7 +91,7 @@ func TestCompactReloadLiveOpenAI(t *testing.T) {
 			}
 		}
 	}
-	environment, err = frontendShellEnvironment(environment, filepath.Dir(registry.Frontends["mcat"]), "", nil, segmenttransport.Endpoints{})
+	environment, err = frontendShellEnvironment(environment, filepath.Dir(filepath.Join(registry.FrontendDirectory, "mcat")), "", nil, segmenttransport.Endpoints{})
 	if err != nil {
 		t.Fatal(err)
 	}

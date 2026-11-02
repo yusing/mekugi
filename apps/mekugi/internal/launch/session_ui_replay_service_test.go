@@ -8,7 +8,6 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/module"
-	"github.com/yusing/mekugi/contracts/replaytiming"
 	"github.com/yusing/mekugi/modules/sessionreplay"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -16,11 +15,11 @@ import (
 
 func replayTestService(t *testing.T, diagnostics *transportcapture.Service) *playback.Service {
 	t.Helper()
-	slots := module.Slots{}
+	deps := sessionreplay.Deps{History: testHistory()}
 	if diagnostics != nil {
-		slots.ReplayTiming = []replaytiming.Reader{diagnostics.ReplayTiming}
+		deps.Timing = diagnostics.ReplayTiming
 	}
-	service, err := sessionreplay.Module.New(sessionreplay.Deps{History: testHistory()}, slots)
+	service, err := sessionreplay.Module.New(deps, module.Slots{})
 	if err != nil {
 		t.Fatal(err)
 	}

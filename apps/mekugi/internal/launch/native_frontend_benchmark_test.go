@@ -18,7 +18,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	if _, err := openMekugiReplayStore(replay); err != nil {
 		b.Fatal(err)
 	}
-	registry, err := frontends.New(b.Context(), frontends.Config{Commands: testCommands(), Guidance: testGuidance(), RuntimeDirectory: filepath.Join(directory, "runtime"), ReplayDirectory: replay})
+	registry, err := frontends.New(b.Context(), frontends.Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: replay})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
-				cmd := exec.CommandContext(b.Context(), registry.Frontends[tc.tool], tc.args...)
+				cmd := exec.CommandContext(b.Context(), filepath.Join(registry.FrontendDirectory, tc.tool), tc.args...)
 				cmd.Env = append(os.Environ(), routerTestWorkerEnvironment+"=1", "CODEX_THREAD_ID=")
 				output, err := cmd.CombinedOutput()
 				if tc.incomplete && cmd.ProcessState != nil && cmd.ProcessState.ExitCode() == 1 && strings.Contains(string(output), "next_call: mread ") {
@@ -91,7 +91,7 @@ func BenchmarkNativeSymbolFrontend(b *testing.B) {
 	if _, err := openMekugiReplayStore(replay); err != nil {
 		b.Fatal(err)
 	}
-	registry, err := frontends.New(b.Context(), frontends.Config{Commands: testCommands(), Guidance: testGuidance(), RuntimeDirectory: filepath.Join(directory, "runtime"), ReplayDirectory: replay})
+	registry, err := frontends.New(b.Context(), frontends.Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: replay})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func BenchmarkNativeSymbolFrontend(b *testing.B) {
 				args = append(args, "refs", "apps/mekugi/internal/requestexecution/naming_inference.go", "NamingCompletion")
 			}
 			for b.Loop() {
-				cmd := exec.CommandContext(b.Context(), registry.Frontends["msymbol"], args...)
+				cmd := exec.CommandContext(b.Context(), filepath.Join(registry.FrontendDirectory, "msymbol"), args...)
 				cmd.Dir = root
 				cmd.Env = append(os.Environ(), routerTestWorkerEnvironment+"=1", "CODEX_THREAD_ID=")
 				output, err := cmd.CombinedOutput()

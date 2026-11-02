@@ -2,25 +2,15 @@ package binding
 
 import (
 	"testing"
-
-	"github.com/yusing/mekugi/contracts/approval"
 )
-
-type approvalTestGrants map[approval.Command]bool
-
-func (g approvalTestGrants) Allows(command approval.Command) bool { return g[command] }
-func (g approvalTestGrants) Allow(command approval.Command)       { g[command] = true }
 
 func TestShellApprovalRegistry(t *testing.T) {
 	var registry Registry
 	if len(registry.RegisteredGuards()) != 0 {
 		t.Fatal("empty registry enabled a guard")
 	}
-	factory := func() CommandGrants { return make(approvalTestGrants) }
 	for _, invalid := range []ShellApproval{
-		{Kind: "unknown", NewSession: factory},
-		{Kind: RemoteWrite},
-		{Kind: Sudo},
+		{Kind: "unknown"},
 	} {
 		if err := registry.ShellApproval(invalid); err == nil {
 			t.Fatalf("accepted invalid registration: %+v", invalid)
@@ -30,7 +20,7 @@ func TestShellApprovalRegistry(t *testing.T) {
 		t.Fatal("rejected registrations changed the registry")
 	}
 	for _, kind := range []ShellGuardKind{RemoteWrite, Sudo} {
-		guard := ShellApproval{Kind: kind, NewSession: factory}
+		guard := ShellApproval{Kind: kind}
 		if err := registry.ShellApproval(guard); err != nil {
 			t.Fatal(err)
 		}
@@ -43,7 +33,7 @@ func TestShellApprovalRegistry(t *testing.T) {
 		t.Fatalf("registered guards = %+v", guards)
 	}
 	guards[0] = ShellApproval{Kind: "changed"}
-	if got := registry.RegisteredGuards(); got[0].Kind != RemoteWrite || got[0].NewSession == nil {
+	if got := registry.RegisteredGuards(); got[0].Kind != RemoteWrite {
 		t.Fatal("caller mutated retained registrations")
 	}
 }

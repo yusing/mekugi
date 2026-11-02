@@ -28,7 +28,7 @@ func TestChildReplySummaryGuidanceInvocation(t *testing.T) {
 		}
 		defer runtime.Close(t.Context())
 		dir := t.TempDir()
-		registry, err := frontends.New(t.Context(), frontends.Config{Commands: runtime.Commands, Guidance: runtime.Guidance, RuntimeDirectory: filepath.Join(dir, "runtime"), ReplayDirectory: filepath.Join(dir, "replay")})
+		registry, err := frontends.New(t.Context(), frontends.Config{Commands: runtime.Commands, Guidance: runtime.Guidance, ReplayDirectory: filepath.Join(dir, "replay")})
 		if err != nil {
 			t.Fatal(err)
 		}

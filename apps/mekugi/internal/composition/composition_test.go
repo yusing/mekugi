@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/module"
@@ -100,7 +99,6 @@ func TestCompositionFreezesFrontendDeclarations(t *testing.T) {
 }
 
 func TestCompositionValidatesBeforeConstruction(t *testing.T) {
-	unavailable := capability.Mechanism("not-implemented")
 	for _, tt := range []struct {
 		name        string
 		descriptors []testDescriptor
@@ -121,11 +119,6 @@ func TestCompositionValidatesBeforeConstruction(t *testing.T) {
 			d.Bindings.Frontends = true
 			return d
 		}()}, "executable contributions and Codex frontend connection differ"},
-		{"capability", []testDescriptor{func() testDescriptor {
-			d := descriptor("required")
-			d.Bindings.Requires = []capability.Requirement{{Mechanism: unavailable, Required: true}}
-			return d
-		}()}, "required not-implemented unavailable"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var c Composition
@@ -150,7 +143,6 @@ func TestCompositionZeroAndLeaveOneOutContributions(t *testing.T) {
 		t.Run(omit, func(t *testing.T) {
 			var c Composition
 			hostDescriptor := descriptor("host")
-			hostDescriptor.Bindings.Requires = []capability.Requirement{{Mechanism: "optional-observation"}}
 			c.Add(hostDescriptor, emptyDeps)
 			var want []command.Contribution
 			for _, name := range []string{"first", "second"} {
@@ -167,9 +159,6 @@ func TestCompositionZeroAndLeaveOneOutContributions(t *testing.T) {
 			}
 			if !slices.EqualFunc(runtime.Commands, want, func(a, b command.Contribution) bool { return a.Spec == b.Spec }) {
 				t.Fatalf("runtime=%v want=%v", runtime.Commands, want)
-			}
-			if len(runtime.Gaps) != 1 || runtime.Gaps[0].Module != "host" || runtime.Gaps[0].Result.State != capability.Unsupported {
-				t.Fatalf("optional gap=%v", runtime.Gaps)
 			}
 			if err := runtime.Close(t.Context()); err != nil {
 				t.Fatal(err)

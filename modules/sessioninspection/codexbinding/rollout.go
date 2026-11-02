@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -20,7 +19,7 @@ import (
 
 type Bindings = binding.Bindings[*query.Service]
 
-var Codex = Bindings{Requires: []capability.Requirement{{Mechanism: capability.Rollout, Required: true}}, Rollout: bindRollout}
+var Codex = Bindings{Rollout: bindRollout}
 
 func bindRollout(service *query.Service, source binding.RolloutSource) error {
 	read := source.Inspect

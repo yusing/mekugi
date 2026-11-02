@@ -168,7 +168,7 @@ existing owners; projection neither rewrites nor reopens them.
 ## Failure
 
 Malformed or unsupported item and attachment shapes pass through unchanged.
-Unavailable required binding capability rejects module activation. Indexed text
+Missing or invalid required input-projection registration rejects module activation. Indexed text
 is bounded to 256 KiB; this is not a total-heap or zero-allocation guarantee.
 
 ## Acceptance

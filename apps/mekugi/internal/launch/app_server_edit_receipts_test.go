@@ -123,7 +123,7 @@ func TestUISnapshotAppServerGitDiagnosticReceipt(t *testing.T) {
 			if target.Block != activityui.EditNavigationSnippet || target.Path != "" {
 				t.Fatalf("diagnostic row lost operation navigation: %+v", target)
 			}
-			pages, selected := activityEditPages(&u.attached, u.shell, u.activity, v, target.Run, target.Path)
+			pages, selected := activityEditPages(&u.attached, u.shell, u.reviewSource, v, target.Run, target.Path)
 			if len(pages) != len(files) || selected != pages[0].ID || !strings.Contains(pages[19].Code, "+imported") {
 				t.Fatalf("diagnostic details lost retained files: %+v", pages)
 			}
@@ -201,7 +201,7 @@ func TestUISnapshotAppServerTemporaryCaptureWithoutWriterLabel(t *testing.T) {
 					if target.Block != activityui.EditNavigationSnippet || target.Path != "" || target.Run == 0 {
 						t.Fatalf("omission lost retained capture navigation: %+v", target)
 					}
-					pages, selected := activityEditPages(&u.attached, u.shell, u.activity, v, target.Run, target.Path)
+					pages, selected := activityEditPages(&u.attached, u.shell, u.reviewSource, v, target.Run, target.Path)
 					if len(pages) != len(files) || selected != pages[0].ID || pages[200].Path != "/tmp/worktree/file199.go" || !strings.Contains(pages[200].Code, "+created") {
 						t.Fatalf("omitted files lost durable pages: %d pages, selected %q", len(pages), selected)
 					}

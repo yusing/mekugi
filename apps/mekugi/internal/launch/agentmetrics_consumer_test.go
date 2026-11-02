@@ -67,7 +67,7 @@ func TestAgentMetricsReaderEvidenceFailurePreservesExecution(t *testing.T) {
 					}
 				}
 				var stdout, stderr bytes.Buffer
-				handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, t.Context(), registry.Frontends["inspect_file"], []string{path}, nil, &stdout, &stderr)
+				handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, t.Context(), filepath.Join(registry.FrontendDirectory, "inspect_file"), []string{path}, nil, &stdout, &stderr)
 				if !handled || calls != 1 || status != original.ExitCode || stdout.String() != original.Stdout {
 					t.Fatalf("handled=%t calls=%d status=%d original=%+v stdout=%q stderr=%q", handled, calls, status, original, stdout.String(), stderr.String())
 				}

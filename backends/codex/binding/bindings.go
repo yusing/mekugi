@@ -1,9 +1,6 @@
 package binding
 
 import (
-	"slices"
-
-	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
 )
@@ -11,7 +8,6 @@ import (
 // Bindings declares existing Codex connections. Factories receive the constructed
 // service during registration; reference collection never invokes them.
 type Bindings[S any] struct {
-	Requires        []capability.Requirement
 	Observation     func(S) Observation
 	Frontends       bool // Exposes the descriptor's command contributions.
 	Rollout         func(S, RolloutSource) error
@@ -69,19 +65,19 @@ func (b Bindings[S]) Register(r Registrar, service S, commands []command.Definit
 }
 
 func (b Bindings[S]) Reference() module.BindingReference {
-	r := module.BindingReference{Requires: slices.Clone(b.Requires)}
+	r := module.BindingReference{}
 	for _, connection := range []struct {
-		mechanism capability.Mechanism
+		mechanism string
 		declared  bool
 	}{
-		{capability.ExecutableFrontend, b.Frontends},
-		{capability.Rollout, b.Rollout != nil},
-		{capability.InputProjection, b.InputProjection != nil},
-		{capability.GuidanceProjection, b.Guidance != nil},
-		{capability.ThreadNaming, b.SessionNaming != nil},
-		{capability.ShellApproval, b.ShellApproval != nil},
-		{capability.Observation, b.Observation != nil},
-		{capability.MCPTools, b.MCP != nil},
+		{"executable-frontend", b.Frontends},
+		{"rollout", b.Rollout != nil},
+		{"input-projection", b.InputProjection != nil},
+		{"guidance-projection", b.Guidance != nil},
+		{"thread-naming", b.SessionNaming != nil},
+		{"shell-approval", b.ShellApproval != nil},
+		{"observation", b.Observation != nil},
+		{"mcp-tools", b.MCP != nil},
 	} {
 		if connection.declared {
 			r.Mechanisms = append(r.Mechanisms, connection.mechanism)

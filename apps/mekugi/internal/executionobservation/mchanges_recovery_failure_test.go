@@ -53,7 +53,7 @@ func TestMChangesRecoveryPublicationFailurePreservesOutput(t *testing.T) {
 			}
 			run := func(args []string) (string, string, int) {
 				var out, diag bytes.Buffer
-				handled, status := runToolPluginWorkerInHostProcess(testHistory(), faultRecovery, testCommands(), t.Context(), f.registry.Frontends["mchanges"], args, nil, &out, &diag)
+				handled, status := runToolPluginWorkerInHostProcess(testHistory(), faultRecovery, testCommands(), t.Context(), filepath.Join(f.registry.FrontendDirectory, "mchanges"), args, nil, &out, &diag)
 				if !handled {
 					t.Fatal("worker not recognized")
 				}

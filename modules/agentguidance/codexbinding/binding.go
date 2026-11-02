@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/modules/agentguidance/internal/policy"
 )
@@ -12,7 +11,6 @@ import (
 type Bindings = binding.Bindings[*policy.Service]
 
 var Codex = Bindings{
-	Requires:  []capability.Requirement{{Mechanism: capability.GuidanceProjection, Required: true}, {Mechanism: capability.ExecutableFrontend, Required: true}},
 	Frontends: true,
 	Guidance: func(service *policy.Service) binding.Guidance {
 		return binding.Guidance{

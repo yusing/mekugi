@@ -8,14 +8,12 @@ import (
 
 	"github.com/yusing/mekugi/contracts/presentation"
 
-	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/diagnosticsection"
 	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
-	"github.com/yusing/mekugi/contracts/replaytiming"
 	"github.com/yusing/mekugi/contracts/scope"
 )
 
@@ -24,19 +22,12 @@ func TestDescriptorReference(t *testing.T) {
 		ID: "example", Summary: "Declared metadata", Requires: []ID{"dependency"},
 		Lifetime: Invocation, Resources: []string{"retained store"},
 		HostsGuidance: true, HostsRecords: true, HostsReferences: true,
-		HostsInspection: true, HostsDiagnosticSections: true, HostsReplayTiming: true,
-		HostsActivityDetails: true,
-		New:                  func(struct{}, Slots) (struct{}, error) { panic("New executed") },
-		Start:                func(context.Context, struct{}) error { panic("Start executed") },
-		Stop:                 func(context.Context, struct{}) error { panic("Stop executed") },
+		HostsInspection: true, HostsDiagnosticSections: true,
+		New:   func(struct{}, Slots) (struct{}, error) { panic("New executed") },
+		Start: func(context.Context, struct{}) error { panic("Start executed") },
+		Stop:  func(context.Context, struct{}) error { panic("Stop executed") },
 		Contributes: Contributions[struct{}]{
 			Presentation: []presentation.Status{{ID: "example.status", Placements: []presentation.Placement{presentation.ComposerCaption}, Text: func(presentation.Thread) string { panic("status projection executed") }}},
-			ActivityDetails: []activitydetail.Definition[struct{}]{{
-				Name: "detail",
-				Resolve: func(struct{}, *scope.Store, activitydetail.Request) activitydetail.Result {
-					panic("ActivityDetails.Resolve executed")
-				},
-			}},
 			Commands: []command.Definition[struct{}]{
 				{Name: "reader", Description: "Read source",
 					Run: func(struct{}, context.Context, command.Request) (command.Output, error) { panic("Run executed") }},
@@ -75,18 +66,13 @@ func TestDescriptorReference(t *testing.T) {
 					panic("ReadSnapshot executed")
 				},
 			}},
-			ReplayTiming: []replaytiming.Definition[struct{}]{{
-				Read: func(struct{}, context.Context, string, map[string]bool, func(replaytiming.Interval) error) error {
-					panic("Read executed")
-				},
-			}},
 		},
 	}
 	want := Reference{
 		ID: "example", Summary: "Declared metadata", Requires: []ID{"dependency"},
 		Lifetime: Invocation, Resources: []string{"retained store"},
-		Contributes: []string{"commands", "guidance", "record-kinds", "references", "activity-details", "inspection", "diagnostic-sections", "replay-timing", "presentation"},
-		Hosts:       []string{"guidance", "record-kinds", "references", "activity-details", "inspection", "diagnostic-sections", "replay-timing"},
+		Contributes: []string{"commands", "guidance", "record-kinds", "references", "inspection", "diagnostic-sections", "presentation"},
+		Hosts:       []string{"guidance", "record-kinds", "references", "inspection", "diagnostic-sections"},
 		Commands:    []string{"reader", "writer"}, Records: []string{"changes", "cursor", "output"}, References: []string{"changes"},
 	}
 	got := descriptor.Reference()
@@ -122,18 +108,6 @@ func TestDescriptorReferenceSlotsAreIndependent(t *testing.T) {
 		t.Fatalf("Reference() = %+v, want %+v", got, want)
 	}
 
-	descriptor = Descriptor[struct{}, struct{}, NoBindings, NoViews]{HostsActivityDetails: true}
-	want = Reference{Hosts: []string{"activity-details"}}
-	if got := descriptor.Reference(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("host-only Reference() = %+v, want %+v", got, want)
-	}
-	descriptor = Descriptor[struct{}, struct{}, NoBindings, NoViews]{
-		Contributes: Contributions[struct{}]{ActivityDetails: []activitydetail.Definition[struct{}]{{Name: "detail"}}},
-	}
-	want = Reference{Contributes: []string{"activity-details"}}
-	if got := descriptor.Reference(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("contributor-only Reference() = %+v, want %+v", got, want)
-	}
 }
 
 func TestEmptyReferences(t *testing.T) {

@@ -1,8 +1,6 @@
 // Package activitydetail defines optional renderer-neutral Activity detail pages.
 package activitydetail
 
-import "github.com/yusing/mekugi/contracts/scope"
-
 type Operation struct {
 	Thread, Item string
 }
@@ -20,14 +18,4 @@ type Page struct {
 type Result struct {
 	Pages    []Page
 	Selected string
-}
-
-type Provider struct {
-	Name    string
-	Resolve func(*scope.Store, Request) Result
-}
-
-type Definition[S any] struct {
-	Name    string
-	Resolve func(S, *scope.Store, Request) Result
 }

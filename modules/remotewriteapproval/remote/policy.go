@@ -421,3 +421,6 @@ func jjWrites(args []string) bool {
 	}
 	return !slices.Contains(jjCommands, words[0])
 }
+
+// Service identifies the composed guard policy. Grants belong to the UI attachment.
+type Service struct{}

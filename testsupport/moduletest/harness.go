@@ -10,7 +10,6 @@ import (
 	"github.com/yusing/mekugi/contracts/inspection"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
 )
@@ -20,17 +19,6 @@ type Scripted struct {
 	ReplaySource         binding.RolloutSource
 	RolloutRegistrations int
 	binding.Registry
-	Capabilities map[capability.Mechanism]capability.Result
-}
-
-func (s *Scripted) Capability(mechanism capability.Mechanism) capability.Result {
-	if result, ok := s.Capabilities[mechanism]; ok {
-		return result
-	}
-	if mechanism == capability.MCPTools || mechanism == capability.Observation || mechanism == capability.Rollout || mechanism == capability.ExecutableFrontend || mechanism == capability.InputProjection || mechanism == capability.GuidanceProjection || mechanism == capability.ThreadNaming || mechanism == capability.ShellApproval {
-		return capability.Result{State: capability.Available, Reason: "scripted binding registration"}
-	}
-	return capability.Result{State: capability.Unknown, Reason: "not scripted"}
 }
 
 // New uses the caller's real dependencies, including temporary-storage owners.
@@ -40,12 +28,6 @@ func New[D, S, V any, B interface {
 }](t *testing.T, descriptor module.Descriptor[D, S, B, V], deps D, slots module.Slots, script *Scripted) S {
 	t.Helper()
 	backend, _ := any(descriptor.Bindings).(binding.Bindings[S])
-	for _, requirement := range backend.Requires {
-		result := script.Capability(requirement.Mechanism)
-		if requirement.Required && result.State != capability.Available {
-			t.Fatalf("%s: %s unavailable: %s", descriptor.ID, requirement.Mechanism, result.Reason)
-		}
-	}
 	service, err := descriptor.New(deps, slots)
 	if err != nil {
 		t.Fatal(err)

@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -27,13 +28,10 @@ func testComposition(t *testing.T) *composition.Runtime {
 
 func TestCompositionFrontendCatalog(t *testing.T) {
 	runtime := testComposition(t)
-	if len(runtime.Gaps) != 0 {
-		t.Fatalf("composed capability gaps: %v", runtime.Gaps)
-	}
 	directory := t.TempDir()
 	registry, err := frontends.New(t.Context(), frontends.Config{
 		Commands: runtime.Commands, Guidance: runtime.Guidance,
-		RuntimeDirectory: filepath.Join(directory, "runtime"), ReplayDirectory: filepath.Join(directory, "replay"),
+		ReplayDirectory: filepath.Join(directory, "replay"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +42,12 @@ func TestCompositionFrontendCatalog(t *testing.T) {
 		}
 	})
 	var names []string
-	for name := range registry.Frontends {
+	entries, err := os.ReadDir(registry.FrontendDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
 		names = append(names, name)
 		if strings.Count(registry.FrontendGuidance.Descriptions, "<tool name=\""+name+"\">") != 1 {
 			t.Fatalf("%s missing or repeated in authenticated guidance", name)

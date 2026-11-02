@@ -11,8 +11,7 @@ import (
 var Module = module.Descriptor[Deps, *feed.Service, module.NoBindings, terminalui.RosterDefinition[*terminalview.View]]{
 	ID: "activity", Summary: "Own host-operation feeds, roster derivation and retained output",
 	Lifetime: module.AttachedSession, New: newService,
-	HostsActivityDetails: true,
-	Views:                terminalui.RosterDefinition[*terminalview.View]{Name: "activity", Label: "Agents", New: terminalview.NewView},
+	Views: terminalui.RosterDefinition[*terminalview.View]{Name: "activity", Label: "Agents", New: terminalview.NewView},
 	// Historical display snapshots retain ordinary expiry without live native waits.
 	// Source: modules/activity/waittargets/record.go@[bd4147b31^] Record.
 	Contributes: module.Contributions[*feed.Service]{RecordKinds: []recordkind.Spec{{ID: "wait", Match: recordkind.HashedName("wait-", ".json")}}},

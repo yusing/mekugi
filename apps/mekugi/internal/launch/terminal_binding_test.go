@@ -24,7 +24,7 @@ func terminalTest(main *appServerUI) *terminalUI {
 }
 
 func (u *terminalUI) openOutput(view *activityui.View, snippet activityui.Snippet) bool {
-	return openOutput(&u.main.attached, u.main.shell, &u.main.detailFiles, u.main.activity, u.Attachment, view, snippet)
+	return openOutput(&u.main.attached, u.main.shell, &u.main.detailFiles, u.main.reviewSource, u.Attachment, view, snippet)
 }
 func (u *terminalUI) openBlocks(view *activityui.View, pages []activityui.Block) {
 	openBlocks(&u.main.attached, u.main.shell, &u.main.detailFiles, u.Attachment, view, pages)
@@ -36,7 +36,7 @@ func (u *terminalUI) outputIntent(intent terminalsession.DialogIntent) {
 	outputIntent(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.questions, &u.main.approvals, u.main.clock, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, &u.main.restoring, &u.main.side, &u.main.statusPanel, &u.main.resumePicker, &u.main.ownedImages, u.main.skillEnvironment, u.main.ctx, &u.main.detailFiles, u.Attachment, intent)
 }
 func (u *terminalUI) openActivityEdit(view *activityui.View, seq uint64, path string) bool {
-	return openActivityEdit(&u.main.attached, u.main.shell, &u.main.detailFiles, u.main.activity, u.Attachment, view, seq, path)
+	return openActivityEdit(&u.main.attached, u.main.shell, &u.main.detailFiles, u.main.reviewSource, u.Attachment, view, seq, path)
 }
 func (u *terminalUI) copyText(text string) {
 	copyText(&u.main.attached.feedback, u.main.shell, u.main.clock, u.Attachment, text)
@@ -45,7 +45,7 @@ func (u *terminalUI) applyInput(effects iter.Seq[terminalsession.InputEffect]) e
 	return u.main.applyInput(u.Attachment, effects)
 }
 func (u *terminalUI) openSelectionTarget(target terminalsession.SelectionTarget) {
-	openSelectionTarget(&u.main.attached, u.main.shell, u.main.clock, u.main.activity, &u.main.detailFiles, u.Attachment, target)
+	openSelectionTarget(&u.main.attached, u.main.shell, u.main.clock, u.main.reviewSource, &u.main.detailFiles, u.Attachment, target)
 }
 func (u *terminalUI) openActivityReply(seq uint64) bool {
 	return openActivityReply(&u.main.attached, u.main.shell, &u.main.detailFiles, u.Attachment, seq)

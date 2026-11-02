@@ -236,7 +236,7 @@ func TestMChangesNoOpFormatterOverlapNativeCodexE2E(t *testing.T) {
 	}
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	setCodexFrontendLoginEnvironment(t, filepath.Dir(registry.Frontends["mrun"]))
+	setCodexFrontendLoginEnvironment(t, filepath.Dir(filepath.Join(registry.FrontendDirectory, "mrun")))
 	for name, content := range map[string]string{
 		"first_test.go":  "package fixture\n\nconst Value = 1\n",
 		"second_test.go": "package fixture\n\nconst Other = 1\n",
@@ -292,8 +292,8 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	frontend, ok := registry.Frontends["mchanges"]
-	if !ok {
+	frontend := filepath.Join(registry.FrontendDirectory, "mchanges")
+	if _, err := os.Stat(frontend); err != nil {
 		t.Fatal("mchanges executable frontend is unavailable")
 	}
 	replayDirectory := registry.ReplayDirectory

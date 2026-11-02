@@ -109,7 +109,7 @@ func applyEffect(attached *attachedPresentation, terminal *terminalsession.Attac
 			}
 			result.Selection.View.Hydrate(source.ResolveOutputDemands(result.Demands))
 		} else {
-			openSelectionTarget(attached, terminal, clock, activityService, files, surface, result.Target)
+			openSelectionTarget(attached, terminal, clock, reviewSource, files, surface, result.Target)
 		}
 
 	case effect.Display != nil:

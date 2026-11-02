@@ -21,14 +21,32 @@ const (
 )
 
 // Config supplies the compiled commands and invocation-owned publication paths.
-// An empty RuntimeDirectory uses MEKUGI_RUNTIME_DIR or the OS temporary directory.
+// Publication uses MEKUGI_RUNTIME_DIR or the OS temporary directory.
 type Config struct {
-	Commands         []command.Contribution
-	Guidance         *binding.Guidance
-	RuntimeDirectory string
-	ReplayDirectory  string
-	AXReadOutput     string
-	WorkerImage      *WorkerImage
+	Commands        []command.Contribution
+	Guidance        *binding.Guidance
+	ReplayDirectory string
+	AXReadOutput    string
+	WorkerImage     *WorkerImage
+}
+
+// ValidateCatalog checks the complete command catalog before activation.
+func ValidateCatalog(commands []command.Contribution) error {
+	var failures []error
+	names := make(map[string]bool, len(commands))
+	for _, contribution := range commands {
+		if err := contribution.Validate(); err != nil {
+			failures = append(failures, err)
+		}
+		if names[contribution.Name] {
+			failures = append(failures, fmt.Errorf("duplicate frontend %q", contribution.Name))
+		}
+		names[contribution.Name] = true
+		if contribution.Run == nil {
+			failures = append(failures, fmt.Errorf("frontend %q has no compiled implementation", contribution.Name))
+		}
+	}
+	return errors.Join(failures...)
 }
 
 // New authenticates and publishes one private executable catalog before exposing
@@ -37,12 +55,9 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	runtimeDirectory := config.RuntimeDirectory
+	runtimeDirectory := os.Getenv("MEKUGI_RUNTIME_DIR")
 	if runtimeDirectory == "" {
-		runtimeDirectory = os.Getenv("MEKUGI_RUNTIME_DIR")
-		if runtimeDirectory == "" {
-			runtimeDirectory = os.TempDir()
-		}
+		runtimeDirectory = os.TempDir()
 	}
 	if !filepath.IsAbs(runtimeDirectory) {
 		return nil, errors.New("locate tool runtime directory: MEKUGI_RUNTIME_DIR must be an absolute path")
@@ -56,48 +71,15 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create tool registry snapshot: %w", err)
 	}
-	frontends := make(map[string]string)
 	fail := func(cause error) (*Registry, error) {
 		return nil, errors.Join(cause, os.RemoveAll(snapshotDirectory))
 	}
 	if err := config.WorkerImage.pin(filepath.Join(snapshotDirectory, workerExecutableFilename)); err != nil {
 		return fail(err)
 	}
-	var contributions []catalogEntry
-	var validationErrors []error
-	for _, spec := range commands {
-		if err := spec.Validate(); err != nil {
-			validationErrors = append(validationErrors, err)
-			continue
-		}
-		wire := struct {
-			Type        string `json:"type"`
-			Name        string `json:"name"`
-			Description string `json:"description"`
-		}{"custom", spec.Name, spec.Description}
-		encoded, err := json.Marshal(&wire)
-		if err != nil {
-			validationErrors = append(validationErrors, err)
-			continue
-		}
-		contributions = append(contributions, catalogEntry{
-			Name: spec.Name, Specification: encoded,
-			NativeExecutor: spec.Name, Executable: true,
-		})
-	}
-	byName := make(map[string]catalogEntry, len(contributions))
-	for _, contribution := range contributions {
-		if execute, _ := frontendExecutor(contribution, commands); execute == nil {
-			validationErrors = append(validationErrors, fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
-		}
-		if _, exists := byName[contribution.Name]; exists {
-			validationErrors = append(validationErrors, fmt.Errorf("duplicate frontend name %q", contribution.Name))
-			continue
-		}
-		byName[contribution.Name] = contribution
-	}
-	if len(validationErrors) != 0 {
-		return fail(errors.Join(validationErrors...))
+	names := make([]string, len(commands))
+	for i, contribution := range commands {
+		names[i] = contribution.Name
 	}
 	var frontendGuidance binding.FrontendGuidance
 	if guidance != nil {
@@ -119,9 +101,9 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	manifest := workerManifest{
 		ReplayDirectory: config.ReplayDirectory,
 		AXReadOutput:    config.AXReadOutput,
-		Version:         2,
+		Version:         3,
 		GuidanceSHA256:  hex.EncodeToString(guidanceHash[:]),
-		Tools:           contributions,
+		Tools:           names,
 	}
 	registryID, err := registryIdentity(manifest)
 	if err != nil {
@@ -134,24 +116,20 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	}
 	snapshotDirectory = authenticatedDirectory
 	executable := filepath.Join(snapshotDirectory, workerExecutableFilename)
-	if err := os.WriteFile(filepath.Join(snapshotDirectory, "frontend_guidance.json"), guidanceBytes, 0o600); err != nil {
-		return fail(fmt.Errorf("write generated frontend guidance: %w", err))
-	}
 	if err := writeToolWorkerManifest(snapshotDirectory, manifest); err != nil {
 		return fail(err)
 	}
 	frontendDirectory := filepath.Join(snapshotDirectory, "bin")
-	if len(contributions) != 0 {
+	if len(names) != 0 {
 		if err := os.Mkdir(frontendDirectory, 0o700); err != nil {
 			return fail(fmt.Errorf("create session tool frontends: %w", err))
 		}
 	}
-	for _, contribution := range contributions {
-		frontend := filepath.Join(frontendDirectory, contribution.Name)
+	for _, name := range names {
+		frontend := filepath.Join(frontendDirectory, name)
 		if err := os.Symlink(executable, frontend); err != nil {
-			return fail(fmt.Errorf("create %s worker symlink: %w", contribution.Name, err))
+			return fail(fmt.Errorf("create %s worker symlink: %w", name, err))
 		}
-		frontends[contribution.Name] = frontend
 	}
 	return &Registry{
 		SnapshotDir:       snapshotDirectory,
@@ -159,26 +137,7 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 		FrontendDirectory: frontendDirectory,
 		FrontendGuidance:  frontendGuidance,
 		Guidance:          guidance,
-		Frontends:         frontends,
 	}, nil
-}
-
-func validateToolContribution(contribution catalogEntry) error {
-	var specification struct {
-		Type        string            `json:"type"`
-		Name        string            `json:"name"`
-		Description string            `json:"description"`
-		Format      jsonv1.RawMessage `json:"format"`
-	}
-	if err := jsonv1.Unmarshal(contribution.Specification, &specification); err != nil {
-		return fmt.Errorf("%s: decode frontend specification: %w", contribution.Name, err)
-	}
-	if specification.Type != "custom" || specification.Name != contribution.Name ||
-		specification.Description == "" || len(specification.Format) != 0 ||
-		contribution.NativeExecutor != contribution.Name {
-		return fmt.Errorf("%s: compiled frontend specification is inconsistent", contribution.Name)
-	}
-	return nil
 }
 
 func registryIdentity(manifest workerManifest) (string, error) {

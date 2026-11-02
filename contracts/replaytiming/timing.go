@@ -11,6 +11,3 @@ type Interval struct {
 	Start, End time.Time
 }
 type Reader func(context.Context, string, map[string]bool, func(Interval) error) error
-type Definition[S any] struct {
-	Read func(S, context.Context, string, map[string]bool, func(Interval) error) error
-}

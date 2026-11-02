@@ -3,7 +3,7 @@ package launch
 import (
 	"fmt"
 
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -14,8 +14,8 @@ import (
 
 // openActivityEdit resolves an exact admitted invocation without consulting the
 // Diff painter, retained storage, or current workspace contents.
-func openActivityEdit(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, activity *activitymodel.Service, u *terminalsession.Attachment, view *activityui.View, seq uint64, path string) bool {
-	pages, selected := activityEditPages(attached, terminal, activity, view, seq, path)
+func openActivityEdit(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, changes *changecapture.Service, u *terminalsession.Attachment, view *activityui.View, seq uint64, path string) bool {
+	pages, selected := activityEditPages(attached, terminal, changes, view, seq, path)
 	for _, page := range pages {
 		if page.ID == selected {
 			openDetails(attached, terminal, files, u, view, pages)
@@ -31,7 +31,7 @@ func openActivityEdit(attached *attachedPresentation, terminal *terminalsession.
 	return false
 }
 
-func activityEditPages(attached *attachedPresentation, terminal *terminalsession.Attachment, activity *activitymodel.Service, view *activityui.View, seq uint64, path string) ([]activitypresentation.DetailPage, string) {
+func activityEditPages(attached *attachedPresentation, terminal *terminalsession.Attachment, changes *changecapture.Service, view *activityui.View, seq uint64, path string) ([]activitypresentation.DetailPage, string) {
 	for _, entry := range activitySource(attached, terminal, view).Entries {
 		native := entry.Source.Native
 		if entry.Source.Seq != seq || native == nil {
@@ -50,8 +50,8 @@ func activityEditPages(attached *attachedPresentation, terminal *terminalsession
 			}
 			return pages
 		}
-		if activity != nil {
-			result := activity.ActivityDetail(attached.session.Scope(), request)
+		if changes != nil {
+			result := changes.ActivityDetail(attached.session.Scope(), request)
 			if len(result.Pages) > 0 {
 				return withPreparedSource(activitypresentation.ContributedDetails(result.Pages)), result.Selected
 			}

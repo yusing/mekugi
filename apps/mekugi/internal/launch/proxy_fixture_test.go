@@ -75,7 +75,7 @@ func buildToolRegistryForTest(
 	if debug, _ := requestexecution.DebugRequest(ctx); debug != nil {
 		axReadOutput = debug.ReadLogPath()
 	}
-	return frontends.New(ctx, frontends.Config{Commands: testCommands(), Guidance: testGuidance(), RuntimeDirectory: filepath.Join(directory, "runtime"), ReplayDirectory: filepath.Join(directory, "replay"), AXReadOutput: axReadOutput})
+	return frontends.New(ctx, frontends.Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: filepath.Join(directory, "replay"), AXReadOutput: axReadOutput})
 }
 
 func (fixture *proxyRegistryFixture) get(t *testing.T) *frontends.Registry {
@@ -88,7 +88,7 @@ func (fixture *proxyRegistryFixture) get(t *testing.T) *frontends.Registry {
 		if _, fixture.err = openMekugiReplayStore(filepath.Join(fixture.directory, "replay")); fixture.err != nil {
 			return
 		}
-		fixture.registry, fixture.err = frontends.New(t.Context(), frontends.Config{Commands: testCommands(), Guidance: testGuidance(), RuntimeDirectory: filepath.Join(fixture.directory, "runtime"), ReplayDirectory: filepath.Join(fixture.directory, "replay")})
+		fixture.registry, fixture.err = frontends.New(t.Context(), frontends.Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: filepath.Join(fixture.directory, "replay")})
 	})
 	if fixture.err != nil {
 		t.Fatal(fixture.err)

@@ -2,8 +2,6 @@ package module
 
 import (
 	"slices"
-
-	"github.com/yusing/mekugi/contracts/capability"
 )
 
 // Reference contains declaration metadata without executable callbacks.
@@ -20,11 +18,9 @@ type Reference struct {
 	References  []string
 }
 
-// BindingReference keeps declared connections separate from prerequisites.
-// Neither establishes availability in an installed host.
+// BindingReference describes declared connections, not installed-host availability.
 type BindingReference struct {
-	Requires   []capability.Requirement
-	Mechanisms []capability.Mechanism
+	Mechanisms []string
 }
 
 func (NoBindings) Reference() BindingReference { return BindingReference{} }
@@ -45,10 +41,8 @@ func (d Descriptor[D, S, B, V]) Reference() Reference {
 		{"guidance", len(d.Contributes.Guidance), d.HostsGuidance},
 		{"record-kinds", len(d.Contributes.RecordKinds), d.HostsRecords},
 		{"references", len(d.Contributes.References), d.HostsReferences},
-		{"activity-details", len(d.Contributes.ActivityDetails), d.HostsActivityDetails},
 		{"inspection", len(d.Contributes.Inspection), d.HostsInspection},
 		{"diagnostic-sections", len(d.Contributes.DiagnosticSections), d.HostsDiagnosticSections},
-		{"replay-timing", len(d.Contributes.ReplayTiming), d.HostsReplayTiming},
 		{"presentation", len(d.Contributes.Presentation), false},
 	} {
 		if slot.count != 0 {

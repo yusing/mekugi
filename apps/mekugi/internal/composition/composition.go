@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"slices"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -29,15 +30,12 @@ import (
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/contracts/activitydetail"
-	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
-	"github.com/yusing/mekugi/contracts/replaytiming"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -66,26 +64,23 @@ func (h *Handle[S]) Value() S {
 }
 
 type entry struct {
-	auxiliary       []terminalui.PaneFactory[*scope.Store]
-	roster          []terminalui.RosterDefinition[*activityview.View]
-	presentation    []presentation.Status
-	activityDetails []activitydetail.Provider
-	replayTiming    []replaytiming.Reader
-	diagnostics     []diagnosticsection.Contribution
-	inspection      []inspection.Contribution
-	id              module.ID
-	requires        []module.ID
-	lifetime        module.Lifetime
-	resources       []string
-	commands        []command.Contribution
-	records         []recordkind.Spec
-	references      []reference.Resolver
-	guidance        []guidance.Section
-	capabilities    []capability.Requirement
-	frontends       bool
-	validFactory    bool
-	construct       func(module.Slots, binding.Binder) error
-	start, stop     func(context.Context) error
+	auxiliary    []terminalui.PaneFactory[*scope.Store]
+	roster       []terminalui.RosterDefinition[*activityview.View]
+	presentation []presentation.Status
+	diagnostics  []diagnosticsection.Contribution
+	inspection   []inspection.Contribution
+	id           module.ID
+	requires     []module.ID
+	lifetime     module.Lifetime
+	resources    []string
+	commands     []command.Contribution
+	records      []recordkind.Spec
+	references   []reference.Resolver
+	guidance     []guidance.Section
+	frontends    bool
+	validFactory bool
+	construct    func(module.Slots, binding.Registrar) error
+	start, stop  func(context.Context) error
 }
 
 type Composition struct {
@@ -112,7 +107,6 @@ func (c *Composition) Add[D, S any, B interface {
 		records:      slices.Clone(descriptor.Contributes.RecordKinds),
 		references:   slices.Clone(descriptor.Contributes.References),
 		guidance:     slices.Clone(descriptor.Contributes.Guidance),
-		capabilities: slices.Clone(backend.Requires),
 		frontends:    backend.Frontends,
 		validFactory: descriptor.New != nil && deps != nil,
 	}
@@ -134,15 +128,6 @@ func (c *Composition) Add[D, S any, B interface {
 		}
 		node.auxiliary = append(node.auxiliary, factory)
 	}
-	for _, definition := range descriptor.Contributes.ActivityDetails {
-		provider := activitydetail.Provider{Name: definition.Name}
-		if definition.Resolve != nil {
-			provider.Resolve = func(store *scope.Store, request activitydetail.Request) activitydetail.Result {
-				return definition.Resolve(handle.Value(), store, request)
-			}
-		}
-		node.activityDetails = append(node.activityDetails, provider)
-	}
 	commands := slices.Clone(descriptor.Contributes.Commands)
 	for _, definition := range commands {
 		contribution := command.Contribution{Spec: definition.Spec, ObserveRead: definition.ObserveRead}
@@ -152,15 +137,6 @@ func (c *Composition) Add[D, S any, B interface {
 			}
 		}
 		node.commands = append(node.commands, contribution)
-	}
-	for _, definition := range descriptor.Contributes.ReplayTiming {
-		var read replaytiming.Reader
-		if definition.Read != nil {
-			read = func(ctx context.Context, path string, threads map[string]bool, observe func(replaytiming.Interval) error) error {
-				return definition.Read(handle.Value(), ctx, path, threads, observe)
-			}
-		}
-		node.replayTiming = append(node.replayTiming, read)
 	}
 	for _, definition := range descriptor.Contributes.Inspection {
 		var contribution inspection.Contribution
@@ -188,15 +164,9 @@ func (c *Composition) Add[D, S any, B interface {
 		}
 		node.diagnostics = append(node.diagnostics, contribution)
 	}
-	node.construct = func(slots module.Slots, binder binding.Binder) error {
-		if !descriptor.HostsActivityDetails {
-			slots.ActivityDetails = nil
-		}
+	node.construct = func(slots module.Slots, binder binding.Registrar) error {
 		if !descriptor.HostsDiagnosticSections {
 			slots.DiagnosticSections = nil
-		}
-		if !descriptor.HostsReplayTiming {
-			slots.ReplayTiming = nil
 		}
 		if !descriptor.HostsInspection {
 			slots.Inspection = nil
@@ -227,12 +197,6 @@ func (c *Composition) Add[D, S any, B interface {
 	return handle
 }
 
-type Gap struct {
-	Module    module.ID
-	Mechanism capability.Mechanism
-	Result    capability.Result
-}
-
 type Runtime struct {
 	Threads              *threadbinding.Driver
 	MCP                  []binding.MCPServer
@@ -259,7 +223,6 @@ type Runtime struct {
 	Recovery             *recovery.Service
 	History              *history.Service
 	Commands             []command.Contribution
-	Gaps                 []Gap
 	started              []entry
 }
 
@@ -287,9 +250,7 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 	var roster []terminalui.RosterDefinition[*activityview.View]
 	var status []presentation.Status
 	var records []recordkind.Spec
-	var activityDetails []activitydetail.Provider
 	var inspections []inspection.Contribution
-	var replayTiming []replaytiming.Reader
 	var diagnostics []diagnosticsection.Contribution
 	var references []reference.Resolver
 	var guidance []guidance.Section
@@ -307,12 +268,10 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 		auxiliary = append(auxiliary, node.auxiliary...)
 		roster = append(roster, node.roster...)
 		status = append(status, node.presentation...)
-		activityDetails = append(activityDetails, node.activityDetails...)
 		records = append(records, node.records...)
 		references = append(references, node.references...)
 		guidance = append(guidance, node.guidance...)
 		inspections = append(inspections, node.inspection...)
-		replayTiming = append(replayTiming, node.replayTiming...)
 		diagnostics = append(diagnostics, node.diagnostics...)
 	}
 	for i, node := range c.entries {
@@ -336,32 +295,9 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 		if node.frontends != (len(node.commands) != 0) {
 			failures = append(failures, fmt.Errorf("%s: executable contributions and Codex frontend connection differ", node.id))
 		}
-		for _, contribution := range node.commands {
-			if contribution.Run == nil {
-				failures = append(failures, fmt.Errorf("%s: frontend %q has no compiled implementation", node.id, contribution.Name))
-			}
-		}
-		for _, requirement := range node.capabilities {
-			result := binder.Capability(requirement.Mechanism)
-			if result.State == capability.Available {
-				continue
-			}
-			if requirement.Required {
-				failures = append(failures, fmt.Errorf("%s: required %s unavailable: %s", node.id, requirement.Mechanism, result.Reason))
-			} else {
-				runtime.Gaps = append(runtime.Gaps, Gap{node.id, requirement.Mechanism, result})
-			}
-		}
 	}
-	names := make(map[string]bool)
-	for _, spec := range runtime.Commands {
-		if err := spec.Validate(); err != nil {
-			failures = append(failures, err)
-		}
-		if names[spec.Name] {
-			failures = append(failures, fmt.Errorf("duplicate frontend %q", spec.Name))
-		}
-		names[spec.Name] = true
+	if err := frontends.ValidateCatalog(runtime.Commands); err != nil {
+		failures = append(failures, err)
 	}
 	terminal, err := terminalsession.NewViews(auxiliary, roster)
 	if err != nil {
@@ -380,7 +316,7 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 		return nil, err
 	}
 	for _, node := range c.entries {
-		if err := node.construct(module.Slots{ActivityDetails: slices.Clone(activityDetails), ReplayTiming: slices.Clone(replayTiming), DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder); err != nil {
+		if err := node.construct(module.Slots{DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder); err != nil {
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
 	}

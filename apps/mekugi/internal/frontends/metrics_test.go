@@ -14,7 +14,7 @@ func TestAgentMetricsAbsentAuthenticatedReader(t *testing.T) {
 	registry := sharedTestRegistry(t)
 	axPath := filepath.Join(t.TempDir(), "reads.jsonl")
 	t.Setenv(evidence.AXReadOutputEnvironment, axPath)
-	invocation, err := Recognize(registry.Frontends["mcat"])
+	invocation, err := Recognize(filepath.Join(registry.FrontendDirectory, "mcat"))
 	if err != nil || invocation == nil {
 		t.Fatalf("recognize reader: %v", err)
 	}

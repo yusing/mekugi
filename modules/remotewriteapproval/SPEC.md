@@ -134,14 +134,14 @@ pushing a branch through a guarded Git lookup, asks again for the inner command.
 
 ## Lifecycle
 
-The application creates one module-owned grant set for each attached UI lifetime.
+Session Control owns exact-command grants per registered guard kind for each attached UI lifetime.
 Grants are invocation-local and discarded on detach; changing the displayed thread
 does not create another set. Fresh resume creates a new set. The application owns
 the shared local decision channel and joins it independently of segment reporting.
 
 ## Codex connection
 
-The binding registers this guard's participation and its session-grant factory.
+The binding registers this guard's kind.
 The application composes only registered resources into the backend's native hook.
 The helper evaluates the module policy against expanded arguments at execution;
 Git alias resolution uses the selected executable and its actual environment.
@@ -191,7 +191,7 @@ resources, including nested-shell instrumentation when only sudo is present.
    failing local hook helper produces native denial before an absolute-path
    write executes. This excludes host hook-shell launch and timeout failures.
 
-Module acceptance exercises policy and isolated grant lifetimes through the
-scripted binder. Application acceptance covers leave-one-out resources, request
+Module acceptance exercises policy and guard registration through the
+scripted binder. Application acceptance covers isolated grant lifetimes, leave-one-out resources, request
 admission, exact queued grants, secret entry, and native execution. Installed-host
 checks remain distinct from offline fixtures.

@@ -36,7 +36,7 @@ func TestFrontendRecoveryFailurePreservesAdmittedOutput(t *testing.T) {
 				}
 			}
 			var stdout, stderr bytes.Buffer
-			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, t.Context(), registry.Frontends["mrun"], nil, nil, &stdout, &stderr)
+			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, t.Context(), filepath.Join(registry.FrontendDirectory, "mrun"), nil, nil, &stdout, &stderr)
 			wantStatus := originalStatus
 			if wantStatus == 0 {
 				wantStatus = 1
@@ -66,7 +66,7 @@ func TestFrontendBundleRecoveryFailurePreservesBodiesAndReadEvidence(t *testing.
 	t.Setenv(codexThreadIDEnvironment, thread)
 	t.Setenv(evidence.AXReadOutputEnvironment, log)
 	var stdout, stderr bytes.Buffer
-	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), registry.Frontends["mcat"],
+	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), filepath.Join(registry.FrontendDirectory, "mcat"),
 		[]string{"--max-tokens", "2000", path, filepath.Join(directory, "missing")}, nil, &stdout, &stderr)
 	if !handled || status != 1 || !strings.Contains(stdout.String(), body) || !strings.Contains(stdout.String(), "status=failed") {
 		t.Fatalf("handled=%t status=%d stdout=%q stderr=%q", handled, status, stdout.String(), stderr.String())
@@ -111,7 +111,7 @@ func TestFrontendBundleCanceledBeforePublication(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, ctx, registry.Frontends["mcat"], []string{"--max-tokens", "1000", path, path}, nil, &stdout, &stderr)
+	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, ctx, filepath.Join(registry.FrontendDirectory, "mcat"), []string{"--max-tokens", "1000", path, path}, nil, &stdout, &stderr)
 	if !handled || status != 1 || !strings.Contains(stderr.String(), "context canceled") {
 		t.Fatalf("handled=%t status=%d stderr=%q", handled, status, stderr.String())
 	}

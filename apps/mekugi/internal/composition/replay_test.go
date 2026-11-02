@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/replaytiming"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation"
 	"github.com/yusing/mekugi/modules/sessionhistory"
@@ -28,13 +29,18 @@ func TestCompositionReplayRolloutAndOptionalTiming(t *testing.T) {
 				return agentguidance.Deps{History: history.Value(), Changes: changes.Value().Service}
 			})
 			c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
-			replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps {
-				return sessionreplay.Deps{History: history.Value()}
-			})
-			// The contribution is collected even when its owner follows its host.
+			var readTiming func() replaytiming.Reader
 			if timing {
-				c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
+				transport := c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
+				readTiming = func() replaytiming.Reader { return transport.Value().ReplayTiming }
 			}
+			replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps {
+				deps := sessionreplay.Deps{History: history.Value()}
+				if readTiming != nil {
+					deps.Timing = readTiming()
+				}
+				return deps
+			})
 			runtime, err := c.Activate(t.Context(), new(binding.Registry))
 			if err != nil {
 				t.Fatal(err)

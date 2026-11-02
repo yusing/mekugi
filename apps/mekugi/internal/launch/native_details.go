@@ -92,7 +92,7 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 			}
 		}
 		if request.Path != "" {
-			if !openActivityEdit(&v.attached, v.shell, &v.files, v.activity, v.shell, terminal, request.Source, request.Path) {
+			if !openActivityEdit(&v.attached, v.shell, &v.files, v.changes, v.shell, terminal, request.Source, request.Path) {
 				return sessionpresentation.ErrStaleIntent.Error()
 			}
 			break
@@ -107,7 +107,7 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 		var pages []activity.DetailPage
 		for _, seq := range sources {
 			// A batch edit uses the admitted change owner's complete file pages.
-			if edits, _ := activityEditPages(&v.attached, v.shell, v.activity, terminal, seq, ""); len(edits) > 0 {
+			if edits, _ := activityEditPages(&v.attached, v.shell, v.changes, terminal, seq, ""); len(edits) > 0 {
 				pages = append(pages, edits...)
 				continue
 			}

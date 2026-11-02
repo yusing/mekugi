@@ -62,7 +62,8 @@ prerequisites. There is no JavaScript or WASM plugin runtime.
 
 Application composition selects the compiled catalog. The Codex binding collects
 executable registrations from descriptor command contributions when the module declares
-its executable-frontend connection; this owner validates names and implementation availability,
+its executable-frontend connection. Before construction, this frontend owner validates
+the complete catalog once for names, descriptions and implementation availability. It
 authenticates and publishes invocation snapshots, pins workers, and exposes PATH.
 Contributions use portable executable leaf names, reject duplicates, and pair a
 command description with its compiled implementation and read-observation policy.
@@ -77,8 +78,9 @@ through typed composition and an explicit authenticated per-call scope.
 
 The [guidance module](../../../../modules/agentguidance/SPEC.md) renders selected,
 validated capability descriptions and command-owned workflow guidance as separate
-sections. The catalog identity binds both sections, and their invocation snapshot
-is published before commands are exposed. Capability descriptions populate the
+sections. The catalog identity binds the delivered guidance sections without writing a separate
+guidance file. The authenticated catalog snapshot lists command names and is published
+before commands are exposed. Capability descriptions populate the
 execution tool; workflow guidance populates base instructions. Guidance remains call-local. Guidance assembly and metrics are
 optional; their absence leaves authenticated catalog validation and dispatch intact.
 

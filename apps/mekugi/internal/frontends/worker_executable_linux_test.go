@@ -101,7 +101,7 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 	if err := registry.Close(); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.CommandContext(t.Context(), peer.Frontends["mrun"], "-test.run=^TestPinnedToolWorkerProcess$")
+	command := exec.CommandContext(t.Context(), filepath.Join(peer.FrontendDirectory, "mrun"), "-test.run=^TestPinnedToolWorkerProcess$")
 	command.Env = append(os.Environ(), "MEKUGI_PIN_WORKER_TEST=worker")
 	output, err := command.CombinedOutput()
 	if err != nil || string(output) != "pinned" {

@@ -21,7 +21,7 @@ import (
 	"github.com/yusing/mekugi/testsupport/moduletest"
 )
 
-func replayService(t *testing.T, decoded observation.Source, slots module.Slots) *playback.Service {
+func replayService(t *testing.T, decoded observation.Source, timing replaytiming.Reader) *playback.Service {
 	t.Helper()
 	script := &moduletest.Scripted{ReplaySource: binding.RolloutSource{
 		Replay: func(ctx context.Context, _ string, _ map[string]bool) (observation.Source, error) {
@@ -30,7 +30,7 @@ func replayService(t *testing.T, decoded observation.Source, slots module.Slots)
 		Identity: func(string) (string, error) { return "", errors.New("unexpected sibling read") },
 	}}
 	history := moduletest.New(t, sessionhistory.Module, sessionhistory.Deps{}, module.Slots{}, script)
-	service := moduletest.New(t, sessionreplay.Module, sessionreplay.Deps{History: history}, slots, script)
+	service := moduletest.New(t, sessionreplay.Module, sessionreplay.Deps{History: history, Timing: timing}, module.Slots{}, script)
 	if script.RolloutRegistrations != 1 {
 		t.Fatalf("rollout registrations=%d", script.RolloutRegistrations)
 	}
@@ -46,7 +46,7 @@ func TestDescriptorDecodedSourceStreamingAndOptionalTiming(t *testing.T) {
 		{At: end, Started: start, Kind: observation.ItemCompleted, ThreadID: "main", TurnID: "turn", ItemID: "answer", Item: observation.Item{ID: "answer", Type: "agentMessage", Text: text}},
 	}}
 	options := playback.ReadOptions{Path: "scripted-rollout", HistoryDirectory: filepath.Join(t.TempDir(), "missing-history"), DebugDirectory: "not-opened-without-contributor", Seed: 17}
-	service := replayService(t, decoded, module.Slots{})
+	service := replayService(t, decoded, nil)
 	source, err := service.Read(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
@@ -79,13 +79,13 @@ func TestDescriptorDecodedSourceStreamingAndOptionalTiming(t *testing.T) {
 		t.Fatalf("seeded replay differs: %v", err)
 	}
 	called := false
-	service = replayService(t, decoded, module.Slots{ReplayTiming: []replaytiming.Reader{func(_ context.Context, path string, threads map[string]bool, observe func(replaytiming.Interval) error) error {
+	service = replayService(t, decoded, func(_ context.Context, path string, threads map[string]bool, observe func(replaytiming.Interval) error) error {
 		called = true
 		if path != filepath.Join(options.DebugDirectory, "capture.jsonl") || !threads["main"] {
 			t.Fatal("timing received wrong source identity")
 		}
 		return observe(replaytiming.Interval{Thread: "main", Start: start.Add(-time.Second), End: start})
-	}}})
+	})
 	source, err = service.Read(t.Context(), options)
 	if err != nil || !called || source.Providers != 1 || !source.Start.Equal(start.Add(-time.Second)) {
 		t.Fatalf("optional timing missing: %v", err)
@@ -152,10 +152,6 @@ func TestDescriptorRejectsMissingAndConflictingBindings(t *testing.T) {
 	if _, err := sessionreplay.Module.New(sessionreplay.Deps{}, module.Slots{}); err == nil {
 		t.Fatal("missing history accepted")
 	}
-	read := func(context.Context, string, map[string]bool, func(replaytiming.Interval) error) error { return nil }
-	if _, err := sessionreplay.Module.New(sessionreplay.Deps{History: history}, module.Slots{ReplayTiming: []replaytiming.Reader{read, read}}); err == nil {
-		t.Fatal("ambiguous timing accepted")
-	}
 	service, err := sessionreplay.Module.New(sessionreplay.Deps{History: history}, module.Slots{})
 	if err != nil {
 		t.Fatal(err)
@@ -188,14 +184,14 @@ func TestDescriptorReadCancellationAtSourceBoundaries(t *testing.T) {
 				Identity: func(string) (string, error) { return "", errors.New("unexpected sibling read") },
 			}}
 			history := moduletest.New(t, sessionhistory.Module, sessionhistory.Deps{}, module.Slots{}, script)
-			var slots module.Slots
+			var timing replaytiming.Reader
 			if boundary == "optional timing" {
-				slots.ReplayTiming = []replaytiming.Reader{func(context.Context, string, map[string]bool, func(replaytiming.Interval) error) error {
+				timing = func(context.Context, string, map[string]bool, func(replaytiming.Interval) error) error {
 					cancel()
 					return nil
-				}}
+				}
 			}
-			service := moduletest.New(t, sessionreplay.Module, sessionreplay.Deps{History: history}, slots, script)
+			service := moduletest.New(t, sessionreplay.Module, sessionreplay.Deps{History: history, Timing: timing}, module.Slots{}, script)
 			source, err := service.Read(ctx, playback.ReadOptions{Path: "scripted-rollout", DebugDirectory: "scripted-timing"})
 			if source != nil || !errors.Is(err, context.Canceled) {
 				t.Fatalf("cancellation at %s returned source=%v error=%v", boundary, source, err)

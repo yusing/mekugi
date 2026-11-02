@@ -31,15 +31,15 @@ pins and dispatches that catalog under the [frontend contract](../../apps/mekugi
 
 ## Construction and lifetime
 
-Descriptors declare typed dependencies, executable commands, record kinds,
-capability requirements and resource lifetimes. Composition validates the whole
-list before construction: unique identities and command names, dependency
-presence and order, lifecycle consistency, and required capabilities. Optional
-unavailable mechanisms remain explicit gaps.
+Descriptors declare typed dependencies, executable commands, record kinds and
+resource lifetimes. Composition validates the whole list before construction:
+unique identities, dependency presence and order, and lifecycle consistency.
+The frontend owner validates command names, descriptions and compiled implementations
+once before construction.
 
 Codex bindings declare their supported connection families. The backend registers
-those declarations at activation; capability requirements remain separate from
-which connections a module declares. The executable-frontend connection exposes
+those declarations at activation; missing or invalid required connections fail
+registration or activation. The executable-frontend connection exposes
 the descriptor's complete command contributions, without a second command list in
 the binding. A missing connection or a connection without commands fails activation.
 
@@ -56,11 +56,13 @@ The application frontend host receives all collected command contributions,
 including later entries, and accepts an empty catalog. Reader contributions declare read observation so
 the host can retain AX evidence without a command-name switch.
 
-Activity hosts detail providers with unique nonempty names and callable resolvers.
-It tries them in composition order and uses the first matching result. Resolution
-uses already-published memory only. Removing a contribution does not remove retained
+Activity edit navigation receives the change-history service directly and resolves
+already-published memory only. Without a matching provider result, it uses captured
+receipts or completed host edit pages. Removing the provider does not remove retained
 records. [Activity](../../modules/activity/SPEC.md#edit-evidence) owns detail selection
-and absence behavior.
+and absence behavior. Replay receives an optional timing reader directly and remains
+usable without it. Single-provider relationships use typed dependencies; contribution
+slots serve shared extension families.
 
 Session presentation hosts descriptor-owned status contributions in composition
 order. Each declares a unique nonempty identity, an existing placement and a pure
@@ -130,7 +132,7 @@ construction consume that list. An unselected module appears without being activ
 Collection uses ordinary Go package initialization but never invokes module
 constructors, lifecycle functions, contribution callbacks or binding factories.
 The reference describes declarations, not installed-host capability availability
-or successful runtime activation. `make generate` updates it; `make check-generated`
+or successful runtime activation. `go run ./apps/mekugi/cmd/workspace index-write` updates it; `make check-generated`
 detects drift without modifying files.
 
 ## Acceptance

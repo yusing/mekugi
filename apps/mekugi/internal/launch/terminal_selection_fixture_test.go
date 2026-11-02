@@ -4,14 +4,14 @@ import (
 	"net/url"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func openSelectionTarget(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, activityService *activitymodel.Service, files *detailFiles, surface *terminalsession.Attachment, target terminalsession.SelectionTarget) {
+func openSelectionTarget(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, changes *changecapture.Service, files *detailFiles, surface *terminalsession.Attachment, target terminalsession.SelectionTarget) {
 	if target.Link == "" && target.Entry == 0 && target.Snippet == (activityui.Snippet{}) {
 		return
 	}
@@ -37,8 +37,8 @@ func openSelectionTarget(attached *attachedPresentation, terminal *terminalsessi
 	default:
 		snippet := target.Snippet
 		if snippet.Block == activityui.EditNavigationSnippet {
-			openActivityEdit(attached, terminal, files, activityService, surface, target.View, snippet.Run, snippet.Path)
-		} else if !openOutput(attached, terminal, files, activityService, surface, target.View, snippet) {
+			openActivityEdit(attached, terminal, files, changes, surface, target.View, snippet.Run, snippet.Path)
+		} else if !openOutput(attached, terminal, files, changes, surface, target.View, snippet) {
 			openEntry(attached, terminal, files, surface, target.View, snippet.Run)
 		}
 	}

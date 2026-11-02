@@ -3,6 +3,7 @@ package frontends
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -40,7 +41,7 @@ func TestAuthenticatedCompiledFrontendProcessScope(t *testing.T) {
 			if tc.owned {
 				run = runOwnedToolPluginWorker
 			}
-			handled, status := run(testHistory(), testRecovery(), commands, t.Context(), registry.Frontends["msymbol"], nil, nil, &stdout, &stderr)
+			handled, status := run(testHistory(), testRecovery(), commands, t.Context(), filepath.Join(registry.FrontendDirectory, "msymbol"), nil, nil, &stdout, &stderr)
 			if !handled || status != 0 || calls != 1 || scope != tc.want || stdout.String() != "scope observed\n" || stderr.Len() != 0 {
 				t.Fatalf("handled=%t status=%d calls=%d scope=%v want=%v stdout=%q stderr=%q", handled, status, calls, scope, tc.want, stdout.String(), stderr.String())
 			}

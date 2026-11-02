@@ -51,7 +51,7 @@ func TestFrontendSessionLeaseCoversDeliveryAndWriteFailure(t *testing.T) {
 					return buffer.Write(p)
 				}
 			}
-			handled, status := runToolPluginWorkerInHostProcess(service, testRecovery(), testCommands(), t.Context(), registry.Frontends["mcat"], []string{path}, nil, writer("stdout", &stdout), writer("stderr", &stderr))
+			handled, status := runToolPluginWorkerInHostProcess(service, testRecovery(), testCommands(), t.Context(), filepath.Join(registry.FrontendDirectory, "mcat"), []string{path}, nil, writer("stdout", &stdout), writer("stderr", &stderr))
 			if !handled || writes == 0 {
 				t.Fatalf("handled=%t delivery writes=%d", handled, writes)
 			}
@@ -88,7 +88,7 @@ func TestFrontendRejectsMissingOrInvalidStoreWithoutCreatingStorage(t *testing.T
 					t.Fatal(err)
 				}
 			}
-			registry, err := New(t.Context(), Config{Commands: testCommands(), RuntimeDirectory: filepath.Join(directory, "runtime"), ReplayDirectory: replay})
+			registry, err := New(t.Context(), Config{Commands: testCommands(), ReplayDirectory: replay})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -99,7 +99,7 @@ func TestFrontendRejectsMissingOrInvalidStoreWithoutCreatingStorage(t *testing.T
 			})
 			t.Setenv("CODEX_THREAD_ID", uniqueTestThread("invalid-store"))
 			var stdout, stderr bytes.Buffer
-			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), registry.Frontends["mcat"], []string{filepath.Join(directory, "not-read")}, nil, &stdout, &stderr)
+			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), filepath.Join(registry.FrontendDirectory, "mcat"), []string{filepath.Join(directory, "not-read")}, nil, &stdout, &stderr)
 			if !handled || status == 0 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "storage is missing or invalid") {
 				t.Fatalf("handled=%t status=%d stdout=%q stderr=%q", handled, status, &stdout, &stderr)
 			}

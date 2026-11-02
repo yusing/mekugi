@@ -6,7 +6,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/observation"
@@ -15,7 +14,6 @@ import (
 
 func TestBindingsReference(t *testing.T) {
 	bindings := Bindings[struct{}]{
-		Requires:        []capability.Requirement{{Mechanism: capability.Rollout, Required: true}},
 		Frontends:       true,
 		Rollout:         func(struct{}, RolloutSource) error { panic("Rollout executed") },
 		InputProjection: func(struct{}) InputProjection { panic("InputProjection executed") },
@@ -25,25 +23,18 @@ func TestBindingsReference(t *testing.T) {
 		Observation:     func(struct{}) Observation { panic("Observation executed") },
 	}
 	want := module.BindingReference{
-		Requires: []capability.Requirement{{Mechanism: capability.Rollout, Required: true}},
-		Mechanisms: []capability.Mechanism{
-			capability.ExecutableFrontend, capability.Rollout, capability.InputProjection,
-			capability.GuidanceProjection, capability.ThreadNaming, capability.ShellApproval, capability.Observation,
+		Mechanisms: []string{
+			"executable-frontend", "rollout", "input-projection",
+			"guidance-projection", "thread-naming", "shell-approval", "observation",
 		},
 	}
 	got := bindings.Reference()
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Reference() = %+v, want %+v", got, want)
 	}
-	got.Requires[0].Required = false
 	got.Mechanisms[0] = "changed"
 	if next := bindings.Reference(); !reflect.DeepEqual(next, want) {
 		t.Fatalf("reference mutation changed subsequent snapshot: %+v", next)
-	}
-	snapshot := bindings.Reference()
-	bindings.Requires[0].Required = false
-	if !reflect.DeepEqual(snapshot, want) {
-		t.Fatalf("declaration mutation changed existing snapshot: %+v", snapshot)
 	}
 
 	for _, tc := range []struct {
@@ -52,14 +43,13 @@ func TestBindingsReference(t *testing.T) {
 		want     module.BindingReference
 	}{
 		{name: "empty"},
-		{name: "requirements only", bindings: Bindings[struct{}]{Requires: want.Requires}, want: module.BindingReference{Requires: want.Requires}},
-		{name: "frontend", bindings: Bindings[struct{}]{Frontends: bindings.Frontends}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.ExecutableFrontend}}},
-		{name: "rollout", bindings: Bindings[struct{}]{Rollout: bindings.Rollout}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.Rollout}}},
-		{name: "projection", bindings: Bindings[struct{}]{InputProjection: bindings.InputProjection}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.InputProjection}}},
-		{name: "guidance", bindings: Bindings[struct{}]{Guidance: bindings.Guidance}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.GuidanceProjection}}},
-		{name: "naming", bindings: Bindings[struct{}]{SessionNaming: bindings.SessionNaming}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.ThreadNaming}}},
-		{name: "observation", bindings: Bindings[struct{}]{Observation: bindings.Observation}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.Observation}}},
-		{name: "approval", bindings: Bindings[struct{}]{ShellApproval: bindings.ShellApproval}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.ShellApproval}}},
+		{name: "frontend", bindings: Bindings[struct{}]{Frontends: bindings.Frontends}, want: module.BindingReference{Mechanisms: []string{"executable-frontend"}}},
+		{name: "rollout", bindings: Bindings[struct{}]{Rollout: bindings.Rollout}, want: module.BindingReference{Mechanisms: []string{"rollout"}}},
+		{name: "projection", bindings: Bindings[struct{}]{InputProjection: bindings.InputProjection}, want: module.BindingReference{Mechanisms: []string{"input-projection"}}},
+		{name: "guidance", bindings: Bindings[struct{}]{Guidance: bindings.Guidance}, want: module.BindingReference{Mechanisms: []string{"guidance-projection"}}},
+		{name: "naming", bindings: Bindings[struct{}]{SessionNaming: bindings.SessionNaming}, want: module.BindingReference{Mechanisms: []string{"thread-naming"}}},
+		{name: "observation", bindings: Bindings[struct{}]{Observation: bindings.Observation}, want: module.BindingReference{Mechanisms: []string{"observation"}}},
+		{name: "approval", bindings: Bindings[struct{}]{ShellApproval: bindings.ShellApproval}, want: module.BindingReference{Mechanisms: []string{"shell-approval"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.bindings.Reference(); !reflect.DeepEqual(got, tc.want) {
@@ -70,9 +60,9 @@ func TestBindingsReference(t *testing.T) {
 }
 
 func TestBindingsRegister(t *testing.T) {
-	wantCalls := []capability.Mechanism{
-		capability.ExecutableFrontend, capability.ExecutableFrontend, capability.Rollout,
-		capability.InputProjection, capability.GuidanceProjection, capability.ThreadNaming, capability.ShellApproval, capability.Observation,
+	wantCalls := []string{
+		"executable-frontend", "executable-frontend", "rollout",
+		"input-projection", "guidance-projection", "thread-naming", "shell-approval", "observation",
 	}
 	for failAt := 0; failAt <= len(wantCalls); failAt++ {
 		name := "success"
@@ -81,8 +71,8 @@ func TestBindingsRegister(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			service := new(int)
-			var factories []capability.Mechanism
-			checkService := func(got *int, mechanism capability.Mechanism) {
+			var factories []string
+			checkService := func(got *int, mechanism string) {
 				t.Helper()
 				if got != service {
 					t.Fatalf("%s factory received service %p, want %p", mechanism, got, service)
@@ -93,7 +83,7 @@ func TestBindingsRegister(t *testing.T) {
 			bindings := Bindings[*int]{
 				Frontends: true,
 				Rollout: func(got *int, source RolloutSource) error {
-					checkService(got, capability.Rollout)
+					checkService(got, "rollout")
 					identity, err := source.Identity("fixture")
 					if err != nil || identity != "fixture identity" {
 						t.Fatalf("rollout source identity = %q, %v", identity, err)
@@ -101,23 +91,23 @@ func TestBindingsRegister(t *testing.T) {
 					return nil
 				},
 				InputProjection: func(got *int) InputProjection {
-					checkService(got, capability.InputProjection)
+					checkService(got, "input-projection")
 					return InputProjection{Name: "projection"}
 				},
 				Guidance: func(got *int) Guidance {
-					checkService(got, capability.GuidanceProjection)
+					checkService(got, "guidance-projection")
 					return Guidance{Frontends: func([]command.Spec) (FrontendGuidance, error) { return FrontendGuidance{Descriptions: "guide"}, nil }}
 				},
 				SessionNaming: func(got *int) SessionNaming {
-					checkService(got, capability.ThreadNaming)
+					checkService(got, "thread-naming")
 					return SessionNaming{NewThread: func(string, bool) ThreadNaming { return nil }}
 				},
 				Observation: func(got *int) Observation {
-					checkService(got, capability.Observation)
+					checkService(got, "observation")
 					return Observation{NewTranscript: func(*scope.Store) observation.Transcript { return nil }}
 				},
 				ShellApproval: func(got *int) ShellApproval {
-					checkService(got, capability.ShellApproval)
+					checkService(got, "shell-approval")
 					return ShellApproval{Kind: Sudo}
 				},
 			}
@@ -130,7 +120,7 @@ func TestBindingsRegister(t *testing.T) {
 				if !slices.Equal(registrar.calls, wantCalls[:failAt]) {
 					t.Fatalf("calls after failure = %v, want %v", registrar.calls, wantCalls[:failAt])
 				}
-				var wantFactories []capability.Mechanism
+				var wantFactories []string
 				if failAt > 3 {
 					wantFactories = wantCalls[2:failAt]
 				}
@@ -178,13 +168,13 @@ func TestBindingsRegisterRolloutError(t *testing.T) {
 	if err := bindings.Register(registrar, struct{}{}, nil); !errors.Is(err, failure) {
 		t.Fatalf("Register() = %v, want %v", err, failure)
 	}
-	if !slices.Equal(registrar.calls, []capability.Mechanism{capability.Rollout}) {
+	if !slices.Equal(registrar.calls, []string{"rollout"}) {
 		t.Fatalf("registrations after rollout failure = %v", registrar.calls)
 	}
 }
 
 type referenceRegistrar struct {
-	calls      []capability.Mechanism
+	calls      []string
 	failAt     int
 	failure    error
 	frontends  []command.Spec
@@ -194,7 +184,7 @@ type referenceRegistrar struct {
 	approval   ShellApproval
 }
 
-func (r *referenceRegistrar) record(mechanism capability.Mechanism) error {
+func (r *referenceRegistrar) record(mechanism string) error {
 	r.calls = append(r.calls, mechanism)
 	if len(r.calls) == r.failAt {
 		return r.failure
@@ -204,11 +194,11 @@ func (r *referenceRegistrar) record(mechanism capability.Mechanism) error {
 
 func (r *referenceRegistrar) Frontend(spec command.Spec) error {
 	r.frontends = append(r.frontends, spec)
-	return r.record(capability.ExecutableFrontend)
+	return r.record("executable-frontend")
 }
 
 func (r *referenceRegistrar) Rollout(attach func(RolloutSource) error) error {
-	if err := r.record(capability.Rollout); err != nil {
+	if err := r.record("rollout"); err != nil {
 		return err
 	}
 	return attach(RolloutSource{Identity: func(path string) (string, error) { return path + " identity", nil }})
@@ -216,22 +206,22 @@ func (r *referenceRegistrar) Rollout(attach func(RolloutSource) error) error {
 
 func (r *referenceRegistrar) InputProjection(projection InputProjection) error {
 	r.projection = projection
-	return r.record(capability.InputProjection)
+	return r.record("input-projection")
 }
 
 func (r *referenceRegistrar) Guidance(guidance Guidance) error {
 	r.guidance = guidance
-	return r.record(capability.GuidanceProjection)
+	return r.record("guidance-projection")
 }
 
 func (r *referenceRegistrar) SessionNaming(naming SessionNaming) error {
 	r.naming = naming
-	return r.record(capability.ThreadNaming)
+	return r.record("thread-naming")
 }
 
 func (r *referenceRegistrar) ShellApproval(approval ShellApproval) error {
 	r.approval = approval
-	return r.record(capability.ShellApproval)
+	return r.record("shell-approval")
 }
 
-func (r *referenceRegistrar) Observation(Observation) error { return r.record(capability.Observation) }
+func (r *referenceRegistrar) Observation(Observation) error { return r.record("observation") }

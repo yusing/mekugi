@@ -5,10 +5,9 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/yusing/mekugi/contracts/capability"
 )
 
-func (r *referenceRegistrar) MCP(MCPServer) error { return r.record(capability.MCPTools) }
+func (r *referenceRegistrar) MCP(MCPServer) error { return r.record("mcp-tools") }
 
 func TestComposedMCPRegistration(t *testing.T) {
 	registry := new(Registry)
@@ -22,7 +21,7 @@ func TestComposedMCPRegistration(t *testing.T) {
 		return server
 	}}
 	reference := bindings.Reference()
-	if len(reference.Mechanisms) != 1 || reference.Mechanisms[0] != capability.MCPTools || factoryCalls != 0 {
+	if len(reference.Mechanisms) != 1 || reference.Mechanisms[0] != "mcp-tools" || factoryCalls != 0 {
 		t.Fatalf("reference invoked construction: %+v", reference)
 	}
 	if err := bindings.Register(registry, new(7), nil); err != nil {

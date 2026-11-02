@@ -3,6 +3,8 @@ package sessioncontrol
 import (
 	"encoding/json/jsontext"
 	"errors"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"reflect"
 	"testing"
 
@@ -40,5 +42,49 @@ func TestApprovalDecisionUsesOriginalAuthority(t *testing.T) {
 				t.Fatalf("feedback=%q, want %q", got, wantFeedback)
 			}
 		})
+	}
+}
+
+func TestApprovalGrantsRegisteredKindsAndAttachmentIsolation(t *testing.T) {
+	guards := []binding.ShellApproval{{Kind: binding.RemoteWrite}, {Kind: binding.Sudo}}
+	grants := NewApprovalGrants(guards)
+	other := NewApprovalGrants(guards)
+	for _, kind := range []string{"", "sudo"} {
+		request := &ShellApprovalRequest{Kind: kind, Cwd: "/workspace", Executable: "/tools/command", Argv: []string{"printf", "a b"}, Reply: make(chan shellapproval.Reply, 1)}
+		if !grants.Available(request) || grants.Allows(request) {
+			t.Fatal("registered guard has incorrect initial grants")
+		}
+		approval := &Approval{Guard: request}
+		if _, delivered, err := approval.Decide(prompt.Choice{Approve: true, Session: true}, "", grants, nil, nil); err != nil || !delivered || !(<-request.Reply).OK {
+			t.Fatalf("session approval: delivered=%v err=%v", delivered, err)
+		}
+		if !grants.Allows(request) || other.Allows(request) || NewApprovalGrants(guards).Allows(request) {
+			t.Fatal("grant lost exact command or escaped attachment lifetime")
+		}
+		for _, changed := range []ShellApprovalRequest{
+			{Kind: kind, Cwd: "/other", Executable: request.Executable, Argv: request.Argv},
+			{Kind: kind, Cwd: request.Cwd, Executable: "/other/command", Argv: request.Argv},
+			{Kind: kind, Cwd: request.Cwd, Executable: request.Executable, Argv: []string{"printf", "a", "b"}},
+		} {
+			if grants.Allows(&changed) {
+				t.Fatalf("authorized changed identity: %+v", changed)
+			}
+		}
+		// A module's grant never authorizes another kind, even for identical argv.
+		changed := *request
+		if kind == "" {
+			changed.Kind = "sudo"
+		} else {
+			changed.Kind = "unknown"
+		}
+		if grants.Allows(&changed) {
+			t.Fatal("grant crossed guard kinds")
+		}
+	}
+	for _, kind := range []string{"sudo", "unknown"} {
+		request := &ShellApprovalRequest{Kind: kind}
+		if NewApprovalGrants(guards[:1]).Available(request) || NewApprovalGrants(nil).Available(request) || (ApprovalGrants{}).Allows(request) {
+			t.Fatal("absent guard acquired authority")
+		}
 	}
 }

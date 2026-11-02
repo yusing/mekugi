@@ -170,7 +170,7 @@ provider-free exchanges.
 
 ### Replay timing
 
-An optional replay-timing contribution reads provider-boundary records only for
+The optional replay timing reader reads provider-boundary records only for
 selected loaded threads. Each interval ends at `captured_at` and begins that time
 minus `duration_ms`; missing timestamps, negative durations and durations over
 24 hours fail. The regular input is at most 64 MiB, with records below 16 MiB.

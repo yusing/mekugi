@@ -62,7 +62,7 @@ func TestFrontendRequestPreservesInputAndSelectedHistoryScope(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	handled, status := runToolPluginWorkerInHostProcess(service, testRecovery(), commands, t.Context(), registry.Frontends["mrun"], args, stdin, &stdout, &stderr)
+	handled, status := runToolPluginWorkerInHostProcess(service, testRecovery(), commands, t.Context(), filepath.Join(registry.FrontendDirectory, "mrun"), args, stdin, &stdout, &stderr)
 	if !handled || status != 7 || calls != 1 || stdout.String() != "forwarded\n" || stderr.String() != "diagnostic\n" {
 		t.Fatalf("handled=%t status=%d calls=%d stdout=%q stderr=%q", handled, status, calls, stdout.String(), stderr.String())
 	}

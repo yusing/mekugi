@@ -22,13 +22,13 @@ type Approval struct {
 }
 
 type ApprovalGrants struct {
-	values map[binding.ShellGuardKind]binding.CommandGrants
+	values map[binding.ShellGuardKind]map[approval.Command]bool
 }
 
 func NewApprovalGrants(guards []binding.ShellApproval) ApprovalGrants {
-	g := ApprovalGrants{values: make(map[binding.ShellGuardKind]binding.CommandGrants, len(guards))}
+	g := ApprovalGrants{values: make(map[binding.ShellGuardKind]map[approval.Command]bool, len(guards))}
 	for _, guard := range guards {
-		g.values[guard.Kind] = guard.NewSession()
+		g.values[guard.Kind] = make(map[approval.Command]bool)
 	}
 	return g
 }
@@ -45,7 +45,7 @@ func commandApprovalIdentity(request *ShellApprovalRequest) approval.Command {
 
 func (g ApprovalGrants) Allows(request *ShellApprovalRequest) bool {
 	kind, known := binding.GuardForRequest(request.Kind)
-	return known && g.values[kind] != nil && g.values[kind].Allows(commandApprovalIdentity(request))
+	return known && g.values[kind] != nil && g.values[kind][commandApprovalIdentity(request)]
 }
 
 func (a *Approval) SameCommand(other *Approval) bool {
@@ -76,7 +76,7 @@ func (a *Approval) Decide(choice prompt.Choice, reason string, grants ApprovalGr
 			reply.Reason = feedback
 		} else if choice.Session {
 			kind, _ := binding.GuardForRequest(a.Guard.Kind)
-			grants.values[kind].Allow(commandApprovalIdentity(a.Guard))
+			grants.values[kind][commandApprovalIdentity(a.Guard)] = true
 		}
 		a.Guard.Reply <- reply
 	} else {

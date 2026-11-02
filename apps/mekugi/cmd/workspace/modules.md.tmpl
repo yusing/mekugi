@@ -21,5 +21,4 @@ availability. Each module's specification owns its behavior and acceptance.
 {{end}}{{if .Descriptor.Records}}- Records: {{range $i, $v := .Descriptor.Records}}{{if $i}}, {{end}}`{{$v}}`{{end}}.
 {{end}}{{if .Descriptor.References}}- References: {{range $i, $v := .Descriptor.References}}{{if $i}}, {{end}}`{{$v}}`{{end}}.
 {{end}}- Codex connections: {{range $i, $v := .Binding.Mechanisms}}{{if $i}}, {{end}}`{{$v}}`{{else}}none{{end}}.
-{{if .Binding.Requires}}- Capabilities: {{range $i, $v := .Binding.Requires}}{{if $i}}, {{end}}`{{$v.Mechanism}}` ({{if $v.Required}}required{{else}}optional{{end}}){{end}}.
-{{end}}{{end}}
+{{end}}

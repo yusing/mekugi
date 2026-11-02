@@ -7,6 +7,6 @@ import (
 
 type Deps struct{}
 
-func newService(_ Deps, slots module.Slots) (*feed.Service, error) {
-	return feed.New(slots.ActivityDetails)
+func newService(_ Deps, _ module.Slots) (*feed.Service, error) {
+	return new(feed.Service), nil
 }

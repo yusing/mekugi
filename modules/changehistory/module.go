@@ -1,7 +1,6 @@
 package changehistory
 
 import (
-	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/module"
@@ -26,10 +25,9 @@ var Module = module.Descriptor[Deps, *capture.Service, codexbinding.Bindings, te
 	Requires: []module.ID{"sessionhistory"}, Lifetime: module.Invocation,
 	Resources: []string{"private workspace checkpoints and bounded warm-up tasks"},
 	Contributes: module.Contributions[*capture.Service]{
-		ActivityDetails: []activitydetail.Definition[*capture.Service]{{Name: "changehistory", Resolve: (*capture.Service).ActivityDetail}},
-		Guidance:        []guidance.Section{{Command: changes.Command.Name, Text: commandGuidance}},
-		Commands:        []command.Definition[*capture.Service]{{Spec: changes.Command.Spec, Run: (*capture.Service).Execute}},
-		RecordKinds:     retained.RecordKinds(), References: retained.ChangeReferences(),
+		Guidance:    []guidance.Section{{Command: changes.Command.Name, Text: commandGuidance}},
+		Commands:    []command.Definition[*capture.Service]{{Spec: changes.Command.Spec, Run: (*capture.Service).Execute}},
+		RecordKinds: retained.RecordKinds(), References: retained.ChangeReferences(),
 	},
 	Views: terminalview.Views,
 	New:   newService, Bindings: codexbinding.Codex,

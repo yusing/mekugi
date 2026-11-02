@@ -368,7 +368,7 @@ func transcriptView(presentation *sessionpresentation.Model, terminal *terminals
 
 // openOutput opens the operation a snippet names in the dialog, reporting
 // whether it names one.
-func openOutput(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, activity *activitymodel.Service, u *terminalsession.Attachment, view *activityui.View, snippet activityui.Snippet) bool {
+func openOutput(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, changes *changecapture.Service, u *terminalsession.Attachment, view *activityui.View, snippet activityui.Snippet) bool {
 	block, ok := view.SnippetBlock(snippet)
 	if !ok || block.EditSource != "" || len(block.Questions) > 0 {
 		return false
@@ -383,7 +383,7 @@ func openOutput(attached *attachedPresentation, terminal *terminalsession.Attach
 				if seen[member.Source] {
 					continue
 				}
-				if edits, _ := activityEditPages(attached, terminal, activity, view, member.Source, ""); len(edits) > 0 {
+				if edits, _ := activityEditPages(attached, terminal, changes, view, member.Source, ""); len(edits) > 0 {
 					pages = append(pages, edits...)
 					seen[member.Source] = true
 					continue

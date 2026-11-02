@@ -15,7 +15,6 @@ Own host-operation feeds, roster derivation and retained output
 - Composition: selected; lifetime: `attached-session`.
 - Requires: none.
 - Contributes: `record-kinds`, `terminal-roster`.
-- Hosts: `activity-details`.
 - Records: `wait`.
 - Codex connections: none.
 
@@ -30,7 +29,6 @@ Assemble agent guidance without changing caller authority
 - Commands: `mreload`.
 - Records: `compact`.
 - Codex connections: `executable-frontend`, `guidance-projection`.
-- Capabilities: `guidance-projection` (required), `executable-frontend` (required).
 
 ## [agentmetrics](../../modules/agentmetrics/SPEC.md)
 
@@ -50,7 +48,6 @@ Bound one foreground command's output
 - Contributes: `commands`, `guidance`.
 - Commands: `mrun`.
 - Codex connections: `executable-frontend`.
-- Capabilities: `executable-frontend` (required).
 
 ## [changehistory](../../modules/changehistory/SPEC.md)
 
@@ -59,12 +56,11 @@ Capture, retain, review, apply, and revert filesystem change evidence
 - Composition: selected; lifetime: `invocation`.
 - Requires: `sessionhistory`.
 - Resources: private workspace checkpoints and bounded warm-up tasks.
-- Contributes: `commands`, `guidance`, `record-kinds`, `references`, `activity-details`, `terminal-auxiliary`.
+- Contributes: `commands`, `guidance`, `record-kinds`, `references`, `terminal-auxiliary`.
 - Commands: `mchanges`.
 - Records: `changes`.
 - References: `changes`.
 - Codex connections: `executable-frontend`.
-- Capabilities: `executable-frontend` (required).
 
 ## [commandsegments](../../modules/commandsegments/SPEC.md)
 
@@ -84,7 +80,6 @@ Own conversation drafts, transcripts, prompts, queues, and side answers
 - Composition: selected; lifetime: `attached-session`.
 - Requires: none.
 - Codex connections: `observation`.
-- Capabilities: `observation` (required).
 
 ## [diagnostics](../../modules/diagnostics/SPEC.md)
 
@@ -106,7 +101,6 @@ Read bounded logical source rows
 - Contributes: `commands`.
 - Commands: `mcat`.
 - Codex connections: `executable-frontend`.
-- Capabilities: `executable-frontend` (required).
 
 ## [livepreview](../../modules/livepreview/SPEC.md)
 
@@ -131,7 +125,6 @@ Project repeated model-input output as visible references
 - Composition: selected; lifetime: `stateless`.
 - Requires: none.
 - Codex connections: `input-projection`.
-- Capabilities: `input-projection` (required).
 
 ## [outputrecovery](../../modules/outputrecovery/SPEC.md)
 
@@ -144,7 +137,6 @@ Publish and page retained output
 - Commands: `mread`.
 - Records: `cursor`, `output`.
 - Codex connections: `executable-frontend`.
-- Capabilities: `executable-frontend` (required).
 
 ## [remotewriteapproval](../../modules/remotewriteapproval/SPEC.md)
 
@@ -153,7 +145,6 @@ Own remote-write approval policy and exact session grants
 - Composition: selected; lifetime: `invocation`.
 - Requires: none.
 - Codex connections: `shell-approval`.
-- Capabilities: `shell-approval` (required).
 
 ## [sessionhistory](../../modules/sessionhistory/SPEC.md)
 
@@ -174,7 +165,6 @@ Query retained calls, outcomes and static corpus findings
 - Requires: none.
 - Hosts: `inspection`.
 - Codex connections: `rollout`.
-- Capabilities: `rollout` (required).
 
 ## [sessionnaming](../../modules/sessionnaming/SPEC.md)
 
@@ -183,7 +173,6 @@ Generate optional thread names while preserving manual authority
 - Composition: selected; lifetime: `host-operation`.
 - Requires: none.
 - Codex connections: `thread-naming`.
-- Capabilities: `thread-naming` (required).
 
 ## [sessionpreferences](../../modules/sessionpreferences/SPEC.md)
 
@@ -199,9 +188,7 @@ Schedule retained observations with synthetic streaming and read-only playback c
 
 - Composition: selected; lifetime: `stateless`.
 - Requires: `activity`, `agentguidance`, `sessionhistory`.
-- Hosts: `replay-timing`.
 - Codex connections: `rollout`.
-- Capabilities: `rollout` (required).
 
 ## [sourceoutline](../../modules/sourceoutline/SPEC.md)
 
@@ -212,7 +199,6 @@ Inspect structural declarations and source spans
 - Contributes: `commands`, `guidance`.
 - Commands: `inspect_file`.
 - Codex connections: `executable-frontend`.
-- Capabilities: `executable-frontend` (required).
 
 ## [sudoapproval](../../modules/sudoapproval/SPEC.md)
 
@@ -221,7 +207,6 @@ Own sudo approval policy and exact session grants
 - Composition: selected; lifetime: `invocation`.
 - Requires: none.
 - Codex connections: `shell-approval`.
-- Capabilities: `shell-approval` (required).
 
 ## [symbolquery](../../modules/symbolquery/SPEC.md)
 
@@ -232,7 +217,6 @@ Resolve semantic definitions and references
 - Contributes: `commands`, `guidance`.
 - Commands: `msymbol`.
 - Codex connections: `executable-frontend`.
-- Capabilities: `executable-frontend` (required).
 
 ## [threadcontrol](../../modules/threadcontrol/SPEC.md)
 
@@ -243,7 +227,6 @@ Coordinate native agent threads and retained targeted waits
 - Contributes: `record-kinds`.
 - Records: `threadcontrol`, `threadcontrol-import`.
 - Codex connections: `mcp-tools`.
-- Capabilities: `mcp-tools` (required).
 
 ## [transportdiagnostics](../../modules/transportdiagnostics/SPEC.md)
 
@@ -251,7 +234,7 @@ Observe transport bytes, timing, capture health and provider-response evidence
 
 - Composition: selected; lifetime: `invocation`.
 - Requires: none.
-- Contributes: `inspection`, `diagnostic-sections`, `replay-timing`.
+- Contributes: `inspection`, `diagnostic-sections`.
 - Codex connections: none.
 
 ## [usage](../../modules/usage/SPEC.md)

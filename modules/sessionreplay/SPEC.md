@@ -51,11 +51,10 @@ The corpus is bounded to 256 MiB across decoded rollouts and retained hook/compa
 128 threads and 500,000 generated item/hook events. Source admission and individual
 record bounds belong to the backend. Playback duration is at most 24 hours.
 
-With a timing contributor, `--debug-dir` selects `capture.jsonl` for provider
+With an optional timing reader, `--debug-dir` selects `capture.jsonl` for provider
 intervals from loaded threads only; [transport diagnostics](../transportdiagnostics/SPEC.md)
-supplies this optional source. Without a contributor, replay remains usable and
-leaves the source unopened. Multiple contributors are ambiguous and fail
-construction. Timing does not infer missing provider activity.
+supplies this optional source. Without a reader, replay remains usable and
+leaves the source unopened. Timing does not infer missing provider activity.
 
 ### Recorded clock and synthetic streaming
 

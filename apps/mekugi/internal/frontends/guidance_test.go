@@ -3,11 +3,11 @@ package frontends
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
-	"github.com/yusing/mekugi/backends/codex/binding"
+	json "encoding/json/v2"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -20,13 +20,16 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	if !strings.Contains(registry.FrontendGuidance.Workflow, "redirect to a file only when the task needs that artifact, not for display preference") {
 		t.Fatal("projected frontend guidance lacks output artifact rule")
 	}
-	generated, err := os.ReadFile(filepath.Join(registry.SnapshotDir, "frontend_guidance.json"))
-	var saved binding.FrontendGuidance
-	if err == nil {
-		err = json.Unmarshal(generated, &saved)
+	saved := registry.FrontendGuidance
+	if strings.Contains(guide, "{{") || strings.Contains(guide, "<instruction id=") {
+		t.Fatal("unrendered frontend guidance")
 	}
-	if err != nil || saved != registry.FrontendGuidance || strings.Contains(guide, "{{") || strings.Contains(guide, "<instruction id=") {
-		t.Fatalf("standalone generated frontend guidance differs from projection: %v", err)
+	generated, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(registry.SnapshotDir, "frontend_guidance.json")); !os.IsNotExist(err) {
+		t.Fatalf("unused guidance snapshot exists: %v", err)
 	}
 	for _, codeOnly := range []string{"Promise.allSettled", "tools.exec_command", "Pass `shell:", "exec output", "write_stdin"} {
 		if strings.Contains(saved.Shell, codeOnly) {
@@ -54,19 +57,9 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	if manifest.GuidanceSHA256 != hex.EncodeToString(digest[:]) {
 		t.Fatal("snapshot sections are not authenticated")
 	}
-	byName := make(map[string]catalogEntry, len(manifest.Tools))
-	for _, contribution := range manifest.Tools {
-		byName[contribution.Name] = contribution
-	}
-	for _, name := range []string{"mcat", "inspect_file", "msymbol", "mrun", "mchanges", "mread"} {
-		var specification struct {
-			Description string `json:"description"`
-		}
-		if err := json.Unmarshal(byName[name].Specification, &specification); err != nil {
-			t.Fatal(err)
-		}
-		if specification.Description == "" || strings.Count(guide, specification.Description) != 1 || strings.Count(saved.Shell, specification.Description) != 1 {
-			t.Fatalf("%s description is not projected exactly once", name)
+	for _, contribution := range testCommands() {
+		if !slices.Contains(manifest.Tools, contribution.Name) || strings.Count(guide, contribution.Description) != 1 || strings.Count(saved.Shell, contribution.Description) != 1 {
+			t.Fatalf("%s description is not projected exactly once", contribution.Name)
 		}
 	}
 	for _, removed := range []string{"hcat", "hread", "hpatch", "hchanges", "functions.shell"} {

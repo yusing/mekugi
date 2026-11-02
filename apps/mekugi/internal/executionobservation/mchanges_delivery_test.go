@@ -171,7 +171,7 @@ func TestMChangesDeliveryWorkerPrepublicationFailureAndCancellation(t *testing.T
 				return output, nil
 			}
 			var out, diag bytes.Buffer
-			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, ctx, f.registry.Frontends["mchanges"],
+			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, ctx, filepath.Join(f.registry.FrontendDirectory, "mchanges"),
 				[]string{"revert", id, "--max-tokens", "12"}, nil, &out, &diag)
 			if !handled || calls != 1 || plan == nil {
 				t.Fatalf("worker did not execute exactly once: handled=%t calls=%d", handled, calls)

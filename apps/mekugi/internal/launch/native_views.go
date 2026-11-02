@@ -51,6 +51,7 @@ type nativeSessionView struct {
 	predictionDraftEmpty  bool
 	files                 detailFiles
 	activity              *activitymodel.Service
+	changes               *changecapture.Service
 	detailDemand          *sessionpresentation.DetailOutputRequest
 	scope                 sessionpresentation.Attachment
 	attached              attachedPresentation
@@ -307,6 +308,7 @@ func (n *nativeViews) predictionEligibility(execution *attachedPresentation) (fo
 
 func (n *nativeViews) publish(execution *attachedPresentation, control *sessioncontrol.Client[appServerRequest], settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, review *sessionreview.Review, reviewSource *changecapture.Service, facts sessionapi.NativeSessionFacts, now time.Time) {
 	for id, v := range n.views {
+		v.changes = reviewSource
 		if v.ctx.Err() != nil || v.attached.executionPresentation != execution.executionPresentation && v.thread != control.Thread && id != n.replacing {
 			n.retire(id)
 			continue

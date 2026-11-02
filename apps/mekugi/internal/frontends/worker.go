@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
@@ -96,7 +97,7 @@ func (invocation *Invocation) Run(service *history.Service, recovered *recovery.
 	if err != nil {
 		return fail(err)
 	}
-	if manifest.Version != 2 {
+	if manifest.Version != 3 {
 		return fail(errors.New("tool worker manifest is inconsistent"))
 	}
 	if manifest.RegistryID != expectedRegistryID {
@@ -110,33 +111,22 @@ func (invocation *Invocation) Run(service *history.Service, recovered *recovery.
 		return fail(errors.New("tool worker registry identity mismatch"))
 	}
 
-	var contribution *catalogEntry
-	for index := range manifest.Tools {
-		if manifest.Tools[index].Name == name {
-			if contribution != nil {
-				return fail(fmt.Errorf("tool %q appears more than once in worker manifest", name))
-			}
-			contribution = &manifest.Tools[index]
-		}
-	}
-	if contribution == nil || !contribution.Executable {
+	if !slices.Contains(manifest.Tools, name) {
 		return fail(fmt.Errorf("tool %q is unavailable in worker manifest", name))
 	}
-	if err := validateToolContribution(*contribution); err != nil {
-		return fail(err)
+	index := slices.IndexFunc(commands, func(compiled command.Contribution) bool { return compiled.Name == name })
+	if index < 0 || commands[index].Run == nil {
+		return fail(fmt.Errorf("frontend %q is unavailable", name))
 	}
+	compiled := commands[index]
 
 	selected, release, err := beginSession(ctx, service, manifest.ReplayDirectory, os.Getenv("CODEX_THREAD_ID"))
 	if err != nil {
 		return fail(err)
 	}
 	defer release()
-	execute, observeRead := frontendExecutor(*contribution, commands)
-	if execute == nil {
-		return fail(fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
-	}
 	run := func(ctx context.Context, request command.Request) (command.Output, error) {
-		execution, err := execute(ctx, request)
+		execution, err := compiled.Run(ctx, request)
 		if err != nil {
 			return execution, err
 		}
@@ -165,7 +155,7 @@ func (invocation *Invocation) Run(service *history.Service, recovered *recovery.
 	request := command.Request{Args: args, Stdin: stdin, ProcessScope: processScope,
 		Scope: selected}
 	var execution command.Output
-	if observeRead && agentMetrics != nil {
+	if compiled.ObserveRead && agentMetrics != nil {
 		execution, err = executeFrontendReader(ctx, agentMetrics, manifest.AXReadOutput, name, request, run)
 	} else {
 		execution, err = run(ctx, request)
@@ -183,17 +173,6 @@ func (invocation *Invocation) Run(service *history.Service, recovered *recovery.
 		return fail(fmt.Errorf("write tool stderr: %w", err))
 	}
 	return execution.ExitCode
-}
-
-// frontendExecutor is the retained dispatch owner used both before catalog
-// publication and when an authenticated worker executes a selected command.
-func frontendExecutor(contribution catalogEntry, commands []command.Contribution) (func(context.Context, command.Request) (command.Output, error), bool) {
-	for _, compiled := range commands {
-		if compiled.Name == contribution.NativeExecutor && compiled.Run != nil {
-			return compiled.Run, compiled.ObserveRead
-		}
-	}
-	return nil, false
 }
 
 // RegistryIDFromDirectory recognizes the snapshot naming format. Manifest and

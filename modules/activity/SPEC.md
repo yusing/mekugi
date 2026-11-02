@@ -213,9 +213,9 @@ invocation-wide changes to individual segments. Combined output stays with its a
 Edit receipts retain their source across tool-managed-file summaries. An edit with
 no resolved target says paths are unavailable. Generated edit operations omit diff
 bodies from the feed; authored Markdown and retained evidence remain unchanged.
-Activity hosts composed detail contributions, preferring an exact retained match
+Activity edit navigation receives the selected change-history service, preferring an exact retained match
 from [change history](../changehistory/SPEC.md#saved-review-presentation). With no
-matching contribution, captured receipts and completed native file-change items
+matching provider result, captured receipts and completed native file-change items
 retain fallback details, including before an outer batch exits. Activity projects
 those supplied file changes into operation summaries and completed detail pages;
 live, restored and replay consumers share that projection.

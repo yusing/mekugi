@@ -63,8 +63,8 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 		"mchanges --list", nil, invocation); status != 0 || stderr != "" || stdout != ownID+" pending\n" {
 		t.Fatalf("own pending change not discoverable: %q, %q, %d", stdout, stderr, status)
 	}
-	frontend, ok := registry.Frontends["mchanges"]
-	if !ok {
+	frontend := filepath.Join(registry.FrontendDirectory, "mchanges")
+	if _, err := os.Stat(frontend); err != nil {
 		t.Fatal("mchanges frontend is unavailable")
 	}
 	command := exec.CommandContext(t.Context(), frontend, "--summary", id, "--", "file.txt")

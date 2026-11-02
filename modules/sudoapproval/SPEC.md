@@ -56,14 +56,14 @@ limits as the VCS guard's Bash path functions.
 
 ## Lifecycle
 
-The application creates one module-owned grant set for each attached UI lifetime.
+Session Control owns exact-command grants per registered guard kind for each attached UI lifetime.
 Grants are invocation-local and discarded on detach; changing the displayed thread
 does not create another set. Fresh resume creates a new set. The application owns
 the shared local decision channel and joins it independently of segment reporting.
 
 ## Codex connection
 
-The binding registers this guard's participation and its session-grant factory.
+The binding registers this guard's kind.
 The application composes only registered resources into the backend's native hook.
 The helper evaluates the module policy against expanded arguments at execution;
 Authentication remains sudo-owned; the module validates secret answers before delivery.
@@ -83,7 +83,7 @@ resources, including nested-shell instrumentation when only sudo is present.
 ## Acceptance
 Native helper and UI acceptance covers command approval, independent password requests, exact grants, cancellation, secret-only delivery, and unchanged execution.
 
-Module acceptance exercises policy and isolated grant lifetimes through the
-scripted binder. Application acceptance covers leave-one-out resources, request
+Module acceptance exercises policy and guard registration through the
+scripted binder. Application acceptance covers isolated grant lifetimes, leave-one-out resources, request
 admission, exact queued grants, secret entry, and native execution. Installed-host
 checks remain distinct from offline fixtures.

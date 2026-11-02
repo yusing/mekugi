@@ -2,7 +2,6 @@ package frontends
 
 import (
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -17,7 +16,7 @@ func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
 	for _, commands := range [][]command.Contribution{nil, all[:1], all} {
 		t.Run(strconv.Itoa(len(commands)), func(t *testing.T) {
 			directory := t.TempDir()
-			registry, err := New(t.Context(), Config{Commands: commands, Guidance: testGuidance(), RuntimeDirectory: filepath.Join(directory, "runtime"), ReplayDirectory: filepath.Join(directory, "replay")})
+			registry, err := New(t.Context(), Config{Commands: commands, Guidance: testGuidance(), ReplayDirectory: filepath.Join(directory, "replay")})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -26,8 +25,12 @@ func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
 					t.Error(err)
 				}
 			})
-			if len(registry.Frontends) != len(commands) {
-				t.Fatalf("selected %d commands, exposed %d frontends", len(commands), len(registry.Frontends))
+			manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, manifestFilename))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(manifest.Tools) != len(commands) {
+				t.Fatalf("selected %d commands, exposed %d frontends", len(commands), len(manifest.Tools))
 			}
 			for _, spec := range all {
 				selected := slices.ContainsFunc(commands, func(c command.Contribution) bool { return c.Spec == spec.Spec })
@@ -46,22 +49,22 @@ func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
 func TestComposedCatalogRejectsInvalidExposure(t *testing.T) {
 	for _, name := range []string{"../escaped-frontend", "/absolute", `..\escaped`, ".", "..", "", "unimplemented"} {
 		t.Run(name, func(t *testing.T) {
-			directory := t.TempDir()
-			runtime := filepath.Join(directory, "runtime")
 			contribution := testCommands()[0]
 			contribution.Name = name
 			if name == "unimplemented" {
 				contribution.Run = nil
 			}
-			registry, err := New(t.Context(), Config{Commands: []command.Contribution{contribution}, Guidance: testGuidance(), RuntimeDirectory: runtime, ReplayDirectory: filepath.Join(directory, "replay")})
-			if err == nil {
-				_ = registry.Close()
-				t.Fatal("published invalid frontend")
+			if err := ValidateCatalog([]command.Contribution{contribution}); err == nil {
+				t.Fatal("accepted invalid frontend")
 			}
-			entries, readErr := os.ReadDir(runtime)
-			if readErr != nil && !os.IsNotExist(readErr) || len(entries) != 0 {
-				t.Fatalf("failed publication left owned artifacts: %v, %v", entries, readErr)
-			}
+
 		})
+	}
+}
+
+func TestCatalogRejectsDuplicateCommands(t *testing.T) {
+	contribution := testCommands()[0]
+	if err := ValidateCatalog([]command.Contribution{contribution, contribution}); err == nil {
+		t.Fatal("accepted duplicate frontend")
 	}
 }

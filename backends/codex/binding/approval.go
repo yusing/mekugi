@@ -3,8 +3,6 @@ package binding
 import (
 	"errors"
 	"slices"
-
-	"github.com/yusing/mekugi/contracts/approval"
 )
 
 type ShellGuardKind string
@@ -26,19 +24,12 @@ func GuardForRequest(kind string) (ShellGuardKind, bool) {
 	}
 }
 
-// CommandGrants belongs to one module in one serialized UI scope.
-type CommandGrants interface {
-	Allows(approval.Command) bool
-	Allow(approval.Command)
-}
-
 type ShellApproval struct {
-	Kind       ShellGuardKind
-	NewSession func() CommandGrants
+	Kind ShellGuardKind
 }
 
 func (r *Registry) ShellApproval(guard ShellApproval) error {
-	if guard.Kind != RemoteWrite && guard.Kind != Sudo || guard.NewSession == nil {
+	if guard.Kind != RemoteWrite && guard.Kind != Sudo {
 		return errors.New("invalid shell approval registration")
 	}
 	if slices.ContainsFunc(r.guards, func(old ShellApproval) bool { return old.Kind == guard.Kind }) {

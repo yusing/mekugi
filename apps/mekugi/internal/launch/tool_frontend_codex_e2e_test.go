@@ -185,8 +185,8 @@ func TestNativeToolFrontendCodexE2E(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	frontend, ok := registry.Frontends["mrun"]
-	if !ok {
+	frontend := filepath.Join(registry.FrontendDirectory, "mrun")
+	if _, err := os.Stat(frontend); err != nil {
 		t.Fatal("native mrun frontend is unavailable")
 	}
 	workspace := t.TempDir()
@@ -240,8 +240,8 @@ func TestMRunNativeCodexYieldAndWriteStdinE2E(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	frontend, ok := registry.Frontends["mrun"]
-	if !ok {
+	frontend := filepath.Join(registry.FrontendDirectory, "mrun")
+	if _, err := os.Stat(frontend); err != nil {
 		t.Fatal("mrun session frontend is unavailable")
 	}
 	workspace := t.TempDir()

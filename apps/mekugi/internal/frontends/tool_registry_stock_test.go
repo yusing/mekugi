@@ -14,7 +14,12 @@ func TestToolRegistryExposesOnlyExecutableFrontends(t *testing.T) {
 	registry := sharedTestRegistry(t)
 	want := []string{"inspect_file", "mcat", "mchanges", "mread", "mrun", "msymbol"}
 	var got []string
-	for name := range registry.Frontends {
+	entries, err := os.ReadDir(registry.FrontendDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
 		got = append(got, name)
 	}
 	slices.Sort(got)
@@ -39,7 +44,7 @@ func TestNativeFrontendAuthenticatesCatalogWithoutExternalRuntime(t *testing.T) 
 		t.Fatal(err)
 	}
 	run := func() (string, string, error) {
-		command := exec.CommandContext(t.Context(), registry.Frontends["mcat"], source)
+		command := exec.CommandContext(t.Context(), filepath.Join(registry.FrontendDirectory, "mcat"), source)
 		command.Env = append(os.Environ(), testWorkerEnvironment+"=1", "CODEX_THREAD_ID=")
 		var stdout, stderr bytes.Buffer
 		command.Stdout, command.Stderr = &stdout, &stderr

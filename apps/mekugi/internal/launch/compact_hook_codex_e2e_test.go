@@ -77,7 +77,7 @@ func testCompactReloadNativeCodex(t *testing.T, automatic bool, promptKind strin
 	if err := os.WriteFile(blocked, []byte("NEVER_ATTACH_BLOCKED\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	provider := &compactSelectionProvider{requests: make(chan []byte, 16), automatic: automatic, reader: registry.Frontends["mcat"], prompt: shellhook.DefaultCompactPrompt, slow: slow}
+	provider := &compactSelectionProvider{requests: make(chan []byte, 16), automatic: automatic, reader: filepath.Join(registry.FrontendDirectory, "mcat"), prompt: shellhook.DefaultCompactPrompt, slow: slow}
 	prompt := filepath.Join(workspace, "compact-prompt.md")
 	if err := os.WriteFile(prompt, []byte("Preserve caller file handover instructions."), 0600); err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func testCompactReloadNativeCodex(t *testing.T, automatic bool, promptKind strin
 			}
 		}
 	}
-	environment, err = frontendShellEnvironment(environment, filepath.Dir(registry.Frontends["mcat"]), "", nil, segmenttransport.Endpoints{})
+	environment, err = frontendShellEnvironment(environment, filepath.Dir(filepath.Join(registry.FrontendDirectory, "mcat")), "", nil, segmenttransport.Endpoints{})
 	if err != nil {
 		t.Fatal(err)
 	}

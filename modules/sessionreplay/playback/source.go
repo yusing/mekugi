@@ -29,21 +29,11 @@ type Service struct {
 	decoder Decoder
 }
 
-func New(history *history.Service, timing []replaytiming.Reader) (*Service, error) {
+func New(history *history.Service, timing replaytiming.Reader) (*Service, error) {
 	if history == nil {
 		return nil, errors.New("session replay requires session history")
 	}
-	if len(timing) > 1 {
-		return nil, errors.New("multiple replay timing contributors")
-	}
-	service := &Service{history: history}
-	if len(timing) == 1 {
-		if timing[0] == nil {
-			return nil, errors.New("missing replay timing reader")
-		}
-		service.timing = timing[0]
-	}
-	return service, nil
+	return &Service{history: history, timing: timing}, nil
 }
 func (s *Service) BindSource(decoder Decoder) error {
 	if s.decoder.Read != nil {

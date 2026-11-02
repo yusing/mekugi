@@ -3,7 +3,6 @@ package module
 import (
 	"context"
 
-	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/contracts/diagnosticsection"
 
 	"github.com/yusing/mekugi/contracts/command"
@@ -12,7 +11,6 @@ import (
 	"github.com/yusing/mekugi/contracts/presentation"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
-	"github.com/yusing/mekugi/contracts/replaytiming"
 )
 
 type ID string
@@ -32,10 +30,8 @@ const (
 )
 
 // Slots contains the contribution families implemented by the current binder.
-// Further families are added with their first consumer, rather than placeholders.
+// Shared extension families use slots; single-provider relationships use typed dependencies.
 type Slots struct {
-	ActivityDetails    []activitydetail.Provider
-	ReplayTiming       []replaytiming.Reader
 	DiagnosticSections []diagnosticsection.Contribution
 	Inspection         []inspection.Contribution
 	Guidance           []guidance.Section
@@ -47,8 +43,6 @@ type Slots struct {
 // values for module hosts; composition supplies presentation to its application host.
 type Contributions[S any] struct {
 	Presentation       []presentation.Status
-	ActivityDetails    []activitydetail.Definition[S]
-	ReplayTiming       []replaytiming.Definition[S]
 	DiagnosticSections []diagnosticsection.Definition[S]
 	Inspection         []inspection.Definition[S]
 	Guidance           []guidance.Section
@@ -70,9 +64,7 @@ type Descriptor[D, S, B, V any] struct {
 	HostsGuidance           bool
 	HostsRecords            bool
 	HostsReferences         bool
-	HostsActivityDetails    bool
 	HostsInspection         bool
-	HostsReplayTiming       bool
 	HostsDiagnosticSections bool
 	New                     func(D, Slots) (S, error)
 	Views                   V
