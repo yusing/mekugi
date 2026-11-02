@@ -60,15 +60,22 @@ func (p *Pass) Text(header, body string) Result {
 	text.WriteString(header)
 	var anchor string
 	var anchorTokens int64
-	if result.RepeatedBytes < len(body) && p.index.Add(p.sources+1, projection, func(span matcher.Span, run string) bool {
+	admissions := make(map[matcher.Span]bool)
+	accept := func(span matcher.Span, run string) bool {
+		if admitted, ok := admissions[span]; ok {
+			return admitted
+		}
 		if anchor == "" {
 			anchor = fmt.Sprintf("O%d:\n", span.Source)
 			anchorTokens = p.savings.count(anchor)
 		}
 		saved := p.savings.count(run) - p.savings.count(referenceText(span, run)) - anchorTokens
-		return !p.savings.failed && saved >= minimumTokenSavings
-	}) {
-		p.sources++
+		admitted := !p.savings.failed && saved >= minimumTokenSavings
+		admissions[span] = admitted
+		return admitted
+	}
+	add := result.RepeatedBytes < len(body) && p.index.CanAdd(p.sources+1, projection, accept)
+	if add {
 		// Anchor sources before any later repeat to keep growing prefixes stable.
 		text.WriteString(anchor)
 	}
@@ -80,6 +87,16 @@ func (p *Pass) Text(header, body string) Result {
 	}
 	text.WriteString(body[start:])
 	result.Text = text.String()
+	if edited, ok := p.editProjection(header, body, result.Text); ok {
+		return edited
+	}
+	if add {
+		p.index.Add(p.sources+1, projection, accept)
+		p.sources++
+	} else if result.RepeatedBytes < len(body) {
+		// Rejected and seedless verbatim text still advances the window.
+		p.index.Add(p.sources+1, projection, accept)
+	}
 	return result
 }
 

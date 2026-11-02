@@ -86,6 +86,27 @@ counting as one row. References always target visible verbatim text, never ancho
 generated references or replaced spans, so they need no second hop.
 Literal host text resembling a marker remains host text.
 
+Highly similar bodies also compete with a single-base edit projection. Its base
+must be one earlier complete verbatim body still present in the same 256 KiB
+index. Only the four newest eligible complete bodies are considered. Rune-based
+edit planning shares a bounded work budget across those candidates and limits
+edit distance; exceeding the work budget retains the ordinary projection.
+The candidate must reuse at least 192 bytes, save at least 32 estimated tokens,
+and have a strictly smaller complete rendered token estimate than the ordinary
+projection, including any source anchor. Ties retain the ordinary projection.
+
+The edit header names one source and explains replacement and insertion rows.
+Each replacement row is `[start,end,"replacement"]`. Repeated identical boundary
+insertions can share one row, `[[offsets],"insertion"]`. Coordinates are UTF-8 byte
+offsets into the unchanged base, with an exclusive end. Equal start and end
+insert at that boundary. Ranges never overlap; grouped rows may list coordinates
+before or after another row's coordinates. JSON string payloads
+preserve whitespace, Unicode, CRLF and final-newline state. Reconstruction is
+verified byte-for-byte before selection. Generated edit text and reconstructed
+bodies are never indexed or given source anchors. Repetition receipts count
+reused bytes and only complete unchanged logical lines, so a changed single
+line can save tokens without receiving a repeated-lines annotation.
+
 Each projection is a fresh forward pass over the current original input, with
 no persistent matcher state. Compacted, forked, and resumed views can reference
 only their own current input. Fresh projections of the same original host input

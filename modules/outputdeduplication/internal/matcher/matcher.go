@@ -44,6 +44,7 @@ type piece struct {
 	start, firstSeed int
 	source, rows     int
 	order            uint64
+	complete         bool
 }
 
 func (p *piece) seedCount() int { return len(p.seeds) / seedBytes }
@@ -220,11 +221,47 @@ func (idx *Index) Project(text string) Projection {
 // accept gate sees only seeded, threshold-sized runs inside the retained window.
 // Rejected text advances the window too. The result reports a retained new run.
 func (idx *Index) Add(source int, projection Projection, accept func(Span, string) bool) bool {
+	firstOrder := idx.bytes
+	visitRuns(projection, func(rows int, text string, row, skip int) {
+		idx.addRun(source, rows, text, row, skip, accept)
+	})
+	return len(idx.pieces) > 0 && idx.pieces[len(idx.pieces)-1].order >= firstOrder
+}
+
+// CanAdd applies the same admission gate without advancing or changing the index.
+func (idx *Index) CanAdd(source int, projection Projection, accept func(Span, string) bool) bool {
+	admitted := false
+	visitRuns(projection, func(rows int, text string, row, skip int) {
+		text, row, _, count := retainedRun(text, row, skip)
+		if count == 0 {
+			return
+		}
+		last := row + rowCount(text) - 1
+		span := Span{End: len(text), Source: source, FirstLine: row, LastLine: last, Whole: row == 1 && last == rows}
+		if accept == nil || accept(span, text) {
+			admitted = true
+		}
+	})
+	return admitted
+}
+
+// Complete visits at most limit newest complete, still-visible verbatim bodies.
+// Borrowed text is valid only until the next index mutation.
+func (idx *Index) Complete(limit int, visit func(source int, text []byte)) {
+	for i := len(idx.pieces) - 1; i >= 0 && limit > 0; i-- {
+		p := idx.pieces[i]
+		if p.complete && p.start == 0 {
+			visit(p.source, p.text)
+			limit--
+		}
+	}
+}
+
+func visitRuns(projection Projection, visit func(rows int, text string, row, skip int)) {
 	text := projection.text
 	if len(text) < Threshold {
-		return false
+		return
 	}
-	firstOrder := idx.bytes
 	rows := rowCount(text)
 	verbatim := len(text)
 	for _, span := range projection.Spans {
@@ -237,33 +274,28 @@ func (idx *Index) Add(source int, projection Projection, accept func(Span, strin
 	start, row := 0, 1
 	for _, span := range projection.Spans {
 		if span.Start > start {
-			idx.addRun(source, rows, text[start:span.Start], row, skip, accept)
+			visit(rows, text[start:span.Start], row, skip)
 			skip = max(0, skip-(span.Start-start))
 			row += rowCount(text[start:span.Start])
 		}
 		start, row = span.End, row+1
 	}
 	if start < len(text) {
-		idx.addRun(source, rows, text[start:], row, skip, accept)
+		visit(rows, text[start:], row, skip)
 	}
-	return len(idx.pieces) > 0 && idx.pieces[len(idx.pieces)-1].order >= firstOrder
 }
 
-func (idx *Index) addRun(source, rows int, text string, firstRow, skip int, accept func(Span, string) bool) {
-	order := idx.bytes
-	idx.bytes += uint64(len(text))
-	idx.evict()
+func retainedRun(text string, firstRow, skip int) (retained string, row, start, count int) {
 	// Keep only whole lines within the byte window, even for an oversized run.
-	start := min(skip, len(text))
+	start = min(skip, len(text))
 	if start > 0 && text[start-1] != '\n' {
 		start = lineEnd(text, start)
 	}
 	firstRow += rowCount(text[:start])
 	text = text[start:]
 	if len(text) < Threshold {
-		return
+		return text, firstRow, start, 0
 	}
-	count := 0
 	for at := 0; at < len(text); {
 		end := lineEnd(text, at)
 		if isSeed(text[at:end]) {
@@ -271,6 +303,14 @@ func (idx *Index) addRun(source, rows int, text string, firstRow, skip int, acce
 		}
 		at = end
 	}
+	return text, firstRow, start, count
+}
+
+func (idx *Index) addRun(source, rows int, text string, firstRow, skip int, accept func(Span, string) bool) {
+	order := idx.bytes
+	idx.bytes += uint64(len(text))
+	idx.evict()
+	text, firstRow, start, count := retainedRun(text, firstRow, skip)
 	if count == 0 {
 		return
 	}
@@ -280,7 +320,7 @@ func (idx *Index) addRun(source, rows int, text string, firstRow, skip int, acce
 		return
 	}
 	p := &piece{text: referenceBuffer(len(text)), seeds: referenceBuffer(count * seedBytes),
-		source: source, rows: rows, order: order + uint64(start)}
+		source: source, rows: rows, order: order + uint64(start), complete: span.Whole}
 	copy(p.text, text)
 	id := idx.firstPiece + uint64(len(idx.pieces))
 	seed, row := 0, firstRow

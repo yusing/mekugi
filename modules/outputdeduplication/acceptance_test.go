@@ -196,3 +196,43 @@ func TestAcceptanceUnsupportedInputPassesThrough(t *testing.T) {
 		}
 	}
 }
+
+func TestAcceptanceSingleBaseEditsThroughHostAndAttachment(t *testing.T) {
+	p := registeredProjection(t)
+	var original, changed strings.Builder
+	for i := range 40 {
+		row := fmt.Sprintf("requirement %02d: keep original output evidence, direct references, and exact whitespace %s\n", i, strings.Repeat("important detail ", 5))
+		original.WriteString(row)
+		if i == 1 {
+			row = strings.Replace(row, "original", "unchanged", 1)
+		}
+		changed.WriteString(row)
+		if i%5 == 0 {
+			changed.WriteString("    \n")
+		}
+	}
+	base, body := original.String(), changed.String()
+	header := fmt.Sprintf("Attached file %q (UTF-8 bytes 0:%d of %d; %s):\n", "/never-open/near.txt", len(body), len(body), attachments.ReadGuidance)
+	envelope := (attachments.Snapshot{ID: "near", Frames: []string{header + body}}).Encode()
+	input := encode(t, []item{tool("source", base), tool("changed", body), {"role": "user", "content": []item{textPart(envelope)}}})
+	evidence := bytes.Clone(input)
+	result := p.Prepare(input)(input)
+	got := decode(t, result.Input)
+	projected := got[1]["output"].(string)
+	if !strings.HasPrefix(projected, "See O1 with byte edits") || strings.Contains(projected, "See O2") {
+		t.Fatalf("host output = %q", projected)
+	}
+	frames, ok := attachments.Decode(got[2]["content"].([]any)[0].(map[string]any)["text"].(string))
+	if !ok || len(frames) != 1 || frames[0] != header+projected {
+		t.Fatalf("attachment projection = %q", frames)
+	}
+	if !bytes.Equal(input, evidence) || result.Receipt == nil || result.Receipt.OutputRepetitions != 2 ||
+		result.Receipt.RepeatedCalls["changed"] != "39 lines repeated" || len(result.Receipt.RepeatedAttachments) != 1 ||
+		!result.Receipt.TokensMeasured || result.Receipt.SavedTokens <= 0 {
+		t.Fatalf("evidence or receipt changed: %+v", result.Receipt)
+	}
+	prefix := encode(t, decode(t, input)[:2])
+	if earlier := decode(t, p.Prepare(prefix)(prefix).Input); !reflect.DeepEqual(earlier, got[:2]) {
+		t.Fatal("appended attachment changed earlier host projection")
+	}
+}
