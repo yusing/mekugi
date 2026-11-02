@@ -105,6 +105,9 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	session.resumeArgv = slices.Clone(session.resumeArgv)
 	session.Client.Startup.Config = appServerResumeConfig(cmd.Args, session.resumeArgv)
 	api.BindRequests(session.Client.Requests)
+	if session.preparer != nil {
+		session.Client.Requests.PrepareCompletion = session.preparer.PrepareCompletion
+	}
 	api.BindSideThreads(session.Client.Requests.HasSideThread)
 	session.Client.Requests.Coordination, session.Client.Requests.InterruptWait = threads.shared, threads.driver.Interrupt
 	session.Client.Requests.InheritedEffort = threads.driver.InheritedEffort
@@ -185,7 +188,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 		if session.Client.CompleteCall(m) {
 			if m.Error == nil {
 				if input := response.NativeDelivery(); input != nil {
-					publishNativeDelivery(&session.attached, *input, presentationTime(session.clock))
+					stageNativeDelivery(&session.attached, *input, response.Completion(), presentationTime(session.clock))
 				}
 			}
 			return nil
@@ -874,8 +877,11 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 						return intentErr
 					}
 				case <-tick.C:
+					if err := flushCompletions(); err != nil {
+						return err
+					}
 					syncLogicalWork(&session.attached, &session.Client.Live, threads, presentationTime(session.clock))
-					threads.driver.Tick(presentationTime(session.clock))
+					threads.driver.Tick(presentationTime(session.clock), session.Client.Requests.RuntimeThreads(session.Client.Thread))
 					if len(session.attached.sideInputs) > 0 || session.side != nil && len(session.side.Drafts.Unsent) > 0 {
 						if err := flushBTW(&session.attached, session.shell, &session.Client, &session.picker, &session.questions, &session.approvals, session.clock, session.settings, &session.side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations); err != nil {
 							return err

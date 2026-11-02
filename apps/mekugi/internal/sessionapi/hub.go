@@ -222,6 +222,9 @@ func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start St
 	if start.Replay != nil {
 		server = New()
 	}
+	if parentRuntime != nil {
+		server.preparations = parentRuntime.server.preparations
+	}
 	if run == nil {
 		run = func(ctx context.Context, server *Server) error { return h.launcher.Run(ctx, start, server) }
 	}

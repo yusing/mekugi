@@ -35,6 +35,7 @@ import (
 // nativeSession owns the serialized execution loop and invocation-lifetime collaborators.
 // Helpers borrow explicit view slots and editors, keeping Main's slots independent.
 type nativeSession struct {
+	preparer      *executionobservation.Preparer
 	attached      attachedPresentation
 	terminalViews terminalsession.Views
 	preparePane   func(*scope.Store)

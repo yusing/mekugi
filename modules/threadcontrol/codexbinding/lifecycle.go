@@ -106,9 +106,11 @@ func (d *Driver) Observe(method string, raw jsontext.Value) (<-chan error, error
 	return reduced, nil
 }
 
-func (d *Driver) Tick(now time.Time) {
-	for _, thread := range d.control.Due(now) {
-		d.enqueue(hostObservation{thread: thread})
+func (d *Driver) Tick(now time.Time, threads []string) {
+	for _, thread := range threads {
+		for _, thread := range d.control.Due(thread, now) {
+			d.enqueue(hostObservation{thread: thread})
+		}
 	}
 }
 

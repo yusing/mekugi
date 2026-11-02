@@ -7,8 +7,47 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+func TestRuntimeDeadlineIncludesMainAfterSideAdmission(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		driver, host, session, caller := reconciliationFixture(t)
+		check := func(err error) {
+			t.Helper()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		check(driver.AdmitRequest(t.Context(), session, caller, true))
+		reset := time.Now().Add(time.Hour)
+		_, err := driver.control.WaitForUsageLimit(t.Context(), caller.Thread, caller.Turn, &reset)
+		check(err)
+		check(driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, control.HostFailure{}))
+		side, err := session.Store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "side")
+		check(err)
+		defer side.Close()
+		check(driver.control.AdmitRoot(t.Context(), side, &control.Member{Thread: "side", Session: "side-session", Task: "/root", Turn: "side-turn", Generation: 1, Status: control.Working, HostRunning: true, AudienceAdmitted: true}))
+		check(driver.AdmitRequest(t.Context(), side, control.Identity{Thread: "side", Session: "side-session", Turn: "side-turn"}, true))
+		_, err = driver.control.WaitForUsageLimit(t.Context(), "side", "side-turn", &reset)
+		check(err)
+		check(driver.control.HostCompleted(t.Context(), "side", "side-turn", control.Completed, control.HostFailure{}))
+		check(driver.Start(t.Context()))
+		defer driver.Stop(t.Context())
+		host.inputs = nil
+		time.Sleep(time.Hour)
+		driver.Tick(time.Now(), []string{"root", "side"})
+		synctest.Wait()
+		seen := make(map[string]bool)
+		for _, input := range host.inputs {
+			seen[input.Thread] = input.Run && input.Wake.UsageLimit
+		}
+		if len(host.inputs) != 2 || !seen["root"] || !seen["side"] {
+			t.Fatalf("runtime lost Main or Side deadline: %+v", host.inputs)
+		}
+	})
+}
 
 func TestCanceledUsageLimitWakeIsOrdinaryCancellation(t *testing.T) {
 	driver, host, _, caller := reconciliationFixture(t)
@@ -37,7 +76,7 @@ func TestUsageLimitTimerResumesAdmittedThread(t *testing.T) {
 	for _, thread := range []string{"root", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				driver, host, _, _ := reconciliationFixture(t)
+				driver, host, session, _ := reconciliationFixture(t)
 				check := func(err error) {
 					t.Helper()
 					if err != nil {
@@ -45,6 +84,8 @@ func TestUsageLimitTimerResumesAdmittedThread(t *testing.T) {
 					}
 				}
 				member, _ := driver.control.Member(thread)
+				session.Thread = thread
+				check(driver.AdmitRequest(t.Context(), session, control.Identity{Thread: thread, Session: member.Session, Turn: member.Turn}, member.Parent == ""))
 				reset := time.Now().Add(time.Hour)
 				_, err := driver.control.WaitForUsageLimit(t.Context(), thread, member.Turn, &reset)
 				check(err)
@@ -58,12 +99,12 @@ func TestUsageLimitTimerResumesAdmittedThread(t *testing.T) {
 					t.Fatal("provider wait resumed before reset")
 				}
 				time.Sleep(time.Hour)
-				driver.Tick(time.Now())
+				driver.Tick(time.Now(), []string{thread})
 				synctest.Wait()
 				if len(host.inputs) != 1 || !host.inputs[0].Run || !host.inputs[0].Wake.UsageLimit || host.inputs[0].Wake.State != "completed" {
 					t.Fatalf("resume=%+v", host.inputs)
 				}
-				driver.Tick(reset.Add(time.Hour))
+				driver.Tick(reset.Add(time.Hour), []string{thread})
 				synctest.Wait()
 				if len(host.inputs) != 1 {
 					t.Fatal("usage limit resumed twice")

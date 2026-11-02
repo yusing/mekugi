@@ -3,6 +3,7 @@
 package sessioncontrol
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	"sync"
 	"sync/atomic"
@@ -50,6 +51,7 @@ type Requests[T any] struct {
 	InheritedEffort          func(model, effort string) (string, error)
 	CaptureConfiguredCatalog func([]byte)
 	CatalogPending           bool
+	PrepareCompletion        func(context.Context, control.NativeInput) (PreparedCompletion, error)
 	preparation              atomic.Pointer[PreparedThread]
 	transport                Transport
 	pending                  map[string]Request[T]

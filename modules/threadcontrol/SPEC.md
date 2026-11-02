@@ -428,10 +428,15 @@ outcome. Injection alone neither starts nor steers its receiver. A completion wa
 follows confirmed delivery and carries identity/status rather than duplicate text.
 Delegates may select explicit `mchanges` IDs/ranges in the existing reload block
 at the end of their ordinary final answer, submitting answer and selection together.
-After successful logical settlement, the receiving parent's reload pipeline acquires
-the complete composed retained diff, or available content with explicit failure
-diagnostics, before its next inference. Existing reload history retains the captured
-results; the original completion selection remains available for reconciliation.
+After successful logical settlement, the receiving parent's input worker acquires
+the selected retained evidence before injecting the answer and completed reload
+reader/result together. Automatic completion attachments share a 4,000-token
+budget, including labels, diagnostics and an exact `mread` continuation for omitted
+evidence. Explicit preload and compaction reloads retain their full-content behavior.
+The next inference consumes the retained snapshot without another acquisition turn.
+When the answer satisfies a selected wait, its reply, attachment and finished-wait
+notice publish together after host-confirmed wake delivery. Existing reload history
+retains the captured results; the original selection remains available for reconciliation.
 Reload metadata stays out of displayed live, restored and replayed answers.
 Ordinary text and quoted examples remain unchanged. Selection neither completes
 work nor bypasses descendant guards. Failed or interrupted work never acquires a

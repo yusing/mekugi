@@ -33,7 +33,7 @@ func deferLogicalCompletion(attached *attachedPresentation, live *sessioncontrol
 	if !main && !side || p.Turn.Status != "completed" || main && (p.Turn.ID != live.Turn || live.AuxiliaryTurn(p.Turn.ID)) {
 		return false, nil
 	}
-	attached.threadInput.completions = append(attached.threadInput.completions, logicalCompletion{message, reduced})
+	attached.threadInput.completions = append(attached.threadInput.completions, logicalCompletion{message: message, reduced: reduced})
 	return true, nil
 }
 
@@ -45,6 +45,14 @@ func (p *threadInput) flushCompletions(dispatch func(appserver.Message) error) e
 	}
 	for len(p.completions) > 0 {
 		pending := p.completions[0]
+		if pending.publish != nil {
+			if !pending.publish() {
+				return nil
+			}
+			p.completions[0] = logicalCompletion{}
+			p.completions = p.completions[1:]
+			continue
+		}
 		var failure error
 		select {
 		case failure = <-pending.reduced:
@@ -68,6 +76,7 @@ func (p *threadInput) flushCompletions(dispatch func(appserver.Message) error) e
 type logicalCompletion struct {
 	message appserver.Message
 	reduced <-chan error
+	publish func() bool
 }
 
 // Logical publications never wait for checkpoint writes on the host event loop.
@@ -152,7 +161,7 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 		input := attached.threadInput
 		// Wake acknowledgements are retained owner facts, not ordinary host
 		// tool-completion items. Publish their actual reason before continuing.
-		if (wait.Stop == "committed" || input.waitID == wait.ID) && (wait.State == "completed" || wait.State == "timeout" || wait.State == "canceled" || wait.State == "paused") && (input.waitID != wait.ID || input.waitState != wait.State) {
+		if (wait.Stop == "committed" || input.waitID == wait.ID) && wait.Settled() && wait.State != "failed" && (input.waitID != wait.ID || input.waitState != wait.State) {
 			value := &activity.Value{Kind: "progress", Body: "Finished waiting for", WaitReason: wait.State}
 			for _, target := range wait.Targets {
 				value.WaitTargets = append(value.WaitTargets, activity.WaitTarget{Name: target})

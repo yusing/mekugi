@@ -1,6 +1,9 @@
 package sessioncontrol
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestSideCompletionAndDelayedCleanup(t *testing.T) {
 	side := Side{Thread: "side", Busy: true, Starting: true, Closed: true}
@@ -32,6 +35,9 @@ func TestSideCompletionAndDelayedCleanup(t *testing.T) {
 	}
 	other := &Side{Thread: "other"}
 	ledger.TrackSide("other", other)
+	if threads := ledger.RuntimeThreads("main"); len(threads) != 4 || !slices.Contains(threads, "main") || !slices.Contains(threads, "side") || !slices.Contains(threads, "child") || !slices.Contains(threads, "other") {
+		t.Fatalf("runtime deadline ownership lost Main or Side: %v", threads)
+	}
 	ledger.CloseSide("side")
 	if ledger.Side("side") != nil || ledger.Side("child") != nil || ledger.Side("other") != other {
 		t.Fatal("cleanup crossed operation ownership")
@@ -39,5 +45,8 @@ func TestSideCompletionAndDelayedCleanup(t *testing.T) {
 	ledger.CloseSide("other")
 	if ledger.HasSides() {
 		t.Fatal("closed side correlation retained")
+	}
+	if threads := ledger.RuntimeThreads("main"); !slices.Equal(threads, []string{"main"}) {
+		t.Fatalf("closed sides retained deadline ownership: %v", threads)
 	}
 }

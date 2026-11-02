@@ -410,18 +410,13 @@ func (s *Service) member(thread string) (*Member, bool) {
 	return owner.state.Load().Members[thread], true
 }
 
-func (s *Service) Due(now time.Time) []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	var threads []string
-	for _, owner := range s.trees {
-		if state := owner.state.Load(); state != nil {
-			for thread, member := range state.Members {
-				if wait := member.Wait; wait != nil && member.Status == Waiting && !member.HostRunning && wait.State == "registered" && wait.Deadline != nil && !wait.CompactionPending() && !now.Before(*wait.Deadline) {
-					threads = append(threads, thread)
-				}
-			}
-		}
+func (s *Service) Due(thread string, now time.Time) []string {
+	member, ok := s.member(thread)
+	if !ok {
+		return nil
 	}
-	return threads
+	if wait := member.Wait; wait != nil && member.Status == Waiting && !member.HostRunning && wait.State == "registered" && wait.Deadline != nil && !wait.CompactionPending() && !now.Before(*wait.Deadline) {
+		return []string{thread}
+	}
+	return nil
 }

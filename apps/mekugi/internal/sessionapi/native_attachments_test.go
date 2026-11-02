@@ -137,9 +137,9 @@ func TestNativePreparationCapacityLeavesSemanticAdmissionResponsive(t *testing.T
 			t.Fatal("acquisitions did not start")
 		}
 	}
-	// Capacity is shared across the hub's borrowed servers, not just one owner.
-	if _, err := right.Send(ctx, rightEvent.Target(), composerOperation("probe")); err == nil {
-		t.Fatal("fifth concurrent acquisition bypassed aggregate capacity")
+	// All views of one runtime share its bound, but another runtime owns capacity.
+	if _, err := left.Send(ctx, leftEvent.Target(), composerOperation("probe")); err == nil {
+		t.Fatal("fifth concurrent acquisition bypassed runtime capacity")
 	} else if refusal, ok := errors.AsType[*NativeFailure](err); !ok || refusal.Status != http.StatusServiceUnavailable {
 		t.Fatalf("aggregate capacity returned a different failure: %v", err)
 	}
@@ -147,6 +147,28 @@ func TestNativePreparationCapacityLeavesSemanticAdmissionResponsive(t *testing.T
 	case <-started:
 		t.Fatal("over-capacity request reached acquisition")
 	default:
+	}
+	independent := make(chan error, 1)
+	go func() {
+		_, err := right.Send(ctx, rightEvent.Target(), composerOperation("independent"))
+		independent <- err
+	}()
+	select {
+	case request := <-second.Native().Requests():
+		if request.Prepared == nil || request.Prepared.Draft.Text != "independent" {
+			t.Fatal("independent runtime lost its prepared input")
+		}
+		request.Reply <- ""
+	case err := <-independent:
+		t.Fatalf("busy runtime blocked unrelated preparation: %v", err)
+	case <-ctx.Done():
+		t.Fatal("unrelated preparation waited for busy runtime")
+	}
+	if err := <-independent; err != nil {
+		t.Fatal(err)
+	}
+	if text := <-started; text != "independent" {
+		t.Fatalf("unexpected independent preparation: %q", text)
 	}
 	for _, operation := range []NativeOperation{
 		{Interrupt: &sessionpresentation.InterruptIntent{Version: rightEvent.Frame.View.Version}},

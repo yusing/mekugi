@@ -12,8 +12,16 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+// PreparedCompletion travels with the existing injection, not a later model turn.
+type PreparedCompletion struct {
+	Source string
+	Items  []jsontext.Value
+	Reload []activity.ReloadSource
+}
 
 func (r *Requests[T]) Thread(ctx context.Context, thread string) (control.ThreadInfo, error) {
 	raw, err := r.call(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": false}, nil)
@@ -210,7 +218,20 @@ func (r *Requests[T]) Input(ctx context.Context, input control.NativeInput) (str
 	} else {
 		params["items"] = []any{item}
 	}
-	raw, err := r.call(ctx, input.Thread, method, params, &input)
+	var completion PreparedCompletion
+	if input.Kind == "FINAL_ANSWER" && r.PrepareCompletion != nil {
+		var err error
+		completion, err = r.PrepareCompletion(ctx, input)
+		if err != nil {
+			return "", &binding.DispatchError{Outcome: binding.NotDispatched, Method: method, Cause: err}
+		}
+		items := []any{item}
+		for _, prepared := range completion.Items {
+			items = append(items, prepared)
+		}
+		params["items"] = items
+	}
+	raw, err := r.callPrepared(ctx, input.Thread, method, params, &input, completion)
 	var result struct {
 		Turn struct {
 			ID string `json:"id"`

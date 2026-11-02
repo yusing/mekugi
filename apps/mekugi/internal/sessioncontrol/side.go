@@ -141,6 +141,20 @@ func (r *Requests[T]) WorkSide(thread string) bool {
 	return s != nil && s.OneOff && !s.Closed
 }
 
+// RuntimeThreads borrows only this connection's Main and retained side identities.
+// A Side inference does not replace Main's deadline ownership.
+func (r *Requests[T]) RuntimeThreads(main string) []string {
+	r.sidesMu.RLock()
+	defer r.sidesMu.RUnlock()
+	threads := []string{main}
+	for thread := range r.sides {
+		if thread != main {
+			threads = append(threads, thread)
+		}
+	}
+	return threads
+}
+
 // SideThreads returns identities admitted to this side operation, including host children.
 func (r *Requests[T]) SideThreads(owner *Side) []string {
 	if r == nil || owner == nil {

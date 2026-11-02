@@ -115,7 +115,9 @@ still closes its subscriptions. Neither stalls other clients or server-owned exe
 and method execution do not block the reader. Attachment-bearing submissions
 use a separate authenticated connection with the same methods and originating
 view/target/version; its lifetime does not replace the view's lifetime. Limits
-apply to both each submission and aggregate concurrent preparation.
+apply to each submission and aggregate concurrent preparation within one admitted
+session family. Descendants share that family's capacity; unrelated root sessions
+prepare independently.
 
 Selected-thread shared publications and page replies have a 32 KiB envelope
 budget and at most 50 entries per page. These are transport windows, not retained
@@ -133,7 +135,7 @@ raster bytes with their image Content-Type. These resource reads use separate
 HTTP requests, outside the control WebSocket. Private socket requests require
 `Mekugi-Protocol: 7`; connector requests also require `Authorization: Bearer TOKEN`
 and an admitted UI origin. Errors retain the RPC error shape and semantic HTTP
-status. Transfers share aggregate preparation capacity through response delivery.
+status. Transfers share a separate aggregate resource budget through response delivery.
 Cancellation retires only the affected read, without ending execution.
 
 Session-list data is `{"sessions":[...]}`. Entries expose `id`, `thread`,

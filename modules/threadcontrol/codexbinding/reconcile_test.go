@@ -290,7 +290,7 @@ func TestColdWaitConfirmationDoesNotResumeOrDispatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	member, _ := restored.Member("root")
-	if len(host.inputs) != inputs || host.resumes != resumes || member.Status != control.Paused || member.Wait.State != "completed" || len(restored.Due(time.Now().Add(time.Hour))) != 0 {
+	if len(host.inputs) != inputs || host.resumes != resumes || member.Status != control.Paused || member.Wait.State != "completed" || len(restored.Due("root", time.Now().Add(time.Hour))) != 0 {
 		t.Fatal("cold reconciliation restarted work, rearmed a wait or expired its deadline", member)
 	}
 	last := host.confirmed[len(host.confirmed)-1]

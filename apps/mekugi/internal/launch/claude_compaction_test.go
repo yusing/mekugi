@@ -81,7 +81,7 @@ func TestClaudeCompoundCompactionKeepsWaitBehindNativeSettlement(t *testing.T) {
 				}
 				if scenario == "timeout" {
 					time.Sleep(20 * time.Millisecond)
-					b.execution.driver.Tick(time.Now())
+					b.execution.driver.Tick(time.Now(), []string{"child"})
 				}
 				synctest.Wait()
 				member, _ := b.execution.shared.Member("child")
@@ -127,7 +127,7 @@ func TestClaudeCompoundCompactionKeepsWaitBehindNativeSettlement(t *testing.T) {
 				if scenario == "timeout" && !strings.Contains(string(wake.Message), "timeout") {
 					t.Fatal("deadline lost during compaction")
 				}
-				b.execution.driver.Tick(time.Now())
+				b.execution.driver.Tick(time.Now(), []string{"child"})
 				synctest.Wait()
 				f.mu.Lock()
 				defer f.mu.Unlock()

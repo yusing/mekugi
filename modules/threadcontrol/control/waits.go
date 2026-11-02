@@ -115,6 +115,10 @@ func (tree *Tree) waitResult(wait *Wait) *WaitResult {
 	return result
 }
 
+func (wait *WaitResult) Settled() bool {
+	return wait != nil && (wait.State == "completed" || wait.State == "timeout" || wait.State == "canceled" || wait.State == "paused" || wait.State == "failed")
+}
+
 // StatusText is shared by ordinary and temporary conversation publications.
 func (wait *WaitResult) StatusText() string {
 	if !wait.UsageLimit {

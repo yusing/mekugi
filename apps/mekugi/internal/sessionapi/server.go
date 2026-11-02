@@ -116,6 +116,7 @@ type Server struct {
 	native        *Native
 	intents       chan Intent
 	prepare       func(context.Context, string, InputRequest) (*PreparedInput, error)
+	preparations  chan struct{} // Shared by the admitted lifetime family, not unrelated sessions.
 	activeThread  func(string) bool
 	reserveThread func(string) error
 	family        func() (*Family, *changes.ReviewView)
@@ -219,14 +220,14 @@ type message struct {
 
 // New serves a replay, whose viewers request playback.
 func New() *Server {
-	return &Server{intents: make(chan Intent, 16), subscribers: make(map[chan publication]struct{}), summaryChanged: make(chan struct{}, 1)}
+	return &Server{intents: make(chan Intent, 16), preparations: make(chan struct{}, preparationLimit), subscribers: make(map[chan publication]struct{}), summaryChanged: make(chan struct{}, 1)}
 }
 
 // NewLive serves a live session, whose viewers send input and interrupt it.
 // Its intents are unbuffered: one is received only when the owner is ready
 // to apply it.
 func NewLive() *Server {
-	return &Server{live: true, intents: make(chan Intent), subscribers: make(map[chan publication]struct{}), summaryChanged: make(chan struct{}, 1)}
+	return &Server{live: true, intents: make(chan Intent), preparations: make(chan struct{}, preparationLimit), subscribers: make(map[chan publication]struct{}), summaryChanged: make(chan struct{}, 1)}
 }
 
 // NewPreparedLive binds acquisition to the execution owner. Preparation runs
@@ -713,7 +714,7 @@ func (s *Server) request(ctx context.Context, target requestTarget, method strin
 				if frame == nil {
 					return nil, rpcFailure(409, "The question owner is unavailable.")
 				}
-				return owner.request(ctx, requestTarget{thread: frame.Session.Thread, workspace: frame.Session.Workspace}, method, body, preparations)
+				return owner.request(ctx, requestTarget{thread: frame.Session.Thread, workspace: frame.Session.Workspace}, method, body, owner.preparations)
 			}
 		}
 		if intent.Answer.hasAttachments() {

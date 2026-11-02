@@ -335,7 +335,7 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 		case <-ctx.Done():
 			return nil
 		case <-deadline:
-			e.driver.Tick(time.Now())
+			e.driver.Tick(time.Now(), []string{info.Thread})
 		case <-e.driver.Changed():
 			for _, failure := range e.driver.Failures() {
 				if _, auxiliary := errors.AsType[*threadbinding.CompactionFailure](failure); !auxiliary {

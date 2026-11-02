@@ -466,7 +466,7 @@ func (n *Native) request(ctx context.Context, target requestTarget, startup stri
 			stop := context.AfterFunc(viewContext, cancel)
 			defer stop()
 			defer cancel()
-			_, failure := owner.answerFromFamily(ctx, authority, mutation.Operation, preparations)
+			_, failure := owner.answerFromFamily(ctx, authority, mutation.Operation, owner.preparations)
 			n.mu.Lock()
 			result := NativeResult{Version: v.version}
 			n.mu.Unlock()

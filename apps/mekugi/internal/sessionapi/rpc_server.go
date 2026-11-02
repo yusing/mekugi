@@ -765,7 +765,7 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 			return subscription, nil
 		})
 	case "view/intent":
-		value, err := selected.server.Native().request(ctx, target, params.Startup, c.authority, params.Body, c.endpoint.preparations)
+		value, err := selected.server.Native().request(ctx, target, params.Startup, c.authority, params.Body, selected.server.preparations)
 		return value, err, nil
 	default:
 		if selected.runtime != nil {
@@ -775,7 +775,7 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 			defer stop()
 			defer cancel()
 		}
-		value, err := selected.server.request(ctx, target, method, params.Body, c.endpoint.preparations)
+		value, err := selected.server.request(ctx, target, method, params.Body, selected.server.preparations)
 		return value, err, nil
 	}
 }
