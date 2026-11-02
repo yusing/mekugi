@@ -50,12 +50,14 @@ func (u *Client[T]) Dispatch(call *HostCall) {
 			return
 		}
 	}
-	u.Requests.Dispatch(call)
-	if call.sent && call.method == "thread/compact/start" {
+	if !u.Requests.Dispatch(call) {
+		return
+	}
+	if call.method == "thread/compact/start" {
 		u.Compaction.Begin(CompactIntent{})
 		u.Compaction.call = call
 	}
-	if call.phase.Load() == callDispatched && call.method == "turn/start" && call.scope == u.Thread {
+	if call.method == "turn/start" && call.scope == u.Thread {
 		u.AwaitingTurn = true
 	}
 }

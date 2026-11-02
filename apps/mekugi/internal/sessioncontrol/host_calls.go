@@ -27,7 +27,6 @@ type HostCall struct {
 	params        jsontext.Value
 	input         *control.NativeInput
 	phase         atomic.Uint32
-	sent          bool
 	result        chan hostCallResult
 }
 
@@ -91,24 +90,24 @@ func (request Request[T]) NativeDelivery() *control.NativeInput {
 
 // Dispatch runs only on the ledger's event-loop owner. Sending failures are
 // uncertain because a transport may fail after writing part or all of a request.
-func (r *Requests[T]) Dispatch(call *HostCall) {
+func (r *Requests[T]) Dispatch(call *HostCall) bool {
 	if call.ctx.Err() != nil {
 		call.phase.CompareAndSwap(callQueued, callCanceled)
-		return
+		return false
 	}
 	if !call.phase.CompareAndSwap(callQueued, callDispatched) {
-		return
+		return false
 	}
 	var owner T
 	id, err := r.Send(call.method, call.params, call.scope, owner)
 	if err != nil {
 		call.result <- hostCallResult{err: &binding.DispatchError{Outcome: binding.Uncertain, Method: call.method, Cause: err}}
-		return
+		return false
 	}
-	call.sent = true
 	request := r.pending[id]
 	request.call = call
 	r.pending[id] = request
+	return true
 }
 
 // CompleteCall consumes only queued feature requests, leaving ordinary UI and

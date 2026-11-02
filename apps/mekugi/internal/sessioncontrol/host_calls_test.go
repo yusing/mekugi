@@ -106,6 +106,25 @@ func TestHostCallCancellationAndUncertainDispatch(t *testing.T) {
 	}
 }
 
+func TestClientFailedDispatchKeepsInputAdmission(t *testing.T) {
+	for _, method := range []string{"turn/start", "thread/compact/start"} {
+		t.Run(method, func(t *testing.T) {
+			transport := &requestTransport{err: errors.New("partial write")}
+			client := &Client[struct{}]{Requests: NewRequests[struct{}](transport)}
+			client.Thread = "main"
+			call := &HostCall{ctx: t.Context(), scope: "main", method: method, result: make(chan hostCallResult, 1)}
+			client.Dispatch(call)
+			failure, ok := errors.AsType[*binding.DispatchError]((<-call.result).err)
+			if !ok || failure.Outcome != binding.Uncertain || call.phase.Load() != callDispatched {
+				t.Fatalf("failed send lost uncertainty: %v", failure)
+			}
+			if client.AwaitingTurn || client.Starting() || client.Compaction.Pending() || client.Requests.Pending() {
+				t.Fatal("failed send blocked new input")
+			}
+		})
+	}
+}
+
 func TestNativeInputUsesAttributedHostOperations(t *testing.T) {
 	for _, run := range []bool{false, true} {
 		t.Run(fmt.Sprint(run), func(t *testing.T) {
