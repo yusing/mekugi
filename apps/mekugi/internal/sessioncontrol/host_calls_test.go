@@ -177,7 +177,7 @@ func TestNativeInputUsesAttributedHostOperations(t *testing.T) {
 func TestPreparedNativeAdmissionRetainsCanonicalAuthority(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "child.jsonl")
-	settings := control.Settings{Model: "actual", Provider: "provider", Workspace: workspace, PermissionProfile: jsontext.Value(`{"type":"disabled"}`), ApprovalPolicy: jsontext.Value(`"never"`)}
+	settings := control.Settings{Model: "actual", Provider: "provider", Workspace: workspace, Summary: new("auto"), Tier: new("default"), PermissionProfile: jsontext.Value(`{"type":"disabled"}`), ApprovalPolicy: jsontext.Value(`"never"`)}
 	prepared := &PreparedThread{Parent: "parent", Settings: settings}
 	transport := &requestTransport{id: "start"}
 	requests := NewRequests[struct{}](transport)
@@ -185,7 +185,8 @@ func TestPreparedNativeAdmissionRetainsCanonicalAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	params := transport.sends[0].params.(map[string]any)
-	if transport.sends[0].method != "thread/start" || params["sandbox"] != "danger-full-access" || params["cwd"] != workspace {
+	config := params["config"].(map[string]jsontext.Value)
+	if transport.sends[0].method != "thread/start" || params["sandbox"] != "danger-full-access" || params["cwd"] != workspace || params["serviceTier"] != "default" || string(config["model_reasoning_summary"]) != `"auto"` {
 		t.Fatalf("prepared startup changed authority: %+v", transport.sends[0])
 	}
 	for _, inherited := range []bool{false, true} {
@@ -193,7 +194,7 @@ func TestPreparedNativeAdmissionRetainsCanonicalAuthority(t *testing.T) {
 		if inherited {
 			owner = "parent"
 		}
-		admission := binding.AdmissionSettings{Model: settings.Model, Provider: settings.Provider, Workspace: workspace, PermissionProfile: settings.PermissionProfile, ApprovalPolicy: settings.ApprovalPolicy}
+		admission := binding.AdmissionSettings{Model: settings.Model, Provider: settings.Provider, Workspace: workspace, Summary: settings.Summary, Tier: settings.Tier, PermissionProfile: settings.PermissionProfile, ApprovalPolicy: settings.ApprovalPolicy}
 		record, err := json.Marshal(map[string]any{"type": "event_msg", "payload": map[string]any{"type": "thread_settings_applied", "thread_id": owner, "thread_settings": admission}})
 		if err != nil {
 			t.Fatal(err)
@@ -238,42 +239,54 @@ func TestPreparedNativeAdmissionRetainsCanonicalAuthority(t *testing.T) {
 }
 
 func TestPreparedNativeFollowupCannotBypassRejectedAuthority(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "child.jsonl")
-		settings := control.Settings{Model: "expected", Provider: "provider", Workspace: filepath.Dir(path), PermissionProfile: jsontext.Value(`{"type":"disabled"}`), ApprovalPolicy: jsontext.Value(`"never"`)}
-		wrong := binding.AdmissionSettings{Model: "other", Provider: settings.Provider, Workspace: settings.Workspace, PermissionProfile: settings.PermissionProfile, ApprovalPolicy: settings.ApprovalPolicy}
-		record, err := json.Marshal(map[string]any{"type": "event_msg", "payload": map[string]any{"type": "thread_settings_applied", "thread_id": "child", "thread_settings": wrong}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"child\"}}\n"+string(record)+"\n"), 0600); err != nil {
-			t.Fatal(err)
-		}
-		transport := &requestTransport{id: "native-read"}
-		requests := NewRequests[struct{}](transport)
-		requests.preparation.Store(&PreparedThread{Parent: "parent", Settings: settings})
-		thread, _ := json.Marshal(map[string]any{"thread": control.ThreadInfo{Thread: "child", Session: "session", Path: path}})
-		for _, input := range []control.NativeInput{{Thread: "child", Run: true, Settings: &settings}, {Thread: "child", Run: true, Kind: "NEW_TASK", Message: "followup"}, {Thread: "child", Kind: "HUMAN_INPUT"}} {
-			done := make(chan error, 1)
-			go func() {
-				if input.Kind == "HUMAN_INPUT" {
-					done <- requests.ConfirmPreparedInput(t.Context(), input.Thread)
-				} else {
-					_, err := requests.Input(t.Context(), input)
-					done <- err
+	for _, field := range []string{"model", "summary", "tier"} {
+		t.Run(field, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "child.jsonl")
+				settings := control.Settings{Model: "expected", Provider: "provider", Workspace: filepath.Dir(path), Summary: new("auto"), Tier: new("default"), PermissionProfile: jsontext.Value(`{"type":"disabled"}`), ApprovalPolicy: jsontext.Value(`"never"`)}
+				wrong := binding.AdmissionSettings{Model: settings.Model, Provider: settings.Provider, Workspace: settings.Workspace, Summary: settings.Summary, Tier: settings.Tier, PermissionProfile: settings.PermissionProfile, ApprovalPolicy: settings.ApprovalPolicy}
+				switch field {
+				case "model":
+					wrong.Model = "other"
+				case "summary":
+					wrong.Summary = new("detailed")
+				case "tier":
+					wrong.Tier = new("flex")
 				}
-			}()
-			requests.Dispatch(<-requests.Calls())
-			requests.CompleteCall(appserver.Message{ID: jsontext.Value(`native-read`), Result: thread})
-			failure, ok := errors.AsType[*binding.DispatchError](<-done)
-			if !ok || failure.Outcome != binding.NotDispatched || requests.preparation.Load() == nil {
-				t.Fatalf("unconfirmed execution: failure=%v preparation=%v", failure, requests.preparation.Load())
-			}
-		}
-		for _, send := range transport.sends {
-			if send.method != "thread/read" {
-				t.Fatalf("execution escaped rejected admission: %s", send.method)
-			}
-		}
-	})
+				record, err := json.Marshal(map[string]any{"type": "event_msg", "payload": map[string]any{"type": "thread_settings_applied", "thread_id": "child", "thread_settings": wrong}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"child\"}}\n"+string(record)+"\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				transport := &requestTransport{id: "native-read"}
+				requests := NewRequests[struct{}](transport)
+				requests.preparation.Store(&PreparedThread{Parent: "parent", Settings: settings})
+				thread, _ := json.Marshal(map[string]any{"thread": control.ThreadInfo{Thread: "child", Session: "session", Path: path}})
+				for _, input := range []control.NativeInput{{Thread: "child", Run: true, Settings: &settings}, {Thread: "child", Run: true, Kind: "NEW_TASK", Message: "followup"}, {Thread: "child", Kind: "HUMAN_INPUT"}} {
+					done := make(chan error, 1)
+					go func() {
+						if input.Kind == "HUMAN_INPUT" {
+							done <- requests.ConfirmPreparedInput(t.Context(), input.Thread)
+						} else {
+							_, err := requests.Input(t.Context(), input)
+							done <- err
+						}
+					}()
+					requests.Dispatch(<-requests.Calls())
+					requests.CompleteCall(appserver.Message{ID: jsontext.Value(`native-read`), Result: thread})
+					failure, ok := errors.AsType[*binding.DispatchError](<-done)
+					if !ok || failure.Outcome != binding.NotDispatched || requests.preparation.Load() == nil {
+						t.Fatalf("unconfirmed execution: failure=%v preparation=%v", failure, requests.preparation.Load())
+					}
+				}
+				for _, send := range transport.sends {
+					if send.method != "thread/read" {
+						t.Fatalf("execution escaped rejected admission: %s", send.method)
+					}
+				}
+			})
+		})
+	}
 }

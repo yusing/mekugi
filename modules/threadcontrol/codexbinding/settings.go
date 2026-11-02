@@ -146,6 +146,21 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	// Claude validates effort against its native initialization catalog before
 	// accepting input, independently of the Codex model catalog.
 	if !strings.HasPrefix(settings.Model, "claude:") {
+		// Claude has no applied Codex summary or tier. Resolve those defaults
+		// from the captured target configuration after role selection, before
+		// freezing the settings sent to the independent Codex runtime.
+		if strings.HasPrefix(result.Settings.Model, "claude:") && len(settings.Preparation) != 0 {
+			var config effectiveConfig
+			if err := json.Unmarshal(settings.Preparation, &config); err != nil {
+				return result, err
+			}
+			if settings.Summary == nil {
+				settings.Summary = config.Config.Summary
+			}
+			if settings.Tier == nil {
+				settings.Tier = config.codexTierDefault()
+			}
+		}
 		if inheritedEffort && settings.Effort != nil && *settings.Effort == "ultra" {
 			ordinary, err := inheritedEffortForModel(models, settings.Model, *settings.Effort)
 			if err != nil {
@@ -189,6 +204,29 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	result.Settings = settings
 	result.Arguments, err = json.Marshal(&options, json.Deterministic(true))
 	return result, err
+}
+
+// Source: codex-rs/core/src/config/mod.rs:4104:4120 and
+// codex-rs/features/src/lib.rs:575:581,1989:2000@0df4aa677.
+// Both routing features default to enabled; flex is independent of them.
+func (c effectiveConfig) codexTierDefault() *string {
+	tier := c.Config.Tier
+	if tier == nil {
+		return nil
+	}
+	enabled := c.Config.Features.FastMode
+	switch *tier {
+	case "fast", "priority":
+		tier = new("priority")
+	case "ultrafast":
+		enabled = c.Config.Features.UltrafastMode
+	case "flex":
+		return tier
+	}
+	if enabled != nil && !*enabled {
+		return nil
+	}
+	return tier
 }
 
 func inheritedEffortForModel(models []Model, model, effort string) (string, error) {

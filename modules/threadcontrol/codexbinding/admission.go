@@ -21,13 +21,17 @@ type effectiveConfig struct {
 	Config struct {
 		Base        *string        `json:"base_instructions"`
 		Developer   *string        `json:"developer_instructions"`
+		Summary     *string        `json:"model_reasoning_summary"`
+		Tier        *string        `json:"service_tier"`
 		Permissions jsontext.Value `json:"permissions"`
 		Agents      struct {
 			Model  *string `json:"default_subagent_model"`
 			Effort *string `json:"default_subagent_reasoning_effort"`
 		} `json:"agents"`
 		Features struct {
-			MultiAgent struct {
+			FastMode      *bool `json:"fast_mode"`
+			UltrafastMode *bool `json:"ultrafast_mode"`
+			MultiAgent    struct {
 				ChildInstructions *string `json:"subagent_developer_instructions"`
 				ChildUsage        *string `json:"subagent_usage_hint_text"`
 				RootUsage         *string `json:"root_agent_usage_hint_text"`

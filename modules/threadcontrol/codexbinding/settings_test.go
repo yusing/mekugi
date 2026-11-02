@@ -180,6 +180,46 @@ plugins = true
 	}
 }
 
+func TestPrepareChildClaudeToCodexDefaults(t *testing.T) {
+	workspace := t.TempDir()
+	roleTestFile(t, filepath.Join(workspace, "worker.toml"), "model = 'codex'\nmodel_reasoning_summary = 'concise'\nservice_tier = 'priority'\n")
+	layers := []ConfigLayer{roleTestLayer(t, workspace, map[string]any{"agents": map[string]any{"worker": map[string]string{"config_file": "worker.toml"}}})}
+	models := []Model{{Name: "codex", DefaultEffort: new("medium"), Efforts: []string{"medium"}, ServiceTiers: []string{"priority", "ultrafast"}}}
+	for _, tc := range []struct {
+		name, config  string
+		rolePinned    bool
+		summary, tier *string
+	}{
+		{name: "absent defaults", config: `{"config":{}}`},
+		{name: "nullable defaults", config: `{"config":{"model_reasoning_summary":null,"service_tier":null}}`},
+		{name: "configured defaults", config: `{"config":{"model_reasoning_summary":"auto","service_tier":"default"}}`, summary: new("auto"), tier: new("default")},
+		{name: "custom defaults", config: `{"config":{"model_reasoning_summary":"detailed","service_tier":"flex"}}`, summary: new("detailed"), tier: new("flex")},
+		{name: "unsupported target tier", config: `{"config":{"model_reasoning_summary":"auto","service_tier":"unlisted"}}`, summary: new("auto")},
+		{name: "disabled priority", config: `{"config":{"service_tier":"priority","features":{"fast_mode":false}}}`},
+		{name: "legacy fast alias", config: `{"config":{"service_tier":"fast","features":{"fast_mode":true}}}`, tier: new("priority")},
+		{name: "disabled default", config: `{"config":{"service_tier":"default","features":{"fast_mode":false}}}`},
+		{name: "independent flex", config: `{"config":{"service_tier":"flex","features":{"fast_mode":false,"ultrafast_mode":false}}}`, tier: new("flex")},
+		{name: "enabled ultrafast", config: `{"config":{"service_tier":"ultrafast","features":{"ultrafast_mode":true}}}`, tier: new("ultrafast")},
+		{name: "disabled ultrafast", config: `{"config":{"service_tier":"ultrafast","features":{"ultrafast_mode":false}}}`},
+		{name: "role overrides defaults and selects backend", config: `{"config":{"model_reasoning_summary":"auto","service_tier":"default"}}`, rolePinned: true, summary: new("concise"), tier: new("priority")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parent := control.Settings{Workspace: workspace, Model: "claude:parent", Effort: new("medium"), Preparation: []byte(tc.config)}
+			options := SpawnOptions{Message: "review assignment", ForkTurns: new("none"), Model: new("codex")}
+			if tc.rolePinned {
+				options.Model, options.AgentType = nil, new("worker")
+			}
+			child, err := prepareChild(parent, control.Limits{}, options, models, layers, [3]*string{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if child.Settings.Model != "codex" || !reflect.DeepEqual(child.Settings.Summary, tc.summary) || !reflect.DeepEqual(child.Settings.Tier, tc.tier) {
+				t.Fatalf("target settings = %+v, want summary=%v tier=%v", child.Settings, tc.summary, tc.tier)
+			}
+		})
+	}
+}
+
 func TestPrepareChildInheritedUltra(t *testing.T) {
 	driver := &Driver{}
 	driver.CaptureCatalog([]byte(`{"models":[

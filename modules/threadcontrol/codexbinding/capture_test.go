@@ -33,7 +33,7 @@ func TestPrepareSpawnClaudeNativeForkAndRetainedConfiguration(t *testing.T) {
 {"type":"event_msg","payload":{"type":"thread_settings_applied","thread_id":"root","thread_settings":{"model":"codex","model_provider_id":"provider","cwd":%q,"permission_profile":{"type":"disabled"},"approval_policy":"never"}}}
 {"type":"turn_context","payload":{"turn_id":"root-turn","model":"codex","cwd":%q,"permission_profile":{"type":"disabled"},"approval_policy":"never"}}
 `, workspace, workspace))
-	config := jsontext.Value(`{"layers":[],"config":{"agents":{"default_subagent_model":"codex","default_subagent_reasoning_effort":"ultra"},"features":{"multi_agent_v2":{"subagent_developer_instructions":"frozen child instructions"}}},"host_extension":{"retained":true}}`)
+	config := jsontext.Value(`{"layers":[{"name":{},"config":{"agents":{"review-correctness":{"description":"Review correctness."}}}}],"config":{"model_reasoning_summary":"auto","service_tier":"default","agents":{"default_subagent_model":"codex","default_subagent_reasoning_effort":"ultra"},"features":{"multi_agent_v2":{"subagent_developer_instructions":"frozen child instructions"}}},"host_extension":{"retained":true}}`)
 	service := control.New()
 	driver, err := NewDriver(service)
 	if err != nil {
@@ -102,6 +102,13 @@ func TestPrepareSpawnClaudeNativeForkAndRetainedConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertForkJSON(t, descriptor, fmt.Sprintf(`{"backend":"claude","session":"claude-session","path":%q}`, claudePath))
+	codex, err := driver.PrepareSpawn(t.Context(), binding.MCPIdentity{Thread: "claude", Session: "claude-session", Turn: "claude-turn", Call: "codex-child", Item: "codex-tool", Model: "claude:parent"}, SpawnOptions{TaskName: "review", Message: "review assignment", ForkTurns: new("none"), Model: new("codex-selected"), ReasoningEffort: new("medium"), AgentType: new("review-correctness")}, []Model{{Name: "codex-selected", Efforts: []string{"medium"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if codex.FullHistory || codex.Settings.Model != "codex-selected" || !sameEffort(codex.Settings.Summary, new("auto")) || !sameEffort(codex.Settings.Tier, new("default")) {
+		t.Fatalf("Claude-to-Codex preparation = %+v", codex)
+	}
 	// Restore uses retained preparation. Configuration exposes that snapshot to
 	// later nested preparation without consulting the original Codex runtime.
 	restored := control.New()
