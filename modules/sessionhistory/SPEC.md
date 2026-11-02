@@ -1,14 +1,17 @@
 # Retained session history
 
-## Purpose
+## Required capability
 
-Own durable session namespaces, allocation, publication, leases, and retention.
-Feature owners retain the meaning and encoding of their records.
+Preserve durable session evidence and retention through optimizations; retained facts do
+not authorize repeating execution.
+
+Storage layout, publication transactions, leases, quotas, expiry defaults and cleanup
+algorithms below are current design.
 
 ## Scope
 
-One process-independent publication boundary protects each retained store.
-Record kinds are supplied by composition. Removing a kind must preserve its
+The current storage design uses one process-independent publication boundary
+per retained store. Record kinds are supplied by composition. Removing a kind must preserve its
 records and potentially shared dependencies. Retained facts do not restore host
 processes, live grants, or operation authority.
 

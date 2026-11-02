@@ -1,11 +1,27 @@
 # Session presentation
 
+## Required capabilities
+
+- Show public reasoning summaries for Main and delegates while keeping raw
+  reasoning hidden. Show spawn assignments and avoid duplicate completion entries.
+- Show per-agent measured usage and cost, identifying partial or unknown values.
+- Preserve browser/native input during queued-message editing and steering.
+- Restore roster, Activity and saved captured changes when resuming a session.
+
+## Responsibility
+
 The application owns attachment lifetime, displayed-thread identity, Main's input
 destination, read-only admission, history restoration, Main's status and displayed-thread
 caption values. [Conversation](../../../../modules/conversation/SPEC.md#transcript-observations)
 owns transcript interpretation, Activity owns feeds, and [session control](../sessioncontrol/SPEC.md) issues backend
 requests, and [terminal session](../terminalsession/SPEC.md) owns focus, navigation,
 geometry and rendering.
+
+## Replaceable publication design and current behavior
+
+Detached publications, reducers and source bindings implement the capabilities
+above. Their structure and the detailed presentation choices below can change;
+the required capabilities remain.
 
 Status, captions, question and approval docks, and pending-input previews are
 published together as detached, renderer-neutral facts. Prompt identity and input
@@ -168,8 +184,8 @@ independently of painter configuration. Private host evidence and retained outpu
 handles stay in the binding; terminal consumers receive detached publications,
 identity-addressed details and output windows. Command reveal frames and animation
 cursors never become semantic source state.
-Public reasoning enters the source feed with its complete admitted text and
-completion immediately. Terminal reveal may lag that publication, but subsequent
+Public reasoning summaries enter the source feed with their complete admitted
+text and completion immediately. Terminal reveal may lag that publication, but subsequent
 animation changes only the terminal overlay, not source content or sequence.
 The attachment's command-operation index references Activity's canonical
 invocations and pending report evidence. Completion is visible there before a

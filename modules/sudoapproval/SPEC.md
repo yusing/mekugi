@@ -1,8 +1,11 @@
 # Sudo approval
 
-## Purpose
+## Current capability
 
-Classify sudo approval and authentication modes and retain exact session grants.
+Retain sudo approval and authentication support alongside stock command execution.
+
+Hook instrumentation, classification, session grants, secret-editor presentation and
+timeout policy below are current design.
 
 ## Scope
 

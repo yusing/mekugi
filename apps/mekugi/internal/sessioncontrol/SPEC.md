@@ -1,5 +1,15 @@
 # Session control
 
+## Required capabilities
+
+Provide the terminal's semantic session controls to shared API clients, including
+the operations behind dialogs. Support queued-input retraction, editing and
+steering in browser and native clients, preserving text and attachments.
+Keep these controls on server-owned threads without transferring execution
+authority to a client connection.
+
+## Responsibility and request guarantees
+
 The application coordinates Main's submissions, interruption, native shell,
 settings and session replacement. It issues app-server requests and correlates
 their results. Its live client binds the actual app-server connection to one
@@ -15,6 +25,12 @@ Request acknowledgement, committed user input and host turn completion are separ
 observations. Unknown, duplicate or retired responses cannot settle a newer
 operation. Notifications and answers to host requests preserve their original
 method, payload and identity. Transport failures are returned without retry.
+
+## Replaceable coordination design
+
+The event loop, request ledger and correlated receipts below describe the current
+coordination mechanism. The later sections describe current operation behavior,
+not a requirement to preserve every command spelling or implementation detail.
 
 Server-owned thread coordination submits asynchronous host calls to that same
 event loop and ledger. Cancellation before dispatch prevents execution; after

@@ -1,8 +1,18 @@
 # Session review
 
+## Required capabilities
+
+Retain saved captured-change review and live edit previews, including edits made
+by stock shell commands. Resuming a saved session restores its captured changes;
+review does not depend on keeping a browser or terminal connected.
+
+## Responsibility
+
 Session review joins authorized attachment membership with completed change
 delivery and optional live previews. It owns the selected scope and subscription,
 independently of provider request preparation and terminal rendering.
+
+## Current review behavior
 
 Validated request ancestry and authorized restored threads expand the scope.
 Switching retires the previous attachment; subsequent request observations must
@@ -22,6 +32,8 @@ Closing or replacing the attachment retires its preview observation and delivery
 not captures, commands or host-owned work. Omitting Live Preview leaves saved
 review and captured Activity receipts available.
 
+## Replaceable hydration design
+
 Retained hydration consumes the selected History and Changes owners directly.
 Changes supplies caller-filtered snapshots and resolves frozen fork visibility;
 review hydrates those admitted calls without reconstructing namespace policy.
@@ -34,6 +46,8 @@ resynchronization. Retired results cannot update the current projection, and a
 retired read retains its physical capacity until storage actually returns.
 Loading does not block input, cancellation or independent preview delivery.
 
+## Rewind selection behavior
+
 Rewind selection joins the admitted immutable change snapshot with validated
 host rollouts. The selected turn's start bounds original call times across Main
 and admitted descendants. An entire change must lie on one side of that boundary;
@@ -41,6 +55,8 @@ missing identities, timestamps or mixed membership make reversal unavailable.
 Selection returns explicit change IDs and owning workspaces, never a filesystem
 reset. The caller performs the read asynchronously and dispatches any chosen
 reversal through the existing host execution path.
+
+## Replaceable consumer design
 
 The serialized application consumer keeps the complete projection, admitted
 preview scope, retained-load failure and loader with this Review owner. Producer
@@ -50,6 +66,8 @@ the loader's physical capacity. Terminal release and reentry only resynchronize
 the subscription. Application publication and receipt reconciliation remain
 available without a terminal; rendering consumes admitted preview updates and
 already-published review values.
+
+## Acceptance
 
 Acceptance covers immutable membership, unrelated-thread isolation, subscriber
 overflow, scope-before-preview ordering, optional preview absence and replacement

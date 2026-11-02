@@ -1,8 +1,12 @@
 # Bounded foreground commands
 
-## Purpose
+## Current capability
 
-Run one foreground command and select a bounded beginning or ending of its output.
+Retain bounded foreground-command output through stock execution, including use within
+batched or parallel stock calls.
+
+The executable syntax, head/tail allocation, delivery budgets and capture machinery
+below are current design.
 
 ## Scope
 

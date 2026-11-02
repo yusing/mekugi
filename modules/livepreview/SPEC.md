@@ -1,5 +1,13 @@
 # Live preview
 
+## Required outcomes
+
+Retain live previews for stock patches and supported shell writes. Preview code content
+scrolls independently while its headers remain accessible.
+
+Projection recognition, baseline caches, clipping, reveal pacing and settling rules
+below are current design.
+
 ## Purpose and boundary
 
 Show provisional filesystem changes while edit source arrives, before host

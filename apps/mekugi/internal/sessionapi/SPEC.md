@@ -1,5 +1,28 @@
 # Session API
 
+## Required capabilities and constraints
+
+- Expose reusable session control beyond the browser, with the terminal's semantic
+  controls and dialogs available through the shared API.
+- Keep threads owned by the shared server. Browser or connector closure leaves
+  work running; server shutdown ends active work while saved sessions remain resumable.
+- Support uploaded attachments and execution-machine paths. The decoded upload
+  budget is 32 MiB per message.
+- Preserve browser/native queued edits, including retraction for editing and
+  steering queued input into an active turn.
+
+## Current availability
+
+Full terminal semantic-control parity is required. The current remote interface
+excludes secret answers and native-local filesystem/editor operations; the
+[contract](CONTRACT.md) describes those restrictions.
+
+## Replaceable API design
+
+Endpoint paths, protocol versions, wire fields, queue layouts and publication
+mechanisms below describe the current interface. They can change coherently
+across consumers while preserving the required capabilities.
+
 The Session API owns detached publications, versioned JSON-RPC/WebSocket control,
 and bounded snapshot/patch subscriptions. Launch composes execution owners and
 applies requests on their existing Session Control event loop. The API owns no
@@ -62,6 +85,8 @@ The connector supplies first-message bearer authentication and origin admission
 for remote human connections. Those credentials never authenticate local agent identity or a
 native secret-answer path. Session API projections omit secret content.
 
+### Replaceable publication design
+
 Subscribers receive a snapshot followed by patches. Queue pressure replaces pending
 patches with an authoritative snapshot. Reconnection obtains a fresh snapshot
 without replaying effects.
@@ -81,6 +106,8 @@ in change detection independently of the presentation revision; output and seman
 consequence budgets remain unchanged.
 The [contract](CONTRACT.md) defines payloads. Consumers own rendering, drafts,
 selection and request-result presentation, never execution lifetime.
+
+### Native startup behavior
 
 Native startup binds its initial presentation stream in the admitting request, so
 initialization failures cannot disappear between admission and attachment. The

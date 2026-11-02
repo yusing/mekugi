@@ -1,5 +1,26 @@
 # Mekugi product
 
+## Intent and design authority
+
+Required outcomes, explicit feature specifications and scope constraints remain
+fixed when the design changes. Unless explicitly required by those specifications,
+architecture, algorithms, interfaces, defaults, bounds and UX are replaceable
+means. Visible behavior can be a design choice too; being implemented or documented
+does not make a choice a fixed requirement.
+
+| Contract | Meaning |
+| --- | --- |
+| Required outcome | Faster delivery, lower cost, fewer model round trips, and better quality than stock Codex, within the explicit scope constraints below. Speed or cost improvements alone do not establish success. |
+| Replaceable design | The current principles, architecture and implementation choices. They can change while the required outcome and specifications remain. |
+| Unresolved constraint | A proposed or unconfirmed restriction, distinct from a fixed requirement. |
+| Planned capability | Intended future behavior, distinct from availability and from proposed interfaces, storage layouts or limits. |
+
+Owner specifications and shared contracts distinguish required capabilities from
+current behavior and design. A redesign updates affected documents and consumers
+together; it does not have to retain a mechanism merely because an existing
+contract describes it. The journeys and supported scope below describe the current
+product, not every planned capability.
+
 ## Problem
 
 Long agent sessions degrade through their context. Repeated reads and large
@@ -9,28 +30,36 @@ parent already knew. Meanwhile users cannot see what agents are doing or why
 until after the turn. Each of these raises model cost and makes work harder to
 follow, correct, and recover.
 
-## Outcome
+## Required outcome
 
-Codex still owns editing, command execution, permissions, sandboxing, native
-agent execution, patch review, and live command sessions. Mekugi manages what
-enters the model's context around those stock tools, observes completed work for
-review, and measures actual traffic without replaying effects.
+Mekugi should deliver faster, cheaper agent work with fewer model round trips
+and better quality than stock Codex.
 
-Success is measured in this order:
+Rank tradeoffs within a change in this order, while preserving correctness:
 
 1. Reduce model cost, including unnecessary round trips and payload size.
 2. Make agent and user workflows clearer and more recoverable.
 3. Improve agent performance without weakening correctness or host authority.
 
-Controlled comparisons live in [codex-setup-ab](https://github.com/yusing/codex-setup-ab).
-Provider usage and complete captured results take precedence over local estimates
-or model prose.
+## Explicit scope constraints
+
+Codex remains the root execution authority. Mekugi has one interactive UI and
+one stock JavaScript execution interface; host/internal identifiers do not add
+user-facing modes. Direct execution is unsupported.
+
+Session resume is product-local: Mekugi resumes Mekugi sessions, and stock Codex
+resumes stock Codex sessions. Neither direction of cross-product resume is supported.
 
 ## Product principles
 
+These are current design choices and behavioral commitments, subject to the
+outcomes, scope constraints, and provenance distinction above.
+Mekugi currently manages what enters the model's context, keeps work observable
+and recoverable, and measures actual traffic without replaying effects.
+
 ### Execution authority
 
-- **Codex remains in charge.** Stock execution and editing tools keep their
+- **Codex remains in charge of Codex execution.** Stock execution and editing tools keep their
   names, schemas, results, and authority. Mekugi adds executable helpers that run
   through stock command execution instead of custom editing tools, edit
   languages, or rewritten transports. A replacement interface has to be taught,
@@ -48,9 +77,10 @@ or model prose.
   compaction or for a fresh delegate, the sources the work needs are read again.
   A summary carries the task; it never stands in for source text, and neither do
   agent-maintained notes or generated digests.
-- **Reduce output tokens by reference, never by hiding.** Bounded output always
-  has an exact continuation, and repeated text is replaced only by a reference to
-  text still visible to the model. Output is not filtered by guessed relevance.
+- **Reduce retained output by reference.** Incomplete retained reads have an exact
+  continuation, and repeated text is replaced only by a reference to text still
+  visible to the model. Output is not filtered by guessed relevance. Explicit
+  `mrun` windows instead discard output outside the requested head or tail.
   These projections change model input only; host results, retained evidence,
   and the UI keep the complete text. Instruction text is removed only where its
   author marked it or it duplicates or conflicts with supplied guidance.
@@ -96,6 +126,10 @@ or model prose.
 
 ### Evidence
 
+Controlled comparisons live in [codex-setup-ab](https://github.com/yusing/codex-setup-ab).
+Provider usage and complete captured results take precedence over local estimates
+or model prose.
+
 - **Evidence must be usable.** Readers retain omitted output, and observed
   edits support focused review only after their result and workspace outcome
   are known.
@@ -104,7 +138,7 @@ or model prose.
 - **Savings claims require measurement.** Local estimates guide projection
   decisions; only controlled comparisons establish lower cost or better results.
 
-Feature specifications own detailed behavior and acceptance. The
+Feature specifications own detailed current behavior and acceptance. The
 [documentation index](index.md) links their owners and the shared contracts.
 
 ## User journeys
@@ -168,11 +202,11 @@ Operators compare isolated control and treatment runs using hidden correctness
 graders and captured provider traffic. Task correctness is judged separately from
 transport-only byte changes.
 
-## Scope
+## Currently supported scope
 
 Codex is the root execution backend. Claude Code runs only as an optional
-delegate backend under the same thread coordination. Headless execution and
-offline replay retain their own command entrypoints.
+delegate backend under the same thread coordination, owning its native tool
+execution. Headless execution and offline replay retain their own command entrypoints.
 
 Mekugi includes:
 
@@ -196,7 +230,12 @@ Installation and a quick start belong in the [README](../README.md);
 configuration and commands belong in the [user guides](../README.md#guides)
 under `docs/guide/`.
 
-## Non-goals
+## Current non-goals
+
+These exclusions describe the supported product. They do not establish that every
+alternative was rejected by the user. Explicit scope constraints above remain
+binding. Session-family recall and notes are planned work, distinct from
+cross-session memory.
 
 Mekugi does not:
 

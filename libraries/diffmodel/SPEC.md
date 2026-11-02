@@ -6,6 +6,8 @@ Represent and combine captured file differences independently of storage,
 execution, and terminal presentation. Inputs are supplied evidence and content;
 operations never reopen a workspace or execute a recorded action.
 
+This model and its composition strategy are replaceable means of captured-change review.
+
 ## Behavior
 
 File identities distinguish creation, update, deletion, and movement. Missing

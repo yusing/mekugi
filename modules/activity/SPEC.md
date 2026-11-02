@@ -1,5 +1,15 @@
 # Activity
 
+## Required outcomes
+
+Preserve stock tool inputs, results, batch/parallel execution and captured changes.
+Agent traffic must show the correct sender and recipient. Hide internal bookkeeping
+without losing inseparable ordinary command output; interruption events must not repeat
+an earlier reply.
+
+Source classification, feed stores, roster derivation, output budgets and rendering
+below are current design.
+
 ## Purpose and scope
 
 Own host-operation feeds, agent roster derivation and bounded output, with

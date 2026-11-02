@@ -6,6 +6,9 @@ Provide terminal input, raw-mode lifetime, Markdown painting and source-aware co
 fragments without feature state or backend control. Consumers own pane composition,
 key bindings, selection lifetime, file-link authorization and backend interaction.
 
+Layout, styling, package boundaries and the diagram subset below are replaceable
+presentation design, not independent product requirements.
+
 Choice lists measure columns from visible rows. Shared list and dialog drawing
 preserves supplied syntax and source-copy annotations while sharing wrapping,
 selection styling and hit geometry. Dialog viewport painting materializes only

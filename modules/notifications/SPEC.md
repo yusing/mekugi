@@ -1,9 +1,11 @@
 # Notifications
 
-## Purpose
+## Current capability
 
-Deliver bounded user-visible notices and complete failure details without changing
-execution, provider results or model-visible history.
+Retain user-visible notices and accessible failure details alongside ordinary execution.
+
+Notice identities, claims, queue sizes, expiry defaults and desktop delivery policy
+below are current design.
 
 ## Scope
 

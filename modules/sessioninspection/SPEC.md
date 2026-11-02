@@ -1,8 +1,11 @@
 # Session inspection
 
-## Purpose
+## Current capability
 
-Explain recorded host calls and their retained outcomes without executing them.
+Retain offline inspection of session calls and captured outcomes.
+
+Query syntax, schemas, pagination, corpus discovery and finding heuristics below are
+current design.
 
 ## Scope
 

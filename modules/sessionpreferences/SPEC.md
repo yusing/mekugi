@@ -1,9 +1,11 @@
 # Session preferences
 
-## Purpose
+## Required capability
 
-Restore applied session settings and renderer preferences for the selected
-workspace and thread without restoring execution state.
+Retain restoration of session settings and renderer preferences.
+
+Preference schemas, precedence rules, timestamps, storage layout and write coalescing
+below are current design.
 
 ## Scope
 

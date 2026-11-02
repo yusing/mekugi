@@ -11,6 +11,7 @@ From a checkout with [source prerequisites](../../README.md#build-from-source):
 make build
 make test
 make lint
+make docs-check
 ```
 
 Recipes suppress command echoes and use RTK when available to compact tool output.
@@ -77,9 +78,13 @@ Enable the repository's commit gate once per clone:
 git config --local core.hooksPath "$(git rev-parse --show-toplevel)/.githooks"
 ```
 
-The gate checks every UI snapshot against the staged source in a temporary checkout.
+When documentation changes are staged, the gate checks local link targets and Markdown
+heading anchors across the staged documentation. It excludes dependency, build and
+test-fixture directories. Run `make docs-check` for the same validation in the checkout.
+The gate also checks every UI snapshot against the staged source in a temporary checkout.
 It skips commits made while a rebase is in progress, including amended or reworded steps, so
-run `make test-ui-snapshots` once on the rebased tip when the rebase changed UI sources.
+run `make docs-check` on the rebased tip when documentation changed, and
+`make test-ui-snapshots` when UI sources changed.
 The absolute hook path also applies the gate to this clone's other worktrees. To test changes
 to the hook in another worktree, use `git -c core.hooksPath="$PWD/.githooks" commit` there;
 this selects that worktree's hook without changing the clone's configuration.

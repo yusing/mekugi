@@ -1,5 +1,14 @@
 # Agent guidance
 
+## Required outcomes
+
+Continuity uses selected current sources rather than summaries as source substitutes.
+Retain context-usage notices and known-source preload for delegates. Selective
+session-family recall remains planned and provider-independent.
+
+Prompt projection, source-selection syntax, reload orchestration, snapshot fields and
+exact notice thresholds/reset rules below are current design.
+
 ## Purpose and scope
 
 Assemble contributed frontend guidance and project explicit omissions, pinned stock

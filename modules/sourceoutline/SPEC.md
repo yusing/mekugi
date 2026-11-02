@@ -1,8 +1,11 @@
 # Source outline
 
-## Purpose
+## Current capability
 
-Expose structural navigation without source bodies through `inspect_file`.
+Retain structural source navigation alongside stock reads.
+
+Supported projections, command grammar, output schemas, spans, parser recovery and
+bounds below are current design.
 
 ## Scope
 

@@ -8,6 +8,10 @@ selects the credential path and configured HTTP transport. Grok owns interactive
 login. The application applies the selected routing and Codex adaptation policy. Shared
 authority and failure semantics belong to [provider routing](../../docs/contracts/provider-routing.md).
 
+Grok model support through stock Codex execution is required. Specific model IDs,
+defaults and catalog limits below describe current support, not a permanently fixed
+model set. Credential-refresh and transport mechanisms are replaceable design.
+
 ## Models and invocation
 
 Dedicated `mekugi grok` uses plain `grok-4.5`, `grok-4.6`, `grok-4.7` and

@@ -1,5 +1,18 @@
 # Terminal session
 
+## Required capabilities
+
+- Restore pane layout and focus together with roster, Diff and Activity on resume.
+- Keep image placeholders atomic during composer navigation and deletion, with
+  undo/redo and external-editor support.
+- Render public reasoning summaries, spawn assignments and per-agent usage/cost,
+  keeping raw reasoning hidden and avoiding duplicate completion entries.
+- Retain captured-change review and live diffs, including stock shell writes.
+
+The sections below describe current terminal behavior and replaceable renderer
+design. Geometry, frame mechanics and source-copy machinery can change while
+preserving these capabilities.
+
 ## Boundary
 
 The attached terminal owns byte-stream decoding, pane geometry and focus,
@@ -7,6 +20,9 @@ renderer preferences, frozen source selection, clipboard requests and incrementa
 frame delivery for live sessions and offline replay. Feature painters supply
 content, source annotations and hit targets; application integration routes
 selected targets and intents to their owners.
+
+### Replaceable renderer design
+
 The attachment contains only terminal objects and detached publications. The
 application supplies acquisition and scope preparation separately; the terminal
 retains no application-session pointer or scope callback.
@@ -61,6 +77,8 @@ ownership.
 The [saved-Diff view](../../../../modules/changehistory/SPEC.md#saved-review-presentation)
 supplies interaction and source-selection values; this attachment owns its terminal
 emulation surface and final frame delivery.
+
+### Responsiveness and evidence behavior
 
 Storage and observation work must not stall input, cancellation, rendering or
 unrelated lifecycle delivery, including through shared queues or locks. Missing

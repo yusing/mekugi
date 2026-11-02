@@ -8,6 +8,14 @@ selects the cache path and loads invocation configuration. Codex adaptation,
 shared authority and failure semantics belong to
 [provider routing](../../docs/contracts/provider-routing.md).
 
+## Required capabilities
+
+Support OpenCode Go and Zen, including every Go model, with environment-variable
+and configuration-file credentials. Upstream catalogs are the source of truth for
+models, API formats and pricing; changes to those facts must not require a Mekugi
+release. Hardcoded data serves fast lookup, not a fixed model or price list.
+Snapshot, cache, refresh and adapter mechanics below are replaceable design.
+
 ## Catalog and credentials
 
 OpenCode Go and compatible Zen models are available to main agents and native
@@ -17,12 +25,18 @@ reasoning capabilities and USD-per-million-token prices come from
 `https://models.opencode.ai/api.json`, the catalog used by OpenCode itself.
 Descriptions are passed through from upstream without Mekugi-written additions;
 missing descriptions remain empty. Per-model SDK bindings override the provider binding: OpenAI-compatible Chat,
-Anthropic Messages and OpenAI Responses are supported. Other formats are not
-advertised or silently approximated. Only text and supported images are advertised.
+Anthropic Messages and OpenAI Responses are currently supported. Other formats are
+currently unavailable and are not silently approximated. This format coverage is a
+current delivery limit, not a restriction of the required Go model set. Only text
+and supported images are advertised.
 
 Online data replaces the available model set and overrides bootstrap values.
 New IDs, changes among supported API formats, and price changes do not require a
-Mekugi release. The immutable in-memory snapshot gives fast lookup; a versioned
+Mekugi release.
+
+### Current catalog design
+
+The immutable in-memory snapshot gives fast lookup; a versioned
 cache at `mekugi/opencode-models-v2.json` beneath the platform user cache directory
 survives restart. Startup and inference selection refresh data older than one hour.
 Fresh cache hits make no network requests. Refresh has an eight-second deadline,
@@ -35,6 +49,8 @@ source records without a hand-maintained model or price table. The generator kee
 provider-owned metadata and model records, but omits the `/models` response-time
 `created` value so repeated captures of an unchanged catalog are byte-reproducible.
 
+### Catalog behavior and limits
+
 Live legacy aliases missing upstream metadata retain their last known metadata;
 unknown API formats are never guessed. Missing context limits and prices remain unknown.
 
@@ -46,6 +62,8 @@ Runtime routing and subsequent request prices refresh without restarting.
 OpenCode's prose endpoint documentation currently disagrees with its machine-readable
 catalog for some Qwen models; routing follows the online catalog, not a pinned
 exception. Authenticated acceptance of those conflicting bindings is not established.
+
+## Invocation configuration
 
 Configuration is read once per invocation from `mekugi/config.toml` beneath the
 platform user configuration directory. `[providers.opencode_go]` and

@@ -1,8 +1,23 @@
 # Claude delegate backend
 
-## Scope and authority
+## Required capabilities and constraints
 
-Provide Claude Code delegate execution through the official TypeScript Agent SDK.
+Provide Claude Code delegates with the same coordination experience and captured-change
+handoff as Codex delegates, including Claude spawning Codex delegates. Respect native
+Claude settings, apply approval handling without sandboxing, and keep Codex CodeMode
+guidance out of Claude context. Expose available roster metrics.
+Use Bun for the delegate worker and equivalent runtime/build work.
+
+Keep an easy path to future full Claude support as an extensibility goal.
+Current support exposes Claude only through Thread Control.
+
+## Current integration design
+
+The SDK, worker topology, transport, hook protocols, tool restrictions and approval-policy
+mapping below are replaceable means of meeting those capabilities and constraints.
+Visible lifecycle and presentation choices are not additional fixed requirements. See
+[intent and design authority](../../docs/product.md#intent-and-design-authority).
+
 The Codex parent and its JavaScript execution interface remain unchanged. Thread
 Control owns logical identity, assignments, waits and delivery; the application owns
 the runtime ledger and integrates the backend's typed process and tool events.
@@ -11,12 +26,9 @@ capability limits. Claude delegates run without filesystem or network sandboxing
 Unavailable approval semantics, models, runtime dependencies and authentication
 fail explicitly rather than falling back to another backend.
 
-The backend transport, approval policy and session-control integration are
-independent of delegate admission. A future standalone Claude entrypoint can reuse
-those owners; this integration exposes Claude only through Thread Control.
-
 ## Runtime
 
+The current runtime uses the official TypeScript Agent SDK.
 Delegates load native user, project and local Claude settings. Claude owns instruction
 discovery and exclusions, and commit/PR attribution. Mekugi
 appends captured custom/role instructions and coordination guidance to the system
@@ -103,7 +115,8 @@ effects remain capturable with an unknown outcome and no invented exit status.
 
 ## Presentation and failure
 
-Claude members use the ordinary roster but do not expose a navigable attachment.
+Claude members currently use the ordinary roster without a navigable attachment;
+this is a presentation limitation, not an exclusion of future navigation.
 Roster metrics include observed model, turn counts, logical-work timing, captured
 edits, SDK-reported cumulative tokens and estimated cost, and reported model roundtrips.
 Repeated SDK totals do not add consumption, and forks exclude their source's

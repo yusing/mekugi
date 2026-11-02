@@ -1,9 +1,11 @@
 # Transport diagnostics
 
-## Purpose
+## Current capability
 
-Explain transport costs and failures using exact bytes, provider evidence and
-capture health, without changing execution or inference behavior.
+Retain transport diagnostics and captured metrics alongside execution.
+
+Capture schemas, fingerprints, measurement windows, retention bounds and diagnostic
+presentation below are current design.
 
 ## Scope
 

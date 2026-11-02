@@ -1,5 +1,13 @@
 # Conversation
 
+## Required outcomes
+
+Retain composer image previews for host paths, uploads and paste. Queued composer input
+does not cancel a logical agent wait.
+
+Editor state, attachment framing, input limits, menus, slot layout and draft/history
+algorithms below are current design.
+
 Conversation owns editable drafts, attachment identity, message and public-reasoning
 interpretation, question and approval records, queued payload ordering and bounded side answers. Main, question answers,
 approval reasons, queued input and side questions share the composer model.

@@ -9,6 +9,10 @@ headers; the [Codex adapter](../../backends/codex/responses/SPEC.md) owns its
 header selection and request metadata. The provider owns no agent, transcript,
 conversation history, model selection, or downstream renderer.
 
+Stock execution and approval authority remain with Codex. This transport boundary,
+connection strategy and auxiliary-configuration mechanisms are current design,
+not additional fixed product requirements.
+
 ## HTTP exchange and lifetime
 
 Credential validation requires exactly one valid bearer Authorization header

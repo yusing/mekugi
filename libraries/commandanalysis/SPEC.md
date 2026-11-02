@@ -6,6 +6,9 @@ Recognize command, executable, source, and bounded execution-scope facts without
 executing the observed program. Approval, evidence capture, and
 presentation remain with the consumer.
 
+Recognition coverage and package decomposition below are current design, not
+independent product-scope limits.
+
 ## Command inputs
 
 Stock command arguments retain the command text, working directory, and shell.

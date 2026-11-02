@@ -1,10 +1,16 @@
 # Documentation
 
-[Product scope and journeys](product.md) explain what Mekugi provides.
+[Product intent, design, scope and journeys](product.md) distinguish required
+outcomes and explicit constraints from replaceable approaches and current design.
+Owner specifications and contracts separate required capabilities from current
+implementation choices. [Intent and design authority](product.md#intent-and-design-authority)
+explains what a redesign must preserve.
 The [README](../README.md) covers installation and a quick start; the
 [user guides](../README.md#guides) under `guide/` cover operation, from the
 [terminal UI](guide/terminal-ui.md) to [configuration](guide/configuration.md);
 [Development](contributing/development.md) covers builds, tests and diagnostics.
+Guides describe current use; contributor documents describe current procedures.
+Generated inventories record declarations, and dated reports record observations.
 
 ## Features
 
@@ -46,7 +52,7 @@ contracts stay with their owning modules.
 
 - [Shell instrumentation](../libraries/shellinstrumentation/SPEC.md)
 - [HTTP transport](../libraries/httptransport/SPEC.md)
-- [Reserved MCP transport](../libraries/mcptransport/SPEC.md)
+- [Invocation-local MCP transport](../libraries/mcptransport/SPEC.md)
 
 ## Measurement and host evidence
 

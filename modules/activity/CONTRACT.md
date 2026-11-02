@@ -1,5 +1,14 @@
 # Activity presentation
 
+## Required outcomes
+
+Agent traffic preserves sender/recipient direction. Internal bookkeeping stays hidden
+without losing inseparable ordinary command output. An interruption event does not
+repeat the agent's earlier reply.
+
+Row geometry, colors, disclosure defaults, pacing and numeric limits below are
+replaceable presentation design.
+
 ## Scope
 
 Activity presents supplied host observations, source content and retained output.
@@ -673,7 +682,7 @@ Loaded-skill counts represent the current context under the [module specificatio
 Empty or unknown counts stay hidden. Labels use `1 loaded skill` or `N loaded skills`;
 hover underlines the label and clicking opens sorted names in the shared dialog
 without changing selection. Exit/resume restores confirmed loads, including inherited
-history, under [bounded restoration](../../apps/mekugi/internal/sessionpresentation/SPEC.md#codex-history-binding).
+history, under [bounded restoration](../../apps/mekugi/internal/sessionpresentation/SPEC.md#history).
 
 ## Acceptance
 

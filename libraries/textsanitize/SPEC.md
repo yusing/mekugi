@@ -5,6 +5,9 @@
 Normalize untrusted text for retained content and terminal presentation without
 owning layout, themes, feature state or I/O.
 
+The sanitizer API and normalization choices below are replaceable means of safe
+text presentation.
+
 ## Behavior
 
 Remove control sequences, including cursor movement, clipboard writes and terminal

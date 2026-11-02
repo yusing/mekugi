@@ -1,11 +1,16 @@
 # Command segments
 
-## Purpose
+## Current capability
 
-Receive per-command shell observations, retain completed reports, and restore
-them against the host's completed command. Reports are evidence, never execution receipts or authority.
+Retain command visibility alongside stock execution, including batched and parallel
+calls, without losing ordinary command output.
+
+Report transport, correlation windows, storage envelopes, queues and segment rendering
+below are current design.
 
 ## Scope
+
+Reports are evidence, never execution receipts or authority.
 
 This module owns invocation-private report transport, live host/report correlation,
 observation subscriptions, retained reports and adoption by a viewing thread.

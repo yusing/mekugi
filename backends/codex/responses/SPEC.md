@@ -11,6 +11,10 @@ transport and native tool execution remain with their existing owners.
 The [provider-routing contract](../../../docs/contracts/provider-routing.md)
 defines selected translation policy and history preservation.
 
+Translation is a means of making selected provider models usable through stock Codex
+execution. Endpoint adaptation, wire aliases, framing and connection-local caching
+below are replaceable design, not independent product requirements.
+
 ## Request envelopes and catalogs
 
 The request envelope retains received bytes separately from projected fields.

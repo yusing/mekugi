@@ -1,5 +1,15 @@
 # Headless application client
 
+## Required execution constraint
+
+Keep Codex as the root execution authority and preserve its stock editing,
+execution and JavaScript interfaces, including independent batch/parallel control.
+
+## Current automation interface and replaceable design
+
+The command spelling, JSONL shape, prompt limit and completion plumbing below
+describe the current adapter rather than fixed execution requirements.
+
 `mekugi codex headless --yolo` runs one stdin prompt in a new thread for automation
 and offline comparisons. [Launch](../launch/SPEC.md) owns argument and authorization
 admission, invocation-local routing, and diagnostics on stderr. This adapter uses

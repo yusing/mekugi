@@ -3,6 +3,9 @@
 For feature work, locate the semantic owner in [the owner map](CONTEXT-MEKUGI.md) and read its
 specification. Load the [boundary contracts](CONTEXT-MEKUGI.md#boundary-contracts) the change crosses.
 The [composition contract](docs/contracts/composition.md) owns workspace and dependency rules.
+Distinguish [required outcomes and explicit constraints from replaceable design choices](docs/product.md#intent-and-design-authority).
+Preserve current behavioral commitments while changing their implementation; update affected
+contracts and consumers together when a redesign changes those commitments.
 
 - **Extend the owner, not the wiring.** Keep each feature's behavior, records, presentation and
   bindings together. Extend an existing responsibility before adding a module; a new module needs

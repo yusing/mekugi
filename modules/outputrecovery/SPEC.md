@@ -1,8 +1,11 @@
 # Output recovery
 
-## Purpose
+## Current capability
 
-Publish and page retained output through `mread`, without repeating its producer.
+Retain access to omitted output without repeating its producer.
+
+Handle spelling, cursor encoding, page formats, quotas and publication machinery below
+are current design.
 
 ## Scope
 

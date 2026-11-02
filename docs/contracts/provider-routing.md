@@ -1,5 +1,20 @@
 # Provider routing and thread continuity
 
+## Required provider behavior
+
+OpenCode Go and Zen are supported provider routes, with every Go model in scope.
+Credentials come from environment or configuration. Upstream models, API behavior
+and prices remain authoritative independently of a Mekugi release. Provider
+integration preserves native execution and batching under the selected backend.
+
+## Replaceable routing and adaptation design
+
+Catalog projection, route pinning, translation, reasoning envelopes, refresh and
+accounting mechanisms below are the current integration design. They can change
+without narrowing required provider coverage or making release-time metadata the
+authority. The [provider specification](../../providers/opencode/SPEC.md) owns
+catalog behavior and present limits.
+
 ## Authority and ownership
 
 Third-party models serve Main and independent child runtimes without requiring

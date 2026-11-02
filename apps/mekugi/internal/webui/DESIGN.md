@@ -3,6 +3,10 @@
 Visual and interaction rules for the browser UI. [SPEC.md](SPEC.md) owns behavior;
 this file owns how it looks and responds.
 
+These are replaceable presentation choices. Revisions preserve the
+[required browser capabilities](SPEC.md#required-capabilities-and-constraints);
+component libraries, typography, geometry and interaction mechanics are means.
+
 ## Use the kit
 
 - Build from the locally owned shadcn-svelte components in `app/src/lib/ui/`

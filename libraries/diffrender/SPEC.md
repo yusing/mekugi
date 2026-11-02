@@ -6,6 +6,8 @@ Paint supplied source and diff rows with shared syntax, word emphasis, themes an
 terminal-safe text. Captured-change ownership, provenance, navigation, selection
 and preview lifetimes belong to the consuming feature.
 
+Painting, tokenization and cache choices below are replaceable presentation design.
+
 ## Behavior
 
 Decoration preserves source text, row identity and wrapping geometry. Deletions

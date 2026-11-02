@@ -29,9 +29,9 @@ Invocation overrides leave Codex configuration unchanged.
   can coordinate their own children and reply with a short summary and details.
 - **Facts up front.** Codex agents receive an [observed OS and Git snapshot](modules/agentguidance/SPEC.md#environment-snapshot),
   and attached files and skills are marked as reusable, so neither is rediscovered.
-- **Fewer output tokens, nothing lost.** [Session helpers](docs/guide/agent-tools.md)
-  bound reads, symbol lookups, outlines and command output, and every incomplete
-  result names the exact command that continues it.
+- **Fewer output tokens, recoverable reads.** [Session helpers](docs/guide/agent-tools.md)
+  bound reads, symbol lookups, outlines and command output. Incomplete retained
+  reads name their exact continuation; `mrun` discards output outside its selected window.
   [Repeated output](modules/outputdeduplication/SPEC.md) becomes a reference to
   earlier visible text, and [marked instruction blocks](docs/guide/configuration.md#troubleshooting-and-integrations)
   can be omitted. Full results stay in evidence and the UI.
@@ -165,7 +165,7 @@ are unsupported. See [launch details](docs/guide/launch.md).
 
 ## Documentation
 
-[Product principles](docs/product.md) · [Documentation index](docs/index.md) ·
+[Product intent and design](docs/product.md) · [Documentation index](docs/index.md) ·
 [Contributing](CONTRIBUTING.md) · [Comparisons](docs/benchmarks.md) ·
 [Codex end-to-end checks](docs/codex-router-e2e.md)
 

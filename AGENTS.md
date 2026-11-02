@@ -44,7 +44,8 @@ Never run bare `make`, `make install`, or another installation-path build; bare 
 
 Main keeps affected owner pointers in `CONTEXT-MEKUGI.md` current.
 `README.md` owns the reader-facing pitch, install and quick start; `docs/guide/` owns user
-operation; `docs/product.md` owns product principles; `CONTRIBUTING.md` and `docs/contributing/` own
+operation; `docs/product.md` owns required outcomes, scope constraints and current design;
+`CONTRIBUTING.md` and `docs/contributing/` own
 contributor development; `docs/index.md` indexes
 feature/application/backend owners and shared contracts.
 `~/projects/codex` is read-only source evidence; cloning a missing checkout needs permission.

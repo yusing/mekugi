@@ -1,5 +1,19 @@
 # Responses transport integration
 
+## Required execution interface
+
+Codex remains the root execution authority. Mekugi exposes one stock JavaScript
+execution interface and preserves native execution, batching, existing features,
+bounded and batched reads, stock-patch and shell-write live diffs, and captured
+review. Direct execution is unsupported. Transport optimization must improve the
+[product outcome](../product.md#required-outcome) without losing those capabilities.
+
+## Replaceable transport design
+
+Endpoints, framing, connection reuse, projection and limits below are the current
+transport contract. These choices can change with their consumers while preserving
+the execution interface and required capabilities.
+
 ## REQ-TRANSPORT-001
 
 The application accepts Codex Responses WebSockets at `GET /v1/responses` and
@@ -21,8 +35,8 @@ delivery diagnostics; transport passes each admitted exchange to that executor.
 `/v1/models` forwards every authenticated request to the provider. Codex owns
 catalog caching and refresh; the gateway bounds complete responses to 8 MiB.
 Successful catalogs set every model's `tool_mode` to `code_mode_only` before
-delivery, preserving other metadata and the upstream ETag. Internal passthrough
-preserves the original body. Malformed projected catalogs fail explicitly.
+delivery, preserving other metadata and the upstream ETag. Malformed projected
+catalogs fail explicitly.
 Catalog refresh failures retain upstream status and private diagnostic details,
 without becoming inference failures or queuing a terminal notice.
 

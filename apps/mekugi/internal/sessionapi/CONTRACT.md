@@ -1,5 +1,11 @@
 # Session API contract
 
+This is the current wire design for the
+[required Session API capabilities](SPEC.md#required-capabilities-and-constraints).
+Endpoints, protocol versions, field names, encodings and queue limits are
+replaceable; revisions preserve those capabilities and update consumers together.
+The 32 MiB decoded-upload budget remains a required message constraint.
+
 ## Version and authority
 
 Control uses JSON-RPC 2.0 text messages over WebSocket. Local native clients

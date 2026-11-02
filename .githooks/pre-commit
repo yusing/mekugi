@@ -9,6 +9,18 @@ for state in rebase-merge rebase-apply; do
     fi
 done
 
+docs_changed=0
+if git diff --cached --quiet -- '*.md' '*.mdx' '*.rst' '*.adoc' '*.txt' \
+    ':(glob,exclude)**/.worktrees/**' ':(glob,exclude)**/node_modules/**' \
+    ':(glob,exclude)**/vendor/**' ':(glob,exclude)**/testdata/**' \
+    ':(glob,exclude)**/dist/**' ':(glob,exclude)**/build/**'; then
+    :
+else
+    status=$?
+    [ "$status" -eq 1 ] || exit "$status"
+    docs_changed=1
+fi
+
 # Check the exact tree being committed, including partially staged changes.
 snapshot_tree=$(mktemp -d /tmp/mekugi-staged-snapshots.XXXXXX)
 snapshot_tree=$(cd "$snapshot_tree" && pwd -P)
@@ -20,6 +32,13 @@ git checkout-index --all --prefix="$snapshot_tree/source/"
 # Nested Git test fixtures must not inherit this commit's repository or index.
 unset $(git rev-parse --local-env-vars)
 cd "$snapshot_tree/source"
+if [ "$docs_changed" -eq 1 ]; then
+    printf 'Checking documentation in the staged tree...\n'
+    if ! env -u BASH_ENV -u MEKUGI_EXEC_TRACK TMPDIR="$snapshot_tree/tmp" make docs-check; then
+        printf '%s\n' 'Commit blocked: fix documentation links and heading anchors, then stage the corrections.' >&2
+        exit 1
+    fi
+fi
 printf 'Checking all UI snapshots in the staged tree...\n'
 if ! env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS -u COLORFGBG TMPDIR="$snapshot_tree/tmp" \
     make test-ui-snapshots SNAPSHOT_PACKAGES=@snapshots SNAPSHOT='^TestUISnapshot'; then

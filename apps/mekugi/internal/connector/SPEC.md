@@ -1,5 +1,18 @@
 # Connector
 
+## Required capabilities and constraints
+
+- Expose the reusable control API to clients beyond the browser, allowing the UI
+  host to run separately from execution machines.
+- Authenticate with a persistent, explicitly rotatable token. TLS termination
+  belongs to a reverse proxy.
+- Closing the connector leaves shared server-owned threads and active work running.
+
+## Current connector design
+
+The socket, endpoint, authentication framing and token-file layout below are
+replaceable mechanisms implementing those capabilities.
+
 The connector admits remote human control requests and forwards the shared
 Session API over the execution machine's private Unix socket. It owns no
 execution, thread registry, transcript, upload files or browser assets. An
@@ -44,6 +57,8 @@ running. Each browser machine connection has an independent transport lifetime.
 The Compose deployment borrows the execution machine's private socket directory
 read-only and persists its own token directory separately. Its effective host UID
 must match the server's user, preserving same-user socket admission.
+
+## Acceptance
 
 Acceptance covers token persistence and permissions, failed/successful rotation,
 active stream invalidation, origin and initialization behavior, version rejection,

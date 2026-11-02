@@ -1,5 +1,18 @@
 # Workspace composition
 
+## Required outcomes
+
+Workspace changes preserve the [product outcomes and explicit scope](../product.md#required-outcome),
+existing features, stock execution and batching, bounded and batched reads, live
+diffs, and captured-change review. Structural consistency alone does not establish
+lower cost, fewer round trips, faster work or better quality.
+
+## Replaceable composition design
+
+The modular workspace uses the descriptor, contribution, package and lifecycle
+rules below. These mechanisms can be replaced while preserving the required
+outcomes and updating affected contracts and consumers together.
+
 ## CTR-WORKSPACE-001
 
 `go.work` is the workspace membership authority. Build, test, lint, generation,

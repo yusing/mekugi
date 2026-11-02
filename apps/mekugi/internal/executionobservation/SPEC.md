@@ -1,14 +1,26 @@
 # Execution observation
 
+## Required capabilities
+
+Retain captured changes and live edit previews for stock patch and shell writes.
+Preserve stock editing, execution and JavaScript behavior, including independent
+parallel/batched operations, without replaying their effects.
+
+## Responsibility
+
 Execution observation joins prepared requests, arriving provider responses and
 completed Codex tool facts with the composed capture and retained-evidence owners.
 Codex owns execution, permissions and continuation. Observation preserves exact
 host input and results, including failed, partial and caught tool outcomes.
 
+## Observation guarantees
+
 Prepared-output observations decode text transport parts and compare them with
 the same call or attachment in the original request. They preserve structured
 non-text content and whole-cell identity without rerunning projections. Missing
 evidence cannot establish altered content.
+
+## Replaceable integration design
 
 The preparer borrows invocation owners. Each prepared response retains its own
 scope and dependencies through delivery and cleanup, independently of the
@@ -33,6 +45,8 @@ transactions. Changes owns change identity and membership; Recovery owns retaine
 output. Cross-owner publication and input adoption use `recordtransactions`.
 Storage-pressure retry retains completed facts without repeating execution or
 provider inference. Startup owns maintenance and resource shutdown.
+
+## Acceptance
 
 Acceptance covers exact request projection, partial delivery, cancellation,
 fork/resume ancestry, immutable replay, publication failures, overlapping writers,

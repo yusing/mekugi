@@ -1,5 +1,9 @@
 # Web UI contract
 
+The asset, connection and storage interface below is current replaceable design
+for the [required browser capabilities](SPEC.md#required-capabilities-and-constraints).
+Interface revisions preserve those capabilities and update their consumers together.
+
 The UI host exposes only GET/HEAD page and embedded asset requests. Machine APIs,
 authentication and recorded playback belong to the execution machine's connector
 and [Session API](../sessionapi/CONTRACT.md), never to the UI host.

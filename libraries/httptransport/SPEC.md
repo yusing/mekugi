@@ -6,6 +6,8 @@ Share HTTP client defaults and body lifetime mechanics across provider
 transports. Callers own credentials, endpoints, redirects, retry policy, and
 request deadlines. The library owns no connection pool or application state.
 
+Timeout defaults and body-wrapper structure below are replaceable transport design.
+
 ## Behavior
 
 Client construction preserves a supplied transport and client configuration.

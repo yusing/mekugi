@@ -10,7 +10,7 @@ TEST_OUTPUT = $(if $(RTK),$(RTK) test)
 GO_OUTPUT = $(if $(filter-out go,$(GO)),,$(RTK)) $(GO)
 # Reuse compiled packages across implementation, review, and staged checkouts.
 GO_BUILD_FLAGS ?= -trimpath
-.PHONY: build build-binaries claude-worker claude-worker-check webui webui-check webui-fmt generate check-generated workspace-check install uninstall mekugi-pprof preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
+.PHONY: build build-binaries claude-worker claude-worker-check webui webui-check webui-fmt generate check-generated workspace-check docs-check install uninstall mekugi-pprof preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
 
 WORKSPACE = $(GO) run $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/workspace
 BUILD_OUTPUT ?= bin
@@ -41,6 +41,9 @@ uninstall:
 
 workspace-check:
 	$(WORKSPACE) check
+
+docs-check:
+	$(WORKSPACE) docs-check
 
 build: workspace-check
 	$(WORKSPACE) run $(GO_OUTPUT) build $(GO_BUILD_FLAGS) @workspace

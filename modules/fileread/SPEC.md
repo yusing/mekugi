@@ -1,8 +1,11 @@
 # File reading
 
-## Purpose
+## Required capability
 
-Read bounded logical source rows through `mcat`.
+Retain bounded and batched source reads through stock execution.
+
+Reader syntax, range grammar, framing, budgets and redistribution below are current
+design.
 
 ## Scope
 

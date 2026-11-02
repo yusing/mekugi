@@ -1,5 +1,18 @@
 # Retained authority and publication
 
+## Required continuity
+
+Optimization preserves durable session evidence and dependency-safe retention.
+Saved Mekugi sessions remain resumable after execution stops; resume restores
+retained facts, not live processes or grants. Stock Codex and Mekugi resume their
+own sessions, without cross-product compatibility.
+
+## Replaceable publication design
+
+The namespaces, transaction boundaries, leases and owner split below are the
+current means of preserving continuity and preventing references to unavailable
+evidence. Their implementation may change while preserving those guarantees.
+
 ## Authority and continuity
 
 [Stock execution](../../backends/codex/SPEC.md#execution-authority) remains Codex-owned.

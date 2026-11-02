@@ -1,8 +1,11 @@
 # Output deduplication
 
-## Purpose
+## Current capability
 
-Reduce repeated model-input text while preserving host execution and evidence.
+Retain output deduplication while preserving stock execution and the original evidence.
+
+Matching algorithms, thresholds, reference formats, projection eligibility and savings
+estimates below are current design.
 
 ## Scope
 
@@ -14,6 +17,8 @@ local token-savings estimates; capture aggregates their receipts without reading
 output content or initializing a tokenizer.
 
 ## Behavior
+
+### Preservation and presentation
 
 Duplicate-output projection is enabled by default in Mekugi mode. Disable it with
 the launch option `--deduplicate-output=false`. It changes only eligible text
@@ -49,6 +54,8 @@ remain ordinary input. Native selected-skill XML retains its existing manager
 rewrite. Router-appended parts, including warnings and edit notices, remain intact. Outputs without a call ID and native
 live-session JSON envelopes are excluded.
 
+### Current matching design
+
 Verbatim runs aligned to logical lines and covering at least 192 bytes may be
 replaced with a reference to earlier output still visible in the same request.
 Each replacement must save at least 32 estimated GPT-5 tokens after counting its
@@ -62,6 +69,8 @@ Matching is content-based, without line-ending or line-number normalization.
 The bounded matching window covers the last 256 KiB of verbatim text from eligible units;
 units below the byte threshold are neither replaced nor indexed. The longest matching run
 wins, with ties resolved in favor of the most recent source.
+
+### Reference format
 
 References have the form `See O3` or `See O3:40-112`; a single row
 uses `See O3:40`. A source anchor such as `O3:` appears on its own line after
@@ -86,6 +95,8 @@ counting as one row. References always target visible verbatim text, never ancho
 generated references or replaced spans, so they need no second hop.
 Literal host text resembling a marker remains host text.
 
+### Current single-base edit design
+
 Highly similar bodies also compete with a single-base edit projection. Its base
 must be one earlier complete verbatim body still present in the same 256 KiB
 index. Only the four newest eligible complete bodies are considered. Rune-based
@@ -106,6 +117,8 @@ verified byte-for-byte before selection. Generated edit text and reconstructed
 bodies are never indexed or given source anchors. Repetition receipts count
 reused bytes and only complete unchanged logical lines, so a changed single
 line can save tokens without receiving a repeated-lines annotation.
+
+### Request isolation
 
 Each projection is a fresh forward pass over the current original input, with
 no persistent matcher state. Compacted, forked, and resumed views can reference

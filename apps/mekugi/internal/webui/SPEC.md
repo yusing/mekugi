@@ -1,6 +1,29 @@
 # Web UI
 
-## Purpose and ownership
+## Required capabilities and constraints
+
+- Create and control threads on multiple explicitly selected execution machines,
+  with no machine connected by default. The UI host may be separate from the
+  execution machines.
+- Use the reusable Session API with terminal semantic-control parity, including dialogs.
+- Support uploaded attachments and execution-machine paths, with a 32 MiB
+  decoded-upload budget per message.
+- Preserve browser/native queued edits; offer retraction for editing and steering
+  queued input without losing text or attachments.
+- Keep pickers and commands responsive across desktop and phone layouts. Render
+  images and shell highlighting, show the worktree directory name, and give empty
+  content no expansion control.
+- Show Main/delegate public reasoning summaries and spawn assignments, avoid
+  duplicate completion entries, and show per-agent measured usage/cost without raw reasoning.
+- Keep work owned by the shared server. Browser or connector closure leaves work
+  running; server shutdown ends active work while saved sessions remain resumable.
+
+## Current availability
+
+Terminal semantic-control parity is required. Secret prompts and native-local
+filesystem/editor integration are currently native-only.
+
+## Current browser architecture
 
 Users create, follow and control Mekugi threads on explicitly connected machines
 from desktop and phone browsers, and continue those threads from native terminals.
@@ -11,6 +34,12 @@ Each browser connection talks directly to its selected machine's authenticated
 connector and shared [Session API](../sessionapi/CONTRACT.md). The server owns live
 threads and recorded playback. Closing a browser, UI host or connector leaves those
 owners running. Ending a thread or replay releases its server-owned resources.
+
+### Replaceable UI design
+
+Component, typography, layout and transport choices describe the current design.
+They can change while preserving the required capabilities; the sections below
+describe current interaction behavior and availability.
 
 The page uses locally owned shadcn-svelte components and AI Elements compositions
 for its controls, transcript and activity presentation. These consume the shared
@@ -27,7 +56,6 @@ machine is connected. System is the default and follows system appearance change
 The choice is saved for this browser and UI origin, independently of machines and
 sessions. If browser storage is unavailable, the choice still applies for the
 current page and the page explains that it could not be saved.
-Secret prompts and native filesystem/editor integration remain native-only.
 
 ## Installation
 
@@ -43,7 +71,8 @@ lifecycle; it provides no offline execution, queued actions or push notification
 The page is laid out like a chat application. A sidebar lists threads grouped
 under their machine, each machine with its connection state, and opens a new
 thread on any of them; on phones it is a drawer. Thread rows show the title,
-workspace basename on separate lines. The full workspace remains available on the row. With no machine connected, the
+workspace directory name on separate lines, using the worktree directory name for
+worktree sessions. The full workspace remains available on the row. With no machine connected, the
 page asks for one. Machine settings, at the foot of the sidebar, add a machine by
 name, connector URL and access token, replace a refused token, or remove a
 machine. There is no implicit localhost connection. Machines and access tokens are
@@ -198,6 +227,8 @@ conflict. Playback remains available at its end until explicitly closed.
 All viewers of that replay share pause, speed, seek and restart. Backward seeks
 replace the attachment and publish a complete snapshot. The browser keeps its
 agent selection independently. Recorded model text is labelled as simulated.
+
+## Replaceable presentation design
 
 ### Page
 

@@ -8,6 +8,19 @@ invocation, interprets lifecycle facts, and owns session presentation and intent
 The [Responses adapter](responses/SPEC.md) owns model-path adaptation; executable
 frontend and input-projection registrations use the binding package.
 
+## Required capabilities and constraints
+
+Keep Codex as root authority and preserve stock JavaScript execution, shell execution
+and editing, including native batching and parallelism. Support bounded and batched
+reads, captured-change review, live diff and retained capture of shell writes. Do not
+replace stock shell execution or editing with custom tools or edit languages,
+including hashline editing.
+
+Process transport, interface details, trace readers, rollout representations and
+visible behaviors below are replaceable design unless required by those capabilities
+or the explicit product scope. Update affected contracts and consumers together. See
+[intent and design authority](../../docs/product.md#intent-and-design-authority).
+
 ## Execution authority
 
 This boundary governs Codex runtimes. Independently admitted Claude delegates use
@@ -56,8 +69,7 @@ permission scopes. The UI uses native decline for command denial, leaving the
 original tool rejection intact and allowing the turn to continue. Optional denial
 feedback joins only the matching thread, turn and tool's provider continuation;
 it adds no synthetic exit code, steering or new turn. File-change and permission
-choices remain unchanged. Passthrough preserves host decisions without typed
-denial reasons. [Conversation](../../modules/conversation/SPEC.md#questions-and-approvals) owns
+choices remain unchanged. [Conversation](../../modules/conversation/SPEC.md#questions-and-approvals) owns
 prompt lifecycle and draft preservation; the
 [terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md#questions-and-approvals) owns dock
 interaction. Module guard denials remain separate shell-command failures.

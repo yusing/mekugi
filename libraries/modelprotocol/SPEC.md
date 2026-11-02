@@ -6,6 +6,9 @@ Classify shared model wire facts used by transport, capture, and backend
 adaptation. Responses event and item identities, terminal evidence, exact JSON
 spelling, and Chat completion reasons have one definition across consumers.
 
+The shared package and codecs are current design; provider support and stock-tool
+execution determine the required capabilities, not this package boundary.
+
 ## Behavior
 
 Recognized terminal evidence distinguishes completion, steering, interruption,

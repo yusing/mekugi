@@ -1,6 +1,18 @@
 # Invocation launch
 
-## Purpose and scope
+## Required capabilities and constraints
+
+- Codex remains the root execution authority, with one interactive UI and one
+  stock JavaScript execution interface. Direct execution is unsupported.
+- Preserve stock editing, execution and independent batch/parallel control,
+  including captured changes and live edit review for shell writes.
+- The native client automatically starts the local server when needed. Shared
+  server-owned threads outlive browser and connector closure.
+  Server shutdown ends active work; saved Mekugi sessions remain resumable.
+- Resume is product-local: Mekugi resumes Mekugi sessions, and stock Codex
+  resumes stock Codex sessions.
+
+## Current launch design and behavior
 
 `mekugi` dispatches authenticated frontend calls and offline inspection before
 starting a live invocation. Live launch validates options, composes services,
@@ -12,6 +24,8 @@ closes the owned runtime. The existing Session Control ledger remains the sole
 host dispatcher. Native renderer attachment and remote publication borrow the
 same running owners. `mekugi web` serves only the embedded browser application;
 it starts no execution runtime and owns no connector credentials.
+
+### Replaceable runtime composition
 
 [Thread Control](../../../../modules/threadcontrol/SPEC.md) creates independent
 native child runtimes through the Mekugi server. Launch reuses the captured

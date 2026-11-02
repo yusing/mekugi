@@ -7,6 +7,9 @@ generated forms. Launch, the native hook, helper, capture and display share thes
 rules. Callers own execution, approval policy, authenticated invocation paths and
 [report transport](../../modules/commandsegments/SPEC.md).
 
+Segment rewriting and shell-specific tracking coverage are current design. Stock
+command execution and retained capture of shell writes remain required capabilities.
+
 ## Command boundaries
 
 Supported Bash and Linux dash-backed sh scripts split top-level `;`, newline,

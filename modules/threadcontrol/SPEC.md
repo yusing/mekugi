@@ -1,5 +1,16 @@
 # Independent thread coordination
 
+## Required outcomes
+
+Codex remains the root execution authority. Wait for any or all selected agents; an
+addressed message wakes either selection mode, while queued composer input does not
+cancel the wait. Compact-and-wait is atomic: compaction failure retains the wait and
+reports failure with the eventual outcome. Independent delegate questions do not replace
+assignments or ordinary messages/follow-ups.
+
+Checkpoint layout, native admission phases, transport, identifiers and dispatch
+machinery below are current design.
+
 ## Ownership
 
 Thread control owns admitted logical trees, work generations, admission reservations,
@@ -9,6 +20,8 @@ and interruption. Codex owns root execution; qualified Claude models select the
 [Claude delegate backend](../../backends/claude/SPEC.md). The Mekugi server owns each native runtime. Its Session Control retains that
 runtime’s sole host connection and request ledger. Launch supplies the selected
 execution owners; the server admits children and joins their lifetimes.
+
+## Current coordination design
 
 One durable checkpoint records logical members, attributed operations and selected
 waits. A spawn advances through fixed creation, assignment retention, admission and

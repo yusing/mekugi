@@ -1,8 +1,11 @@
 # Provider usage accounting
 
-## Purpose
+## Required capability
 
-Own provider-authoritative per-thread usage, reference cost and output throughput.
+Retain provider-usage accounting alongside execution.
+
+Accounting records, reference-pricing tables, throughput projection, publication queues
+and display formats below are current design.
 
 ## Scope
 

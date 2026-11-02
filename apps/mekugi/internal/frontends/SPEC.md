@@ -8,9 +8,21 @@ acquisition helper `mreload`. Command modules
 own reader parsing, output budgeting, resolver orchestration, and command semantics.
 Codex owns stock execution and its process lifecycle. Admitted Claude delegates
 receive the same authenticated catalog through their native shell environment,
-with a distinct retained child scope. Passthrough exposes no frontends.
+with a distinct retained child scope.
 
-## REQ-PLUGIN-001: Stock execution and isolation
+## Required capabilities
+
+Keep bounded source reads batchable through stock execution, and preserve stock
+parallel/batch control for independent commands. Retain captured-change review
+and correction without replacing Codex's editing or execution interfaces.
+
+## Current frontend contract and replaceable design
+
+The REQ/CTR sections below describe the current interface and its catalog, worker,
+PATH and recovery mechanisms. Those mechanisms can change while preserving the
+required capabilities and updating their consumers together.
+
+### REQ-PLUGIN-001: Stock execution and isolation
 
 Cross-backend delegates share their admitted parent's retained namespace, not its
 caller identity. Explicit change IDs/ranges remain readable across that namespace;
@@ -46,7 +58,7 @@ files in the user configuration's `mekugi/plugins` directory remain untouched.
 Frontends require neither Node.js nor Bun; semantic resolvers retain their own
 prerequisites. There is no JavaScript or WASM plugin runtime.
 
-## CTR-PLUGIN-001: Catalog and composition boundary
+### CTR-PLUGIN-001: Catalog and composition boundary
 
 Application composition selects the compiled catalog. The Codex binding collects
 executable registrations from descriptor command contributions when the module declares
@@ -76,7 +88,7 @@ invocation snapshot. When that path is empty, it falls back to
 command outcome. Sanitized measurements belong to
 [transport diagnostics](../../../../modules/transportdiagnostics/SPEC.md).
 
-## Output and recovery
+### Output and recovery
 
 All frontends accepting `--max-tokens N` also accept `--max-tokens=N` before
 their operand terminator or command boundary. Canonical positive budgets above
@@ -107,7 +119,7 @@ already changed the workspace may instead supply a pure recovery-failure result
 preserving its full mutation report and original mutation status. Cancellation
 still suppresses delivery. Neither failure nor cancellation reruns the command.
 
-## Lifecycle and replay
+### Lifecycle and replay
 
 Frontend children stay in the native command's process group so backend cancellation
 can terminate them. Execution scope distinguishes ordinary callers, the host

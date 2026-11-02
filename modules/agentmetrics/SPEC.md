@@ -1,8 +1,11 @@
 # Agent-experience evidence
 
-## Purpose
+## Current capability
 
-Measure actual reader invocations, observed edits, and recorded host completion.
+Retain agent-experience evidence inspection alongside stock execution.
+
+Read-log schemas, event pairing, report encoding and diagnostic limits below are current
+design.
 
 ## Scope
 

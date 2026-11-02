@@ -1,8 +1,11 @@
 # Diagnostics
 
-## Purpose
+## Current capability
 
-Retain and inspect private diagnostic evidence without changing execution results.
+Retain diagnostic inspection without replacing execution results.
+
+Bundle layout, retention defaults, report formats and inspection bounds below are
+current design.
 
 ## Scope
 

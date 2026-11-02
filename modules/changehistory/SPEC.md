@@ -1,8 +1,14 @@
 # Change history
 
-## Purpose
+## Required capability
 
-Capture, retain, review, apply, and revert observed filesystem change evidence.
+Retain capture, review and reversal for stock patches and shell writes. Explicit change
+selections resolve their authored workspaces and carry retained evidence across agents.
+Model-authored rewind reverses the caller's captured edits without including another
+caller's work.
+
+Change-ID spelling, checkpoints, index layout, hunk matching and saved-review
+presentation below are current design.
 
 ## Scope
 
@@ -19,9 +25,9 @@ application evidence loading remains independent of terminal interaction.
 
 ### Passive capture
 
-The `capture` API acquires bounded before-state for literal patch and command
-inputs, then reconciles observed endpoint differences. The shared command-scope
-classifier supplies source facts; capture owns merged command scope, filesystem
+The current capture design uses the `capture` API to acquire bounded before-state
+for literal patch and command inputs, then reconcile observed endpoint differences.
+The shared command-scope classifier supplies source facts; capture owns merged command scope, filesystem
 reads, limits, incomplete evidence, rename/copy pairing and authored-versus-managed
 provenance. Named operands and workspace checkpoints share admission, so stock
 calls, terminal continuations, and locally submitted shell commands use the same
@@ -160,8 +166,10 @@ information. Only unfinished work is `pending`.
 
 `mchanges revert` undoes the selected completed records in the workspace, latest
 capture first; `mchanges apply` replays them in capture order. Paths after `--`
-select files within the records. Records hold only hunk context, not source
-files, so each hunk is located near its recorded position: first exactly, then
+select files within the records.
+
+The current hunk-matching design retains hunk context rather than source files.
+Each hunk is located near its recorded position: first exactly, then
 by its leading and trailing context, dropping outer or inner context lines while
 at least one line anchors each side that is not a file boundary. A located
 region that has drifted is merged three ways against the requested side.

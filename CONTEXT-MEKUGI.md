@@ -65,7 +65,7 @@ Application owners below are under `apps/mekugi/internal/`.
 | Responses | `backends/codex/responses`: envelopes/catalogs, byte-preserving projection, streams/lifecycle and Codex framing; `compact_plaintext.go`: ordinary-turn compaction request adaptation; `{session,session_provider}.go`: connection ancestry/steering/prefix confirmation; `libraries/modelprotocol`: wire facts/exact JSON |
 | Shell hooks | `backends/codex/shellhook`: registration/protocol; `backends/codex/shellapproval`: shared approval wire/resource names; Launch installs composed resources |
 | Providers | `providers/openai`: credentials/model exchange/HTTP/WebSockets; `providers/grok`: authentication/OAuth retry; `providers/opencode`: configuration/catalog/pinned prices/endpoints/affinity |
-| Transports | `libraries/httptransport`: defaults, response admission, idle-read lifetime and body replay; `libraries/mcptransport`: reserved endpoint/stdio bridge, explicitly dispatched by Launch, absent from normal startup |
+| Transports | `libraries/httptransport`: defaults, response admission, idle-read lifetime and body replay; `libraries/mcptransport`: invocation-local endpoints/stdio bridge for composed coordination contributions, started by Launch |
 
 ## Integration seams
 
@@ -122,5 +122,6 @@ select them only for a comparison task.
 
 ## Workspace and generation
 
-`apps/mekugi/cmd/workspace` owns enumeration/import checks; `go.work` owns membership,
+`apps/mekugi/cmd/workspace` owns enumeration, import and documentation-navigation checks;
+`go.work` owns membership,
 module-root descriptors own contributions, and `make check-generated` checks reference drift.

@@ -8,6 +8,19 @@ This contract connects host observation, passive capture and retained
 observed file differences and its coverage, rather than the live Git diff or
 proof that unobserved effects did not occur.
 
+## Required stock-tool and review behavior
+
+Stock patch and shell-write execution must retain live diffs and captured-change
+review without replacing native execution, batching, tool arguments or host
+results. Bounded and batched reads remain available. Optimizations preserve
+durable evidence and retention; missing evidence cannot be presented as complete.
+
+## Replaceable capture design
+
+The observation windows, target analysis, workspace checkpoints, attribution and
+publication mechanisms below implement those requirements. Their concrete bounds
+and storage layout can change with their consumers; they are not the outcome.
+
 ## Authority and publication
 
 The admitted backend owns editing, execution, permissions and continuations. Observation never

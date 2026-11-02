@@ -1,9 +1,11 @@
 # Session naming
 
-## Purpose
+## Current capability
 
-Generate one optional name for a new empty Main thread while preserving manual
-and host naming authority.
+Retain session naming alongside manual name control.
+
+Automatic eligibility, generation model, effort, input bound, deadline and retry policy
+below are current design.
 
 ## Scope
 
@@ -14,11 +16,15 @@ reconciliation remain application responsibilities.
 
 ## Behavior
 
+### Eligibility
+
 Retain the first submitted user request text and its supplied file or directory
 snapshots, without reopening files or including skill instructions, tools, or later
 history. A failed exchange may establish that first prompt but cannot start naming.
 The first successful completed upstream exchange atomically consumes the one
 naming attempt. Prewarm, compaction, and unsuccessful responses do not admit it.
+
+### Current generation design
 
 Naming uses `gpt-6-luna` with medium reasoning, at most 4,096 input runes, and a
 one-minute operation deadline. Its instruction asks for a concise title in the
@@ -27,6 +33,8 @@ invalid credentials, unavailable Luna, rejected or unsuccessful responses, and
 empty text silently leave the current name unchanged. There is no availability
 probe, model fallback, or later retry. Skipping unavailable inference still consumes
 the attempt.
+
+### Naming authority
 
 Manual renaming suppresses automatic naming before persistence, even if that save
 fails. Host name updates also take precedence. A generated candidate is rechecked

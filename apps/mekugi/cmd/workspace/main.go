@@ -33,7 +33,13 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("expected check, index-write, index-check or run COMMAND [ARGS]; @workspace expands to member package patterns")
+		return errors.New("expected check, docs-check, index-write, index-check or run COMMAND [ARGS]; @workspace expands to member package patterns")
+	}
+	if args[0] == "docs-check" {
+		if len(args) != 1 {
+			return errors.New("docs-check accepts no arguments")
+		}
+		return checkDocs(".")
 	}
 	members, err := workspaceMembers()
 	if err != nil {
@@ -49,7 +55,7 @@ func run(args []string) error {
 		return moduleIndex(members, args[0] == "index-check")
 	}
 	if args[0] != "run" || len(args) < 2 {
-		return errors.New("expected check, index-write, index-check or run COMMAND [ARGS]")
+		return errors.New("expected check, docs-check, index-write, index-check or run COMMAND [ARGS]")
 	}
 	expanded, err := expand(args[2:], members)
 	if err != nil {

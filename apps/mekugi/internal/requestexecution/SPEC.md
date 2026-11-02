@@ -1,9 +1,19 @@
 # Request execution
 
+## Required execution guarantees
+
+Preserve stock Codex editing, execution and JavaScript interfaces, including their
+authority, inputs and results. Independent batched or parallel stock operations
+remain independent; observation and request projection never replay their effects.
+
+## Responsibility and current lifecycle
+
 The application runs one request lifecycle for HTTP and WebSocket exchanges.
 The inference gateway owns transport and provider selection; Codex owns execution.
 The executor orders preparation, provider admission, transformation and delivery
 without retaining a second transcript, agent registry or accounting ledger.
+
+## Replaceable request policy
 
 Preparation applies authenticated guidance around execution admission and file
 attachment projection. Non-generating WebSocket prewarm cannot initialize live
@@ -35,12 +45,16 @@ reload readers nor publishes reviewer history. Missing, corrupt or unauthorized
 local references stop forwarding; provider-owned opaque compaction and other
 native review context remain unchanged.
 
+## Replaceable integration design
+
 [Execution observation](../executionobservation/SPEC.md) supplies the prepared
 transformer, usage observation and cleanup lifetime. It admits review identity
 before forwarding and rebinds to the execution lifetime after provider admission
 while preserving storage identity and turn leases. Invocation startup constructs
 and closes its actual owners; request cleanup closes only that response's
 observations.
+
+## Current delivery and failure behavior
 
 An admitted Thread Control wait can finish its host turn locally with an empty
 completed response. It sends no provider request, charges no provider usage and
@@ -75,6 +89,8 @@ Private failure records, optional notices and debug bundles remain independent
 consumers. Sanitized stream metrics contain classification, not prompt or error
 content. Debug instructions distinguish local projection from the actual wire
 subset. No diagnostic operation retries host execution or provider inference.
+
+## Acceptance
 
 Acceptance covers both transports, prewarm and compaction, exact forwarded
 history, cancellation, accounting, naming, partial delivery and failed publication.

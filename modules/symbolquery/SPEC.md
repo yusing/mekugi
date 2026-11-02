@@ -1,8 +1,11 @@
 # Symbol query
 
-## Purpose
+## Current capability
 
-Resolve current semantic definitions and references through `msymbol`.
+Retain semantic source lookup alongside stock reads.
+
+Selectors, resolver integration, language support, deadlines, output formats and bounds
+below are current design.
 
 ## Scope
 
@@ -57,6 +60,8 @@ including TypeScript 7's `tsc --lsp` capability. Msymbol never installs
 dependencies, searches for a different workspace, weakens result confinement, or
 substitutes text search. Go and LSP processes both run in the selected workspace.
 
+#### Current resolver lifecycle design
+
 Several `(def|refs) PATH [LINE] SYMBOL [N]` tuples may follow each other in one
 invocation. Each input is validated before resolver startup; invalid inputs are reported while valid tuples continue. Tuples share one
 language-server session per language in the selected workspace, and one combined
@@ -73,6 +78,8 @@ those bounds remains valid, and forced cleanup does not change completed stdout 
 exit status. Reference queries include declarations. Missing dependencies, invalid
 input, changed source, malformed protocol results, timeouts, and failed queries
 return target-qualified stderr and nonzero status. Only affected tuples fail; successful tuples retain stdout in request order, including successes before and after a failed query. Resolver startup failures affect only that language; per-request errors do not abort its other queries.
+
+#### Result contract
 
 Successful definitions have one header and raw body rows:
 

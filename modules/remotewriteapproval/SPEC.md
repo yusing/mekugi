@@ -1,8 +1,11 @@
 # Remote-write approval
 
-## Purpose
+## Current capability
 
-Classify remote VCS writes and retain exact session approval grants.
+Retain remote-write approval alongside stock command execution.
+
+The guarded-command classifier, hook instrumentation, grant representation, timeout and
+prompt presentation below are current design.
 
 ## Scope
 

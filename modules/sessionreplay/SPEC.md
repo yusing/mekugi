@@ -1,8 +1,11 @@
 # Session replay
 
-## Purpose
+## Current capability
 
-Reconstruct timed, read-only session presentation from retained observations.
+Retain offline session replay.
+
+Source discovery, synthetic streaming, playback controls, timing algorithms and corpus
+limits below are current design.
 
 ## Scope
 

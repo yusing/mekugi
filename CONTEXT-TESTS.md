@@ -97,6 +97,9 @@ make test TEST_PACKAGES='./modules/agentguidance/... ./apps/mekugi/internal/fron
 
 ## Static checks
 
+`make docs-check` validates local documentation targets and Markdown heading anchors.
+The pre-commit hook runs it against the staged tree only when documentation changes.
+
 `make lint` requires `golangci-lint` and `deadcode` on PATH. It uses `.golangci.yml`, checks production
 and test reachability separately (including the snapshot harness), and fails on tool errors/findings.
 Linux amd64 CI installs versions pinned in the release workflow. Run it before committing Go
