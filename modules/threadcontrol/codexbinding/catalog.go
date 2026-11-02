@@ -95,6 +95,7 @@ func (d *Driver) CaptureCatalog(raw []byte) {
 			Name             string  `json:"slug"`
 			Effort           *string `json:"default_reasoning_level"`
 			MultiAgentEffort *string `json:"multi_agent_reasoning_effort"`
+			ReasoningUpdates bool    `json:"supports_reasoning_effort_updates"`
 			Levels           []struct {
 				Effort string `json:"effort"`
 			} `json:"supported_reasoning_levels"`
@@ -119,6 +120,7 @@ func (d *Driver) CaptureCatalog(raw []byte) {
 	if err == nil {
 		for _, entry := range catalog.Models {
 			model := Model{Name: entry.Name, DefaultEffort: entry.Effort, MultiAgentEffort: entry.MultiAgentEffort, Root: entry.Messages.Agents.Role.Root, Child: entry.Messages.Agents.Role.Child}
+			model.ReasoningUpdates = entry.ReasoningUpdates
 			for _, level := range entry.Levels {
 				model.Efforts = append(model.Efforts, level.Effort)
 			}
@@ -134,7 +136,7 @@ func (d *Driver) CaptureCatalog(raw []byte) {
 }
 
 // ReasoningChoices borrows the selected catalog for auxiliary request policy.
-func (d *Driver) ReasoningChoices(name string) (string, []string) {
+func (d *Driver) ReasoningChoices(name string) (string, []string, bool) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	for _, model := range d.models {
@@ -143,10 +145,10 @@ func (d *Driver) ReasoningChoices(name string) (string, []string) {
 			if model.DefaultEffort != nil {
 				fallback = *model.DefaultEffort
 			}
-			return fallback, slices.Clone(model.Efforts)
+			return fallback, slices.Clone(model.Efforts), model.ReasoningUpdates
 		}
 	}
-	return "", nil
+	return "", nil, false
 }
 
 // InheritedEffort applies the same catalog policy to internal side forks.

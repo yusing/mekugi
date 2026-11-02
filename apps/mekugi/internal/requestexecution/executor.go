@@ -47,7 +47,7 @@ type Executor struct {
 	Guidance         *binding.Guidance
 	SkillsManager    bool
 	CompactPrompt    func() string
-	ReasoningChoices func(string) (string, []string)
+	ReasoningChoices func(string) (string, []string, bool)
 	CompactStore     func(context.Context, string, string, string) (string, error)
 	SideThreads      sessioncontrol.ForkClassifier
 	Usage            *accounting.Service
@@ -284,8 +284,8 @@ func (a *requestAttempt) prepareWire() error {
 	}
 	compaction := !a.approvalReview && a.metadataValid && a.metadata.RequestKind == responses.Compaction
 	if !a.approvalReview && a.executor.ReasoningChoices != nil && (compaction || a.executor.SideThreads != nil && a.executor.SideThreads.IsBTWThread(a.threadID)) {
-		fallback, choices := a.executor.ReasoningChoices(a.request.Model())
-		if err := a.request.UseLowReasoning(fallback, choices); err != nil {
+		fallback, choices, updates := a.executor.ReasoningChoices(a.request.Model())
+		if err := a.request.UseLowReasoning(fallback, choices, updates && !inferencegateway.IsThirdPartyModel(a.request.Model())); err != nil {
 			return err
 		}
 	}

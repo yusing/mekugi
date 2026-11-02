@@ -223,7 +223,7 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 			p := &btwCodexProvider{requests: make(chan btwCodexRequest, 12), mainGate: make(chan struct{}), sideGate: make(chan struct{}), cancelGate: make(chan struct{}), canceled: make(chan struct{})}
 			proxy := newManagedMekugiProxy(t)
 			driver := new(threadbinding.Driver)
-			driver.CaptureCatalog([]byte(`{"models":[{"slug":"gpt-6-sol","default_reasoning_level":"high","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]},{"slug":"gpt-6-astra","default_reasoning_level":"high","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}`))
+			driver.CaptureCatalog([]byte(`{"models":[{"slug":"gpt-6-sol","default_reasoning_level":"high","supports_reasoning_effort_updates":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]},{"slug":"gpt-6-astra","default_reasoning_level":"high","supports_reasoning_effort_updates":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}`))
 			executor := testRequestExecutor(p, nil, proxy)
 			executor.ReasoningChoices = driver.ReasoningChoices
 			server := httptest.NewServer(inferencegateway.ResponsesHandler(t.Context(), time.Minute, executor.ExecuteHTTP))
@@ -296,7 +296,13 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 				t.Fatalf("fork identities: main=%q side=%q", mainMetadata.ThreadID, sideMetadata.ThreadID)
 			}
 			var mainSettings, sideSettings struct {
-				Model     string `json:"model"`
+				Model string `json:"model"`
+				Input []struct {
+					Type      string `json:"type"`
+					Reasoning struct {
+						Effort string `json:"effort"`
+					} `json:"reasoning"`
+				} `json:"input"`
 				Reasoning struct {
 					Effort string `json:"effort"`
 				} `json:"reasoning"`
@@ -307,8 +313,17 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 			if err := json.Unmarshal(side.body, &sideSettings); err != nil {
 				t.Fatal(err)
 			}
-			if mainSettings.Model != sideSettings.Model || mainSettings.Reasoning.Effort != "high" || sideSettings.Reasoning.Effort != "low" {
+			if mainSettings.Model != sideSettings.Model || mainSettings.Reasoning.Effort != "high" || sideSettings.Reasoning.Effort != "high" {
 				t.Fatalf("side reasoning isolation: main=%+v side=%+v", mainSettings, sideSettings)
+			}
+			effective := sideSettings.Reasoning.Effort
+			for _, item := range sideSettings.Input {
+				if item.Type == "configuration_update" {
+					effective = item.Reasoning.Effort
+				}
+			}
+			if effective != "low" {
+				t.Fatalf("BTW effective effort = %q", effective)
 			}
 			if !bytes.Contains(side.body, []byte("Main seed")) || active && !bytes.Contains(side.body, []byte("Main running")) {
 				t.Fatal("branch omitted the current conversation")

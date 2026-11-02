@@ -26,12 +26,12 @@ func PrepareCompactTurn(request *Request, prompt string) error {
 			Type string `json:"type"`
 		}
 		_ = json.Unmarshal(raw, &item)
-		return item.Type == "compaction_trigger" || item.Type == "additional_tools"
+		return item.Type == "compaction_trigger"
 	})
 	items = append(items, protocol.MustMarshalJSON(map[string]any{"type": "message", "role": "user", "content": []map[string]string{{"type": "input_text", "text": prompt}}}))
 	request.Fields["input"] = protocol.MustMarshalJSON(items)
-	request.Fields["tools"] = jsontext.Value(`[]`)
-	request.Fields["parallel_tool_calls"] = jsontext.Value(`false`)
+	// Disable execution without rewriting the cached tool and instruction prefix.
+	request.Fields["tool_choice"] = jsontext.Value(`"none"`)
 	return nil
 }
 

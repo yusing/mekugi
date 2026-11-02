@@ -30,6 +30,7 @@ type Model struct {
 	Root, Child           *string
 	DefaultEffort         *string
 	MultiAgentEffort      *string
+	ReasoningUpdates      bool
 	Efforts, ServiceTiers []string
 }
 

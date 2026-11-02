@@ -71,12 +71,42 @@ func (r Request) ReasoningEffort() string {
 
 // UseLowReasoning changes only auxiliary request effort, retaining summary and
 // other reasoning options. Unadvertised choices and lower efforts stay intact.
-func (r *Request) UseLowReasoning(fallback string, supported []string) error {
+func (r *Request) UseLowReasoning(fallback string, supported []string, updates bool) error {
+	if !slices.Contains(supported, "low") {
+		return nil
+	}
 	effort := r.ReasoningEffort()
 	if effort == "" {
 		effort = fallback
 	}
-	if !slices.Contains(supported, "low") || !slices.Contains([]string{"medium", "high", "xhigh", "max"}, effort) {
+	var input []jsontext.Value
+	if updates {
+		if err := json.Unmarshal(r.Fields["input"], &input); err != nil {
+			return err
+		}
+		for i := len(input) - 1; i >= 0; i-- {
+			var item struct {
+				Type      string `json:"type"`
+				Reasoning struct {
+					Effort string `json:"effort"`
+				} `json:"reasoning"`
+			}
+			if err := json.Unmarshal(input[i], &item); err != nil {
+				return err
+			}
+			if item.Type == "configuration_update" && item.Reasoning.Effort != "" {
+				effort = item.Reasoning.Effort
+				break
+			}
+		}
+	}
+	if !slices.Contains([]string{"medium", "high", "xhigh", "max"}, effort) {
+		return nil
+	}
+	if updates {
+		// Keep the request baseline and historical updates in the cached prefix.
+		input = append(input, jsontext.Value(`{"type":"configuration_update","reasoning":{"effort":"low"}}`))
+		r.Fields["input"] = responses.MustMarshalJSON(input)
 		return nil
 	}
 	var reasoning map[string]jsontext.Value

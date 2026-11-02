@@ -33,6 +33,10 @@ selected model advertises it. Explicit lower efforts remain lower; an unset
 effort uses the catalog's advertised default to decide whether to reduce it.
 Unknown defaults and models without an advertised low choice stay unchanged.
 This request-local policy preserves Main, Side and One-off settings.
+On OpenAI models advertising reasoning updates, preparation appends a low-effort
+configuration update while retaining the request baseline and earlier history.
+Compaction retains tool definitions and tool-loading history and disables tool
+execution with the request's tool choice.
 
 Codex-owned automatic approval reviewers retain their native instructions, tools
 and output schema. They use ordinary provider delivery and accounting without

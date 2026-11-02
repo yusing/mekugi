@@ -3,6 +3,7 @@ package launch
 import (
 	"bytes"
 	"context"
+	json "encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +26,7 @@ func TestAuxiliaryRequestsUseLowReasoning(t *testing.T) {
 		{"main", "high", "low", "high", "high"},
 		{"side", "high", "low", "high", "high"},
 		{"btw", "high", "low", "high", "low"},
+		{"third-party-btw", "high", "low", "high", "low"},
 		{"compaction", "xhigh", "low", "high", "low"},
 		{"btw", "none", "low", "high", "none"},
 		{"compaction", "minimal", "low", "high", "minimal"},
@@ -32,37 +34,63 @@ func TestAuxiliaryRequestsUseLowReasoning(t *testing.T) {
 		{"btw", "", "low", "high", "low"},
 		{"compaction", "", "low", "", ""},
 	} {
-		t.Run(tc.kind+"/"+tc.effort+"/"+tc.choices+"/"+tc.fallback, func(t *testing.T) {
-			driver := new(threadbinding.Driver)
-			driver.CaptureCatalog(mustTestJSON(t, map[string]any{"models": []any{map[string]any{"slug": "test-model", "default_reasoning_level": tc.fallback, "supported_reasoning_levels": []any{map[string]any{"effort": tc.choices}}}}}))
-			proxy := newManagedMekugiProxy(t)
-			requests := sessioncontrol.NewRequests[appServerRequest](nil)
-			proxy.bindForkRequests(requests)
-			if tc.kind == "btw" {
-				requests.TrackSide("auxiliary", &sessioncontrol.Side{Thread: "auxiliary", SideAnswer: new(conversationmodel.SideAnswer), LowReasoning: true})
-			} else if tc.kind == "side" {
-				requests.TrackSide("auxiliary", &sessioncontrol.Side{Thread: "auxiliary", SideAnswer: new(conversationmodel.SideAnswer)})
-			}
-			request := modelTestRequest(t, "test-model")
-			request.Fields["reasoning"] = mustTestJSON(t, map[string]any{"effort": tc.effort, "summary": "auto"})
-			headers := serverMetadataHeaders(t, "turn", nil)
-			if tc.kind == "compaction" {
-				headers = serverCompactionMetadataHeaders(t)
-			}
-			headers.Set(codexresponses.ThreadIDHeader, "auxiliary")
-			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-			executor := requestexecution.Executor{Provider: provider, SideThreads: proxy, ReasoningChoices: driver.ReasoningChoices, Output: io.Discard}
-			if err := executor.Execute(t.Context(), t.Context(), request, headers, "auxiliary"); err != nil {
-				t.Fatal(err)
-			}
-			forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
-			if err != nil {
-				t.Fatal(err)
-			}
-			if forwarded.ReasoningEffort() != tc.want || !bytes.Contains(forwarded.Fields["reasoning"], []byte(`"summary":"auto"`)) {
-				t.Fatalf("reasoning = %s; want effort %q with original summary", forwarded.Fields["reasoning"], tc.want)
-			}
-		})
+		for _, updates := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/%s/%s/%s/updates=%t", tc.kind, tc.effort, tc.choices, tc.fallback, updates), func(t *testing.T) {
+				model := "test-model"
+				if tc.kind == "third-party-btw" {
+					model = "grok-4.7"
+				}
+				driver := new(threadbinding.Driver)
+				driver.CaptureCatalog(mustTestJSON(t, map[string]any{"models": []any{map[string]any{"slug": model, "supports_reasoning_effort_updates": updates, "default_reasoning_level": tc.fallback, "supported_reasoning_levels": []any{map[string]any{"effort": tc.choices}}}}}))
+				proxy := newManagedMekugiProxy(t)
+				requests := sessioncontrol.NewRequests[appServerRequest](nil)
+				proxy.bindForkRequests(requests)
+				if tc.kind == "btw" || tc.kind == "third-party-btw" {
+					requests.TrackSide("auxiliary", &sessioncontrol.Side{Thread: "auxiliary", SideAnswer: new(conversationmodel.SideAnswer), LowReasoning: true})
+				} else if tc.kind == "side" {
+					requests.TrackSide("auxiliary", &sessioncontrol.Side{Thread: "auxiliary", SideAnswer: new(conversationmodel.SideAnswer)})
+				}
+				request := modelTestRequest(t, model)
+				request.Fields["reasoning"] = mustTestJSON(t, map[string]any{"effort": tc.effort, "summary": "auto"})
+				headers := serverMetadataHeaders(t, "turn", nil)
+				if tc.kind == "compaction" {
+					headers = serverCompactionMetadataHeaders(t)
+				}
+				headers.Set(codexresponses.ThreadIDHeader, "auxiliary")
+				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
+				executor := requestexecution.Executor{Provider: provider, SideThreads: proxy, ReasoningChoices: driver.ReasoningChoices, Output: io.Discard}
+				if err := executor.Execute(t.Context(), t.Context(), request, headers, "auxiliary"); err != nil {
+					t.Fatal(err)
+				}
+				forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+				effort := forwarded.ReasoningEffort()
+				if updates && tc.kind != "third-party-btw" {
+					if effort != tc.effort {
+						t.Fatalf("request baseline changed: %s", forwarded.Fields["reasoning"])
+					}
+					var input []struct {
+						Type      string `json:"type"`
+						Reasoning struct {
+							Effort string `json:"effort"`
+						} `json:"reasoning"`
+					}
+					if err := json.Unmarshal(forwarded.Fields["input"], &input); err != nil {
+						t.Fatal(err)
+					}
+					for _, item := range input {
+						if item.Type == "configuration_update" {
+							effort = item.Reasoning.Effort
+						}
+					}
+				}
+				if effort != tc.want || !bytes.Contains(forwarded.Fields["reasoning"], []byte(`"summary":"auto"`)) {
+					t.Fatalf("reasoning = %s; want effort %q with original summary", forwarded.Fields["reasoning"], tc.want)
+				}
+			})
+		}
 	}
 }
 

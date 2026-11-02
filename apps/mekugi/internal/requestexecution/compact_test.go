@@ -31,7 +31,7 @@ func TestCompactionProviderTurnSeparatesSummaryAndMetadata(t *testing.T) {
 		stream := wireKind != "json"
 		for _, status := range []string{"completed", "failed", "incomplete"} {
 			t.Run(status+"/"+wireKind, func(t *testing.T) {
-				request, err := codexresponses.ParseRequest([]byte(`{"model":"gpt-6-astra","stream":true,"input":[{"role":"user","content":"Original task."},{"type":"compaction_trigger"},{"type":"additional_tools","tools":[]}],"tools":[],"tool_choice":"auto","parallel_tool_calls":true}`))
+				request, err := codexresponses.ParseRequest([]byte(`{"model":"gpt-6-astra","stream":true,"input":[{"role":"user","content":"Original task."},{"type":"compaction_trigger"},{"type":"additional_tools","tools":[{"type":"function","name":"later"}]}],"tools":[{"type":"function","name":"original"}],"tool_choice":"auto","parallel_tool_calls":true}`))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -45,7 +45,7 @@ func TestCompactionProviderTurnSeparatesSummaryAndMetadata(t *testing.T) {
 				provider := compactProvider(func(body []byte, forwarded http.Header) *http.Response {
 					calls++
 					turn, ok := codexresponses.DecodeTurnMetadata(forwarded)
-					if !ok || turn.RequestKind != responses.Turn || bytes.Contains(body, []byte("compaction_trigger")) || bytes.Contains(body, []byte("additional_tools")) || !bytes.Contains(body, []byte(`"tools":[]`)) || !bytes.Contains(body, []byte(`"parallel_tool_calls":false`)) || !bytes.Contains(body, []byte("Original prompt plus ours.")) || !bytes.Contains(body, []byte("Original task.")) {
+					if !ok || turn.RequestKind != responses.Turn || bytes.Contains(body, []byte("compaction_trigger")) || !bytes.Contains(body, []byte("additional_tools")) || !bytes.Contains(body, []byte(`"name":"original"`)) || !bytes.Contains(body, []byte(`"name":"later"`)) || !bytes.Contains(body, []byte(`"parallel_tool_calls":true`)) || !bytes.Contains(body, []byte(`"tool_choice":"none"`)) || !bytes.Contains(body, []byte("Original prompt plus ours.")) || !bytes.Contains(body, []byte("Original task.")) {
 						t.Fatalf("not an ordinary summary-generation turn: %s %+v", body, turn)
 					}
 					var sent struct {
