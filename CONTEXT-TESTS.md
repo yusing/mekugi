@@ -14,8 +14,9 @@ applicable coverage below.
 
 ## Runner
 
-Test recipes preserve Go's native package outcomes, failure diagnostics and exit
-status. Apply command-output bounds at the invocation when needed.
+Test recipes use RTK when available to compact Go test output while preserving
+failure diagnostics and exit status. Set `RTK=` for Go's native package outcomes.
+Apply command-output bounds at the invocation when needed.
 
 Use `make test`; the root has no Go module. Default `TEST_PACKAGES=@workspace` expands
 explicit `go.work` members. Focused runs also include `testsupport/uisnapshot`:

@@ -13,6 +13,9 @@ make test
 make lint
 ```
 
+Recipes suppress command echoes and use RTK when available to compact tool output.
+Set `RTK=` to keep tool output raw.
+
 `make webui` builds the pinned Svelte application for embedding; `make build-binaries`
 and release recipes include it. Plain `make build` checks the Go workspace.
 Browser build and check recipes use **Bun 1.4.4+** on `PATH` to install pinned

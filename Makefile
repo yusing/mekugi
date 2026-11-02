@@ -1,6 +1,11 @@
 GO ?= go
-# Compact build output when rtk is available; RTK= keeps it raw.
+# Show tool results and diagnostics, not recipe commands.
+.SILENT:
+# Compact tool output when rtk is available; RTK= keeps it raw.
 RTK := $(shell rtk --version >/dev/null 2>&1 && printf rtk)
+# Package scripts need generic filters; `rtk bun run` is a passthrough.
+TOOL_OUTPUT = $(if $(RTK),$(RTK) err)
+TEST_OUTPUT = $(if $(RTK),$(RTK) test)
 # Native rtk Go filters invoke go from PATH; preserve custom GO commands raw.
 GO_OUTPUT = $(if $(filter-out go,$(GO)),,$(RTK)) $(GO)
 # Reuse compiled packages across implementation, review, and staged checkouts.
@@ -51,31 +56,31 @@ WEBUI := apps/mekugi/internal/webui/app
 CLAUDE_WORKER := backends/claude
 
 $(CLAUDE_WORKER)/node_modules/.bun-install: $(CLAUDE_WORKER)/bun.lock $(CLAUDE_WORKER)/package.json
-	cd $(CLAUDE_WORKER) && bun install --frozen-lockfile
+	cd $(CLAUDE_WORKER) && $(RTK) bun install --frozen-lockfile --no-progress --no-summary
 	touch $@
 
 claude-worker: $(CLAUDE_WORKER)/node_modules/.bun-install
-	cd $(CLAUDE_WORKER) && bun run build
+	cd $(CLAUDE_WORKER) && $(TOOL_OUTPUT) bun run --silent build
 
 claude-worker-check: claude-worker
-	cd $(CLAUDE_WORKER) && bun run --bun typecheck
-	cd $(CLAUDE_WORKER) && bun run test
+	cd $(CLAUDE_WORKER) && $(TOOL_OUTPUT) bun run --silent --bun typecheck
+	cd $(CLAUDE_WORKER) && $(TEST_OUTPUT) bun run --silent test
 
 $(WEBUI)/node_modules/.bun-install: $(WEBUI)/bun.lock $(WEBUI)/package.json
-	cd $(WEBUI) && bun install --frozen-lockfile
+	cd $(WEBUI) && $(RTK) bun install --frozen-lockfile --no-progress --no-summary
 	touch $@
 
 webui: $(WEBUI)/node_modules/.bun-install
-	cd $(WEBUI) && bun run build
+	cd $(WEBUI) && $(TOOL_OUTPUT) bun run --silent build
 
 webui-check: $(WEBUI)/node_modules/.bun-install
-	cd $(WEBUI) && bun run test
-	cd $(WEBUI) && bun run check
-	cd $(WEBUI) && bun run lint
-	cd $(WEBUI) && bun run format:check
+	cd $(WEBUI) && $(TEST_OUTPUT) bun run --silent test
+	cd $(WEBUI) && $(TOOL_OUTPUT) bun run --silent check
+	cd $(WEBUI) && $(TOOL_OUTPUT) bun run --silent lint
+	cd $(WEBUI) && $(TOOL_OUTPUT) bun run --silent format:check
 
 webui-fmt: $(WEBUI)/node_modules/.bun-install
-	cd $(WEBUI) && bun run format
+	cd $(WEBUI) && $(TOOL_OUTPUT) bun run --silent format
 
 generate: workspace-check
 	$(WORKSPACE) run $(GO) generate @workspace
@@ -99,7 +104,7 @@ preview-native-ui:
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test: workspace-check
-	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO) test $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
+	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO_OUTPUT) test $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
 
 # Installed Codex, isolated local mocks, no installation or live model requests.
 test-host:
@@ -115,7 +120,7 @@ test-host:
 	$(MAKE) --no-print-directory test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN="$$pattern" TEST_FLAGS='-tags=codex_e2e -count=1 -v'
 
 lint: workspace-check
-	env -u BASH_ENV $(WORKSPACE) run golangci-lint run @workspace
+	env -u BASH_ENV $(WORKSPACE) run $(RTK) golangci-lint run @workspace
 	@set -e; findings="$$(env -u BASH_ENV $(WORKSPACE) run deadcode -f='{{range .Funcs}}{{printf "%s.%s\n" $$.Path .Name}}{{end}}' @workspace)"; \
 	findings="$$(printf '%s\n' "$$findings" | awk 'NR == FNR { allowed[$$0] = 1; next } /^github.com\/yusing\/mekugi\/testsupport\// { next } NF && !($$0 in allowed)' .deadcode-allowlist -)"; \
 	if [ -n "$$findings" ]; then printf '%s\n' "$$findings"; exit 1; fi
@@ -124,8 +129,8 @@ lint: workspace-check
 
 # Offline rendered-output regression checks. Mismatches leave .txt.new candidates.
 test-ui-snapshots:
-	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO) test $(GO_BUILD_FLAGS) ./testsupport/uisnapshot/... $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
+	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO_OUTPUT) test $(GO_BUILD_FLAGS) ./testsupport/uisnapshot/... $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
 
 # Replaces baselines for the selected tests; review candidates/diffs first.
 update-ui-snapshots:
-	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(WORKSPACE) run $(GO) test $(GO_BUILD_FLAGS) $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1
+	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(WORKSPACE) run $(GO_OUTPUT) test $(GO_BUILD_FLAGS) $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1
