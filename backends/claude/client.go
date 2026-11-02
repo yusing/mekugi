@@ -102,7 +102,6 @@ type Client struct {
 	closing        atomic.Bool
 	err            error
 	initialization jsontext.Value
-	diagnostics    diagnosticTail
 }
 
 // Start returns only after the SDK's initialization handshake succeeds. The
@@ -140,7 +139,7 @@ func start(ctx context.Context, cfg Config, worker []byte) (*Client, error) {
 		events: make(chan jsontext.Value, 128), pending: make(map[string]chan frame),
 		callbacks: make(map[string]context.CancelFunc), onRequest: cfg.OnRequest}
 	c.cmd = exec.CommandContext(childCtx, cfg.BunPath, path)
-	c.cmd.Dir, c.cmd.Env, c.cmd.Stderr = cfg.Workspace, cfg.Env, &c.diagnostics
+	c.cmd.Dir, c.cmd.Env = cfg.Workspace, cfg.Env
 	c.cmd.WaitDelay = 5 * time.Second
 	c.stdin, err = c.cmd.StdinPipe()
 	if err != nil {
@@ -350,10 +349,6 @@ func (c *Client) Err() error {
 	return c.err
 }
 
-// Diagnostics returns the most recent 64 KiB of worker stderr, separately from
-// the protocol. Callers decide whether and where private diagnostics are shown.
-func (c *Client) Diagnostics() string { return c.diagnostics.String() }
-
 // Close joins the worker and callback lifetimes, allowing graceful SDK shutdown
 // before killing an unresponsive worker. Host callbacks must honor cancellation.
 func (c *Client) Close() error {
@@ -372,26 +367,3 @@ func (c *Client) Close() error {
 	})
 	return c.Err()
 }
-
-type diagnosticTail struct {
-	mu   sync.Mutex
-	data []byte
-}
-
-func (d *diagnosticTail) Write(p []byte) (int, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	const limit = 64 * 1024
-	n := len(p)
-	if len(p) >= limit {
-		d.data = append(d.data[:0], p[len(p)-limit:]...)
-		return n, nil
-	}
-	if extra := len(d.data) + len(p) - limit; extra > 0 {
-		copy(d.data, d.data[extra:])
-		d.data = d.data[:len(d.data)-extra]
-	}
-	d.data = append(d.data, p...)
-	return n, nil
-}
-func (d *diagnosticTail) String() string { d.mu.Lock(); defer d.mu.Unlock(); return string(d.data) }

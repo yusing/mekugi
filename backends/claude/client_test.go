@@ -76,9 +76,6 @@ func TestClientCorrelatedRequestsAndCleanup(t *testing.T) {
 	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if got := c.Diagnostics(); len(got) != 64*1024 || strings.Trim(got, "x") != "" {
-		t.Fatalf("diagnostic tail = %d bytes", len(got))
-	}
 	if _, open := <-c.Events(); open {
 		t.Fatal("events remain open after joined shutdown")
 	}
@@ -196,7 +193,7 @@ func TestClientBundledSDK(t *testing.T) {
 		select {
 		case raw, open := <-c.Events():
 			if !open {
-				t.Fatalf("SDK ended: %v; %s", c.Err(), c.Diagnostics())
+				t.Fatalf("SDK ended: %v", c.Err())
 			}
 			var event Event
 			if err := json.Unmarshal(raw, &event); err != nil {
@@ -212,7 +209,7 @@ func TestClientBundledSDK(t *testing.T) {
 				return
 			}
 		case <-ctx.Done():
-			t.Fatalf("SDK input replay: %v; %s", ctx.Err(), c.Diagnostics())
+			t.Fatalf("SDK input replay: %v", ctx.Err())
 		}
 	}
 }

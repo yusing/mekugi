@@ -96,7 +96,7 @@ func TestPolicyNeverBundledSDKOptions(t *testing.T) {
 		select {
 		case raw, open := <-c.Events():
 			if !open {
-				t.Fatalf("SDK ended: %v; %s", c.Err(), c.Diagnostics())
+				t.Fatalf("SDK ended: %v", c.Err())
 			}
 			var event struct {
 				Type string   `json:"type"`
@@ -113,7 +113,7 @@ func TestPolicyNeverBundledSDKOptions(t *testing.T) {
 			}
 			return
 		case <-ctx.Done():
-			t.Fatalf("SDK option consumption: %v; %s", ctx.Err(), c.Diagnostics())
+			t.Fatalf("SDK option consumption: %v", ctx.Err())
 		}
 	}
 }
